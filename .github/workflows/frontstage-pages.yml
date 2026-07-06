@@ -5,7 +5,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/frontstage-pages.yml"
-      - "apps/dashboard/**"
+      - "apps/presentation/dashboard/**"
       - "docs/showcases/**"
       - "examples/export-frontstage-share-bundle.mjs"
       - "examples/frontstage-share-bundle-smoke.mjs"
@@ -17,7 +17,7 @@ on:
       - main
     paths:
       - ".github/workflows/frontstage-pages.yml"
-      - "apps/dashboard/**"
+      - "apps/presentation/dashboard/**"
       - "docs/showcases/**"
       - "examples/export-frontstage-share-bundle.mjs"
       - "examples/frontstage-share-bundle-smoke.mjs"
@@ -47,25 +47,25 @@ jobs:
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: apps/dashboard/package-lock.json
+          cache-dependency-path: apps/presentation/dashboard/package-lock.json
 
       - name: Use stable npm
         run: npm install -g npm@11
 
       - name: Install dashboard dependencies
-        working-directory: apps/dashboard
+        working-directory: apps/presentation/dashboard
         run: npm ci --include=dev --no-audit --no-fund --registry=https://registry.npmjs.org
 
       - name: Validate public showcase catalog
         run: python3 examples/showcase-catalog-smoke.py
 
       - name: Validate public-safe frontstage bundle
-        working-directory: apps/dashboard
+        working-directory: apps/presentation/dashboard
         run: npm run smoke:frontstage-share-bundle
 
       - name: Export Pages frontstage artifact
-        working-directory: apps/dashboard
-        run: npm run export:frontstage-share -- --base /loopx/ --out-dir ../../output/frontstage-pages
+        working-directory: apps/presentation/dashboard
+        run: npm run export:frontstage-share -- --base /loopx/ --out-dir ../../../output/frontstage-pages
 
       - name: Configure Pages
         if: github.event_name != 'pull_request'

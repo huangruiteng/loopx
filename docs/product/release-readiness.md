@@ -185,7 +185,7 @@ python3 examples/canary/canary-promotion-readiness-smoke.py --no-write-evidence
 ```
 
 The default dashboard policy is `--dashboard-mode=auto`: source checkouts run
-dashboard demo-readiness when `apps/dashboard` is present, while installed
+dashboard demo-readiness when `apps/presentation/dashboard` is present, while installed
 release snapshots that omit the dashboard app skip that optional surface and
 keep the omission visible in the canary output. Use `--dashboard-mode=require`
 when the dashboard/frontstage itself is being promoted, and

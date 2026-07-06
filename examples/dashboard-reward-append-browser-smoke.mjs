@@ -299,7 +299,7 @@ async function main() {
       env: { ...process.env, PYTHONPATH: repoRoot },
     });
     dashboardServer = startProcess("npm", ["run", "dev", "--", "--port", String(dashboardPort), "--strictPort"], {
-      cwd: resolve(repoRoot, "apps/dashboard"),
+      cwd: resolve(repoRoot, "apps/presentation/dashboard"),
       env: { ...process.env },
     });
 

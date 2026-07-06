@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="${LOOPX_REPO_ROOT:-$(cd "$script_dir/.." && pwd)}"
-dashboard_dir="${LOOPX_DASHBOARD_DIR:-$repo_root/apps/dashboard}"
+dashboard_dir="${LOOPX_DASHBOARD_DIR:-$repo_root/apps/presentation/dashboard}"
 dashboard_dist_dir="${LOOPX_DASHBOARD_DIST_DIR:-$dashboard_dir/dist}"
 bin_dir="${LOOPX_BIN_DIR:-$HOME/.local/bin}"
 registry="${LOOPX_GLOBAL_REGISTRY:-$HOME/.codex/loopx/registry.global.json}"

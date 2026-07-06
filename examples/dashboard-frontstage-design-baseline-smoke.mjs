@@ -24,11 +24,11 @@ function readRepoFile(path) {
 
 const productDoc = readRepoFile("docs/product/frontstage-dashboard-interaction-baseline.md");
 const productReadme = readRepoFile("docs/product/README.md");
-const dashboardReadme = readRepoFile("apps/dashboard/README.md");
-const frontstageSource = readRepoFile("apps/dashboard/src/views/frontstage-page.tsx");
-const stylesSource = readRepoFile("apps/dashboard/src/styles.css");
+const dashboardReadme = readRepoFile("apps/presentation/dashboard/README.md");
+const frontstageSource = readRepoFile("apps/presentation/dashboard/src/views/frontstage-page.tsx");
+const stylesSource = readRepoFile("apps/presentation/dashboard/src/styles.css");
 const browserSmoke = readRepoFile("examples/dashboard-frontstage-browser-smoke.mjs");
-const packageSource = readRepoFile("apps/dashboard/package.json");
+const packageSource = readRepoFile("apps/presentation/dashboard/package.json");
 
 includes(productDoc, "## Surface Split", "surface split section");
 includes(productDoc, "Showcase/homepage", "showcase surface row");

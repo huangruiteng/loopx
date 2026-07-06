@@ -311,7 +311,7 @@ benchmark 证据边界。
 
 ```bash
 loopx serve-status --global-registry --port 8766 --limit 80
-cd ~/loopx/apps/dashboard && npm install && npm run dev
+cd ~/loopx/apps/presentation/dashboard && npm install && npm run dev
 ```
 
 这个管理面保持保守：CLI 状态仍然是事实源，浏览器写入需要显式本地 opt-in，

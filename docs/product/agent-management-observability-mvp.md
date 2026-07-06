@@ -217,7 +217,7 @@ The first implementation should prove:
 
 ## Implemented Slice
 
-`apps/dashboard` now renders the read-only Agent Management panel from
+`apps/presentation/dashboard` now renders the read-only Agent Management panel from
 `agent_management_projection_v0` when live status exposes it. The panel shows
 agent rows, current todos, evidence refs, typed handoff notes, quota hints, and
 display-only workspace/stale-claim warnings. These hints do not expose reclaim,

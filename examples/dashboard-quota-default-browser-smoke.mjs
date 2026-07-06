@@ -9,7 +9,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const dashboardDir = resolve(repoRoot, "apps/dashboard");
+const dashboardDir = resolve(repoRoot, "apps/presentation/dashboard");
 const fixtureName = "status.quota-default.browser-smoke.json";
 const fixturePath = resolve(dashboardDir, "public", fixtureName);
 const playwrightCliOutputDir = resolve(repoRoot, ".playwright-cli");

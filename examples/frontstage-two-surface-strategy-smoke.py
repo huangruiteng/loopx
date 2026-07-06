@@ -25,7 +25,7 @@ def assert_contains(text: str, needle: str) -> None:
 def main() -> int:
     strategy = read("docs/product/frontstage-two-surface-strategy.md")
     product_index = read("docs/product/README.md")
-    dashboard_readme = read("apps/dashboard/README.md")
+    dashboard_readme = read("apps/presentation/dashboard/README.md")
     showcase_note = read("docs/showcases/frontend-surface.md")
     compact_strategy = compact(strategy)
     compact_dashboard_readme = compact(dashboard_readme)

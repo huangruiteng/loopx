@@ -53,7 +53,7 @@ needs an action-oriented queue and trustworthy drill-downs:
 
 ## Decision
 
-Build the official dashboard as `apps/dashboard` with a static-build-first
+Build the official dashboard as `apps/presentation/dashboard` with a static-build-first
 frontend:
 
 - **Vite + React + TypeScript** for a local-first single-page app that can read
@@ -163,7 +163,7 @@ The dashboard should be dense, calm, and operational:
 
 ## Current Implementation Segment
 
-The first dashboard scaffold lives in `apps/dashboard`. It uses the selected
+The first dashboard scaffold lives in `apps/presentation/dashboard`. It uses the selected
 stack and renders a real screen from `examples/status.example.json`:
 
 - contract health summary,
@@ -177,7 +177,7 @@ stack and renders a real screen from `examples/status.example.json`:
 Keep `examples/render-status-dashboard.py` as a low-friction fallback for
 environments that cannot build the React app.
 
-The first product-path `/frontstage` slice now exists in `apps/dashboard`: it
+The first product-path `/frontstage` slice now exists in `apps/presentation/dashboard`: it
 renders `attention_queue.items[].goal_channel_projection` as a read-only
 channel board that makes a single goal feel like a managed workspace lane. It
 shows the decision frame, quota guard, user todo lane, agent todo lane, active

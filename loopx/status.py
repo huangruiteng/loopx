@@ -315,7 +315,7 @@ from .control_plane.quota.usage_summary import (
 from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
-from .renderers.status_markdown import (
+from .presentation.renderers.status_markdown import (
     append_attention_queue_item_header_markdown as _append_attention_queue_item_header_markdown,
     append_attention_queue_summary_markdown as _append_attention_queue_summary_markdown,
     append_decision_freshness_summary_markdown as _append_decision_freshness_summary_markdown,

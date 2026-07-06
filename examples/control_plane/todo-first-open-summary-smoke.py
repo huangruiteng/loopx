@@ -51,7 +51,7 @@ FALLBACK_TODO = (
     "[P1] Continue one safe benchmark attribution cleanup while the primary mode is blocked."
 )
 FRONTSTAGE_CLAIMED_TODO = (
-    "[P1] Frontstage dashboard route MVP: render goal_channel_projection_v0 in apps/dashboard."
+    "[P1] Frontstage dashboard route MVP: render goal_channel_projection_v0 in apps/presentation/dashboard."
 )
 FRONTSTAGE_MONITOR_TODO = (
     "[P2] Repository quality monitor: watch README and dashboard demo freshness."

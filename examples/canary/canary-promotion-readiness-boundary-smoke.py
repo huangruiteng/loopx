@@ -27,14 +27,14 @@ def main() -> int:
     canary = load_canary_module()
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        release_dashboard = root / "release" / "apps" / "dashboard"
-        source_dashboard = root / "source" / "apps" / "dashboard"
+        release_dashboard = root / "release" / "apps" / "presentation" / "dashboard"
+        source_dashboard = root / "source" / "apps" / "presentation" / "dashboard"
         source_dashboard.mkdir(parents=True)
         (source_dashboard / "package.json").write_text("{}\n", encoding="utf-8")
 
         auto_release = canary.dashboard_readiness_plan(dashboard_dir=release_dashboard)
         assert auto_release["status"] == "skip", auto_release
-        assert "apps/dashboard is not present" in auto_release["reason"], auto_release
+        assert "apps/presentation/dashboard is not present" in auto_release["reason"], auto_release
 
         required_release = canary.dashboard_readiness_plan(
             dashboard_dir=release_dashboard,

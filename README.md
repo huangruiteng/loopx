@@ -42,7 +42,7 @@ plane, not hidden autonomy.
 [User Manual](https://my.feishu.cn/wiki/CaL5wMk9ui17ngkWzeUcMlAYnZg) ·
 [Showcases](docs/showcases/README.md) · [Release Readiness](docs/product/release-readiness.md) ·
 [Update Notes](docs/update-notes/README.md) · [Community](#community--feedback) ·
-[Product Vision](docs/product/vision.md) · [Dashboard](apps/dashboard/README.md)
+[Product Vision](docs/product/vision.md) · [Dashboard](apps/presentation/dashboard/README.md)
 
 </details>
 
@@ -467,7 +467,7 @@ agent, operator, and domain-specific surfaces.
 | Goal state and status | Tracks active state, todos, claims, gates, evidence, run history, and first-screen attention. | `loopx status`, `loopx diagnose`, `loopx review-packet` |
 | Quota and interaction contract | Decides whether a turn should deliver, ask the user, wait for evidence, self-repair, or stay quiet. | `loopx quota should-run`, [quota allocation](docs/quota-allocation.md) |
 | Agent runtime bridges | Keeps Codex App heartbeats, Codex CLI TUI loops, Claude Code `/loop`, and generic worker bridges aligned with the same guard. | `loopx heartbeat-prompt`, `loopx codex-cli-bootstrap-message`, `loopx worker-bridge` |
-| Operator surfaces | Renders compact project status for humans without making the browser the source of truth. | `loopx serve-status`, [dashboard](apps/dashboard/README.md), [frontstage](https://huangruiteng.github.io/loopx/frontstage/) |
+| Operator surfaces | Renders compact project status for humans without making the browser the source of truth. | `loopx serve-status`, [dashboard](apps/presentation/dashboard/README.md), [frontstage](https://huangruiteng.github.io/loopx/frontstage/) |
 | External projections | Projects LoopX todos and gates into collaboration surfaces while LoopX remains the state authority. | `loopx lark-kanban`, [Lark Kanban adapter](docs/lark-kanban-control-plane-adapter.md) |
 | Domain adapters | Packages repeatable work lanes such as issue fixing, content operations, value connector planning, ML experiment advice, and benchmark evidence. | `loopx issue-fix`, `loopx content-ops`, `loopx value-connectors`, `loopx ml-experiment`, `loopx benchmark` |
 | Governance patterns | Captures recurring good/bad interaction shapes so new capabilities do not become one-off prompt branches. | [pattern catalog](docs/interaction-pattern-catalog.md), [state model](docs/state-interaction-model.md) |
@@ -580,7 +580,7 @@ should make the loop easier to inspect, but LoopX remains the source of truth:
 
 ```bash
 loopx serve-status --global-registry --port 8766 --limit 80
-cd ~/loopx/apps/dashboard && npm install && npm run dev
+cd ~/loopx/apps/presentation/dashboard && npm install && npm run dev
 ```
 
 Before publishing public docs or examples, keep the public/private boundary
@@ -597,7 +597,7 @@ More detail lives in [Getting Started](docs/guides/getting-started.md);
 contracts live in [Status Data](docs/status-data-contract.md),
 [Quota Allocation](docs/quota-allocation.md), and
 [Public/Private Boundary](docs/public-private-boundary.md). For the local UI,
-see the [dashboard guide](apps/dashboard/README.md).
+see the [dashboard guide](apps/presentation/dashboard/README.md).
 
 ## Product Vision
 

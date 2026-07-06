@@ -207,9 +207,9 @@ def main() -> int:
         runtime_package = release_root / "loopx" / "control_plane" / "runtime"
         assert (runtime_package / "run_compaction.py").is_file(), release_root
         assert (runtime_package / "session_runtime.py").is_file(), release_root
-        dashboard_page = release_root / "apps" / "dashboard" / "src" / "views" / "dashboard-page.tsx"
-        action_packet = release_root / "apps" / "dashboard" / "src" / "data" / "action-packet.ts"
-        dashboard_node_modules = release_root / "apps" / "dashboard" / "node_modules"
+        dashboard_page = release_root / "apps" / "presentation" / "dashboard" / "src" / "views" / "dashboard-page.tsx"
+        action_packet = release_root / "apps" / "presentation" / "dashboard" / "src" / "data" / "action-packet.ts"
+        dashboard_node_modules = release_root / "apps" / "presentation" / "dashboard" / "node_modules"
         assert dashboard_page.is_file(), dashboard_page
         assert action_packet.is_file(), action_packet
         assert not dashboard_node_modules.exists(), dashboard_node_modules

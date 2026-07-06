@@ -162,7 +162,7 @@ def run_demo(
         ],
         "canonical_dashboard_status_url": "http://127.0.0.1:8766/status.json",
         "dashboard_app_commands": [
-            "cd ~/loopx/apps/dashboard",
+            "cd ~/loopx/apps/presentation/dashboard",
             "npm install",
             "npm run dev",
         ],

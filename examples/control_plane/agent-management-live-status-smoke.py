@@ -142,7 +142,7 @@ def fixture_status_payload() -> dict[str, Any]:
                                 "task_class": "advancement_task",
                                 "action_kind": "review_projection",
                                 "claimed_by": "agent-reviewer",
-                                "required_write_scopes": ["apps/dashboard/**"],
+                                "required_write_scopes": ["apps/presentation/dashboard/**"],
                                 "workspace_ref": {
                                     "kind": "worktree",
                                     "label": "agent-reviewer-worktree",
@@ -206,7 +206,7 @@ def assert_synthetic_projection() -> None:
     workspace_ref = by_agent["agent-reviewer"].get("workspace_ref")
     assert workspace_ref.get("kind") == "worktree", by_agent
     assert workspace_ref.get("path_safe") is False, by_agent
-    assert "apps/dashboard/**" in workspace_ref.get("write_scope", []), by_agent
+    assert "apps/presentation/dashboard/**" in workspace_ref.get("write_scope", []), by_agent
     stale_hint = by_agent["agent-reviewer"].get("stale_claim_hint")
     assert stale_hint.get("state") == "suspected_stale", by_agent
     assert stale_hint.get("claimed_by") == "agent-reviewer", by_agent

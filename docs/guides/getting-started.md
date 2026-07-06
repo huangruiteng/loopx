@@ -744,7 +744,7 @@ loopx serve-status --port 8765
 Run the dashboard:
 
 ```bash
-cd ~/loopx/apps/dashboard
+cd ~/loopx/apps/presentation/dashboard
 npm install
 npm run dev
 ```
@@ -769,7 +769,7 @@ The dashboard should answer, before raw log drill-down:
 - what is waiting on evidence;
 - what boundary cannot be crossed yet.
 
-See [apps/dashboard/README.md](../../apps/dashboard/README.md).
+See [apps/presentation/dashboard/README.md](../../apps/presentation/dashboard/README.md).
 
 ## Public / Private Boundary
 
@@ -818,7 +818,7 @@ git diff --check
 For dashboard work:
 
 ```bash
-cd apps/dashboard
+cd apps/presentation/dashboard
 npm install
 npm run build
 npm run smoke:demo-readiness

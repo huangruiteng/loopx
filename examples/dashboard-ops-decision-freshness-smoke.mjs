@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const dashboardDir = resolve(repoRoot, "apps/dashboard");
+const dashboardDir = resolve(repoRoot, "apps/presentation/dashboard");
 const publicDir = resolve(dashboardDir, "public");
 const oldContractFixtureName = "status.ops-decision-freshness-old-contract.json";
 const emptyFixtureName = "status.ops-decision-freshness-empty.json";
