@@ -1,0 +1,33 @@
+examples/platform-migration-material-registry-smoke.py
+  s_e3f612788718c1::t_c3200642e51aad 51-53,55-57,235,272,338,419
+loopx/renderers/status_markdown.py
+  s_32e2a9a204a8e4::t_30871a69afc47e 447-525
+loopx/status.py
+  s_32e2a9a204a8e4::t_feb5e2123d854a 325,7505-7508
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "d7f60268fdabcbb22603c91fac0b49d1fd83e0f9",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
