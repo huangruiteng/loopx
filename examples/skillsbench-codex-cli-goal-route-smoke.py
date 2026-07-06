@@ -82,6 +82,7 @@ def _assert_cli_goal_plan_and_relay_command() -> None:
     from loopx.benchmark_core.loop_protocol import CODEX_CLI_GOAL_BASELINE_ROUTE
     from loopx.benchmark_adapters.skillsbench import skillsbench_route_contract
     from scripts.skillsbench_automation_loop import (
+        DEFAULT_CODEX_CLI_GOAL_ACTIVE_TIMEOUT_SEC,
         _host_local_acp_launch_command,
         _public_runner_config,
         build_plan,
@@ -146,7 +147,7 @@ def _assert_cli_goal_plan_and_relay_command() -> None:
         assert "--goal-active-timeout-sec" in command, command
         assert (
             command[command.index("--goal-active-timeout-sec") + 1]
-            == command[command.index("--first-action-timeout-sec") + 1]
+            == str(DEFAULT_CODEX_CLI_GOAL_ACTIVE_TIMEOUT_SEC)
         ), command
         default_config = _public_runner_config(plan)
         assert default_config["codex_cli_goal_thread_prewarm"] is False
@@ -421,6 +422,54 @@ def _assert_cli_goal_tui_ready_wait_rejects_startup_artifacts() -> None:
     assert goal_tui.codex_cli_tui_input_prompt_visible("  > \n")
 
 
+def _assert_cli_goal_tui_ready_wait_auto_accepts_trust_prompt() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    import loopx.codex_cli_goal_tui as goal_tui
+
+    trust_prompt = (
+        "Do you trust the contents of this directory?\n"
+        "› 1. Yes, continue\n"
+        "  2. No, quit\n"
+        "Press enter to continue\n"
+    )
+    ready_prompt = (
+        "│ model:     gpt-5.5 xhigh   /model to change │\n"
+        "› \n"
+    )
+    captures = iter([trust_prompt, ready_prompt])
+    calls: list[tuple[str, str]] = []
+
+    def fake_capture(_tmux_name: str) -> str:
+        try:
+            return next(captures)
+        except StopIteration:
+            return ready_prompt
+
+    def fake_submit(tmux_name: str) -> None:
+        calls.append(("enter", tmux_name))
+
+    original_capture = goal_tui.tmux_capture_visible
+    original_submit = goal_tui.tmux_submit_enter
+    original_sleep = goal_tui.time.sleep
+    try:
+        goal_tui.tmux_capture_visible = fake_capture  # type: ignore[assignment]
+        goal_tui.tmux_submit_enter = fake_submit  # type: ignore[assignment]
+        goal_tui.time.sleep = lambda _seconds: None  # type: ignore[assignment]
+        assert goal_tui.wait_for_codex_cli_tui_ready(
+            "fake-session",
+            timeout_sec=2.0,
+            startup_grace_sec=0.0,
+            stable_sec=0.0,
+            auto_accept_trust_prompt=True,
+        )
+    finally:
+        goal_tui.tmux_capture_visible = original_capture  # type: ignore[assignment]
+        goal_tui.tmux_submit_enter = original_submit  # type: ignore[assignment]
+        goal_tui.time.sleep = original_sleep
+
+    assert calls == [("enter", "fake-session")], calls
+
+
 def _assert_cli_goal_paste_submit_falls_back_to_plain_enter() -> None:
     sys.path.insert(0, str(REPO_ROOT))
     import loopx.codex_cli_goal_tui as goal_tui
@@ -614,6 +663,7 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         codex_cli_tui_pre_bridge_blocker_stage,
         codex_cli_tui_pre_bridge_recovery_action,
         codex_cli_tui_pre_bridge_recovery_skip_reason,
+        codex_cli_tui_pre_bridge_terminal_stage,
         codex_cli_tui_pre_bridge_terminal_skip_reason,
     )
     from scripts.skillsbench_automation_loop import (
@@ -656,6 +706,20 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
             prompt_visible=True,
         )
         == "pre_bridge_terminal:p=1,timeout=0,rate=0,retry=0,error=1"
+    )
+    assert (
+        codex_cli_tui_pre_bridge_terminal_stage(
+            "Goal active\nGoal failed\n› ",
+            prompt_visible=True,
+        )
+        == "pre_bridge_tui_error_prompt"
+    )
+    assert (
+        codex_cli_tui_pre_bridge_terminal_stage(
+            first_turn_terminal_timeout_capture,
+            prompt_visible=True,
+        )
+        == "pre_bridge_tui_model_timeout"
     )
     assert (
         codex_cli_tui_pre_bridge_recovery_action(
@@ -1159,6 +1223,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     source = (
         REPO_ROOT / "loopx/benchmark_adapters/skillsbench_acp_relay.py"
     ).read_text(encoding="utf-8")
+    assert "auto_accept_trust_prompt=True" in source
     assert "CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC = 120" in source
     assert "CODEX_CLI_GOAL_TASK_PROMPT_FILENAME" in source
     assert "prompt_instruction_path.write_text(" in source
@@ -1326,6 +1391,7 @@ def main() -> int:
     _assert_cli_goal_trace_merges_into_public_prerequisites()
     _assert_cli_goal_tui_ready_wait_tolerates_startup_warnings()
     _assert_cli_goal_tui_ready_wait_rejects_startup_artifacts()
+    _assert_cli_goal_tui_ready_wait_auto_accepts_trust_prompt()
     _assert_cli_goal_paste_submit_falls_back_to_plain_enter()
     _assert_cli_goal_typed_submit_avoids_paste_buffer()
     _assert_cli_goal_rate_limit_is_public_safe_retryable_stage()

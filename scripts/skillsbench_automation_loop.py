@@ -1207,7 +1207,7 @@ def _effective_local_codex_goal_active_timeout_sec(args: argparse.Namespace) -> 
         bool(getattr(args, "host_local_acp_launch", False))
         and getattr(args, "route", "") == CODEX_CLI_GOAL_BASELINE_ROUTE
     ):
-        return _effective_local_codex_first_action_timeout_sec(args)
+        return 0 if _effective_local_codex_first_action_timeout_sec(args) <= 0 else min(max(0, int(getattr(args, "agent_idle_timeout", 0) or 0)) or DEFAULT_CODEX_CLI_GOAL_ACTIVE_TIMEOUT_SEC, DEFAULT_CODEX_CLI_GOAL_ACTIVE_TIMEOUT_SEC)
     return 0
 
 
@@ -16123,9 +16123,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help=(
             "Optional watchdog for observing Codex CLI /goal active state before "
-            "the first sandbox bridge operation. Omit to match the "
-            "codex-cli-goal-baseline first-action watchdog; 0 disables this "
-            "startup watchdog."
+            "the first sandbox bridge operation. Omit to use the independent "
+            f"codex-cli-goal-baseline startup watchdog ({DEFAULT_CODEX_CLI_GOAL_ACTIVE_TIMEOUT_SEC}s); "
+            "0 disables this startup watchdog."
         ),
     )
     parser.add_argument(

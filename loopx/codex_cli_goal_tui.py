@@ -332,6 +332,7 @@ def wait_for_codex_cli_tui_ready(
     timeout_sec: float = 60.0,
     startup_grace_sec: float = CODEX_CLI_TUI_READY_STARTUP_GRACE_SEC,
     stable_sec: float = CODEX_CLI_TUI_READY_STABLE_SEC,
+    auto_accept_trust_prompt: bool = False,
 ) -> bool:
     """Wait until Codex TUI startup noise has settled before pasting input."""
 
@@ -344,6 +345,11 @@ def wait_for_codex_cli_tui_ready(
     while time.monotonic() < deadline:
         capture = tmux_capture_visible(tmux_name)
         lowered = capture.lower()
+        if auto_accept_trust_prompt and codex_cli_tui_trust_prompt_visible(capture):
+            tmux_submit_enter(tmux_name)
+            stable_ready_since = 0.0
+            time.sleep(1.0)
+            continue
         if codex_cli_tui_startup_blocker(capture):
             stable_ready_since = 0.0
             time.sleep(0.5)

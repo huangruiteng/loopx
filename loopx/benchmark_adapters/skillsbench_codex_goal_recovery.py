@@ -117,6 +117,25 @@ def codex_cli_tui_pre_bridge_recovery_skip_reason(
     return "unsupported_recovery_action"
 
 
+def codex_cli_tui_pre_bridge_terminal_stage(
+    capture: str,
+    *,
+    prompt_visible: bool,
+) -> str:
+    """Classify a terminal goal that ended before any bridge activity."""
+
+    if not prompt_visible:
+        return ""
+    if _capture_has_rate_limit(capture):
+        return "pre_bridge_tui_rate_limit"
+    if _capture_has_model_timeout(capture):
+        return "pre_bridge_tui_model_timeout"
+    lowered = _recent_capture_region(capture).lower()
+    if any(marker in lowered for marker in ("error", "failed", "model")):
+        return "pre_bridge_tui_error_prompt"
+    return ""
+
+
 def codex_cli_tui_pre_bridge_terminal_skip_reason(
     capture: str,
     *,

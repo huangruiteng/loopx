@@ -43,6 +43,7 @@ from loopx.benchmark_adapters.skillsbench_codex_goal_recovery import (
     codex_cli_tui_pre_bridge_blocker_stage,
     codex_cli_tui_pre_bridge_recovery_action,
     codex_cli_tui_pre_bridge_recovery_skip_reason,
+    codex_cli_tui_pre_bridge_terminal_stage,
     codex_cli_tui_pre_bridge_terminal_skip_reason,
 )
 from loopx.codex_cli_goal_tui import (
@@ -1211,6 +1212,7 @@ class SkillsBenchLocalAcpRelay:
             post_bridge_recovery_action = ""
             post_bridge_recovery_skip_reason = ""
             post_bridge_closeout_attempt_count = 0
+            pre_bridge_terminal_stage = ""
             try:
                 subprocess.run(
                     [
@@ -1228,7 +1230,7 @@ class SkillsBenchLocalAcpRelay:
                     stderr=subprocess.PIPE,
                     text=True,
                 )
-                if not wait_for_codex_cli_tui_ready(tmux_name):
+                if not wait_for_codex_cli_tui_ready(tmux_name, auto_accept_trust_prompt=True):
                     tmux_kill_session(tmux_name)
                     self._publish_codex_cli_goal_trace(
                         ok=False,
@@ -1287,7 +1289,6 @@ class SkillsBenchLocalAcpRelay:
                     goal_active_timeout_sec = max(
                         1.0,
                         float(self._config.goal_active_timeout_sec or 0.0),
-                        float(self._config.first_action_timeout_sec or 0.0),
                     )
                     goal_active_deadline = (
                         time.monotonic() + goal_active_timeout_sec
@@ -1403,7 +1404,6 @@ class SkillsBenchLocalAcpRelay:
                                 goal_active_deadline = now + max(
                                     1.0,
                                     float(self._config.goal_active_timeout_sec or 0.0),
-                                    first_action_timeout_sec,
                                 )
                             if first_action_deadline:
                                 first_action_deadline = now + first_action_timeout_sec
@@ -1459,7 +1459,9 @@ class SkillsBenchLocalAcpRelay:
                         )
                     if goal_failed_now:
                         if bridge_summary_path is not None and not first_action_seen:
-                            pre_bridge_recovery_skip_reason = codex_cli_tui_pre_bridge_terminal_skip_reason(capture, prompt_visible=codex_cli_tui_input_prompt_visible(capture))
+                            prompt_visible = codex_cli_tui_input_prompt_visible(capture)
+                            pre_bridge_recovery_skip_reason = codex_cli_tui_pre_bridge_terminal_skip_reason(capture, prompt_visible=prompt_visible)
+                            pre_bridge_terminal_stage = codex_cli_tui_pre_bridge_terminal_stage(capture, prompt_visible=prompt_visible)
                         goal_terminal_observed = True
                         goal_failed_observed = True
                         break
@@ -1736,13 +1738,7 @@ class SkillsBenchLocalAcpRelay:
                     )
                 self._publish_codex_cli_goal_trace(
                     ok=bool(goal_terminal_observed and not goal_failed_observed),
-                    stage=(
-                        "goal_achieved"
-                        if goal_terminal_observed and not goal_failed_observed
-                        else "goal_failed"
-                        if goal_failed_observed
-                        else "timeout"
-                    ),
+                    stage=pre_bridge_terminal_stage or ("goal_achieved" if goal_terminal_observed and not goal_failed_observed else "goal_failed" if goal_failed_observed else "timeout"),
                     goal_active_observed=goal_active_observed,
                     goal_terminal_observed=goal_terminal_observed,
                     first_action_observed=first_action_seen,
@@ -1764,6 +1760,8 @@ class SkillsBenchLocalAcpRelay:
                 )
                 if goal_terminal_observed and not goal_failed_observed:
                     return "codex cli /goal completed"
+                if pre_bridge_terminal_stage:
+                    return _recoverable_codex_turn_failure_message("codex_cli_goal_" + pre_bridge_terminal_stage)
                 if goal_failed_observed:
                     return _recoverable_codex_turn_failure_message(
                         "codex_exec_failed"
