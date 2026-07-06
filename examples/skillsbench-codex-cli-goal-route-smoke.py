@@ -1114,6 +1114,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     source = (
         REPO_ROOT / "loopx/benchmark_adapters/skillsbench_acp_relay.py"
     ).read_text(encoding="utf-8")
+    assert "CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC = 120" in source
     assert "CODEX_CLI_GOAL_TASK_PROMPT_FILENAME" in source
     assert "prompt_instruction_path.write_text(" in source
     assert "build_codex_cli_goal_file_objective(" in source
@@ -1123,8 +1124,11 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "if self._config.codex_cli_goal_thread_prewarm:" in source
     assert "prewarm_codex_cli_goal_thread(" in source
     assert "thread_prewarm_timeout" in source
-    assert "timeout_sec=max(" in source
-    assert "self._config.first_action_timeout_sec" in source
+    assert "timeout_sec=CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC" in source
+    assert (
+        "max(90.0, float(self._config.first_action_timeout_sec or 0.0))"
+        not in source
+    )
     assert "post_bridge_recovery_attempt_count" in source
     assert "post_bridge_closeout_attempt_count" in source
     assert "POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT" in source
@@ -1162,6 +1166,32 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
         assert trace["goal_prompt_file_used"] is True, trace
         assert trace["goal_prompt_file_raw_path_recorded"] is False, trace
         assert trace["goal_command_submission_method"] == "typed", trace
+
+    with tempfile.TemporaryDirectory() as temp:
+        trace_dir = Path(temp) / "trace"
+        relay = SkillsBenchLocalAcpRelay(
+            CodexExecConfig(
+                codex_cli_goal_thread_prewarm=True,
+                first_action_timeout_sec=7200.0,
+                worker_public_trace_dir=str(trace_dir),
+            )
+        )
+        relay._publish_codex_cli_goal_trace(
+            ok=False,
+            stage="thread_prewarm_timeout",
+            goal_active_observed=False,
+            goal_terminal_observed=False,
+            first_action_observed=False,
+            bridge_summary_path=None,
+            thread_prewarm_observed=False,
+            goal_prompt_file_used=True,
+            goal_command_submission_method="typed",
+        )
+        traces = list(trace_dir.glob("*.compact.json"))
+        assert len(traces) == 1, traces
+        payload = json.loads(traces[0].read_text(encoding="utf-8"))
+        trace = payload["codex_cli_goal"]
+        assert trace["goal_thread_prewarm_timeout_sec"] == 120, trace
 
 
 def _assert_cli_goal_codex_api_proxy_is_runtime_only() -> None:

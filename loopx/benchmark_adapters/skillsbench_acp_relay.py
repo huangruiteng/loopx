@@ -87,16 +87,12 @@ SKILLSBENCH_LOCAL_ACP_RELAY_PROBE_SCHEMA_VERSION = (
 SKILLSBENCH_HOST_LOCAL_ACP_TRANSPORT_PROBE_SCHEMA_VERSION = (
     "skillsbench_host_local_acp_transport_probe_v0"
 )
-SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER = (
-    "LOOPX_SKILLSBENCH_LOCAL_ACP_RELAY_READY"
-)
+SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER = "LOOPX_SKILLSBENCH_LOCAL_ACP_RELAY_READY"
 SKILLSBENCH_LOCAL_ACP_RELAY_HEALTH_PROMPT = (
     "LoopX relay health check. Reply exactly "
     f"{SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER} and end the turn."
 )
-SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER = (
-    "LOOPX_SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_READY"
-)
+SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER = "LOOPX_SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_READY"
 SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT = (
     "LoopX bridge action preflight. First use the private bridge command from "
     "the relay packet to run one JSON preflight request that does not require "
@@ -109,6 +105,7 @@ SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT = (
     "After the bridge response returns, reply exactly "
     f"{SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER} and end the turn."
 )
+CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC = 120
 
 
 @contextlib.contextmanager
@@ -1251,7 +1248,7 @@ class SkillsBenchLocalAcpRelay:
                     thread_prewarm_observed = prewarm_codex_cli_goal_thread(
                         tmux_name=tmux_name,
                         tmp_path=tmp_path,
-                        timeout_sec=max(90.0, float(self._config.first_action_timeout_sec or 0.0)),
+                        timeout_sec=CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC,
                     )
                     if not thread_prewarm_observed:
                         tmux_kill_session(tmux_name)
@@ -1851,6 +1848,7 @@ class SkillsBenchLocalAcpRelay:
                 "stage": safe_stage,
                 "goal_slash_command_submitted": True,
                 "goal_thread_prewarm_observed": bool(thread_prewarm_observed),
+                "goal_thread_prewarm_timeout_sec": CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC if self._config.codex_cli_goal_thread_prewarm else 0,
                 "goal_prompt_file_used": bool(goal_prompt_file_used),
                 "goal_prompt_file_raw_path_recorded": False,
                 "goal_command_submission_method": str(
