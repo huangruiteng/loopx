@@ -1,0 +1,35 @@
+examples/auto-research-user-contract-entry-smoke.py
+  s_32e2a9a204a8e4::t_6f62e957c4d196 174-175,204,218,232,246,260,274,288,299
+examples/auto-research-visible-launch-policy-smoke.py
+  s_32e2a9a204a8e4::t_f1ba266f213436 128
+examples/cli-multi-agent-command-modularization-smoke.py
+  s_32e2a9a204a8e4::t_323daf3f072db4 59,69
+examples/visible-multi-agent-launcher-smoke.py
+  s_32e2a9a204a8e4::t_c1fbf4bd1402a4 115-116,602-603,822-829
+loopx/capabilities/auto_research/cli.py
+  s_32e2a9a204a8e4::t_966ce068741c68 235-250,827-828,846-847,971-972
+loopx/capabilities/multi_agent/visible_launch_policy.py
+  s_32e2a9a204a8e4::t_ab4b455270af92 98-99,128-129
+loopx/cli_commands/multi_agent.py
+  s_32e2a9a204a8e4::t_d143cc6609043a 51-65,196-197
+loopx/visible_multi_agent_launcher.py
+  s_32e2a9a204a8e4::t_cc121a2ec57419 40,1047-1114,1131-1132,1159,1167-1168,1182,1190-1191,1325-1341,1378
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "94d32d2acbe09f109a7a7a06e71f41187a4368f7",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
