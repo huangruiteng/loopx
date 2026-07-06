@@ -6,6 +6,7 @@ from ...control_plane import control_plane_policy_summary
 from ...execution_profile import execution_profile_summary
 from ...long_task_cadence import long_task_cadence_hint_summary
 from ...orchestration import orchestration_policy_summary
+from ...presentation.markdown import as_dict, as_list, markdown_scalar
 from ..runtime.decision_freshness import DECISION_FRESHNESS_WARNING_ITEM_LIMIT
 from .states import QUOTA_STATE_ORDER
 
@@ -21,8 +22,8 @@ def render_quota_markdown(payload: dict[str, Any]) -> str:
         f"- goals: `{payload.get('goal_count')}`",
         f"- runs: `{payload.get('run_count')}`",
     ]
-    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    states = summary.get("states") if isinstance(summary.get("states"), dict) else {}
+    summary = as_dict(payload.get("summary"))
+    states = as_dict(summary.get("states"))
     state_text = ", ".join(f"{state}={states.get(state, 0)}" for state in QUOTA_STATE_ORDER)
     lines.append(
         "- summary: "
@@ -32,10 +33,10 @@ def render_quota_markdown(payload: dict[str, Any]) -> str:
     )
     lines.append(f"- states: {state_text}")
 
-    next_turn = payload.get("next_automatic_turn") if isinstance(payload.get("next_automatic_turn"), dict) else {}
+    next_turn = as_dict(payload.get("next_automatic_turn"))
     lines.extend(["", "## Next Automatic Turn"])
     if next_turn:
-        quota = next_turn.get("quota") if isinstance(next_turn.get("quota"), dict) else {}
+        quota = as_dict(next_turn.get("quota"))
         lines.append(
             "- "
             f"`{next_turn.get('goal_id')}` "
@@ -47,7 +48,7 @@ def render_quota_markdown(payload: dict[str, Any]) -> str:
     else:
         lines.append("- none")
 
-    health_items = payload.get("health_items") if isinstance(payload.get("health_items"), list) else []
+    health_items = as_list(payload.get("health_items"))
     if health_items:
         lines.extend(["", "## Health Items"])
         for item in health_items:
@@ -61,13 +62,13 @@ def render_quota_markdown(payload: dict[str, Any]) -> str:
                 f"action={item.get('recommended_action')}"
             )
 
-    groups = payload.get("groups") if isinstance(payload.get("groups"), dict) else {}
+    groups = as_dict(payload.get("groups"))
     lines.extend(["", "## Groups"])
     render_states = list(QUOTA_STATE_ORDER)
     if groups.get("unknown"):
         render_states.append("unknown")
     for state in render_states:
-        items = groups.get(state) if isinstance(groups.get(state), list) else []
+        items = as_list(groups.get(state))
         if payload.get("mode") == "plan" and not items:
             continue
         lines.extend(["", f"### {state}"])
@@ -77,8 +78,8 @@ def render_quota_markdown(payload: dict[str, Any]) -> str:
         for item in items:
             if not isinstance(item, dict):
                 continue
-            quota = item.get("quota") if isinstance(item.get("quota"), dict) else {}
-            action = str(item.get("recommended_action") or "").replace("|", "\\|")
+            quota = as_dict(item.get("quota"))
+            action = markdown_scalar(item.get("recommended_action") or "")
             lines.append(
                 "- "
                 f"`{item.get('goal_id')}`: "
@@ -94,7 +95,7 @@ def render_quota_markdown(payload: dict[str, Any]) -> str:
                 lines.append(f"  - reason: {reason}")
             if action:
                 lines.append(f"  - action: {action}")
-            control_plane = item.get("control_plane") if isinstance(item.get("control_plane"), dict) else None
+            control_plane = as_dict(item.get("control_plane"))
             if control_plane:
                 lines.append(f"  - control_plane: {control_plane_policy_summary(control_plane)}")
             if item.get("agent_command"):
@@ -105,9 +106,9 @@ def render_quota_markdown(payload: dict[str, Any]) -> str:
 
 
 def render_quota_scheduler_ack_markdown(payload: dict[str, Any]) -> str:
-    event = payload.get("scheduler_ack_event") if isinstance(payload.get("scheduler_ack_event"), dict) else {}
-    state = event.get("scheduler_state") if isinstance(event.get("scheduler_state"), dict) else {}
-    before = event.get("before") if isinstance(event.get("before"), dict) else {}
+    event = as_dict(payload.get("scheduler_ack_event"))
+    state = as_dict(event.get("scheduler_state"))
+    before = as_dict(event.get("before"))
     lines = [
         "# LoopX Quota Scheduler Ack",
         "",
@@ -135,7 +136,7 @@ def render_quota_scheduler_ack_markdown(payload: dict[str, Any]) -> str:
 
 
 def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
-    quota = payload.get("quota") if isinstance(payload.get("quota"), dict) else {}
+    quota = as_dict(payload.get("quota"))
     lines = [
         "# LoopX Quota Should Run",
         "",
@@ -154,11 +155,7 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
     ]
     if payload.get("project_asset_source"):
         lines.append(f"- project_asset_source: {payload.get('project_asset_source')}")
-    agent_identity = (
-        payload.get("agent_identity")
-        if isinstance(payload.get("agent_identity"), dict)
-        else {}
-    )
+    agent_identity = as_dict(payload.get("agent_identity"))
     if agent_identity:
         lines.append(
             "- agent_identity: "
@@ -168,16 +165,12 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"handoff_agent={agent_identity.get('handoff_agent')}"
         )
     if payload.get("active_state_next_action"):
-        lines.append(f"- active_state_next_action: {payload.get('active_state_next_action')}")
+        lines.append(f"- active_state_next_action: {markdown_scalar(payload.get('active_state_next_action'))}")
     if payload.get("latest_run_recommended_action"):
         lines.append(
-            f"- latest_run_recommended_action: {payload.get('latest_run_recommended_action')}"
+            f"- latest_run_recommended_action: {markdown_scalar(payload.get('latest_run_recommended_action'))}"
         )
-    agent_lane_next_action = (
-        payload.get("agent_lane_next_action")
-        if isinstance(payload.get("agent_lane_next_action"), dict)
-        else {}
-    )
+    agent_lane_next_action = as_dict(payload.get("agent_lane_next_action"))
     if agent_lane_next_action:
         lines.append(
             "- agent_lane_next_action: "
@@ -186,12 +179,10 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"confidence={agent_lane_next_action.get('confidence')}"
         )
         if agent_lane_next_action.get("text"):
-            lines.append(f"- agent_lane_next_action_text: {agent_lane_next_action.get('text')}")
-    agent_lane_frontier_hint = (
-        payload.get("agent_lane_frontier_hint")
-        if isinstance(payload.get("agent_lane_frontier_hint"), dict)
-        else {}
-    )
+            lines.append(
+                f"- agent_lane_next_action_text: {markdown_scalar(agent_lane_next_action.get('text'))}"
+            )
+    agent_lane_frontier_hint = as_dict(payload.get("agent_lane_frontier_hint"))
     if agent_lane_frontier_hint:
         lines.append(
             "- agent_lane_frontier_hint: "
@@ -200,17 +191,9 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"reason_code={agent_lane_frontier_hint.get('reason_code')} "
             f"target_todo_id={agent_lane_frontier_hint.get('target_todo_id')}"
         )
-    goal_route_hint = (
-        payload.get("goal_route_hint")
-        if isinstance(payload.get("goal_route_hint"), dict)
-        else {}
-    )
+    goal_route_hint = as_dict(payload.get("goal_route_hint"))
     if goal_route_hint:
-        counts = (
-            goal_route_hint.get("counts")
-            if isinstance(goal_route_hint.get("counts"), dict)
-            else {}
-        )
+        counts = as_dict(goal_route_hint.get("counts"))
         lines.append(
             "- goal_route_hint: "
             f"decision={goal_route_hint.get('route_decision')} "
@@ -218,22 +201,14 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"preserves_goal_next_action={goal_route_hint.get('preserves_goal_next_action')} "
             f"other_agent_claimed_advancement_count={counts.get('other_agent_claimed_advancement_count')}"
         )
-        current_action = (
-            goal_route_hint.get("current_agent_next_action")
-            if isinstance(goal_route_hint.get("current_agent_next_action"), dict)
-            else {}
-        )
+        current_action = as_dict(goal_route_hint.get("current_agent_next_action"))
         if current_action:
             lines.append(
                 "- goal_route_hint_current_action: "
                 f"todo_id={current_action.get('todo_id')} "
                 f"selected_by={current_action.get('selected_by')}"
             )
-    agent_scope_frontier = (
-        payload.get("agent_scope_frontier")
-        if isinstance(payload.get("agent_scope_frontier"), dict)
-        else {}
-    )
+    agent_scope_frontier = as_dict(payload.get("agent_scope_frontier"))
     if agent_scope_frontier:
         lines.append(
             "- agent_scope_frontier: "
@@ -242,12 +217,10 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"quiet_noop_allowed={agent_scope_frontier.get('quiet_noop_allowed')}"
         )
         if agent_scope_frontier.get("reason"):
-            lines.append(f"- agent_scope_frontier_reason: {agent_scope_frontier.get('reason')}")
-        deferred_resume_candidates = (
-            agent_scope_frontier.get("deferred_resume_candidates")
-            if isinstance(agent_scope_frontier.get("deferred_resume_candidates"), list)
-            else []
-        )
+            lines.append(
+                f"- agent_scope_frontier_reason: {markdown_scalar(agent_scope_frontier.get('reason'))}"
+            )
+        deferred_resume_candidates = as_list(agent_scope_frontier.get("deferred_resume_candidates"))
         if deferred_resume_candidates:
             first_candidate = (
                 deferred_resume_candidates[0]
@@ -259,10 +232,8 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                 f"`{len(deferred_resume_candidates)}` "
                 f"top_todo_id={first_candidate.get('todo_id')}"
             )
-        route_continuation_candidates = (
+        route_continuation_candidates = as_list(
             agent_scope_frontier.get("route_continuation_replan_candidates")
-            if isinstance(agent_scope_frontier.get("route_continuation_replan_candidates"), list)
-            else []
         )
         if route_continuation_candidates:
             first_candidate = (
@@ -276,27 +247,11 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                 f"top_todo_id={first_candidate.get('todo_id')} "
                 f"route={first_candidate.get('route_id') or first_candidate.get('route_key') or ''}"
             )
-    goal_frontier = (
-        payload.get("goal_frontier_projection")
-        if isinstance(payload.get("goal_frontier_projection"), dict)
-        else {}
-    )
+    goal_frontier = as_dict(payload.get("goal_frontier_projection"))
     if goal_frontier:
-        remaining = (
-            goal_frontier.get("remaining_advancement_frontier")
-            if isinstance(goal_frontier.get("remaining_advancement_frontier"), dict)
-            else {}
-        )
-        deferred_successors = (
-            goal_frontier.get("deferred_successors")
-            if isinstance(goal_frontier.get("deferred_successors"), dict)
-            else {}
-        )
-        acceptance_gaps = (
-            goal_frontier.get("acceptance_gaps")
-            if isinstance(goal_frontier.get("acceptance_gaps"), list)
-            else []
-        )
+        remaining = as_dict(goal_frontier.get("remaining_advancement_frontier"))
+        deferred_successors = as_dict(goal_frontier.get("deferred_successors"))
+        acceptance_gaps = as_list(goal_frontier.get("acceptance_gaps"))
         lines.append(
             "- goal_frontier_projection: "
             f"replan_required={goal_frontier.get('replan_required')} "
@@ -306,11 +261,7 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"deferred_ready={deferred_successors.get('ready_count')} "
             f"acceptance_gaps={len(acceptance_gaps)}"
         )
-        vision_audit = (
-            goal_frontier.get("vision_continuation_audit")
-            if isinstance(goal_frontier.get("vision_continuation_audit"), dict)
-            else {}
-        )
+        vision_audit = as_dict(goal_frontier.get("vision_continuation_audit"))
         if vision_audit:
             lines.append(
                 "- vision_continuation_audit: "
@@ -318,11 +269,7 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                 f"decision={vision_audit.get('decision')} "
                 f"trigger_count={vision_audit.get('trigger_count')}"
             )
-            vision_gap_judge = (
-                vision_audit.get("vision_gap_judge")
-                if isinstance(vision_audit.get("vision_gap_judge"), dict)
-                else {}
-            )
+            vision_gap_judge = as_dict(vision_audit.get("vision_gap_judge"))
             if vision_gap_judge:
                 lines.append(
                     "- vision_gap_judge: "

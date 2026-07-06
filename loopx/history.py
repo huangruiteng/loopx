@@ -20,6 +20,7 @@ from .control_plane.work_items.delivery_outcome import require_delivery_outcome
 from .doctor import PROMOTION_READINESS_CLASSIFICATIONS
 from .execution_profile import compact_execution_profile
 from .paths import resolve_runtime_root
+from .presentation.markdown import markdown_scalar
 from .quota import (
     QUOTA_MONITOR_POLL_CLASSIFICATION,
     QUOTA_SLOT_SPENT_CLASSIFICATION,
@@ -1000,7 +1001,7 @@ def render_index_duplicate_repair_markdown(payload: dict[str, Any]) -> str:
         "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for group in payload.get("groups") or []:
-        reason = str(group.get("reason") or "").replace("|", "\\|")
+        reason = markdown_scalar(group.get("reason"))
         lines.append(
             "| "
             f"`{group.get('goal_id')}` | "
@@ -1031,7 +1032,7 @@ def render_history_markdown(payload: dict[str, Any]) -> str:
         "| --- | --- | --- | --- | --- |",
     ]
     for run in payload.get("runs") or []:
-        action = str(run.get("recommended_action") or "").replace("|", "\\|")
+        action = markdown_scalar(run.get("recommended_action"))
         lines.append(
             "| "
             f"`{run.get('generated_at')}` | "
@@ -1076,7 +1077,7 @@ def render_index_duplicate_inspection_markdown(payload: dict[str, Any]) -> str:
     ]
     for group in payload.get("groups") or []:
         classifications = ", ".join(str(item) for item in group.get("classifications") or [])
-        hint = str(group.get("repair_hint") or "").replace("|", "\\|")
+        hint = markdown_scalar(group.get("repair_hint"))
         lines.append(
             "| "
             f"`{group.get('goal_id')}` | "

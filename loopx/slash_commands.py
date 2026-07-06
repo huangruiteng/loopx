@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .presentation.markdown import markdown_scalar
+
 
 SCHEMA_VERSION = "loopx_slash_command_catalog_v0"
 
@@ -211,7 +213,7 @@ def render_onboarding_slash_command_note(commands: list[dict[str, Any]], *, cli_
 
 
 def _markdown_table_cell(value: Any) -> str:
-    return str(value or "").replace("\n", " ").replace("|", "\\|")
+    return markdown_scalar(value)
 
 
 def render_slash_command_catalog_markdown(payload: dict[str, Any]) -> str:
