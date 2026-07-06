@@ -16,6 +16,11 @@ VISION_CHECKPOINT_MISSING_TRIGGER = "vision_checkpoint_missing"
 TODO_SUCCESSION_GAP_TRIGGER = "completed_advancement_without_successor"
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
 TODO_TASK_CLASS_MONITOR = "continuous_monitor"
+VISION_CHECKPOINT_SATISFIED_DECISIONS = {
+    "patched",
+    "retired_or_superseded",
+    "unchanged_with_reason",
+}
 FRONTIER_REPLAN_ACK_DELTA_KINDS = {
     "active_state_next_action",
     "blocker",
@@ -254,11 +259,17 @@ def latest_missing_vision_checkpoint_from_status_payload(
             continue
         if not agent_id and checkpoint_agent_id:
             continue
+        decision = str(checkpoint.get("decision") or "").strip()
+        if (
+            checkpoint.get("satisfied") is True
+            and decision in VISION_CHECKPOINT_SATISFIED_DECISIONS
+        ):
+            return None
         if checkpoint.get("required") is not True:
             continue
         if checkpoint.get("satisfied") is not False:
             continue
-        if str(checkpoint.get("decision") or "") != "missing_required":
+        if decision != "missing_required":
             continue
         return {
             "schema_version": checkpoint.get("schema_version"),

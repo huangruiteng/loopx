@@ -119,6 +119,9 @@ Valid checkpoint decisions are:
 history, quota filters it by current `agent_id`, and goal-frontier projection
 turns it into `acceptance_gaps[]`. If the current agent has no runnable
 advancement frontier, that gap can trigger `autonomous_replan_required`.
+For the same `agent_id`, a newer satisfied checkpoint with `patched`,
+`unchanged_with_reason`, or `retired_or_superseded` supersedes older
+`missing_required` checkpoints; `not_required` does not.
 
 Checkpoint and autonomous-replan ACK packets are protocol records, not semantic
 completion proof. A recent ACK may suppress duplicate monitor-only replan
