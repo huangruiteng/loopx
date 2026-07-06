@@ -215,6 +215,12 @@ def no_followup_handoff_review() -> dict:
     )
 
 
+def archived_handoff_review() -> dict:
+    item = handoff_review(status="done")
+    item["archive_state"] = "completed_archive"
+    return item
+
+
 def value_successor() -> dict:
     return todo_item(
         todo_id="todo_value_successor",
@@ -365,6 +371,32 @@ def assert_status_summary_projects_handoff_gate_state() -> None:
     assert gate["blocks_agent"] == BLOCKED_AGENT, gate
 
 
+def assert_archived_completed_blocker_does_not_wake_agent() -> None:
+    summary = compact_todo_group(
+        [archived_handoff_review()],
+        source_section="Agent Todo",
+        role="agent",
+    )
+    assert summary is not None
+    assert "handoff_gates" not in summary, summary
+
+    payload = build_quota_should_run(
+        status_payload(
+            [primary_owned_todo(), archived_handoff_review()],
+            recommended_action="Archived handoff history should not wake the blocked agent.",
+        ),
+        goal_id=GOAL_ID,
+        agent_id=BLOCKED_AGENT,
+    )
+    assert payload["decision"] == "agent_scope_wait", payload
+    assert payload["should_run"] is False, payload
+    assert payload["agent_scope_frontier"]["action"] == "agent_scope_wait", payload
+    assert "current_agent_handoff_gates" not in payload["agent_todo_summary"], payload
+    assert "current_agent_cleared_without_successor_handoff_count" not in (
+        payload["agent_todo_summary"]
+    ), payload
+
+
 def assert_existing_successor_runs_normally() -> None:
     payload = build_quota_should_run(
         status_payload(
@@ -459,6 +491,7 @@ def main() -> int:
     assert_cleared_blocker_requires_successor_replan()
     assert_stale_handoff_closeout_requires_route_continuation_replan()
     assert_status_summary_projects_handoff_gate_state()
+    assert_archived_completed_blocker_does_not_wake_agent()
     assert_existing_successor_runs_normally()
     assert_completed_successor_keeps_old_gate_cleared()
     assert_superseded_completed_blocker_does_not_wake_agent()

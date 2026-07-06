@@ -21,6 +21,7 @@ from .contract import (
 
 
 TODO_HANDOFF_GATE_SCHEMA_VERSION = "todo_handoff_gate_v0"
+TODO_ARCHIVE_STATE_ACTIVE = "active"
 
 
 class HandoffGateState(str, Enum):
@@ -45,6 +46,11 @@ def _todo_done(item: dict[str, Any]) -> bool:
 
 def _todo_text(item: dict[str, Any]) -> str:
     return str(item.get("text") or "").strip()
+
+
+def _todo_archive_state(item: dict[str, Any]) -> str:
+    value = str(item.get("archive_state") or TODO_ARCHIVE_STATE_ACTIVE).strip()
+    return value or TODO_ARCHIVE_STATE_ACTIVE
 
 
 def _successor_todo_ids(
@@ -178,6 +184,8 @@ def build_todo_handoff_gate_states(items: Iterable[Any]) -> list[dict[str, Any]]
     gates: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
     for item in todo_items:
+        if _todo_archive_state(item) != TODO_ARCHIVE_STATE_ACTIVE:
+            continue
         blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
         if not blocks_agent:
             continue
