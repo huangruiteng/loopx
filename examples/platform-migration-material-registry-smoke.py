@@ -48,9 +48,13 @@ def write_platform_migration_fixture(root: Path) -> Path:
         "---\n\n"
         "# Platform Migration Material Registry\n\n"
         "## User Todo\n\n"
-        "- [ ] Confirm whether owner review is fresh enough to resume delivery.\n\n"
+        "- [ ] Confirm whether owner review is fresh enough to resume delivery.\n"
+        "  <!-- loopx:todo todo_id=todo_owner_review_gate status=open "
+        "task_class=user_gate action_kind=owner_review_freshness global_gate=true -->\n\n"
         "## Agent Todo\n\n"
-        "- [ ] Run read-only map and report material freshness without internal links.\n\n"
+        "- [ ] Run read-only map and report material freshness without internal links.\n"
+        "  <!-- loopx:todo todo_id=todo_material_registry_map status=open "
+        "task_class=advancement_task action_kind=read_only_map -->\n\n"
         "## Next Action\n\n"
         "- Refresh the public-safe material registry summary.\n\n"
         "## Platform Migration Pilot Boundary\n\n"
@@ -228,7 +232,7 @@ def assert_material_counts(
 
 def assert_no_evidence_project_asset(project_asset: dict[str, object]) -> None:
     assert project_asset["owner"] == "controller", project_asset
-    assert project_asset["gate"] == "active_state_user_todo", project_asset
+    assert project_asset["gate"] == "active_state_user_gate", project_asset
     assert project_asset["next_action"] == EXPECTED_USER_TODO, project_asset
     assert project_asset["active_state_next_action"] == EXPECTED_NEXT_ACTION, project_asset
     assert project_asset["stop_condition"] == EXPECTED_STOP_CONDITION, project_asset
@@ -265,7 +269,7 @@ def assert_no_evidence_handoff_readiness(readiness: dict[str, object]) -> None:
 def assert_status_markdown_no_evidence_projection(status_markdown: str) -> None:
     expected_lines = [
         "project_asset_source: project_asset",
-        f"project_asset: owner=controller gate=active_state_user_todo stop={EXPECTED_STOP_CONDITION}",
+        f"project_asset: owner=controller gate=active_state_user_gate stop={EXPECTED_STOP_CONDITION}",
         f"asset_next_action: {EXPECTED_USER_TODO}",
         "asset_todos: user_open=1 agent_open=1",
         f"asset_user_todo: {EXPECTED_USER_TODO}",
@@ -331,7 +335,7 @@ def assert_handoff_only_json_projection(payload: dict[str, object]) -> None:
     assert "packet" not in payload, payload
     assert "operator_gate_preview" not in payload, payload
     assert payload["kind"] == "controller", payload
-    assert payload["status"] == "active_state_user_todo", payload
+    assert payload["status"] == "active_state_user_gate", payload
     assert payload["waiting_on"] == "controller", payload
     assert_handoff_only_no_evidence_projection(payload["handoff_text"])
     assert_public_safe(json.dumps(payload, ensure_ascii=False))
@@ -412,7 +416,7 @@ def main() -> int:
         assert "materials 6; repos 2; owner review 1; stale 1; risk medium" in html, html
         assert "Public-safe counts only; no source links or raw material text." in html, html
         assert "Project Asset" in html, html
-        assert "owner controller; gate active_state_user_todo" in html, html
+        assert "owner controller; gate active_state_user_gate" in html, html
         assert f"<b>Next</b> {EXPECTED_USER_TODO}" in html, html
         assert f"<b>Stop</b> {EXPECTED_STOP_CONDITION}" in html, html
         assert f"User todo: 1/1 open; next {EXPECTED_USER_TODO}" in html, html

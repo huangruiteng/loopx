@@ -444,6 +444,85 @@ def append_project_asset_warning_markdown(
         )
 
 
+def append_project_asset_todo_quota_markdown(
+    lines: list[str],
+    project_asset: dict[str, Any],
+    *,
+    goal_todo_scope_suffix: str = "",
+) -> None:
+    asset_user_todos = (
+        project_asset.get("user_todos")
+        if isinstance(project_asset.get("user_todos"), dict)
+        else {}
+    )
+    asset_agent_todos = (
+        project_asset.get("agent_todos")
+        if isinstance(project_asset.get("agent_todos"), dict)
+        else {}
+    )
+    if asset_user_todos or asset_agent_todos:
+        todo_parts = []
+        if asset_user_todos:
+            todo_parts.append(f"user_open={asset_user_todos.get('open')}")
+            if asset_user_todos.get("claimed_open_count"):
+                todo_parts.append(f"user_claimed={asset_user_todos.get('claimed_open_count')}")
+        if asset_agent_todos:
+            todo_parts.append(f"agent_open={asset_agent_todos.get('open')}")
+            if asset_agent_todos.get("claimed_open_count"):
+                todo_parts.append(f"agent_claimed={asset_agent_todos.get('claimed_open_count')}")
+        lines.append(f"    - asset_todos: {' '.join(todo_parts)}")
+        if asset_user_todos.get("next"):
+            claimed = asset_user_todos.get("next_claimed_by")
+            claim_suffix = f" claimed_by={markdown_scalar(claimed)}" if claimed else ""
+            lines.append(
+                f"      - asset_user_todo: "
+                f"{markdown_scalar(asset_user_todos.get('next') or '')}"
+                f"{claim_suffix}"
+            )
+        for todo in (asset_user_todos.get("items") or [])[1:3]:
+            if isinstance(todo, dict) and todo.get("text"):
+                index = todo.get("index")
+                suffix = f"[{index}]" if index is not None else ""
+                claimed = todo.get("claimed_by")
+                claim_suffix = f" claimed_by={markdown_scalar(claimed)}" if claimed else ""
+                lines.append(
+                    f"      - asset_user_todo{suffix}: "
+                    f"{markdown_scalar(todo.get('text') or '')}"
+                    f"{claim_suffix}"
+                )
+        if asset_agent_todos.get("next"):
+            claimed = asset_agent_todos.get("next_claimed_by")
+            claim_suffix = f" claimed_by={markdown_scalar(claimed)}" if claimed else ""
+            lines.append(
+                f"      - asset_agent_todo: "
+                f"{markdown_scalar(asset_agent_todos.get('next') or '')}"
+                f"{claim_suffix}{goal_todo_scope_suffix}"
+            )
+        for todo in (asset_agent_todos.get("items") or [])[1:3]:
+            if isinstance(todo, dict) and todo.get("text"):
+                index = todo.get("index")
+                suffix = f"[{index}]" if index is not None else ""
+                claimed = todo.get("claimed_by")
+                claim_suffix = f" claimed_by={markdown_scalar(claimed)}" if claimed else ""
+                lines.append(
+                    f"      - asset_agent_todo{suffix}: "
+                    f"{markdown_scalar(todo.get('text') or '')}"
+                    f"{claim_suffix}{goal_todo_scope_suffix}"
+                )
+    asset_quota = (
+        project_asset.get("quota")
+        if isinstance(project_asset.get("quota"), dict)
+        else {}
+    )
+    if asset_quota:
+        lines.append(
+            "    - asset_quota: "
+            f"compute={asset_quota.get('compute')} "
+            f"state={asset_quota.get('state')} "
+            f"slots={asset_quota.get('spent_slots')}/{asset_quota.get('allowed_slots')}"
+        )
+
+
 def append_attention_queue_summary_markdown(
     lines: list[str],
     queue: dict[str, Any],
