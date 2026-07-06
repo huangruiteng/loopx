@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+"""Smoke-test status collection read-model orchestration parity."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import sys
+import tempfile
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from loopx import status as status_module  # noqa: E402
+from loopx.control_plane import status_collection as collection_read_model  # noqa: E402
+
+
+GOAL_ID = "status-collection-fixture"
+
+
+def write_registry(root: Path) -> Path:
+    project = root / "project"
+    runtime = root / "runtime"
+    state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    registry_path = project / ".loopx" / "registry.json"
+
+    state_path = project / state_file
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        "---\n"
+        "status: active\n"
+        "updated_at: 2026-01-01T00:00:00+00:00\n"
+        "---\n\n"
+        "# Status Collection Fixture\n\n"
+        "## Agent Todo\n\n"
+        "- [ ] [P1] Keep status collection orchestration behind the read-model boundary.\n"
+        "  <!-- loopx:todo todo_id=todo_status_collection_fixture status=open "
+        "task_class=advancement_task action_kind=status_collection_refactor "
+        "claimed_by=codex-product-capability -->\n",
+        encoding="utf-8",
+    )
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "common_runtime_root": str(runtime),
+                "goals": [
+                    {
+                        "id": GOAL_ID,
+                        "domain": "loopx-platform",
+                        "status": "active",
+                        "repo": str(project),
+                        "state_file": state_file,
+                        "adapter": {
+                            "kind": "harness_self_improvement",
+                            "status": "connected-read-only",
+                        },
+                        "quota": {
+                            "compute": 1,
+                            "window_hours": 24,
+                        },
+                    }
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return registry_path
+
+
+def scrub_volatile(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: "<generated_at>"
+            if key == "generated_at"
+            else scrub_volatile(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [scrub_volatile(item) for item in value]
+    return value
+
+
+def assert_wrapper_parity(registry_path: Path, runtime_root: Path, scan_root: Path) -> None:
+    kwargs: dict[str, Any] = {
+        "registry_path": registry_path,
+        "runtime_root_override": str(runtime_root),
+        "scan_roots": [scan_root],
+        "limit": 3,
+        "include_task_graph": True,
+        "goal_id": GOAL_ID,
+    }
+    wrapper = status_module.collect_status(**kwargs)
+    direct = collection_read_model.collect_status(
+        **kwargs,
+        context=status_module.build_status_collection_context(),
+    )
+
+    assert scrub_volatile(wrapper) == scrub_volatile(direct), (wrapper, direct)
+    assert wrapper["ok"] is True, wrapper
+    assert wrapper["goal_filter"] == GOAL_ID, wrapper
+    assert wrapper["attention_queue"]["item_count"] == 1, wrapper
+    item = wrapper["attention_queue"]["items"][0]
+    assert item["goal_id"] == GOAL_ID, item
+    assert wrapper["todo_index"]["total_count"] >= 1, wrapper["todo_index"]
+
+
+def assert_context_orchestration() -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+    runtime_root = Path("/tmp/status-collection-runtime")
+
+    def record(name: str, value: Any) -> Any:
+        calls.append((name, value if isinstance(value, dict) else {"value": value}))
+        return value
+
+    def load_registry(path: Path) -> dict[str, Any]:
+        return record("load_registry", {"common_runtime_root": str(runtime_root), "path": str(path)})
+
+    def resolve_runtime_root(registry: dict[str, Any], override: str | None) -> Path:
+        assert registry["common_runtime_root"] == str(runtime_root), registry
+        assert override == "runtime-override", override
+        return runtime_root
+
+    def collect_history(**kwargs: Any) -> dict[str, Any]:
+        assert kwargs["limit"] == 20, kwargs
+        assert kwargs["goal_id"] == GOAL_ID, kwargs
+        assert kwargs["include_runtime_goals"] is True, kwargs
+        return record("collect_history", {"goal_count": 1, "run_count": 0, "goals": []})
+
+    def check_contract(**kwargs: Any) -> dict[str, Any]:
+        assert kwargs["limit"] == 2, kwargs
+        return record("check_contract", {"ok": True, "summary": "ok", "warnings": [], "errors": [], "checks": []})
+
+    def build_attention_queue(**kwargs: Any) -> dict[str, Any]:
+        assert kwargs["include_task_graph"] is False, kwargs
+        assert kwargs["goal_id_filter"] == GOAL_ID, kwargs
+        return record("build_attention_queue", {"items": [], "item_count": 0})
+
+    context = collection_read_model.StatusCollectionContext(
+        load_registry=load_registry,
+        resolve_runtime_root=resolve_runtime_root,
+        collect_global_registry_health=lambda **kwargs: record(
+            "collect_global_registry_health",
+            {"ok": True, "current_registry_is_global": True},
+        ),
+        collect_history=collect_history,
+        check_contract=check_contract,
+        build_attention_queue=build_attention_queue,
+        build_run_history=lambda history, *, display_limit=None: record(
+            "build_run_history",
+            {"display_limit": display_limit, "goals": [], "recent_runs": []},
+        ),
+        build_event_ledger_summary=lambda history: record("build_event_ledger_summary", {}),
+        build_promotion_readiness_summary=lambda history, **kwargs: record(
+            "build_promotion_readiness_summary",
+            {"goal_id_filter": kwargs.get("goal_id_filter")},
+        ),
+        build_promotion_gate=lambda **kwargs: record("build_promotion_gate", {}),
+        build_decision_freshness_summary=lambda history: record("build_decision_freshness_summary", {}),
+        build_usage_summary=lambda history: record("build_usage_summary", {}),
+        build_todo_index=lambda **kwargs: record("build_todo_index", {"limit": kwargs.get("limit"), "items": []}),
+        build_status_contract=lambda: record("build_status_contract", {"schema_version": "fixture"}),
+        build_contract_health_projection=lambda contract: record("build_contract_health_projection", {}),
+        build_agent_management_projection=lambda payload: record("build_agent_management_projection", {"agents": []}),
+        status_control_plane_context_limit=20,
+        max_todo_index_items=240,
+    )
+
+    payload = collection_read_model.collect_status(
+        registry_path=Path("registry.json"),
+        runtime_root_override="runtime-override",
+        scan_roots=[Path("project")],
+        limit=2,
+        goal_id=GOAL_ID,
+        context=context,
+    )
+
+    assert payload["runtime_root"] == str(runtime_root), payload
+    assert payload["run_history"]["display_limit"] == 2, payload
+    assert payload["todo_index"]["limit"] == 240, payload
+    assert "agent_management_projection" not in payload, payload
+    assert [name for name, _ in calls][:4] == [
+        "load_registry",
+        "collect_global_registry_health",
+        "collect_history",
+        "check_contract",
+    ], calls
+
+
+def main() -> None:
+    with tempfile.TemporaryDirectory() as raw_root:
+        root = Path(raw_root)
+        registry_path = write_registry(root)
+        assert_wrapper_parity(registry_path, root / "runtime", root / "project")
+    assert_context_orchestration()
+    print("status-collection-readmodel-smoke ok")
+
+
+if __name__ == "__main__":
+    main()

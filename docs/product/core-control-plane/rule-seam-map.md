@@ -25,7 +25,7 @@ private evidence migration, production actions, or public first-screen copy.
 | File | Current responsibility | Refactor risk |
 | --- | --- | --- |
 | `loopx/quota.py` | Quota eligibility, work-lane routing, agent-lane selection, monitor-poll writeback, scheduler hints, interaction contracts, spend events, and quota markdown. | Policy, projection, writeback, and rendering rules can start depending on each other by accident. |
-| `loopx/status.py` | Active-state parsing, todo projections, event projection fallback, attention queue, task graph, project assets, status contract, and status markdown. | Read-model construction and display shaping can blur; Markdown parsing remains flexible but weakly typed. |
+| `loopx/status.py` | Compatibility entry points for active-state parsing, todo projections, event projection fallback, attention queue, task graph, project assets, status collection, and status markdown. | Read-model construction now has bounded homes, but Markdown parsing remains flexible and weakly typed. |
 
 ## Status/Quota Boundary Checkpoint
 
@@ -110,7 +110,7 @@ The next module-boundary PR should therefore:
 | Project assets | `build_project_asset` | Public-safe asset packer over status and run-history inputs. | Project-asset-backed queue items remain the only authority for owner/gate/stop-condition semantics. |
 | Attention queue | `loopx.control_plane.work_items.attention_queue.build_attention_queue` with `loopx.status.build_attention_queue` as the compatibility entry | Queue builder over normalized goal status, todos, gates, and project assets. | Queue ordering, project-asset enrichment, quota guards, and candidate lanes remain explicit and stable. |
 | Task graph projection | `loopx.control_plane.work_items.task_graph.build_task_graph_projection` with `loopx.status.build_task_graph_projection` as the status-facing wrapper | Read-only graph projection module. | Node caps include truncation metadata; full cold-path detail remains outside the hot graph. |
-| Status contract assembly | `build_status_contract`, `collect_status` | Thin collector/orchestrator that wires registry, runtime, state, and read models. | CLI status JSON shape remains compatible. |
+| Status collection assembly | `loopx.control_plane.status_collection.collect_status` with `loopx.status.collect_status` as the compatibility entry | Thin collector/orchestrator that wires registry, runtime, state, and read models. | CLI status JSON shape remains compatible; wrapper/direct parity stays covered by `examples/control_plane/status-collection-readmodel-smoke.py`. |
 | Markdown rendering | `loopx/presentation/renderers/status_markdown.py` with `loopx.status.render_status_markdown` as the compatibility entry | Render-only module/helpers over the status payload. | Rendering cannot become the source of scheduler or quota truth. |
 
 ## Proposed Extraction Order

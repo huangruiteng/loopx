@@ -12,6 +12,10 @@ from .benchmark_adapters.skillsbench_verifier_bootstrap import (
     apply_skillsbench_verifier_bootstrap_missing_score_attribution,
 )
 from .control_plane import compact_control_plane_policy
+from .control_plane.status_collection import (
+    StatusCollectionContext,
+    collect_status as _collect_status_read_model,
+)
 from .contract import check_contract
 from .control_plane.work_items.delivery_batch_scale import (
     SMALL_DELIVERY_BATCH_SCALES as STRUCTURED_SMALL_DELIVERY_BATCH_SCALES,
@@ -6927,6 +6931,29 @@ def build_todo_index(
     )
 
 
+def build_status_collection_context() -> StatusCollectionContext:
+    return StatusCollectionContext(
+        load_registry=load_registry,
+        resolve_runtime_root=resolve_runtime_root,
+        collect_global_registry_health=collect_global_registry_health,
+        collect_history=collect_history,
+        check_contract=check_contract,
+        build_attention_queue=build_attention_queue,
+        build_run_history=build_run_history,
+        build_event_ledger_summary=build_event_ledger_summary,
+        build_promotion_readiness_summary=build_promotion_readiness_summary,
+        build_promotion_gate=build_promotion_gate,
+        build_decision_freshness_summary=build_decision_freshness_summary,
+        build_usage_summary=build_usage_summary,
+        build_todo_index=build_todo_index,
+        build_status_contract=build_status_contract,
+        build_contract_health_projection=build_contract_health_projection,
+        build_agent_management_projection=_build_agent_management_projection_read_model,
+        status_control_plane_context_limit=STATUS_CONTROL_PLANE_CONTEXT_LIMIT,
+        max_todo_index_items=MAX_TODO_INDEX_ITEMS,
+    )
+
+
 def collect_status(
     *,
     registry_path: Path,
@@ -6936,87 +6963,15 @@ def collect_status(
     include_task_graph: bool = False,
     goal_id: str | None = None,
 ) -> dict[str, Any]:
-    display_limit = max(0, limit)
-    control_plane_limit = max(display_limit, STATUS_CONTROL_PLANE_CONTEXT_LIMIT)
-    goal_filter = str(goal_id or "").strip() or None
-    registry = load_registry(registry_path)
-    runtime_root = resolve_runtime_root(registry, runtime_root_override)
-    global_registry = collect_global_registry_health(
-        registry_path=registry_path,
-        runtime_root=runtime_root,
-        current_registry=registry,
-    )
-    include_runtime_goals = bool(global_registry.get("current_registry_is_global"))
-    history = collect_history(
-        registry_path=registry_path,
-        runtime_root=runtime_root,
-        goal_id=goal_filter,
-        limit=control_plane_limit,
-        include_runtime_goals=include_runtime_goals,
-    )
-    contract = check_contract(
+    return _collect_status_read_model(
         registry_path=registry_path,
         runtime_root_override=runtime_root_override,
         scan_roots=scan_roots,
         limit=limit,
-    )
-    queue = build_attention_queue(
-        contract=contract,
-        history=history,
-        global_registry=global_registry,
-        runtime_root=runtime_root,
         include_task_graph=include_task_graph,
-        goal_id_filter=goal_filter,
+        goal_id=goal_id,
+        context=build_status_collection_context(),
     )
-    run_history = build_run_history(history, display_limit=display_limit)
-    event_ledger_summary = build_event_ledger_summary(history)
-    promotion_readiness_summary = build_promotion_readiness_summary(
-        history,
-        runtime_root=runtime_root,
-        goal_id_filter=goal_filter,
-    )
-    promotion_gate = build_promotion_gate(
-        registry_path=registry_path,
-        runtime_root_override=str(runtime_root),
-    )
-    decision_freshness_summary = build_decision_freshness_summary(history)
-    usage_summary = build_usage_summary(history)
-    todo_index = build_todo_index(
-        queue=queue,
-        history=history,
-        runtime_root=runtime_root,
-        limit=max(MAX_TODO_INDEX_ITEMS, display_limit),
-    )
-    payload = {
-        "ok": bool(contract.get("ok")) and bool(global_registry.get("ok", True)),
-        "registry": str(registry_path),
-        "runtime_root": str(runtime_root),
-        "goal_count": history.get("goal_count"),
-        "run_count": history.get("run_count"),
-        "status_contract": build_status_contract(),
-        "goal_filter": goal_filter,
-        **build_contract_health_projection(contract),
-        "contract": {
-            "ok": contract.get("ok"),
-            "summary": contract.get("summary"),
-            "errors": contract.get("errors") or [],
-            "warnings": contract.get("warnings") or [],
-            "checks": contract.get("checks") or [],
-        },
-        "global_registry": global_registry,
-        "attention_queue": queue,
-        "run_history": run_history,
-        "event_ledger_summary": event_ledger_summary,
-        "promotion_readiness_summary": promotion_readiness_summary,
-        "promotion_gate": promotion_gate,
-        "decision_freshness_summary": decision_freshness_summary,
-        "usage_summary": usage_summary,
-        "todo_index": todo_index,
-    }
-    agent_management_projection = _build_agent_management_projection_read_model(payload)
-    if agent_management_projection.get("agents"):
-        payload["agent_management_projection"] = agent_management_projection
-    return payload
 
 
 def render_status_markdown(payload: dict[str, Any]) -> str:
