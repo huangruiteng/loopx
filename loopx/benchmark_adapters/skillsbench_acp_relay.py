@@ -43,6 +43,7 @@ from loopx.benchmark_adapters.skillsbench_codex_goal_recovery import (
     codex_cli_tui_pre_bridge_blocker_stage,
     codex_cli_tui_pre_bridge_recovery_action,
     codex_cli_tui_pre_bridge_recovery_skip_reason,
+    codex_cli_tui_pre_bridge_terminal_skip_reason,
 )
 from loopx.codex_cli_goal_tui import (
     CODEX_CLI_GOAL_TASK_PROMPT_FILENAME,
@@ -60,7 +61,6 @@ from loopx.codex_cli_goal_tui import (
     tmux_type_text_and_submit,
     wait_for_codex_cli_tui_ready,
 )
-
 
 SAFE_LOOPX_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{6,80}$")
 SAFE_LOOPX_GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,120}$")
@@ -118,7 +118,6 @@ def _temporary_directory_ignore_cleanup_errors(*, prefix: str):
         yield path
     finally:
         shutil.rmtree(path, ignore_errors=True)
-
 
 def _prompt_requires_bridge_first_action(prompt: str) -> bool:
     text = prompt or ""
@@ -1462,6 +1461,8 @@ class SkillsBenchLocalAcpRelay:
                             "codex_cli_goal_" + pre_bridge_blocker_stage
                         )
                     if goal_failed_now:
+                        if bridge_summary_path is not None and not first_action_seen:
+                            pre_bridge_recovery_skip_reason = codex_cli_tui_pre_bridge_terminal_skip_reason(capture, prompt_visible=codex_cli_tui_input_prompt_visible(capture))
                         goal_terminal_observed = True
                         goal_failed_observed = True
                         break

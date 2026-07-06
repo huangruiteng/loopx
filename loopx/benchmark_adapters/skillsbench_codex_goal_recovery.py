@@ -117,6 +117,27 @@ def codex_cli_tui_pre_bridge_recovery_skip_reason(
     return "unsupported_recovery_action"
 
 
+def codex_cli_tui_pre_bridge_terminal_skip_reason(
+    capture: str,
+    *,
+    prompt_visible: bool,
+) -> str:
+    """Return public-safe flags for a terminal goal before bridge activity."""
+
+    lowered = _recent_capture_region(capture).lower()
+    has_error_marker = any(
+        marker in lowered
+        for marker in ("error", "failed", "timed out", "timeout", "model")
+    )
+    return (
+        f"pre_bridge_terminal:p={int(bool(prompt_visible))},"
+        f"timeout={int(_capture_has_model_timeout(capture))},"
+        f"rate={int(_capture_has_rate_limit(capture))},"
+        f"retry={int(_capture_has_retry_affordance(capture))},"
+        f"error={int(has_error_marker)}"
+    )
+
+
 def codex_cli_tui_post_bridge_blocker_stage(
     capture: str,
     *,

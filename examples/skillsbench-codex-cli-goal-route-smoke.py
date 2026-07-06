@@ -537,6 +537,7 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         codex_cli_tui_pre_bridge_blocker_stage,
         codex_cli_tui_pre_bridge_recovery_action,
         codex_cli_tui_pre_bridge_recovery_skip_reason,
+        codex_cli_tui_pre_bridge_terminal_skip_reason,
     )
     from scripts.skillsbench_automation_loop import (
         _merge_host_local_acp_relay_trace_summary,
@@ -571,6 +572,13 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
             prompt_visible=True,
         )
         == "pre_bridge_tui_model_timeout"
+    )
+    assert (
+        codex_cli_tui_pre_bridge_terminal_skip_reason(
+            "Goal active\nGoal failed\n› ",
+            prompt_visible=True,
+        )
+        == "pre_bridge_terminal:p=1,timeout=0,rate=0,retry=0,error=1"
     )
     assert (
         codex_cli_tui_pre_bridge_recovery_action(
