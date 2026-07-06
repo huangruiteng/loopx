@@ -41,10 +41,6 @@ LEGACY_OVERSIZED_RETIREMENT_PLANS = {
         "and route attribution helpers into focused adapter modules, then lower "
         "this pin again."
     ),
-    "loopx/todos.py": (
-        "Continue moving todo lifecycle read/write helpers into "
-        "loopx.control_plane.todos modules, then lower this pin again."
-    ),
     "scripts/skillsbench_automation_loop.py": (
         "Extract native app-server Goal/reduce-only closeout helpers into "
         "scripts or benchmark adapter modules, then lower this pin again."
@@ -74,7 +70,6 @@ LEGACY_OVERSIZED_LIMITS = {
     "loopx/quota.py": 10628,
     "loopx/status.py": 11758,
     "loopx/terminal_bench_agent.py": 2056,
-    "loopx/todos.py": 2119,
     "scripts/harbor_host_codex_goal_agent.py": 2140,
     "scripts/skillsbench_automation_loop.py": 17631,
 }
@@ -86,7 +81,6 @@ RETIREMENT_PLAN_REQUIRED_PATHS = {
     "loopx/benchmark_adapters/skillsbench.py",
     "loopx/benchmark_adapters/skillsbench_acp_relay.py",
     "loopx/benchmark_adapters/terminal_bench.py",
-    "loopx/todos.py",
     "scripts/skillsbench_automation_loop.py",
 }
 
