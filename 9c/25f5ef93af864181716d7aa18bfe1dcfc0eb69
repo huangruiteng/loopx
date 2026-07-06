@@ -1,0 +1,23 @@
+examples/auto-research-knn-preset-start-smoke.py
+  s_32e2a9a204a8e4::t_0e09913ef2e7c2 19-21,101-117
+loopx/capabilities/auto_research/demo_e2e.py
+  s_32e2a9a204a8e4::t_099790d547fc5f 30,50,99-109,116,145,1421
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "9c25f5ef93af864181716d7aa18bfe1dcfc0eb69",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
