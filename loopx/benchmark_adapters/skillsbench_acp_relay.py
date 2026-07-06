@@ -1334,12 +1334,9 @@ class SkillsBenchLocalAcpRelay:
                     capture = tmux_capture(tmux_name)
                     if "Goal active" in capture or "Pursuing goal" in capture:
                         goal_active_observed = True
+                    goal_failed_now = "Goal failed" in capture or "Goal blocked" in capture
                     if "Goal achieved" in capture:
                         goal_terminal_observed = True
-                        break
-                    if "Goal failed" in capture or "Goal blocked" in capture:
-                        goal_terminal_observed = True
-                        goal_failed_observed = True
                         break
                     retryable_startup_blocker_stage = ""
                     if not goal_active_observed and not first_action_seen:
@@ -1371,7 +1368,6 @@ class SkillsBenchLocalAcpRelay:
                     pre_bridge_blocker_stage = ""
                     if (
                         bridge_summary_path is not None
-                        and not goal_active_observed
                         and not first_action_seen
                     ):
                         pre_bridge_blocker_stage = (
@@ -1465,6 +1461,10 @@ class SkillsBenchLocalAcpRelay:
                         return _recoverable_codex_turn_failure_message(
                             "codex_cli_goal_" + pre_bridge_blocker_stage
                         )
+                    if goal_failed_now:
+                        goal_terminal_observed = True
+                        goal_failed_observed = True
+                        break
                     if (
                         not goal_active_observed
                         and not first_action_seen

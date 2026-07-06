@@ -557,6 +557,21 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         )
         == "pre_bridge_tui_model_timeout"
     )
+    first_turn_terminal_timeout_capture = "\n".join(
+        [
+            "Goal active",
+            "request timed out while waiting for model",
+            "Goal failed",
+            "› ",
+        ]
+    )
+    assert (
+        codex_cli_tui_pre_bridge_blocker_stage(
+            first_turn_terminal_timeout_capture,
+            prompt_visible=True,
+        )
+        == "pre_bridge_tui_model_timeout"
+    )
     assert (
         codex_cli_tui_pre_bridge_recovery_action(
             "request timed out while waiting for model\npress enter to retry\n› ",
@@ -925,8 +940,8 @@ def _assert_cli_goal_active_timeout_is_public_countability_stage() -> None:
         relay._publish_codex_cli_goal_trace(
             ok=False,
             stage="pre_bridge_tui_model_timeout",
-            goal_active_observed=False,
-            goal_terminal_observed=False,
+            goal_active_observed=True,
+            goal_terminal_observed=True,
             first_action_observed=False,
             bridge_summary_path=None,
             post_bridge_recovery_attempt_count=2,
