@@ -658,6 +658,41 @@ def assert_agent_ack_survives_other_agent_run_and_monitor_poll() -> None:
     assert guard.get("autonomous_replan_obligation") is None, guard
 
 
+def assert_agent_vision_gap_beats_replan_ack() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            [monitor_item()],
+            replan_obligation=None,
+            latest_runs=[
+                {
+                    "classification": "monitor_poll_autonomous_replan_recorded_v0",
+                    "agent_id": SIDE_AGENT,
+                    "progress_scope": "agent_lane",
+                    "autonomous_replan_ack": {
+                        "schema_version": "autonomous_replan_ack_v0",
+                        "recorded": True,
+                        "source": "refresh_state",
+                        "delta_contract": {
+                            "schema_version": "repair_delta_contract_v0",
+                            "delta_present": True,
+                            "delta_kinds": ["watch_lane_continuation", "no_followup"],
+                        },
+                    },
+                },
+                agent_vision_gap_run(),
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    gaps = guard["goal_frontier_projection"]["acceptance_gaps"]
+    assert len(gaps) == 1, guard
+    assert gaps[0]["kind"] == "vision_acceptance_gap", guard
+    assert guard["goal_frontier_projection"]["replan_required"] is True, guard
+
+
 def assert_blocking_handoff_gate_beats_derived_monitor_replan() -> None:
     guard = build_quota_should_run(
         status_payload([monitor_item(), blocking_handoff_review()], replan_obligation=None),
@@ -686,6 +721,7 @@ def main() -> None:
     assert_unscoped_replan_defaults_to_primary_agent()
     assert_monitor_schedule_gap_requires_bounded_repair()
     assert_agent_ack_survives_other_agent_run_and_monitor_poll()
+    assert_agent_vision_gap_beats_replan_ack()
     assert_blocking_handoff_gate_beats_derived_monitor_replan()
     print("quota-replan-decision-plane-smoke ok")
 

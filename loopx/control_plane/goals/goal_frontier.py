@@ -608,8 +608,6 @@ def derive_goal_frontier_replan_obligation_from_summaries(
 
     if autonomous_replan_is_required(existing_replan_obligation):
         return None
-    if autonomous_replan_ack_has_frontier_delta(latest_replan_ack):
-        return None
     if _blocking_handoff_gate_count(agent_todo_summary, agent_id=agent_id) > 0:
         return None
 
@@ -731,6 +729,8 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                 "record no-follow-up"
             ),
         }
+    if autonomous_replan_ack_has_frontier_delta(latest_replan_ack):
+        return None
     if not _is_monitor_only_lane(work_lane_contract):
         return None
     if agent_counts.get("monitor", 0) <= 0:

@@ -120,6 +120,13 @@ history, quota filters it by current `agent_id`, and goal-frontier projection
 turns it into `acceptance_gaps[]`. If the current agent has no runnable
 advancement frontier, that gap can trigger `autonomous_replan_required`.
 
+Checkpoint and autonomous-replan ACK packets are protocol records, not semantic
+completion proof. A recent ACK may suppress duplicate monitor-only replan
+requests only after the current per-agent vision has no projected acceptance
+gap. If evidence, successor state, blocker state, or a superseding vision packet
+still shows the vision is unmet, the acceptance gap remains authoritative and
+quota must continue to project replan work.
+
 ## State Machine
 
 ```mermaid
