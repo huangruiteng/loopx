@@ -309,6 +309,58 @@
       }
     ]
   },
+  "agent_management_projection": {
+    "schema_version": "agent_management_projection_v0",
+    "mode": "read_only",
+    "goal_id": "loopx-meta",
+    "generated_at": "2026-06-01T00:10:00+00:00",
+    "summary": {
+      "projected_agent_count": 1,
+      "todo_source": "synthetic_public_example"
+    },
+    "agents": [
+      {
+        "agent_id": "codex-value-explorer",
+        "role": "side-agent",
+        "state": "active",
+        "current_todo": {
+          "schema_version": "agent_management_todo_row_v0",
+          "todo_id": "todo_example_experiment_replan",
+          "goal_id": "experiment-controller-goal",
+          "role": "agent",
+          "status": "open",
+          "priority": "P0",
+          "title": "Replan next comparable experiment",
+          "task_class": "replan_task",
+          "action_kind": "evidence_aware_replan",
+          "claimed_by": "codex-value-explorer"
+        },
+        "next_action": "Review the handoff note, then continue from the evidence-aware replan todo.",
+        "last_activity_at": "2026-06-01T00:10:00+00:00",
+        "evidence_refs": [
+          "event_ledger_summary: evidence+decision present"
+        ],
+        "handoff_refs": [
+          "handoff_note_v0:todo_example_experiment_replan"
+        ],
+        "handoff_note": {
+          "schema_version": "handoff_note_v0",
+          "from_agent": "codex-main-control",
+          "to_agent": "codex-value-explorer",
+          "intent": "display_only_replan_context",
+          "summary": "Use the local evidence timeline before replanning; keep the dashboard read-only.",
+          "suggested_next_action": "Continue from the current replan todo after checking compact evidence.",
+          "evidence_refs": [
+            "todo_example_experiment_replan"
+          ],
+          "updated_at": "2026-06-01T00:10:00+00:00"
+        },
+        "goal_ids": [
+          "experiment-controller-goal"
+        ]
+      }
+    ]
+  },
   "contract": {
     "ok": true,
     "summary": {

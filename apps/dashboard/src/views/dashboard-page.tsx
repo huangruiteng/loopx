@@ -51,6 +51,8 @@ import {
   RunRecord,
   OrchestrationPolicy,
   StatusPayload,
+  AgentManagementHandoffNote,
+  AgentManagementProjection,
   ProjectAssetLatestValidation,
   ProjectAssetHandoffReadiness,
   ProjectAssetTodoSummary,
@@ -306,6 +308,7 @@ type AgentManagementRow = {
   claimedTodos: TodoExplorerItem[];
   evidenceRefs: string[];
   goalIds: string[];
+  handoffNote?: AgentManagementHandoffNote | null;
   lastActivity?: string | null;
   nextSafeAction: string;
   primaryGoalId: string;
@@ -1291,6 +1294,26 @@ function agentManagementStatus(openTodos: TodoExplorerItem[], claimedTodos: Todo
   return { label: "waiting", variant: "warning" };
 }
 
+function agentManagementProjectionStatus(state?: string | null): AgentManagementStatus {
+  const normalized = state?.trim().toLowerCase();
+  if (!normalized) {
+    return { label: "waiting", variant: "warning" };
+  }
+  if (normalized.includes("block")) {
+    return { label: "blocked", variant: "danger" };
+  }
+  if (normalized.includes("monitor")) {
+    return { label: "monitoring", variant: "info" };
+  }
+  if (normalized.includes("active") || normalized.includes("running") || normalized.includes("claimed")) {
+    return { label: "active", variant: "success" };
+  }
+  if (normalized.includes("done") || normalized.includes("clear") || normalized.includes("idle")) {
+    return { label: normalized.includes("idle") ? "idle" : "clear", variant: "neutral" };
+  }
+  return { label: normalized, variant: "neutral" };
+}
+
 function evidenceRefsForTodo(item: TodoExplorerItem) {
   const todo = item.todo as TodoItem & {
     latest_event_kind?: string | null;
@@ -1307,7 +1330,108 @@ function evidenceRefsForTodo(item: TodoExplorerItem) {
   ];
 }
 
-function buildAgentManagementRows(rows: GoalDirectoryRow[], todoIndex?: TodoIndexSummary | null): AgentManagementRow[] {
+function normalizeHandoffNote(note?: AgentManagementHandoffNote | null): AgentManagementHandoffNote | null {
+  if (!note) {
+    return null;
+  }
+  const hasBody = [
+    note.summary,
+    note.suggested_next_action,
+    note.intent,
+    note.blocker,
+    note.from_agent,
+    note.to_agent,
+    ...(note.evidence_refs ?? []),
+  ].some((value) => value?.trim());
+  return hasBody ? note : null;
+}
+
+function handoffNoteSummary(note: AgentManagementHandoffNote) {
+  return note.summary?.trim()
+    || note.suggested_next_action?.trim()
+    || note.intent?.trim()
+    || "Typed handoff context is available for this agent.";
+}
+
+function handoffNoteBadges(note: AgentManagementHandoffNote) {
+  const route = note.from_agent || note.to_agent
+    ? `${note.from_agent ?? "unknown"} -> ${note.to_agent ?? "unknown"}`
+    : null;
+  const intent = note.intent ? `intent=${note.intent.replace(/_/g, " ").slice(0, 36)}` : null;
+  const evidenceCount = note.evidence_refs.length > 0
+    ? `${note.evidence_refs.length} evidence ${note.evidence_refs.length === 1 ? "ref" : "refs"}`
+    : null;
+  return compactUnique([
+    note.schema_version ?? "handoff_note_v0",
+    intent,
+    note.blocker ? `blocked=${note.blocker}` : null,
+    route,
+    evidenceCount,
+  ], 4);
+}
+
+const agentAvatarTones = [
+  "from-cyan-200 to-teal-300 text-teal-950",
+  "from-emerald-200 to-lime-300 text-emerald-950",
+  "from-amber-100 to-orange-200 text-amber-950",
+  "from-violet-200 to-fuchsia-200 text-violet-950",
+  "from-rose-200 to-pink-200 text-rose-950",
+];
+
+function agentInitials(agentId: string) {
+  const chunks = agentId.split(/[-_\s]+/).filter(Boolean);
+  const initials = (chunks.length > 1 ? chunks.slice(0, 2) : [agentId.slice(0, 2)])
+    .map((chunk) => chunk[0]?.toUpperCase())
+    .join("");
+  return initials || "A";
+}
+
+function agentAvatarTone(agentId: string) {
+  const hash = Array.from(agentId).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return agentAvatarTones[hash % agentAvatarTones.length];
+}
+
+function agentStatusTone(variant: BadgeVariant) {
+  if (variant === "success") {
+    return {
+      accent: "from-emerald-200 via-teal-300 to-transparent",
+      dot: "bg-emerald-200 shadow-[0_0_14px_rgba(167,243,208,0.75)]",
+      pill: "border-emerald-200/25 bg-emerald-200/10 text-emerald-100",
+    };
+  }
+  if (variant === "danger") {
+    return {
+      accent: "from-rose-200 via-orange-200 to-transparent",
+      dot: "bg-rose-200 shadow-[0_0_14px_rgba(254,205,211,0.65)]",
+      pill: "border-rose-200/25 bg-rose-200/10 text-rose-100",
+    };
+  }
+  if (variant === "warning") {
+    return {
+      accent: "from-amber-100 via-orange-200 to-transparent",
+      dot: "bg-amber-100 shadow-[0_0_14px_rgba(254,243,199,0.65)]",
+      pill: "border-amber-100/25 bg-amber-100/10 text-amber-50",
+    };
+  }
+  if (variant === "info") {
+    return {
+      accent: "from-cyan-100 via-sky-200 to-transparent",
+      dot: "bg-cyan-100 shadow-[0_0_14px_rgba(207,250,254,0.65)]",
+      pill: "border-cyan-100/25 bg-cyan-100/10 text-cyan-50",
+    };
+  }
+  return {
+    accent: "from-stone-200 via-stone-300 to-transparent",
+    dot: "bg-stone-200 shadow-[0_0_12px_rgba(231,229,228,0.35)]",
+    pill: "border-stone-100/15 bg-stone-100/[0.06] text-stone-100",
+  };
+}
+
+function buildAgentManagementRows(
+  rows: GoalDirectoryRow[],
+  todoIndex?: TodoIndexSummary | null,
+  projection?: AgentManagementProjection | null,
+): AgentManagementRow[] {
   const items = collectTodoExplorerItems(rows, todoIndex).filter((item) => item.role === "agent");
   const rowByGoal = new Map(rows.map((row) => [row.goal.id, row]));
   const grouped = new Map<string, TodoExplorerItem[]>();
@@ -1317,30 +1441,48 @@ function buildAgentManagementRows(rows: GoalDirectoryRow[], todoIndex?: TodoInde
     bucket.push(item);
     grouped.set(agentId, bucket);
   }
+  const projectedByAgent = new Map((projection?.agents ?? []).map((row) => [row.agent_id, row]));
+  const agentIds = Array.from(new Set([...grouped.keys(), ...projectedByAgent.keys()]));
 
-  return Array.from(grouped.entries()).map(([agentId, claimedTodos]) => {
-    const goalIds = compactUnique(claimedTodos.map((item) => item.goalId), 6);
+  return agentIds.map((agentId) => {
+    const claimedTodos = grouped.get(agentId) ?? [];
+    const projected = projectedByAgent.get(agentId);
+    const goalIds = compactUnique([
+      ...claimedTodos.map((item) => item.goalId),
+      projected?.current_todo?.goal_id,
+      ...(projected?.goal_ids ?? []),
+      projection?.goal_id,
+    ], 6);
     const openTodos = claimedTodos.filter((item) => !item.todo.done);
     const primaryTodo = openTodos[0] ?? claimedTodos[0];
-    const primaryGoalId = primaryTodo?.goalId ?? goalIds[0] ?? "";
+    const primaryGoalId = primaryTodo?.goalId ?? projected?.current_todo?.goal_id ?? goalIds[0] ?? "";
     const latestActivity = claimedTodos
       .map((item) => todoActivityTimestamp(item.todo))
+      .concat([projected?.last_activity_at ?? null])
       .sort((left, right) => timestampValue(right) - timestampValue(left))[0] ?? null;
     const quotaHints = compactUnique(goalIds.map((goalId) => {
       const row = rowByGoal.get(goalId);
       return buildQuotaView(row?.queueItem?.quota ?? row?.goal.quota)?.shortLine;
     }), 3);
-    const evidenceRefs = compactUnique(claimedTodos.flatMap(evidenceRefsForTodo), 5);
+    const evidenceRefs = compactUnique([
+      ...claimedTodos.flatMap(evidenceRefsForTodo),
+      ...(projected?.evidence_refs ?? []),
+    ], 5);
+    const handoffNote = normalizeHandoffNote(projected?.handoff_note);
     return {
       agentId,
       claimedTodos,
       evidenceRefs,
       goalIds,
+      handoffNote,
       lastActivity: latestActivity,
-      nextSafeAction: primaryTodo ? todoDisplayTitle(primaryTodo.todo) : "Inspect status projection before taking work",
+      nextSafeAction: projected?.next_action?.trim()
+        || (primaryTodo ? todoDisplayTitle(primaryTodo.todo) : "Inspect status projection before taking work"),
       primaryGoalId,
       quotaHints,
-      status: agentManagementStatus(openTodos, claimedTodos),
+      status: claimedTodos.length > 0
+        ? agentManagementStatus(openTodos, claimedTodos)
+        : agentManagementProjectionStatus(projected?.state),
     };
   }).sort((left, right) => {
     const leftOpen = left.claimedTodos.some((item) => !item.todo.done) ? 0 : 1;
@@ -1635,18 +1777,23 @@ function TodoFocusColumn({
 }
 
 function AgentManagementPanel({
+  agentManagementProjection,
   onSelectGoal,
   rows,
   selectedGoalId,
   todoIndex,
 }: {
+  agentManagementProjection?: AgentManagementProjection | null;
   onSelectGoal: (goalId: string) => void;
   rows: GoalDirectoryRow[];
   selectedGoalId: string;
   todoIndex?: TodoIndexSummary | null;
 }) {
   const [copiedAgentId, setCopiedAgentId] = useState<string | null>(null);
-  const agentRows = useMemo(() => buildAgentManagementRows(rows, todoIndex), [rows, todoIndex]);
+  const agentRows = useMemo(
+    () => buildAgentManagementRows(rows, todoIndex, agentManagementProjection),
+    [agentManagementProjection, rows, todoIndex],
+  );
   const claimedTodoCount = agentRows.reduce((sum, row) => sum + row.claimedTodos.length, 0);
 
   async function copyReadOnlyCommand(row: AgentManagementRow) {
@@ -1657,61 +1804,106 @@ function AgentManagementPanel({
   }
 
   return (
-    <Card data-testid="agent-management-panel">
-      <CardHeader className="flex-wrap">
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            Agent Management
-          </CardTitle>
-          <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">
-            Read-only operator view over claimed todos, last activity, next safe action, and evidence refs.
-          </p>
+    <section
+      className="overflow-hidden rounded-2xl border border-emerald-100/15 bg-[#061f1d] text-[#f5ead7] shadow-[0_24px_80px_rgba(2,6,23,0.34)]"
+      data-testid="agent-management-panel"
+    >
+      <div className="border-b border-emerald-100/15 bg-[linear-gradient(180deg,rgba(10,48,43,0.94),rgba(4,24,22,0.98))] p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-100/60">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-100 shadow-[0_0_12px_rgba(209,250,229,0.8)]" />
+              Live control plane
+            </div>
+            <h2 className="mt-2 flex items-center gap-2 text-sm font-semibold text-[#fff7e8]">
+              <Users className="h-4 w-4 text-emerald-100" />
+              Agent Management
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-50/58">
+              Read-only board for agent lanes, handoff notes, evidence refs, and quota hints.
+            </p>
+          </div>
+          <div className="grid min-w-[min(100%,24rem)] grid-cols-3 gap-2">
+            <div className="rounded-xl border border-emerald-100/15 bg-emerald-100/[0.04] px-3 py-2">
+              <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-100/45">agents</div>
+              <div className="mt-1 text-lg font-semibold tabular-nums text-[#fff7e8]">{agentRows.length}</div>
+            </div>
+            <div className="rounded-xl border border-[#e8c48e]/25 bg-[#e8c48e]/[0.08] px-3 py-2">
+              <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-[#f4d8ad]/70">claimed</div>
+              <div className="mt-1 text-lg font-semibold tabular-nums text-[#ffe8bd]">{claimedTodoCount}</div>
+            </div>
+            <div className="rounded-xl border border-cyan-100/20 bg-cyan-100/[0.06] px-3 py-2">
+              <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/70">events</div>
+              <div className="mt-1 text-lg font-semibold tabular-nums text-cyan-50">
+                {todoIndex ? todoIndex.rollout_event_count : "-"}
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge variant={agentRows.length > 0 ? "info" : "neutral"}>{agentRows.length} agents</Badge>
-          <Badge variant={claimedTodoCount > 0 ? "warning" : "neutral"}>{claimedTodoCount} claimed todos</Badge>
-          {todoIndex ? <Badge variant="neutral">{todoIndex.rollout_event_count} rollout events</Badge> : null}
-        </div>
-      </CardHeader>
-      <CardContent>
+      </div>
+      <div className="bg-[radial-gradient(circle_at_70%_-10%,rgba(20,184,166,0.12),transparent_34%),linear-gradient(180deg,rgba(6,39,35,0.94),rgba(3,18,17,1))] p-3 sm:p-4">
         {agentRows.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-zinc-700 dark:text-zinc-400">
+          <div className="rounded-xl border border-dashed border-emerald-100/20 bg-emerald-100/[0.035] p-4 text-sm text-emerald-50/60">
             No claimed agent rows yet. Add `claimed_by` or `agent_id` to projected agent todos to light up this panel.
           </div>
         ) : (
-          <div className="grid gap-3 xl:grid-cols-3">
+          <div className="grid items-start gap-3 xl:grid-cols-3">
             {agentRows.map((row) => {
               const openCount = row.claimedTodos.filter((item) => !item.todo.done).length;
+              const statusTone = agentStatusTone(row.status.variant);
               return (
                 <div
                   className={cn(
-                    "rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-zinc-800 dark:bg-zinc-900",
-                    row.goalIds.includes(selectedGoalId) && "border-sky-300 bg-sky-50 dark:border-sky-900 dark:bg-sky-950/40",
+                    "group relative overflow-hidden rounded-xl border border-emerald-100/14 bg-[#062420]/82 p-3 shadow-[inset_0_1px_0_rgba(255,246,225,0.06)] transition hover:border-emerald-100/30 hover:bg-[#082c27]",
+                    row.goalIds.includes(selectedGoalId) && "border-[#f3d7aa]/50 bg-[#0a302a] shadow-[0_0_0_1px_rgba(243,215,170,0.12)]",
                   )}
                   data-testid="agent-management-row"
                   key={row.agentId}
                 >
+                  <div className={cn("absolute inset-x-0 top-0 h-px bg-gradient-to-r", statusTone.accent)} />
                   <div className="flex items-start justify-between gap-3">
                     <button
-                      className="min-w-0 text-left"
+                      className="flex min-w-0 flex-1 gap-3 text-left"
                       onClick={() => row.primaryGoalId && onSelectGoal(row.primaryGoalId)}
                       type="button"
                     >
-                      <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        <Badge variant={row.status.variant}>{row.status.label}</Badge>
-                        <span className="break-all text-sm font-semibold text-slate-950 dark:text-zinc-50">{row.agentId}</span>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {row.goalIds.map((goalId) => (
-                          <Badge key={goalId} variant={goalId === selectedGoalId ? "info" : "neutral"}>
-                            {goalId}
-                          </Badge>
-                        ))}
+                      <span className={cn(
+                        "grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br text-[11px] font-black shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]",
+                        agentAvatarTone(row.agentId),
+                      )}>
+                        {agentInitials(row.agentId)}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <span className={cn(
+                            "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+                            statusTone.pill,
+                          )}>
+                            <span className={cn("h-1.5 w-1.5 rounded-full", statusTone.dot)} />
+                            {row.status.label}
+                          </span>
+                          <span className="break-all text-sm font-semibold text-[#fff7e8]">{row.agentId}</span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {row.goalIds.map((goalId) => (
+                            <span
+                              className={cn(
+                                "rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                                goalId === selectedGoalId
+                                  ? "border-[#f3d7aa]/40 bg-[#f3d7aa]/10 text-[#ffe6bd]"
+                                  : "border-emerald-100/12 bg-emerald-100/[0.04] text-emerald-50/70",
+                              )}
+                              key={goalId}
+                            >
+                              {goalId}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     </button>
                     <Button
                       aria-label={`copy read-only command for ${row.agentId}`}
+                      className="h-8 shrink-0 border border-emerald-100/15 bg-emerald-100/[0.04] px-2 text-xs text-emerald-50/70 hover:bg-emerald-100/10 hover:text-[#fff7e8]"
                       data-testid="agent-management-copy-command"
                       onClick={() => void copyReadOnlyCommand(row)}
                       size="sm"
@@ -1722,34 +1914,84 @@ function AgentManagementPanel({
                     </Button>
                   </div>
 
-                  <div className="mt-3 grid gap-3 text-sm">
-                    <div>
-                      <div className="text-xs font-semibold uppercase text-slate-500 dark:text-zinc-500">claimed todos</div>
-                      <div className="mt-1 text-slate-700 dark:text-zinc-300">{openCount}/{row.claimedTodos.length} open</div>
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase text-slate-500 dark:text-zinc-500">
-                        <Clock3 className="h-3.5 w-3.5" />
-                        last activity
+                  <div className="mt-4 grid gap-3 text-sm">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-lg border border-emerald-100/12 bg-emerald-100/[0.035] p-2">
+                        <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-emerald-50/40">claimed todos</div>
+                        <div className="mt-1 text-sm font-semibold tabular-nums text-[#fff7e8]">{openCount}/{row.claimedTodos.length} open</div>
                       </div>
-                      <div className="mt-1 break-words text-slate-700 dark:text-zinc-300">{formatAgentActivity(row.lastActivity)}</div>
+                      <div className="rounded-lg border border-emerald-100/12 bg-emerald-100/[0.035] p-2">
+                        <div className="flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-emerald-50/40">
+                          <Clock3 className="h-3 w-3" />
+                          last activity
+                        </div>
+                        <div className="mt-1 line-clamp-1 break-words text-sm font-medium text-emerald-50/80">
+                          {formatAgentActivity(row.lastActivity)}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="text-xs font-semibold uppercase text-slate-500 dark:text-zinc-500">next safe action</div>
-                      <p className="mt-1 line-clamp-2 break-words leading-6 text-slate-700 dark:text-zinc-300">{row.nextSafeAction}</p>
+                    <div className="rounded-lg border border-emerald-100/12 bg-black/18 p-3">
+                      <div className="flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-50/40">
+                        <Terminal className="h-3.5 w-3.5" />
+                        next safe action
+                      </div>
+                      <p className="mt-2 line-clamp-2 break-words leading-6 text-emerald-50/85">{row.nextSafeAction}</p>
                     </div>
+                    {row.handoffNote ? (
+                      <div
+                        className="rounded-xl border border-cyan-100/20 bg-cyan-100/[0.07] p-3 shadow-[inset_0_1px_0_rgba(255,246,225,0.06)]"
+                        data-testid="agent-management-handoff-note"
+                      >
+                        <div className="flex gap-3">
+                          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-cyan-100/20 bg-cyan-100/10 text-cyan-50">
+                            <FileText className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-50/80">
+                              handoff note
+                              <span className="rounded-full border border-cyan-100/20 px-1.5 py-0.5 text-[9px] tracking-normal text-cyan-50/65">
+                                read-only
+                              </span>
+                            </div>
+                            <p className="mt-1 line-clamp-2 break-words text-sm leading-6 text-cyan-50/90">
+                              {handoffNoteSummary(row.handoffNote)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {handoffNoteBadges(row.handoffNote).map((badge) => (
+                            <span
+                              className="rounded-full border border-cyan-100/15 bg-black/20 px-2 py-0.5 text-[11px] font-medium text-cyan-50/75"
+                              key={badge}
+                            >
+                              {badge}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     <div>
-                      <div className="text-xs font-semibold uppercase text-slate-500 dark:text-zinc-500">evidence refs</div>
+                      <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-50/40">evidence refs</div>
                       <div className="mt-1 flex flex-wrap gap-1.5">
                         {(row.evidenceRefs.length > 0 ? row.evidenceRefs : ["status projection"]).map((ref) => (
-                          <Badge key={ref} variant="neutral">{ref}</Badge>
+                          <span
+                            className="rounded-full border border-emerald-100/12 bg-emerald-100/[0.04] px-2 py-0.5 text-[11px] font-medium text-emerald-50/70"
+                            key={ref}
+                          >
+                            {ref}
+                          </span>
                         ))}
                       </div>
                     </div>
                     {row.quotaHints.length > 0 ? (
                       <div className="flex flex-wrap gap-1.5">
                         {row.quotaHints.map((hint) => (
-                          <Badge key={hint} variant="info">{hint}</Badge>
+                          <span
+                            className="rounded-full border border-[#f3d7aa]/20 bg-[#f3d7aa]/[0.08] px-2 py-0.5 text-[11px] font-medium text-[#ffe6bd]/80"
+                            key={hint}
+                          >
+                            {hint}
+                          </span>
                         ))}
                       </div>
                     ) : null}
@@ -1759,8 +2001,8 @@ function AgentManagementPanel({
             })}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -6515,6 +6757,7 @@ export function DashboardPage() {
 
               <section>
                 <AgentManagementPanel
+                  agentManagementProjection={payload.agent_management_projection}
                   onSelectGoal={selectGoal}
                   rows={goalRows}
                   selectedGoalId={selectedReviewGoalId}

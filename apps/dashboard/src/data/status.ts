@@ -121,6 +121,18 @@ export const agentManagementTodoRowSchema = z.object({
   claimed_by: z.string().optional().nullable(),
 }).passthrough();
 
+export const agentManagementHandoffNoteSchema = z.object({
+  schema_version: z.string().optional().nullable(),
+  from_agent: z.string().optional().nullable(),
+  to_agent: z.string().optional().nullable(),
+  intent: z.string().optional().nullable(),
+  summary: z.string().optional().nullable(),
+  blocker: z.string().optional().nullable(),
+  suggested_next_action: z.string().optional().nullable(),
+  evidence_refs: z.array(z.string()).optional().default([]),
+  updated_at: z.string().optional().nullable(),
+}).passthrough();
+
 export const agentManagementRowSchema = z.object({
   agent_id: z.string(),
   role: z.string().optional().nullable(),
@@ -130,6 +142,7 @@ export const agentManagementRowSchema = z.object({
   last_activity_at: z.string().optional().nullable(),
   evidence_refs: z.array(z.string()).optional().default([]),
   handoff_refs: z.array(z.string()).optional().default([]),
+  handoff_note: agentManagementHandoffNoteSchema.optional().nullable(),
   goal_ids: z.array(z.string()).optional().default([]),
 }).passthrough();
 
@@ -770,6 +783,7 @@ export type TodoGroup = z.infer<typeof todoGroupSchema>;
 export type TodoItem = z.infer<typeof todoItemSchema>;
 export type TodoIndexItem = z.infer<typeof todoIndexItemSchema>;
 export type TodoIndexSummary = z.infer<typeof todoIndexSchema>;
+export type AgentManagementHandoffNote = z.infer<typeof agentManagementHandoffNoteSchema>;
 export type AgentManagementProjection = z.infer<typeof agentManagementProjectionSchema>;
 export type ReviewMaterial = z.infer<typeof reviewMaterialSchema>;
 export type ProjectMap = z.infer<typeof projectMapSchema>;
