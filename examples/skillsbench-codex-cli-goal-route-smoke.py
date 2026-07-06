@@ -1246,6 +1246,19 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "typed_closeout" in source
     assert "post_bridge_recovery_attempt_count < 2" not in source
     assert "last_bridge_activity_at >= 30.0" in source
+    tui_loop_start = source.index(
+        "while time.monotonic() < deadline:",
+        source.index("goal_command_text = build_codex_cli_goal_tui_input"),
+    )
+    bridge_progress_index = source.index(
+        "current_bridge_summary_size = bridge_summary_path.stat().st_size",
+        tui_loop_start,
+    )
+    pre_bridge_timeout_index = source.index(
+        "pre_bridge_blocker_stage = \"\"",
+        tui_loop_start,
+    )
+    assert bridge_progress_index < pre_bridge_timeout_index
     tui_source = (REPO_ROOT / "loopx/codex_cli_goal_tui.py").read_text(
         encoding="utf-8"
     )
