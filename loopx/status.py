@@ -11,7 +11,7 @@ from .benchmark_adapters.skillsbench_signals import (
 from .benchmark_adapters.skillsbench_verifier_bootstrap import (
     apply_skillsbench_verifier_bootstrap_missing_score_attribution,
 )
-from .control_plane import compact_control_plane_policy, control_plane_policy_summary
+from .control_plane import compact_control_plane_policy
 from .contract import check_contract
 from .control_plane.work_items.delivery_batch_scale import (
     SMALL_DELIVERY_BATCH_SCALES as STRUCTURED_SMALL_DELIVERY_BATCH_SCALES,
@@ -317,6 +317,7 @@ from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
 from .presentation.renderers.status_markdown import (
     append_attention_queue_item_header_markdown as _append_attention_queue_item_header_markdown,
+    append_attention_queue_item_operational_markdown as _append_attention_queue_item_operational_markdown,
     append_attention_queue_summary_markdown as _append_attention_queue_summary_markdown,
     append_decision_freshness_summary_markdown as _append_decision_freshness_summary_markdown,
     append_event_ledger_summary_markdown as _append_event_ledger_summary_markdown,
@@ -7517,111 +7518,11 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                 else {}
             )
             _append_handoff_readiness_markdown(lines, handoff_readiness)
-        user_todos = item.get("user_todos") if isinstance(item.get("user_todos"), dict) else {}
-        if user_todos:
-            todo_parts = [
-                f"open={user_todos.get('open_count')}",
-                f"done={user_todos.get('done_count')}",
-                f"total={user_todos.get('total_count')}",
-            ]
-            if user_todos.get("claimed_open_count"):
-                todo_parts.insert(1, f"claimed={user_todos.get('claimed_open_count')}")
-                todo_parts.insert(2, f"unclaimed={user_todos.get('unclaimed_open_count', 0)}")
-            lines.append(f"  - user_todos: {' '.join(todo_parts)}")
-            for todo in user_todos.get("items") or []:
-                if not isinstance(todo, dict) or todo.get("done"):
-                    continue
-                claimed = todo.get("claimed_by")
-                claim_suffix = f" claimed_by={_markdown_scalar(claimed)}" if claimed else ""
-                lines.append(f"    - next_user_todo: {_markdown_scalar(todo.get('text') or '')}{claim_suffix}")
-                for material in todo.get("review_materials") or []:
-                    if not isinstance(material, dict):
-                        continue
-                    lines.append(
-                        "      - review_material: "
-                        f"{_markdown_scalar(material.get('label') or material.get('path') or '')} "
-                        f"exists={material.get('exists')}"
-                    )
-                break
-        agent_todos = item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else {}
-        if agent_todos:
-            todo_parts = [
-                f"open={agent_todos.get('open_count')}",
-                f"done={agent_todos.get('done_count')}",
-                f"total={agent_todos.get('total_count')}",
-            ]
-            if agent_todos.get("claimed_open_count"):
-                todo_parts.insert(1, f"claimed={agent_todos.get('claimed_open_count')}")
-                todo_parts.insert(2, f"unclaimed={agent_todos.get('unclaimed_open_count', 0)}")
-            lines.append(f"  - agent_todos: {' '.join(todo_parts)}")
-            for todo in agent_todos.get("items") or []:
-                if not isinstance(todo, dict) or todo.get("done"):
-                    continue
-                claimed = todo.get("claimed_by")
-                claim_suffix = f" claimed_by={_markdown_scalar(claimed)}" if claimed else ""
-                lines.append(
-                    f"    - next_agent_todo: "
-                    f"{_markdown_scalar(todo.get('text') or '')}"
-                    f"{claim_suffix}{goal_todo_scope_suffix}"
-                )
-                break
-        dependency_blockers = (
-            item.get("dependency_blockers")
-            if isinstance(item.get("dependency_blockers"), dict)
-            else {}
+        _append_attention_queue_item_operational_markdown(
+            lines,
+            item,
+            goal_todo_scope_suffix=goal_todo_scope_suffix,
         )
-        if dependency_blockers:
-            lines.append(
-                "  - dependency_blockers: "
-                f"open={dependency_blockers.get('open_count')} "
-                f"source={_markdown_scalar(dependency_blockers.get('source') or '')}"
-            )
-            for blocker in dependency_blockers.get("items") or []:
-                if not isinstance(blocker, dict):
-                    continue
-                lines.append(
-                    "    - dependency_user_todo: "
-                    f"goal={_markdown_scalar(blocker.get('goal_id') or '')} "
-                    f"waiting_on={_markdown_scalar(blocker.get('waiting_on') or '')} "
-                    f"text={_markdown_scalar(blocker.get('text') or '')}"
-                )
-        quota = item.get("quota") if isinstance(item.get("quota"), dict) else {}
-        if quota:
-            lines.append(
-                "  - quota: "
-                f"compute={quota.get('compute')} "
-                f"state={quota.get('state')} "
-                f"slots={quota.get('spent_slots')}/{quota.get('allowed_slots')} "
-                f"reason={quota.get('reason')}"
-            )
-        control_plane = item.get("control_plane") if isinstance(item.get("control_plane"), dict) else None
-        if control_plane:
-            lines.append(f"  - control_plane: {control_plane_policy_summary(control_plane)}")
-        operator_question = item.get("operator_question")
-        agent_command = item.get("agent_command")
-        if operator_question:
-            lines.append(f"  - operator_question: {operator_question}")
-            if agent_command:
-                goal_id = item.get("goal_id")
-                lines.append(
-                    "  - operator_gate_dry_run: "
-                    f"`loopx operator-gate --goal-id {goal_id} --decision approve "
-                    '--reason-summary "<public-safe reason>" --dry-run`'
-                )
-        if agent_command:
-            lines.append(f"  - agent_command: `{agent_command}`")
-        gates = item.get("missing_gates") if isinstance(item.get("missing_gates"), list) else []
-        gate_text = ", ".join(str(gate) for gate in gates if gate)
-        controller_stage = item.get("controller_stage")
-        next_condition = item.get("next_handoff_condition")
-        if controller_stage or gate_text:
-            lines.append(
-                "  - gates: "
-                f"stage={controller_stage or 'none'} "
-                f"missing={gate_text or 'none'}"
-            )
-        if next_condition:
-            lines.append(f"  - next_handoff_condition: {next_condition}")
 
     run_history = payload.get("run_history") if isinstance(payload.get("run_history"), dict) else {}
     run_goals = run_history.get("goals") if isinstance(run_history.get("goals"), list) else []
