@@ -83,6 +83,7 @@ def _assert_cli_goal_plan_and_relay_command() -> None:
     from loopx.benchmark_adapters.skillsbench import skillsbench_route_contract
     from scripts.skillsbench_automation_loop import (
         _host_local_acp_launch_command,
+        _public_runner_config,
         build_plan,
         parse_args,
     )
@@ -135,6 +136,7 @@ def _assert_cli_goal_plan_and_relay_command() -> None:
 
         command = _host_local_acp_launch_command(args, plan)
         assert "--codex-cli-goal-worker" in command, command
+        assert "--codex-cli-goal-thread-prewarm" not in command, command
         assert "--app-server-goal-worker" not in command, command
         assert "--reasoning-effort" in command, command
         assert command[command.index("--reasoning-effort") + 1] == "xhigh", command
@@ -146,6 +148,36 @@ def _assert_cli_goal_plan_and_relay_command() -> None:
             command[command.index("--goal-active-timeout-sec") + 1]
             == command[command.index("--first-action-timeout-sec") + 1]
         ), command
+        default_config = _public_runner_config(plan)
+        assert default_config["codex_cli_goal_thread_prewarm"] is False
+
+        prewarm_args = parse_args(
+            [
+                "--route",
+                CODEX_CLI_GOAL_BASELINE_ROUTE,
+                "--host-local-acp-launch",
+                "--remote-command-file-bridge-ready",
+                "--remote-command-file-bridge-solver-command",
+                "python bridge.py",
+                "--reasoning-effort",
+                "xhigh",
+                "--codex-cli-goal-thread-prewarm",
+                "--plan-only",
+                "--skillsbench-root",
+                str(skillsbench_root),
+                "--jobs-dir",
+                str(temp_path / "jobs-with-prewarm"),
+                "--ledger-path",
+                str(temp_path / "ledger-with-prewarm.json"),
+                "--global-ledger-path",
+                str(temp_path / "global-ledger-with-prewarm.json"),
+            ]
+        )
+        prewarm_plan = build_plan(prewarm_args)
+        prewarm_command = _host_local_acp_launch_command(prewarm_args, prewarm_plan)
+        assert "--codex-cli-goal-thread-prewarm" in prewarm_command, prewarm_command
+        prewarm_config = _public_runner_config(prewarm_plan)
+        assert prewarm_config["codex_cli_goal_thread_prewarm"] is True
 
         proxy_url = "http://127.0.0.1:18182"
         args_with_proxy = parse_args(
