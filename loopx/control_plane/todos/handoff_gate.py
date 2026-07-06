@@ -87,6 +87,17 @@ def _successor_todo_ids(
     return successor_ids
 
 
+def _stale_handoff_closeout_replan_required(gate: dict[str, Any]) -> bool:
+    if _todo_done(gate):
+        return False
+    label = " ".join(
+        str(gate.get(key) or "")
+        for key in ("action_kind", "title", "text")
+        if str(gate.get(key) or "").strip()
+    ).lower()
+    return "stale" in label and "handoff" in label and "closeout" in label
+
+
 def _handoff_gate_state(
     gate: dict[str, Any],
     *,
@@ -149,6 +160,12 @@ def _compact_handoff_gate(
     superseded_by = normalize_todo_id(payload.get("superseded_by"))
     if superseded_by:
         payload["superseded_by"] = superseded_by
+    if _stale_handoff_closeout_replan_required(gate):
+        payload["route_continuation_replan_required"] = True
+        payload.setdefault(
+            "route_continuation_reason",
+            "stale handoff closeout requires a bounded route continuation replan",
+        )
     if successor_ids:
         payload["successor_todo_ids"] = successor_ids
     return {key: value for key, value in payload.items() if value not in (None, "")}

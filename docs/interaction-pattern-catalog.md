@@ -1000,6 +1000,8 @@ flowchart TD
   S -->|"done + no successor"| R["handoff gate: cleared_without_successor"]
   R --> L["successor_replan_required"]
   L --> F["reopen / supersede / no-follow-up rationale"]
+  S -->|"open + stale closeout"| X["route continuation replan required"]
+  X --> L
   S -->|"superseded_by"| H["handoff gate: superseded"]
   H --> I["historical only"]
   S -->|"deferred"| D["handoff gate: deferred"]
@@ -1013,6 +1015,11 @@ the blocked agent falls into a vague `agent_scope_wait`. The opposite bad smell
 is also harmful: a stale done handoff outranks a live open review blocker, so
 the agent replans while a real reviewer-owned gate is still open. Both are
 state-machine bugs, not prompt wording bugs.
+
+A third bad smell is an open handoff gate whose action is already a stale
+handoff closeout. That gate is no longer a live reviewer decision. It should
+project `route_continuation_replan_required` so quota wakes successor replan to
+reopen, supersede, or close the stale route with a no-follow-up rationale.
 
 **Validation**
 
