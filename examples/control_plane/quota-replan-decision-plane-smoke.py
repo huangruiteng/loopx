@@ -338,6 +338,7 @@ def assert_future_scheduled_monitor_quiets_without_generated_replan() -> None:
     assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is False, guard
     assert guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is True, guard
     assert guard["goal_frontier_projection"]["replan_required"] is False, guard
+    assert "vision_continuation_audit" not in guard, guard
     assert guard.get("autonomous_replan_obligation") is None, guard
     assert "required_reads" not in guard, guard
     assert "required_reads" not in guard["interaction_contract"]["agent_channel"], guard
@@ -475,8 +476,24 @@ def assert_agent_vision_gap_derives_replan() -> None:
     assert gaps[0]["kind"] == "vision_acceptance_gap", guard
     assert "synthetic" in gaps[0]["replan_trigger_summary"], guard
     assert guard["goal_frontier_projection"]["replan_required"] is True, guard
+    audit = guard["vision_continuation_audit"]
+    assert audit["schema_version"] == "vision_continuation_audit_v0", guard
+    assert audit["required"] is True, guard
+    assert audit["agent_id"] == SIDE_AGENT, guard
+    assert audit["selected_todo_is_goal_completion"] is False, guard
+    assert audit["closeout_allowed_without_evidence"] is False, guard
+    assert "todo_completion_alone" in audit["not_satisfied_by"], guard
+    assert "create_successor_or_write_vision_replan_trigger_when_unproven" in (
+        audit["required_before_closeout"]
+    ), guard
+    assert "public_safe_evidence_records" in audit["authoritative_evidence_kinds"], guard
+    assert "Show the next runnable auto-research frontier" in audit["acceptance_requirements"][0], guard
+    assert guard["goal_frontier_projection"]["vision_continuation_audit"] == audit, guard
+    assert guard["interaction_contract"]["agent_channel"]["vision_continuation_audit"] == audit, guard
+    assert guard["interaction_contract"]["cli_channel"]["vision_continuation_audit"]["required"] is True, guard
     markdown = render_quota_should_run_markdown(guard)
     assert "deferred_ready=0 acceptance_gaps=1" in markdown, markdown
+    assert "vision_continuation_audit: required=True" in markdown, markdown
 
 
 def assert_missing_vision_checkpoint_derives_agent_scoped_replan() -> None:
@@ -499,6 +516,14 @@ def assert_missing_vision_checkpoint_derives_agent_scoped_replan() -> None:
     assert gaps[0]["kind"] == "vision_checkpoint_missing", side_guard
     assert gaps[0]["agent_id"] == SIDE_AGENT, side_guard
     assert "material_delivery_outcome" in gaps[0]["replan_trigger_summary"], side_guard
+    audit = side_guard["vision_continuation_audit"]
+    assert audit["required"] is True, side_guard
+    assert audit["agent_id"] == SIDE_AGENT, side_guard
+    assert "Write a bounded agent vision patch" in audit["acceptance_requirements"][0], side_guard
+    assert (
+        side_guard["interaction_contract"]["agent_channel"]["vision_continuation_audit"]
+        == audit
+    ), side_guard
 
     primary_guard = build_quota_should_run(
         status_payload(
@@ -511,6 +536,7 @@ def assert_missing_vision_checkpoint_derives_agent_scoped_replan() -> None:
     )
     primary_gaps = primary_guard["goal_frontier_projection"]["acceptance_gaps"]
     assert primary_gaps == [], primary_guard
+    assert "vision_continuation_audit" not in primary_guard, primary_guard
     assert primary_guard.get("autonomous_replan_obligation") is None, primary_guard
 
 
@@ -691,6 +717,8 @@ def assert_agent_vision_gap_beats_replan_ack() -> None:
     assert len(gaps) == 1, guard
     assert gaps[0]["kind"] == "vision_acceptance_gap", guard
     assert guard["goal_frontier_projection"]["replan_required"] is True, guard
+    assert guard["vision_continuation_audit"]["required"] is True, guard
+    assert "autonomous_replan_ack_alone" in guard["vision_continuation_audit"]["not_satisfied_by"], guard
 
 
 def assert_blocking_handoff_gate_beats_derived_monitor_replan() -> None:

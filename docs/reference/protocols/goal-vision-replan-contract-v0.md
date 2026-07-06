@@ -127,6 +127,29 @@ gap. If evidence, successor state, blocker state, or a superseding vision packet
 still shows the vision is unmet, the acceptance gap remains authoritative and
 quota must continue to project replan work.
 
+## Vision Continuation Audit
+
+Every selected todo is a bounded step toward the active per-agent vision, not a
+replacement for that vision. Before an agent records `todo complete`, a
+no-follow-up rationale, `--vision-unchanged-reason`, or an autonomous replan
+ACK, it must audit the current evidence against the active
+`acceptance_summary`:
+
+1. Derive the explicit requirements from the active vision, current todo,
+   user correction, and protected scope.
+2. Name the authoritative evidence for each requirement: changed files,
+   public-safe evidence records, evaluation outputs, successor state, blocker
+   state, or a superseding vision packet.
+3. Treat weak, indirect, stale, or protocol-only evidence as incomplete.
+4. If any requirement remains unproven, keep the vision active by creating a
+   successor todo or writing a compact `--vision-replan-trigger`.
+
+Quota/status expose this as `vision_continuation_audit_v0` in the CLI payload
+and `interaction_contract`. This mirrors the `/goal` continuation rule: goal
+state persists across turns until evidence proves the requested end state. It
+prevents a role from declaring success merely because it consumed the currently
+selected todo, recorded a checkpoint, or observed that another lane is quiet.
+
 ## State Machine
 
 ```mermaid
@@ -267,6 +290,9 @@ A change satisfies this contract only when:
 - material `refresh-state` closeouts emit a per-agent `vision_checkpoint_v0`;
 - missing per-agent checkpoints can become agent-scoped replan gaps instead of
   global goal-level noise;
+- quota/status and `interaction_contract` expose a
+  `vision_continuation_audit_v0` before todo closeout, no-follow-up,
+  `--vision-unchanged-reason`, or replan ACK;
 - ordinary `refresh-state` calls can write bounded vision corrections without a
   separate self-repair-only path;
 - replan state is decided from goal-level projection before local quiet/wait

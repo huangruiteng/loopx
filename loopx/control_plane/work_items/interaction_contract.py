@@ -836,6 +836,19 @@ def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
     if required_reads:
         contract["agent_channel"]["required_reads"] = required_reads
         contract["cli_channel"]["required_reads"] = required_reads
+    vision_continuation_audit = (
+        payload.get("vision_continuation_audit")
+        if isinstance(payload.get("vision_continuation_audit"), dict)
+        else {}
+    )
+    if vision_continuation_audit.get("required"):
+        contract["agent_channel"]["vision_continuation_audit"] = vision_continuation_audit
+        contract["cli_channel"]["vision_continuation_audit"] = {
+            "required": True,
+            "required_before_closeout": vision_continuation_audit.get("required_before_closeout")
+            or [],
+            "recommended_action": vision_continuation_audit.get("recommended_action"),
+        }
     if mode in {
         "user_gate",
         "user_todo_blocker_push",

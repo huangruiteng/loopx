@@ -2148,6 +2148,9 @@ def build_quota_should_run(
         autonomous_replan_decision = goal_frontier_projection.get("autonomous_replan_decision")
         if isinstance(autonomous_replan_decision, dict):
             payload["autonomous_replan_decision"] = autonomous_replan_decision
+        vision_continuation_audit = goal_frontier_projection.get("vision_continuation_audit")
+        if isinstance(vision_continuation_audit, dict):
+            payload["vision_continuation_audit"] = vision_continuation_audit
         if replan_scope.get("required"):
             payload["autonomous_replan_scope"] = replan_scope
         if agent_identity:
