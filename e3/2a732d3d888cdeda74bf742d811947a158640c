@@ -1,0 +1,27 @@
+examples/control_plane/presentation-markdown-primitives-smoke.py
+  s_e3f612788718c1::t_1266128d995fa9 32,310-339,357-358
+loopx/pr_review.py
+  s_e3f612788718c1::t_2d539562940b68 12,18,87
+loopx/presentation/public_safety.py
+  s_e3f612788718c1::t_02b858d6f2620c 1-42
+loopx/summary_all.py
+  s_e3f612788718c1::t_6c20f29195e1a9 11,23,70-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "e32a732d3d888cdeda74bf742d811947a158640c",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
