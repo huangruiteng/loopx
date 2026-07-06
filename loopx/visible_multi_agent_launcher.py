@@ -37,6 +37,7 @@ def _q(value: object) -> str:
 PANE_A2A_WAKEUP_SCHEMA_VERSION = "multi_agent_pane_a2a_wakeup_v0"
 PANE_A2A_WAKEUP_PROMPT = PANE_LOCAL_A2A_WAKEUP_PROMPT
 PANE_A2A_INPUT_READY_TIMEOUT_SECONDS = 5.0
+AUTO_WAKE_LOOP_SCHEMA_VERSION = "multi_agent_auto_wake_loop_v0"
 TMUX_LANE_ID_OPTION = "@loopx_lane_id"
 
 
@@ -1043,6 +1044,74 @@ def _write_tmux_script(*, script_dir: Path, name: str, command: str) -> Path:
     return script
 
 
+def _start_auto_wake_loop(
+    *,
+    script_dir: Path,
+    project: Path,
+    registry: Path,
+    runtime_root: Path,
+    session: str,
+    lanes: list[str],
+    tmux_bin: str,
+    cli_bin: str,
+    interval_seconds: float,
+    env: dict[str, str],
+) -> dict[str, object]:
+    interval = max(5.0, float(interval_seconds or 0))
+    lane_flags = " ".join(f"--lane {_q(lane)}" for lane in lanes if lane)
+    wake_command = (
+        'WAKE_LOG="$LOOPX_VISIBLE_ARTIFACT_DIR/auto-wake.public.jsonl"; '
+        f"while {_q(tmux_bin)} has-session -t \"$LOOPX_VISIBLE_SESSION\" >/dev/null 2>&1; do "
+        f"sleep {_q(f'{interval:g}')}; "
+        f"{_q(cli_bin)} --format json multi-agent wake "
+        '--session-name "$LOOPX_VISIBLE_SESSION" '
+        f"--tmux-bin {_q(tmux_bin)} "
+        f"{lane_flags} --execute >> \"$WAKE_LOG\" 2>&1 || true; "
+        "done"
+    )
+    script = _write_tmux_script(
+        script_dir=script_dir,
+        name="auto-wake-loop",
+        command=runtime_shell_command(
+            wake_command,
+            project=project,
+            registry=registry,
+            runtime_root=runtime_root,
+            visible_session=session,
+            errexit=False,
+        ),
+    )
+    subprocess.Popen(
+        ["bash", str(script)],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    return {
+        "schema_version": AUTO_WAKE_LOOP_SCHEMA_VERSION,
+        "enabled": True,
+        "mode": "background_process",
+        "interval_seconds": interval,
+        "target_lanes": lanes,
+        "wakeup_model": "fixed_prompt_broadcast",
+        "workflow_driver": False,
+        "broadcaster_reads_frontier": False,
+        "broadcaster_selects_todo": False,
+        "pane_decision_owner": "codex_tui_agent_via_loopx_state",
+        "artifact": "auto-wake.public.jsonl",
+        "process_started": True,
+        "pid_recorded": False,
+        "boundary": {
+            "writes_loopx_state": False,
+            "spends_loopx_quota": False,
+            "reads_raw_transcripts": False,
+            "reads_credentials": False,
+            "runs_worker_turn_directly": False,
+        },
+    }
+
+
 def execute_visible_multi_agent_launcher(
     *,
     payload: dict[str, object],
@@ -1059,6 +1128,8 @@ def execute_visible_multi_agent_launcher(
     cwd: Path,
     codex_trust_workspace: bool = False,
     source_root: Path | None = None,
+    auto_wake: bool = False,
+    auto_wake_interval_seconds: float = 45.0,
     launch_result_schema: str = "multi_agent_visible_launch_result_v0",
     acceptance_schema: str = "multi_agent_visible_launch_acceptance_v0",
     lane_default: str = "agent-lane",
@@ -1085,6 +1156,7 @@ def execute_visible_multi_agent_launcher(
         registry=registry,
         runtime_root=runtime_root,
         tmux_bin=tmux_bin,
+        cli_bin=cli_bin,
         codex_bin=codex_bin,
         attach=attach,
         replace_existing=replace_existing,
@@ -1092,6 +1164,8 @@ def execute_visible_multi_agent_launcher(
         acceptance_schema=acceptance_schema,
         lane_default=lane_default,
         codex_trust_workspace=codex_trust_workspace,
+        auto_wake=auto_wake,
+        auto_wake_interval_seconds=auto_wake_interval_seconds,
     )
     result["worker_skill_materialization"] = worker_skills
     return result, chosen, workspace_mode
@@ -1105,6 +1179,7 @@ def _launch_with_tmux(
     registry: Path,
     runtime_root: Path,
     tmux_bin: str,
+    cli_bin: str,
     codex_bin: str,
     attach: bool,
     replace_existing: bool,
@@ -1112,6 +1187,8 @@ def _launch_with_tmux(
     acceptance_schema: str,
     lane_default: str,
     codex_trust_workspace: bool,
+    auto_wake: bool,
+    auto_wake_interval_seconds: float,
 ) -> dict[str, object]:
     session = str(payload.get("session_name") or "loopx-visible-agents")
     lanes = [item for item in payload.get("lanes", []) if isinstance(item, dict)]
@@ -1245,6 +1322,23 @@ def _launch_with_tmux(
         started_lanes.append(lane_id)
         lane_targets[lane_id] = pane_id
         launcher_scripts[lane_id] = str(lane_script)
+    auto_wake_result: dict[str, object] = {
+        "schema_version": AUTO_WAKE_LOOP_SCHEMA_VERSION,
+        "enabled": False,
+    }
+    if auto_wake:
+        auto_wake_result = _start_auto_wake_loop(
+            script_dir=script_dir,
+            project=project,
+            registry=registry,
+            runtime_root=runtime_root,
+            session=session,
+            lanes=started_lanes,
+            tmux_bin=tmux_bin,
+            cli_bin=cli_bin,
+            interval_seconds=auto_wake_interval_seconds,
+            env=env,
+        )
     if attach:
         subprocess.run([tmux_bin, "attach", "-t", session], check=True, env=env)
     acceptance = _tmux_acceptance(
@@ -1281,6 +1375,7 @@ def _launch_with_tmux(
         "launcher_script_count": len(launcher_scripts),
         "attach_requested": attach,
         "operator_takeover": "attach to the tmux session, interrupt any lane, or kill the session",
+        "auto_wake": auto_wake_result,
         "visible_acceptance": acceptance,
         "tmux_layout": {
             "window_name": window_name,

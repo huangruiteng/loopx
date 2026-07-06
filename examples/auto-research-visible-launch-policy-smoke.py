@@ -125,6 +125,7 @@ def assert_auto_research_consumes_generic_policy() -> None:
         "resolve_visible_launch_policy",
         "resolve_codex_trust_workspace",
         "make_visible_wake_callback",
+        "--auto-wake",
     ):
         require(marker in source, f"auto-research CLI missing generic policy helper: {marker}")
     wake_callback = make_visible_wake_callback(tmux_bin="tmux")

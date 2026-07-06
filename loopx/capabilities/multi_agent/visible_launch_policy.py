@@ -95,6 +95,8 @@ def make_visible_launcher_callback(
     attach: bool,
     replace_existing: bool,
     workspace_policy: VisibleWorkspacePolicy,
+    auto_wake: bool = False,
+    auto_wake_interval_seconds: float = 45.0,
 ) -> VisibleLauncherCallback | None:
     """Create the generic callback shape expected by visible demo runners."""
 
@@ -123,6 +125,8 @@ def make_visible_launcher_callback(
             workspace=workspace,
             create_workspace=create_workspace,
             codex_trust_workspace=codex_trust_workspace,
+            auto_wake=auto_wake,
+            auto_wake_interval_seconds=auto_wake_interval_seconds,
         )
 
     return visible_launcher

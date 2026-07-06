@@ -112,6 +112,8 @@ def main() -> int:
     assert "LOOPX_PANE_TICK_SUMMARY" in launcher_source
     assert "LOOPX_PANE_TICK_OUTPUT_ARTIFACT" in launcher_source
     assert "LOOPX_PANE_BOOTSTRAP_PROMPT" in launcher_source
+    assert "auto-wake.public.jsonl" in launcher_source
+    assert "AUTO_WAKE_LOOP_SCHEMA_VERSION" in launcher_source
     assert "loopx-build-codex-bootstrap-prompt" in runtime_source
     assert "LoopX Agent Bootstrap Context" in runtime_source
     assert "### Role First Move" in runtime_source
@@ -597,6 +599,8 @@ def main() -> int:
                 create_workspace=True,
                 cwd=temp,
                 codex_trust_workspace=True,
+                auto_wake=True,
+                auto_wake_interval_seconds=5.0,
             )
             os.environ["FAKE_TMUX_CAPTURE_TEXT"] = (
                 "╭────────────────────────╮\n"
@@ -815,6 +819,14 @@ def main() -> int:
         assert launch["surviving_lanes"] == ["planner", "reviewer"], launch
         assert launch["script_mode"] == "runtime_local_files", launch
         assert launch["launcher_script_count"] == 2, launch
+        assert launch["auto_wake"]["schema_version"] == "multi_agent_auto_wake_loop_v0", launch
+        assert launch["auto_wake"]["enabled"] is True, launch
+        assert launch["auto_wake"]["interval_seconds"] == 5.0, launch
+        assert launch["auto_wake"]["target_lanes"] == ["planner", "reviewer"], launch
+        assert launch["auto_wake"]["workflow_driver"] is False, launch
+        assert launch["auto_wake"]["broadcaster_reads_frontier"] is False, launch
+        assert launch["auto_wake"]["broadcaster_selects_todo"] is False, launch
+        assert launch["auto_wake"]["artifact"] == "auto-wake.public.jsonl", launch
         acceptance = launch["visible_acceptance"]
         assert acceptance["schema_version"] == "multi_agent_visible_launch_acceptance_v0", acceptance
         assert acceptance["accepted"] is True, acceptance

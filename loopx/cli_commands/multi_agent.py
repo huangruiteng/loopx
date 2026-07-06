@@ -49,6 +49,21 @@ def register_multi_agent_commands(
     launch.add_argument("--attach", action="store_true", help="Attach to the session after launch.")
     launch.add_argument("--replace-existing", action="store_true", help="Replace an existing session of the same name.")
     launch.add_argument(
+        "--auto-wake",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Run a session-scoped background wake loop. The loop only broadcasts "
+            "the fixed pane-local A2A prompt; each pane still reads its own state."
+        ),
+    )
+    launch.add_argument(
+        "--auto-wake-interval-seconds",
+        type=float,
+        default=45.0,
+        help=argparse.SUPPRESS,
+    )
+    launch.add_argument(
         "--codex-trust-workspace",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -178,6 +193,8 @@ def handle_multi_agent_command(
                 cwd=Path.cwd(),
                 codex_trust_workspace=bool(args.codex_trust_workspace),
                 source_root=spec_path.parent,
+                auto_wake=bool(args.auto_wake),
+                auto_wake_interval_seconds=args.auto_wake_interval_seconds,
             )
             payload["mode"] = "execute"
             payload["chosen_launcher"] = chosen

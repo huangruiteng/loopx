@@ -56,6 +56,7 @@ def main() -> None:
         "build_visible_multi_agent_payload_from_spec",
         "execute_visible_multi_agent_launcher",
         "generic_multi_agent_launch_spec_v0",
+        "--auto-wake",
     ):
         require(marker in module_source, f"multi-agent module missing {marker}")
 
@@ -65,6 +66,7 @@ def main() -> None:
         "--execute",
         "--workspace",
         "--attach",
+        "--auto-wake",
         "--codex-trust-workspace",
     ):
         require(option in help_text, f"multi-agent launch help omitted {option}")
