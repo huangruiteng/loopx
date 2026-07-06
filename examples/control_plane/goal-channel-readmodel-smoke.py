@@ -15,6 +15,9 @@ if str(ROOT) not in sys.path:
 
 from loopx import status as status_module  # noqa: E402
 from loopx.control_plane.goals import goal_channel as goal_channel_read_model  # noqa: E402
+from loopx.control_plane.goals.goal_channel_projection import (  # noqa: E402
+    build_goal_channel_projection,
+)
 
 
 def _attach_direct(
@@ -27,7 +30,7 @@ def _attach_direct(
         item,
         goal=goal,
         goal_latest_runs=goal_latest_runs,
-        build_goal_channel_projection=status_module.build_goal_channel_projection,
+        build_goal_channel_projection=build_goal_channel_projection,
     )
 
 

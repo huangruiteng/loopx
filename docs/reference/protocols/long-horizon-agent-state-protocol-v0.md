@@ -55,7 +55,7 @@ compress state, but they do not own truth or grant permission.
 | Projection | Existing anchor | Display use |
 | --- | --- | --- |
 | `status_contract_v2` | `loopx status`, `docs/status-data-contract.md` | CLI/dashboard status envelope. |
-| `goal_channel_projection_v0` | `loopx/frontstage.py`, `loopx/status.py` | First-screen goal card: user todos, agent todos, open gates, active claims, latest event, next action. |
+| `goal_channel_projection_v0` | `loopx/control_plane/goals/goal_channel_projection.py`, `loopx/status.py` | First-screen goal card: user todos, agent todos, open gates, active claims, latest event, next action. |
 | `todo_index_v0` | `loopx/status.py` | Cross-goal todo index from attention queue and rollout events. |
 | `task_graph_projection_v0` | `docs/reference/protocols/task-graph-projection-v0.md` | Optional graph of blocks, validates, repairs, hands off, and supersedes. |
 | `review_packet` | `loopx review-packet`, `loopx/review_packet.py` | Operator-facing gate/review/handoff packet. |

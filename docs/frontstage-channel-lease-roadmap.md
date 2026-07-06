@@ -148,13 +148,15 @@ Frontstage consumers should treat this as an input snapshot:
 - never let the channel view override `goal_boundary`, operator gates, quota,
   required capabilities, workspace guards, or task leases.
 
-The first product-path fixture lives in `loopx.frontstage` and is covered
-by `examples/project/goal-channel-projection-smoke.py` plus
-`examples/project/goal-channel-frontstage-fixture-smoke.py`. It intentionally stays
-read-only: callers pass already-compact status, quota, run-history,
+The first product-path read model lives in
+`loopx/control_plane/goals/goal_channel_projection.py` and is covered by
+`examples/project/goal-channel-projection-smoke.py` plus
+`examples/project/goal-channel-frontstage-fixture-smoke.py`. It intentionally
+stays read-only: callers pass already-compact status, quota, run-history,
 review-packet, artifact, and lease/claim payloads; the builder emits
 `source_warnings` when raw or private-looking fields appear instead of copying
-those values into the channel. The static HTML fixture in
+those values into the channel. The static HTML renderer in `loopx.frontstage`
+and fixture in
 `examples/goal-channel-frontstage-fixture.py` renders that projection into
 semantic panels with `data-panel` markers, no write controls, and a visible
 truth contract. `loopx --format json status` and the loopback

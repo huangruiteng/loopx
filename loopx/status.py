@@ -33,7 +33,7 @@ from .execution_profile import (
     compact_execution_profile,
     execution_profile_outcome_floor,
 )
-from .frontstage import build_goal_channel_projection
+from .control_plane.goals.goal_channel_projection import build_goal_channel_projection
 from .handoff_budget import handoff_budget_contract
 from .history import collect_history, load_registry
 from .history import STATUS_NEUTRAL_CLASSIFICATIONS as HISTORY_STATUS_NEUTRAL_CLASSIFICATIONS

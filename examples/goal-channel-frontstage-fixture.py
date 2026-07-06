@@ -13,10 +13,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.frontstage import (  # noqa: E402
+from loopx.control_plane.goals.goal_channel_projection import (  # noqa: E402
     build_goal_channel_projection,
-    render_goal_channel_projection_html,
 )
+from loopx.frontstage import render_goal_channel_projection_html  # noqa: E402
 
 
 REDACTED_LOCAL_PATH = "/" + "Users/example/private-control-plane.md"
