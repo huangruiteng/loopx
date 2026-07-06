@@ -173,6 +173,8 @@ from .control_plane.runtime.run_compaction import (
     compact_run_base as _compact_run_base_read_model,
 )
 from .control_plane.runtime.public_safety import (
+    compact_loopx_command_records as _compact_loopx_command_records,
+    compact_numeric_map as _compact_numeric_map,
     public_safe_compact_list,
     public_safe_compact_text,
 )
@@ -581,60 +583,6 @@ AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS = {
 AUTONOMOUS_RUN_HISTORY_STALL_PATTERN = re.compile(
     r"(?i)(?:monitor|observe|observation|poll|watch|quiet|no[-_ ]?op|no[-_ ]?progress|stalled?|unchanged|dependency|停转|无进展|重复|反复|观察|轮询)"
 )
-
-
-def _compact_numeric_map(value: Any, *, keys: tuple[str, ...] | None = None) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-    source = value
-    selected_keys = keys or tuple(str(key) for key in source.keys())
-    compact: dict[str, Any] = {}
-    for key in selected_keys:
-        raw = source.get(key)
-        if isinstance(raw, bool) or raw is None:
-            continue
-        if isinstance(raw, (int, float)):
-            compact[key] = raw
-            continue
-        try:
-            if isinstance(raw, str) and raw.strip():
-                compact[key] = float(raw) if "." in raw else int(raw)
-        except ValueError:
-            continue
-    return compact
-
-
-def _compact_loopx_command_records(value: Any, *, limit: int = 128) -> list[dict[str, str]]:
-    if not isinstance(value, list):
-        return []
-    allowed_subcommands = {
-        "quota should-run",
-        "todo claim",
-        "todo update",
-        "todo complete",
-        "refresh-state",
-        "quota spend-slot",
-        "status",
-        "diagnose",
-    }
-    records: list[dict[str, str]] = []
-    for item in value:
-        if not isinstance(item, dict):
-            continue
-        subcommand = public_safe_compact_text(item.get("subcommand"), limit=80)
-        if subcommand not in allowed_subcommands:
-            continue
-        record: dict[str, str] = {"subcommand": subcommand}
-        todo_id = public_safe_compact_text(item.get("todo_id"), limit=100)
-        if todo_id and re.match(r"^todo_[A-Za-z0-9_-]{6,80}$", todo_id):
-            record["todo_id"] = todo_id
-        goal_id = public_safe_compact_text(item.get("goal_id"), limit=140)
-        if goal_id and re.match(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,120}$", goal_id):
-            record["goal_id"] = goal_id
-        records.append(record)
-        if len(records) >= limit:
-            break
-    return records
 
 
 def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
