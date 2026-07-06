@@ -39,6 +39,14 @@ PANE_A2A_WAKEUP_PROMPT = PANE_LOCAL_A2A_WAKEUP_PROMPT
 PANE_A2A_INPUT_READY_TIMEOUT_SECONDS = 5.0
 AUTO_WAKE_LOOP_SCHEMA_VERSION = "multi_agent_auto_wake_loop_v0"
 TMUX_LANE_ID_OPTION = "@loopx_lane_id"
+_CODEX_TUI_USAGE_LIMIT_MARKERS = (
+    "you've hit your usage limit",
+    "you have hit your usage limit",
+    "purchase more credits or try again",
+    "rate limit exceeded",
+    "429 too many requests",
+)
+_CODEX_TUI_BACKOFF_REASONS = frozenset({"codex_tui_usage_or_rate_limited"})
 
 
 def require_executable(command: str, *, field: str) -> str:
@@ -57,6 +65,8 @@ def build_pane_a2a_wakeup_prompt() -> str:
 def _codex_tui_input_ready(capture: str) -> bool:
     if not capture:
         return False
+    if _codex_tui_block_reason(capture):
+        return False
     prompt_index = max(capture.rfind("\n› "), capture.rfind("\r\n› "))
     if prompt_index < 0:
         return False
@@ -72,6 +82,13 @@ def _codex_tui_input_ready(capture: str) -> bool:
     if "Starting MCP servers" in current_view:
         return False
     return True
+
+
+def _codex_tui_block_reason(capture: str) -> str | None:
+    lowered = capture.lower()
+    if any(marker in lowered for marker in _CODEX_TUI_USAGE_LIMIT_MARKERS):
+        return "codex_tui_usage_or_rate_limited"
+    return None
 
 
 def _wait_for_tmux_pane_input_ready(
@@ -95,6 +112,18 @@ def _wait_for_tmux_pane_input_ready(
             text=True,
             env=env,
         )
+        block_reason = _codex_tui_block_reason(capture.stdout)
+        if block_reason:
+            return {
+                "lane": lane,
+                "target": tmux_target,
+                "ready": False,
+                "attempt_count": attempts,
+                "capture_ok": capture.returncode == 0,
+                "ready_marker": None,
+                "not_ready_reason": block_reason,
+                "backoff_recommended": True,
+            }
         ready = capture.returncode == 0 and _codex_tui_input_ready(capture.stdout)
         if ready:
             return {
@@ -114,6 +143,7 @@ def _wait_for_tmux_pane_input_ready(
                 "capture_ok": capture.returncode == 0,
                 "ready_marker": None,
                 "not_ready_reason": "codex_tui_busy_or_not_ready",
+                "backoff_recommended": False,
             }
         time.sleep(0.25)
 
@@ -351,8 +381,19 @@ def wake_visible_multi_agent_panes(
         not_ready = []
         resolved_target_lanes = target_lanes
 
+    auto_wake_backoff_recommended = (
+        execute
+        and bool(input_ready_checks)
+        and not ready_lanes
+        and all(
+            str(check.get("not_ready_reason") or "") in _CODEX_TUI_BACKOFF_REASONS
+            for check in input_ready_checks
+        )
+    )
     if not execute:
         prompt_delivery = "dry_run"
+    elif auto_wake_backoff_recommended:
+        prompt_delivery = "skipped_terminal_pane_backoff"
     elif not prompt_submit_checks:
         prompt_delivery = "skipped_no_input_ready_panes"
     elif not_ready:
@@ -393,6 +434,7 @@ def wake_visible_multi_agent_panes(
         "not_ready_lanes": not_ready,
         "prompt_submit_checks": prompt_submit_checks,
         "prompt_delivery": prompt_delivery,
+        "auto_wake_backoff_recommended": auto_wake_backoff_recommended,
         "boundary": {
             "writes_loopx_state": False,
             "spends_loopx_quota": False,
@@ -1061,12 +1103,17 @@ def _start_auto_wake_loop(
     lane_flags = " ".join(f"--lane {_q(lane)}" for lane in lanes if lane)
     wake_command = (
         'WAKE_LOG="$LOOPX_VISIBLE_ARTIFACT_DIR/auto-wake.public.jsonl"; '
+        'WAKE_TMP="$LOOPX_VISIBLE_ARTIFACT_DIR/auto-wake.last.public.json"; '
         f"while {_q(tmux_bin)} has-session -t \"$LOOPX_VISIBLE_SESSION\" >/dev/null 2>&1; do "
         f"sleep {_q(f'{interval:g}')}; "
         f"{_q(cli_bin)} --format json multi-agent wake "
         '--session-name "$LOOPX_VISIBLE_SESSION" '
         f"--tmux-bin {_q(tmux_bin)} "
-        f"{lane_flags} --execute >> \"$WAKE_LOG\" 2>&1 || true; "
+        f"{lane_flags} --execute > \"$WAKE_TMP\" 2>&1 || true; "
+        "cat \"$WAKE_TMP\" >> \"$WAKE_LOG\"; printf '\\n' >> \"$WAKE_LOG\"; "
+        "if grep -Eq '\"auto_wake_backoff_recommended\"[[:space:]]*:[[:space:]]*true' \"$WAKE_TMP\"; then "
+        "break; "
+        "fi; "
         "done"
     )
     script = _write_tmux_script(
