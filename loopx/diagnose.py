@@ -4,6 +4,9 @@ import shlex
 from pathlib import Path
 from typing import Any
 
+from .presentation.markdown import as_dict as _as_dict
+from .presentation.markdown import as_list as _as_list
+from .presentation.markdown import markdown_scalar
 from .quota import build_quota_should_run
 from .status import collect_status
 
@@ -29,14 +32,6 @@ AGENT_REASONING_CHECKLIST = [
     "判断是否应先自修复：state_projection_gap、boundary_projection_gap、stale action、todo 投影缺口优先于普通 delivery。",
     "向用户汇报时给出自己的结论，不要把 machine_signals 当成最终裁决；引用具体 evidence 字段说明理由。",
 ]
-
-
-def _as_dict(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
-
-def _as_list(value: Any) -> list[Any]:
-    return value if isinstance(value, list) else []
 
 
 def _compact_text_signals(value: Any, *, limit: int = STATUS_CONTRACT_SIGNAL_LIMIT) -> dict[str, Any]:
@@ -499,15 +494,15 @@ def render_diagnosis_markdown(payload: dict[str, Any]) -> str:
         f"- status: `{selected.get('status')}`",
         f"- waiting_on: `{selected.get('waiting_on')}`",
         f"- severity: `{selected.get('severity')}`",
-        f"- recommended_action: {selected.get('recommended_action')}",
-        f"- user_question: {selected.get('user_question')}",
+        f"- recommended_action: {markdown_scalar(selected.get('recommended_action'))}",
+        f"- user_question: {markdown_scalar(selected.get('user_question'))}",
         f"- user_todo_open_count: `{todo_evidence.get('user_open_count')}`",
         f"- agent_todo_open_count: `{todo_evidence.get('agent_open_count')}`",
     ]
     if todo_evidence.get("first_user_todo"):
-        lines.append(f"- first_user_todo: {todo_evidence.get('first_user_todo')}")
+        lines.append(f"- first_user_todo: {markdown_scalar(todo_evidence.get('first_user_todo'))}")
     if todo_evidence.get("first_agent_todo"):
-        lines.append(f"- first_agent_todo: {todo_evidence.get('first_agent_todo')}")
+        lines.append(f"- first_agent_todo: {markdown_scalar(todo_evidence.get('first_agent_todo'))}")
     if quota:
         lines.extend(
             [
@@ -518,7 +513,7 @@ def render_diagnosis_markdown(payload: dict[str, Any]) -> str:
                 f"- normal_delivery_allowed: `{quota.get('normal_delivery_allowed')}`",
                 f"- self_repair_allowed: `{quota.get('self_repair_allowed')}`",
                 f"- safe_bypass_allowed: `{quota.get('safe_bypass_allowed')}`",
-                f"- quota_reason: {quota.get('reason')}",
+                f"- quota_reason: {markdown_scalar(quota.get('reason'))}",
             ]
         )
         goal_frontier_line = _goal_frontier_projection_line(
@@ -535,13 +530,13 @@ def render_diagnosis_markdown(payload: dict[str, Any]) -> str:
     if contract_errors or contract_warnings:
         lines.extend(["", "## Status Contract Signals", ""])
         for item in contract_errors:
-            lines.append(f"- contract_error: {item}")
+            lines.append(f"- contract_error: {markdown_scalar(item)}")
         if status_summary.get("contract_errors_truncated"):
             lines.append(
                 f"- contract_errors_truncated: total={status_summary.get('contract_errors_total_count')}"
             )
         for item in contract_warnings:
-            lines.append(f"- contract_warning: {item}")
+            lines.append(f"- contract_warning: {markdown_scalar(item)}")
         if status_summary.get("contract_warnings_truncated"):
             lines.append(
                 f"- contract_warnings_truncated: total={status_summary.get('contract_warnings_total_count')}"
@@ -551,7 +546,7 @@ def render_diagnosis_markdown(payload: dict[str, Any]) -> str:
     if checklist:
         lines.extend(["", "## Agent Reasoning Checklist", ""])
         for item in checklist:
-            lines.append(f"- {item}")
+            lines.append(f"- {markdown_scalar(item)}")
 
     commands = _as_list(selected.get("agent_commands"))
     if commands:

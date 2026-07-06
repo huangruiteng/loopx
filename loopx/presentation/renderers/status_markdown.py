@@ -7,15 +7,12 @@ from ...control_plane import control_plane_policy_summary
 from ...execution_profile import execution_profile_summary
 from ...long_task_cadence import long_task_cadence_hint_summary
 from ...orchestration import orchestration_policy_summary
-
-
-def markdown_scalar(value: Any) -> str:
-    return str(value).replace("\n", " ").replace("|", "\\|").strip()
+from ..markdown import as_dict, as_list, markdown_scalar
 
 
 def goals_by_id(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    run_history = payload.get("run_history") if isinstance(payload.get("run_history"), dict) else {}
-    goals = run_history.get("goals") if isinstance(run_history.get("goals"), list) else []
+    run_history = as_dict(payload.get("run_history"))
+    goals = as_list(run_history.get("goals"))
     result: dict[str, dict[str, Any]] = {}
     for goal in goals:
         if not isinstance(goal, dict):
@@ -27,8 +24,8 @@ def goals_by_id(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def authority_registry_markdown_summary(goal: dict[str, Any] | None) -> str | None:
-    registry = goal.get("authority_registry") if isinstance(goal, dict) else None
-    if not isinstance(registry, dict) or not registry.get("declared"):
+    registry = as_dict(as_dict(goal).get("authority_registry"))
+    if not registry.get("declared"):
         return None
     materials = int(registry.get("project_material_count") or 0)
     topics = int(registry.get("topic_authority_count") or 0)
@@ -63,11 +60,7 @@ def append_status_overview_markdown(
         ]
     )
 
-    status_contract = (
-        payload.get("status_contract")
-        if isinstance(payload.get("status_contract"), dict)
-        else {}
-    )
+    status_contract = as_dict(payload.get("status_contract"))
     if status_contract:
         lines.append(
             "- status_contract: "
@@ -78,8 +71,8 @@ def append_status_overview_markdown(
     if payload.get("goal_filter"):
         lines.append(f"- goal_filter: `{payload.get('goal_filter')}`")
 
-    contract = payload.get("contract") if isinstance(payload.get("contract"), dict) else {}
-    summary = contract.get("summary") if isinstance(contract.get("summary"), dict) else {}
+    contract = as_dict(payload.get("contract"))
+    summary = as_dict(contract.get("summary"))
     lines.append(
         "- contract: "
         f"ok={contract.get('ok')}, "
@@ -87,14 +80,8 @@ def append_status_overview_markdown(
         f"warnings={summary.get('warnings')}, "
         f"checks={summary.get('checks')}"
     )
-    contract_errors = (
-        payload.get("contract_errors") if isinstance(payload.get("contract_errors"), list) else []
-    )
-    contract_warnings = (
-        payload.get("contract_warnings")
-        if isinstance(payload.get("contract_warnings"), list)
-        else []
-    )
+    contract_errors = as_list(payload.get("contract_errors"))
+    contract_warnings = as_list(payload.get("contract_warnings"))
     if contract_errors or contract_warnings:
         lines.extend(["", "## Status Contract Signals"])
         for item in contract_errors:
@@ -126,11 +113,7 @@ def append_global_registry_summary_markdown(
     lines: list[str],
     global_registry: dict[str, Any],
 ) -> None:
-    global_summary = (
-        global_registry.get("summary")
-        if isinstance(global_registry.get("summary"), dict)
-        else {}
-    )
+    global_summary = as_dict(global_registry.get("summary"))
     lines.extend(
         [
             "- global_registry: "
@@ -148,11 +131,7 @@ def append_global_registry_findings_markdown(
     lines: list[str],
     global_registry: dict[str, Any],
 ) -> None:
-    findings = (
-        global_registry.get("findings")
-        if isinstance(global_registry.get("findings"), list)
-        else []
-    )
+    findings = as_list(global_registry.get("findings"))
     if not findings:
         return
     lines.extend(["", "## Global Registry Findings"])
@@ -185,7 +164,7 @@ def append_human_reward_markdown(lines: list[str], goal_id: Any, reward: dict[st
     follow_up = reward.get("follow_up")
     if follow_up:
         lines.append(f"      - follow_up: {markdown_scalar(follow_up)}")
-    lesson = reward.get("lesson") if isinstance(reward.get("lesson"), dict) else {}
+    lesson = as_dict(reward.get("lesson"))
     if lesson:
         lines.append(
             "      - lesson: "
@@ -193,7 +172,7 @@ def append_human_reward_markdown(lines: list[str], goal_id: Any, reward: dict[st
             f"summary={markdown_scalar(lesson.get('summary') or '')}"
         )
         for field in ("avoid", "prefer"):
-            values = lesson.get(field) if isinstance(lesson.get(field), list) else []
+            values = as_list(lesson.get(field))
             if values:
                 lines.append(
                     f"        - lesson_{field}: "
@@ -970,7 +949,7 @@ def append_attention_queue_item_header_markdown(
     *,
     authority_summary: str | None = None,
 ) -> None:
-    action = str(item.get("recommended_action") or "").replace("|", "\\|")
+    action = markdown_scalar(item.get("recommended_action") or "")
     lines.append(
         "- "
         f"`{item.get('goal_id')}`: "

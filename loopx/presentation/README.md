@@ -11,6 +11,10 @@ surfaces. It must not become the control-plane source of truth.
 | `sinks/` | External display sinks such as Lark/Feishu tables and cards. | Connector login authority, private reads, or production actions. |
 | `projections/` | Future display-specific intermediate read models that join or reshape public-safe LoopX evidence for surfaces. | Persistent control state or benchmark scoring. |
 
+Shared Markdown primitives such as scalar escaping and payload shape guards live
+in `loopx.presentation.markdown`. Renderers should reuse those helpers instead
+of defining local table-cell or scalar escaping rules.
+
 Python code that starts as a user-visible capability may keep a thin facade
 under `loopx.capabilities.*`, but the reusable display implementation should
 live here.
