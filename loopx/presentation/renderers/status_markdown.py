@@ -914,6 +914,96 @@ def append_attention_queue_summary_markdown(
     )
 
 
+def render_status_markdown(
+    payload: dict[str, Any],
+    *,
+    event_classes: Collection[str],
+) -> str:
+    lines: list[str] = []
+    append_status_overview_markdown(lines, payload)
+    contract = payload.get("contract") if isinstance(payload.get("contract"), dict) else {}
+
+    global_registry = (
+        payload.get("global_registry")
+        if isinstance(payload.get("global_registry"), dict)
+        else {}
+    )
+    append_global_registry_summary_markdown(lines, global_registry)
+
+    event_ledger = (
+        payload.get("event_ledger_summary")
+        if isinstance(payload.get("event_ledger_summary"), dict)
+        else {}
+    )
+    append_event_ledger_summary_markdown(
+        lines,
+        event_ledger,
+        event_classes=event_classes,
+    )
+
+    promotion_readiness = (
+        payload.get("promotion_readiness_summary")
+        if isinstance(payload.get("promotion_readiness_summary"), dict)
+        else {}
+    )
+    append_promotion_readiness_summary_markdown(lines, promotion_readiness)
+
+    promotion_gate = (
+        payload.get("promotion_gate")
+        if isinstance(payload.get("promotion_gate"), dict)
+        else {}
+    )
+    append_promotion_gate_markdown(lines, promotion_gate)
+
+    decision_freshness = (
+        payload.get("decision_freshness_summary")
+        if isinstance(payload.get("decision_freshness_summary"), dict)
+        else {}
+    )
+    append_decision_freshness_summary_markdown(lines, decision_freshness)
+
+    usage = payload.get("usage_summary") if isinstance(payload.get("usage_summary"), dict) else {}
+    append_usage_summary_markdown(lines, usage)
+
+    queue = payload.get("attention_queue") if isinstance(payload.get("attention_queue"), dict) else {}
+    append_attention_queue_summary_markdown(lines, queue)
+    items = queue.get("items") if isinstance(queue.get("items"), list) else []
+    goals = goals_by_id(payload)
+    if not items:
+        lines.append("- none")
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        authority_summary = authority_registry_markdown_summary(
+            goals.get(str(item.get("goal_id") or ""))
+        )
+        append_attention_queue_item_header_markdown(
+            lines,
+            item,
+            authority_summary=authority_summary,
+        )
+        goal_todo_scope_suffix = attention_queue_goal_todo_scope_suffix(item)
+        append_attention_queue_project_asset_markdown(
+            lines,
+            item,
+            goal_todo_scope_suffix=goal_todo_scope_suffix,
+        )
+        append_attention_queue_item_operational_markdown(
+            lines,
+            item,
+            goal_todo_scope_suffix=goal_todo_scope_suffix,
+        )
+
+    run_history = payload.get("run_history") if isinstance(payload.get("run_history"), dict) else {}
+    append_run_history_markdown(lines, run_history)
+
+    append_status_contract_detail_sections_markdown(lines, contract)
+
+    append_global_registry_findings_markdown(lines, global_registry)
+
+    return "\n".join(lines)
+
+
 def append_attention_queue_candidate_group_markdown(
     lines: list[str],
     candidates: dict[str, Any],

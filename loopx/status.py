@@ -315,23 +315,7 @@ from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
 from .presentation.renderers.status_markdown import (
-    append_attention_queue_item_header_markdown as _append_attention_queue_item_header_markdown,
-    append_attention_queue_item_operational_markdown as _append_attention_queue_item_operational_markdown,
-    append_attention_queue_project_asset_markdown as _append_attention_queue_project_asset_markdown,
-    append_attention_queue_summary_markdown as _append_attention_queue_summary_markdown,
-    append_decision_freshness_summary_markdown as _append_decision_freshness_summary_markdown,
-    append_event_ledger_summary_markdown as _append_event_ledger_summary_markdown,
-    append_global_registry_findings_markdown as _append_global_registry_findings_markdown,
-    append_global_registry_summary_markdown as _append_global_registry_summary_markdown,
-    append_promotion_gate_markdown as _append_promotion_gate_markdown,
-    append_promotion_readiness_summary_markdown as _append_promotion_readiness_summary_markdown,
-    append_run_history_markdown as _append_run_history_markdown,
-    append_status_contract_detail_sections_markdown as _append_status_contract_detail_sections_markdown,
-    append_status_overview_markdown as _append_status_overview_markdown,
-    append_usage_summary_markdown as _append_usage_summary_markdown,
-    attention_queue_goal_todo_scope_suffix as _attention_queue_goal_todo_scope_suffix,
-    authority_registry_markdown_summary as _authority_registry_markdown_summary,
-    goals_by_id as _goals_by_id,
+    render_status_markdown as _render_status_markdown,
 )
 from .rollout_event_log import load_rollout_events, rollout_event_log_path
 from .state_projection import (
@@ -7176,80 +7160,4 @@ def collect_status(
 
 
 def render_status_markdown(payload: dict[str, Any]) -> str:
-    lines: list[str] = []
-    _append_status_overview_markdown(lines, payload)
-    contract = payload.get("contract") if isinstance(payload.get("contract"), dict) else {}
-
-    global_registry = payload.get("global_registry") if isinstance(payload.get("global_registry"), dict) else {}
-    _append_global_registry_summary_markdown(lines, global_registry)
-
-    event_ledger = (
-        payload.get("event_ledger_summary")
-        if isinstance(payload.get("event_ledger_summary"), dict)
-        else {}
-    )
-    _append_event_ledger_summary_markdown(
-        lines,
-        event_ledger,
-        event_classes=EVENT_LEDGER_CLASSES,
-    )
-
-    promotion_readiness = (
-        payload.get("promotion_readiness_summary")
-        if isinstance(payload.get("promotion_readiness_summary"), dict)
-        else {}
-    )
-    _append_promotion_readiness_summary_markdown(lines, promotion_readiness)
-
-    promotion_gate = (
-        payload.get("promotion_gate")
-        if isinstance(payload.get("promotion_gate"), dict)
-        else {}
-    )
-    _append_promotion_gate_markdown(lines, promotion_gate)
-
-    decision_freshness = (
-        payload.get("decision_freshness_summary")
-        if isinstance(payload.get("decision_freshness_summary"), dict)
-        else {}
-    )
-    _append_decision_freshness_summary_markdown(lines, decision_freshness)
-
-    usage = payload.get("usage_summary") if isinstance(payload.get("usage_summary"), dict) else {}
-    _append_usage_summary_markdown(lines, usage)
-
-    queue = payload.get("attention_queue") if isinstance(payload.get("attention_queue"), dict) else {}
-    _append_attention_queue_summary_markdown(lines, queue)
-    items = queue.get("items") if isinstance(queue.get("items"), list) else []
-    goals = _goals_by_id(payload)
-    if not items:
-        lines.append("- none")
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        authority_summary = _authority_registry_markdown_summary(goals.get(str(item.get("goal_id") or "")))
-        _append_attention_queue_item_header_markdown(
-            lines,
-            item,
-            authority_summary=authority_summary,
-        )
-        goal_todo_scope_suffix = _attention_queue_goal_todo_scope_suffix(item)
-        _append_attention_queue_project_asset_markdown(
-            lines,
-            item,
-            goal_todo_scope_suffix=goal_todo_scope_suffix,
-        )
-        _append_attention_queue_item_operational_markdown(
-            lines,
-            item,
-            goal_todo_scope_suffix=goal_todo_scope_suffix,
-        )
-
-    run_history = payload.get("run_history") if isinstance(payload.get("run_history"), dict) else {}
-    _append_run_history_markdown(lines, run_history)
-
-    _append_status_contract_detail_sections_markdown(lines, contract)
-
-    _append_global_registry_findings_markdown(lines, global_registry)
-
-    return "\n".join(lines)
+    return _render_status_markdown(payload, event_classes=EVENT_LEDGER_CLASSES)

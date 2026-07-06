@@ -13,6 +13,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.presentation.renderers.status_markdown import (  # noqa: E402
     append_status_overview_markdown,
+    render_status_markdown as render_presentation_status_markdown,
 )
 from loopx.status import render_status_markdown  # noqa: E402
 
@@ -118,6 +119,12 @@ def main() -> int:
     full_markdown = render_status_markdown(payload)
     assert_overview(full_markdown)
     assert_contract_details(full_markdown)
+
+    presentation_markdown = render_presentation_status_markdown(
+        payload,
+        event_classes=("accounting", "decision", "evidence", "state", "work"),
+    )
+    assert presentation_markdown == full_markdown, presentation_markdown
     print("status-overview-markdown-smoke ok")
     return 0
 

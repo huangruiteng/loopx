@@ -111,7 +111,7 @@ The next module-boundary PR should therefore:
 | Attention queue | `build_attention_queue` | Queue builder over normalized goal status, todos, gates, and project assets. | Queue ordering and truncation limits remain explicit and stable. |
 | Task graph projection | `loopx.control_plane.work_items.task_graph.build_task_graph_projection` with `loopx.status.build_task_graph_projection` as the status-facing wrapper | Read-only graph projection module. | Node caps include truncation metadata; full cold-path detail remains outside the hot graph. |
 | Status contract assembly | `build_status_contract`, `collect_status` | Thin collector/orchestrator that wires registry, runtime, state, and read models. | CLI status JSON shape remains compatible. |
-| Markdown rendering | `render_status_markdown` plus `loopx/presentation/renderers/status_markdown.py` | Render-only module/helpers over the status payload. | Rendering cannot become the source of scheduler or quota truth. |
+| Markdown rendering | `loopx/presentation/renderers/status_markdown.py` with `loopx.status.render_status_markdown` as the compatibility entry | Render-only module/helpers over the status payload. | Rendering cannot become the source of scheduler or quota truth. |
 
 ## Proposed Extraction Order
 
