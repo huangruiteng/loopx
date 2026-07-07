@@ -16,13 +16,8 @@ class StatusCollectionContext:
     collect_history: StatusCallback
     check_contract: StatusCallback
     build_attention_queue: StatusCallback
-    build_run_history: StatusCallback
-    build_event_ledger_summary: StatusCallback
-    build_promotion_readiness_summary: StatusCallback
+    build_runtime_summaries: StatusCallback
     build_promotion_gate: StatusCallback
-    build_decision_freshness_summary: StatusCallback
-    build_usage_summary: StatusCallback
-    build_todo_index: StatusCallback
     build_status_contract: StatusCallback
     build_contract_health_projection: StatusCallback
     build_agent_management_projection: StatusCallback
@@ -72,24 +67,17 @@ def collect_status(
         include_task_graph=include_task_graph,
         goal_id_filter=goal_filter,
     )
-    run_history = context.build_run_history(history, display_limit=display_limit)
-    event_ledger_summary = context.build_event_ledger_summary(history)
-    promotion_readiness_summary = context.build_promotion_readiness_summary(
-        history,
+    runtime_summaries = context.build_runtime_summaries(
+        history=history,
+        queue=queue,
         runtime_root=runtime_root,
         goal_id_filter=goal_filter,
+        display_limit=display_limit,
+        todo_index_limit=max(context.max_todo_index_items, display_limit),
     )
     promotion_gate = context.build_promotion_gate(
         registry_path=registry_path,
         runtime_root_override=str(runtime_root),
-    )
-    decision_freshness_summary = context.build_decision_freshness_summary(history)
-    usage_summary = context.build_usage_summary(history)
-    todo_index = context.build_todo_index(
-        queue=queue,
-        history=history,
-        runtime_root=runtime_root,
-        limit=max(context.max_todo_index_items, display_limit),
     )
     payload = {
         "ok": bool(contract.get("ok")) and bool(global_registry.get("ok", True)),
@@ -109,13 +97,8 @@ def collect_status(
         },
         "global_registry": global_registry,
         "attention_queue": queue,
-        "run_history": run_history,
-        "event_ledger_summary": event_ledger_summary,
-        "promotion_readiness_summary": promotion_readiness_summary,
+        **runtime_summaries,
         "promotion_gate": promotion_gate,
-        "decision_freshness_summary": decision_freshness_summary,
-        "usage_summary": usage_summary,
-        "todo_index": todo_index,
     }
     agent_management_projection = context.build_agent_management_projection(payload)
     if agent_management_projection.get("agents"):

@@ -16,6 +16,10 @@ from .control_plane.status_collection import (
     StatusCollectionContext,
     collect_status as _collect_status_read_model,
 )
+from .control_plane.status_runtime_summaries import (
+    StatusRuntimeSummaryContext,
+    build_status_runtime_summaries as _build_status_runtime_summaries_read_model,
+)
 from .contract import check_contract
 from .control_plane.work_items.delivery_batch_scale import (
     SMALL_DELIVERY_BATCH_SCALES as STRUCTURED_SMALL_DELIVERY_BATCH_SCALES,
@@ -185,29 +189,20 @@ from .control_plane.runtime.public_safety import (
 )
 from .control_plane.runtime.time import parse_timestamp
 from .control_plane.runtime.run_history import (
-    build_run_history as _build_run_history_read_model,
     latest_run as _latest_run_read_model,
 )
 from .control_plane.runtime.event_ledger import (
     EVENT_LEDGER_CLASSES,
-    EVENT_LEDGER_PROXY_NOTE,
-    blank_event_class_counts,
-    blank_event_ledger_goal,
-    build_event_ledger_summary as _build_event_ledger_summary_read_model,
-    event_ledger_event_class as _event_ledger_event_class_read_model,
 )
 from .control_plane.runtime.decision_freshness import (
     DECISION_FRESHNESS_CLASSIFICATION_PREFIXES,
     DECISION_FRESHNESS_ITEM_LIMIT,
     DECISION_FRESHNESS_PROXY_NOTE,
     DECISION_FRESHNESS_WINDOW_DAYS,
-    build_decision_freshness_summary as _build_decision_freshness_summary_read_model,
-    decision_event_kinds as _decision_event_kinds_read_model,
     decision_freshness_reason,
 )
 from .control_plane.runtime.promotion_readiness import (
     PROMOTION_READINESS_PROXY_NOTE,
-    build_promotion_readiness_summary as _build_promotion_readiness_summary_read_model,
 )
 from .control_plane.handoff.handoff_runs import (
     is_custom_post_handoff_work_run as _is_custom_post_handoff_work_run_read_model,
@@ -307,12 +302,10 @@ from .control_plane.todos.todo_index import (
     MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL,
     TODO_INDEX_ITEM_SCHEMA_VERSION,
     TODO_INDEX_SCHEMA_VERSION,
-    build_todo_index as _build_todo_index_read_model,
 )
 from .control_plane.quota.usage_summary import (
     USAGE_PROXY_NOTE,
     blank_usage_goal,
-    build_usage_summary as _build_usage_summary_read_model,
     is_automation_run,
     is_progress_signal_run,
     quota_spend_slots,
@@ -6813,65 +6806,6 @@ def compact_run(run: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def build_run_history(history: dict[str, Any], *, display_limit: int | None = None) -> dict[str, Any]:
-    return _build_run_history_read_model(
-        history,
-        latest_run=latest_run,
-        goal_lifecycle_fields=goal_lifecycle_fields,
-        subagent_activity_for_goal=subagent_activity_for_goal,
-        compact_run=compact_run,
-        quota_status=quota_status,
-        display_limit=display_limit,
-    )
-
-
-def event_ledger_event_class(run: dict[str, Any]) -> str:
-    return _event_ledger_event_class_read_model(
-        run,
-        compact_benchmark_run=compact_benchmark_run,
-        compact_benchmark_result=compact_benchmark_result,
-        compact_benchmark_comparison=compact_benchmark_comparison,
-        compact_benchmark_learning_ledger=compact_benchmark_learning_ledger,
-        compact_benchmark_experiment_report=compact_benchmark_experiment_report,
-        compact_active_user_assisted_pilot=compact_active_user_assisted_pilot,
-        run_has_external_evidence_watch_signal=run_has_external_evidence_watch_signal,
-        decision_classifications=EVENT_LEDGER_DECISION_CLASSIFICATIONS,
-        evidence_classifications=EVENT_LEDGER_EVIDENCE_CLASSIFICATIONS,
-        evidence_hints=EVENT_LEDGER_EVIDENCE_HINTS,
-        state_classifications=EVENT_LEDGER_STATE_CLASSIFICATIONS,
-    )
-
-
-def build_event_ledger_summary(history: dict[str, Any]) -> dict[str, Any]:
-    return _build_event_ledger_summary_read_model(
-        history,
-        parse_timestamp=parse_timestamp,
-        event_class_for_run=event_ledger_event_class,
-        compact_benchmark_run=compact_benchmark_run,
-    )
-
-
-def build_promotion_readiness_summary(
-    history: dict[str, Any],
-    *,
-    runtime_root: Path | None = None,
-    goal_id_filter: str | None = None,
-) -> dict[str, Any]:
-    return _build_promotion_readiness_summary_read_model(
-        history,
-        parse_timestamp=parse_timestamp,
-        readiness_classifications=PROMOTION_READINESS_CLASSIFICATIONS,
-        add_promotion_readiness_freshness=add_promotion_readiness_freshness,
-        latest_promotion_readiness_event=lambda root: latest_promotion_readiness_event(
-            root,
-            goal_id=goal_id_filter,
-        ),
-        freshness_hours=PROMOTION_READINESS_FRESHNESS_HOURS,
-        runtime_root=runtime_root,
-        proxy_note=PROMOTION_READINESS_PROXY_NOTE,
-    )
-
-
 def build_status_contract() -> dict[str, Any]:
     return _build_status_contract_read_model(
         schema_version=STATUS_CONTRACT_SCHEMA_VERSION,
@@ -6887,47 +6821,55 @@ def build_contract_health_projection(contract: dict[str, Any]) -> dict[str, Any]
     )
 
 
-def decision_event_kinds(run: dict[str, Any]) -> list[str]:
-    return _decision_event_kinds_read_model(
-        run,
+def build_status_runtime_summary_context() -> StatusRuntimeSummaryContext:
+    return StatusRuntimeSummaryContext(
+        latest_run=latest_run,
+        goal_lifecycle_fields=goal_lifecycle_fields,
+        subagent_activity_for_goal=subagent_activity_for_goal,
+        compact_run=compact_run,
+        quota_status=quota_status,
+        parse_timestamp=parse_timestamp,
+        compact_benchmark_run=compact_benchmark_run,
+        compact_benchmark_result=compact_benchmark_result,
+        compact_benchmark_comparison=compact_benchmark_comparison,
+        compact_benchmark_learning_ledger=compact_benchmark_learning_ledger,
+        compact_benchmark_experiment_report=compact_benchmark_experiment_report,
+        compact_active_user_assisted_pilot=compact_active_user_assisted_pilot,
+        run_has_external_evidence_watch_signal=run_has_external_evidence_watch_signal,
         decision_classifications=EVENT_LEDGER_DECISION_CLASSIFICATIONS,
-        classification_prefixes=DECISION_FRESHNESS_CLASSIFICATION_PREFIXES,
-    )
-
-
-def build_decision_freshness_summary(history: dict[str, Any]) -> dict[str, Any]:
-    return _build_decision_freshness_summary_read_model(
-        history,
-        parse_timestamp=parse_timestamp,
-        decision_event_kinds=decision_event_kinds,
-        event_class_for_run=event_ledger_event_class,
-        blank_event_class_counts=blank_event_class_counts,
-        window_days=DECISION_FRESHNESS_WINDOW_DAYS,
-        item_limit=DECISION_FRESHNESS_ITEM_LIMIT,
-        proxy_note=DECISION_FRESHNESS_PROXY_NOTE,
-    )
-
-
-def build_usage_summary(history: dict[str, Any]) -> dict[str, Any]:
-    return _build_usage_summary_read_model(
-        history,
-        parse_timestamp=parse_timestamp,
-    )
-
-
-def build_todo_index(
-    *,
-    queue: dict[str, Any],
-    history: dict[str, Any],
-    runtime_root: Path,
-    limit: int = MAX_TODO_INDEX_ITEMS,
-) -> dict[str, Any]:
-    return _build_todo_index_read_model(
-        queue=queue,
-        history=history,
-        runtime_root=runtime_root,
+        evidence_classifications=EVENT_LEDGER_EVIDENCE_CLASSIFICATIONS,
+        evidence_hints=EVENT_LEDGER_EVIDENCE_HINTS,
+        state_classifications=EVENT_LEDGER_STATE_CLASSIFICATIONS,
+        promotion_readiness_classifications=PROMOTION_READINESS_CLASSIFICATIONS,
+        add_promotion_readiness_freshness=add_promotion_readiness_freshness,
+        latest_promotion_readiness_event=latest_promotion_readiness_event,
+        promotion_readiness_freshness_hours=PROMOTION_READINESS_FRESHNESS_HOURS,
+        promotion_readiness_proxy_note=PROMOTION_READINESS_PROXY_NOTE,
         public_safe_compact_text=public_safe_compact_text,
-        limit=limit,
+        decision_freshness_classification_prefixes=DECISION_FRESHNESS_CLASSIFICATION_PREFIXES,
+        decision_freshness_window_days=DECISION_FRESHNESS_WINDOW_DAYS,
+        decision_freshness_item_limit=DECISION_FRESHNESS_ITEM_LIMIT,
+        decision_freshness_proxy_note=DECISION_FRESHNESS_PROXY_NOTE,
+    )
+
+
+def build_status_runtime_summaries(
+    *,
+    history: dict[str, Any],
+    queue: dict[str, Any],
+    runtime_root: Path,
+    goal_id_filter: str | None,
+    display_limit: int,
+    todo_index_limit: int,
+) -> dict[str, Any]:
+    return _build_status_runtime_summaries_read_model(
+        history=history,
+        queue=queue,
+        runtime_root=runtime_root,
+        goal_id_filter=goal_id_filter,
+        display_limit=display_limit,
+        todo_index_limit=todo_index_limit,
+        context=build_status_runtime_summary_context(),
     )
 
 
@@ -6939,13 +6881,8 @@ def build_status_collection_context() -> StatusCollectionContext:
         collect_history=collect_history,
         check_contract=check_contract,
         build_attention_queue=build_attention_queue,
-        build_run_history=build_run_history,
-        build_event_ledger_summary=build_event_ledger_summary,
-        build_promotion_readiness_summary=build_promotion_readiness_summary,
+        build_runtime_summaries=build_status_runtime_summaries,
         build_promotion_gate=build_promotion_gate,
-        build_decision_freshness_summary=build_decision_freshness_summary,
-        build_usage_summary=build_usage_summary,
-        build_todo_index=build_todo_index,
         build_status_contract=build_status_contract,
         build_contract_health_projection=build_contract_health_projection,
         build_agent_management_projection=_build_agent_management_projection_read_model,

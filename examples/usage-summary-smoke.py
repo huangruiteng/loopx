@@ -204,7 +204,14 @@ def main() -> int:
         assert status_contract["reload_hint"] == "scripts/macos-dashboard-launchagent.sh restart", status_contract
 
         usage = payload["usage_summary"]
-        wrapper_usage = status_module.build_usage_summary(history)
+        wrapper_usage = status_module.build_status_runtime_summaries(
+            history=history,
+            queue=payload["attention_queue"],
+            runtime_root=runtime,
+            goal_id_filter=None,
+            display_limit=20,
+            todo_index_limit=240,
+        )["usage_summary"]
         direct_usage = build_usage_summary_read_model(
             history,
             parse_timestamp=status_module.parse_timestamp,

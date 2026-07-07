@@ -20,7 +20,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.status import (  # noqa: E402
-    build_promotion_readiness_summary,
+    build_status_runtime_summaries,
     build_contract_health_projection,
     collect_status,
     delivery_batch_scale_for_run,
@@ -1133,10 +1133,10 @@ def assert_promotion_readiness_full_scan_fallback() -> None:
             encoding="utf-8",
         )
 
-        summary = build_promotion_readiness_summary(
-            {"runs": [{"classification": "quota_slot_spent", "generated_at": "2026-01-02T00:00:00+00:00"}]},
-            runtime_root=runtime,
-        )
+        summary = build_status_runtime_summaries(
+            history={"runs": [{"classification": "quota_slot_spent", "generated_at": "2026-01-02T00:00:00+00:00"}]},
+            queue={"items": []}, runtime_root=runtime, goal_id_filter=None, display_limit=1, todo_index_limit=1,
+        )["promotion_readiness_summary"]
         assert summary["available"] is True, summary
         assert summary["source"] == "run_history_full_scan", summary
         assert summary["sample_run_count"] == 0, summary
