@@ -914,6 +914,16 @@ def _load_visible_wake_into_payload(
         if isinstance(wake.get("driver_contract"), dict)
         else {}
     )
+    prompt_submit_checks = wake.get("prompt_submit_checks") or []
+    pane_input_ready_checks = wake.get("pane_input_ready_checks") or []
+    not_ready_reasons = sorted(
+        {
+            str(check.get("not_ready_reason"))
+            for check in pane_input_ready_checks
+            if isinstance(check, dict) and check.get("not_ready_reason")
+        }
+    )
+    prompt_delivered = bool(prompt_submit_checks)
     payload["visible_wake"] = {
         "schema_version": wake.get("schema_version"),
         "mode": wake.get("mode"),
@@ -927,12 +937,15 @@ def _load_visible_wake_into_payload(
         "broadcaster_selects_todo": bool(wake.get("broadcaster_selects_todo")),
         "pane_decision_owner": wake.get("pane_decision_owner"),
         "pane_input_ready_verified": wake.get("pane_input_ready_verified") is True,
-        "pane_input_ready_checks": wake.get("pane_input_ready_checks") or [],
+        "pane_input_ready_checks": pane_input_ready_checks,
         "pane_input_ready_timeout_seconds": wake.get("pane_input_ready_timeout_seconds"),
         "ready_lanes": wake.get("ready_lanes") or [],
         "not_ready_lanes": wake.get("not_ready_lanes") or [],
-        "prompt_submit_checks": wake.get("prompt_submit_checks") or [],
+        "not_ready_reasons": not_ready_reasons,
+        "prompt_submit_checks": prompt_submit_checks,
+        "prompt_delivered": prompt_delivered,
         "prompt_delivery": wake.get("prompt_delivery"),
+        "auto_wake_backoff_recommended": wake.get("auto_wake_backoff_recommended") is True,
         "driver_contract_schema": driver.get("schema_version"),
         "driver_owner_layer": driver.get("owner_layer"),
         "boundary": wake.get("boundary"),
@@ -941,6 +954,12 @@ def _load_visible_wake_into_payload(
     if isinstance(visible_proof, dict):
         visible_proof["cadence_wake_loaded"] = True
         prompt_delivery = wake.get("prompt_delivery")
+        cadence_wake_pending_reason = None
+        if not prompt_delivered:
+            if prompt_delivery == "skipped_no_input_ready_panes":
+                cadence_wake_pending_reason = "pane_not_ready"
+            elif prompt_delivery == "skipped_terminal_pane_backoff":
+                cadence_wake_pending_reason = "terminal_backoff"
         visible_proof["cadence_wake_verified"] = (
             wake.get("mode") == "execute"
             and wake.get("coordination_model") == "decentralized_state_a2a"
@@ -952,9 +971,12 @@ def _load_visible_wake_into_payload(
             in {
                 "tmux_paste_buffer_after_codex_tui_first_turn_ready",
                 "tmux_paste_buffer_after_ready_subset",
-                "skipped_no_input_ready_panes",
             }
+            and prompt_delivered
         )
+        visible_proof["cadence_wake_prompt_delivered"] = prompt_delivered
+        visible_proof["cadence_wake_pending_reason"] = cadence_wake_pending_reason
+        visible_proof["cadence_wake_not_ready_reasons"] = not_ready_reasons
 
 
 def _numeric_metric(value: object) -> float | None:
