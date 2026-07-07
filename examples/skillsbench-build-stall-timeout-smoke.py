@@ -41,11 +41,11 @@ def test_skillsbench_runner_failure_marks_build_stall_timeout() -> None:
             ]
         )
         default_plan = build_plan(default_args)
-        assert default_plan["build_stall_timeout_requested_sec"] == 900
-        assert default_plan["build_stall_timeout_sec"] == 900
+        assert default_plan["build_stall_timeout_requested_sec"] == 0
+        assert default_plan["build_stall_timeout_sec"] == 0
         assert default_plan["runner_prerequisites"][
             "benchflow_setup_stall_timeout_enabled"
-        ] is True
+        ] is False
         assert default_plan["runner_prerequisites"][
             "benchflow_setup_stall_timeout_capped"
         ] is False

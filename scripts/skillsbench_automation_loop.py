@@ -15974,8 +15974,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "Optional public-safe watchdog for Docker build/setup before any "
             "agent lifecycle starts. Defaults to "
-            f"{DEFAULT_BUILD_STALL_TIMEOUT_SEC}s; larger values are honored "
-            "for slow but progressing setup, and 0 disables the watchdog."
+            f"{DEFAULT_BUILD_STALL_TIMEOUT_SEC}s, which disables the watchdog; "
+            "positive values are honored for setup-stall attribution."
         ),
     )
     parser.add_argument("--agent-idle-timeout", type=int, default=900)
