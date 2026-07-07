@@ -753,6 +753,13 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         == "typed_goal_resubmit"
     )
     assert (
+        codex_cli_tui_pre_bridge_recovery_action(
+            "Goal active\nerror seen\npress enter to retry\n› ",
+            stage="pre_bridge_tui_error_prompt",
+        )
+        == "typed_goal_resubmit"
+    )
+    assert (
         codex_cli_tui_pre_bridge_terminal_stage(
             first_turn_terminal_timeout_capture,
             prompt_visible=True,
@@ -1155,11 +1162,77 @@ def _assert_cli_goal_active_timeout_is_public_countability_stage() -> None:
         "skillsbench_codex_cli_goal_uncountable_pre_bridge_model_timeout"
     )
     assert (
-        trace["codex_cli_goal_tui_post_bridge_recovery_action"]
+        trace["codex_cli_goal_tui_pre_bridge_recovery_action"]
         == "typed_goal_resubmit"
     )
+    assert trace["codex_cli_goal_tui_pre_bridge_recovery_attempt_count"] == 2
+    assert trace["codex_cli_goal_tui_post_bridge_recovery_action"] == ""
+    assert trace["codex_cli_goal_tui_post_bridge_recovery_attempt_count"] == 0
+    public_prerequisites = _public_runner_prerequisites(plan["runner_prerequisites"])
+    assert (
+        public_prerequisites["codex_cli_goal_tui_pre_bridge_recovery_attempt_count"]
+        == 2
+    )
+    assert public_prerequisites[
+        "codex_cli_goal_tui_pre_bridge_recovery_actions"
+    ] == ["typed_goal_resubmit"]
     contract = compact["codex_cli_goal_countability_contract"]
     assert contract["goal_stage"] == "pre_bridge_tui_model_timeout", contract
+
+    with tempfile.TemporaryDirectory() as temp:
+        trace_dir = Path(temp) / "trace"
+        trace_dir.mkdir(parents=True)
+        (trace_dir / "legacy-pre-bridge.compact.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": (
+                        "skillsbench_host_local_acp_relay_public_trace_v0"
+                    ),
+                    "ok": False,
+                    "trace_kind": "codex_cli_goal_tui",
+                    "boundary": {
+                        "raw_command_recorded": False,
+                        "raw_stdout_recorded": False,
+                        "raw_stderr_recorded": False,
+                        "credential_values_recorded": False,
+                    },
+                    "codex_cli_goal": {
+                        "stage": "pre_bridge_tui_error_prompt",
+                        "goal_active_observed": True,
+                        "goal_terminal_observed": False,
+                        "first_action_observed": False,
+                        "bridge_request_count": 0,
+                        "task_facing_success_count": 0,
+                        "post_bridge_recovery_attempt_count": 2,
+                        "post_bridge_recovery_action": "press_enter",
+                        "post_bridge_recovery_skip_reason": "retry_limit_reached",
+                        "raw_tui_capture_recorded": False,
+                        "raw_task_text_recorded": False,
+                        "raw_stdout_recorded": False,
+                        "raw_stderr_recorded": False,
+                        "credential_values_recorded": False,
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        plan = {
+            "route": CODEX_CLI_GOAL_BASELINE_ROUTE,
+            "host_local_acp_relay_trace_dir": str(trace_dir),
+            "runner_prerequisites": {},
+        }
+        trace = {}
+        _merge_host_local_acp_relay_trace_summary(plan, trace)
+
+    assert trace["codex_cli_goal_tui_pre_bridge_recovery_attempt_count"] == 2
+    assert trace["codex_cli_goal_tui_pre_bridge_recovery_action"] == "press_enter"
+    assert (
+        trace["codex_cli_goal_tui_pre_bridge_recovery_skip_reason"]
+        == "retry_limit_reached"
+    )
+    assert trace["codex_cli_goal_tui_post_bridge_recovery_attempt_count"] == 0
+    assert trace["codex_cli_goal_tui_post_bridge_recovery_action"] == ""
 
     with tempfile.TemporaryDirectory() as temp:
         trace_dir = Path(temp) / "trace"

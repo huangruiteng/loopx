@@ -130,6 +130,10 @@ def codex_cli_tui_pre_bridge_recovery_action(capture: str, *, stage: str) -> str
         "pre_bridge_tui_error_prompt",
     }:
         return ""
+    if stage == "pre_bridge_tui_error_prompt" and codex_cli_tui_input_prompt_visible(
+        capture
+    ):
+        return "typed_goal_resubmit"
     if _capture_has_retry_affordance(capture):
         return "press_enter"
     if codex_cli_tui_input_prompt_visible(capture):
