@@ -330,6 +330,28 @@ def assert_scheduler_ack_plan_validation() -> None:
         ack_args["identity_signature"],
         "--execute",
     ], ack_hint
+    with_capabilities = active_payload()
+    with_capabilities["capability_gate"] = {
+        "available": ["shell", "network", "benchmark_runner"],
+    }
+    capability_hint = build_scheduler_hint(
+        with_capabilities,
+        agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
+    )
+    capability_ack_hint = capability_hint["codex_app"]["ack_hint"]
+    capability_ack_args = capability_ack_hint["args"]
+    capability_cli_args = capability_ack_hint["cli_args"]
+    assert capability_ack_args["available_capabilities"] == [
+        "network",
+        "benchmark_runner",
+    ], capability_ack_hint
+    assert capability_cli_args.count("--available-capability") == 2, capability_ack_hint
+    for capability in capability_ack_args["available_capabilities"]:
+        capability_index = capability_cli_args.index(capability)
+        assert capability_cli_args[capability_index - 1] == "--available-capability", (
+            capability,
+            capability_ack_hint,
+        )
     plan = build_scheduler_ack_plan(
         {"scheduler_hint": first},
         agent_id=ack_args["agent_id"],
@@ -655,7 +677,7 @@ def assert_cli_scheduler_ack_uses_should_run_lookback() -> None:
         quota_command="scheduler-ack",
         goal_id="scheduler-state-ack-smoke",
         agent_id="codex-side-agent",
-        available_capabilities=None,
+        available_capabilities=["shell", "network", "benchmark_runner"],
         include_scheduler_detail=False,
         slots=1,
         source="heartbeat",
@@ -702,6 +724,11 @@ def assert_cli_scheduler_ack_uses_should_run_lookback() -> None:
     assert seen["limit"] == AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, seen
     assert seen["payload"] == {"ok": True, "mode": "scheduler-ack", "dry_run": True}, seen
     ack_kwargs = seen["ack_kwargs"]
+    assert ack_kwargs["available_capabilities"] == [
+        "shell",
+        "network",
+        "benchmark_runner",
+    ], seen
     assert ack_kwargs["reset_token"] == "fixture-reset-token", seen
     assert ack_kwargs["identity_signature"] == "fixture-identity-signature", seen
 

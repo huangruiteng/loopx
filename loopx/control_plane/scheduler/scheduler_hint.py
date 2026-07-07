@@ -26,6 +26,7 @@ CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION = "codex_app_stateful_backoff_v0"
 CODEX_APP_SCHEDULER_ACK_HINT_SCHEMA_VERSION = "codex_app_scheduler_ack_hint_v0"
 MONITOR_CADENCE_PATTERN = re.compile(r"^\s*(\d+)\s*([mhd])\s*$", re.IGNORECASE)
 MONITOR_WAIT_PROGRESSION_MINUTES = [15, 30, 60, 120]
+DEFAULT_ACK_CAPABILITIES = {"shell", "filesystem_read", "filesystem_write"}
 
 
 def normalize_scheduler_rrule(value: Any) -> str:
@@ -63,6 +64,7 @@ def build_codex_app_scheduler_ack_hint(
     applied_rrule: Any,
     reset_token: Any,
     identity_signature: Any,
+    available_capabilities: Any = None,
     surface: str = CODEX_APP_SURFACE,
     state_key: str = CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
 ) -> dict[str, Any]:
@@ -73,6 +75,16 @@ def build_codex_app_scheduler_ack_hint(
     safe_state_key = str(state_key or "").strip()
     safe_reset_token = str(reset_token or "").strip()
     safe_identity_signature = str(identity_signature or "").strip()
+    safe_available_capabilities: list[str] = []
+    if isinstance(available_capabilities, (list, tuple, set)):
+        for capability in available_capabilities:
+            safe_capability = str(capability or "").strip()
+            if (
+                safe_capability
+                and safe_capability not in DEFAULT_ACK_CAPABILITIES
+                and safe_capability not in safe_available_capabilities
+            ):
+                safe_available_capabilities.append(safe_capability)
     cli_args = [
         "quota",
         "scheduler-ack",
@@ -80,33 +92,42 @@ def build_codex_app_scheduler_ack_hint(
         safe_goal_id,
         "--agent-id",
         safe_agent_id,
-        "--surface",
-        safe_surface,
-        "--state-key",
-        safe_state_key,
-        "--applied-rrule",
-        safe_rrule,
-        "--reset-token",
-        safe_reset_token,
-        "--identity-signature",
-        safe_identity_signature,
-        "--execute",
     ]
+    for capability in safe_available_capabilities:
+        cli_args.extend(["--available-capability", capability])
+    cli_args.extend(
+        [
+            "--surface",
+            safe_surface,
+            "--state-key",
+            safe_state_key,
+            "--applied-rrule",
+            safe_rrule,
+            "--reset-token",
+            safe_reset_token,
+            "--identity-signature",
+            safe_identity_signature,
+            "--execute",
+        ]
+    )
+    args = {
+        "goal_id": safe_goal_id,
+        "agent_id": safe_agent_id,
+        "surface": safe_surface,
+        "state_key": safe_state_key,
+        "applied_rrule": safe_rrule,
+        "reset_token": safe_reset_token,
+        "identity_signature": safe_identity_signature,
+    }
+    if safe_available_capabilities:
+        args["available_capabilities"] = safe_available_capabilities
     return {
         "schema_version": CODEX_APP_SCHEDULER_ACK_HINT_SCHEMA_VERSION,
         "after": "automation_update_rrule_success",
         "command": "quota scheduler-ack",
         "execute": True,
         "cli_args": cli_args,
-        "args": {
-            "goal_id": safe_goal_id,
-            "agent_id": safe_agent_id,
-            "surface": safe_surface,
-            "state_key": safe_state_key,
-            "applied_rrule": safe_rrule,
-            "reset_token": safe_reset_token,
-            "identity_signature": safe_identity_signature,
-        },
+        "args": args,
         "no_spend": True,
     }
 
@@ -381,6 +402,16 @@ def build_scheduler_hint(
         or execution_obligation.get("spend_policy")
         or heartbeat_recommendation.get("spend_policy")
     )
+    capability_gate = (
+        payload.get("capability_gate")
+        if isinstance(payload.get("capability_gate"), dict)
+        else {}
+    )
+    scheduler_ack_capabilities = (
+        capability_gate.get("available")
+        if isinstance(capability_gate.get("available"), list)
+        else []
+    )
     identity_keys = [
         "goal_id",
         "agent_identity.agent_id",
@@ -602,6 +633,7 @@ def build_scheduler_hint(
                     applied_rrule=current_rrule,
                     reset_token=reset_token,
                     identity_signature=identity_signature,
+                    available_capabilities=scheduler_ack_capabilities,
                 )
         scheduler_hint = {
             "schema_version": SCHEDULER_HINT_SCHEMA_VERSION,
