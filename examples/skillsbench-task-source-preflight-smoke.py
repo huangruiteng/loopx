@@ -63,6 +63,7 @@ def _app_goal_args(
         "--update-ledger",
         "--host-local-acp-launch",
         "--remote-command-file-bridge-ready",
+        "--allow-deprecated-app-server-goal-route",
     ]
 
 
@@ -100,6 +101,9 @@ def test_sanity_task_source_fails_before_runner_spend() -> None:
         assert preflight["alternate_source_kind"] == "experiments_sanity_tasks", (
             preflight
         )
+        assert preflight["canonical_equivalent_status"] == (
+            "no_close_canonical_match"
+        ), preflight
         assert preflight["task_source_path_recorded"] is False, preflight
         assert preflight["task_source_content_recorded"] is False, preflight
         assert preflight["nearest_canonical_task_ids"] == [
@@ -129,6 +133,9 @@ def test_sanity_task_source_fails_before_runner_spend() -> None:
         assert compact["task_setup_preflight"]["alternate_source_kind"] == (
             "experiments_sanity_tasks"
         )
+        assert compact["task_setup_preflight"]["canonical_equivalent_status"] == (
+            "no_close_canonical_match"
+        )
         assert compact["validation"]["no_raw_task_text_read"] is True, compact
 
         update = load_benchmark_run_ledger(ledger)
@@ -139,6 +146,67 @@ def test_sanity_task_source_fails_before_runner_spend() -> None:
         assert case["runs"][0]["repair_class"] == (
             "skillsbench_task_source_preflight_selection"
         )
+
+
+def test_missing_task_source_records_no_close_canonical_equivalent() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-no-canonical-equivalent-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        _write_task(skillsbench_root, "tasks/3d-scan-calc")
+        _write_task(skillsbench_root, "tasks/offer-letter-generator")
+        _write_task(skillsbench_root, "tasks/paratransit-routing")
+        _write_task(skillsbench_root, "tasks/travel-planning")
+
+        jobs = root / "jobs"
+        ledger = root / "ledger.json"
+        args = [
+            "--task-id",
+            "scheduling-email-assistant",
+            "--route",
+            "raw-codex-autonomous-max5",
+            "--skillsbench-root",
+            str(skillsbench_root),
+            "--jobs-dir",
+            str(jobs),
+            "--job-name",
+            "skillsbench-scheduling-email-task-source-preflight",
+            "--run-group-id",
+            "skillsbench-scheduling-email-task-source-preflight",
+            "--ledger-path",
+            str(ledger),
+            "--update-ledger",
+        ]
+        plan = build_plan(parse_args(args))
+        preflight = plan["task_setup_preflight"]
+        assert preflight["status"] == "task_missing_from_canonical_tasks", preflight
+        assert preflight["canonical_task_present"] is False, preflight
+        assert preflight["alternate_source_kind"] == "none", preflight
+        assert preflight["canonical_equivalent_status"] == (
+            "no_close_canonical_match"
+        ), preflight
+        assert preflight["raw_task_text_read"] is False, preflight
+        assert preflight["task_source_path_recorded"] is False, preflight
+        assert preflight["task_source_content_recorded"] is False, preflight
+
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            rc = skillsbench_automation_loop_main(args)
+
+        assert rc == 0, stderr.getvalue()
+        compact_path = (
+            jobs
+            / "skillsbench-scheduling-email-task-source-preflight"
+            / "scheduling-email-assistant__raw_codex_autonomous_max5"
+            / "benchmark_run.compact.json"
+        )
+        compact = json.loads(compact_path.read_text(encoding="utf-8"))
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_task_source_preflight_blocked"
+        )
+        assert compact["task_setup_preflight"]["canonical_equivalent_status"] == (
+            "no_close_canonical_match"
+        )
+        assert compact["validation"]["no_raw_task_text_read"] is True, compact
 
 
 def test_reverse_tunnel_app_goal_defaults_verifier_bootstrap_fail_fast() -> None:
@@ -174,6 +242,7 @@ def test_reverse_tunnel_app_goal_defaults_verifier_bootstrap_fail_fast() -> None
             "--update-ledger",
             "--host-local-acp-launch",
             "--remote-command-file-bridge-ready",
+            "--allow-deprecated-app-server-goal-route",
         ]
         parsed = parse_args(args)
         assert parsed.fail_fast_on_apt_risk is True
@@ -437,6 +506,7 @@ def test_reverse_tunnel_app_goal_allows_explicit_staged_bootstrap_repair() -> No
 
 if __name__ == "__main__":
     test_sanity_task_source_fails_before_runner_spend()
+    test_missing_task_source_records_no_close_canonical_equivalent()
     test_reverse_tunnel_app_goal_defaults_verifier_bootstrap_fail_fast()
     test_reverse_tunnel_app_goal_defaults_apt_bootstrap_fail_fast()
     test_reverse_tunnel_app_goal_blocks_pip_bootstrap_light_risk()

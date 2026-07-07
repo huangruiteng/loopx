@@ -54,6 +54,44 @@ def write_official_skillsbench_result(
     return result_path
 
 
+def write_official_skillsbench_passed_bool_result(
+    root: Path,
+    *,
+    passed: bool = False,
+    task_id: str = "sample-task",
+) -> Path:
+    run_dir = root / "official" / "2026-06-15__00-00-00" / f"{task_id}__abc123"
+    result_path = run_dir / "result.json"
+    write_json(
+        result_path,
+        {
+            "task_name": task_id,
+            "rollout_name": f"{task_id}__abc123",
+            "rewards": {"passed": passed},
+            "agent": "codex-acp",
+            "agent_name": "codex-acp",
+            "model": "gpt-5.5",
+            "n_tool_calls": 7,
+            "n_prompts": 1,
+            "error": None,
+            "verifier_error": "numeric reward missing from compact result",
+            "partial_trajectory": False,
+            "trajectory_source": "acp",
+        },
+    )
+    write_json(
+        run_dir / "timing.json",
+        {
+            "environment_setup": 2.0,
+            "agent_setup": 1.0,
+            "agent_execution": 3.0,
+            "verifier": 4.0,
+            "total": 10.0,
+        },
+    )
+    return result_path
+
+
 def write_official_skillsbench_reward_artifact_recovery_result(root: Path) -> Path:
     run_dir = root / "official" / "2026-06-15__00-00-00" / "sample-task__abc123"
     result_path = run_dir / "result.json"
@@ -503,5 +541,4 @@ def write_official_skillsbench_codex_acp_provider_zero_activity(root: Path) -> P
     )
     write_json(run_dir / "timing.json", {"agent_execution": 5.0, "total": 600.0})
     return result_path
-
 

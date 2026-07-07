@@ -251,6 +251,7 @@ def _compact_task_setup_preflight(value: Any) -> dict[str, Any]:
         "task_id",
         "first_blocker",
         "alternate_source_kind",
+        "canonical_equivalent_status",
         "selection_recommendation",
     ):
         text = _compact_text(value.get(field), limit=140)
