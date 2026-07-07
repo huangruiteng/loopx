@@ -43,6 +43,17 @@ def _write_task_registry(root: Path, rows: list[dict[str, object]]) -> None:
     registry.write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
 
 
+def _latest_decision_run(case: dict[str, object]) -> dict[str, object]:
+    latest = case.get("latest_decision") if isinstance(case, dict) else {}
+    run_id = latest.get("baseline_run_id") if isinstance(latest, dict) else None
+    runs = case.get("runs") if isinstance(case, dict) else []
+    if isinstance(runs, list):
+        for run in runs:
+            if isinstance(run, dict) and run.get("run_id") == run_id:
+                return run
+    raise AssertionError(f"latest decision run not found: {case}")
+
+
 def _app_goal_args(
     *,
     task_id: str,
@@ -149,7 +160,8 @@ def test_sanity_task_source_fails_before_runner_spend() -> None:
         assert case["latest_decision"]["decision"] == (
             "baseline_task_source_preflight_selection_required"
         ), case
-        assert case["runs"][0]["repair_class"] == (
+        latest_run = _latest_decision_run(case)
+        assert latest_run["repair_class"] == (
             "skillsbench_task_source_preflight_selection"
         )
 
@@ -245,7 +257,8 @@ def test_tasks_extra_excluded_source_is_not_canonical_missing() -> None:
         assert case["latest_decision"]["decision"] == (
             "baseline_task_source_excluded_from_formal_scoring"
         ), case
-        assert case["runs"][0]["repair_class"] == "skillsbench_task_source_excluded"
+        latest_run = _latest_decision_run(case)
+        assert latest_run["repair_class"] == "skillsbench_task_source_excluded"
 
 
 def test_reverse_tunnel_app_goal_defaults_verifier_bootstrap_fail_fast() -> None:
@@ -406,14 +419,15 @@ def test_reverse_tunnel_app_goal_defaults_apt_bootstrap_fail_fast() -> None:
         assert case["latest_decision"]["decision"] == (
             "baseline_runner_or_setup_repair_required"
         ), case
-        assert case["runs"][0]["failure_class"] == (
+        latest_run = _latest_decision_run(case)
+        assert latest_run["failure_class"] == (
             "skillsbench_runner_setup_blocked_before_agent_rounds"
         )
         assert (
             "skillsbench_docker_apt_setup_risk_preflight_blocked"
-            in case["runs"][0]["failure_labels"]
+            in latest_run["failure_labels"]
         ), case
-        assert case["runs"][0]["task_staging"]["apt_risk_preflight_blocked"] is True
+        assert latest_run["task_staging"]["apt_risk_preflight_blocked"] is True
 
 
 def test_reverse_tunnel_app_goal_blocks_pip_bootstrap_light_risk() -> None:
