@@ -91,6 +91,14 @@ def _capture_has_model_timeout(capture: str) -> bool:
     )
 
 
+def _capture_has_error_marker(capture: str) -> bool:
+    lowered = _recent_capture_region(capture).lower()
+    return any(
+        marker in lowered
+        for marker in ("error", "failed", "timed out", "timeout")
+    )
+
+
 def _capture_has_retry_affordance(capture: str) -> bool:
     lowered = _recent_capture_region(capture).lower()
     return any(marker in lowered for marker in ("press enter", "press return"))
@@ -109,11 +117,7 @@ def codex_cli_tui_pre_bridge_blocker_stage(
         return "pre_bridge_tui_rate_limit"
     if _capture_has_model_timeout(capture):
         return "pre_bridge_tui_model_timeout"
-    lowered = _recent_capture_region(capture).lower()
-    if any(
-        marker in lowered
-        for marker in ("error", "failed", "timed out", "timeout", "model")
-    ):
+    if _capture_has_error_marker(capture):
         return "pre_bridge_tui_error_prompt"
     return ""
 
@@ -170,8 +174,7 @@ def codex_cli_tui_pre_bridge_terminal_stage(
         return "pre_bridge_tui_rate_limit"
     if _capture_has_model_timeout(capture):
         return "pre_bridge_tui_model_timeout"
-    lowered = _recent_capture_region(capture).lower()
-    if any(marker in lowered for marker in ("error", "failed", "model")):
+    if _capture_has_error_marker(capture):
         return "pre_bridge_tui_error_prompt"
     return ""
 
@@ -183,11 +186,7 @@ def codex_cli_tui_pre_bridge_terminal_skip_reason(
 ) -> str:
     """Return public-safe flags for a terminal goal before bridge activity."""
 
-    lowered = _recent_capture_region(capture).lower()
-    has_error_marker = any(
-        marker in lowered
-        for marker in ("error", "failed", "timed out", "timeout", "model")
-    )
+    has_error_marker = _capture_has_error_marker(capture)
     return (
         f"pre_bridge_terminal:p={int(bool(prompt_visible))},"
         f"timeout={int(_capture_has_model_timeout(capture))},"
@@ -210,11 +209,7 @@ def codex_cli_tui_post_bridge_blocker_stage(
         return "post_bridge_tui_rate_limit"
     if _capture_has_model_timeout(capture):
         return "post_bridge_tui_model_timeout"
-    lowered = _recent_capture_region(capture).lower()
-    if _capture_has_retry_affordance(capture) and any(
-        marker in lowered
-        for marker in ("error", "failed", "timed out", "timeout", "model")
-    ):
+    if _capture_has_retry_affordance(capture) and _capture_has_error_marker(capture):
         return "post_bridge_tui_error_prompt"
     return ""
 

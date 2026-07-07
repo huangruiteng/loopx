@@ -700,6 +700,30 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         )
         == "pre_bridge_tui_model_timeout"
     )
+    normal_goal_pursuing_capture = "\n".join(
+        [
+            "model:       gpt-5.5 xhigh   /model to change",
+            "permissions: YOLO mode",
+            "• Goal active Objective: Complete the SkillsBench task.",
+            "• Working (2s • esc to interrupt)",
+            "› Implement {feature}",
+            "gpt-5.5 xhigh · workspace… Pursuing goal (0s)",
+        ]
+    )
+    assert (
+        codex_cli_tui_pre_bridge_blocker_stage(
+            normal_goal_pursuing_capture,
+            prompt_visible=True,
+        )
+        == ""
+    )
+    assert (
+        codex_cli_tui_pre_bridge_terminal_skip_reason(
+            normal_goal_pursuing_capture,
+            prompt_visible=True,
+        )
+        == "pre_bridge_terminal:p=1,timeout=0,rate=0,retry=0,error=0"
+    )
     assert (
         codex_cli_tui_pre_bridge_terminal_skip_reason(
             "Goal active\nGoal failed\n› ",
