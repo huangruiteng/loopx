@@ -485,16 +485,21 @@ heavy, and which user gates or handoffs still disappeared from view.
 - Use [GitHub Issues](https://github.com/huangruiteng/loopx/issues) for
   reproducible bugs, install problems, and feature requests.
 - Open PRs for docs fixes, showcase writeups, and small public-safe examples.
-- For Chinese-speaking early users, scan the Lark group first for fast
-  onboarding help, feedback loops, and showcase co-creation. A WeChat group QR
-  is available as a backup, but QR codes may expire; if one is stale, use Lark
-  or open an issue to ask for a refresh.
+- For Chinese-speaking early users, scan the Lark user group first for fast
+  onboarding help, feedback loops, and showcase co-creation. Use the Lark
+  developer group for implementation questions and contributor coordination. A
+  WeChat group QR is available as a backup, but QR codes may expire; if one is
+  stale, use Lark or open an issue to ask for a refresh.
 
 <table>
   <tr>
     <td align="center" width="240">
       <img src="docs/assets/loopx-lark-user-group.png" alt="LoopX Lark user group QR code" width="200"><br>
-      Lark group
+      Lark user group
+    </td>
+    <td align="center" width="240">
+      <img src="docs/assets/loopx-lark-developer-group.png" alt="LoopX Lark developer group QR code" width="200"><br>
+      Lark developer group
     </td>
     <td align="center" width="240">
       <img src="docs/assets/loopx-wechat-user-group.png" alt="LoopX WeChat user group QR code" width="200"><br>
