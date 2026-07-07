@@ -37,6 +37,12 @@ def _write_task(root: Path, relative: str, *, verifier_text: str = "") -> None:
         verifier.write_text(verifier_text, encoding="utf-8")
 
 
+def _write_task_registry(root: Path, rows: list[dict[str, object]]) -> None:
+    registry = root / "website" / "src" / "data" / "tasks-registry.json"
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
+
+
 def _app_goal_args(
     *,
     task_id: str,
@@ -148,7 +154,7 @@ def test_sanity_task_source_fails_before_runner_spend() -> None:
         )
 
 
-def test_missing_task_source_records_no_close_canonical_equivalent() -> None:
+def test_tasks_extra_excluded_source_is_not_canonical_missing() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-no-canonical-equivalent-") as tmp:
         root = Path(tmp)
         skillsbench_root = root / "skillsbench"
@@ -156,6 +162,16 @@ def test_missing_task_source_records_no_close_canonical_equivalent() -> None:
         _write_task(skillsbench_root, "tasks/offer-letter-generator")
         _write_task(skillsbench_root, "tasks/paratransit-routing")
         _write_task(skillsbench_root, "tasks/travel-planning")
+        _write_task_registry(
+            skillsbench_root,
+            [
+                {
+                    "title": "scheduling-email-assistant",
+                    "path": "tasks-extra/scheduling-email-assistant",
+                    "excluded": True,
+                }
+            ],
+        )
 
         jobs = root / "jobs"
         ledger = root / "ledger.json"
@@ -178,11 +194,22 @@ def test_missing_task_source_records_no_close_canonical_equivalent() -> None:
         ]
         plan = build_plan(parse_args(args))
         preflight = plan["task_setup_preflight"]
-        assert preflight["status"] == "task_missing_from_canonical_tasks", preflight
+        assert preflight["status"] == "task_excluded_from_formal_tasks", preflight
+        assert preflight["first_blocker"] == "skillsbench_task_source_excluded", (
+            preflight
+        )
         assert preflight["canonical_task_present"] is False, preflight
-        assert preflight["alternate_source_kind"] == "none", preflight
+        assert preflight["alternate_source_kind"] == "tasks_extra", preflight
+        assert preflight["registry_task_present"] is True, preflight
+        assert preflight["registry_task_path"] == (
+            "tasks-extra/scheduling-email-assistant"
+        ), preflight
+        assert preflight["registry_excluded"] is True, preflight
         assert preflight["canonical_equivalent_status"] == (
             "no_close_canonical_match"
+        ), preflight
+        assert preflight["selection_recommendation"] == (
+            "excluded_tasks_extra_requires_explicit_sanity_source_mode"
         ), preflight
         assert preflight["raw_task_text_read"] is False, preflight
         assert preflight["task_source_path_recorded"] is False, preflight
@@ -200,13 +227,25 @@ def test_missing_task_source_records_no_close_canonical_equivalent() -> None:
             / "benchmark_run.compact.json"
         )
         compact = json.loads(compact_path.read_text(encoding="utf-8"))
+        assert compact["first_blocker"] == "skillsbench_task_source_excluded"
         assert compact["score_failure_attribution"] == (
-            "skillsbench_task_source_preflight_blocked"
+            "skillsbench_task_source_excluded"
         )
-        assert compact["task_setup_preflight"]["canonical_equivalent_status"] == (
-            "no_close_canonical_match"
+        assert compact["task_setup_preflight"]["status"] == (
+            "task_excluded_from_formal_tasks"
         )
+        assert compact["task_setup_preflight"]["alternate_source_kind"] == "tasks_extra"
+        assert compact["task_setup_preflight"]["registry_excluded"] is True
         assert compact["validation"]["no_raw_task_text_read"] is True, compact
+
+        update = load_benchmark_run_ledger(ledger)
+        case = update["benchmarks"]["skillsbench@1.1"]["cases"][
+            "scheduling-email-assistant"
+        ]
+        assert case["latest_decision"]["decision"] == (
+            "baseline_task_source_excluded_from_formal_scoring"
+        ), case
+        assert case["runs"][0]["repair_class"] == "skillsbench_task_source_excluded"
 
 
 def test_reverse_tunnel_app_goal_defaults_verifier_bootstrap_fail_fast() -> None:
@@ -506,7 +545,7 @@ def test_reverse_tunnel_app_goal_allows_explicit_staged_bootstrap_repair() -> No
 
 if __name__ == "__main__":
     test_sanity_task_source_fails_before_runner_spend()
-    test_missing_task_source_records_no_close_canonical_equivalent()
+    test_tasks_extra_excluded_source_is_not_canonical_missing()
     test_reverse_tunnel_app_goal_defaults_verifier_bootstrap_fail_fast()
     test_reverse_tunnel_app_goal_defaults_apt_bootstrap_fail_fast()
     test_reverse_tunnel_app_goal_blocks_pip_bootstrap_light_risk()

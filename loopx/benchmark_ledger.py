@@ -252,6 +252,9 @@ def _compact_task_setup_preflight(value: Any) -> dict[str, Any]:
         "first_blocker",
         "alternate_source_kind",
         "canonical_equivalent_status",
+        "registry_source_kind",
+        "registry_source_status",
+        "registry_task_path",
         "selection_recommendation",
     ):
         text = _compact_text(value.get(field), limit=140)
@@ -273,6 +276,9 @@ def _compact_task_setup_preflight(value: Any) -> dict[str, Any]:
         "dockerfile_present",
         "canonical_task_present",
         "alternate_source_supported_by_runner",
+        "registry_task_present",
+        "registry_task_path_recorded",
+        "registry_excluded",
         "task_source_path_recorded",
         "task_source_content_recorded",
         "bootstrap_light_candidate_eligible",
@@ -438,6 +444,8 @@ def benchmark_run_official_score_countability(run: dict[str, Any]) -> dict[str, 
             else {}
         )
         score = _numeric_score_value(official.get("value"))
+    if score is None:
+        score, _passed = _official_score_passed_bool_fallback(run)
     if score is None:
         return {
             "countable": False,
@@ -1012,7 +1020,7 @@ def _official_score(benchmark_run: dict[str, Any]) -> tuple[float | int | None, 
     value = benchmark_run.get("official_score")
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return value, value >= 1
-    return None, None
+    return _official_score_passed_bool_fallback(benchmark_run)
 
 
 def _infer_arm_id_from_job_name(job_name: str) -> str:
@@ -1076,6 +1084,35 @@ def _score_status(benchmark_run: dict[str, Any], score: float | int | None, pass
     if score is None:
         return "missing"
     return "passed" if passed else "failed"
+
+
+def _official_score_passed_bool_fallback(
+    benchmark_run: dict[str, Any],
+) -> tuple[float | None, bool | None]:
+    score_status = _compact_text(
+        benchmark_run.get("official_score_status") or benchmark_run.get("score_status"),
+        limit=80,
+    )
+    if score_status not in {"completed", "passed", "failed"}:
+        return None, None
+    if _compact_text(benchmark_run.get("runner_return_status"), limit=120) == (
+        "failed_before_official_result"
+    ):
+        return None, None
+    official = (
+        benchmark_run.get("official_task_score")
+        if isinstance(benchmark_run.get("official_task_score"), dict)
+        else {}
+    )
+    for container, key in (
+        (official, "passed"),
+        (benchmark_run, "official_passed"),
+        (benchmark_run, "passed"),
+    ):
+        value = container.get(key) if isinstance(container, dict) else None
+        if isinstance(value, bool):
+            return (1.0 if value else 0.0), value
+    return None, None
 
 
 _SKILLSBENCH_PRE_AGENT_SETUP_STATUS_LABELS = {
@@ -1487,6 +1524,29 @@ def _repair_route(
                     "skillsbench_task_setup_preflight",
                     "canonical_task_present",
                     "nearest_canonical_task_ids",
+                ],
+                "raw_logs_required": False,
+                "raw_task_text_required": False,
+            },
+        }
+    if failure_class == "skillsbench_task_source_excluded":
+        return {
+            "repair_priority": "P1",
+            "repair_class": "skillsbench_task_source_excluded",
+            "next_action": (
+                "exclude this noncanonical SkillsBench source from formal "
+                "87-case scoring, or rerun it only through an explicit "
+                "sanity/source-extra runner"
+            ),
+            "repair_profile": {
+                "schema_version": "benchmark_repair_profile_v0",
+                "repair_class": "skillsbench_task_source_excluded",
+                "rerun_allowed_after_profile_applied": True,
+                "required_preflight": [
+                    "skillsbench_task_setup_preflight",
+                    "task_excluded_from_formal_tasks",
+                    "registry_source_kind=tasks_extra",
+                    "registry_excluded=true",
                 ],
                 "raw_logs_required": False,
                 "raw_task_text_required": False,
@@ -2562,6 +2622,8 @@ def _case_decision(case: dict[str, Any]) -> dict[str, Any]:
             decision = f"{prefix}_verifier_bootstrap_preflight_selection_required"
         elif repair_class == "skillsbench_task_source_preflight_selection":
             decision = f"{prefix}_task_source_preflight_selection_required"
+        elif repair_class == "skillsbench_task_source_excluded":
+            decision = f"{prefix}_task_source_excluded_from_formal_scoring"
         elif repair_class == "worker_verifier_alignment":
             decision = f"{prefix}_worker_verifier_alignment_required"
         elif repair_class == "verifier_or_infra_repair":

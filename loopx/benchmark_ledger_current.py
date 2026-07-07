@@ -219,37 +219,50 @@ def _current_aggregate_run_summary(run: dict[str, Any] | None) -> dict[str, Any]
     return summary
 
 
-def _current_aggregate_case_is_noncanonical_sanity_source(case: dict[str, Any]) -> bool:
+def _current_aggregate_case_is_noncanonical_source(case: dict[str, Any]) -> bool:
     runs = _active_ledger_runs(
         [item for item in case.get("runs", []) if isinstance(item, dict)]
     )
     if not runs:
         return False
-    saw_sanity_source_preflight = False
+    saw_noncanonical_source_preflight = False
     for run in runs:
         if _ledger_score_value(run) is not None:
             return False
-        if _current_aggregate_effective_failure_class(run) != (
-            "skillsbench_task_source_preflight_blocked"
-        ):
+        failure_class = _current_aggregate_effective_failure_class(run)
+        if failure_class not in {
+            "skillsbench_task_source_preflight_blocked",
+            "skillsbench_task_source_excluded",
+        }:
             return False
         preflight = run.get("task_setup_preflight")
         if not isinstance(preflight, dict):
             return False
         if preflight.get("canonical_task_present") is not False:
             return False
-        if _compact_text(preflight.get("status"), limit=120) != (
-            "task_missing_from_canonical_tasks"
-        ):
-            return False
-        if _compact_text(preflight.get("alternate_source_kind"), limit=120) != (
-            "experiments_sanity_tasks"
-        ):
+        status = _compact_text(preflight.get("status"), limit=120)
+        source_kind = _compact_text(preflight.get("alternate_source_kind"), limit=120)
+        if status == "task_missing_from_canonical_tasks":
+            source_is_noncanonical = source_kind == "experiments_sanity_tasks"
+        elif status == "task_excluded_from_formal_tasks":
+            source_is_noncanonical = (
+                source_kind == "tasks_extra"
+                and preflight.get("registry_excluded") is True
+            )
+        else:
+            source_is_noncanonical = False
+        if not source_is_noncanonical:
             return False
         if preflight.get("alternate_source_supported_by_runner") is not False:
             return False
-        saw_sanity_source_preflight = True
-    return saw_sanity_source_preflight
+        saw_noncanonical_source_preflight = True
+    return saw_noncanonical_source_preflight
+
+
+def _current_aggregate_case_is_noncanonical_sanity_source(case: dict[str, Any]) -> bool:
+    """Compatibility wrapper for the historical aggregate option name."""
+
+    return _current_aggregate_case_is_noncanonical_source(case)
 
 
 def build_benchmark_run_ledger_current_aggregate(
@@ -283,7 +296,7 @@ def build_benchmark_run_ledger_current_aggregate(
                 for case_id in canonical_ids
                 if not (
                     isinstance(cases.get(case_id), dict)
-                    and _current_aggregate_case_is_noncanonical_sanity_source(
+                    and _current_aggregate_case_is_noncanonical_source(
                         cases[case_id]
                     )
                 )
@@ -294,7 +307,7 @@ def build_benchmark_run_ledger_current_aggregate(
             for case_id, case in cases.items()
             if not (
                 isinstance(case, dict)
-                and _current_aggregate_case_is_noncanonical_sanity_source(case)
+                and _current_aggregate_case_is_noncanonical_source(case)
             )
         )
     distribution = {

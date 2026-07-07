@@ -2526,6 +2526,9 @@ def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
         "first_blocker",
         "alternate_source_kind",
         "canonical_equivalent_status",
+        "registry_source_kind",
+        "registry_source_status",
+        "registry_task_path",
         "selection_recommendation",
     ):
         text = public_safe_compact_text(value.get(field), limit=180)
@@ -2547,6 +2550,9 @@ def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
         "dockerfile_present",
         "canonical_task_present",
         "alternate_source_supported_by_runner",
+        "registry_task_present",
+        "registry_task_path_recorded",
+        "registry_excluded",
         "task_source_path_recorded",
         "task_source_content_recorded",
         "bootstrap_light_candidate_eligible",

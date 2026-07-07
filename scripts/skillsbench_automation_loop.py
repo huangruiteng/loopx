@@ -113,6 +113,9 @@ from loopx.benchmark_adapters.skillsbench_batch import (  # noqa: E402
 from loopx.benchmark_adapters.skillsbench_verifier_bootstrap import (  # noqa: E402
     apply_skillsbench_verifier_bootstrap_missing_score_attribution,
 )
+from loopx.benchmark_adapters.skillsbench_task_source import (  # noqa: E402
+    classify_missing_task_source,
+)
 from loopx.benchmark_adapters import skillsbench_runner_source as runner_source  # noqa: E402
 from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER,
@@ -6371,6 +6374,9 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
         "first_blocker",
         "alternate_source_kind",
         "canonical_equivalent_status",
+        "registry_source_kind",
+        "registry_source_status",
+        "registry_task_path",
         "selection_recommendation",
     ):
         raw = value.get(field)
@@ -6392,6 +6398,9 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
         "dockerfile_present",
         "canonical_task_present",
         "alternate_source_supported_by_runner",
+        "registry_task_present",
+        "registry_task_path_recorded",
+        "registry_excluded",
         "task_source_path_recorded",
         "task_source_content_recorded",
         "bootstrap_light_candidate_eligible",
@@ -7582,9 +7591,6 @@ def skillsbench_task_setup_preflight(
             / "sanity-tasks"
             / expanded_task_path.name
         )
-        alternate_source_kind = (
-            "experiments_sanity_tasks" if sanity_task.is_dir() else "none"
-        )
         nearest, canonical_equivalent_status = (
             skillsbench_nearest_canonical_task_ids(
                 requested_task_id=public_task_id,
@@ -7593,16 +7599,14 @@ def skillsbench_task_setup_preflight(
         )
         preflight.update(
             {
-                "status": "task_missing_from_canonical_tasks",
-                "first_blocker": "skillsbench_task_source_preflight_blocked",
-                "alternate_source_kind": alternate_source_kind,
+                **classify_missing_task_source(
+                    skillsbench_root=skillsbench_root,
+                    task_id=expanded_task_path.name,
+                    sanity_task_exists=sanity_task.is_dir(),
+                    canonical_equivalent_status=canonical_equivalent_status,
+                ),
                 "canonical_equivalent_status": canonical_equivalent_status,
                 "nearest_canonical_task_ids": nearest,
-                "selection_recommendation": (
-                    "choose_nearest_canonical_task_candidate_or_use_explicit_sanity_source_runner"
-                    if canonical_equivalent_status == "close_canonical_match_found"
-                    else "no_close_canonical_task_match_choose_normal_tasks_candidate_or_explicit_sanity_source_runner"
-                ),
             }
         )
         preflight["bootstrap_light_blocking_fields"] = (
@@ -16665,7 +16669,11 @@ async def _async_main_with_observable_handle(
         )
     if (
         not args.reduce_only
-        and setup_preflight.get("status") == "task_missing_from_canonical_tasks"
+        and setup_preflight.get("status")
+        in {
+            "task_missing_from_canonical_tasks",
+            "task_excluded_from_formal_tasks",
+        }
     ):
         staging = plan.setdefault("task_staging", {})
         if isinstance(staging, dict):
@@ -16677,6 +16685,14 @@ async def _async_main_with_observable_handle(
                     args=args,
                 )
             staging["task_source_preflight_blocked"] = True
+            if setup_preflight.get("status") == "task_excluded_from_formal_tasks":
+                staging["task_source_excluded_preflight_blocked"] = True
+                staging["task_source_excluded"] = True
+        if setup_preflight.get("status") == "task_excluded_from_formal_tasks":
+            raise SkillsBenchSetupPreflightBlocked(
+                "skillsbench task source excluded: "
+                "task is excluded from formal tasks source before full case run"
+            )
         raise SkillsBenchSetupPreflightBlocked(
             "skillsbench task source preflight blocked: "
             "task missing from canonical tasks source before full case run"

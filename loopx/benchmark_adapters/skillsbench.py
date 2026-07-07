@@ -1533,6 +1533,13 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
     if "benchflow result.json not found" in text:
         label = "skillsbench_result_json_missing_after_runner_exit"
         return label, label, [label, "skillsbench_runner_setup_error"]
+    if any(marker in text for marker in (
+        "skillsbench task source excluded",
+        "task is excluded from formal tasks source",
+        "task excluded from formal tasks source",
+    )):
+        label = "skillsbench_task_source_excluded"
+        return label, label, [label, "skillsbench_task_source_preflight", "skillsbench_noncanonical_task_source"]
     if (
         "skillsbench task source preflight blocked" in text
         or "task missing from canonical tasks source" in text

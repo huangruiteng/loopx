@@ -211,6 +211,26 @@ def make_ledger(path: Path) -> None:
                 "alternate_source_supported_by_runner": False,
             },
         ),
+        run_entry(
+            run_id="tasks-extra-excluded-preflight",
+            case_id="scheduling-email-assistant",
+            recorded_at="2026-07-02T01:52:00+08:00",
+            score=None,
+            score_status="missing",
+            failure_class="skillsbench_task_source_excluded",
+            failure_scope="score_missing",
+            task_setup_preflight={
+                "schema_version": "skillsbench_task_setup_preflight_v0",
+                "status": "task_excluded_from_formal_tasks",
+                "task_id": "scheduling-email-assistant",
+                "canonical_task_present": False,
+                "alternate_source_kind": "tasks_extra",
+                "registry_task_present": True,
+                "registry_task_path": "tasks-extra/scheduling-email-assistant",
+                "registry_excluded": True,
+                "alternate_source_supported_by_runner": False,
+            },
+        ),
     ):
         ledger = upsert_benchmark_run_ledger_entry(ledger, entry)
     write_json(path, ledger)
@@ -236,6 +256,7 @@ def test_current_aggregate_prefers_countable_results() -> None:
                 "reward-artifact-missing",
                 "fix-erlang-ssh-cve",
                 "hello-world",
+                "scheduling-email-assistant",
                 "never-run-case",
             ],
         )
@@ -293,6 +314,12 @@ def test_current_aggregate_prefers_countable_results() -> None:
         ] == "uncountable_attribution"
         assert "hello-world" not in aggregate["case_best"], aggregate["case_best"]
         assert "hello-world" not in aggregate["cases_by_bucket"]["setup_runner_infra"]
+        assert "scheduling-email-assistant" not in aggregate["case_best"], (
+            aggregate["case_best"]
+        )
+        assert "scheduling-email-assistant" not in aggregate["cases_by_bucket"][
+            "setup_runner_infra"
+        ]
 
 
 def test_ledger_marks_uncountable_numeric_scores_noncountable() -> None:
@@ -334,6 +361,23 @@ def test_ledger_marks_uncountable_numeric_scores_noncountable() -> None:
         "official_score_attempt_not_countable"
     ), entry
 
+    passed_false_only = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": BENCHMARK_ID,
+        "case_id": "passed-bool-false",
+        "job_name": "skillsbench_1_1_passed_bool_false_codex_cli_goal_baseline",
+        "route": "codex-cli-goal-baseline",
+        "official_score_status": "completed",
+        "official_task_score": {"passed": False},
+    }
+    entry = build_benchmark_run_ledger_entry(passed_false_only)
+    assert entry["official_score"] == 0.0, entry
+    assert entry["official_passed"] is False, entry
+    assert entry["official_score_countable"] is True, entry
+    assert entry["official_score_countability_reason"] == (
+        "countable_official_score"
+    ), entry
+
 
 def test_current_aggregate_default_inference_excludes_sanity_sources() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-current-aggregate-default-") as tmp:
@@ -353,6 +397,9 @@ def test_current_aggregate_default_inference_excludes_sanity_sources() -> None:
         assert aggregate["countable_score_summary"]["countable_score_mean"] == 0.166667, aggregate
         assert "hello-world" not in aggregate["case_best"], aggregate["case_best"]
         assert "hello-world" not in aggregate["cases_by_bucket"]["setup_runner_infra"]
+        assert "scheduling-email-assistant" not in aggregate["case_best"], (
+            aggregate["case_best"]
+        )
 
 
 def test_current_aggregate_cli_writes_public_safe_json() -> None:
