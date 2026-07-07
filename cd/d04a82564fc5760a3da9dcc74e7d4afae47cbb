@@ -1,0 +1,25 @@
+examples/auto-research-worker-turn-smoke.py
+  s_32e2a9a204a8e4::t_1a1fff6a3ed0c8 224-260,528-577
+loopx/capabilities/auto_research/research_state.py
+  s_32e2a9a204a8e4::t_69e20da9875612 35,42,524-622,634,665,673,783,793,803
+loopx/capabilities/auto_research/worker_runtime.py
+  s_32e2a9a204a8e4::t_f3f7f81eb817bb 374,395,442-463
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "cdd04a82564fc5760a3da9dcc74e7d4afae47cbb",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
