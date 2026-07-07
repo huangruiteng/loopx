@@ -10,7 +10,17 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
+from loopx.quota import (  # noqa: E402
+    AUTONOMOUS_REPLAN_ACK_NEUTRAL_CLASSIFICATIONS,
+    build_quota_should_run,
+    render_quota_should_run_markdown,
+)
+from loopx.control_plane.goals.goal_frontier import (  # noqa: E402
+    build_goal_frontier_projection_context_from_status,
+)
+from loopx.control_plane.todos.quota_summary import (  # noqa: E402
+    select_quota_todo_summary,
+)
 from loopx.status import compact_todo_group  # noqa: E402
 
 
@@ -671,6 +681,40 @@ def assert_agent_vision_gap_derives_replan() -> None:
     assert "vision_gap_judge: done=False decision=continue" in markdown, markdown
 
 
+def assert_goal_frontier_context_helper_matches_quota_payload() -> None:
+    payload = status_payload(
+        [monitor_item()],
+        replan_obligation=None,
+        latest_runs=[agent_vision_gap_run()],
+    )
+    guard = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=SIDE_AGENT)
+    item = payload["attention_queue"]["items"][0]
+    context = build_goal_frontier_projection_context_from_status(
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+        primary_agent_id=PRIMARY_AGENT,
+        status_payload=payload,
+        item=item,
+        project_asset=item["project_asset"],
+        user_todo_summary=select_quota_todo_summary(
+            item.get("user_todos"),
+            item.get("project_asset", {}).get("user_todos"),
+            agent_identity=guard["agent_identity"],
+            filter_user_gate_blocks_agent=True,
+        ),
+        agent_todo_summary=guard["agent_todo_summary"],
+        work_lane_contract=guard["work_lane_contract"],
+        neutral_replan_ack_classifications=AUTONOMOUS_REPLAN_ACK_NEUTRAL_CLASSIFICATIONS,
+    )
+    context_obligation = dict(context["replan_obligation"])
+    guard_obligation = dict(guard["autonomous_replan_obligation"])
+    guard_obligation.pop("required_reads", None)
+    assert context_obligation == guard_obligation, guard
+    assert context["replan_scope"] == guard["autonomous_replan_scope"], guard
+    assert context["goal_frontier_projection"] == guard["goal_frontier_projection"], guard
+    assert context["acceptance_gaps"] == guard["goal_frontier_projection"]["acceptance_gaps"], guard
+
+
 def assert_open_agent_vision_beats_watch_lane_continuation_ack() -> None:
     guard = build_quota_should_run(
         status_payload(
@@ -1077,6 +1121,7 @@ def main() -> None:
     assert_replan_preserves_current_agent_runnable_frontier()
     assert_long_agent_todo_chain_derives_replan_before_linear_delivery()
     assert_agent_vision_gap_derives_replan()
+    assert_goal_frontier_context_helper_matches_quota_payload()
     assert_open_agent_vision_beats_watch_lane_continuation_ack()
     assert_retired_agent_vision_allows_bounded_monitor_wait()
     assert_missing_vision_checkpoint_derives_agent_scoped_replan()

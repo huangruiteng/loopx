@@ -48,20 +48,10 @@ from .control_plane.work_items.interaction_contract import (
     protocol_action_text as _protocol_action_text,
     user_channel_action_required as _user_channel_action_required,
 )
-from .control_plane.work_items.autonomous_replan_ack import (
-    autonomous_replan_ack_matches_agent,
-)
 from .control_plane.goals.goal_frontier import (
     AUTONOMOUS_REPLAN_REQUIRED_MODE,
-    acceptance_gaps_from_agent_vision,
-    acceptance_gaps_from_vision_checkpoint,
     autonomous_replan_decision_allowed,
-    autonomous_replan_scope_decision,
-    build_goal_frontier_projection_from_summaries,
-    derive_goal_frontier_replan_obligation_from_summaries,
-    latest_agent_vision_from_status_payload,
-    latest_missing_vision_checkpoint_from_status_payload,
-    select_autonomous_replan_obligation,
+    build_goal_frontier_projection_context_from_status,
 )
 from .control_plane.quota.heartbeat_recommendation import (
     HEARTBEAT_HANDOFF_READINESS_COMPACT_FIELDS as HANDOFF_READINESS_COMPACT_FIELDS,
@@ -1426,94 +1416,6 @@ def _registry_goal_by_id(status_payload: dict[str, Any]) -> dict[str, dict[str, 
     }
 
 
-def _compact_autonomous_replan_ack(run: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not isinstance(run, dict):
-        return None
-    ack = run.get("autonomous_replan_ack")
-    if not isinstance(ack, dict) or ack.get("recorded") is not True:
-        return None
-    delta_contract = ack.get("delta_contract")
-    if not isinstance(delta_contract, dict) or delta_contract.get("delta_present") is not True:
-        return None
-    compact_delta = {
-        "schema_version": delta_contract.get("schema_version"),
-        "delta_present": True,
-        "delta_kinds": [
-            str(item)
-            for item in (delta_contract.get("delta_kinds") or [])
-            if str(item or "").strip()
-        ],
-    }
-    result = {
-        "schema_version": ack.get("schema_version"),
-        "recorded": True,
-        "source": ack.get("source"),
-        "delta_contract": compact_delta,
-    }
-    agent_id = str(run.get("agent_id") or "").strip()
-    if agent_id:
-        result["agent_id"] = agent_id
-    return result
-
-
-def _latest_autonomous_replan_ack_for_agent(
-    status_payload: dict[str, Any],
-    *,
-    goal_id: str,
-    agent_id: str | None,
-) -> dict[str, Any] | None:
-    if not agent_id:
-        return None
-    run_history = (
-        status_payload.get("run_history")
-        if isinstance(status_payload.get("run_history"), dict)
-        else {}
-    )
-    goals = run_history.get("goals") if isinstance(run_history.get("goals"), list) else []
-    goal = next(
-        (
-            item
-            for item in goals
-            if isinstance(item, dict) and str(item.get("id") or "") == goal_id
-        ),
-        None,
-    )
-    latest_runs = goal.get("latest_runs") if isinstance(goal, dict) else None
-    if not isinstance(latest_runs, list):
-        return None
-    for run in latest_runs:
-        if not isinstance(run, dict):
-            continue
-        run_agent_id = str(run.get("agent_id") or "").strip()
-        if run_agent_id and run_agent_id != agent_id:
-            continue
-        replan_ack = _compact_autonomous_replan_ack(run)
-        if replan_ack:
-            return replan_ack
-        classification = str(run.get("classification") or "").strip()
-        if not classification:
-            continue
-        if classification in AUTONOMOUS_REPLAN_ACK_NEUTRAL_CLASSIFICATIONS:
-            continue
-        if classification == QUOTA_MONITOR_POLL_CLASSIFICATION:
-            continue
-        return None
-    return None
-
-
-def _projected_autonomous_replan_ack_for_agent(
-    item: dict[str, Any],
-    project_asset: dict[str, Any],
-    *,
-    agent_id: str | None,
-) -> dict[str, Any] | None:
-    for candidate in (item.get("autonomous_replan_ack"), project_asset.get("autonomous_replan_ack")):
-        if not autonomous_replan_ack_matches_agent(candidate, agent_id=agent_id):
-            continue
-        return candidate
-    return None
-
-
 def _recovery_delivery_allowed(quota: dict[str, Any], *, plan_ok: bool) -> bool:
     return (
         bool(plan_ok)
@@ -1674,64 +1576,24 @@ def build_quota_should_run(
             if isinstance(agent_identity, dict)
             else None
         )
-        replan_obligation = select_autonomous_replan_obligation(item, project_asset)
-        replan_scope = autonomous_replan_scope_decision(
-            replan_obligation,
+        goal_frontier_context = build_goal_frontier_projection_context_from_status(
+            goal_id=safe_goal_id,
             agent_id=agent_frontier_id,
             primary_agent_id=primary_agent_id,
-        )
-        if replan_scope.get("required") and not replan_scope.get("applies"):
-            replan_obligation = None
-        latest_agent_replan_ack = _latest_autonomous_replan_ack_for_agent(
-            status_payload,
-            goal_id=safe_goal_id,
-            agent_id=agent_frontier_id,
-        )
-        latest_agent_vision = latest_agent_vision_from_status_payload(
-            status_payload,
-            goal_id=safe_goal_id,
-            agent_id=agent_frontier_id,
-        )
-        latest_missing_vision_checkpoint = latest_missing_vision_checkpoint_from_status_payload(
-            status_payload,
-            goal_id=safe_goal_id,
-            agent_id=agent_frontier_id,
-        )
-        goal_frontier_acceptance_gaps = (
-            acceptance_gaps_from_agent_vision(latest_agent_vision)
-            + acceptance_gaps_from_vision_checkpoint(latest_missing_vision_checkpoint)
-        )
-        frontier_replan_obligation = derive_goal_frontier_replan_obligation_from_summaries(
+            status_payload=status_payload,
+            item=item,
+            project_asset=project_asset,
             user_todo_summary=user_todo_summary,
             agent_todo_summary=agent_todo_summary,
             work_lane_contract=work_lane_contract,
-            agent_id=agent_frontier_id,
-            existing_replan_obligation=replan_obligation,
-            latest_replan_ack=(
-                latest_agent_replan_ack
-                or _projected_autonomous_replan_ack_for_agent(
-                    item,
-                    project_asset,
-                    agent_id=agent_frontier_id,
-                )
-            ),
-            acceptance_gaps=goal_frontier_acceptance_gaps,
+            neutral_replan_ack_classifications=AUTONOMOUS_REPLAN_ACK_NEUTRAL_CLASSIFICATIONS,
         )
-        if frontier_replan_obligation:
-            replan_obligation = frontier_replan_obligation
-            replan_scope = autonomous_replan_scope_decision(
-                replan_obligation,
-                agent_id=agent_frontier_id,
-                primary_agent_id=primary_agent_id,
-            )
-        goal_frontier_projection = build_goal_frontier_projection_from_summaries(
-            goal_id=safe_goal_id,
-            agent_id=agent_frontier_id,
-            user_todo_summary=user_todo_summary,
-            agent_todo_summary=agent_todo_summary,
-            work_lane_contract=work_lane_contract,
-            replan_obligation=replan_obligation,
-            acceptance_gaps=goal_frontier_acceptance_gaps,
+        replan_obligation = goal_frontier_context.get("replan_obligation")
+        replan_scope = goal_frontier_context.get("replan_scope") or {}
+        goal_frontier_projection = (
+            goal_frontier_context.get("goal_frontier_projection")
+            if isinstance(goal_frontier_context.get("goal_frontier_projection"), dict)
+            else {}
         )
         effective_available_capabilities = _effective_available_capabilities(
             available_capabilities,

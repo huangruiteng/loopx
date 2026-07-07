@@ -8,6 +8,10 @@ from ..agents.agent_scope import (
     agent_scope_item_claimed_by,
     agent_scope_item_claimed_by_agent_or_unclaimed,
 )
+from ..work_items.autonomous_replan_ack import (
+    autonomous_replan_ack_matches_agent,
+    latest_autonomous_replan_ack_for_projection,
+)
 from ..work_items.repair_delta import repair_delta_kinds_have_frontier_delta
 
 
@@ -325,6 +329,46 @@ def latest_missing_vision_checkpoint_from_status_payload(
             else [],
             "generated_at": run.get("generated_at"),
         }
+    return None
+
+
+def latest_autonomous_replan_ack_from_status_payload(
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str,
+    agent_id: str | None,
+    neutral_classifications: set[str],
+) -> dict[str, Any] | None:
+    """Return the newest agent-scoped durable replan ACK visible in run history."""
+
+    if not agent_id:
+        return None
+    latest_runs = [
+        run
+        for run in _latest_runs_for_goal(status_payload, goal_id=goal_id)
+        if _run_agent_id_matches(run, agent_id=agent_id)
+    ]
+    return latest_autonomous_replan_ack_for_projection(
+        latest_runs,
+        neutral_classifications=neutral_classifications,
+    )
+
+
+def projected_autonomous_replan_ack_for_agent(
+    item: dict[str, Any],
+    project_asset: dict[str, Any] | None,
+    *,
+    agent_id: str | None,
+) -> dict[str, Any] | None:
+    """Return the current projected replan ACK when it belongs to this agent."""
+
+    project_asset = project_asset if isinstance(project_asset, dict) else {}
+    for candidate in (
+        item.get("autonomous_replan_ack"),
+        project_asset.get("autonomous_replan_ack"),
+    ):
+        if autonomous_replan_ack_matches_agent(candidate, agent_id=agent_id):
+            return candidate
     return None
 
 
@@ -1151,6 +1195,97 @@ def build_goal_frontier_projection_from_summaries(
             agent_id=agent_id,
         ),
     )
+
+
+def build_goal_frontier_projection_context_from_status(
+    *,
+    goal_id: str,
+    agent_id: str | None,
+    primary_agent_id: str | None,
+    status_payload: dict[str, Any],
+    item: dict[str, Any],
+    project_asset: dict[str, Any] | None,
+    user_todo_summary: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+    work_lane_contract: dict[str, Any] | None,
+    neutral_replan_ack_classifications: set[str],
+) -> dict[str, Any]:
+    """Build the quota-facing goal-frontier read model.
+
+    Quota decides delivery permission, but this helper owns the goal-frontier
+    state reduction: existing obligation scope, latest replan ACK, open
+    per-agent vision gaps, derived replan obligation, and final projection.
+    """
+
+    replan_obligation = select_autonomous_replan_obligation(item, project_asset)
+    replan_scope = autonomous_replan_scope_decision(
+        replan_obligation,
+        agent_id=agent_id,
+        primary_agent_id=primary_agent_id,
+    )
+    if replan_scope.get("required") and not replan_scope.get("applies"):
+        replan_obligation = None
+
+    latest_agent_replan_ack = latest_autonomous_replan_ack_from_status_payload(
+        status_payload,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        neutral_classifications=neutral_replan_ack_classifications,
+    )
+    latest_agent_vision = latest_agent_vision_from_status_payload(
+        status_payload,
+        goal_id=goal_id,
+        agent_id=agent_id,
+    )
+    latest_missing_vision_checkpoint = latest_missing_vision_checkpoint_from_status_payload(
+        status_payload,
+        goal_id=goal_id,
+        agent_id=agent_id,
+    )
+    acceptance_gaps = (
+        acceptance_gaps_from_agent_vision(latest_agent_vision)
+        + acceptance_gaps_from_vision_checkpoint(latest_missing_vision_checkpoint)
+    )
+    projected_replan_ack = projected_autonomous_replan_ack_for_agent(
+        item,
+        project_asset,
+        agent_id=agent_id,
+    )
+    frontier_replan_obligation = derive_goal_frontier_replan_obligation_from_summaries(
+        user_todo_summary=user_todo_summary,
+        agent_todo_summary=agent_todo_summary,
+        work_lane_contract=work_lane_contract,
+        agent_id=agent_id,
+        existing_replan_obligation=replan_obligation,
+        latest_replan_ack=latest_agent_replan_ack or projected_replan_ack,
+        acceptance_gaps=acceptance_gaps,
+    )
+    if frontier_replan_obligation:
+        replan_obligation = frontier_replan_obligation
+        replan_scope = autonomous_replan_scope_decision(
+            replan_obligation,
+            agent_id=agent_id,
+            primary_agent_id=primary_agent_id,
+        )
+
+    goal_frontier_projection = build_goal_frontier_projection_from_summaries(
+        goal_id=goal_id,
+        agent_id=agent_id,
+        user_todo_summary=user_todo_summary,
+        agent_todo_summary=agent_todo_summary,
+        work_lane_contract=work_lane_contract,
+        replan_obligation=replan_obligation,
+        acceptance_gaps=acceptance_gaps,
+    )
+    return {
+        "schema_version": "goal_frontier_projection_context_v0",
+        "replan_obligation": replan_obligation,
+        "replan_scope": replan_scope,
+        "goal_frontier_projection": goal_frontier_projection,
+        "acceptance_gaps": acceptance_gaps,
+        "latest_replan_ack": latest_agent_replan_ack,
+        "projected_replan_ack": projected_replan_ack,
+    }
 
 
 def compact_replan_obligation(replan_obligation: dict[str, Any]) -> dict[str, Any]:
