@@ -275,26 +275,26 @@ def assert_unchanged_writeback() -> None:
             "--agent-id",
             AGENT_ID,
         )
-        assert followup["decision"] == "skip", followup
-        assert followup["effective_action"] == "monitor_quiet_skip", followup
-        assert followup["should_run"] is False, followup
+        assert followup["decision"] == "autonomous_replan_required", followup
+        assert followup["effective_action"] == "autonomous_replan_required", followup
+        assert followup["should_run"] is True, followup
         assert followup["heartbeat_recommendation"]["recommended_mode"] == (
-            "monitor_quiet_until_material_transition"
+            "autonomous_replan_required"
         ), followup
-        assert followup["scheduler_hint"]["cadence_class"] == "monitor_wait", followup
+        assert followup["scheduler_hint"]["cadence_class"] == "active_work", followup
         lane = followup["work_lane_contract"]
         assert lane["lane"] == "continuous_monitor", lane
         assert lane["obligation"] == "quiet_until_material_monitor_transition", lane
         frontier = followup["goal_frontier_projection"]
         assert frontier["monitor_only_lanes"]["present"] is True, frontier
         assert frontier["monitor_only_lanes"]["quiet_until_material_transition"] is True, frontier
-        assert frontier["replan_required"] is False, frontier
-        assert followup.get("autonomous_replan_obligation") is None, followup
-        assert followup["interaction_contract"]["mode"] == "monitor_quiet_skip", followup
-        assert followup["interaction_contract"]["agent_channel"]["must_attempt"] is False, followup
-        assert followup["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is True, followup
-        assert followup["execution_obligation"]["kind"] == "monitor_quiet_skip", followup
-        assert followup["execution_obligation"]["must_attempt_work"] is False, followup
+        assert frontier["replan_required"] is True, frontier
+        assert followup["autonomous_replan_obligation"]["required"] is True, followup
+        assert followup["interaction_contract"]["mode"] == "autonomous_replan", followup
+        assert followup["interaction_contract"]["agent_channel"]["must_attempt"] is True, followup
+        assert followup["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is False, followup
+        assert followup["execution_obligation"]["kind"] == "autonomous_replan_required", followup
+        assert followup["execution_obligation"]["must_attempt_work"] is True, followup
 
 
 def assert_material_transition_followup() -> None:

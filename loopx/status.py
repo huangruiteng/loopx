@@ -193,12 +193,16 @@ from .control_plane.runtime.run_history import (
 )
 from .control_plane.runtime.event_ledger import (
     EVENT_LEDGER_CLASSES,
+    blank_event_class_counts as _blank_event_class_counts_read_model,
+    event_ledger_event_class as _event_ledger_event_class_read_model,
 )
 from .control_plane.runtime.decision_freshness import (
     DECISION_FRESHNESS_CLASSIFICATION_PREFIXES,
     DECISION_FRESHNESS_ITEM_LIMIT,
     DECISION_FRESHNESS_PROXY_NOTE,
     DECISION_FRESHNESS_WINDOW_DAYS,
+    build_decision_freshness_summary as _build_decision_freshness_summary_read_model,
+    decision_event_kinds as _decision_event_kinds_read_model,
     decision_freshness_reason,
 )
 from .control_plane.runtime.promotion_readiness import (
@@ -478,6 +482,49 @@ EVENT_LEDGER_EVIDENCE_HINTS = (
     "monitor",
     "validation",
 )
+
+
+def decision_event_kinds(run: dict[str, Any]) -> list[str]:
+    return _decision_event_kinds_read_model(
+        run,
+        decision_classifications=EVENT_LEDGER_DECISION_CLASSIFICATIONS,
+        classification_prefixes=DECISION_FRESHNESS_CLASSIFICATION_PREFIXES,
+    )
+
+
+def blank_event_class_counts() -> dict[str, int]:
+    return _blank_event_class_counts_read_model(EVENT_LEDGER_CLASSES)
+
+
+def event_ledger_event_class(run: dict[str, Any]) -> str:
+    return _event_ledger_event_class_read_model(
+        run,
+        compact_benchmark_run=compact_benchmark_run,
+        compact_benchmark_result=compact_benchmark_result,
+        compact_benchmark_comparison=compact_benchmark_comparison,
+        compact_benchmark_learning_ledger=compact_benchmark_learning_ledger,
+        compact_benchmark_experiment_report=compact_benchmark_experiment_report,
+        compact_active_user_assisted_pilot=compact_active_user_assisted_pilot,
+        run_has_external_evidence_watch_signal=run_has_external_evidence_watch_signal,
+        decision_classifications=EVENT_LEDGER_DECISION_CLASSIFICATIONS,
+        evidence_classifications=EVENT_LEDGER_EVIDENCE_CLASSIFICATIONS,
+        evidence_hints=EVENT_LEDGER_EVIDENCE_HINTS,
+        state_classifications=EVENT_LEDGER_STATE_CLASSIFICATIONS,
+    )
+
+
+def build_decision_freshness_summary(history: dict[str, Any]) -> dict[str, Any]:
+    return _build_decision_freshness_summary_read_model(
+        history,
+        parse_timestamp=parse_timestamp,
+        decision_event_kinds=decision_event_kinds,
+        event_class_for_run=event_ledger_event_class,
+        blank_event_class_counts=blank_event_class_counts,
+        window_days=DECISION_FRESHNESS_WINDOW_DAYS,
+        item_limit=DECISION_FRESHNESS_ITEM_LIMIT,
+        proxy_note=DECISION_FRESHNESS_PROXY_NOTE,
+    )
+
 DELIVERY_BATCH_SCALE_TEST_ONLY_CLASSIFICATION_HINTS = (
     "_test",
     "_smoke",

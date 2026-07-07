@@ -8,6 +8,7 @@ from .contract import (
     TODO_RESUME_KIND_TODO_DONE,
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
+    TODO_TASK_CLASS_USER_ACTION,
     build_todo_id,
     normalize_required_capabilities,
     normalize_required_write_scopes,
@@ -115,7 +116,9 @@ def active_state_todo_attention_item(
         user_gate_items[0].get("text") if user_gate_items else None,
         limit=320,
     )
+    user_action = public_safe_compact_text(first_open_todo_text(user_todos), limit=320)
     agent_action = public_safe_compact_text(first_open_todo_text(agent_todos), limit=320)
+    agent_has_open = bool(agent_action or todo_summary_open_count(agent_todos) > 0)
     lifecycle_fields = goal_lifecycle_fields(goal, current_run)
     goal_id = str(goal.get("id") or "unknown-goal")
 
@@ -134,7 +137,33 @@ def active_state_todo_attention_item(
             **lifecycle_fields,
         )
 
-    if agent_action or todo_summary_open_count(agent_todos) > 0:
+    if user_action or todo_summary_open_count(user_todos) > 0:
+        user_items = [
+            item
+            for item in (user_todos.get("first_open_items") if user_todos else []) or []
+            if isinstance(item, dict) and item.get("done") is not True
+        ]
+        explicit_user_actions_only = bool(user_items) and all(
+            str(item.get("task_class") or "").strip()
+            and projection_todo_item_task_class(item) == TODO_TASK_CLASS_USER_ACTION
+            for item in user_items
+        )
+        if not (agent_has_open and explicit_user_actions_only):
+            return attention_item(
+                goal_id=goal_id,
+                status="active_state_user_todo",
+                waiting_on="controller",
+                severity="action",
+                recommended_action=(
+                    user_action
+                    or active_next_action
+                    or "resolve the open user todo from the active goal state"
+                ),
+                source="active_state",
+                **lifecycle_fields,
+            )
+
+    if agent_has_open:
         return attention_item(
             goal_id=goal_id,
             status="active_state_agent_todo",
