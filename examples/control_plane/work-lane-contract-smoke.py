@@ -33,6 +33,7 @@ def status_payload(
     next_action: str = "Observe dependency state and then advance backlog if unchanged.",
     post_handoff_latest_run: dict | None = None,
     coordination: dict | None = None,
+    latest_runs: list[dict] | None = None,
 ) -> dict:
     if agent_todo_items is None:
         agent_todo_items = [
@@ -108,6 +109,8 @@ def status_payload(
     }
     if coordination:
         goal_history_item["coordination"] = coordination
+    if latest_runs is not None:
+        goal_history_item["latest_runs"] = latest_runs
     return {
         "ok": True,
         "attention_queue": {
@@ -743,7 +746,7 @@ def assert_mixed_monitor_and_advancement_routes_to_advancement() -> None:
     assert [item["task_class"] for item in first_items] == ["advancement_task", "continuous_monitor"], guard
 
 
-def assert_not_due_monitor_only_quiets_until_material_transition() -> None:
+def assert_not_due_monitor_only_requires_frontier_replan_without_delta() -> None:
     guard = build_quota_should_run(
         status_payload(
             status="monitor_schedule_waiting",
@@ -763,15 +766,20 @@ def assert_not_due_monitor_only_quiets_until_material_transition() -> None:
         goal_id=GOAL_ID,
     )
     lane = guard["work_lane_contract"]
-    assert guard["decision"] == "skip", guard
-    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    assert guard["should_run"] is True, guard
     assert lane["lane"] == "continuous_monitor", lane
     assert lane["obligation"] == "quiet_until_material_monitor_transition", lane
-    assert guard["heartbeat_recommendation"]["recommended_mode"] == "monitor_quiet_until_material_transition", guard
-    assert guard["interaction_contract"]["mode"] == "monitor_quiet_skip", guard
-    assert guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is True, guard
-    assert guard["goal_frontier_projection"]["replan_required"] is False, guard
-    assert guard.get("autonomous_replan_obligation") is None, guard
+    assert guard["heartbeat_recommendation"]["recommended_mode"] == (
+        "autonomous_replan_required"
+    ), guard
+    assert guard["interaction_contract"]["mode"] == "autonomous_replan", guard
+    assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is True, guard
+    assert guard["goal_frontier_projection"]["replan_required"] is True, guard
+    obligation = guard["autonomous_replan_obligation"]
+    assert obligation["triggers"][0]["kind"] == "frontier_exhausted_monitor_lane", guard
+    assert obligation["triggers"][0]["future_monitor_schedule_present"] is True, guard
     assert guard["agent_todo_summary"]["monitor_due_count"] == 0, guard
 
 
@@ -2261,6 +2269,23 @@ def assert_active_next_action_todo_survives_compact_candidate_limits() -> None:
             "registered_agents": ["codex-main-control"],
         },
         agent_todo_items=[],
+        latest_runs=[
+            {
+                "classification": "candidate_limit_fixture_frontier_delta",
+                "agent_id": "codex-main-control",
+                "progress_scope": "agent_lane",
+                "autonomous_replan_ack": {
+                    "schema_version": "autonomous_replan_ack_v0",
+                    "recorded": True,
+                    "source": "refresh_state",
+                    "delta_contract": {
+                        "schema_version": "repair_delta_contract_v0",
+                        "delta_present": True,
+                        "delta_kinds": ["runnable_todo_set"],
+                    },
+                },
+            },
+        ],
     )
     item = payload["attention_queue"]["items"][0]
     item["agent_todos"] = agent_todos
@@ -2301,7 +2326,7 @@ def main() -> int:
     assert_structured_todo_lane_registration_beats_text_fallback()
     assert_structured_monitor_registration_beats_action_text()
     assert_mixed_monitor_and_advancement_routes_to_advancement()
-    assert_not_due_monitor_only_quiets_until_material_transition()
+    assert_not_due_monitor_only_requires_frontier_replan_without_delta()
     assert_due_monitor_only_requires_attempt()
     assert_due_monitor_lower_priority_does_not_preempt_advancement()
     assert_due_monitor_higher_priority_preempts_advancement()

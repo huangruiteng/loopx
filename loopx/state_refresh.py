@@ -9,6 +9,10 @@ from typing import Any
 from .control_plane.runtime.time import now_local_iso
 from .control_plane.work_items.delivery_batch_scale import DELIVERY_BATCH_SCALE_CHOICES, require_delivery_batch_scale
 from .control_plane.work_items.delivery_outcome import DELIVERY_OUTCOME_CHOICES, require_delivery_outcome
+from .control_plane.work_items.repair_delta import (
+    REPAIR_DELTA_KIND_CHOICES,
+    normalize_repair_delta_kinds,
+)
 from .feedback import validate_local_control_text, validate_public_safe_text
 from .file_lock import exclusive_file_lock
 from .global_registry import sync_project_registry_to_global
@@ -43,21 +47,6 @@ CHECKBOX_PREFIX_RE = re.compile(r"^\[(?P<mark>[ xX])\]\s+")
 ACTIVE_STATE_NEXT_ACTION_UPDATE_SCHEMA_VERSION = "active_state_next_action_update_v0"
 REPAIR_DELTA_CONTRACT_SCHEMA_VERSION = "repair_delta_contract_v0"
 REPAIR_NOOP_SCHEMA_VERSION = "repair_noop_v0"
-REPAIR_DELTA_KIND_CHOICES = (
-    "effective_action",
-    "interaction_contract",
-    "runnable_todo_set",
-    "user_gate",
-    "blocker",
-    "successor_or_supersede",
-    "capability_gate",
-    "monitor_target",
-    "active_state_next_action",
-    "goal_vision_patch",
-    "goal_boundary_projection",
-    "no_followup",
-    "watch_lane_continuation",
-)
 VISION_CHECKPOINT_SCHEMA_VERSION = "vision_checkpoint_v0"
 VISION_CHECKPOINT_MATERIAL_OUTCOMES = {
     "outcome_gap",
@@ -134,25 +123,6 @@ def normalize_next_action_text(value: str) -> str:
         raise ValueError("next_action must not be empty")
     validate_public_safe_text("active_state_next_action", text)
     return text
-
-
-def normalize_repair_delta_kinds(values: list[str] | None) -> list[str]:
-    normalized: list[str] = []
-    seen: set[str] = set()
-    allowed = set(REPAIR_DELTA_KIND_CHOICES)
-    for value in values or []:
-        item = str(value or "").strip()
-        if not item:
-            continue
-        if item not in allowed:
-            raise ValueError(
-                "repair_delta_kind must be one of: " + ", ".join(REPAIR_DELTA_KIND_CHOICES)
-            )
-        if item in seen:
-            continue
-        seen.add(item)
-        normalized.append(item)
-    return normalized
 
 
 def registered_agents_for_goal(registry_goal: dict[str, Any] | None) -> list[str]:

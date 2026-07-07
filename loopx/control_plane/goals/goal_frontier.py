@@ -8,6 +8,7 @@ from ..agents.agent_scope import (
     agent_scope_item_claimed_by,
     agent_scope_item_claimed_by_agent_or_unclaimed,
 )
+from ..work_items.repair_delta import repair_delta_kinds_have_frontier_delta
 
 
 GOAL_FRONTIER_PROJECTION_SCHEMA_VERSION = "goal_frontier_projection_v0"
@@ -30,15 +31,6 @@ VISION_CHECKPOINT_SATISFIED_DECISIONS = {
     "patched",
     "retired_or_superseded",
     "unchanged_with_reason",
-}
-FRONTIER_REPLAN_ACK_DELTA_KINDS = {
-    "active_state_next_action",
-    "blocker",
-    "goal_vision_patch",
-    "no_followup",
-    "runnable_todo_set",
-    "successor_or_supersede",
-    "watch_lane_continuation",
 }
 
 
@@ -73,12 +65,7 @@ def autonomous_replan_ack_has_frontier_delta(ack: dict[str, Any] | None) -> bool
     delta_contract = ack.get("delta_contract")
     if not isinstance(delta_contract, dict) or delta_contract.get("delta_present") is not True:
         return False
-    delta_kinds = {
-        str(item or "").strip()
-        for item in (delta_contract.get("delta_kinds") or [])
-        if str(item or "").strip()
-    }
-    return bool(delta_kinds & FRONTIER_REPLAN_ACK_DELTA_KINDS)
+    return repair_delta_kinds_have_frontier_delta(delta_contract.get("delta_kinds"))
 
 
 def autonomous_replan_decision_allowed(
@@ -765,6 +752,36 @@ def _blocking_handoff_gate_count(
     return len(agent_scope_blocking_handoff_gates(agent_todo_summary, agent_id=agent_id))
 
 
+def _ready_deferred_successor_count(
+    agent_todo_summary: dict[str, Any] | None,
+    *,
+    agent_id: str | None,
+) -> int:
+    if not isinstance(agent_todo_summary, dict):
+        return 0
+    current_count = safe_non_negative_int(
+        agent_todo_summary.get("current_agent_deferred_resume_count")
+    )
+    unclaimed_count = safe_non_negative_int(
+        agent_todo_summary.get("unclaimed_deferred_resume_count")
+    )
+    if current_count or unclaimed_count:
+        return current_count + unclaimed_count
+    candidates = (
+        agent_todo_summary.get("deferred_resume_candidates")
+        if isinstance(agent_todo_summary.get("deferred_resume_candidates"), list)
+        else []
+    )
+    return len(
+        [
+            item
+            for item in candidates
+            if isinstance(item, dict)
+            and agent_scope_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
+        ]
+    )
+
+
 def _succession_gap_items(
     agent_todo_summary: dict[str, Any] | None,
     *,
@@ -814,6 +831,8 @@ def derive_goal_frontier_replan_obligation_from_summaries(
     if autonomous_replan_is_required(existing_replan_obligation):
         return None
     if _blocking_handoff_gate_count(agent_todo_summary, agent_id=agent_id) > 0:
+        return None
+    if _ready_deferred_successor_count(agent_todo_summary, agent_id=agent_id) > 0:
         return None
 
     user_counts = _summary_task_counts(user_todo_summary)
@@ -995,8 +1014,7 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         return None
     if agent_counts.get("advancement", 0) > 0 or total_frontier_advancement > 0:
         return None
-    if _monitor_only_lane_has_future_schedule(agent_todo_summary):
-        return None
+    future_schedule_present = _monitor_only_lane_has_future_schedule(agent_todo_summary)
 
     return {
         "schema_version": AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
@@ -1014,6 +1032,7 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                 "agent_id": agent_id,
                 "agent_open_count": agent_counts.get("open", 0),
                 "agent_monitor_open_count": agent_counts.get("monitor", 0),
+                "future_monitor_schedule_present": future_schedule_present,
             }
         ],
         "guidance_actions": [
@@ -1041,7 +1060,7 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         "recommended_action": (
             "run a bounded goal-frontier replan before another monitor-only quiet "
             "poll: create successor work, supersede the monitor lane, set an expiry, "
-            "or record no-follow-up"
+            "record watch-lane continuation, or record no-follow-up"
         ),
     }
 
