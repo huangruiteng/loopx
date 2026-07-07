@@ -1,0 +1,23 @@
+examples/benchmark-route-profile-contract-smoke.py
+  s_9a5a2bd944fdcb::t_d0d1d2c9ec797c 34-35,41-64,164-181
+loopx/benchmark_core/route_profile.py
+  s_9a5a2bd944fdcb::t_2a5b9fdb25141b 3,6,69-121,145-146,275,280
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "097688147e1fa5f889621700038f467ab077c5a6",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
