@@ -131,6 +131,14 @@ path, and canary route rather than as a user-facing release baseline.
   bounded-context cleanup, auto-research successor/evidence fixes, connector
   source-map packets, structured run-index classification, and Codex CLI/TUI
   recovery fixes.
+- `v0.1.12` on 2026-07-08 02:05 +08:00: presentation/read-model and frontier
+  recovery release at the matching `v0.1.12` tag. This release moves large
+  status, goal-channel, dashboard, and Lark rendering paths into bounded
+  presentation/read-model modules, fixes monitor-only plus open-vision frontier
+  replan gaps, makes installer reruns overwrite stale wrappers/files safely,
+  exposes premerge canary progress earlier, and promotes auto-research visible
+  worker/successor routing plus selected public benchmark route/profile and
+  SkillsBench helper hardening.
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.
