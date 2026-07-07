@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import AbstractSet, Any, Callable, Optional
 
+from ..runtime.session_runtime import session_runtime_projection_attention
+
 
 AttentionItemBuilder = Callable[..., dict[str, Any]]
 AttentionFieldsBuilder = Callable[[Optional[dict[str, Any]]], dict[str, Any]]
@@ -15,10 +17,7 @@ OperatorQuestionBuilder = Callable[[str, str], str]
 OperatorQuestionNormalizer = Callable[..., str]
 RunHasExternalEvidenceWatchSignal = Callable[[dict[str, Any]], bool]
 SessionRuntimeProjectionFromRun = Callable[[Optional[dict[str, Any]]], Optional[dict[str, Any]]]
-SessionRuntimeProjectionAttention = Callable[
-    [dict[str, Any], Optional[dict[str, Any]], dict[str, Any]],
-    dict[str, Any],
-]
+PublicSafeText = Callable[..., Optional[str]]
 
 
 def goal_attention(
@@ -31,11 +30,12 @@ def goal_attention(
     goal_lifecycle_fields: GoalLifecycleFields,
     legacy_runtime_goal_attention: LegacyRuntimeGoalAttention,
     compact_session_runtime_projection_from_run: SessionRuntimeProjectionFromRun,
-    session_runtime_projection_attention: SessionRuntimeProjectionAttention,
+    public_safe_compact_text: PublicSafeText,
     attention_item: AttentionItemBuilder,
     run_has_external_evidence_watch_signal: RunHasExternalEvidenceWatchSignal,
     default_operator_question: OperatorQuestionBuilder,
     normalize_operator_question: OperatorQuestionNormalizer,
+    monitor_signal_waiting_on: str,
     default_operator_gate: str,
     planned_controller_opt_in_recommended_action: str,
     connected_adapter_statuses: AbstractSet[str],
@@ -108,7 +108,15 @@ def goal_attention(
 
     session_projection = compact_session_runtime_projection_from_run(current_run)
     if session_projection:
-        return session_runtime_projection_attention(goal, current_run, session_projection)
+        return session_runtime_projection_attention(
+            goal,
+            current_run,
+            session_projection,
+            public_safe_compact_text=public_safe_compact_text,
+            attention_item=attention_item,
+            goal_lifecycle_fields=goal_lifecycle_fields,
+            monitor_signal_waiting_on=monitor_signal_waiting_on,
+        )
 
     classification = str(current_run.get("classification") or "unknown")
     action = str(current_run.get("recommended_action") or "inspect the latest run and choose one next action")

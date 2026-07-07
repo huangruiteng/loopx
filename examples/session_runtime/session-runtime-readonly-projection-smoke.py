@@ -16,7 +16,11 @@ from loopx.session_runtime import (  # noqa: E402
     SESSION_RUNTIME_READONLY_PROJECTION_SCHEMA_VERSION,
     build_session_runtime_readonly_projection,
 )
-from loopx.status import build_attention_queue, build_run_history, render_status_markdown  # noqa: E402
+from loopx.status import (  # noqa: E402
+    build_attention_queue,
+    build_status_runtime_summaries,
+    render_status_markdown,
+)
 
 
 LOCAL_PATH_FIXTURE = "/" + "private" + "/tmp/raw-run.log"
@@ -231,7 +235,14 @@ def test_status_ingests_projection_first_screen() -> None:
     assert "source_refs" not in projection.get("source", {}), projection
     assert projection["source"]["source_ref_counts"]["sessions"] == 1, projection
 
-    run_history = build_run_history(history)
+    run_history = build_status_runtime_summaries(
+        history=history,
+        queue=queue,
+        runtime_root=REPO_ROOT,
+        goal_id_filter=None,
+        display_limit=10,
+        todo_index_limit=10,
+    )["run_history"]
     compact_run = run_history["goals"][0]["latest_runs"][0]
     assert compact_run["session_runtime_projection"]["mode"] == "read_only", compact_run
     markdown = render_status_markdown(

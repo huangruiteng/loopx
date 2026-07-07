@@ -239,9 +239,6 @@ from .control_plane.runtime.session_runtime import (
     compact_session_runtime_projection_from_run,
     compact_session_runtime_readonly_projection,
     legacy_runtime_goal_attention as _legacy_runtime_goal_attention_read_model,
-    session_runtime_projection_attention as _session_runtime_projection_attention_read_model,
-    session_runtime_status_label as _session_runtime_status_label_read_model,
-    session_runtime_status_waiting_on as _session_runtime_status_waiting_on_read_model,
 )
 from .control_plane.agents.subagent_activity import (
     MAX_SUBAGENT_ACTIVITY_ITEMS,
@@ -6628,37 +6625,6 @@ def legacy_runtime_goal_attention(
     )
 
 
-def session_runtime_status_waiting_on(value: Any, *, monitor_only: bool = False) -> str:
-    return _session_runtime_status_waiting_on_read_model(
-        value,
-        monitor_signal_waiting_on=MONITOR_SIGNAL_WAITING_ON,
-        monitor_only=monitor_only,
-    )
-
-
-def session_runtime_status_label(projection: dict[str, Any]) -> str:
-    return _session_runtime_status_label_read_model(
-        projection,
-        public_safe_compact_text=public_safe_compact_text,
-    )
-
-
-def session_runtime_projection_attention(
-    goal: dict[str, Any],
-    current_run: dict[str, Any] | None,
-    projection: dict[str, Any],
-) -> dict[str, Any]:
-    return _session_runtime_projection_attention_read_model(
-        goal,
-        current_run,
-        projection,
-        public_safe_compact_text=public_safe_compact_text,
-        attention_item=attention_item,
-        goal_lifecycle_fields=goal_lifecycle_fields,
-        monitor_signal_waiting_on=MONITOR_SIGNAL_WAITING_ON,
-    )
-
-
 def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
     return _goal_attention_read_model(
         goal,
@@ -6669,11 +6635,12 @@ def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
         goal_lifecycle_fields=goal_lifecycle_fields,
         legacy_runtime_goal_attention=legacy_runtime_goal_attention,
         compact_session_runtime_projection_from_run=compact_session_runtime_projection_from_run,
-        session_runtime_projection_attention=session_runtime_projection_attention,
+        public_safe_compact_text=public_safe_compact_text,
         attention_item=attention_item,
         run_has_external_evidence_watch_signal=run_has_external_evidence_watch_signal,
         default_operator_question=default_operator_question,
         normalize_operator_question=normalize_operator_question,
+        monitor_signal_waiting_on=MONITOR_SIGNAL_WAITING_ON,
         default_operator_gate=DEFAULT_OPERATOR_GATE,
         planned_controller_opt_in_recommended_action=PLANNED_CONTROLLER_OPT_IN_RECOMMENDED_ACTION,
         connected_adapter_statuses=CONNECTED_ADAPTER_STATUSES,
