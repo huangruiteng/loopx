@@ -2478,6 +2478,7 @@ def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
         "task_id",
         "first_blocker",
         "alternate_source_kind",
+        "canonical_equivalent_status",
         "selection_recommendation",
     ):
         text = public_safe_compact_text(value.get(field), limit=180)

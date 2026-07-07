@@ -460,6 +460,21 @@ def _skillsbench_number(value: Any) -> float | int | None:
     return None
 
 
+def _skillsbench_passed_bool_score_source(
+    *,
+    result: dict[str, Any],
+    rewards: dict[str, Any],
+) -> tuple[float | None, str | None]:
+    for source_name, container in (
+        ("official_skillsbench_benchflow_result_rewards_passed_bool", rewards),
+        ("official_skillsbench_benchflow_result_passed_bool", result),
+    ):
+        passed = container.get("passed") if isinstance(container, dict) else None
+        if isinstance(passed, bool):
+            return (1.0 if passed else 0.0), source_name
+    return None, None
+
+
 def _skillsbench_official_score_missing(benchmark_run: dict[str, Any]) -> bool:
     official = (
         benchmark_run.get("official_task_score")
@@ -3507,6 +3522,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
         reward_value, reward_artifact_source = _skillsbench_rollout_reward_artifact(
             result_path
         )
+    passed_bool_score_source: str | None = None
+    if reward_value is None:
+        reward_value, passed_bool_score_source = _skillsbench_passed_bool_score_source(result=result, rewards=rewards)
 
     timing_path = result_path.with_name("timing.json")
     timing: dict[str, Any] = {}
@@ -3553,9 +3571,11 @@ def build_skillsbench_benchflow_result_benchmark_run(
             skillsbench_runner_error_attribution(error_text)
         )
         runner_score_failure_attribution = score_failure_attribution
-    if verifier_error_text and reward_artifact_source:
+    if verifier_error_text and (reward_artifact_source or passed_bool_score_source):
         warning_labels.append(
             "skillsbench_result_json_reward_missing_recovered_from_reward_txt"
+            if reward_artifact_source
+            else "skillsbench_result_json_reward_missing_recovered_from_passed_bool"
         )
     elif verifier_error_text:
         if score_failure_attribution in {"none", "skillsbench_runner_error"}:
@@ -4770,6 +4790,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
         validation_scope = "official_benchflow_result_json_plus_rollout_reward_artifact"
         if not controller_trace_present:
             counter_trust_level = "official_benchflow_result_plus_rollout_reward_artifact"
+    if passed_bool_score_source:
+        official_score_kind = "skillsbench_verifier_reward_recovered_from_passed_bool"
+        official_score_source = passed_bool_score_source
+        validation_scope = "official_benchflow_result_json_plus_passed_bool_score"
+        if not controller_trace_present:
+            counter_trust_level = "official_benchflow_result_plus_passed_bool_score"
     if post_success_score:
         official_score_kind = (
             "skillsbench_verifier_reward_recovered_from_controller_trace"

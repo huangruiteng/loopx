@@ -75,6 +75,7 @@ from examples.skillsbench_fixtures import (  # noqa: E402
     write_official_skillsbench_docker_daemon_unavailable_failure,
     write_official_skillsbench_docker_port_conflict_failure,
     write_official_skillsbench_oracle_reward_artifact_recovery_result,
+    write_official_skillsbench_passed_bool_result,
     write_official_skillsbench_result,
     write_official_skillsbench_reward_artifact_recovery_result,
     write_official_skillsbench_runner_error_zero_reward_result,
@@ -4552,6 +4553,42 @@ def test_skillsbench_official_result_builder() -> None:
         assert compact["trials"][0]["task_id"] == "sample-task"
         assert compact["read_boundary"]["compact_only"] is True
         assert compact["read_boundary"]["trajectory_read"] is False
+
+
+def test_skillsbench_passed_bool_result_is_countable_zero() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-passed-bool-") as tmp:
+        result_path = write_official_skillsbench_passed_bool_result(
+            Path(tmp),
+            passed=False,
+            task_id="travel-planning",
+        )
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="codex-cli-goal-baseline",
+            )
+        )
+        assert compact is not None
+        assert compact["official_score_status"] == "completed", compact
+        assert compact["official_score"] == 0.0, compact
+        assert compact["official_task_score"] == {
+            "kind": "skillsbench_verifier_reward_recovered_from_passed_bool",
+            "value": 0.0,
+            "passed": False,
+        }, compact
+        assert compact["official_score_source"] == (
+            "official_skillsbench_benchflow_result_rewards_passed_bool"
+        ), compact
+        assert compact["score_failure_attribution"] == (
+            "official_verifier_solution_failure"
+        ), compact
+        assert "verifier_infrastructure_failure" not in compact[
+            "failure_attribution_labels"
+        ], compact
+        attempt_accounting = compact["attempt_accounting"]
+        assert attempt_accounting["official_score_attempt_countable"] is True, compact
+        assert attempt_accounting["verifier_attempt_countable"] is True, compact
+        assert attempt_accounting["solver_attempt_countable"] is True, compact
 
 
 def test_skillsbench_verifier_uv_bootstrap_error_is_not_solution_failure() -> None:

@@ -52,6 +52,7 @@ import argparse
 import ast
 import asyncio
 import contextlib
+import difflib
 import importlib
 import inspect
 import json
@@ -6347,6 +6348,7 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
         "task_id",
         "first_blocker",
         "alternate_source_kind",
+        "canonical_equivalent_status",
         "selection_recommendation",
     ):
         raw = value.get(field)
@@ -7333,6 +7335,63 @@ def _skillsbench_public_task_label(value: Any, *, limit: int = 120) -> str:
     return label[:limit]
 
 
+def _skillsbench_task_id_tokens(value: str) -> set[str]:
+    return {token for token in re.findall(r"[a-z0-9]+", value.lower()) if len(token) >= 2}
+
+
+def _skillsbench_task_id_similarity(
+    requested_task_id: str,
+    canonical_task_id: str,
+) -> tuple[float, bool]:
+    requested = _skillsbench_public_task_label(requested_task_id).lower()
+    canonical = _skillsbench_public_task_label(canonical_task_id).lower()
+    if not requested or not canonical:
+        return 0.0, False
+    sequence_score = difflib.SequenceMatcher(None, requested, canonical).ratio()
+    requested_tokens = _skillsbench_task_id_tokens(requested)
+    canonical_tokens = _skillsbench_task_id_tokens(canonical)
+    token_overlap = 0.0
+    has_token_overlap = False
+    if requested_tokens and canonical_tokens:
+        intersection = requested_tokens & canonical_tokens
+        union = requested_tokens | canonical_tokens
+        token_overlap = len(intersection) / len(union)
+        has_token_overlap = bool(intersection)
+    return (sequence_score * 0.4) + (token_overlap * 0.6), has_token_overlap
+
+
+def skillsbench_nearest_canonical_task_ids(
+    *,
+    requested_task_id: str,
+    canonical_root: Path,
+    limit: int = 5,
+) -> tuple[list[str], str]:
+    canonical_ids: list[str] = []
+    if canonical_root.is_dir():
+        for child in sorted(canonical_root.iterdir(), key=lambda item: item.name):
+            if not child.is_dir():
+                continue
+            label = _skillsbench_public_task_label(child.name)
+            if label:
+                canonical_ids.append(label)
+    if not canonical_ids:
+        return [], "canonical_task_index_empty"
+
+    ranked: list[tuple[float, bool, str]] = []
+    for canonical_id in canonical_ids:
+        score, has_token_overlap = _skillsbench_task_id_similarity(
+            requested_task_id,
+            canonical_id,
+        )
+        ranked.append((score, has_token_overlap, canonical_id))
+    ranked.sort(key=lambda item: (-item[0], item[2]))
+    best_score, best_has_token_overlap, _best_id = ranked[0]
+    close_match = best_has_token_overlap or best_score >= 0.34
+    if close_match:
+        return [item[2] for item in ranked[:limit]], "close_canonical_match_found"
+    return canonical_ids[:limit], "no_close_canonical_match"
+
+
 SKILLSBENCH_BOOTSTRAP_LIGHT_BLOCKING_PREFLIGHT_FIELDS = (
     "apt_setup_risk_detected",
     "apt_retry_patch_required",
@@ -7504,25 +7563,23 @@ def skillsbench_task_setup_preflight(
         alternate_source_kind = (
             "experiments_sanity_tasks" if sanity_task.is_dir() else "none"
         )
-        nearest: list[str] = []
-        canonical_root = skillsbench_root / "tasks"
-        if canonical_root.is_dir():
-            for child in sorted(canonical_root.iterdir(), key=lambda item: item.name):
-                if not child.is_dir():
-                    continue
-                label = _skillsbench_public_task_label(child.name)
-                if label:
-                    nearest.append(label)
-                if len(nearest) >= 5:
-                    break
+        nearest, canonical_equivalent_status = (
+            skillsbench_nearest_canonical_task_ids(
+                requested_task_id=public_task_id,
+                canonical_root=skillsbench_root / "tasks",
+            )
+        )
         preflight.update(
             {
                 "status": "task_missing_from_canonical_tasks",
                 "first_blocker": "skillsbench_task_source_preflight_blocked",
                 "alternate_source_kind": alternate_source_kind,
+                "canonical_equivalent_status": canonical_equivalent_status,
                 "nearest_canonical_task_ids": nearest,
                 "selection_recommendation": (
-                    "choose_normal_tasks_candidate_or_use_explicit_sanity_source_runner"
+                    "choose_nearest_canonical_task_candidate_or_use_explicit_sanity_source_runner"
+                    if canonical_equivalent_status == "close_canonical_match_found"
+                    else "no_close_canonical_task_match_choose_normal_tasks_candidate_or_explicit_sanity_source_runner"
                 ),
             }
         )
