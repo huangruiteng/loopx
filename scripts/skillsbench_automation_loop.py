@@ -6402,10 +6402,7 @@ def _requested_build_stall_timeout_sec(args: argparse.Namespace) -> int:
 
 
 def _effective_build_stall_timeout_sec(args: argparse.Namespace) -> int:
-    requested = _requested_build_stall_timeout_sec(args)
-    if requested <= 0:
-        return 0
-    return min(requested, MAX_BUILD_STALL_TIMEOUT_SEC)
+    return _requested_build_stall_timeout_sec(args)
 
 
 def build_compose_setup_diagnostic(
@@ -15920,10 +15917,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "Optional public-safe watchdog for Docker build/setup before any "
             "agent lifecycle starts. Defaults to "
-            f"{DEFAULT_BUILD_STALL_TIMEOUT_SEC}s and caps nonzero values at "
-            f"{MAX_BUILD_STALL_TIMEOUT_SEC}s so pre-worker BuildKit stalls "
-            "close out compactly instead of consuming the full outer timeout; "
-            "0 disables the watchdog."
+            f"{DEFAULT_BUILD_STALL_TIMEOUT_SEC}s; larger values are honored "
+            "for slow but progressing setup, and 0 disables the watchdog."
         ),
     )
     parser.add_argument("--agent-idle-timeout", type=int, default=900)
