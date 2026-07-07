@@ -385,6 +385,110 @@ def _compact_number(value: Any) -> float | None:
     return None
 
 
+def _numeric_score_value(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _score_countability_label_values(run: dict[str, Any]) -> list[str]:
+    labels: list[str] = []
+    for key in (
+        "score_failure_attribution",
+        "failure_class",
+        "attempt_failure_label",
+        "attempt_failure_class",
+        "first_blocker",
+        "runner_return_status",
+    ):
+        text = _compact_text(run.get(key), limit=180)
+        if text:
+            labels.append(text)
+    for key in ("failure_labels", "failure_attribution_labels", "setup_blockers"):
+        for label in _compact_list(run.get(key), limit=16):
+            labels.append(label)
+    accounting = (
+        run.get("attempt_accounting")
+        if isinstance(run.get("attempt_accounting"), dict)
+        else {}
+    )
+    for key in ("failure_label", "failure_class"):
+        text = _compact_text(accounting.get(key), limit=180)
+        if text:
+            labels.append(text)
+    return labels
+
+
+def benchmark_run_official_score_countability(run: dict[str, Any]) -> dict[str, Any]:
+    """Classify whether a compact/ledger run's official score is aggregate-countable."""
+
+    score = _numeric_score_value(run.get("official_score"))
+    if score is None:
+        official = (
+            run.get("official_task_score")
+            if isinstance(run.get("official_task_score"), dict)
+            else {}
+        )
+        score = _numeric_score_value(official.get("value"))
+    if score is None:
+        return {
+            "countable": False,
+            "reason": "score_missing",
+            "score": None,
+        }
+
+    explicit_attempt_countable = run.get("official_score_attempt_countable")
+    accounting = (
+        run.get("attempt_accounting")
+        if isinstance(run.get("attempt_accounting"), dict)
+        else {}
+    )
+    if explicit_attempt_countable is None:
+        explicit_attempt_countable = accounting.get("official_score_attempt_countable")
+    if explicit_attempt_countable is False:
+        return {
+            "countable": False,
+            "reason": "official_score_attempt_not_countable",
+            "score": score,
+        }
+
+    score_status = _compact_text(
+        run.get("official_score_status") or run.get("score_status"),
+        limit=80,
+    )
+    if score_status and score_status not in {
+        "completed",
+        "passed",
+        "failed",
+    }:
+        return {
+            "countable": False,
+            "reason": "official_score_status_not_countable",
+            "score": score,
+        }
+
+    labels = _score_countability_label_values(run)
+    if any("uncountable" in label.lower() for label in labels):
+        return {
+            "countable": False,
+            "reason": "uncountable_attribution",
+            "score": score,
+        }
+
+    return {
+        "countable": True,
+        "reason": "countable_official_score",
+        "score": score,
+    }
+
+
 def _round_reward_best_stats(records: list[dict[str, Any]]) -> dict[str, Any]:
     numeric_records: list[dict[str, Any]] = []
     for record in records:
@@ -1907,6 +2011,10 @@ def build_benchmark_run_ledger_entry(
         else None,
         "failure_class": failure_class,
         "failure_scope": failure_scope,
+        "score_failure_attribution": _compact_text(
+            benchmark_run.get("score_failure_attribution"),
+            limit=120,
+        ),
         "failure_labels": _compact_list(
             benchmark_run.get("failure_attribution_labels"),
             limit=8,
@@ -2051,6 +2159,15 @@ def build_benchmark_run_ledger_entry(
         ):
             if isinstance(attempt_accounting.get(field), bool):
                 entry[field] = attempt_accounting[field]
+    for field in (
+        "launcher_attempt_countable",
+        "case_attempt_countable",
+        "solver_attempt_countable",
+        "verifier_attempt_countable",
+        "official_score_attempt_countable",
+    ):
+        if field not in entry and isinstance(benchmark_run.get(field), bool):
+            entry[field] = benchmark_run[field]
     if source_schema == "terminal_bench_post_launch_materialization_v0":
         marker = (
             benchmark_run.get("compact_failure_marker")
@@ -2138,6 +2255,11 @@ def build_benchmark_run_ledger_entry(
     note = _compact_text(notes, limit=220)
     if note:
         entry["notes"] = note
+    countability = benchmark_run_official_score_countability(entry)
+    entry["official_score_countable"] = countability["countable"]
+    entry["official_score_countability_reason"] = countability["reason"]
+    if countability["countable"] is True and countability.get("score") is not None:
+        entry["countable_score"] = countability["score"]
     return {key: value for key, value in entry.items() if value not in (None, "", [])}
 
 
@@ -2230,6 +2352,13 @@ def _normalize_ledger_run(run: dict[str, Any], *, fallback_benchmark_id: str) ->
     for key in ("repair_priority", "repair_class", "next_action", "repair_profile"):
         normalized.pop(key, None)
     normalized.update(repair_route)
+    countability = benchmark_run_official_score_countability(normalized)
+    normalized["official_score_countable"] = countability["countable"]
+    normalized["official_score_countability_reason"] = countability["reason"]
+    if countability["countable"] is True and countability.get("score") is not None:
+        normalized["countable_score"] = countability["score"]
+    else:
+        normalized.pop("countable_score", None)
     archive_state = _compact_text(normalized.get("archive_state"), limit=40)
     if archive_state == "archived":
         normalized["archive_state"] = "archived"
