@@ -371,6 +371,7 @@ def load_auto_research_worker_frontier(
     )
     frontier = projection["frontier"]
     selected = frontier.get("selected") if isinstance(frontier, dict) else None
+    completion = frontier.get("completion") if isinstance(frontier, dict) else None
     return {
         "ok": True,
         "schema_version": AUTO_RESEARCH_WORKER_FRONTIER_SCHEMA_VERSION,
@@ -391,6 +392,7 @@ def load_auto_research_worker_frontier(
             "runnable_count": len(frontier.get("runnable") or []) if isinstance(frontier, dict) else 0,
             "blocked_count": len(frontier.get("blocked") or []) if isinstance(frontier, dict) else 0,
             "source_kind": frontier.get("source_kind") if isinstance(frontier, dict) else None,
+            "completion": completion if isinstance(completion, dict) else None,
         },
         "public_boundary": {
             "source": "loopx_quota_and_auto_research_frontier",
@@ -437,6 +439,28 @@ def run_auto_research_worker_turn(
     action = normalize_auto_research_action(raw_action)
     todo_id = str((selected or {}).get("todo_id") or "")
     if not selected or not todo_id:
+        completion = (
+            frontier_packet["frontier"].get("completion")
+            if isinstance(frontier_packet.get("frontier"), dict)
+            else None
+        )
+        if isinstance(completion, dict) and completion.get("quiet_completion_allowed") is True:
+            return {
+                "ok": True,
+                "schema_version": AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,
+                "mode": "quiet_completion",
+                "goal_id": goal_id,
+                "agent_id": agent_id,
+                "executed": False,
+                "completion": completion,
+                "frontier": frontier_packet,
+                "public_boundary": {
+                    "raw_logs_recorded": False,
+                    "private_artifacts_recorded": False,
+                    "absolute_paths_recorded": False,
+                    "credentials_recorded": False,
+                },
+            }
         return {
             "ok": True,
             "schema_version": AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,

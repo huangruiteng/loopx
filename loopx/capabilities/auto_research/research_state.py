@@ -32,12 +32,14 @@ from .evidence_packet import (
     validate_research_evidence_event,
     validate_research_hypothesis,
 )
+from .preset import AUTO_RESEARCH_REQUIRED_HOLDOUT_IMPROVEMENTS
 
 
 AUTO_RESEARCH_FIXTURE_SCHEMA_VERSION = "decentralized_auto_research_fixture_v0"
 AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION = "decentralized_auto_research_projection_v0"
 RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION = "research_evidence_graph_v0"
 RESEARCH_FRONTIER_SCHEMA_VERSION = "decentralized_research_frontier_v0"
+AUTO_RESEARCH_COMPLETION_STATUS_SCHEMA_VERSION = "auto_research_completion_status_v0"
 ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND = "loopx_rollout_event_log"
 AUTO_RESEARCH_ACTION_ALIASES = {
     "run_read_only_adapter_tick": "run_dev_eval",
@@ -519,6 +521,105 @@ def build_research_decision_candidates(evidence_graph: dict[str, Any]) -> dict[s
     }
 
 
+def _holdout_metric_sequence_from_graph(evidence_graph: dict[str, Any]) -> list[float]:
+    sequence: list[float] = []
+    for raw_node in evidence_graph.get("nodes") or []:
+        if not isinstance(raw_node, dict):
+            continue
+        value = raw_node.get("best_holdout_metric")
+        if value is None or isinstance(value, bool):
+            continue
+        number = _finite_float(value, field="node.best_holdout_metric")
+        if number is not None:
+            sequence.append(number)
+    return sequence
+
+
+def _metric_sequence_improvement_count(
+    sequence: list[float],
+    *,
+    baseline: float | None,
+    direction: str,
+) -> int:
+    if baseline is None:
+        return 0
+    count = 0
+    previous = baseline
+    minimize = direction == "minimize"
+    for metric in sequence:
+        improved = metric < previous if minimize else metric > previous
+        if improved:
+            count += 1
+        previous = metric
+    return count
+
+
+def build_auto_research_completion_status(
+    evidence_graph: dict[str, Any],
+    decision_candidates: dict[str, list[dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
+    graph = _json_obj(evidence_graph, field="evidence_graph")
+    decisions = decision_candidates or build_research_decision_candidates(graph)
+    metric = graph.get("metric") if isinstance(graph.get("metric"), dict) else {}
+    direction = str(metric.get("direction") or "maximize")
+    if direction not in METRIC_DIRECTIONS:
+        direction = "maximize"
+    baseline = _finite_float(metric.get("baseline"), field="evidence_graph.metric.baseline")
+    holdout_sequence = _holdout_metric_sequence_from_graph(graph)
+    holdout_improvement_count = _metric_sequence_improvement_count(
+        holdout_sequence,
+        baseline=baseline,
+        direction=direction,
+    )
+    required_holdout_improvement_count = AUTO_RESEARCH_REQUIRED_HOLDOUT_IMPROVEMENTS
+    dev_pending_count = len(decisions.get("dev_promotion_candidates") or [])
+    validated_count = len(decisions.get("validated_promotion_candidates") or [])
+    promotion_count = len(decisions.get("promotion_candidates") or [])
+    retirement_count = len(decisions.get("retirement_candidates") or [])
+
+    status = "active"
+    next_action = "continue_frontier"
+    required_actions: list[str] = []
+    quiet_completion_allowed = False
+    reason = "frontier_still_active"
+    if validated_count and holdout_improvement_count >= required_holdout_improvement_count:
+        status = "target_reached"
+        next_action = "quiet_completion"
+        quiet_completion_allowed = True
+        reason = "required_holdout_improvements_reached"
+    elif dev_pending_count:
+        status = "holdout_eval_required"
+        next_action = "run_holdout_eval"
+        required_actions = ["holdout_eval", "boundary_scan"]
+        reason = "dev_promotion_candidate_pending_holdout"
+    elif validated_count or promotion_count:
+        status = "promotion_review_required"
+        next_action = "review_promotion_readiness"
+        required_actions = ["boundary_scan", "promotion_decision"]
+        reason = "validated_promotion_candidate_pending_decision"
+    elif retirement_count:
+        status = "retirement_review_required"
+        next_action = "review_retirement_candidate"
+        required_actions = ["retirement_decision"]
+        reason = "retirement_candidate_pending_decision"
+
+    return {
+        "schema_version": AUTO_RESEARCH_COMPLETION_STATUS_SCHEMA_VERSION,
+        "status": status,
+        "next_action": next_action,
+        "reason": reason,
+        "quiet_completion_allowed": quiet_completion_allowed,
+        "required_actions": required_actions,
+        "required_holdout_improvement_count": required_holdout_improvement_count,
+        "holdout_improvement_count": holdout_improvement_count,
+        "holdout_metric_sequence": holdout_sequence,
+        "validated_promotion_candidate_count": validated_count,
+        "dev_candidate_pending_holdout_count": dev_pending_count,
+        "promotion_candidate_count": promotion_count,
+        "retirement_candidate_count": retirement_count,
+    }
+
+
 def build_auto_research_projection(
     fixture: dict[str, Any],
     *,
@@ -530,6 +631,7 @@ def build_auto_research_projection(
     hypotheses = fixture["hypotheses"]
     evidence_graph = build_research_evidence_graph(fixture)
     decision_candidates = build_research_decision_candidates(evidence_graph)
+    completion = build_auto_research_completion_status(evidence_graph, decision_candidates)
 
     runnable_statuses = {"active", "needs_retry"}
     selected = None
@@ -560,6 +662,7 @@ def build_auto_research_projection(
         "blocked": blocked,
         "promotion_candidates": decision_candidates["promotion_candidates"],
         "retirement_candidates": decision_candidates["retirement_candidates"],
+        "completion": completion,
     }
     return {
         "ok": True,
@@ -567,6 +670,7 @@ def build_auto_research_projection(
         "source_schema_version": fixture["schema_version"],
         "frontier": frontier,
         "evidence_graph": evidence_graph,
+        "completion": completion,
         "public_boundary": {
             "raw_logs_recorded": False,
             "private_artifacts_recorded": False,
@@ -676,6 +780,7 @@ def build_live_auto_research_projection(
         else todo_graph
     )
     decisions = build_research_decision_candidates(evidence_graph)
+    completion = build_auto_research_completion_status(evidence_graph, decisions)
     frontier = {
         "schema_version": RESEARCH_FRONTIER_SCHEMA_VERSION,
         "goal_id": goal,
@@ -685,6 +790,7 @@ def build_live_auto_research_projection(
         "blocked": blocked,
         "promotion_candidates": decisions["promotion_candidates"],
         "retirement_candidates": decisions["retirement_candidates"],
+        "completion": completion,
         "source_kind": "loopx_live_quota_status",
     }
     return {
@@ -694,6 +800,7 @@ def build_live_auto_research_projection(
         "frontier": frontier,
         "evidence_graph": evidence_graph,
         "decision_candidates": decisions,
+        "completion": completion,
         "public_boundary": {
             "raw_logs_recorded": False,
             "private_artifacts_recorded": False,

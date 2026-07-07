@@ -221,6 +221,43 @@ def append_real_fixture_evidence(*, registry: Path, runtime_root: Path, temp: Pa
     assert_public_safe(appended)
 
 
+def append_fixture_evidence(
+    *,
+    registry: Path,
+    runtime_root: Path,
+    temp: Path,
+    hypothesis_id: str,
+    todo_id: str,
+    dev_metric: float,
+    holdout_metric: float,
+) -> None:
+    packet = build_auto_research_evidence_packet(
+        contract=research_contract(goal_id=GOAL_ID),
+        eval_results=[
+            eval_result("dev", value=dev_metric),
+            eval_result("holdout", value=holdout_metric),
+        ],
+        hypothesis_id=hypothesis_id,
+        todo_id=todo_id,
+        agent_id=EVIDENCE_AGENT_ID,
+        claimed_by=EVIDENCE_AGENT_ID,
+        mechanism_family=MECHANISM_FAMILY,
+        hypothesis=f"{HYPOTHESIS_TEXT} Variant {hypothesis_id}.",
+        grounding_refs=[GROUNDING_REF],
+        branch_ref="codex/auto-research-worker-turn-smoke",
+    )
+    packet_path = temp / f"{hypothesis_id}.public.json"
+    packet_path.write_text(json.dumps(packet, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    appended = append_auto_research_rollout_events(
+        packet_path=str(packet_path),
+        registry_path=registry,
+        runtime_root_arg=str(runtime_root),
+        dry_run=False,
+    )
+    assert appended["appended_count"] == 3, appended
+    assert_public_safe(appended)
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
@@ -488,6 +525,56 @@ def main() -> int:
         assert f"todo_id={generic_todo_id} status=done" not in state_text, state_text
         assert "satisfied_generic_handoff_closed" not in json.dumps(generic_turn), generic_turn
         assert_public_safe(generic_turn)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp = Path(temp_dir)
+        project = temp / "project"
+        project.mkdir()
+        state_file = project / "ACTIVE_GOAL_STATE.md"
+        registry = temp / "registry.json"
+        runtime_root = temp / "runtime"
+        write_summary_state(state_file)
+        write_registry(registry, project=project, state_file=state_file, runtime_root=runtime_root)
+        append_fixture_evidence(
+            registry=registry,
+            runtime_root=runtime_root,
+            temp=temp,
+            hypothesis_id="hyp_target_reached_first",
+            todo_id="todo_auto_research_target_first",
+            dev_metric=1.4,
+            holdout_metric=1.5,
+        )
+        append_fixture_evidence(
+            registry=registry,
+            runtime_root=runtime_root,
+            temp=temp,
+            hypothesis_id="hyp_target_reached_second",
+            todo_id="todo_auto_research_target_second",
+            dev_metric=2.0,
+            holdout_metric=2.1,
+        )
+        workspace = project / "visible-workspace"
+        workspace.mkdir()
+
+        target_reached = run_worker_turn(
+            registry=registry,
+            runtime_root=runtime_root,
+            workspace=workspace,
+            agent_id=EVALUATOR_AGENT_ID,
+            execute=True,
+            complete=False,
+        )
+        assert target_reached["mode"] == "quiet_completion", target_reached
+        completion = target_reached["completion"]
+        assert completion["status"] == "target_reached", target_reached
+        assert completion["quiet_completion_allowed"] is True, target_reached
+        assert completion["next_action"] == "quiet_completion", target_reached
+        assert completion["holdout_improvement_count"] == 2, target_reached
+        assert completion["required_holdout_improvement_count"] == 2, target_reached
+        frontier_completion = target_reached["frontier"]["frontier"]["completion"]
+        assert frontier_completion["status"] == "target_reached", target_reached
+        assert target_reached["frontier"]["frontier"]["selected"] is None, target_reached
+        assert_public_safe(target_reached)
     return 0
 
 
