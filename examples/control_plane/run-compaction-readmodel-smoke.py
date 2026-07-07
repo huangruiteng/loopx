@@ -312,6 +312,10 @@ def assert_compact_run_summary_projection_parity() -> None:
     assert session_projection["attention_item"]["priority"] == "P2"
     assert "private_note" not in session_projection
 
+    post_handoff_compact = status_module.compact_post_handoff_run(session_runtime_run)
+    assert post_handoff_compact["session_runtime_projection"] == session_projection
+    assert "delivery_turn_kind" in post_handoff_compact
+
 
 def assert_goal_readmodel_direct_imports() -> None:
     assert callable(compact_goal_vision_packet)

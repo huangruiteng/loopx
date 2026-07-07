@@ -6180,37 +6180,27 @@ def compact_post_handoff_run(run: dict[str, Any], profile: dict[str, Any] | None
         run,
         delivery_outcome=outcome,
     )
-    benchmark_run = compact_benchmark_run(run)
-    if benchmark_run:
-        compact["benchmark_run_summary"] = benchmark_run
-        health_note = worker_bridge_ingest_health_note(benchmark_run)
-        if health_note:
-            compact["worker_bridge_ingest_health_note"] = health_note
-    benchmark_result = compact_benchmark_result(run)
-    if benchmark_result:
-        compact["benchmark_result_summary"] = benchmark_result
-    benchmark_comparison = compact_benchmark_comparison(run)
-    if benchmark_comparison:
-        compact["benchmark_comparison_summary"] = benchmark_comparison
-        decision_note = benchmark_comparison_decision_note(benchmark_comparison)
-        if decision_note:
-            compact["benchmark_comparison_decision_note"] = decision_note
-    benchmark_learning_ledger = compact_benchmark_learning_ledger(run)
-    if benchmark_learning_ledger:
-        compact["benchmark_learning_ledger_summary"] = benchmark_learning_ledger
-    benchmark_report = compact_benchmark_experiment_report(run)
-    if benchmark_report:
-        compact["benchmark_experiment_report_summary"] = benchmark_report
-        readiness_note = benchmark_experiment_report_readiness_note(benchmark_report)
-        if readiness_note:
-            compact["benchmark_experiment_report_readiness_note"] = readiness_note
-            replay_decision = benchmark_experiment_report_replay_decision(readiness_note)
-            if replay_decision:
-                compact["benchmark_experiment_report_replay_decision"] = replay_decision
-    active_user_pilot = compact_active_user_assisted_pilot(run)
-    if active_user_pilot:
-        compact["active_user_assisted_pilot_summary"] = active_user_pilot
-    return compact
+    return _attach_run_summary_projections_read_model(
+        compact,
+        run,
+        compact_benchmark_run=compact_benchmark_run,
+        worker_bridge_ingest_health_note=worker_bridge_ingest_health_note,
+        compact_benchmark_result=compact_benchmark_result,
+        compact_benchmark_comparison=compact_benchmark_comparison,
+        benchmark_comparison_decision_note=benchmark_comparison_decision_note,
+        compact_benchmark_learning_ledger=compact_benchmark_learning_ledger,
+        compact_benchmark_experiment_report=compact_benchmark_experiment_report,
+        benchmark_experiment_report_readiness_note=(
+            benchmark_experiment_report_readiness_note
+        ),
+        benchmark_experiment_report_replay_decision=(
+            benchmark_experiment_report_replay_decision
+        ),
+        compact_active_user_assisted_pilot=compact_active_user_assisted_pilot,
+        compact_session_runtime_projection_from_run=(
+            compact_session_runtime_projection_from_run
+        ),
+    )
 
 
 def small_delivery_batch_scale_streak(runs: list[dict[str, Any]]) -> int:
