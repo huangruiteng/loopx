@@ -91,14 +91,14 @@ install_symlink() {
   local link="$2"
   local tmp="$link.tmp.$$"
   rm -f "$tmp"
-  if [[ -e "$link" && ! -L "$link" && -d "$link" ]]; then
-    echo "loopx installer error: $link is a directory; remove it before installing" >&2
-    return 1
-  fi
-  ln -s "$target" "$tmp"
-  if [[ -L "$link" ]]; then
+  if [[ -e "$link" || -L "$link" ]]; then
+    if [[ ! -L "$link" && -d "$link" ]]; then
+      echo "loopx installer error: $link is a directory; remove it before installing" >&2
+      return 1
+    fi
     rm -f "$link"
   fi
+  ln -s "$target" "$tmp"
   mv -f "$tmp" "$link"
 }
 
