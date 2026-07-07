@@ -305,6 +305,11 @@ def assert_expired_monitor_does_not_catch_up() -> None:
     monitor_items = guard["agent_todo_summary"]["monitor_open_items"]
     assert monitor_items[0]["todo_id"] == "todo_monitor_expired", monitor_items
     assert monitor_items[0]["expires_at"] == EXPIRED_AT, monitor_items
+    scheduler = guard["scheduler_hint"]
+    codex_app = scheduler["codex_app"]
+    assert scheduler["cadence_class"] == "monitor_wait", scheduler
+    assert codex_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
+    assert codex_app["example_progression_minutes"] == [15, 30, 60, 120], scheduler
 
 
 def assert_due_monitor_priority_does_not_steal_advancement_lane() -> None:

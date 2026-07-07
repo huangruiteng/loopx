@@ -233,12 +233,15 @@ def _monitor_wait_cadence_progression(payload: dict[str, Any]) -> list[int] | No
     current_time = now_utc()
     caps: list[int] = []
     for item in _monitor_wait_items(payload):
+        expires_at = _parse_monitor_timestamp(item.get("expires_at"))
+        if expires_at is not None and expires_at <= current_time:
+            continue
         item_caps: list[int] = []
         cadence_minutes = _monitor_cadence_minutes(item.get("cadence"))
         if cadence_minutes is not None:
             item_caps.append(cadence_minutes)
         next_due_at = _parse_monitor_timestamp(item.get("next_due_at"))
-        if next_due_at is not None:
+        if next_due_at is not None and next_due_at > current_time:
             seconds_until_due = (next_due_at - current_time).total_seconds()
             item_caps.append(max(1, int(math.ceil(seconds_until_due / 60))))
         if item_caps:
