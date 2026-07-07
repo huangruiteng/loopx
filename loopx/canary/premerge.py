@@ -4,7 +4,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .planner import REPO_ROOT
 from .runner import build_canary_smoke_suite_run
@@ -12,6 +12,7 @@ from .runner import build_canary_smoke_suite_run
 
 PREMERGE_GATE_SCHEMA_VERSION = "loopx_premerge_validation_gate_v0"
 PREMERGE_VALIDATION_SUMMARY_SCHEMA_VERSION = "premerge_validation_summary_v0"
+ProgressCallback = Callable[[dict[str, Any]], None]
 
 PREMERGE_TIERS = {"quick", "standard", "deep"}
 
@@ -188,6 +189,10 @@ def _run_gate_check(
     reason: str,
     execute: bool,
     timeout_seconds: float,
+    progress_callback: ProgressCallback | None = None,
+    section: str = "direct_checks",
+    check_index: int | None = None,
+    check_count: int | None = None,
 ) -> dict[str, Any]:
     check = {
         "id": check_id,
@@ -199,10 +204,24 @@ def _run_gate_check(
         "status": "ready",
         "ok": True,
     }
+    if check_index is not None and check_count is not None:
+        check.update({"check_index": check_index, "check_count": check_count})
     if not execute:
         return check
 
     started = time.monotonic()
+    if progress_callback:
+        progress_callback(
+            {
+                "schema_version": "canary_premerge_progress_v0",
+                "event": "check_started",
+                "section": section,
+                "check_id": check_id,
+                "check_index": check_index,
+                "check_count": check_count,
+                "command": check["command"],
+            }
+        )
     try:
         completed = subprocess.run(
             argv,
@@ -224,6 +243,20 @@ def _run_gate_check(
                 "stderr_tail": (exc.stderr or "")[-800:] if isinstance(exc.stderr, str) else "",
             }
         )
+        if progress_callback:
+            progress_callback(
+                {
+                    "schema_version": "canary_premerge_progress_v0",
+                    "event": "check_finished",
+                    "section": section,
+                    "check_id": check_id,
+                    "check_index": check_index,
+                    "check_count": check_count,
+                    "status": check.get("status"),
+                    "ok": False,
+                    "duration_seconds": check.get("duration_seconds"),
+                }
+            )
         return check
 
     check.update(
@@ -236,6 +269,20 @@ def _run_gate_check(
             "stderr_tail": completed.stderr[-800:],
         }
     )
+    if progress_callback:
+        progress_callback(
+            {
+                "schema_version": "canary_premerge_progress_v0",
+                "event": "check_finished",
+                "section": section,
+                "check_id": check_id,
+                "check_index": check_index,
+                "check_count": check_count,
+                "status": check.get("status"),
+                "ok": bool(check.get("ok")),
+                "duration_seconds": check.get("duration_seconds"),
+            }
+        )
     return check
 
 
@@ -244,6 +291,7 @@ def _diff_hygiene_checks(
     base_ref: str,
     execute: bool,
     timeout_seconds: float,
+    progress_callback: ProgressCallback | None = None,
 ) -> list[dict[str, Any]]:
     base = (base_ref or "origin/main").strip() or "origin/main"
     specs = [
@@ -263,16 +311,22 @@ def _diff_hygiene_checks(
             "checks unstaged changes not yet committed",
         ),
     ]
-    return [
-        _run_gate_check(
-            check_id=check_id,
-            argv=argv,
-            reason=reason,
-            execute=execute,
-            timeout_seconds=timeout_seconds,
+    checks: list[dict[str, Any]] = []
+    for index, (check_id, argv, reason) in enumerate(specs, start=1):
+        checks.append(
+            _run_gate_check(
+                check_id=check_id,
+                argv=argv,
+                reason=reason,
+                execute=execute,
+                timeout_seconds=timeout_seconds,
+                progress_callback=progress_callback,
+                section="direct_checks",
+                check_index=index,
+                check_count=len(specs),
+            )
         )
-        for check_id, argv, reason in specs
-    ]
+    return checks
 
 
 def _py_compile_check(
@@ -280,6 +334,7 @@ def _py_compile_check(
     python_files: list[str],
     execute: bool,
     timeout_seconds: float,
+    progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any] | None:
     if not python_files:
         return None
@@ -289,6 +344,10 @@ def _py_compile_check(
         reason="compiles changed Python files that still exist in the worktree",
         execute=execute,
         timeout_seconds=timeout_seconds,
+        progress_callback=progress_callback,
+        section="python_compile",
+        check_index=1,
+        check_count=1,
     )
 
 
@@ -492,25 +551,48 @@ def build_premerge_validation_gate(
     timeout_seconds: float = 120.0,
     fail_fast: bool = False,
     include_deep_checks: bool | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     files = _dedupe(list(changed_files or []))
     classification = classify_premerge_surfaces(files)
     limits = _tier_limits(tier)
     include_deep = bool(limits["deep"] if include_deep_checks is None else include_deep_checks)
+    if progress_callback and execute:
+        progress_callback(
+            {
+                "schema_version": "canary_premerge_progress_v0",
+                "event": "premerge_started",
+                "tier": tier if tier in PREMERGE_TIERS else "standard",
+                "changed_file_count": len(files),
+                "surfaces": list(classification["surfaces"]),
+                "risk_profiles": list(classification["risk_profiles"]),
+            }
+        )
 
     direct_checks = _diff_hygiene_checks(
         base_ref=base_ref,
         execute=execute,
         timeout_seconds=timeout_seconds,
+        progress_callback=progress_callback,
     )
     py_compile = _py_compile_check(
         python_files=list(classification["python_files"]),
         execute=execute,
         timeout_seconds=timeout_seconds,
+        progress_callback=progress_callback,
     )
     if py_compile is not None:
         direct_checks.append(py_compile)
 
+    catalog_progress = _section_progress_callback(
+        progress_callback,
+        section="catalog_canaries",
+    )
+    _emit_section_progress(
+        catalog_progress,
+        event="section_started",
+        selected_hint=int(limits["catalog_limit"]),
+    )
     catalog_run = build_canary_smoke_suite_run(
         suite="catalog-plan",
         changed_files=files,
@@ -521,6 +603,16 @@ def build_premerge_validation_gate(
         execute=execute,
         timeout_seconds=timeout_seconds,
         fail_fast=fail_fast,
+        progress_callback=catalog_progress if execute else None,
+    )
+    _emit_section_progress(
+        catalog_progress,
+        event="section_finished",
+        status="passed" if catalog_run.get("ok") else "failed",
+        ok=bool(catalog_run.get("ok")),
+        selected_check_count=catalog_run.get("selected_check_count"),
+        executed_check_count=catalog_run.get("executed_check_count"),
+        failure_count=catalog_run.get("failure_count"),
     )
     catalog_run = downgrade_inherited_baseline_failures(
         catalog_run,
@@ -530,6 +622,16 @@ def build_premerge_validation_gate(
     risk_profiles = list(classification["risk_profiles"])
     risk_profile_run: dict[str, Any] | None = None
     if risk_profiles:
+        risk_progress = _section_progress_callback(
+            progress_callback,
+            section="risk_profile_smokes",
+        )
+        _emit_section_progress(
+            risk_progress,
+            event="section_started",
+            profiles=risk_profiles,
+            selected_hint=int(limits["profile_limit"]),
+        )
         risk_profile_run = build_canary_smoke_suite_run(
             suite="default-public",
             profiles=risk_profiles,
@@ -538,6 +640,16 @@ def build_premerge_validation_gate(
             execute=execute,
             timeout_seconds=timeout_seconds,
             fail_fast=fail_fast,
+            progress_callback=risk_progress if execute else None,
+        )
+        _emit_section_progress(
+            risk_progress,
+            event="section_finished",
+            status="passed" if risk_profile_run.get("ok") else "failed",
+            ok=bool(risk_profile_run.get("ok")),
+            selected_check_count=risk_profile_run.get("selected_check_count"),
+            executed_check_count=risk_profile_run.get("executed_check_count"),
+            failure_count=risk_profile_run.get("failure_count"),
         )
         risk_profile_run = downgrade_inherited_baseline_failures(
             risk_profile_run,
@@ -546,12 +658,27 @@ def build_premerge_validation_gate(
 
     boundary_run: dict[str, Any] | None = None
     if classification["public_boundary_scan_recommended"]:
+        boundary_progress = _section_progress_callback(
+            progress_callback,
+            section="public_boundary",
+        )
+        _emit_section_progress(boundary_progress, event="section_started", selected_hint=1)
         boundary_run = build_canary_smoke_suite_run(
             suite="default-public",
             scripts=["examples/control_plane/check-public-boundary-smoke.py"],
             execute=execute,
             timeout_seconds=timeout_seconds,
             fail_fast=fail_fast,
+            progress_callback=boundary_progress if execute else None,
+        )
+        _emit_section_progress(
+            boundary_progress,
+            event="section_finished",
+            status="passed" if boundary_run.get("ok") else "failed",
+            ok=bool(boundary_run.get("ok")),
+            selected_check_count=boundary_run.get("selected_check_count"),
+            executed_check_count=boundary_run.get("executed_check_count"),
+            failure_count=boundary_run.get("failure_count"),
         )
         boundary_run = downgrade_inherited_baseline_failures(
             boundary_run,
@@ -576,7 +703,7 @@ def build_premerge_validation_gate(
     ok = gate["status"] in {"passed", "no_changes"} or (
         not execute and gate["status"] in {"preview_only", "manual_review_required", "no_changes"}
     )
-    return {
+    payload = {
         "ok": ok,
         "schema_version": PREMERGE_GATE_SCHEMA_VERSION,
         "repo_root": str(REPO_ROOT),
@@ -612,6 +739,53 @@ def build_premerge_validation_gate(
             "smoke success as self-merge permission."
         ),
     }
+    if progress_callback and execute:
+        progress_callback(
+            {
+                "schema_version": "canary_premerge_progress_v0",
+                "event": "premerge_finished",
+                "status": gate["status"],
+                "ok": ok,
+                "selected_check_count": validation_summary["selected_check_count"],
+                "failure_count": validation_summary["failure_count"],
+                "manual_hold_count": gate["manual_hold_count"],
+            }
+        )
+    return payload
+
+
+def _section_progress_callback(
+    progress_callback: ProgressCallback | None,
+    *,
+    section: str,
+) -> ProgressCallback | None:
+    if progress_callback is None:
+        return None
+
+    def callback(event: dict[str, Any]) -> None:
+        updated = dict(event)
+        updated.setdefault("schema_version", "canary_premerge_progress_v0")
+        updated["section"] = section
+        progress_callback(updated)
+
+    return callback
+
+
+def _emit_section_progress(
+    progress_callback: ProgressCallback | None,
+    *,
+    event: str,
+    **fields: Any,
+) -> None:
+    if progress_callback is None:
+        return
+    progress_callback(
+        {
+            "schema_version": "canary_premerge_progress_v0",
+            "event": event,
+            **fields,
+        }
+    )
 
 
 def render_premerge_validation_gate_markdown(payload: dict[str, Any]) -> str:

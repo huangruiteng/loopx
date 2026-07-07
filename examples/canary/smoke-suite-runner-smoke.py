@@ -228,6 +228,7 @@ def assert_named_smoke_profile_can_mix_with_catalog_profile() -> None:
     assert payload["catalog_plan"]["planned_check_count"] == 1, payload
     commands = [check["command"] for check in payload["selected_checks"]]
     assert any("examples/canary/" in command for command in commands), payload
+    assert all("canary-promotion" not in command for command in commands), payload
     assert any("examples/control_plane/repo-python-line-budget-smoke.py" in command for command in commands), payload
 
 
@@ -297,6 +298,7 @@ def assert_cli_named_smoke_profile_preview_works() -> None:
     assert payload["selection_inputs"]["catalog_profiles"] == [], payload
     scripts = [check["normalized"]["script"] for check in payload["selected_checks"]]
     assert any(script.startswith("examples/canary/") for script in scripts), payload
+    assert all("canary-promotion" not in script for script in scripts), payload
     assert all("benchmark" not in script for script in scripts), payload
     assert payload["executes_checks"] is False, payload
 

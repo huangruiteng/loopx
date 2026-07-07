@@ -141,6 +141,60 @@ def assert_cli_json_preview() -> None:
     assert selector_sources is None or isinstance(selector_sources, dict), payload
 
 
+def assert_cli_premerge_reports_progress_by_default() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--format",
+            "json",
+            "canary",
+            "premerge",
+            "--tier",
+            "quick",
+            "--timeout-seconds",
+            "60",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    payload = json.loads(completed.stdout)
+    assert payload["schema_version"] == "loopx_premerge_validation_gate_v0", payload
+    assert payload["gate"]["status"] == "no_changes", payload
+    assert "[loopx canary] premerge start:" in completed.stderr, completed.stderr
+    assert "[loopx canary] start direct_checks 1/3:" in completed.stderr, completed.stderr
+    assert "[loopx canary] premerge done:" in completed.stderr, completed.stderr
+
+    quiet = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--format",
+            "json",
+            "canary",
+            "premerge",
+            "--tier",
+            "quick",
+            "--timeout-seconds",
+            "60",
+            "--no-progress",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert quiet.returncode == 0, quiet.stderr or quiet.stdout
+    assert "[loopx canary]" not in quiet.stderr, quiet.stderr
+
+
 def assert_no_changes_does_not_mask_direct_failures() -> None:
     status = _gate_status(
         execute=True,
@@ -252,6 +306,7 @@ def main() -> None:
     assert_changed_python_gets_compile_check()
     assert_benchmark_sensitive_change_blocks_self_merge()
     assert_cli_json_preview()
+    assert_cli_premerge_reports_progress_by_default()
     assert_no_changes_does_not_mask_direct_failures()
     assert_installed_wrapper_premerge_redirects_to_checkout()
     assert_inherited_line_budget_red_is_advisory_only()
