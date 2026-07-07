@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Iterable
 from typing import Any
 
-from .defaults import AUTO_RESEARCH_DEFAULT_GOAL_ID, build_auto_research_layer_contract
+from .defaults import (
+    AUTO_RESEARCH_DEFAULT_GOAL_ID,
+    AUTO_RESEARCH_DEFAULT_OBJECTIVE,
+    build_auto_research_layer_contract,
+)
 from .preset import (
     AUTO_RESEARCH_PRESET_SCHEMA_VERSION,
     build_auto_research_preset_role,
@@ -16,6 +21,22 @@ from ...visible_multi_agent_launcher import build_visible_multi_agent_payload_fr
 
 
 AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION = "auto_research_demo_supervisor_plan_v0"
+
+
+def build_visible_worker_turn_command(*, objective: object | None = None) -> str:
+    """Return a pane-local worker-turn hook that still obeys visible evidence gates."""
+
+    clean_objective = str(objective or AUTO_RESEARCH_DEFAULT_OBJECTIVE).strip()
+    return (
+        '"$LOOPX_PANE_LOOPX" --format json auto-research worker-turn '
+        '--goal-id "$LOOPX_GOAL_ID" '
+        '--agent-id "$LOOPX_AGENT_ID" '
+        f"--objective {shlex.quote(clean_objective)} "
+        '--lane-count "${LOOPX_VISIBLE_LANE_COUNT:-1}" '
+        "--visible-lanes-accepted "
+        "--complete-selected-todo "
+        "--execute"
+    )
 
 
 def build_auto_research_demo_supervisor_plan(
@@ -30,6 +51,7 @@ def build_auto_research_demo_supervisor_plan(
     tmux_bin: str = "tmux",
     reasoning_effort: str = "high",
     output_language: str = "en",
+    configure_visible_worker_turn: bool = False,
 ) -> dict[str, Any]:
     """Build the auto-research visible TUI plan from a small role spec.
 
@@ -40,6 +62,11 @@ def build_auto_research_demo_supervisor_plan(
 
     goal = str(goal_id).strip() or AUTO_RESEARCH_DEFAULT_GOAL_ID
     lanes = auto_research_lane_specs(agent_specs)
+    worker_turn_command = (
+        build_visible_worker_turn_command(objective=open_question)
+        if configure_visible_worker_turn
+        else ""
+    )
     roles = [
         build_auto_research_preset_role(
             lane=lane,
@@ -51,6 +78,12 @@ def build_auto_research_demo_supervisor_plan(
         )
         for lane in lanes
     ]
+    if worker_turn_command:
+        for role in roles:
+            role["worker_turn_command"] = worker_turn_command
+            role_profile = role.get("role_profile")
+            if isinstance(role_profile, dict):
+                role_profile["visible_worker_turn_configured"] = True
 
     payload = build_visible_multi_agent_payload_from_spec(
         {
@@ -100,6 +133,7 @@ def build_auto_research_demo_supervisor_plan(
                     "todo_evidence_status_protocol",
                 ],
                 "worker_turn_owner": "generic_multi_agent_kernel",
+                "visible_worker_turn_configured": bool(worker_turn_command),
                 "output_language": output_language,
                 "presentation_layers_in_kernel": False,
             },

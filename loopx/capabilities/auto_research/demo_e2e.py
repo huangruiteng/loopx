@@ -318,6 +318,7 @@ def _command_text(
     no_attach: bool = False,
     live_evidence: bool = False,
     wake_visible_after_launch: bool = False,
+    configure_visible_worker_turn: bool = False,
     tracking_goal_id: str | None = None,
     output_language: str = "en",
 ) -> str:
@@ -352,6 +353,8 @@ def _command_text(
         parts.extend(["--live-evidence", "<public-safe-live-evidence.json>"])
     if wake_visible_after_launch:
         parts.append("--wake-visible-after-launch")
+    if configure_visible_worker_turn:
+        parts.append("--configure-visible-worker-turn")
     return " ".join(parts)
 
 
@@ -1213,6 +1216,7 @@ def run_auto_research_demo_e2e(
     agent_specs: Sequence[str] | None = None,
     run_worker_loop: bool = False,
     worker_loop_rounds: int = 4,
+    configure_visible_worker_turn: bool = False,
     visible_live_evidence_wait_seconds: float = 30.0,
 ) -> dict[str, object]:
     if launch_visible and not execute:
@@ -1259,6 +1263,7 @@ def run_auto_research_demo_e2e(
         tmux_bin=tmux_bin,
         reasoning_effort=reasoning_effort,
         output_language=output_language,
+        configure_visible_worker_turn=configure_visible_worker_turn,
     )
     execution_kind = (
         "loopx_worker_loop"
@@ -1376,6 +1381,17 @@ def run_auto_research_demo_e2e(
                 tracking_goal_id=tracking_goal or None,
                 output_language=output_language,
             ),
+            "one_command_visible_worker_turn_validation": _command_text(
+                cli_bin=cli_bin,
+                goal_id=goal_id,
+                agent_id=agent_id,
+                execute=True,
+                launch_visible=True,
+                no_attach=True,
+                configure_visible_worker_turn=True,
+                tracking_goal_id=tracking_goal or None,
+                output_language=output_language,
+            ),
             "one_command_worker_loop_with_visible_lanes": _command_text(
                 cli_bin=cli_bin,
                 goal_id=goal_id,
@@ -1415,6 +1431,12 @@ def run_auto_research_demo_e2e(
         "visible_worker_proof": build_auto_research_live_worker_proof(
             launch_visible=launch_visible,
         ),
+        "visible_worker_turn_validation": {
+            "schema_version": "auto_research_visible_worker_turn_validation_v0",
+            "configured": bool(configure_visible_worker_turn),
+            "counts_as_research_evidence_without_role_output": False,
+            "manual_research_required_is_blocker_not_progress": True,
+        },
     }
     if not execute:
         payload["worker_loop_preview"] = {

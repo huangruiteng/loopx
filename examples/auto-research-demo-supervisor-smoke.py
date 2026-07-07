@@ -229,7 +229,8 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
             successors = profile["successor_todos"]
             assert any(
                 item["after_action"] == "write_evaluation_summary"
-                and item["target_role_id"] == "hypothesis_proposer"
+                and item["target_role_id"] == "research_curator"
+                and item["action_kind"] == "review_research_contract"
                 for item in successors
             ), profile
 

@@ -280,6 +280,11 @@ def register_auto_research_commands(
         help=argparse.SUPPRESS,
     )
     start_parser.add_argument(
+        "--configure-visible-worker-turn",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    start_parser.add_argument(
         "--session-name",
         default="loopx-auto-research",
         help="Public-safe tmux session name for visible lanes.",
@@ -741,6 +746,11 @@ def register_auto_research_commands(
         help=argparse.SUPPRESS,
     )
     demo_e2e_parser.add_argument(
+        "--configure-visible-worker-turn",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    demo_e2e_parser.add_argument(
         "--wake-visible-after-launch",
         action="store_true",
         help=(
@@ -1001,6 +1011,7 @@ def handle_auto_research_command(
                 execute=args.execute,
                 run_worker_loop=bool(args.execute and args.headless),
                 worker_loop_rounds=args.worker_loop_rounds,
+                configure_visible_worker_turn=args.configure_visible_worker_turn,
                 launch_visible=visible_policy.launch_visible,
                 keep_workspace=args.keep_workspace,
                 registry_path=registry_path,
@@ -1263,6 +1274,7 @@ def handle_auto_research_command(
                 execute=args.execute,
                 run_worker_loop=run_hidden_worker_loop,
                 worker_loop_rounds=args.worker_loop_rounds,
+                configure_visible_worker_turn=args.configure_visible_worker_turn,
                 launch_visible=visible_policy.launch_visible,
                 keep_workspace=args.keep_workspace,
                 registry_path=registry_path,
