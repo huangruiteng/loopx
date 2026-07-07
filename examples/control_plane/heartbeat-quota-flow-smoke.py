@@ -766,35 +766,43 @@ def main() -> int:
             registry_path=registry_path,
             runtime=runtime,
         )
-        assert first_guard["decision"] == "skip", first_guard
-        assert first_guard["effective_action"] == "monitor_quiet_skip", first_guard
-        assert first_guard["should_run"] is False, first_guard
+        assert first_guard["decision"] == "autonomous_replan_required", first_guard
+        assert first_guard["effective_action"] == "autonomous_replan_required", first_guard
+        assert first_guard["should_run"] is True, first_guard
         assert first_guard["heartbeat_recommendation"]["recommended_mode"] == (
-            "monitor_quiet_until_material_transition"
+            "autonomous_replan_required"
         ), first_guard
-        assert first_guard.get("autonomous_replan_obligation") is None, first_guard
-        assert first_guard["execution_obligation"]["kind"] == "monitor_quiet_skip", first_guard
-        assert first_guard["execution_obligation"]["must_attempt_work"] is False, first_guard
-        assert first_guard["automation_liveness"]["automation_action"] == "keep_active_quiet", first_guard
+        assert first_guard["autonomous_replan_obligation"]["triggers"][0]["kind"] == (
+            "frontier_exhausted_monitor_lane"
+        ), first_guard
+        assert first_guard["execution_obligation"]["kind"] == (
+            "autonomous_replan_required"
+        ), first_guard
+        assert first_guard["execution_obligation"]["must_attempt_work"] is True, first_guard
+        assert first_guard["automation_liveness"]["automation_action"] == (
+            "execute_bounded_work"
+        ), first_guard
         assert first_guard["automation_liveness"]["pause_allowed"] is False, first_guard
-        assert first_guard["scheduler_hint"]["action"] == "backoff_until_material_transition", first_guard
-        assert first_guard["scheduler_hint"]["cadence_class"] == "monitor_wait", first_guard
-        assert first_guard["scheduler_hint"]["codex_app"]["recommended_interval_minutes"] == 15, first_guard
-        assert first_guard["scheduler_hint"]["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", first_guard
+        assert first_guard["scheduler_hint"]["action"] == "run_now", first_guard
+        assert first_guard["scheduler_hint"]["cadence_class"] == "active_work", first_guard
+        assert first_guard["scheduler_hint"]["codex_app"]["recommended_interval_minutes"] == 3, first_guard
+        assert first_guard["scheduler_hint"]["codex_app"]["recommended_rrule"] == (
+            "FREQ=MINUTELY;INTERVAL=3"
+        ), first_guard
         reset = first_guard["scheduler_hint"]["reset_policy"]
-        assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=15", reset
+        assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=3", reset
         assert "reset_condition_summary" not in reset, reset
         frontier = first_guard["goal_frontier_projection"]
         assert frontier["monitor_only_lanes"]["present"] is True, frontier
         assert frontier["monitor_only_lanes"]["quiet_until_material_transition"] is True, frontier
-        assert frontier["replan_required"] is False, frontier
-        assert "automation=keep_active_quiet" in first_guard["protocol_action_packet"]["summary"], first_guard
+        assert frontier["replan_required"] is True, frontier
+        assert "automation=execute_bounded_work" in first_guard["protocol_action_packet"]["summary"], first_guard
         assert count_events(runtime, "quota_monitor_poll") == 0, first_guard
         interaction = first_guard["interaction_contract"]
-        assert interaction["mode"] == "monitor_quiet_skip", interaction
-        assert interaction["agent_channel"]["must_attempt"] is False, interaction
-        assert interaction["agent_channel"]["quiet_noop_allowed"] is True, interaction
-        assert interaction["cli_channel"]["spend_after_validation"] is False, interaction
+        assert interaction["mode"] == "autonomous_replan", interaction
+        assert interaction["agent_channel"]["must_attempt"] is True, interaction
+        assert interaction["agent_channel"]["quiet_noop_allowed"] is False, interaction
+        assert interaction["cli_channel"]["spend_after_validation"] is True, interaction
 
         refresh = run_cli(
             root,

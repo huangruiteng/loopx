@@ -246,6 +246,49 @@ def agent_vision_gap_run() -> dict:
     }
 
 
+def agent_vision_acceptance_only_run() -> dict:
+    return {
+        "classification": "state_refreshed",
+        "generated_at": "2026-07-04T00:00:00+00:00",
+        "agent_id": SIDE_AGENT,
+        "progress_scope": "agent_lane",
+        "agent_vision": {
+            "schema_version": "goal_vision_replan_contract_v0",
+            "agent_id": SIDE_AGENT,
+            "state": "vision_patch_proposed",
+            "vision_patch": {
+                "acceptance_summary": "A visible successor frontier must exist before the lane is monitor-only.",
+            },
+            "todo_delta": [],
+            "vision_budget": {
+                "schema_version": "goal_vision_budget_v0",
+                "status": "ok",
+            },
+        },
+    }
+
+
+def watch_lane_continuation_ack_run(
+    *,
+    delta_kinds: list[str] | None = None,
+) -> dict:
+    return {
+        "classification": "monitor_poll_autonomous_replan_recorded_v0",
+        "agent_id": SIDE_AGENT,
+        "progress_scope": "agent_lane",
+        "autonomous_replan_ack": {
+            "schema_version": "autonomous_replan_ack_v0",
+            "recorded": True,
+            "source": "refresh_state",
+            "delta_contract": {
+                "schema_version": "repair_delta_contract_v0",
+                "delta_present": True,
+                "delta_kinds": delta_kinds or ["watch_lane_continuation"],
+            },
+        },
+    }
+
+
 def missing_vision_checkpoint_run(*, agent_id: str = SIDE_AGENT) -> dict:
     return {
         "classification": "state_refreshed",
@@ -628,6 +671,60 @@ def assert_agent_vision_gap_derives_replan() -> None:
     assert "vision_gap_judge: done=False decision=continue" in markdown, markdown
 
 
+def assert_open_agent_vision_beats_watch_lane_continuation_ack() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            [monitor_item()],
+            replan_obligation=None,
+            latest_runs=[
+                watch_lane_continuation_ack_run(),
+                agent_vision_acceptance_only_run(),
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    gaps = guard["goal_frontier_projection"]["acceptance_gaps"]
+    assert len(gaps) == 1, guard
+    assert gaps[0]["kind"] == "vision_acceptance_gap", guard
+    assert gaps[0]["acceptance_summary"].startswith("A visible successor"), guard
+    assert "open without a runnable advancement frontier" in (
+        gaps[0]["replan_trigger_summary"]
+    ), guard
+    obligation = guard["autonomous_replan_obligation"]
+    assert obligation["triggers"][0]["kind"] == "vision_acceptance_gap", guard
+    assert guard["vision_continuation_audit"]["required"] is True, guard
+    assert guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is False, (
+        guard
+    )
+
+
+def assert_retired_agent_vision_allows_bounded_monitor_wait() -> None:
+    retired_run = satisfied_vision_checkpoint_run(decision="retired_or_superseded")
+    retired_run["autonomous_replan_ack"] = watch_lane_continuation_ack_run(
+        delta_kinds=["watch_lane_continuation", "no_followup"]
+    )["autonomous_replan_ack"]
+    guard = build_quota_should_run(
+        status_payload(
+            [monitor_item()],
+            replan_obligation=None,
+            latest_runs=[
+                retired_run,
+                agent_vision_acceptance_only_run(),
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["decision"] == "skip", guard
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert guard["goal_frontier_projection"]["acceptance_gaps"] == [], guard
+    assert guard["goal_frontier_projection"]["replan_required"] is False, guard
+    assert guard.get("autonomous_replan_obligation") is None, guard
+
+
 def assert_missing_vision_checkpoint_derives_agent_scoped_replan() -> None:
     side_guard = build_quota_should_run(
         status_payload(
@@ -980,6 +1077,8 @@ def main() -> None:
     assert_replan_preserves_current_agent_runnable_frontier()
     assert_long_agent_todo_chain_derives_replan_before_linear_delivery()
     assert_agent_vision_gap_derives_replan()
+    assert_open_agent_vision_beats_watch_lane_continuation_ack()
+    assert_retired_agent_vision_allows_bounded_monitor_wait()
     assert_missing_vision_checkpoint_derives_agent_scoped_replan()
     assert_satisfied_vision_checkpoint_supersedes_older_missing_but_not_empty_frontier()
     assert_agent_scoped_replan_beats_agent_scope_wait()

@@ -27,6 +27,15 @@ TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
 TODO_TASK_CLASS_MONITOR = "continuous_monitor"
 LONG_TODO_CHAIN_ADVANCEMENT_THRESHOLD = 15
 LONG_TODO_CHAIN_OPEN_THRESHOLD = 20
+AGENT_VISION_CLOSED_STATES = {
+    "closed",
+    "satisfied",
+    "retired",
+    "retired_or_superseded",
+    "superseded",
+    "no_followup",
+    "no-followup",
+}
 VISION_CHECKPOINT_SATISFIED_DECISIONS = {
     "patched",
     "retired_or_superseded",
@@ -202,6 +211,39 @@ def _latest_runs_for_goal(
     return [item for item in latest_runs if isinstance(item, dict)] if isinstance(latest_runs, list) else []
 
 
+def _run_agent_id_matches(run: dict[str, Any], *, agent_id: str | None) -> bool:
+    if not agent_id:
+        return True
+    run_agent_id = str(run.get("agent_id") or "").strip()
+    return not run_agent_id or run_agent_id == agent_id
+
+
+def _run_retires_prior_agent_vision(
+    run: dict[str, Any],
+    *,
+    agent_id: str | None,
+) -> bool:
+    if not _run_agent_id_matches(run, agent_id=agent_id):
+        return False
+    checkpoint = (
+        run.get("vision_checkpoint")
+        if isinstance(run.get("vision_checkpoint"), dict)
+        else {}
+    )
+    if isinstance(checkpoint, dict) and checkpoint:
+        checkpoint_agent_id = str(
+            checkpoint.get("agent_id") or run.get("agent_id") or ""
+        ).strip()
+        if agent_id and checkpoint_agent_id and checkpoint_agent_id != agent_id:
+            return False
+        if (
+            checkpoint.get("satisfied") is True
+            and str(checkpoint.get("decision") or "").strip() == "retired_or_superseded"
+        ):
+            return True
+    return False
+
+
 def latest_agent_vision_from_status_payload(
     status_payload: dict[str, Any],
     *,
@@ -213,6 +255,8 @@ def latest_agent_vision_from_status_payload(
     for run in _latest_runs_for_goal(status_payload, goal_id=goal_id):
         vision = run.get("agent_vision")
         if not isinstance(vision, dict):
+            if _run_retires_prior_agent_vision(run, agent_id=agent_id):
+                return None
             continue
         vision_agent_id = str(vision.get("agent_id") or run.get("agent_id") or "").strip()
         if agent_id and vision_agent_id and vision_agent_id != agent_id:
@@ -292,7 +336,13 @@ def acceptance_gaps_from_agent_vision(
     if not isinstance(agent_vision, dict):
         return []
     patch = agent_vision.get("vision_patch") if isinstance(agent_vision.get("vision_patch"), dict) else {}
+    state = str(agent_vision.get("state") or "").strip().lower()
+    if state in AGENT_VISION_CLOSED_STATES:
+        return []
+    acceptance = _compact_projection_text(patch.get("acceptance_summary"), limit=420)
     trigger = _compact_projection_text(patch.get("replan_trigger_summary"), limit=240)
+    if not trigger and acceptance:
+        trigger = "active agent vision remains open without a runnable advancement frontier"
     if not trigger:
         return []
     gap: dict[str, Any] = {
@@ -302,7 +352,6 @@ def acceptance_gaps_from_agent_vision(
         "state": agent_vision.get("state"),
         "replan_trigger_summary": trigger,
     }
-    acceptance = _compact_projection_text(patch.get("acceptance_summary"), limit=420)
     if acceptance:
         gap["acceptance_summary"] = acceptance
     generated_at = _compact_projection_text(agent_vision.get("generated_at"), limit=80)
