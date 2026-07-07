@@ -1,0 +1,25 @@
+examples/skillsbench-build-stall-timeout-smoke.py
+  s_9a5a2bd944fdcb::t_24ed470b35de8b 44-45,48
+scripts/skillsbench_automation_loop.py
+  s_9a5a2bd944fdcb::t_c042652bbb59f8 15977-15978
+scripts/skillsbench_runner_constants.py
+  s_9a5a2bd944fdcb::t_6257c79338efb9 50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7fc14977b85223c915ba9b7c74b3b51181d795e0",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
