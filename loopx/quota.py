@@ -2437,6 +2437,7 @@ def record_quota_scheduler_ack(
     goal_id: str,
     execute: bool = False,
     agent_id: str | None = None,
+    available_capabilities: Any = None,
     surface: str = CODEX_APP_SURFACE,
     state_key: str = CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
     applied_rrule: str | None = None,
@@ -2448,7 +2449,12 @@ def record_quota_scheduler_ack(
     safe_agent_id = normalize_todo_claimed_by(agent_id)
     safe_surface = str(surface or CODEX_APP_SURFACE).strip() or CODEX_APP_SURFACE
     safe_state_key = str(state_key or CODEX_APP_STATEFUL_BACKOFF_STATE_KEY).strip()
-    before = build_quota_should_run(status_payload, goal_id=safe_goal_id, agent_id=safe_agent_id)
+    before = build_quota_should_run(
+        status_payload,
+        goal_id=safe_goal_id,
+        agent_id=safe_agent_id,
+        available_capabilities=available_capabilities,
+    )
     raw_runtime_root = status_payload.get("runtime_root")
     if not raw_runtime_root:
         raise ValueError("status payload does not include runtime_root")

@@ -236,6 +236,7 @@ def handle_quota_command(
                 goal_id=args.goal_id,
                 execute=bool(args.execute),
                 agent_id=args.agent_id,
+                available_capabilities=args.available_capabilities,
                 surface=args.surface,
                 state_key=args.state_key,
                 applied_rrule=args.applied_rrule,
