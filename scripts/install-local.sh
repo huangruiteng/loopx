@@ -86,6 +86,22 @@ disable_legacy_shim() {
   append_legacy_line "legacy command disabled: $disabled"
 }
 
+install_symlink() {
+  local target="$1"
+  local link="$2"
+  local tmp="$link.tmp.$$"
+  rm -f "$tmp"
+  if [[ -e "$link" && ! -L "$link" && -d "$link" ]]; then
+    echo "loopx installer error: $link is a directory; remove it before installing" >&2
+    return 1
+  fi
+  ln -s "$target" "$tmp"
+  if [[ -L "$link" ]]; then
+    rm -f "$link"
+  fi
+  mv -f "$tmp" "$link"
+}
+
 if [[ -z "$shell_profile" ]]; then
   case "${SHELL:-}" in
     */zsh) shell_profile="$HOME/.zshrc" ;;
@@ -135,12 +151,12 @@ if [[ -e "$release_dir" ]]; then
 else
   mv "$release_tmp" "$release_dir"
 fi
-ln -sfn "$release_dir/scripts/loopx" "$bin_dir/loopx"
+install_symlink "$release_dir/scripts/loopx" "$bin_dir/loopx"
 
 canary_line="- canary executable: skipped"
 if [[ "$install_canary" != "0" ]]; then
   chmod +x "$repo_root/scripts/loopx"
-  ln -sfn "$repo_root/scripts/loopx" "$bin_dir/loopx-canary"
+  install_symlink "$repo_root/scripts/loopx" "$bin_dir/loopx-canary"
   canary_line="- canary executable: $bin_dir/loopx-canary"
 fi
 
