@@ -146,16 +146,60 @@ def _attach_selector_sources(
 
 def _print_smoke_suite_progress(event: dict[str, object]) -> None:
     kind = str(event.get("event") or "")
+    section = str(event.get("section") or "")
+    section_prefix = f"{section} " if section else ""
     index = event.get("check_index")
     total = event.get("check_count")
-    if kind == "check_started":
+    if kind == "premerge_started":
+        tier = str(event.get("tier") or "")
+        changed = event.get("changed_file_count")
+        surfaces = ", ".join(str(item) for item in event.get("surfaces") or [])
+        print(
+            f"[loopx canary] premerge start: tier={tier} "
+            f"changed_files={changed} surfaces={surfaces or '-'}",
+            file=sys.stderr,
+            flush=True,
+        )
+    elif kind == "premerge_finished":
+        status = str(event.get("status") or "")
+        failures = event.get("failure_count")
+        selected = event.get("selected_check_count")
+        print(
+            f"[loopx canary] premerge done: {status} selected={selected} failures={failures}",
+            file=sys.stderr,
+            flush=True,
+        )
+    elif kind == "section_started":
+        selected_hint = event.get("selected_hint")
+        hint = f" selected_hint={selected_hint}" if selected_hint is not None else ""
+        print(
+            f"[loopx canary] start {section_prefix.strip() or 'section'}{hint}",
+            file=sys.stderr,
+            flush=True,
+        )
+    elif kind == "section_finished":
+        status = str(event.get("status") or "")
+        selected = event.get("selected_check_count")
+        executed = event.get("executed_check_count")
+        failures = event.get("failure_count")
+        print(
+            f"[loopx canary] done {section_prefix.strip() or 'section'}: {status} "
+            f"selected={selected} executed={executed} failures={failures}",
+            file=sys.stderr,
+            flush=True,
+        )
+    elif kind == "check_started":
         command = str(event.get("command") or "")
-        print(f"[loopx canary] start {index}/{total}: {command}", file=sys.stderr, flush=True)
+        print(
+            f"[loopx canary] start {section_prefix}{index}/{total}: {command}",
+            file=sys.stderr,
+            flush=True,
+        )
     elif kind == "check_finished":
         status = str(event.get("status") or "")
         duration = event.get("duration_seconds")
         print(
-            f"[loopx canary] done {index}/{total}: {status} ({duration}s)",
+            f"[loopx canary] done {section_prefix}{index}/{total}: {status} ({duration}s)",
             file=sys.stderr,
             flush=True,
         )
@@ -414,6 +458,11 @@ def register_canary_commands(
         action="store_true",
         help="Stop smoke-suite sections after the first failed check.",
     )
+    premerge_parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Do not print premerge validation progress to stderr during execution.",
+    )
 
 
 def handle_canary_command(
@@ -506,6 +555,11 @@ def handle_canary_command(
             timeout_seconds=float(args.timeout_seconds or 120.0),
             fail_fast=bool(args.fail_fast),
             include_deep_checks=bool(args.include_deep_checks),
+            progress_callback=(
+                None
+                if bool(args.no_execute) or bool(args.no_progress)
+                else _print_smoke_suite_progress
+            ),
         )
         _attach_selector_sources(payload, git_diff_selector=git_diff_selector)
         renderer = render_premerge_validation_gate_markdown

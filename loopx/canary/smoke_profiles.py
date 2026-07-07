@@ -34,7 +34,14 @@ SMOKE_SUITE_PROFILE_MANIFEST: dict[str, dict[str, Any]] = {
     },
     "canary-runner": {
         "suite": "full-public",
-        "modules": ["canary", "smoke-suite", "smoke_suite"],
+        "modules": [
+            "catalog",
+            "premerge",
+            "pytest-smoke-suite",
+            "pytest_smoke_suite",
+            "smoke-suite",
+            "smoke_suite",
+        ],
         "exclude_modules": NON_BENCHMARK_SMOKE_EXCLUDE_MODULES,
         "description": "Canary planner, runner, smoke-suite, and pytest facade contracts.",
     },
