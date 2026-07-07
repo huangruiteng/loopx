@@ -1,0 +1,25 @@
+examples/control_plane/quota-replan-decision-plane-smoke.py
+  s_e3f612788718c1::t_1d1bd08dd0ea80 13-23,684-717,1124
+loopx/control_plane/goals/goal_frontier.py
+  s_e3f612788718c1::t_d8e7717551f699 11-14,335-374,1200-1290
+loopx/quota.py
+  s_e3f612788718c1::t_76d0b9cb4a1463 54,1579,1582-1585,1589,1591-1596
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e32b945157e4025c239d4e4e8c48c8c37418a22e",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
