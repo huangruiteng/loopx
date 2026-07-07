@@ -31,9 +31,35 @@ def assert_no_private_path_leak(payload: dict[str, object]) -> None:
         "private-auth-dir",
         "private-run-artifacts",
         "case-a/tmux-tail",
+        "127.0.0.1",
+        "18180",
     ]
     leaked = [marker for marker in forbidden if marker in rendered]
     assert not leaked, leaked
+
+
+def assert_transport_endpoint_blocked(payload: dict[str, object]) -> None:
+    raw_tunnel = copy.deepcopy(payload)
+    raw_tunnel["transport_handles"][
+        "reverse_tunnel_reference_label"
+    ] = "127.0.0.1:18180"
+    validation = validate_benchmark_route_profile(raw_tunnel)
+    assert validation["ok"] is False, validation
+    assert (
+        "benchmark_route_profile_reverse_tunnel_reference_label_not_public_safe"
+        in validation["blockers"]
+    ), validation
+
+    raw_auth_endpoint = copy.deepcopy(payload)
+    raw_auth_endpoint["transport_handles"][
+        "private_auth_reference_label"
+    ] = "http://localhost:18180/auth.json"
+    validation = validate_benchmark_route_profile(raw_auth_endpoint)
+    assert validation["ok"] is False, validation
+    assert (
+        "benchmark_route_profile_private_auth_reference_label_not_public_safe"
+        in validation["blockers"]
+    ), validation
 
 
 def assert_official_remote_xhigh_profile(payload: dict[str, object]) -> None:
@@ -134,6 +160,24 @@ def main() -> None:
         ],
     )
     assert_official_remote_xhigh_profile(payload)
+
+    raw_tunnel_payload = build_benchmark_route_profile(
+        benchmark_id="skillsbench-1.1",
+        route_id="codex-cli-goal",
+        model="codex-cli",
+        reasoning_effort="xhigh",
+        private_auth_reference_label="cloud-auth-handle",
+        reverse_tunnel_reference_label="http://127.0.0.1:18180",
+        compact_artifact_refs=["launch_status.public.json"],
+    )
+    assert raw_tunnel_payload["transport_handles"][
+        "reverse_tunnel_reference_label"
+    ] == "private-reverse-tunnel-handle", raw_tunnel_payload
+    assert validate_benchmark_route_profile(raw_tunnel_payload)["ok"] is True, (
+        raw_tunnel_payload
+    )
+    assert_no_private_path_leak(raw_tunnel_payload)
+    assert_transport_endpoint_blocked(payload)
 
     local_fallback = copy.deepcopy(payload)
     local_fallback["execution"]["local_fallback_allowed"] = True

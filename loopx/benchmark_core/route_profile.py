@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import ipaddress
 import re
 from typing import Any, Iterable, Mapping
+from urllib.parse import urlsplit
 
 from .observable_handles import build_benchmark_launch_observable_handle
 from .run_permissions import (
@@ -64,6 +66,59 @@ def _safe_label(value: Any, *, fallback: str, limit: int = 120) -> str:
     return (text or fallback)[:limit]
 
 
+def _endpoint_host(value: str) -> str:
+    text = value.strip()
+    if not text:
+        return ""
+    if "://" in text:
+        parsed = urlsplit(text)
+        return parsed.hostname or ""
+    if text.startswith("[") and "]" in text:
+        return text[1 : text.index("]")]
+    host_port = re.match(r"^([^:/\\]+):\d{1,5}$", text)
+    if host_port:
+        return host_port.group(1)
+    try:
+        ipaddress.ip_address(text)
+    except ValueError:
+        return text if text.lower() == "localhost" else ""
+    return text
+
+
+def _looks_endpoint_value(value: Any) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    if "://" in text:
+        return True
+    if re.match(r"^([^:/\\]+):\d{1,5}$", text):
+        return True
+    host = _endpoint_host(text)
+    if not host:
+        return False
+    if host.lower() == "localhost":
+        return True
+    try:
+        parsed = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return (
+        parsed.is_loopback
+        or parsed.is_private
+        or parsed.is_link_local
+        or parsed.is_unspecified
+        or parsed.is_reserved
+    )
+
+
+def _safe_transport_reference_label(
+    value: Any, *, fallback: str, limit: int = 120
+) -> str:
+    if _looks_private_or_path(value):
+        return fallback
+    return _safe_label(value, fallback=fallback, limit=limit)
+
+
 def _unique_labels(values: Iterable[Any]) -> list[str]:
     result: list[str] = []
     for value in values:
@@ -87,6 +142,8 @@ def _looks_private_or_path(value: Any) -> bool:
     text = str(value or "").strip()
     if not text:
         return False
+    if _looks_endpoint_value(text):
+        return True
     lower = text.lower()
     if re.match(r"^[A-Za-z]:[\\/]", text):
         return True
@@ -215,12 +272,12 @@ def build_benchmark_route_profile(
         },
         "permission_policy": permission_policy,
         "transport_handles": {
-            "private_auth_reference_label": _safe_label(
+            "private_auth_reference_label": _safe_transport_reference_label(
                 private_auth_reference_label,
                 fallback="private-auth-handle",
                 limit=120,
             ),
-            "reverse_tunnel_reference_label": _safe_label(
+            "reverse_tunnel_reference_label": _safe_transport_reference_label(
                 reverse_tunnel_reference_label,
                 fallback="private-reverse-tunnel-handle",
                 limit=120,
