@@ -431,7 +431,9 @@ The important ordering is goal-level first: required replan is evaluated before
 monitor quiet skip, scoped gate wait, or an individual agent's no-candidate
 state. Those local states may remain visible, but they cannot clear a required
 replan. An acknowledgement without a vision, todo, acceptance, or no-follow-up
-delta is `replan_noop`.
+delta is `replan_noop`. A future monitor `next_due_at` is scheduler metadata,
+not a frontier delta, and cannot by itself suppress a monitor-only empty-frontier
+replan.
 
 The same ordering applies when an agent records a bounded
 `replan_trigger_summary` in its vision packet. Status/quota exposes that trigger

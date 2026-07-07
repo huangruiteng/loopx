@@ -297,7 +297,8 @@ If the result says should_run=false:
 
   loopx --registry "$HOME/.codex/loopx/registry.global.json" quota monitor-poll --goal-id <GOAL_ID> --source heartbeat --execute
 
-  Then rerun quota should-run. If it remains monitor-only, return quiet
+  Then rerun quota should-run. If it remains monitor-only after an explicit
+  frontier delta such as watch-lane continuation or no-follow-up, return quiet
   DONT_NOTIFY: no delivery edits and no spend. Keep the automation active:
   unchanged monitor-only polls are not self-stop signals. If the next guard
   reports autonomous_replan_required or another hard
