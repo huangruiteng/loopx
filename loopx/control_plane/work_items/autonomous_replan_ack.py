@@ -29,12 +29,30 @@ def compact_autonomous_replan_ack(run: dict[str, Any] | None) -> dict[str, Any] 
             if str(item or "").strip()
         ],
     }
-    return {
+    result = {
         "schema_version": ack.get("schema_version"),
         "recorded": True,
         "source": ack.get("source"),
         "delta_contract": compact_delta,
     }
+    agent_id = str(run.get("agent_id") or "").strip()
+    if agent_id:
+        result["agent_id"] = agent_id
+    return result
+
+
+def autonomous_replan_ack_matches_agent(
+    ack: dict[str, Any] | None,
+    *,
+    agent_id: str | None,
+) -> bool:
+    if not isinstance(ack, dict):
+        return False
+    normalized_agent_id = str(agent_id or "").strip()
+    if not normalized_agent_id:
+        return True
+    ack_agent_id = str(ack.get("agent_id") or "").strip()
+    return bool(ack_agent_id and ack_agent_id == normalized_agent_id)
 
 
 def latest_autonomous_replan_ack_for_projection(

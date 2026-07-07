@@ -301,6 +301,26 @@ def satisfied_vision_checkpoint_run(*, decision: str, agent_id: str = SIDE_AGENT
     }
 
 
+def projected_autonomous_replan_ack(
+    delta_kinds: list[str],
+    *,
+    agent_id: str | None = None,
+) -> dict:
+    ack = {
+        "schema_version": "autonomous_replan_ack_v0",
+        "recorded": True,
+        "source": "refresh_state",
+        "delta_contract": {
+            "schema_version": "repair_delta_contract_v0",
+            "delta_present": True,
+            "delta_kinds": delta_kinds,
+        },
+    }
+    if agent_id:
+        ack["agent_id"] = agent_id
+    return ack
+
+
 def assert_replan_beats_monitor_quiet_skip() -> None:
     payload = status_payload([monitor_item()], replan_obligation=SIDE_AGENT_REPLAN_OBLIGATION)
     guard = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=SIDE_AGENT)
@@ -862,6 +882,43 @@ def assert_non_frontier_replan_ack_does_not_clear_monitor_replan() -> None:
         assert obligation["triggers"][0]["kind"] == "frontier_exhausted_monitor_lane", guard
 
 
+def assert_projected_replan_ack_is_agent_scoped() -> None:
+    unscoped_payload = status_payload([monitor_item()], replan_obligation=None)
+    unscoped_item = unscoped_payload["attention_queue"]["items"][0]
+    unscoped_item["autonomous_replan_ack"] = projected_autonomous_replan_ack(
+        ["no_followup"]
+    )
+    unscoped_item["project_asset"]["autonomous_replan_ack"] = projected_autonomous_replan_ack(
+        ["no_followup"],
+        agent_id=PRIMARY_AGENT,
+    )
+    guard = build_quota_should_run(
+        unscoped_payload,
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    assert guard["goal_frontier_projection"]["replan_required"] is True, guard
+
+    scoped_payload = status_payload([monitor_item()], replan_obligation=None)
+    scoped_item = scoped_payload["attention_queue"]["items"][0]
+    scoped_ack = projected_autonomous_replan_ack(
+        ["watch_lane_continuation"],
+        agent_id=SIDE_AGENT,
+    )
+    scoped_item["autonomous_replan_ack"] = scoped_ack
+    scoped_item["project_asset"]["autonomous_replan_ack"] = scoped_ack
+    scoped_guard = build_quota_should_run(
+        scoped_payload,
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert scoped_guard["decision"] == "skip", scoped_guard
+    assert scoped_guard["effective_action"] == "monitor_quiet_skip", scoped_guard
+    assert scoped_guard["goal_frontier_projection"]["replan_required"] is False, scoped_guard
+
+
 def assert_agent_vision_gap_beats_replan_ack() -> None:
     guard = build_quota_should_run(
         status_payload(
@@ -930,6 +987,7 @@ def main() -> None:
     assert_monitor_schedule_gap_requires_bounded_repair()
     assert_agent_ack_survives_other_agent_run_and_monitor_poll()
     assert_non_frontier_replan_ack_does_not_clear_monitor_replan()
+    assert_projected_replan_ack_is_agent_scoped()
     assert_agent_vision_gap_beats_replan_ack()
     assert_blocking_handoff_gate_beats_derived_monitor_replan()
     print("quota-replan-decision-plane-smoke ok")

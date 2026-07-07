@@ -248,9 +248,11 @@ one small machine contract.
 When the current agent lane has only monitor work and no current, unclaimed, or
 other-agent advancement frontier, a future `next_due_at` is not enough to make
 the lane quiet. Quota must first project `autonomous_replan_required` unless a
-recent autonomous replan ACK carries a recognized frontier delta such as a
-runnable todo set, successor/supersede, blocker, watch-lane continuation,
-no-follow-up, active next action, or goal vision patch.
+recent same-agent autonomous replan ACK carries a recognized frontier delta such
+as a runnable todo set, successor/supersede, blocker, watch-lane continuation,
+no-follow-up, active next action, or goal vision patch. Projected ACKs from a
+different agent lane are diagnostic only for this decision and cannot clear the
+current lane's empty-frontier obligation.
 
 Executable todos can also declare explicit write-scope requirements through
 todo metadata, for example `required_write_scopes=runner%2F%2A%2A` or the CLI

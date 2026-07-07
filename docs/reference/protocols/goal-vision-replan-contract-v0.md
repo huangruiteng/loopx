@@ -125,13 +125,14 @@ For the same `agent_id`, a newer satisfied checkpoint with `patched`,
 
 Checkpoint and autonomous-replan ACK packets are protocol records, not semantic
 completion proof. A future monitor schedule is also not completion proof; it
-only says when to poll. A recent ACK may suppress duplicate monitor-only replan
-requests only after it carries a frontier delta such as runnable work,
-successor/supersede, blocker, watch-lane continuation, no-follow-up, or a
-vision patch, and after the current per-agent vision has no projected
-acceptance gap. If evidence, successor state, blocker state, or a superseding
-vision packet still shows the vision is unmet, the acceptance gap remains
-authoritative and quota must continue to project replan work.
+only says when to poll. A recent same-agent ACK may suppress duplicate
+monitor-only replan requests only after it carries a frontier delta such as
+runnable work, successor/supersede, blocker, watch-lane continuation,
+no-follow-up, or a vision patch, and after the current per-agent vision has no
+projected acceptance gap. An ACK from another agent lane must not clear this
+lane's empty-frontier obligation. If evidence, successor state, blocker state,
+or a superseding vision packet still shows the vision is unmet, the acceptance
+gap remains authoritative and quota must continue to project replan work.
 
 ## Vision Continuation Audit
 

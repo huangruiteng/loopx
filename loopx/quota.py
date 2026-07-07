@@ -48,6 +48,9 @@ from .control_plane.work_items.interaction_contract import (
     protocol_action_text as _protocol_action_text,
     user_channel_action_required as _user_channel_action_required,
 )
+from .control_plane.work_items.autonomous_replan_ack import (
+    autonomous_replan_ack_matches_agent,
+)
 from .control_plane.goals.goal_frontier import (
     AUTONOMOUS_REPLAN_REQUIRED_MODE,
     acceptance_gaps_from_agent_vision,
@@ -1498,6 +1501,19 @@ def _latest_autonomous_replan_ack_for_agent(
     return None
 
 
+def _projected_autonomous_replan_ack_for_agent(
+    item: dict[str, Any],
+    project_asset: dict[str, Any],
+    *,
+    agent_id: str | None,
+) -> dict[str, Any] | None:
+    for candidate in (item.get("autonomous_replan_ack"), project_asset.get("autonomous_replan_ack")):
+        if not autonomous_replan_ack_matches_agent(candidate, agent_id=agent_id):
+            continue
+        return candidate
+    return None
+
+
 def _recovery_delivery_allowed(quota: dict[str, Any], *, plan_ok: bool) -> bool:
     return (
         bool(plan_ok)
@@ -1691,13 +1707,13 @@ def build_quota_should_run(
             work_lane_contract=work_lane_contract,
             agent_id=agent_frontier_id,
             existing_replan_obligation=replan_obligation,
-            latest_replan_ack=latest_agent_replan_ack
-            or (
-                item.get("autonomous_replan_ack")
-                if isinstance(item.get("autonomous_replan_ack"), dict)
-                else project_asset.get("autonomous_replan_ack")
-                if isinstance(project_asset.get("autonomous_replan_ack"), dict)
-                else None
+            latest_replan_ack=(
+                latest_agent_replan_ack
+                or _projected_autonomous_replan_ack_for_agent(
+                    item,
+                    project_asset,
+                    agent_id=agent_frontier_id,
+                )
             ),
             acceptance_gaps=goal_frontier_acceptance_gaps,
         )
