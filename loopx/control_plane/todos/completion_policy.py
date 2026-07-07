@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from ...agent_registry import (
+    load_goal_from_registry,
     primary_agent_id_from_registry,
     registered_agent_ids_from_registry,
     require_registered_agent_id,
@@ -73,6 +74,46 @@ def _linked_handoff_successor_id(
     return None
 
 
+def _goal_allows_role_workflow_successors(registry_path: Path, goal_id: str) -> bool:
+    goal = load_goal_from_registry(registry_path, goal_id)
+    if not isinstance(goal, dict):
+        return False
+    adapter = goal.get("adapter")
+    adapter_kind = adapter.get("kind") if isinstance(adapter, dict) else None
+    return (
+        str(goal.get("domain") or "").strip() == "auto-research-demo"
+        or str(adapter_kind or "").strip() == "auto_research_demo_local_queue"
+    )
+
+
+def _linked_role_workflow_successor_id(
+    *,
+    successors: Iterable[LinkedSuccessor],
+    registered_agents: Iterable[str],
+    completing_agent: str | None,
+) -> str | None:
+    if not completing_agent:
+        return None
+    registered_agent_set = set(registered_agents)
+    if not registered_agent_set:
+        return None
+    for successor in successors:
+        if successor.role != "agent":
+            continue
+        if successor.status and successor.status != "open":
+            continue
+        if not successor.todo_id or not successor.claimed_by:
+            continue
+        if successor.claimed_by == completing_agent:
+            continue
+        if successor.claimed_by not in registered_agent_set:
+            continue
+        if is_primary_review_action_kind(successor.action_kind):
+            continue
+        return successor.todo_id
+    return None
+
+
 def resolve_completion_policy(
     *,
     registry_path: Path,
@@ -133,6 +174,16 @@ def resolve_completion_policy(
         handoff_agent=handoff_agent,
         completing_agent=effective_claimed_by,
     )
+    if (
+        side_agent_completion
+        and not linked_handoff_successor_id
+        and _goal_allows_role_workflow_successors(registry_path, goal_id)
+    ):
+        linked_handoff_successor_id = _linked_role_workflow_successor_id(
+            successors=linked_successors,
+            registered_agents=registered_agents,
+            completing_agent=effective_claimed_by,
+        )
     explicit_primary_review_handoff = bool(
         side_agent_completion
         and next_agent_todo
@@ -153,7 +204,8 @@ def resolve_completion_policy(
                 f"side-agent completion by {effective_claimed_by!r} requires "
                 "--next-agent-todo for independent handoff, verification, and merge; "
                 "--successor-todo-id pointing at an open agent successor claimed by "
-                f"handoff_agent={handoff_agent!r}; or --side-agent-self-merged "
+                f"handoff_agent={handoff_agent!r} or an allowed role-workflow agent; "
+                "or --side-agent-self-merged "
                 "with --evidence for a small validated self-merge"
             )
         if not side_agent_self_merged and handoff_agent == effective_claimed_by:
