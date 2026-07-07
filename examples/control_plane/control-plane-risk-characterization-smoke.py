@@ -262,7 +262,7 @@ def assert_higher_priority_due_monitor_preempts_advancement() -> None:
     assert quota["recommended_action"] == "[P0] Poll the due monitor first.", quota
 
 
-def assert_monitor_only_frontier_quiets_until_material_transition() -> None:
+def assert_monitor_only_frontier_requires_replan_without_delta() -> None:
     payload = status_payload(
         [
             todo_item(
@@ -276,34 +276,33 @@ def assert_monitor_only_frontier_quiets_until_material_transition() -> None:
         ]
     )
     quota = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=AGENT_ID)
-    assert quota["decision"] == "skip", quota
-    assert quota["should_run"] is False, quota
-    assert quota["effective_action"] == "monitor_quiet_skip", quota
-    assert quota.get("autonomous_replan_obligation") is None, quota
+    assert quota["decision"] == "autonomous_replan_required", quota
+    assert quota["should_run"] is True, quota
+    assert quota["effective_action"] == "autonomous_replan_required", quota
 
     lane = quota["work_lane_contract"]
     assert lane["lane"] == "continuous_monitor", lane
     assert lane["obligation"] == "quiet_until_material_monitor_transition", lane
     assert lane["must_attempt_work"] is False, lane
-    assert quota["goal_frontier_projection"]["replan_required"] is False, quota
+    frontier = quota["goal_frontier_projection"]
+    assert frontier["replan_required"] is True, quota
+    obligation = quota["autonomous_replan_obligation"]
+    assert obligation["triggers"][0]["kind"] == "frontier_exhausted_monitor_lane", quota
+    assert obligation["triggers"][0]["future_monitor_schedule_present"] is True, quota
 
     contract = quota["interaction_contract"]
-    assert contract["mode"] == "monitor_quiet_skip", contract
+    assert contract["mode"] == "autonomous_replan", contract
     assert contract["user_channel"]["action_required"] is False, contract
     assert contract["user_channel"]["notify"] == "DONT_NOTIFY", contract
-    assert contract["agent_channel"]["must_attempt"] is False, contract
-    assert contract["agent_channel"]["delivery_allowed"] is False, contract
-    assert contract["agent_channel"]["quiet_noop_allowed"] is True, contract
+    assert contract["agent_channel"]["must_attempt"] is True, contract
+    assert contract["agent_channel"]["delivery_allowed"] is True, contract
+    assert contract["agent_channel"]["quiet_noop_allowed"] is False, contract
     assert contract["cli_channel"]["spend_allowed_now"] is False, contract
-    assert contract["cli_channel"]["spend_after_validation"] is False, contract
+    assert contract["cli_channel"]["spend_after_validation"] is True, contract
 
     scheduler = quota["scheduler_hint"]
-    assert scheduler["action"] == "backoff_until_material_transition", scheduler
-    assert scheduler["cadence_class"] == "monitor_wait", scheduler
-    assert scheduler["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
-    assert scheduler["codex_app"]["recommended_interval_minutes"] == 15, scheduler
-    assert scheduler["codex_app"]["stateful_backoff"]["apply_needed"] is True, scheduler
-    assert scheduler["codex_app"]["no_spend_for_cadence_change"] is True, scheduler
+    assert scheduler["action"] == "run_now", scheduler
+    assert scheduler["cadence_class"] == "active_work", scheduler
 
     packet = build_review_packet(payload, goal_id=GOAL_ID)
     assert packet["ok"] is True, packet
@@ -429,7 +428,7 @@ def main() -> None:
     assert_due_monitor_context_does_not_steal_advancement()
     assert_current_agent_claimed_advancement_beats_other_agent_frontier()
     assert_higher_priority_due_monitor_preempts_advancement()
-    assert_monitor_only_frontier_quiets_until_material_transition()
+    assert_monitor_only_frontier_requires_replan_without_delta()
     assert_standing_monitor_gate_does_not_quiet_skip_gated_advancement()
     assert_agent_scope_wait_scheduler_contract()
     print("control-plane-risk-characterization-smoke ok")

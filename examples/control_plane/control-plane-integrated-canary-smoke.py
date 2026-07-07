@@ -578,19 +578,22 @@ def assert_due_monitor_poll_state_machine(root: Path) -> None:
         "--agent-id",
         AGENT_ID,
     )
-    assert quiet_payload["decision"] == "skip", quiet_payload
-    assert quiet_payload["effective_action"] == "monitor_quiet_skip", quiet_payload
-    assert quiet_payload["execution_obligation"]["must_attempt_work"] is False, quiet_payload
-    assert quiet_payload["execution_obligation"]["kind"] == "monitor_quiet_skip", quiet_payload
-    assert quiet_payload["interaction_contract"]["mode"] == "monitor_quiet_skip", quiet_payload
+    assert quiet_payload["decision"] == "autonomous_replan_required", quiet_payload
+    assert quiet_payload["effective_action"] == "autonomous_replan_required", quiet_payload
+    assert quiet_payload["execution_obligation"]["must_attempt_work"] is True, quiet_payload
+    assert quiet_payload["execution_obligation"]["kind"] == "autonomous_replan_required", quiet_payload
+    assert quiet_payload["interaction_contract"]["mode"] == "autonomous_replan", quiet_payload
     assert quiet_payload["work_lane_contract"]["obligation"] == (
         "quiet_until_material_monitor_transition"
     ), quiet_payload
     assert quiet_payload["work_lane_contract"]["must_attempt_work"] is False, quiet_payload
     assert quiet_payload["goal_frontier_projection"]["monitor_only_lanes"]["present"] is True, quiet_payload
-    assert quiet_payload["goal_frontier_projection"]["replan_required"] is False, quiet_payload
+    assert quiet_payload["goal_frontier_projection"]["replan_required"] is True, quiet_payload
+    obligation = quiet_payload["autonomous_replan_obligation"]
+    assert obligation["triggers"][0]["kind"] == "frontier_exhausted_monitor_lane", quiet_payload
+    assert obligation["triggers"][0]["future_monitor_schedule_present"] is True, quiet_payload
     assert quiet_payload["agent_todo_summary"]["monitor_due_count"] == 0, quiet_payload
-    assert quiet_payload["scheduler_hint"]["cadence_class"] == "monitor_wait", quiet_payload
+    assert quiet_payload["scheduler_hint"]["cadence_class"] == "active_work", quiet_payload
 
 
 def assert_markdown_same_agent_continuation_read_path(root: Path) -> None:
