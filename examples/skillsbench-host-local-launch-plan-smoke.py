@@ -79,22 +79,6 @@ def main() -> int:
     assert "env=target_env" in source
     assert "local_acp_command = _set_option_value(" in source
     assert "del (\n            env," not in source
-    packet = SkillsBenchLocalAcpRelay(
-        CodexExecConfig(remote_command_file_bridge_command="/tmp/private-bridge")
-    )._prompt_with_remote_bridge_packet(
-        "Task",
-        bridge_probe={"operation_count": 1},
-        bridge_command_for_agent="/tmp/private-bridge",
-    )
-    first_action_block = packet.split("FIRST ACTION REQUIRED:", 1)[1].split(
-        "Request examples:", 1
-    )[0]
-    assert "pwd && ls -la" in first_action_block
-    assert "/tmp/private-bridge" in first_action_block
-    assert "<private bridge command>" not in first_action_block
-    assert '/root/answer.json' in packet, packet
-    assert '/root/task-input-or-data' in packet, packet
-    assert "`/app`, `/tmp`, and `/root`" in packet, packet
     assert _docker_bridge_safe_path("/app/.codex/goals/state.json") == (
         "/app/.codex/goals/state.json"
     )
@@ -119,18 +103,38 @@ def main() -> int:
             raise AssertionError(f"unexpected cleanup root: {protected_root}")
     with tempfile.TemporaryDirectory(prefix="skillsbench-agent-probe-count-") as tmp:
         tmp_path = Path(tmp)
+        observed_request = tmp_path / "observed-request.json"
         fake_bridge = tmp_path / "fake-bridge"
         fake_bridge.write_text(
-            """#!/usr/bin/env python3
-import json
-import sys
-
-json.loads(sys.stdin.read() or "{}")
-print(json.dumps({"ok": True, "stdout": "", "stderr": "", "exit_code": 0}))
-""",
+            "#!/usr/bin/env python3\n"
+            "import json, sys\n"
+            "from pathlib import Path\n"
+            f"raw = sys.stdin.read() or '{{}}'; json.loads(raw); Path({str(observed_request)!r}).write_text(raw, encoding='utf-8')\n"
+            "print(json.dumps({'ok': True, 'stdout': '', 'stderr': '', 'exit_code': 0}))\n",
             encoding="utf-8",
         )
         fake_bridge.chmod(0o755)
+        packet = SkillsBenchLocalAcpRelay(
+            CodexExecConfig(remote_command_file_bridge_command=str(fake_bridge))
+        )._prompt_with_remote_bridge_packet(
+            "Task",
+            bridge_probe={"operation_count": 1},
+            bridge_command_for_agent=str(fake_bridge),
+        )
+        first_action_block = packet.split("FIRST ACTION REQUIRED:", 1)[1].split(
+            "Request examples:", 1
+        )[0]
+        assert "pwd && ls -la" in first_action_block
+        assert str(fake_bridge) in first_action_block
+        assert "<private bridge command>" not in first_action_block
+        assert "```sh" in first_action_block
+        first_action_command = first_action_block.split("```sh", 1)[1].split("```", 1)[0].strip()
+        proc = subprocess.run(first_action_command, shell=True, capture_output=True, text=True, timeout=10)
+        assert proc.returncode == 0, proc.stderr or proc.stdout
+        request = json.loads(observed_request.read_text(encoding="utf-8"))
+        assert request == {"operation": "exec", "cwd": "/app", "command": "pwd && ls -la", "timeout_sec": 10}, request
+        assert '/root/answer.json' in packet and '/root/task-input-or-data' in packet, packet
+        assert "`/app`, `/tmp`, and `/root`" in packet, packet
         trace_dir = tmp_path / "traces"
         relay = SkillsBenchLocalAcpRelay(
             CodexExecConfig(
