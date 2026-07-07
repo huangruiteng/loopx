@@ -749,6 +749,21 @@ def register_auto_research_commands(
         ),
     )
     demo_e2e_parser.add_argument(
+        "--auto-wake",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Run a session-scoped background wake loop for visible auto-research lanes. "
+            "Use --no-auto-wake for full manual takeover."
+        ),
+    )
+    demo_e2e_parser.add_argument(
+        "--auto-wake-interval-seconds",
+        type=float,
+        default=45.0,
+        help=argparse.SUPPRESS,
+    )
+    demo_e2e_parser.add_argument(
         "--keep-workspace",
         action="store_true",
         help="Keep the temporary demo workspace after execution. The output payload still redacts its absolute path.",
@@ -1229,6 +1244,8 @@ def handle_auto_research_command(
                 attach=visible_policy.attach,
                 replace_existing=args.replace_existing,
                 workspace_policy=demo_workspace_policy,
+                auto_wake=bool(visible_policy.launch_visible and args.auto_wake),
+                auto_wake_interval_seconds=args.auto_wake_interval_seconds,
             )
 
             if visible_policy.launch_visible:

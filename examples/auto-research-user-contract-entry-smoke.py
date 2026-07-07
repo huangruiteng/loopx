@@ -178,6 +178,13 @@ def assert_start_wake_contract() -> None:
         1,
     )[0]
     assert "if args.codex_trust_workspace is None" not in start_source
+    demo_e2e_source = cli_source.split('elif args.auto_research_command == "demo-e2e":', 1)[1]
+    assert "default=True" in cli_source.split('"--auto-wake"', 1)[1].split(
+        '"--auto-wake-interval-seconds"',
+        1,
+    )[0]
+    assert "auto_wake=bool(visible_policy.launch_visible and args.auto_wake)" in demo_e2e_source
+    assert "auto_wake_interval_seconds=args.auto_wake_interval_seconds" in demo_e2e_source
 
     def start_policy(args: Namespace):
         return resolve_visible_launch_policy(
