@@ -139,6 +139,20 @@ path, and canary route rather than as a user-facing release baseline.
   exposes premerge canary progress earlier, and promotes auto-research visible
   worker/successor routing plus selected public benchmark route/profile and
   SkillsBench helper hardening.
+- `v0.1.13` on 2026-07-08 18:15 +08:00: guided onboarding and multi-agent
+  control-plane release at the matching `v0.1.13` tag. This release makes new
+  project setup more repairable with guided start-goal previews (#1631, #1633),
+  non-destructive write-scope migration (#1636), delivery-scale aliases, and
+  clearer refresh-state diagnostics (#1641); routes primary controllers toward
+  subagent orchestration (#1622) behind an explicit default-off feature switch
+  (#1643); improves scheduler ACK/backoff recovery and heartbeat migration
+  (#1626, #1639); splits quota/status fixture hot paths, Lark projection row
+  helpers, and content-ops markdown renderers into narrower modules (#1640,
+  #1642, #1644, #1646); adds public-safe external ML task ledgers (#1627);
+  hardens SkillsBench source/countability/launcher evidence (#1612, #1620,
+  #1621, #1625); and relaxes local `next_action` / `recommended_action` text to
+  allow local project routing references while still rejecting inline
+  credentials (#1645).
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.
