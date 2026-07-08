@@ -192,8 +192,7 @@ def configure_payload() -> dict[str, Any]:
         "self_repair_enabled": True,
         "self_repair_health": True,
         "self_repair_waiting_projection": True,
-        "orchestration_mode": "multi_subagent",
-        "spawn_allowed": True,
+        "multi_subagent_feature": "enabled",
         "max_children": 2,
         "allowed_domains": ["docs", "validation"],
         "clear_allowed_domains": False,
@@ -237,6 +236,7 @@ def main() -> None:
             assert dry["after"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], dry
             assert dry["after"]["primary_agent"] == "codex-main-control", dry
             assert dry["after"]["write_scope"] == ["docs/**", "tests/**"], dry
+            assert dry["feature_summary"]["multi_subagent"] == "enabled", dry
             assert goal_from_registry(registry)["quota"]["compute"] == 1
             status, blocked = request_json(
                 "POST",
@@ -303,6 +303,7 @@ def main() -> None:
             assert dry["after"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], dry
             assert dry["after"]["primary_agent"] == "codex-main-control", dry
             assert dry["after"]["write_scope"] == ["docs/**", "tests/**"], dry
+            assert dry["feature_summary"]["multi_subagent"] == "enabled", dry
             status, stale = request_json(
                 "POST",
                 f"{base_url}/control-plane/configure-goal/apply",
@@ -327,6 +328,7 @@ def main() -> None:
             )
             assert status == 200, applied
             assert applied["written"] is True, applied
+            assert applied["feature_summary"]["multi_subagent"] == "enabled", applied
             goal = goal_from_registry(registry)
             assert goal["quota"]["compute"] == 0.5, goal
             assert goal["quota"]["window_hours"] == 12, goal

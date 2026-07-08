@@ -3046,13 +3046,12 @@ type ConfigureGoalRequestBody = {
   clear_allowed_domains: boolean;
   goal_id: string;
   max_children: number;
-  orchestration_mode: "default" | "multi_subagent";
+  multi_subagent_feature: "off" | "enabled";
   quota_compute: number;
   quota_window_hours: number;
   self_repair_enabled: boolean;
   self_repair_health: boolean;
   self_repair_waiting_projection: boolean;
-  spawn_allowed: boolean;
 };
 
 type ConfigureGoalApiResponse = {
@@ -3097,19 +3096,19 @@ function buildConfigureGoalRequestBody(draft: ControlPlaneSettingsDraft, goalId?
   if (!goalId || !validDraftNumber(draft.quotaCompute, { min: 0.000001 }) || !validDraftNumber(draft.quotaWindowHours, { min: 0.000001 }) || !validDraftNumber(draft.maxChildren, { min: 0 })) {
     return null;
   }
+  const multiSubagentEnabled = draft.orchestrationMode === "multi_subagent" && draft.spawnAllowed;
   const domains = normalizedDomainList(draft.allowedDomains);
   return {
-    allowed_domains: domains,
-    clear_allowed_domains: domains.length === 0,
+    allowed_domains: multiSubagentEnabled ? domains : [],
+    clear_allowed_domains: !multiSubagentEnabled || domains.length === 0,
     goal_id: goalId,
-    max_children: Number(draft.maxChildren.trim()),
-    orchestration_mode: draft.orchestrationMode,
+    max_children: multiSubagentEnabled ? Number(draft.maxChildren.trim()) : 0,
+    multi_subagent_feature: multiSubagentEnabled ? "enabled" : "off",
     quota_compute: Number(draft.quotaCompute.trim()),
     quota_window_hours: Number(draft.quotaWindowHours.trim()),
     self_repair_enabled: draft.selfRepairEnabled,
     self_repair_health: draft.selfRepairHealth,
     self_repair_waiting_projection: draft.selfRepairWaitingProjection,
-    spawn_allowed: draft.spawnAllowed,
   };
 }
 
@@ -3136,6 +3135,7 @@ function buildConfigureGoalCommand({
     return "";
   }
   const registryArg = registry ? shellArg(registry) : "$HOME/.codex/loopx/registry.global.json";
+  const multiSubagentEnabled = draft.orchestrationMode === "multi_subagent" && draft.spawnAllowed;
   const parts = [
     "loopx",
     "--registry",
@@ -3150,16 +3150,15 @@ function buildConfigureGoalCommand({
     booleanFlag(draft.selfRepairEnabled, "self-repair-enabled"),
     booleanFlag(draft.selfRepairHealth, "self-repair-health"),
     booleanFlag(draft.selfRepairWaitingProjection, "self-repair-waiting-projection"),
-    "--orchestration-mode",
-    draft.orchestrationMode,
-    booleanFlag(draft.spawnAllowed, "spawn-allowed"),
+    "--multi-subagent-feature",
+    multiSubagentEnabled ? "enabled" : "off",
     "--max-children",
-    shellArg(draft.maxChildren.trim() || "0"),
+    shellArg(multiSubagentEnabled ? draft.maxChildren.trim() || "0" : "0"),
   ];
-  for (const domain of normalizedDomainList(draft.allowedDomains)) {
+  for (const domain of multiSubagentEnabled ? normalizedDomainList(draft.allowedDomains) : []) {
     parts.push("--allowed-domain", shellArg(domain));
   }
-  if (!normalizedDomainList(draft.allowedDomains).length) {
+  if (!multiSubagentEnabled || !normalizedDomainList(draft.allowedDomains).length) {
     parts.push("--clear-allowed-domains");
   }
   if (execute) {

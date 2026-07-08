@@ -101,9 +101,8 @@ def main() -> int:
             "--self-repair-enabled",
             "--self-repair-health",
             "--self-repair-waiting-projection",
-            "--orchestration-mode",
-            "multi_subagent",
-            "--spawn-allowed",
+            "--multi-subagent-feature",
+            "enabled",
             "--max-children",
             "2",
             "--allowed-domain",
@@ -142,6 +141,7 @@ def main() -> int:
         assert dry["after"]["checkpointed_boundary_authority"]["active_write_scope"] == ["docs/**"], dry
         assert dry["after"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], dry
         assert dry["after"]["primary_agent"] == "codex-main-control", dry
+        assert dry["feature_summary"]["multi_subagent"] == "enabled", dry
         migration = dry["heartbeat_prompt_migration"]
         assert migration["schema_version"] == "heartbeat_prompt_migration_v0", migration
         assert "coordination.registered_agents" in migration["reason"], migration
@@ -166,9 +166,8 @@ def main() -> int:
             "--self-repair-enabled",
             "--self-repair-health",
             "--self-repair-waiting-projection",
-            "--orchestration-mode",
-            "multi_subagent",
-            "--spawn-allowed",
+            "--multi-subagent-feature",
+            "enabled",
             "--max-children",
             "2",
             "--allowed-domain",
@@ -192,6 +191,7 @@ def main() -> int:
         assert applied["ok"] is True, applied
         assert applied["dry_run"] is False, applied
         assert applied["written"] is True, applied
+        assert applied["feature_summary"]["multi_subagent"] == "enabled", applied
         assert applied["heartbeat_prompt_migration"]["commands"][0]["agent_id"] == "codex-main-control", applied
         goal = goal_from_registry(registry_path)
         assert goal["quota"]["compute"] == 0.5, goal
@@ -236,6 +236,33 @@ def main() -> int:
             "loopx/**",
         ]
         assert state_file.read_text(encoding="utf-8") == state_before_scope_migration
+
+        feature_conflict = payload(run_cli(
+            registry_path,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--multi-subagent-feature",
+            "enabled",
+            "--spawn-allowed",
+            check=False,
+        ))
+        assert feature_conflict["ok"] is False, feature_conflict
+        assert "cannot be combined" in feature_conflict["error"], feature_conflict
+
+        feature_off_children = payload(run_cli(
+            registry_path,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--multi-subagent-feature",
+            "off",
+            "--max-children",
+            "1",
+            check=False,
+        ))
+        assert feature_off_children["ok"] is False, feature_off_children
+        assert "max-children greater than 0" in feature_off_children["error"], feature_off_children
 
         no_change = payload(run_cli(
             registry_path,
@@ -301,6 +328,23 @@ def main() -> int:
         assert scope_cleared["changed"] is True, scope_cleared
         assert "write_scope" in scope_cleared["changed_fields"], scope_cleared
         assert goal_from_registry(registry_path)["coordination"]["write_scope"] == [], scope_cleared
+
+        feature_disabled = payload(run_cli(
+            registry_path,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--multi-subagent-feature",
+            "off",
+            "--execute",
+        ))
+        assert feature_disabled["ok"] is True, feature_disabled
+        assert feature_disabled["feature_summary"]["multi_subagent"] == "off", feature_disabled
+        disabled_goal = goal_from_registry(registry_path)
+        assert disabled_goal["spawn_policy"]["mode"] == "default", disabled_goal
+        assert disabled_goal["spawn_policy"]["allowed"] is False, disabled_goal
+        assert disabled_goal["spawn_policy"]["max_children"] == 0, disabled_goal
+        assert disabled_goal["spawn_policy"]["allowed_domains"] == [], disabled_goal
 
         invalid = payload(run_cli(
             registry_path,

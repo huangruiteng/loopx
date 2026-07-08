@@ -231,6 +231,22 @@ and the coordination/write-scope rules. Status and quota derive the same
 compact `orchestration` projection from this policy so agents do not need to
 infer sub-agent permissions from chat history.
 
+The user-facing switch is intentionally default-off. Prefer configuring it with
+the feature wrapper:
+
+```bash
+loopx configure-goal \
+  --goal-id your-project-goal \
+  --multi-subagent-feature enabled \
+  --max-children 2 \
+  --allowed-domain docs \
+  --allowed-domain validation
+```
+
+Use `--multi-subagent-feature off` to return the goal to single-agent mode.
+The older `--orchestration-mode` and `--spawn-allowed` flags remain as low-level
+compatibility knobs, but product surfaces should expose the feature wrapper.
+
 The controller goal should declare exactly one `coordination.primary_agent`.
 That main agent owns final review, verification, merge, publication, and
 reassignment. Child or bypass agents are side agents: they should use independent

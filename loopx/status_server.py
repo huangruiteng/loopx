@@ -48,6 +48,7 @@ CONFIGURE_GOAL_REQUEST_FIELDS = {
     "self_repair_enabled",
     "self_repair_health",
     "self_repair_waiting_projection",
+    "multi_subagent_feature",
     "orchestration_mode",
     "spawn_allowed",
     "max_children",
@@ -337,6 +338,7 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             "self_repair_enabled": body.get("self_repair_enabled"),
             "self_repair_health": body.get("self_repair_health"),
             "self_repair_waiting_projection": body.get("self_repair_waiting_projection"),
+            "multi_subagent_feature": body.get("multi_subagent_feature"),
             "orchestration_mode": body.get("orchestration_mode"),
             "spawn_allowed": body.get("spawn_allowed"),
             "max_children": body.get("max_children"),
@@ -371,6 +373,7 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             self_repair_enabled=values["self_repair_enabled"],
             self_repair_health=values["self_repair_health"],
             self_repair_waiting_projection=values["self_repair_waiting_projection"],
+            multi_subagent_feature=values["multi_subagent_feature"],
             orchestration_mode=values["orchestration_mode"],
             spawn_allowed=values["spawn_allowed"],
             max_children=values["max_children"],
@@ -406,6 +409,7 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             "preview_id": configure_goal_preview_id(payload),
             "control_plane_summary": payload.get("control_plane_summary"),
             "orchestration_summary": payload.get("orchestration_summary"),
+            "feature_summary": payload.get("feature_summary"),
             "heartbeat_prompt_migration": payload.get("heartbeat_prompt_migration"),
         }
 

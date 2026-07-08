@@ -142,6 +142,12 @@ only when `local_dashboard_api.control_plane_write_enabled=true` and the apply
 URL is present. Apply requests must reuse the fresh `preview_id` from the
 dry-run response.
 
+Control-plane setting drafts may use `multi_subagent_feature="enabled"` to opt
+into bounded child-agent orchestration, or `"off"` to keep the default
+single-agent mode. This is a product wrapper over the registry `spawn_policy`;
+dashboard surfaces should prefer it over exposing raw `orchestration_mode` plus
+`spawn_allowed` toggles.
+
 ## Command
 
 ```bash

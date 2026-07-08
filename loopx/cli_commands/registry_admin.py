@@ -289,6 +289,14 @@ def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> 
         help="Enable or disable waiting-projection repair for this goal.",
     )
     configure_goal_parser.add_argument(
+        "--multi-subagent-feature",
+        choices=["off", "enabled"],
+        help=(
+            "Default-off product switch for bounded child-agent orchestration. "
+            "`enabled` maps to multi_subagent with spawn allowed; `off` maps to single-agent mode."
+        ),
+    )
+    configure_goal_parser.add_argument(
         "--orchestration-mode",
         choices=["default", "multi_subagent"],
         help="Per-goal orchestration mode.",
@@ -658,6 +666,7 @@ def handle_registry_admin_command(
                 self_repair_enabled=args.self_repair_enabled,
                 self_repair_health=args.self_repair_health,
                 self_repair_waiting_projection=args.self_repair_waiting_projection,
+                multi_subagent_feature=args.multi_subagent_feature,
                 orchestration_mode=args.orchestration_mode,
                 spawn_allowed=args.spawn_allowed,
                 max_children=args.max_children,

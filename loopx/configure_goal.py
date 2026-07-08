@@ -13,7 +13,12 @@ from .boundary_authority import (
 )
 from .agent_registry import normalize_registered_agents, primary_agent_id_for_goal
 from .control_plane import compact_control_plane_policy, control_plane_policy_summary
-from .orchestration import compact_orchestration_policy, orchestration_policy_summary
+from .orchestration import (
+    DEFAULT_ORCHESTRATION_MODE,
+    MULTI_SUBAGENT_ORCHESTRATION_MODE,
+    compact_orchestration_policy,
+    orchestration_policy_summary,
+)
 from .quota import goal_quota_config
 from .registry import read_json, registry_goals
 from .control_plane.todos.contract import normalize_todo_claimed_by
@@ -25,6 +30,9 @@ WAITING_ON_CHOICES = (
     "controller",
     "external_evidence",
 )
+
+MULTI_SUBAGENT_FEATURE_CHOICES = ("off", "enabled")
+DEFAULT_MULTI_SUBAGENT_MAX_CHILDREN = 2
 
 
 def _now_iso() -> str:
@@ -108,6 +116,16 @@ def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _multi_subagent_feature_status(orchestration: dict[str, Any]) -> str:
+    if (
+        orchestration.get("mode") == MULTI_SUBAGENT_ORCHESTRATION_MODE
+        and orchestration.get("spawn_allowed") is True
+        and int(orchestration.get("max_children") or 0) > 0
+    ):
+        return "enabled"
+    return "off"
+
+
 def _changed_fields(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
     changed: list[str] = []
     for group, before_value in before.items():
@@ -180,6 +198,7 @@ def configure_goal(
     self_repair_enabled: bool | None = None,
     self_repair_health: bool | None = None,
     self_repair_waiting_projection: bool | None = None,
+    multi_subagent_feature: str | None = None,
     orchestration_mode: str | None = None,
     spawn_allowed: bool | None = None,
     max_children: int | None = None,
@@ -234,11 +253,23 @@ def configure_goal(
         raise ValueError("--clear-boundary-authority cannot be combined with boundary authority fields")
     if waiting_on and waiting_on not in WAITING_ON_CHOICES:
         raise ValueError("--waiting-on must be one of: " + ", ".join(WAITING_ON_CHOICES))
+    if multi_subagent_feature is not None and multi_subagent_feature not in MULTI_SUBAGENT_FEATURE_CHOICES:
+        raise ValueError("--multi-subagent-feature must be one of: " + ", ".join(MULTI_SUBAGENT_FEATURE_CHOICES))
+    if multi_subagent_feature is not None and (orchestration_mode is not None or spawn_allowed is not None):
+        raise ValueError(
+            "--multi-subagent-feature cannot be combined with --orchestration-mode or --spawn-allowed; "
+            "use --max-children/--allowed-domain for bounded feature settings"
+        )
 
     quota_compute = _positive_number(quota_compute, field="quota_compute")
     quota_window_hours = _positive_number(quota_window_hours, field="quota_window_hours")
     max_children = _non_negative_int(max_children, field="max_children")
     allowed_domains = _clean_domains(allowed_domains)
+    if multi_subagent_feature == "off":
+        if max_children not in (None, 0):
+            raise ValueError("--multi-subagent-feature off cannot be combined with --max-children greater than 0")
+        if allowed_domains:
+            raise ValueError("--multi-subagent-feature off cannot be combined with --allowed-domain")
     registered_agents = _clean_registered_agents(registered_agents)
     write_scope = _clean_write_scope(write_scope)
     normalized_primary_agent = normalize_todo_claimed_by(primary_agent) if primary_agent else None
@@ -279,6 +310,8 @@ def configure_goal(
         goal["control_plane"] = control_plane
 
     if (
+        multi_subagent_feature is not None
+        or
         orchestration_mode is not None
         or spawn_allowed is not None
         or max_children is not None
@@ -286,7 +319,22 @@ def configure_goal(
         or clear_allowed_domains
     ):
         spawn_policy = goal.get("spawn_policy") if isinstance(goal.get("spawn_policy"), dict) else {}
-        if orchestration_mode is not None:
+        if multi_subagent_feature == "enabled":
+            spawn_policy["mode"] = MULTI_SUBAGENT_ORCHESTRATION_MODE
+            spawn_policy["allowed"] = True
+            if max_children is None:
+                existing_children = int(compact_orchestration_policy(spawn_policy).get("max_children") or 0)
+                spawn_policy["max_children"] = (
+                    existing_children
+                    if existing_children > 0
+                    else DEFAULT_MULTI_SUBAGENT_MAX_CHILDREN
+                )
+        elif multi_subagent_feature == "off":
+            spawn_policy["mode"] = DEFAULT_ORCHESTRATION_MODE
+            spawn_policy["allowed"] = False
+            spawn_policy["max_children"] = 0
+            spawn_policy["allowed_domains"] = []
+        elif orchestration_mode is not None:
             spawn_policy["mode"] = orchestration_mode
         if spawn_allowed is not None:
             spawn_policy["allowed"] = spawn_allowed
@@ -380,6 +428,11 @@ def configure_goal(
         "written": bool(execute and changed_fields),
         "control_plane_summary": control_plane_policy_summary(after.get("control_plane")),
         "orchestration_summary": orchestration_policy_summary(after.get("orchestration")),
+        "feature_summary": {
+            "multi_subagent": _multi_subagent_feature_status(after.get("orchestration") or {}),
+            "default": "off",
+            "configuration_entry": "multi_subagent_feature",
+        },
         "heartbeat_prompt_migration": _build_heartbeat_prompt_migration(
             goal_id=goal_id,
             changed_fields=changed_fields,
@@ -408,6 +461,9 @@ def render_configure_goal_markdown(payload: dict[str, Any]) -> str:
         lines.append(f"- control_plane: {payload.get('control_plane_summary')}")
     if payload.get("orchestration_summary"):
         lines.append(f"- orchestration: {payload.get('orchestration_summary')}")
+    feature_summary = payload.get("feature_summary")
+    if isinstance(feature_summary, dict):
+        lines.append(f"- feature_multi_subagent: `{feature_summary.get('multi_subagent')}`")
     migration = payload.get("heartbeat_prompt_migration")
     if isinstance(migration, dict):
         lines.append(f"- heartbeat_prompt_migration: {migration.get('action')}")
