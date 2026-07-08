@@ -23,6 +23,15 @@ def work_lane_reason_codes(work_lane_contract: dict[str, Any]) -> set[str]:
     return {str(value) for value in reason_codes if str(value or "").strip()}
 
 
+def explicit_external_evidence_observation(decision: dict[str, Any]) -> bool:
+    observation = (
+        decision.get("external_evidence_observation")
+        if isinstance(decision.get("external_evidence_observation"), dict)
+        else {}
+    )
+    return observation.get("required") is True and observation.get("must_attempt_observation") is True
+
+
 def allows_no_spend_external_monitor_poll(decision: dict[str, Any]) -> bool:
     """Return true when should-run represents observation, not delivery completion."""
 
@@ -37,6 +46,8 @@ def allows_no_spend_external_monitor_poll(decision: dict[str, Any]) -> bool:
         return False
     if decision.get("should_run") is not True:
         return False
+    if explicit_external_evidence_observation(decision):
+        return True
     if work_lane_contract.get("must_attempt_work") is not True:
         return False
     if monitor_policy not in EXTERNAL_MONITOR_POLICIES:
