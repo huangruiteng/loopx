@@ -1,0 +1,25 @@
+examples/control_plane/todo-lifecycle-cli-smoke.py
+  s_9a5a2bd944fdcb::t_0d34b70133b1e1 12-14,19-40
+examples/control_plane/todo_lifecycle_fixtures.py
+  s_9a5a2bd944fdcb::t_d853da99821a4f 1-579
+loopx/status.py
+  s_9a5a2bd944fdcb::t_58f04fb68ac2c7 196-197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f01676e237a5211cda34088609d0eb4b67741e76",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
