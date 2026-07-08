@@ -203,7 +203,7 @@ def main() -> int:
         ),
         expected_action="backoff_until_material_transition",
         expected_rrule="FREQ=MINUTELY;INTERVAL=15",
-        expected_progression=[15, 30, 60, 120],
+        expected_progression=[15, 30, 60],
     )
     assert_policy_case(
         "quiet-wait",

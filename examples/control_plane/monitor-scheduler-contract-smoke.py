@@ -229,7 +229,7 @@ def assert_not_due_monitor_scheduler_applies_host_floor_before_cadence() -> None
     assert guard["effective_action"] == "monitor_quiet_skip", guard
     assert scheduler["cadence_class"] == "monitor_wait", scheduler
     assert codex_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
-    assert codex_app["example_progression_minutes"] == [15, 30, 60, 120], scheduler
+    assert codex_app["example_progression_minutes"] == [15, 30, 60], scheduler
     assert stateful["current_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
 
 
@@ -254,7 +254,7 @@ def assert_monitor_scheduler_far_window_uses_coarse_backoff() -> None:
     assert guard["effective_action"] == "monitor_quiet_skip", guard
     assert context["phase"] == "far_window", context
     assert context["cap_minutes"] == 90, context
-    assert codex_app["example_progression_minutes"] == [15, 30, 60, 90], scheduler
+    assert codex_app["example_progression_minutes"] == [15, 30, 60], scheduler
     assert codex_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
 
 
@@ -280,7 +280,7 @@ def assert_monitor_scheduler_near_window_caps_without_breaking_floor() -> None:
     assert context["phase"] == "near_window", context
     assert context["host_floor_minutes"] == 15, context
     assert context["cap_minutes"] == 37, context
-    assert codex_app["example_progression_minutes"] == [15, 30, 37, 37], scheduler
+    assert codex_app["example_progression_minutes"] == [15, 30, 37], scheduler
 
 
 def assert_monitor_scheduler_near_window_reset_identity_is_stable() -> None:
@@ -342,7 +342,7 @@ def assert_monitor_scheduler_active_window_respects_host_floor() -> None:
     assert context["phase"] == "active_window", context
     assert context["cadence_minutes"] == 3, context
     assert context["host_floor_minutes"] == 15, context
-    assert codex_app["example_progression_minutes"] == [15, 15, 15, 15], scheduler
+    assert codex_app["example_progression_minutes"] == [15, 15, 15], scheduler
     assert codex_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
 
 
@@ -459,7 +459,7 @@ def assert_expired_monitor_does_not_catch_up() -> None:
     assert context["phase"] == "expired", context
     assert context["expired_monitor_count"] == 1, context
     assert codex_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
-    assert codex_app["example_progression_minutes"] == [15, 30, 60, 120], scheduler
+    assert codex_app["example_progression_minutes"] == [15, 30, 60], scheduler
 
 
 def assert_due_monitor_priority_does_not_steal_advancement_lane() -> None:

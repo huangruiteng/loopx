@@ -25,7 +25,7 @@ SCHEDULER_HINT_DETAIL_SCHEMA_VERSION = "scheduler_hint_detail_v0"
 CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION = "codex_app_stateful_backoff_v0"
 CODEX_APP_SCHEDULER_ACK_HINT_SCHEMA_VERSION = "codex_app_scheduler_ack_hint_v0"
 MONITOR_CADENCE_PATTERN = re.compile(r"^\s*(\d+)\s*([mhd])\s*$", re.IGNORECASE)
-MONITOR_WAIT_PROGRESSION_MINUTES = [15, 30, 60, 120]
+MONITOR_WAIT_PROGRESSION_MINUTES = [15, 30, 60]
 DEFAULT_ACK_CAPABILITIES = {"shell", "filesystem_read", "filesystem_write"}
 MONITOR_WAIT_HOST_FLOOR_MINUTES = 15
 MONITOR_WAIT_NEAR_WINDOW_LEAD_MINUTES = 60
@@ -1073,7 +1073,7 @@ def build_scheduler_hint(
                 "cadence_class": "monitor_wait",
                 "codex_app_initial_interval_minutes": MONITOR_WAIT_HOST_FLOOR_MINUTES,
                 "codex_app_initial_rrule": rrule_for_minutes(MONITOR_WAIT_HOST_FLOOR_MINUTES),
-                "codex_app_max_interval_minutes": 120,
+                "codex_app_max_interval_minutes": 60,
                 "unchanged_poll_backoff_multiplier": 2,
                 "local_scheduler_unchanged_poll_limit": 3,
                 "claude_code_loop_unchanged_poll_limit": 3,
@@ -1091,7 +1091,7 @@ def build_scheduler_hint(
                 "cadence until material evidence, a blocker, or replan obligation appears"
             ),
             codex_interval=15,
-            codex_max=120,
+            codex_max=60,
             cli_limit=3,
             claude_limit=3,
             cadence_progression_override=(

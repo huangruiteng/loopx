@@ -738,7 +738,7 @@ After a successful host RRULE update, the agent records that fact with
 advances the per goal/agent scheduler state without spending quota. Human gates
 can move to `[30, 60, 120]` after the
 concrete user todo has been surfaced.
-Monitor-only quiet waits move through `[15, 30, 60, 120]` while preserving the
+Monitor-only quiet waits move through `[15, 30, 60]` while preserving the
 same no-spend monitor-poll contract, unless a monitor cadence or due time caps
 the progression earlier.
 Agent-scope waits use a more conservative adjustment curve such as

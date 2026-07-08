@@ -246,14 +246,14 @@ def assert_policy_state_progression() -> None:
     assert reset["codex_app"]["stateful_backoff"]["state_status"] == "reset_required", reset
 
 
-def assert_monitor_wait_progression_reaches_120() -> None:
+def assert_monitor_wait_progression_caps_at_60() -> None:
     base = monitor_payload()
     first = build_scheduler_hint(
         deepcopy(base),
         agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
     )
     assert first["action"] == "backoff_until_material_transition", first
-    assert first["codex_app"]["example_progression_minutes"] == [15, 30, 60, 120], first
+    assert first["codex_app"]["example_progression_minutes"] == [15, 30, 60], first
     assert first["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", first
 
     second = build_scheduler_hint(
@@ -270,21 +270,15 @@ def assert_monitor_wait_progression_reaches_120() -> None:
     )
     assert third["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=60", third
 
-    fourth = build_scheduler_hint(
+    steady = build_scheduler_hint(
         deepcopy(base),
         agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
         codex_app_scheduler_state=state_from(third),
     )
-    assert fourth["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=120", fourth
-
-    quiet = build_scheduler_hint(
-        deepcopy(base),
-        agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
-        codex_app_scheduler_state=state_from(fourth),
-    )
-    assert quiet["codex_app"]["stateful_backoff"]["apply_needed"] is False, quiet
-    assert quiet["codex_app"]["host_action"] == "none", quiet
-    assert "recommended_rrule" not in quiet["codex_app"], quiet
+    assert steady["codex_app"]["stateful_backoff"]["apply_needed"] is False, steady
+    assert steady["codex_app"]["stateful_backoff"]["current_rrule"] == "FREQ=MINUTELY;INTERVAL=60", steady
+    assert steady["codex_app"]["host_action"] == "none", steady
+    assert "recommended_rrule" not in steady["codex_app"], steady
 
 
 def assert_monitor_wait_ignores_goal_recommended_action_identity_noise() -> None:
@@ -512,11 +506,10 @@ def assert_scheduler_ack_plan_validation() -> None:
 
 
 def assert_monitor_wait_stale_ack_hint_is_accepted() -> None:
-    base = monitor_window_payload(minutes_until_due=119)
+    base = monitor_window_payload(minutes_until_due=59)
     first = build_hint_at(base, now=FROZEN_NOW)
     second = build_hint_at(base, now=FROZEN_NOW, scheduler_state=state_from(first))
-    third = build_hint_at(base, now=FROZEN_NOW, scheduler_state=state_from(second))
-    previous_state = state_from(third)
+    previous_state = state_from(second)
 
     stale_hint_source = build_hint_at(
         base,
@@ -526,7 +519,7 @@ def assert_monitor_wait_stale_ack_hint_is_accepted() -> None:
     stale_app = stale_hint_source["codex_app"]
     stale_ack_args = stale_app["ack_hint"]["args"]
     assert stale_hint_source["cadence_class"] == "monitor_wait", stale_hint_source
-    assert stale_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=119", stale_hint_source
+    assert stale_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=59", stale_hint_source
 
     current_hint = build_hint_at(
         base,
@@ -534,7 +527,7 @@ def assert_monitor_wait_stale_ack_hint_is_accepted() -> None:
         scheduler_state=previous_state,
     )
     current_app = current_hint["codex_app"]
-    assert current_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=118", current_hint
+    assert current_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=58", current_hint
     assert (
         current_app["stateful_backoff"]["reset_token"]
         == stale_ack_args["reset_token"]
@@ -555,8 +548,8 @@ def assert_monitor_wait_stale_ack_hint_is_accepted() -> None:
     assert plan == {
         "ok": True,
         "already_applied": False,
-        "applied_rrule": "FREQ=MINUTELY;INTERVAL=119",
-        "expected_rrule": "FREQ=MINUTELY;INTERVAL=118",
+        "applied_rrule": "FREQ=MINUTELY;INTERVAL=59",
+        "expected_rrule": "FREQ=MINUTELY;INTERVAL=58",
         "stale_hint_accepted": True,
         "stale_hint_tolerance_minutes": 2,
     }, plan
@@ -569,12 +562,12 @@ def assert_monitor_wait_stale_ack_hint_is_accepted() -> None:
         identity_signature=stale_ack_args["identity_signature"],
     )
     ack_event = event["scheduler_ack_event"]
-    assert ack_event["applied_rrule"] == "FREQ=MINUTELY;INTERVAL=119", event
-    assert ack_event["expected_rrule"] == "FREQ=MINUTELY;INTERVAL=118", event
+    assert ack_event["applied_rrule"] == "FREQ=MINUTELY;INTERVAL=59", event
+    assert ack_event["expected_rrule"] == "FREQ=MINUTELY;INTERVAL=58", event
     assert ack_event["stale_hint_accepted"] is True, event
     assert (
         ack_event["scheduler_state"]["last_applied_rrule"]
-        == "FREQ=MINUTELY;INTERVAL=119"
+        == "FREQ=MINUTELY;INTERVAL=59"
     ), event
     quiet_after_stale_ack = build_hint_at(
         base,
@@ -592,7 +585,7 @@ def assert_monitor_wait_stale_ack_hint_is_accepted() -> None:
         scheduler_state=ack_event["scheduler_state"],
     )
     outside_app = outside_state_tolerance["codex_app"]
-    assert outside_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=116", (
+    assert outside_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=56", (
         outside_state_tolerance
     )
     assert outside_app["stateful_backoff"]["apply_needed"] is True, (
@@ -603,7 +596,7 @@ def assert_monitor_wait_stale_ack_hint_is_accepted() -> None:
         {"scheduler_hint": current_hint},
         agent_id=stale_ack_args["agent_id"],
         state_key=stale_ack_args["state_key"],
-        applied_rrule="FREQ=MINUTELY;INTERVAL=121",
+        applied_rrule="FREQ=MINUTELY;INTERVAL=61",
         reset_token=stale_ack_args["reset_token"],
         identity_signature=stale_ack_args["identity_signature"],
     )
@@ -972,7 +965,7 @@ def assert_cli_scheduler_ack_uses_should_run_lookback() -> None:
 
 def main() -> int:
     assert_policy_state_progression()
-    assert_monitor_wait_progression_reaches_120()
+    assert_monitor_wait_progression_caps_at_60()
     assert_monitor_wait_ignores_goal_recommended_action_identity_noise()
     assert_active_work_keeps_initial_cadence()
     assert_scheduler_ack_plan_validation()
