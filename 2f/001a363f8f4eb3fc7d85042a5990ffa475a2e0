@@ -1,0 +1,33 @@
+examples/control_plane/repo-python-line-budget-smoke.py
+  s_76ee28abb3c3a4::t_6c890b50dac0e4 56
+examples/control_plane/status-markdown-smoke.py
+  s_e3f612788718c1::t_f6df9da876a31b 36-69
+examples/control_plane/status_markdown_fixtures.py
+  s_e3f612788718c1::t_79ee4db70d9bf5 1-344
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2f001a363f8f4eb3fc7d85042a5990ffa475a2e0",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
