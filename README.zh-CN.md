@@ -117,7 +117,9 @@ loopx bootstrap \
 或 `/skills` 里的 `loopx` 命令 facade 进入；Claude Code 在 opt-in adapter
 安装后可用 `/loopx <任务>`，再用 `/loop` 推进。若某个 host 里看不到命令，先跑
 `loopx slash-commands` 查看当前命令清单；项目目标可用
-`loopx bootstrap-command-pack --project . --goal-text "<任务>"` 恢复同一语义。
+`loopx start-goal --guided --project . --goal-text "<任务>"` 从 shell 进入同一条
+agent-safe 路径。需要低层 handoff packet 的 host/plugin 集成仍可使用
+`loopx bootstrap-command-pack --project . --goal-text "<任务>"`。
 完整路由和恢复细节见 [Getting Started](docs/guides/getting-started.md) 与
 [host command registry contract](docs/reference/protocols/codex-app-host-command-registry-v0.md)。
 

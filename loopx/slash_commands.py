@@ -56,7 +56,7 @@ def build_slash_command_catalog(
             scope="project",
             intent="Start a concrete project goal: plan ordered todos, write them in priority order, activate the host loop when needed, then enter the quota-gated loop.",
             mutation_policy="explicit goal-start intent may write project-local LoopX state after planning and must activate/report the host loop",
-            cli_reference=f"{cli_bin} bootstrap-command-pack --project . --goal-text '<goal text>'",
+            cli_reference=f"{cli_bin} start-goal --guided --project . --goal-text '<goal text>'",
             agent_contract={
                 "schema_version": "loopx_goal_start_agent_contract_v0",
                 "planner_required_before_todo_write": True,

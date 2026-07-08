@@ -85,7 +85,7 @@ def _command_prompt_specs(*, cli_bin: str, include_legacy_aliases: bool) -> list
             "argument_hint": "[task text]",
             "instructions": [
                 "Visible command arguments: `$ARGUMENTS`.",
-                f"If arguments are present, preserve them as the task text and run `{cli_bin} bootstrap-command-pack --project . --goal-text \"$ARGUMENTS\"` before planning work.",
+                f"If arguments are present, preserve them as the task text and run `{cli_bin} start-goal --guided --project . --goal-text \"$ARGUMENTS\"` before planning work.",
                 f"If arguments are empty, inspect `{cli_bin} bootstrap-command-pack --project .`, `{cli_bin} status`, and `{cli_bin} slash-commands` before changing files.",
                 f"Use `{cli_bin} agent-onboard --list-agent-types` when the host runtime is unclear; pass an exact type such as `codex-app`, `codex-cli`, or `claude-code`, never ambiguous `codex`.",
                 "When project work is started, plan ordered P0/P1/P2 todos, write them through LoopX todo state, refresh state, activate the host loop if missing/stale, run quota, and take one bounded allowed step.",
