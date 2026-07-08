@@ -279,6 +279,9 @@ def build_quota_slot_preview_for_decision(
         "delivery_run_classification": delivery_completion_run.get("classification")
         if delivery_completion_run
         else None,
+        "delivery_run_recommended_action": delivery_completion_run.get("recommended_action")
+        if delivery_completion_run
+        else None,
     }
 
 
@@ -343,11 +346,16 @@ def build_quota_slot_spend_event(
             "capability bridge repair, or latest validated delivery-completion quota should-run decision"
         )
 
+    delivery_run_action = str(preview.get("delivery_run_recommended_action") or "").strip()
     record = {
         "generated_at": generated_at or _now_local(),
         "goal_id": preview.get("goal_id"),
         "classification": QUOTA_SLOT_SPENT_CLASSIFICATION,
-        "recommended_action": after.get("recommended_action") or "inspect next quota should-run decision",
+        "recommended_action": (
+            delivery_run_action
+            if delivery_completion_spend and delivery_run_action
+            else after.get("recommended_action") or "inspect next quota should-run decision"
+        ),
         "health_check": (
             "quota should-run eligible; quota slot spend event public-safe"
             if eligible_spend
@@ -400,6 +408,9 @@ def build_quota_slot_spend_event(
             else None,
             "delivery_run_classification": preview.get("delivery_run_classification")
             if delivery_completion_spend
+            else None,
+            "delivery_run_recommended_action": delivery_run_action
+            if delivery_completion_spend and delivery_run_action
             else None,
             "before": before_compact,
             "after": after_compact,

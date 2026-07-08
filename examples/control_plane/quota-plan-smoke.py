@@ -1195,6 +1195,59 @@ def assert_safe_bypass_slot_preview(status_payload: dict) -> None:
     assert payload["after"]["state"] == "operator_gate", payload
     assert payload["after"]["quota"]["spent_slots"] == payload["before"]["quota"]["spent_slots"] + 1, payload
 
+
+def assert_delivery_completion_spend_uses_delivery_action() -> None:
+    preview = {
+        "ok": True,
+        "goal_id": "delivery-completion",
+        "slots": 1,
+        "delivery_completion_spend": True,
+        "delivery_run_generated_at": "2026-01-01T00:00:00+00:00",
+        "delivery_run_classification": "state_refreshed",
+        "delivery_run_recommended_action": "Validated delivery action to account.",
+        "before": {
+            "ok": True,
+            "decision": "observe",
+            "should_run": False,
+            "state": "waiting",
+            "effective_action": "external_evidence_observe",
+            "quota": {
+                "compute": 1.0,
+                "window_hours": 24,
+                "slot_minutes": 1,
+                "allowed_slots": 1440,
+                "spent_slots": 3,
+                "state": "waiting",
+            },
+        },
+        "after": {
+            "ok": True,
+            "decision": "run",
+            "should_run": True,
+            "state": "eligible",
+            "effective_action": "normal_run",
+            "recommended_action": "Next guard action should not label the spend event.",
+            "quota": {
+                "compute": 1.0,
+                "window_hours": 24,
+                "slot_minutes": 1,
+                "allowed_slots": 1440,
+                "spent_slots": 4,
+                "state": "eligible",
+            },
+        },
+    }
+
+    spend_event = build_quota_slot_spend_event(preview, source="heartbeat")
+
+    assert spend_event["recommended_action"] == "Validated delivery action to account.", spend_event
+    assert spend_event["quota_event"]["delivery_run_recommended_action"] == (
+        "Validated delivery action to account."
+    ), spend_event
+    assert spend_event["quota_event"]["delivery_run_classification"] == "state_refreshed", spend_event
+    assert "validated delivery completion" in spend_event["health_check"], spend_event
+
+
 def main() -> int:
     assert_default_quota_is_duty_cycle()
     assert_rolling_window_ledger_expires_old_spends()
@@ -1220,6 +1273,7 @@ def main() -> int:
     assert_goal_boundary_in_should_run()
     assert_decision_freshness_warning_in_should_run()
     assert_safe_bypass_slot_preview(status_payload)
+    assert_delivery_completion_spend_uses_delivery_action()
     assert_quota_void_event_net_ledger()
     assert_slot_preview(build_quota_slot_preview(status_payload, goal_id="near-limit-half", slots=1))
     with tempfile.TemporaryDirectory(prefix="loopx-quota-plan-smoke-") as tmp:
