@@ -1,0 +1,31 @@
+examples/control_plane/quota-scheduler-state-ack-smoke.py
+  s_32e2a9a204a8e4::t_5fd8f9514dab98 287-314,936
+loopx/control_plane/scheduler/scheduler_hint.py
+  s_76ee28abb3c3a4::t_546900687a33c3 672,680-686,726-730
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "aea5ec42d21bd6549a2f959d2661192007fb25f5",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
