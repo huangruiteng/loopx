@@ -282,6 +282,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "checks update planning, check-only behavior, rollback planning, and rollback execution fixtures",
             },
             {
+                "command": "python3 examples/install-local-overwrite-smoke.py",
+                "tier": "deep",
+                "reason": "guards existing loopx executable overwrite and directory-conflict safety",
+            },
+            {
                 "command": "python3 examples/protocol/rollback-packet-protocol-smoke.py",
                 "tier": "deep",
                 "reason": "validates the public rollback packet protocol and fixture boundary",
