@@ -455,6 +455,75 @@ def project_asset_todo_projection_gap(
     }
 
 
+PROJECT_ASSET_TODO_DISPLAY_FIELDS = (
+    "index",
+    "done",
+    "schema_version",
+    "todo_id",
+    "role",
+    "status",
+    "priority",
+    "archive_state",
+    "source_section",
+    "task_class",
+    "action_kind",
+    "required_write_scopes",
+    "required_capabilities",
+    "target_capabilities",
+    "decision_scope",
+    "required_decision_scopes",
+    "claimed_by",
+    "blocks_agent",
+    "global_gate",
+    "unblocks_todo_id",
+    "resume_when",
+    "resume_condition",
+    "resume_ready",
+    "blocking_monitor_todo_id",
+    "no_followup",
+    "successor_todo_ids",
+    "target_key",
+    "cadence",
+    "next_due_at",
+    "expires_at",
+    "last_checked_at",
+    "result_hash",
+    "consecutive_no_change",
+    "material_change",
+    "max_no_change_before_replan",
+    "route_continuation_replan_required",
+    "route_continuation_reason",
+    "route_id",
+    "route_key",
+    "completed_at",
+    "updated_at",
+    "superseded_by",
+)
+
+
+def _project_asset_display_todo_item(item: dict[str, Any]) -> dict[str, Any]:
+    display = {
+        key: item.get(key)
+        for key in PROJECT_ASSET_TODO_DISPLAY_FIELDS
+        if item.get(key) is not None
+    }
+    text = _compact_text(str(item.get("text") or ""), limit=220)
+    if text:
+        display["text"] = text
+    title = _compact_text(str(item.get("title") or ""), limit=220)
+    if title:
+        display["title"] = title
+    return display
+
+
+def _project_asset_display_todo_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        _project_asset_display_todo_item(item)
+        for item in items
+        if isinstance(item, dict)
+    ]
+
+
 def build_project_asset_todo_summary(
     todos: dict[str, Any] | None,
     *,
@@ -506,6 +575,7 @@ def build_project_asset_todo_summary(
             "unclaimed_open_count",
             max(0, int(summary.get("open") or 0) - int(summary["claimed_open_count"] or 0)),
         )
+    open_items = _project_asset_display_todo_items(open_items)
     if open_items:
         summary["items"] = open_items
         summary["next"] = open_items[0]["text"]
@@ -517,12 +587,12 @@ def build_project_asset_todo_summary(
     if isinstance(monitor_writeback, dict):
         summary["monitor_writeback"] = dict(monitor_writeback)
     deferred_items = [
-        compact_todo_item(item)
+        _project_asset_display_todo_item(compact_todo_item(item))
         for item in todos.get("deferred_items", [])
         if isinstance(item, dict)
     ][:deferred_item_limit]
     deferred_resume_candidates = [
-        compact_todo_item(item)
+        _project_asset_display_todo_item(compact_todo_item(item))
         for item in todos.get("deferred_resume_candidates", [])
         if isinstance(item, dict)
     ][:deferred_item_limit]
@@ -544,7 +614,9 @@ def build_project_asset_todo_summary(
         if todo_item_task_class(item) == advancement_task_class
     ]
     if executable_items:
-        summary["first_executable_items"] = executable_items[:item_limit]
+        summary["first_executable_items"] = _project_asset_display_todo_items(
+            executable_items[:item_limit]
+        )
     for lane in (
         "gate_open_items",
         "current_agent_claimed_open_items",
@@ -557,7 +629,7 @@ def build_project_asset_todo_summary(
             limit=item_limit,
         )
         if lane_items:
-            summary[lane] = lane_items
+            summary[lane] = _project_asset_display_todo_items(lane_items)
     for count_key in (
         "claimed_advancement_open_count",
         "claimed_monitor_open_count",

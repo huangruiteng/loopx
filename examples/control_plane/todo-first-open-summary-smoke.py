@@ -346,7 +346,11 @@ def assert_claimed_frontstage_lanes_visible() -> None:
     }
     decision = build_quota_should_run(status_payload, goal_id=GOAL_ID, agent_id="codex-side-bypass")
     summary = decision["agent_todo_summary"]
-    assert [item["index"] for item in summary["unclaimed_priority_open_items"]] == list(range(1, 9)), summary
+    assert [item["index"] for item in summary["unclaimed_priority_open_items"]] == [1, 2], summary
+    assert summary["payload_compaction"]["compacted_lanes"]["unclaimed_priority_open_items"] == {
+        "shown": 2,
+        "total": 8,
+    }, summary
     assert [item["index"] for item in summary["claimed_open_items"]] == [40, 41], summary
     assert [item["index"] for item in summary["current_agent_claimed_open_items"]] == [40, 41], summary
     assert [item["index"] for item in summary["current_agent_claimed_advancement_items"]] == [40], summary
@@ -676,6 +680,31 @@ def main() -> int:
     assert asset_summary["items"][0]["priority"] == "P0", asset_summary
     assert asset_summary["items"][0]["status"] == "open", asset_summary
     assert asset_summary["items"][0]["todo_id"] == agent_todos["first_open_items"][0]["todo_id"], asset_summary
+    verbose_group = dict(agent_todos)
+    verbose_first = dict(agent_todos["first_open_items"][0])
+    verbose_first.update(
+        {
+            "note": "implementation detail that belongs in the full todo read model",
+            "evidence": "validation evidence that should stay out of project_asset overview rows",
+            "reason": "selection rationale that should not bloat display sinks",
+            "handoff_note": {"summary": "handoff detail for cold-path inspection"},
+            "required_write_scopes": ["state"],
+            "successor_todo_ids": ["todo_successor"],
+        }
+    )
+    verbose_group["first_open_items"] = [
+        verbose_first,
+        *agent_todos["first_open_items"][1:],
+    ]
+    verbose_asset_summary = project_asset_todo_summary(verbose_group, role="agent")
+    assert verbose_asset_summary is not None, verbose_group
+    verbose_item = verbose_asset_summary["items"][0]
+    assert verbose_item["todo_id"] == verbose_first["todo_id"], verbose_asset_summary
+    assert verbose_item["priority"] == "P0", verbose_asset_summary
+    assert verbose_item["required_write_scopes"] == ["state"], verbose_asset_summary
+    assert verbose_item["successor_todo_ids"] == ["todo_successor"], verbose_asset_summary
+    for verbose_key in ("note", "evidence", "reason", "handoff_note"):
+        assert verbose_key not in verbose_item, verbose_asset_summary
 
     attention_item = {
         "goal_id": GOAL_ID,
@@ -733,13 +762,21 @@ def main() -> int:
     assert agent_summary["first_open_items"][0]["status"] == "open", decision
     assert agent_summary["first_open_items"][0]["todo_id"] == agent_todos["first_open_items"][0]["todo_id"], decision
     assert [item["index"] for item in agent_summary["first_open_items"]] == [17, 14, 15], decision
-    assert [item["index"] for item in agent_summary["backlog_items"]] == [17, 14, 15, 16], decision
-    assert [item["index"] for item in agent_summary["executable_backlog_items"]] == [17, 14, 15, 16], decision
+    assert [item["index"] for item in agent_summary["backlog_items"]] == [17, 14], decision
+    assert [item["index"] for item in agent_summary["executable_backlog_items"]] == [17, 14], decision
+    assert agent_summary["payload_compaction"]["compacted_lanes"]["backlog_items"] == {
+        "shown": 2,
+        "total": 4,
+    }, decision
+    assert agent_summary["payload_compaction"]["compacted_lanes"]["executable_backlog_items"] == {
+        "shown": 2,
+        "total": 4,
+    }, decision
     markdown = render_quota_should_run_markdown(decision)
     assert f"agent_todo_next[17]: {APPENDED_P0_TODO}" in markdown, markdown
     assert f"agent_todo_next[14]: {OPEN_TODO}" in markdown, markdown
     assert f"agent_todo_next[15]: {SECOND_OPEN_TODO}" in markdown, markdown
-    assert f"agent_todo_backlog[16]: {THIRD_OPEN_TODO}" in markdown, markdown
+    assert f"agent_todo_backlog[16]: {THIRD_OPEN_TODO}" not in markdown, markdown
     packet = build_review_packet(status_payload, goal_id=GOAL_ID, action_kind="codex")
     assert packet["agent_todo_items"] == [
         APPENDED_P0_TODO,
