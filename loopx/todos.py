@@ -104,6 +104,8 @@ TODO_METADATA_FIELDS = (
     "superseded_by",
 )
 
+ARCHIVE_COMPLETED_DEFAULT_MAX_ACTIVE_DONE = max(0, MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE - 2)
+
 
 def _attach_todo_write_correctness_dry_run_packet(
     payload: dict[str, Any],
@@ -1649,7 +1651,7 @@ def archive_completed_todos(
     registry_path: Path,
     goal_id: str,
     role: str = "agent",
-    max_active_done: int = MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE,
+    max_active_done: int = ARCHIVE_COMPLETED_DEFAULT_MAX_ACTIVE_DONE,
     project: Path | None = None,
     state_file: Path | None = None,
     dry_run: bool = True,

@@ -12,6 +12,7 @@ from ..todo_suggestion_prompt import (
 )
 from ..todo_followups import capture_followup_todos
 from ..todos import (
+    ARCHIVE_COMPLETED_DEFAULT_MAX_ACTIVE_DONE,
     archive_completed_todos,
     add_goal_todo,
     complete_goal_todo,
@@ -254,8 +255,11 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
     todo_parser.add_argument(
         "--max-active-done",
         type=int,
-        default=12,
-        help="For archive-completed, keep this many completed todos in the active section.",
+        default=ARCHIVE_COMPLETED_DEFAULT_MAX_ACTIVE_DONE,
+        help=(
+            "For archive-completed, keep this many completed todos in the active section. "
+            "The default leaves a small buffer below the status warning threshold."
+        ),
     )
     todo_parser.add_argument(
         "--agent-id",

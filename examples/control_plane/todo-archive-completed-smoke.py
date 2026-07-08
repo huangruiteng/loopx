@@ -115,6 +115,21 @@ def main() -> int:
         assert warning["active_done_count"] == 14, warning
         assert warning["active_open_count"] == 2, warning
 
+        default_dry_run = run_cli(
+            registry_path,
+            runtime,
+            "todo",
+            "archive-completed",
+            "--goal-id",
+            GOAL_ID,
+        )
+        assert default_dry_run["ok"] is True, default_dry_run
+        assert default_dry_run["dry_run"] is True, default_dry_run
+        assert default_dry_run["changed"] is True, default_dry_run
+        assert default_dry_run["active_done_after"] == 10, default_dry_run
+        assert default_dry_run["moved_count"] == 4, default_dry_run
+        assert state_path.read_text(encoding="utf-8") == original
+
         dry_run = run_cli(
             registry_path,
             runtime,
