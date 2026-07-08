@@ -52,8 +52,8 @@ SURFACE_BUDGETS = {
         "owner": "quota guard",
         "consumer": "decide whether the selected goal may spend compute",
         "cold_path": "status, history, or active state",
-        "max_json_chars": 12_500,
-        "max_nested_keys": 320,
+        "max_json_chars": 12_550,
+        "max_nested_keys": 322,
         "max_top_level_keys": 50,
     },
     "dashboard_status_json": {

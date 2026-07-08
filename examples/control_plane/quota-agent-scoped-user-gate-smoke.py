@@ -226,9 +226,11 @@ def assert_other_agent_user_gate_does_not_block_current_agent() -> None:
     assert payload["requires_user_action"] is False, payload
     contract = payload["interaction_contract"]
     assert contract["user_channel"]["action_required"] is False, contract
+    assert payload["action_required"] is False, payload
     assert contract["agent_channel"]["delivery_allowed"] is True, contract
     summary = payload["user_todo_summary"]
     assert summary["open_count"] == 0, summary
+    assert payload["open_count"] == 0, payload
     assert summary["other_agent_scoped_open_count"] == 1, summary
     assert summary["other_agent_scoped_items"][0]["blocks_agent"] == "codex-product-capability"
     override = payload["agent_scoped_user_gate_override"]
@@ -247,6 +249,7 @@ def assert_other_agent_user_gate_does_not_notify_non_due_monitor_lane() -> None:
     assert payload["effective_action"] == "monitor_quiet_skip", payload
     assert payload["should_run"] is False, payload
     assert payload["requires_user_action"] is False, payload
+    assert payload["action_required"] is False, payload
     assert payload["heartbeat_recommendation"]["notify"] == "DONT_NOTIFY", payload
     assert payload["interaction_contract"]["user_channel"]["action_required"] is False, payload
     assert payload["interaction_contract"]["user_channel"]["notify"] == "DONT_NOTIFY", payload
@@ -274,9 +277,11 @@ def assert_target_agent_still_blocks_on_its_user_gate() -> None:
     contract = payload["interaction_contract"]
     assert contract["mode"] == "user_gate", contract
     assert contract["user_channel"]["action_required"] is True, contract
+    assert payload["action_required"] is True, payload
     assert contract["agent_channel"]["delivery_allowed"] is False, contract
     summary = payload["user_todo_summary"]
     assert summary["open_count"] == 1, summary
+    assert payload["open_count"] == 1, payload
     assert "agent_scoped_user_gate_override" not in payload, payload
 
 
@@ -288,8 +293,10 @@ def assert_unscoped_user_gate_remains_global() -> None:
     )
     assert payload["should_run"] is False, payload
     assert payload["requires_user_action"] is True, payload
+    assert payload["action_required"] is True, payload
     assert payload["interaction_contract"]["mode"] == "user_gate", payload
     assert payload["user_todo_summary"]["open_count"] == 1, payload
+    assert payload["open_count"] == 1, payload
     assert "agent_scoped_user_gate_override" not in payload, payload
 
 

@@ -37,6 +37,7 @@ from .execution_profile import (
 )
 from .control_plane.work_items.execution_obligation import build_execution_obligation
 from .control_plane.work_items.interaction_contract import (
+    attach_user_action_compat_fields,
     build_interaction_contract,
     build_protocol_action_packet,
     protocol_action_text as _protocol_action_text,
@@ -2126,6 +2127,7 @@ def build_quota_should_run(
                 }
         payload["automation_liveness"] = build_automation_liveness(payload)
         payload["interaction_contract"] = build_interaction_contract(payload)
+        attach_user_action_compat_fields(payload)
         payload["scheduler_hint"] = _scheduler_hint(
             payload,
             include_detail=include_scheduler_detail,

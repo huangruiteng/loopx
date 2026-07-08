@@ -10,7 +10,7 @@ and size/count budgets.
 | --- | --- | --- | --- | --- | --- | --- |
 | `heartbeat_prompt_json` | heartbeat automation | wake and route one bounded turn | `quota should-run`, `status`, or `review-packet --handoff-only` | `json_chars <= 3500` plus `interface_budget.within_budget=true` | `nested_keys <= 40` | `top_level_keys <= 30` |
 | `review_packet_handoff_only_json` | project-agent handoff | forward the smallest sufficient task packet | full `review-packet` or run-history artifact | `json_chars <= 3000` plus `handoff_interface_budget.within_budget=true` | `nested_keys <= 40` | `top_level_keys <= 18` |
-| `quota_should_run_json` | quota guard | decide whether the selected goal may spend compute | `status`, `history`, or active state | `json_chars <= 12500` | `nested_keys <= 320` | `top_level_keys <= 50` |
+| `quota_should_run_json` | quota guard | decide whether the selected goal may spend compute | `status`, `history`, or active state | `json_chars <= 12550` | `nested_keys <= 322` | `top_level_keys <= 50` |
 | `dashboard_status_json` | operator dashboard | render first-screen operator state | `history`, run artifacts, or project-local adapter output | `json_chars <= 18200` | `nested_keys <= 260` | `top_level_keys <= 25` |
 
 These budgets are intentionally about the machine payloads, not the full
@@ -32,6 +32,11 @@ Restraint rules for new fields:
    status/quota/review-packet contract instead.
 5. If a short worker would need to read more than one hot-path payload before it
    can choose the next action, demote the extra detail to a cold-path command.
+
+The quota guard keeps top-level `action_required` and `open_count` as compact
+compatibility aliases for older heartbeat/host prompts; the authoritative
+structured fields remain `interaction_contract.user_channel` and
+`user_todo_summary`.
 
 Regression entrypoints:
 

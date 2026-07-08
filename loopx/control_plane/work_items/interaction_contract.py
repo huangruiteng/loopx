@@ -10,6 +10,7 @@ from ..agents.agent_scope_frontier import (
 from ..goals.goal_frontier import AUTONOMOUS_REPLAN_REQUIRED_MODE
 from ..todos.contract import TODO_TASK_CLASS_ADVANCEMENT, TODO_TASK_CLASS_MONITOR
 from ..todos.projection import todo_item_is_actionable_open, todo_item_task_class
+from ..todos.user_gate import open_todo_count
 
 
 INTERACTION_CONTRACT_SCHEMA_VERSION = "loopx_interaction_contract_v0"
@@ -97,6 +98,11 @@ def user_channel_action_required(payload: dict[str, Any]) -> bool:
     return bool(payload.get("requires_user_action")) or bool(
         user_channel_action_todo_actions(payload.get("user_todo_summary"))
     )
+
+
+def attach_user_action_compat_fields(payload: dict[str, Any]) -> None:
+    payload["action_required"] = user_channel_action_required(payload)
+    payload["open_count"] = open_todo_count(payload.get("user_todo_summary"))
 
 
 def _protocol_first_candidate_action(payload: dict[str, Any]) -> str | None:
