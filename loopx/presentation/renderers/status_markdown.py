@@ -1340,6 +1340,26 @@ def append_attention_queue_project_asset_markdown(
             "authority=advisory_projection"
         )
 
+    agent_interaction = (
+        project_asset.get("agent_interaction_summary")
+        if isinstance(project_asset.get("agent_interaction_summary"), dict)
+        else item.get("agent_interaction_summary")
+        if isinstance(item.get("agent_interaction_summary"), dict)
+        else {}
+    )
+    if agent_interaction:
+        lines.append(
+            "    - current_agent_interaction: "
+            f"agent={markdown_scalar(agent_interaction.get('agent_id') or '')} "
+            f"mode={markdown_scalar(agent_interaction.get('mode') or '')} "
+            f"action_required={agent_interaction.get('user_action_required')} "
+            f"notify={markdown_scalar(agent_interaction.get('user_notify') or '')} "
+            f"must_attempt={agent_interaction.get('agent_must_attempt')} "
+            f"delivery_allowed={agent_interaction.get('delivery_allowed')} "
+            f"quiet_noop_allowed={agent_interaction.get('quiet_noop_allowed')} "
+            f"spend_after_validation={agent_interaction.get('spend_after_validation')}"
+        )
+
     _append_project_asset_agent_lane_markdown(
         lines,
         item,

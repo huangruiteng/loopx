@@ -596,6 +596,36 @@ def _guard_allows_agent_lane_next_action(guard: dict[str, object]) -> bool:
     return agent_must_attempt and not user_action_required
 
 
+def _build_agent_interaction_summary(
+    guard: dict[str, object],
+    *,
+    agent_id: str,
+) -> dict[str, object] | None:
+    interaction = guard.get("interaction_contract")
+    if not isinstance(interaction, dict):
+        return None
+    user_channel = interaction.get("user_channel")
+    agent_channel = interaction.get("agent_channel")
+    cli_channel = interaction.get("cli_channel")
+    if not isinstance(user_channel, dict) or not isinstance(agent_channel, dict):
+        return None
+    summary: dict[str, object] = {
+        "schema_version": "agent_interaction_summary_v0",
+        "agent_id": agent_id,
+        "mode": interaction.get("mode"),
+        "user_action_required": bool(user_channel.get("action_required")),
+        "user_notify": user_channel.get("notify"),
+        "agent_must_attempt": bool(agent_channel.get("must_attempt")),
+        "delivery_allowed": agent_channel.get("delivery_allowed"),
+        "quiet_noop_allowed": agent_channel.get("quiet_noop_allowed"),
+        "primary_action": agent_channel.get("primary_action"),
+    }
+    if isinstance(cli_channel, dict):
+        summary["spend_after_validation"] = cli_channel.get("spend_after_validation")
+        summary["spend_policy"] = cli_channel.get("spend_policy")
+    return summary
+
+
 def _sync_status_item_next_action_from_agent_lane(
     item: dict[str, object],
     *,
@@ -647,6 +677,7 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
     hint_attached = 0
     goal_frontier_attached = 0
     member_attached = 0
+    interaction_attached = 0
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -704,9 +735,26 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
                 project_asset["agent_member"] = agent_member
             member_attached += 1
             changed = True
+        interaction_summary = _build_agent_interaction_summary(
+            guard,
+            agent_id=safe_agent_id,
+        )
+        if isinstance(interaction_summary, dict):
+            item["agent_interaction_summary"] = interaction_summary
+            if isinstance(project_asset, dict):
+                project_asset["agent_interaction_summary"] = interaction_summary
+            interaction_attached += 1
+            changed = True
         if not changed:
             continue
-    if attached or frontier_attached or hint_attached or goal_frontier_attached or member_attached:
+    if (
+        attached
+        or frontier_attached
+        or hint_attached
+        or goal_frontier_attached
+        or member_attached
+        or interaction_attached
+    ):
         payload["agent_lane_next_action_projection"] = {
             "schema_version": "agent_lane_next_action_projection_v0",
             "agent_id": safe_agent_id,
@@ -715,6 +763,7 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
             "frontier_hint_attached_count": hint_attached,
             "goal_frontier_attached_count": goal_frontier_attached,
             "agent_member_attached_count": member_attached,
+            "agent_interaction_attached_count": interaction_attached,
             "preserves_goal_next_action": True,
         }
     if member_attached:

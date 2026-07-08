@@ -181,14 +181,27 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert member["handoff_agent"] == "codex-main-control", member
     assert member["role_is_advisory"] is True, member
     assert item["project_asset"]["agent_member"] == member, item
+    interaction = item["agent_interaction_summary"]
+    assert interaction["schema_version"] == "agent_interaction_summary_v0", interaction
+    assert interaction["agent_id"] == "codex-side-bypass", interaction
+    assert interaction["user_action_required"] is False, interaction
+    assert interaction["agent_must_attempt"] is True, interaction
+    assert interaction["delivery_allowed"] is True, interaction
+    assert interaction["quiet_noop_allowed"] is False, interaction
+    assert item["project_asset"]["agent_interaction_summary"] == interaction, item
     projection = payload["agent_member_projection"]
     assert projection["schema_version"] == "agent_member_projection_v0", projection
     assert projection["attached_count"] == 1, projection
     assert projection["projection_is_authoritative"] is False, projection
+    lane_projection = payload["agent_lane_next_action_projection"]
+    assert lane_projection["agent_interaction_attached_count"] == 1, lane_projection
     markdown = render_status_markdown(payload)
     assert "agent_member: agent=codex-side-bypass role=side-agent" in markdown, markdown
     assert "worktree_policy=independent_worktree_required" in markdown, markdown
     assert "claims=todo_side_tui" in markdown, markdown
+    assert "current_agent_interaction: agent=codex-side-bypass mode=bounded_delivery" in markdown, markdown
+    assert "action_required=False" in markdown, markdown
+    assert "must_attempt=True delivery_allowed=True quiet_noop_allowed=False" in markdown, markdown
     assert "current_agent_todo: agent=codex-side-bypass todo_id=todo_side_tui" in markdown, markdown
     assert "source=agent_lane_next_action" in markdown, markdown
     assert "next_action_projection_warning: requires_state_writeback=False severity=info" in markdown, markdown
