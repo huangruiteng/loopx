@@ -1,0 +1,29 @@
+README.md
+  s_32e2a9a204a8e4::t_6016368a9a826d 158-162
+README.zh-CN.md
+  s_32e2a9a204a8e4::t_0847368eb89988 120-122
+docs/guides/getting-started.md
+  s_32e2a9a204a8e4::t_95871fea89c2d7 87,109,112,115-122
+docs/guides/newcomer-command-path.md
+  s_32e2a9a204a8e4::t_1baf74d004a994 42,55,58-61,83
+docs/reference/protocols/codex-app-host-command-registry-v0.md
+  s_32e2a9a204a8e4::t_b18dfa5bda516f 29,59,143,150,192,200-203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b7859397fb094664cfacde23f2e56afb8865f9d0",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
