@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "loopx" / "cli.py"
 MODULE = ROOT / "loopx" / "cli_commands" / "registry_admin.py"
+AUTHORITY_MODULE = ROOT / "loopx" / "cli_commands" / "registry_authority.py"
 INIT = ROOT / "loopx" / "cli_commands" / "__init__.py"
 GOAL_ID = "registry-admin-smoke"
 
@@ -134,6 +135,8 @@ def write_fixture(project: Path) -> tuple[Path, Path, Path, Path]:
 def main() -> None:
     cli_source = CLI.read_text(encoding="utf-8")
     module_source = MODULE.read_text(encoding="utf-8")
+    authority_source = AUTHORITY_MODULE.read_text(encoding="utf-8")
+    registry_admin_family_source = module_source + "\n" + authority_source
     init_source = INIT.read_text(encoding="utf-8")
 
     forbidden_cli_markers = [
@@ -175,7 +178,19 @@ def main() -> None:
         "register-authority-source",
         "import-doc-registry-authority",
     ):
-        require(marker in module_source, f"registry admin module missing {marker}")
+        require(marker in registry_admin_family_source, f"registry admin command family missing {marker}")
+    for marker in (
+        "REGISTRY_AUTHORITY_COMMANDS",
+        "register_registry_authority_commands",
+        "handle_registry_authority_command",
+        'if args.command == "register-authority-source":',
+        'if args.command != "import-doc-registry-authority":',
+        "register_authority_source(",
+        "import_doc_registry_authority(",
+    ):
+        require(marker in authority_source, f"registry authority module missing {marker}")
+    for marker in ("register_registry_authority_commands", "handle_registry_authority_command"):
+        require(marker in module_source, f"registry admin module should delegate authority commands through {marker}")
     require("register_registry_admin_commands" in cli_source, "cli.py did not register registry admin commands")
     require("handle_registry_admin_command" in cli_source, "cli.py did not dispatch registry admin commands")
     require("register_registry_admin_commands" in init_source, "__init__ did not export registry admin registration")
