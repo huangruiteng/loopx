@@ -483,6 +483,32 @@ def assert_successor_replan_is_validated_spend_path() -> None:
     assert any("spend-slot" in action for action in actions), actions
 
 
+def assert_required_reads_are_mirrored_into_execution_channels() -> None:
+    payload = base_payload(
+        should_run=True,
+        effective_action="normal_run",
+        work_lane=advancement_lane(),
+        heartbeat_mode="steering_audit_then_one_step",
+    )
+    payload["required_reads"] = [
+        {
+            "kind": "agent_scoped_evidence_log",
+            "command": "  loopx evidence-log --goal-id interaction-state-machine-goal  ",
+        }
+    ]
+    payload = finalize(payload)
+    contract = payload["interaction_contract"]
+    expected = [
+        {
+            "kind": "agent_scoped_evidence_log",
+            "command": "loopx evidence-log --goal-id interaction-state-machine-goal",
+        }
+    ]
+    assert contract["agent_channel"]["required_reads"] == expected, contract
+    assert contract["cli_channel"]["required_reads"] == expected, contract
+    assert "required_reads" not in contract["user_channel"], contract
+
+
 def main() -> int:
     assert_cross_layer_state_machine_matrix()
     assert_bounded_delivery_bundle()
@@ -491,6 +517,7 @@ def main() -> int:
     assert_autonomous_replan_preempts_monitor_quiet()
     assert_agent_scope_wait_is_quiet_noop()
     assert_successor_replan_is_validated_spend_path()
+    assert_required_reads_are_mirrored_into_execution_channels()
     return 0
 
 

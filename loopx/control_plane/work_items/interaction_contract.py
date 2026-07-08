@@ -729,29 +729,33 @@ def _blocked_priority_fallback_user_reason(payload: dict[str, Any]) -> str | Non
     return reason or None
 
 
-def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
-    execution_obligation = (
-        payload.get("execution_obligation")
-        if isinstance(payload.get("execution_obligation"), dict)
-        else {}
-    )
-    heartbeat_recommendation = (
-        payload.get("heartbeat_recommendation")
-        if isinstance(payload.get("heartbeat_recommendation"), dict)
-        else {}
-    )
-    mode = _interaction_mode(payload)
-    user_required = user_channel_action_required(payload)
-    scoped_user_gate_fallback = mode == "scoped_user_gate_fallback"
-    bounded_delivery_with_user_notice = mode == "bounded_delivery_with_user_notice"
-    must_attempt = bool(execution_obligation.get("must_attempt_work")) if (
-        not user_required or scoped_user_gate_fallback or bounded_delivery_with_user_notice
-    ) else False
-    delivery_allowed = (
-        not user_required
-        or scoped_user_gate_fallback
-        or bounded_delivery_with_user_notice
-    ) and bool(
+def _interaction_must_attempt(
+    execution_obligation: dict[str, Any],
+    *,
+    user_required: bool,
+    scoped_user_gate_fallback: bool,
+    bounded_delivery_with_user_notice: bool,
+) -> bool:
+    if user_required and not (
+        scoped_user_gate_fallback or bounded_delivery_with_user_notice
+    ):
+        return False
+    return bool(execution_obligation.get("must_attempt_work"))
+
+
+def _interaction_delivery_allowed(
+    payload: dict[str, Any],
+    execution_obligation: dict[str, Any],
+    *,
+    user_required: bool,
+    scoped_user_gate_fallback: bool,
+    bounded_delivery_with_user_notice: bool,
+) -> bool:
+    if user_required and not (
+        scoped_user_gate_fallback or bounded_delivery_with_user_notice
+    ):
+        return False
+    return bool(
         execution_obligation.get(
             "delivery_allowed",
             payload.get("normal_delivery_allowed")
@@ -760,23 +764,27 @@ def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
             or payload.get("should_run"),
         )
     )
-    quiet_noop_allowed = (
-        not user_required
-        and not must_attempt
-        and (
-            _agent_scope_frontier_action(mode) is not None
-            or mode
-            in {
-                "monitor_quiet_skip",
-                "mapped_noop_if_unchanged",
-                "quota_throttled",
-                "blocked_wait",
-                "skip",
-            }
-        )
-    )
-    spend_allowed_now = False
-    spend_after_validation = mode in {
+
+
+def _interaction_quiet_noop_allowed(
+    *,
+    mode: str,
+    user_required: bool,
+    must_attempt: bool,
+) -> bool:
+    if user_required or must_attempt:
+        return False
+    return _agent_scope_frontier_action(mode) is not None or mode in {
+        "monitor_quiet_skip",
+        "mapped_noop_if_unchanged",
+        "quota_throttled",
+        "blocked_wait",
+        "skip",
+    }
+
+
+def _interaction_spend_after_validation(mode: str) -> bool:
+    return mode in {
         "bounded_delivery",
         "outcome_floor_recovery",
         "capability_bridge_repair",
@@ -789,30 +797,10 @@ def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
         "scoped_user_gate_fallback",
         "bounded_delivery_with_user_notice",
     }
-    primary_action = _interaction_primary_agent_action(payload, mode=mode)
-    agent_channel: dict[str, Any] = {
-        "must_attempt": must_attempt,
-        "delivery_allowed": delivery_allowed,
-        "quiet_noop_allowed": quiet_noop_allowed,
-        "primary_action": primary_action,
-    }
-    resolution_trace = next_action_resolution_trace(
-        primary_action=primary_action,
-        mode=mode,
-        active_state_next_action=payload.get("active_state_next_action"),
-        latest_run_recommended_action=payload.get("latest_run_recommended_action"),
-        selected_recommended_action=payload.get("recommended_action"),
-        agent_lane_next_action=payload.get("agent_lane_next_action"),
-    )
-    if resolution_trace:
-        agent_channel["resolution_trace"] = resolution_trace
-    user_channel: dict[str, Any] = {
-        "action_required": user_required,
-        "notify": "NOTIFY" if user_required else heartbeat_recommendation.get("notify", "DONT_NOTIFY"),
-    }
-    if user_required:
-        user_channel["max_items"] = 3
-    user_reason = (
+
+
+def _interaction_user_reason(payload: dict[str, Any]) -> Any:
+    return (
         payload.get("open_todo_notify_reason")
         or payload.get("gate_prompt")
         or payload.get("operator_question")
@@ -839,66 +827,199 @@ def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
             else None
         )
     )
-    if user_reason:
-        user_channel["reason"] = user_reason
-    required_reads = _interaction_required_reads(payload)
 
-    contract = {
-        "schema_version": INTERACTION_CONTRACT_SCHEMA_VERSION,
-        "mode": mode,
-        "user_channel": user_channel,
-        "agent_channel": agent_channel,
-        "cli_channel": {
-            "next_cli_actions": interaction_next_cli_actions(payload, mode=mode),
-            "spend_allowed_now": spend_allowed_now,
-            "spend_after_validation": spend_after_validation,
-            "spend_policy": _interaction_spend_policy(
-                execution_obligation,
-                heartbeat_recommendation,
-                mode=mode,
-                spend_after_validation=spend_after_validation,
-            ),
-        },
+
+def _build_interaction_agent_channel(
+    payload: dict[str, Any],
+    *,
+    mode: str,
+    must_attempt: bool,
+    delivery_allowed: bool,
+    quiet_noop_allowed: bool,
+) -> dict[str, Any]:
+    primary_action = _interaction_primary_agent_action(payload, mode=mode)
+    channel: dict[str, Any] = {
+        "must_attempt": must_attempt,
+        "delivery_allowed": delivery_allowed,
+        "quiet_noop_allowed": quiet_noop_allowed,
+        "primary_action": primary_action,
     }
-    if required_reads:
-        contract["agent_channel"]["required_reads"] = required_reads
-        contract["cli_channel"]["required_reads"] = required_reads
+    resolution_trace = next_action_resolution_trace(
+        primary_action=primary_action,
+        mode=mode,
+        active_state_next_action=payload.get("active_state_next_action"),
+        latest_run_recommended_action=payload.get("latest_run_recommended_action"),
+        selected_recommended_action=payload.get("recommended_action"),
+        agent_lane_next_action=payload.get("agent_lane_next_action"),
+    )
+    if resolution_trace:
+        channel["resolution_trace"] = resolution_trace
+    return channel
+
+
+def _build_interaction_user_channel(
+    payload: dict[str, Any],
+    heartbeat_recommendation: dict[str, Any],
+    *,
+    user_required: bool,
+) -> dict[str, Any]:
+    channel: dict[str, Any] = {
+        "action_required": user_required,
+        "notify": "NOTIFY"
+        if user_required
+        else heartbeat_recommendation.get("notify", "DONT_NOTIFY"),
+    }
+    if user_required:
+        channel["max_items"] = 3
+    reason = _interaction_user_reason(payload)
+    if reason:
+        channel["reason"] = reason
+    return channel
+
+
+def _build_interaction_cli_channel(
+    payload: dict[str, Any],
+    execution_obligation: dict[str, Any],
+    heartbeat_recommendation: dict[str, Any],
+    *,
+    mode: str,
+    spend_after_validation: bool,
+) -> dict[str, Any]:
+    return {
+        "next_cli_actions": interaction_next_cli_actions(payload, mode=mode),
+        "spend_allowed_now": False,
+        "spend_after_validation": spend_after_validation,
+        "spend_policy": _interaction_spend_policy(
+            execution_obligation,
+            heartbeat_recommendation,
+            mode=mode,
+            spend_after_validation=spend_after_validation,
+        ),
+    }
+
+
+def _attach_interaction_required_reads(
+    contract: dict[str, Any],
+    required_reads: list[dict[str, Any]],
+) -> None:
+    if not required_reads:
+        return
+    contract["agent_channel"]["required_reads"] = required_reads
+    contract["cli_channel"]["required_reads"] = required_reads
+
+
+def _attach_interaction_vision_continuation_audit(
+    contract: dict[str, Any],
+    payload: dict[str, Any],
+) -> None:
     vision_continuation_audit = (
         payload.get("vision_continuation_audit")
         if isinstance(payload.get("vision_continuation_audit"), dict)
         else {}
     )
-    if vision_continuation_audit.get("required"):
-        contract["agent_channel"]["vision_continuation_audit"] = vision_continuation_audit
-        vision_gap_judge = (
-            vision_continuation_audit.get("vision_gap_judge")
-            if isinstance(vision_continuation_audit.get("vision_gap_judge"), dict)
-            else {}
+    if not vision_continuation_audit.get("required"):
+        return
+    contract["agent_channel"]["vision_continuation_audit"] = vision_continuation_audit
+    vision_gap_judge = (
+        vision_continuation_audit.get("vision_gap_judge")
+        if isinstance(vision_continuation_audit.get("vision_gap_judge"), dict)
+        else {}
+    )
+    contract["cli_channel"]["vision_continuation_audit"] = {
+        "required": True,
+        "required_before_closeout": vision_continuation_audit.get(
+            "required_before_closeout"
         )
-        contract["cli_channel"]["vision_continuation_audit"] = {
-            "required": True,
-            "required_before_closeout": vision_continuation_audit.get("required_before_closeout")
-            or [],
-            "recommended_action": vision_continuation_audit.get("recommended_action"),
+        or [],
+        "recommended_action": vision_continuation_audit.get("recommended_action"),
+    }
+    if vision_gap_judge:
+        contract["cli_channel"]["vision_continuation_audit"]["vision_gap_judge"] = {
+            "done": vision_gap_judge.get("done"),
+            "decision": vision_gap_judge.get("decision"),
+            "reason": vision_gap_judge.get("reason"),
+            "agent_judge_instruction": vision_gap_judge.get("agent_judge_instruction"),
+            "evidence_read_instruction": vision_gap_judge.get(
+                "evidence_read_instruction"
+            ),
+            "done_only_when": vision_gap_judge.get("done_only_when") or [],
+            "continue_when": vision_gap_judge.get("continue_when") or [],
+            "otherwise": vision_gap_judge.get("otherwise"),
         }
-        if vision_gap_judge:
-            contract["cli_channel"]["vision_continuation_audit"]["vision_gap_judge"] = {
-                "done": vision_gap_judge.get("done"),
-                "decision": vision_gap_judge.get("decision"),
-                "reason": vision_gap_judge.get("reason"),
-                "agent_judge_instruction": vision_gap_judge.get("agent_judge_instruction"),
-                "evidence_read_instruction": vision_gap_judge.get("evidence_read_instruction"),
-                "done_only_when": vision_gap_judge.get("done_only_when") or [],
-                "continue_when": vision_gap_judge.get("continue_when") or [],
-                "otherwise": vision_gap_judge.get("otherwise"),
-            }
-    if mode in {
+
+
+def _interaction_fallback_policy_required(payload: dict[str, Any], *, mode: str) -> bool:
+    return mode in {
         "user_gate",
         "user_todo_blocker_push",
         "user_action_required",
         "outcome_floor_recovery",
         "external_evidence_observation",
         "scoped_user_gate_fallback",
-    } or payload.get("blocked_priority_fallback"):
+    } or bool(payload.get("blocked_priority_fallback"))
+
+
+def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
+    execution_obligation = (
+        payload.get("execution_obligation")
+        if isinstance(payload.get("execution_obligation"), dict)
+        else {}
+    )
+    heartbeat_recommendation = (
+        payload.get("heartbeat_recommendation")
+        if isinstance(payload.get("heartbeat_recommendation"), dict)
+        else {}
+    )
+    mode = _interaction_mode(payload)
+    user_required = user_channel_action_required(payload)
+    scoped_user_gate_fallback = mode == "scoped_user_gate_fallback"
+    bounded_delivery_with_user_notice = mode == "bounded_delivery_with_user_notice"
+    must_attempt = _interaction_must_attempt(
+        execution_obligation,
+        user_required=user_required,
+        scoped_user_gate_fallback=scoped_user_gate_fallback,
+        bounded_delivery_with_user_notice=bounded_delivery_with_user_notice,
+    )
+    delivery_allowed = _interaction_delivery_allowed(
+        payload,
+        execution_obligation,
+        user_required=user_required,
+        scoped_user_gate_fallback=scoped_user_gate_fallback,
+        bounded_delivery_with_user_notice=bounded_delivery_with_user_notice,
+    )
+    quiet_noop_allowed = _interaction_quiet_noop_allowed(
+        mode=mode,
+        user_required=user_required,
+        must_attempt=must_attempt,
+    )
+    spend_after_validation = _interaction_spend_after_validation(mode)
+    required_reads = _interaction_required_reads(payload)
+
+    contract = {
+        "schema_version": INTERACTION_CONTRACT_SCHEMA_VERSION,
+        "mode": mode,
+        "user_channel": _build_interaction_user_channel(
+            payload,
+            heartbeat_recommendation,
+            user_required=user_required,
+        ),
+        "agent_channel": _build_interaction_agent_channel(
+            payload,
+            mode=mode,
+            must_attempt=must_attempt,
+            delivery_allowed=delivery_allowed,
+            quiet_noop_allowed=quiet_noop_allowed,
+        ),
+        "cli_channel": _build_interaction_cli_channel(
+            payload,
+            execution_obligation,
+            heartbeat_recommendation,
+            mode=mode,
+            spend_after_validation=spend_after_validation,
+        ),
+    }
+    _attach_interaction_required_reads(contract, required_reads)
+    _attach_interaction_vision_continuation_audit(contract, payload)
+    if _interaction_fallback_policy_required(payload, mode=mode):
         contract["fallback_policy"] = {"do_not_cancel_on_block": True}
     return contract
