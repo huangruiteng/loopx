@@ -1,0 +1,23 @@
+examples/control_plane/todo-capture-followups-smoke.py
+  s_e3f612788718c1::t_94dbc217631c9f 125,168-169
+loopx/todo_followups.py
+  s_e3f612788718c1::t_b6427f4e1b4765 138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7f6b0e09c578759d98a42ce71925f75169bbc5ae",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
