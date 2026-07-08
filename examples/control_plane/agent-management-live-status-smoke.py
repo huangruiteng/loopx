@@ -213,6 +213,120 @@ def assert_synthetic_projection() -> None:
     assert "reclaim_url" not in json.dumps(stale_hint, sort_keys=True), stale_hint
 
 
+def assert_advancement_current_todo_beats_standing_monitor() -> None:
+    payload = fixture_status_payload()
+    payload["run_history"]["goals"][0]["coordination"]["registered_agents"].append("agent-side")
+    payload["attention_queue"]["items"].append(
+        {
+            "goal_id": "fixture-goal",
+            "agent_lane_next_action": {
+                "index": 2,
+                "done": False,
+                "text": "Ship the next bounded improvement.",
+                "schema_version": "agent_lane_next_action_v0",
+                "todo_id": "todo_side_advancement",
+                "role": "agent",
+                "status": "open",
+                "priority": "P2",
+                "title": "Ship the next bounded improvement.",
+                "task_class": "advancement_task",
+                "action_kind": "refactor",
+                "claimed_by": "agent-side",
+                "agent_id": "agent-side",
+                "selected_by": "current_agent_claimed_todo",
+                "updated_at": "2026-07-05T00:01:00Z",
+            },
+            "project_asset": {
+                "agent_todos": {
+                    "items": [
+                        {
+                            "index": 1,
+                            "done": False,
+                            "text": "Watch standing external state.",
+                            "todo_id": "todo_standing_monitor",
+                            "role": "agent",
+                            "status": "open",
+                            "priority": "P0",
+                            "title": "Watch standing external state.",
+                            "task_class": "continuous_monitor",
+                            "action_kind": "external_state_monitor",
+                            "claimed_by": "agent-side",
+                            "updated_at": "2026-07-05T00:00:00Z",
+                        },
+                    ],
+                    "claimed_open_items": [
+                        {
+                            "index": 3,
+                            "done": False,
+                            "text": "Blocked cold-path API idea.",
+                            "todo_id": "todo_blocked_detail_api",
+                            "role": "agent",
+                            "status": "blocked",
+                            "priority": "P1",
+                            "title": "Blocked cold-path API idea.",
+                            "task_class": "advancement_task",
+                            "action_kind": "todo_detail_api",
+                            "claimed_by": "agent-side",
+                            "updated_at": "2026-07-04T00:00:00Z",
+                        },
+                    ],
+                    "claimed_advancement_open_items": [
+                        {
+                            "index": 2,
+                            "done": False,
+                            "text": "Ship the next bounded improvement.",
+                            "todo_id": "todo_side_advancement",
+                            "role": "agent",
+                            "status": "open",
+                            "priority": "P2",
+                            "title": "Ship the next bounded improvement.",
+                            "task_class": "advancement_task",
+                            "action_kind": "refactor",
+                            "claimed_by": "agent-side",
+                            "updated_at": "2026-07-05T00:01:00Z",
+                        },
+                    ],
+                }
+            },
+        }
+    )
+    projection = build_agent_management_projection(payload)
+    by_agent = {
+        row.get("agent_id"): row
+        for row in projection.get("agents", [])
+        if isinstance(row, dict)
+    }
+    side_row = by_agent["agent-side"]
+    assert side_row["state"] == "running", side_row
+    assert side_row["current_todo"]["todo_id"] == "todo_side_advancement", side_row
+    assert side_row["next_action"] == "Continue projected todo todo_side_advancement.", side_row
+
+    payload["attention_queue"]["items"][-1].pop("agent_lane_next_action")
+    lane_only = build_agent_management_projection(payload)
+    lane_only_row = next(
+        row
+        for row in lane_only.get("agents", [])
+        if isinstance(row, dict) and row.get("agent_id") == "agent-side"
+    )
+    assert lane_only_row["state"] == "running", lane_only_row
+    assert lane_only_row["current_todo"]["todo_id"] == "todo_side_advancement", lane_only_row
+
+    payload["attention_queue"]["items"][-1]["project_asset"]["agent_todos"][
+        "claimed_advancement_open_items"
+    ] = []
+    payload["attention_queue"]["items"][-1]["project_asset"]["agent_todos"][
+        "claimed_open_items"
+    ] = []
+    monitor_only = build_agent_management_projection(payload)
+    monitor_row = next(
+        row
+        for row in monitor_only.get("agents", [])
+        if isinstance(row, dict) and row.get("agent_id") == "agent-side"
+    )
+    assert monitor_row["state"] == "monitoring", monitor_row
+    assert monitor_row["current_todo"]["todo_id"] == "todo_standing_monitor", monitor_row
+
+
 def assert_bundled_public_example() -> dict[str, Any]:
     payload = json.loads((REPO_ROOT / "examples" / "status.example.json").read_text(encoding="utf-8"))
     projection = payload.get("agent_management_projection")
@@ -321,6 +435,7 @@ def assert_live_projection(args: argparse.Namespace) -> dict[str, Any]:
 def main() -> int:
     args = parse_args()
     assert_synthetic_projection()
+    assert_advancement_current_todo_beats_standing_monitor()
     result: dict[str, Any] = {
         "synthetic": "ok",
         "bundled_example": assert_bundled_public_example(),

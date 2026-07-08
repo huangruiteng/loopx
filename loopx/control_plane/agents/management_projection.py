@@ -5,6 +5,7 @@ from typing import Any, Iterable
 from ..runtime.public_safety import public_safe_compact_text
 from ..runtime.time import now_utc, now_utc_iso, parse_timestamp
 from ..todos.contract import normalize_todo_claimed_by, normalize_todo_id
+from ..todos.summary_item import TODO_SUMMARY_SOURCE_KEYS
 
 
 AGENT_MANAGEMENT_PROJECTION_SCHEMA_VERSION = "agent_management_projection_v0"
@@ -15,6 +16,17 @@ MAX_AGENT_TODOS = 8
 MAX_REFS = 1
 MAX_WORKSPACE_SCOPES = 4
 STALE_CLAIM_THRESHOLD_HOURS = 36
+
+_TODO_GROUP_LIST_KEYS = tuple(
+    dict.fromkeys(
+        (
+            *TODO_SUMMARY_SOURCE_KEYS,
+            "executable_backlog_items",
+            "deferred_items",
+            "deferred_resume_candidates",
+        )
+    )
+)
 
 _PRIORITY_RANK = {
     "P0": 0,
@@ -79,6 +91,49 @@ def _todo_sort_key(todo: dict[str, Any]) -> tuple[int, int, int, str]:
     return (done_rank, _priority_rank(todo), _index_rank(todo), str(todo.get("todo_id") or ""))
 
 
+def _is_monitor_todo(todo: dict[str, Any]) -> bool:
+    return (
+        todo.get("task_class") == "continuous_monitor"
+        or "monitor" in str(todo.get("action_kind") or "").lower()
+    )
+
+
+def _is_agent_lane_next_action(todo: dict[str, Any]) -> bool:
+    return (
+        todo.get("schema_version") == "agent_lane_next_action_v0"
+        or str(todo.get("source") or "").endswith("agent_lane_next_action")
+        or bool(todo.get("selected_by"))
+    )
+
+
+def _current_todo_execution_rank(todo: dict[str, Any]) -> int:
+    if todo.get("task_class") == "blocker":
+        return 0
+    if _todo_status(todo) == "blocked":
+        return 2
+    if _is_monitor_todo(todo):
+        return 3
+    return 1
+
+
+def _current_todo_sort_key(todo: dict[str, Any]) -> tuple[int, int, int, int, str]:
+    selected_rank = 0 if _is_agent_lane_next_action(todo) else 1
+    return (
+        selected_rank,
+        _current_todo_execution_rank(todo),
+        _priority_rank(todo),
+        _index_rank(todo),
+        str(todo.get("todo_id") or ""),
+    )
+
+
+def _select_current_todo(todos: list[dict[str, Any]]) -> dict[str, Any] | None:
+    open_todos = [todo for todo in todos if not _is_done(todo)]
+    if not open_todos:
+        return None
+    return sorted(open_todos, key=_current_todo_sort_key)[0]
+
+
 def _registered_agents(status_payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
     rows: dict[str, dict[str, Any]] = {}
     run_history = _as_dict(status_payload.get("run_history"))
@@ -106,28 +161,64 @@ def _registered_agents(status_payload: dict[str, Any]) -> dict[str, dict[str, An
     return rows
 
 
+def _iter_todo_group_items(
+    group: dict[str, Any],
+    *,
+    goal_id: str | None,
+    source: str,
+) -> Iterable[dict[str, Any]]:
+    for key in _TODO_GROUP_LIST_KEYS:
+        for todo in _as_list(group.get(key)):
+            if isinstance(todo, dict):
+                row = dict(todo)
+                row.setdefault("goal_id", goal_id)
+                row.setdefault("source", source if key == "items" else f"{source}.{key}")
+                yield row
+
+
+def _iter_next_action_todo(
+    owner: dict[str, Any],
+    *,
+    goal_id: str | None,
+    source: str,
+) -> Iterable[dict[str, Any]]:
+    todo = owner.get("agent_lane_next_action")
+    if isinstance(todo, dict):
+        row = dict(todo)
+        row.setdefault("goal_id", goal_id)
+        row.setdefault("source", source)
+        yield row
+
+
 def _iter_status_todos(status_payload: dict[str, Any]) -> Iterable[dict[str, Any]]:
     queue = _as_dict(status_payload.get("attention_queue"))
     for item in _as_list(queue.get("items")):
         if not isinstance(item, dict):
             continue
         goal_id = _compact(item.get("goal_id"), limit=180)
-        for source_name in ("agent_todos",):
-            group = _as_dict(item.get(source_name))
-            for todo in _as_list(group.get("items")):
-                if isinstance(todo, dict):
-                    row = dict(todo)
-                    row.setdefault("goal_id", goal_id)
-                    row.setdefault("source", f"attention_queue.{source_name}")
-                    yield row
+        yield from _iter_next_action_todo(
+            item,
+            goal_id=goal_id,
+            source="attention_queue.agent_lane_next_action",
+        )
+        group = _as_dict(item.get("agent_todos"))
+        yield from _iter_todo_group_items(
+            group,
+            goal_id=goal_id,
+            source="attention_queue.agent_todos",
+        )
         project_asset = _as_dict(item.get("project_asset"))
+        yield from _iter_next_action_todo(
+            project_asset,
+            goal_id=goal_id,
+            source="project_asset.agent_lane_next_action",
+        )
         group = _as_dict(project_asset.get("agent_todos"))
-        for todo in _as_list(group.get("items")):
-            if isinstance(todo, dict):
-                row = dict(todo)
-                row.setdefault("goal_id", goal_id)
-                row.setdefault("source", "project_asset.agent_todos")
-                yield row
+        yield from _iter_todo_group_items(
+            group,
+            goal_id=goal_id,
+            source="project_asset.agent_todos",
+        )
 
     todo_index = _as_dict(status_payload.get("todo_index"))
     for todo in _as_list(todo_index.get("items")):
@@ -293,17 +384,19 @@ def _refs_from_todo(todo: dict[str, Any]) -> tuple[list[str], list[str]]:
     return evidence_refs[:MAX_REFS], handoff_refs[:MAX_REFS]
 
 
-def _agent_state(todos: list[dict[str, Any]]) -> str:
+def _agent_state(todos: list[dict[str, Any]], *, current: dict[str, Any] | None = None) -> str:
     open_todos = [todo for todo in todos if not _is_done(todo)]
     if not open_todos:
         return "waiting" if todos else "unknown"
+    if current and not _is_done(current):
+        if _todo_status(current) == "blocked" or current.get("task_class") == "blocker":
+            return "blocked"
+        if _is_monitor_todo(current):
+            return "monitoring"
+        return "running"
     if any(_todo_status(todo) == "blocked" or todo.get("task_class") == "blocker" for todo in open_todos):
         return "blocked"
-    if any(
-        todo.get("task_class") == "continuous_monitor"
-        or "monitor" in str(todo.get("action_kind") or "").lower()
-        for todo in open_todos
-    ):
+    if all(_is_monitor_todo(todo) for todo in open_todos):
         return "monitoring"
     return "running"
 
@@ -359,8 +452,16 @@ def build_agent_management_projection(status_payload: dict[str, Any]) -> dict[st
 
     agents: list[dict[str, Any]] = []
     for agent_id, raw_row in sorted(rows_by_agent.items()):
-        todos = sorted(_as_list(raw_row.get("_todos")), key=_todo_sort_key)[:MAX_AGENT_TODOS]
-        current = next((todo for todo in todos if not _is_done(todo)), None)
+        all_todos = _as_list(raw_row.get("_todos"))
+        current = _select_current_todo(all_todos)
+        todos = sorted(all_todos, key=_todo_sort_key)
+        if current:
+            current_identity = _todo_identity(current)
+            todos = [
+                current,
+                *[todo for todo in todos if _todo_identity(todo) != current_identity],
+            ]
+        todos = todos[:MAX_AGENT_TODOS]
         evidence_refs: list[str] = []
         handoff_refs: list[str] = []
         for todo in todos:
@@ -374,7 +475,7 @@ def build_agent_management_projection(status_payload: dict[str, Any]) -> dict[st
         agent_row: dict[str, Any] = {
             "agent_id": agent_id,
             "role": raw_row.get("role") or "agent",
-            "state": _agent_state(todos),
+            "state": _agent_state(all_todos, current=current),
             "current_todo": _todo_row(current) if current else None,
             "next_action": _safe_next_action(current),
             "last_activity_at": _last_activity(todos),
