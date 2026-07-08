@@ -158,6 +158,12 @@ The guard's `interaction_contract` is the first-class protocol. Older fields
 such as `execution_obligation`, `heartbeat_recommendation`,
 `work_lane_contract`, `external_evidence_observation`, `goal_boundary`, and
 `protocol_action_packet` remain compatibility and drill-down fields.
+Executors should treat `interaction_contract.agent_channel.primary_action` as
+the single action entrypoint for the current turn. If it carries a
+`resolution_trace`, that trace is only a compact explanation of which projected
+signal the primary action matched and whether `Next Action` / latest-run drift
+exists; it is not a second action source and does not authorize state sync by
+itself.
 Legacy Markdown parsing is even lower authority: it is a deterministic lint for
 unprojected prose in `Next Action`, not a source of gate truth. The hot path
 should not call an LLM to decide whether the user is gated, because that adds

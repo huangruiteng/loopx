@@ -897,6 +897,15 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         )
         if agent_channel.get("primary_action"):
             lines.append(f"- interaction_agent_action: {agent_channel.get('primary_action')}")
+        resolution_trace = (
+            agent_channel.get("resolution_trace")
+            if isinstance(agent_channel.get("resolution_trace"), dict)
+            else {}
+        )
+        if resolution_trace:
+            lines.append(
+                f"- interaction_agent_resolution: {resolution_trace.get('summary')}"
+            )
     automation_liveness = (
         payload.get("automation_liveness")
         if isinstance(payload.get("automation_liveness"), dict)

@@ -1290,7 +1290,15 @@ Its `user_channel` says whether to interrupt the user and why;
 `agent_channel` says whether Codex must attempt work, whether delivery is
 allowed, whether quiet no-op is allowed, and the primary action; `cli_channel`
 says which CLI transitions and spend policy apply. Executors should read
-`interaction_contract` first. `execution_obligation`,
+`interaction_contract` first, with
+`interaction_contract.agent_channel.primary_action` as the only executable
+action entrypoint for the current turn. Optional
+`agent_channel.resolution_trace.summary` is diagnostic: it compactly records
+the source signal matched by `primary_action` and whether drift was detected. Existing
+`state_action_projection_warning` / `next_action_projection_warning` fields
+carry any writeback review guidance. The trace is not an independent
+next-action authority and does not imply automatic active-state writeback.
+`execution_obligation`,
 `heartbeat_recommendation`, `work_lane_contract`,
 `external_evidence_observation`, `goal_boundary`, and
 `protocol_action_packet` remain compatibility and drill-down fields under that

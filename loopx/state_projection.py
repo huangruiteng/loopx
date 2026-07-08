@@ -121,6 +121,8 @@ def _action_projection_text(value: Any, *, limit: int = 320) -> str:
 
 def _action_projection_compare_text(value: Any) -> str:
     text = re.sub(r"\s+", " ", str(value or "").strip().lower())
+    text = re.sub(r"^todo_[0-9a-z]+:\s*", "", text)
+    text = re.sub(r"^p[0-9]+:\s*", "", text)
     text = re.sub(r"^\[(?:p[0-9]+|[^\]]+)\]\s*", "", text)
     return re.sub(r"^(?:agent|user|owner|codex)\s*:\s*", "", text)
 
@@ -217,6 +219,57 @@ def next_action_projection_warning(
     return warning
 
 
+def next_action_resolution_trace(
+    *,
+    primary_action: Any,
+    mode: Any = None,
+    active_state_next_action: Any,
+    latest_run_recommended_action: Any,
+    selected_recommended_action: Any,
+    agent_lane_next_action: Any = None,
+) -> dict[str, Any] | None:
+    primary_text = _action_projection_text(primary_action)
+    if not primary_text:
+        return None
+    selected_text = _action_projection_text(selected_recommended_action)
+    active_text = _action_projection_text(active_state_next_action)
+    latest_text = _action_projection_text(latest_run_recommended_action)
+    lane_value = (
+        agent_lane_next_action.get("text")
+        if isinstance(agent_lane_next_action, dict)
+        else agent_lane_next_action
+    )
+    lane_text = _action_projection_text(lane_value)
+
+    source = "interaction_contract"
+    source_candidates = (
+        ("agent_lane", lane_text),
+        ("selected", selected_text),
+        ("active_next", active_text),
+        ("latest_run", latest_text),
+    )
+    for candidate_source, candidate_text in source_candidates:
+        if candidate_text and actions_are_projection_aligned(primary_text, candidate_text):
+            source = candidate_source
+            break
+    if source == "interaction_contract" and mode:
+        source = f"mode:{mode}"
+
+    mismatches: list[str] = []
+    for label, left, right in (
+        ("active_vs_latest", active_text, latest_text),
+        ("active_vs_primary", active_text, primary_text),
+        ("latest_vs_primary", latest_text, primary_text),
+        ("selected_vs_primary", selected_text, primary_text),
+    ):
+        if left and right and not actions_are_projection_aligned(left, right):
+            mismatches.append(label)
+
+    return {
+        "summary": f"source={source} drift={'true' if mismatches else 'false'}",
+    }
+
+
 def state_action_projection_warning(
     item: dict[str, Any],
     *,
@@ -276,8 +329,7 @@ def state_action_projection_warning(
         "selected_recommended_action": _action_projection_text(selected_text, limit=320),
         "reason": "quota selected executable backlog while active Next Action differs",
         "recommended_action": (
-            "sync active-state Next Action, or treat protocol_action_packet / "
-            "interaction_contract as authoritative"
+            "run primary_action; sync active route only on route change"
         ),
     }
 

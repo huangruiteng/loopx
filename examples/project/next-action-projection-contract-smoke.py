@@ -13,7 +13,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import loopx.state_refresh as state_refresh
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
-from loopx.state_projection import actions_are_projection_aligned, state_action_projection_warning
+from loopx.state_projection import (
+    actions_are_projection_aligned,
+    next_action_resolution_trace,
+    state_action_projection_warning,
+)
 from loopx.status import collect_status, render_status_markdown
 
 
@@ -150,6 +154,10 @@ def assert_state_action_projection_warning_read_model() -> None:
         "[P1] Agent: Validate the primary public PoC control-plane lane.",
         "Validate the primary public PoC control-plane lane.",
     )
+    assert actions_are_projection_aligned(
+        "todo_fe0c5551dd89: P2: Route quota execution through interaction_contract.agent_channel.primary_action",
+        "P2: Route quota execution through interaction_contract.agent_channel.primary_action",
+    )
     assert (
         state_action_projection_warning(
             {"active_state_next_action": ACTIVE_NEXT_ACTION},
@@ -171,6 +179,17 @@ def assert_state_action_projection_warning_read_model() -> None:
         )
         is None
     )
+
+    trace = next_action_resolution_trace(
+        primary_action=SIDE_AGENT_ACTION,
+        mode="bounded_delivery",
+        active_state_next_action=ACTIVE_NEXT_ACTION,
+        latest_run_recommended_action=RUN_RECOMMENDATION,
+        selected_recommended_action=SIDE_AGENT_ACTION,
+        agent_lane_next_action={"text": SIDE_AGENT_ACTION},
+    )
+    assert trace is not None, trace
+    assert trace["summary"] == "source=agent_lane drift=true", trace
 
 
 def main() -> None:
@@ -227,6 +246,10 @@ def main() -> None:
             assert first_item["next_action_projection_warning"]["requires_state_writeback"] is True, first_item
             assert first_decision["active_state_next_action"] == ACTIVE_NEXT_ACTION, first_decision
             assert first_decision["latest_run_recommended_action"] == RUN_RECOMMENDATION, first_decision
+            first_agent_channel = first_decision["interaction_contract"]["agent_channel"]
+            assert "independent worktree/branch" in first_agent_channel["primary_action"], first_decision
+            first_trace = first_agent_channel["resolution_trace"]
+            assert first_trace["summary"] == "source=selected drift=true", first_decision
             first_warning = first_decision["next_action_projection_warning"]
             assert first_warning["severity"] == "info", first_decision
             assert first_warning["requires_state_writeback"] is False, first_decision
@@ -265,6 +288,10 @@ def main() -> None:
             assert second_item["latest_run_recommended_action"] == UPDATED_RUN_RECOMMENDATION, second_item
             assert second_decision["active_state_next_action"] == UPDATED_NEXT_ACTION, second_decision
             assert second_decision["latest_run_recommended_action"] == UPDATED_RUN_RECOMMENDATION, second_decision
+            second_agent_channel = second_decision["interaction_contract"]["agent_channel"]
+            assert "independent worktree/branch" in second_agent_channel["primary_action"], second_decision
+            second_trace = second_agent_channel["resolution_trace"]
+            assert second_trace["summary"] == "source=selected drift=true", second_decision
             lane = second_decision["agent_lane_next_action"]
             assert lane["todo_id"] == "todo_side", second_decision
             assert lane["title"] == SIDE_AGENT_ACTION, second_decision
@@ -287,6 +314,8 @@ def main() -> None:
             assert "latest_run_recommended_action" in status_markdown, status_markdown
             assert "active_state_next_action" in quota_markdown, quota_markdown
             assert "latest_run_recommended_action" in quota_markdown, quota_markdown
+            assert "interaction_agent_action" in quota_markdown, quota_markdown
+            assert "interaction_agent_resolution" in quota_markdown, quota_markdown
 
             cli_ok = run_cli_json(
                 [
