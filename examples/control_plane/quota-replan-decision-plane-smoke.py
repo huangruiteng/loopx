@@ -256,6 +256,14 @@ def agent_vision_gap_run() -> dict:
     }
 
 
+def closed_agent_vision_run() -> dict:
+    run = agent_vision_gap_run()
+    run["generated_at"] = "2026-07-04T00:10:00+00:00"
+    run["classification"] = "vision_gap_closed"
+    run["agent_vision"]["state"] = "vision_closed"
+    return run
+
+
 def agent_vision_acceptance_only_run() -> dict:
     return {
         "classification": "state_refreshed",
@@ -679,6 +687,28 @@ def assert_agent_vision_gap_derives_replan() -> None:
     assert "deferred_ready=0 acceptance_gaps=1" in markdown, markdown
     assert "vision_continuation_audit: required=True" in markdown, markdown
     assert "vision_gap_judge: done=False decision=continue" in markdown, markdown
+
+
+def assert_closed_agent_vision_allows_bounded_monitor_wait() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            [monitor_item()],
+            replan_obligation=None,
+            latest_runs=[
+                watch_lane_continuation_ack_run(
+                    delta_kinds=["watch_lane_continuation", "no_followup"]
+                ),
+                closed_agent_vision_run(),
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["decision"] == "skip", guard
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert guard["goal_frontier_projection"]["acceptance_gaps"] == [], guard
+    assert guard["goal_frontier_projection"]["replan_required"] is False, guard
+    assert guard.get("autonomous_replan_obligation") is None, guard
 
 
 def assert_goal_frontier_context_helper_matches_quota_payload() -> None:
@@ -1121,6 +1151,7 @@ def main() -> None:
     assert_replan_preserves_current_agent_runnable_frontier()
     assert_long_agent_todo_chain_derives_replan_before_linear_delivery()
     assert_agent_vision_gap_derives_replan()
+    assert_closed_agent_vision_allows_bounded_monitor_wait()
     assert_goal_frontier_context_helper_matches_quota_payload()
     assert_open_agent_vision_beats_watch_lane_continuation_ack()
     assert_retired_agent_vision_allows_bounded_monitor_wait()

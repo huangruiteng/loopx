@@ -34,6 +34,7 @@ LONG_TODO_CHAIN_OPEN_THRESHOLD = 20
 AGENT_VISION_CLOSED_STATES = {
     "closed",
     "satisfied",
+    "vision_closed",
     "retired",
     "retired_or_superseded",
     "superseded",
