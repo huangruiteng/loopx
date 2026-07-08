@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
 from loopx.control_plane.scheduler.monitor_poll_policy import (  # noqa: E402
     allows_due_monitor_poll,
     allows_no_spend_external_monitor_poll,
+    explicit_external_evidence_observation,
     quota_decision_due_monitor_item,
     work_lane_reason_codes,
 )
@@ -53,6 +54,30 @@ def assert_external_monitor_observation_policy() -> None:
         },
     }
     assert allows_no_spend_external_monitor_poll(explicit_observation) is True
+
+    explicit_observation_with_quiet_monitor_lane = {
+        "should_run": True,
+        "requires_user_action": False,
+        "effective_action": "external_evidence_observe",
+        "external_evidence_observation": {
+            "required": True,
+            "must_attempt_observation": True,
+            "delivery_allowed": False,
+            "if_handle_live_and_unchanged": "quiet_noop_no_spend",
+        },
+        "work_lane_contract": {
+            "lane": "continuous_monitor",
+            "obligation": "quiet_until_material_monitor_transition",
+            "must_attempt_work": False,
+            "monitor_policy": "write_once_per_material_transition_else_no_spend",
+            "reason_codes": [
+                "advancement_unavailable_by_capability",
+                "monitor_todo_present",
+            ],
+        },
+    }
+    assert explicit_external_evidence_observation(explicit_observation_with_quiet_monitor_lane) is True
+    assert allows_no_spend_external_monitor_poll(explicit_observation_with_quiet_monitor_lane) is True
 
     due_monitor_delivery = {
         "should_run": True,
