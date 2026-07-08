@@ -390,7 +390,7 @@ def acceptance_gaps_from_agent_vision(
     acceptance = _compact_projection_text(patch.get("acceptance_summary"), limit=420)
     trigger = _compact_projection_text(patch.get("replan_trigger_summary"), limit=240)
     if not trigger and acceptance:
-        trigger = "active agent vision remains open without a runnable advancement frontier"
+        trigger = "active agent vision remains open with acceptance evidence still required"
     if not trigger:
         return []
     gap: dict[str, Any] = {
