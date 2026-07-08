@@ -657,6 +657,12 @@ def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
             lines.append(
                 f"- vision_unchanged_reason: {vision_checkpoint.get('unchanged_reason')}"
             )
+        required_resolution = vision_checkpoint.get("required_resolution")
+        if required_resolution:
+            lines.append(
+                "- vision_checkpoint_required_resolution: "
+                f"{','.join(str(item) for item in required_resolution)}"
+            )
 
     projection_gap = (
         payload.get("state_projection_gap")

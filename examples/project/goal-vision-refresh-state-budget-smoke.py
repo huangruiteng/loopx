@@ -69,6 +69,7 @@ def run_cli(
     registry_path: Path,
     runtime: Path,
     *,
+    output_format: str = "json",
     vision_path: Path | None = None,
     inline_vision_args: list[str] | None = None,
     check: bool,
@@ -85,7 +86,7 @@ def run_cli(
         "--runtime-root",
         str(runtime),
         "--format",
-        "json",
+        output_format,
         "refresh-state",
         "--goal-id",
         GOAL_ID,
@@ -287,6 +288,41 @@ def main() -> int:
         assert unchanged["agent_vision"] is None, unchanged
         assert unchanged["vision_checkpoint"]["agent_id"] == AGENT_ID, unchanged
         assert unchanged["vision_checkpoint"]["decision"] == "unchanged_with_reason", unchanged
+
+        missing_checkpoint = payload(
+            run_cli(
+                registry_path,
+                runtime,
+                check=True,
+            )
+        )
+        assert missing_checkpoint["vision_checkpoint"]["required"] is True, (
+            missing_checkpoint
+        )
+        assert missing_checkpoint["vision_checkpoint"]["satisfied"] is False, (
+            missing_checkpoint
+        )
+        assert missing_checkpoint["vision_checkpoint"]["decision"] == "missing_required", (
+            missing_checkpoint
+        )
+        assert missing_checkpoint["vision_checkpoint"]["required_resolution"] == [
+            "write_vision_patch",
+            "record_unchanged_reason",
+            "record_no_followup",
+            "link_successor_or_supersede",
+        ], missing_checkpoint
+        missing_markdown = run_cli(
+            registry_path,
+            runtime,
+            output_format="markdown",
+            check=True,
+        ).stdout
+        assert "vision_checkpoint_required_resolution:" in missing_markdown, (
+            missing_markdown
+        )
+        assert "write_vision_patch,record_unchanged_reason" in missing_markdown, (
+            missing_markdown
+        )
 
         no_agent_inline_result = run_cli(
             registry_path,
