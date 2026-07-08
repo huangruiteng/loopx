@@ -1,0 +1,25 @@
+examples/control_plane/todo-lifecycle-cli-smoke.py
+  s_e3f612788718c1::t_8a2c3111c0f726 117-118,139-140,311-312
+loopx/control_plane/todos/event_writeback.py
+  s_e3f612788718c1::t_7e9315bbe89abf 164,223
+loopx/todos.py
+  s_e3f612788718c1::t_93f7235a8ceba9 683,739,779-780,821,944,1489,1503,1609,1623
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cf00ea585d04e1ade80ce553da8204a4f4c7ef61",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
