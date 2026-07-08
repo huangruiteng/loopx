@@ -1348,11 +1348,18 @@ def append_attention_queue_project_asset_markdown(
         else {}
     )
     if agent_interaction:
+        user_open_count = agent_interaction.get("user_open_count")
+        open_count_part = (
+            f"open_count={user_open_count} "
+            if user_open_count is not None
+            else ""
+        )
         lines.append(
             "    - current_agent_interaction: "
             f"agent={markdown_scalar(agent_interaction.get('agent_id') or '')} "
             f"mode={markdown_scalar(agent_interaction.get('mode') or '')} "
             f"action_required={agent_interaction.get('user_action_required')} "
+            f"{open_count_part}"
             f"notify={markdown_scalar(agent_interaction.get('user_notify') or '')} "
             f"must_attempt={agent_interaction.get('agent_must_attempt')} "
             f"delivery_allowed={agent_interaction.get('delivery_allowed')} "

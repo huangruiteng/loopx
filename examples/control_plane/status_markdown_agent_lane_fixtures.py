@@ -185,6 +185,7 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert interaction["schema_version"] == "agent_interaction_summary_v0", interaction
     assert interaction["agent_id"] == "codex-side-bypass", interaction
     assert interaction["user_action_required"] is False, interaction
+    assert interaction["user_open_count"] == 0, interaction
     assert interaction["agent_must_attempt"] is True, interaction
     assert interaction["delivery_allowed"] is True, interaction
     assert interaction["quiet_noop_allowed"] is False, interaction
@@ -200,7 +201,7 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert "worktree_policy=independent_worktree_required" in markdown, markdown
     assert "claims=todo_side_tui" in markdown, markdown
     assert "current_agent_interaction: agent=codex-side-bypass mode=bounded_delivery" in markdown, markdown
-    assert "action_required=False" in markdown, markdown
+    assert "action_required=False open_count=0" in markdown, markdown
     assert "must_attempt=True delivery_allowed=True quiet_noop_allowed=False" in markdown, markdown
     assert "current_agent_todo: agent=codex-side-bypass todo_id=todo_side_tui" in markdown, markdown
     assert "source=agent_lane_next_action" in markdown, markdown
