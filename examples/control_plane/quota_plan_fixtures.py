@@ -8,11 +8,20 @@ import hashlib
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.quota import (  # noqa: E402
+    build_quota_slot_void_event,
+    build_quota_slot_void_preview,
+    goal_quota_with_spend_ledger,
+    render_quota_slot_preview_markdown,
+    void_quota_slot,
+)
 
 
 SCOPED_AGENT_ID = "codex-side-bypass"
@@ -664,3 +673,201 @@ def run_cli_slot_void_execute(root: Path) -> tuple[dict, dict, dict, str, str]:
         registry_before,
         registry_path.read_text(encoding="utf-8"),
     )
+
+
+def assert_throttled_cli_should_run(payload: dict) -> None:
+    quota = payload["quota"]
+
+    assert payload["ok"] is True, payload
+    assert payload["goal_id"] == "throttled-half", payload
+    assert payload["decision"] == "skip", payload
+    assert payload["should_run"] is False, payload
+    assert payload["state"] == "throttled", payload
+    assert payload["waiting_on"] == "codex", payload
+    assert payload["plan_summary"]["next_automatic_turn"] == "full-speed", payload
+    assert quota["compute"] == 0.5, payload
+    assert quota["spent_slots"] == 12, payload
+    assert quota["allowed_slots"] == 12, payload
+    assert "spent 12/12" in payload["reason"], payload
+    assert "agent_command" not in payload, payload
+
+
+def assert_slot_preview(payload: dict) -> None:
+    before = payload["before"]
+    after = payload["after"]
+    markdown = render_quota_slot_preview_markdown(payload)
+
+    assert payload["ok"] is True, payload
+    assert payload["dry_run"] is True, payload
+    assert payload["appended"] is False, payload
+    assert payload["registry_mutated"] is False, payload
+    assert payload["goal_id"] == "near-limit-half", payload
+    assert payload["slots"] == 1, payload
+    assert payload["would_throttle"] is True, payload
+    assert before["state"] == "eligible", payload
+    assert before["should_run"] is True, payload
+    assert before["quota"]["spent_slots"] == 11, payload
+    assert before["quota"]["allowed_slots"] == 12, payload
+    assert after["state"] == "throttled", payload
+    assert after["should_run"] is False, payload
+    assert after["decision"] == "skip", payload
+    assert after["quota"]["spent_slots"] == 12, payload
+    assert after["quota"]["allowed_slots"] == 12, payload
+    assert after["plan_summary"]["next_automatic_turn"] == "full-speed", payload
+    assert "rolling_window_note" in payload, payload
+    assert "same-status-payload projection" in payload["rolling_window_note"], payload
+    assert "rolling_window_note" in markdown, markdown
+
+
+def assert_dry_run_left_cli_fixture_unchanged(payload: dict) -> None:
+    assert payload["goal_id"] == "near-limit-half", payload
+    assert payload["state"] == "eligible", payload
+    assert payload["should_run"] is True, payload
+    assert payload["quota"]["spent_slots"] == 11, payload
+    assert payload["quota"]["allowed_slots"] == 12, payload
+
+
+def assert_slot_spend_execute(payload: dict, next_should_run: dict, registry_before: str, registry_after: str) -> None:
+    quota_event = payload["quota_event"]
+    before = quota_event["before"]
+    after = quota_event["after"]
+    json_path = Path(payload["json_path"])
+    index_path = Path(payload["index_path"])
+
+    assert payload["ok"] is True, payload
+    assert payload["dry_run"] is False, payload
+    assert payload["appended"] is True, payload
+    assert payload["registry_mutated"] is False, payload
+    assert payload["classification"] == "quota_slot_spent", payload
+    assert payload["agent_id"] == SCOPED_AGENT_ID, payload
+    assert payload["source"] == "heartbeat", payload
+    assert registry_after == registry_before
+    assert '"spent_slots"' not in registry_after
+    assert json_path.exists(), payload
+    assert index_path.exists(), payload
+    assert quota_event["event_type"] == "quota_slot_spent", payload
+    assert quota_event["agent_id"] == SCOPED_AGENT_ID, payload
+    assert quota_event["slots"] == 1, payload
+    assert before["should_run"] is True, payload
+    assert before["state"] == "eligible", payload
+    assert before["spent_slots"] == 11, payload
+    assert after["spent_slots"] == 12, payload
+    assert after["allowed_slots"] == 12, payload
+    assert after["state"] == "throttled", payload
+    assert after["should_run"] is False, payload
+
+    record = json.loads(json_path.read_text(encoding="utf-8"))
+    assert record["classification"] == "quota_slot_spent", record
+    assert record["agent_id"] == SCOPED_AGENT_ID, record
+    assert record["quota_event"] == quota_event, record
+    forbidden = {"human_reward", "operator_gate", "write_control", "private_evidence", "agent_command"}
+    assert forbidden.isdisjoint(record), record
+    assert forbidden.isdisjoint(record["quota_event"]), record
+    index_lines = index_path.read_text(encoding="utf-8").splitlines()
+    assert any('"classification": "quota_slot_spent"' in line for line in index_lines), index_lines
+    assert any(f'"agent_id": "{SCOPED_AGENT_ID}"' in line for line in index_lines), index_lines
+
+    assert next_should_run["goal_id"] == "near-limit-half", next_should_run
+    assert next_should_run["should_run"] is False, next_should_run
+    assert next_should_run["state"] == "throttled", next_should_run
+    assert next_should_run["quota"]["spent_slots"] == 12, next_should_run
+    assert next_should_run["quota"]["allowed_slots"] == 12, next_should_run
+
+
+def assert_slot_void_execute(
+    spend_payload: dict,
+    void_payload: dict,
+    next_should_run: dict,
+    registry_before: str,
+    registry_after: str,
+) -> None:
+    quota_event = void_payload["quota_event"]
+    json_path = Path(void_payload["json_path"])
+    index_path = Path(void_payload["index_path"])
+    markdown = render_quota_slot_preview_markdown(void_payload)
+
+    assert spend_payload["classification"] == "quota_slot_spent", spend_payload
+    assert void_payload["ok"] is True, void_payload
+    assert void_payload["dry_run"] is False, void_payload
+    assert void_payload["appended"] is True, void_payload
+    assert void_payload["registry_mutated"] is False, void_payload
+    assert void_payload["classification"] == "quota_slot_voided", void_payload
+    assert void_payload["agent_id"] == SCOPED_AGENT_ID, void_payload
+    assert void_payload["source"] == "heartbeat", void_payload
+    assert registry_after == registry_before
+    assert json_path.exists(), void_payload
+    assert index_path.exists(), void_payload
+    assert quota_event["event_type"] == "quota_slot_voided", void_payload
+    assert quota_event["agent_id"] == SCOPED_AGENT_ID, void_payload
+    assert quota_event["slots"] == 1, void_payload
+    assert quota_event["voided_run_generated_at"] == spend_payload["generated_at"], void_payload
+    assert "duplicate heartbeat spend" in quota_event["reason_summary"], void_payload
+    assert "quota_slot_voided" in markdown, markdown
+
+    record = json.loads(json_path.read_text(encoding="utf-8"))
+    assert record["classification"] == "quota_slot_voided", record
+    assert record["agent_id"] == SCOPED_AGENT_ID, record
+    assert record["quota_event"] == quota_event, record
+    forbidden = {"human_reward", "operator_gate", "write_control", "private_evidence", "agent_command"}
+    assert forbidden.isdisjoint(record), record
+    assert forbidden.isdisjoint(record["quota_event"]), record
+    index_lines = index_path.read_text(encoding="utf-8").splitlines()
+    assert any('"classification": "quota_slot_spent"' in line for line in index_lines), index_lines
+    assert any('"classification": "quota_slot_voided"' in line for line in index_lines), index_lines
+    assert any(f'"agent_id": "{SCOPED_AGENT_ID}"' in line for line in index_lines), index_lines
+
+    assert next_should_run["goal_id"] == "near-limit-half", next_should_run
+    assert next_should_run["should_run"] is True, next_should_run
+    assert next_should_run["state"] == "eligible", next_should_run
+    assert next_should_run["quota"]["spent_slots"] == 11, next_should_run
+    assert next_should_run["quota"]["allowed_slots"] == 12, next_should_run
+
+
+def assert_quota_void_event_net_ledger() -> None:
+    goal_id = "void-ledger-goal"
+    with tempfile.TemporaryDirectory(prefix="loopx-quota-void-ledger-") as tmp:
+        runtime = Path(tmp) / "runtime"
+        run_dir = runtime / "goals" / goal_id / "runs"
+        run_dir.mkdir(parents=True)
+        spend_at = (datetime.now(timezone.utc).replace(microsecond=0) - timedelta(minutes=1)).isoformat()
+        append_quota_slot_spend_fixture(
+            run_dir,
+            goal_id=goal_id,
+            compute=1.0,
+            slot_index=0,
+            generated_at=spend_at,
+            allowed_slots=1440,
+        )
+        records = [json.loads(line) for line in (run_dir / "index.jsonl").read_text(encoding="utf-8").splitlines()]
+        goal_record = goal(goal_id, compute=1.0)
+        before = goal_quota_with_spend_ledger(goal_record, records)
+        assert before["spent_slots"] == 1, before
+
+        status_payload = {
+            "ok": True,
+            "registry": "./fixtures/registry.json",
+            "runtime_root": str(runtime),
+            "goal_count": 1,
+            "run_count": 1,
+            "attention_queue": {"items": [attention(goal_id, compute=1.0)]},
+            "run_history": {"goals": [goal_record]},
+        }
+        preview = build_quota_slot_void_preview(status_payload, goal_id=goal_id, voided_run_generated_at=spend_at)
+        event = build_quota_slot_void_event(preview, source="heartbeat", reason_summary="duplicate fixture spend")
+        assert preview["classification"] == "quota_slot_voided", preview
+        assert event["quota_event"]["event_type"] == "quota_slot_voided", event
+        void_payload = void_quota_slot(
+            status_payload,
+            goal_id=goal_id,
+            voided_run_generated_at=spend_at,
+            execute=True,
+            source="heartbeat",
+            reason_summary="duplicate fixture spend",
+        )
+        assert void_payload["appended"] is True, void_payload
+
+        records = [json.loads(line) for line in (run_dir / "index.jsonl").read_text(encoding="utf-8").splitlines()]
+        after = goal_quota_with_spend_ledger(goal_record, records)
+        assert after["spent_slots"] == 0, after
+        assert after["spend_event_count"] == 1, after
+        assert after["void_event_count"] == 1, after
