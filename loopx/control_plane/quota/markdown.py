@@ -536,6 +536,7 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"requires_archive={completed_todo_archive_warning.get('requires_archive')} "
             f"active_done={completed_todo_archive_warning.get('active_done_count')} "
             f"max_active_done={completed_todo_archive_warning.get('max_active_done_count')} "
+            f"default_archive_keep={completed_todo_archive_warning.get('default_archive_keep_count')} "
             f"archive_section={completed_todo_archive_warning.get('archive_section')}"
         )
         if completed_todo_archive_warning.get("recommended_action"):

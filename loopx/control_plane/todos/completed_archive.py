@@ -12,6 +12,10 @@ from .active_state_editing import (
 
 
 DEFAULT_MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE = 12
+DEFAULT_COMPLETED_TODO_ARCHIVE_HEADROOM = 2
+COMPLETED_TODO_ARCHIVE_COMMAND_TEMPLATE = (
+    "loopx todo archive-completed --goal-id <goal-id> --execute"
+)
 
 
 def completed_todo_archive_warning(
@@ -31,6 +35,10 @@ def completed_todo_archive_warning(
         open_count = int(agent_todos.get("open_count") or 0)
     except (TypeError, ValueError):
         open_count = 0
+    archive_keep_count = max(
+        0,
+        max_active_done_todos - DEFAULT_COMPLETED_TODO_ARCHIVE_HEADROOM,
+    )
     return {
         "kind": "completed_agent_todo_archive_required",
         "requires_archive": True,
@@ -38,6 +46,8 @@ def completed_todo_archive_warning(
         "active_done_count": done_count,
         "active_open_count": open_count,
         "max_active_done_count": max_active_done_todos,
+        "default_archive_keep_count": archive_keep_count,
+        "archive_command_template": COMPLETED_TODO_ARCHIVE_COMMAND_TEMPLATE,
         "recommended_action": (
             "move older completed Agent Todo entries into a dedicated Completed Work Archive "
             "until the active Agent Todo section keeps only current open work and a small recent-done tail"
