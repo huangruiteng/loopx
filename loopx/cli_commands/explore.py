@@ -20,7 +20,13 @@ from ..capabilities.explore.result_log import (
     explore_result_log_path,
     load_explore_result_events,
 )
-from ..capabilities.lark.explore_results import (
+from ..capabilities.explore.todo_branch_plan import build_explore_todo_branch_plan
+from ..capabilities.explore.worker_branch_plan import (
+    DEFAULT_WORKER_HARNESS_PROFILE,
+    build_explore_worker_branch_plan,
+    worker_harness_profile_names,
+)
+from ..presentation.sinks.lark.explore_results import (
     DEFAULT_EXPLORE_BASE_NAME,
     EXPLORE_TABLE_KEYS,
     LarkExploreConfig,
@@ -33,9 +39,10 @@ from ..capabilities.lark.explore_results import (
     sync_explore_results_to_lark,
     write_lark_explore_local_config,
 )
-from ..capabilities.lark.kanban import DEFAULT_CLI_BIN
+from ..presentation.sinks.lark.kanban import DEFAULT_CLI_BIN
 from ..history import load_registry
 from ..paths import resolve_runtime_root
+from ..todos import list_goal_todos
 
 
 PrintPayload = Callable[
@@ -119,6 +126,120 @@ def register_explore_commands(
         default="mermaid",
     )
     graph.add_argument("--out", help="Also write the graph to this local file.")
+
+    branch_plan = sub.add_parser(
+        "todo-branch-plan",
+        help=(
+            "Experimentally rank multiple open agent todos as CPU-style predicted "
+            "exploration branches. Read-only; emits commands but does not execute them."
+        ),
+    )
+    add_subcommand_format(branch_plan)
+    branch_plan.add_argument("--goal-id", required=True)
+    _add_projection_limit_args(branch_plan)
+    branch_plan.add_argument("--agent-id", help="Prefer this agent's claimed todos, then unclaimed todos.")
+    branch_plan.add_argument("--width", type=int, default=3, help="Maximum predicted branch issue width.")
+    branch_plan.add_argument(
+        "--scheduler-strategy",
+        choices=["dspark"],
+        default="dspark",
+        help="Use DSpark-style confidence scheduled verification.",
+    )
+    branch_plan.add_argument(
+        "--scheduler-load",
+        type=float,
+        default=0.2,
+        help="0..1 load factor for DSpark-style verification-budget scheduling.",
+    )
+    branch_plan.add_argument(
+        "--allow-unscoped-parallel",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Treat todos without declared write scopes as speculative read/coordination "
+            "branches. Disable to select only one unscoped branch."
+        ),
+    )
+
+    worker_branch_plan = sub.add_parser(
+        "worker-branch-plan",
+        help=(
+            "Experimentally group open LoopX todos into worker-lane branches. "
+            "Read-only; emits LoopX claim/lease suggestions but launches no workers."
+        ),
+    )
+    add_subcommand_format(worker_branch_plan)
+    worker_branch_plan.add_argument("--goal-id", required=True)
+    _add_projection_limit_args(worker_branch_plan)
+    worker_branch_plan.add_argument("--agent-id", help="Prefer this agent's claimed todos, then unclaimed todos.")
+    worker_branch_plan.add_argument(
+        "--harness-profile",
+        choices=worker_harness_profile_names(),
+        default=DEFAULT_WORKER_HARNESS_PROFILE,
+        help=(
+            "Harness design profile. adaptive-resilient captures the best observed "
+            "long-horizon traits without forcing N, duration, or full branch fill."
+        ),
+    )
+    worker_branch_plan.add_argument(
+        "--worker-width",
+        type=int,
+        default=3,
+        help="Maximum predicted worker lanes; the planner may select fewer.",
+    )
+    worker_branch_plan.add_argument(
+        "--max-todos-per-branch",
+        type=int,
+        default=None,
+        help=(
+            "Optional safety ceiling for LoopX todos bundled into one worker lane. "
+            "When omitted, adaptive profiles choose bundle size from marginal value."
+        ),
+    )
+    worker_branch_plan.add_argument(
+        "--branch-fill-policy",
+        choices=["bundle-by-affinity", "value-first"],
+        help=(
+            "bundle-by-affinity chunks related todos up to the ceiling; value-first "
+            "only adds lower-ranked todos when their marginal score clears the floor."
+        ),
+    )
+    worker_branch_plan.add_argument(
+        "--marginal-score-floor",
+        type=float,
+        help="For value-first fill, require added todos to meet this fraction of the seed score.",
+    )
+    worker_branch_plan.add_argument(
+        "--scheduler-load",
+        type=float,
+        default=0.2,
+        help=(
+            "0..1 fallback load factor for worker-lane scheduling; superseded by "
+            "--load-profile observations when provided."
+        ),
+    )
+    worker_branch_plan.add_argument(
+        "--allow-unscoped-parallel",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Allow multiple worker lanes whose todos do not declare write scopes.",
+    )
+    worker_branch_plan.add_argument(
+        "--router-state",
+        help=(
+            "Path to a loopx_explore_router_state_v0 JSON file with cross-epoch "
+            "per-family routing statistics (used by router-enabled profiles such "
+            "as moe-router; maintained by the runner between epochs)."
+        ),
+    )
+    worker_branch_plan.add_argument(
+        "--load-profile",
+        help=(
+            "Path to a JSON file with observed parallel timings "
+            "(parallel_wall_minutes, max_branch_minutes, branch_count) used to "
+            "calibrate the lane-admission load factor from measurements."
+        ),
+    )
 
     setup = sub.add_parser(
         "feishu-setup",
@@ -280,6 +401,67 @@ def render_explore_markdown(payload: dict[str, object]) -> str:
     if isinstance(row_counts, dict):
         joined = ", ".join(f"{key}={value}" for key, value in row_counts.items())
         lines.append(f"- rows: `{joined}`")
+    if payload.get("strategy"):
+        lines.append(f"- strategy: `{payload.get('strategy')}`")
+    if payload.get("harness_profile"):
+        lines.append(f"- harness_profile: `{payload.get('harness_profile')}`")
+    if payload.get("issue_width") not in (None, ""):
+        lines.append(f"- issue_width: `{payload.get('issue_width')}`")
+    if payload.get("worker_width") not in (None, ""):
+        lines.append(f"- worker_width_ceiling: `{payload.get('worker_width')}`")
+    if payload.get("branch_fill_policy") not in (None, ""):
+        lines.append(f"- branch_fill_policy: `{payload.get('branch_fill_policy')}`")
+    if payload.get("verification_budget") not in (None, ""):
+        lines.append(f"- verification_budget: `{payload.get('verification_budget')}`")
+    ab_result = payload.get("ab_result")
+    if isinstance(ab_result, dict):
+        if ab_result.get("baseline_serial_theta") is not None:
+            lines.append(
+                "- ab_estimate: "
+                f"`baseline={ab_result.get('baseline_serial_theta')}, "
+                f"dspark={ab_result.get('dspark_selected_theta')}, "
+                f"speedup={ab_result.get('estimated_speedup_vs_baseline')}x`"
+            )
+        else:
+            lines.append(
+                "- ab_estimate: "
+                f"`baseline_evidence={ab_result.get('baseline_expected_evidence_units')}, "
+                f"dspark_evidence={ab_result.get('dspark_expected_evidence_units')}, "
+                f"speedup={ab_result.get('estimated_speedup_vs_baseline')}x`"
+            )
+    selected_branches = payload.get("selected_branches")
+    if isinstance(selected_branches, list) and selected_branches:
+        lines.extend(["", "## Predicted Branches", ""])
+        for branch in selected_branches:
+            if not isinstance(branch, dict):
+                continue
+            lines.append(
+                f"- {branch.get('branch_role')} `{branch.get('todo_id')}` "
+                f"score=`{branch.get('score')}` confidence=`{branch.get('confidence')}`: "
+                f"{branch.get('text')}"
+            )
+            commands = branch.get("suggested_commands")
+            if isinstance(commands, list) and commands:
+                for command in commands:
+                    lines.append(f"  - `{command}`")
+    selected_worker_branches = payload.get("selected_worker_branches")
+    if isinstance(selected_worker_branches, list) and selected_worker_branches:
+        lines.extend(["", "## Worker Branches", ""])
+        for branch in selected_worker_branches:
+            if not isinstance(branch, dict):
+                continue
+            todo_ids = ", ".join(str(todo_id) for todo_id in branch.get("todo_ids") or [])
+            lines.append(
+                f"- {branch.get('branch_role')} `{branch.get('branch_id')}` "
+                f"worker=`{branch.get('worker_hint')}` confidence=`{branch.get('confidence')}` "
+                f"evidence=`{branch.get('expected_evidence_units')}`"
+            )
+            if todo_ids:
+                lines.append(f"  - todos: `{todo_ids}`")
+            commands = branch.get("suggested_commands")
+            if isinstance(commands, list) and commands:
+                for command in commands[:4]:
+                    lines.append(f"  - `{command}`")
     tree_lines = _tree_lines(payload.get("tree"))
     if tree_lines:
         lines.extend(["", "## Topology", "", *tree_lines])
@@ -405,6 +587,77 @@ def handle_explore_command(
                         encoding="utf-8",
                     )
                 payload["out"] = str(out_path)
+        elif args.explore_command == "todo-branch-plan":
+            projection = _projection_for(args, runtime_root=runtime_root)
+            todo_payload = list_goal_todos(
+                registry_path=registry_path,
+                goal_id=args.goal_id,
+                role="agent",
+                status="open",
+                agent_id=args.agent_id,
+            )
+            payload = build_explore_todo_branch_plan(
+                goal_id=args.goal_id,
+                todos=[
+                    item
+                    for item in todo_payload.get("todos") or []
+                    if isinstance(item, dict)
+                ],
+                projection=projection,
+                agent_id=args.agent_id,
+                width=args.width,
+                allow_unscoped_parallel=bool(args.allow_unscoped_parallel),
+                scheduler_strategy=args.scheduler_strategy,
+                scheduler_load=args.scheduler_load,
+            )
+            payload["todo_source"] = {
+                "source": todo_payload.get("source"),
+                "state_file": todo_payload.get("state_file"),
+                "todo_count": todo_payload.get("todo_count"),
+            }
+        elif args.explore_command == "worker-branch-plan":
+            projection = _projection_for(args, runtime_root=runtime_root)
+            todo_payload = list_goal_todos(
+                registry_path=registry_path,
+                goal_id=args.goal_id,
+                role="agent",
+                status="open",
+                agent_id=args.agent_id,
+            )
+            router_state = None
+            if getattr(args, "router_state", None):
+                router_state = json.loads(
+                    Path(args.router_state).read_text(encoding="utf-8-sig")
+                )
+            load_profile = None
+            if getattr(args, "load_profile", None):
+                load_profile = json.loads(
+                    Path(args.load_profile).read_text(encoding="utf-8-sig")
+                )
+            payload = build_explore_worker_branch_plan(
+                goal_id=args.goal_id,
+                todos=[
+                    item
+                    for item in todo_payload.get("todos") or []
+                    if isinstance(item, dict)
+                ],
+                projection=projection,
+                agent_id=args.agent_id,
+                worker_width=args.worker_width,
+                max_todos_per_branch=args.max_todos_per_branch,
+                scheduler_load=args.scheduler_load,
+                allow_unscoped_parallel=bool(args.allow_unscoped_parallel),
+                harness_profile=args.harness_profile,
+                branch_fill_policy=args.branch_fill_policy,
+                marginal_score_floor=args.marginal_score_floor,
+                router_state=router_state,
+                load_profile=load_profile,
+            )
+            payload["todo_source"] = {
+                "source": todo_payload.get("source"),
+                "state_file": todo_payload.get("state_file"),
+                "todo_count": todo_payload.get("todo_count"),
+            }
         elif args.explore_command == "feishu-setup":
             payload = setup_lark_explore_board(
                 config_path=config_path,

@@ -27,7 +27,15 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.capabilities.explore import result_log  # noqa: E402
-from loopx.capabilities.lark import explore_results  # noqa: E402
+from loopx.capabilities.explore.router_state import (  # noqa: E402
+    advance_epoch,
+    scope_family_key,
+    initial_router_state,
+    observe_epoch,
+)
+from loopx.capabilities.explore.todo_branch_plan import build_explore_todo_branch_plan  # noqa: E402
+from loopx.capabilities.explore.worker_branch_plan import build_explore_worker_branch_plan  # noqa: E402
+from loopx.presentation.sinks.lark import explore_results  # noqa: E402
 
 
 ABS_PATH_RE = re.compile(r"(?<![A-Za-z])[A-Za-z]:[\\/](?![\\/])|file://|/Users/|/home/")
@@ -340,11 +348,466 @@ def check_lark_setup_and_card() -> None:
     assert card["elements"][0]["text"]["tag"] == "lark_md", card
 
 
+def check_todo_branch_prediction_contract() -> None:
+    goal_id = "explore-smoke-goal"
+    projection = result_log.build_explore_result_projection(
+        [
+            result_log.build_explore_node_event(
+                goal_id=goal_id,
+                title="MATLAB Simulink code generation frontier",
+                node_id="matlab_codegen_frontier",
+                status="exploring",
+                tags=["matlab", "codegen"],
+            )
+        ],
+        goal_id=goal_id,
+    )
+    todos = [
+        {
+            "todo_id": "todo_primary",
+            "index": 1,
+            "status": "open",
+            "text": "[P0] Validate MATLAB codegen topology mapping",
+            "task_class": "advancement_task",
+            "claimed_by": "codex-main-control",
+            "required_write_scopes": ["loopx/capabilities/explore/**"],
+        },
+        {
+            "todo_id": "todo_parallel",
+            "index": 2,
+            "status": "open",
+            "text": "[P1] Add Simulink finding projection smoke",
+            "task_class": "advancement_task",
+            "required_write_scopes": ["examples/**"],
+        },
+        {
+            "todo_id": "todo_conflict",
+            "index": 3,
+            "status": "open",
+            "text": "[P1] Edit alternate topology predictor",
+            "task_class": "advancement_task",
+            "required_write_scopes": ["loopx/capabilities/explore/result_log.py"],
+        },
+        {
+            "todo_id": "todo_other",
+            "index": 4,
+            "status": "open",
+            "text": "[P0] Other agent owned branch",
+            "task_class": "advancement_task",
+            "claimed_by": "codex-side-agent",
+        },
+    ]
+    plan = build_explore_todo_branch_plan(
+        goal_id=goal_id,
+        todos=todos,
+        projection=projection,
+        agent_id="codex-main-control",
+        width=3,
+    )
+    assert plan["ok"] is True and plan["dry_run"] is True, plan
+    assert plan["schema_version"] == "loopx_explore_todo_branch_plan_v0", plan
+    assert plan["boundary"]["starts_agents"] is False, plan
+    assert plan["scheduler"]["schema_version"] == "loopx_explore_speculative_scheduler_v0", plan
+    assert plan["scheduler"]["strategy"] == "dspark_confidence_scheduled_prefix", plan
+    assert set(plan["scheduler"]["ab_comparison"]) == {"baseline_serial", "dspark_selected"}, plan
+    assert plan["ab_result"]["schema_version"] == "loopx_explore_branch_plan_ab_result_v0", plan
+    assert plan["ab_result"]["baseline_serial_theta"] > 0, plan
+    assert plan["ab_result"]["estimated_speedup_vs_baseline"] > 0, plan
+    selected_ids = [item["todo_id"] for item in plan["selected_branches"]]
+    assert selected_ids[:2] == ["todo_primary", "todo_parallel"], plan
+    assert all("expected_evidence_units" in item for item in plan["selected_branches"]), plan
+    rejected = {item["todo_id"]: item for item in plan["rejected_candidates"]}
+    assert rejected["todo_conflict"]["selection_status"] == "rejected_hazard", plan
+    assert rejected["todo_other"]["selection_status"] == "blocked_claimed_by_other", plan
+    assert any("task-lease acquire" in command for command in plan["selected_branches"][0]["suggested_commands"]), plan
+
+    worker_plan = build_explore_worker_branch_plan(
+        goal_id=goal_id,
+        todos=todos,
+        projection=projection,
+        agent_id="codex-main-control",
+        worker_width=2,
+        max_todos_per_branch=3,
+    )
+    assert worker_plan["ok"] is True and worker_plan["dry_run"] is True, worker_plan
+    assert worker_plan["schema_version"] == "loopx_explore_worker_branch_plan_v0", worker_plan
+    assert worker_plan["harness_compatibility"]["replaces_loopx_runtime"] is False, worker_plan
+    assert worker_plan["boundary"]["starts_agents"] is False, worker_plan
+    assert worker_plan["selected_worker_branch_count"] >= 1, worker_plan
+    first_worker = worker_plan["selected_worker_branches"][0]
+    assert len(first_worker["todo_bundle"]) >= 1, worker_plan
+    assert first_worker["execution_contract"]["must_enter_loopx_harness"] is True, worker_plan
+    assert worker_plan["ab_result"]["schema_version"] == "loopx_explore_worker_branch_plan_ab_result_v0", worker_plan
+    assert worker_plan["ab_result"]["estimated_speedup_vs_baseline"] > 0, worker_plan
+    assert any(
+        event["event_type"] == "predicted"
+        for event in worker_plan["accept_reject_trace"]
+    ), worker_plan
+
+    adaptive_worker_plan = build_explore_worker_branch_plan(
+        goal_id=goal_id,
+        todos=todos,
+        projection=projection,
+        agent_id="codex-main-control",
+        worker_width=6,
+        harness_profile="adaptive-resilient",
+    )
+    assert adaptive_worker_plan["ok"] is True, adaptive_worker_plan
+    assert adaptive_worker_plan["harness_profile"] == "adaptive-resilient", adaptive_worker_plan
+    assert adaptive_worker_plan["branch_fill_policy"] == "value-first", adaptive_worker_plan
+    assert adaptive_worker_plan["selected_worker_branch_count"] <= 6, adaptive_worker_plan
+    assert adaptive_worker_plan["harness_compatibility"]["duration_guard_controlled_by_planner"] is False, adaptive_worker_plan
+    assert adaptive_worker_plan["harness_compatibility"]["fixed_worker_count_controlled_by_planner"] is False, adaptive_worker_plan
+    assert adaptive_worker_plan["harness_compatibility"]["forces_full_branch_fill"] is False, adaptive_worker_plan
+    assert adaptive_worker_plan["max_todos_per_branch_explicit"] is False, adaptive_worker_plan
+    assert adaptive_worker_plan["harness_compatibility"]["adaptive_todo_batching"] is True, adaptive_worker_plan
+    profile = adaptive_worker_plan["worker_harness_profile"]
+    assert profile["duration_guard"]["enabled"] is False, profile
+    assert profile["concurrency_policy"]["fixed_worker_count"] is False, profile
+    assert profile["concurrency_policy"]["does_not_force_requested_width"] is True, profile
+    assert profile["retry_policy"]["enabled"] is True, profile
+    assert profile["infra_cooldown"]["enabled"] is True, profile
+    assert any(
+        0 < len(branch["todo_bundle"]) < 8
+        for branch in adaptive_worker_plan["selected_worker_branches"]
+    ), adaptive_worker_plan
+
+
+def _router_smoke_todo(index: int, *, family: str, priority: str = "P0") -> dict[str, object]:
+    return {
+        "todo_id": f"todo_router_{family}_{index}",
+        "index": index,
+        "status": "open",
+        "text": f"[{priority}] Probe {family} facet {index}",
+        "task_class": "advancement_task",
+        "required_write_scopes": [f"artifacts/{family}/**"],
+    }
+
+
+def check_worker_lane_router_contract() -> None:
+    goal_id = "explore-smoke-router"
+
+    # 1. Width is no longer silently clamped to 8: 12 distinct-family todos at
+    #    worker_width=10 under independent-lane admission saturate all 10 lanes.
+    families = [f"fam{index:02d}" for index in range(12)]
+    wide_todos = [
+        _router_smoke_todo(index + 1, family=family) for index, family in enumerate(families)
+    ]
+    wide_plan = build_explore_worker_branch_plan(
+        goal_id=goal_id,
+        todos=wide_todos,
+        agent_id="codex-main-control",
+        worker_width=10,
+        harness_profile="adaptive-resilient",
+    )
+    assert wide_plan["worker_width"] == 10, wide_plan["worker_width"]
+    assert wide_plan["scheduler_model"] == "independent_lane_admission", wide_plan["scheduler_model"]
+    assert wide_plan["selected_worker_branch_count"] == 10, wide_plan["selected_worker_branch_count"]
+    assert wide_plan["admission_audit"]["queue_exhausted"] is False, wide_plan["admission_audit"]
+    outside = [
+        branch
+        for branch in wide_plan["rejected_worker_branches"]
+        if branch.get("selection_status") == "outside_verification_budget"
+    ]
+    assert len(outside) == 2, [branch.get("branch_id") for branch in outside]
+
+    # 2. Fewer todos than width: every idle lane is a queue-exhaustion, not a cap.
+    narrow_plan = build_explore_worker_branch_plan(
+        goal_id=goal_id,
+        todos=wide_todos[:5],
+        agent_id="codex-main-control",
+        worker_width=10,
+        harness_profile="adaptive-resilient",
+    )
+    assert narrow_plan["selected_worker_branch_count"] == 5, narrow_plan["selected_worker_branch_count"]
+    assert narrow_plan["admission_audit"]["queue_exhausted"] is True, narrow_plan["admission_audit"]
+
+    # 3. moe-router without router state still plans (router disabled but supported).
+    bare_moe_plan = build_explore_worker_branch_plan(
+        goal_id=goal_id,
+        todos=wide_todos[:4],
+        agent_id="codex-main-control",
+        worker_width=4,
+        harness_profile="moe-router",
+    )
+    assert bare_moe_plan["router"]["supported_by_profile"] is True, bare_moe_plan["router"]
+    assert bare_moe_plan["router"]["enabled"] is False, bare_moe_plan["router"]
+    assert bare_moe_plan["strategy"] == "independent_lane_worker_prediction", bare_moe_plan["strategy"]
+
+    # 4. Aux-loss-free invariant: bias reorders routing but leaves value
+    #    bookkeeping untouched. Two equal-score families; biasing the
+    #    alphabetically-later one moves it first without changing evidence.
+    fam_first, fam_second = "family_alpha", "family_beta"
+    pair_todos = [
+        _router_smoke_todo(1, family=fam_first),
+        _router_smoke_todo(2, family=fam_second),
+    ]
+    biased_state = initial_router_state()
+    biased_state["families"][scope_family_key(fam_second)] = {"bias": 0.4, "runs": 0}
+    unbiased_plan = build_explore_worker_branch_plan(
+        goal_id=goal_id,
+        todos=pair_todos,
+        agent_id="codex-main-control",
+        worker_width=2,
+        harness_profile="moe-router",
+        router_state=initial_router_state(),
+    )
+    biased_plan = build_explore_worker_branch_plan(
+        goal_id=goal_id,
+        todos=pair_todos,
+        agent_id="codex-main-control",
+        worker_width=2,
+        harness_profile="moe-router",
+        router_state=biased_state,
+    )
+    assert unbiased_plan["router"]["enabled"] is True, unbiased_plan["router"]
+    unbiased_order = [branch["affinity_key"] for branch in unbiased_plan["selected_worker_branches"]]
+    biased_order = [branch["affinity_key"] for branch in biased_plan["selected_worker_branches"]]
+    assert unbiased_order[0].endswith(fam_first), unbiased_order
+    assert biased_order[0].endswith(fam_second), biased_order
+    evidence_by_family = lambda plan: {  # noqa: E731
+        branch["affinity_key"]: branch["expected_evidence_units"]
+        for branch in plan["selected_worker_branches"]
+    }
+    assert evidence_by_family(unbiased_plan) == evidence_by_family(biased_plan), (
+        evidence_by_family(unbiased_plan),
+        evidence_by_family(biased_plan),
+    )
+    routed_branch = biased_plan["selected_worker_branches"][0]
+    assert "router" in routed_branch and "routing_score" in routed_branch, routed_branch
+
+    # 5. DSpark confident-prefix bundles: P0+P1 clear the calibrated threshold,
+    #    P2 truncates into its own lane; a family observed rejecting everything
+    #    collapses to single-todo bundles.
+    bundle_todos = [
+        _router_smoke_todo(1, family="family_gamma", priority="P0"),
+        _router_smoke_todo(2, family="family_gamma", priority="P1"),
+        _router_smoke_todo(3, family="family_gamma", priority="P2"),
+    ]
+    def _bundle_sizes(plan: dict[str, object]) -> list[int]:
+        # Same-family lanes share a write-scope root, so the selection loop
+        # keeps only the first as parallel-safe; bundle FORMATION is what is
+        # under test here, so collect selected and rejected branches alike.
+        branches = list(plan["selected_worker_branches"]) + [
+            branch
+            for branch in plan["rejected_worker_branches"]
+            if branch.get("todo_bundle")
+        ]
+        return sorted(len(branch["todo_bundle"]) for branch in branches)
+
+    bundle_plan = build_explore_worker_branch_plan(
+        goal_id=goal_id,
+        todos=bundle_todos,
+        agent_id="codex-main-control",
+        worker_width=3,
+        harness_profile="moe-router",
+        router_state=initial_router_state(),
+    )
+    assert _bundle_sizes(bundle_plan) == [1, 2], _bundle_sizes(bundle_plan)
+
+    rejected_family_state = observe_epoch(
+        initial_router_state(),
+        epoch=1,
+        probes=[
+            {
+                "family": scope_family_key("family_gamma"),
+                "duration_minutes": 1.0,
+                "observation_keys": [],
+                "accepted": False,
+                "retryable_infra_error": False,
+            }
+        ],
+    )
+    rejected_plan = build_explore_worker_branch_plan(
+        goal_id=goal_id,
+        todos=bundle_todos,
+        agent_id="codex-main-control",
+        worker_width=3,
+        harness_profile="moe-router",
+        router_state=rejected_family_state,
+    )
+    assert _bundle_sizes(rejected_plan) == [1, 1, 1], _bundle_sizes(rejected_plan)
+
+    # 6. Opportunistic expansion: low novelty should not collapse a proven router
+    #    to two lanes when the next candidates still have positive lane value.
+    #    The expansion is bounded by value floors, not a blind fill rule.
+    expansion_families = [f"expand_fam_{index:02d}" for index in range(10)]
+    expansion_todos = [
+        _router_smoke_todo(index + 1, family=family, priority="P1")
+        for index, family in enumerate(expansion_families)
+    ]
+    expansion_state = initial_router_state()
+    expansion_state["updated_epoch"] = 3
+    expansion_state["totals"]["dispatches"] = 80
+    for family in expansion_families:
+        expansion_state["families"][scope_family_key(family)] = {
+            "runs": 5,
+            "value_rate_ema": 8.0,
+            "duration_ema": 0.8,
+            "accept_rate_ema": 1.0,
+            "infra_ema": 0.0,
+            "novelty_rate": 0.05,
+            "last_run_epoch": 2,
+            "bias": 0.0,
+        }
+    expansion_plan = build_explore_worker_branch_plan(
+        goal_id=goal_id,
+        todos=expansion_todos,
+        agent_id="codex-main-control",
+        worker_width=10,
+        harness_profile="moe-router",
+        router_state=expansion_state,
+        load_profile={
+            "parallel_wall_minutes": 8.0,
+            "max_branch_minutes": 1.0,
+            "branch_count": 10,
+            "source": "smoke_high_interference_profile",
+        },
+    )
+    expansion_audit = expansion_plan["admission_audit"]
+    assert expansion_plan["selected_worker_branch_count"] >= 6, expansion_audit
+    assert expansion_audit["opportunistic_admitted_count"] > 0, expansion_audit
+    assert expansion_audit["core_lane_count"] < expansion_audit["admitted_lane_count"], expansion_audit
+    assert expansion_audit["opportunistic_utilization_floor"] == 0.65, expansion_audit
+
+    # 7. Router state lifecycle: the novelty ledger dedupes across epochs and
+    #    coverage debt accrues bias for eligible-but-unrun families.
+    fam_key = scope_family_key("family_alpha")
+    state = observe_epoch(
+        initial_router_state(),
+        epoch=1,
+        probes=[
+            {
+                "family": fam_key,
+                "duration_minutes": 0.6,
+                "observation_keys": ["obs_a", "obs_b"],
+                "weighted_flags": {"flag_probe_ok": 2.0},
+                "accepted": True,
+                "retryable_infra_error": False,
+            }
+        ],
+    )
+    assert state["families"][fam_key]["novelty_rate"] == 1.0, state["families"][fam_key]
+    state = observe_epoch(
+        state,
+        epoch=2,
+        probes=[
+            {
+                "family": fam_key,
+                "duration_minutes": 0.6,
+                "observation_keys": ["obs_a", "obs_b"],
+                "weighted_flags": {"flag_probe_ok": 2.0},
+                "accepted": True,
+                "retryable_infra_error": False,
+            }
+        ],
+    )
+    assert state["families"][fam_key]["novelty_rate"] == 0.0, state["families"][fam_key]
+    idle_key = scope_family_key("family_beta")
+    for epoch in range(3, 9):
+        state = advance_epoch(state, epoch=epoch, eligible_families=[fam_key, idle_key])
+    assert state["families"][idle_key]["bias"] > 0.2, state["families"][idle_key]
+    assert state["families"][fam_key]["bias"] <= 0.0, state["families"][fam_key]
+
+    # 8. Observed load profile calibrates admission instead of the 0.2 prior.
+    calibrated_plan = build_explore_worker_branch_plan(
+        goal_id=goal_id,
+        todos=wide_todos[:4],
+        agent_id="codex-main-control",
+        worker_width=4,
+        harness_profile="moe-router",
+        load_profile={
+            "parallel_wall_minutes": 1.0,
+            "max_branch_minutes": 1.0,
+            "branch_count": 5,
+        },
+    )
+    calibration = calibrated_plan["load_calibration"]
+    assert calibration is not None and calibration["measured_load_factor"] == 0.0, calibration
+    assert calibrated_plan["scheduler"]["load_factor"] < 0.2, calibrated_plan["scheduler"]["load_factor"]
+
+
+def check_harness_domain_purity() -> None:
+    """The exploration harness stack must stay software-agnostic.
+
+    Domain vocabulary (target-software names, domain flag names, provider
+    error codes) belongs to adapters and agent-authored data files, never to
+    these modules. This gate is what keeps the harness reusable beyond any
+    single system under exploration.
+    """
+
+    banned = (
+        "simulink", "matlab", "mathworks", "stateflow",
+        "sim_ok", "codegen_ok", "build_ok", "error 5001",
+    )
+    modules = (
+        "loopx/capabilities/explore/harness_runtime.py",
+        "loopx/capabilities/explore/router_state.py",
+        "loopx/capabilities/explore/speculative_scheduler.py",
+        "loopx/capabilities/explore/todo_branch_plan.py",
+        "loopx/capabilities/explore/worker_branch_plan.py",
+        "loopx/cli_commands/explore.py",
+    )
+    for module in modules:
+        lowered = (REPO_ROOT / module).read_text(encoding="utf-8").lower()
+        hits = [token for token in banned if token in lowered]
+        assert not hits, f"domain vocabulary leaked into {module}: {hits}"
+
+
 def check_cli_surface() -> None:
     goal_id = "explore-smoke-cli"
     with tempfile.TemporaryDirectory(prefix="loopx-explore-smoke-") as tmp:
         registry = Path(tmp) / ".loopx" / "registry.json"
         runtime_root = Path(tmp) / "runtime"
+        project = Path(tmp) / "project"
+        state_file = f".codex/goals/{goal_id}/ACTIVE_GOAL_STATE.md"
+        (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
+        (project / state_file).write_text(
+            "---\n"
+            "status: active\n"
+            "updated_at: 2026-07-06T00:00:00+00:00\n"
+            "---\n\n"
+            "# Explore CLI Fixture\n\n"
+            "## Agent Todo\n\n"
+            "- [ ] [P0] Continue CLI topology experiment.\n"
+            "  <!-- loopx:todo todo_id=todo_cli_primary status=open task_class=advancement_task claimed_by=codex-main-control required_write_scopes=loopx/capabilities/explore/** -->\n"
+            "- [ ] [P1] Add CLI branch prediction smoke.\n"
+            "  <!-- loopx:todo todo_id=todo_cli_parallel status=open task_class=advancement_task required_write_scopes=examples/** -->\n",
+            encoding="utf-8",
+        )
+        registry.parent.mkdir(parents=True, exist_ok=True)
+        registry.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "updated_at": "2026-07-06T00:00:00+00:00",
+                    "common_runtime_root": str(runtime_root),
+                    "goals": [
+                        {
+                            "id": goal_id,
+                            "domain": "explore-smoke",
+                            "status": "active",
+                            "state_file": state_file,
+                            "repo": str(project),
+                            "adapter": {
+                                "kind": "explore_result_layer",
+                                "status": "connected-read-only",
+                            },
+                            "quota": {"compute": 1.0, "window_hours": 24},
+                            "coordination": {
+                                "primary_agent": "codex-main-control",
+                                "registered_agents": [
+                                    {"agent_id": "codex-main-control", "role": "primary"}
+                                ],
+                            },
+                        }
+                    ],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
         def run_cli(*extra_args: str) -> dict[str, object]:
             result = subprocess.run(
@@ -399,6 +862,108 @@ def check_cli_surface() -> None:
         assert summary["counts"]["finding_count"] == 1, summary
         graph = run_cli("explore", "graph", "--goal-id", goal_id)
         assert str(graph["mermaid"]).startswith("flowchart TD"), graph
+        branch_plan = run_cli(
+            "explore",
+            "todo-branch-plan",
+            "--goal-id",
+            goal_id,
+            "--agent-id",
+            "codex-main-control",
+            "--width",
+            "2",
+        )
+        assert branch_plan["ok"] is True and branch_plan["selected_count"] == 2, branch_plan
+        assert branch_plan["boundary"]["claims_todos"] is False, branch_plan
+        assert branch_plan["selected_branches"][0]["todo_id"] == "todo_cli_primary", branch_plan
+        assert set(branch_plan["scheduler"]["ab_comparison"]) == {"baseline_serial", "dspark_selected"}, branch_plan
+        assert branch_plan["ab_result"]["estimated_speedup_vs_baseline"] > 0, branch_plan
+        worker_branch_plan = run_cli(
+            "explore",
+            "worker-branch-plan",
+            "--goal-id",
+            goal_id,
+            "--agent-id",
+            "codex-main-control",
+            "--worker-width",
+            "2",
+            "--max-todos-per-branch",
+            "2",
+        )
+        assert worker_branch_plan["ok"] is True, worker_branch_plan
+        assert worker_branch_plan["schema_version"] == "loopx_explore_worker_branch_plan_v0", worker_branch_plan
+        assert worker_branch_plan["harness_compatibility"]["uses_loopx_todo_projection"] is True, worker_branch_plan
+        assert worker_branch_plan["boundary"]["claims_todos"] is False, worker_branch_plan
+        assert worker_branch_plan["selected_worker_branch_count"] >= 1, worker_branch_plan
+        assert worker_branch_plan["selected_worker_branches"][0]["execution_contract"]["requires_quota_should_run"] is True, worker_branch_plan
+        adaptive_worker_branch_plan = run_cli(
+            "explore",
+            "worker-branch-plan",
+            "--goal-id",
+            goal_id,
+            "--agent-id",
+            "codex-main-control",
+            "--harness-profile",
+            "adaptive-resilient",
+            "--worker-width",
+            "5",
+        )
+        assert adaptive_worker_branch_plan["ok"] is True, adaptive_worker_branch_plan
+        assert adaptive_worker_branch_plan["harness_profile"] == "adaptive-resilient", adaptive_worker_branch_plan
+        assert adaptive_worker_branch_plan["branch_fill_policy"] == "value-first", adaptive_worker_branch_plan
+        assert adaptive_worker_branch_plan["worker_harness_profile"]["duration_guard"]["enabled"] is False, adaptive_worker_branch_plan
+        assert adaptive_worker_branch_plan["harness_compatibility"]["fixed_worker_count_controlled_by_planner"] is False, adaptive_worker_branch_plan
+        assert adaptive_worker_branch_plan["harness_compatibility"]["forces_full_branch_fill"] is False, adaptive_worker_branch_plan
+        assert adaptive_worker_branch_plan["max_todos_per_branch_explicit"] is False, adaptive_worker_branch_plan
+        assert adaptive_worker_branch_plan["harness_compatibility"]["adaptive_todo_batching"] is True, adaptive_worker_branch_plan
+        router_state_path = Path(tmp) / "router_state.json"
+        router_state_path.write_text(
+            json.dumps(initial_router_state(), indent=2) + "\n",
+            encoding="utf-8",
+        )
+        load_profile_path = Path(tmp) / "load_profile.json"
+        load_profile_path.write_text(
+            json.dumps(
+                {
+                    "parallel_wall_minutes": 0.8,
+                    "max_branch_minutes": 0.75,
+                    "branch_count": 5,
+                    "source": "smoke_observed_profile",
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        moe_worker_branch_plan = run_cli(
+            "explore",
+            "worker-branch-plan",
+            "--goal-id",
+            goal_id,
+            "--agent-id",
+            "codex-main-control",
+            "--harness-profile",
+            "moe-router",
+            "--worker-width",
+            "5",
+            "--router-state",
+            str(router_state_path),
+            "--load-profile",
+            str(load_profile_path),
+        )
+        assert moe_worker_branch_plan["ok"] is True, moe_worker_branch_plan
+        assert moe_worker_branch_plan["harness_profile"] == "moe-router", moe_worker_branch_plan
+        assert moe_worker_branch_plan["router"]["enabled"] is True, moe_worker_branch_plan["router"]
+        assert moe_worker_branch_plan["scheduler_model"] == "independent_lane_admission", moe_worker_branch_plan
+        assert moe_worker_branch_plan["load_calibration"]["source"] == "smoke_observed_profile", moe_worker_branch_plan
+        assert moe_worker_branch_plan["admission_audit"] is not None, moe_worker_branch_plan
+        assert (
+            moe_worker_branch_plan["max_todos_per_branch_source"]
+            == "confident_prefix_scheduler_safety_cap"
+        ), moe_worker_branch_plan
+        assert (
+            moe_worker_branch_plan["harness_compatibility"]["confidence_prefix_todo_batching"]
+            is True
+        ), moe_worker_branch_plan
         sync = run_cli(
             "explore",
             "feishu-sync",
@@ -478,6 +1043,9 @@ def main() -> int:
     check_result_log_contract()
     check_lark_sync_contract()
     check_lark_setup_and_card()
+    check_todo_branch_prediction_contract()
+    check_worker_lane_router_contract()
+    check_harness_domain_purity()
     check_cli_surface()
     print("explore result layer smoke ok")
     return 0
