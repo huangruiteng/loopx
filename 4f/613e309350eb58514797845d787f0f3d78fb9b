@@ -1,0 +1,21 @@
+loopx/control_plane/todos/todo_summary.py
+  s_e3f612788718c1::t_23311289377356 3,67-88,850,854-856,867-874,886,889,892-898,930,963-1010,1012,1019-1021,1023,1026,1029,1031,1034,1036,1039,1043,1048,1055,1062,1068,1072,1076,1080,1083,1085-1086,1089,1108,1111,1113,1116,1118-1122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4f613e309350eb58514797845d787f0f3d78fb9b",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
