@@ -117,6 +117,9 @@ def assert_work_lane_context_matches_quota_state_machine_cases() -> None:
             agent_todo_summary=guard["agent_todo_summary"],
         )
         assert direct == guard["work_lane_contract"], (name, direct, guard)
+        for lane_item in guard["work_lane_contract"].get("monitor_due_items") or []:
+            assert "title" not in lane_item, (name, lane_item)
+            assert "handoff_note" not in lane_item, (name, lane_item)
 
 
 def assert_work_lane_context_progress_scope_sources() -> None:

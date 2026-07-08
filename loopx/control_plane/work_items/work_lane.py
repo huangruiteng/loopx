@@ -12,6 +12,23 @@ WORK_LANE_CURRENT_AGENT_MONITOR_REPAIR_OBLIGATIONS = {
     "repair_resume_gate_or_close_standing_monitor",
 }
 WORK_LANE_TODO_MONITOR_DUE_KIND = "todo_monitor_due"
+WORK_LANE_TODO_ITEM_FIELDS = (
+    "index",
+    "text",
+    "todo_id",
+    "status",
+    "priority",
+    "task_class",
+    "action_kind",
+    "claimed_by",
+    "target_key",
+    "next_due_at",
+    "expires_at",
+    "resume_when",
+    "resume_ready",
+    "blocking_monitor_todo_id",
+    "result_hash",
+)
 PRIVATE_BOUNDARY_MONITOR_RESULT_HASHES = {
     "private_boundary_no_authorized_read",
 }
@@ -81,6 +98,26 @@ def work_lane_contract_is_due_monitor_attempt(
     )
 
 
+def _compact_work_lane_todo_item(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: item.get(key)
+        for key in WORK_LANE_TODO_ITEM_FIELDS
+        if item.get(key) is not None
+    }
+
+
+def _compact_work_lane_todo_items(
+    items: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    return [
+        _compact_work_lane_todo_item(item)
+        for item in items[:limit]
+        if isinstance(item, dict)
+    ]
+
+
 def build_work_lane_contract(
     *,
     progress_scope: str,
@@ -130,7 +167,10 @@ def build_work_lane_contract(
             "reason_codes": reason_codes,
             "monitor_policy": "attempt_due_monitor_once_then_writeback_or_no_spend_if_unchanged",
             "monitor_due_count": max(0, int(monitor_due_count)),
-            "monitor_due_items": due_monitor_items[:monitor_due_item_limit],
+            "monitor_due_items": _compact_work_lane_todo_items(
+                due_monitor_items,
+                limit=monitor_due_item_limit,
+            ),
             "selected_todo_id": selected.get("todo_id"),
             "selected_next_due_at": selected.get("next_due_at"),
             "action": (
@@ -209,7 +249,10 @@ def build_work_lane_contract(
                 "reason_codes": reason_codes,
                 "monitor_policy": "material_transition_only",
                 "resume_blocked_by_monitor_count": max(0, int(resume_blocked_by_monitor_count)),
-                "resume_blocked_by_monitor_items": blocked_by_monitor_items[:monitor_due_item_limit],
+                "resume_blocked_by_monitor_items": _compact_work_lane_todo_items(
+                    blocked_by_monitor_items,
+                    limit=monitor_due_item_limit,
+                ),
                 "selected_todo_id": selected.get("todo_id"),
                 "selected_resume_when": selected.get("resume_when"),
                 "action": (
@@ -250,7 +293,10 @@ def build_work_lane_contract(
                     ],
                     "monitor_policy": "repair_schedule_metadata_before_quiet_wait",
                     "monitor_schedule_gap_count": max(0, int(monitor_schedule_gap_count)),
-                    "monitor_schedule_gap_items": schedule_gap_items[:monitor_due_item_limit],
+                    "monitor_schedule_gap_items": _compact_work_lane_todo_items(
+                        schedule_gap_items,
+                        limit=monitor_due_item_limit,
+                    ),
                     "selected_todo_id": first_schedule_gap.get("todo_id"),
                     "action": (
                         "repair the selected continuous_monitor todo by adding cadence/"

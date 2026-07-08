@@ -38,6 +38,69 @@ MONITOR_DUE_ITEM_LIMIT = 1
 TODO_BACKLOG_ITEM_LIMIT = 8
 TODO_DEFERRED_VISIBILITY_LIMIT = 8
 TODO_VISIBILITY_LANE_LIMIT = 16
+QUOTA_PAYLOAD_ITEM_TEXT_LIMIT = 180
+QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT = 2
+QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT = 2
+QUOTA_PAYLOAD_COMPACTION_SCHEMA_VERSION = "quota_todo_summary_payload_compaction_v0"
+QUOTA_PAYLOAD_ITEM_FIELDS = (
+    "index",
+    "text",
+    "todo_id",
+    "status",
+    "priority",
+    "task_class",
+    "action_kind",
+    "claimed_by",
+    "blocks_agent",
+    "global_gate",
+    "unblocks_todo_id",
+    "resume_when",
+    "resume_condition",
+    "resume_ready",
+    "blocking_monitor_todo_id",
+    "no_followup",
+    "successor_todo_ids",
+    "target_key",
+    "cadence",
+    "next_due_at",
+    "expires_at",
+    "last_checked_at",
+    "result_hash",
+    "consecutive_no_change",
+    "material_change",
+    "max_no_change_before_replan",
+    "route_continuation_replan_required",
+    "route_continuation_reason",
+    "route_id",
+    "route_key",
+    "completed_at",
+    "updated_at",
+)
+QUOTA_PAYLOAD_LANE_LIMITS = {
+    "monitor_due_items": MONITOR_DUE_ITEM_LIMIT,
+    "monitor_schedule_gap_items": MONITOR_DUE_ITEM_LIMIT,
+    "first_open_items": 3,
+    "first_executable_items": 3,
+    "active_next_action_items": 3,
+    "active_next_action_executable_items": 3,
+    "monitor_open_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
+    "backlog_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
+    "executable_backlog_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
+    "unclaimed_priority_open_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
+    "claimed_open_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
+    "claimed_advancement_open_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
+    "claimed_monitor_open_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
+    "current_agent_claimed_open_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
+    "current_agent_claimed_advancement_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
+    "current_agent_claimed_monitor_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
+    "claimed_by_others_items": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
+    "other_agent_scoped_items": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
+    "user_action_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
+    "resume_blocked_items": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
+    "handoff_gates": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
+    "current_agent_handoff_gates": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
+    "current_agent_cleared_without_successor_handoff_gates": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
+}
 
 
 def summarize_user_todos_for_quota(
@@ -229,6 +292,107 @@ def summarize_user_todos_for_quota(
             for item in user_action_open_items[:TODO_VISIBILITY_LANE_LIMIT]
         ]
     return summary
+
+
+def _truncate_quota_payload_text(value: Any, *, limit: int) -> Any:
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _compact_quota_payload_item(item: Any) -> Any:
+    if not isinstance(item, dict):
+        return item
+    compact: dict[str, Any] = {}
+    for key in QUOTA_PAYLOAD_ITEM_FIELDS:
+        value = item.get(key)
+        if value is None:
+            continue
+        if key == "text":
+            value = _truncate_quota_payload_text(
+                value,
+                limit=QUOTA_PAYLOAD_ITEM_TEXT_LIMIT,
+            )
+        compact[key] = value
+    if "text" not in compact and item.get("text") is not None:
+        compact["text"] = _truncate_quota_payload_text(
+            item.get("text"),
+            limit=QUOTA_PAYLOAD_ITEM_TEXT_LIMIT,
+        )
+    return compact
+
+
+def _compact_quota_payload_item_list(
+    items: Any,
+    *,
+    limit: int,
+) -> list[Any]:
+    if not isinstance(items, list):
+        return []
+    return [_compact_quota_payload_item(item) for item in items[:limit]]
+
+
+def _compact_quota_payload_claim_scope(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    compact: dict[str, Any] = {}
+    for key, child in value.items():
+        if isinstance(child, list):
+            compact[key] = _compact_quota_payload_item_list(
+                child,
+                limit=QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
+            )
+        else:
+            compact[key] = child
+    return compact
+
+
+def _compact_quota_payload_nested_warning(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    compact: dict[str, Any] = {}
+    for key, child in value.items():
+        if isinstance(child, list) and key.endswith("items"):
+            compact[key] = _compact_quota_payload_item_list(
+                child,
+                limit=QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
+            )
+        else:
+            compact[key] = child
+    return compact
+
+
+def compact_quota_todo_summary_for_payload(summary: dict[str, Any]) -> dict[str, Any]:
+    """Keep quota hot-path todo summaries bounded without changing decision input."""
+    compact: dict[str, Any] = {}
+    compacted_lanes: dict[str, dict[str, int]] = {}
+    for key, value in summary.items():
+        if isinstance(value, list):
+            limit = QUOTA_PAYLOAD_LANE_LIMITS.get(key, QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT)
+            compact[key] = _compact_quota_payload_item_list(value, limit=limit)
+            if len(value) > limit:
+                compacted_lanes[key] = {
+                    "shown": limit,
+                    "total": len(value),
+                }
+        elif key == "claim_scope":
+            compact[key] = _compact_quota_payload_claim_scope(value)
+        elif isinstance(value, dict):
+            compact[key] = _compact_quota_payload_nested_warning(value)
+        else:
+            compact[key] = value
+    compact["payload_compaction"] = {
+        "schema_version": QUOTA_PAYLOAD_COMPACTION_SCHEMA_VERSION,
+        "item_text_limit": QUOTA_PAYLOAD_ITEM_TEXT_LIMIT,
+        "visibility_lane_item_limit": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
+        "diagnostic_lane_item_limit": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
+        "compacted_lanes": compacted_lanes,
+        "full_detail_cold_path": "status, todo list, or active state",
+    }
+    return compact
 
 
 def summarize_project_asset_todos_for_quota(

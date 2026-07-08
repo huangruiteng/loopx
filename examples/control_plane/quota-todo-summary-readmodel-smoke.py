@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import sys
 
@@ -12,6 +13,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.control_plane.todos.quota_summary import (  # noqa: E402
+    compact_quota_todo_summary_for_payload,
     is_user_gate_todo_item,
     select_quota_todo_summary,
     summarize_project_asset_todos_for_quota,
@@ -221,11 +223,72 @@ def assert_user_gate_hint_detection_is_preserved() -> None:
     )
 
 
+def assert_quota_payload_summary_compacts_hot_path_lanes() -> None:
+    long_text = "[P2] " + "inspect projection consistency " * 30
+    source = {
+        "schema_version": "todo_summary_v0",
+        "source_section": "agent todo",
+        "open_count": 12,
+        "claimed_open_count": 12,
+        "claimed_monitor_open_count": 12,
+        "claimed_open_items": [
+            {
+                "index": index,
+                "todo_id": f"todo_payload_{index:03d}",
+                "text": long_text,
+                "title": long_text,
+                "status": "open",
+                "task_class": "continuous_monitor",
+                "claimed_by": "codex-main-control",
+                "handoff_note": {
+                    "schema_version": "handoff_note_v0",
+                    "body": "cold path detail " * 200,
+                },
+            }
+            for index in range(12)
+        ],
+        "claim_scope": {
+            "schema_version": "agent_claim_scope_v0",
+            "agent_id": "codex-product-capability",
+            "other_agent_claimed_open_count": 12,
+            "other_agent_claimed_items": [
+                {
+                    "index": index,
+                    "todo_id": f"todo_other_{index:03d}",
+                    "text": long_text,
+                    "task_class": "advancement_task",
+                    "claimed_by": "codex-main-control",
+                }
+                for index in range(12)
+            ],
+        },
+    }
+    compact = compact_quota_todo_summary_for_payload(source)
+    assert compact["open_count"] == 12, compact
+    assert compact["claimed_open_count"] == 12, compact
+    assert len(compact["claimed_open_items"]) == 2, compact
+    assert len(compact["claim_scope"]["other_agent_claimed_items"]) == 2, compact
+    first = compact["claimed_open_items"][0]
+    assert first["todo_id"] == "todo_payload_000", compact
+    assert first["text"].endswith("..."), first
+    assert len(first["text"]) <= 180, first
+    assert "title" not in first, first
+    assert "handoff_note" not in first, first
+    compaction = compact["payload_compaction"]
+    assert compaction["schema_version"] == "quota_todo_summary_payload_compaction_v0", compaction
+    assert compaction["compacted_lanes"]["claimed_open_items"] == {
+        "shown": 2,
+        "total": 12,
+    }, compaction
+    assert len(json.dumps(compact, ensure_ascii=False, sort_keys=True)) < 5000, compact
+
+
 def main() -> None:
     assert_agent_scoped_user_gate_and_monitor_state()
     assert_project_asset_fallback_and_canonical_precedence()
     assert_project_asset_summary_reuses_canonical_shape()
     assert_user_gate_hint_detection_is_preserved()
+    assert_quota_payload_summary_compacts_hot_path_lanes()
     print("quota todo summary read model smoke passed")
 
 

@@ -171,6 +171,7 @@ from .control_plane.todos.projection import (
     todo_summary_claim_scope_agent_id as projection_todo_summary_claim_scope_agent_id,
 )
 from .control_plane.todos.quota_summary import (
+    compact_quota_todo_summary_for_payload,
     select_quota_todo_summary,
     summarize_user_todos_for_quota,
 )
@@ -1949,7 +1950,7 @@ def build_quota_should_run(
         if item.get("missing_gates"):
             payload["missing_gates"] = item.get("missing_gates")
         if user_todo_summary:
-            payload["user_todo_summary"] = user_todo_summary
+            payload["user_todo_summary"] = compact_quota_todo_summary_for_payload(user_todo_summary)
             repeat_open_todo_notification = (
                 heartbeat_recommendation.get("repeat_notification_required") is True
             )
@@ -2018,7 +2019,7 @@ def build_quota_should_run(
             or payload.get("notify_user_on_capability_gate") is True
         )
         if agent_todo_summary:
-            payload["agent_todo_summary"] = agent_todo_summary
+            payload["agent_todo_summary"] = compact_quota_todo_summary_for_payload(agent_todo_summary)
         if blocked_priority_fallback:
             payload["blocked_priority_fallback"] = blocked_priority_fallback
         attention_queue = status_payload.get("attention_queue") if isinstance(status_payload.get("attention_queue"), dict) else {}
