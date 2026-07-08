@@ -134,6 +134,10 @@ runtime contract, benchmark route, or launch draft.
   gates, safe fallback, feedback, compact evidence, quota, and performance
   review. A Chinese version is available at
   [Loop Engineering 原则与常见坑](loop-engineering-principles-and-pitfalls.zh.md).
+- [Beginner loop presets](beginner-loop-presets.md): recommendation matrix for
+  turning lightweight loop-engineering starter patterns into LoopX-native
+  beginner presets, opt-in L2 sweepers, readiness score, and README structure
+  without adding a second state runtime.
 - [Frontstage two-surface strategy](frontstage-two-surface-strategy.md): route,
   data-source, visual-freedom, validation, and roadmap boundaries between the
   public showcase/homepage surface and the real local ops control-plane
