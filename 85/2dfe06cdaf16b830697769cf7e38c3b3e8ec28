@@ -1,0 +1,29 @@
+examples/control_plane/quota-todo-summary-readmodel-smoke.py
+  s_e3f612788718c1::t_ea88c14a5776dd 6,16,226-285,291
+examples/control_plane/quota-work-lane-policy-smoke.py
+  s_e3f612788718c1::t_31732f358ff15a 120-122
+loopx/control_plane/todos/quota_summary.py
+  s_e3f612788718c1::t_2035b1a401376b 41-103,297-397
+loopx/control_plane/work_items/work_lane.py
+  s_e3f612788718c1::t_715b5eddd6c5e1 15-31,101-120,170-173,252-255,296-299
+loopx/quota.py
+  s_e3f612788718c1::t_b8004d514f72c4 174,1953,2022
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "852dfe06cdaf16b830697769cf7e38c3b3e8ec28",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
