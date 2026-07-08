@@ -121,7 +121,7 @@ def normalize_next_action_text(value: str) -> str:
     text = " ".join(str(value or "").strip().split())
     if not text:
         raise ValueError("next_action must not be empty")
-    validate_public_safe_text("active_state_next_action", text)
+    validate_local_control_text("active_state_next_action", text)
     return text
 
 

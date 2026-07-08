@@ -1099,7 +1099,9 @@ operator lane because the registry says `waiting_on=user_or_controller`, while
 the active state exposes a more concrete user checklist. This is the preferred
 shape for complex project review: keep `recommended_action` short enough to
 route the queue, and put ordered user work in checkbox sections the dashboard
-can summarize.
+can summarize. This routing text belongs to the user's local control plane: it
+may include private project refs, but it must not include AK/SK values, tokens,
+auth headers, passwords, or inline credentials.
 
 For registered planned high-complexity goals with a compatible
 `*_read_only_map_v0` adapter and no run yet, status keeps the queue item in

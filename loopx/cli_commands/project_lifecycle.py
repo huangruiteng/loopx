@@ -108,7 +108,10 @@ def register_project_lifecycle_commands(
     )
     refresh_state_parser.add_argument(
         "--recommended-action",
-        help=f"Public-safe next action. Defaults to: {DEFAULT_REFRESH_ACTION}",
+        help=(
+            "Local-control next action. Private project refs are allowed; "
+            f"inline secrets are rejected. Defaults to: {DEFAULT_REFRESH_ACTION}"
+        ),
     )
     refresh_state_parser.add_argument(
         "--next-action",
@@ -249,7 +252,11 @@ def register_project_lifecycle_commands(
     )
     read_only_map_parser.add_argument(
         "--recommended-action",
-        help="Public-safe next action. Defaults to the first public-safe item from the active state's Next Action.",
+        help=(
+            "Local-control next action. Private project refs are allowed; "
+            "inline secrets are rejected. Defaults to the first item from the "
+            "active state's Next Action."
+        ),
     )
     read_only_map_parser.add_argument(
         "--dry-run",
@@ -346,7 +353,10 @@ def register_project_lifecycle_commands(
         "--agent-command",
         help="Target-agent command that becomes valid after approval. Defaults for read_only_map_opt_in approvals.",
     )
-    gate_parser.add_argument("--recommended-action", help="Public-safe next action for status/dashboard.")
+    gate_parser.add_argument(
+        "--recommended-action",
+        help="Local-control next action for status/dashboard; inline secrets are rejected.",
+    )
     gate_parser.add_argument("--dry-run", action="store_true", help="Print the decision run without appending it.")
     gate_parser.add_argument(
         "--no-global-sync",
