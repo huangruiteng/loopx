@@ -78,7 +78,7 @@ association, timestamp, and URL metadata, then emits either
 | `github_public_channel` | implemented starter | yes | none |
 | `github_public_reply_monitor` | implemented starter | yes | none |
 | `social_browser_x` | ego-browser-backed profile | install-check, public-handle packet, and gated plan | exact profile/post/reply gate required |
-| `finance_market_snapshot` | probed candidate profile | plan, user prompt surface, and [no-credential probe packet](finance-market-snapshot-probe.md) | account, private portfolio, trading, and paid-data gates required |
+| `finance_market_snapshot` | dry-run canary | public quote canary, plan, user prompt surface, and [no-credential probe packet](finance-market-snapshot-probe.md) | account, private portfolio, trading, and paid-data gates required |
 | `agent_reach_ops_source_map` | field-derived source profile | `loopx value-connectors source-map --connector agent_reach_ops_source_map --format json`; [profile note](agent-reach-ops-source-map.md) | publish/audit record required for every external write |
 | `botmail_identity` | host connector profile | install-check only | exact send gate required |
 | `community_channel` | host/browser connector profile | install-check and plan | exact account/message gate required |
@@ -161,8 +161,8 @@ time, source refs, and stop conditions. See the
 
 ## Finance Market Snapshot Profile
 
-`finance_market_snapshot` is a planned value connector profile for users who
-want an agent to pull market facts before analysis. It is useful when the user
+`finance_market_snapshot` is a dry-run value connector canary for users who
+want an agent to pull market facts before human analysis. It is useful when the user
 asks for a bounded snapshot such as:
 
 - 股票或 ETF 行情: 最新价、涨跌幅、成交额、市值、估值区间、更新时间;
@@ -182,6 +182,28 @@ Suggested source order:
 The profile should label every answer with freshness and confidence: `live`,
 `delayed`, `cached`, `source_unverified`, or `manual_review_required`. It should
 also say when a field is missing instead of filling it from a stale fallback.
+
+Run the first public quote canary without a live network read:
+
+```bash
+loopx value-connectors finance-market-snapshot \
+  --symbol sh600519 \
+  --format json
+```
+
+Run the same canary with a bounded public Eastmoney quote read:
+
+```bash
+loopx value-connectors finance-market-snapshot \
+  --symbol sh600519 \
+  --fetch-metadata \
+  --format json
+```
+
+The canary is intentionally tiny. It only accepts `sh600519` and `sz000001`,
+emits compact allowlisted quote fields, labels the source as
+`source_unverified`, and carries a `research_context` that keeps humans as the
+decision owner. Treat the packet as thesis-review evidence, not advice.
 
 Safe user prompts:
 
@@ -222,10 +244,10 @@ loopx value-connectors plan \
 
 See the [no-credential probe packet](finance-market-snapshot-probe.md) for the
 current source findings. The short version: Eastmoney public quote metadata is
-reachable as a `source_unverified` canary, GitHub OSS wrappers are fallback
-candidates that still need source-origin checks, and Futu/OpenD is gated until
-the user provides a local daemon, account permission, API agreements, and quote
-rights.
+available through a `source_unverified` canary, GitHub OSS wrappers are
+fallback candidates that still need source-origin checks, and Futu/OpenD is
+gated until the user provides a local daemon, account permission, API
+agreements, and quote rights.
 
 ## Protocol
 

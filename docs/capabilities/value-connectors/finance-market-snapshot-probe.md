@@ -78,8 +78,13 @@ Forbidden in this probe:
 
 ## Recommended Next Slice
 
-Implement a dry-run-only `finance_market_snapshot` canary before any live
-adapter:
+The first dry-run-only `finance_market_snapshot` canary is:
+
+```bash
+loopx value-connectors finance-market-snapshot --symbol sh600519 --format json
+```
+
+It runs before any live adapter:
 
 1. accept a tiny symbol allowlist such as `sh600519` and `sz000001`;
 2. call only the public Eastmoney quote endpoint with explicit timeout and user
@@ -89,6 +94,12 @@ adapter:
 4. label every result `source_unverified` until terms/freshness are reviewed;
 5. fail closed to a user gate for Futu/OpenD, private portfolio, paid data,
    trading, captcha, or credential paths.
+
+The emitted `finance_market_snapshot_canary_packet_v0` keeps
+`human_decision_owner=true` and marks thesis impact as
+`manual_review_required`. This follows the research-loop lesson that finance
+connectors should help a person review evidence and update judgment, not
+delegate investment decisions to the agent.
 
 ## Sources
 
