@@ -1,0 +1,23 @@
+examples/value-connectors-finance-probe-doc-smoke.py
+  s_d1f00c3a3dcf44::t_8fb608320a6bae 22,51,53
+examples/value-connectors-finance-snapshot-canary-smoke.py
+  s_d1f00c3a3dcf44::t_2774346b7b9298 1-195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "d5c3c2c679b6644b62db34869477a50383014243",
+  "prompts": {},
+  "sessions": {
+    "s_d1f00c3a3dcf44": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3fb7-2987-7e60-b0dc-f18fa86281b9",
+        "model": "unknown"
+      },
+      "human_author": "lusendong.6789 <lusendong.6789@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
