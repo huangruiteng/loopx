@@ -669,13 +669,20 @@ def build_scheduler_hint(
         if isinstance(capability_gate.get("available"), list)
         else []
     )
-    identity_keys = [
+    base_identity_keys = [
         "goal_id",
         "agent_identity.agent_id",
         "effective_action",
         "heartbeat_recommendation.recommended_mode",
         "interaction_contract.mode",
         "recommended_action",
+    ]
+    monitor_wait_identity_keys = [
+        "goal_id",
+        "agent_identity.agent_id",
+        "effective_action",
+        "heartbeat_recommendation.recommended_mode",
+        "interaction_contract.mode",
     ]
     agent_scope_action_set = {str(value) for value in agent_scope_frontier_actions}
 
@@ -716,6 +723,11 @@ def build_scheduler_hint(
             "if_unchanged": "apply_after_limit_without_spend",
             "spend_policy": "no quota spend for final replan check or loop stop",
         }
+        identity_keys = (
+            monitor_wait_identity_keys
+            if cadence_class == "monitor_wait"
+            else base_identity_keys
+        )
         identity_snapshot = {key: identity_value(key) for key in identity_keys}
         codex_rrule = rrule_for_minutes(codex_initial_interval)
         profile_snapshot = {

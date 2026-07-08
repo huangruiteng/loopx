@@ -284,6 +284,34 @@ def assert_monitor_wait_progression_reaches_120() -> None:
     assert "recommended_rrule" not in quiet["codex_app"], quiet
 
 
+def assert_monitor_wait_ignores_goal_recommended_action_identity_noise() -> None:
+    first_payload = monitor_window_payload(minutes_until_due=119)
+    first_payload["recommended_action"] = (
+        "Monitor another agent's post-merge run until material evidence appears."
+    )
+    first = build_hint_at(first_payload, now=FROZEN_NOW)
+    first_backoff = first["codex_app"]["stateful_backoff"]
+    assert first["cadence_class"] == "monitor_wait", first
+    assert first["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", first
+    assert "recommended_action" not in first["unchanged_identity_keys"], first
+
+    second_payload = monitor_window_payload(minutes_until_due=119)
+    second_payload["recommended_action"] = (
+        "Goal-level controller text changed, but the monitor target is unchanged."
+    )
+    second = build_hint_at(
+        second_payload,
+        now=FROZEN_NOW,
+        scheduler_state=state_from(first),
+    )
+    second_backoff = second["codex_app"]["stateful_backoff"]
+    assert second_backoff["state_status"] == "same_identity", second
+    assert second["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=30", second
+    assert second_backoff["identity_signature"] == first_backoff["identity_signature"], second
+    assert second_backoff["reset_token"] == first_backoff["reset_token"], second
+    assert "recommended_action" not in second["unchanged_identity_keys"], second
+
+
 def assert_active_work_keeps_initial_cadence() -> None:
     base = active_payload()
     first = build_scheduler_hint(
@@ -905,6 +933,7 @@ def assert_cli_scheduler_ack_uses_should_run_lookback() -> None:
 def main() -> int:
     assert_policy_state_progression()
     assert_monitor_wait_progression_reaches_120()
+    assert_monitor_wait_ignores_goal_recommended_action_identity_noise()
     assert_active_work_keeps_initial_cadence()
     assert_scheduler_ack_plan_validation()
     assert_monitor_wait_stale_ack_hint_is_accepted()
