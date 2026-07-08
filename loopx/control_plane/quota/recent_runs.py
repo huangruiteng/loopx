@@ -46,16 +46,18 @@ def recent_external_monitor_observation_unchanged(
         health_check = str(run.get("health_check") or "").strip().lower()
         if monitor_event.get("material_change") is True:
             return None
-        if (
-            monitor_mode == "external_monitor_observed_without_material_transition"
+        monitor_unchanged = (
+            monitor_mode.endswith("_observed_without_material_transition")
+            or "monitor observation unchanged" in health_check
+            or "due monitor observation unchanged" in health_check
             or "external monitor observation unchanged" in health_check
-        ):
+        )
+        if monitor_unchanged:
             return {
                 "classification": QUOTA_MONITOR_POLL_CLASSIFICATION,
                 "generated_at": run.get("generated_at"),
                 "agent_id": run_agent_id or None,
-                "monitor_mode": monitor_mode
-                or "external_monitor_observed_without_material_transition",
-                "reason": "recent external monitor observation was unchanged",
+                "monitor_mode": monitor_mode or "monitor_observed_without_material_transition",
+                "reason": "recent monitor observation was unchanged",
             }
     return None

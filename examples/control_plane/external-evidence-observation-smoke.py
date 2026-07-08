@@ -197,6 +197,56 @@ def assert_recent_unchanged_observation_quiets_external_monitor() -> None:
     assert interaction["agent_channel"]["quiet_noop_allowed"] is True, interaction
 
 
+def assert_recent_due_monitor_no_change_quiets_external_monitor() -> None:
+    summary = agent_todos(
+        [
+            monitor_todo(next_due_at=FUTURE_DUE_AT),
+            unavailable_advancement_todo(),
+        ]
+    )
+    guard = build_quota_should_run(
+        status_payload(
+            summary,
+            latest_runs=[
+                {
+                    "classification": "quota_slot_spent",
+                    "agent_id": AGENT_ID,
+                    "recommended_action": "wait quietly for material monitor evidence",
+                },
+                {
+                    "classification": "external_monitor_observation_cooldown_repaired",
+                    "agent_id": AGENT_ID,
+                    "delivery_outcome": "outcome_progress",
+                    "recommended_action": "wait quietly for material monitor evidence",
+                },
+                {
+                    "classification": "quota_monitor_poll",
+                    "agent_id": AGENT_ID,
+                    "delivery_outcome": "surface_only",
+                    "health_check": "due monitor observation unchanged; no quota spend; next due updated",
+                    "monitor_event": {
+                        "monitor_mode": "due_monitor_observed_without_material_transition",
+                        "material_change": False,
+                    },
+                },
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+    )
+    assert guard["decision"] == "skip", guard
+    assert guard["should_run"] is False, guard
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert "external_evidence_observation" not in guard, guard
+    recent = guard["external_evidence_observation_recent"]
+    assert recent["classification"] == "quota_monitor_poll", guard
+    assert recent["monitor_mode"] == "due_monitor_observed_without_material_transition", guard
+    assert recent["reason"] == "recent monitor observation was unchanged", guard
+    interaction = guard["interaction_contract"]
+    assert interaction["agent_channel"]["must_attempt"] is False, interaction
+    assert interaction["agent_channel"]["quiet_noop_allowed"] is True, interaction
+
+
 def assert_advancement_lane_keeps_external_monitor_as_context() -> None:
     summary = agent_todos(
         [
@@ -270,6 +320,7 @@ def assert_explicit_external_wait_builds_registry_obligation() -> None:
 def main() -> int:
     assert_monitor_only_launched_poll_requires_observation()
     assert_recent_unchanged_observation_quiets_external_monitor()
+    assert_recent_due_monitor_no_change_quiets_external_monitor()
     assert_advancement_lane_keeps_external_monitor_as_context()
     assert_future_scoped_monitor_does_not_fake_external_poll()
     assert_explicit_external_wait_builds_registry_obligation()
