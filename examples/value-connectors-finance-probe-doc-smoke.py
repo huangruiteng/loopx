@@ -19,6 +19,7 @@ def main() -> int:
 
     required = [
         "finance_market_snapshot_probe_packet_v0",
+        "finance_market_snapshot_canary_packet_v0",
         "Eastmoney public quote endpoint",
         "Futu OpenAPI / OpenD",
         "AKShare",
@@ -47,7 +48,9 @@ def main() -> int:
     assert "account login" in packet and "credentials" in packet
     assert "trading, order placement" in packet
     assert "no-credential probe packet" in readme
+    assert "finance-market-snapshot" in readme and "--symbol sh600519" in readme
     assert "finance_market_snapshot_probe_packet_v0" in protocol
+    assert "finance_market_snapshot_canary_packet_v0" in protocol
 
     print("value-connectors-finance-probe-doc-smoke: ok")
     return 0
