@@ -1,0 +1,23 @@
+loopx/presentation/sinks/lark/kanban.py
+  s_e3f612788718c1::t_ddaae85a1d38a8 24-32,2179
+loopx/presentation/sinks/lark/projection_rows.py
+  s_e3f612788718c1::t_dc41a1c3effbb8 1-454
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9fd597168d3d25e58098c23d113db74c7b414b06",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
