@@ -1,0 +1,33 @@
+examples/control_plane/heartbeat-prompt-smoke.py
+  s_802f433ee7e333::t_46920536ed41b2 218-219
+examples/control_plane/quota-plan-smoke.py
+  s_802f433ee7e333::t_cf819d7ff9aaa3 1762-1879,2275
+loopx/control_plane/quota/markdown.py
+  s_802f433ee7e333::t_9c61cd995fb4a0 279-288
+loopx/control_plane/work_items/interaction_contract.py
+  s_802f433ee7e333::t_a9e87780fef634 426-427,499-513,790
+loopx/heartbeat_prompt.py
+  s_802f433ee7e333::t_6f47109b8e6537 922-923
+loopx/quota.py
+  s_802f433ee7e333::t_bed24d562f86ce 1564-1637,1741-1759,1933-1943,2077-2080,2119,2216-2226,2325-2326
+skills/loopx-self-repair/references/repair-patterns.md
+  s_802f433ee7e333::t_b495acdf02b340 27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "6dff6fdab851427e1d4c01f8ac870c886a75e7c2",
+  "prompts": {},
+  "sessions": {
+    "s_802f433ee7e333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3c53-b382-70a0-8be9-bd68286f993d",
+        "model": "unknown"
+      },
+      "human_author": "lusendong.6789 <lusendong.6789@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
