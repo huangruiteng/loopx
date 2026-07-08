@@ -122,6 +122,7 @@ def main() -> int:
         assert dry_run["recorded_count"] == 2, dry_run
         assert dry_run["skipped_count"] == 1, dry_run
         assert dry_run["items"][2]["skipped_reason"] == "max_items_exceeded", dry_run
+        assert dry_run["items"][0]["updated_at"] == dry_run["updated_at"], dry_run
         assert state_file.read_text(encoding="utf-8") == original
 
         payload = run_cli(
@@ -164,6 +165,8 @@ def main() -> int:
         assert first_followup["action_kind"] == "implement", first_followup
         assert first_followup["required_write_scopes"] == ["examples/**"], first_followup
         assert first_followup["evidence"] == "examples/control_plane/todo-capture-followups-smoke.py#main", first_followup
+        assert first_followup["updated_at"] == payload["updated_at"], first_followup
+        assert payload["items"][0]["updated_at"] == payload["updated_at"], payload
 
         duplicate_again = run_cli(
             registry_path,

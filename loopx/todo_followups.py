@@ -135,6 +135,7 @@ def capture_followup_todos(
                 target_capabilities=target_capabilities,
                 required_decision_scopes=required_decision_scopes,
                 evidence=evidence_text,
+                updated_at=updated_at,
             )
             changed = changed or bool(add_result.get("added")) or bool(add_result.get("metadata_updated"))
             recorded_count += 1
