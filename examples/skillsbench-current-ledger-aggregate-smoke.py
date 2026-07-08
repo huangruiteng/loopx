@@ -402,6 +402,97 @@ def test_current_aggregate_default_inference_excludes_sanity_sources() -> None:
         )
 
 
+def test_target_lane_aggregate_uses_current_then_full87_backfill() -> None:
+    ledger: dict[str, Any] = {
+        "schema_version": BENCHMARK_RUN_LEDGER_SCHEMA_VERSION,
+        "benchmarks": {},
+    }
+    current_scores = {
+        "case-01": 0.0,
+        **{f"case-{index:02d}": 1.0 for index in range(2, 12)},
+        **{f"case-{index:02d}": 0.0 for index in range(12, 18)},
+    }
+    backfill_scores = {
+        "case-01": 1.0,
+        "case-18": 1.0,
+        "case-19": 1.0,
+        "case-20": 1.0,
+        "case-21": 1.0,
+        "case-22": 0.5,
+        "case-23": 0.2,
+        "case-24": 0.0,
+    }
+    for case_id, score in current_scores.items():
+        ledger = upsert_benchmark_run_ledger_entry(
+            ledger,
+            run_entry(
+                run_id=f"skillsbench-codex-cli-goal-xhigh-{case_id}-post1621",
+                case_id=case_id,
+                recorded_at="2026-07-08T14:00:00+08:00",
+                score=score,
+                score_status="completed",
+                failure_class="task_solution_failure" if score == 0 else "none",
+                failure_scope="solution",
+            ),
+        )
+    for case_id, score in backfill_scores.items():
+        ledger = upsert_benchmark_run_ledger_entry(
+            ledger,
+            run_entry(
+                run_id=f"skillsbench-codex-cli-goal-xhigh-full87-{case_id}",
+                case_id=case_id,
+                recorded_at="2026-07-07T14:00:00+08:00",
+                score=score,
+                score_status="completed",
+                failure_class="task_solution_failure" if score == 0 else "none",
+                failure_scope="solution",
+            ),
+        )
+    ledger = upsert_benchmark_run_ledger_entry(
+        ledger,
+        run_entry(
+            run_id="skillsbench-raw-codex-xhigh-case-25",
+            case_id="case-25",
+            recorded_at="2026-07-08T14:00:00+08:00",
+            score=1.0,
+            score_status="completed",
+            failure_class="none",
+            failure_scope="solution",
+        ),
+    )
+    aggregate = build_benchmark_run_ledger_current_aggregate(
+        ledger,
+        benchmark_id=BENCHMARK_ID,
+        canonical_case_ids=[f"case-{index:02d}" for index in range(1, 26)],
+        target_lane_id="codex-cli-goal-xhigh",
+        target_run_group_contains=["skillsbench-codex-cli-goal-xhigh-"],
+        target_backfill_run_group_contains=[
+            "skillsbench-codex-cli-goal-xhigh-full87-",
+        ],
+    )
+    summary = aggregate["countable_score_summary"]
+    assert summary["countable_case_count"] == 24, summary
+    assert summary["countable_score_sum"] == 14.7, summary
+    assert summary["countable_score_mean"] == 0.6125, summary
+    assert aggregate["case_best"]["case-01"]["run_id"].endswith("post1621"), (
+        aggregate["case_best"]["case-01"]
+    )
+    assert aggregate["case_best"]["case-01"]["official_score"] == 0.0
+    assert aggregate["case_best"]["case-18"]["target_lane_source"] == (
+        "backfill_countable"
+    )
+    assert aggregate["case_best"]["case-25"]["bucket"] == "missing"
+    target_lane = aggregate["selection_policy"]["target_lane"]
+    assert target_lane["enabled"] is True, target_lane
+    assert target_lane["case_source_counts"] == {
+        "backfill_countable": 7,
+        "backfill_noncountable": 0,
+        "current_countable": 17,
+        "current_noncountable": 0,
+        "missing": 1,
+    }, target_lane
+
+
 def test_current_aggregate_cli_writes_public_safe_json() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-current-aggregate-cli-") as tmp:
         root = Path(tmp)
@@ -436,6 +527,10 @@ def test_current_aggregate_cli_writes_public_safe_json() -> None:
                 BENCHMARK_ID,
                 "--canonical-case-root",
                 str(canonical_root),
+                "--target-lane-id",
+                "codex-cli-goal-xhigh",
+                "--target-run-group-contains",
+                "-",
                 "--output-json",
                 str(output_path),
                 "--execute",
@@ -456,6 +551,10 @@ def test_current_aggregate_cli_writes_public_safe_json() -> None:
         assert aggregate["countable_score_summary"]["countable_score_mean"] == 0.166667
         assert "hello-world" not in aggregate["case_best"]
         assert aggregate["selection_policy"]["source_paths_recorded"] is False
+        assert aggregate["selection_policy"]["target_lane"]["enabled"] is True
+        assert aggregate["selection_policy"]["target_lane"]["lane_id"] == (
+            "codex-cli-goal-xhigh"
+        )
         assert ".local" not in output_path.read_text(encoding="utf-8")
 
 
@@ -463,5 +562,6 @@ if __name__ == "__main__":
     test_current_aggregate_prefers_countable_results()
     test_ledger_marks_uncountable_numeric_scores_noncountable()
     test_current_aggregate_default_inference_excludes_sanity_sources()
+    test_target_lane_aggregate_uses_current_then_full87_backfill()
     test_current_aggregate_cli_writes_public_safe_json()
     print("skillsbench-current-ledger-aggregate-smoke: ok")

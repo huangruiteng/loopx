@@ -3437,6 +3437,10 @@ def build_benchmark_run_ledger_current_aggregate(
     canonical_case_ids: list[str] | None = None,
     source_ledger_count: int = 1,
     exclude_noncanonical_sanity_sources: bool = True,
+    target_lane_id: str | None = None,
+    target_run_group_contains: list[str] | None = None,
+    target_current_run_group_contains: list[str] | None = None,
+    target_backfill_run_group_contains: list[str] | None = None,
 ) -> dict[str, Any]:
     from .benchmark_ledger_current import (
         build_benchmark_run_ledger_current_aggregate as _build_current_aggregate,
@@ -3448,6 +3452,10 @@ def build_benchmark_run_ledger_current_aggregate(
         canonical_case_ids=canonical_case_ids,
         source_ledger_count=source_ledger_count,
         exclude_noncanonical_sanity_sources=exclude_noncanonical_sanity_sources,
+        target_lane_id=target_lane_id,
+        target_run_group_contains=target_run_group_contains,
+        target_current_run_group_contains=target_current_run_group_contains,
+        target_backfill_run_group_contains=target_backfill_run_group_contains,
     )
 
 

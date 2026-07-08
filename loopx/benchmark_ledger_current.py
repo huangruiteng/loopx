@@ -44,6 +44,24 @@ def _ledger_score_value(run: dict[str, Any]) -> float | None:
     return None
 
 
+def _run_group_text(run: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for field in ("run_group_id", "run_id", "job_name"):
+        text = _compact_text(run.get(field), limit=240)
+        if text:
+            parts.append(text)
+    return " ".join(parts)
+
+
+def _run_group_matches_any(run: dict[str, Any], needles: list[str] | None) -> bool:
+    if not needles:
+        return False
+    haystack = _run_group_text(run).lower()
+    if not haystack:
+        return False
+    return any(needle.lower() in haystack for needle in needles if needle)
+
+
 def _official_score_countability(run: dict[str, Any]) -> dict[str, Any]:
     return _ledger_module().benchmark_run_official_score_countability(run)
 
@@ -152,6 +170,97 @@ def _current_aggregate_run_sort_key(run: dict[str, Any]) -> tuple[Any, ...]:
         _compact_text(run.get("run_group_id"), limit=160),
         _compact_text(run.get("run_id"), limit=80),
     )
+
+
+def _current_aggregate_countable_run(run: dict[str, Any]) -> bool:
+    countability = _official_score_countability(run)
+    return (
+        countability.get("countable") is True
+        and countability.get("score") is not None
+    )
+
+
+def _best_current_aggregate_run(runs: list[dict[str, Any]]) -> dict[str, Any] | None:
+    return max(runs, key=_current_aggregate_run_sort_key) if runs else None
+
+
+def _current_aggregate_target_lane_enabled(
+    target_run_group_contains: list[str] | None,
+    target_current_run_group_contains: list[str] | None,
+    target_backfill_run_group_contains: list[str] | None,
+) -> bool:
+    return bool(
+        target_run_group_contains
+        or target_current_run_group_contains
+        or target_backfill_run_group_contains
+    )
+
+
+def _current_aggregate_classify_target_lane_runs(
+    runs: list[dict[str, Any]],
+    *,
+    target_run_group_contains: list[str] | None,
+    target_current_run_group_contains: list[str] | None,
+    target_backfill_run_group_contains: list[str] | None,
+) -> dict[str, list[dict[str, Any]]]:
+    current: list[dict[str, Any]] = []
+    backfill: list[dict[str, Any]] = []
+    target_any: list[dict[str, Any]] = []
+    for run in runs:
+        matches_target = _run_group_matches_any(run, target_run_group_contains)
+        matches_current = _run_group_matches_any(
+            run, target_current_run_group_contains
+        )
+        matches_backfill = _run_group_matches_any(
+            run, target_backfill_run_group_contains
+        )
+        if not (matches_target or matches_current or matches_backfill):
+            continue
+        target_any.append(run)
+        if matches_current:
+            current.append(run)
+            continue
+        if matches_backfill:
+            backfill.append(run)
+            continue
+        # Generic policy: target-lane runs that are not explicitly marked as
+        # backfill are current evidence.
+        current.append(run)
+    return {"current": current, "backfill": backfill, "target_any": target_any}
+
+
+def _current_aggregate_select_target_lane_run(
+    runs: list[dict[str, Any]],
+    *,
+    target_run_group_contains: list[str] | None,
+    target_current_run_group_contains: list[str] | None,
+    target_backfill_run_group_contains: list[str] | None,
+) -> tuple[dict[str, Any] | None, str]:
+    classified = _current_aggregate_classify_target_lane_runs(
+        runs,
+        target_run_group_contains=target_run_group_contains,
+        target_current_run_group_contains=target_current_run_group_contains,
+        target_backfill_run_group_contains=target_backfill_run_group_contains,
+    )
+    current_runs = classified["current"]
+    backfill_runs = classified["backfill"]
+    current_countable = [
+        run for run in current_runs if _current_aggregate_countable_run(run)
+    ]
+    if current_countable:
+        return _best_current_aggregate_run(current_countable), "current_countable"
+    backfill_countable = [
+        run for run in backfill_runs if _current_aggregate_countable_run(run)
+    ]
+    if backfill_countable:
+        return _best_current_aggregate_run(backfill_countable), "backfill_countable"
+    best_current = _best_current_aggregate_run(current_runs)
+    if best_current is not None:
+        return best_current, "current_noncountable"
+    best_backfill = _best_current_aggregate_run(backfill_runs)
+    if best_backfill is not None:
+        return best_backfill, "backfill_noncountable"
+    return None, "missing"
 
 
 def _current_aggregate_run_summary(run: dict[str, Any] | None) -> dict[str, Any]:
@@ -272,6 +381,10 @@ def build_benchmark_run_ledger_current_aggregate(
     canonical_case_ids: list[str] | None = None,
     source_ledger_count: int = 1,
     exclude_noncanonical_sanity_sources: bool = True,
+    target_lane_id: str | None = None,
+    target_run_group_contains: list[str] | None = None,
+    target_current_run_group_contains: list[str] | None = None,
+    target_backfill_run_group_contains: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build a current-case aggregate, preferring countable results over missing rows."""
 
@@ -325,6 +438,18 @@ def build_benchmark_run_ledger_current_aggregate(
     countable_case_ids: list[str] = []
     countable_scores: list[float] = []
     uncountable_numeric_case_ids: list[str] = []
+    target_lane_enabled = _current_aggregate_target_lane_enabled(
+        target_run_group_contains,
+        target_current_run_group_contains,
+        target_backfill_run_group_contains,
+    )
+    target_lane_source_counts = {
+        "current_countable": 0,
+        "backfill_countable": 0,
+        "current_noncountable": 0,
+        "backfill_noncountable": 0,
+        "missing": 0,
+    }
     for case in cases.values():
         if not isinstance(case, dict):
             continue
@@ -341,8 +466,22 @@ def build_benchmark_run_ledger_current_aggregate(
             runs = _active_ledger_runs(
                 [item for item in case.get("runs", []) if isinstance(item, dict)]
             )
-        best = max(runs, key=_current_aggregate_run_sort_key) if runs else None
+        target_lane_source = ""
+        if target_lane_enabled:
+            best, target_lane_source = _current_aggregate_select_target_lane_run(
+                runs,
+                target_run_group_contains=target_run_group_contains,
+                target_current_run_group_contains=target_current_run_group_contains,
+                target_backfill_run_group_contains=target_backfill_run_group_contains,
+            )
+            target_lane_source_counts[target_lane_source] = (
+                target_lane_source_counts.get(target_lane_source, 0) + 1
+            )
+        else:
+            best = _best_current_aggregate_run(runs)
         summary = _current_aggregate_run_summary(best)
+        if target_lane_enabled:
+            summary["target_lane_source"] = target_lane_source
         bucket = summary["bucket"]
         distribution[bucket] = distribution.get(bucket, 0) + 1
         cases_by_bucket.setdefault(bucket, []).append(case_id)
@@ -389,7 +528,11 @@ def build_benchmark_run_ledger_current_aggregate(
         "source_ledger_files": source_ledger_count,
         "selection_policy": {
             "schema_version": "benchmark_run_ledger_current_selection_policy_v0",
-            "rule": "prefer_countable_official_result_over_missing_or_infra_rows",
+            "rule": (
+                "target_lane_current_countable_wins_backfill_fills_missing"
+                if target_lane_enabled
+                else "prefer_countable_official_result_over_missing_or_infra_rows"
+            ),
             "bucket_precedence": [
                 "pass",
                 "partial",
@@ -402,5 +545,33 @@ def build_benchmark_run_ledger_current_aggregate(
             "raw_logs_recorded": False,
             "raw_task_text_recorded": False,
             "source_paths_recorded": False,
+            "target_lane": {
+                "enabled": target_lane_enabled,
+                "lane_id": _compact_text(target_lane_id, limit=120),
+                "target_run_group_contains": [
+                    _compact_text(value, limit=120)
+                    for value in (target_run_group_contains or [])
+                    if _compact_text(value, limit=120)
+                ],
+                "current_run_group_contains": [
+                    _compact_text(value, limit=120)
+                    for value in (target_current_run_group_contains or [])
+                    if _compact_text(value, limit=120)
+                ],
+                "backfill_run_group_contains": [
+                    _compact_text(value, limit=120)
+                    for value in (target_backfill_run_group_contains or [])
+                    if _compact_text(value, limit=120)
+                ],
+                "case_source_counts": target_lane_source_counts,
+                "current_evidence_rule": (
+                    "target-lane runs that do not match backfill patterns are current "
+                    "evidence unless explicit current patterns are provided"
+                ),
+                "duplicate_case_rule": (
+                    "current countable official score wins; backfill countable "
+                    "official score fills only when current countable evidence is absent"
+                ),
+            },
         },
     }
