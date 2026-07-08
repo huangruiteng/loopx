@@ -680,6 +680,7 @@ def add_todo_to_lines(
     resume_when: str | None = None,
     monitor_metadata: dict[str, Any] | None = None,
     evidence: str | None = None,
+    updated_at: str | None = None,
 ) -> dict[str, Any]:
     require_user_todo_task_class(
         role=role,
@@ -735,6 +736,7 @@ def add_todo_to_lines(
             resume_when=resume_when,
             **normalized_monitor_metadata,
             evidence=evidence,
+            updated_at=updated_at,
         )
         todo_line = "\n".join([f"- [ ] {todo_text}", metadata_line] if metadata_line else [f"- [ ] {todo_text}"])
         if bounds:
@@ -774,6 +776,8 @@ def add_todo_to_lines(
         updates.update(normalized_monitor_metadata)
         if evidence:
             updates["evidence"] = evidence
+        if updated_at and not block.get("updated_at"):
+            updates["updated_at"] = updated_at
         metadata_line = metadata_line_for_block(block, updates)
         metadata_updated = upsert_todo_metadata(lines, block, metadata_line)
         todo_id = str(block.get("todo_id") or "")
@@ -814,6 +818,7 @@ def add_todo_to_lines(
         "next_due_at": effective_metadata.get("next_due_at"),
         "expires_at": effective_metadata.get("expires_at"),
         "evidence": effective_metadata.get("evidence") or evidence,
+        "updated_at": effective_metadata.get("updated_at") or updated_at,
     }
 
 
@@ -936,6 +941,7 @@ def add_goal_todo(
             unblocks_todo_id=normalized_unblocks_todo_id,
             resume_when=normalized_resume_when,
             monitor_metadata=normalized_monitor_metadata,
+            updated_at=updated_at,
         )
         added = bool(add_result["added"])
         metadata_updated = bool(add_result["metadata_updated"])
@@ -1480,6 +1486,7 @@ def complete_goal_todo(
                     claimed_by=effective_next_claimed_by,
                     blocks_agent=next_blocks_agent,
                     unblocks_todo_id=next_unblocks_todo_id,
+                    updated_at=updated_at,
                 )
             )
         if next_user_todo:
@@ -1493,6 +1500,7 @@ def complete_goal_todo(
                     ),
                     task_class="user_gate",
                     blocks_agent=next_user_blocks_agent,
+                    updated_at=updated_at,
                 )
             )
         next_changed = any(item.get("added") or item.get("metadata_updated") for item in next_results)
@@ -1598,6 +1606,7 @@ def supersede_goal_todo(
                     claimed_by=effective_next_claimed_by,
                     blocks_agent=next_blocks_agent,
                     unblocks_todo_id=next_unblocks_todo_id,
+                    updated_at=updated_at,
                 )
             )
         if next_user_todo:
@@ -1611,6 +1620,7 @@ def supersede_goal_todo(
                     ),
                     task_class="user_gate",
                     blocks_agent=next_user_blocks_agent,
+                    updated_at=updated_at,
                 )
             )
         superseded_by = next((item.get("todo_id") for item in next_results if item.get("todo_id")), None)

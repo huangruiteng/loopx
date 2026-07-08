@@ -114,6 +114,8 @@ def main() -> int:
         assert rebuild_item["done"] is False and rebuild_item["task_class"] == "advancement_task", rebuild_item
         assert rebuild_item["action_kind"] == "rebuild_score", rebuild_item
         assert rebuild_item["claimed_by"] == "codex-main-control", rebuild_item
+        assert rebuild_item.get("updated_at"), rebuild_item
+        assert completed["next_todos"][0].get("updated_at") == rebuild_item["updated_at"], completed
 
         side_added = run_cli(
             registry_path,
@@ -134,6 +136,8 @@ def main() -> int:
         )
         assert side_added["added"] is True, side_added
         side_todo_id = side_added["todo_id"]
+        side_item = next(item for item in parsed_items(state_file) if item["todo_id"] == side_todo_id)
+        assert side_item.get("updated_at"), side_item
         missing_review = run_cli_error(
             registry_path,
             "todo",
@@ -304,6 +308,8 @@ def main() -> int:
         assert not review_item.get("action_kind"), review_item
         assert review_item["blocks_agent"] == "codex-side-bypass", review_item
         assert review_item["unblocks_todo_id"] == side_review_todo_id, review_item
+        assert review_item.get("updated_at"), review_item
+        assert side_completed["next_todos"][0].get("updated_at") == review_item["updated_at"], side_completed
 
         repeated = run_cli(
             registry_path,

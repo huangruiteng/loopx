@@ -161,6 +161,7 @@ def _append_event_projected_successor(
         "priority": todo_priority_prefix(todo_text) or "P2",
         "title": title,
         "planner_order": index,
+        "updated_at": updated_at,
     }
     if task_class:
         payload["task_class"] = task_class
@@ -219,6 +220,7 @@ def _append_event_projected_successor(
         "claimed_by": claimed_by,
         "blocks_agent": blocks_agent,
         "unblocks_todo_id": unblocks_todo_id,
+        "updated_at": updated_at,
         "source": "event_log",
     }
 
