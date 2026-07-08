@@ -529,5 +529,3 @@ def build_codex_cli_local_scheduler_executor(
         executor_timeout_seconds=executor_timeout_seconds,
         runner=runner,
     )
-
-
