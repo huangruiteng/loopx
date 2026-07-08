@@ -1166,6 +1166,21 @@ def _append_project_asset_agent_lane_markdown(
         f"deferred_ready={deferred_successors.get('ready_count')} "
         f"acceptance_gaps={len(acceptance_gaps)}"
     )
+    vision_audit = as_dict(goal_frontier.get("vision_continuation_audit"))
+    if vision_audit:
+        lines.append(
+            "    - vision_continuation_audit: "
+            f"required={vision_audit.get('required')} "
+            f"decision={markdown_scalar(vision_audit.get('decision') or '')} "
+            f"trigger_count={vision_audit.get('trigger_count')}"
+        )
+        vision_gap_judge = as_dict(vision_audit.get("vision_gap_judge"))
+        if vision_gap_judge:
+            lines.append(
+                "    - vision_gap_judge: "
+                f"done={vision_gap_judge.get('done')} "
+                f"decision={markdown_scalar(vision_gap_judge.get('decision') or '')}"
+            )
 
 
 def _append_project_asset_runtime_policy_markdown(

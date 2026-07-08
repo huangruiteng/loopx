@@ -474,6 +474,8 @@ def assert_status_agent_lane_vision_lookback_survives_display_trim() -> None:
     assert len(item["goal_frontier_projection"]["acceptance_gaps"]) == 1, item
     markdown = render_status_markdown(payload)
     assert "acceptance_gaps=1" in markdown, markdown
+    assert "vision_continuation_audit: required=True decision=acceptance_gap_open trigger_count=1" in markdown, markdown
+    assert "vision_gap_judge: done=False decision=continue" in markdown, markdown
 
 
 def assert_status_agent_lane_frontier_hint_projection() -> None:
