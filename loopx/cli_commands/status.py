@@ -10,7 +10,11 @@ from ..diagnose import collect_diagnosis, render_diagnosis_markdown
 from ..handoff_budget import build_handoff_interface_budget
 from ..quota import build_quota_should_run
 from ..review_packet import build_review_packet, render_review_packet_markdown
-from ..status import collect_status, render_status_markdown
+from ..status import (
+    AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK,
+    collect_status,
+    render_status_markdown,
+)
 from ..control_plane.runtime.status_projection_cache import (
     load_status_projection_cache,
     resolve_status_projection_cache_runtime_root,
@@ -33,6 +37,52 @@ def default_public_scan_root() -> str:
 def _scan_roots(args: argparse.Namespace) -> list[Path]:
     scan_roots = [Path(item).expanduser() for item in args.scan_path]
     return scan_roots or [Path(args.scan_root).expanduser()]
+
+
+def _status_collection_limit_for_agent_lane(*, requested_limit: int, agent_id: str | None) -> int:
+    safe_limit = max(0, int(requested_limit or 0))
+    if str(agent_id or "").strip():
+        return max(safe_limit, AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK)
+    return safe_limit
+
+
+def _trim_run_history_for_status_display(
+    payload: dict[str, object],
+    *,
+    display_limit: int,
+    collection_limit: int,
+) -> None:
+    if collection_limit <= display_limit:
+        return
+    run_history = payload.get("run_history")
+    if not isinstance(run_history, dict):
+        return
+    safe_display_limit = max(0, display_limit)
+    recent_runs = run_history.get("recent_runs")
+    trimmed = False
+    if isinstance(recent_runs, list) and len(recent_runs) > safe_display_limit:
+        run_history["recent_runs"] = recent_runs[:safe_display_limit]
+        trimmed = True
+    goals = run_history.get("goals")
+    if isinstance(goals, list):
+        for goal in goals:
+            if not isinstance(goal, dict):
+                continue
+            latest_runs = goal.get("latest_runs")
+            if isinstance(latest_runs, list) and len(latest_runs) > safe_display_limit:
+                goal["latest_runs"] = latest_runs[:safe_display_limit]
+                trimmed = True
+    if trimmed:
+        payload["agent_lane_projection_lookback"] = {
+            "schema_version": "agent_lane_projection_lookback_v0",
+            "collection_limit": collection_limit,
+            "display_limit": safe_display_limit,
+            "reason": (
+                "status --agent-id collected quota-equivalent run history for "
+                "agent-lane frontier projection, then restored the requested "
+                "status display limit"
+            ),
+        }
 
 
 def register_status_commands(
@@ -262,7 +312,11 @@ def handle_status_command(
 ) -> int:
     try:
         scan_roots = _scan_roots(args)
-        limit = max(0, args.limit)
+        display_limit = max(0, args.limit)
+        collection_limit = _status_collection_limit_for_agent_lane(
+            requested_limit=display_limit,
+            agent_id=args.agent_id,
+        )
         runtime_root = resolve_status_projection_cache_runtime_root(
             registry_path=registry_path,
             runtime_root_override=runtime_root_arg,
@@ -274,7 +328,7 @@ def handle_status_command(
                 registry_path=registry_path,
                 runtime_root=runtime_root,
                 scan_roots=scan_roots,
-                limit=limit,
+                limit=collection_limit,
                 include_task_graph=args.include_task_graph,
                 goal_id=args.goal_id,
                 max_age_seconds=args.projection_cache_ttl_seconds,
@@ -284,7 +338,7 @@ def handle_status_command(
                 registry_path=registry_path,
                 runtime_root_override=runtime_root_arg,
                 scan_roots=scan_roots,
-                limit=limit,
+                limit=collection_limit,
                 include_task_graph=args.include_task_graph,
                 goal_id=args.goal_id,
             )
@@ -293,7 +347,7 @@ def handle_status_command(
                     registry_path=registry_path,
                     runtime_root=runtime_root,
                     scan_roots=scan_roots,
-                    limit=limit,
+                    limit=collection_limit,
                     include_task_graph=args.include_task_graph,
                     goal_id=args.goal_id,
                     payload=payload,
@@ -304,6 +358,11 @@ def handle_status_command(
                 payload["projection_cache"] = cache_metadata
         if args.agent_id:
             attach_agent_lane_next_actions(payload, agent_id=args.agent_id)
+            _trim_run_history_for_status_display(
+                payload,
+                display_limit=display_limit,
+                collection_limit=collection_limit,
+            )
     except Exception as exc:
         payload = {
             "ok": False,

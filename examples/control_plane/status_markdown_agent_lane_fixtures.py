@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from loopx.cli_commands.status import attach_agent_lane_next_actions, _review_handoff_agent
+from loopx.cli_commands.status import (
+    _review_handoff_agent,
+    _status_collection_limit_for_agent_lane,
+    _trim_run_history_for_status_display,
+    attach_agent_lane_next_actions,
+)
 from loopx.review_packet import build_review_packet
 from loopx.status import project_asset_todo_summary, render_status_markdown
 
@@ -335,6 +340,140 @@ def assert_status_agent_member_handoff_uses_quota_identity() -> None:
         )
         == "codex-product-capability"
     )
+
+
+def assert_status_agent_lane_vision_lookback_survives_display_trim() -> None:
+    goal_id = "agent-lane-vision-lookback-fixture"
+    agent_id = "codex-product-capability"
+    side_action = "[P2] Continue the product capability audit."
+    side_todo = {
+        "schema_version": "todo_item_v0",
+        "todo_id": "todo_product_capability",
+        "index": 7,
+        "role": "agent",
+        "status": "open",
+        "priority": "P2",
+        "task_class": "advancement_task",
+        "action_kind": "engineering_quality_audit",
+        "claimed_by": agent_id,
+        "text": side_action,
+    }
+    agent_todos = {
+        "schema_version": "todo_summary_v0",
+        "open_count": 1,
+        "done_count": 0,
+        "total_count": 1,
+        "items": [side_todo],
+        "first_open_items": [side_todo],
+        "first_executable_items": [side_todo],
+    }
+    coordination = {
+        "primary_agent": "codex-main-control",
+        "registered_agents": ["codex-main-control", agent_id],
+    }
+    stale_runs = [
+        {
+            "goal_id": goal_id,
+            "generated_at": f"2026-07-09T06:{59 - offset:02d}:00+08:00",
+            "classification": f"recent_status_{offset}",
+            "agent_id": agent_id,
+        }
+        for offset in range(10)
+    ]
+    vision_run = {
+        "goal_id": goal_id,
+        "generated_at": "2026-07-09T05:45:45+08:00",
+        "classification": "product_capability_open_vision_patch",
+        "agent_id": agent_id,
+        "agent_vision": {
+            "schema_version": "agent_vision_v0",
+            "agent_id": agent_id,
+            "state": "open",
+            "vision_patch": {
+                "replan_trigger_summary": (
+                    "active agent vision remains open with acceptance evidence still required"
+                ),
+                "acceptance_summary": (
+                    "Continue bounded public-safe code/test improvements for status and quota."
+                ),
+            },
+        },
+    }
+    payload = {
+        "ok": True,
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "goal_count": 1,
+        "run_count": 11,
+        "contract": {"ok": True, "summary": {"errors": 0, "warnings": 0, "checks": 0}},
+        "global_registry": {"available": False, "summary": {}},
+        "attention_queue": {
+            "available": True,
+            "item_count": 1,
+            "items": [
+                {
+                    "goal_id": goal_id,
+                    "status": "primary_route_active",
+                    "waiting_on": "codex",
+                    "severity": "action",
+                    "recommended_action": "[P0] Keep the durable primary route.",
+                    "source": "registry",
+                    "coordination": coordination,
+                    "quota": {
+                        "state": "eligible",
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 10,
+                    },
+                    "agent_todos": agent_todos,
+                    "project_asset": {
+                        "owner": "codex-main-control",
+                        "gate": "none",
+                        "next_action": "[P0] Keep the durable primary route.",
+                        "agent_todos": project_asset_todo_summary(agent_todos, role="agent"),
+                    },
+                }
+            ],
+        },
+        "run_history": {
+            "recent_runs": [*stale_runs, vision_run],
+            "goals": [
+                {
+                    "id": goal_id,
+                    "registry_member": True,
+                    "status": "primary_route_active",
+                    "coordination": coordination,
+                    "quota": {
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 10,
+                    },
+                    "latest_runs": [*stale_runs, vision_run],
+                }
+            ],
+        },
+    }
+
+    assert _status_collection_limit_for_agent_lane(
+        requested_limit=5,
+        agent_id=agent_id,
+    ) > 5
+    attach_agent_lane_next_actions(payload, agent_id=agent_id)
+    item = payload["attention_queue"]["items"][0]
+    goal_frontier = item["goal_frontier_projection"]
+    assert len(goal_frontier["acceptance_gaps"]) == 1, goal_frontier
+    assert goal_frontier["vision_continuation_audit"]["required"] is True, goal_frontier
+    assert item["project_asset"]["goal_frontier_projection"] == goal_frontier, item
+
+    _trim_run_history_for_status_display(payload, display_limit=5, collection_limit=30)
+    assert len(payload["run_history"]["recent_runs"]) == 5, payload
+    assert len(payload["run_history"]["goals"][0]["latest_runs"]) == 5, payload
+    assert payload["agent_lane_projection_lookback"]["display_limit"] == 5, payload
+    assert len(item["goal_frontier_projection"]["acceptance_gaps"]) == 1, item
+    markdown = render_status_markdown(payload)
+    assert "acceptance_gaps=1" in markdown, markdown
 
 
 def assert_status_agent_lane_frontier_hint_projection() -> None:
