@@ -57,6 +57,9 @@ CONFIGURE_GOAL_REQUEST_FIELDS = {
     "clear_registered_agents",
     "primary_agent",
     "clear_primary_agent",
+    "write_scope",
+    "replace_write_scope",
+    "clear_write_scope",
     "boundary_authority_scopes",
     "boundary_authority_source",
     "boundary_authority_decision_id",
@@ -324,6 +327,9 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
         boundary_authority_scopes = body.get("boundary_authority_scopes")
         if boundary_authority_scopes is not None and not isinstance(boundary_authority_scopes, list):
             raise ValueError("boundary_authority_scopes must be a list of strings")
+        write_scope = body.get("write_scope")
+        if write_scope is not None and not isinstance(write_scope, list):
+            raise ValueError("write_scope must be a list of strings")
         return {
             "goal_id": goal_id,
             "quota_compute": body.get("quota_compute"),
@@ -340,6 +346,9 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             "clear_registered_agents": bool(body.get("clear_registered_agents", False)),
             "primary_agent": body.get("primary_agent"),
             "clear_primary_agent": bool(body.get("clear_primary_agent", False)),
+            "write_scope": [str(item) for item in write_scope] if write_scope is not None else None,
+            "replace_write_scope": bool(body.get("replace_write_scope", False)),
+            "clear_write_scope": bool(body.get("clear_write_scope", False)),
             "boundary_authority_scopes": (
                 [str(item) for item in boundary_authority_scopes]
                 if boundary_authority_scopes is not None
@@ -371,6 +380,9 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             clear_registered_agents=values["clear_registered_agents"],
             primary_agent=values["primary_agent"],
             clear_primary_agent=values["clear_primary_agent"],
+            write_scope=values["write_scope"],
+            replace_write_scope=values["replace_write_scope"],
+            clear_write_scope=values["clear_write_scope"],
             boundary_authority_scopes=values["boundary_authority_scopes"],
             boundary_authority_source=values["boundary_authority_source"],
             boundary_authority_decision_id=values["boundary_authority_decision_id"],
@@ -394,6 +406,7 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             "preview_id": configure_goal_preview_id(payload),
             "control_plane_summary": payload.get("control_plane_summary"),
             "orchestration_summary": payload.get("orchestration_summary"),
+            "heartbeat_prompt_migration": payload.get("heartbeat_prompt_migration"),
         }
 
     def _handle_configure_goal_dry_run(self) -> None:

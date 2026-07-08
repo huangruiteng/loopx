@@ -52,6 +52,7 @@ import argparse
 import ast
 import asyncio
 import contextlib
+import difflib
 import importlib
 import inspect
 import json
@@ -112,6 +113,9 @@ from loopx.benchmark_adapters.skillsbench_batch import (  # noqa: E402
 from loopx.benchmark_adapters.skillsbench_verifier_bootstrap import (  # noqa: E402
     apply_skillsbench_verifier_bootstrap_missing_score_attribution,
 )
+from loopx.benchmark_adapters.skillsbench_task_source import (  # noqa: E402
+    classify_missing_task_source,
+)
 from loopx.benchmark_adapters import skillsbench_runner_source as runner_source  # noqa: E402
 from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER,
@@ -120,6 +124,11 @@ from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     default_skillsbench_local_acp_relay_command,
     run_skillsbench_host_local_acp_transport_probe,
     run_skillsbench_local_acp_relay_probe,
+)
+from loopx.benchmark_adapters.skillsbench_codex_goal_trace import (  # noqa: E402
+    codex_cli_goal_recovery_public_fields,
+    merge_codex_cli_goal_recovery_trace,
+    new_codex_cli_goal_recovery_summary,
 )
 from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     run_skillsbench_remote_command_file_bridge_probe,
@@ -2940,6 +2949,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "codex_cli_goal_tui_first_action_observed_count",
         "codex_cli_goal_tui_bridge_request_count",
         "codex_cli_goal_tui_task_facing_success_count",
+        "codex_cli_goal_tui_pre_bridge_recovery_attempt_count",
         "codex_cli_goal_tui_post_bridge_recovery_attempt_count",
         "host_local_acp_sandbox_bridge_compose_file_count",
         "host_local_acp_target_env_key_count",
@@ -3030,6 +3040,13 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
             for action in recovery_actions
             if isinstance(action, str) and action
         ][:8]
+    pre_recovery_actions = value.get("codex_cli_goal_tui_pre_bridge_recovery_actions")
+    if isinstance(pre_recovery_actions, list):
+        compact["codex_cli_goal_tui_pre_bridge_recovery_actions"] = [
+            action[:40]
+            for action in pre_recovery_actions
+            if isinstance(action, str) and action
+        ][:8]
     recovery_skip_reasons = value.get(
         "codex_cli_goal_tui_post_bridge_recovery_skip_reasons"
     )
@@ -3037,6 +3054,15 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         compact["codex_cli_goal_tui_post_bridge_recovery_skip_reasons"] = [
             reason[:80]
             for reason in recovery_skip_reasons
+            if isinstance(reason, str) and reason
+        ][:8]
+    pre_recovery_skip_reasons = value.get(
+        "codex_cli_goal_tui_pre_bridge_recovery_skip_reasons"
+    )
+    if isinstance(pre_recovery_skip_reasons, list):
+        compact["codex_cli_goal_tui_pre_bridge_recovery_skip_reasons"] = [
+            reason[:80]
+            for reason in pre_recovery_skip_reasons
             if isinstance(reason, str) and reason
         ][:8]
     reasoning_efforts = value.get("codex_cli_goal_tui_reasoning_efforts")
@@ -6347,6 +6373,10 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
         "task_id",
         "first_blocker",
         "alternate_source_kind",
+        "canonical_equivalent_status",
+        "registry_source_kind",
+        "registry_source_status",
+        "registry_task_path",
         "selection_recommendation",
     ):
         raw = value.get(field)
@@ -6368,6 +6398,9 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
         "dockerfile_present",
         "canonical_task_present",
         "alternate_source_supported_by_runner",
+        "registry_task_present",
+        "registry_task_path_recorded",
+        "registry_excluded",
         "task_source_path_recorded",
         "task_source_content_recorded",
         "bootstrap_light_candidate_eligible",
@@ -6402,10 +6435,7 @@ def _requested_build_stall_timeout_sec(args: argparse.Namespace) -> int:
 
 
 def _effective_build_stall_timeout_sec(args: argparse.Namespace) -> int:
-    requested = _requested_build_stall_timeout_sec(args)
-    if requested <= 0:
-        return 0
-    return min(requested, MAX_BUILD_STALL_TIMEOUT_SEC)
+    return _requested_build_stall_timeout_sec(args)
 
 
 def build_compose_setup_diagnostic(
@@ -7336,6 +7366,63 @@ def _skillsbench_public_task_label(value: Any, *, limit: int = 120) -> str:
     return label[:limit]
 
 
+def _skillsbench_task_id_tokens(value: str) -> set[str]:
+    return {token for token in re.findall(r"[a-z0-9]+", value.lower()) if len(token) >= 2}
+
+
+def _skillsbench_task_id_similarity(
+    requested_task_id: str,
+    canonical_task_id: str,
+) -> tuple[float, bool]:
+    requested = _skillsbench_public_task_label(requested_task_id).lower()
+    canonical = _skillsbench_public_task_label(canonical_task_id).lower()
+    if not requested or not canonical:
+        return 0.0, False
+    sequence_score = difflib.SequenceMatcher(None, requested, canonical).ratio()
+    requested_tokens = _skillsbench_task_id_tokens(requested)
+    canonical_tokens = _skillsbench_task_id_tokens(canonical)
+    token_overlap = 0.0
+    has_token_overlap = False
+    if requested_tokens and canonical_tokens:
+        intersection = requested_tokens & canonical_tokens
+        union = requested_tokens | canonical_tokens
+        token_overlap = len(intersection) / len(union)
+        has_token_overlap = bool(intersection)
+    return (sequence_score * 0.4) + (token_overlap * 0.6), has_token_overlap
+
+
+def skillsbench_nearest_canonical_task_ids(
+    *,
+    requested_task_id: str,
+    canonical_root: Path,
+    limit: int = 5,
+) -> tuple[list[str], str]:
+    canonical_ids: list[str] = []
+    if canonical_root.is_dir():
+        for child in sorted(canonical_root.iterdir(), key=lambda item: item.name):
+            if not child.is_dir():
+                continue
+            label = _skillsbench_public_task_label(child.name)
+            if label:
+                canonical_ids.append(label)
+    if not canonical_ids:
+        return [], "canonical_task_index_empty"
+
+    ranked: list[tuple[float, bool, str]] = []
+    for canonical_id in canonical_ids:
+        score, has_token_overlap = _skillsbench_task_id_similarity(
+            requested_task_id,
+            canonical_id,
+        )
+        ranked.append((score, has_token_overlap, canonical_id))
+    ranked.sort(key=lambda item: (-item[0], item[2]))
+    best_score, best_has_token_overlap, _best_id = ranked[0]
+    close_match = best_has_token_overlap or best_score >= 0.34
+    if close_match:
+        return [item[2] for item in ranked[:limit]], "close_canonical_match_found"
+    return canonical_ids[:limit], "no_close_canonical_match"
+
+
 SKILLSBENCH_BOOTSTRAP_LIGHT_BLOCKING_PREFLIGHT_FIELDS = (
     "apt_setup_risk_detected",
     "apt_retry_patch_required",
@@ -7504,29 +7591,22 @@ def skillsbench_task_setup_preflight(
             / "sanity-tasks"
             / expanded_task_path.name
         )
-        alternate_source_kind = (
-            "experiments_sanity_tasks" if sanity_task.is_dir() else "none"
+        nearest, canonical_equivalent_status = (
+            skillsbench_nearest_canonical_task_ids(
+                requested_task_id=public_task_id,
+                canonical_root=skillsbench_root / "tasks",
+            )
         )
-        nearest: list[str] = []
-        canonical_root = skillsbench_root / "tasks"
-        if canonical_root.is_dir():
-            for child in sorted(canonical_root.iterdir(), key=lambda item: item.name):
-                if not child.is_dir():
-                    continue
-                label = _skillsbench_public_task_label(child.name)
-                if label:
-                    nearest.append(label)
-                if len(nearest) >= 5:
-                    break
         preflight.update(
             {
-                "status": "task_missing_from_canonical_tasks",
-                "first_blocker": "skillsbench_task_source_preflight_blocked",
-                "alternate_source_kind": alternate_source_kind,
-                "nearest_canonical_task_ids": nearest,
-                "selection_recommendation": (
-                    "choose_normal_tasks_candidate_or_use_explicit_sanity_source_runner"
+                **classify_missing_task_source(
+                    skillsbench_root=skillsbench_root,
+                    task_id=expanded_task_path.name,
+                    sanity_task_exists=sanity_task.is_dir(),
+                    canonical_equivalent_status=canonical_equivalent_status,
                 ),
+                "canonical_equivalent_status": canonical_equivalent_status,
+                "nearest_canonical_task_ids": nearest,
             }
         )
         preflight["bootstrap_light_blocking_fields"] = (
@@ -10784,9 +10864,7 @@ def _merge_host_local_acp_relay_trace_summary(
     codex_cli_goal_first_action_count = 0
     codex_cli_goal_bridge_request_count = 0
     codex_cli_goal_task_facing_success_count = 0
-    codex_cli_goal_post_bridge_recovery_attempt_count = 0
-    codex_cli_goal_post_bridge_recovery_actions: list[str] = []
-    codex_cli_goal_post_bridge_recovery_skip_reasons: list[str] = []
+    codex_cli_goal_recovery_summary = new_codex_cli_goal_recovery_summary()
     codex_cli_goal_stages: list[str] = []
     codex_cli_goal_reasoning_efforts: list[str] = []
     raw_material_recorded = False
@@ -11007,35 +11085,10 @@ def _merge_host_local_acp_relay_trace_summary(
                     0,
                     task_facing_successes,
                 )
-            recovery_attempts = goal_trace.get("post_bridge_recovery_attempt_count")
-            if isinstance(recovery_attempts, int) and not isinstance(
-                recovery_attempts,
-                bool,
-            ):
-                codex_cli_goal_post_bridge_recovery_attempt_count += max(
-                    0,
-                    recovery_attempts,
-                )
-            recovery_action = goal_trace.get("post_bridge_recovery_action")
-            if isinstance(recovery_action, str) and recovery_action:
-                safe_recovery_action = recovery_action[:40]
-                if (
-                    safe_recovery_action
-                    not in codex_cli_goal_post_bridge_recovery_actions
-                ):
-                    codex_cli_goal_post_bridge_recovery_actions.append(
-                        safe_recovery_action
-                    )
-            recovery_skip_reason = goal_trace.get("post_bridge_recovery_skip_reason")
-            if isinstance(recovery_skip_reason, str) and recovery_skip_reason:
-                safe_skip_reason = recovery_skip_reason[:80]
-                if (
-                    safe_skip_reason
-                    not in codex_cli_goal_post_bridge_recovery_skip_reasons
-                ):
-                    codex_cli_goal_post_bridge_recovery_skip_reasons.append(
-                        safe_skip_reason
-                    )
+            merge_codex_cli_goal_recovery_trace(
+                codex_cli_goal_recovery_summary,
+                goal_trace,
+            )
             stage = goal_trace.get("stage")
             if isinstance(stage, str) and stage:
                 safe_stage = stage[:80]
@@ -11310,25 +11363,7 @@ def _merge_host_local_acp_relay_trace_summary(
     trace["codex_cli_goal_tui_task_facing_success_count"] = (
         codex_cli_goal_task_facing_success_count
     )
-    trace["codex_cli_goal_tui_post_bridge_recovery_attempt_count"] = (
-        codex_cli_goal_post_bridge_recovery_attempt_count
-    )
-    trace["codex_cli_goal_tui_post_bridge_recovery_actions"] = (
-        codex_cli_goal_post_bridge_recovery_actions
-    )
-    trace["codex_cli_goal_tui_post_bridge_recovery_action"] = (
-        codex_cli_goal_post_bridge_recovery_actions[0]
-        if codex_cli_goal_post_bridge_recovery_actions
-        else ""
-    )
-    trace["codex_cli_goal_tui_post_bridge_recovery_skip_reasons"] = (
-        codex_cli_goal_post_bridge_recovery_skip_reasons
-    )
-    trace["codex_cli_goal_tui_post_bridge_recovery_skip_reason"] = (
-        codex_cli_goal_post_bridge_recovery_skip_reasons[0]
-        if codex_cli_goal_post_bridge_recovery_skip_reasons
-        else ""
-    )
+    trace.update(codex_cli_goal_recovery_public_fields(codex_cli_goal_recovery_summary))
     trace["codex_cli_goal_tui_stages"] = codex_cli_goal_stages
     trace["codex_cli_goal_tui_stage"] = (
         codex_cli_goal_stages[0] if codex_cli_goal_stages else ""
@@ -11515,24 +11550,8 @@ def _merge_host_local_acp_relay_trace_summary(
     prerequisites["codex_cli_goal_tui_task_facing_success_count"] = (
         codex_cli_goal_task_facing_success_count
     )
-    prerequisites["codex_cli_goal_tui_post_bridge_recovery_attempt_count"] = (
-        codex_cli_goal_post_bridge_recovery_attempt_count
-    )
-    prerequisites["codex_cli_goal_tui_post_bridge_recovery_actions"] = (
-        codex_cli_goal_post_bridge_recovery_actions
-    )
-    prerequisites["codex_cli_goal_tui_post_bridge_recovery_action"] = (
-        codex_cli_goal_post_bridge_recovery_actions[0]
-        if codex_cli_goal_post_bridge_recovery_actions
-        else ""
-    )
-    prerequisites["codex_cli_goal_tui_post_bridge_recovery_skip_reasons"] = (
-        codex_cli_goal_post_bridge_recovery_skip_reasons
-    )
-    prerequisites["codex_cli_goal_tui_post_bridge_recovery_skip_reason"] = (
-        codex_cli_goal_post_bridge_recovery_skip_reasons[0]
-        if codex_cli_goal_post_bridge_recovery_skip_reasons
-        else ""
+    prerequisites.update(
+        codex_cli_goal_recovery_public_fields(codex_cli_goal_recovery_summary)
     )
     prerequisites["codex_cli_goal_tui_stages"] = codex_cli_goal_stages
     prerequisites["codex_cli_goal_tui_stage"] = (
@@ -15920,10 +15939,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "Optional public-safe watchdog for Docker build/setup before any "
             "agent lifecycle starts. Defaults to "
-            f"{DEFAULT_BUILD_STALL_TIMEOUT_SEC}s and caps nonzero values at "
-            f"{MAX_BUILD_STALL_TIMEOUT_SEC}s so pre-worker BuildKit stalls "
-            "close out compactly instead of consuming the full outer timeout; "
-            "0 disables the watchdog."
+            f"{DEFAULT_BUILD_STALL_TIMEOUT_SEC}s, which disables the watchdog; "
+            "positive values are honored for setup-stall attribution."
         ),
     )
     parser.add_argument("--agent-idle-timeout", type=int, default=900)
@@ -16652,7 +16669,11 @@ async def _async_main_with_observable_handle(
         )
     if (
         not args.reduce_only
-        and setup_preflight.get("status") == "task_missing_from_canonical_tasks"
+        and setup_preflight.get("status")
+        in {
+            "task_missing_from_canonical_tasks",
+            "task_excluded_from_formal_tasks",
+        }
     ):
         staging = plan.setdefault("task_staging", {})
         if isinstance(staging, dict):
@@ -16664,6 +16685,14 @@ async def _async_main_with_observable_handle(
                     args=args,
                 )
             staging["task_source_preflight_blocked"] = True
+            if setup_preflight.get("status") == "task_excluded_from_formal_tasks":
+                staging["task_source_excluded_preflight_blocked"] = True
+                staging["task_source_excluded"] = True
+        if setup_preflight.get("status") == "task_excluded_from_formal_tasks":
+            raise SkillsBenchSetupPreflightBlocked(
+                "skillsbench task source excluded: "
+                "task is excluded from formal tasks source before full case run"
+            )
         raise SkillsBenchSetupPreflightBlocked(
             "skillsbench task source preflight blocked: "
             "task missing from canonical tasks source before full case run"

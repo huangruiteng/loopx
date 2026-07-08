@@ -49,11 +49,9 @@ LEGACY_OVERSIZED_RETIREMENT_PLANS = {
 
 LEGACY_OVERSIZED_LIMITS = {
     "examples/benchmark-run-ledger-smoke.py": 2106,
-    "examples/control_plane/quota-plan-smoke.py": 2176,
     "examples/skillsbench-app-server-goal-worker-smoke.py": 3119,
     "examples/skillsbench-benchmark-run-smoke.py": 14821,
     "examples/skillsbench-host-local-launch-plan-smoke.py": 2373,
-    "examples/control_plane/status-markdown-smoke.py": 2607,
     "examples/terminal-bench-harbor-runner-ingest-smoke.py": 2759,
     "examples/terminal-bench-private-runner-env-guard-smoke.py": 2619,
     "loopx/benchmark.py": 2875,
@@ -67,8 +65,8 @@ LEGACY_OVERSIZED_LIMITS = {
     "loopx/capabilities/content_ops/surface.py": 2549,
     "loopx/presentation/sinks/lark/kanban.py": 3034,
     "loopx/codex_cli_probe.py": 3546,
-    "loopx/quota.py": 10628,
-    "loopx/status.py": 11758,
+    "loopx/quota.py": 2519,
+    "loopx/status.py": 6926,
     "loopx/terminal_bench_agent.py": 2056,
     "scripts/harbor_host_codex_goal_agent.py": 2140,
     "scripts/skillsbench_automation_loop.py": 17631,

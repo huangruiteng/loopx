@@ -154,6 +154,66 @@ def test_goal_text_invocation_plans_ranked_todos_before_activation() -> None:
         assert not (project / ".codex").exists()
 
 
+def test_start_goal_guided_previews_transaction_without_mutation() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        project = Path(tmp) / "guided-project"
+        project.mkdir()
+        payload = run_json(
+            "start-goal",
+            "--guided",
+            "--project",
+            str(project),
+            "--goal-id",
+            "guided-goal",
+            "--agent-id",
+            "codex-test-agent",
+            "--goal-text",
+            "Connect this repo and start an auto research lane",
+        )
+
+        assert payload["schema_version"] == "loopx_start_goal_guided_v0"
+        assert payload["read_only"] is True
+        assert payload["guided"] is True
+        assert payload["goal_text"] == "Connect this repo and start an auto research lane"
+        assert payload["goal_id"] == "guided-goal"
+
+        safety = payload["safety_contract"]
+        assert isinstance(safety, dict)
+        assert safety["writes_registry"] is False
+        assert safety["writes_state_file"] is False
+        assert safety["creates_heartbeat"] is False
+        assert safety["spends_quota"] is False
+        assert safety["force_bootstrap_allowed"] is False
+
+        transaction = payload["guided_transaction"]
+        assert isinstance(transaction, dict)
+        assert transaction["mode"] == "dry_run_preview"
+        step_ids = [step["id"] for step in transaction["ordered_steps"]]
+        assert step_ids == [
+            "inspect_connection",
+            "connect_if_needed",
+            "plan_ranked_todos",
+            "write_ordered_todos",
+            "refresh_state",
+            "activate_host_loop",
+            "quota_guard",
+            "scheduler_ack_when_needed",
+        ]
+        assert transaction["idempotency_policy"]["safe_to_rerun_preview"] is True
+        assert "do not duplicate" in transaction["idempotency_policy"]["do_not_duplicate_existing_todos"].lower()
+        preserve = transaction["preserve_todos_policy"]
+        assert preserve["force_bootstrap_default"] == "forbidden_in_guided_flow"
+        assert "backup-state" in preserve["before_destructive_reconnect"]
+        assert "configure-goal incremental" in preserve["preferred_scope_change"]
+
+        command_pack = payload["command_pack"]
+        assert isinstance(command_pack, dict)
+        assert command_pack["schema_version"] == "loopx_bootstrap_command_pack_v0"
+        assert command_pack["goal_start_contract"]["planner"]["required_before_todo_write"] is True
+        assert not (project / ".loopx").exists()
+        assert not (project / ".codex").exists()
+
+
 def test_connected_project_reuses_existing_state() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         project = Path(tmp) / "connected-project"
@@ -345,6 +405,7 @@ def test_skill_slash_fallback_contract() -> None:
     assert "`/loopx`" in skill_text
     assert "`/loopx <goal text>`" in skill_text
     assert "loopx bootstrap-command-pack --project ." in skill_text
+    assert "loopx start-goal --guided --project ." in skill_text
     assert "canonical_project_alias" in skill_text
     assert "worktree-local shadow goal" in skill_text
     assert '--goal-text "<GOAL_TEXT>"' in skill_text
@@ -375,6 +436,7 @@ def test_skill_slash_fallback_contract() -> None:
 def main() -> int:
     test_missing_project_stops_before_mutation()
     test_goal_text_invocation_plans_ranked_todos_before_activation()
+    test_start_goal_guided_previews_transaction_without_mutation()
     test_connected_project_reuses_existing_state()
     test_linked_git_worktree_reuses_canonical_source_registry()
     test_skill_slash_fallback_contract()

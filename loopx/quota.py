@@ -30,8 +30,6 @@ from .control_plane.agents.identity import (
     quota_primary_agent,
     quota_registered_agents,
 )
-from .benchmark_core import compact_run_permission_policy_for_quota
-from .boundary_authority import checkpointed_boundary_authority_summary
 from .control_plane import (
     compact_control_plane_policy,
     control_plane_self_repair_allows,
@@ -40,7 +38,6 @@ from .execution_profile import (
     execution_profile_outcome_floor,
     outcome_floor_threshold,
 )
-from .orchestration import compact_orchestration_policy
 from .control_plane.work_items.execution_obligation import build_execution_obligation
 from .control_plane.work_items.interaction_contract import (
     build_interaction_contract,
@@ -48,20 +45,10 @@ from .control_plane.work_items.interaction_contract import (
     protocol_action_text as _protocol_action_text,
     user_channel_action_required as _user_channel_action_required,
 )
-from .control_plane.work_items.autonomous_replan_ack import (
-    autonomous_replan_ack_matches_agent,
-)
 from .control_plane.goals.goal_frontier import (
     AUTONOMOUS_REPLAN_REQUIRED_MODE,
-    acceptance_gaps_from_agent_vision,
-    acceptance_gaps_from_vision_checkpoint,
     autonomous_replan_decision_allowed,
-    autonomous_replan_scope_decision,
-    build_goal_frontier_projection_from_summaries,
-    derive_goal_frontier_replan_obligation_from_summaries,
-    latest_agent_vision_from_status_payload,
-    latest_missing_vision_checkpoint_from_status_payload,
-    select_autonomous_replan_obligation,
+    build_goal_frontier_projection_context_from_status,
 )
 from .control_plane.quota.heartbeat_recommendation import (
     HEARTBEAT_HANDOFF_READINESS_COMPACT_FIELDS as HANDOFF_READINESS_COMPACT_FIELDS,
@@ -76,6 +63,11 @@ from .control_plane.quota.projection_repair import (
 )
 from .control_plane.quota.decision_summary import (
     quota_decision_agent_id,
+)
+from .control_plane.quota.goal_boundary import (
+    effective_available_capabilities as _effective_available_capabilities,
+    goal_boundary as _goal_boundary,
+    quota_execution_profile_summary as _quota_execution_profile_summary,
 )
 from .control_plane.quota.monitor_poll import (
     QUOTA_MONITOR_POLL_CLASSIFICATION,
@@ -92,6 +84,15 @@ from .control_plane.quota.scheduler_ack import (
     QUOTA_SCHEDULER_ACK_CLASSIFICATION,
     build_quota_scheduler_ack_event,
     record_quota_scheduler_ack_for_decision,
+)
+from .control_plane.quota.subagent_orchestration import (
+    apply_subagent_orchestration_contract,
+    attach_subagent_payload_contract,
+    build_quota_work_lane_contract,
+    payload_work_lane_contract as _payload_work_lane_contract,
+    subagent_goal_route_hint,
+    subagent_orchestration_effective_action,
+    subagent_selected_recommended_action,
 )
 from .control_plane.quota.slot_accounting import (
     QUOTA_SLOT_SPENT_CLASSIFICATION,
@@ -120,9 +121,6 @@ from .control_plane.runtime.promotion_readiness import (
     promotion_readiness_warning as _promotion_readiness_warning,
 )
 from .control_plane.work_items.goal_route_hint import build_goal_route_hint
-from .control_plane.work_items.work_lane_context import (
-    build_work_lane_context_contract,
-)
 from .control_plane.work_items.work_lane import (
     work_lane_contract_is_due_monitor_attempt,
 )
@@ -147,10 +145,8 @@ from .control_plane.todos.contract import (
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_BLOCKER,
-    normalize_required_capabilities,
     normalize_todo_claimed_by,
     normalize_todo_id,
-    normalize_required_write_scopes,
     normalize_todo_status,
     normalize_todo_task_class,
 )
@@ -288,18 +284,6 @@ def _has_focus_wait_marker(*values: Any) -> bool:
             if marker in FOCUS_WAIT_LIFECYCLE_MARKERS:
                 return True
     return False
-
-
-def _work_lane_contract(
-    item: dict[str, Any],
-    *,
-    agent_todo_summary: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    return build_work_lane_context_contract(
-        item,
-        agent_todo_summary=agent_todo_summary,
-        monitor_due_item_limit=MONITOR_DUE_ITEM_LIMIT,
-    )
 
 
 def _focus_wait_quota(payload: dict[str, Any]) -> dict[str, Any]:
@@ -704,60 +688,6 @@ def _compact_handoff_readiness(value: Any) -> dict[str, Any] | None:
     return compact or None
 
 
-def _quota_execution_profile_summary(value: Any) -> dict[str, Any] | None:
-    if not isinstance(value, dict):
-        return None
-    compact: dict[str, Any] = {}
-    for field in ("cadence", "minimum_scale", "spend_rule"):
-        if value.get(field):
-            compact[field] = value[field]
-    must_include = value.get("must_include")
-    if isinstance(must_include, list) and must_include:
-        compact["must_include"] = [str(item) for item in must_include[:3]]
-    policy = (
-        value.get("degradation_policy")
-        if isinstance(value.get("degradation_policy"), dict)
-        else {}
-    )
-    if policy.get("small_scale_streak_threshold") is not None:
-        compact["small_scale_streak_threshold"] = policy.get("small_scale_streak_threshold")
-    floor = execution_profile_outcome_floor(value)
-    if floor:
-        outcome_markers = (
-            floor.get("outcome_markers")
-            if isinstance(floor.get("outcome_markers"), list)
-            else []
-        )
-        surface_hints = (
-            floor.get("surface_only_hints")
-            if isinstance(floor.get("surface_only_hints"), list)
-            else []
-        )
-        compact["outcome_floor"] = {
-            "configured": bool(outcome_markers or surface_hints),
-            "surface_streak_threshold": floor.get("surface_streak_threshold"),
-            "must_advance": [
-                str(item)
-                for item in (
-                    floor.get("must_advance")
-                    if isinstance(floor.get("must_advance"), list)
-                    else []
-                )[:2]
-            ],
-        }
-    return compact or None
-
-
-def _quota_execution_profile_boundary_summary(value: Any) -> dict[str, Any] | None:
-    summary = _quota_execution_profile_summary(value)
-    if not summary:
-        return None
-    compact = {}
-    if summary.get("minimum_scale"):
-        compact["minimum_scale"] = summary["minimum_scale"]
-    return compact or None
-
-
 def _compact_autonomous_candidate_context(
     value: Any,
     *,
@@ -823,128 +753,6 @@ def _load_codex_app_scheduler_state(
         surface=CODEX_APP_SURFACE,
         state_key=CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
     )
-
-
-def _goal_boundary(goal: dict[str, Any], item: dict[str, Any] | None = None) -> dict[str, Any] | None:
-    boundary: dict[str, Any] = {}
-    adapter_kind = goal.get("adapter_kind")
-    adapter_status = goal.get("adapter_status")
-    if adapter_kind or adapter_status:
-        boundary["adapter"] = {
-            "kind": adapter_kind,
-            "status": adapter_status,
-        }
-    coordination = goal.get("coordination") if isinstance(goal.get("coordination"), dict) else {}
-    write_scope = coordination.get("write_scope") if isinstance(coordination.get("write_scope"), list) else []
-    requires_approval = (
-        coordination.get("requires_parent_approval")
-        if isinstance(coordination.get("requires_parent_approval"), list)
-        else []
-    )
-    normalized_write_scope: list[str] = []
-    for value in write_scope:
-        scope = str(value).strip()
-        if scope and scope not in normalized_write_scope:
-            normalized_write_scope.append(scope)
-    boundary_authority = checkpointed_boundary_authority_summary(coordination)
-    if boundary_authority:
-        for scope in normalize_required_write_scopes(boundary_authority.get("active_write_scope")):
-            if scope not in normalized_write_scope:
-                normalized_write_scope.append(scope)
-        boundary["checkpointed_boundary_authority"] = boundary_authority
-    if normalized_write_scope:
-        boundary["write_scope"] = normalized_write_scope
-    available_capabilities = _declared_available_capabilities(goal)
-    if available_capabilities:
-        boundary["available_capabilities"] = available_capabilities
-    if requires_approval:
-        boundary["requires_parent_approval"] = [
-            str(value) for value in requires_approval if str(value).strip()
-        ]
-    guards = goal.get("guards") if isinstance(goal.get("guards"), list) else []
-    if guards:
-        boundary["guards"] = [str(value) for value in guards if str(value).strip()]
-    if goal.get("next_probe"):
-        boundary["next_probe"] = str(goal.get("next_probe"))
-    spawn_policy = goal.get("spawn_policy") if isinstance(goal.get("spawn_policy"), dict) else None
-    if spawn_policy is not None:
-        boundary["orchestration"] = compact_orchestration_policy(spawn_policy)
-    project_asset_source = item if item is not None else goal
-    for policy_source in (goal, project_asset_source):
-        if not isinstance(policy_source, dict):
-            continue
-        policy = compact_run_permission_policy_for_quota(
-            policy_source.get("run_permission_policy")
-            or policy_source.get("run_permission_policy_v0")
-        )
-        if policy:
-            boundary["run_permission_policy"] = policy
-            break
-    if isinstance(project_asset_source, dict) and project_asset_source.get("project_asset"):
-        project_asset = project_asset_source.get("project_asset")
-        if isinstance(project_asset, dict):
-            policy = compact_run_permission_policy_for_quota(
-                project_asset.get("run_permission_policy")
-                or project_asset.get("run_permission_policy_v0")
-            )
-            if policy:
-                boundary["run_permission_policy"] = policy
-            if project_asset.get("stop_condition"):
-                boundary["stop_condition"] = project_asset.get("stop_condition")
-            if isinstance(project_asset.get("execution_profile"), dict):
-                boundary["execution_profile"] = _quota_execution_profile_boundary_summary(
-                    project_asset["execution_profile"]
-                )
-            if isinstance(project_asset.get("orchestration"), dict):
-                boundary["orchestration"] = compact_orchestration_policy(project_asset["orchestration"])
-    if boundary:
-        boundary["rule"] = "stay_in_scope_or_stop"
-        return boundary
-    return None
-
-
-def _declared_available_capabilities(source: Any) -> list[str]:
-    if not isinstance(source, dict):
-        return []
-    capabilities: list[str] = []
-
-    def append(raw: Any) -> None:
-        for capability in normalize_required_capabilities(raw):
-            if capability not in capabilities:
-                capabilities.append(capability)
-
-    append(source.get("available_capabilities"))
-    coordination = (
-        source.get("coordination")
-        if isinstance(source.get("coordination"), dict)
-        else {}
-    )
-    append(coordination.get("available_capabilities"))
-    project_asset = (
-        source.get("project_asset")
-        if isinstance(source.get("project_asset"), dict)
-        else {}
-    )
-    append(project_asset.get("available_capabilities"))
-    return capabilities
-
-
-def _effective_available_capabilities(
-    runtime_available_capabilities: Any,
-    *,
-    item: dict[str, Any],
-    project_asset: dict[str, Any],
-) -> list[str]:
-    capabilities: list[str] = []
-    for raw in (
-        _declared_available_capabilities(item),
-        _declared_available_capabilities(project_asset),
-        runtime_available_capabilities,
-    ):
-        for capability in normalize_required_capabilities(raw):
-            if capability not in capabilities:
-                capabilities.append(capability)
-    return capabilities
 
 
 def _automation_prompt_upgrade(
@@ -1426,94 +1234,6 @@ def _registry_goal_by_id(status_payload: dict[str, Any]) -> dict[str, dict[str, 
     }
 
 
-def _compact_autonomous_replan_ack(run: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not isinstance(run, dict):
-        return None
-    ack = run.get("autonomous_replan_ack")
-    if not isinstance(ack, dict) or ack.get("recorded") is not True:
-        return None
-    delta_contract = ack.get("delta_contract")
-    if not isinstance(delta_contract, dict) or delta_contract.get("delta_present") is not True:
-        return None
-    compact_delta = {
-        "schema_version": delta_contract.get("schema_version"),
-        "delta_present": True,
-        "delta_kinds": [
-            str(item)
-            for item in (delta_contract.get("delta_kinds") or [])
-            if str(item or "").strip()
-        ],
-    }
-    result = {
-        "schema_version": ack.get("schema_version"),
-        "recorded": True,
-        "source": ack.get("source"),
-        "delta_contract": compact_delta,
-    }
-    agent_id = str(run.get("agent_id") or "").strip()
-    if agent_id:
-        result["agent_id"] = agent_id
-    return result
-
-
-def _latest_autonomous_replan_ack_for_agent(
-    status_payload: dict[str, Any],
-    *,
-    goal_id: str,
-    agent_id: str | None,
-) -> dict[str, Any] | None:
-    if not agent_id:
-        return None
-    run_history = (
-        status_payload.get("run_history")
-        if isinstance(status_payload.get("run_history"), dict)
-        else {}
-    )
-    goals = run_history.get("goals") if isinstance(run_history.get("goals"), list) else []
-    goal = next(
-        (
-            item
-            for item in goals
-            if isinstance(item, dict) and str(item.get("id") or "") == goal_id
-        ),
-        None,
-    )
-    latest_runs = goal.get("latest_runs") if isinstance(goal, dict) else None
-    if not isinstance(latest_runs, list):
-        return None
-    for run in latest_runs:
-        if not isinstance(run, dict):
-            continue
-        run_agent_id = str(run.get("agent_id") or "").strip()
-        if run_agent_id and run_agent_id != agent_id:
-            continue
-        replan_ack = _compact_autonomous_replan_ack(run)
-        if replan_ack:
-            return replan_ack
-        classification = str(run.get("classification") or "").strip()
-        if not classification:
-            continue
-        if classification in AUTONOMOUS_REPLAN_ACK_NEUTRAL_CLASSIFICATIONS:
-            continue
-        if classification == QUOTA_MONITOR_POLL_CLASSIFICATION:
-            continue
-        return None
-    return None
-
-
-def _projected_autonomous_replan_ack_for_agent(
-    item: dict[str, Any],
-    project_asset: dict[str, Any],
-    *,
-    agent_id: str | None,
-) -> dict[str, Any] | None:
-    for candidate in (item.get("autonomous_replan_ack"), project_asset.get("autonomous_replan_ack")):
-        if not autonomous_replan_ack_matches_agent(candidate, agent_id=agent_id):
-            continue
-        return candidate
-    return None
-
-
 def _recovery_delivery_allowed(quota: dict[str, Any], *, plan_ok: bool) -> bool:
     return (
         bool(plan_ok)
@@ -1559,80 +1279,6 @@ def _effective_action(
     if quota.get("focus_wait"):
         return "blocked_wait"
     return "quota_skip"
-
-
-def _subagent_orchestration_contract(
-    *,
-    goal_boundary: dict[str, Any],
-    agent_identity: dict[str, Any] | None,
-    agent_todo_summary: dict[str, Any],
-) -> dict[str, Any] | None:
-    """Return controller-owned child lane work when primary should supervise."""
-
-    if not isinstance(agent_identity, dict):
-        return None
-    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
-    primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
-    if not agent_id or agent_id != primary_agent:
-        return None
-    orchestration = (
-        goal_boundary.get("orchestration")
-        if isinstance(goal_boundary.get("orchestration"), dict)
-        else {}
-    )
-    if orchestration.get("mode") != "multi_subagent":
-        return None
-    if orchestration.get("spawn_allowed") is not True:
-        return None
-    max_children = orchestration.get("max_children")
-    if not isinstance(max_children, int) or max_children <= 0:
-        return None
-    other_items = (
-        agent_todo_summary.get("claimed_by_others_items")
-        if isinstance(agent_todo_summary.get("claimed_by_others_items"), list)
-        else []
-    )
-    child_lanes: list[dict[str, Any]] = []
-    seen_agents: set[str] = set()
-    for item in other_items:
-        if not isinstance(item, dict):
-            continue
-        if str(item.get("task_class") or "") != "advancement_task":
-            continue
-        child_agent = normalize_todo_claimed_by(item.get("claimed_by"))
-        if not child_agent or child_agent in seen_agents:
-            continue
-        title = str(item.get("title") or item.get("text") or "").strip()
-        child_lanes.append(
-            {
-                "agent_id": child_agent,
-                "todo_id": str(item.get("todo_id") or "").strip() or None,
-                "priority": item.get("priority"),
-                "task_class": item.get("task_class"),
-                "action_kind": item.get("action_kind"),
-                "title": title,
-            }
-        )
-        seen_agents.add(child_agent)
-        if len(child_lanes) >= max_children:
-            break
-    if not child_lanes:
-        return None
-    return {
-        "schema_version": "subagent_orchestration_contract_v0",
-        "mode": "multi_subagent",
-        "controller_agent_id": agent_id,
-        "spawn_required": True,
-        "spawn_allowed": True,
-        "max_children": max_children,
-        "eligible_child_lanes": child_lanes,
-        "blocked_child_lanes": [],
-        "writeback_owner": "controller",
-        "controller_obligation": (
-            "spawn or resume eligible child lanes, review returned evidence, "
-            "then write accepted state/todos as the controller"
-        ),
-    }
 
 
 def build_quota_should_run(
@@ -1737,26 +1383,17 @@ def build_quota_should_run(
             agent_todo_summary=agent_todo_summary,
         )
         self_repair_allowed = bool(stall_self_repair and stall_self_repair.get("allowed"))
-        work_lane_contract = _work_lane_contract(item, agent_todo_summary=agent_todo_summary)
-        subagent_orchestration_contract = _subagent_orchestration_contract(
+        work_lane_contract = build_quota_work_lane_contract(
+            item,
+            agent_todo_summary=agent_todo_summary,
+            monitor_due_item_limit=MONITOR_DUE_ITEM_LIMIT,
+        )
+        subagent_orchestration_contract, work_lane_contract = apply_subagent_orchestration_contract(
+            fallback_work_lane_contract=work_lane_contract,
             goal_boundary=goal_boundary,
             agent_identity=agent_identity,
             agent_todo_summary=agent_todo_summary,
         )
-        if subagent_orchestration_contract:
-            work_lane_contract = {
-                "schema_version": "work_lane_contract_v1",
-                "lane": "subagent_orchestration",
-                "next_lane": "controller_review",
-                "obligation": "orchestrate_child_lanes",
-                "must_attempt_work": True,
-                "reason_codes": ["eligible_child_lanes"],
-                "monitor_policy": "material_transition_only",
-                "action": subagent_orchestration_contract["controller_obligation"],
-                "eligible_child_lane_count": len(
-                    subagent_orchestration_contract["eligible_child_lanes"]
-                ),
-            }
         agent_frontier_id = (
             normalize_todo_claimed_by(agent_identity.get("agent_id"))
             if isinstance(agent_identity, dict)
@@ -1767,64 +1404,24 @@ def build_quota_should_run(
             if isinstance(agent_identity, dict)
             else None
         )
-        replan_obligation = select_autonomous_replan_obligation(item, project_asset)
-        replan_scope = autonomous_replan_scope_decision(
-            replan_obligation,
+        goal_frontier_context = build_goal_frontier_projection_context_from_status(
+            goal_id=safe_goal_id,
             agent_id=agent_frontier_id,
             primary_agent_id=primary_agent_id,
-        )
-        if replan_scope.get("required") and not replan_scope.get("applies"):
-            replan_obligation = None
-        latest_agent_replan_ack = _latest_autonomous_replan_ack_for_agent(
-            status_payload,
-            goal_id=safe_goal_id,
-            agent_id=agent_frontier_id,
-        )
-        latest_agent_vision = latest_agent_vision_from_status_payload(
-            status_payload,
-            goal_id=safe_goal_id,
-            agent_id=agent_frontier_id,
-        )
-        latest_missing_vision_checkpoint = latest_missing_vision_checkpoint_from_status_payload(
-            status_payload,
-            goal_id=safe_goal_id,
-            agent_id=agent_frontier_id,
-        )
-        goal_frontier_acceptance_gaps = (
-            acceptance_gaps_from_agent_vision(latest_agent_vision)
-            + acceptance_gaps_from_vision_checkpoint(latest_missing_vision_checkpoint)
-        )
-        frontier_replan_obligation = derive_goal_frontier_replan_obligation_from_summaries(
+            status_payload=status_payload,
+            item=item,
+            project_asset=project_asset,
             user_todo_summary=user_todo_summary,
             agent_todo_summary=agent_todo_summary,
             work_lane_contract=work_lane_contract,
-            agent_id=agent_frontier_id,
-            existing_replan_obligation=replan_obligation,
-            latest_replan_ack=(
-                latest_agent_replan_ack
-                or _projected_autonomous_replan_ack_for_agent(
-                    item,
-                    project_asset,
-                    agent_id=agent_frontier_id,
-                )
-            ),
-            acceptance_gaps=goal_frontier_acceptance_gaps,
+            neutral_replan_ack_classifications=AUTONOMOUS_REPLAN_ACK_NEUTRAL_CLASSIFICATIONS,
         )
-        if frontier_replan_obligation:
-            replan_obligation = frontier_replan_obligation
-            replan_scope = autonomous_replan_scope_decision(
-                replan_obligation,
-                agent_id=agent_frontier_id,
-                primary_agent_id=primary_agent_id,
-            )
-        goal_frontier_projection = build_goal_frontier_projection_from_summaries(
-            goal_id=safe_goal_id,
-            agent_id=agent_frontier_id,
-            user_todo_summary=user_todo_summary,
-            agent_todo_summary=agent_todo_summary,
-            work_lane_contract=work_lane_contract,
-            replan_obligation=replan_obligation,
-            acceptance_gaps=goal_frontier_acceptance_gaps,
+        replan_obligation = goal_frontier_context.get("replan_obligation")
+        replan_scope = goal_frontier_context.get("replan_scope") or {}
+        goal_frontier_projection = (
+            goal_frontier_context.get("goal_frontier_projection")
+            if isinstance(goal_frontier_context.get("goal_frontier_projection"), dict)
+            else {}
         )
         effective_available_capabilities = _effective_available_capabilities(
             available_capabilities,
@@ -1930,17 +1527,13 @@ def build_quota_should_run(
         if automation_prompt_upgrade_required:
             should_run = False
             effective_action = "automation_prompt_upgrade_required"
-        if (
-            subagent_orchestration_contract
-            and should_run
-            and normal_delivery_allowed
-            and effective_action == "normal_run"
-        ):
-            effective_action = "orchestrate_child_lanes"
-            reason = (
-                "primary agent must spawn or resume eligible child lanes before "
-                "doing worker-lane delivery itself"
-            )
+        effective_action, reason = subagent_orchestration_effective_action(
+            subagent_orchestration_contract,
+            should_run=should_run,
+            normal_delivery_allowed=normal_delivery_allowed,
+            effective_action=effective_action,
+            reason=reason,
+        )
         recommendation_item = {**item, "quota": quota}
         heartbeat_recommendation = build_heartbeat_recommendation(
             recommendation_item,
@@ -2074,10 +1667,10 @@ def build_quota_should_run(
             agent_todo_summary=agent_todo_summary,
             work_lane_contract=work_lane_contract,
         )
-        if subagent_orchestration_contract:
-            selected_recommended_action = subagent_orchestration_contract[
-                "controller_obligation"
-            ]
+        selected_recommended_action = subagent_selected_recommended_action(
+            subagent_orchestration_contract,
+            selected_recommended_action,
+        )
         due_monitor_attempt = work_lane_contract_is_due_monitor_attempt(work_lane_contract)
         if capability_gate and not due_monitor_attempt:
             if capability_gate.get("action") in {"repair_bridge", "ask_owner", "skip"}:
@@ -2213,22 +1806,13 @@ def build_quota_should_run(
             latest_run_recommended_action=latest_run_recommended_action_text,
             selected_recommended_action=selected_recommended_action,
         )
-        if subagent_orchestration_contract and isinstance(goal_route_hint, dict):
-            goal_route_hint = {
-                **goal_route_hint,
-                "kind": "subagent_orchestration",
-                "route_decision": "orchestrate_child_lanes",
-                "reason": "primary controller must spawn/resume eligible child lanes",
-                "child_lane_count": len(
-                    subagent_orchestration_contract["eligible_child_lanes"]
-                ),
-            }
-            goal_route_hint.pop("current_agent_next_action", None)
+        goal_route_hint = subagent_goal_route_hint(goal_route_hint, subagent_orchestration_contract)
         agent_scope_action = _agent_scope_frontier_action(effective_action)
-        payload_work_lane_contract = (
-            None
-            if recovery_allowed and effective_action == "outcome_floor_recovery"
-            else work_lane_contract
+        payload_work_lane_contract = _payload_work_lane_contract(
+            work_lane_contract,
+            effective_action=effective_action,
+            recovery_allowed=recovery_allowed,
+            agent_scope_frontier=agent_scope_frontier,
         )
         payload = {
             "ok": bool(plan.get("ok")) or self_repair_allowed or capability_repair_allowed or workspace_repair_allowed,
@@ -2322,8 +1906,7 @@ def build_quota_should_run(
             "plan_summary": plan.get("summary"),
             "todo_write_hint": build_todo_write_hint(safe_goal_id),
         }
-        if subagent_orchestration_contract:
-            payload["subagent_orchestration_contract"] = subagent_orchestration_contract
+        payload = attach_subagent_payload_contract(payload, subagent_orchestration_contract)
         autonomous_replan_decision = goal_frontier_projection.get("autonomous_replan_decision")
         if isinstance(autonomous_replan_decision, dict):
             payload["autonomous_replan_decision"] = autonomous_replan_decision
@@ -2696,18 +2279,24 @@ def record_quota_scheduler_ack(
     goal_id: str,
     execute: bool = False,
     agent_id: str | None = None,
+    available_capabilities: Any = None,
     surface: str = CODEX_APP_SURFACE,
     state_key: str = CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
     applied_rrule: str | None = None,
     reset_token: str | None = None,
     identity_signature: str | None = None,
-    reason_summary: str | None = None,
+    reason_summary: str | None = None, use_current_hint: bool = False,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
     safe_agent_id = normalize_todo_claimed_by(agent_id)
     safe_surface = str(surface or CODEX_APP_SURFACE).strip() or CODEX_APP_SURFACE
     safe_state_key = str(state_key or CODEX_APP_STATEFUL_BACKOFF_STATE_KEY).strip()
-    before = build_quota_should_run(status_payload, goal_id=safe_goal_id, agent_id=safe_agent_id)
+    before = build_quota_should_run(
+        status_payload,
+        goal_id=safe_goal_id,
+        agent_id=safe_agent_id,
+        available_capabilities=available_capabilities,
+    )
     raw_runtime_root = status_payload.get("runtime_root")
     if not raw_runtime_root:
         raise ValueError("status payload does not include runtime_root")
@@ -2723,7 +2312,7 @@ def record_quota_scheduler_ack(
         applied_rrule=applied_rrule,
         reset_token=reset_token,
         identity_signature=identity_signature,
-        reason_summary=reason_summary,
+        reason_summary=reason_summary, use_current_hint=use_current_hint,
     )
 
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -22,6 +23,7 @@ AGENT_ID = "codex-product-capability"
 PAST_DUE_AT = "2000-01-01T00:00:00+00:00"
 FUTURE_DUE_AT = "2999-01-01T00:00:00+00:00"
 EXPIRED_AT = "2000-01-01T00:05:00+00:00"
+FROZEN_NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
 FRONTIER_REPLAN_ACK_RUNS = [
     {
         "classification": "monitor_scheduler_replan_ack",
@@ -75,6 +77,7 @@ def monitor_item(
     cadence: str | None = "15m",
     claimed_by: str | None = AGENT_ID,
     expires_at: str | None = None,
+    last_checked_at: str | None = None,
 ) -> dict:
     item = {
         "index": index,
@@ -95,7 +98,17 @@ def monitor_item(
         item["next_due_at"] = next_due_at
     if expires_at:
         item["expires_at"] = expires_at
+    if last_checked_at:
+        item["last_checked_at"] = last_checked_at
     return item
+
+
+def frozen_timestamp_after(minutes: int) -> str:
+    return (FROZEN_NOW + timedelta(minutes=minutes)).isoformat()
+
+
+def frozen_timestamp_before(minutes: int) -> str:
+    return (FROZEN_NOW - timedelta(minutes=minutes)).isoformat()
 
 
 def blocking_handoff_item(*, index: int, todo_id: str = "todo_primary_handoff") -> dict:
@@ -133,16 +146,27 @@ def guard_for(
     agent_id: str = AGENT_ID,
     coordination: dict | None = None,
     latest_runs: list[dict] | None = None,
+    include_scheduler_detail: bool = False,
+    now: datetime = FROZEN_NOW,
 ) -> dict:
-    return build_quota_should_run(
-        status_payload(
-            agent_todo_items=items,
-            coordination=coordination,
-            latest_runs=latest_runs,
-        ),
-        goal_id=GOAL_ID,
-        agent_id=agent_id,
-    )
+    original_scheduler_now = scheduler_hint_module.now_utc
+    original_monitor_now = monitor_todo_module.now_utc
+    scheduler_hint_module.now_utc = lambda: now
+    monitor_todo_module.now_utc = lambda: now
+    try:
+        return build_quota_should_run(
+            status_payload(
+                agent_todo_items=items,
+                coordination=coordination,
+                latest_runs=latest_runs,
+            ),
+            goal_id=GOAL_ID,
+            agent_id=agent_id,
+            include_scheduler_detail=include_scheduler_detail,
+        )
+    finally:
+        scheduler_hint_module.now_utc = original_scheduler_now
+        monitor_todo_module.now_utc = original_monitor_now
 
 
 def assert_scheduler_timestamp_parser_is_shared_and_utc_normalized() -> None:
@@ -176,7 +200,7 @@ def assert_not_due_monitor_waits_quietly() -> None:
     assert guard["agent_todo_summary"]["monitor_due_count"] == 0, guard
 
 
-def assert_not_due_monitor_scheduler_honors_monitor_cadence() -> None:
+def assert_not_due_monitor_scheduler_applies_host_floor_before_cadence() -> None:
     guard = guard_for(
         [
             monitor_item(
@@ -195,9 +219,122 @@ def assert_not_due_monitor_scheduler_honors_monitor_cadence() -> None:
     assert guard["decision"] == "skip", guard
     assert guard["effective_action"] == "monitor_quiet_skip", guard
     assert scheduler["cadence_class"] == "monitor_wait", scheduler
-    assert codex_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=3", scheduler
-    assert codex_app["example_progression_minutes"] == [3, 3, 3, 3], scheduler
-    assert stateful["current_rrule"] == "FREQ=MINUTELY;INTERVAL=3", scheduler
+    assert codex_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
+    assert codex_app["example_progression_minutes"] == [15, 30, 60, 120], scheduler
+    assert stateful["current_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
+
+
+def assert_monitor_scheduler_far_window_uses_coarse_backoff() -> None:
+    guard = guard_for(
+        [
+            monitor_item(
+                index=1,
+                todo_id="todo_far_window",
+                priority="P1",
+                cadence="3m",
+                next_due_at=frozen_timestamp_after(90),
+                expires_at=frozen_timestamp_after(150),
+                target_key="far-window-watch",
+            )
+        ],
+        include_scheduler_detail=True,
+    )
+    scheduler = guard["scheduler_hint"]
+    codex_app = scheduler["codex_app"]
+    context = scheduler["cold_path_detail"]["cadence_context"]
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert context["phase"] == "far_window", context
+    assert context["cap_minutes"] == 90, context
+    assert codex_app["example_progression_minutes"] == [15, 30, 60, 90], scheduler
+    assert codex_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
+
+
+def assert_monitor_scheduler_near_window_caps_without_breaking_floor() -> None:
+    guard = guard_for(
+        [
+            monitor_item(
+                index=1,
+                todo_id="todo_near_window",
+                priority="P1",
+                cadence="3m",
+                next_due_at=frozen_timestamp_after(37),
+                expires_at=frozen_timestamp_after(100),
+                target_key="near-window-watch",
+            )
+        ],
+        include_scheduler_detail=True,
+    )
+    scheduler = guard["scheduler_hint"]
+    codex_app = scheduler["codex_app"]
+    context = scheduler["cold_path_detail"]["cadence_context"]
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert context["phase"] == "near_window", context
+    assert context["host_floor_minutes"] == 15, context
+    assert context["cap_minutes"] == 37, context
+    assert codex_app["example_progression_minutes"] == [15, 30, 37, 37], scheduler
+
+
+def assert_monitor_scheduler_near_window_reset_identity_is_stable() -> None:
+    item = monitor_item(
+        index=1,
+        todo_id="todo_near_window_stable_identity",
+        priority="P1",
+        cadence="3m",
+        next_due_at=frozen_timestamp_after(37),
+        expires_at=frozen_timestamp_after(100),
+        target_key="near-window-stable-watch",
+    )
+    first = guard_for([item], include_scheduler_detail=True)
+    later = guard_for(
+        [item],
+        include_scheduler_detail=True,
+        now=FROZEN_NOW + timedelta(minutes=10),
+    )
+    first_scheduler = first["scheduler_hint"]
+    later_scheduler = later["scheduler_hint"]
+    first_context = first_scheduler["cold_path_detail"]["cadence_context"]
+    later_context = later_scheduler["cold_path_detail"]["cadence_context"]
+    assert first_context["phase"] == "near_window", first_context
+    assert later_context["phase"] == "near_window", later_context
+    assert first_context["cap_minutes"] == 37, first_context
+    assert later_context["cap_minutes"] == 27, later_context
+    assert first_scheduler["reset_policy"]["reset_token"] == later_scheduler["reset_policy"]["reset_token"], (
+        first_scheduler,
+        later_scheduler,
+    )
+    assert first_scheduler["cold_path_detail"]["reset_policy_detail"][
+        "reset_profile_signature"
+    ] == later_scheduler["cold_path_detail"]["reset_policy_detail"]["reset_profile_signature"], later_scheduler
+    assert first_scheduler["codex_app"]["example_progression_minutes"] != later_scheduler["codex_app"][
+        "example_progression_minutes"
+    ], later_scheduler
+
+
+def assert_monitor_scheduler_active_window_respects_host_floor() -> None:
+    guard = guard_for(
+        [
+            monitor_item(
+                index=1,
+                todo_id="todo_active_window",
+                priority="P0",
+                cadence="3m",
+                next_due_at=frozen_timestamp_after(3),
+                expires_at=frozen_timestamp_after(40),
+                last_checked_at=frozen_timestamp_before(5),
+                target_key="active-window-watch",
+            )
+        ],
+        include_scheduler_detail=True,
+    )
+    scheduler = guard["scheduler_hint"]
+    codex_app = scheduler["codex_app"]
+    context = scheduler["cold_path_detail"]["cadence_context"]
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert context["phase"] == "active_window", context
+    assert context["cadence_minutes"] == 3, context
+    assert context["host_floor_minutes"] == 15, context
+    assert codex_app["example_progression_minutes"] == [15, 15, 15, 15], scheduler
+    assert codex_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
 
 
 def assert_unscheduled_monitor_requires_metadata_repair() -> None:
@@ -294,7 +431,8 @@ def assert_expired_monitor_does_not_catch_up() -> None:
                 expires_at=EXPIRED_AT,
                 target_key="expired-publish-window",
             )
-        ]
+        ],
+        include_scheduler_detail=True,
     )
     lane = guard["work_lane_contract"]
     assert guard["decision"] == "skip", guard
@@ -305,6 +443,14 @@ def assert_expired_monitor_does_not_catch_up() -> None:
     monitor_items = guard["agent_todo_summary"]["monitor_open_items"]
     assert monitor_items[0]["todo_id"] == "todo_monitor_expired", monitor_items
     assert monitor_items[0]["expires_at"] == EXPIRED_AT, monitor_items
+    scheduler = guard["scheduler_hint"]
+    codex_app = scheduler["codex_app"]
+    context = scheduler["cold_path_detail"]["cadence_context"]
+    assert scheduler["cadence_class"] == "monitor_wait", scheduler
+    assert context["phase"] == "expired", context
+    assert context["expired_monitor_count"] == 1, context
+    assert codex_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
+    assert codex_app["example_progression_minutes"] == [15, 30, 60, 120], scheduler
 
 
 def assert_due_monitor_priority_does_not_steal_advancement_lane() -> None:
@@ -503,7 +649,11 @@ def assert_other_agent_claimed_work_stays_diagnostic_when_no_current_lane() -> N
 def main() -> int:
     assert_scheduler_timestamp_parser_is_shared_and_utc_normalized()
     assert_not_due_monitor_waits_quietly()
-    assert_not_due_monitor_scheduler_honors_monitor_cadence()
+    assert_not_due_monitor_scheduler_applies_host_floor_before_cadence()
+    assert_monitor_scheduler_far_window_uses_coarse_backoff()
+    assert_monitor_scheduler_near_window_caps_without_breaking_floor()
+    assert_monitor_scheduler_near_window_reset_identity_is_stable()
+    assert_monitor_scheduler_active_window_respects_host_floor()
     assert_unscheduled_monitor_requires_metadata_repair()
     assert_unscheduled_monitor_repair_survives_handoff_gates()
     assert_due_monitor_requires_explicit_attempt()

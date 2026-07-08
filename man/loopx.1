@@ -32,8 +32,11 @@ Start or continue one concrete long-running goal through the agent.
 .B loopx doctor
 Check install, PATH, release snapshot, skills, and import health.
 .TP
-.B loopx bootstrap-command-pack --project .
-Generate a setup packet for a manual shell or first agent handoff.
+.B loopx slash-commands --install
+Refresh host slash-command prompt and skill files.
+.TP
+.B loopx start-goal --guided --project . --goal-text "<goal>"
+Preview the shell fallback for the same agent-safe \fB/loopx <goal>\fR path.
 .SH DAILY COMMANDS
 .TP
 .B loopx status
@@ -86,6 +89,10 @@ Explains the minimal product path for new users.
 .TP
 .B docs/guides/getting-started.md#command-reference
 Keeps the longer operator and contributor command catalog.
+.TP
+.B loopx bootstrap-command-pack --project .
+Generate the lower-level host handoff packet for host/plugin integration or
+debugging.
 .SH INSTALL NOTES
 The LoopX local installer writes this manual to
 \fI$HOME/.local/share/man/man1/loopx.1.gz\fR by default and adds

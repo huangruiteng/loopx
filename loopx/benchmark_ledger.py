@@ -251,6 +251,10 @@ def _compact_task_setup_preflight(value: Any) -> dict[str, Any]:
         "task_id",
         "first_blocker",
         "alternate_source_kind",
+        "canonical_equivalent_status",
+        "registry_source_kind",
+        "registry_source_status",
+        "registry_task_path",
         "selection_recommendation",
     ):
         text = _compact_text(value.get(field), limit=140)
@@ -272,6 +276,9 @@ def _compact_task_setup_preflight(value: Any) -> dict[str, Any]:
         "dockerfile_present",
         "canonical_task_present",
         "alternate_source_supported_by_runner",
+        "registry_task_present",
+        "registry_task_path_recorded",
+        "registry_excluded",
         "task_source_path_recorded",
         "task_source_content_recorded",
         "bootstrap_light_candidate_eligible",
@@ -383,6 +390,119 @@ def _compact_number(value: Any) -> float | None:
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
     return None
+
+
+def _numeric_score_value(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _score_countability_label_values(run: dict[str, Any]) -> list[str]:
+    labels: list[str] = []
+    for key in (
+        "score_failure_attribution",
+        "failure_class",
+        "attempt_failure_label",
+        "attempt_failure_class",
+        "first_blocker",
+        "runner_return_status",
+    ):
+        text = _compact_text(run.get(key), limit=180)
+        if text:
+            labels.append(text)
+    for key in ("failure_labels", "failure_attribution_labels", "setup_blockers"):
+        for label in _compact_list(run.get(key), limit=16):
+            labels.append(label)
+    accounting = (
+        run.get("attempt_accounting")
+        if isinstance(run.get("attempt_accounting"), dict)
+        else {}
+    )
+    for key in ("failure_label", "failure_class"):
+        text = _compact_text(accounting.get(key), limit=180)
+        if text:
+            labels.append(text)
+    return labels
+
+
+def benchmark_run_official_score_countability(run: dict[str, Any]) -> dict[str, Any]:
+    """Classify whether a compact/ledger run's official score is aggregate-countable."""
+
+    score = _numeric_score_value(run.get("official_score"))
+    if score is None:
+        official = (
+            run.get("official_task_score")
+            if isinstance(run.get("official_task_score"), dict)
+            else {}
+        )
+        score = _numeric_score_value(official.get("value"))
+    if score is None:
+        score, _passed = _official_score_passed_bool_fallback(run)
+    if score is None:
+        return {
+            "countable": False,
+            "reason": "score_missing",
+            "score": None,
+        }
+
+    explicit_attempt_countable = run.get("official_score_attempt_countable")
+    accounting = (
+        run.get("attempt_accounting")
+        if isinstance(run.get("attempt_accounting"), dict)
+        else {}
+    )
+    if explicit_attempt_countable is None:
+        explicit_attempt_countable = accounting.get("official_score_attempt_countable")
+    has_official_bool_score = isinstance(_official_task_score_bool_passed(run), bool)
+    if explicit_attempt_countable is False and not has_official_bool_score:
+        return {
+            "countable": False,
+            "reason": "official_score_attempt_not_countable",
+            "score": score,
+        }
+
+    score_status = _compact_text(
+        run.get("official_score_status") or run.get("score_status"),
+        limit=80,
+    )
+    if (
+        score_status == "missing"
+        and score is not None
+        and has_official_bool_score
+    ):
+        score_status = "failed" if score < 1 else "passed"
+    if score_status and score_status not in {
+        "completed",
+        "passed",
+        "failed",
+    }:
+        return {
+            "countable": False,
+            "reason": "official_score_status_not_countable",
+            "score": score,
+        }
+
+    labels = _score_countability_label_values(run)
+    if any("uncountable" in label.lower() for label in labels):
+        return {
+            "countable": False,
+            "reason": "uncountable_attribution",
+            "score": score,
+        }
+
+    return {
+        "countable": True,
+        "reason": "countable_official_score",
+        "score": score,
+    }
 
 
 def _round_reward_best_stats(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -907,7 +1027,17 @@ def _official_score(benchmark_run: dict[str, Any]) -> tuple[float | int | None, 
     value = benchmark_run.get("official_score")
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return value, value >= 1
-    return None, None
+    return _official_score_passed_bool_fallback(benchmark_run)
+
+
+def _official_task_score_bool_passed(benchmark_run: dict[str, Any]) -> bool | None:
+    official = (
+        benchmark_run.get("official_task_score")
+        if isinstance(benchmark_run.get("official_task_score"), dict)
+        else {}
+    )
+    passed = official.get("passed")
+    return passed if isinstance(passed, bool) else None
 
 
 def _infer_arm_id_from_job_name(job_name: str) -> str:
@@ -967,10 +1097,39 @@ def _score_status(benchmark_run: dict[str, Any], score: float | int | None, pass
         return "missing"
     explicit = _compact_text(benchmark_run.get("official_score_status"), limit=80)
     if explicit and explicit != "completed":
+        if explicit == "missing" and score is not None and isinstance(passed, bool):
+            return "passed" if passed else "failed"
         return explicit
     if score is None:
         return "missing"
     return "passed" if passed else "failed"
+
+
+def _official_score_passed_bool_fallback(
+    benchmark_run: dict[str, Any],
+) -> tuple[float | None, bool | None]:
+    official_passed = _official_task_score_bool_passed(benchmark_run)
+    if isinstance(official_passed, bool):
+        return (1.0 if official_passed else 0.0), official_passed
+
+    score_status = _compact_text(
+        benchmark_run.get("official_score_status") or benchmark_run.get("score_status"),
+        limit=80,
+    )
+    if score_status not in {"completed", "passed", "failed"}:
+        return None, None
+    if _compact_text(benchmark_run.get("runner_return_status"), limit=120) == (
+        "failed_before_official_result"
+    ):
+        return None, None
+    for container, key in (
+        (benchmark_run, "official_passed"),
+        (benchmark_run, "passed"),
+    ):
+        value = container.get(key) if isinstance(container, dict) else None
+        if isinstance(value, bool):
+            return (1.0 if value else 0.0), value
+    return None, None
 
 
 _SKILLSBENCH_PRE_AGENT_SETUP_STATUS_LABELS = {
@@ -1382,6 +1541,29 @@ def _repair_route(
                     "skillsbench_task_setup_preflight",
                     "canonical_task_present",
                     "nearest_canonical_task_ids",
+                ],
+                "raw_logs_required": False,
+                "raw_task_text_required": False,
+            },
+        }
+    if failure_class == "skillsbench_task_source_excluded":
+        return {
+            "repair_priority": "P1",
+            "repair_class": "skillsbench_task_source_excluded",
+            "next_action": (
+                "exclude this noncanonical SkillsBench source from formal "
+                "87-case scoring, or rerun it only through an explicit "
+                "sanity/source-extra runner"
+            ),
+            "repair_profile": {
+                "schema_version": "benchmark_repair_profile_v0",
+                "repair_class": "skillsbench_task_source_excluded",
+                "rerun_allowed_after_profile_applied": True,
+                "required_preflight": [
+                    "skillsbench_task_setup_preflight",
+                    "task_excluded_from_formal_tasks",
+                    "registry_source_kind=tasks_extra",
+                    "registry_excluded=true",
                 ],
                 "raw_logs_required": False,
                 "raw_task_text_required": False,
@@ -1907,6 +2089,10 @@ def build_benchmark_run_ledger_entry(
         else None,
         "failure_class": failure_class,
         "failure_scope": failure_scope,
+        "score_failure_attribution": _compact_text(
+            benchmark_run.get("score_failure_attribution"),
+            limit=120,
+        ),
         "failure_labels": _compact_list(
             benchmark_run.get("failure_attribution_labels"),
             limit=8,
@@ -2033,6 +2219,7 @@ def build_benchmark_run_ledger_entry(
             if isinstance(marker.get("attempt_accounting"), dict)
             else {}
         )
+    has_official_bool_score = isinstance(_official_task_score_bool_passed(benchmark_run), bool)
     if attempt_accounting:
         for source_field, entry_field in (
             ("lifecycle_phase", "attempt_lifecycle_phase"),
@@ -2050,7 +2237,26 @@ def build_benchmark_run_ledger_entry(
             "official_score_attempt_countable",
         ):
             if isinstance(attempt_accounting.get(field), bool):
-                entry[field] = attempt_accounting[field]
+                entry[field] = (
+                    True
+                    if field == "official_score_attempt_countable"
+                    and has_official_bool_score
+                    else attempt_accounting[field]
+                )
+    for field in (
+        "launcher_attempt_countable",
+        "case_attempt_countable",
+        "solver_attempt_countable",
+        "verifier_attempt_countable",
+        "official_score_attempt_countable",
+    ):
+        if field not in entry and isinstance(benchmark_run.get(field), bool):
+            entry[field] = (
+                True
+                if field == "official_score_attempt_countable"
+                and has_official_bool_score
+                else benchmark_run[field]
+            )
     if source_schema == "terminal_bench_post_launch_materialization_v0":
         marker = (
             benchmark_run.get("compact_failure_marker")
@@ -2138,6 +2344,11 @@ def build_benchmark_run_ledger_entry(
     note = _compact_text(notes, limit=220)
     if note:
         entry["notes"] = note
+    countability = benchmark_run_official_score_countability(entry)
+    entry["official_score_countable"] = countability["countable"]
+    entry["official_score_countability_reason"] = countability["reason"]
+    if countability["countable"] is True and countability.get("score") is not None:
+        entry["countable_score"] = countability["score"]
     return {key: value for key, value in entry.items() if value not in (None, "", [])}
 
 
@@ -2230,6 +2441,13 @@ def _normalize_ledger_run(run: dict[str, Any], *, fallback_benchmark_id: str) ->
     for key in ("repair_priority", "repair_class", "next_action", "repair_profile"):
         normalized.pop(key, None)
     normalized.update(repair_route)
+    countability = benchmark_run_official_score_countability(normalized)
+    normalized["official_score_countable"] = countability["countable"]
+    normalized["official_score_countability_reason"] = countability["reason"]
+    if countability["countable"] is True and countability.get("score") is not None:
+        normalized["countable_score"] = countability["score"]
+    else:
+        normalized.pop("countable_score", None)
     archive_state = _compact_text(normalized.get("archive_state"), limit=40)
     if archive_state == "archived":
         normalized["archive_state"] = "archived"
@@ -2432,6 +2650,8 @@ def _case_decision(case: dict[str, Any]) -> dict[str, Any]:
             decision = f"{prefix}_verifier_bootstrap_preflight_selection_required"
         elif repair_class == "skillsbench_task_source_preflight_selection":
             decision = f"{prefix}_task_source_preflight_selection_required"
+        elif repair_class == "skillsbench_task_source_excluded":
+            decision = f"{prefix}_task_source_excluded_from_formal_scoring"
         elif repair_class == "worker_verifier_alignment":
             decision = f"{prefix}_worker_verifier_alignment_required"
         elif repair_class == "verifier_or_infra_repair":
@@ -3245,6 +3465,10 @@ def build_benchmark_run_ledger_current_aggregate(
     canonical_case_ids: list[str] | None = None,
     source_ledger_count: int = 1,
     exclude_noncanonical_sanity_sources: bool = True,
+    target_lane_id: str | None = None,
+    target_run_group_contains: list[str] | None = None,
+    target_current_run_group_contains: list[str] | None = None,
+    target_backfill_run_group_contains: list[str] | None = None,
 ) -> dict[str, Any]:
     from .benchmark_ledger_current import (
         build_benchmark_run_ledger_current_aggregate as _build_current_aggregate,
@@ -3256,6 +3480,10 @@ def build_benchmark_run_ledger_current_aggregate(
         canonical_case_ids=canonical_case_ids,
         source_ledger_count=source_ledger_count,
         exclude_noncanonical_sanity_sources=exclude_noncanonical_sanity_sources,
+        target_lane_id=target_lane_id,
+        target_run_group_contains=target_run_group_contains,
+        target_current_run_group_contains=target_current_run_group_contains,
+        target_backfill_run_group_contains=target_backfill_run_group_contains,
     )
 
 

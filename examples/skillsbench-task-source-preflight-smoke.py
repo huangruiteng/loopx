@@ -37,6 +37,23 @@ def _write_task(root: Path, relative: str, *, verifier_text: str = "") -> None:
         verifier.write_text(verifier_text, encoding="utf-8")
 
 
+def _write_task_registry(root: Path, rows: list[dict[str, object]]) -> None:
+    registry = root / "website" / "src" / "data" / "tasks-registry.json"
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
+
+
+def _latest_decision_run(case: dict[str, object]) -> dict[str, object]:
+    latest = case.get("latest_decision") if isinstance(case, dict) else {}
+    run_id = latest.get("baseline_run_id") if isinstance(latest, dict) else None
+    runs = case.get("runs") if isinstance(case, dict) else []
+    if isinstance(runs, list):
+        for run in runs:
+            if isinstance(run, dict) and run.get("run_id") == run_id:
+                return run
+    raise AssertionError(f"latest decision run not found: {case}")
+
+
 def _app_goal_args(
     *,
     task_id: str,
@@ -63,6 +80,7 @@ def _app_goal_args(
         "--update-ledger",
         "--host-local-acp-launch",
         "--remote-command-file-bridge-ready",
+        "--allow-deprecated-app-server-goal-route",
     ]
 
 
@@ -100,6 +118,9 @@ def test_sanity_task_source_fails_before_runner_spend() -> None:
         assert preflight["alternate_source_kind"] == "experiments_sanity_tasks", (
             preflight
         )
+        assert preflight["canonical_equivalent_status"] == (
+            "no_close_canonical_match"
+        ), preflight
         assert preflight["task_source_path_recorded"] is False, preflight
         assert preflight["task_source_content_recorded"] is False, preflight
         assert preflight["nearest_canonical_task_ids"] == [
@@ -129,6 +150,9 @@ def test_sanity_task_source_fails_before_runner_spend() -> None:
         assert compact["task_setup_preflight"]["alternate_source_kind"] == (
             "experiments_sanity_tasks"
         )
+        assert compact["task_setup_preflight"]["canonical_equivalent_status"] == (
+            "no_close_canonical_match"
+        )
         assert compact["validation"]["no_raw_task_text_read"] is True, compact
 
         update = load_benchmark_run_ledger(ledger)
@@ -136,9 +160,105 @@ def test_sanity_task_source_fails_before_runner_spend() -> None:
         assert case["latest_decision"]["decision"] == (
             "baseline_task_source_preflight_selection_required"
         ), case
-        assert case["runs"][0]["repair_class"] == (
+        latest_run = _latest_decision_run(case)
+        assert latest_run["repair_class"] == (
             "skillsbench_task_source_preflight_selection"
         )
+
+
+def test_tasks_extra_excluded_source_is_not_canonical_missing() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-no-canonical-equivalent-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        _write_task(skillsbench_root, "tasks/3d-scan-calc")
+        _write_task(skillsbench_root, "tasks/offer-letter-generator")
+        _write_task(skillsbench_root, "tasks/paratransit-routing")
+        _write_task(skillsbench_root, "tasks/travel-planning")
+        _write_task_registry(
+            skillsbench_root,
+            [
+                {
+                    "title": "scheduling-email-assistant",
+                    "path": "tasks-extra/scheduling-email-assistant",
+                    "excluded": True,
+                }
+            ],
+        )
+
+        jobs = root / "jobs"
+        ledger = root / "ledger.json"
+        args = [
+            "--task-id",
+            "scheduling-email-assistant",
+            "--route",
+            "raw-codex-autonomous-max5",
+            "--skillsbench-root",
+            str(skillsbench_root),
+            "--jobs-dir",
+            str(jobs),
+            "--job-name",
+            "skillsbench-scheduling-email-task-source-preflight",
+            "--run-group-id",
+            "skillsbench-scheduling-email-task-source-preflight",
+            "--ledger-path",
+            str(ledger),
+            "--update-ledger",
+        ]
+        plan = build_plan(parse_args(args))
+        preflight = plan["task_setup_preflight"]
+        assert preflight["status"] == "task_excluded_from_formal_tasks", preflight
+        assert preflight["first_blocker"] == "skillsbench_task_source_excluded", (
+            preflight
+        )
+        assert preflight["canonical_task_present"] is False, preflight
+        assert preflight["alternate_source_kind"] == "tasks_extra", preflight
+        assert preflight["registry_task_present"] is True, preflight
+        assert preflight["registry_task_path"] == (
+            "tasks-extra/scheduling-email-assistant"
+        ), preflight
+        assert preflight["registry_excluded"] is True, preflight
+        assert preflight["canonical_equivalent_status"] == (
+            "no_close_canonical_match"
+        ), preflight
+        assert preflight["selection_recommendation"] == (
+            "excluded_tasks_extra_requires_explicit_sanity_source_mode"
+        ), preflight
+        assert preflight["raw_task_text_read"] is False, preflight
+        assert preflight["task_source_path_recorded"] is False, preflight
+        assert preflight["task_source_content_recorded"] is False, preflight
+
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            rc = skillsbench_automation_loop_main(args)
+
+        assert rc == 0, stderr.getvalue()
+        compact_path = (
+            jobs
+            / "skillsbench-scheduling-email-task-source-preflight"
+            / "scheduling-email-assistant__raw_codex_autonomous_max5"
+            / "benchmark_run.compact.json"
+        )
+        compact = json.loads(compact_path.read_text(encoding="utf-8"))
+        assert compact["first_blocker"] == "skillsbench_task_source_excluded"
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_task_source_excluded"
+        )
+        assert compact["task_setup_preflight"]["status"] == (
+            "task_excluded_from_formal_tasks"
+        )
+        assert compact["task_setup_preflight"]["alternate_source_kind"] == "tasks_extra"
+        assert compact["task_setup_preflight"]["registry_excluded"] is True
+        assert compact["validation"]["no_raw_task_text_read"] is True, compact
+
+        update = load_benchmark_run_ledger(ledger)
+        case = update["benchmarks"]["skillsbench@1.1"]["cases"][
+            "scheduling-email-assistant"
+        ]
+        assert case["latest_decision"]["decision"] == (
+            "baseline_task_source_excluded_from_formal_scoring"
+        ), case
+        latest_run = _latest_decision_run(case)
+        assert latest_run["repair_class"] == "skillsbench_task_source_excluded"
 
 
 def test_reverse_tunnel_app_goal_defaults_verifier_bootstrap_fail_fast() -> None:
@@ -174,6 +294,7 @@ def test_reverse_tunnel_app_goal_defaults_verifier_bootstrap_fail_fast() -> None
             "--update-ledger",
             "--host-local-acp-launch",
             "--remote-command-file-bridge-ready",
+            "--allow-deprecated-app-server-goal-route",
         ]
         parsed = parse_args(args)
         assert parsed.fail_fast_on_apt_risk is True
@@ -298,14 +419,15 @@ def test_reverse_tunnel_app_goal_defaults_apt_bootstrap_fail_fast() -> None:
         assert case["latest_decision"]["decision"] == (
             "baseline_runner_or_setup_repair_required"
         ), case
-        assert case["runs"][0]["failure_class"] == (
+        latest_run = _latest_decision_run(case)
+        assert latest_run["failure_class"] == (
             "skillsbench_runner_setup_blocked_before_agent_rounds"
         )
         assert (
             "skillsbench_docker_apt_setup_risk_preflight_blocked"
-            in case["runs"][0]["failure_labels"]
+            in latest_run["failure_labels"]
         ), case
-        assert case["runs"][0]["task_staging"]["apt_risk_preflight_blocked"] is True
+        assert latest_run["task_staging"]["apt_risk_preflight_blocked"] is True
 
 
 def test_reverse_tunnel_app_goal_blocks_pip_bootstrap_light_risk() -> None:
@@ -437,6 +559,7 @@ def test_reverse_tunnel_app_goal_allows_explicit_staged_bootstrap_repair() -> No
 
 if __name__ == "__main__":
     test_sanity_task_source_fails_before_runner_spend()
+    test_tasks_extra_excluded_source_is_not_canonical_missing()
     test_reverse_tunnel_app_goal_defaults_verifier_bootstrap_fail_fast()
     test_reverse_tunnel_app_goal_defaults_apt_bootstrap_fail_fast()
     test_reverse_tunnel_app_goal_blocks_pip_bootstrap_light_risk()

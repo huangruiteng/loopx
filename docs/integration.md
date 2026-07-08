@@ -99,7 +99,19 @@ loopx bootstrap \
 
 `loopx connect` is an alias for the same operation. The command is
 safe to rerun: by default it keeps an existing state file and existing registry
-entry; pass `--force` only when you intentionally want to replace them.
+entry. If the goal only needs an additional write boundary after connection,
+prefer the incremental migration path:
+
+```bash
+loopx configure-goal \
+  --goal-id project-goal \
+  --write-scope "src/**" \
+  --execute
+```
+
+Pass `--force` only when you intentionally want to replace the registry entry or
+active state. If you need a force reconnect but want to keep the current todo
+projection, add `--preserve-todos`.
 
 The default files are:
 

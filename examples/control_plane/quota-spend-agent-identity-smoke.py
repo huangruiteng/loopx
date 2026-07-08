@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test spend-slot identity on registered multi-agent goals."""
+"""Smoke-test quota agent identity on registered multi-agent goals."""
 
 from __future__ import annotations
 
@@ -14,6 +14,12 @@ from types import ModuleType
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_PATH = REPO_ROOT / "examples" / "control_plane" / "quota-plan-smoke.py"
+
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.control_plane.work_items.interaction_contract import interaction_next_cli_actions  # noqa: E402
+from loopx.quota import build_quota_monitor_poll_event, build_quota_slot_spend_event  # noqa: E402
 
 
 def load_quota_plan_fixture() -> ModuleType:
@@ -48,8 +54,104 @@ def run_quota(root: Path, registry_path: Path, runtime: Path, *args: str) -> tup
     return json.loads(result.stdout), result.returncode
 
 
+def assert_monitor_poll_event_carries_agent_id(agent_id: str) -> None:
+    event = build_quota_monitor_poll_event(
+        {
+            "goal_id": "scoped-monitor-goal",
+            "should_run": True,
+            "effective_action": "monitor_quiet_skip",
+            "recommended_action": "stay quiet until material transition",
+            "reason": "unchanged monitor target",
+            "heartbeat_recommendation": {
+                "recommended_mode": "monitor_quiet_until_material_transition",
+                "reason": "unchanged monitor target",
+            },
+            "agent_identity": {
+                "agent_id": agent_id,
+                "registered": True,
+                "role": "side-agent",
+                "primary_agent": "codex-main-control",
+                "registered_agents": ["codex-main-control", agent_id],
+            },
+        },
+        source="heartbeat",
+    )
+
+    assert event["agent_id"] == agent_id, event
+    assert event["monitor_event"]["agent_id"] == agent_id, event
+    target = event["monitor_target"]
+    assert target["schema_version"] == "quota_monitor_target_v0", target
+    assert target["target_id"] == event["monitor_event"]["monitor_target"]["target_id"], event
+    assert target["agent_id"] == agent_id, target
+    assert target["effective_action"] == "monitor_quiet_skip", target
+
+
+def assert_monitor_poll_next_cli_action_preserves_agent_id(agent_id: str) -> None:
+    actions = interaction_next_cli_actions(
+        {
+            "goal_id": "scoped-monitor-goal",
+            "agent_identity": {
+                "agent_id": agent_id,
+            },
+        },
+        mode="monitor_quiet_skip",
+    )
+
+    assert actions == [
+        f"loopx quota monitor-poll --goal-id scoped-monitor-goal --agent-id {agent_id} --execute",
+        f"loopx --format json quota should-run --goal-id scoped-monitor-goal --agent-id {agent_id}",
+    ], actions
+
+
+def assert_delivery_completion_spend_preserves_requested_agent_id(agent_id: str) -> None:
+    before = {
+        "goal_id": "delivery-completion-goal",
+        "should_run": False,
+        "normal_delivery_allowed": False,
+        "recovery_delivery_allowed": False,
+        "effective_action": "monitor_quiet_skip",
+        "self_repair_allowed": False,
+        "capability_repair_allowed": False,
+        "workspace_repair_allowed": False,
+        "state": "eligible",
+        "safe_bypass_allowed": False,
+        "quota": {
+            "compute": 1.0,
+            "window_hours": 24,
+            "slot_minutes": 1,
+            "spent_slots": 0,
+            "allowed_slots": 1440,
+        },
+    }
+    after = {**before, "quota": {**before["quota"], "spent_slots": 1}}
+    preview = {
+        "ok": True,
+        "mode": "spend-slot",
+        "dry_run": True,
+        "goal_id": "delivery-completion-goal",
+        "slots": 1,
+        "agent_id": agent_id,
+        "before": before,
+        "after": after,
+        "delivery_completion_spend": True,
+        "delivery_run_generated_at": "2026-01-01T00:00:00+00:00",
+        "delivery_run_classification": "validated_delivery_fixture",
+    }
+    event = build_quota_slot_spend_event(preview, source="heartbeat")
+
+    assert event["agent_id"] == agent_id, event
+    assert event["quota_event"]["agent_id"] == agent_id, event
+    assert event["quota_event"]["delivery_run_classification"] == "validated_delivery_fixture", event
+    assert "validated delivery" in event["health_check"], event
+
+
 def main() -> int:
     fixture = load_quota_plan_fixture()
+    agent_id = fixture.SCOPED_AGENT_ID
+
+    assert_monitor_poll_event_carries_agent_id(agent_id)
+    assert_monitor_poll_next_cli_action_preserves_agent_id(agent_id)
+    assert_delivery_completion_spend_preserves_requested_agent_id(agent_id)
 
     with tempfile.TemporaryDirectory(prefix="loopx-quota-spend-agent-identity-") as tmp:
         root = Path(tmp)
@@ -98,14 +200,14 @@ def main() -> int:
             "heartbeat",
             "--execute",
             "--agent-id",
-            fixture.SCOPED_AGENT_ID,
+            agent_id,
             "--scan-path",
             str(project),
         )
         assert scoped_code == 0, scoped_payload
         assert scoped_payload["ok"] is True, scoped_payload
         assert scoped_payload["appended"] is True, scoped_payload
-        assert scoped_payload["agent_id"] == fixture.SCOPED_AGENT_ID, scoped_payload
+        assert scoped_payload["agent_id"] == agent_id, scoped_payload
 
     print("quota-spend-agent-identity-smoke ok")
     return 0

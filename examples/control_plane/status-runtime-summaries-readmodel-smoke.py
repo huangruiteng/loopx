@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from loopx import status as status_module  # noqa: E402
 from loopx.control_plane.runtime.time import now_utc, parse_timestamp, utc_isoformat  # noqa: E402
 from loopx.control_plane.status_runtime_summaries import (  # noqa: E402
     StatusRuntimeSummaryContext,
@@ -121,6 +122,28 @@ def build_queue() -> dict[str, Any]:
     }
 
 
+def assert_status_module_wrapper_parity() -> None:
+    with tempfile.TemporaryDirectory() as raw_root:
+        kwargs = {
+            "history": build_history(),
+            "queue": build_queue(),
+            "runtime_root": Path(raw_root),
+            "goal_id_filter": GOAL_ID,
+            "display_limit": 1,
+            "todo_index_limit": 10,
+        }
+        wrapper = status_module.build_status_runtime_summaries(**kwargs)
+        direct = build_status_runtime_summaries(
+            **kwargs,
+            context=status_module.build_status_runtime_summary_context(),
+        )
+
+    assert wrapper == direct, (wrapper, direct)
+    assert wrapper["run_history"]["run_count"] == 2, wrapper["run_history"]
+    assert wrapper["usage_summary"]["totals"]["quota_spend_slots_24h"] == 1, wrapper["usage_summary"]
+    assert wrapper["todo_index"]["total_count"] == 1, wrapper["todo_index"]
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory() as raw_root:
         summaries = build_status_runtime_summaries(
@@ -147,6 +170,7 @@ def main() -> None:
     assert summaries["usage_summary"]["totals"]["quota_spend_slots_24h"] == 1, summaries["usage_summary"]
     assert summaries["decision_freshness_summary"]["summary"]["decision_count"] == 1, summaries["decision_freshness_summary"]
     assert summaries["todo_index"]["total_count"] == 1, summaries["todo_index"]
+    assert_status_module_wrapper_parity()
     print("status-runtime-summaries-readmodel-smoke ok")
 
 

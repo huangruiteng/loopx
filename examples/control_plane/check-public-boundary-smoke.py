@@ -45,7 +45,17 @@ def run_git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
 def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        implicit = run_cli(root, "--format", "json", "check", "--scan-root", str(REPO_ROOT))
+        implicit_project = root / "implicit-project"
+        implicit_project.mkdir()
+        (implicit_project / "README.md").write_text("public docs stay clean\n", encoding="utf-8")
+        implicit = run_cli(
+            root,
+            "--format",
+            "json",
+            "check",
+            "--scan-root",
+            str(implicit_project),
+        )
         if implicit.returncode != 0:
             raise AssertionError(implicit.stderr or implicit.stdout)
         payload = json.loads(implicit.stdout)

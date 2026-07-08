@@ -54,6 +54,13 @@ recurring heartbeat body 由 CLI 生成：
 loopx heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"
 ```
 
+如果之后用 `loopx configure-goal` 或控制面 UI 增加/切换
+`registered_agents` 或 `primary_agent`，请按输出里的
+`heartbeat_prompt_migration` 重新生成并更新 Codex App automation；旧的
+无身份 heartbeat 会 fail closed。Codex App 降频时，按
+`quota should-run.scheduler_hint.codex_app.ack_hint.cli_args` 执行即可；新输出会使用
+`quota scheduler-ack-current` 读取最新 hint，避免手抄已过期的 reset token。
+
 ### Codex CLI
 
 适合希望保留可见 TUI、随时观察和接管的用户。从项目 repo 打开 Codex CLI：
@@ -117,7 +124,9 @@ loopx bootstrap \
 或 `/skills` 里的 `loopx` 命令 facade 进入；Claude Code 在 opt-in adapter
 安装后可用 `/loopx <任务>`，再用 `/loop` 推进。若某个 host 里看不到命令，先跑
 `loopx slash-commands` 查看当前命令清单；项目目标可用
-`loopx bootstrap-command-pack --project . --goal-text "<任务>"` 恢复同一语义。
+`loopx start-goal --guided --project . --goal-text "<任务>"` 从 shell 进入同一条
+agent-safe 路径。需要低层 handoff packet 的 host/plugin 集成仍可使用
+`loopx bootstrap-command-pack --project . --goal-text "<任务>"`。
 完整路由和恢复细节见 [Getting Started](docs/guides/getting-started.md) 与
 [host command registry contract](docs/reference/protocols/codex-app-host-command-registry-v0.md)。
 

@@ -434,10 +434,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "checks": [
             {
                 "command": "python3 examples/control_plane/control-plane-integrated-canary-smoke.py",
-                "tier": "default",
+                "tier": "deep",
                 "reason": (
-                    "exercises event-sourced todo projection, status, quota interaction contract, "
-                    "work-lane contract, scheduler ack, refresh-state, spend-slot, and review-packet handoff together"
+                    "samples the full event-sourced todo projection, status, quota interaction contract, "
+                    "work-lane contract, scheduler ack, refresh-state, spend-slot, and review-packet handoff path; "
+                    "kept deep because it is a slow end-to-end fixture"
                 ),
             },
             {

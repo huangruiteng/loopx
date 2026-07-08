@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
@@ -75,6 +76,18 @@ def _clean_registered_agents(values: list[str] | None) -> list[str] | None:
     return agents
 
 
+def _clean_write_scope(values: list[str] | None) -> list[str] | None:
+    if values is None:
+        return None
+    scopes: list[str] = []
+    for value in values:
+        for part in str(value).split(","):
+            scope = part.strip()
+            if scope and scope not in scopes:
+                scopes.append(scope)
+    return scopes
+
+
 def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
     quota = goal_quota_config(goal)
     control_plane = compact_control_plane_policy(goal.get("control_plane"))
@@ -88,6 +101,7 @@ def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
         "control_plane": control_plane,
         "orchestration": orchestration,
         "waiting_on": goal.get("waiting_on"),
+        "write_scope": _clean_write_scope(coordination.get("write_scope") or []) or [],
         "checkpointed_boundary_authority": checkpointed_boundary_authority_summary(coordination),
         "registered_agents": normalize_registered_agents(coordination.get("registered_agents")),
         "primary_agent": primary_agent_id_for_goal(goal),
@@ -101,6 +115,60 @@ def _changed_fields(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
         if before_value != after_value:
             changed.append(group)
     return changed
+
+
+def _heartbeat_scope_hint(agent_id: str, *, primary_agent: str | None) -> str:
+    if primary_agent and agent_id == primary_agent:
+        return "primary review, verification, merge, and coordination"
+    return "bounded registered-agent work in its assigned lane"
+
+
+def _build_heartbeat_prompt_migration(
+    *,
+    goal_id: str,
+    changed_fields: list[str],
+    after: dict[str, Any],
+) -> dict[str, Any] | None:
+    if not any(field in changed_fields for field in ("registered_agents", "primary_agent")):
+        return None
+    registered_agents = [
+        str(agent).strip()
+        for agent in after.get("registered_agents") or []
+        if str(agent).strip()
+    ]
+    if not registered_agents:
+        return None
+    primary_agent = str(after.get("primary_agent") or "").strip() or None
+    ordered_agents: list[str] = []
+    if primary_agent and primary_agent in registered_agents:
+        ordered_agents.append(primary_agent)
+    for agent in registered_agents:
+        if agent not in ordered_agents:
+            ordered_agents.append(agent)
+    commands = []
+    for agent in ordered_agents:
+        scope = _heartbeat_scope_hint(agent, primary_agent=primary_agent)
+        commands.append(
+            {
+                "agent_id": agent,
+                "role": "primary" if primary_agent and agent == primary_agent else "registered_agent",
+                "command": (
+                    "loopx heartbeat-prompt --thin "
+                    f"--goal-id {shlex.quote(goal_id)} "
+                    f"--agent-id {shlex.quote(agent)} "
+                    f"--agent-scope {shlex.quote(scope)}"
+                ),
+            }
+        )
+    return {
+        "schema_version": "heartbeat_prompt_migration_v0",
+        "reason": (
+            "coordination.registered_agents or coordination.primary_agent changed; "
+            "installed heartbeats should be regenerated with identity-aware prompt args"
+        ),
+        "action": "update any installed Codex App automation task body with a matching heartbeat-prompt command",
+        "commands": commands,
+    }
 
 
 def configure_goal(
@@ -121,6 +189,9 @@ def configure_goal(
     clear_registered_agents: bool = False,
     primary_agent: str | None = None,
     clear_primary_agent: bool = False,
+    write_scope: list[str] | None = None,
+    replace_write_scope: bool = False,
+    clear_write_scope: bool = False,
     waiting_on: str | None = None,
     clear_waiting_on: bool = False,
     boundary_authority_scopes: list[str] | None = None,
@@ -141,6 +212,12 @@ def configure_goal(
         raise ValueError("--clear-primary-agent cannot be combined with --primary-agent")
     if clear_registered_agents and primary_agent:
         raise ValueError("--clear-registered-agents cannot be combined with --primary-agent")
+    if clear_write_scope and write_scope:
+        raise ValueError("--clear-write-scope cannot be combined with --write-scope")
+    if replace_write_scope and not write_scope:
+        raise ValueError("--replace-write-scope requires --write-scope")
+    if clear_write_scope and replace_write_scope:
+        raise ValueError("--clear-write-scope cannot be combined with --replace-write-scope")
     if clear_waiting_on and waiting_on:
         raise ValueError("--clear-waiting-on cannot be combined with --waiting-on")
     adding_boundary_authority = any(
@@ -163,6 +240,7 @@ def configure_goal(
     max_children = _non_negative_int(max_children, field="max_children")
     allowed_domains = _clean_domains(allowed_domains)
     registered_agents = _clean_registered_agents(registered_agents)
+    write_scope = _clean_write_scope(write_scope)
     normalized_primary_agent = normalize_todo_claimed_by(primary_agent) if primary_agent else None
     if primary_agent and not normalized_primary_agent:
         raise ValueError("--primary-agent must be a public-safe registered agent id")
@@ -230,6 +308,8 @@ def configure_goal(
         or registered_agents is not None
         or normalized_primary_agent is not None
         or clear_primary_agent
+        or write_scope is not None
+        or clear_write_scope
         or clear_boundary_authority
         or adding_boundary_authority
     ):
@@ -250,6 +330,14 @@ def configure_goal(
             coordination.pop("primary_agent", None)
         elif normalized_primary_agent is not None:
             coordination["primary_agent"] = normalized_primary_agent
+        if clear_write_scope:
+            coordination["write_scope"] = []
+        elif write_scope is not None:
+            if replace_write_scope:
+                coordination["write_scope"] = write_scope
+            else:
+                existing_write_scope = _clean_write_scope(coordination.get("write_scope") or []) or []
+                coordination["write_scope"] = _clean_write_scope([*existing_write_scope, *write_scope]) or []
         if clear_boundary_authority:
             coordination.pop("checkpointed_boundary_authority", None)
         if adding_boundary_authority:
@@ -292,6 +380,11 @@ def configure_goal(
         "written": bool(execute and changed_fields),
         "control_plane_summary": control_plane_policy_summary(after.get("control_plane")),
         "orchestration_summary": orchestration_policy_summary(after.get("orchestration")),
+        "heartbeat_prompt_migration": _build_heartbeat_prompt_migration(
+            goal_id=goal_id,
+            changed_fields=changed_fields,
+            after=after,
+        ),
     }
 
 
@@ -315,6 +408,15 @@ def render_configure_goal_markdown(payload: dict[str, Any]) -> str:
         lines.append(f"- control_plane: {payload.get('control_plane_summary')}")
     if payload.get("orchestration_summary"):
         lines.append(f"- orchestration: {payload.get('orchestration_summary')}")
+    migration = payload.get("heartbeat_prompt_migration")
+    if isinstance(migration, dict):
+        lines.append(f"- heartbeat_prompt_migration: {migration.get('action')}")
+        for command in migration.get("commands") or []:
+            if not isinstance(command, dict):
+                continue
+            lines.append(
+                f"  - {command.get('agent_id')}: `{command.get('command')}`"
+            )
     activation = payload.get("host_loop_activation")
     if isinstance(activation, dict):
         lines.append(

@@ -26,6 +26,8 @@ def assert_concise_default_help(output: str) -> None:
     assert "LoopX keeps long-running agent work moving" in output, output
     assert "Start here:" in output, output
     assert "/loopx <goal text>" in output, output
+    assert "slash-commands --install" in output, output
+    assert "start-goal --guided" in output, output
     assert "Run the loop:" in output, output
     assert "Codex App" in output, output
     assert "Claude Code" in output, output

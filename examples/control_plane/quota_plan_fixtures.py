@@ -1,0 +1,666 @@
+#!/usr/bin/env python3
+"""Shared fixtures for quota plan smoke tests."""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+import hashlib
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+
+SCOPED_AGENT_ID = "codex-side-bypass"
+
+
+def _nested_value(payload: dict, path: str):
+    current = payload
+    for part in path.split("."):
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current
+
+
+def scheduler_reset_profile_snapshot(scheduler: dict) -> dict:
+    codex_app = scheduler["codex_app"]
+    unchanged_poll = scheduler["unchanged_poll"]
+    limits = unchanged_poll["limits"]
+    return {
+        "cadence_class": scheduler["cadence_class"],
+        "codex_app_initial_interval_minutes": codex_app["recommended_interval_minutes"],
+        "codex_app_initial_rrule": codex_app["recommended_rrule"],
+        "codex_app_max_interval_minutes": codex_app["max_interval_minutes"],
+        "codex_app_progression_minutes": codex_app["example_progression_minutes"],
+        "unchanged_poll_backoff_multiplier": codex_app["unchanged_poll_backoff_multiplier"],
+        "local_scheduler_unchanged_poll_limit": limits["local_scheduler"],
+        "claude_code_loop_unchanged_poll_limit": limits["claude_code_loop"],
+    }
+
+
+def _short_hash(value: dict, length: int) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            ensure_ascii=True,
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()[:length]
+
+
+def expected_scheduler_reset_token(scheduler: dict, payload: dict) -> str:
+    identity_snapshot = {
+        key: _nested_value(payload, key)
+        for key in scheduler["unchanged_identity_keys"]
+    }
+    profile_snapshot = scheduler_reset_profile_snapshot(scheduler)
+    token_payload = {
+        "action": scheduler["action"],
+        "identity_snapshot": identity_snapshot,
+        "profile_snapshot": profile_snapshot,
+    }
+    return _short_hash(token_payload, 16)
+
+
+def goal(
+    goal_id: str,
+    *,
+    compute: float,
+    spent_slots: int = 0,
+    allowed_slots: int | None = None,
+) -> dict:
+    allowed_slots = round(24 * 60 * compute) if allowed_slots is None else allowed_slots
+    return {
+        "id": goal_id,
+        "status": "active",
+        "registry_member": True,
+        "lifecycle_phase": "refreshed",
+        "adapter_kind": "read_only_project_map_v0",
+        "adapter_status": "connected-read-only",
+        "quota": {
+            "compute": compute,
+            "window_hours": 24,
+            "slot_minutes": 1,
+            "allowed_slots": allowed_slots,
+            "spent_slots": spent_slots,
+        },
+        "latest_runs": [
+            {
+                "generated_at": "2026-01-01T00:00:00+00:00",
+                "classification": "state_refreshed",
+                "recommended_action": f"continue {goal_id}",
+            }
+        ],
+    }
+
+
+def attention(
+    goal_id: str,
+    *,
+    compute: float,
+    state: str = "eligible",
+    waiting_on: str = "codex",
+    spent_slots: int = 0,
+    allowed_slots: int | None = None,
+) -> dict:
+    allowed_slots = round(24 * 60 * compute) if allowed_slots is None else allowed_slots
+    if state == "operator_gate":
+        reason = "operator gate blocks gated delivery; safe non-gated steering may continue"
+    elif state == "throttled":
+        reason = f"{compute:g} compute quota spent {spent_slots}/{allowed_slots} slots in this window"
+    elif state == "focus_wait":
+        reason = (
+            "focus wait: delivery lane has a continuation boundary or missing novelty; "
+            "wait for new evidence, owner input, external eval, or a clean baseline before "
+            "spending delivery compute"
+        )
+    else:
+        reason = f"{compute:g} compute quota; eligible for the next automatic agent turn"
+    return {
+        "goal_id": goal_id,
+        "status": "state_refreshed" if waiting_on == "codex" else "operator_gate_deferred",
+        "waiting_on": waiting_on,
+        "severity": "action",
+        "recommended_action": f"continue {goal_id}",
+        "source": "fixture",
+        **(
+            {
+                "operator_question": f"是否同意 {goal_id} 继续 gated delivery？",
+                "next_handoff_condition": "operator decision recorded",
+                "user_todos": {
+                    "source_section": "User Todo",
+                    "total_count": 1,
+                    "open_count": 1,
+                    "done_count": 0,
+                    "items": [
+                        {
+                            "index": 1,
+                            "done": False,
+                            "text": "Confirm the operator gate.",
+                            "task_class": "user_gate",
+                            "global_gate": True,
+                        }
+                    ],
+                },
+                "agent_todos": {
+                    "source_section": "Agent Todo",
+                    "total_count": 1,
+                    "open_count": 1,
+                    "done_count": 0,
+                    "items": [
+                        {
+                            "index": 1,
+                            "done": False,
+                            "text": "Run the safe follow-up after gate approval.",
+                        }
+                    ],
+                },
+            }
+            if state == "operator_gate"
+            else {}
+        ),
+        "quota": {
+            "compute": compute,
+            "window_hours": 24,
+            "slot_minutes": 1,
+            "allowed_slots": allowed_slots,
+            "spent_slots": spent_slots,
+            "state": state,
+            "reason": reason,
+            **(
+                {
+                    "blocked_action_scope": "gated_delivery",
+                    "safe_bypass_allowed": True,
+                    "safe_bypass_policy": "Do not execute agent_command; safe steering only.",
+                }
+                if state == "operator_gate"
+                else {}
+            ),
+            **(
+                {
+                    "blocked_action_scope": "delivery_focus",
+                    "focus_wait": True,
+                }
+                if state == "focus_wait"
+                else {}
+            ),
+        },
+    }
+
+
+def build_status_fixture() -> dict:
+    goals = [
+        goal("half-speed", compute=0.5),
+        goal("near-limit-half", compute=0.5, spent_slots=11, allowed_slots=12),
+        goal("full-speed", compute=1.0),
+        goal("low-speed", compute=0.3),
+        goal("throttled-half", compute=0.5, spent_slots=12, allowed_slots=12),
+        goal("needs-operator", compute=1.0),
+    ]
+    queue_items = [
+        attention("half-speed", compute=0.5),
+        attention("near-limit-half", compute=0.5, spent_slots=11, allowed_slots=12),
+        attention("full-speed", compute=1.0),
+        attention("low-speed", compute=0.3),
+        attention(
+            "throttled-half",
+            compute=0.5,
+            state="throttled",
+            spent_slots=12,
+            allowed_slots=12,
+        ),
+        attention(
+            "needs-operator",
+            compute=1.0,
+            state="operator_gate",
+            waiting_on="user_or_controller",
+        ),
+    ]
+    return {
+        "ok": True,
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "goal_count": len(goals),
+        "run_count": len(goals),
+        "attention_queue": {"items": queue_items},
+        "run_history": {"goals": goals},
+    }
+
+
+def append_quota_slot_spend_fixture(
+    run_dir: Path,
+    *,
+    goal_id: str,
+    compute: float,
+    slot_index: int,
+    generated_at: str,
+    allowed_slots: int,
+) -> None:
+    before_spent = slot_index
+    after_spent = slot_index + 1
+    after_state = "throttled" if after_spent >= allowed_slots else "eligible"
+    after_should_run = after_state == "eligible"
+    stem = generated_at.replace("-", "").replace(":", "").replace("+", "")
+    json_path = run_dir / f"{stem}-quota-slot-{slot_index + 1}.json"
+    markdown_path = run_dir / f"{stem}-quota-slot-{slot_index + 1}.md"
+    record = {
+        "generated_at": generated_at,
+        "goal_id": goal_id,
+        "classification": "quota_slot_spent",
+        "recommended_action": f"continue {goal_id}",
+        "health_check": "fixture quota slot spend event",
+        "quota_event": {
+            "event_type": "quota_slot_spent",
+            "source": "heartbeat",
+            "slots": 1,
+            "reason_summary": "fixture automatic agent slot completed under an eligible quota guard",
+            "before": {
+                "should_run": True,
+                "state": "eligible",
+                "compute": compute,
+                "window_hours": 24,
+                "slot_minutes": 1,
+                "spent_slots": before_spent,
+                "allowed_slots": allowed_slots,
+            },
+            "after": {
+                "should_run": after_should_run,
+                "state": after_state,
+                "compute": compute,
+                "window_hours": 24,
+                "slot_minutes": 1,
+                "spent_slots": after_spent,
+                "allowed_slots": allowed_slots,
+            },
+        },
+    }
+    json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    markdown_path.write_text(f"# {goal_id} quota slot fixture\n", encoding="utf-8")
+    with (run_dir / "index.jsonl").open("a", encoding="utf-8") as f:
+        f.write(
+            json.dumps(
+                {
+                    "generated_at": generated_at,
+                    "goal_id": goal_id,
+                    "classification": "quota_slot_spent",
+                    "recommended_action": f"continue {goal_id}",
+                    "health_check": "fixture quota slot spend event",
+                    "json_path": str(json_path),
+                    "markdown_path": str(markdown_path),
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+
+
+def write_cli_fixture(root: Path, *, scoped_agents: bool = False) -> tuple[Path, Path, Path]:
+    project = root / "project"
+    runtime = root / "runtime"
+    registry_path = project / ".loopx" / "registry.json"
+    base_time = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(minutes=30)
+    goal_specs = [
+        ("half-speed", 0.5, "state_refreshed", 0, None),
+        ("near-limit-half", 0.5, "state_refreshed", 11, 12),
+        ("full-speed", 1.0, "state_refreshed", 0, None),
+        ("low-speed", 0.3, "state_refreshed", 0, None),
+        ("throttled-half", 0.5, "state_refreshed", 12, 12),
+        ("needs-operator", 1.0, "operator_gate_deferred", 0, None),
+    ]
+    registry_goals = []
+    for goal_id, compute, classification, spent_slots, allowed_slots in goal_specs:
+        state_file = f".codex/goals/{goal_id}/ACTIVE_GOAL_STATE.md"
+        state_path = project / state_file
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(
+            "---\n"
+            "status: active\n"
+            "updated_at: 2026-01-01T00:00:00+00:00\n"
+            "---\n\n"
+            f"# {goal_id}\n\n"
+            "## Next Action\n\n"
+            f"- continue {goal_id}\n",
+            encoding="utf-8",
+        )
+        goal_record = {
+            "id": goal_id,
+            "domain": "quota-fixture",
+            "status": "active",
+            "repo": str(project),
+            "state_file": state_file,
+            "adapter": {
+                "kind": "read_only_project_map_v0",
+                "status": "connected-read-only",
+            },
+            "authority_sources": [],
+            "quota": {
+                key: value
+                for key, value in {
+                    "compute": compute,
+                    "window_hours": 24,
+                    "allowed_slots": allowed_slots,
+                }.items()
+                if value is not None
+            },
+        }
+        if scoped_agents:
+            goal_record["coordination"] = {
+                "registered_agents": ["codex-main-control", SCOPED_AGENT_ID],
+                "primary_agent": SCOPED_AGENT_ID,
+            }
+        registry_goals.append(goal_record)
+        runs_dir = runtime / "goals" / goal_id / "runs"
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        json_path = runs_dir / "20260101T000000-run.json"
+        markdown_path = runs_dir / "20260101T000000-run.md"
+        generated_at = (base_time - timedelta(seconds=1)).isoformat()
+        record = {
+            "generated_at": generated_at,
+            "goal_id": goal_id,
+            "classification": classification,
+            "recommended_action": f"continue {goal_id}",
+            "health_check": "fixture 1/1",
+        }
+        if classification == "operator_gate_deferred":
+            record["operator_gate"] = {
+                "recorded_at": generated_at,
+                "gate": "read_only_map_opt_in",
+                "decision": "defer",
+                "operator_question": f"是否同意 `{goal_id}` 先执行 read-only map opt-in？",
+                "reason_summary": "need more fixture evidence",
+            }
+        json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        markdown_path.write_text(f"# {goal_id} fixture run\n", encoding="utf-8")
+        with (runs_dir / "index.jsonl").open("a", encoding="utf-8") as f:
+            f.write(
+                json.dumps(
+                    {
+                        **record,
+                        "json_path": str(json_path),
+                        "markdown_path": str(markdown_path),
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+        effective_allowed_slots = round(24 * 60 * compute) if allowed_slots is None else allowed_slots
+        for slot_index in range(spent_slots):
+            append_quota_slot_spend_fixture(
+                runs_dir,
+                goal_id=goal_id,
+                compute=compute,
+                slot_index=slot_index,
+                generated_at=(base_time + timedelta(seconds=slot_index)).isoformat(),
+                allowed_slots=effective_allowed_slots,
+            )
+
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "common_runtime_root": str(runtime),
+                "goals": registry_goals,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return registry_path, runtime, project
+
+
+def run_cli_quota_plan(root: Path) -> tuple[dict, str]:
+    registry_path, runtime, project = write_cli_fixture(root)
+    base_args = [
+        sys.executable,
+        "-m",
+        "loopx.cli",
+        "--registry",
+        str(registry_path),
+        "--runtime-root",
+        str(runtime),
+    ]
+    json_result = subprocess.run(
+        [*base_args, "--format", "json", "quota", "plan", "--scan-path", str(project)],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    markdown_result = subprocess.run(
+        [*base_args, "quota", "plan", "--scan-path", str(project)],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(json_result.stdout), markdown_result.stdout
+
+
+def run_cli_throttled_should_run(root: Path) -> dict:
+    registry_path, runtime, project = write_cli_fixture(root)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--registry",
+            str(registry_path),
+            "--runtime-root",
+            str(runtime),
+            "--format",
+            "json",
+            "quota",
+            "should-run",
+            "--goal-id",
+            "throttled-half",
+            "--scan-path",
+            str(project),
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(result.stdout)
+
+
+def run_cli_slot_preview(root: Path) -> tuple[dict, dict]:
+    registry_path, runtime, project = write_cli_fixture(root)
+    base_args = [
+        sys.executable,
+        "-m",
+        "loopx.cli",
+        "--registry",
+        str(registry_path),
+        "--runtime-root",
+        str(runtime),
+        "--format",
+        "json",
+        "quota",
+    ]
+    preview_result = subprocess.run(
+        [
+            *base_args,
+            "spend-slot",
+            "--goal-id",
+            "near-limit-half",
+            "--slots",
+            "1",
+            "--scan-path",
+            str(project),
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    should_run_result = subprocess.run(
+        [
+            *base_args,
+            "should-run",
+            "--goal-id",
+            "near-limit-half",
+            "--scan-path",
+            str(project),
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(preview_result.stdout), json.loads(should_run_result.stdout)
+
+
+def run_cli_slot_spend_execute(root: Path) -> tuple[dict, dict, str, str]:
+    registry_path, runtime, project = write_cli_fixture(root, scoped_agents=True)
+    registry_before = registry_path.read_text(encoding="utf-8")
+    base_args = [
+        sys.executable,
+        "-m",
+        "loopx.cli",
+        "--registry",
+        str(registry_path),
+        "--runtime-root",
+        str(runtime),
+        "--format",
+        "json",
+        "quota",
+    ]
+    result = subprocess.run(
+        [
+            *base_args,
+            "spend-slot",
+            "--goal-id",
+            "near-limit-half",
+            "--slots",
+            "1",
+            "--source",
+            "heartbeat",
+            "--execute",
+            "--agent-id",
+            SCOPED_AGENT_ID,
+            "--scan-path",
+            str(project),
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    should_run_result = subprocess.run(
+        [
+            *base_args,
+            "should-run",
+            "--goal-id",
+            "near-limit-half",
+            "--agent-id",
+            SCOPED_AGENT_ID,
+            "--scan-path",
+            str(project),
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return (
+        json.loads(result.stdout),
+        json.loads(should_run_result.stdout),
+        registry_before,
+        registry_path.read_text(encoding="utf-8"),
+    )
+
+
+def run_cli_slot_void_execute(root: Path) -> tuple[dict, dict, dict, str, str]:
+    registry_path, runtime, project = write_cli_fixture(root, scoped_agents=True)
+    registry_before = registry_path.read_text(encoding="utf-8")
+    base_args = [
+        sys.executable,
+        "-m",
+        "loopx.cli",
+        "--registry",
+        str(registry_path),
+        "--runtime-root",
+        str(runtime),
+        "--format",
+        "json",
+        "quota",
+    ]
+    spend_result = subprocess.run(
+        [
+            *base_args,
+            "spend-slot",
+            "--goal-id",
+            "near-limit-half",
+            "--slots",
+            "1",
+            "--source",
+            "heartbeat",
+            "--execute",
+            "--agent-id",
+            SCOPED_AGENT_ID,
+            "--scan-path",
+            str(project),
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    spend_payload = json.loads(spend_result.stdout)
+    void_result = subprocess.run(
+        [
+            *base_args,
+            "void-slot",
+            "--goal-id",
+            "near-limit-half",
+            "--void-generated-at",
+            str(spend_payload["generated_at"]),
+            "--source",
+            "heartbeat",
+            "--reason-summary",
+            "duplicate heartbeat spend",
+            "--execute",
+            "--agent-id",
+            SCOPED_AGENT_ID,
+            "--scan-path",
+            str(project),
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    should_run_result = subprocess.run(
+        [
+            *base_args,
+            "should-run",
+            "--goal-id",
+            "near-limit-half",
+            "--agent-id",
+            SCOPED_AGENT_ID,
+            "--scan-path",
+            str(project),
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return (
+        spend_payload,
+        json.loads(void_result.stdout),
+        json.loads(should_run_result.stdout),
+        registry_before,
+        registry_path.read_text(encoding="utf-8"),
+    )

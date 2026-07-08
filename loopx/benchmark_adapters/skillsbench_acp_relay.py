@@ -2271,11 +2271,12 @@ LoopX SkillsBench remote workspace bridge:
 - This local Codex process is outside the scored SkillsBench sandbox.
 - Use the command below as a private JSON bridge for sandbox exec, file write, file read, and cleanup operations.
 - Send one JSON request on stdin and read one private JSON response on stdout.
-- FIRST ACTION REQUIRED: before prose planning or final answer, copy and run
-  this exact shell command to prove task-facing sandbox access:
-  `{first_exec_command}`
-- Invoke additional bridge operations by piping JSON to the same private bridge
-  command shown below.
+- FIRST ACTION REQUIRED: before prose planning or final answer, run this exact
+  shell command without Markdown backticks; JSON must be piped on stdin:
+  ```sh
+  {first_exec_command}
+  ```
+- Invoke additional operations by piping JSON to the bridge; never pass JSON as argv.
 - Request examples:
   - {{"operation":"exec","cwd":"/app","command":"pwd","timeout_sec":10}}
   - {{"operation":"read_file","path":"/app/path/to/file","max_bytes":20000}}

@@ -24,7 +24,7 @@ RUNTIME_KEYS = ("local_scheduler", "codex_cli_tui", "claude_code_loop")
 
 
 def _load_quota_plan_fixture_module():
-    module_path = REPO_ROOT / "examples" / "control_plane" / "quota-plan-smoke.py"
+    module_path = REPO_ROOT / "examples" / "control_plane" / "quota_plan_fixtures.py"
     spec = importlib.util.spec_from_file_location("quota_plan_smoke_fixture", module_path)
     assert spec and spec.loader, module_path
     module = importlib.util.module_from_spec(spec)
@@ -98,8 +98,9 @@ def assert_compact_runtime_policy_complete(
     assert stateful_backoff["state_status"] == "missing", (name, compact)
     assert ack_hint["schema_version"] == "codex_app_scheduler_ack_hint_v0", (name, compact)
     assert ack_hint["after"] == "automation_update_rrule_success", (name, compact)
-    assert ack_hint["command"] == "quota scheduler-ack", (name, compact)
+    assert ack_hint["command"] == "quota scheduler-ack-current", (name, compact)
     assert ack_hint["execute"] is True, (name, compact)
+    assert ack_hint["uses_current_hint"] is True, (name, compact)
     assert ack_hint["no_spend"] is True, (name, compact)
     assert ack_args["goal_id"] == expected_goal_id, (name, compact)
     assert ack_args["agent_id"] == expected_agent_id, (name, compact)
@@ -110,7 +111,7 @@ def assert_compact_runtime_policy_complete(
     assert ack_args["identity_signature"] == stateful_backoff["identity_signature"], (name, compact)
     assert ack_cli_args == [
         "quota",
-        "scheduler-ack",
+        "scheduler-ack-current",
         "--goal-id",
         ack_args["goal_id"],
         "--agent-id",
@@ -121,10 +122,6 @@ def assert_compact_runtime_policy_complete(
         ack_args["state_key"],
         "--applied-rrule",
         ack_args["applied_rrule"],
-        "--reset-token",
-        ack_args["reset_token"],
-        "--identity-signature",
-        ack_args["identity_signature"],
         "--execute",
     ], (name, compact)
     for omitted in (

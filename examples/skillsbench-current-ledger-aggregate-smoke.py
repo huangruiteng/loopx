@@ -17,6 +17,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.benchmark_ledger import (  # noqa: E402
     BENCHMARK_RUN_LEDGER_SCHEMA_VERSION,
+    build_benchmark_run_ledger_entry,
     build_benchmark_run_ledger_current_aggregate,
     load_benchmark_run_ledger,
     upsert_benchmark_run_ledger_entry,
@@ -43,6 +44,7 @@ def run_entry(
     labels: list[str] | None = None,
     score_failure_attribution: str | None = None,
     failure_attribution_labels: list[str] | None = None,
+    official_score_attempt_countable: bool | None = None,
     task_setup_preflight: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     entry: dict[str, Any] = {
@@ -63,6 +65,8 @@ def run_entry(
         entry["score_failure_attribution"] = score_failure_attribution
     if failure_attribution_labels is not None:
         entry["failure_attribution_labels"] = failure_attribution_labels
+    if official_score_attempt_countable is not None:
+        entry["official_score_attempt_countable"] = official_score_attempt_countable
     if task_setup_preflight is not None:
         entry["task_setup_preflight"] = task_setup_preflight
     if score is not None:
@@ -126,6 +130,18 @@ def make_ledger(path: Path) -> None:
             score_status="completed",
             failure_class="task_solution_partial",
             failure_scope="solution",
+        ),
+        run_entry(
+            run_id="pre-bridge-rate-limit-score",
+            case_id="fix-erlang-ssh-cve",
+            recorded_at="2026-07-02T01:35:00+08:00",
+            score=0.0,
+            score_status="completed",
+            failure_class="skillsbench_codex_cli_goal_uncountable_pre_bridge_rate_limit",
+            failure_scope="runner_or_setup",
+            score_failure_attribution=(
+                "skillsbench_codex_cli_goal_uncountable_pre_bridge_rate_limit"
+            ),
         ),
         run_entry(
             run_id="setup-score-missing",
@@ -195,6 +211,26 @@ def make_ledger(path: Path) -> None:
                 "alternate_source_supported_by_runner": False,
             },
         ),
+        run_entry(
+            run_id="tasks-extra-excluded-preflight",
+            case_id="scheduling-email-assistant",
+            recorded_at="2026-07-02T01:52:00+08:00",
+            score=None,
+            score_status="missing",
+            failure_class="skillsbench_task_source_excluded",
+            failure_scope="score_missing",
+            task_setup_preflight={
+                "schema_version": "skillsbench_task_setup_preflight_v0",
+                "status": "task_excluded_from_formal_tasks",
+                "task_id": "scheduling-email-assistant",
+                "canonical_task_present": False,
+                "alternate_source_kind": "tasks_extra",
+                "registry_task_present": True,
+                "registry_task_path": "tasks-extra/scheduling-email-assistant",
+                "registry_excluded": True,
+                "alternate_source_supported_by_runner": False,
+            },
+        ),
     ):
         ledger = upsert_benchmark_run_ledger_entry(ledger, entry)
     write_json(path, ledger)
@@ -218,19 +254,38 @@ def test_current_aggregate_prefers_countable_results() -> None:
                 "canonical-task-source-preflight",
                 "pddl-tpp-planning",
                 "reward-artifact-missing",
+                "fix-erlang-ssh-cve",
                 "hello-world",
+                "scheduling-email-assistant",
                 "never-run-case",
             ],
         )
-        assert aggregate["canonical_covered"] == 8, aggregate
+        assert aggregate["canonical_covered"] == 9, aggregate
         assert aggregate["distribution"] == {
             "missing": 1,
             "official_zero": 2,
             "partial": 1,
             "pass": 0,
             "setup_runner_infra": 4,
+            "uncountable_official_score": 1,
             "verifier_no_reward": 1,
         }, aggregate
+        assert aggregate["countable_score_summary"] == {
+            "schema_version": "benchmark_run_ledger_countable_score_summary_v0",
+            "countable_case_count": 3,
+            "countable_score_sum": 0.5,
+            "countable_score_mean": 0.166667,
+            "pass_count": 0,
+            "partial_count": 1,
+            "official_zero_count": 2,
+            "uncountable_numeric_case_count": 1,
+            "countable_case_ids": [
+                "lab-unit-harmonization",
+                "latex-formula-extraction",
+                "manufacturing-codebook-normalization",
+            ],
+            "uncountable_numeric_case_ids": ["fix-erlang-ssh-cve"],
+        }, aggregate["countable_score_summary"]
         assert (
             aggregate["case_best"]["latex-formula-extraction"]["run_id"]
             == "latex-official-zero"
@@ -248,8 +303,122 @@ def test_current_aggregate_prefers_countable_results() -> None:
         assert aggregate["case_best"]["reward-artifact-missing"]["bucket"] == (
             "verifier_no_reward"
         )
+        assert aggregate["case_best"]["fix-erlang-ssh-cve"]["bucket"] == (
+            "uncountable_official_score"
+        )
+        assert aggregate["case_best"]["fix-erlang-ssh-cve"][
+            "official_score_countable"
+        ] is False
+        assert aggregate["case_best"]["fix-erlang-ssh-cve"][
+            "official_score_countability_reason"
+        ] == "uncountable_attribution"
         assert "hello-world" not in aggregate["case_best"], aggregate["case_best"]
         assert "hello-world" not in aggregate["cases_by_bucket"]["setup_runner_infra"]
+        assert "scheduling-email-assistant" not in aggregate["case_best"], (
+            aggregate["case_best"]
+        )
+        assert "scheduling-email-assistant" not in aggregate["cases_by_bucket"][
+            "setup_runner_infra"
+        ]
+
+
+def test_ledger_marks_uncountable_numeric_scores_noncountable() -> None:
+    pre_bridge_rate_limit = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": BENCHMARK_ID,
+        "case_id": "fix-erlang-ssh-cve",
+        "job_name": "skillsbench_1_1_fix_erlang_ssh_cve_codex_cli_goal_baseline",
+        "route": "codex-cli-goal-baseline",
+        "official_score_status": "completed",
+        "official_score": 0.0,
+        "score_failure_attribution": (
+            "skillsbench_codex_cli_goal_uncountable_pre_bridge_rate_limit"
+        ),
+    }
+    entry = build_benchmark_run_ledger_entry(pre_bridge_rate_limit)
+    assert entry["official_score"] == 0.0, entry
+    assert entry["score_failure_attribution"] == (
+        "skillsbench_codex_cli_goal_uncountable_pre_bridge_rate_limit"
+    ), entry
+    assert entry["official_score_countable"] is False, entry
+    assert entry["official_score_countability_reason"] == "uncountable_attribution", entry
+    assert "countable_score" not in entry, entry
+
+    explicit_noncountable = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": BENCHMARK_ID,
+        "case_id": "goal-active-timeout",
+        "job_name": "skillsbench_1_1_goal_active_timeout_codex_cli_goal_baseline",
+        "route": "codex-cli-goal-baseline",
+        "official_score_status": "completed",
+        "official_score": 0.0,
+        "official_score_attempt_countable": False,
+    }
+    entry = build_benchmark_run_ledger_entry(explicit_noncountable)
+    assert entry["official_score_attempt_countable"] is False, entry
+    assert entry["official_score_countable"] is False, entry
+    assert entry["official_score_countability_reason"] == (
+        "official_score_attempt_not_countable"
+    ), entry
+
+    passed_false_only = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": BENCHMARK_ID,
+        "case_id": "passed-bool-false",
+        "job_name": "skillsbench_1_1_passed_bool_false_codex_cli_goal_baseline",
+        "route": "codex-cli-goal-baseline",
+        "official_score_status": "completed",
+        "official_task_score": {"passed": False},
+    }
+    entry = build_benchmark_run_ledger_entry(passed_false_only)
+    assert entry["official_score"] == 0.0, entry
+    assert entry["official_passed"] is False, entry
+    assert entry["official_score_countable"] is True, entry
+    assert entry["official_score_countability_reason"] == (
+        "countable_official_score"
+    ), entry
+
+    passed_false_missing_status = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": BENCHMARK_ID,
+        "case_id": "passed-bool-false-missing-status",
+        "job_name": "skillsbench_1_1_passed_bool_false_missing_status_codex_cli_goal_baseline",
+        "route": "codex-cli-goal-baseline",
+        "official_score_status": "missing",
+        "official_task_score": {
+            "kind": "skillsbench_verifier_reward",
+            "passed": False,
+        },
+        "score_failure_attribution": "verifier_infrastructure_failure",
+    }
+    entry = build_benchmark_run_ledger_entry(passed_false_missing_status)
+    assert entry["official_score"] == 0.0, entry
+    assert entry["official_passed"] is False, entry
+    assert entry["score_status"] == "failed", entry
+    assert entry["official_score_countable"] is True, entry
+    assert entry["official_score_countability_reason"] == (
+        "countable_official_score"
+    ), entry
+
+    passed_false_attempt_marked_noncountable = {
+        **passed_false_missing_status,
+        "case_id": "passed-bool-false-attempt-marked-noncountable",
+        "attempt_accounting": {
+            "official_score_attempt_countable": False,
+            "case_attempt_countable": True,
+            "solver_attempt_countable": True,
+            "verifier_attempt_countable": True,
+        },
+    }
+    entry = build_benchmark_run_ledger_entry(passed_false_attempt_marked_noncountable)
+    assert entry["official_score"] == 0.0, entry
+    assert entry["official_passed"] is False, entry
+    assert entry["score_status"] == "failed", entry
+    assert entry["official_score_attempt_countable"] is True, entry
+    assert entry["official_score_countable"] is True, entry
+    assert entry["official_score_countability_reason"] == (
+        "countable_official_score"
+    ), entry
 
 
 def test_current_aggregate_default_inference_excludes_sanity_sources() -> None:
@@ -261,12 +430,109 @@ def test_current_aggregate_default_inference_excludes_sanity_sources() -> None:
             ledger,
             benchmark_id=BENCHMARK_ID,
         )
-        assert aggregate["canonical_total"] == 8, aggregate
-        assert aggregate["canonical_covered"] == 8, aggregate
+        assert aggregate["canonical_total"] == 9, aggregate
+        assert aggregate["canonical_covered"] == 9, aggregate
         assert aggregate["distribution"]["setup_runner_infra"] == 4, aggregate
         assert aggregate["distribution"]["verifier_no_reward"] == 1, aggregate
+        assert aggregate["distribution"]["uncountable_official_score"] == 1, aggregate
+        assert aggregate["countable_score_summary"]["countable_case_count"] == 3, aggregate
+        assert aggregate["countable_score_summary"]["countable_score_mean"] == 0.166667, aggregate
         assert "hello-world" not in aggregate["case_best"], aggregate["case_best"]
         assert "hello-world" not in aggregate["cases_by_bucket"]["setup_runner_infra"]
+        assert "scheduling-email-assistant" not in aggregate["case_best"], (
+            aggregate["case_best"]
+        )
+
+
+def test_target_lane_aggregate_uses_current_then_full87_backfill() -> None:
+    ledger: dict[str, Any] = {
+        "schema_version": BENCHMARK_RUN_LEDGER_SCHEMA_VERSION,
+        "benchmarks": {},
+    }
+    current_scores = {
+        "case-01": 0.0,
+        **{f"case-{index:02d}": 1.0 for index in range(2, 12)},
+        **{f"case-{index:02d}": 0.0 for index in range(12, 18)},
+    }
+    backfill_scores = {
+        "case-01": 1.0,
+        "case-18": 1.0,
+        "case-19": 1.0,
+        "case-20": 1.0,
+        "case-21": 1.0,
+        "case-22": 0.5,
+        "case-23": 0.2,
+        "case-24": 0.0,
+    }
+    for case_id, score in current_scores.items():
+        ledger = upsert_benchmark_run_ledger_entry(
+            ledger,
+            run_entry(
+                run_id=f"skillsbench-codex-cli-goal-xhigh-{case_id}-post1621",
+                case_id=case_id,
+                recorded_at="2026-07-08T14:00:00+08:00",
+                score=score,
+                score_status="completed",
+                failure_class="task_solution_failure" if score == 0 else "none",
+                failure_scope="solution",
+            ),
+        )
+    for case_id, score in backfill_scores.items():
+        ledger = upsert_benchmark_run_ledger_entry(
+            ledger,
+            run_entry(
+                run_id=f"skillsbench-codex-cli-goal-xhigh-full87-{case_id}",
+                case_id=case_id,
+                recorded_at="2026-07-07T14:00:00+08:00",
+                score=score,
+                score_status="completed",
+                failure_class="task_solution_failure" if score == 0 else "none",
+                failure_scope="solution",
+            ),
+        )
+    ledger = upsert_benchmark_run_ledger_entry(
+        ledger,
+        run_entry(
+            run_id="skillsbench-raw-codex-xhigh-case-25",
+            case_id="case-25",
+            recorded_at="2026-07-08T14:00:00+08:00",
+            score=1.0,
+            score_status="completed",
+            failure_class="none",
+            failure_scope="solution",
+        ),
+    )
+    aggregate = build_benchmark_run_ledger_current_aggregate(
+        ledger,
+        benchmark_id=BENCHMARK_ID,
+        canonical_case_ids=[f"case-{index:02d}" for index in range(1, 26)],
+        target_lane_id="codex-cli-goal-xhigh",
+        target_run_group_contains=["skillsbench-codex-cli-goal-xhigh-"],
+        target_backfill_run_group_contains=[
+            "skillsbench-codex-cli-goal-xhigh-full87-",
+        ],
+    )
+    summary = aggregate["countable_score_summary"]
+    assert summary["countable_case_count"] == 24, summary
+    assert summary["countable_score_sum"] == 14.7, summary
+    assert summary["countable_score_mean"] == 0.6125, summary
+    assert aggregate["case_best"]["case-01"]["run_id"].endswith("post1621"), (
+        aggregate["case_best"]["case-01"]
+    )
+    assert aggregate["case_best"]["case-01"]["official_score"] == 0.0
+    assert aggregate["case_best"]["case-18"]["target_lane_source"] == (
+        "backfill_countable"
+    )
+    assert aggregate["case_best"]["case-25"]["bucket"] == "missing"
+    target_lane = aggregate["selection_policy"]["target_lane"]
+    assert target_lane["enabled"] is True, target_lane
+    assert target_lane["case_source_counts"] == {
+        "backfill_countable": 7,
+        "backfill_noncountable": 0,
+        "current_countable": 17,
+        "current_noncountable": 0,
+        "missing": 1,
+    }, target_lane
 
 
 def test_current_aggregate_cli_writes_public_safe_json() -> None:
@@ -303,6 +569,10 @@ def test_current_aggregate_cli_writes_public_safe_json() -> None:
                 BENCHMARK_ID,
                 "--canonical-case-root",
                 str(canonical_root),
+                "--target-lane-id",
+                "codex-cli-goal-xhigh",
+                "--target-run-group-contains",
+                "-",
                 "--output-json",
                 str(output_path),
                 "--execute",
@@ -319,13 +589,21 @@ def test_current_aggregate_cli_writes_public_safe_json() -> None:
         assert aggregate["canonical_total"] == 5, aggregate
         assert aggregate["case_best"]["latex-formula-extraction"]["bucket"] == "official_zero"
         assert aggregate["case_best"]["fix-druid-loophole-cve"]["bucket"] == "setup_runner_infra"
+        assert aggregate["countable_score_summary"]["countable_case_count"] == 3
+        assert aggregate["countable_score_summary"]["countable_score_mean"] == 0.166667
         assert "hello-world" not in aggregate["case_best"]
         assert aggregate["selection_policy"]["source_paths_recorded"] is False
+        assert aggregate["selection_policy"]["target_lane"]["enabled"] is True
+        assert aggregate["selection_policy"]["target_lane"]["lane_id"] == (
+            "codex-cli-goal-xhigh"
+        )
         assert ".local" not in output_path.read_text(encoding="utf-8")
 
 
 if __name__ == "__main__":
     test_current_aggregate_prefers_countable_results()
+    test_ledger_marks_uncountable_numeric_scores_noncountable()
     test_current_aggregate_default_inference_excludes_sanity_sources()
+    test_target_lane_aggregate_uses_current_then_full87_backfill()
     test_current_aggregate_cli_writes_public_safe_json()
     print("skillsbench-current-ledger-aggregate-smoke: ok")

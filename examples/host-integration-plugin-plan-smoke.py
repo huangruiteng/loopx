@@ -48,7 +48,7 @@ def main() -> int:
             "## Acceptance Matrix",
             "loopx heartbeat-prompt --thin --goal-id <goal-id>",
             "stateful_backoff.apply_needed",
-            "quota scheduler-ack",
+            "quota scheduler-ack-current",
             "last applied RRULE",
             "does not spend quota",
             "Raw transcript offered to plugin",

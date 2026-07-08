@@ -84,7 +84,7 @@ entry point is different:
 
 | Command family | Host entry | CLI fallback |
 | --- | --- | --- |
-| Project goal start | `/loopx <goal text>` where the host exposes native slash commands; `$loopx <goal text>` or the `loopx` skill in Codex surfaces that use explicit skills. | `loopx bootstrap-command-pack --project . --goal-text "<goal text>"` |
+| Project goal start | `/loopx <goal text>` where the host exposes native slash commands; `$loopx <goal text>` or the `loopx` skill in Codex surfaces that use explicit skills. | `loopx start-goal --guided --project . --goal-text "<goal text>"` |
 | Global manager views | `/loopx-global-summary`, `/loopx-global-gates`, `/loopx-global-todos`, `/loopx-global-risks`. | `loopx slash-commands`, then run the listed global manager command for the view you need. |
 | PR review queue | `/loopx-pr-review`. | `loopx pr-review` |
 
@@ -106,17 +106,20 @@ marker or legacy signature, LoopX leaves it untouched and reports
 `skipped_user_file`.
 
 If a project-local goal command still cannot be invoked through the host, run
-the equivalent command pack from the project root:
+the equivalent guided start preview from the project root:
 
 ```bash
-loopx bootstrap-command-pack --project . --goal-text "<goal text>"
+loopx start-goal --guided --project . --goal-text "<goal text>"
 ```
 
-That preserves the `/loopx <goal text>` semantics: preserve the exact task
-text, plan before todo writeback, refresh state, run `quota should-run`, and
-continue only when the guard allows. For global manager or PR review commands,
-use `loopx slash-commands` to print the current canonical command list and
-fallback CLI shapes.
+That preserves the `/loopx <goal text>` semantics while keeping mutation under
+the agent's control: preserve the exact task text, inspect or connect state,
+plan before todo writeback, refresh state, activate the correct host loop, run
+`quota should-run`, and continue only when the guard allows. Host and plugin
+integrations that need the lower-level handoff packet can use
+`loopx bootstrap-command-pack --project . --goal-text "<goal text>"`. For global
+manager or PR review commands, use `loopx slash-commands` to print the current
+canonical command list and fallback CLI shapes.
 
 ## Local State Backup
 
@@ -708,6 +711,9 @@ surface an upgrade error instead of silently running without identity or
 scope. Old goal registries without `coordination.registered_agents` also fail
 closed when a scoped heartbeat or todo claim names an agent; register the agent
 identity first instead of letting workers invent claim ids.
+When `configure-goal` changes `registered_agents` or `primary_agent`, its JSON
+and markdown output includes `heartbeat_prompt_migration` commands for the
+installed automations that need a refreshed identity-aware task body.
 
 `register-agent` resolves the existing global entry's `source_registry`, writes
 the project-local source of truth, and then syncs the shared global projection.

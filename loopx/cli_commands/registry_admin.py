@@ -339,6 +339,25 @@ def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> 
         help="Clear coordination.primary_agent.",
     )
     configure_goal_parser.add_argument(
+        "--write-scope",
+        action="append",
+        default=None,
+        help=(
+            "Allowed repository/local-state write scope to add to coordination.write_scope. "
+            "Repeatable; comma-separated values are also accepted."
+        ),
+    )
+    configure_goal_parser.add_argument(
+        "--replace-write-scope",
+        action="store_true",
+        help="Replace coordination.write_scope with the supplied --write-scope values instead of merging.",
+    )
+    configure_goal_parser.add_argument(
+        "--clear-write-scope",
+        action="store_true",
+        help="Clear coordination.write_scope.",
+    )
+    configure_goal_parser.add_argument(
         "--waiting-on",
         choices=["codex", "user_or_controller", "controller", "external_evidence"],
         help="Override registry waiting owner for status/quota routing.",
@@ -648,6 +667,9 @@ def handle_registry_admin_command(
                 clear_registered_agents=bool(args.clear_registered_agents),
                 primary_agent=args.primary_agent,
                 clear_primary_agent=bool(args.clear_primary_agent),
+                write_scope=args.write_scope,
+                replace_write_scope=bool(args.replace_write_scope),
+                clear_write_scope=bool(args.clear_write_scope),
                 waiting_on=args.waiting_on,
                 clear_waiting_on=bool(args.clear_waiting_on),
                 boundary_authority_scopes=args.boundary_authority_scope,

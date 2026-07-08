@@ -190,10 +190,11 @@ the current agent's public-safe events, keeps other agents compressed to
 frontier context, and does not replace status, quota, review packets, or the
 append-only event sources.
 The same guard may include `work_lane_contract`. Schema
-`work_lane_contract_v1` is the single machine contract for monitor versus
-advancement routing. It distinguishes `lane=continuous_monitor` from
-`lane=advancement_task`, carries the next lane, and exposes one `obligation`
-string such as `advance_unless_material_monitor_transition`. Agent todo items
+`work_lane_contract_v1` is the compatibility drill-down for monitor versus
+advancement routing under the guard's first-class `interaction_contract`. It
+distinguishes `lane=continuous_monitor` from `lane=advancement_task`, carries
+the next lane, and exposes one `obligation` string such as
+`advance_unless_material_monitor_transition`. Agent todo items
 may include `task_class=advancement_task` or
 `task_class=continuous_monitor`, plus optional `action_kind` such as
 `run_eval`, `validate`, `rebuild`, `writeback`, `monitor`, or `poll`. Explicit
@@ -225,6 +226,12 @@ should not restate the lane semantics; unchanged monitor polls remain quiet
 no-spend checks with `should_run=false` and
 `effective_action=monitor_quiet_skip`, while a material dependency-state
 transition may be written back once when it changes the selected goal decision.
+When final agent-scope projection selects a non-execution wait such as
+`effective_action=agent_scope_wait`, the exposed `work_lane_contract` must also
+be non-executing (`must_attempt_work=false`) even if a goal-level next action
+would otherwise derive an advancement obligation. The original goal-level lane
+may remain as compact deferred diagnostic context, but executors must not treat
+it as a competing obligation.
 `handoff_readiness.handoff_interface_budget` declares the machine-readable
 budget for the minimal project-agent handoff: `mode=project_agent_handoff`,
 `max_lines=16`, and `max_chars=1800`. `loopx review-packet
@@ -1304,7 +1311,8 @@ Codex App heartbeats should use `automation_update` only when
 `codex_app.stateful_backoff.apply_needed=true` and
 `codex_app.recommended_rrule` is present. If that update succeeds, the agent
 must run `codex_app.ack_hint.cli_args`;
-LoopX then persists `reset_token`, `identity_signature`, `progression_index`,
+current payloads use `quota scheduler-ack-current` so LoopX re-reads the latest
+hint, then persists `reset_token`, `identity_signature`, `progression_index`,
 and `last_applied_rrule` under the runtime root. When the same identity repeats,
 LoopX advances the progression until the max interval; when the reset token
 changes, the next projected RRULE returns to

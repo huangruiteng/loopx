@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 import importlib.util
 import json
 from pathlib import Path
@@ -16,7 +17,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.control_plane.testing.canary_harness import run_json_cli  # noqa: E402
+from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_module  # noqa: E402
 from loopx.control_plane.scheduler.scheduler_hint import (  # noqa: E402
+    build_codex_app_scheduler_ack_event,
     build_scheduler_ack_plan,
     build_scheduler_hint,
 )
@@ -30,10 +33,11 @@ from loopx.status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK  # noqa: E402
 
 
 AGENT_SCOPE_ACTIONS = [action.value for action in AgentScopeFrontierAction]
+FROZEN_NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
 
 
 def _load_quota_plan_fixture_module():
-    module_path = REPO_ROOT / "examples" / "control_plane" / "quota-plan-smoke.py"
+    module_path = REPO_ROOT / "examples" / "control_plane" / "quota_plan_fixtures.py"
     spec = importlib.util.spec_from_file_location("quota_plan_smoke_fixture", module_path)
     assert spec and spec.loader, module_path
     module = importlib.util.module_from_spec(spec)
@@ -95,6 +99,27 @@ def monitor_payload(*, recommended_action: str = "Wait for material monitor evid
     }
 
 
+def monitor_window_payload(*, minutes_until_due: int = 119) -> dict:
+    due_at = FROZEN_NOW + timedelta(minutes=minutes_until_due)
+    expires_at = FROZEN_NOW + timedelta(minutes=minutes_until_due + 60)
+    payload = monitor_payload()
+    payload["agent_todo_summary"] = {
+        "current_agent_claimed_monitor_items": [
+            {
+                "todo_id": "todo_monitor_window_stale_ack",
+                "priority": "P1",
+                "task_class": "continuous_monitor",
+                "target_key": "monitor-window-stale-ack",
+                "cadence": "3m",
+                "next_due_at": due_at.isoformat(),
+                "expires_at": expires_at.isoformat(),
+            }
+        ],
+        "monitor_open_items": [],
+    }
+    return payload
+
+
 def active_payload() -> dict:
     return {
         "goal_id": "scheduler-state-ack-smoke",
@@ -144,6 +169,24 @@ def state_from_hint_with_applied_rrule(hint: dict, *, index: int, rrule: str) ->
     state["progression_index"] = index
     state["last_applied_rrule"] = rrule
     return state
+
+
+def build_hint_at(
+    payload: dict,
+    *,
+    now: datetime,
+    scheduler_state: dict | None = None,
+) -> dict:
+    original_now_utc = scheduler_hint_module.now_utc
+    try:
+        scheduler_hint_module.now_utc = lambda: now
+        return build_scheduler_hint(
+            deepcopy(payload),
+            agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
+            codex_app_scheduler_state=scheduler_state,
+        )
+    finally:
+        scheduler_hint_module.now_utc = original_now_utc
 
 
 def assert_policy_state_progression() -> None:
@@ -299,9 +342,10 @@ def assert_scheduler_ack_plan_validation() -> None:
     ack_cli_args = ack_hint["cli_args"]
     assert ack_hint["schema_version"] == "codex_app_scheduler_ack_hint_v0", ack_hint
     assert ack_hint["after"] == "automation_update_rrule_success", ack_hint
-    assert ack_hint["command"] == "quota scheduler-ack", ack_hint
+    assert ack_hint["command"] == "quota scheduler-ack-current", ack_hint
     assert ack_hint["execute"] is True, ack_hint
     assert ack_hint["no_spend"] is True, ack_hint
+    assert ack_hint["uses_current_hint"] is True, ack_hint
     assert ack_args == {
         "goal_id": "scheduler-state-ack-smoke",
         "agent_id": "codex-side-agent",
@@ -313,7 +357,7 @@ def assert_scheduler_ack_plan_validation() -> None:
     }, ack_hint
     assert ack_cli_args == [
         "quota",
-        "scheduler-ack",
+        "scheduler-ack-current",
         "--goal-id",
         ack_args["goal_id"],
         "--agent-id",
@@ -324,12 +368,30 @@ def assert_scheduler_ack_plan_validation() -> None:
         ack_args["state_key"],
         "--applied-rrule",
         ack_args["applied_rrule"],
-        "--reset-token",
-        ack_args["reset_token"],
-        "--identity-signature",
-        ack_args["identity_signature"],
         "--execute",
     ], ack_hint
+    with_capabilities = active_payload()
+    with_capabilities["capability_gate"] = {
+        "available": ["shell", "network", "benchmark_runner"],
+    }
+    capability_hint = build_scheduler_hint(
+        with_capabilities,
+        agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
+    )
+    capability_ack_hint = capability_hint["codex_app"]["ack_hint"]
+    capability_ack_args = capability_ack_hint["args"]
+    capability_cli_args = capability_ack_hint["cli_args"]
+    assert capability_ack_args["available_capabilities"] == [
+        "network",
+        "benchmark_runner",
+    ], capability_ack_hint
+    assert capability_cli_args.count("--available-capability") == 2, capability_ack_hint
+    for capability in capability_ack_args["available_capabilities"]:
+        capability_index = capability_cli_args.index(capability)
+        assert capability_cli_args[capability_index - 1] == "--available-capability", (
+            capability,
+            capability_ack_hint,
+        )
     plan = build_scheduler_ack_plan(
         {"scheduler_hint": first},
         agent_id=ack_args["agent_id"],
@@ -418,6 +480,106 @@ def assert_scheduler_ack_plan_validation() -> None:
     }, already_applied
 
 
+def assert_monitor_wait_stale_ack_hint_is_accepted() -> None:
+    base = monitor_window_payload(minutes_until_due=119)
+    first = build_hint_at(base, now=FROZEN_NOW)
+    second = build_hint_at(base, now=FROZEN_NOW, scheduler_state=state_from(first))
+    third = build_hint_at(base, now=FROZEN_NOW, scheduler_state=state_from(second))
+    previous_state = state_from(third)
+
+    stale_hint_source = build_hint_at(
+        base,
+        now=FROZEN_NOW,
+        scheduler_state=previous_state,
+    )
+    stale_app = stale_hint_source["codex_app"]
+    stale_ack_args = stale_app["ack_hint"]["args"]
+    assert stale_hint_source["cadence_class"] == "monitor_wait", stale_hint_source
+    assert stale_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=119", stale_hint_source
+
+    current_hint = build_hint_at(
+        base,
+        now=FROZEN_NOW + timedelta(minutes=1),
+        scheduler_state=previous_state,
+    )
+    current_app = current_hint["codex_app"]
+    assert current_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=118", current_hint
+    assert (
+        current_app["stateful_backoff"]["reset_token"]
+        == stale_ack_args["reset_token"]
+    ), current_hint
+    assert (
+        current_app["stateful_backoff"]["identity_signature"]
+        == stale_ack_args["identity_signature"]
+    ), current_hint
+
+    plan = build_scheduler_ack_plan(
+        {"scheduler_hint": current_hint},
+        agent_id=stale_ack_args["agent_id"],
+        state_key=stale_ack_args["state_key"],
+        applied_rrule=stale_ack_args["applied_rrule"],
+        reset_token=stale_ack_args["reset_token"],
+        identity_signature=stale_ack_args["identity_signature"],
+    )
+    assert plan == {
+        "ok": True,
+        "already_applied": False,
+        "applied_rrule": "FREQ=MINUTELY;INTERVAL=119",
+        "expected_rrule": "FREQ=MINUTELY;INTERVAL=118",
+        "stale_hint_accepted": True,
+        "stale_hint_tolerance_minutes": 2,
+    }, plan
+
+    event = build_codex_app_scheduler_ack_event(
+        {"goal_id": "scheduler-state-ack-smoke", "scheduler_hint": current_hint},
+        agent_id=stale_ack_args["agent_id"],
+        applied_rrule=stale_ack_args["applied_rrule"],
+        reset_token=stale_ack_args["reset_token"],
+        identity_signature=stale_ack_args["identity_signature"],
+    )
+    ack_event = event["scheduler_ack_event"]
+    assert ack_event["applied_rrule"] == "FREQ=MINUTELY;INTERVAL=119", event
+    assert ack_event["expected_rrule"] == "FREQ=MINUTELY;INTERVAL=118", event
+    assert ack_event["stale_hint_accepted"] is True, event
+    assert (
+        ack_event["scheduler_state"]["last_applied_rrule"]
+        == "FREQ=MINUTELY;INTERVAL=119"
+    ), event
+    quiet_after_stale_ack = build_hint_at(
+        base,
+        now=FROZEN_NOW + timedelta(minutes=1),
+        scheduler_state=ack_event["scheduler_state"],
+    )
+    quiet_app = quiet_after_stale_ack["codex_app"]
+    assert quiet_app["stateful_backoff"]["apply_needed"] is False, quiet_after_stale_ack
+    assert quiet_app["host_action"] == "none", quiet_after_stale_ack
+    assert "recommended_rrule" not in quiet_app, quiet_after_stale_ack
+
+    outside_state_tolerance = build_hint_at(
+        base,
+        now=FROZEN_NOW + timedelta(minutes=3),
+        scheduler_state=ack_event["scheduler_state"],
+    )
+    outside_app = outside_state_tolerance["codex_app"]
+    assert outside_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=116", (
+        outside_state_tolerance
+    )
+    assert outside_app["stateful_backoff"]["apply_needed"] is True, (
+        outside_state_tolerance
+    )
+
+    outside_tolerance = build_scheduler_ack_plan(
+        {"scheduler_hint": current_hint},
+        agent_id=stale_ack_args["agent_id"],
+        state_key=stale_ack_args["state_key"],
+        applied_rrule="FREQ=MINUTELY;INTERVAL=121",
+        reset_token=stale_ack_args["reset_token"],
+        identity_signature=stale_ack_args["identity_signature"],
+    )
+    assert outside_tolerance["ok"] is False, outside_tolerance
+    assert "does not match expected" in outside_tolerance["reason"], outside_tolerance
+
+
 def assert_scheduler_state_scope_validation() -> None:
     base = active_payload()
     first = build_scheduler_hint(
@@ -503,8 +665,34 @@ def assert_cli_scheduler_ack_progression() -> None:
         assert first_ack_args["goal_id"] == "needs-operator", first
         assert first_ack_args["agent_id"] == agent_id, first
         assert first_ack_args["applied_rrule"] == first_rrule, first
-        assert "--reset-token" in first_ack_cli_args, first
-        assert "--identity-signature" in first_ack_cli_args, first
+        assert first_ack_args["reset_token"], first
+        assert first_ack_args["identity_signature"], first
+        assert first_ack_cli_args[:2] == ["quota", "scheduler-ack-current"], first
+        assert "--reset-token" not in first_ack_cli_args, first
+        assert "--identity-signature" not in first_ack_cli_args, first
+
+        current_hint_preview = run_cli(
+            root,
+            "quota",
+            "scheduler-ack",
+            "--goal-id",
+            "needs-operator",
+            "--agent-id",
+            agent_id,
+            "--applied-rrule",
+            first_rrule,
+            "--reset-token",
+            "stale-reset-token",
+            "--identity-signature",
+            "stale-identity-signature",
+            "--use-current-hint",
+            registry_path=registry_path,
+            runtime=runtime,
+            project=project,
+        )
+        assert current_hint_preview["ok"] is True, current_hint_preview
+        assert current_hint_preview["used_current_hint"] is True, current_hint_preview
+        assert current_hint_preview["scheduler_state_mutated"] is False, current_hint_preview
 
         ack = run_cli(
             root,
@@ -545,8 +733,10 @@ def assert_cli_scheduler_ack_progression() -> None:
             current_ack_args = current_app["ack_hint"]["args"]
             current_ack_cli_args = current_app["ack_hint"]["cli_args"]
             assert current_ack_args["applied_rrule"] == current_rrule, current
-            assert current_ack_args["reset_token"] in current_ack_cli_args, current
-            assert current_ack_args["identity_signature"] in current_ack_cli_args, current
+            assert current_ack_args["reset_token"], current
+            assert current_ack_args["identity_signature"], current
+            assert "--reset-token" not in current_ack_cli_args, current
+            assert "--identity-signature" not in current_ack_cli_args, current
             ack = run_cli(
                 root,
                 *current_ack_cli_args,
@@ -655,7 +845,7 @@ def assert_cli_scheduler_ack_uses_should_run_lookback() -> None:
         quota_command="scheduler-ack",
         goal_id="scheduler-state-ack-smoke",
         agent_id="codex-side-agent",
-        available_capabilities=None,
+        available_capabilities=["shell", "network", "benchmark_runner"],
         include_scheduler_detail=False,
         slots=1,
         source="heartbeat",
@@ -675,6 +865,7 @@ def assert_cli_scheduler_ack_uses_should_run_lookback() -> None:
         applied_rrule="FREQ=MINUTELY;INTERVAL=10",
         reset_token="fixture-reset-token",
         identity_signature="fixture-identity-signature",
+        use_current_hint=False,
         dry_run=False,
         execute=False,
         scan_root=str(REPO_ROOT),
@@ -702,6 +893,11 @@ def assert_cli_scheduler_ack_uses_should_run_lookback() -> None:
     assert seen["limit"] == AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, seen
     assert seen["payload"] == {"ok": True, "mode": "scheduler-ack", "dry_run": True}, seen
     ack_kwargs = seen["ack_kwargs"]
+    assert ack_kwargs["available_capabilities"] == [
+        "shell",
+        "network",
+        "benchmark_runner",
+    ], seen
     assert ack_kwargs["reset_token"] == "fixture-reset-token", seen
     assert ack_kwargs["identity_signature"] == "fixture-identity-signature", seen
 
@@ -711,6 +907,7 @@ def main() -> int:
     assert_monitor_wait_progression_reaches_120()
     assert_active_work_keeps_initial_cadence()
     assert_scheduler_ack_plan_validation()
+    assert_monitor_wait_stale_ack_hint_is_accepted()
     assert_scheduler_state_scope_validation()
     assert_cli_scheduler_ack_progression()
     assert_cli_ignores_corrupt_scheduler_state()

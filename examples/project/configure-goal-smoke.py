@@ -15,6 +15,12 @@ GOAL_ID = "configure-goal-fixture"
 
 
 def write_registry(root: Path) -> Path:
+    state_file = root / "project" / ".codex/goals/configure-goal-fixture/STATE.md"
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    state_file.write_text(
+        "# Active Goal State\n\n## Agent Todo\n\n- [ ] Keep this todo during scope migration.\n",
+        encoding="utf-8",
+    )
     registry_path = root / "registry.json"
     registry_path.write_text(
         json.dumps(
@@ -110,6 +116,10 @@ def main() -> int:
             "codex-side-bypass,codex-main-control",
             "--primary-agent",
             "codex-main-control",
+            "--write-scope",
+            "docs/**",
+            "--write-scope",
+            "tests/**,docs/**",
             "--waiting-on",
             "user_or_controller",
             "--boundary-authority-scope",
@@ -126,10 +136,23 @@ def main() -> int:
         assert "checkpointed_boundary_authority" in dry["changed_fields"], dry
         assert "registered_agents" in dry["changed_fields"], dry
         assert "primary_agent" in dry["changed_fields"], dry
+        assert "write_scope" in dry["changed_fields"], dry
         assert dry["after"]["waiting_on"] == "user_or_controller", dry
+        assert dry["after"]["write_scope"] == ["docs/**", "tests/**"], dry
         assert dry["after"]["checkpointed_boundary_authority"]["active_write_scope"] == ["docs/**"], dry
         assert dry["after"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], dry
         assert dry["after"]["primary_agent"] == "codex-main-control", dry
+        migration = dry["heartbeat_prompt_migration"]
+        assert migration["schema_version"] == "heartbeat_prompt_migration_v0", migration
+        assert "coordination.registered_agents" in migration["reason"], migration
+        migration_commands = migration["commands"]
+        assert [item["agent_id"] for item in migration_commands] == [
+            "codex-main-control",
+            "codex-side-bypass",
+        ], migration
+        assert "heartbeat-prompt --thin" in migration_commands[0]["command"], migration
+        assert "--agent-id codex-main-control" in migration_commands[0]["command"], migration
+        assert "--agent-scope" in migration_commands[1]["command"], migration
         assert dry["written"] is False, dry
         assert registry_path.read_text(encoding="utf-8") == original
 
@@ -154,6 +177,8 @@ def main() -> int:
             "codex-main-control,codex-side-bypass",
             "--primary-agent",
             "codex-main-control",
+            "--write-scope",
+            "docs/**,tests/**",
             "--waiting-on",
             "user_or_controller",
             "--boundary-authority-scope",
@@ -167,6 +192,7 @@ def main() -> int:
         assert applied["ok"] is True, applied
         assert applied["dry_run"] is False, applied
         assert applied["written"] is True, applied
+        assert applied["heartbeat_prompt_migration"]["commands"][0]["agent_id"] == "codex-main-control", applied
         goal = goal_from_registry(registry_path)
         assert goal["quota"]["compute"] == 0.5, goal
         assert goal["control_plane"]["self_repair"]["enabled"] is True, goal
@@ -178,12 +204,38 @@ def main() -> int:
         assert goal["spawn_policy"]["allowed_domains"] == ["docs", "validation"], goal
         assert goal["coordination"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], goal
         assert goal["coordination"]["primary_agent"] == "codex-main-control", goal
+        assert goal["coordination"]["write_scope"] == ["docs/**", "tests/**"], goal
         assert goal["waiting_on"] == "user_or_controller", goal
         authority = goal["coordination"]["checkpointed_boundary_authority"][0]
         assert authority["schema_version"] == "checkpointed_boundary_authority_v0", authority
         assert authority["write_scope"] == ["docs/**"], authority
         assert authority["source"] == "operator_gate_resume_contract_v0:fixture", authority
         assert authority["decision_id"] == "gate-fixture-1", authority
+        state_file = root / "project" / ".codex/goals/configure-goal-fixture/STATE.md"
+        state_before_scope_migration = state_file.read_text(encoding="utf-8")
+
+        scope_migrated = payload(run_cli(
+            registry_path,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--write-scope",
+            "loopx/**,docs/**",
+            "--execute",
+        ))
+        assert scope_migrated["ok"] is True, scope_migrated
+        assert scope_migrated["changed"] is True, scope_migrated
+        assert scope_migrated["written"] is True, scope_migrated
+        assert "write_scope" in scope_migrated["changed_fields"], scope_migrated
+        assert scope_migrated["before"]["write_scope"] == ["docs/**", "tests/**"], scope_migrated
+        assert scope_migrated["after"]["write_scope"] == ["docs/**", "tests/**", "loopx/**"], scope_migrated
+        assert scope_migrated["heartbeat_prompt_migration"] is None, scope_migrated
+        assert goal_from_registry(registry_path)["coordination"]["write_scope"] == [
+            "docs/**",
+            "tests/**",
+            "loopx/**",
+        ]
+        assert state_file.read_text(encoding="utf-8") == state_before_scope_migration
 
         no_change = payload(run_cli(
             registry_path,
@@ -237,6 +289,19 @@ def main() -> int:
         assert "registered_agents" not in goal_from_registry(registry_path)["coordination"], agents_cleared
         assert "primary_agent" not in goal_from_registry(registry_path)["coordination"], agents_cleared
 
+        scope_cleared = payload(run_cli(
+            registry_path,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--clear-write-scope",
+            "--execute",
+        ))
+        assert scope_cleared["ok"] is True, scope_cleared
+        assert scope_cleared["changed"] is True, scope_cleared
+        assert "write_scope" in scope_cleared["changed_fields"], scope_cleared
+        assert goal_from_registry(registry_path)["coordination"]["write_scope"] == [], scope_cleared
+
         invalid = payload(run_cli(
             registry_path,
             "configure-goal",
@@ -248,6 +313,17 @@ def main() -> int:
         ))
         assert invalid["ok"] is False, invalid
         assert "greater than 0" in invalid["error"], invalid
+
+        invalid_replace = payload(run_cli(
+            registry_path,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--replace-write-scope",
+            check=False,
+        ))
+        assert invalid_replace["ok"] is False, invalid_replace
+        assert "requires --write-scope" in invalid_replace["error"], invalid_replace
 
     print("configure-goal-smoke ok")
     return 0

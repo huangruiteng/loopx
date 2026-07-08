@@ -155,10 +155,11 @@ Command registration is host-specific, but the state path is not. Codex
 surfaces may expose LoopX through `$loopx` or `/skills` command facades before
 native `/loopx` exists; Claude Code can expose `/loopx <task>` after its opt-in
 adapter is installed. If a host command is missing, run `loopx slash-commands`
-for the current catalog or recover a project goal with
-`loopx bootstrap-command-pack --project . --goal-text "<task>"`. Full routing
-and recovery details live in [Getting Started](docs/guides/getting-started.md)
-and the
+for the current catalog or start the same agent-safe path from a shell with
+`loopx start-goal --guided --project . --goal-text "<task>"`. Host and plugin
+integrations that need the lower-level handoff packet can still use
+`loopx bootstrap-command-pack --project . --goal-text "<task>"`. Full routing and
+recovery details live in [Getting Started](docs/guides/getting-started.md) and the
 [host command registry contract](docs/reference/protocols/codex-app-host-command-registry-v0.md).
 
 ### Codex App
@@ -550,6 +551,16 @@ loopx quota should-run --goal-id your-project-goal
 loopx heartbeat-prompt --thin --goal-id your-project-goal
 loopx quota spend-slot --goal-id your-project-goal --slots 1 --source heartbeat --execute
 ```
+
+For shared-control-plane or agent-team goals, generate the automation with a
+registered identity, for example
+`loopx heartbeat-prompt --thin --goal-id your-project-goal --agent-id codex-main-control --agent-scope "primary coordination"`.
+After `configure-goal` or the control-plane UI changes `registered_agents` or
+`primary_agent`, use the returned `heartbeat_prompt_migration` commands to
+refresh any installed Codex App automation body. Scheduler cadence updates
+should run `scheduler_hint.codex_app.ack_hint.cli_args`; current payloads use
+`quota scheduler-ack-current`, which re-reads the latest hint instead of making
+agents copy short-lived reset tokens.
 
 The `next_automatic_turn` reported by `quota plan` is only an advisory
 scheduling hint: it chooses the highest-compute eligible goal, while

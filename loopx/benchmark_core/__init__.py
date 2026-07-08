@@ -84,6 +84,13 @@ from .rounds import (
     compact_round_rewards,
     summarize_round_rewards,
 )
+from .route_profile import (
+    BENCHMARK_ROUTE_PROFILE_FAILURE_ATTRIBUTIONS,
+    BENCHMARK_ROUTE_PROFILE_REASONING_EFFORTS,
+    BENCHMARK_ROUTE_PROFILE_SCHEMA_VERSION,
+    build_benchmark_route_profile,
+    validate_benchmark_route_profile,
+)
 from .run_permissions import (
     DEFAULT_RUN_PERMISSION_ALLOWED_ACTIONS,
     DEFAULT_RUN_PERMISSION_FORBIDDEN_ACTIONS,
@@ -117,6 +124,9 @@ __all__ = [
     "BENCHMARK_OBSERVABLE_HANDLE_POLICY_SCHEMA_VERSION",
     "BENCHMARK_PRODUCT_MODE_COMPARISON_SCHEMA_VERSION",
     "BENCHMARK_ROUND_ARTIFACT_RESTORE_PLAN_SCHEMA_VERSION",
+    "BENCHMARK_ROUTE_PROFILE_FAILURE_ATTRIBUTIONS",
+    "BENCHMARK_ROUTE_PROFILE_REASONING_EFFORTS",
+    "BENCHMARK_ROUTE_PROFILE_SCHEMA_VERSION",
     "BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_EXECUTION_SEAM_SCHEMA_VERSION",
     "BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_LAUNCH_PLAN_SCHEMA_VERSION",
     "BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_RUNNER_BATCH_SCHEMA_VERSION",
@@ -140,6 +150,7 @@ __all__ = [
     "build_product_mode_main_table_comparison_contract",
     "build_codex_app_parity_posthoc_check",
     "build_run_permission_policy",
+    "build_benchmark_route_profile",
     "build_split_control_remote_executor_execution_seam",
     "build_split_control_remote_executor_launch_plan",
     "build_split_control_remote_executor_readiness",
@@ -186,4 +197,5 @@ __all__ = [
     "render_loop_contract_packet_lines",
     "summarize_round_rewards",
     "validate_run_permission_policy",
+    "validate_benchmark_route_profile",
 ]

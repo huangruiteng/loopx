@@ -26,6 +26,16 @@ CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION = "codex_app_stateful_backoff_v0"
 CODEX_APP_SCHEDULER_ACK_HINT_SCHEMA_VERSION = "codex_app_scheduler_ack_hint_v0"
 MONITOR_CADENCE_PATTERN = re.compile(r"^\s*(\d+)\s*([mhd])\s*$", re.IGNORECASE)
 MONITOR_WAIT_PROGRESSION_MINUTES = [15, 30, 60, 120]
+DEFAULT_ACK_CAPABILITIES = {"shell", "filesystem_read", "filesystem_write"}
+MONITOR_WAIT_HOST_FLOOR_MINUTES = 15
+MONITOR_WAIT_NEAR_WINDOW_LEAD_MINUTES = 60
+SCHEDULER_ACK_STALE_HINT_TOLERANCE_MINUTES = 2
+MONITOR_WAIT_PHASE_RANK = {
+    "active_window": 0,
+    "near_window": 1,
+    "cadence_only": 2,
+    "far_window": 3,
+}
 
 
 def normalize_scheduler_rrule(value: Any) -> str:
@@ -33,6 +43,122 @@ def normalize_scheduler_rrule(value: Any) -> str:
     if text.upper().startswith("RRULE:"):
         text = text[6:].strip()
     return text
+
+
+def _scheduler_rrule_interval_minutes(value: Any) -> int | None:
+    text = normalize_scheduler_rrule(value)
+    parts: dict[str, str] = {}
+    for part in text.split(";"):
+        key, separator, raw_value = part.partition("=")
+        if separator:
+            parts[key.strip().upper()] = raw_value.strip()
+    if parts.get("FREQ", "").upper() != "MINUTELY":
+        return None
+    try:
+        interval = int(parts.get("INTERVAL", ""))
+    except ValueError:
+        return None
+    return interval if interval > 0 else None
+
+
+def _accepts_stale_monitor_ack_rrule(
+    scheduler_hint: dict[str, Any],
+    stateful_backoff: dict[str, Any],
+    *,
+    applied_rrule: str,
+    expected_rrule: str,
+    reset_token: str | None,
+    identity_signature: str | None,
+) -> bool:
+    if str(scheduler_hint.get("cadence_class") or "") != "monitor_wait":
+        return False
+    safe_reset_token = str(reset_token or "").strip()
+    safe_identity_signature = str(identity_signature or "").strip()
+    if not safe_reset_token or not safe_identity_signature:
+        return False
+    if safe_reset_token != str(stateful_backoff.get("reset_token") or ""):
+        return False
+    if safe_identity_signature != str(stateful_backoff.get("identity_signature") or ""):
+        return False
+    applied_minutes = _scheduler_rrule_interval_minutes(applied_rrule)
+    expected_minutes = _scheduler_rrule_interval_minutes(expected_rrule)
+    if applied_minutes is None or expected_minutes is None:
+        return False
+    if applied_minutes < expected_minutes:
+        return False
+    return (
+        applied_minutes - expected_minutes
+        <= SCHEDULER_ACK_STALE_HINT_TOLERANCE_MINUTES
+    )
+
+
+def _monitor_rrule_applied_within_stale_tolerance(
+    *,
+    cadence_class: str,
+    last_applied_rrule: str,
+    current_rrule: str,
+) -> bool:
+    if cadence_class != "monitor_wait":
+        return False
+    applied_minutes = _scheduler_rrule_interval_minutes(last_applied_rrule)
+    current_minutes = _scheduler_rrule_interval_minutes(current_rrule)
+    if applied_minutes is None or current_minutes is None:
+        return False
+    if applied_minutes < current_minutes:
+        return False
+    return (
+        applied_minutes - current_minutes
+        <= SCHEDULER_ACK_STALE_HINT_TOLERANCE_MINUTES
+    )
+
+
+def _scheduler_ack_rrule_acceptance(
+    scheduler_hint: dict[str, Any],
+    codex_app: dict[str, Any],
+    stateful_backoff: dict[str, Any],
+    *,
+    applied_rrule: str,
+    reset_token: str | None,
+    identity_signature: str | None,
+) -> dict[str, Any]:
+    expected_rrule = normalize_scheduler_rrule(
+        codex_app.get("recommended_rrule") or stateful_backoff.get("current_rrule")
+    )
+    if not expected_rrule:
+        return {
+            "ok": False,
+            "reason": "quota scheduler-ack has no current recommended_rrule to acknowledge",
+            "expected_rrule": "",
+        }
+    if applied_rrule == expected_rrule:
+        return {
+            "ok": True,
+            "applied_rrule": applied_rrule,
+            "expected_rrule": expected_rrule,
+        }
+    if _accepts_stale_monitor_ack_rrule(
+        scheduler_hint,
+        stateful_backoff,
+        applied_rrule=applied_rrule,
+        expected_rrule=expected_rrule,
+        reset_token=reset_token,
+        identity_signature=identity_signature,
+    ):
+        return {
+            "ok": True,
+            "applied_rrule": applied_rrule,
+            "expected_rrule": expected_rrule,
+            "stale_hint_accepted": True,
+            "stale_hint_tolerance_minutes": SCHEDULER_ACK_STALE_HINT_TOLERANCE_MINUTES,
+        }
+    return {
+        "ok": False,
+        "reason": (
+            f"quota scheduler-ack applied_rrule {applied_rrule!r} "
+            f"does not match expected {expected_rrule!r}"
+        ),
+        "expected_rrule": expected_rrule,
+    }
 
 
 def scheduler_backoff_packet(
@@ -63,6 +189,7 @@ def build_codex_app_scheduler_ack_hint(
     applied_rrule: Any,
     reset_token: Any,
     identity_signature: Any,
+    available_capabilities: Any = None,
     surface: str = CODEX_APP_SURFACE,
     state_key: str = CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
 ) -> dict[str, Any]:
@@ -73,40 +200,56 @@ def build_codex_app_scheduler_ack_hint(
     safe_state_key = str(state_key or "").strip()
     safe_reset_token = str(reset_token or "").strip()
     safe_identity_signature = str(identity_signature or "").strip()
+    safe_available_capabilities: list[str] = []
+    if isinstance(available_capabilities, (list, tuple, set)):
+        for capability in available_capabilities:
+            safe_capability = str(capability or "").strip()
+            if (
+                safe_capability
+                and safe_capability not in DEFAULT_ACK_CAPABILITIES
+                and safe_capability not in safe_available_capabilities
+            ):
+                safe_available_capabilities.append(safe_capability)
     cli_args = [
         "quota",
-        "scheduler-ack",
+        "scheduler-ack-current",
         "--goal-id",
         safe_goal_id,
         "--agent-id",
         safe_agent_id,
-        "--surface",
-        safe_surface,
-        "--state-key",
-        safe_state_key,
-        "--applied-rrule",
-        safe_rrule,
-        "--reset-token",
-        safe_reset_token,
-        "--identity-signature",
-        safe_identity_signature,
-        "--execute",
     ]
+    for capability in safe_available_capabilities:
+        cli_args.extend(["--available-capability", capability])
+    cli_args.extend(
+        [
+            "--surface",
+            safe_surface,
+            "--state-key",
+            safe_state_key,
+            "--applied-rrule",
+            safe_rrule,
+            "--execute",
+        ]
+    )
+    args = {
+        "goal_id": safe_goal_id,
+        "agent_id": safe_agent_id,
+        "surface": safe_surface,
+        "state_key": safe_state_key,
+        "applied_rrule": safe_rrule,
+        "reset_token": safe_reset_token,
+        "identity_signature": safe_identity_signature,
+    }
+    if safe_available_capabilities:
+        args["available_capabilities"] = safe_available_capabilities
     return {
         "schema_version": CODEX_APP_SCHEDULER_ACK_HINT_SCHEMA_VERSION,
         "after": "automation_update_rrule_success",
-        "command": "quota scheduler-ack",
+        "command": "quota scheduler-ack-current",
         "execute": True,
         "cli_args": cli_args,
-        "args": {
-            "goal_id": safe_goal_id,
-            "agent_id": safe_agent_id,
-            "surface": safe_surface,
-            "state_key": safe_state_key,
-            "applied_rrule": safe_rrule,
-            "reset_token": safe_reset_token,
-            "identity_signature": safe_identity_signature,
-        },
+        "args": args,
+        "uses_current_hint": True,
         "no_spend": True,
     }
 
@@ -121,7 +264,7 @@ def build_scheduler_ack_plan(
     identity_signature: str | None = None,
 ) -> dict[str, Any]:
     safe_agent_id = str(agent_id or "").strip()
-    _, codex_app, stateful_backoff = scheduler_backoff_packet(before)
+    scheduler_hint, codex_app, stateful_backoff = scheduler_backoff_packet(before)
     if not safe_agent_id:
         return {
             "ok": False,
@@ -157,28 +300,36 @@ def build_scheduler_ack_plan(
             "already_applied": True,
             "applied_rrule": safe_applied_rrule,
         }
-    expected_rrule = normalize_scheduler_rrule(
-        codex_app.get("recommended_rrule") or stateful_backoff.get("current_rrule")
-    )
     if not safe_applied_rrule:
         return {
             "ok": False,
             "reason": "`loopx quota scheduler-ack` requires --applied-rrule when apply_needed=true",
         }
-    if expected_rrule and safe_applied_rrule != expected_rrule:
+    acceptance = _scheduler_ack_rrule_acceptance(
+        scheduler_hint,
+        codex_app,
+        stateful_backoff,
+        applied_rrule=safe_applied_rrule,
+        reset_token=reset_token,
+        identity_signature=identity_signature,
+    )
+    if not acceptance.get("ok"):
         return {
             "ok": False,
-            "reason": (
-                f"quota scheduler-ack applied_rrule {safe_applied_rrule!r} "
-                f"does not match expected {expected_rrule!r}"
-            ),
+            "reason": str(acceptance.get("reason") or "scheduler ack RRULE validation failed"),
         }
-    return {
+    result = {
         "ok": True,
         "already_applied": False,
-        "applied_rrule": safe_applied_rrule,
-        "expected_rrule": expected_rrule,
+        "applied_rrule": acceptance["applied_rrule"],
+        "expected_rrule": acceptance["expected_rrule"],
     }
+    if acceptance.get("stale_hint_accepted"):
+        result["stale_hint_accepted"] = True
+        result["stale_hint_tolerance_minutes"] = acceptance.get(
+            "stale_hint_tolerance_minutes"
+        )
+    return result
 
 
 def _int_number(value: Any, *, default: int) -> int:
@@ -227,26 +378,144 @@ def _monitor_wait_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return items
 
 
-def _monitor_wait_cadence_progression(payload: dict[str, Any]) -> list[int] | None:
-    """Cap monitor quiet backoff so the host does not sleep past monitor due."""
+def _monitor_item_identity(item: dict[str, Any]) -> str:
+    for key in ("todo_id", "target_key", "action_kind", "title"):
+        value = str(item.get(key) or "").strip()
+        if value:
+            return value
+    return str(item.get("index") or "monitor")
+
+
+def _minutes_until(value: datetime, current_time: datetime) -> int:
+    return max(1, int(math.ceil((value - current_time).total_seconds() / 60)))
+
+
+def _cap_monitor_progression(*, cap_minutes: int, host_floor_minutes: int) -> list[int]:
+    safe_cap = max(1, int(cap_minutes))
+    safe_floor = max(1, int(host_floor_minutes))
+    return [
+        max(safe_floor, min(interval, safe_cap))
+        for interval in MONITOR_WAIT_PROGRESSION_MINUTES
+    ]
+
+
+def _monitor_wait_item_plan(
+    item: dict[str, Any],
+    *,
+    current_time: datetime,
+) -> dict[str, Any] | None:
+    expires_at = _parse_monitor_timestamp(item.get("expires_at"))
+    if expires_at is not None and expires_at <= current_time:
+        return {
+            "phase": "expired",
+            "selected_monitor_identity": _monitor_item_identity(item),
+        }
+
+    next_due_at = _parse_monitor_timestamp(item.get("next_due_at"))
+    last_checked_at = _parse_monitor_timestamp(item.get("last_checked_at"))
+    cadence_minutes = _monitor_cadence_minutes(item.get("cadence"))
+    host_floor = MONITOR_WAIT_HOST_FLOOR_MINUTES
+    phase: str | None = None
+    cap_candidates: list[int] = []
+    include_next_due_in_reset = False
+
+    if expires_at is not None and last_checked_at is not None and last_checked_at <= current_time:
+        phase = "active_window"
+        if cadence_minutes is not None:
+            cap_candidates.append(max(host_floor, cadence_minutes))
+        if next_due_at is not None and next_due_at > current_time:
+            cap_candidates.append(max(host_floor, _minutes_until(next_due_at, current_time)))
+    elif next_due_at is not None and next_due_at > current_time:
+        minutes_until_due = _minutes_until(next_due_at, current_time)
+        phase = (
+            "near_window"
+            if minutes_until_due <= MONITOR_WAIT_NEAR_WINDOW_LEAD_MINUTES
+            else "far_window"
+        )
+        cap_candidates.append(max(host_floor, minutes_until_due))
+        include_next_due_in_reset = True
+    elif cadence_minutes is not None:
+        phase = "cadence_only"
+        cap_candidates.append(max(host_floor, cadence_minutes))
+
+    if phase is None or not cap_candidates:
+        return None
+
+    cap_minutes = max(host_floor, min(cap_candidates))
+    selected_identity = _monitor_item_identity(item)
+    reset_profile = {
+        "monitor_wait_phase": phase,
+        "monitor_wait_host_floor_minutes": host_floor,
+        "monitor_wait_selected_identity": selected_identity,
+        "monitor_wait_cadence_minutes": cadence_minutes,
+        "monitor_wait_window_start_at": (
+            next_due_at.isoformat()
+            if include_next_due_in_reset and next_due_at is not None
+            else None
+        ),
+        "monitor_wait_window_end_at": expires_at.isoformat() if expires_at is not None else None,
+    }
+    progression = _cap_monitor_progression(
+        cap_minutes=cap_minutes,
+        host_floor_minutes=host_floor,
+    )
+    return {
+        "phase": phase,
+        "selected_monitor_identity": selected_identity,
+        "selected_todo_id": item.get("todo_id"),
+        "selected_target_key": item.get("target_key"),
+        "host_floor_minutes": host_floor,
+        "cap_minutes": cap_minutes,
+        "cadence_minutes": cadence_minutes,
+        "next_due_at": next_due_at.isoformat() if next_due_at is not None else None,
+        "expires_at": expires_at.isoformat() if expires_at is not None else None,
+        "last_checked_at": last_checked_at.isoformat() if last_checked_at is not None else None,
+        "progression_minutes": progression,
+        "reset_profile": reset_profile,
+    }
+
+
+def _monitor_wait_cadence_plan(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Build phase-aware monitor backoff without turning due horizon into identity."""
 
     current_time = now_utc()
-    caps: list[int] = []
+    plans: list[dict[str, Any]] = []
+    expired_count = 0
     for item in _monitor_wait_items(payload):
-        item_caps: list[int] = []
-        cadence_minutes = _monitor_cadence_minutes(item.get("cadence"))
-        if cadence_minutes is not None:
-            item_caps.append(cadence_minutes)
-        next_due_at = _parse_monitor_timestamp(item.get("next_due_at"))
-        if next_due_at is not None:
-            seconds_until_due = (next_due_at - current_time).total_seconds()
-            item_caps.append(max(1, int(math.ceil(seconds_until_due / 60))))
-        if item_caps:
-            caps.append(min(item_caps))
-    if not caps:
+        plan = _monitor_wait_item_plan(item, current_time=current_time)
+        if not plan:
+            continue
+        if plan.get("phase") == "expired":
+            expired_count += 1
+            continue
+        plans.append(plan)
+
+    if not plans:
+        if expired_count:
+            return {
+                "phase": "expired",
+                "expired_monitor_count": expired_count,
+                "host_floor_minutes": MONITOR_WAIT_HOST_FLOOR_MINUTES,
+                "base_progression_minutes": MONITOR_WAIT_PROGRESSION_MINUTES,
+                "progression_minutes": None,
+                "reset_profile": None,
+            }
         return None
-    cap = max(1, min(caps))
-    return [min(interval, cap) for interval in MONITOR_WAIT_PROGRESSION_MINUTES]
+
+    selected = min(
+        plans,
+        key=lambda plan: (
+            int(plan.get("cap_minutes") or 10**9),
+            MONITOR_WAIT_PHASE_RANK.get(str(plan.get("phase") or ""), 99),
+            str(plan.get("selected_monitor_identity") or ""),
+        ),
+    )
+    return {
+        **selected,
+        "base_progression_minutes": MONITOR_WAIT_PROGRESSION_MINUTES,
+        "candidate_count": len(plans),
+        "expired_monitor_count": expired_count,
+    }
 
 
 def build_codex_app_scheduler_ack_event(
@@ -257,6 +526,8 @@ def build_codex_app_scheduler_ack_event(
     classification: str = "quota_scheduler_ack",
     surface: str = CODEX_APP_SURFACE,
     state_key: str = CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
+    reset_token: str | None = None,
+    identity_signature: str | None = None,
     generated_at: str | None = None,
     reason_summary: str | None = None,
     compact_before: dict[str, Any] | None = None,
@@ -264,23 +535,26 @@ def build_codex_app_scheduler_ack_event(
     safe_agent_id = str(agent_id or "").strip()
     if not safe_agent_id:
         raise ValueError("quota scheduler-ack requires a scoped --agent-id")
-    _, codex_app, stateful_backoff = scheduler_backoff_packet(before)
+    scheduler_hint, codex_app, stateful_backoff = scheduler_backoff_packet(before)
     if not stateful_backoff:
         raise ValueError("quota scheduler-ack requires scheduler_hint.codex_app.stateful_backoff")
     if str(stateful_backoff.get("state_key") or "") != state_key:
         raise ValueError("quota scheduler-ack state_key does not match current quota scheduler hint")
     if stateful_backoff.get("apply_needed") is not True:
         raise ValueError("quota scheduler-ack is not needed because the current RRULE is already applied")
-    expected_rrule = normalize_scheduler_rrule(
-        codex_app.get("recommended_rrule") or stateful_backoff.get("current_rrule")
-    )
     safe_applied_rrule = normalize_scheduler_rrule(applied_rrule)
-    if not expected_rrule:
-        raise ValueError("quota scheduler-ack has no current recommended_rrule to acknowledge")
-    if safe_applied_rrule != expected_rrule:
-        raise ValueError(
-            f"quota scheduler-ack applied_rrule {safe_applied_rrule!r} does not match expected {expected_rrule!r}"
-        )
+    acceptance = _scheduler_ack_rrule_acceptance(
+        scheduler_hint,
+        codex_app,
+        stateful_backoff,
+        applied_rrule=safe_applied_rrule,
+        reset_token=reset_token,
+        identity_signature=identity_signature,
+    )
+    if not acceptance.get("ok"):
+        raise ValueError(str(acceptance.get("reason") or "scheduler ack RRULE validation failed"))
+    expected_rrule = acceptance["expected_rrule"]
+    acknowledged_rrule = acceptance["applied_rrule"]
     codex_progression = (
         codex_app.get("example_progression_minutes")
         if isinstance(codex_app.get("example_progression_minutes"), list)
@@ -302,13 +576,27 @@ def build_codex_app_scheduler_ack_event(
         identity_signature=stateful_backoff.get("identity_signature"),
         progression_index=progression_index,
         progression_minutes=progression_minutes,
-        last_applied_rrule=expected_rrule,
+        last_applied_rrule=acknowledged_rrule,
         updated_at=safe_generated_at,
         source=classification,
     )
     reason = str(reason_summary or "").strip() or (
-        f"acknowledged Codex App scheduler RRULE {expected_rrule}; no quota spend"
+        f"acknowledged Codex App scheduler RRULE {acknowledged_rrule}; no quota spend"
     )
+    scheduler_ack_event = {
+        "event_type": classification,
+        "surface": surface,
+        "state_key": state_key,
+        "applied_rrule": acknowledged_rrule,
+        "before": compact_before if isinstance(compact_before, dict) else before,
+        "scheduler_state": scheduler_state,
+    }
+    if acceptance.get("stale_hint_accepted"):
+        scheduler_ack_event["expected_rrule"] = expected_rrule
+        scheduler_ack_event["stale_hint_accepted"] = True
+        scheduler_ack_event["stale_hint_tolerance_minutes"] = acceptance.get(
+            "stale_hint_tolerance_minutes"
+        )
     return {
         "generated_at": safe_generated_at,
         "goal_id": before.get("goal_id"),
@@ -317,14 +605,7 @@ def build_codex_app_scheduler_ack_event(
         "recommended_action": reason,
         "health_check": "scheduler ack state updated; no quota spend",
         "delivery_outcome": DeliveryOutcome.SURFACE_ONLY.value,
-        "scheduler_ack_event": {
-            "event_type": classification,
-            "surface": surface,
-            "state_key": state_key,
-            "applied_rrule": expected_rrule,
-            "before": compact_before if isinstance(compact_before, dict) else before,
-            "scheduler_state": scheduler_state,
-        },
+        "scheduler_ack_event": scheduler_ack_event,
     }
 
 
@@ -378,6 +659,16 @@ def build_scheduler_hint(
         or execution_obligation.get("spend_policy")
         or heartbeat_recommendation.get("spend_policy")
     )
+    capability_gate = (
+        payload.get("capability_gate")
+        if isinstance(payload.get("capability_gate"), dict)
+        else {}
+    )
+    scheduler_ack_capabilities = (
+        capability_gate.get("available")
+        if isinstance(capability_gate.get("available"), list)
+        else []
+    )
     identity_keys = [
         "goal_id",
         "agent_identity.agent_id",
@@ -407,6 +698,8 @@ def build_scheduler_hint(
         claude_limit: int | None,
         multiplier: int = 2,
         cadence_progression_override: list[int] | None = None,
+        reset_profile_snapshot_override: dict[str, Any] | None = None,
+        cadence_context_detail: dict[str, Any] | None = None,
         advance_same_identity: bool = True,
     ) -> dict[str, Any]:
         cadence_progression = cadence_progression_override or [
@@ -435,10 +728,11 @@ def build_scheduler_hint(
             "local_scheduler_unchanged_poll_limit": cli_limit,
             "claude_code_loop_unchanged_poll_limit": claude_limit,
         }
+        reset_profile_snapshot = reset_profile_snapshot_override or profile_snapshot
         reset_token_payload = {
             "action": action,
             "identity_snapshot": identity_snapshot,
-            "profile_snapshot": profile_snapshot,
+            "profile_snapshot": reset_profile_snapshot,
         }
         reset_token = hashlib.sha256(
             json.dumps(
@@ -464,6 +758,14 @@ def build_scheduler_hint(
                 default=str,
             ).encode("utf-8")
         ).hexdigest()[:12]
+        reset_profile_signature = hashlib.sha256(
+            json.dumps(
+                reset_profile_snapshot,
+                ensure_ascii=True,
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()[:12]
         reset_policy_detail = {
             "schema_version": SCHEDULER_RESET_POLICY_SCHEMA_VERSION,
             "source": "quota.should-run",
@@ -478,6 +780,7 @@ def build_scheduler_hint(
             "identity_key_count": len(identity_keys),
             "identity_signature": identity_signature,
             "profile_signature": profile_signature,
+            "reset_profile_signature": reset_profile_signature,
             "reset_condition_summary": "token_changed|user_feedback|new_or_reassigned_todo|gate_or_material_transition|active_work_projected",
             "after_reset": "apply_initial_interval_before_backoff",
             "codex_app_tool": "automation_update",
@@ -538,7 +841,14 @@ def build_scheduler_hint(
         current_interval = cadence_progression[current_index]
         current_rrule = rrule_for_minutes(current_interval)
         last_applied_rrule = str(scheduler_state.get("last_applied_rrule") or "").strip()
-        apply_needed = state_status != "same_identity" or last_applied_rrule != current_rrule
+        current_rrule_already_applied = last_applied_rrule == current_rrule
+        if not current_rrule_already_applied and state_status == "same_identity":
+            current_rrule_already_applied = _monitor_rrule_applied_within_stale_tolerance(
+                cadence_class=cadence_class,
+                last_applied_rrule=last_applied_rrule,
+                current_rrule=current_rrule,
+            )
+        apply_needed = state_status != "same_identity" or not current_rrule_already_applied
         stateful_backoff_detail = {
             "progression_minutes": cadence_progression,
             "current_interval_minutes": current_interval,
@@ -599,6 +909,7 @@ def build_scheduler_hint(
                     applied_rrule=current_rrule,
                     reset_token=reset_token,
                     identity_signature=identity_signature,
+                    available_capabilities=scheduler_ack_capabilities,
                 )
         scheduler_hint = {
             "schema_version": SCHEDULER_HINT_SCHEMA_VERSION,
@@ -658,6 +969,8 @@ def build_scheduler_hint(
                 "reset_policy_detail": reset_policy_detail,
                 "stateful_backoff_detail": stateful_backoff_detail,
             }
+            if cadence_context_detail:
+                scheduler_hint["cold_path_detail"]["cadence_context"] = cadence_context_detail
         return scheduler_hint
 
     if (
@@ -737,7 +1050,27 @@ def build_scheduler_hint(
         effective_action == "monitor_quiet_skip"
         or recommended_mode == "monitor_quiet_until_material_transition"
     ):
-        monitor_progression = _monitor_wait_cadence_progression(payload)
+        monitor_plan = _monitor_wait_cadence_plan(payload)
+        monitor_progression = (
+            monitor_plan.get("progression_minutes")
+            if isinstance(monitor_plan, dict)
+            else None
+        )
+        monitor_reset_profile = (
+            {
+                "cadence_class": "monitor_wait",
+                "codex_app_initial_interval_minutes": MONITOR_WAIT_HOST_FLOOR_MINUTES,
+                "codex_app_initial_rrule": rrule_for_minutes(MONITOR_WAIT_HOST_FLOOR_MINUTES),
+                "codex_app_max_interval_minutes": 120,
+                "unchanged_poll_backoff_multiplier": 2,
+                "local_scheduler_unchanged_poll_limit": 3,
+                "claude_code_loop_unchanged_poll_limit": 3,
+                **monitor_plan["reset_profile"],
+            }
+            if isinstance(monitor_plan, dict)
+            and isinstance(monitor_plan.get("reset_profile"), dict)
+            else None
+        )
         return hint(
             action="backoff_until_material_transition",
             cadence_class="monitor_wait",
@@ -752,6 +1085,8 @@ def build_scheduler_hint(
             cadence_progression_override=(
                 monitor_progression or MONITOR_WAIT_PROGRESSION_MINUTES
             ),
+            reset_profile_snapshot_override=monitor_reset_profile,
+            cadence_context_detail=monitor_plan,
         )
 
     if payload.get("should_run") is False:

@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from ..contract import scan_public_boundary
 from .planner import REPO_ROOT
 from .runner import build_canary_smoke_suite_run
 
@@ -74,6 +75,149 @@ LARK_KANBAN_TOKENS = (
 INHERITED_BASELINE_COMMANDS = (
     "repo-python-line-budget-smoke.py",
 )
+
+
+def _synthetic_smoke_suite_run(
+    *,
+    suite: str,
+    execute: bool,
+    timeout_seconds: float,
+    selected_checks: list[dict[str, Any]],
+    note: str,
+) -> dict[str, Any]:
+    executed_checks = selected_checks if execute else []
+    failures = [item for item in selected_checks if item.get("ok") is False]
+    return {
+        "ok": not failures,
+        "schema_version": "canary_smoke_suite_run_v0",
+        "suite": suite,
+        "repo_root": str(REPO_ROOT),
+        "dry_run": not execute,
+        "executes_checks": execute,
+        "writes_evidence": False,
+        "creates_runtime_contract": False,
+        "timeout_seconds": max(1.0, timeout_seconds),
+        "fail_fast": False,
+        "side_effect_guard": {},
+        "offset": 0,
+        "limit": len(selected_checks),
+        "matched_check_count": len(selected_checks),
+        "selected_check_count": len(selected_checks),
+        "executed_check_count": len(executed_checks),
+        "failure_count": len(failures),
+        "git_required_skip_count": 0,
+        "timeout_count": 0,
+        "tracked_side_effect_failure_count": 0,
+        "unsafe_command_count": 0,
+        "warning_count": 0,
+        "warnings": [],
+        "selection_inputs": {"suite": suite, "changed_files": []},
+        "catalog_plan": None,
+        "selected_checks": selected_checks,
+        "failures": failures,
+        "git_required_skips": [],
+        "note": note,
+    }
+
+
+def _empty_smoke_suite_run(
+    *,
+    suite: str,
+    reason: str,
+    execute: bool,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    return _synthetic_smoke_suite_run(
+        suite=suite,
+        execute=execute,
+        timeout_seconds=timeout_seconds,
+        selected_checks=[],
+        note=reason,
+    )
+
+
+def _public_boundary_changed_files_run(
+    *,
+    changed_files: list[str],
+    execute: bool,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    existing_paths = [
+        (REPO_ROOT / path).resolve()
+        for path in _dedupe(changed_files)
+        if (REPO_ROOT / path).exists()
+    ]
+    display_paths: list[str] = []
+    for path in existing_paths:
+        try:
+            display_paths.append(str(path.relative_to(REPO_ROOT.resolve())))
+        except ValueError:
+            display_paths.append(str(path))
+    display_argv = ["loopx", "check"]
+    for path in display_paths:
+        display_argv.extend(["--scan-path", path])
+    check: dict[str, Any] = {
+        "source": "premerge_public_boundary",
+        "tier": "default",
+        "command": " ".join(display_argv),
+        "reason": "scans changed public-boundary files for private material",
+        "normalized": {
+            "ok": True,
+            "display_argv": display_argv,
+        },
+        "status": "ready",
+        "ok": True,
+    }
+    if execute:
+        started = time.monotonic()
+        if not existing_paths:
+            check.update(
+                {
+                    "status": "skipped_no_existing_files",
+                    "ok": True,
+                    "duration_seconds": 0.0,
+                    "stdout_tail": "no existing changed public-boundary files to scan",
+                }
+            )
+        else:
+            boundary = scan_public_boundary(existing_paths, registry={})
+            hits = [str(item) for item in boundary.get("hits") or []]
+            check.update(
+                {
+                    "status": "passed" if boundary.get("ok") else "failed",
+                    "ok": bool(boundary.get("ok")),
+                    "duration_seconds": round(time.monotonic() - started, 3),
+                    "stdout_tail": (
+                        f"public boundary scan clean: {boundary.get('scanned_files')} files"
+                        if boundary.get("ok")
+                        else ""
+                    ),
+                    "stderr_tail": "\n".join(hits)[-800:] if hits else "",
+                    "boundary": {
+                        "scanned_files": boundary.get("scanned_files"),
+                        "skipped_private_state_files": boundary.get("skipped_private_state_files"),
+                        "allowed_hits": boundary.get("allowed_hits"),
+                        "hit_count": len(hits),
+                    },
+                }
+            )
+    payload = _synthetic_smoke_suite_run(
+        suite="premerge-public-boundary",
+        execute=execute,
+        timeout_seconds=timeout_seconds,
+        selected_checks=[check],
+        note=(
+            "Premerge public-boundary validation scans the changed public files "
+            "directly. The full fresh-directory contract smoke remains available "
+            "through the canary catalog/profile suites."
+        ),
+    )
+    payload["selection_inputs"] = {
+        "suite": "premerge-public-boundary",
+        "changed_files": list(changed_files),
+        "scan_paths": display_paths,
+    }
+    return payload
 
 
 def _norm_path(path: str) -> str:
@@ -584,44 +728,59 @@ def build_premerge_validation_gate(
     if py_compile is not None:
         direct_checks.append(py_compile)
 
-    catalog_progress = _section_progress_callback(
-        progress_callback,
-        section="catalog_canaries",
-    )
-    _emit_section_progress(
-        catalog_progress,
-        event="section_started",
-        selected_hint=int(limits["catalog_limit"]),
-    )
-    catalog_run = build_canary_smoke_suite_run(
-        suite="catalog-plan",
-        changed_files=files,
-        include_deep_checks=include_deep,
-        max_checks_per_family=3,
-        max_checks_per_profile=4,
-        limit=int(limits["catalog_limit"]),
-        execute=execute,
-        timeout_seconds=timeout_seconds,
-        fail_fast=fail_fast,
-        progress_callback=catalog_progress if execute else None,
-    )
-    _emit_section_progress(
-        catalog_progress,
-        event="section_finished",
-        status="passed" if catalog_run.get("ok") else "failed",
-        ok=bool(catalog_run.get("ok")),
-        selected_check_count=catalog_run.get("selected_check_count"),
-        executed_check_count=catalog_run.get("executed_check_count"),
-        failure_count=catalog_run.get("failure_count"),
-    )
-    catalog_run = downgrade_inherited_baseline_failures(
-        catalog_run,
-        changed_files=files,
-    )
+    if files:
+        catalog_progress = _section_progress_callback(
+            progress_callback,
+            section="catalog_canaries",
+        )
+        _emit_section_progress(
+            catalog_progress,
+            event="section_started",
+            selected_hint=int(limits["catalog_limit"]),
+        )
+        catalog_run = build_canary_smoke_suite_run(
+            suite="catalog-plan",
+            changed_files=files,
+            include_deep_checks=include_deep,
+            max_checks_per_family=3,
+            max_checks_per_profile=4,
+            limit=int(limits["catalog_limit"]),
+            execute=execute,
+            timeout_seconds=timeout_seconds,
+            fail_fast=fail_fast,
+            progress_callback=catalog_progress if execute else None,
+        )
+        _emit_section_progress(
+            catalog_progress,
+            event="section_finished",
+            status="passed" if catalog_run.get("ok") else "failed",
+            ok=bool(catalog_run.get("ok")),
+            selected_check_count=catalog_run.get("selected_check_count"),
+            executed_check_count=catalog_run.get("executed_check_count"),
+            failure_count=catalog_run.get("failure_count"),
+        )
+        catalog_run = downgrade_inherited_baseline_failures(
+            catalog_run,
+            changed_files=files,
+        )
+    else:
+        catalog_run = _empty_smoke_suite_run(
+            suite="catalog-plan",
+            reason=(
+                "No changed files were provided, so premerge only runs direct "
+                "diff hygiene checks and skips catalog/risk/boundary smokes."
+            ),
+            execute=execute,
+            timeout_seconds=timeout_seconds,
+        )
 
     risk_profiles = list(classification["risk_profiles"])
     risk_profile_run: dict[str, Any] | None = None
-    if risk_profiles:
+    profile_limit = int(limits["profile_limit"])
+    run_risk_profiles = bool(risk_profiles) and not (
+        tier == "quick" and profile_limit == 0
+    )
+    if run_risk_profiles:
         risk_progress = _section_progress_callback(
             progress_callback,
             section="risk_profile_smokes",
@@ -630,13 +789,13 @@ def build_premerge_validation_gate(
             risk_progress,
             event="section_started",
             profiles=risk_profiles,
-            selected_hint=int(limits["profile_limit"]),
+            selected_hint=profile_limit,
         )
         risk_profile_run = build_canary_smoke_suite_run(
             suite="default-public",
             profiles=risk_profiles,
             include_deep_checks=include_deep,
-            limit=int(limits["profile_limit"]),
+            limit=profile_limit,
             execute=execute,
             timeout_seconds=timeout_seconds,
             fail_fast=fail_fast,
@@ -663,13 +822,10 @@ def build_premerge_validation_gate(
             section="public_boundary",
         )
         _emit_section_progress(boundary_progress, event="section_started", selected_hint=1)
-        boundary_run = build_canary_smoke_suite_run(
-            suite="default-public",
-            scripts=["examples/control_plane/check-public-boundary-smoke.py"],
+        boundary_run = _public_boundary_changed_files_run(
+            changed_files=files,
             execute=execute,
             timeout_seconds=timeout_seconds,
-            fail_fast=fail_fast,
-            progress_callback=boundary_progress if execute else None,
         )
         _emit_section_progress(
             boundary_progress,

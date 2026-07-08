@@ -16,6 +16,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.canary.premerge import (  # noqa: E402
     _gate_status,
+    _public_boundary_changed_files_run,
     build_premerge_validation_gate,
     downgrade_inherited_baseline_failures,
 )
@@ -55,7 +56,8 @@ def assert_control_plane_change_selects_state_machine_validation() -> None:
         summary["selected_commands"]
     ), payload
     assert any("interaction-contract-state-machine-smoke.py" in item for item in catalog_commands), payload
-    assert any("control-plane-integrated-canary-smoke.py" in item for item in catalog_commands), payload
+    assert not any("control-plane-integrated-canary-smoke.py" in item for item in catalog_commands), payload
+    assert any("heartbeat-quota-flow-smoke.py" in item for item in catalog_commands), payload
     assert any("bounded-context-namespace-smoke.py" in item for item in catalog_commands), payload
     assert risk_commands, payload
     assert payload["gate"]["status"] == "preview_only", payload
@@ -71,9 +73,37 @@ def assert_public_docs_change_adds_boundary_scan() -> None:
     assert "docs_project_content" in classification["surfaces"], payload
     assert classification["public_boundary_scan_recommended"] is True, payload
     boundary_commands = commands_from(payload["boundary_run"])
-    assert boundary_commands == [
-        "python3 examples/control_plane/check-public-boundary-smoke.py"
-    ], payload
+    assert len(boundary_commands) == 1, payload
+    assert boundary_commands[0].startswith("loopx check --scan-path"), payload
+    assert "AGENTS.md" in boundary_commands[0], payload
+
+
+def assert_quick_public_docs_change_skips_risk_profile_smokes() -> None:
+    payload = build_premerge_validation_gate(
+        changed_files=["README.md"],
+        tier="quick",
+        execute=False,
+    )
+    assert payload["classification"]["risk_profiles"] == ["docs-project-content-ops"], payload
+    assert payload["risk_profile_run"] is None, payload
+    assert payload["boundary_run"]["selected_check_count"] == 1, payload
+    assert payload["catalog_run"]["selected_check_count"] <= 3, payload
+    assert payload["validation_summary"]["selected_check_count"] <= 4, payload
+
+
+def assert_public_boundary_scan_executes_in_process() -> None:
+    run = _public_boundary_changed_files_run(
+        changed_files=["AGENTS.md"],
+        execute=True,
+        timeout_seconds=60,
+    )
+    assert run["ok"] is True, run
+    assert run["suite"] == "premerge-public-boundary", run
+    assert run["selected_check_count"] == 1, run
+    assert run["executed_check_count"] == 1, run
+    check = run["selected_checks"][0]
+    assert check["status"] == "passed", run
+    assert "AGENTS.md" in check["command"], run
 
 
 def assert_changed_python_gets_compile_check() -> None:
@@ -166,8 +196,10 @@ def assert_cli_premerge_reports_progress_by_default() -> None:
     payload = json.loads(completed.stdout)
     assert payload["schema_version"] == "loopx_premerge_validation_gate_v0", payload
     assert payload["gate"]["status"] == "no_changes", payload
+    assert payload["validation_summary"]["selected_check_count"] == 0, payload
     assert "[loopx canary] premerge start:" in completed.stderr, completed.stderr
     assert "[loopx canary] start direct_checks 1/3:" in completed.stderr, completed.stderr
+    assert "[loopx canary] start catalog_canaries" not in completed.stderr, completed.stderr
     assert "[loopx canary] premerge done:" in completed.stderr, completed.stderr
 
     quiet = subprocess.run(
@@ -303,6 +335,8 @@ def assert_inherited_line_budget_red_is_advisory_only() -> None:
 def main() -> None:
     assert_control_plane_change_selects_state_machine_validation()
     assert_public_docs_change_adds_boundary_scan()
+    assert_quick_public_docs_change_skips_risk_profile_smokes()
+    assert_public_boundary_scan_executes_in_process()
     assert_changed_python_gets_compile_check()
     assert_benchmark_sensitive_change_blocks_self_merge()
     assert_cli_json_preview()

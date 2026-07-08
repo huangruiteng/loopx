@@ -199,7 +199,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert "control-plane-state-machine" in state_machine_profiles, state_machine_payload
     state_machine_profile = state_machine_profiles["control-plane-state-machine"]
     state_machine_commands = [check["command"] for check in state_machine_profile["checks"]]
-    assert "python3 examples/control_plane/control-plane-integrated-canary-smoke.py" in state_machine_commands, (
+    assert "python3 examples/control_plane/control-plane-integrated-canary-smoke.py" not in state_machine_commands, (
         state_machine_profile
     )
     assert (
@@ -218,6 +218,28 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert all(check["tier"] == "default" for check in state_machine_profile["checks"]), (
         state_machine_profile
     )
+    assert state_machine_profile["deep_checks_available"] is True, state_machine_profile
+    assert state_machine_profile["deep_checks_included"] is False, state_machine_profile
+
+    state_machine_deep_payload = build_catalog_canary_plan(
+        changed_files=["examples/control_plane/control-plane-integrated-canary-smoke.py"],
+        surfaces=[
+            "complex control-plane state-machine interaction_contract "
+            "scheduler_hint work_lane_contract goal_frontier"
+        ],
+        include_deep_checks=True,
+        max_checks_per_profile=5,
+    )
+    state_machine_deep_profiles = {
+        profile["id"]: profile for profile in state_machine_deep_payload["domain_profiles"]
+    }
+    state_machine_deep_commands = [
+        check["command"]
+        for check in state_machine_deep_profiles["control-plane-state-machine"]["checks"]
+    ]
+    assert "python3 examples/control_plane/control-plane-integrated-canary-smoke.py" in (
+        state_machine_deep_commands
+    ), state_machine_deep_profiles["control-plane-state-machine"]
 
     interaction_contract_payload = build_catalog_canary_plan(
         changed_files=["loopx/control_plane/work_items/interaction_contract.py"],
@@ -272,7 +294,10 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
         check["command"]
         for check in bounded_context_profiles["control-plane-state-machine"]["checks"]
     ]
-    assert "python3 examples/control_plane/control-plane-integrated-canary-smoke.py" in (
+    assert "python3 examples/control_plane/control-plane-integrated-canary-smoke.py" not in (
+        bounded_context_state_machine_commands
+    ), bounded_context_profiles["control-plane-state-machine"]
+    assert "python3 examples/control_plane/interaction-contract-state-machine-smoke.py" in (
         bounded_context_state_machine_commands
     ), bounded_context_profiles["control-plane-state-machine"]
 
@@ -313,7 +338,10 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
         check["command"]
         for check in monitor_target_profiles["control-plane-state-machine"]["checks"]
     ]
-    assert "python3 examples/control_plane/control-plane-integrated-canary-smoke.py" in (
+    assert "python3 examples/control_plane/control-plane-integrated-canary-smoke.py" not in (
+        monitor_target_state_machine_commands
+    ), monitor_target_profiles["control-plane-state-machine"]
+    assert "python3 examples/control_plane/interaction-contract-state-machine-smoke.py" in (
         monitor_target_state_machine_commands
     ), monitor_target_profiles["control-plane-state-machine"]
 
@@ -331,7 +359,10 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
         check["command"]
         for check in monitor_writeback_profiles["control-plane-state-machine"]["checks"]
     ]
-    assert "python3 examples/control_plane/control-plane-integrated-canary-smoke.py" in (
+    assert "python3 examples/control_plane/control-plane-integrated-canary-smoke.py" not in (
+        monitor_writeback_state_machine_commands
+    ), monitor_writeback_profiles["control-plane-state-machine"]
+    assert "python3 examples/control_plane/interaction-contract-state-machine-smoke.py" in (
         monitor_writeback_state_machine_commands
     ), monitor_writeback_profiles["control-plane-state-machine"]
 

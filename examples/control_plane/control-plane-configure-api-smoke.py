@@ -201,6 +201,9 @@ def configure_payload() -> dict[str, Any]:
         "primary_agent": "codex-main-control",
         "clear_registered_agents": False,
         "clear_primary_agent": False,
+        "write_scope": ["docs/**", "tests/**"],
+        "replace_write_scope": False,
+        "clear_write_scope": False,
     }
 
 
@@ -233,6 +236,7 @@ def main() -> None:
             assert dry["written"] is False, dry
             assert dry["after"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], dry
             assert dry["after"]["primary_agent"] == "codex-main-control", dry
+            assert dry["after"]["write_scope"] == ["docs/**", "tests/**"], dry
             assert goal_from_registry(registry)["quota"]["compute"] == 1
             status, blocked = request_json(
                 "POST",
@@ -298,6 +302,7 @@ def main() -> None:
             assert dry["preview_id"], dry
             assert dry["after"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], dry
             assert dry["after"]["primary_agent"] == "codex-main-control", dry
+            assert dry["after"]["write_scope"] == ["docs/**", "tests/**"], dry
             status, stale = request_json(
                 "POST",
                 f"{base_url}/control-plane/configure-goal/apply",
@@ -332,6 +337,7 @@ def main() -> None:
             assert goal["spawn_policy"]["allowed_domains"] == ["docs", "validation"], goal
             assert goal["coordination"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], goal
             assert goal["coordination"]["primary_agent"] == "codex-main-control", goal
+            assert goal["coordination"]["write_scope"] == ["docs/**", "tests/**"], goal
             status, refreshed = request_json("GET", f"{base_url}/status.json")
             assert status == 200, refreshed
             assert refreshed["local_dashboard_api"]["control_plane_write_enabled"] is True, refreshed

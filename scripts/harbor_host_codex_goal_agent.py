@@ -34,6 +34,7 @@ from codex_app_server_goal_driver import (
     start_codex_app_server_goal_followup_turn,
     start_codex_app_server_goal_turn,
 )
+from harbor_host_bridge import BRIDGE_SCRIPT_TEMPLATE
 from loopx.benchmark_case_state import (
     BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
     BENCHMARK_CASE_LOOPX_CLI_PATH,
@@ -88,58 +89,6 @@ except Exception:  # pragma: no cover - keeps local smoke import dependency-free
 
     class AgentContext:  # type: ignore[no-redef]
         metadata: dict[str, Any] | None = None
-
-
-BRIDGE_SCRIPT_TEMPLATE = """#!/usr/bin/env python3
-import argparse
-import json
-import pathlib
-import sys
-import time
-import uuid
-
-REQUEST_DIR = pathlib.Path("__LOOPX_REQUEST_DIR__")
-
-parser = argparse.ArgumentParser(description="Forward a command into Harbor environment.exec")
-parser.add_argument("--cwd", default="")
-parser.add_argument("--timeout-sec", type=float, default=600)
-parser.add_argument("command", nargs=argparse.REMAINDER)
-args = parser.parse_args()
-
-if not args.command:
-    print("missing command", file=sys.stderr)
-    raise SystemExit(2)
-
-if args.command[0] == "--":
-    args.command = args.command[1:]
-
-command = " ".join(args.command) if len(args.command) > 1 else args.command[0]
-request_id = uuid.uuid4().hex
-request = REQUEST_DIR / f"{request_id}.request.json"
-response = REQUEST_DIR / f"{request_id}.response.json"
-tmp = REQUEST_DIR / f"{request_id}.tmp"
-tmp.write_text(json.dumps({
-    "command": command,
-    "cwd": args.cwd,
-    "timeout_sec": args.timeout_sec,
-}, ensure_ascii=False))
-tmp.rename(request)
-deadline = time.time() + args.timeout_sec + 30
-while time.time() < deadline:
-    if response.exists():
-        payload = json.loads(response.read_text())
-        stdout = payload.get("stdout") or ""
-        stderr = payload.get("stderr") or ""
-        if stdout:
-            sys.stdout.write(stdout)
-        if stderr:
-            sys.stderr.write(stderr)
-        raise SystemExit(int(payload.get("return_code") or 0))
-    time.sleep(0.5)
-
-print("harbor-env-exec timed out waiting for response", file=sys.stderr)
-raise SystemExit(124)
-"""
 
 
 def build_codex_tui_command(

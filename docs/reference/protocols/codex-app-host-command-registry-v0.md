@@ -26,7 +26,7 @@ The host registry should expose this minimal command set:
 | Command | Canonical target | Default authority |
 | --- | --- | --- |
 | `/loopx` | `loopx bootstrap-command-pack --project .` | Read/status-first. |
-| `/loopx <goal text>` | `loopx bootstrap-command-pack --project . --goal-text "<goal text>"` | Explicit project-local start intent; must activate or gate the host loop after todo writeback. |
+| `/loopx <goal text>` | `loopx start-goal --guided --project . --goal-text "<goal text>"` | Explicit project-local start intent; must activate or gate the host loop after todo writeback. |
 | `/loopx-global-summary` | `global_manager_command_v0` summary request | Read-only global control-plane digest. |
 | `/loopx-global-gates` | `global_manager_command_v0` gates request | Read-only gate inbox. |
 | `/loopx-global-todos` | `global_manager_command_v0` todos request | Read-only work queue view. |
@@ -56,7 +56,7 @@ Example registry entry:
       "command": "/loopx <goal text>",
       "kind": "project_task_start",
       "protocol": "loopx_goal_command_v0",
-      "cli_baseline": "loopx bootstrap-command-pack --project . --goal-text \"<goal text>\"",
+      "cli_baseline": "loopx start-goal --guided --project . --goal-text \"<goal text>\"",
       "mutation_policy": "explicit_goal_start"
     },
     {
@@ -140,14 +140,14 @@ After parsing, the host hands the agent or CLI a compact packet:
   "goal_id": "loopx-meta",
   "agent_id": "codex-product-capability",
   "protocol": "loopx_goal_command_v0",
-  "cli_preview": "loopx bootstrap-command-pack --project . --goal-text \"<goal text>\"",
+  "cli_preview": "loopx start-goal --guided --project . --goal-text \"<goal text>\"",
   "authority": {
     "read_allowed": true,
     "project_local_write_allowed": true,
     "global_control_write_allowed": false,
     "production_action_allowed": false
   },
-  "next_step": "run_bootstrap_command_pack_then_plan_before_todo_write"
+  "next_step": "run_guided_start_preview_then_plan_before_todo_write"
 }
 ```
 
@@ -189,6 +189,7 @@ loopx slash-commands --install
 loopx agent-onboard --list-agent-types
 loopx agent-onboard --agent-type codex-cli --project .
 loopx bootstrap-command-pack --project .
+loopx start-goal --guided --project . --goal-text "<goal text>"
 loopx bootstrap-command-pack --project . --goal-text "<goal text>"
 loopx pr-review
 loopx global-summary
@@ -196,7 +197,10 @@ loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota s
 ```
 
 If host command parsing is unavailable, the user or a skill fallback can still
-run these commands and preserve the same LoopX state machine.
+run these commands and preserve the same LoopX state machine. Prefer
+`loopx start-goal --guided` for agent/manual task starts; use
+`loopx bootstrap-command-pack --goal-text` when implementing or debugging the
+lower-level host handoff packet.
 
 ## Userland Registration Fallback
 

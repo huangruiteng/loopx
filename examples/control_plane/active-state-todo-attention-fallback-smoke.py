@@ -113,7 +113,7 @@ def main() -> None:
             assert len(items) == 1, status["attention_queue"]
             item = items[0]
             assert item["source"] == "active_state", item
-            assert item["status"] == "active_state_user_todo", item
+            assert item["status"] == "active_state_user_gate", item
             assert item["waiting_on"] == "controller", item
             assert item["recommended_action"] == PRIORITIZED_USER_TODO, item
             assert item["active_state_next_action"] == USER_TODO, item

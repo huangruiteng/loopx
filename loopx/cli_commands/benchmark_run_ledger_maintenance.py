@@ -247,6 +247,21 @@ def render_benchmark_run_ledger_aggregate_markdown(payload: dict[str, object]) -
         if isinstance(aggregate.get("distribution"), dict)
         else {}
     )
+    score_summary = (
+        aggregate.get("countable_score_summary")
+        if isinstance(aggregate.get("countable_score_summary"), dict)
+        else {}
+    )
+    selection_policy = (
+        aggregate.get("selection_policy")
+        if isinstance(aggregate.get("selection_policy"), dict)
+        else {}
+    )
+    target_lane = (
+        selection_policy.get("target_lane")
+        if isinstance(selection_policy.get("target_lane"), dict)
+        else {}
+    )
     lines = [
         "# Benchmark Run Ledger Current Aggregate",
         "",
@@ -255,7 +270,13 @@ def render_benchmark_run_ledger_aggregate_markdown(payload: dict[str, object]) -
         f"- updated: `{payload.get('updated')}`",
         f"- benchmark: `{aggregate.get('benchmark_id')}`",
         f"- canonical_covered: `{aggregate.get('canonical_covered')}` / `{aggregate.get('canonical_total')}`",
+        f"- countable_cases: `{score_summary.get('countable_case_count')}`",
+        f"- countable_score_sum: `{score_summary.get('countable_score_sum')}`",
+        f"- countable_score_mean: `{score_summary.get('countable_score_mean')}`",
         f"- distribution: `{distribution}`",
+        f"- selection_rule: `{selection_policy.get('rule')}`",
+        f"- target_lane_enabled: `{target_lane.get('enabled')}`",
+        f"- target_lane_id: `{target_lane.get('lane_id')}`",
         f"- deduped_run_count: `{aggregate.get('deduped_run_count')}`",
         f"- source_ledger_files: `{aggregate.get('source_ledger_files')}`",
         f"- output_json: `{payload.get('output_json')}`",
@@ -504,6 +525,43 @@ def register_benchmark_run_ledger_maintenance_commands(
             "Keep explicit canonical ids whose ledger rows prove they came from "
             "sanity/noncanonical task sources. Formal SkillsBench aggregates "
             "leave this off so sanity fixtures do not enter the denominator."
+        ),
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
+        "--target-lane-id",
+        help=(
+            "Optional public-safe label for a target lane aggregate, such as "
+            "codex-cli-goal-xhigh. This is metadata; matching is controlled by "
+            "the run-group substring flags."
+        ),
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
+        "--target-run-group-contains",
+        action="append",
+        default=[],
+        help=(
+            "Run-group substring for runs in the target lane. May be repeated. "
+            "When target backfill substrings are also set, matching target runs "
+            "that do not match backfill are treated as current evidence."
+        ),
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
+        "--target-current-run-group-contains",
+        action="append",
+        default=[],
+        help=(
+            "Run-group substring for current evidence inside the target lane. "
+            "May be repeated. Use this only when current evidence cannot be "
+            "expressed as target minus backfill."
+        ),
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
+        "--target-backfill-run-group-contains",
+        action="append",
+        default=[],
+        help=(
+            "Run-group substring for lower-priority backfill evidence inside "
+            "the target lane, such as skillsbench-codex-cli-goal-xhigh-full87-."
         ),
     )
     benchmark_run_ledger_aggregate_parser.add_argument(
@@ -794,6 +852,14 @@ def handle_benchmark_run_ledger_maintenance_command(
                 source_ledger_count=source_ledger_count,
                 exclude_noncanonical_sanity_sources=not bool(
                     args.include_noncanonical_sanity_sources
+                ),
+                target_lane_id=args.target_lane_id,
+                target_run_group_contains=list(args.target_run_group_contains or []),
+                target_current_run_group_contains=list(
+                    args.target_current_run_group_contains or []
+                ),
+                target_backfill_run_group_contains=list(
+                    args.target_backfill_run_group_contains or []
                 ),
             )
             output_json = Path(args.output_json).expanduser() if args.output_json else None

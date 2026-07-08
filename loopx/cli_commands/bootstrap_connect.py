@@ -144,6 +144,11 @@ def register_bootstrap_connect_command(subparsers: argparse._SubParsersAction) -
     )
     bootstrap_parser.add_argument("--force", action="store_true", help="Replace existing goal entry or state file.")
     bootstrap_parser.add_argument(
+        "--preserve-todos",
+        action="store_true",
+        help="With --force, preserve the existing active state file instead of replacing its todos.",
+    )
+    bootstrap_parser.add_argument(
         "--replace-state",
         action="store_true",
         help=(
@@ -207,6 +212,7 @@ def handle_bootstrap_connect_command(
             onboarding_max_commits=args.onboarding_max_commits,
             onboarding_max_status_paths=args.onboarding_max_status_paths,
             onboarding_max_top_level_files=args.onboarding_max_top_level_files,
+            preserve_todos=bool(args.preserve_todos),
             force=args.force,
             dry_run=args.dry_run,
             sync_global=not bool(args.no_global_sync),

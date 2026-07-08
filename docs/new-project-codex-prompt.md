@@ -99,6 +99,17 @@ loopx new-project-prompt \
    --allowed-domain validation-map \
    --write-scope "<SAFE_WRITE_SCOPE>"
 
+   如果接入后才发现 write_scope / boundary 少了，不要为了补 scope 直接
+   `bootstrap --force`。先用增量配置：
+
+   loopx configure-goal \
+     --goal-id <STABLE_GOAL_ID> \
+     --write-scope "<SAFE_WRITE_SCOPE>" \
+     --execute
+
+   只有在用户明确要求重建连接时才用 `bootstrap --force`；如果要保留当前
+   active state/todo，必须同时加 `--preserve-todos`。
+
 3. 确认 `.loopx/registry.json` 和
    `.codex/goals/<STABLE_GOAL_ID>/ACTIVE_GOAL_STATE.md` 已创建或更新。
    阅读输出里的 `Onboarding Scan`、`Proposed Onboarding Candidates`、
