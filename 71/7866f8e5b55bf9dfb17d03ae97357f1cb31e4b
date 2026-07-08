@@ -1,0 +1,23 @@
+docs/benchmark-developer-workflow.md
+  s_9a5a2bd944fdcb::t_62d7b560fade49 1384-1390
+scripts/skillsbench_automation_loop.py
+  s_9a5a2bd944fdcb::t_9a1b3b28ff6ea1 1389-1390,1395-1411
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "717866f8e5b55bf9dfb17d03ae97357f1cb31e4b",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
