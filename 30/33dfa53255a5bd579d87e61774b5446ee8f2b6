@@ -1,0 +1,23 @@
+examples/onboarding-connect-candidates-smoke.py
+  s_e3f612788718c1::t_c4f025055d4738 76-89,170,215,268
+loopx/bootstrap.py
+  s_e3f612788718c1::t_611dfccf992321 311,331,349,363,449
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3033dfa53255a5bd579d87e61774b5446ee8f2b6",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
