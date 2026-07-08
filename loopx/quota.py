@@ -20,9 +20,6 @@ from .control_plane.agents.agent_lane_recommendation import (
     selected_action_with_agent_lane,
     selected_recommended_action_from_work_lane,
 )
-from .control_plane.agents.capability_gate import (
-    build_capability_gate,
-)
 from .control_plane.agents.workspace_guard import build_side_agent_workspace_guard
 from .control_plane.agents.identity import (
     build_identity_aware_prompt_upgrade,
@@ -121,6 +118,7 @@ from .control_plane.runtime.promotion_readiness import (
     promotion_readiness_warning as _promotion_readiness_warning,
 )
 from .control_plane.work_items.goal_route_hint import build_goal_route_hint
+from .control_plane.work_items.capability_monitor_fallback import build_capability_gate_with_monitor_fallback
 from .control_plane.work_items.work_lane import (
     work_lane_contract_is_due_monitor_attempt,
 )
@@ -1394,6 +1392,10 @@ def build_quota_should_run(
             agent_identity=agent_identity,
             agent_todo_summary=agent_todo_summary,
         )
+        capability_gate, capability_monitor_contract, capability_monitor_fallback = build_capability_gate_with_monitor_fallback(agent_todo_summary, available_capabilities=_effective_available_capabilities(available_capabilities, item=item, project_asset=project_asset), agent_identity=agent_identity, monitor_item_limit=MONITOR_DUE_ITEM_LIMIT)
+        if subagent_orchestration_contract:
+            capability_monitor_contract = capability_monitor_fallback = None
+        work_lane_contract = capability_monitor_contract or work_lane_contract
         agent_frontier_id = (
             normalize_todo_claimed_by(agent_identity.get("agent_id"))
             if isinstance(agent_identity, dict)
@@ -1422,16 +1424,6 @@ def build_quota_should_run(
             goal_frontier_context.get("goal_frontier_projection")
             if isinstance(goal_frontier_context.get("goal_frontier_projection"), dict)
             else {}
-        )
-        effective_available_capabilities = _effective_available_capabilities(
-            available_capabilities,
-            item=item,
-            project_asset=project_asset,
-        )
-        capability_gate = build_capability_gate(
-            agent_todo_summary,
-            available_capabilities=effective_available_capabilities,
-            agent_identity=agent_identity,
         )
         capability_repair_allowed = False
         workspace_repair_allowed = False
@@ -1465,7 +1457,7 @@ def build_quota_should_run(
             normal_delivery_allowed = False
             recovery_allowed = False
             reason = str(boundary_projection_repair.get("reason") or reason)
-        if capability_gate and capability_gate.get("action") != "run":
+        if capability_gate and capability_gate.get("action") != "run" and not capability_monitor_fallback:
             normal_delivery_allowed = False
             recovery_allowed = False
             if capability_gate.get("action") == "repair_bridge":
@@ -1548,7 +1540,7 @@ def build_quota_should_run(
             select_replan_obligation=False,
             monitor_due_item_limit=MONITOR_DUE_ITEM_LIMIT,
         )
-        if capability_gate and capability_gate.get("action") == "repair_bridge":
+        if capability_gate and not capability_monitor_fallback and capability_gate.get("action") == "repair_bridge":
             heartbeat_recommendation = {
                 **heartbeat_recommendation,
                 "recommended_mode": "repair_capability_bridge",
@@ -1559,7 +1551,7 @@ def build_quota_should_run(
                     "repair, todo rewrite, or compact blocker writeback"
                 ),
             }
-        elif capability_gate and capability_gate.get("action") == "ask_owner":
+        elif capability_gate and not capability_monitor_fallback and capability_gate.get("action") == "ask_owner":
             heartbeat_recommendation = {
                 **heartbeat_recommendation,
                 "recommended_mode": "ask_owner_for_capability",
@@ -1567,7 +1559,7 @@ def build_quota_should_run(
                 "reason": capability_gate.get("reason") or heartbeat_recommendation.get("reason"),
                 "spend_policy": "do not append quota spend while asking for missing capability",
             }
-        elif capability_gate and capability_gate.get("action") == "skip":
+        elif capability_gate and not capability_monitor_fallback and capability_gate.get("action") == "skip":
             heartbeat_recommendation = {
                 **heartbeat_recommendation,
                 "recommended_mode": "capability_skip",
@@ -1671,8 +1663,10 @@ def build_quota_should_run(
             subagent_orchestration_contract,
             selected_recommended_action,
         )
+        if capability_monitor_fallback and isinstance(work_lane_contract, dict) and work_lane_contract.get("action"):
+            selected_recommended_action = work_lane_contract["action"]
         due_monitor_attempt = work_lane_contract_is_due_monitor_attempt(work_lane_contract)
-        if capability_gate and not due_monitor_attempt:
+        if capability_gate and not due_monitor_attempt and not capability_monitor_fallback:
             if capability_gate.get("action") in {"repair_bridge", "ask_owner", "skip"}:
                 selected_recommended_action = (
                     capability_gate.get("owner_action")
@@ -1709,7 +1703,7 @@ def build_quota_should_run(
             allow_unrelated_gate=bool(quota.get("safe_bypass_allowed")),
         )
         agent_lane_next_action = None
-        if not due_monitor_attempt and not subagent_orchestration_contract:
+        if not due_monitor_attempt and not subagent_orchestration_contract and not capability_monitor_fallback:
             agent_lane_next_action = build_agent_lane_next_action(
                 agent_identity=agent_identity,
                 agent_todo_summary=agent_todo_summary,
@@ -1937,6 +1931,8 @@ def build_quota_should_run(
             payload["capability_gate"] = capability_gate
             if capability_gate.get("action") == "ask_owner":
                 payload["notify_user_on_capability_gate"] = True
+        if capability_monitor_fallback:
+            payload["capability_monitor_fallback"] = capability_monitor_fallback
         if external_evidence_observation:
             payload["external_evidence_observation"] = external_evidence_observation
         control_plane = compact_control_plane_policy(item.get("control_plane"))

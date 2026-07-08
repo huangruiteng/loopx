@@ -127,8 +127,14 @@ def blocking_handoff_item(*, index: int, todo_id: str = "todo_primary_handoff") 
     }
 
 
-def advancement_item(*, index: int, priority: str = "P1", claimed_by: str = AGENT_ID) -> dict:
-    return {
+def advancement_item(
+    *,
+    index: int,
+    priority: str = "P1",
+    claimed_by: str = AGENT_ID,
+    required_capabilities: list[str] | None = None,
+) -> dict:
+    item = {
         "index": index,
         "text": f"[{priority}] Advance the runtime contract slice with validation.",
         "todo_id": f"todo_adv_{index}",
@@ -138,6 +144,9 @@ def advancement_item(*, index: int, priority: str = "P1", claimed_by: str = AGEN
         "task_class": "advancement_task",
         "claimed_by": claimed_by,
     }
+    if required_capabilities:
+        item["required_capabilities"] = required_capabilities
+    return item
 
 
 def guard_for(
@@ -472,6 +481,68 @@ def assert_due_monitor_priority_does_not_steal_advancement_lane() -> None:
     assert guard["agent_todo_summary"]["monitor_due_count"] == 1, guard
 
 
+def assert_capability_skip_yields_to_monitor_schedule_repair() -> None:
+    guard = guard_for(
+        [
+            advancement_item(
+                index=1,
+                priority="P1",
+                required_capabilities=["private_read"],
+            ),
+            monitor_item(
+                index=2,
+                todo_id="todo_capability_skip_monitor_gap",
+                priority="P0",
+                target_key="skillsbench-live-batch-watch",
+                cadence=None,
+                next_due_at=None,
+            ),
+        ]
+    )
+    lane = guard["work_lane_contract"]
+    fallback = guard["capability_monitor_fallback"]
+    assert guard["decision"] == "run", guard
+    assert guard["effective_action"] == "normal_run", guard
+    assert guard["capability_gate"]["action"] == "skip", guard
+    assert fallback["mode"] == "monitor_schedule_metadata_repair", fallback
+    assert lane["monitor_kind"] == "todo_monitor_schedule_gap", lane
+    assert lane["obligation"] == "repair_monitor_schedule_metadata", lane
+    assert lane["selected_todo_id"] == "todo_capability_skip_monitor_gap", lane
+    assert guard["heartbeat_recommendation"]["recommended_mode"] != "capability_skip", guard
+    assert guard["execution_obligation"]["contract_obligation"] == "repair_monitor_schedule_metadata", guard
+    assert "todo_adv_1" not in guard["interaction_contract"]["agent_channel"]["primary_action"], guard
+    assert guard["scheduler_hint"]["cadence_class"] == "active_work", guard
+
+
+def assert_capability_skip_yields_to_scheduled_monitor_wait() -> None:
+    guard = guard_for(
+        [
+            advancement_item(
+                index=1,
+                priority="P1",
+                required_capabilities=["private_read"],
+            ),
+            monitor_item(
+                index=2,
+                todo_id="todo_capability_skip_monitor_wait",
+                priority="P0",
+                target_key="skillsbench-live-batch-watch",
+                cadence="15m",
+                next_due_at=FUTURE_DUE_AT,
+            ),
+        ]
+    )
+    scheduler = guard["scheduler_hint"]
+    fallback = guard["capability_monitor_fallback"]
+    assert guard["decision"] == "skip", guard
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert guard["capability_gate"]["action"] == "skip", guard
+    assert fallback["mode"] == "monitor_quiet_wait", fallback
+    assert guard["heartbeat_recommendation"]["recommended_mode"] == "monitor_quiet_until_material_transition", guard
+    assert scheduler["cadence_class"] == "monitor_wait", scheduler
+    assert scheduler["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
+
+
 def assert_read_only_projected_due_monitor_does_not_force_writeback() -> None:
     status = status_payload(
         agent_todo_items=[
@@ -659,6 +730,8 @@ def main() -> int:
     assert_due_monitor_requires_explicit_attempt()
     assert_expired_monitor_does_not_catch_up()
     assert_due_monitor_priority_does_not_steal_advancement_lane()
+    assert_capability_skip_yields_to_monitor_schedule_repair()
+    assert_capability_skip_yields_to_scheduled_monitor_wait()
     assert_read_only_projected_due_monitor_does_not_force_writeback()
     assert_due_monitor_is_not_overridden_by_side_agent_scope_wait()
     assert_multiple_due_monitor_cap_and_order()
