@@ -136,6 +136,94 @@ The preview writes no state and launches nothing. It returns compact public-safe
 Use artifact aliases instead of raw logs, private paths, internal links, or
 credential-bearing metric dumps.
 
+### Volc/MLP Task Packet
+
+For external training/eval systems, LoopX can also render a compact
+`volc_mlp_task_packet_v0` fact packet. This is an observation and handoff
+format, not a launcher. It captures task identity, task state, train/eval
+windows, code/model lineage, metric artifact aliases, and the allowed polling
+contract. It deliberately does not store raw command lines, environment dumps,
+credentials, production paths, workspace paths, or private logs. If a caller
+passes a raw path or URL as a workspace or metric reference, LoopX emits an
+irreversible `redacted:<digest>` handle instead.
+
+```bash
+loopx ml-experiment volc-task-packet --format json \
+  --task-id task-candidate-0 \
+  --task-name external_slice_cross_screen \
+  --state Running \
+  --priority 4 \
+  --retried-times 0 \
+  --train-window 20251002-20260501 \
+  --eval-window 20260501-20260508 \
+  --code-ref codex/example-feature-cross@abc1234 \
+  --model-name candidate_model_abc1234 \
+  --mechanism-family explicit_context_item_crosses \
+  --source-task-id task-baseline-0 \
+  --metric-ref metrics/eval-summary.json \
+  --primary-metric target_slice_auc \
+  --guardrail-metric overall_auc
+```
+
+The packet keeps `launch_actions_enabled=false` and
+`production_actions_enabled=false`. A project-specific adapter may use it as
+durable compact evidence, but actual create/stop/restart/sync actions still
+require explicit delivery authority, quota, preflight verification, and
+writeback.
+
+When the task reaches material evidence, the agent can render a
+`volc_mlp_result_ledger_v0` row. This is the benchmark-ledger layer on top of
+the task packet: it records same-window metric deltas, guardrail state,
+train-metric-as-guardrail policy, failure attribution labels, and the compact
+promotion/no-promotion route. It is useful for long-running model iteration
+because it prevents agents from repeatedly retrying weak near-neighbor
+experiments after a no-promote result, while still preserving enough public-safe
+evidence to replan.
+
+```bash
+loopx ml-experiment volc-result-ledger --format json \
+  --experiment-id external_slice_screen \
+  --task-id task-candidate-1 \
+  --task-name external_slice_cross_screen \
+  --state Completed \
+  --train-window 20251002-20260501 \
+  --eval-window 20260501-20260508 \
+  --code-ref codex/example-feature-cross@abc1234 \
+  --model-name candidate_model_abc1234 \
+  --mechanism-family explicit_context_item_crosses \
+  --primary-metric target_slice_auc \
+  --baseline-value 0.731 \
+  --candidate-value 0.742 \
+  --guardrail-status clean \
+  --guardrail-metric guardrail_slice_a_auc \
+  --guardrail-metric guardrail_slice_b_auc \
+  --positive-evidence same_window_target_slice_auc_up
+```
+
+For failed startup/eval attempts, omit metric values and pass compact failure
+labels instead:
+
+```bash
+loopx ml-experiment volc-result-ledger --format markdown \
+  --experiment-id external_slice_screen \
+  --task-id task-candidate-0 \
+  --task-name external_slice_cross_screen \
+  --state Failed \
+  --train-window 20251002-20260501 \
+  --eval-window 20260501-20260508 \
+  --code-ref codex/example-feature-cross@abc1234 \
+  --model-name candidate_model_abc1234 \
+  --mechanism-family explicit_context_item_crosses \
+  --primary-metric target_slice_auc \
+  --failure-label stale_model_py_root \
+  --failure-label missing_restore_checkpoint \
+  --negative-evidence failed_before_eval_metrics
+```
+
+The result ledger still keeps `launch_actions_enabled=false` and
+`production_actions_enabled=false`; it is a portable fact/decision row, not a
+Volc connector with create/stop/restart authority.
+
 ## Detection
 
 `domain_pack_detection_v0` is a suggest-only detector. It may inspect public-safe

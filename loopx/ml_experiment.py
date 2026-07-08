@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 from typing import Any, Iterable
@@ -11,9 +12,23 @@ ML_EXPERIMENT_RESULT_SCHEMA_VERSION = "ml_experiment_result_v0"
 DATASET_WINDOW_CONTRACT_SCHEMA_VERSION = "dataset_window_contract_v0"
 HYPOTHESIS_LEDGER_SCHEMA_VERSION = "hypothesis_ledger_v0"
 EXPERIMENT_REPLAN_SCHEMA_VERSION = "experiment_replan_v0"
+VOLC_MLP_TASK_PACKET_SCHEMA_VERSION = "volc_mlp_task_packet_v0"
+VOLC_MLP_RESULT_LEDGER_SCHEMA_VERSION = "volc_mlp_result_ledger_v0"
 
 GUARDRAIL_STATUSES = ("clean", "warning", "failed", "unknown")
 HYPOTHESIS_STATUSES = ("active", "supported", "weakened", "retired", "unknown")
+VOLC_MLP_TASK_STATES = (
+    "Creating",
+    "Waiting",
+    "Queueing",
+    "Deploying",
+    "Running",
+    "Stopping",
+    "Completed",
+    "Failed",
+    "Stopped",
+    "Unknown",
+)
 
 _TOKEN_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,79}$")
 _ABSOLUTE_PATH_RE = re.compile(
@@ -73,6 +88,48 @@ def _finite_float(value: float | int | str, *, field: str) -> float:
     return number
 
 
+def _non_negative_int(value: int | str | None, *, field: str) -> int | None:
+    if value is None or value == "":
+        return None
+    number = int(value)
+    if number < 0:
+        raise ValueError(f"{field} must be non-negative")
+    return number
+
+
+def _redacted_ref(value: str, *, field: str) -> dict[str, Any]:
+    text = " ".join(str(value or "").strip().split())
+    if not text:
+        raise ValueError(f"{field} must be non-empty")
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    return {
+        "kind": "redacted_ref",
+        "value": f"redacted:{digest}",
+        "raw_recorded": False,
+    }
+
+
+def _public_or_redacted_ref(value: str | None, *, field: str) -> dict[str, Any] | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        return {
+            "kind": "alias",
+            "value": _compact_public_text(str(value), field=field),
+            "raw_recorded": False,
+        }
+    except ValueError:
+        return _redacted_ref(str(value), field=field)
+
+
+def _public_or_redacted_ref_list(values: Iterable[str] | None, *, field: str) -> list[dict[str, Any]]:
+    return [
+        ref
+        for ref in (_public_or_redacted_ref(value, field=f"{field}[]") for value in values or [])
+        if ref is not None
+    ]
+
+
 def build_ml_experiment_domain_pack_contract(*, enabled: bool = False) -> dict[str, Any]:
     """Return the default-off ML experiment domain-pack boundary."""
 
@@ -104,6 +161,281 @@ def build_ml_experiment_domain_pack_contract(*, enabled: bool = False) -> dict[s
             "launch_authority": "disabled_until_explicit_registry_delivery_mode",
             "production_authority": "disabled_until_explicit_registry_delivery_mode",
         },
+    }
+
+
+def build_volc_mlp_task_packet(
+    *,
+    task_id: str,
+    task_name: str,
+    state: str = "Unknown",
+    priority: int | str | None = None,
+    retried_times: int | str | None = None,
+    train_window: str,
+    eval_window: str,
+    code_ref: str,
+    model_name: str,
+    mechanism_family: str = "unknown",
+    source_task_id: str | None = None,
+    workspace_ref: str | None = None,
+    metric_refs: Iterable[str] | None = None,
+    primary_metric: str = "offline_auc",
+    guardrail_metrics: Iterable[str] | None = None,
+    next_action: str = "monitor_task_until_terminal_metrics",
+) -> dict[str, Any]:
+    """Build a public-safe Volc/MLP task fact packet.
+
+    The packet intentionally stores task identity, windows, lineage aliases, and
+    redacted artifact handles only. It must not become a raw launcher spec,
+    credential store, command log, environment dump, or private path ledger.
+    """
+
+    compact_state = _compact_public_text(state, field="state", max_len=40)
+    if compact_state not in VOLC_MLP_TASK_STATES:
+        raise ValueError(f"state must be one of {', '.join(VOLC_MLP_TASK_STATES)}")
+    dataset_window = build_dataset_window_contract(
+        train_window=train_window,
+        eval_window=eval_window,
+    )
+    source_handle = (
+        _compact_public_token(source_task_id, field="source_task_id")
+        if source_task_id
+        else None
+    )
+    workspace_handle = _public_or_redacted_ref(workspace_ref, field="workspace_ref")
+    metric_handles = _public_or_redacted_ref_list(metric_refs, field="metric_refs")
+    return {
+        "ok": True,
+        "schema_version": VOLC_MLP_TASK_PACKET_SCHEMA_VERSION,
+        "provider": "volc_mlp",
+        "pack": build_ml_experiment_domain_pack_contract(enabled=False),
+        "mode": "default_off_external_task_fact_packet",
+        "observable_handle": {
+            "task_id": _compact_public_token(task_id, field="task_id"),
+            "task_name": _compact_public_text(task_name, field="task_name"),
+            "state": compact_state,
+            "priority": _non_negative_int(priority, field="priority"),
+            "retried_times": _non_negative_int(retried_times, field="retried_times"),
+            "source_task_id": source_handle,
+        },
+        "dataset_window": dataset_window,
+        "lineage": {
+            "code_ref": _compact_public_text(code_ref, field="code_ref"),
+            "model_name": _compact_public_token(model_name, field="model_name"),
+            "mechanism_family": _compact_public_text(mechanism_family, field="mechanism_family"),
+            "workspace_ref": workspace_handle,
+        },
+        "metric_artifacts": metric_handles,
+        "decision_boundary": {
+            "primary_metric": _compact_public_text(primary_metric, field="primary_metric"),
+            "guardrail_metrics": _compact_public_text_list(guardrail_metrics, field="guardrail_metrics"),
+            "conclusion_eligibility": "aligned_eval_window_and_guardrails_required",
+            "train_metrics_are_guardrails_only": True,
+        },
+        "poll_contract": {
+            "allowed_observations": [
+                "task_state",
+                "workspace_created",
+                "fail_marker",
+                "done_marker",
+                "compact_train_metrics",
+                "compact_eval_metrics",
+            ],
+            "raw_logs_recorded": False,
+            "raw_command_recorded": False,
+            "raw_env_recorded": False,
+            "private_artifacts_recorded": False,
+        },
+        "launch_actions_enabled": False,
+        "production_actions_enabled": False,
+        "recommended_next_action": _compact_public_text(next_action, field="next_action"),
+    }
+
+
+def _optional_primary_metric_delta(
+    *,
+    baseline_value: float | int | str | None,
+    candidate_value: float | int | str | None,
+    higher_is_better: bool,
+) -> dict[str, Any]:
+    if baseline_value is None and candidate_value is None:
+        return {
+            "baseline_value": None,
+            "candidate_value": None,
+            "delta": None,
+            "relative_delta": None,
+            "higher_is_better": bool(higher_is_better),
+            "primary_metric_status": "pending",
+        }
+    if baseline_value is None or candidate_value is None:
+        raise ValueError("baseline_value and candidate_value must be provided together")
+    return classify_primary_metric_delta(
+        baseline_value=baseline_value,
+        candidate_value=candidate_value,
+        higher_is_better=higher_is_better,
+    )
+
+
+def _volc_result_outcome(
+    *,
+    state: str,
+    metric_status: str,
+    guardrail_status: str,
+    failure_labels: list[str],
+) -> str:
+    if failure_labels or state in {"Failed", "Stopped"}:
+        return "needs_repair_before_conclusion"
+    if metric_status == "pending":
+        return "monitor_until_aligned_eval"
+    if guardrail_status == "failed":
+        return "no_promote_guardrail_failed"
+    if metric_status == "regressed":
+        return "no_promote_metric_regressed"
+    if metric_status == "flat":
+        return "retire_or_replan"
+    if metric_status == "improved" and guardrail_status == "clean":
+        return "promote_to_larger_window_or_handoff"
+    return "inconclusive_guardrail_review"
+
+
+def _default_volc_result_next_action(outcome: str) -> str:
+    if outcome == "monitor_until_aligned_eval":
+        return "poll_until_terminal_aligned_eval"
+    if outcome == "promote_to_larger_window_or_handoff":
+        return "promote_after_owner_or_registry_gate"
+    if outcome == "needs_repair_before_conclusion":
+        return "repair_startup_or_eval_path_before_retry"
+    if outcome.startswith("no_promote"):
+        return "retire_candidate_and_avoid_near_neighbor_retry"
+    if outcome == "retire_or_replan":
+        return "retire_candidate_or_design_distinct_mechanism"
+    return "collect_guardrail_evidence_before_decision"
+
+
+def build_volc_mlp_result_ledger(
+    *,
+    experiment_id: str,
+    task_id: str,
+    task_name: str,
+    state: str = "Unknown",
+    priority: int | str | None = None,
+    retried_times: int | str | None = None,
+    train_window: str,
+    eval_window: str,
+    code_ref: str,
+    model_name: str,
+    mechanism_family: str = "unknown",
+    primary_metric: str = "offline_auc",
+    baseline_value: float | int | str | None = None,
+    candidate_value: float | int | str | None = None,
+    higher_is_better: bool = True,
+    guardrail_status: str = "unknown",
+    baseline_task_id: str | None = None,
+    source_task_id: str | None = None,
+    workspace_ref: str | None = None,
+    metric_refs: Iterable[str] | None = None,
+    guardrail_metrics: Iterable[str] | None = None,
+    positive_evidence: Iterable[str] | None = None,
+    negative_evidence: Iterable[str] | None = None,
+    failure_labels: Iterable[str] | None = None,
+    next_action: str | None = None,
+) -> dict[str, Any]:
+    """Build a public-safe result ledger row for a Volc/MLP task.
+
+    This is the bridge from an external task packet to LoopX's benchmark-ledger
+    reasoning: same-window comparison, train-metric guardrails, failure
+    attribution, and promotion/no-promotion routing. It remains observation-only
+    and deliberately avoids raw commands, env dumps, logs, private paths, and
+    credentials.
+    """
+
+    compact_state = _compact_public_text(state, field="state", max_len=40)
+    if compact_state not in VOLC_MLP_TASK_STATES:
+        raise ValueError(f"state must be one of {', '.join(VOLC_MLP_TASK_STATES)}")
+    compact_guardrail_status = _compact_public_token(guardrail_status, field="guardrail_status")
+    if compact_guardrail_status not in GUARDRAIL_STATUSES:
+        raise ValueError(f"guardrail_status must be one of {', '.join(GUARDRAIL_STATUSES)}")
+    compact_failures = _compact_public_text_list(failure_labels, field="failure_labels")
+    metric = _optional_primary_metric_delta(
+        baseline_value=baseline_value,
+        candidate_value=candidate_value,
+        higher_is_better=higher_is_better,
+    )
+    outcome = _volc_result_outcome(
+        state=compact_state,
+        metric_status=str(metric.get("primary_metric_status")),
+        guardrail_status=compact_guardrail_status,
+        failure_labels=compact_failures,
+    )
+    resolved_next_action = next_action or _default_volc_result_next_action(outcome)
+    task_packet = build_volc_mlp_task_packet(
+        task_id=task_id,
+        task_name=task_name,
+        state=compact_state,
+        priority=priority,
+        retried_times=retried_times,
+        train_window=train_window,
+        eval_window=eval_window,
+        code_ref=code_ref,
+        model_name=model_name,
+        mechanism_family=mechanism_family,
+        source_task_id=source_task_id or baseline_task_id,
+        workspace_ref=workspace_ref,
+        metric_refs=metric_refs,
+        primary_metric=primary_metric,
+        guardrail_metrics=guardrail_metrics,
+        next_action=resolved_next_action,
+    )
+    baseline_handle = (
+        _compact_public_token(baseline_task_id, field="baseline_task_id")
+        if baseline_task_id
+        else None
+    )
+    positive_labels = _compact_public_text_list(positive_evidence, field="positive_evidence")
+    negative_labels = _compact_public_text_list(negative_evidence, field="negative_evidence")
+    promotion_eligible = outcome == "promote_to_larger_window_or_handoff"
+    return {
+        "ok": True,
+        "schema_version": VOLC_MLP_RESULT_LEDGER_SCHEMA_VERSION,
+        "provider": "volc_mlp",
+        "pack": build_ml_experiment_domain_pack_contract(enabled=False),
+        "mode": "default_off_external_result_ledger",
+        "experiment_id": _compact_public_token(experiment_id, field="experiment_id"),
+        "task_packet": task_packet,
+        "comparison": {
+            "baseline_task_id": baseline_handle,
+            "primary_metric": _compact_public_text(primary_metric, field="primary_metric"),
+            "primary_metric_delta": metric,
+            "guardrail_status": compact_guardrail_status,
+            "guardrail_metrics": _compact_public_text_list(guardrail_metrics, field="guardrail_metrics"),
+            "same_window_required": True,
+            "aligned_eval_required_for_conclusion": True,
+            "train_metrics_are_guardrails_only": True,
+        },
+        "evidence": {
+            "positive": positive_labels,
+            "negative": negative_labels,
+            "raw_metrics_recorded": False,
+            "private_artifacts_recorded": False,
+        },
+        "failure_attribution": {
+            "labels": compact_failures,
+            "raw_logs_recorded": False,
+            "raw_command_recorded": False,
+            "raw_env_recorded": False,
+        },
+        "decision": {
+            "outcome": outcome,
+            "promotion_eligible": promotion_eligible,
+            "requires_owner_or_registry_gate": promotion_eligible,
+            "avoid_near_neighbor_retry": outcome.startswith("no_promote"),
+            "recommended_next_action": _compact_public_text(
+                resolved_next_action,
+                field="next_action",
+            ),
+        },
+        "launch_actions_enabled": False,
+        "production_actions_enabled": False,
     }
 
 
@@ -332,5 +664,93 @@ def render_ml_experiment_advisory_markdown(payload: dict[str, Any]) -> str:
         f"- allocation: `{replan.get('allocation')}`",
         "- next candidates: "
         + ", ".join(f"`{candidate}`" for candidate in replan.get("next_candidates", []) or []),
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def render_volc_mlp_task_packet_markdown(payload: dict[str, Any]) -> str:
+    if not payload.get("ok"):
+        return f"Volc MLP task packet failed: {payload.get('error')}\n"
+    handle = payload.get("observable_handle") if isinstance(payload.get("observable_handle"), dict) else {}
+    dataset_window = payload.get("dataset_window") if isinstance(payload.get("dataset_window"), dict) else {}
+    lineage = payload.get("lineage") if isinstance(payload.get("lineage"), dict) else {}
+    decision = payload.get("decision_boundary") if isinstance(payload.get("decision_boundary"), dict) else {}
+    metric_artifacts = [
+        ref.get("value")
+        for ref in payload.get("metric_artifacts", []) or []
+        if isinstance(ref, dict) and ref.get("value")
+    ]
+    workspace_ref = lineage.get("workspace_ref") if isinstance(lineage.get("workspace_ref"), dict) else {}
+    lines = [
+        "# Volc MLP Task Packet",
+        "",
+        f"- task: `{handle.get('task_id')}`",
+        f"- name: `{handle.get('task_name')}`",
+        f"- state: `{handle.get('state')}`",
+        f"- priority/retries: `{handle.get('priority')}` / `{handle.get('retried_times')}`",
+        f"- source task: `{handle.get('source_task_id')}`",
+        f"- train window: `{dataset_window.get('train_window')}`",
+        f"- eval window: `{dataset_window.get('eval_window')}`",
+        f"- code ref: `{lineage.get('code_ref')}`",
+        f"- model: `{lineage.get('model_name')}`",
+        f"- mechanism: `{lineage.get('mechanism_family')}`",
+        f"- workspace ref: `{workspace_ref.get('value')}`",
+        "- metric refs: " + ", ".join(f"`{ref}`" for ref in metric_artifacts),
+        f"- primary metric: `{decision.get('primary_metric')}`",
+        "- guardrails: "
+        + ", ".join(f"`{metric}`" for metric in decision.get("guardrail_metrics", []) or []),
+        f"- launch actions enabled: `{payload.get('launch_actions_enabled')}`",
+        f"- production actions enabled: `{payload.get('production_actions_enabled')}`",
+        f"- next action: `{payload.get('recommended_next_action')}`",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def render_volc_mlp_result_ledger_markdown(payload: dict[str, Any]) -> str:
+    if not payload.get("ok"):
+        return f"Volc MLP result ledger failed: {payload.get('error')}\n"
+    task_packet = payload.get("task_packet") if isinstance(payload.get("task_packet"), dict) else {}
+    handle = (
+        task_packet.get("observable_handle")
+        if isinstance(task_packet.get("observable_handle"), dict)
+        else {}
+    )
+    comparison = payload.get("comparison") if isinstance(payload.get("comparison"), dict) else {}
+    metric = (
+        comparison.get("primary_metric_delta")
+        if isinstance(comparison.get("primary_metric_delta"), dict)
+        else {}
+    )
+    evidence = payload.get("evidence") if isinstance(payload.get("evidence"), dict) else {}
+    failure = (
+        payload.get("failure_attribution")
+        if isinstance(payload.get("failure_attribution"), dict)
+        else {}
+    )
+    decision = payload.get("decision") if isinstance(payload.get("decision"), dict) else {}
+    lines = [
+        "# Volc MLP Result Ledger",
+        "",
+        f"- experiment: `{payload.get('experiment_id')}`",
+        f"- task: `{handle.get('task_id')}`",
+        f"- name: `{handle.get('task_name')}`",
+        f"- state: `{handle.get('state')}`",
+        f"- baseline task: `{comparison.get('baseline_task_id')}`",
+        f"- primary metric: `{comparison.get('primary_metric')}`",
+        f"- metric status: `{metric.get('primary_metric_status')}`",
+        f"- delta: `{metric.get('delta')}`",
+        f"- guardrail: `{comparison.get('guardrail_status')}`",
+        "- positive evidence: "
+        + ", ".join(f"`{label}`" for label in evidence.get("positive", []) or []),
+        "- negative evidence: "
+        + ", ".join(f"`{label}`" for label in evidence.get("negative", []) or []),
+        "- failure labels: "
+        + ", ".join(f"`{label}`" for label in failure.get("labels", []) or []),
+        f"- outcome: `{decision.get('outcome')}`",
+        f"- promotion eligible: `{decision.get('promotion_eligible')}`",
+        f"- avoid near-neighbor retry: `{decision.get('avoid_near_neighbor_retry')}`",
+        f"- launch actions enabled: `{payload.get('launch_actions_enabled')}`",
+        f"- production actions enabled: `{payload.get('production_actions_enabled')}`",
+        f"- next action: `{decision.get('recommended_next_action')}`",
     ]
     return "\n".join(lines) + "\n"
