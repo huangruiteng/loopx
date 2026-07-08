@@ -1,0 +1,44 @@
+loopx/cli_commands/ml_experiment.py
+  s_9a5a2bd944fdcb::t_eb385009744225 13,17,123-131,191-199,305-312
+tests/test_ml_experiment_volc_packet.py
+  s_32e2a9a204a8e4::t_7476d8ce957198 3-7,12,15,17,52-65,144-247
+docs/product/domain-capability-packs.md
+  s_32e2a9a204a8e4::t_1f6c4e21a57a1e 278-315
+  s_32e2a9a204a8e4::t_54124b91b17ccc 316-318
+loopx/domain_state.py
+  s_e3f612788718c1::t_18b81a875b3f85 1-110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0b70fcc50393ab91a3043dd5f25030ed60863b8a",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
