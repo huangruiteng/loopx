@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...state_projection import next_action_resolution_trace
 from ..agents.agent_scope import AgentScopeFrontierAction
 from ..goals.goal_frontier import AUTONOMOUS_REPLAN_REQUIRED_MODE
 from ..todos.contract import TODO_TASK_CLASS_ADVANCEMENT, TODO_TASK_CLASS_MONITOR
@@ -792,6 +793,23 @@ def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
         "scoped_user_gate_fallback",
         "bounded_delivery_with_user_notice",
     }
+    primary_action = _interaction_primary_agent_action(payload, mode=mode)
+    agent_channel: dict[str, Any] = {
+        "must_attempt": must_attempt,
+        "delivery_allowed": delivery_allowed,
+        "quiet_noop_allowed": quiet_noop_allowed,
+        "primary_action": primary_action,
+    }
+    resolution_trace = next_action_resolution_trace(
+        primary_action=primary_action,
+        mode=mode,
+        active_state_next_action=payload.get("active_state_next_action"),
+        latest_run_recommended_action=payload.get("latest_run_recommended_action"),
+        selected_recommended_action=payload.get("recommended_action"),
+        agent_lane_next_action=payload.get("agent_lane_next_action"),
+    )
+    if resolution_trace:
+        agent_channel["resolution_trace"] = resolution_trace
     user_channel: dict[str, Any] = {
         "action_required": user_required,
         "notify": "NOTIFY" if user_required else heartbeat_recommendation.get("notify", "DONT_NOTIFY"),
@@ -833,12 +851,7 @@ def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
         "schema_version": INTERACTION_CONTRACT_SCHEMA_VERSION,
         "mode": mode,
         "user_channel": user_channel,
-        "agent_channel": {
-            "must_attempt": must_attempt,
-            "delivery_allowed": delivery_allowed,
-            "quiet_noop_allowed": quiet_noop_allowed,
-            "primary_action": _interaction_primary_agent_action(payload, mode=mode),
-        },
+        "agent_channel": agent_channel,
         "cli_channel": {
             "next_cli_actions": interaction_next_cli_actions(payload, mode=mode),
             "spend_allowed_now": spend_allowed_now,

@@ -55,6 +55,10 @@ prompt text.
 When the generated prompt and the installed skill disagree, the worker should
 trust the current CLI `interaction_contract` first, then use the skill as the
 operation manual and the prompt only as a bootstrap.
+Within that contract, the worker should execute
+`agent_channel.primary_action`. An optional `agent_channel.resolution_trace`
+is for debugging route selection and drift; it should not be treated as another
+action to run or as permission to rewrite active-state `Next Action`.
 
 You can generate the task body from the CLI. Prefer the registry-backed form
 for connected goals, so the installed automation does not hard-code a state-file
