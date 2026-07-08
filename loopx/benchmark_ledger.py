@@ -461,7 +461,8 @@ def benchmark_run_official_score_countability(run: dict[str, Any]) -> dict[str, 
     )
     if explicit_attempt_countable is None:
         explicit_attempt_countable = accounting.get("official_score_attempt_countable")
-    if explicit_attempt_countable is False:
+    has_official_bool_score = isinstance(_official_task_score_bool_passed(run), bool)
+    if explicit_attempt_countable is False and not has_official_bool_score:
         return {
             "countable": False,
             "reason": "official_score_attempt_not_countable",
@@ -472,6 +473,12 @@ def benchmark_run_official_score_countability(run: dict[str, Any]) -> dict[str, 
         run.get("official_score_status") or run.get("score_status"),
         limit=80,
     )
+    if (
+        score_status == "missing"
+        and score is not None
+        and has_official_bool_score
+    ):
+        score_status = "failed" if score < 1 else "passed"
     if score_status and score_status not in {
         "completed",
         "passed",
@@ -1023,6 +1030,16 @@ def _official_score(benchmark_run: dict[str, Any]) -> tuple[float | int | None, 
     return _official_score_passed_bool_fallback(benchmark_run)
 
 
+def _official_task_score_bool_passed(benchmark_run: dict[str, Any]) -> bool | None:
+    official = (
+        benchmark_run.get("official_task_score")
+        if isinstance(benchmark_run.get("official_task_score"), dict)
+        else {}
+    )
+    passed = official.get("passed")
+    return passed if isinstance(passed, bool) else None
+
+
 def _infer_arm_id_from_job_name(job_name: str) -> str:
     if not job_name:
         return ""
@@ -1080,6 +1097,8 @@ def _score_status(benchmark_run: dict[str, Any], score: float | int | None, pass
         return "missing"
     explicit = _compact_text(benchmark_run.get("official_score_status"), limit=80)
     if explicit and explicit != "completed":
+        if explicit == "missing" and score is not None and isinstance(passed, bool):
+            return "passed" if passed else "failed"
         return explicit
     if score is None:
         return "missing"
@@ -1089,6 +1108,10 @@ def _score_status(benchmark_run: dict[str, Any], score: float | int | None, pass
 def _official_score_passed_bool_fallback(
     benchmark_run: dict[str, Any],
 ) -> tuple[float | None, bool | None]:
+    official_passed = _official_task_score_bool_passed(benchmark_run)
+    if isinstance(official_passed, bool):
+        return (1.0 if official_passed else 0.0), official_passed
+
     score_status = _compact_text(
         benchmark_run.get("official_score_status") or benchmark_run.get("score_status"),
         limit=80,
@@ -1099,13 +1122,7 @@ def _official_score_passed_bool_fallback(
         "failed_before_official_result"
     ):
         return None, None
-    official = (
-        benchmark_run.get("official_task_score")
-        if isinstance(benchmark_run.get("official_task_score"), dict)
-        else {}
-    )
     for container, key in (
-        (official, "passed"),
         (benchmark_run, "official_passed"),
         (benchmark_run, "passed"),
     ):
@@ -2202,6 +2219,7 @@ def build_benchmark_run_ledger_entry(
             if isinstance(marker.get("attempt_accounting"), dict)
             else {}
         )
+    has_official_bool_score = isinstance(_official_task_score_bool_passed(benchmark_run), bool)
     if attempt_accounting:
         for source_field, entry_field in (
             ("lifecycle_phase", "attempt_lifecycle_phase"),
@@ -2219,7 +2237,12 @@ def build_benchmark_run_ledger_entry(
             "official_score_attempt_countable",
         ):
             if isinstance(attempt_accounting.get(field), bool):
-                entry[field] = attempt_accounting[field]
+                entry[field] = (
+                    True
+                    if field == "official_score_attempt_countable"
+                    and has_official_bool_score
+                    else attempt_accounting[field]
+                )
     for field in (
         "launcher_attempt_countable",
         "case_attempt_countable",
@@ -2228,7 +2251,12 @@ def build_benchmark_run_ledger_entry(
         "official_score_attempt_countable",
     ):
         if field not in entry and isinstance(benchmark_run.get(field), bool):
-            entry[field] = benchmark_run[field]
+            entry[field] = (
+                True
+                if field == "official_score_attempt_countable"
+                and has_official_bool_score
+                else benchmark_run[field]
+            )
     if source_schema == "terminal_bench_post_launch_materialization_v0":
         marker = (
             benchmark_run.get("compact_failure_marker")

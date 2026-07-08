@@ -378,6 +378,48 @@ def test_ledger_marks_uncountable_numeric_scores_noncountable() -> None:
         "countable_official_score"
     ), entry
 
+    passed_false_missing_status = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": BENCHMARK_ID,
+        "case_id": "passed-bool-false-missing-status",
+        "job_name": "skillsbench_1_1_passed_bool_false_missing_status_codex_cli_goal_baseline",
+        "route": "codex-cli-goal-baseline",
+        "official_score_status": "missing",
+        "official_task_score": {
+            "kind": "skillsbench_verifier_reward",
+            "passed": False,
+        },
+        "score_failure_attribution": "verifier_infrastructure_failure",
+    }
+    entry = build_benchmark_run_ledger_entry(passed_false_missing_status)
+    assert entry["official_score"] == 0.0, entry
+    assert entry["official_passed"] is False, entry
+    assert entry["score_status"] == "failed", entry
+    assert entry["official_score_countable"] is True, entry
+    assert entry["official_score_countability_reason"] == (
+        "countable_official_score"
+    ), entry
+
+    passed_false_attempt_marked_noncountable = {
+        **passed_false_missing_status,
+        "case_id": "passed-bool-false-attempt-marked-noncountable",
+        "attempt_accounting": {
+            "official_score_attempt_countable": False,
+            "case_attempt_countable": True,
+            "solver_attempt_countable": True,
+            "verifier_attempt_countable": True,
+        },
+    }
+    entry = build_benchmark_run_ledger_entry(passed_false_attempt_marked_noncountable)
+    assert entry["official_score"] == 0.0, entry
+    assert entry["official_passed"] is False, entry
+    assert entry["score_status"] == "failed", entry
+    assert entry["official_score_attempt_countable"] is True, entry
+    assert entry["official_score_countable"] is True, entry
+    assert entry["official_score_countability_reason"] == (
+        "countable_official_score"
+    ), entry
+
 
 def test_current_aggregate_default_inference_excludes_sanity_sources() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-current-aggregate-default-") as tmp:
