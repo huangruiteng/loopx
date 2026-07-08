@@ -1,0 +1,37 @@
+apps/presentation/dashboard/src/views/dashboard-page.tsx
+  s_76ee28abb3c3a4::t_9475bca24c64e5 3049,3099,3102-3103,3105-3106,3138,3153-3154,3156,3158,3161
+docs/codex-subagent-orchestration.md
+  s_76ee28abb3c3a4::t_f03cde2fff4dc4 234-249
+docs/status-data-contract.md
+  s_76ee28abb3c3a4::t_62bdc4cfbaa947 145-150
+examples/control_plane/control-plane-configure-api-smoke.py
+  s_76ee28abb3c3a4::t_af7185601c3cc6 195,239,306,331
+examples/dashboard-home-browser-smoke.mjs
+  s_76ee28abb3c3a4::t_2a182e94cb8cbc 793
+examples/project/configure-goal-smoke.py
+  s_76ee28abb3c3a4::t_df67cdb9a815fd 104-105,144,169-170,194,240-266,332-348
+loopx/cli_commands/registry_admin.py
+  s_76ee28abb3c3a4::t_c052595ad7dcf4 291-298,669
+loopx/configure_goal.py
+  s_76ee28abb3c3a4::t_e2c85845e4e155 16-21,34-36,119-128,201,256-262,268-272,313-314,322-337,431-435,464-466
+loopx/status_server.py
+  s_76ee28abb3c3a4::t_3ce16d3c702a5f 51,341,376,412
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c0fcfb22588f65e41baccc35479b61de738a4bf2",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
