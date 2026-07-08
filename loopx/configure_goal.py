@@ -75,6 +75,18 @@ def _clean_registered_agents(values: list[str] | None) -> list[str] | None:
     return agents
 
 
+def _clean_write_scope(values: list[str] | None) -> list[str] | None:
+    if values is None:
+        return None
+    scopes: list[str] = []
+    for value in values:
+        for part in str(value).split(","):
+            scope = part.strip()
+            if scope and scope not in scopes:
+                scopes.append(scope)
+    return scopes
+
+
 def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
     quota = goal_quota_config(goal)
     control_plane = compact_control_plane_policy(goal.get("control_plane"))
@@ -88,6 +100,7 @@ def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
         "control_plane": control_plane,
         "orchestration": orchestration,
         "waiting_on": goal.get("waiting_on"),
+        "write_scope": _clean_write_scope(coordination.get("write_scope") or []) or [],
         "checkpointed_boundary_authority": checkpointed_boundary_authority_summary(coordination),
         "registered_agents": normalize_registered_agents(coordination.get("registered_agents")),
         "primary_agent": primary_agent_id_for_goal(goal),
@@ -121,6 +134,9 @@ def configure_goal(
     clear_registered_agents: bool = False,
     primary_agent: str | None = None,
     clear_primary_agent: bool = False,
+    write_scope: list[str] | None = None,
+    replace_write_scope: bool = False,
+    clear_write_scope: bool = False,
     waiting_on: str | None = None,
     clear_waiting_on: bool = False,
     boundary_authority_scopes: list[str] | None = None,
@@ -141,6 +157,12 @@ def configure_goal(
         raise ValueError("--clear-primary-agent cannot be combined with --primary-agent")
     if clear_registered_agents and primary_agent:
         raise ValueError("--clear-registered-agents cannot be combined with --primary-agent")
+    if clear_write_scope and write_scope:
+        raise ValueError("--clear-write-scope cannot be combined with --write-scope")
+    if replace_write_scope and not write_scope:
+        raise ValueError("--replace-write-scope requires --write-scope")
+    if clear_write_scope and replace_write_scope:
+        raise ValueError("--clear-write-scope cannot be combined with --replace-write-scope")
     if clear_waiting_on and waiting_on:
         raise ValueError("--clear-waiting-on cannot be combined with --waiting-on")
     adding_boundary_authority = any(
@@ -163,6 +185,7 @@ def configure_goal(
     max_children = _non_negative_int(max_children, field="max_children")
     allowed_domains = _clean_domains(allowed_domains)
     registered_agents = _clean_registered_agents(registered_agents)
+    write_scope = _clean_write_scope(write_scope)
     normalized_primary_agent = normalize_todo_claimed_by(primary_agent) if primary_agent else None
     if primary_agent and not normalized_primary_agent:
         raise ValueError("--primary-agent must be a public-safe registered agent id")
@@ -230,6 +253,8 @@ def configure_goal(
         or registered_agents is not None
         or normalized_primary_agent is not None
         or clear_primary_agent
+        or write_scope is not None
+        or clear_write_scope
         or clear_boundary_authority
         or adding_boundary_authority
     ):
@@ -250,6 +275,14 @@ def configure_goal(
             coordination.pop("primary_agent", None)
         elif normalized_primary_agent is not None:
             coordination["primary_agent"] = normalized_primary_agent
+        if clear_write_scope:
+            coordination["write_scope"] = []
+        elif write_scope is not None:
+            if replace_write_scope:
+                coordination["write_scope"] = write_scope
+            else:
+                existing_write_scope = _clean_write_scope(coordination.get("write_scope") or []) or []
+                coordination["write_scope"] = _clean_write_scope([*existing_write_scope, *write_scope]) or []
         if clear_boundary_authority:
             coordination.pop("checkpointed_boundary_authority", None)
         if adding_boundary_authority:

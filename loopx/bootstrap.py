@@ -599,6 +599,7 @@ def bootstrap_project(
     onboarding_max_commits: int = 5,
     onboarding_max_status_paths: int = 12,
     onboarding_max_top_level_files: int = 24,
+    preserve_todos: bool = False,
     force: bool,
     dry_run: bool,
     sync_global: bool,
@@ -664,17 +665,35 @@ def bootstrap_project(
     )
     registry, registry_goal_action = merge_goal(registry, goal_entry, force=force)
 
+    state_exists = state_file.exists()
     state_action = "created"
-    if state_file.exists() and not force:
+    if state_exists and force and preserve_todos:
+        state_action = "kept-existing-preserve-todos"
+    elif state_exists and not force:
         state_action = "kept-existing"
-    elif state_file.exists() and force:
+    elif state_exists and force:
         state_action = "replaced"
 
     dry_state_actions = {
         "created": "would-create",
         "kept-existing": "would-keep-existing",
+        "kept-existing-preserve-todos": "would-keep-existing-preserve-todos",
         "replaced": "would-replace",
     }
+    force_bootstrap_warning = None
+    if state_exists and force:
+        force_bootstrap_warning = {
+            "kind": "force_reconnect_existing_active_state",
+            "state_file": str(state_file),
+            "state_action": state_action,
+            "will_replace_active_state": state_action == "replaced",
+            "preserve_todos_requested": bool(preserve_todos),
+            "recommended_scope_migration": (
+                "Use configure-goal --write-scope ... --execute to change write scope "
+                "without rebuilding the active state."
+            ),
+            "preserve_todos_option": "--preserve-todos",
+        }
     actions = [
         {"path": str(registry_path), "action": "would-write" if dry_run else "wrote", "goal": registry_goal_action},
         {"path": str(state_file), "action": dry_state_actions.get(state_action, "would-write") if dry_run else state_action},
@@ -741,6 +760,7 @@ def bootstrap_project(
                 "runtime_root": str(runtime_root),
                 "registry_goal_action": registry_goal_action,
                 "state_action": state_action,
+                "force_bootstrap_warning": force_bootstrap_warning,
                 "execution_profile": execution_profile,
                 "onboarding_scan": onboarding_scan,
                 "onboarding_agent_todo_candidates": candidates,
@@ -810,6 +830,7 @@ def bootstrap_project(
         "runtime_root": str(runtime_root),
         "registry_goal_action": registry_goal_action,
         "state_action": state_action,
+        "force_bootstrap_warning": force_bootstrap_warning,
         "execution_profile": execution_profile,
         "onboarding_scan": onboarding_scan,
         "onboarding_agent_todo_candidates": candidates,
@@ -887,6 +908,20 @@ def render_bootstrap_markdown(payload: dict[str, Any]) -> str:
     ]
     for action in payload.get("actions") or []:
         lines.append(f"- `{action.get('path')}`: {action.get('action')} ({action.get('goal', '')})")
+
+    force_warning = payload.get("force_bootstrap_warning")
+    if isinstance(force_warning, dict):
+        lines.extend(
+            [
+                "",
+                "## Force Bootstrap Warning",
+                f"- state_file: `{force_warning.get('state_file')}`",
+                f"- will_replace_active_state: `{force_warning.get('will_replace_active_state')}`",
+                f"- preserve_todos_requested: `{force_warning.get('preserve_todos_requested')}`",
+                f"- recommended_scope_migration: {force_warning.get('recommended_scope_migration')}",
+                f"- preserve_todos_option: `{force_warning.get('preserve_todos_option')}`",
+            ]
+        )
 
     onboarding_scan = payload.get("onboarding_scan")
     if isinstance(onboarding_scan, dict):
