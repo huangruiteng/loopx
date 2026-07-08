@@ -1,0 +1,23 @@
+examples/control_plane/external-evidence-observation-smoke.py
+  s_9a5a2bd944fdcb::t_c9d0ee3de1887d 97-102,109,123,162-199,272
+examples/control_plane/heartbeat-quota-flow-smoke.py
+  s_9a5a2bd944fdcb::t_5880df421a7877 1060-1062
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8a4c54d74038e36c39522083958f38ab9fb56acb",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
