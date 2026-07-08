@@ -13,7 +13,9 @@ from ..agent_onboarding import (
     render_agent_type_catalog_markdown,
 )
 from ..bootstrap_command_pack import (
+    build_start_goal_guided_packet,
     build_loopx_bootstrap_command_pack,
+    render_start_goal_guided_markdown,
     render_loopx_bootstrap_command_pack_markdown,
 )
 from ..project_prompt import (
@@ -103,6 +105,38 @@ def register_starter_bootstrap_commands(subparsers: argparse._SubParsersAction) 
         dest="message_only",
         action="store_true",
         help="Print only the pasteable /loopx handling message.",
+    )
+
+    start_goal_parser = subparsers.add_parser(
+        "start-goal",
+        help="Preview a guided /loopx <goal text> start transaction without mutating state.",
+    )
+    start_goal_parser.add_argument(
+        "--guided",
+        action="store_true",
+        help="Required for now: render the guided dry-run transaction packet.",
+    )
+    start_goal_parser.add_argument("--project", default=".", help="Project directory to inspect.")
+    start_goal_parser.add_argument("--goal-id", help="Goal id. Defaults to <project-name>-goal.")
+    start_goal_parser.add_argument(
+        "--agent-id",
+        help="Registered LoopX agent id to include in quota/heartbeat commands.",
+    )
+    start_goal_parser.add_argument(
+        "--cli-bin",
+        default="loopx",
+        help="LoopX CLI binary name embedded in generated commands.",
+    )
+    start_goal_parser.add_argument(
+        "--host-surface",
+        default="codex-app",
+        choices=["chat-box", "codex-app", "codex-cli-tui", "claude-code", "shell", "http", "worker-bridge"],
+        help="Host surface that will own loop activation after todo writeback.",
+    )
+    start_goal_parser.add_argument(
+        "--goal-text",
+        required=True,
+        help="Exact goal text to plan before todo writeback.",
     )
 
     prompt_parser = subparsers.add_parser(
@@ -260,6 +294,31 @@ def handle_loopx_bootstrap_command_pack_command(
     return 0
 
 
+def handle_start_goal_command(
+    args: argparse.Namespace,
+    print_payload: PrintPayload,
+) -> int:
+    if not bool(getattr(args, "guided", False)):
+        payload = {
+            "ok": False,
+            "schema_version": "loopx_start_goal_guided_v0",
+            "error": "`loopx start-goal` currently requires --guided",
+            "suggested_command": "loopx start-goal --guided --goal-text '<goal text>'",
+        }
+        print_payload(payload, args.format, render_start_goal_guided_markdown)
+        return 2
+    payload = build_start_goal_guided_packet(
+        project=Path(args.project),
+        goal_id=args.goal_id,
+        agent_id=args.agent_id,
+        cli_bin=args.cli_bin,
+        host_surface=args.host_surface,
+        goal_text=args.goal_text,
+    )
+    print_payload(payload, args.format, render_start_goal_guided_markdown)
+    return 0
+
+
 def handle_codex_cli_bootstrap_message_command(
     args: argparse.Namespace,
     print_payload: PrintPayload,
@@ -313,6 +372,7 @@ def handle_starter_bootstrap_command(
     handlers: dict[str, Callable[[argparse.Namespace, PrintPayload], int]] = {
         "agent-onboard": handle_agent_onboard_command,
         "bootstrap-command-pack": handle_loopx_bootstrap_command_pack_command,
+        "start-goal": handle_start_goal_command,
         "new-project-prompt": handle_new_project_prompt_command,
         "codex-cli-bootstrap-message": handle_codex_cli_bootstrap_message_command,
         "codex-cli-tui-bootstrap-smoke-bundle": handle_codex_cli_tui_bootstrap_smoke_bundle_command,

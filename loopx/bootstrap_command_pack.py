@@ -22,6 +22,7 @@ from .slash_commands import build_slash_command_catalog
 SCHEMA_VERSION = "loopx_bootstrap_command_pack_v0"
 CANONICAL_SLASH_COMMAND = "/loopx"
 GOAL_START_SCHEMA_VERSION = "loopx_goal_start_command_v0"
+GUIDED_START_SCHEMA_VERSION = "loopx_start_goal_guided_v0"
 
 
 def _resolve_project(project: Path) -> Path:
@@ -510,6 +511,172 @@ def build_loopx_bootstrap_command_pack(
     }
     payload["message"] = render_loopx_bootstrap_command_pack_message(payload)
     return payload
+
+
+def build_start_goal_guided_packet(
+    *,
+    project: Path,
+    goal_id: str | None,
+    agent_id: str | None,
+    cli_bin: str,
+    host_surface: str,
+    goal_text: str,
+) -> dict[str, Any]:
+    command_pack = build_loopx_bootstrap_command_pack(
+        project=project,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        cli_bin=cli_bin,
+        host_surface=host_surface,
+        goal_text=goal_text,
+    )
+    commands = command_pack.get("commands")
+    commands = commands if isinstance(commands, dict) else {}
+    guided_transaction = {
+        "schema_version": GUIDED_START_SCHEMA_VERSION,
+        "mode": "dry_run_preview",
+        "writes_now": False,
+        "spends_quota_now": False,
+        "goal_text": command_pack.get("goal_text"),
+        "ordered_steps": [
+            {
+                "id": "inspect_connection",
+                "kind": "read_only",
+                "command": command_pack.get("canonical_cli_command"),
+                "purpose": "resolve canonical project, goal id, registry, and active state before any mutation",
+            },
+            {
+                "id": "connect_if_needed",
+                "kind": "conditional_mutation",
+                "command": commands.get("goal_start_connect_if_needed"),
+                "purpose": "create or reuse project-local LoopX state only when no matching goal exists",
+            },
+            {
+                "id": "plan_ranked_todos",
+                "kind": "model_checkpoint",
+                "prompt": commands.get("goal_start_plan_prompt"),
+                "purpose": "produce concise public-safe P0/P1/P2 todos before todo writeback",
+            },
+            {
+                "id": "write_ordered_todos",
+                "kind": "operator_or_agent_actions",
+                "command_template": (
+                    f"{shell_arg(cli_bin)} todo add --goal-id "
+                    f"{shell_arg(str(command_pack.get('goal_id') or ''))} --role agent "
+                    "--task-class advancement_task --action-kind <action_kind> --text '<[P0/P1/P2] ...>'"
+                ),
+                "purpose": "write todos in planner order so same-priority ordering stays deterministic",
+            },
+            {
+                "id": "refresh_state",
+                "kind": "state_sync",
+                "command": commands.get("goal_start_refresh_state"),
+                "purpose": "project the accepted plan and next action into active state/history",
+            },
+            {
+                "id": "activate_host_loop",
+                "kind": "host_loop",
+                "command": commands.get("goal_start_host_loop_activation"),
+                "purpose": "install or refresh the host loop only when it is missing, unknown, stale, or agent type changed",
+            },
+            {
+                "id": "quota_guard",
+                "kind": "guard",
+                "command": commands.get("goal_start_quota_should_run"),
+                "purpose": "let LoopX choose the first bounded segment and scheduler cadence",
+            },
+            {
+                "id": "scheduler_ack_when_needed",
+                "kind": "scheduler_state",
+                "command_source": "quota.should-run.scheduler_hint.codex_app.ack_hint.cli_args",
+                "purpose": "ack an applied Codex App RRULE without spending quota",
+            },
+        ],
+        "idempotency_policy": {
+            "safe_to_rerun_preview": True,
+            "reuse_connected_goal": True,
+            "do_not_duplicate_existing_todos": (
+                "Do not duplicate existing todos; before writing, compare active todos by text/action_kind "
+                "and update or skip matching items."
+            ),
+            "host_loop_recheck": (
+                "Only regenerate or update automation when the host loop is missing, unknown, stale, or agent type changed."
+            ),
+        },
+        "preserve_todos_policy": {
+            "force_bootstrap_default": "forbidden_in_guided_flow",
+            "before_destructive_reconnect": "run backup-state and stop for an explicit preserve-todos confirmation",
+            "preferred_scope_change": "use configure-goal incremental updates instead of force bootstrap when state already exists",
+        },
+    }
+    payload = {
+        "ok": True,
+        "schema_version": GUIDED_START_SCHEMA_VERSION,
+        "read_only": True,
+        "guided": True,
+        "project": command_pack.get("project"),
+        "goal_id": command_pack.get("goal_id"),
+        "agent_id": command_pack.get("agent_id"),
+        "host_surface": command_pack.get("host_surface"),
+        "goal_text": command_pack.get("goal_text"),
+        "project_connection": command_pack.get("project_connection"),
+        "recommended_next_step": command_pack.get("recommended_next_step"),
+        "guided_transaction": guided_transaction,
+        "command_pack": command_pack,
+        "safety_contract": {
+            "writes_registry": False,
+            "writes_state_file": False,
+            "creates_heartbeat": False,
+            "spends_quota": False,
+            "mutation_commands_are_previewed": True,
+            "force_bootstrap_allowed": False,
+        },
+    }
+    payload["message"] = render_start_goal_guided_markdown(payload)
+    return payload
+
+
+def render_start_goal_guided_markdown(payload: dict[str, Any]) -> str:
+    transaction = payload.get("guided_transaction")
+    transaction = transaction if isinstance(transaction, dict) else {}
+    steps = transaction.get("ordered_steps")
+    steps = steps if isinstance(steps, list) else []
+    step_lines: list[str] = []
+    for index, step in enumerate(steps, start=1):
+        if not isinstance(step, dict):
+            continue
+        command = step.get("command") or step.get("command_template") or step.get("command_source") or step.get("prompt")
+        step_lines.extend(
+            [
+                f"{index}. `{step.get('id')}` ({step.get('kind')})",
+                f"   - purpose: {step.get('purpose')}",
+            ]
+        )
+        if command:
+            step_lines.append(f"   - command/source: `{str(command).splitlines()[0]}`")
+    preserve = transaction.get("preserve_todos_policy")
+    preserve = preserve if isinstance(preserve, dict) else {}
+    return f"""# Guided Start Goal
+
+- schema: `{payload.get("schema_version")}`
+- read_only: `{payload.get("read_only")}`
+- project: `{payload.get("project")}`
+- goal_id: `{payload.get("goal_id")}`
+- goal_text: `{payload.get("goal_text")}`
+
+This is a guided dry-run packet. It previews the transaction and keeps mutation
+behind explicit command execution by the host/agent.
+
+## Ordered Transaction
+
+{chr(10).join(step_lines)}
+
+## Todo Preservation
+
+- force_bootstrap_default: `{preserve.get("force_bootstrap_default")}`
+- before_destructive_reconnect: {preserve.get("before_destructive_reconnect")}
+- preferred_scope_change: {preserve.get("preferred_scope_change")}
+"""
 
 
 def render_loopx_bootstrap_command_pack_message(payload: dict[str, Any]) -> str:
