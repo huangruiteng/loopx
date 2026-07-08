@@ -1,0 +1,27 @@
+docs/product/domain-capability-packs.md
+  s_9a5a2bd944fdcb::t_4bada408be190f 139-173
+loopx/cli_commands/ml_experiment.py
+  s_9a5a2bd944fdcb::t_0434819b80cc35 9,11,13,93-127,136-177,184-185
+loopx/ml_experiment.py
+  s_9a5a2bd944fdcb::t_24ab5a17b84af3 3,15,19-30,90-131,166-253,481-518
+tests/test_ml_experiment_volc_packet.py
+  s_9a5a2bd944fdcb::t_afb50867fa58af 1-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "30c21f3b8205149f4e84aba0314a86b942fc8010",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
