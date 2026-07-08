@@ -11,71 +11,22 @@ import tempfile
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from loopx.heartbeat_prompt import INTERFACE_BUDGET_CHARS, build_heartbeat_prompt  # noqa: E402
-
-DOC = REPO_ROOT / "docs" / "heartbeat-automation-prompt.md"
-README = REPO_ROOT / "README.md"
-GETTING_STARTED = REPO_ROOT / "docs" / "guides" / "getting-started.md"
-INTEGRATION_DOC = REPO_ROOT / "docs" / "integration.md"
-PROJECT_SKILL = REPO_ROOT / "skills" / "loopx-project" / "SKILL.md"
-GOAL_ID = "public-heartbeat-goal"
-ACTIVE_STATE = Path("/tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md")
-PROJECT_SPECIFIC_PROMPT_LEAKS = (
-    "internal-side-agent",
-    "internal-main-control",
-    "private-runtime-delta",
-    "managed private mirrors",
-    "docs/TODO.md",
-    "internal-product-gamma",
-    "internal-team-beta",
+from heartbeat_prompt_fixtures import (  # noqa: E402
+    ACTIVE_STATE,
+    DOC,
+    GETTING_STARTED,
+    GOAL_ID,
+    INTEGRATION_DOC,
+    PROJECT_SKILL,
+    README,
+    REPO_ROOT,
+    assert_interface_budget_payload,
+    assert_no_project_specific_prompt_leaks,
+    assert_ordered,
+    assert_prompt_budget,
+    normalized,
 )
-
-
-def normalized(text: str) -> str:
-    return " ".join(text.split())
-
-
-def prompt_budget_text(text: str) -> str:
-    return text.replace(GOAL_ID, "<GOAL_ID>").replace(str(ACTIVE_STATE), "<ACTIVE_GOAL_STATE_PATH>")
-
-
-def assert_prompt_budget(label: str, text: str) -> None:
-    budget_text = prompt_budget_text(text)
-    assert len(budget_text) <= INTERFACE_BUDGET_CHARS[label], (
-        label,
-        len(budget_text),
-        INTERFACE_BUDGET_CHARS[label],
-    )
-
-
-def assert_interface_budget_payload(label: str, payload: dict) -> None:
-    task_body = str(payload["task_body"])
-    budget = payload.get("interface_budget")
-    assert isinstance(budget, dict), (label, payload)
-    assert budget["mode"] == label, budget
-    assert budget["char_count"] == len(task_body), budget
-    assert budget["line_count"] == len(task_body.splitlines()), budget
-    assert budget["budget_char_count"] == len(prompt_budget_text(task_body)), budget
-    assert budget["max_chars"] == INTERFACE_BUDGET_CHARS[label], budget
-    assert budget["within_budget"] is True, budget
-
-
-def assert_no_project_specific_prompt_leaks(label: str, text: str) -> None:
-    for phrase in PROJECT_SPECIFIC_PROMPT_LEAKS:
-        assert phrase not in text, (label, phrase)
-
-
-def assert_ordered(text: str, phrases: tuple[str, ...]) -> None:
-    compact = normalized(text)
-    positions = []
-    for phrase in phrases:
-        assert phrase in compact, phrase
-        positions.append(compact.index(phrase))
-    assert positions == sorted(positions), positions
+from loopx.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
 
 
 def main() -> int:
