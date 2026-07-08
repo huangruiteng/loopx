@@ -15,6 +15,7 @@ from .benchmark_core import (
 from .benchmark_adapters.skillsbench_signals import (
     build_skillsbench_solution_quality_signals,
 )
+from .benchmark_ledger_countability import official_score_attempt_uncountable, official_score_bool_fallback_used
 
 
 BENCHMARK_RUN_LEDGER_SCHEMA_VERSION = "benchmark_run_ledger_v0"
@@ -461,18 +462,15 @@ def benchmark_run_official_score_countability(run: dict[str, Any]) -> dict[str, 
     )
     if explicit_attempt_countable is None:
         explicit_attempt_countable = accounting.get("official_score_attempt_countable")
-    has_official_bool_score = isinstance(_official_task_score_bool_passed(run), bool)
-    if explicit_attempt_countable is False and not has_official_bool_score:
+    has_official_bool_score = official_score_bool_fallback_used(run) or run.get("official_score_bool_fallback_used") is True
+    if official_score_attempt_uncountable(run, accounting, has_official_bool_score):
         return {
             "countable": False,
             "reason": "official_score_attempt_not_countable",
             "score": score,
         }
 
-    score_status = _compact_text(
-        run.get("official_score_status") or run.get("score_status"),
-        limit=80,
-    )
+    score_status = _compact_text(run.get("official_score_status") or run.get("score_status"), limit=80)
     if (
         score_status == "missing"
         and score is not None
@@ -1816,6 +1814,7 @@ def build_benchmark_run_ledger_entry(
     job_name = _compact_text(benchmark_run.get("job_name"), limit=160)
     mode = _compact_text(benchmark_run.get("mode"), limit=120)
     score, passed = _official_score(benchmark_run)
+    bool_fallback_used = official_score_bool_fallback_used(benchmark_run)
     score_status = _score_status(benchmark_run, score, passed)
     failure_class = _failure_class(benchmark_run, score)
     failure_scope = _failure_scope(failure_class, score, passed)
@@ -1996,6 +1995,7 @@ def build_benchmark_run_ledger_entry(
         "score_status": score_status,
         "official_score": score,
         "official_passed": passed,
+        "official_score_bool_fallback_used": bool_fallback_used,
         "first_success_round": first_success_round,
         "final_round": final_round,
         "final_round_reward": final_round_reward,
@@ -2219,7 +2219,7 @@ def build_benchmark_run_ledger_entry(
             if isinstance(marker.get("attempt_accounting"), dict)
             else {}
         )
-    has_official_bool_score = isinstance(_official_task_score_bool_passed(benchmark_run), bool)
+    has_official_bool_score = official_score_bool_fallback_used(benchmark_run)
     if attempt_accounting:
         for source_field, entry_field in (
             ("lifecycle_phase", "attempt_lifecycle_phase"),
