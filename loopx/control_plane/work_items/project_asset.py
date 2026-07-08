@@ -470,6 +470,13 @@ def build_project_asset_todo_summary(
 ) -> dict[str, Any] | None:
     if not isinstance(todos, dict):
         return None
+
+    def lane_count(lane: str) -> int:
+        items = todos.get(lane)
+        if not isinstance(items, list):
+            return 0
+        return sum(1 for item in items if isinstance(item, dict))
+
     open_count = todos.get("open_count", 0)
     done_count = todos.get("done_count", 0)
     total_count = todos.get("total_count", 0)
@@ -488,9 +495,13 @@ def build_project_asset_todo_summary(
         **metadata,
     }
     open_items = open_todo_items(todos, limit=item_limit)
-    claimed_open_count = sum(1 for item in open_items if item.get("claimed_by"))
-    if claimed_open_count or todos.get("claimed_open_count"):
-        summary["claimed_open_count"] = todos.get("claimed_open_count", claimed_open_count)
+    claimed_open_count = todos.get("claimed_open_count")
+    if claimed_open_count is None:
+        claimed_open_count = lane_count("claimed_open_items") or sum(
+            1 for item in open_items if item.get("claimed_by")
+        )
+    if claimed_open_count:
+        summary["claimed_open_count"] = claimed_open_count
         summary["unclaimed_open_count"] = todos.get(
             "unclaimed_open_count",
             max(0, int(summary.get("open") or 0) - int(summary["claimed_open_count"] or 0)),
@@ -553,4 +564,9 @@ def build_project_asset_todo_summary(
     ):
         if todos.get(count_key) is not None:
             summary[count_key] = todos.get(count_key)
+            continue
+        lane = count_key.removesuffix("_count") + "_items"
+        count = lane_count(lane)
+        if count:
+            summary[count_key] = count
     return summary

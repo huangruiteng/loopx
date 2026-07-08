@@ -357,6 +357,65 @@ def assert_claimed_frontstage_lanes_visible() -> None:
     assert decision["agent_identity"]["agent_id"] == "codex-side-bypass", decision
 
 
+def assert_project_asset_claimed_counts_use_lane_fallback() -> None:
+    todos = {
+        "schema_version": "todo_summary_v0",
+        "source_section": "Agent Todo",
+        "open_count": 5,
+        "done_count": 0,
+        "total_count": 5,
+        "first_open_items": [
+            {
+                "index": index,
+                "done": False,
+                "text": f"[P1] Unclaimed backlog item {index}.",
+                "task_class": "advancement_task",
+            }
+            for index in range(1, 4)
+        ],
+        "claimed_open_items": [
+            {
+                "index": 40,
+                "done": False,
+                "text": FRONTSTAGE_CLAIMED_TODO,
+                "task_class": "advancement_task",
+                "claimed_by": "codex-side-bypass",
+            },
+            {
+                "index": 41,
+                "done": False,
+                "text": FRONTSTAGE_MONITOR_TODO,
+                "task_class": "continuous_monitor",
+                "claimed_by": "codex-side-bypass",
+            },
+        ],
+        "claimed_advancement_open_items": [
+            {
+                "index": 40,
+                "done": False,
+                "text": FRONTSTAGE_CLAIMED_TODO,
+                "task_class": "advancement_task",
+                "claimed_by": "codex-side-bypass",
+            },
+        ],
+        "claimed_monitor_open_items": [
+            {
+                "index": 41,
+                "done": False,
+                "text": FRONTSTAGE_MONITOR_TODO,
+                "task_class": "continuous_monitor",
+                "claimed_by": "codex-side-bypass",
+            },
+        ],
+    }
+    asset_summary = project_asset_todo_summary(todos, role="agent")
+    assert asset_summary is not None, todos
+    assert asset_summary["claimed_open_count"] == 2, asset_summary
+    assert asset_summary["unclaimed_open_count"] == 3, asset_summary
+    assert asset_summary["claimed_advancement_open_count"] == 1, asset_summary
+    assert asset_summary["claimed_monitor_open_count"] == 1, asset_summary
+
+
 def assert_claimed_markdown_todos_survive_visibility_lanes() -> None:
     unclaimed_lines = "\n".join(
         f"- [ ] [P1] Unclaimed priority backlog item {index}."
@@ -691,6 +750,7 @@ def main() -> int:
     assert f"Agent 待办候选 2：{OPEN_TODO}" in packet["project_agent_handoff"], packet
     assert_blocked_priority_fallback_visible()
     assert_claimed_frontstage_lanes_visible()
+    assert_project_asset_claimed_counts_use_lane_fallback()
     assert_claimed_markdown_todos_survive_visibility_lanes()
     assert_claimed_advancement_lanes_preserve_claimants()
     print("todo-first-open-summary-smoke ok")
