@@ -249,6 +249,73 @@ def _task_graph_visible_user_gate_items(
     return visible_gate_items[:limit], gate_open_count
 
 
+class _TaskGraphProjectionBuilder:
+    def __init__(
+        self,
+        *,
+        public_safe_compact_text: Callable[..., str | None],
+    ) -> None:
+        self._public_safe_compact_text = public_safe_compact_text
+        self.nodes: list[dict[str, Any]] = []
+        self.edges: list[dict[str, Any]] = []
+        self.node_ids: set[str] = set()
+        self.edge_ids: set[str] = set()
+        self.refs_by_node_id: dict[str, dict[str, list[str]]] = {}
+
+    def add_node(self, node: dict[str, Any] | None) -> str | None:
+        if not isinstance(node, dict):
+            return None
+        node_id = str(node.get("node_id") or "")
+        if not node_id:
+            return None
+        if node_id in self.node_ids:
+            return node_id
+        refs = node.get("refs") if isinstance(node.get("refs"), dict) else None
+        if not refs:
+            return None
+        title = self._public_safe_compact_text(node.get("title"), limit=160)
+        if not title:
+            return None
+        node["title"] = title
+        self.node_ids.add(node_id)
+        self.refs_by_node_id[node_id] = refs
+        self.nodes.append(node)
+        return node_id
+
+    def add_edge(
+        self,
+        *,
+        edge_id: str,
+        from_node_id: str | None,
+        to_node_id: str | None,
+        relation: str,
+        reason: str,
+        refs: dict[str, list[str]] | None = None,
+    ) -> None:
+        if not from_node_id or not to_node_id or from_node_id == to_node_id:
+            return
+        if (
+            from_node_id not in self.node_ids
+            or to_node_id not in self.node_ids
+            or edge_id in self.edge_ids
+        ):
+            return
+        compact_reason = self._public_safe_compact_text(reason, limit=180)
+        if not compact_reason:
+            return
+        edge: dict[str, Any] = {
+            "edge_id": edge_id,
+            "from_node_id": from_node_id,
+            "to_node_id": to_node_id,
+            "relation": relation,
+            "reason": compact_reason,
+        }
+        if refs:
+            edge["refs"] = refs
+        self.edge_ids.add(edge_id)
+        self.edges.append(edge)
+
+
 def build_task_graph_projection(
     item: dict[str, Any],
     *,
@@ -271,59 +338,7 @@ def build_task_graph_projection(
     if not goal_id:
         return None
     latest_runs = [run for run in goal_latest_runs or [] if isinstance(run, dict)]
-    nodes: list[dict[str, Any]] = []
-    edges: list[dict[str, Any]] = []
-    node_ids: set[str] = set()
-    edge_ids: set[str] = set()
-    refs_by_node_id: dict[str, dict[str, list[str]]] = {}
-
-    def add_node(node: dict[str, Any] | None) -> str | None:
-        if not isinstance(node, dict):
-            return None
-        node_id = str(node.get("node_id") or "")
-        if not node_id:
-            return None
-        if node_id in node_ids:
-            return node_id
-        refs = node.get("refs") if isinstance(node.get("refs"), dict) else None
-        if not refs:
-            return None
-        title = public_safe_compact_text(node.get("title"), limit=160)
-        if not title:
-            return None
-        node["title"] = title
-        node_ids.add(node_id)
-        refs_by_node_id[node_id] = refs
-        nodes.append(node)
-        return node_id
-
-    def add_edge(
-        *,
-        edge_id: str,
-        from_node_id: str | None,
-        to_node_id: str | None,
-        relation: str,
-        reason: str,
-        refs: dict[str, list[str]] | None = None,
-    ) -> None:
-        if not from_node_id or not to_node_id or from_node_id == to_node_id:
-            return
-        if from_node_id not in node_ids or to_node_id not in node_ids or edge_id in edge_ids:
-            return
-        compact_reason = public_safe_compact_text(reason, limit=180)
-        if not compact_reason:
-            return
-        edge: dict[str, Any] = {
-            "edge_id": edge_id,
-            "from_node_id": from_node_id,
-            "to_node_id": to_node_id,
-            "relation": relation,
-            "reason": compact_reason,
-        }
-        if refs:
-            edge["refs"] = refs
-        edge_ids.add(edge_id)
-        edges.append(edge)
+    builder = _TaskGraphProjectionBuilder(public_safe_compact_text=public_safe_compact_text)
 
     agent_items = open_todo_items(
         item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None,
@@ -337,7 +352,7 @@ def build_task_graph_projection(
     )
     selected_node_id: str | None = None
     if isinstance(selected_todo, dict):
-        selected_node_id = add_node(
+        selected_node_id = builder.add_node(
             {
                 "node_id": _task_graph_safe_id(
                     "node_todo",
@@ -367,7 +382,7 @@ def build_task_graph_projection(
         claimed_by = public_safe_compact_text(selected_todo.get("claimed_by"), limit=80)
         if claimed_by and selected_node_id:
             lease_id = f"claim:{goal_id}:{selected_todo_id or 'selected'}:{claimed_by}"
-            lease_node_id = add_node(
+            lease_node_id = builder.add_node(
                 {
                     "node_id": _task_graph_safe_id(
                         "node_lease",
@@ -385,7 +400,7 @@ def build_task_graph_projection(
                     "owner_agent": claimed_by,
                 }
             )
-            add_edge(
+            builder.add_edge(
                 edge_id=_task_graph_safe_id(
                     "edge_depends",
                     f"{selected_node_id}:{lease_node_id}",
@@ -415,7 +430,7 @@ def build_task_graph_projection(
     for ordinal, todo in enumerate(user_items):
         todo_id = public_safe_compact_text(todo.get("todo_id"), limit=120)
         gate_id = todo_id or f"gate:{goal_id}:user:{ordinal + 1}"
-        gate_node_id = add_node(
+        gate_node_id = builder.add_node(
             {
                 "node_id": _task_graph_safe_id(
                     "node_gate",
@@ -438,7 +453,7 @@ def build_task_graph_projection(
                 ),
             }
         )
-        add_edge(
+        builder.add_edge(
             edge_id=_task_graph_safe_id(
                 "edge_blocks",
                 f"{gate_node_id}:{selected_node_id}:{ordinal}",
@@ -456,7 +471,7 @@ def build_task_graph_projection(
         )
     user_gate_truncated_count = max(0, user_gate_open_count - len(user_items))
     if user_gate_truncated_count:
-        summary_node_id = add_node(
+        summary_node_id = builder.add_node(
             {
                 "node_id": _task_graph_safe_id(
                     "node_gate_summary",
@@ -473,7 +488,7 @@ def build_task_graph_projection(
                 ),
             }
         )
-        add_edge(
+        builder.add_edge(
             edge_id=_task_graph_safe_id(
                 "edge_blocks",
                 f"{summary_node_id}:{selected_node_id}:user_gate_summary",
@@ -490,14 +505,14 @@ def build_task_graph_projection(
             ),
         )
 
-    run_node_id = add_node(
+    run_node_id = builder.add_node(
         _task_graph_latest_run_node(
             goal_latest_runs=latest_runs,
             selected_todo_id=selected_todo_id,
             public_safe_compact_text=public_safe_compact_text,
         )
     )
-    add_edge(
+    builder.add_edge(
         edge_id=_task_graph_safe_id(
             "edge_validates",
             f"{run_node_id}:{selected_node_id}",
@@ -507,7 +522,7 @@ def build_task_graph_projection(
         to_node_id=selected_node_id,
         relation="validates",
         reason="Latest compact run-history evidence validates or contextualizes the selected work.",
-        refs=refs_by_node_id.get(run_node_id or ""),
+        refs=builder.refs_by_node_id.get(run_node_id or ""),
     )
     for relation, reason in _task_graph_latest_run_lineage_relations(
         run_node_id,
@@ -515,7 +530,7 @@ def build_task_graph_projection(
         goal_latest_runs=latest_runs,
         public_safe_compact_text=public_safe_compact_text,
     ):
-        add_edge(
+        builder.add_edge(
             edge_id=_task_graph_safe_id(
                 f"edge_{relation}",
                 f"{run_node_id}:{selected_node_id}",
@@ -525,7 +540,7 @@ def build_task_graph_projection(
             to_node_id=selected_node_id,
             relation=relation,
             reason=reason,
-            refs=refs_by_node_id.get(run_node_id or ""),
+            refs=builder.refs_by_node_id.get(run_node_id or ""),
         )
 
     replan = (
@@ -538,7 +553,7 @@ def build_task_graph_projection(
             replan.get("schema_version") or replan.get("kind") or "autonomous_replan_obligation",
             limit=120,
         )
-        repair_node_id = add_node(
+        repair_node_id = builder.add_node(
             {
                 "node_id": _task_graph_safe_id(
                     "node_repair",
@@ -555,7 +570,7 @@ def build_task_graph_projection(
                 ),
             }
         )
-        add_edge(
+        builder.add_edge(
             edge_id=_task_graph_safe_id(
                 "edge_repairs",
                 f"{repair_node_id}:{selected_node_id}",
@@ -572,7 +587,7 @@ def build_task_graph_projection(
             ),
         )
 
-    if not nodes:
+    if not builder.nodes:
         return None
     derived_from: dict[str, Any] = {
         "source_of_truth": TASK_GRAPH_SOURCE_OF_TRUTH,
@@ -609,6 +624,6 @@ def build_task_graph_projection(
             "user_gate_open_count": user_gate_open_count,
             "user_gate_truncated_count": user_gate_truncated_count,
         },
-        "nodes": nodes,
-        "edges": edges,
+        "nodes": builder.nodes,
+        "edges": builder.edges,
     }
