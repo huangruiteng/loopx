@@ -73,6 +73,20 @@ def action_kinds(items: list[dict]) -> set[str]:
     return {str(item.get("action_kind") or "") for item in items}
 
 
+def state_updated_at(text: str) -> str:
+    for line in text.splitlines():
+        if line.startswith("updated_at: "):
+            return line.split(": ", 1)[1].strip()
+    raise AssertionError(text)
+
+
+def assert_todos_share_state_timestamp(text: str, items: list[dict]) -> None:
+    expected = state_updated_at(text)
+    assert items, items
+    for item in items:
+        assert item.get("updated_at") == expected, item
+
+
 def assert_default_onboarding(project: Path, runtime: Path) -> None:
     goal_id = "onboarding-smoke-default"
     payload = run_cli(
@@ -153,6 +167,7 @@ def assert_default_onboarding(project: Path, runtime: Path) -> None:
     assert len(agent_items) == 1, agent_items
     assert action_kinds(user_items) == {"onboarding_decision"}, user_items
     assert action_kinds(agent_items) == {"onboarding_todo_review"}, agent_items
+    assert_todos_share_state_timestamp(text, user_items + agent_items)
 
 
 def assert_preauthorized_onboarding(project: Path, runtime: Path) -> None:
@@ -197,6 +212,7 @@ def assert_preauthorized_onboarding(project: Path, runtime: Path) -> None:
     assert "repo_status_review" in kinds, agent_items
     assert "commit_summary" in kinds, agent_items
     assert "validation_plan" in kinds, agent_items
+    assert_todos_share_state_timestamp(text, agent_items)
 
 
 def assert_autonomy_preauth_still_requires_heartbeat_choice(project: Path, runtime: Path) -> None:
@@ -249,6 +265,7 @@ def assert_autonomy_preauth_still_requires_heartbeat_choice(project: Path, runti
     assert len(user_items) == 1, user_items
     assert action_kinds(user_items) == {"onboarding_decision"}, user_items
     assert "onboarding_todo_review" in action_kinds(agent_items), agent_items
+    assert_todos_share_state_timestamp(text, user_items + agent_items)
 
 
 def main() -> int:

@@ -308,6 +308,7 @@ def onboarding_next_action(
 def apply_onboarding_todos_to_state(
     text: str,
     *,
+    updated_at: str,
     onboarding_scan: dict[str, Any] | None,
     accept_onboarding_agent_todos: bool,
     begin_autonomous_advance: bool,
@@ -327,6 +328,7 @@ def apply_onboarding_todos_to_state(
                 text=todo_text,
                 task_class=str(candidate.get("task_class") or "advancement_task"),
                 action_kind=str(candidate.get("action_kind") or "analyze"),
+                updated_at=updated_at,
             )
 
     acceptance_required = not accept_onboarding_agent_todos
@@ -344,6 +346,7 @@ def apply_onboarding_todos_to_state(
             text=user_todo,
             task_class="user_gate",
             action_kind="onboarding_decision",
+            updated_at=updated_at,
         )
     agent_todo = onboarding_agent_review_todo_text(
         acceptance_required=acceptance_required,
@@ -357,6 +360,7 @@ def apply_onboarding_todos_to_state(
             text=agent_todo,
             task_class="advancement_task",
             action_kind="onboarding_todo_review",
+            updated_at=updated_at,
         )
     return "\n".join(lines) + "\n"
 
@@ -442,6 +446,7 @@ adapter_id: {goal_id}
 """
     return apply_onboarding_todos_to_state(
         state_text,
+        updated_at=updated_at,
         onboarding_scan=onboarding_scan,
         accept_onboarding_agent_todos=accept_onboarding_agent_todos,
         begin_autonomous_advance=begin_autonomous_advance,
