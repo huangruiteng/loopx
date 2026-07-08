@@ -91,7 +91,7 @@ def main() -> int:
 
     for needle in [
         "loopx bootstrap-command-pack --project .",
-        "loopx bootstrap-command-pack --project . --goal-text",
+        "loopx start-goal --guided --project . --goal-text",
         "loopx slash-commands",
         "loopx_goal_command_v0",
         "global_manager_command_v0",

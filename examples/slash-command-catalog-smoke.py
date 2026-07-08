@@ -40,6 +40,9 @@ def main() -> int:
         assert command in commands, commands
     assert "/loop-global-summary" in commands["/loopx-global-summary"]["legacy_aliases"]
     assert "/loopx-summary-all" not in json.dumps(payload)
+    project_start = commands["/loopx <goal text>"]
+    assert "loopx start-goal --guided --project . --goal-text" in project_start["cli_reference"], project_start
+    assert "bootstrap-command-pack --project . --goal-text" not in project_start["cli_reference"], project_start
     pr_review = commands["/loopx-pr-review"]
     assert pr_review["agent_contract"]["must_run_cli_first"] is True, pr_review
     assert "loopx pr-review" in pr_review["agent_contract"]["primary_cli"], pr_review

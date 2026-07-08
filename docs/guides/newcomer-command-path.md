@@ -39,7 +39,7 @@ matches the surface you already use:
 | Codex App | `$loopx <task text>` or `/skills` -> `loopx` in the project thread | The app heartbeat automation. Let the agent install or refresh the generated LoopX heartbeat body; start at the bootstrap cadence, then follow `quota should-run.scheduler_hint`. |
 | Codex CLI | `codex` from the project root, then paste `loopx codex-cli-bootstrap-message --project .` output | Current verified Codex CLI builds do not load user-installed `/loopx` or `/prompts:loopx` commands. Keep the executor visible, then set the generated `/goal <thin task_body>`. |
 | Claude Code | Install LoopX, then `/loopx <task text>` | The installer registers lightweight slash-command skills. Enable the opt-in adapter only when Claude Code's native `/loop` should be gated by LoopX `should_run`. |
-| Other agent or shell | `loopx bootstrap-command-pack --project .` | A CLI, task, automation, heartbeat, or scheduler hook must run the next turn. If the surface has no such hook, LoopX can track state but the user drives it manually. |
+| Other agent or shell | `loopx start-goal --guided --project . --goal-text "<task text>"` | The guided packet previews the same transaction an agent should execute: inspect or connect state, plan todos, refresh status, activate a host loop, run quota, and ack scheduler hints when needed. If the surface has no runner hook, LoopX can track state but the user drives it manually. |
 
 ## One CLI Quickstart
 
@@ -52,11 +52,13 @@ export PATH="$HOME/.local/bin:$PATH"
 loopx doctor
 loopx slash-commands --install
 loopx bootstrap-command-pack --project .
+loopx start-goal --guided --project . --goal-text "<your first long-running task>"
 ```
 
-The command pack is a bridge from manual shell setup back to the agent surface:
-paste the generated instruction into Codex, Claude Code, or another compatible
-agent that can run shell commands from the project root.
+The command pack checks the host-facing recovery packet. The guided start
+packet is the first task path: paste the generated transaction into Codex,
+Claude Code, or another compatible agent that can run shell commands from the
+project root.
 
 ## Multi-Project Manager Commands
 
@@ -78,7 +80,7 @@ useful work inside one repository.
 
 | If you are trying to... | Use this surface first | Only then reach for... |
 | --- | --- | --- |
-| Start project-local work | LoopX task entry with `<task text>` | `loopx bootstrap-command-pack --goal-text ...` when manually bootstrapping an agent. |
+| Start project-local work | LoopX task entry with `<task text>` | `loopx start-goal --guided --goal-text ...` when manually bootstrapping an agent; `loopx bootstrap-command-pack --goal-text ...` only when implementing or debugging a host handoff. |
 | Understand several LoopX projects at once | `/loopx-global-summary` | `/loopx-global-gates`, `/loopx-global-todos`, or `/loopx-global-risks` when you need a focused manager view. |
 | Understand why work is paused | `/loopx` | `loopx diagnose --goal-id <goal-id>` when the agent needs a deeper evidence packet. |
 | Review a handoff or gate | The agent's LoopX status summary | `loopx review-packet --goal-id <goal-id>` for a copyable operator packet. |

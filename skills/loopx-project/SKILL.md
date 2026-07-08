@@ -38,8 +38,8 @@ Recognized repo-review commands:
 - `/loopx-pr-review <time window or filter text>`
 
 If there is any non-whitespace text after `/loopx`, it is goal text. Preserve
-that exact trailing text, pass it to the command pack, and do not downgrade the
-request into a status or inspection turn.
+that exact trailing text, pass it to the guided start preview, and do not
+downgrade the request into a status or inspection turn.
 
 When the target is a linked git worktree, trust the command pack's
 `canonical_project_alias` / `source_registry` route. Do not manually run
@@ -51,13 +51,15 @@ From the target project root, pass the text after `/loopx` as the explicit
 goal-start objective before planning or writing project state:
 
 ```bash
-loopx bootstrap-command-pack --project . --goal-text "<GOAL_TEXT>"
+loopx start-goal --guided --project . --goal-text "<GOAL_TEXT>"
 ```
 
 Include `--goal-id <STABLE_GOAL_ID>` and `--agent-id <REGISTERED_AGENT_ID>` when
-they are known. If `--goal-text` is not available, refresh the local LoopX CLI
-or use the checked-out LoopX repository CLI for validation; do not silently
-downgrade `/loopx <goal text>` into a bare `/loopx` read-only command.
+they are known. If `start-goal --guided` is not available, refresh the local
+LoopX CLI or use the checked-out LoopX repository CLI for validation; do not
+silently downgrade `/loopx <goal text>` into a bare `/loopx` read-only command.
+Use `loopx bootstrap-command-pack --project . --goal-text "<GOAL_TEXT>"` only
+when implementing or debugging the lower-level host handoff packet.
 
 `/loopx <goal text>` is an explicit goal-start intent: first produce a concise
 ordered plan, then write todos in priority order, using planner order plus
@@ -81,9 +83,9 @@ contract. Do not handle `/loopx-pr-review` from this broader project skill, and
 do not route it to `loopx-pr-merge` unless the user later asks to approve,
 comment on, merge, self-merge, or admin-bypass a specific PR.
 
-When a user has just connected a project or receives a bootstrap command pack
-for the first time, briefly tell them the usable commands instead of assuming
-they will inspect CLI help:
+When a user has just connected a project, receives a guided start packet, or
+receives a bootstrap command pack for the first time, briefly tell them the
+usable commands instead of assuming they will inspect CLI help:
 
 - `/loopx <goal text>`: start a concrete goal with a plan-before-todo-write
   flow.

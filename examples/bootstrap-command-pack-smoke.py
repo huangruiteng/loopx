@@ -405,6 +405,7 @@ def test_skill_slash_fallback_contract() -> None:
     assert "`/loopx`" in skill_text
     assert "`/loopx <goal text>`" in skill_text
     assert "loopx bootstrap-command-pack --project ." in skill_text
+    assert "loopx start-goal --guided --project ." in skill_text
     assert "canonical_project_alias" in skill_text
     assert "worktree-local shadow goal" in skill_text
     assert '--goal-text "<GOAL_TEXT>"' in skill_text

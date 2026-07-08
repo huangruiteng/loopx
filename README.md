@@ -155,10 +155,11 @@ Command registration is host-specific, but the state path is not. Codex
 surfaces may expose LoopX through `$loopx` or `/skills` command facades before
 native `/loopx` exists; Claude Code can expose `/loopx <task>` after its opt-in
 adapter is installed. If a host command is missing, run `loopx slash-commands`
-for the current catalog or recover a project goal with
-`loopx bootstrap-command-pack --project . --goal-text "<task>"`. Full routing
-and recovery details live in [Getting Started](docs/guides/getting-started.md)
-and the
+for the current catalog or start the same agent-safe path from a shell with
+`loopx start-goal --guided --project . --goal-text "<task>"`. Host and plugin
+integrations that need the lower-level handoff packet can still use
+`loopx bootstrap-command-pack --project . --goal-text "<task>"`. Full routing and
+recovery details live in [Getting Started](docs/guides/getting-started.md) and the
 [host command registry contract](docs/reference/protocols/codex-app-host-command-registry-v0.md).
 
 ### Codex App
