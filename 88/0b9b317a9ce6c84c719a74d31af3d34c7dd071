@@ -1,0 +1,223 @@
+CONTRIBUTOR_TASKS.md
+  s_76ee28abb3c3a4::t_08eec9079dc8c7 70,80-81,88,109,126,130
+README.md
+  s_76ee28abb3c3a4::t_64227824875b23 158-162,555-564
+README.zh-CN.md
+  s_76ee28abb3c3a4::t_e6f737efc5b2e9 57-63,127-129
+docs/guides/getting-started.md
+  s_76ee28abb3c3a4::t_bdd2a2cd85e7ac 87,109,112,115-122,714-716
+docs/guides/newcomer-command-path.md
+  s_76ee28abb3c3a4::t_b2cf6c2b99d5ad 42,55,58-61,83
+docs/heartbeat-automation-prompt.md
+  s_76ee28abb3c3a4::t_7a2d1ac2162c7f 456-458,464-465,595-596
+docs/integration.md
+  s_76ee28abb3c3a4::t_741a453e1feb63 102-114
+docs/new-project-codex-prompt.md
+  s_76ee28abb3c3a4::t_d3353e45044392 102-112
+docs/product/domain-capability-packs.md
+  s_76ee28abb3c3a4::t_964d05146ddc9b 139-226
+docs/product/release-readiness.md
+  s_76ee28abb3c3a4::t_1625dfa6301c18 134-141
+docs/quota-allocation.md
+  s_76ee28abb3c3a4::t_8dded95d70b98f 736-739,764-766
+docs/reference/protocols/codex-app-host-command-registry-v0.md
+  s_76ee28abb3c3a4::t_eb6b0428f85f03 29,59,143,150,192,200-203
+docs/reference/protocols/host-integration-plugin-plan-v0.md
+  s_76ee28abb3c3a4::t_341edf320a5a55 41
+docs/status-data-contract.md
+  s_76ee28abb3c3a4::t_75ca0f90e9e4d6 193-197,229-234,1314-1315
+examples/benchmark-route-profile-contract-smoke.py
+  s_76ee28abb3c3a4::t_0c263941425587 1-219
+examples/bootstrap-command-pack-smoke.py
+  s_76ee28abb3c3a4::t_f19be169f0bff8 157-216,408,439
+examples/canary/catalog-planner-smoke.py
+  s_76ee28abb3c3a4::t_9c2b81803d2c1e 202,221-242,297-300,341-344,362-365
+examples/canary/premerge-validation-gate-smoke.py
+  s_76ee28abb3c3a4::t_bc6b468945493f 19,59-60,76-106,199,202,338-339
+examples/cli-help-manpage-smoke.py
+  s_76ee28abb3c3a4::t_6ca8cb19dc8922 29-30
+examples/codex-app-host-command-registry-smoke.py
+  s_76ee28abb3c3a4::t_363bd353b0dd30 94
+examples/control_plane/active-state-todo-attention-fallback-smoke.py
+  s_76ee28abb3c3a4::t_56da9c74f45b8d 116
+examples/control_plane/agent-scope-work-lane-consistency-smoke.py
+  s_76ee28abb3c3a4::t_8f63d211b859ff 1-150
+examples/control_plane/check-public-boundary-smoke.py
+  s_76ee28abb3c3a4::t_6acd45a347b4ce 48-58
+examples/control_plane/control-plane-configure-api-smoke.py
+  s_76ee28abb3c3a4::t_ee161039feaee6 204-206,239,305,340
+examples/control_plane/heartbeat-prompt-smoke.py
+  s_76ee28abb3c3a4::t_b09d3db5f6e9ec 366,674,732
+examples/control_plane/heartbeat-quota-flow-smoke.py
+  s_76ee28abb3c3a4::t_781f434b940ba2 769-771,773-783,786-791,793,798-799,802-805
+examples/control_plane/monitor-poll-writeback-smoke.py
+  s_76ee28abb3c3a4::t_a1d3fd44127a01 278-280,282,284,291-297
+examples/control_plane/monitor-scheduler-contract-smoke.py
+  s_76ee28abb3c3a4::t_1ad85bc95c4fa0 7,26,80,101-102,106-113,149-150,152-169,203,222-337,434-435,446-453,652-656
+examples/control_plane/quota-agent-scoped-user-gate-smoke.py
+  s_76ee28abb3c3a4::t_3bca35745e5a71 687-688,690
+examples/control_plane/quota-plan-smoke.py
+  s_76ee28abb3c3a4::t_1063949ebfe6c4 33-48
+examples/control_plane/quota-replan-decision-plane-smoke.py
+  s_76ee28abb3c3a4::t_7461b7dd8ef561 13-23,259-309,692-801,1154-1157
+examples/control_plane/quota-scheduler-hint-compaction-smoke.py
+  s_76ee28abb3c3a4::t_fadf5abd79dfbd 27,101,103,114
+examples/control_plane/quota-scheduler-state-ack-smoke.py
+  s_76ee28abb3c3a4::t_5c3cff0ba2a5fc 7,20,22,36,40,102-122,174-191,345,348,360,373-394,483-582,668-695,736-739,848,868,896-900,910
+examples/control_plane/quota-spend-agent-identity-smoke.py
+  s_76ee28abb3c3a4::t_f816c0eafbbdbe 2,18-23,57-147,150-154,203,210
+examples/control_plane/quota_plan_fixtures.py
+  s_76ee28abb3c3a4::t_8313a307e2637b 1-666
+examples/control_plane/repo-python-line-budget-smoke.py
+  s_76ee28abb3c3a4::t_ec1a04aa4e0a32 68-69
+examples/control_plane/status-markdown-smoke.py
+  s_76ee28abb3c3a4::t_ce06ee6aa98e68 35-79
+examples/control_plane/status-runtime-summaries-readmodel-smoke.py
+  s_76ee28abb3c3a4::t_0e1a280f837ce3 16,125-146,173
+examples/control_plane/status_markdown_fixtures.py
+  s_76ee28abb3c3a4::t_f7ce66859bdd3c 1-344
+examples/control_plane/status_markdown_run_fixtures.py
+  s_76ee28abb3c3a4::t_9e7f2adcf337d0 1-279
+examples/host-integration-plugin-plan-smoke.py
+  s_76ee28abb3c3a4::t_c39ff8efb95763 51
+examples/project/bootstrap-force-preserve-todos-smoke.py
+  s_76ee28abb3c3a4::t_ae0e10ef8be132 1-108
+examples/project/configure-goal-smoke.py
+  s_76ee28abb3c3a4::t_3ca1b49d58f239 18-23,119-122,139,141,145-155,180-181,195,207,214-238,292-304,317-327
+examples/skillsbench-benchmark-run-smoke.py
+  s_76ee28abb3c3a4::t_fb7c756176f39c 78,4558-4593
+examples/skillsbench-build-stall-timeout-smoke.py
+  s_76ee28abb3c3a4::t_d6b23b47378c5a 1-180
+examples/skillsbench-codex-cli-goal-route-smoke.py
+  s_76ee28abb3c3a4::t_c01584cee94699 755-761,1165,1168-1178,1182-1236
+examples/skillsbench-current-ledger-aggregate-smoke.py
+  s_76ee28abb3c3a4::t_6c44eba040a09a 20,47,68-69,134-145,214-233,257,259,263,270,273-288,306-314,317-421,433-434,437-439,442-535,572-575,592-593,596-599,605,607
+examples/skillsbench-host-local-launch-plan-smoke.py
+  s_76ee28abb3c3a4::t_74cdc29bf6c583 106,109-113,117-137
+examples/skillsbench-task-source-preflight-smoke.py
+  s_76ee28abb3c3a4::t_90febf02ee2c86 40-56,83,121-123,153-155,163-164,169-263,297,422-423,428,430,562
+examples/skillsbench_fixtures.py
+  s_76ee28abb3c3a4::t_15aefb5f446c29 57-94
+examples/slash-command-catalog-smoke.py
+  s_76ee28abb3c3a4::t_3b88324ff7fd63 43-45
+examples/slash-command-install-smoke.py
+  s_76ee28abb3c3a4::t_c57ed0e9f4ba95 112-113
+loopx/__init__.py
+  s_76ee28abb3c3a4::t_bbe3386d4ec928 5
+loopx/benchmark_adapters/skillsbench.py
+  s_76ee28abb3c3a4::t_f8d624e162e2eb 463-477,1536-1542,3532-3534,3581,3584-3585,4800-4805
+loopx/benchmark_adapters/skillsbench_acp_relay.py
+  s_76ee28abb3c3a4::t_8d0d909ce96880 2274-2279
+loopx/benchmark_adapters/skillsbench_codex_goal_recovery.py
+  s_76ee28abb3c3a4::t_06db685c6f99fb 133-136
+loopx/benchmark_adapters/skillsbench_codex_goal_trace.py
+  s_76ee28abb3c3a4::t_d777c65da16933 1-81
+loopx/benchmark_adapters/skillsbench_task_source.py
+  s_76ee28abb3c3a4::t_2457780bd45d18 1-141
+loopx/benchmark_core/__init__.py
+  s_76ee28abb3c3a4::t_c243b1cdbbc777 87-93,127-129,153,200
+loopx/benchmark_core/route_profile.py
+  s_76ee28abb3c3a4::t_e95e7f2e03b84f 1-509
+loopx/benchmark_ledger.py
+  s_76ee28abb3c3a4::t_540b6a041162e0 254-257,279-281,395-507,1030-1040,1100-1101,1108-1134,1549-1571,2092-2095,2222,2240-2259,2347-2351,2444-2450,2653-2654,3468-3471,3483-3486
+loopx/benchmark_ledger_current.py
+  s_76ee28abb3c3a4::t_00bf80b8b5831f 47-72,110-111,155-158,175-265,282-284,320-324,331,337,341-345,352-363,367-374,384-387,412,423,430,438-452,469-481,483-484,489-498,506-521,531-535,540,548-575
+loopx/bootstrap.py
+  s_76ee28abb3c3a4::t_cedc4731ed8aab 602,668,670-672,674,680,683-696,763,833,912-925
+loopx/bootstrap_command_pack.py
+  s_76ee28abb3c3a4::t_d852a53ef4ed1d 25,516-681
+loopx/canary/planner.py
+  s_76ee28abb3c3a4::t_a1052796182099 437,439-441
+loopx/canary/premerge.py
+  s_76ee28abb3c3a4::t_b368a8b333545e 9,80-222,731-775,779-783,792,798,825-826
+loopx/cli.py
+  s_76ee28abb3c3a4::t_bd97d99face848 217
+loopx/cli_commands/benchmark_run_ledger_maintenance.py
+  s_76ee28abb3c3a4::t_f47278065a063b 250-264,273-275,277-279,530-566,856-863
+loopx/cli_commands/bootstrap_connect.py
+  s_76ee28abb3c3a4::t_a67082f0968b7d 146-150,215
+loopx/cli_commands/ml_experiment.py
+  s_76ee28abb3c3a4::t_9e3e14b2929987 9,11-12,14-15,95-205,214-284,291-292
+loopx/cli_commands/quota.py
+  s_76ee28abb3c3a4::t_c3a4d6a6728049 53,58,60,105-113,163,237,239,241,243,249,256,293,318,356,405
+loopx/cli_commands/registry_admin.py
+  s_76ee28abb3c3a4::t_11b316a22c4526 341-359,670-672
+loopx/cli_commands/starter_bootstrap.py
+  s_76ee28abb3c3a4::t_ee1aa999112953 16,18,110-141,297-321,375
+loopx/configure_goal.py
+  s_76ee28abb3c3a4::t_b92d92dcf7e81b 4,79-90,104,120-173,192-194,215-220,243,311-312,333-340,383-387,411-419
+loopx/control_plane/goals/goal_frontier.py
+  s_76ee28abb3c3a4::t_357101861782c4 11-14,34-43,219-251,263-264,336-375,384-387,389-390,1201-1291
+loopx/control_plane/quota/goal_boundary.py
+  s_76ee28abb3c3a4::t_4179a21562ba99 1-188
+loopx/control_plane/quota/scheduler_ack.py
+  s_76ee28abb3c3a4::t_f2c0b9469310f5 56-98,105-106,117-118,139,142-149,169-172,174,190-193,202-203,218-221,245,276-279
+loopx/control_plane/quota/subagent_orchestration.py
+  s_32e2a9a204a8e4::t_597f04a976dd7c 1-260
+loopx/control_plane/scheduler/scheduler_hint.py
+  s_76ee28abb3c3a4::t_72b6fadcbc53d4 29-38,48-163,192,203-212,215,221-244,248,251-252,267,308-316,319,321,324-325,327-332,381-479,482-483,485-502,504-518,529-530,538,546-557,579,584,586-599,608,662-671,701-702,731,735,761-768,783,844-851,912,972-973,1053-1073,1088-1089
+loopx/control_plane/todos/todo_summary.py
+  s_76ee28abb3c3a4::t_6f3f5001306a15 11,119,121,140-166
+loopx/heartbeat_prompt.py
+  s_76ee28abb3c3a4::t_9d9dcef0cde7af 36
+loopx/help_surface.py
+  s_76ee28abb3c3a4::t_8bc727db4c1542 28-33,40-41,178-180
+loopx/ml_experiment.py
+  s_76ee28abb3c3a4::t_b238b05c362dc3 3,15-16,20-31,91-132,167-441,669-756
+loopx/quota.py
+  s_76ee28abb3c3a4::t_58bfd8a08bb150 51,67-71,88-96,1386-1392,1407,1410-1413,1417,1419-1424,1530-1536,1670-1673,1809,1811-1815,1909,2282,2288,2294-2299,2315
+loopx/slash_command_install.py
+  s_76ee28abb3c3a4::t_82a0230840eead 88
+loopx/slash_commands.py
+  s_76ee28abb3c3a4::t_b67849abd139ec 59
+loopx/status.py
+  s_76ee28abb3c3a4::t_07a4c4dca3f478 196-197,204-205,485-527,2528-2531,2553-2555
+loopx/status_server.py
+  s_76ee28abb3c3a4::t_5b5c0e5bf3033b 60-62,330-332,349-351,383-385,409
+man/loopx.1
+  s_76ee28abb3c3a4::t_a720dd41cb3a56 35-39,92-95
+pyproject.toml
+  s_76ee28abb3c3a4::t_53e629d1c6c905 7
+scripts/harbor_host_bridge.py
+  s_76ee28abb3c3a4::t_a06f1118d445cd 1-56
+scripts/harbor_host_codex_goal_agent.py
+  s_76ee28abb3c3a4::t_0f70326fa0be28 37
+scripts/skillsbench-launch-goal-xhigh.sh
+  s_76ee28abb3c3a4::t_6b794d64317703 1-175
+scripts/skillsbench_automation_loop.py
+  s_76ee28abb3c3a4::t_e0d7a62747eda6 55,116-118,128-132,2952,3043-3049,3059-3067,6376-6379,6401-6403,6438,7369-7425,7594-7598,7602-7606,7608-7609,10867,11088-11091,11366,11553-11554,15942-15943,16672-16676,16688-16695
+scripts/skillsbench_runner_constants.py
+  s_76ee28abb3c3a4::t_ea184ee84247cc 50
+skills/loopx-project/SKILL.md
+  s_76ee28abb3c3a4::t_27dbb3182bb448 41-42,54,58-77,101-103,444-446
+skills/loopx-self-repair/references/repair-patterns.md
+  s_76ee28abb3c3a4::t_0bc05ef0d94ba6 33
+tests/test_ml_experiment_volc_packet.py
+  s_76ee28abb3c3a4::t_5ca28c065853eb 1-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "880b9b317a9ce6c84c719a74d31af3d34c7dd071",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
