@@ -275,6 +275,52 @@ The generic fields keep status, quota, review packets, and frontstage surfaces
 stable. The domain extension adds useful interpretation only after the pack is
 enabled.
 
+## State Placement
+
+ML experiment state should be stored in three layers instead of being appended
+directly into the core active state.
+
+| Layer | Default Location | Owns | Does Not Own |
+| --- | --- | --- | --- |
+| Core LoopX state | registry, `ACTIVE_GOAL_STATE.md`, todos, run history, rollout events | current next action, gates, claims, compact evidence digest, quota/spend lifecycle | per-task metric history, raw external job details, experiment-board-sized ledgers |
+| Domain state | `.loopx/domain-state/<goal-id>/<domain-pack>/...` | task/result rows, dataset-window contracts, same-window comparisons, guardrail summaries, promote/retire decisions | credentials, raw logs, raw launch commands, large metric dumps |
+| Raw/private artifacts | project-local ignored adapter storage such as `.local/` or a private connector cache | raw logs, command snapshots, workspace paths, debug bundles, large metric artifacts | status truth, todo ownership, quota authority |
+
+The domain-state layer is project-local and gitignored, so it may contain
+operator-private task ids and compact metric facts that should not be published.
+It is still a read model for agents, not a raw evidence bucket. Keeping it
+compact prevents status, replanning, and handoff prompts from inheriting noisy
+or sensitive operational traces while avoiding the opposite problem of stuffing
+ML-specific state into the generic control plane.
+
+The CLI writes this layer when callers pass `--goal-id`:
+
+```bash
+loopx ml-experiment volc-result-ledger \
+  --goal-id example-goal \
+  --experiment-id external_slice_screen \
+  --task-id task-candidate-1 \
+  --task-name external_slice_cross_screen \
+  --state Completed \
+  --train-window 20251002-20260501 \
+  --eval-window 20260501-20260508 \
+  --code-ref codex/example-feature-cross@abc1234 \
+  --model-name candidate_model_abc1234
+```
+
+The default target is
+`.loopx/domain-state/example-goal/ml_experiment/ledger.jsonl`. A caller may pass
+`--ledger-path` for migration or tests, but normal project use should prefer the
+goal-bound default path.
+
+Code should follow the same split:
+
+| Code Area | Owns |
+| --- | --- |
+| `loopx/domain_state.py` | cross-pack path conventions, local locks, atomic JSONL upserts, and small storage primitives |
+| `loopx/domain_packs/<pack>.py` | pack-specific schemas, metric interpretation, renderers, and ledger-key selection |
+| legacy top-level modules such as `loopx/ml_experiment.py` | compatibility re-exports only when older imports already exist |
+
 ## Roadmap
 
 P0: split the boundary.

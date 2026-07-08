@@ -3,16 +3,18 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable
 
-from ..ml_experiment import (
+from ..domain_packs.ml_experiment import (
     GUARDRAIL_STATUSES,
     HYPOTHESIS_STATUSES,
     VOLC_MLP_TASK_STATES,
     build_ml_experiment_advisory_packet,
     build_volc_mlp_result_ledger,
     build_volc_mlp_task_packet,
+    default_ml_experiment_domain_state_ledger_path,
     render_ml_experiment_advisory_markdown,
     render_volc_mlp_result_ledger_markdown,
     render_volc_mlp_task_packet_markdown,
+    upsert_ml_experiment_ledger_jsonl,
 )
 
 
@@ -118,6 +120,15 @@ def register_ml_experiment_commands(
         default=[],
         help="Optional metric artifact handle. Raw paths or URLs are redacted in output. Repeatable.",
     )
+    volc_parser.add_argument(
+        "--ledger-path",
+        help="Optional local JSONL ledger path. Overrides the default project-local domain-state path.",
+    )
+    volc_parser.add_argument(
+        "--goal-id",
+        help="Goal id used for the default .loopx/domain-state/<goal-id>/ml_experiment/ledger.jsonl path.",
+    )
+    volc_parser.add_argument("--project", default=".", help="Project root for the default domain-state ledger path.")
     volc_parser.add_argument("--primary-metric", default="offline_auc")
     volc_parser.add_argument(
         "--guardrail-metric",
@@ -177,6 +188,15 @@ def register_ml_experiment_commands(
         default=[],
         help="Optional metric artifact handle. Raw paths or URLs are redacted in output. Repeatable.",
     )
+    volc_result_parser.add_argument(
+        "--ledger-path",
+        help="Optional local JSONL ledger path. Overrides the default project-local domain-state path.",
+    )
+    volc_result_parser.add_argument(
+        "--goal-id",
+        help="Goal id used for the default .loopx/domain-state/<goal-id>/ml_experiment/ledger.jsonl path.",
+    )
+    volc_result_parser.add_argument("--project", default=".", help="Project root for the default domain-state ledger path.")
     volc_result_parser.add_argument(
         "--guardrail-metric",
         action="append",
@@ -282,6 +302,14 @@ def handle_ml_experiment_command(
             renderer = render_volc_mlp_result_ledger_markdown
         else:
             raise ValueError("ml-experiment requires a supported subcommand")
+        ledger_path = getattr(args, "ledger_path", None)
+        if not ledger_path and getattr(args, "goal_id", None):
+            ledger_path = default_ml_experiment_domain_state_ledger_path(
+                project=getattr(args, "project", "."),
+                goal_id=args.goal_id,
+            )
+        if ledger_path:
+            payload["ledger_write"] = upsert_ml_experiment_ledger_jsonl(ledger_path, payload)
     except Exception as exc:
         payload = {
             "ok": False,
