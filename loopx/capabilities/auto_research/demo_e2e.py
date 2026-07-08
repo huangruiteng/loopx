@@ -358,6 +358,154 @@ def _command_text(
     return " ".join(parts)
 
 
+def _build_demo_frontier_route_contract(
+    *,
+    goal_id: str,
+    tracking_goal: str,
+    preset_context: dict[str, object] | None,
+    goal_surface_mode: str,
+    reuses_default_internal_goal: bool,
+) -> dict[str, object]:
+    return {
+        "schema_version": "auto_research_demo_frontier_route_v0",
+        "goal_surface_mode": goal_surface_mode,
+        "frontier_goal_id": goal_id,
+        "tracking_goal_id": tracking_goal or None,
+        "preset_id": preset_context.get("preset_id") if preset_context else None,
+        "preset_baseline_source": (
+            preset_context.get("baseline_source") if preset_context else None
+        ),
+        "tracking_goal_drives_frontier": False,
+        "visible_lanes_read_goal_id": goal_id,
+        "fresh_goal_default": goal_surface_mode == "fresh_demo_goal",
+        "inherits_default_goal": goal_surface_mode == "inherited_default_goal",
+        "reuses_default_internal_goal": reuses_default_internal_goal,
+        "default_internal_goal_id": AUTO_RESEARCH_DEFAULT_GOAL_ID,
+        "dedicated_positive_demo_frontier": not reuses_default_internal_goal,
+        "reason": (
+            "Omitting --goal-id creates an isolated demo goal surface. "
+            "Use --goal-id to target a specific research frontier, or --inherit-default-goal "
+            "to intentionally reuse the internal shared demo goal. --tracking-goal-id is metadata "
+            "for the parent productization goal and must not reroute panes."
+        ),
+    }
+
+
+def _build_demo_e2e_commands(
+    *,
+    cli_bin: str,
+    objective: str,
+    preset_id: str | None,
+    output_language: str,
+    goal_id: str,
+    agent_id: str,
+    tracking_goal: str,
+    session_name: str,
+) -> dict[str, str]:
+    tracking_goal_id = tracking_goal or None
+    return {
+        "one_question_contract": auto_research_contract_command_text(
+            cli_bin=cli_bin,
+            objective=objective,
+        ),
+        "one_question_start": auto_research_start_command_text(
+            cli_bin=cli_bin,
+            objective=objective,
+            preset_id=preset_id,
+            execute=True,
+            output_language=output_language,
+        ),
+        "one_question_start_preview": auto_research_start_command_text(
+            cli_bin=cli_bin,
+            objective=objective,
+            preset_id=preset_id,
+            output_language=output_language,
+        ),
+        "one_question_start_with_visible_wake": auto_research_start_command_text(
+            cli_bin=cli_bin,
+            objective=objective,
+            preset_id=preset_id,
+            execute=True,
+            output_language=output_language,
+        ),
+        "one_command_worker_loop": _command_text(
+            cli_bin=cli_bin,
+            goal_id=goal_id,
+            agent_id=agent_id,
+            execute=True,
+            run_worker_loop=True,
+            tracking_goal_id=tracking_goal_id,
+            output_language=output_language,
+        ),
+        "headless_worker_loop": _command_text(
+            cli_bin=cli_bin,
+            goal_id=goal_id,
+            agent_id=agent_id,
+            execute=True,
+            run_worker_loop=True,
+            headless=True,
+            tracking_goal_id=tracking_goal_id,
+            output_language=output_language,
+        ),
+        "start_visible_lanes_without_attach": _command_text(
+            cli_bin=cli_bin,
+            goal_id=goal_id,
+            agent_id=agent_id,
+            execute=True,
+            launch_visible=True,
+            no_attach=True,
+            tracking_goal_id=tracking_goal_id,
+            output_language=output_language,
+        ),
+        "one_command_visible_wake_demo": _command_text(
+            cli_bin=cli_bin,
+            goal_id=goal_id,
+            agent_id=agent_id,
+            execute=True,
+            launch_visible=True,
+            no_attach=True,
+            wake_visible_after_launch=True,
+            tracking_goal_id=tracking_goal_id,
+            output_language=output_language,
+        ),
+        "one_command_visible_worker_turn_validation": _command_text(
+            cli_bin=cli_bin,
+            goal_id=goal_id,
+            agent_id=agent_id,
+            execute=True,
+            launch_visible=True,
+            no_attach=True,
+            configure_visible_worker_turn=True,
+            tracking_goal_id=tracking_goal_id,
+            output_language=output_language,
+        ),
+        "one_command_worker_loop_with_visible_lanes": _command_text(
+            cli_bin=cli_bin,
+            goal_id=goal_id,
+            agent_id=agent_id,
+            execute=True,
+            run_worker_loop=True,
+            launch_visible=True,
+            attach=True,
+            tracking_goal_id=tracking_goal_id,
+            output_language=output_language,
+        ),
+        "load_live_worker_evidence": _command_text(
+            cli_bin=cli_bin,
+            goal_id=goal_id,
+            agent_id=agent_id,
+            execute=True,
+            live_evidence=True,
+            tracking_goal_id=tracking_goal_id,
+            output_language=output_language,
+        ),
+        "wake_visible_lanes": (
+            f"{shlex.quote(cli_bin)} --format json multi-agent wake --session-name "
+            f"{shlex.quote(session_name)} --execute"
+        ),
+    }
+
+
 def _supervisor_summary(supervisor: dict[str, object]) -> dict[str, object]:
     product_spec = (
         supervisor.get("product_spec")
@@ -1287,136 +1435,29 @@ def run_auto_research_demo_e2e(
         "result_source": result_source,
         "goal_id": goal_id,
         "tracking_goal_id": tracking_goal or None,
-        "route_contract": {
-            "schema_version": "auto_research_demo_frontier_route_v0",
-            "goal_surface_mode": goal_surface_mode,
-            "frontier_goal_id": goal_id,
-            "tracking_goal_id": tracking_goal or None,
-            "preset_id": preset_context.get("preset_id") if preset_context else None,
-            "preset_baseline_source": (
-                preset_context.get("baseline_source") if preset_context else None
-            ),
-            "tracking_goal_drives_frontier": False,
-            "visible_lanes_read_goal_id": goal_id,
-            "fresh_goal_default": goal_surface_mode == "fresh_demo_goal",
-            "inherits_default_goal": goal_surface_mode == "inherited_default_goal",
-            "reuses_default_internal_goal": reuses_default_internal_goal,
-            "default_internal_goal_id": AUTO_RESEARCH_DEFAULT_GOAL_ID,
-            "dedicated_positive_demo_frontier": not reuses_default_internal_goal,
-            "reason": (
-                "Omitting --goal-id creates an isolated demo goal surface. "
-                "Use --goal-id to target a specific research frontier, or --inherit-default-goal "
-                "to intentionally reuse the internal shared demo goal. --tracking-goal-id is metadata "
-                "for the parent productization goal and must not reroute panes."
-            ),
-        },
+        "route_contract": _build_demo_frontier_route_contract(
+            goal_id=goal_id,
+            tracking_goal=tracking_goal,
+            preset_context=preset_context,
+            goal_surface_mode=goal_surface_mode,
+            reuses_default_internal_goal=reuses_default_internal_goal,
+        ),
         "agent_id": agent_id,
         "reasoning_effort": reasoning_effort,
         "output_language": output_language,
         "user_contract": user_contract,
         "preset_context": preset_context,
         "contract_acceptance": contract_acceptance,
-        "commands": {
-            "one_question_contract": auto_research_contract_command_text(
-                cli_bin=cli_bin,
-                objective=objective,
-            ),
-            "one_question_start": auto_research_start_command_text(
-                cli_bin=cli_bin,
-                objective=objective,
-                preset_id=preset_id,
-                execute=True,
-                output_language=output_language,
-            ),
-            "one_question_start_preview": auto_research_start_command_text(
-                cli_bin=cli_bin,
-                objective=objective,
-                preset_id=preset_id,
-                output_language=output_language,
-            ),
-            "one_question_start_with_visible_wake": auto_research_start_command_text(
-                cli_bin=cli_bin,
-                objective=objective,
-                preset_id=preset_id,
-                execute=True,
-                output_language=output_language,
-            ),
-            "one_command_worker_loop": _command_text(
-                cli_bin=cli_bin,
-                goal_id=goal_id,
-                agent_id=agent_id,
-                execute=True,
-                run_worker_loop=True,
-                tracking_goal_id=tracking_goal or None,
-                output_language=output_language,
-            ),
-            "headless_worker_loop": _command_text(
-                cli_bin=cli_bin,
-                goal_id=goal_id,
-                agent_id=agent_id,
-                execute=True,
-                run_worker_loop=True,
-                headless=True,
-                tracking_goal_id=tracking_goal or None,
-                output_language=output_language,
-            ),
-            "start_visible_lanes_without_attach": _command_text(
-                cli_bin=cli_bin,
-                goal_id=goal_id,
-                agent_id=agent_id,
-                execute=True,
-                launch_visible=True,
-                no_attach=True,
-                tracking_goal_id=tracking_goal or None,
-                output_language=output_language,
-            ),
-            "one_command_visible_wake_demo": _command_text(
-                cli_bin=cli_bin,
-                goal_id=goal_id,
-                agent_id=agent_id,
-                execute=True,
-                launch_visible=True,
-                no_attach=True,
-                wake_visible_after_launch=True,
-                tracking_goal_id=tracking_goal or None,
-                output_language=output_language,
-            ),
-            "one_command_visible_worker_turn_validation": _command_text(
-                cli_bin=cli_bin,
-                goal_id=goal_id,
-                agent_id=agent_id,
-                execute=True,
-                launch_visible=True,
-                no_attach=True,
-                configure_visible_worker_turn=True,
-                tracking_goal_id=tracking_goal or None,
-                output_language=output_language,
-            ),
-            "one_command_worker_loop_with_visible_lanes": _command_text(
-                cli_bin=cli_bin,
-                goal_id=goal_id,
-                agent_id=agent_id,
-                execute=True,
-                run_worker_loop=True,
-                launch_visible=True,
-                attach=True,
-                tracking_goal_id=tracking_goal or None,
-                output_language=output_language,
-            ),
-            "load_live_worker_evidence": _command_text(
-                cli_bin=cli_bin,
-                goal_id=goal_id,
-                agent_id=agent_id,
-                execute=True,
-                live_evidence=True,
-                tracking_goal_id=tracking_goal or None,
-                output_language=output_language,
-            ),
-            "wake_visible_lanes": (
-                f"{shlex.quote(cli_bin)} --format json multi-agent wake --session-name "
-                f"{shlex.quote(session_name)} --execute"
-            ),
-        },
+        "commands": _build_demo_e2e_commands(
+            cli_bin=cli_bin,
+            objective=objective,
+            preset_id=preset_id,
+            output_language=output_language,
+            goal_id=goal_id,
+            agent_id=agent_id,
+            tracking_goal=tracking_goal,
+            session_name=session_name,
+        ),
         "supervisor": _supervisor_summary(supervisor),
         "public_boundary": {
             "raw_logs_recorded": False,

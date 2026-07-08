@@ -118,6 +118,70 @@ def _claimed_by_current_or_unclaimed(item: dict[str, Any], *, agent_id: str) -> 
     return not claimed_by or claimed_by == agent_id
 
 
+def _public_todo_items(value: Any) -> list[dict[str, Any]]:
+    return [item for item in value or [] if isinstance(item, dict) and item.get("todo_id")]
+
+
+def _is_runnable_advancement_todo(item: dict[str, Any]) -> bool:
+    task_class = str(item.get("task_class") or "advancement_task").strip()
+    if task_class and task_class != "advancement_task":
+        return False
+    status = str(item.get("status") or "open").strip()
+    if status and status not in {"active", "open", "needs_retry"}:
+        return False
+    resume_when = str(item.get("resume_when") or "").strip()
+    if resume_when and item.get("resume_ready") is False:
+        return False
+    return True
+
+
+def _unique_todo_candidates(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    selected: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in items:
+        todo_id = str(item.get("todo_id") or "").strip()
+        if not todo_id or todo_id in seen:
+            continue
+        seen.add(todo_id)
+        selected.append(item)
+    return selected
+
+
+def _quota_payload_todo_candidates(
+    quota_payload: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    gate = quota_payload.get("capability_gate")
+    if not isinstance(gate, dict):
+        gate = {}
+    runnable = _public_todo_items(gate.get("runnable_candidates"))
+    blocked = _public_todo_items(gate.get("blocked_candidates"))
+
+    agent_summary = quota_payload.get("agent_todo_summary")
+    if not isinstance(agent_summary, dict):
+        return _unique_todo_candidates(runnable), _unique_todo_candidates(blocked)
+
+    for key in (
+        "active_next_action_executable_items",
+        "first_executable_items",
+        "claimed_advancement_open_items",
+        "unclaimed_advancement_open_items",
+    ):
+        runnable.extend(
+            item
+            for item in _public_todo_items(agent_summary.get(key))
+            if _is_runnable_advancement_todo(item)
+        )
+
+    claim_scope = agent_summary.get("claim_scope")
+    if not isinstance(claim_scope, dict):
+        claim_scope = {}
+    for key in ("claimed_by_others_items", "blocked_claimed_items", "blocked_items"):
+        blocked.extend(_public_todo_items(agent_summary.get(key)))
+        blocked.extend(_public_todo_items(claim_scope.get(key)))
+
+    return _unique_todo_candidates(runnable), _unique_todo_candidates(blocked)
+
+
 def normalize_auto_research_action(action: object) -> str:
     raw = str(action or "").strip()
     return AUTO_RESEARCH_ACTION_ALIASES.get(raw, raw)
@@ -691,15 +755,7 @@ def build_live_auto_research_projection(
     if not quota_payload.get("ok"):
         raise ValueError("quota payload must be ok for live auto-research projection")
 
-    gate = quota_payload.get("capability_gate")
-    if not isinstance(gate, dict):
-        gate = {}
-    runnable_candidates = [
-        item for item in gate.get("runnable_candidates") or [] if isinstance(item, dict)
-    ]
-    blocked_candidates = [
-        item for item in gate.get("blocked_candidates") or [] if isinstance(item, dict)
-    ]
+    runnable_candidates, blocked_candidates = _quota_payload_todo_candidates(quota_payload)
     selected_raw = quota_payload.get("agent_lane_next_action")
     selected = None
     if (
