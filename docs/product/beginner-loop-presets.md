@@ -34,6 +34,17 @@ These commands are read-only. They render `/loopx ...`, `start-goal`,
 `quota should-run`, and `heartbeat-prompt` command packets; they do not write
 registry state, install automations, edit docs, or create PRs.
 
+To check whether a project is ready for useful recurring loops, use the
+read-only score report:
+
+```bash
+loopx ready-score --goal-id <goal-id> --agent-id <agent-id>
+```
+
+The score aggregates existing `doctor`, `status`, `quota`, scheduler, todo, and
+evidence signals. It may render a badge preview, but it does not write README
+badges or change project state.
+
 ## Recommendation Matrix
 
 | Pattern | User value | LoopX default | Recommendation |

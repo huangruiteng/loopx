@@ -92,6 +92,7 @@ from .project_lifecycle import (
 from .preset import handle_preset_command, register_preset_commands
 from .pr_review import handle_pr_review_command, register_pr_review_command
 from .quota import handle_quota_command, register_quota_command
+from .ready_score import handle_ready_score_command, register_ready_score_command
 from .registry_admin import (
     handle_registry_admin_command,
     register_registry_admin_commands,
@@ -217,6 +218,7 @@ __all__ = [
     "handle_project_lifecycle_command",
     "handle_pr_review_command",
     "handle_quota_command",
+    "handle_ready_score_command",
     "handle_registry_admin_command",
     "handle_review_packet_command",
     "handle_slash_commands_command",
@@ -265,6 +267,7 @@ __all__ = [
     "register_pr_review_command",
     "register_preset_commands",
     "register_quota_command",
+    "register_ready_score_command",
     "register_registry_admin_commands",
     "register_slash_commands_command",
     "register_starter_commands",

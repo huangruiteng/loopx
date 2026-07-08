@@ -27,6 +27,7 @@ def assert_concise_default_help(output: str) -> None:
     assert "Start here:" in output, output
     assert "/loopx <goal text>" in output, output
     assert "slash-commands --install" in output, output
+    assert "ready-score --goal-id ID" in output, output
     assert "start-goal --guided" in output, output
     assert "Run the loop:" in output, output
     assert "Codex App" in output, output
@@ -35,7 +36,7 @@ def assert_concise_default_help(output: str) -> None:
     assert "evidence-log --goal-id ID --agent-id AGENT --thin" in output, output
     assert "man loopx" in output, output
     assert LONG_TAIL_COMMAND not in output, output
-    assert len(output.splitlines()) <= 36, output
+    assert len(output.splitlines()) <= 38, output
 
 
 def assert_default_help_surface() -> None:
@@ -62,6 +63,7 @@ def assert_command_reference_surface() -> None:
     assert "Maintainer and adapter commands" in result.stdout, result.stdout
     assert "loopx <command> --help" in result.stdout, result.stdout
     assert "codex-cli-bootstrap-message" in result.stdout, result.stdout
+    assert "loopx ready-score --goal-id <goal-id>" in result.stdout, result.stdout
     assert result.stderr == "", result.stderr
 
 

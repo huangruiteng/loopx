@@ -41,6 +41,7 @@ from .cli_commands import (
     handle_project_lifecycle_command,
     handle_pr_review_command,
     handle_quota_command,
+    handle_ready_score_command,
     handle_registry_admin_command,
     handle_review_packet_command,
     handle_slash_commands_command,
@@ -67,6 +68,7 @@ from .cli_commands import (
     register_project_lifecycle_commands,
     register_pr_review_command,
     register_quota_command,
+    register_ready_score_command,
     register_registry_admin_commands,
     register_slash_commands_command,
     register_starter_commands,
@@ -169,6 +171,7 @@ def main(argv: list[str] | None = None) -> int:
 
     register_multi_agent_commands(sub, add_subcommand_format)
     register_preset_commands(sub, add_subcommand_format)
+    register_ready_score_command(sub, add_subcommand_format)
 
     register_registry_admin_commands(sub)
 
@@ -322,6 +325,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     if preset_result is not None:
         return preset_result
+
+    ready_score_result = handle_ready_score_command(
+        args,
+        registry_path=registry_path,
+        runtime_root_arg=args.runtime_root,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if ready_score_result is not None:
+        return ready_score_result
 
     if args.command == "content-ops":
         return handle_content_ops_command(args, output_format=output_format, print_payload=print_payload)

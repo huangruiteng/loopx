@@ -33,6 +33,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
                 "purpose": "Show beginner-safe Daily Triage, Changelog Draft, and PR Watch start packets.",
             },
             {
+                "command": "loopx ready-score --goal-id <goal-id>",
+                "purpose": "Score install, status, quota, scheduler, todo, and evidence readiness without writing badges.",
+            },
+            {
                 "command": 'loopx start-goal --guided --project . --goal-text "<goal>"',
                 "purpose": "Preview the shell fallback for the same agent-safe `/loopx <goal>` path.",
             },
@@ -181,6 +185,7 @@ def render_concise_help(program: str = "loopx") -> str:
             "  loopx doctor                   Check install, PATH, release snapshot, and skills.",
             "  loopx slash-commands --install Refresh host slash-command skill files.",
             "  loopx preset list              Show beginner-safe loop start packets.",
+            "  loopx ready-score --goal-id ID Score install/status/quota readiness.",
             "  loopx start-goal --guided --project . --goal-text \"<goal>\"",
             "                                  Preview the shell fallback for /loopx <goal>.",
             "",
