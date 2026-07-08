@@ -114,6 +114,7 @@ from .control_plane.work_items.work_lane_context import (
     build_work_lane_context_contract,
 )
 from .control_plane.work_items.work_lane import (
+    WORK_LANE_CONTRACT_SCHEMA_VERSION,
     work_lane_contract_is_due_monitor_attempt,
 )
 from .control_plane.scheduler.scheduler_hint import (
@@ -290,6 +291,86 @@ def _work_lane_contract(
         agent_todo_summary=agent_todo_summary,
         monitor_due_item_limit=MONITOR_DUE_ITEM_LIMIT,
     )
+
+
+AGENT_SCOPE_NON_EXECUTION_ACTIONS = {
+    AgentScopeFrontierAction.AGENT_SCOPE_EXHAUSTED.value,
+    AgentScopeFrontierAction.AGENT_SCOPE_WAIT.value,
+    AgentScopeFrontierAction.REASSIGNMENT_REQUIRED.value,
+}
+
+
+def _agent_scope_payload_work_lane_contract(
+    work_lane_contract: dict[str, Any],
+    *,
+    effective_action: str,
+    agent_scope_frontier: dict[str, Any],
+) -> dict[str, Any]:
+    reason_codes = [
+        str(value)
+        for value in (
+            work_lane_contract.get("reason_codes")
+            if isinstance(work_lane_contract.get("reason_codes"), list)
+            else []
+        )
+        if str(value).strip()
+    ]
+    for code in ("agent_scope_no_current_runnable_candidate", effective_action):
+        if code not in reason_codes:
+            reason_codes.append(code)
+
+    deferred_work_lane = {
+        key: work_lane_contract.get(key)
+        for key in ("lane", "next_lane", "obligation", "monitor_policy")
+        if work_lane_contract.get(key) is not None
+    }
+    if work_lane_contract.get("reason_codes") is not None:
+        deferred_work_lane["reason_codes"] = work_lane_contract.get("reason_codes")
+
+    return {
+        "schema_version": str(
+            work_lane_contract.get("schema_version")
+            or WORK_LANE_CONTRACT_SCHEMA_VERSION
+        ),
+        "lane": effective_action,
+        "next_lane": str(work_lane_contract.get("lane") or "advancement_task"),
+        "obligation": "wait_for_current_agent_or_unclaimed_advancement",
+        "must_attempt_work": False,
+        "reason_codes": reason_codes,
+        "monitor_policy": "no_delivery_until_current_agent_frontier_exists",
+        "blocked_by_agent_scope": True,
+        "agent_scope_action": effective_action,
+        "deferred_work_lane": deferred_work_lane,
+        "action": (
+            agent_scope_frontier.get("recommended_action")
+            or agent_scope_frontier.get("reason")
+            or "wait for a current-agent or unclaimed advancement todo before delivery"
+        ),
+    }
+
+
+def _payload_work_lane_contract(
+    work_lane_contract: dict[str, Any] | None,
+    *,
+    effective_action: str,
+    recovery_allowed: bool,
+    agent_scope_frontier: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if recovery_allowed and effective_action == "outcome_floor_recovery":
+        return None
+    if not isinstance(work_lane_contract, dict):
+        return work_lane_contract
+    if (
+        effective_action in AGENT_SCOPE_NON_EXECUTION_ACTIONS
+        and work_lane_contract.get("must_attempt_work") is True
+        and isinstance(agent_scope_frontier, dict)
+    ):
+        return _agent_scope_payload_work_lane_contract(
+            work_lane_contract,
+            effective_action=effective_action,
+            agent_scope_frontier=agent_scope_frontier,
+        )
+    return work_lane_contract
 
 
 def _focus_wait_quota(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1968,10 +2049,11 @@ def build_quota_should_run(
             selected_recommended_action=selected_recommended_action,
         )
         agent_scope_action = _agent_scope_frontier_action(effective_action)
-        payload_work_lane_contract = (
-            None
-            if recovery_allowed and effective_action == "outcome_floor_recovery"
-            else work_lane_contract
+        payload_work_lane_contract = _payload_work_lane_contract(
+            work_lane_contract,
+            effective_action=effective_action,
+            recovery_allowed=recovery_allowed,
+            agent_scope_frontier=agent_scope_frontier,
         )
         payload = {
             "ok": bool(plan.get("ok")) or self_repair_allowed or capability_repair_allowed or workspace_repair_allowed,
