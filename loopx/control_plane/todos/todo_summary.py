@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 from typing import Any, Callable, Optional
 
@@ -63,6 +64,28 @@ GoalLifecycleFields = Callable[[dict[str, Any], Optional[dict[str, Any]]], dict[
 PublicSafeText = Callable[..., Optional[str]]
 TodoOpenCount = Callable[[Optional[dict[str, Any]]], int]
 FirstOpenTodoText = Callable[[Optional[dict[str, Any]]], Optional[str]]
+
+
+@dataclass(frozen=True)
+class _TodoGroupLanes:
+    open_items: list[dict[str, Any]]
+    terminal_items: list[dict[str, Any]]
+    deferred_items: list[dict[str, Any]]
+    done_items: list[dict[str, Any]]
+    projected_open_items: list[dict[str, Any]]
+    projected_deferred_items: list[dict[str, Any]]
+    budgeted_items: list[dict[str, Any]]
+    claimed_open_items: list[dict[str, Any]]
+    unclaimed_open_items: list[dict[str, Any]]
+    executable_items: list[dict[str, Any]]
+    resume_blocked_items: list[dict[str, Any]]
+    monitor_items: list[dict[str, Any]]
+    monitor_due_items: list[dict[str, Any]]
+    monitor_schedule_gap_items: list[dict[str, Any]]
+    claimed_advancement_items: list[dict[str, Any]]
+    claimed_monitor_items: list[dict[str, Any]]
+    active_next_action_items: list[dict[str, Any]]
+    active_next_action_executable_items: list[dict[str, Any]]
 GITHUB_PULL_URL_PATTERN = re.compile(
     r"https://github\.com/(?P<repo>[^/]+/[^/]+)/pull/(?P<number>[0-9]+)(?:\b|/|#|\?)",
     re.IGNORECASE,
@@ -824,19 +847,13 @@ def completed_without_successor_items(
     return sorted(gap_items, key=_completed_succession_sort_key, reverse=True)
 
 
-def compact_todo_group(
+def _structured_todo_group_items(
     items: list[dict[str, Any]],
     *,
     source_section: str | None,
-    role: str | None = None,
-    preferred_todo_ids: set[str] | None = None,
-    resume_source_items: list[dict[str, Any]] | None = None,
-    rollout_events: list[dict[str, Any]] | None = None,
-    item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
-) -> dict[str, Any] | None:
-    if not items:
-        return None
-    items = [
+    role: str | None,
+) -> list[dict[str, Any]]:
+    return [
         structured_todo_item(
             item,
             role=role,
@@ -847,7 +864,14 @@ def compact_todo_group(
         else item
         for item in items
     ]
-    structured_resume_source_items = [
+
+
+def _structured_resume_source_items(
+    items: list[dict[str, Any]] | None,
+    *,
+    source_section: str | None,
+) -> list[dict[str, Any]]:
+    return [
         structured_todo_item(
             item,
             role=item.get("role") if isinstance(item.get("role"), str) else None,
@@ -859,17 +883,19 @@ def compact_todo_group(
             archive_state=(
                 str(item.get("archive_state"))
                 if item.get("archive_state") is not None
-                else "active"
+                else TODO_ARCHIVE_STATE_ACTIVE
             ),
         )
-        for item in (resume_source_items or [])
+        for item in (items or [])
         if isinstance(item, dict)
     ]
-    apply_resume_conditions(
-        items,
-        resume_source_items=structured_resume_source_items,
-        rollout_events=rollout_events,
-    )
+
+
+def _todo_group_lanes(
+    items: list[dict[str, Any]],
+    *,
+    preferred_todo_ids: set[str] | None,
+) -> _TodoGroupLanes:
     open_items = [item for item in items if not item.get("done")]
     terminal_items = [item for item in items if item.get("done")]
     deferred_items = [item for item in terminal_items if todo_item_is_deferred(item)]
@@ -901,11 +927,7 @@ def compact_todo_group(
         if todo_item_is_actionable_open(item)
         if todo_item_task_class(item) == TODO_TASK_CLASS_MONITOR
     ]
-    monitor_due_items = [
-        item
-        for item in monitor_items
-        if todo_item_is_due_monitor(item)
-    ]
+    monitor_due_items = [item for item in monitor_items if todo_item_is_due_monitor(item)]
     monitor_schedule_gap_items = [
         item
         for item in monitor_items
@@ -938,85 +960,133 @@ def compact_todo_group(
         for item in executable_items
         if normalize_todo_id(item.get("todo_id")) in preferred_ids
     ]
+    return _TodoGroupLanes(
+        open_items=open_items,
+        terminal_items=terminal_items,
+        deferred_items=deferred_items,
+        done_items=done_items,
+        projected_open_items=projected_open_items,
+        projected_deferred_items=projected_deferred_items,
+        budgeted_items=budgeted_items,
+        claimed_open_items=claimed_open_items,
+        unclaimed_open_items=unclaimed_open_items,
+        executable_items=executable_items,
+        resume_blocked_items=resume_blocked_items,
+        monitor_items=monitor_items,
+        monitor_due_items=monitor_due_items,
+        monitor_schedule_gap_items=monitor_schedule_gap_items,
+        claimed_advancement_items=claimed_advancement_items,
+        claimed_monitor_items=claimed_monitor_items,
+        active_next_action_items=active_next_action_items,
+        active_next_action_executable_items=active_next_action_executable_items,
+    )
+
+
+def compact_todo_group(
+    items: list[dict[str, Any]],
+    *,
+    source_section: str | None,
+    role: str | None = None,
+    preferred_todo_ids: set[str] | None = None,
+    resume_source_items: list[dict[str, Any]] | None = None,
+    rollout_events: list[dict[str, Any]] | None = None,
+    item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
+) -> dict[str, Any] | None:
+    if not items:
+        return None
+    items = _structured_todo_group_items(
+        items,
+        source_section=source_section,
+        role=role,
+    )
+    apply_resume_conditions(
+        items,
+        resume_source_items=_structured_resume_source_items(
+            resume_source_items,
+            source_section=source_section,
+        ),
+        rollout_events=rollout_events,
+    )
+    lanes = _todo_group_lanes(items, preferred_todo_ids=preferred_todo_ids)
     successor_gap_items = completed_without_successor_items(
-        done_items,
+        lanes.done_items,
         all_items=items,
     )
     summary = {
         "schema_version": "todo_summary_v0",
         "source_section": source_section,
         "total_count": len(items),
-        "open_count": len(open_items),
-        "done_count": len(terminal_items),
-        "deferred_count": len(deferred_items),
+        "open_count": len(lanes.open_items),
+        "done_count": len(lanes.terminal_items),
+        "deferred_count": len(lanes.deferred_items),
         "first_open_items": [
-            compact_todo_item(item) for item in projected_open_items[:3]
+            compact_todo_item(item) for item in lanes.projected_open_items[:3]
         ],
         "first_executable_items": [
-            compact_todo_item(item) for item in executable_items[:3]
+            compact_todo_item(item) for item in lanes.executable_items[:3]
         ],
         "monitor_open_items": [
-            compact_todo_item(item) for item in monitor_items
+            compact_todo_item(item) for item in lanes.monitor_items
         ],
-        "monitor_due_count": len(monitor_due_items),
+        "monitor_due_count": len(lanes.monitor_due_items),
         "monitor_due_items": [
             compact_todo_item(item)
-            for item in monitor_due_items[:MAX_MONITOR_DUE_ITEMS]
+            for item in lanes.monitor_due_items[:MAX_MONITOR_DUE_ITEMS]
         ],
-        "monitor_schedule_gap_count": len(monitor_schedule_gap_items),
+        "monitor_schedule_gap_count": len(lanes.monitor_schedule_gap_items),
         "monitor_schedule_gap_items": [
             compact_todo_item(item)
-            for item in monitor_schedule_gap_items[:MAX_MONITOR_DUE_ITEMS]
+            for item in lanes.monitor_schedule_gap_items[:MAX_MONITOR_DUE_ITEMS]
         ],
         "unclaimed_priority_open_items": [
             compact_todo_item(item)
-            for item in unclaimed_open_items[:MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS]
+            for item in lanes.unclaimed_open_items[:MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS]
         ],
         "claimed_open_items": [
             compact_todo_item(item)
             for item in claimed_visibility_items(
-                claimed_open_items,
+                lanes.claimed_open_items,
                 limit=MAX_TODO_VISIBILITY_LANE_ITEMS,
             )
         ],
         "claimed_advancement_open_items": [
             compact_todo_item(item)
             for item in claimed_visibility_items(
-                claimed_advancement_items,
+                lanes.claimed_advancement_items,
                 limit=MAX_TODO_VISIBILITY_LANE_ITEMS,
             )
         ],
         "claimed_monitor_open_items": [
             compact_todo_item(item)
             for item in claimed_visibility_items(
-                claimed_monitor_items,
+                lanes.claimed_monitor_items,
                 limit=MAX_TODO_VISIBILITY_LANE_ITEMS,
             )
         ],
         "backlog_items": [
             compact_todo_item(item)
-            for item in projected_open_items[:MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS]
+            for item in lanes.projected_open_items[:MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS]
         ],
         "executable_backlog_items": [
             compact_todo_item(item)
-            for item in executable_items[:MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS]
+            for item in lanes.executable_items[:MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS]
         ],
         "deferred_items": [
             compact_todo_item(item)
-            for item in projected_deferred_items[:MAX_DEFERRED_TODO_VISIBILITY_ITEMS]
+            for item in lanes.projected_deferred_items[:MAX_DEFERRED_TODO_VISIBILITY_ITEMS]
         ],
         "deferred_resume_candidates": [
             compact_todo_item(item)
-            for item in projected_deferred_items
+            for item in lanes.projected_deferred_items
             if item.get("resume_ready") is True
         ][:MAX_DEFERRED_TODO_VISIBILITY_ITEMS],
-        "items": budgeted_items if item_limit is None else budgeted_items[:item_limit],
+        "items": lanes.budgeted_items if item_limit is None else lanes.budgeted_items[:item_limit],
     }
-    if resume_blocked_items:
-        summary["resume_blocked_count"] = len(resume_blocked_items)
+    if lanes.resume_blocked_items:
+        summary["resume_blocked_count"] = len(lanes.resume_blocked_items)
         summary["resume_blocked_items"] = [
             compact_todo_item(item)
-            for item in resume_blocked_items[:MAX_DEFERRED_TODO_VISIBILITY_ITEMS]
+            for item in lanes.resume_blocked_items[:MAX_DEFERRED_TODO_VISIBILITY_ITEMS]
         ]
     handoff_gates = build_todo_handoff_gate_states(items)
     if handoff_gates:
@@ -1035,19 +1105,19 @@ def compact_todo_group(
                 "or add/link a successor todo before closing the slice"
             ),
         }
-    if active_next_action_items:
+    if lanes.active_next_action_items:
         summary["active_next_action_items"] = [
             compact_active_next_action_todo_item(item)
-            for item in active_next_action_items
+            for item in lanes.active_next_action_items
         ]
-    if active_next_action_executable_items:
+    if lanes.active_next_action_executable_items:
         summary["active_next_action_executable_items"] = [
             compact_active_next_action_todo_item(item)
-            for item in active_next_action_executable_items
+            for item in lanes.active_next_action_executable_items
         ]
-    if claimed_open_items:
-        summary["claimed_open_count"] = len(claimed_open_items)
-        summary["unclaimed_open_count"] = len(open_items) - len(claimed_open_items)
-        summary["claimed_advancement_open_count"] = len(claimed_advancement_items)
-        summary["claimed_monitor_open_count"] = len(claimed_monitor_items)
+    if lanes.claimed_open_items:
+        summary["claimed_open_count"] = len(lanes.claimed_open_items)
+        summary["unclaimed_open_count"] = len(lanes.open_items) - len(lanes.claimed_open_items)
+        summary["claimed_advancement_open_count"] = len(lanes.claimed_advancement_items)
+        summary["claimed_monitor_open_count"] = len(lanes.claimed_monitor_items)
     return summary
