@@ -149,11 +149,38 @@ def normalize_checkpointed_boundary_authority_entries(
     return entries
 
 
+def _compact_checkpointed_boundary_authority_summary(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+
+    def _count(raw: Any) -> int:
+        try:
+            return max(0, int(raw or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    active_scopes = normalize_required_write_scopes(value.get("active_write_scope"))
+    if not active_scopes and "active_count" not in value and "inactive_count" not in value:
+        return None
+    return {
+        "schema_version": CHECKPOINTED_BOUNDARY_AUTHORITY_SCHEMA_VERSION,
+        "active_count": _count(value.get("active_count")),
+        "inactive_count": _count(value.get("inactive_count")),
+        "active_write_scope": active_scopes,
+    }
+
+
 def checkpointed_boundary_authority_summary(coordination: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(coordination, dict):
         return None
+    checkpointed_authority = coordination.get("checkpointed_boundary_authority")
+    if isinstance(checkpointed_authority, dict):
+        compact_summary = _compact_checkpointed_boundary_authority_summary(checkpointed_authority)
+        if compact_summary is not None and "entries" not in checkpointed_authority:
+            return compact_summary
+        checkpointed_authority = checkpointed_authority.get("entries")
     entries = normalize_checkpointed_boundary_authority_entries(
-        coordination.get("checkpointed_boundary_authority")
+        checkpointed_authority
     )
     if not entries:
         return None

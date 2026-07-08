@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
+from ...boundary_authority import checkpointed_boundary_authority_summary
+
 
 LatestRun = Callable[[dict[str, Any]], Optional[dict[str, Any]]]
 GoalLifecycleFields = Callable[[dict[str, Any], Optional[dict[str, Any]]], dict[str, Any]]
@@ -30,6 +32,22 @@ def latest_run(
             continue
         return run
     return None
+
+
+def compact_goal_coordination(coordination: Any) -> dict[str, Any] | None:
+    if not isinstance(coordination, dict):
+        return None
+    compact = dict(coordination)
+    authority_summary = checkpointed_boundary_authority_summary(coordination)
+    if authority_summary is not None:
+        compact["checkpointed_boundary_authority"] = {
+            key: value
+            for key, value in authority_summary.items()
+            if key != "entries"
+        }
+    elif "checkpointed_boundary_authority" in compact:
+        compact.pop("checkpointed_boundary_authority", None)
+    return compact
 
 
 def build_run_history(
@@ -68,7 +86,7 @@ def build_run_history(
                 "legacy_runtime_goal": goal.get("legacy_runtime_goal"),
                 "adapter_kind": goal.get("adapter_kind"),
                 "adapter_status": goal.get("adapter_status"),
-                "coordination": goal.get("coordination") if isinstance(goal.get("coordination"), dict) else None,
+                "coordination": compact_goal_coordination(goal.get("coordination")),
                 "guards": goal.get("guards") if isinstance(goal.get("guards"), list) else [],
                 "next_probe": goal.get("next_probe"),
                 "authority_registry": goal.get("authority_registry"),

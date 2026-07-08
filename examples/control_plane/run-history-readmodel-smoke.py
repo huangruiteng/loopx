@@ -12,6 +12,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx import status as status_module  # noqa: E402
+from loopx.boundary_authority import (  # noqa: E402
+    CHECKPOINTED_BOUNDARY_AUTHORITY_SCHEMA_VERSION,
+    checkpointed_boundary_authority_summary,
+)
 from loopx.control_plane.runtime import run_history as run_history_read_model  # noqa: E402
 
 
@@ -35,8 +39,16 @@ def direct_history(history: dict, *, display_limit: int | None = None) -> dict:
 
 
 def assert_parity(history: dict, *, display_limit: int | None = None) -> dict:
-    wrapper = status_module.build_run_history(history, display_limit=display_limit)
-    direct = direct_history(history, display_limit=display_limit)
+    effective_display_limit = 999 if display_limit is None else display_limit
+    wrapper = status_module.build_status_runtime_summaries(
+        history=history,
+        queue={},
+        runtime_root=REPO_ROOT,
+        goal_id_filter=None,
+        display_limit=effective_display_limit,
+        todo_index_limit=5,
+    )["run_history"]
+    direct = direct_history(history, display_limit=effective_display_limit)
     assert direct == wrapper, (direct, wrapper)
     return wrapper
 
@@ -73,7 +85,29 @@ def main() -> None:
                 "legacy_runtime_goal": False,
                 "adapter_kind": "harness_self_improvement",
                 "adapter_status": "connected-read-only",
-                "coordination": {"primary_agent": "codex-main-control"},
+                "coordination": {
+                    "primary_agent": "codex-main-control",
+                    "registered_agents": ["codex-main-control", "codex-product-capability"],
+                    "side_agent_handoff_agent": "codex-product-capability",
+                    "checkpointed_boundary_authority": [
+                        {
+                            "status": "active",
+                            "decision": "approve",
+                            "write_scope": ["loopx/**"],
+                            "source": "operator-approved product capability lane",
+                            "decision_id": "gate-approved",
+                            "recorded_at": "2026-07-04T00:04:00+00:00",
+                        },
+                        {
+                            "status": "inactive",
+                            "decision": "defer",
+                            "write_scope": ["docs/**"],
+                            "source": "deferred docs lane",
+                            "decision_id": "gate-deferred",
+                            "recorded_at": "2026-07-04T00:04:30+00:00",
+                        },
+                    ],
+                },
                 "guards": [{"kind": "private_boundary"}],
                 "next_probe": "continue",
                 "authority_registry": {"present": True},
@@ -171,7 +205,21 @@ def main() -> None:
 
     meta = full["goals"][0]
     assert meta["quota"] is not None, meta
-    assert meta["coordination"] == {"primary_agent": "codex-main-control"}, meta
+    assert meta["coordination"]["primary_agent"] == "codex-main-control", meta
+    assert meta["coordination"]["registered_agents"] == [
+        "codex-main-control",
+        "codex-product-capability",
+    ], meta
+    boundary_authority = meta["coordination"]["checkpointed_boundary_authority"]
+    assert boundary_authority == {
+        "schema_version": CHECKPOINTED_BOUNDARY_AUTHORITY_SCHEMA_VERSION,
+        "active_count": 1,
+        "inactive_count": 1,
+        "active_write_scope": ["loopx/**"],
+    }, meta
+    assert checkpointed_boundary_authority_summary(meta["coordination"]) == boundary_authority, meta
+    assert "entries" not in boundary_authority, meta
+    assert "gate-approved" not in str(meta["coordination"]), meta
     assert meta["guards"] == [{"kind": "private_boundary"}], meta
     assert meta["latest_status_run"]["human_reward"]["lesson"] == {
         "schema_version": "lesson_v0",
