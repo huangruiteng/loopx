@@ -488,8 +488,9 @@ selected goal, `quota should-run` also mirrors the same object at top level as
 This field is a restraint signal for heartbeat workers, not a dashboard feature
 request. It records the latest clean hot-path budget check, the tightest
 headroom observed, and when the next check is due. Fresh clean checks can
-support a quiet skip for the ongoing interface-budget guard; overdue or
-out-of-budget checks should prompt `python3
+support a quiet skip for the ongoing interface-budget guard only while the
+tightest metric still has positive headroom; overdue, out-of-budget, or
+zero-headroom checks should prompt `python3
 examples/control_plane/hot-path-interface-budget-smoke.py` or an equivalent explicit
 drift-check run.
 

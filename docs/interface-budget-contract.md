@@ -66,12 +66,15 @@ Stable cadence fields:
   `headroom_remaining`: compact headroom evidence for the tightest observed
   surface.
 - `recommendation`: either `quiet_skip_until_next_check_due` or
-  `rerun_hot_path_interface_budget_smoke`.
+  `rerun_hot_path_interface_budget_smoke`. Fresh checks only quiet-skip when
+  every surface is within budget and the tightest metric still has positive
+  headroom; a zero-headroom surface is already at the compatibility edge and
+  should rerun the smoke before more hot-path growth is accepted.
 
 Do not add a heartbeat prompt branch for this cadence. Store exact measurements
 in run history, project only this compact decision summary, and rerun the smoke
-when `overdue=true` or when a prompt/status/quota/review-packet/dashboard
-contract changes.
+when `overdue=true`, when `headroom_remaining <= 0`, or when a
+prompt/status/quota/review-packet/dashboard contract changes.
 
 Scheduler reset policy budget:
 

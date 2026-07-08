@@ -260,7 +260,8 @@ def assert_cadence_projection(
     assert projected["overdue"] is False, projected
     assert projected["within_budget"] is True, projected
     assert projected["next_check_due_at"] == "2099-01-02T00:10:00+00:00", projected
-    assert projected["recommendation"] == "quiet_skip_until_next_check_due", projected
+    assert projected["headroom_remaining"] == 0, projected
+    assert projected["recommendation"] == "rerun_hot_path_interface_budget_smoke", projected
 
     quota_payload = build_quota_should_run(status_payload, goal_id=GOAL_ID)
     assert quota_payload["should_run"] is True, quota_payload
@@ -316,6 +317,26 @@ def main() -> int:
         assert cadence["surface_count"] == len(summaries), cadence
         assert cadence["next_check_due_at"] == "2099-01-02T00:10:00+00:00", cadence
         assert cadence["minimum_headroom_ratio"] is not None, cadence
+        assert cadence["headroom_remaining"] == 0, cadence
+        assert cadence["recommendation"] == "rerun_hot_path_interface_budget_smoke", cadence
+        relaxed_summaries = [dict(summary) for summary in summaries]
+        for summary in relaxed_summaries:
+            if summary["json_chars"] == summary["max_json_chars"]:
+                summary["max_json_chars"] = summary["json_chars"] + 1
+            if summary["nested_keys"] == summary["max_nested_keys"]:
+                summary["max_nested_keys"] = summary["nested_keys"] + 1
+            if summary["top_level_keys"] == summary["max_top_level_keys"]:
+                summary["max_top_level_keys"] = summary["top_level_keys"] + 1
+        relaxed_cadence = build_interface_budget_cadence(
+            relaxed_summaries,
+            checked_at="2099-01-01T00:10:00+00:00",
+            now="2099-01-01T01:00:00+00:00",
+            freshness_hours=24,
+        )
+        assert relaxed_cadence["within_budget"] is True, relaxed_cadence
+        assert relaxed_cadence["overdue"] is False, relaxed_cadence
+        assert relaxed_cadence["headroom_remaining"] > 0, relaxed_cadence
+        assert relaxed_cadence["recommendation"] == "quiet_skip_until_next_check_due", relaxed_cadence
         stale_cadence = build_interface_budget_cadence(
             summaries,
             checked_at="2099-01-01T00:10:00+00:00",

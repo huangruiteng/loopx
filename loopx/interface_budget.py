@@ -93,9 +93,11 @@ def build_interface_budget_cadence(
     )
     overdue = bool(next_due_dt and now_dt and now_dt >= next_due_dt)
     within_budget = bool(headrooms) and all(item.get("within_budget") is True for item in headrooms)
+    headroom_remaining = _number(tightest.get("headroom_remaining")) if tightest else None
+    headroom_exhausted = headroom_remaining is not None and headroom_remaining <= 0
     recommendation = (
         "quiet_skip_until_next_check_due"
-        if within_budget and not overdue
+        if within_budget and not overdue and not headroom_exhausted
         else "rerun_hot_path_interface_budget_smoke"
     )
     return {
@@ -128,8 +130,10 @@ def compact_interface_budget_cadence(
     now_dt = parse_timestamp(now) if now is not None else datetime.now(timezone.utc)
     overdue = bool(next_due_dt and now_dt and now_dt >= next_due_dt)
     within_budget = value.get("within_budget") is True
+    headroom_remaining = _number(value.get("headroom_remaining"))
+    headroom_exhausted = headroom_remaining is not None and headroom_remaining <= 0
     recommendation = str(value.get("recommendation") or "").strip()
-    if within_budget and not overdue:
+    if within_budget and not overdue and not headroom_exhausted:
         recommendation = recommendation or "quiet_skip_until_next_check_due"
     else:
         recommendation = recommendation or "rerun_hot_path_interface_budget_smoke"
