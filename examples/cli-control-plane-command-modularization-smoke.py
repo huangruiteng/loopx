@@ -91,10 +91,30 @@ def assert_todo_error_payload() -> None:
     assert payload["error"] == "todo add requires --role", payload
 
 
+def assert_todo_markdown_error_payload() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-cli-todo-markdown-smoke-") as tmp:
+        result = run_cli(
+            "--registry",
+            str(Path(tmp) / "missing-registry.json"),
+            "todo",
+            "add",
+            "--goal-id",
+            "cli-modular-smoke",
+            "--text",
+            "Synthetic todo missing role.",
+            "--dry-run",
+        )
+    assert result.returncode == 1, result.stdout
+    assert_contains(result.stdout, "# LoopX Todo", "todo markdown error")
+    assert_contains(result.stdout, "- ok: `False`", "todo markdown error")
+    assert_contains(result.stdout, "- error: todo add requires --role", "todo markdown error")
+
+
 def main() -> int:
     assert_source_shape()
     assert_help_surfaces()
     assert_todo_error_payload()
+    assert_todo_markdown_error_payload()
     print("cli-control-plane-command-modularization-smoke: ok")
     return 0
 
