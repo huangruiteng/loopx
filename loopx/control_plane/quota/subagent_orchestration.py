@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..agents.agent_scope import AgentScopeFrontierAction
+from ..agents.agent_scope_frontier import AgentScopeFrontierAction
 from ..todos.todo_summary import normalize_todo_claimed_by
 from ..work_items.work_lane import WORK_LANE_CONTRACT_SCHEMA_VERSION
 from ..work_items.work_lane_context import build_work_lane_context_contract

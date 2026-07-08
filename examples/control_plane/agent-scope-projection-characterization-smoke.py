@@ -19,6 +19,10 @@ from loopx.control_plane.agents.agent_scope import (  # noqa: E402
     _agent_scoped_user_gate_override,
     _scoped_user_gate_fallback,
 )
+from loopx.control_plane.agents.agent_scope_frontier import (  # noqa: E402
+    AgentScopeFrontierAction,
+    build_agent_scope_frontier_payload,
+)
 
 
 GOAL_ID = "agent-scope-projection-characterization"
@@ -229,6 +233,33 @@ def assert_agent_scoped_user_gate_override_contract() -> None:
     assert blocked is None, blocked
 
 
+def assert_agent_scope_frontier_builder_contract() -> None:
+    payload = build_agent_scope_frontier_payload(
+        agent_id=AGENT_ID,
+        primary_agent=PRIMARY_AGENT,
+        action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
+        quiet_noop_allowed=False,
+        spend_policy="spend once after validated successor replan/todo writeback",
+        reason="frontier has no runnable advancement but a successor is required",
+        recommended_action="record a successor todo or an explicit no-follow-up rationale",
+        requires_replan=True,
+        candidate_counts={
+            "current_agent_claimed_advancement_count": 0,
+            "unclaimed_advancement_count": 0,
+            "cleared_without_successor_handoff_count": 1,
+        },
+        extra_fields={"cleared_without_successor_handoff_gates": [{"todo_id": "todo_gate"}]},
+    )
+
+    assert payload["schema_version"] == "agent_scope_frontier_v0"
+    assert payload["action"] == "successor_replan_required"
+    assert payload["effective_action"] == payload["action"]
+    assert payload["blocks_delivery"] is True
+    assert payload["requires_replan"] is True
+    assert payload["quiet_noop_allowed"] is False
+    assert payload["cleared_without_successor_handoff_gates"][0]["todo_id"] == "todo_gate"
+
+
 def assert_agent_scope_frontier_and_hint_contract() -> None:
     blocked_resume = todo(
         "todo_waiting_advancement",
@@ -357,6 +388,7 @@ def main() -> None:
     assert_agent_scope_user_gate_filter_contract()
     assert_scoped_user_gate_fallback_contract()
     assert_agent_scoped_user_gate_override_contract()
+    assert_agent_scope_frontier_builder_contract()
     assert_agent_scope_frontier_and_hint_contract()
     assert_other_agent_frontier_wait_contract()
     print("agent-scope-projection-characterization-smoke ok")

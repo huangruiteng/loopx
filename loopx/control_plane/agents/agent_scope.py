@@ -1,9 +1,15 @@
 from __future__ import annotations
 
-from enum import Enum
 import re
 from typing import Any
 
+from .agent_scope_frontier import (
+    AGENT_LANE_FRONTIER_HINT_SCHEMA_VERSION,
+    AgentLaneFrontierHintDecision,
+    AgentScopeFrontierAction,
+    agent_scope_frontier_action as _agent_scope_frontier_action,
+    build_agent_scope_frontier_payload,
+)
 from ..todos.decision_scope import todo_gate_relation, todo_gate_relation_blocks_agent
 from ..work_items.work_lane import (
     work_lane_contract_is_due_monitor_attempt,
@@ -33,10 +39,6 @@ from ..todos.user_gate import (
     open_todo_count as _open_todo_count,
     open_user_gate_todo_items as _open_user_gate_todo_items,
 )
-
-
-AGENT_SCOPE_FRONTIER_SCHEMA_VERSION = "agent_scope_frontier_v0"
-AGENT_LANE_FRONTIER_HINT_SCHEMA_VERSION = "agent_lane_frontier_hint_v0"
 
 _ACTION_SCOPE_STOPWORDS = {
     "a",
@@ -78,20 +80,6 @@ _ACTION_SCOPE_STOPWORDS = {
     "whether",
     "with",
 }
-
-
-class AgentScopeFrontierAction(str, Enum):
-    AGENT_SCOPE_EXHAUSTED = "agent_scope_exhausted"
-    AGENT_SCOPE_WAIT = "agent_scope_wait"
-    REASSIGNMENT_REQUIRED = "reassignment_required"
-    SUCCESSOR_REPLAN_REQUIRED = "successor_replan_required"
-
-
-class AgentLaneFrontierHintDecision(str, Enum):
-    CLAIM_UNOWNED_IN_SCOPE = "claim_unowned_in_scope"
-    ADD_NEXT_ADVANCEMENT = "add_next_advancement"
-    RECORD_NO_FOLLOWUP = "record_no_followup"
-    QUIET_NOOP_BLOCKER = "quiet_noop_blocker"
 
 
 def _todo_task_class(item: dict[str, Any]) -> str:
@@ -481,13 +469,6 @@ def _agent_scoped_user_gate_override(
 
 def _count_advancement_items(items: Any, *, claimed_by: str | None = None) -> int:
     return agent_scope_count_advancement_items(items, claimed_by=claimed_by)
-
-
-def _agent_scope_frontier_action(value: Any) -> AgentScopeFrontierAction | None:
-    try:
-        return AgentScopeFrontierAction(str(value or ""))
-    except ValueError:
-        return None
 
 
 def _first_compact_todo_id(items: Any) -> str | None:
@@ -1005,25 +986,24 @@ def _agent_scope_no_candidate_frontier(
             f"{monitor_todo_id} after validated evidence, or rewrite {candidate_todo_id} "
             "to use a non-blocking monitor contract before delivery."
         )
-        return {
-            "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
-            "agent_id": agent_id,
-            "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
-            "action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
-            "effective_action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
-            "blocks_delivery": True,
-            "requires_replan": True,
-            "quiet_noop_allowed": False,
-            "spend_policy": "spend once after validated standing-monitor gate repair/todo writeback",
-            "reason": reason,
-            "recommended_action": recommended_action,
-            "candidate_counts": {
+        return build_agent_scope_frontier_payload(
+            agent_id=agent_id,
+            primary_agent=normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
+            quiet_noop_allowed=False,
+            spend_policy="spend once after validated standing-monitor gate repair/todo writeback",
+            reason=reason,
+            recommended_action=recommended_action,
+            requires_replan=True,
+            candidate_counts={
                 "current_agent_claimed_advancement_count": current_agent_count,
                 "unclaimed_advancement_count": unclaimed_count,
                 "monitor_blocked_resume_candidate_count": len(monitor_blocked_resume_candidates),
             },
-            "monitor_blocked_resume_candidates": monitor_blocked_resume_candidates[:3],
-        }
+            extra_fields={
+                "monitor_blocked_resume_candidates": monitor_blocked_resume_candidates[:3],
+            },
+        )
 
     deferred_resume_candidates = _agent_scope_deferred_resume_candidates(
         agent_todo_summary,
@@ -1040,25 +1020,22 @@ def _agent_scope_no_candidate_frontier(
             "Run a bounded successor replan before delivery: reopen, supersede, "
             f"or record a no-follow-up rationale for {candidate_todo_id}."
         )
-        return {
-            "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
-            "agent_id": agent_id,
-            "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
-            "action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
-            "effective_action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
-            "blocks_delivery": True,
-            "requires_replan": True,
-            "quiet_noop_allowed": False,
-            "spend_policy": "spend once after validated successor replan/todo writeback",
-            "reason": reason,
-            "recommended_action": recommended_action,
-            "candidate_counts": {
+        return build_agent_scope_frontier_payload(
+            agent_id=agent_id,
+            primary_agent=normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
+            quiet_noop_allowed=False,
+            spend_policy="spend once after validated successor replan/todo writeback",
+            reason=reason,
+            recommended_action=recommended_action,
+            requires_replan=True,
+            candidate_counts={
                 "current_agent_claimed_advancement_count": current_agent_count,
                 "unclaimed_advancement_count": unclaimed_count,
                 "deferred_resume_candidate_count": len(deferred_resume_candidates),
             },
-            "deferred_resume_candidates": deferred_resume_candidates[:3],
-        }
+            extra_fields={"deferred_resume_candidates": deferred_resume_candidates[:3]},
+        )
 
     route_continuation_replan_candidates = _agent_scope_route_continuation_replan_candidates(
         agent_todo_summary,
@@ -1085,27 +1062,26 @@ def _agent_scope_no_candidate_frontier(
             f"claim the next concrete {agent_id}/unclaimed advancement todo for "
             f"{route_label}, or record an explicit no-follow-up rationale."
         )
-        return {
-            "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
-            "agent_id": agent_id,
-            "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
-            "action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
-            "effective_action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
-            "blocks_delivery": True,
-            "requires_replan": True,
-            "quiet_noop_allowed": False,
-            "spend_policy": "spend once after validated route continuation replan/todo writeback",
-            "reason": reason,
-            "recommended_action": recommended_action,
-            "candidate_counts": {
+        return build_agent_scope_frontier_payload(
+            agent_id=agent_id,
+            primary_agent=normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
+            quiet_noop_allowed=False,
+            spend_policy="spend once after validated route continuation replan/todo writeback",
+            reason=reason,
+            recommended_action=recommended_action,
+            requires_replan=True,
+            candidate_counts={
                 "current_agent_claimed_advancement_count": current_agent_count,
                 "unclaimed_advancement_count": unclaimed_count,
                 "route_continuation_replan_candidate_count": len(
                     route_continuation_replan_candidates
                 ),
             },
-            "route_continuation_replan_candidates": route_continuation_replan_candidates[:3],
-        }
+            extra_fields={
+                "route_continuation_replan_candidates": route_continuation_replan_candidates[:3],
+            },
+        )
 
     blocking_handoff_gates = _agent_scope_blocking_handoff_gates(
         agent_todo_summary,
@@ -1130,26 +1106,25 @@ def _agent_scope_no_candidate_frontier(
             "blocking handoff, reassign it, or create a concrete current-agent/"
             "unclaimed advancement todo before delivery."
         )
-        return {
-            "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
-            "agent_id": agent_id,
-            "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
-            "action": AgentScopeFrontierAction.AGENT_SCOPE_WAIT.value,
-            "effective_action": AgentScopeFrontierAction.AGENT_SCOPE_WAIT.value,
-            "blocks_delivery": True,
-            "quiet_noop_allowed": True,
-            "spend_policy": "no quota spend while the current agent has no in-scope runnable candidate",
-            "reason": reason,
-            "recommended_action": recommended_action,
-            "candidate_counts": {
+        return build_agent_scope_frontier_payload(
+            agent_id=agent_id,
+            primary_agent=normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            action=AgentScopeFrontierAction.AGENT_SCOPE_WAIT,
+            quiet_noop_allowed=True,
+            spend_policy="no quota spend while the current agent has no in-scope runnable candidate",
+            reason=reason,
+            recommended_action=recommended_action,
+            candidate_counts={
                 "current_agent_claimed_advancement_count": current_agent_count,
                 "unclaimed_advancement_count": unclaimed_count,
                 "blocking_handoff_gate_count": len(blocking_handoff_gates),
             },
-            "other_claimants": blocking_review_claimants,
-            "blocking_review_claimants": blocking_review_claimants,
-            "blocking_handoff_gates": blocking_handoff_gates[:3],
-        }
+            extra_fields={
+                "other_claimants": blocking_review_claimants,
+                "blocking_review_claimants": blocking_review_claimants,
+                "blocking_handoff_gates": blocking_handoff_gates[:3],
+            },
+        )
 
     cleared_handoff_gates = _agent_scope_cleared_without_successor_handoff_gates(
         agent_todo_summary,
@@ -1174,25 +1149,24 @@ def _agent_scope_no_candidate_frontier(
             f"{blocker_todo_id} into a concrete {agent_id}/unclaimed advancement todo, "
             "or record an explicit no-follow-up rationale."
         )
-        return {
-            "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
-            "agent_id": agent_id,
-            "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
-            "action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
-            "effective_action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
-            "blocks_delivery": True,
-            "requires_replan": True,
-            "quiet_noop_allowed": False,
-            "spend_policy": "spend once after validated successor replan/todo writeback",
-            "reason": reason,
-            "recommended_action": recommended_action,
-            "candidate_counts": {
+        return build_agent_scope_frontier_payload(
+            agent_id=agent_id,
+            primary_agent=normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
+            quiet_noop_allowed=False,
+            spend_policy="spend once after validated successor replan/todo writeback",
+            reason=reason,
+            recommended_action=recommended_action,
+            requires_replan=True,
+            candidate_counts={
                 "current_agent_claimed_advancement_count": current_agent_count,
                 "unclaimed_advancement_count": unclaimed_count,
                 "cleared_without_successor_handoff_count": len(cleared_handoff_gates),
             },
-            "cleared_without_successor_handoff_gates": cleared_handoff_gates[:3],
-        }
+            extra_fields={
+                "cleared_without_successor_handoff_gates": cleared_handoff_gates[:3],
+            },
+        )
 
     claimed_advancement_items = (
         agent_todo_summary.get("claimed_advancement_open_items")
@@ -1276,18 +1250,15 @@ def _agent_scope_no_candidate_frontier(
             "current-agent or unclaimed advancement todo, or the primary reassigns work."
         )
 
-    return {
-        "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
-        "agent_id": agent_id,
-        "primary_agent": primary_agent,
-        "action": action.value,
-        "effective_action": action.value,
-        "blocks_delivery": True,
-        "quiet_noop_allowed": True,
-        "spend_policy": "no quota spend while the current agent has no in-scope runnable candidate",
-        "reason": reason,
-        "recommended_action": recommended_action,
-        "candidate_counts": {
+    return build_agent_scope_frontier_payload(
+        agent_id=agent_id,
+        primary_agent=primary_agent,
+        action=action,
+        quiet_noop_allowed=True,
+        spend_policy="no quota spend while the current agent has no in-scope runnable candidate",
+        reason=reason,
+        recommended_action=recommended_action,
+        candidate_counts={
             "current_agent_claimed_advancement_count": current_agent_count,
             "unclaimed_advancement_count": unclaimed_count,
             "other_agent_claimed_advancement_count": len(other_advancement_items),
@@ -1295,10 +1266,12 @@ def _agent_scope_no_candidate_frontier(
                 claim_scope.get("other_agent_claimed_open_count") or 0
             ),
         },
-        "other_claimants": other_claimants,
-        "blocking_review_claimants": blocking_review_claimants,
-        "other_agent_claimed_items": [
-            compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
-            for item in other_advancement_items[:3]
-        ],
-    }
+        extra_fields={
+            "other_claimants": other_claimants,
+            "blocking_review_claimants": blocking_review_claimants,
+            "other_agent_claimed_items": [
+                compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+                for item in other_advancement_items[:3]
+            ],
+        },
+    )
