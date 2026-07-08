@@ -537,6 +537,7 @@ def append_project_asset_warning_markdown(
         lines.append(
             "    - next_action_projection_warning: "
             f"requires_state_writeback={next_action_warning.get('requires_state_writeback')} "
+            f"severity={markdown_scalar(next_action_warning.get('severity') or '')} "
             f"reason={markdown_scalar(next_action_warning.get('reason') or '')}"
         )
     backlog_warning = (

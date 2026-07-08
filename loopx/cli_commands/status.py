@@ -559,6 +559,20 @@ def _sync_status_item_next_action_from_agent_lane(
         goal_channel["next_action"] = text
 
 
+def _sync_next_action_projection_warning_from_guard(
+    item: dict[str, object],
+    *,
+    guard: dict[str, object],
+) -> None:
+    warning = guard.get("next_action_projection_warning")
+    if not isinstance(warning, dict):
+        return
+    item["next_action_projection_warning"] = warning
+    project_asset = item.get("project_asset")
+    if isinstance(project_asset, dict):
+        project_asset["next_action_projection_warning"] = warning
+
+
 def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str) -> dict[str, object]:
     safe_agent_id = str(agent_id or "").strip()
     if not safe_agent_id:
@@ -591,6 +605,7 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
             item["agent_lane_next_action"] = next_action
             if isinstance(project_asset, dict):
                 project_asset["agent_lane_next_action"] = next_action
+            _sync_next_action_projection_warning_from_guard(item, guard=guard)
             _sync_status_item_next_action_from_agent_lane(
                 item,
                 next_action=next_action,

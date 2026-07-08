@@ -10,6 +10,7 @@ from loopx.status import project_asset_todo_summary, render_status_markdown
 def assert_status_agent_lane_next_action_projection() -> None:
     goal_id = "agent-lane-status-fixture"
     primary_action = "[P0] Continue the primary controller benchmark route."
+    stale_run_action = "[P0] Monitor the primary controller route before changing Next Action."
     side_action = (
         "[P0] Codex CLI TUI continuation: prove the visible steering turn "
         "without losing user takeover."
@@ -88,6 +89,16 @@ def assert_status_agent_lane_next_action_projection() -> None:
                     "waiting_on": "codex",
                     "severity": "action",
                     "recommended_action": primary_action,
+                    "active_state_next_action": primary_action,
+                    "latest_run_recommended_action": stale_run_action,
+                    "next_action_projection_warning": {
+                        "schema_version": "next_action_projection_warning_v0",
+                        "kind": "next_action_projection_mismatch",
+                        "severity": "warning",
+                        "requires_state_writeback": True,
+                        "active_state_next_action": primary_action,
+                        "latest_run_recommended_action": stale_run_action,
+                    },
                     "source": "registry",
                     "coordination": coordination,
                     "quota": {
@@ -103,6 +114,16 @@ def assert_status_agent_lane_next_action_projection() -> None:
                         "gate": "none",
                         "stop_condition": "stop on unsafe workspace or user gate",
                         "next_action": primary_action,
+                        "active_state_next_action": primary_action,
+                        "latest_run_recommended_action": stale_run_action,
+                        "next_action_projection_warning": {
+                            "schema_version": "next_action_projection_warning_v0",
+                            "kind": "next_action_projection_mismatch",
+                            "severity": "warning",
+                            "requires_state_writeback": True,
+                            "active_state_next_action": primary_action,
+                            "latest_run_recommended_action": stale_run_action,
+                        },
                         "agent_todos": project_asset_todo_summary(agent_todos, role="agent"),
                     },
                 }
@@ -132,6 +153,11 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert next_action["todo_id"] == "todo_side_tui", next_action
     assert next_action["agent_id"] == "codex-side-bypass", next_action
     assert next_action["preserves_goal_next_action"] is True, next_action
+    warning = item["next_action_projection_warning"]
+    assert warning["severity"] == "info", warning
+    assert warning["requires_state_writeback"] is False, warning
+    assert warning["agent_lane_next_action"] == side_action, warning
+    assert item["project_asset"]["next_action_projection_warning"] == warning, item
     goal_frontier = item["goal_frontier_projection"]
     assert goal_frontier["deferred_successors"]["ready_count"] == 0, goal_frontier
     assert goal_frontier["acceptance_gaps"] == [], goal_frontier
@@ -160,6 +186,7 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert "claims=todo_side_tui" in markdown, markdown
     assert "current_agent_todo: agent=codex-side-bypass todo_id=todo_side_tui" in markdown, markdown
     assert "source=agent_lane_next_action" in markdown, markdown
+    assert "next_action_projection_warning: requires_state_writeback=False severity=info" in markdown, markdown
     assert "goal_frontier_projection: replan_required=False" in markdown, markdown
     assert "deferred_ready=0 acceptance_gaps=0" in markdown, markdown
     assert side_action in markdown, markdown
