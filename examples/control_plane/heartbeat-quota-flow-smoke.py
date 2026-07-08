@@ -1057,7 +1057,9 @@ def main() -> int:
             "external_monitor_observed_without_material_transition"
         ), poll
         assert poll["monitor_event"]["before"]["effective_action"] == "external_evidence_observe", poll
-        assert poll["after"]["effective_action"] == "external_evidence_observe", poll
+        assert poll["after"]["effective_action"] == "blocked_wait", poll
+        assert poll["after"]["should_run"] is False, poll
+        assert poll["after"]["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is True, poll
         assert count_spend_events(runtime) == 0, poll
         assert count_events(runtime, "quota_monitor_poll") == 1, poll
 

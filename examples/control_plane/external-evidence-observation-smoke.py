@@ -94,12 +94,19 @@ def advancement_todo() -> dict[str, Any]:
     )
 
 
+def unavailable_advancement_todo() -> dict[str, Any]:
+    item = advancement_todo()
+    item["required_capabilities"] = ["private_read"]
+    return item
+
+
 def status_payload(
     summary: dict[str, Any],
     *,
     status: str = "launched_polling_result",
     waiting_on: str = "codex",
     next_action: str = "Observe compact result marker for remote job handle.",
+    latest_runs: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return quota_status_payload(
         goal_id=GOAL_ID,
@@ -113,7 +120,7 @@ def status_payload(
             "primary_agent": "codex-main-control",
             "registered_agents": ["codex-main-control", AGENT_ID],
         },
-        latest_runs=[],
+        latest_runs=latest_runs or [],
         item_extra={"lifecycle_flags": ["launched polling result marker"]},
     )
 
@@ -150,6 +157,44 @@ def assert_monitor_only_launched_poll_requires_observation() -> None:
     assert guard["effective_action"] == "external_evidence_observe", guard
     assert guard["execution_obligation"]["kind"] == "external_evidence_observation_required", guard
     assert allows_no_spend_external_monitor_poll(guard) is True, guard
+
+
+def assert_recent_unchanged_observation_quiets_external_monitor() -> None:
+    summary = agent_todos(
+        [
+            monitor_todo(next_due_at=FUTURE_DUE_AT),
+            unavailable_advancement_todo(),
+        ]
+    )
+    guard = build_quota_should_run(
+        status_payload(
+            summary,
+            latest_runs=[
+                {
+                    "classification": "quota_slot_spent",
+                    "agent_id": AGENT_ID,
+                    "recommended_action": "wait quietly for material monitor evidence",
+                },
+                {
+                    "classification": "quota_monitor_poll",
+                    "agent_id": AGENT_ID,
+                    "delivery_outcome": "surface_only",
+                    "health_check": "external monitor observation unchanged; no quota spend; no material transition",
+                },
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+    )
+    assert guard["decision"] == "skip", guard
+    assert guard["should_run"] is False, guard
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert "external_evidence_observation" not in guard, guard
+    assert guard["external_evidence_observation_recent"]["classification"] == "quota_monitor_poll", guard
+    interaction = guard["interaction_contract"]
+    assert interaction["mode"] == "monitor_quiet_skip", interaction
+    assert interaction["agent_channel"]["must_attempt"] is False, interaction
+    assert interaction["agent_channel"]["quiet_noop_allowed"] is True, interaction
 
 
 def assert_advancement_lane_keeps_external_monitor_as_context() -> None:
@@ -224,6 +269,7 @@ def assert_explicit_external_wait_builds_registry_obligation() -> None:
 
 def main() -> int:
     assert_monitor_only_launched_poll_requires_observation()
+    assert_recent_unchanged_observation_quiets_external_monitor()
     assert_advancement_lane_keeps_external_monitor_as_context()
     assert_future_scoped_monitor_does_not_fake_external_poll()
     assert_explicit_external_wait_builds_registry_obligation()

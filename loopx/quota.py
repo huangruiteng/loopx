@@ -72,6 +72,10 @@ from .control_plane.quota.monitor_poll import (
     record_quota_monitor_poll_for_decision,
     render_quota_monitor_poll_markdown,
 )
+from .control_plane.quota.recent_runs import (
+    goal_latest_runs as _goal_latest_runs,
+    recent_external_monitor_observation_unchanged as _recent_external_monitor_observation_unchanged,
+)
 from .control_plane.quota.markdown import (
     render_quota_markdown,
     render_quota_scheduler_ack_markdown,
@@ -1125,26 +1129,8 @@ def _quota_plan_items(plan: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _recent_reward_lessons(status_payload: dict[str, Any], *, goal_id: str) -> list[dict[str, Any]]:
-    run_history = (
-        status_payload.get("run_history")
-        if isinstance(status_payload.get("run_history"), dict)
-        else {}
-    )
-    goals = run_history.get("goals") if isinstance(run_history.get("goals"), list) else []
-    goal = next(
-        (
-            candidate
-            for candidate in goals
-            if isinstance(candidate, dict) and str(candidate.get("id") or "") == goal_id
-        ),
-        None,
-    )
-    if not isinstance(goal, dict):
-        return []
     lessons: list[dict[str, Any]] = []
-    for run in goal.get("latest_runs") or []:
-        if not isinstance(run, dict):
-            continue
+    for run in _goal_latest_runs(status_payload, goal_id=goal_id):
         reward = run.get("human_reward") if isinstance(run.get("human_reward"), dict) else {}
         lesson = reward.get("lesson") if isinstance(reward.get("lesson"), dict) else {}
         if not lesson:
@@ -1608,6 +1594,17 @@ def build_quota_should_run(
             agent_todo_summary=agent_todo_summary,
             work_lane_contract=work_lane_contract,
         )
+        external_evidence_observation_recent = None
+        if external_evidence_observation:
+            external_evidence_observation_recent = _recent_external_monitor_observation_unchanged(
+                status_payload,
+                goal_id=safe_goal_id,
+                agent_id=normalize_todo_claimed_by(agent_identity.get("agent_id"))
+                if isinstance(agent_identity, dict)
+                else None,
+            )
+            if external_evidence_observation_recent:
+                external_evidence_observation = None
         ready_deferred_resume_candidates: list[dict[str, Any]] = []
         if (
             isinstance(agent_identity, dict)
@@ -1935,6 +1932,8 @@ def build_quota_should_run(
             payload["capability_monitor_fallback"] = capability_monitor_fallback
         if external_evidence_observation:
             payload["external_evidence_observation"] = external_evidence_observation
+        if external_evidence_observation_recent:
+            payload["external_evidence_observation_recent"] = external_evidence_observation_recent
         control_plane = compact_control_plane_policy(item.get("control_plane"))
         if control_plane:
             payload["control_plane"] = control_plane
