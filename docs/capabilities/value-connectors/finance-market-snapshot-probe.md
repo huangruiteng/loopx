@@ -78,9 +78,31 @@ Forbidden in this probe:
 
 ## Recommended Next Slice
 
-The next slice is a value-discovery research packet, not a market quote canary.
-It should use public sources only to support or challenge a business-value
-thesis:
+The next slice is an industry catalyst discovery packet followed by a
+company-level value-discovery packet. It should use public sources only to
+surface candidate chains, test bottlenecks and catalysts, and then support or
+challenge a business-value thesis:
+
+```json
+{
+  "schema_version": "finance_industry_catalyst_discovery_packet_v0",
+  "connector_id": "finance_market_snapshot",
+  "research_stage": "industry_chain_discovery",
+  "trading_stage_out_of_scope": true,
+  "human_decision_owner": true,
+  "judgment_loop": "discover chain -> map bottlenecks -> test catalysts -> shortlist companies -> retrospective validation",
+  "candidate_industry_chains": ["AI data center power and liquid cooling"],
+  "bottleneck_map": ["rack power density", "thermal management", "grid connection"],
+  "catalyst_timeline": ["GPU rack roadmap", "hyperscaler capex", "liquid-cooling adoption"],
+  "retrospective_validation": {
+    "benchmark_chains": ["AI storage", "AI PCB"],
+    "pre_catalyst_cutoff": "date before the public price move",
+    "question": "Would this process have surfaced the chain before the breakout using only then-available public evidence?"
+  }
+}
+```
+
+The company-level packet shape remains:
 
 ```json
 {
@@ -104,11 +126,13 @@ thesis:
 
 The packet runs before any live adapter:
 
-1. start from a human-owned thesis or ask the user to provide one;
-2. identify value drivers before collecting sources;
-3. map industry-chain position and catalysts;
-4. include disconfirming evidence and missing evidence by default;
-5. fail closed to a user gate for Futu/OpenD, private portfolio, paid data,
+1. discover at most 2-3 candidate industry chains from public information;
+2. map bottlenecks, catalysts, industry ceiling, and company roles;
+3. run retrospective validation on known breakout chains such as AI storage and
+   AI PCB using only pre-breakout public evidence;
+4. only then promote companies into a research candidate pool;
+5. include disconfirming evidence and missing evidence by default;
+6. fail closed to a user gate for Futu/OpenD, private portfolio, paid data,
    trading, captcha, credential paths, or any request for advice.
 
 Public quote endpoints remain source-readiness probes only. Price, volume, and

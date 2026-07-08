@@ -177,6 +177,8 @@ def _source_profiles() -> list[dict[str, Any]]:
             route_type="public value discovery research profile",
             boundary="public_no_login",
             safe_uses=[
+                "discover at most 2-3 candidate industry chains before company-level work",
+                "retrospectively validate the process against known breakout chains such as AI storage and AI PCB",
                 "help a person build domain judgment through repeated thesis and evidence updates",
                 "turn a human-owned finance thesis into a falsifiable value-discovery packet",
                 "map value drivers, industry-chain position, catalysts, and mispricing hypotheses",
@@ -184,12 +186,13 @@ def _source_profiles() -> list[dict[str, Any]]:
                 "surface a user gate before credentials, paid feeds, trading, or portfolio reads",
             ],
             commands=[
-                "loopx value-connectors plan --connector-id finance_market_snapshot --connector-kind custom_connector --channel 'public finance value discovery' --stage observe --target-ref '<company or industry thesis>' --external-read --money-metric '<research or decision-support value>' --success-metric '<value drivers, catalyst chain, disconfirming evidence, missing evidence, and verification window>' --kill-condition '<price-action thesis, stale source, paid gate, credential need, or trading intent>' --format json",
+                "loopx value-connectors plan --connector-id finance_market_snapshot --connector-kind custom_connector --channel 'public finance industry catalyst discovery' --stage observe --target-ref '<candidate industry chain>' --external-read --money-metric '<research or decision-support value>' --success-metric '<candidate chains, bottleneck map, catalyst timeline, retrospective validation, and research-pool next steps>' --kill-condition '<cannot pass pre-catalyst validation, price-action thesis, stale source, paid gate, credential need, or trading intent>' --format json",
             ],
-            evidence_schema="finance_value_discovery_research_packet_v0",
+            evidence_schema="finance_industry_catalyst_discovery_packet_v0",
             maturity_hint="Optimize for judgment iteration: public sources should help update a business-value thesis, not compete on information speed or price-action signals.",
             stop_conditions=[
                 "request needs account credentials, AK/SK, portfolio data, paid provider data, or trading action",
+                "the process cannot be checked against pre-breakout storage or PCB evidence",
                 "the thesis depends on price action, volume, or momentum instead of business value",
                 "user asks for investment advice instead of source-backed value discovery",
             ],

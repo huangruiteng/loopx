@@ -78,6 +78,7 @@ loopx value-connectors plan \
 | `github_public_reply_monitor_packet_v0` | Starter connector output for public maintainer reply detection after a LoopX comment. |
 | `finance_market_snapshot_profile_v0` | Candidate profile for public finance value-discovery research with source, uncertainty, and no-investment-advice gates. |
 | `finance_market_snapshot_probe_packet_v0` | No-credential public-source probe packet for Eastmoney/Futu/GitHub OSS source readiness, gates, and fallback decisions. |
+| `finance_industry_catalyst_discovery_packet_v0` | Research-stage packet for discovering candidate industry chains, mapping bottlenecks and catalysts, and validating the method against pre-breakout benchmark chains. |
 | `finance_value_discovery_research_packet_v0` | Human-owned finance research packet with thesis, value drivers, industry-chain position, mispricing hypothesis, disconfirming evidence, missing evidence, and a verification window. |
 | `value_connector_install_check_packet_v0` | Local install/use checklist for connector starters. |
 
@@ -126,8 +127,14 @@ disconfirming facts, recording missing evidence, and updating what would change
 their view. It is not meant to compete with professional investors on resource
 access or information speed.
 
+The research stage and trading stage are separate. This profile covers research:
+industry-chain discovery, chain analysis, company mapping, and research-pool
+management. Technical timing, market environment, and trade triggers belong to
+a later trading-stage profile and are out of scope here.
+
 Supported research intents:
 
+- discovering the next candidate industry chain before company-level analysis;
 - company value-discovery thesis review from public business facts;
 - industry-chain position and catalyst mapping;
 - market-mispricing hypotheses grounded in business quality, cash generation,
@@ -149,6 +156,19 @@ Every finance value-discovery packet should project:
 - `missing_evidence` instead of silent fallback filling;
 - `verification_window` for future facts that should update judgment;
 - non-investment-advice disclaimer.
+
+Every industry catalyst discovery packet should project:
+
+- `research_stage=industry_chain_discovery`;
+- `trading_stage_out_of_scope=true`;
+- `candidate_industry_chains`;
+- bottleneck map and catalyst timeline;
+- chain-level source evidence available before company selection;
+- company-mapping requirements, but not final buy/sell points;
+- `retrospective_validation` using benchmark chains such as AI storage and AI
+  PCB with a `pre_catalyst_cutoff`;
+- a pass/fail question: would the process have surfaced the chain before the
+  breakout using only then-available public evidence?
 
 Market quotes, volume, and short-term moves are out of scope for this profile.
 They must not become the thesis, success metric, or promotion target.

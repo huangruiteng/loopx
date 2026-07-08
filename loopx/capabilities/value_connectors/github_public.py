@@ -622,7 +622,8 @@ def build_value_connector_install_check_packet(
             "status": "value_discovery_profile",
             "install": [
                 "Use `loopx value-connectors source-map --connector finance_market_snapshot --format json` for the boundary packet.",
-                "Plan finance research as human-owned value-discovery packets, not price-action analysis or trading actions.",
+                "Plan finance research as industry-catalyst and value-discovery packets, not price-action analysis or trading actions.",
+                "Validate the discovery method against known breakout chains such as AI storage and AI PCB before trusting new chain ideas.",
                 "Require thesis, value drivers, catalyst chain, disconfirming evidence, missing evidence, and a verification window.",
                 "Stop for credentials, AK/SK, paid feeds, private portfolio data, or trading intent.",
             ],

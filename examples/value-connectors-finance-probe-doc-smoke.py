@@ -20,8 +20,16 @@ def main() -> int:
     required = [
         "finance_market_snapshot_probe_packet_v0",
         "finance_value_discovery_research_packet_v0",
+        "finance_industry_catalyst_discovery_packet_v0",
         "human_decision_owner",
         "judgment_loop",
+        "research_stage",
+        "trading_stage_out_of_scope",
+        "retrospective_validation",
+        "pre_catalyst_cutoff",
+        "candidate_industry_chains",
+        "bottleneck_map",
+        "catalyst_timeline",
         "value_drivers",
         "industry_chain_position",
         "mispricing_hypothesis",
@@ -62,10 +70,13 @@ def main() -> int:
     assert "no-credential probe packet" in readme
     assert "value discovery" in readme.lower()
     assert "judgment building" in readme.lower()
+    assert "industry catalyst discovery" in readme.lower()
+    assert "retrospective validation" in readme.lower()
     assert "quotes, volume, and short-term moves are out of scope" in readme
     assert "finance-market-snapshot --symbol" not in readme
     assert "finance_market_snapshot_probe_packet_v0" in protocol
     assert "finance_value_discovery_research_packet_v0" in protocol
+    assert "finance_industry_catalyst_discovery_packet_v0" in protocol
 
     print("value-connectors-finance-probe-doc-smoke: ok")
     return 0

@@ -174,6 +174,7 @@ record what changed in their judgment.
 
 The profile is useful when the user asks for:
 
+- a next-industry-chain discovery pass before company-level work;
 - a company value-discovery thesis from public business facts;
 - an industry-chain catalyst map and where the company sits in that chain;
 - a market-mispricing hypothesis that explains what the market may be missing;
@@ -205,6 +206,31 @@ The core packet shape is `finance_value_discovery_research_packet_v0`:
 }
 ```
 
+The upstream industry catalyst discovery packet is
+`finance_industry_catalyst_discovery_packet_v0`:
+
+```json
+{
+  "schema_version": "finance_industry_catalyst_discovery_packet_v0",
+  "connector_id": "finance_market_snapshot",
+  "research_stage": "industry_chain_discovery",
+  "trading_stage_out_of_scope": true,
+  "human_decision_owner": true,
+  "judgment_loop": "discover chain -> map bottlenecks -> test catalysts -> shortlist companies -> retrospective validation",
+  "candidate_industry_chains": ["AI data center power and liquid cooling"],
+  "selection_reason": "public evidence suggests AI infrastructure deployment is constrained by power and cooling bottlenecks",
+  "bottleneck_map": ["rack power density", "thermal management", "grid connection", "deployment lead time"],
+  "catalyst_timeline": ["GPU rack roadmap", "hyperscaler capex", "liquid-cooling adoption", "power architecture standardization"],
+  "company_mapping_required": true,
+  "candidate_pool_rules": ["research pool first", "trade pool only after separate trading-stage review"],
+  "retrospective_validation": {
+    "benchmark_chains": ["AI storage", "AI PCB"],
+    "pre_catalyst_cutoff": "date before the public price move",
+    "question": "Would this process have surfaced the chain before the breakout using only then-available public evidence?"
+  }
+}
+```
+
 Source connectors remain supporting tools. Public filings, company reports,
 industry research excerpts, announcements, news, and public datasets can feed
 the packet when their source, timestamp, and uncertainty are visible. Market
@@ -217,6 +243,7 @@ Safe user prompts:
 /loopx 基于公开资料为腾讯做一个价值发现 packet：业务质量、产业链位置、潜在误定价、反证和验证窗口；不要给投资建议。
 /loopx 把“AI 云需求可能重估阿里长期价值”拆成 thesis、value drivers、evidence_for、disconfirming_evidence 和 missing_evidence。
 /loopx 对一个行业链条做价值发现：谁捕获价值、哪些催化改变利润池、哪些事实能推翻这个 thesis。
+/loopx 用研究阶段方法找下一条类似存储、PCB 的产业链机会，并用爆发前公开资料回测这套方法是否能提前发现。
 ```
 
 Boundaries:
