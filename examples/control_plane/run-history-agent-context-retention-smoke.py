@@ -127,6 +127,54 @@ def main() -> None:
         )
         assert vision and vision["agent_id"] == SIDE_AGENT, vision
         assert "global run window" in vision["vision_patch"]["replan_trigger_summary"], vision
+    with tempfile.TemporaryDirectory(prefix="loopx-agent-context-retired-") as raw_tmp:
+        registry_path, runtime = write_fixture(Path(raw_tmp))
+        runs_dir = runtime / "goals" / GOAL_ID / "runs"
+        with (runs_dir / "index.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "generated_at": "2026-07-06T00:07:00+00:00",
+                        "goal_id": GOAL_ID,
+                        "classification": "state_refreshed",
+                        "agent_id": SIDE_AGENT,
+                        "recommended_action": "retire side vision",
+                        "json_path": str(runs_dir / "retired-side-vision.json"),
+                        "markdown_path": str(runs_dir / "retired-side-vision.md"),
+                        "vision_checkpoint": {
+                            "schema_version": "vision_checkpoint_v0",
+                            "agent_id": SIDE_AGENT,
+                            "required": True,
+                            "satisfied": True,
+                            "decision": "retired_or_superseded",
+                        },
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+        history = collect_history(
+            registry_path=registry_path,
+            runtime_root=runtime,
+            goal_id=GOAL_ID,
+            limit=3,
+        )
+        latest_runs = history["goals"][0]["latest_runs"]
+        assert [run["recommended_action"] for run in latest_runs[:3]] == [
+            "retire side vision",
+            "latest main",
+            "latest product",
+        ], latest_runs
+        assert not any(
+            run.get("agent_id") == SIDE_AGENT and run.get("agent_vision")
+            for run in latest_runs
+        ), latest_runs
+        vision = latest_agent_vision_from_status_payload(
+            {"run_history": {"goals": history["goals"]}},
+            goal_id=GOAL_ID,
+            agent_id=SIDE_AGENT,
+        )
+        assert vision is None, vision
     print("run-history-agent-context-retention-smoke ok")
 
 
