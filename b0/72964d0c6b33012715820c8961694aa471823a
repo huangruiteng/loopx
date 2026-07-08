@@ -1,0 +1,23 @@
+examples/control_plane/heartbeat-prompt-smoke.py
+  s_e3f612788718c1::t_ff724a1834fff0 14-27,29
+examples/control_plane/heartbeat_prompt_fixtures.py
+  s_e3f612788718c1::t_46a851112d576e 1-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b072964d0c6b33012715820c8961694aa471823a",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
