@@ -80,6 +80,9 @@ def main() -> int:
     launcher_source = (ROOT / "loopx/visible_multi_agent_launcher.py").read_text(
         encoding="utf-8"
     )
+    tmux_source = (ROOT / "loopx/visible_multi_agent_tmux.py").read_text(
+        encoding="utf-8"
+    )
     contract_source = (ROOT / "loopx/capabilities/multi_agent/contract.py").read_text(
         encoding="utf-8"
     )
@@ -155,12 +158,17 @@ def main() -> int:
     assert "LOOPX_CODEX_REASONING_EFFORT" in launcher_source
     assert "export BOOTSTRAP_PROMPT" in launcher_source
     assert "VISIBLE_PROMPT_ARTIFACT" in launcher_source
-    assert "pane_input_ready_verified" in launcher_source
-    assert "tmux_paste_buffer_after_codex_tui_first_turn_ready" in launcher_source
-    assert "prompt_submit_checks" in launcher_source
+    assert "pane_input_ready_verified" in tmux_source
+    assert "tmux_paste_buffer_after_codex_tui_first_turn_ready" in tmux_source
+    assert "prompt_submit_checks" in tmux_source
     assert "TMUX_LANE_ID_OPTION" in launcher_source
+    assert "TMUX_LANE_ID_OPTION" in tmux_source
     assert '"list-panes", "-s", "-t", session' in launcher_source
+    assert '"list-panes"' in tmux_source
+    assert '"-s"' in tmux_source and '"-t"' in tmux_source
+    assert "#{{pane_id}}" in tmux_source and "TMUX_LANE_ID_OPTION" in tmux_source
     assert '"list-panes", "-a", "-t", session' not in launcher_source
+    assert '"list-panes", "-a", "-t", session' not in tmux_source
     assert '"set-option", "-p", "-t", pane_id, TMUX_LANE_ID_OPTION, lane_id' in launcher_source
     assert "_persist_codex_workspace_trust" in launcher_source
     assert "rev-parse\", \"--show-toplevel" in runtime_source
