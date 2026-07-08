@@ -193,7 +193,8 @@ from .control_plane.runtime.run_history import (
 )
 from .control_plane.runtime.event_ledger import (
     EVENT_LEDGER_CLASSES,
-    blank_event_class_counts as _blank_event_class_counts_read_model,
+    blank_event_class_counts,
+    blank_event_ledger_goal,
     event_ledger_event_class as _event_ledger_event_class_read_model,
 )
 from .control_plane.runtime.decision_freshness import (
@@ -490,10 +491,6 @@ def decision_event_kinds(run: dict[str, Any]) -> list[str]:
         decision_classifications=EVENT_LEDGER_DECISION_CLASSIFICATIONS,
         classification_prefixes=DECISION_FRESHNESS_CLASSIFICATION_PREFIXES,
     )
-
-
-def blank_event_class_counts() -> dict[str, int]:
-    return _blank_event_class_counts_read_model(EVENT_LEDGER_CLASSES)
 
 
 def event_ledger_event_class(run: dict[str, Any]) -> str:
