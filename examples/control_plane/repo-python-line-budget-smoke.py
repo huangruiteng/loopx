@@ -52,7 +52,6 @@ LEGACY_OVERSIZED_LIMITS = {
     "examples/skillsbench-app-server-goal-worker-smoke.py": 3119,
     "examples/skillsbench-benchmark-run-smoke.py": 14821,
     "examples/skillsbench-host-local-launch-plan-smoke.py": 2373,
-    "examples/control_plane/status-markdown-smoke.py": 2304,
     "examples/terminal-bench-harbor-runner-ingest-smoke.py": 2759,
     "examples/terminal-bench-private-runner-env-guard-smoke.py": 2619,
     "loopx/benchmark.py": 2875,
