@@ -72,6 +72,7 @@ def run_cli(
     vision_path: Path | None = None,
     inline_vision_args: list[str] | None = None,
     check: bool,
+    extra_args: list[str] | None = None,
     dry_run: bool = True,
     include_agent_id: bool = True,
 ) -> subprocess.CompletedProcess[str]:
@@ -103,6 +104,8 @@ def run_cli(
         command.extend(["--agent-vision-json", str(vision_path)])
     if inline_vision_args:
         command.extend(inline_vision_args)
+    if extra_args:
+        command.extend(extra_args)
     if dry_run:
         command.append("--dry-run")
     return subprocess.run(
@@ -307,6 +310,40 @@ def main() -> int:
         mixed = payload(mixed_result)
         assert "--agent-vision-json cannot be combined" in mixed["error"], mixed
 
+        long_todo_delta = (
+            "create a successor todo that references the public research frontier, "
+            "acceptance gap, validation check, owner handoff, and next compact action"
+        )
+        long_todo_result = run_cli(
+            registry_path,
+            runtime,
+            inline_vision_args=[
+                "--vision-summary",
+                "Keep the next research frontier bounded and public-safe.",
+                "--vision-todo-delta",
+                long_todo_delta,
+            ],
+            check=False,
+        )
+        assert long_todo_result.returncode == 1, long_todo_result
+        long_todo = payload(long_todo_result)
+        assert "vision_budget_exceeded" in long_todo["error"], long_todo
+        assert "todo_delta uses" in long_todo["error"], long_todo
+        assert "limit is 80" in long_todo["error"], long_todo
+        assert "suggested compact value" in long_todo["error"], long_todo
+
+        private_next_action_result = run_cli(
+            registry_path,
+            runtime,
+            extra_args=["--next-action", "/Users/example/private/raw-task-note"],
+            check=False,
+        )
+        assert private_next_action_result.returncode == 1, private_next_action_result
+        private_next_action = payload(private_next_action_result)
+        assert "active_state_next_action" in private_next_action["error"], private_next_action
+        assert "public-safe action alias" in private_next_action["error"], private_next_action
+        assert "evidence/private payloads" in private_next_action["error"], private_next_action
+
         write_json(
             invalid_path,
             {
@@ -326,6 +363,7 @@ def main() -> int:
         assert invalid["ok"] is False, invalid
         assert "vision_budget_exceeded" in invalid["error"], invalid
         assert "vision_summary" in invalid["error"], invalid
+        assert "suggested compact value" in invalid["error"], invalid
 
     print("goal-vision-refresh-state-budget-smoke ok")
     return 0

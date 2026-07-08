@@ -14,6 +14,14 @@ class DeliveryBatchScale(str, Enum):
 
 
 DELIVERY_BATCH_SCALE_CHOICES = tuple(scale.value for scale in DeliveryBatchScale)
+DELIVERY_BATCH_SCALE_ALIASES: dict[str, DeliveryBatchScale] = {
+    "single_segment": DeliveryBatchScale.SINGLE_SURFACE,
+    "bounded_segment": DeliveryBatchScale.SINGLE_SURFACE,
+}
+DELIVERY_BATCH_SCALE_INPUT_CHOICES = (
+    *DELIVERY_BATCH_SCALE_CHOICES,
+    *DELIVERY_BATCH_SCALE_ALIASES.keys(),
+)
 SMALL_DELIVERY_BATCH_SCALES = frozenset(
     {
         DeliveryBatchScale.TEST_ONLY,
@@ -29,6 +37,9 @@ def normalize_delivery_batch_scale(value: Any) -> DeliveryBatchScale | None:
     text = str(value or "").strip()
     if not text:
         return None
+    alias = DELIVERY_BATCH_SCALE_ALIASES.get(text)
+    if alias:
+        return alias
     try:
         return DeliveryBatchScale(text)
     except ValueError:
@@ -38,7 +49,15 @@ def normalize_delivery_batch_scale(value: Any) -> DeliveryBatchScale | None:
 def require_delivery_batch_scale(value: Any) -> DeliveryBatchScale:
     scale = normalize_delivery_batch_scale(value)
     if scale is None:
-        raise ValueError("delivery_batch_scale must be one of: " + ", ".join(DELIVERY_BATCH_SCALE_CHOICES))
+        aliases = ", ".join(
+            f"{alias}={target.value}"
+            for alias, target in DELIVERY_BATCH_SCALE_ALIASES.items()
+        )
+        raise ValueError(
+            "delivery_batch_scale must be one of: "
+            + ", ".join(DELIVERY_BATCH_SCALE_CHOICES)
+            + f" (aliases: {aliases})"
+        )
     return scale
 
 

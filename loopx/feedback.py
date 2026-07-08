@@ -59,6 +59,29 @@ RUN_OVERLAY_FIELDS = (
 )
 
 
+def public_safe_text_guidance(label: str) -> str:
+    normalized = label.lower().replace("-", "_")
+    if "next_action" in normalized or "recommended_action" in normalized:
+        return (
+            "use a public-safe action alias or short summary here; keep raw local "
+            "paths, private URLs, task bodies, and logs in evidence/private payloads"
+        )
+    if "todo" in normalized:
+        return (
+            "use a compact public-safe todo alias or summary here; keep raw local "
+            "paths, private URLs, task bodies, and logs in evidence/private payloads"
+        )
+    if "evidence" in normalized:
+        return (
+            "use a compact public-safe evidence pointer here; keep raw logs, local "
+            "paths, and private URLs in private payloads"
+        )
+    return (
+        "use a public-safe summary or alias here; keep raw local paths, private "
+        "URLs, and raw evidence in private payloads"
+    )
+
+
 def now_utc() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -72,7 +95,10 @@ def validate_public_safe_text(label: str, value: str | None) -> None:
         return
     for pattern in PRIVATE_TEXT_PATTERNS:
         if pattern.search(value):
-            raise ValueError(f"{label} contains a private-looking value; keep raw evidence in private payloads")
+            raise ValueError(
+                f"{label} contains a private-looking value; "
+                + public_safe_text_guidance(label)
+            )
 
 
 def validate_local_control_text(label: str, value: str | None) -> None:

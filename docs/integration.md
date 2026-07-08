@@ -445,6 +445,10 @@ When `--recommended-action` is omitted, the command derives the compact action
 from the first public-safe item in the active state's `## Next Action`, joining
 wrapped continuation lines and falling back to a generic refresh action if that
 item contains private-looking content.
+If a `refresh-state` text field is rejected as private-looking, the CLI names
+the field and suggests using a compact public-safe alias/summary there while
+keeping raw local paths, private URLs, task bodies, and logs in evidence or
+private payloads.
 When the state refresh is also the compact record for a validated progress
 artifact, add explicit delivery hints so handoff readiness does not have to
 infer scale from a classification name:
@@ -458,8 +462,10 @@ loopx refresh-state \
 ```
 
 Use `--delivery-batch-scale` for `test_only`, `single_surface`,
-`multi_surface`, or `implementation`. `--delivery-outcome` is a structured enum,
-not a classification string:
+`multi_surface`, or `implementation`. For agent-facing `refresh-state` calls,
+`single_segment` and `bounded_segment` are accepted as input aliases for
+`single_surface`; the recorded run still stores the canonical `single_surface`
+value. `--delivery-outcome` is a structured enum, not a classification string:
 
 | Value | Meaning |
 | --- | --- |

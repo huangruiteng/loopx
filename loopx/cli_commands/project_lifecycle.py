@@ -5,7 +5,9 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 
-from ..control_plane.work_items.delivery_batch_scale import DELIVERY_BATCH_SCALE_CHOICES
+from ..control_plane.work_items.delivery_batch_scale import (
+    DELIVERY_BATCH_SCALE_INPUT_CHOICES,
+)
 from ..control_plane.work_items.delivery_outcome import DELIVERY_OUTCOME_CHOICES
 from ..feedback import LESSON_KINDS, append_human_reward, compact_reward, render_reward_markdown
 from ..operator_gate import (
@@ -118,8 +120,12 @@ def register_project_lifecycle_commands(
     )
     refresh_state_parser.add_argument(
         "--delivery-batch-scale",
-        choices=DELIVERY_BATCH_SCALE_CHOICES,
-        help="Optional explicit delivery scale for this refresh run, overriding classification-name inference.",
+        choices=DELIVERY_BATCH_SCALE_INPUT_CHOICES,
+        help=(
+            "Optional explicit delivery scale for this refresh run, overriding "
+            "classification-name inference. Accepts canonical scales plus "
+            "single_segment/bounded_segment aliases for single_surface."
+        ),
     )
     refresh_state_parser.add_argument(
         "--delivery-outcome",

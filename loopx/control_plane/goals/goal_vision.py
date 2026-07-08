@@ -27,20 +27,44 @@ GOAL_VISION_BUDGET_COMPACT_FIELDS = (
 
 
 class GoalVisionBudgetError(ValueError):
-    def __init__(self, *, field: str, used: int, limit: int) -> None:
+    def __init__(
+        self,
+        *,
+        field: str,
+        used: int,
+        limit: int,
+        suggestion: str | None = None,
+    ) -> None:
         self.field = field
         self.used = used
         self.limit = limit
-        super().__init__(
-            f"{GOAL_VISION_BUDGET_ERROR}: {field} uses {used} chars; limit is {limit}"
-        )
+        self.suggestion = suggestion
+        message = f"{GOAL_VISION_BUDGET_ERROR}: {field} uses {used} chars; limit is {limit}"
+        if suggestion:
+            message += f"; suggested compact value: {suggestion!r}"
+        else:
+            message += "; shorten one or more vision fields before retrying"
+        super().__init__(message)
+
+
+def _suggest_compact_text(text: str, *, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    if limit <= 3:
+        return text[:limit]
+    return text[: limit - 3].rstrip() + "..."
 
 
 def _bounded_public_text(*, field: str, value: Any, limit: int) -> str:
     text = " ".join(str(value or "").strip().split())
     validate_public_safe_text(f"agent_vision.{field}", text)
     if len(text) > limit:
-        raise GoalVisionBudgetError(field=field, used=len(text), limit=limit)
+        raise GoalVisionBudgetError(
+            field=field,
+            used=len(text),
+            limit=limit,
+            suggestion=_suggest_compact_text(text, limit=limit),
+        )
     return text
 
 

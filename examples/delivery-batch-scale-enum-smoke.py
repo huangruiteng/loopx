@@ -15,10 +15,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.control_plane.work_items.delivery_batch_scale import (  # noqa: E402
+    DELIVERY_BATCH_SCALE_ALIASES,
     DELIVERY_BATCH_SCALE_CHOICES,
+    DELIVERY_BATCH_SCALE_INPUT_CHOICES,
     SMALL_DELIVERY_BATCH_SCALES,
     UNKNOWN_DELIVERY_BATCH_SCALE,
     DeliveryBatchScale,
+    delivery_batch_scale_value,
     normalize_delivery_batch_scale,
     require_delivery_batch_scale,
 )
@@ -80,7 +83,19 @@ def assert_enum_sets() -> None:
         "multi_surface",
         "implementation",
     )
+    assert DELIVERY_BATCH_SCALE_ALIASES == {
+        "single_segment": DeliveryBatchScale.SINGLE_SURFACE,
+        "bounded_segment": DeliveryBatchScale.SINGLE_SURFACE,
+    }
+    assert set(DELIVERY_BATCH_SCALE_INPUT_CHOICES) == {
+        *DELIVERY_BATCH_SCALE_CHOICES,
+        "single_segment",
+        "bounded_segment",
+    }
     assert require_delivery_batch_scale("multi_surface") == DeliveryBatchScale.MULTI_SURFACE
+    assert require_delivery_batch_scale("single_segment") == DeliveryBatchScale.SINGLE_SURFACE
+    assert normalize_delivery_batch_scale("bounded_segment") == DeliveryBatchScale.SINGLE_SURFACE
+    assert delivery_batch_scale_value("single_segment") == DeliveryBatchScale.SINGLE_SURFACE.value
     assert normalize_delivery_batch_scale("unknown") is None
     assert SMALL_DELIVERY_BATCH_SCALES == {
         DeliveryBatchScale.TEST_ONLY,
@@ -108,6 +123,20 @@ def assert_refresh_state_enforces_enum(registry_path: Path) -> None:
         sync_global=False,
     )
     assert payload["delivery_batch_scale"] == DeliveryBatchScale.IMPLEMENTATION.value, payload
+
+    alias_payload = refresh_state_run(
+        registry_path=registry_path,
+        runtime_root_override=None,
+        goal_id=GOAL_ID,
+        project=None,
+        state_file=None,
+        classification="enum_fixture_alias",
+        recommended_action="Advance one bounded implementation batch.",
+        delivery_batch_scale="bounded_segment",
+        dry_run=True,
+        sync_global=False,
+    )
+    assert alias_payload["delivery_batch_scale"] == DeliveryBatchScale.SINGLE_SURFACE.value, alias_payload
 
     try:
         refresh_state_run(
@@ -150,6 +179,31 @@ def assert_refresh_state_enforces_enum(registry_path: Path) -> None:
     )
     assert cli_result.returncode != 0, cli_result.stdout
     assert "invalid choice" in cli_result.stderr, cli_result.stderr
+
+    alias_cli_result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--registry",
+            str(registry_path),
+            "--format",
+            "json",
+            "refresh-state",
+            "--goal-id",
+            GOAL_ID,
+            "--delivery-batch-scale",
+            "single_segment",
+            "--dry-run",
+            "--no-global-sync",
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    alias_payload = json.loads(alias_cli_result.stdout)
+    assert alias_payload["delivery_batch_scale"] == DeliveryBatchScale.SINGLE_SURFACE.value, alias_payload
 
 
 def assert_history_enforces_enum(registry_path: Path) -> None:

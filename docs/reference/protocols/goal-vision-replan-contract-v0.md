@@ -45,8 +45,9 @@ agent pane. Long reasoning belongs in evidence artifacts or design docs.
 
 Required write-path behavior:
 
-1. Reject over-budget writes with `vision_budget_exceeded`, or require an
-   explicit compacting command before writeback.
+1. Reject over-budget writes with `vision_budget_exceeded`, including the
+   current character count, field limit, and a compact suggested replacement
+   when the offending field is known.
 2. Do not silently truncate fields; truncation hides control-plane intent.
 3. Store verbose rationale as evidence and reference it by id.
 4. Keep the latest bounded packet visible in status/quota so agents can reason
