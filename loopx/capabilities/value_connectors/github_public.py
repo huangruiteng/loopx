@@ -619,9 +619,10 @@ def build_value_connector_install_check_packet(
         },
         {
             "connector_id": "finance_market_snapshot",
-            "status": "probed_candidate",
+            "status": "dry_run_canary",
             "install": [
                 "Use `loopx value-connectors source-map --connector finance_market_snapshot --format json` for the boundary packet.",
+                "Run `loopx value-connectors finance-market-snapshot --symbol sh600519 --format json` for a dry-run public quote canary.",
                 "Plan finance information pulls as public/reference snapshots, not advice or trading actions.",
                 "Stop for credentials, AK/SK, paid feeds, private portfolio data, or trading intent.",
             ],

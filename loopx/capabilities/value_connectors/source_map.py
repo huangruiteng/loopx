@@ -173,19 +173,22 @@ def _source_profiles() -> list[dict[str, Any]]:
         ),
         _source_profile(
             connector_id="finance_market_snapshot",
-            status="probed_candidate_profile",
+            status="dry_run_canary",
             route_type="public market snapshot probe",
             boundary="public_no_login",
             safe_uses=[
+                "run a tiny dry-run Eastmoney quote canary for allowlisted symbols",
                 "plan finance information pulls as public/reference snapshots",
                 "compare public source availability such as official docs, public APIs, or OSS wrappers",
                 "surface a user gate before credentials, paid feeds, trading, or portfolio reads",
             ],
             commands=[
+                "loopx value-connectors finance-market-snapshot --symbol sh600519 --format json",
+                "loopx value-connectors finance-market-snapshot --symbol sz000001 --fetch-metadata --format json",
                 "loopx value-connectors plan --connector-id finance_market_snapshot --connector-kind custom_connector --channel 'public finance snapshot' --stage observe --target-ref '<market or symbol scope>' --external-read --money-metric '<research or decision-support value>' --success-metric '<fresh public snapshot with source warnings>' --kill-condition '<stale source, paid gate, credential need, or trading intent>' --format json",
             ],
-            evidence_schema="finance_market_snapshot_probe_v0",
-            maturity_hint="Treat market data as reference evidence, not financial advice; source freshness and license matter.",
+            evidence_schema="finance_market_snapshot_canary_packet_v0",
+            maturity_hint="Treat market data as reference evidence for human thesis review, not financial advice; source freshness and license matter.",
             stop_conditions=[
                 "request needs account credentials, AK/SK, portfolio data, paid provider data, or trading action",
                 "source freshness or license cannot be stated",

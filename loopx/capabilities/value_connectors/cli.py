@@ -14,6 +14,13 @@ from .github_public import (
     render_github_public_reply_monitor_markdown,
     render_value_connector_install_check_markdown,
 )
+from .finance_market import (
+    EASTMONEY_SOURCE_ID,
+    FINANCE_MARKET_SNAPSHOT_ERROR_SCHEMA_VERSION,
+    FINANCE_MARKET_SNAPSHOT_SOURCES,
+    build_finance_market_snapshot_packet,
+    render_finance_market_snapshot_markdown,
+)
 from .planner import (
     ALLOWED_CONNECTOR_KINDS,
     ALLOWED_STAGES,
@@ -177,6 +184,45 @@ def register_value_connector_commands(
         default=10.0,
         help="Network/tool timeout for --fetch-metadata.",
     )
+    finance_parser = sub.add_parser(
+        "finance-market-snapshot",
+        help="Build a dry-run-only public finance snapshot canary packet.",
+    )
+    add_subcommand_format(finance_parser)
+    finance_parser.add_argument(
+        "--symbol",
+        required=True,
+        help="Allowlisted market symbol such as sh600519 or sz000001.",
+    )
+    finance_parser.add_argument(
+        "--source",
+        choices=sorted(FINANCE_MARKET_SNAPSHOT_SOURCES),
+        default=EASTMONEY_SOURCE_ID,
+        help="Finance source boundary to use. Gated sources fail closed.",
+    )
+    finance_parser.add_argument(
+        "--metadata-json",
+        default=None,
+        help="Path to mocked Eastmoney quote JSON, or '-' for stdin. Raw/private keys stay gated.",
+    )
+    finance_parser.add_argument(
+        "--fetch-metadata",
+        action="store_true",
+        help="Perform the bounded public Eastmoney quote read for the allowlisted symbol.",
+    )
+    finance_parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=10.0,
+        help="Network timeout for --fetch-metadata.",
+    )
+    finance_parser.add_argument(
+        "--observed-at",
+        default="2026-07-08T00:00:00Z",
+        help="Public-safe observed_at timestamp for the canary packet.",
+    )
+    finance_parser.add_argument("--thesis-id", help="Optional human thesis id for review context.")
+    finance_parser.add_argument("--thesis", help="Optional human thesis text for review context.")
     reply_monitor_parser = sub.add_parser(
         "github-reply-monitor",
         help=(
@@ -263,6 +309,32 @@ def handle_value_connector_command(
                 render_github_public_channel_probe_markdown,
             )
             return 0 if payload.get("ok") else 1
+        if args.value_connectors_command == "finance-market-snapshot":
+            if args.fetch_metadata and args.metadata_json:
+                raise ValueError("--fetch-metadata cannot be combined with --metadata-json")
+            provider_payload = (
+                _load_json_object_or_array(args.metadata_json)
+                if args.metadata_json
+                else None
+            )
+            if provider_payload is not None and not isinstance(provider_payload, dict):
+                raise ValueError("--metadata-json must contain a JSON object")
+            payload = build_finance_market_snapshot_packet(
+                symbol=args.symbol,
+                source=args.source,
+                provider_payload=provider_payload,
+                fetch_metadata=args.fetch_metadata,
+                timeout_seconds=args.timeout_seconds,
+                observed_at=args.observed_at,
+                thesis_id=args.thesis_id,
+                thesis=args.thesis,
+            )
+            print_payload(
+                payload,
+                output_format(args),
+                render_finance_market_snapshot_markdown,
+            )
+            return 0 if payload.get("ok") else 1
         if args.value_connectors_command == "github-reply-monitor":
             if args.fetch_metadata and args.metadata_json:
                 raise ValueError("--fetch-metadata cannot be combined with --metadata-json")
@@ -284,7 +356,8 @@ def handle_value_connector_command(
         if args.value_connectors_command != "plan":
             raise ValueError(
                 "value-connectors requires `install-check`, `plan`, "
-                "`source-map`, `github-public-probe`, or `github-reply-monitor`"
+                "`source-map`, `github-public-probe`, `finance-market-snapshot`, "
+                "or `github-reply-monitor`"
             )
         if args.connector_id:
             missing = [
@@ -347,6 +420,21 @@ def handle_value_connector_command(
                 "external_writes_performed": False,
             }
             print_payload(payload, output_format(args), render_github_public_reply_monitor_markdown)
+            return 1
+        if getattr(args, "value_connectors_command", None) == "finance-market-snapshot":
+            payload = {
+                "ok": False,
+                "schema_version": FINANCE_MARKET_SNAPSHOT_ERROR_SCHEMA_VERSION,
+                "mode": "finance-market-snapshot-canary",
+                "error": str(exc),
+                "external_reads_performed": False,
+                "external_writes_performed": False,
+                "raw_provider_payload_recorded": False,
+                "private_source_content_read": False,
+                "non_investment_advice": True,
+                "autotrade_allowed": False,
+            }
+            print_payload(payload, output_format(args), render_finance_market_snapshot_markdown)
             return 1
         payload = {"ok": False, "schema_version": "value_connector_plan_error_v0", "error": str(exc)}
         print_payload(payload, output_format(args), render_value_connector_plan_markdown)
