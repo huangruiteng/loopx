@@ -9,12 +9,14 @@ from ..codex_cli_probe import (
     DEFAULT_CODEX_BIN,
     DEFAULT_EXECUTOR_TIMEOUT_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
-    build_codex_cli_local_scheduler_executor,
-    build_codex_cli_local_scheduler_tick,
     load_codex_cli_visible_session_proof_fixture,
     render_codex_cli_local_scheduler_executor_markdown,
     render_codex_cli_local_scheduler_tick_markdown,
     run_codex_cli_session_probe,
+)
+from ..codex_cli_scheduler import (
+    build_codex_cli_local_scheduler_executor,
+    build_codex_cli_local_scheduler_tick,
 )
 from .starter_runtime_idle import (
     _add_runtime_idle_observation_arguments,
