@@ -1,0 +1,25 @@
+examples/control_plane/status_markdown_agent_lane_fixtures.py
+  s_e3f612788718c1::t_6cddc7c06ef37d 13,92-101,117-126,156-160,189
+loopx/cli_commands/status.py
+  s_e3f612788718c1::t_aa4aa9c1724d57 562-575,608
+loopx/presentation/renderers/status_markdown.py
+  s_e3f612788718c1::t_172c206369ccff 540
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8c393a13e79daa78d0054ca8351fc5660b4e91a5",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
