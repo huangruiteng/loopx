@@ -14,6 +14,7 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.control_plane.work_items.autonomous_replan_obligation import (  # noqa: E402
     autonomous_replan_obligation_from_state as direct_autonomous_replan_obligation_from_state,
     build_autonomous_replan_obligation as direct_build_autonomous_replan_obligation,
+    build_autonomous_replan_obligation_payload,
 )
 from loopx.status import (  # noqa: E402
     AUTONOMOUS_REPLAN_SECTION_HEADINGS,
@@ -71,6 +72,57 @@ def assert_parity(evidence: list[dict[str, object]]) -> dict[str, object]:
     return wrapper
 
 
+def assert_payload_builder_contract() -> None:
+    payload = build_autonomous_replan_obligation_payload(
+        schema_version=AUTONOMOUS_REPLAN_SCHEMA_VERSION,
+        agent_id="codex-product-capability",
+        stall_threshold=1,
+        trigger_count=1,
+        triggers=[
+            {
+                "kind": "vision_acceptance_gap",
+                "section": "goal_frontier_projection.acceptance_gaps",
+                "text": "active agent vision remains open",
+            }
+        ],
+        guidance_actions=["create_successor", "record_no_followup"],
+        todo_actions=[
+            {
+                "action": "add",
+                "role": "agent",
+                "priority": "P1",
+                "text": "run a bounded vision-gap replan",
+            }
+        ],
+        stop_condition="stop at private material or owner-only decisions",
+        recommended_action="create a successor or record no-follow-up",
+        extra_fields={"source": "goal_frontier_projection"},
+    )
+
+    assert payload["schema_version"] == AUTONOMOUS_REPLAN_SCHEMA_VERSION, payload
+    assert payload["required"] is True, payload
+    assert payload["agent_id"] == "codex-product-capability", payload
+    assert payload["triggers"][0]["kind"] == "vision_acceptance_gap", payload
+    assert payload["guidance_actions"] == ["create_successor", "record_no_followup"], payload
+    assert payload["todo_actions"][0]["priority"] == "P1", payload
+    assert payload["source"] == "goal_frontier_projection", payload
+
+    unscoped_payload = build_autonomous_replan_obligation_payload(
+        schema_version=AUTONOMOUS_REPLAN_SCHEMA_VERSION,
+        agent_id=None,
+        include_agent_id=True,
+        stall_threshold=1,
+        trigger_count=1,
+        triggers=[],
+        guidance_actions=[],
+        todo_actions=[],
+        stop_condition="stop at owner-only decisions",
+        recommended_action="run a bounded replan",
+    )
+    assert "agent_id" in unscoped_payload, unscoped_payload
+    assert unscoped_payload["agent_id"] is None, unscoped_payload
+
+
 def direct_state_obligation() -> dict[str, object] | None:
     return direct_autonomous_replan_obligation_from_state(
         STATE_TEXT,
@@ -84,6 +136,8 @@ def direct_state_obligation() -> dict[str, object] | None:
 
 
 def main() -> int:
+    assert_payload_builder_contract()
+
     regular = assert_parity(
         [
             {

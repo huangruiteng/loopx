@@ -12,6 +12,9 @@ from ..work_items.autonomous_replan_ack import (
     autonomous_replan_ack_matches_agent,
     latest_autonomous_replan_ack_for_projection,
 )
+from ..work_items.autonomous_replan_obligation import (
+    build_autonomous_replan_obligation_payload,
+)
 from ..work_items.repair_delta import repair_delta_kinds_have_frontier_delta
 
 
@@ -963,19 +966,19 @@ def derive_goal_frontier_replan_obligation_from_summaries(
             }
             for item in succession_gap_items[:3]
         ]
-        return {
-            "schema_version": AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
-            "required": True,
-            "agent_id": agent_id,
-            "stall_threshold": 1,
-            "trigger_count": len(succession_gap_items),
-            "triggers": triggers,
-            "guidance_actions": [
+        return build_autonomous_replan_obligation_payload(
+            schema_version=AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
+            agent_id=agent_id,
+            include_agent_id=True,
+            stall_threshold=1,
+            trigger_count=len(succession_gap_items),
+            triggers=triggers,
+            guidance_actions=[
                 "create_successor",
                 "link_successor",
                 "record_no_followup",
             ],
-            "todo_actions": [
+            todo_actions=[
                 {
                     "action": "add",
                     "role": "agent",
@@ -987,27 +990,27 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                     ),
                 }
             ],
-            "stop_condition": (
+            stop_condition=(
                 "stop if the successor decision requires private material, "
                 "credentials, destructive git, production actions, or owner-only decisions"
             ),
-            "recommended_action": (
+            recommended_action=(
                 "run a bounded successor replan before another quiet poll: add/link "
                 "the next advancement todo, or record explicit no-follow-up"
             ),
-        }
+        )
     if (
         compact_acceptance_gaps
         and agent_counts.get("advancement", 0) == 0
         and total_frontier_advancement == 0
     ):
-        return {
-            "schema_version": AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
-            "required": True,
-            "agent_id": agent_id,
-            "stall_threshold": 1,
-            "trigger_count": len(compact_acceptance_gaps),
-            "triggers": [
+        return build_autonomous_replan_obligation_payload(
+            schema_version=AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
+            agent_id=agent_id,
+            include_agent_id=True,
+            stall_threshold=1,
+            trigger_count=len(compact_acceptance_gaps),
+            triggers=[
                 {
                     "kind": gap.get("kind") or VISION_ACCEPTANCE_GAP_TRIGGER,
                     "section": "goal_frontier_projection.acceptance_gaps",
@@ -1018,13 +1021,13 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                 }
                 for gap in compact_acceptance_gaps[:3]
             ],
-            "guidance_actions": [
+            guidance_actions=[
                 "create_successor",
                 "update_agent_vision",
                 "record_evidence_gap",
                 "record_no_followup",
             ],
-            "todo_actions": [
+            todo_actions=[
                 {
                     "action": "add",
                     "role": "agent",
@@ -1035,16 +1038,16 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                     ),
                 }
             ],
-            "stop_condition": (
+            stop_condition=(
                 "stop if the gap requires private material, credentials, destructive git, "
                 "production actions, or owner-only decisions"
             ),
-            "recommended_action": (
+            recommended_action=(
                 "run a bounded vision-gap replan before another quiet poll: create "
                 "successor work, update the agent vision, record evidence gap, or "
                 "record no-follow-up"
             ),
-        }
+        )
     long_chain_trigger = _long_todo_chain_trigger(
         agent_todo_summary=agent_todo_summary,
         agent_counts=agent_counts,
@@ -1054,13 +1057,13 @@ def derive_goal_frontier_replan_obligation_from_summaries(
     if long_chain_trigger and not autonomous_replan_ack_has_frontier_delta(
         latest_replan_ack
     ):
-        return {
-            "schema_version": AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
-            "required": True,
-            "agent_id": agent_id,
-            "stall_threshold": long_chain_trigger.get("threshold"),
-            "trigger_count": long_chain_trigger.get("trigger_count"),
-            "triggers": [
+        return build_autonomous_replan_obligation_payload(
+            schema_version=AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
+            agent_id=agent_id,
+            include_agent_id=True,
+            stall_threshold=long_chain_trigger.get("threshold"),
+            trigger_count=long_chain_trigger.get("trigger_count"),
+            triggers=[
                 {
                     "kind": LONG_TODO_CHAIN_TRIGGER,
                     "section": "agent_todo_summary",
@@ -1071,14 +1074,14 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                     **long_chain_trigger,
                 }
             ],
-            "guidance_actions": [
+            guidance_actions=[
                 "read_evidence_log",
                 "run_bounded_public_research_if_local_evidence_is_missing",
                 "group_or_prune_todo_chain",
                 "update_agent_vision",
                 "create_successor",
             ],
-            "todo_actions": [
+            todo_actions=[
                 {
                     "action": "add",
                     "role": "agent",
@@ -1090,16 +1093,16 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                     ),
                 }
             ],
-            "stop_condition": (
+            stop_condition=(
                 "stop if pruning or external research requires private material, "
                 "credentials, destructive git, production actions, or owner-only decisions"
             ),
-            "recommended_action": (
+            recommended_action=(
                 "run a bounded long-chain vision replan before continuing a 15+ "
                 "todo lane: read evidence, use public research if local evidence "
                 "is weak, group/prune work, and write a concrete todo or vision delta"
             ),
-        }
+        )
     if autonomous_replan_ack_has_frontier_delta(latest_replan_ack):
         return None
     if not _is_monitor_only_lane(work_lane_contract):
@@ -1110,12 +1113,11 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         return None
     future_schedule_present = _monitor_only_lane_has_future_schedule(agent_todo_summary)
 
-    return {
-        "schema_version": AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
-        "required": True,
-        "stall_threshold": 1,
-        "trigger_count": 1,
-        "triggers": [
+    return build_autonomous_replan_obligation_payload(
+        schema_version=AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
+        stall_threshold=1,
+        trigger_count=1,
+        triggers=[
             {
                 "kind": FRONTIER_EXHAUSTED_MONITOR_TRIGGER,
                 "section": "goal_frontier_projection",
@@ -1129,13 +1131,13 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                 "future_monitor_schedule_present": future_schedule_present,
             }
         ],
-        "guidance_actions": [
+        guidance_actions=[
             "create_successor",
             "supersede_monitor",
             "set_watch_expiry",
             "record_no_followup",
         ],
-        "todo_actions": [
+        todo_actions=[
             {
                 "action": "add",
                 "role": "agent",
@@ -1147,16 +1149,16 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                 ),
             }
         ],
-        "stop_condition": (
+        stop_condition=(
             "stop if the replan requires private material, credentials, destructive git, "
             "production actions, or owner-only decisions"
         ),
-        "recommended_action": (
+        recommended_action=(
             "run a bounded goal-frontier replan before another monitor-only quiet "
             "poll: create successor work, supersede the monitor lane, set an expiry, "
             "record watch-lane continuation, or record no-follow-up"
         ),
-    }
+    )
 
 
 def build_goal_frontier_projection_from_summaries(

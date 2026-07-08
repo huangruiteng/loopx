@@ -310,28 +310,27 @@ def build_autonomous_replan_obligation(
             "monitor-only or repeated action consumes the eligible turn"
         )
 
-    result = {
-        "schema_version": autonomous_replan_schema_version,
-        "required": True,
-        "stall_threshold": (
+    result = build_autonomous_replan_obligation_payload(
+        schema_version=autonomous_replan_schema_version,
+        stall_threshold=(
             dead_monitor_repeat_threshold
             if dead_monitor_evidence
             else autonomous_replan_stall_threshold
         ),
-        "trigger_count": len(evidence),
-        "triggers": evidence,
-        "guidance_actions": (
+        trigger_count=len(evidence),
+        triggers=evidence,
+        guidance_actions=(
             ["set_watch_expiry", "write_blocker", "supersede_monitor", "create_successor"]
             if dead_monitor_evidence
             else ["keep", "split", "add", "retire", "ask_decision"]
         ),
-        "todo_actions": todo_actions[:3],
-        "stop_condition": (
+        todo_actions=todo_actions[:3],
+        stop_condition=(
             "stop if the replan requires private material, credentials, destructive git, "
             "production actions, or owner-only decisions"
         ),
-        "recommended_action": recommended_action,
-    }
+        recommended_action=recommended_action,
+    )
     if dead_monitor_evidence:
         result["dead_monitor_detector"] = {
             "schema_version": dead_monitor_repeat_schema_version,
@@ -346,6 +345,38 @@ def build_autonomous_replan_obligation(
             ],
         }
     return result
+
+
+def build_autonomous_replan_obligation_payload(
+    *,
+    schema_version: str,
+    stall_threshold: int,
+    trigger_count: int,
+    triggers: list[dict[str, Any]],
+    guidance_actions: list[str],
+    todo_actions: list[dict[str, Any]],
+    stop_condition: str,
+    recommended_action: str,
+    agent_id: str | None = None,
+    include_agent_id: bool = False,
+    extra_fields: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schema_version": schema_version,
+        "required": True,
+        "stall_threshold": stall_threshold,
+        "trigger_count": trigger_count,
+        "triggers": triggers,
+        "guidance_actions": guidance_actions,
+        "todo_actions": todo_actions,
+        "stop_condition": stop_condition,
+        "recommended_action": recommended_action,
+    }
+    if include_agent_id or agent_id is not None:
+        payload["agent_id"] = agent_id
+    if extra_fields:
+        payload.update(extra_fields)
+    return payload
 
 
 def autonomous_replan_obligation_from_runs(
