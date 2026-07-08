@@ -328,10 +328,16 @@ A project adapter should be thin and project-specific. It may read:
 It should output:
 
 - `classification`,
-- exactly one `recommended_action`,
+- exactly one `recommended_action` for the local control loop,
 - relevant warnings,
 - hard guards,
 - optional run log paths.
+
+`recommended_action` is local project state, not a public artifact by default:
+it may include private project refs such as todo ids, branch names, local
+aliases, or operator-private routing labels. It must not include AK/SK values,
+tokens, auth headers, passwords, or inline credentials. Public/export sinks
+must redact or omit private routing refs before rendering shareable surfaces.
 
 By default it should be read-only. Launching jobs, stopping jobs, syncing docs,
 or editing production state requires explicit user approval.

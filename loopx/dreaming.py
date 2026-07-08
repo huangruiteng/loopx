@@ -5,7 +5,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from .feedback import validate_public_safe_text
+from .feedback import validate_local_control_text, validate_public_safe_text
 from .global_registry import sync_project_registry_to_global
 from .history import collect_history, load_registry, write_reserved_run_artifacts
 from .paths import resolve_runtime_root
@@ -489,7 +489,7 @@ def record_dreaming_proposal_decision(
     if claimed_by and decision == "approve":
         decision_payload["claimed_by"] = claimed_by
     recommended_action = _recommended_action_for_decision(decision, promoted_todo_id)
-    validate_public_safe_text("recommended_action", recommended_action)
+    validate_local_control_text("recommended_action", recommended_action)
     registry_goal = _registry_goal(registry, safe_goal_id)
     record = build_dreaming_decision_record(
         goal_id=safe_goal_id,

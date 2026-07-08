@@ -90,7 +90,9 @@ Required fields:
 - `state`: one of `running`, `waiting`, `blocked`, `monitoring`,
   `scope_wait`, `stale`, or `unknown`;
 - `current_todo`: a `todo_row_v0` object or `null`;
-- `next_action`: compact public-safe next action text;
+- `next_action`: compact local-control next action text. Private project refs
+  are allowed; inline credentials are not. Shareable sinks must redact private
+  refs before export;
 - `last_activity_at`: best known status, quota, todo, or run timestamp;
 - `evidence_refs`: compact evidence ids, doc paths, run ids, or review packet
   refs.

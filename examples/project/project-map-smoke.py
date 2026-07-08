@@ -137,6 +137,44 @@ def main() -> int:
         assert before["opt_in_required"] is True, before
         assert "planned_adapter_requires_controller_opt_in" in before["residual_risks"], before
 
+        local_action = "/Users/example/private/project-next-action"
+        local_gate = json.loads(
+            run_cli(
+                root,
+                registry_path,
+                "operator-gate",
+                "--goal-id",
+                GOAL_ID,
+                "--decision",
+                "defer",
+                "--reason-summary",
+                "暂缓，只测试 local-control routing text.",
+                "--recommended-action",
+                local_action,
+                "--dry-run",
+            ).stdout
+        )
+        assert local_gate["recommended_action"] == local_action, local_gate
+
+        secret_action = "Continue with access_" + "key=" + "AKIA" + "1234567890ABCDEF"
+        secret_gate = run_cli(
+            root,
+            registry_path,
+            "operator-gate",
+            "--goal-id",
+            GOAL_ID,
+            "--decision",
+            "defer",
+            "--reason-summary",
+            "暂缓，只测试敏感值拦截.",
+            "--recommended-action",
+            secret_action,
+            "--dry-run",
+            check=False,
+        )
+        assert secret_gate.returncode != 0, secret_gate.stdout
+        assert "recommended_action contains a secret-looking value" in secret_gate.stdout, secret_gate.stdout
+
         run_cli(
             root,
             registry_path,
@@ -167,6 +205,33 @@ def main() -> int:
         assert project_map["project_material_owner_review_required_count"] == 1, project_map
         assert project_map["project_material_stale_count"] == 1, project_map
         assert project_map["project_material_current_authority_count"] == 1, project_map
+
+        local_map = json.loads(
+            run_cli(
+                root,
+                registry_path,
+                "read-only-map",
+                "--goal-id",
+                GOAL_ID,
+                "--recommended-action",
+                local_action,
+                "--dry-run",
+            ).stdout
+        )
+        assert local_map["recommended_action"] == local_action, local_map
+        secret_map = run_cli(
+            root,
+            registry_path,
+            "read-only-map",
+            "--goal-id",
+            GOAL_ID,
+            "--recommended-action",
+            secret_action,
+            "--dry-run",
+            check=False,
+        )
+        assert secret_map.returncode != 0, secret_map.stdout
+        assert "recommended_action contains a secret-looking value" in secret_map.stdout, secret_map.stdout
 
         real_map = run_cli(root, registry_path, "read-only-map", "--goal-id", GOAL_ID, check=False)
         assert real_map.returncode != 0, real_map.stdout

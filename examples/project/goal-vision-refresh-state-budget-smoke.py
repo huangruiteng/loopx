@@ -332,17 +332,44 @@ def main() -> int:
         assert "limit is 80" in long_todo["error"], long_todo
         assert "suggested compact value" in long_todo["error"], long_todo
 
-        private_next_action_result = run_cli(
+        local_next_action = "/Users/example/private/raw-task-note"
+        private_next_action_result = payload(
+            run_cli(
+                registry_path,
+                runtime,
+                extra_args=[
+                    "--next-action",
+                    local_next_action,
+                    "--progress-scope",
+                    "goal",
+                ],
+                check=True,
+            )
+        )
+        assert private_next_action_result["ok"] is True, private_next_action_result
+        assert private_next_action_result["active_state_next_action_update"][
+            "next_action"
+        ] == local_next_action, private_next_action_result
+        assert private_next_action_result["active_state_next_action_update"][
+            "would_update"
+        ] is True, private_next_action_result
+
+        secret_next_action_result = run_cli(
             registry_path,
             runtime,
-            extra_args=["--next-action", "/Users/example/private/raw-task-note"],
+            extra_args=[
+                "--next-action",
+                "Continue with access_" + "key=" + "AKIA" + "1234567890ABCDEF",
+                "--progress-scope",
+                "goal",
+            ],
             check=False,
         )
-        assert private_next_action_result.returncode == 1, private_next_action_result
-        private_next_action = payload(private_next_action_result)
-        assert "active_state_next_action" in private_next_action["error"], private_next_action
-        assert "public-safe action alias" in private_next_action["error"], private_next_action
-        assert "evidence/private payloads" in private_next_action["error"], private_next_action
+        assert secret_next_action_result.returncode == 1, secret_next_action_result
+        secret_next_action = payload(secret_next_action_result)
+        assert "active_state_next_action" in secret_next_action["error"], secret_next_action
+        assert "secret-looking value" in secret_next_action["error"], secret_next_action
+        assert "AK/SK" in secret_next_action["error"], secret_next_action
 
         write_json(
             invalid_path,

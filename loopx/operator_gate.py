@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .feedback import validate_public_safe_text
+from .feedback import validate_local_control_text, validate_public_safe_text
 from .global_registry import sync_project_registry_to_global
 from .history import collect_history, load_registry
 from .paths import resolve_runtime_root
@@ -127,7 +127,7 @@ def build_operator_gate_resume_contract(
     validation = (
         "after resume, run the approved command in its declared mode and record validation before quota spend or follow-up side effects"
         if decision == "approve" and agent_command
-        else "after resume, keep the gate state current and record the next public-safe blocker or evidence condition"
+        else "after resume, keep the gate state current and record the next local-control blocker or evidence condition"
     )
     contract = {
         "version": OPERATOR_GATE_RESUME_CONTRACT_VERSION,
@@ -154,10 +154,10 @@ def build_operator_gate_resume_contract(
         ("freshness_check", contract["freshness_check"]),
         ("precondition_check", contract["precondition_check"]),
         ("migration_or_rebase_result", contract["migration_or_rebase_result"]),
-        ("resulting_action", contract["resulting_action"]),
         ("validation_after_resume", contract["validation_after_resume"]),
     ):
         validate_public_safe_text(label, str(value))
+    validate_local_control_text("resulting_action", str(contract["resulting_action"]))
     validate_public_safe_text("interrupt_payload.question", operator_question)
     return contract
 
@@ -327,7 +327,7 @@ def record_operator_gate(
     )
     classification = classification_for_decision(decision)
     action = recommended_action or default_recommended_action(decision=decision, agent_command=command)
-    validate_public_safe_text("recommended_action", action)
+    validate_local_control_text("recommended_action", action)
     generated_at = now_local()
     stem = f"{run_file_stem(generated_at)}-operator-gate"
     resume_contract = build_operator_gate_resume_contract(

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .authority import compact_authority_registry
-from .feedback import validate_public_safe_text
+from .feedback import validate_local_control_text, validate_public_safe_text
 from .global_registry import sync_project_registry_to_global
 from .history import load_registry
 from .paths import rel_or_abs, resolve_runtime_root
@@ -499,7 +499,7 @@ def read_only_project_map_run(
         )
     else:
         action = derive_recommended_action(state_text)
-    validate_public_safe_text("recommended_action", action)
+    validate_local_control_text("recommended_action", action)
     generated_at = now_local()
     record = build_project_map_record(
         goal_id=safe_goal_id,
