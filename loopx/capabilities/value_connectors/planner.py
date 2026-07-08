@@ -435,7 +435,12 @@ def build_single_value_connector_plan(
         "external_write_request",
     }
     gate_id = "gate_requested_connector_call" if requires_gate else None
-    access_mode = "external_write_gated" if external_write_requested else "public_metadata_only"
+    if external_write_requested:
+        access_mode = "external_write_gated"
+    elif stage == "account_setup":
+        access_mode = "agent_owned_identity"
+    else:
+        access_mode = "public_metadata_only"
     calls = [
         _connector_call(
             call_id=f"{connector_id}_{stage}",
@@ -552,6 +557,8 @@ def validate_value_connector_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
             errors.append(f"connector call {call_id} has invalid stage")
         if call.get("access_mode") not in ALLOWED_ACCESS_MODES:
             errors.append(f"connector call {call_id} has invalid access_mode")
+        if call.get("stage") == "account_setup" and call.get("access_mode") == "public_metadata_only":
+            errors.append(f"connector call {call_id} account_setup must not use public_metadata_only access")
         if call.get("value_axis") not in ALLOWED_VALUE_AXES:
             errors.append(f"connector call {call_id} has invalid value_axis")
         if call.get("external_writes_allowed") is not False:

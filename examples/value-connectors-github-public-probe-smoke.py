@@ -24,6 +24,8 @@ from loopx.capabilities.value_connectors.github_public import (  # noqa: E402
 )
 from loopx.capabilities.value_connectors.planner import (  # noqa: E402
     VALUE_CONNECTOR_PLAN_PACKET_SCHEMA_VERSION,
+    build_single_value_connector_plan,
+    validate_value_connector_plan,
 )
 from loopx.capabilities.value_connectors.source_map import (  # noqa: E402
     VALUE_CONNECTOR_SOURCE_MAP_PACKET_SCHEMA_VERSION,
@@ -347,6 +349,63 @@ def main() -> int:
     assert x_call["requires_user_approval"] is True, x_call
     assert x_gated["projection"]["first_screen"]["waiting_on"] == "user", x_gated
     assert_public_safe(x_gated)
+
+    x_account_setup = json.loads(
+        run_cli(
+            [
+                "--format",
+                "json",
+                "value-connectors",
+                "plan",
+                "--connector-id",
+                "social_browser_x",
+                "--connector-kind",
+                "browser_social_channel",
+                "--channel",
+                "X account profile via ego-browser",
+                "--stage",
+                "account_setup",
+                "--target-ref",
+                "LoopX-only public account identity",
+                "--target-url",
+                "https://x.com/loopxops",
+                "--money-metric",
+                "public product channel ready to receive qualified workflow-owner replies",
+                "--success-metric",
+                "profile identity is public-safe and ready for approved posts",
+                "--kill-condition",
+                "requires payment, captcha bypass, non-LoopX brand claims, or private context",
+            ]
+        ).stdout
+    )
+    assert x_account_setup["ok"] is True, x_account_setup
+    x_setup_call = x_account_setup["plan"]["connector_calls"][0]
+    assert x_setup_call["stage"] == "account_setup", x_setup_call
+    assert x_setup_call["access_mode"] == "agent_owned_identity", x_setup_call
+    assert x_setup_call["requires_user_approval"] is True, x_setup_call
+    assert x_account_setup["projection"]["first_screen"]["waiting_on"] == "user", x_account_setup
+    assert_public_safe(x_account_setup)
+
+    invalid_account_setup = build_single_value_connector_plan(
+        connector_id="social_browser_x",
+        connector_kind="browser_social_channel",
+        channel="X account profile via ego-browser",
+        stage="account_setup",
+        target_ref="LoopX-only public account identity",
+        target_url="https://x.com/loopxops",
+        value_axis="revenue",
+        money_metric="public product channel ready to receive qualified workflow-owner replies",
+        success_metric="profile identity is public-safe and ready for approved posts",
+        kill_condition="requires payment, captcha bypass, non-LoopX brand claims, or private context",
+        generated_at="2026-06-25T00:00:00Z",
+    )
+    invalid_account_setup["connector_calls"][0]["access_mode"] = "public_metadata_only"
+    invalid_validation = validate_value_connector_plan(invalid_account_setup)
+    assert invalid_validation["ok"] is False, invalid_validation
+    assert any(
+        "account_setup" in error and "public_metadata_only" in error
+        for error in invalid_validation["errors"]
+    ), invalid_validation
 
     gated = json.loads(
         run_cli(
