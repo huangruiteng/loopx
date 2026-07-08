@@ -1,0 +1,25 @@
+examples/control_plane/monitor-scheduler-contract-smoke.py
+  s_9a5a2bd944fdcb::t_862543c32cf075 130-137,147-149,484-545,733-734
+loopx/control_plane/work_items/capability_monitor_fallback.py
+  s_9a5a2bd944fdcb::t_828c1e323a22d0 1-189
+loopx/quota.py
+  s_9a5a2bd944fdcb::t_569c045e053813 121,1395-1398,1460,1543,1554,1562,1666-1667,1669,1706,1934-1935
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d103acbe6bd74e52285d8251bf6df1f1d49e567d",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
