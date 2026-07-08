@@ -54,6 +54,13 @@ recurring heartbeat body 由 CLI 生成：
 loopx heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"
 ```
 
+如果之后用 `loopx configure-goal` 或控制面 UI 增加/切换
+`registered_agents` 或 `primary_agent`，请按输出里的
+`heartbeat_prompt_migration` 重新生成并更新 Codex App automation；旧的
+无身份 heartbeat 会 fail closed。Codex App 降频时，按
+`quota should-run.scheduler_hint.codex_app.ack_hint.cli_args` 执行即可；新输出会使用
+`quota scheduler-ack-current` 读取最新 hint，避免手抄已过期的 reset token。
+
 ### Codex CLI
 
 适合希望保留可见 TUI、随时观察和接管的用户。从项目 repo 打开 Codex CLI：

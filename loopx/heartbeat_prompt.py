@@ -33,7 +33,7 @@ SCHEDULER_HINT_COMPACT_RULE = (
 )
 SCHEDULER_HINT_THIN_RULE = (
     "Apply `scheduler_hint`: if App `stateful_backoff.apply_needed`, "
-    "RRULE then `quota scheduler-ack` from `ack_hint`; CLI/Claude final-check; no spend."
+    "RRULE then run `ack_hint.cli_args`; CLI/Claude final-check; no spend."
 )
 INTERFACE_BUDGET_CHARS = {
     "full": 12_000,

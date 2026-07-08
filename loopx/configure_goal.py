@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
@@ -114,6 +115,60 @@ def _changed_fields(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
         if before_value != after_value:
             changed.append(group)
     return changed
+
+
+def _heartbeat_scope_hint(agent_id: str, *, primary_agent: str | None) -> str:
+    if primary_agent and agent_id == primary_agent:
+        return "primary review, verification, merge, and coordination"
+    return "bounded registered-agent work in its assigned lane"
+
+
+def _build_heartbeat_prompt_migration(
+    *,
+    goal_id: str,
+    changed_fields: list[str],
+    after: dict[str, Any],
+) -> dict[str, Any] | None:
+    if not any(field in changed_fields for field in ("registered_agents", "primary_agent")):
+        return None
+    registered_agents = [
+        str(agent).strip()
+        for agent in after.get("registered_agents") or []
+        if str(agent).strip()
+    ]
+    if not registered_agents:
+        return None
+    primary_agent = str(after.get("primary_agent") or "").strip() or None
+    ordered_agents: list[str] = []
+    if primary_agent and primary_agent in registered_agents:
+        ordered_agents.append(primary_agent)
+    for agent in registered_agents:
+        if agent not in ordered_agents:
+            ordered_agents.append(agent)
+    commands = []
+    for agent in ordered_agents:
+        scope = _heartbeat_scope_hint(agent, primary_agent=primary_agent)
+        commands.append(
+            {
+                "agent_id": agent,
+                "role": "primary" if primary_agent and agent == primary_agent else "registered_agent",
+                "command": (
+                    "loopx heartbeat-prompt --thin "
+                    f"--goal-id {shlex.quote(goal_id)} "
+                    f"--agent-id {shlex.quote(agent)} "
+                    f"--agent-scope {shlex.quote(scope)}"
+                ),
+            }
+        )
+    return {
+        "schema_version": "heartbeat_prompt_migration_v0",
+        "reason": (
+            "coordination.registered_agents or coordination.primary_agent changed; "
+            "installed heartbeats should be regenerated with identity-aware prompt args"
+        ),
+        "action": "update any installed Codex App automation task body with a matching heartbeat-prompt command",
+        "commands": commands,
+    }
 
 
 def configure_goal(
@@ -325,6 +380,11 @@ def configure_goal(
         "written": bool(execute and changed_fields),
         "control_plane_summary": control_plane_policy_summary(after.get("control_plane")),
         "orchestration_summary": orchestration_policy_summary(after.get("orchestration")),
+        "heartbeat_prompt_migration": _build_heartbeat_prompt_migration(
+            goal_id=goal_id,
+            changed_fields=changed_fields,
+            after=after,
+        ),
     }
 
 
@@ -348,6 +408,15 @@ def render_configure_goal_markdown(payload: dict[str, Any]) -> str:
         lines.append(f"- control_plane: {payload.get('control_plane_summary')}")
     if payload.get("orchestration_summary"):
         lines.append(f"- orchestration: {payload.get('orchestration_summary')}")
+    migration = payload.get("heartbeat_prompt_migration")
+    if isinstance(migration, dict):
+        lines.append(f"- heartbeat_prompt_migration: {migration.get('action')}")
+        for command in migration.get("commands") or []:
+            if not isinstance(command, dict):
+                continue
+            lines.append(
+                f"  - {command.get('agent_id')}: `{command.get('command')}`"
+            )
     activation = payload.get("host_loop_activation")
     if isinstance(activation, dict):
         lines.append(

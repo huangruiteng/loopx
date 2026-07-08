@@ -406,6 +406,7 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             "preview_id": configure_goal_preview_id(payload),
             "control_plane_summary": payload.get("control_plane_summary"),
             "orchestration_summary": payload.get("orchestration_summary"),
+            "heartbeat_prompt_migration": payload.get("heartbeat_prompt_migration"),
         }
 
     def _handle_configure_goal_dry_run(self) -> None:

@@ -1311,7 +1311,8 @@ Codex App heartbeats should use `automation_update` only when
 `codex_app.stateful_backoff.apply_needed=true` and
 `codex_app.recommended_rrule` is present. If that update succeeds, the agent
 must run `codex_app.ack_hint.cli_args`;
-LoopX then persists `reset_token`, `identity_signature`, `progression_index`,
+current payloads use `quota scheduler-ack-current` so LoopX re-reads the latest
+hint, then persists `reset_token`, `identity_signature`, `progression_index`,
 and `last_applied_rrule` under the runtime root. When the same identity repeats,
 LoopX advances the progression until the max interval; when the reset token
 changes, the next projected RRULE returns to

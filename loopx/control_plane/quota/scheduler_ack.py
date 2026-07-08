@@ -53,6 +53,49 @@ def scheduler_ack_failure(
     }
 
 
+def _resolve_scheduler_ack_current_hint(
+    before: dict[str, Any],
+    *,
+    surface: str,
+    applied_rrule: str | None,
+    reset_token: str | None,
+    identity_signature: str | None,
+) -> tuple[str | None, str | None, str | None]:
+    scheduler_hint = before.get("scheduler_hint") if isinstance(before.get("scheduler_hint"), dict) else {}
+    surface_packet = (
+        scheduler_hint.get(surface)
+        if isinstance(scheduler_hint.get(surface), dict)
+        else {}
+    )
+    stateful_backoff = (
+        surface_packet.get("stateful_backoff")
+        if isinstance(surface_packet.get("stateful_backoff"), dict)
+        else {}
+    )
+    ack_hint = (
+        surface_packet.get("ack_hint")
+        if isinstance(surface_packet.get("ack_hint"), dict)
+        else {}
+    )
+    ack_args = ack_hint.get("args") if isinstance(ack_hint.get("args"), dict) else {}
+    resolved_rrule = (
+        str(applied_rrule or "").strip()
+        or str(ack_args.get("applied_rrule") or "").strip()
+        or str(surface_packet.get("recommended_rrule") or "").strip()
+    )
+    resolved_reset = (
+        str(stateful_backoff.get("reset_token") or "").strip()
+        or str(ack_args.get("reset_token") or "").strip()
+        or str(reset_token or "").strip()
+    )
+    resolved_identity = (
+        str(stateful_backoff.get("identity_signature") or "").strip()
+        or str(ack_args.get("identity_signature") or "").strip()
+        or str(identity_signature or "").strip()
+    )
+    return resolved_rrule, resolved_reset, resolved_identity
+
+
 def build_quota_scheduler_ack_event(
     before: dict[str, Any],
     *,
@@ -93,8 +136,17 @@ def record_quota_scheduler_ack_for_decision(
     identity_signature: str | None = None,
     reason_summary: str | None = None,
     generated_at: str | None = None,
+    use_current_hint: bool = False,
 ) -> dict[str, Any]:
     safe_agent_id = normalize_todo_claimed_by(agent_id)
+    if use_current_hint:
+        applied_rrule, reset_token, identity_signature = _resolve_scheduler_ack_current_hint(
+            before,
+            surface=surface,
+            applied_rrule=applied_rrule,
+            reset_token=reset_token,
+            identity_signature=identity_signature,
+        )
     ack_plan = build_scheduler_ack_plan(
         before,
         agent_id=safe_agent_id,
@@ -114,8 +166,12 @@ def record_quota_scheduler_ack_for_decision(
             reason=str(ack_plan.get("reason") or "scheduler ack validation failed"),
             before=before,
         )
+        if use_current_hint:
+            failure["used_current_hint"] = True
+            failure["current_hint_source"] = "quota.should-run.scheduler_hint"
+        return failure
     if ack_plan.get("already_applied"):
-        return {
+        payload = {
             "ok": True,
             "mode": "scheduler-ack",
             "dry_run": not execute,
@@ -131,6 +187,10 @@ def record_quota_scheduler_ack_for_decision(
             "after": before,
             "reason": "scheduler RRULE already applied; no ack write needed",
         }
+        if use_current_hint:
+            payload["used_current_hint"] = True
+            payload["current_hint_source"] = "quota.should-run.scheduler_hint"
+        return payload
 
     safe_generated_at = generated_at or _now_local()
     try:
@@ -155,6 +215,10 @@ def record_quota_scheduler_ack_for_decision(
             reason=str(exc),
             before=before,
         )
+        if use_current_hint:
+            failure["used_current_hint"] = True
+            failure["current_hint_source"] = "quota.should-run.scheduler_hint"
+        return failure
 
     state_path = scheduler_state_path(
         runtime_root,
@@ -178,7 +242,7 @@ def record_quota_scheduler_ack_for_decision(
             state_key=state_key,
         )
 
-    return {
+    payload = {
         "ok": True,
         "mode": "scheduler-ack",
         "dry_run": not execute,
@@ -209,3 +273,7 @@ def record_quota_scheduler_ack_for_decision(
             f"{goal_id}/{safe_agent_id} applied {record['scheduler_ack_event']['applied_rrule']}"
         ),
     }
+    if use_current_hint:
+        payload["used_current_hint"] = True
+        payload["current_hint_source"] = "quota.should-run.scheduler_hint"
+    return payload

@@ -441,8 +441,9 @@ search/use `automation_update` when available, but only when
 `scheduler_hint.codex_app.stateful_backoff.apply_needed=true` and
 `scheduler_hint.codex_app.recommended_rrule` is present. After a successful
 RRULE update, run `loopx` with
-`scheduler_hint.codex_app.ack_hint.cli_args` (the `quota scheduler-ack` argv);
-LoopX owns reset/progression state
+`scheduler_hint.codex_app.ack_hint.cli_args` (normally `quota scheduler-ack-current`,
+which re-reads the latest scheduler hint instead of hand-copying short-lived
+reset tokens); LoopX owns reset/progression state
 and omits `recommended_rrule` when the
 desired RRULE is already applied. Cadence changes, reset-to-initial updates,
 final checks, and self-stop changes do not spend quota. Read

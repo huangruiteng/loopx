@@ -212,7 +212,7 @@ def build_codex_app_scheduler_ack_hint(
                 safe_available_capabilities.append(safe_capability)
     cli_args = [
         "quota",
-        "scheduler-ack",
+        "scheduler-ack-current",
         "--goal-id",
         safe_goal_id,
         "--agent-id",
@@ -228,10 +228,6 @@ def build_codex_app_scheduler_ack_hint(
             safe_state_key,
             "--applied-rrule",
             safe_rrule,
-            "--reset-token",
-            safe_reset_token,
-            "--identity-signature",
-            safe_identity_signature,
             "--execute",
         ]
     )
@@ -249,10 +245,11 @@ def build_codex_app_scheduler_ack_hint(
     return {
         "schema_version": CODEX_APP_SCHEDULER_ACK_HINT_SCHEMA_VERSION,
         "after": "automation_update_rrule_success",
-        "command": "quota scheduler-ack",
+        "command": "quota scheduler-ack-current",
         "execute": True,
         "cli_args": cli_args,
         "args": args,
+        "uses_current_hint": True,
         "no_spend": True,
     }
 

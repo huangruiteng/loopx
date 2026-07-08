@@ -711,6 +711,9 @@ surface an upgrade error instead of silently running without identity or
 scope. Old goal registries without `coordination.registered_agents` also fail
 closed when a scoped heartbeat or todo claim names an agent; register the agent
 identity first instead of letting workers invent claim ids.
+When `configure-goal` changes `registered_agents` or `primary_agent`, its JSON
+and markdown output includes `heartbeat_prompt_migration` commands for the
+installed automations that need a refreshed identity-aware task body.
 
 `register-agent` resolves the existing global entry's `source_registry`, writes
 the project-local source of truth, and then syncs the shared global projection.

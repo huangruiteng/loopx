@@ -361,8 +361,7 @@ def main() -> int:
         "If false/0: quiet/no-user-todo",
         "具体 user todo 未投影，需修复 LoopX 状态投影",
         "Apply `scheduler_hint`: if App `stateful_backoff.apply_needed`",
-        "RRULE then `quota scheduler-ack`",
-        "from `ack_hint`",
+        "RRULE then run `ack_hint.cli_args`",
         "CLI/Claude final-check; no spend",
         "Bounded batch/quiet no-op; spend after writeback",
         "Plans/done -> LoopX todo/rationale; 2 no-progress -> self-repair",
@@ -670,7 +669,7 @@ def main() -> int:
     assert "scheduler_hint.codex_app.stateful_backoff" in doc, doc
     assert "apply_needed=true" in doc, doc
     assert "codex_app.ack_hint.cli_args" in doc, doc
-    assert "quota scheduler-ack" in doc, doc
+    assert "quota scheduler-ack-current" in doc, doc
     assert "recommended_rrule" in doc, doc
     assert "must_attempt_work=true" in doc, doc
     assert "not an execution gate" in normalized(doc), doc
@@ -728,7 +727,7 @@ def main() -> int:
     assert "scheduler_hint.codex_app.stateful_backoff" in project_skill, project_skill
     assert "apply_needed=true" in project_skill, project_skill
     assert "codex_app.ack_hint.cli_args" in project_skill, project_skill
-    assert "quota scheduler-ack" in project_skill, project_skill
+    assert "quota scheduler-ack-current" in project_skill, project_skill
     assert "recommended_rrule" in project_skill, project_skill
     assert "must_attempt_work=true" in project_skill, project_skill
     assert "not an execution gate" in normalized(project_skill), project_skill

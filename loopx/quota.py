@@ -2525,7 +2525,7 @@ def record_quota_scheduler_ack(
     applied_rrule: str | None = None,
     reset_token: str | None = None,
     identity_signature: str | None = None,
-    reason_summary: str | None = None,
+    reason_summary: str | None = None, use_current_hint: bool = False,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
     safe_agent_id = normalize_todo_claimed_by(agent_id)
@@ -2552,7 +2552,7 @@ def record_quota_scheduler_ack(
         applied_rrule=applied_rrule,
         reset_token=reset_token,
         identity_signature=identity_signature,
-        reason_summary=reason_summary,
+        reason_summary=reason_summary, use_current_hint=use_current_hint,
     )
 
 

@@ -552,6 +552,16 @@ loopx heartbeat-prompt --thin --goal-id your-project-goal
 loopx quota spend-slot --goal-id your-project-goal --slots 1 --source heartbeat --execute
 ```
 
+For shared-control-plane or agent-team goals, generate the automation with a
+registered identity, for example
+`loopx heartbeat-prompt --thin --goal-id your-project-goal --agent-id codex-main-control --agent-scope "primary coordination"`.
+After `configure-goal` or the control-plane UI changes `registered_agents` or
+`primary_agent`, use the returned `heartbeat_prompt_migration` commands to
+refresh any installed Codex App automation body. Scheduler cadence updates
+should run `scheduler_hint.codex_app.ack_hint.cli_args`; current payloads use
+`quota scheduler-ack-current`, which re-reads the latest hint instead of making
+agents copy short-lived reset tokens.
+
 The `next_automatic_turn` reported by `quota plan` is only an advisory
 scheduling hint: it chooses the highest-compute eligible goal, while
 operator-gated, focus-waiting, waiting, throttled, paused, and health-blocked

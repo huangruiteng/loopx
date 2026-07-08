@@ -142,6 +142,17 @@ def main() -> int:
         assert dry["after"]["checkpointed_boundary_authority"]["active_write_scope"] == ["docs/**"], dry
         assert dry["after"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], dry
         assert dry["after"]["primary_agent"] == "codex-main-control", dry
+        migration = dry["heartbeat_prompt_migration"]
+        assert migration["schema_version"] == "heartbeat_prompt_migration_v0", migration
+        assert "coordination.registered_agents" in migration["reason"], migration
+        migration_commands = migration["commands"]
+        assert [item["agent_id"] for item in migration_commands] == [
+            "codex-main-control",
+            "codex-side-bypass",
+        ], migration
+        assert "heartbeat-prompt --thin" in migration_commands[0]["command"], migration
+        assert "--agent-id codex-main-control" in migration_commands[0]["command"], migration
+        assert "--agent-scope" in migration_commands[1]["command"], migration
         assert dry["written"] is False, dry
         assert registry_path.read_text(encoding="utf-8") == original
 
@@ -181,6 +192,7 @@ def main() -> int:
         assert applied["ok"] is True, applied
         assert applied["dry_run"] is False, applied
         assert applied["written"] is True, applied
+        assert applied["heartbeat_prompt_migration"]["commands"][0]["agent_id"] == "codex-main-control", applied
         goal = goal_from_registry(registry_path)
         assert goal["quota"]["compute"] == 0.5, goal
         assert goal["control_plane"]["self_repair"]["enabled"] is True, goal
@@ -217,6 +229,7 @@ def main() -> int:
         assert "write_scope" in scope_migrated["changed_fields"], scope_migrated
         assert scope_migrated["before"]["write_scope"] == ["docs/**", "tests/**"], scope_migrated
         assert scope_migrated["after"]["write_scope"] == ["docs/**", "tests/**", "loopx/**"], scope_migrated
+        assert scope_migrated["heartbeat_prompt_migration"] is None, scope_migrated
         assert goal_from_registry(registry_path)["coordination"]["write_scope"] == [
             "docs/**",
             "tests/**",
