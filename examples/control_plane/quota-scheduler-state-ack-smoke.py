@@ -16,7 +16,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.control_plane.testing.canary_harness import run_json_cli  # noqa: E402
+from loopx.control_plane.testing.canary_harness import (  # noqa: E402
+    run_json_cli,
+    run_json_cli_result,
+)
 from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_module  # noqa: E402
 from loopx.control_plane.scheduler.scheduler_hint import (  # noqa: E402
     build_codex_app_scheduler_ack_event,
@@ -667,6 +670,19 @@ def run_cli(root: Path, *args: str, registry_path: Path, runtime: Path, project:
     )
 
 
+def run_cli_result(
+    root: Path, *args: str, registry_path: Path, runtime: Path, project: Path
+) -> tuple[int, dict]:
+    return run_json_cli_result(
+        *args,
+        "--scan-path",
+        str(project),
+        registry_path=registry_path,
+        runtime_root=runtime,
+        cwd=REPO_ROOT,
+    )
+
+
 def assert_cli_scheduler_ack_progression() -> None:
     fixture = _load_quota_plan_fixture_module()
     with tempfile.TemporaryDirectory(prefix="loopx-quota-scheduler-ack-") as tmp:
@@ -721,6 +737,30 @@ def assert_cli_scheduler_ack_progression() -> None:
         assert current_hint_preview["ok"] is True, current_hint_preview
         assert current_hint_preview["used_current_hint"] is True, current_hint_preview
         assert current_hint_preview["scheduler_state_mutated"] is False, current_hint_preview
+
+        failure_returncode, current_hint_failure = run_cli_result(
+            root,
+            "quota",
+            "scheduler-ack",
+            "--goal-id",
+            "needs-operator",
+            "--agent-id",
+            agent_id,
+            "--state-key",
+            "wrong.state.key",
+            "--use-current-hint",
+            registry_path=registry_path,
+            runtime=runtime,
+            project=project,
+        )
+        assert failure_returncode != 0, current_hint_failure
+        assert current_hint_failure["ok"] is False, current_hint_failure
+        assert current_hint_failure["used_current_hint"] is True, current_hint_failure
+        assert (
+            current_hint_failure["current_hint_source"]
+            == "quota.should-run.scheduler_hint"
+        ), current_hint_failure
+        assert "--state-key" in current_hint_failure["reason"], current_hint_failure
 
         ack = run_cli(
             root,

@@ -53,6 +53,13 @@ def scheduler_ack_failure(
     }
 
 
+def _annotate_current_hint(payload: dict[str, Any], *, use_current_hint: bool) -> dict[str, Any]:
+    if use_current_hint:
+        payload["used_current_hint"] = True
+        payload["current_hint_source"] = "quota.should-run.scheduler_hint"
+    return payload
+
+
 def _resolve_scheduler_ack_current_hint(
     before: dict[str, Any],
     *,
@@ -156,20 +163,19 @@ def record_quota_scheduler_ack_for_decision(
         identity_signature=identity_signature,
     )
     if not ack_plan.get("ok"):
-        return scheduler_ack_failure(
-            goal_id=goal_id,
-            agent_id=safe_agent_id,
-            execute=execute,
-            surface=surface,
-            state_key=state_key,
-            applied_rrule=applied_rrule,
-            reason=str(ack_plan.get("reason") or "scheduler ack validation failed"),
-            before=before,
+        return _annotate_current_hint(
+            scheduler_ack_failure(
+                goal_id=goal_id,
+                agent_id=safe_agent_id,
+                execute=execute,
+                surface=surface,
+                state_key=state_key,
+                applied_rrule=applied_rrule,
+                reason=str(ack_plan.get("reason") or "scheduler ack validation failed"),
+                before=before,
+            ),
+            use_current_hint=use_current_hint,
         )
-        if use_current_hint:
-            failure["used_current_hint"] = True
-            failure["current_hint_source"] = "quota.should-run.scheduler_hint"
-        return failure
     if ack_plan.get("already_applied"):
         payload = {
             "ok": True,
@@ -205,20 +211,19 @@ def record_quota_scheduler_ack_for_decision(
             reason_summary=reason_summary,
         )
     except ValueError as exc:
-        return scheduler_ack_failure(
-            goal_id=goal_id,
-            agent_id=safe_agent_id,
-            execute=execute,
-            surface=surface,
-            state_key=state_key,
-            applied_rrule=applied_rrule,
-            reason=str(exc),
-            before=before,
+        return _annotate_current_hint(
+            scheduler_ack_failure(
+                goal_id=goal_id,
+                agent_id=safe_agent_id,
+                execute=execute,
+                surface=surface,
+                state_key=state_key,
+                applied_rrule=applied_rrule,
+                reason=str(exc),
+                before=before,
+            ),
+            use_current_hint=use_current_hint,
         )
-        if use_current_hint:
-            failure["used_current_hint"] = True
-            failure["current_hint_source"] = "quota.should-run.scheduler_hint"
-        return failure
 
     state_path = scheduler_state_path(
         runtime_root,
