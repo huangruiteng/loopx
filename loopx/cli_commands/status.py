@@ -609,11 +609,20 @@ def _build_agent_interaction_summary(
     cli_channel = interaction.get("cli_channel")
     if not isinstance(user_channel, dict) or not isinstance(agent_channel, dict):
         return None
+    user_todo_summary = (
+        guard.get("user_todo_summary")
+        if isinstance(guard.get("user_todo_summary"), dict)
+        else {}
+    )
+    user_open_count = user_todo_summary.get("open_count")
+    if user_open_count is None:
+        user_open_count = guard.get("open_count")
     summary: dict[str, object] = {
         "schema_version": "agent_interaction_summary_v0",
         "agent_id": agent_id,
         "mode": interaction.get("mode"),
         "user_action_required": bool(user_channel.get("action_required")),
+        "user_open_count": user_open_count,
         "user_notify": user_channel.get("notify"),
         "agent_must_attempt": bool(agent_channel.get("must_attempt")),
         "delivery_allowed": agent_channel.get("delivery_allowed"),
