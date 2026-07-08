@@ -1,0 +1,27 @@
+docs/product/beginner-loop-presets.md
+  s_32e2a9a204a8e4::t_f6ff035e63ee26 31-32,96-99
+examples/beginner-preset-picker-smoke.py
+  s_32e2a9a204a8e4::t_80ba30e2512cd1 30-32,59-67,72,90-114,120,127-128
+loopx/help_surface.py
+  s_32e2a9a204a8e4::t_0d498ddb7b393c 33,187
+loopx/presets.py
+  s_32e2a9a204a8e4::t_72e4b8af86983c 15,30,62,94,123-196,200-205,250,293-294,342
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "69ca423e1a23c10b486127aadaf005a809bbe002",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
