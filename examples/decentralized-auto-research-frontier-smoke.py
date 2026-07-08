@@ -185,6 +185,51 @@ def main() -> None:
     assert live_payload["public_boundary"]["source"] == "live_quota_status_projection", live_payload
     assert_no_private_surface(live_payload)
 
+    live_from_todo_summary = build_live_auto_research_projection(
+        goal_id="loopx-auto-research-demo",
+        agent_id="research-curator",
+        quota_payload={
+            "ok": True,
+            "agent_todo_summary": {
+                "claimed_advancement_open_items": [
+                    {
+                        "todo_id": "todo_auto_summary_001",
+                        "title": "Write the public-safe research contract",
+                        "claimed_by": "research-curator",
+                        "status": "open",
+                        "task_class": "advancement_task",
+                        "action_kind": "write_research_contract",
+                    }
+                ],
+                "claimed_by_others_items": [
+                    {
+                        "todo_id": "todo_auto_summary_002",
+                        "title": "Wait for contract before proposing a hypothesis",
+                        "claimed_by": "hypothesis-proposer",
+                        "status": "open",
+                        "task_class": "advancement_task",
+                        "action_kind": "propose_hypothesis",
+                        "resume_when": "todo_done:todo_auto_summary_001",
+                        "resume_ready": False,
+                    }
+                ],
+            },
+        },
+    )
+    assert live_from_todo_summary["frontier"]["selected"]["todo_id"] == (
+        "todo_auto_summary_001"
+    ), live_from_todo_summary
+    assert live_from_todo_summary["frontier"]["selected"]["allowed_action"] == (
+        "write_research_contract"
+    ), live_from_todo_summary
+    assert [item["todo_id"] for item in live_from_todo_summary["frontier"]["runnable"]] == [
+        "todo_auto_summary_001"
+    ], live_from_todo_summary
+    assert live_from_todo_summary["frontier"]["blocked"][0]["blocked_by"] == (
+        "claimed_by:hypothesis-proposer"
+    ), live_from_todo_summary
+    assert_no_private_surface(live_from_todo_summary)
+
     print("decentralized-auto-research-frontier-smoke ok")
 
 
