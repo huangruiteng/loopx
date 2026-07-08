@@ -2049,26 +2049,10 @@ def sync_loopx_projection_to_lark_kanban(
     )
     warnings = [*namespace_warnings, *warnings]
 
-    local = read_lark_kanban_local_config(config_path) if config_path else {}
-    record_map = dict(local.get("todo_records") or {}) if isinstance(local.get("todo_records"), dict) else {}
     commands: list[dict[str, Any]] = []
-    if execute:
-        list_config = LarkKanbanConfig(
-            **{"base_" + "token": config.base_token},
-            table_id=config.table_id,
-            view_id=None,
-            cli_bin=config.cli_bin,
-            identity=config.identity,
-        )
-        list_result = _run_command(build_record_list_command(list_config), execute=True, runner=runner)
-        commands.append(list_result)
-        if list_result.get("ok"):
-            for record in lark_record_rows(list_result.get("json") if isinstance(list_result.get("json"), dict) else {}):
-                todo_id = str(record.get("LoopX Todo ID") or "").strip()
-                row_goal_id = str(record.get("LoopX Goal ID") or "").strip()
-                record_id = str(record.get("_record_id") or "").strip()
-                if todo_id and row_goal_id and record_id:
-                    record_map[f"{row_goal_id}:{todo_id}"] = record_id
+    local, record_map = _load_lark_todo_record_map(
+        config, config_path=config_path, execute=execute, commands=commands, runner=runner
+    )
 
     results: list[dict[str, Any]] = []
     ok = True
@@ -2103,24 +2087,8 @@ def sync_loopx_projection_to_lark_kanban(
         if execute and not result.get("ok"):
             break
 
-    if execute and config_path and ok:
-        board = local.get("board") if isinstance(local.get("board"), dict) else {}
-        if not board:
-            board = {
-                "base_token": config.base_token,
-                "table_id": config.table_id,
-                "view_id": config.view_id,
-                "cli_bin": config.cli_bin,
-                "identity": config.identity,
-            }
-        write_lark_kanban_local_config(
-            config_path,
-            {
-                "schema_version": LARK_KANBAN_LOCAL_CONFIG_VERSION,
-                "board": board,
-                "todo_records": record_map,
-            },
-        )
+    if execute and ok:
+        _persist_lark_todo_record_map(config, config_path=config_path, local=local, record_map=record_map)
 
     return {
         "ok": ok,
@@ -2181,26 +2149,10 @@ def sync_loopx_todos_to_lark_kanban(
             todos.append(candidate)
     todos = todos[:limit]
 
-    local = read_lark_kanban_local_config(config_path) if config_path else {}
-    record_map = dict(local.get("todo_records") or {}) if isinstance(local.get("todo_records"), dict) else {}
     commands: list[dict[str, Any]] = []
-    if execute:
-        list_config = LarkKanbanConfig(
-            **{"base_" + "token": config.base_token},
-            table_id=config.table_id,
-            view_id=None,
-            cli_bin=config.cli_bin,
-            identity=config.identity,
-        )
-        list_result = _run_command(build_record_list_command(list_config), execute=True, runner=runner)
-        commands.append(list_result)
-        if list_result.get("ok"):
-            for record in lark_record_rows(list_result.get("json") if isinstance(list_result.get("json"), dict) else {}):
-                todo_id = str(record.get("LoopX Todo ID") or "").strip()
-                row_goal_id = str(record.get("LoopX Goal ID") or "").strip()
-                record_id = str(record.get("_record_id") or "").strip()
-                if todo_id and row_goal_id and record_id:
-                    record_map[f"{row_goal_id}:{todo_id}"] = record_id
+    local, record_map = _load_lark_todo_record_map(
+        config, config_path=config_path, execute=execute, commands=commands, runner=runner
+    )
 
     results: list[dict[str, Any]] = []
     ok = True
@@ -2234,24 +2186,8 @@ def sync_loopx_todos_to_lark_kanban(
         if execute and not result.get("ok"):
             break
 
-    if execute and config_path and ok:
-        board = local.get("board") if isinstance(local.get("board"), dict) else {}
-        if not board:
-            board = {
-                "base_token": config.base_token,
-                "table_id": config.table_id,
-                "view_id": config.view_id,
-                "cli_bin": config.cli_bin,
-                "identity": config.identity,
-            }
-        write_lark_kanban_local_config(
-            config_path,
-            {
-                "schema_version": LARK_KANBAN_LOCAL_CONFIG_VERSION,
-                "board": board,
-                "todo_records": record_map,
-            },
-        )
+    if execute and ok:
+        _persist_lark_todo_record_map(config, config_path=config_path, local=local, record_map=record_map)
 
     return {
         "ok": ok,
@@ -2266,6 +2202,66 @@ def sync_loopx_todos_to_lark_kanban(
         "commands": commands,
         "config_path": str(config_path) if config_path else None,
     }
+
+
+def _load_lark_todo_record_map(
+    config: LarkKanbanConfig, *, config_path: Path | None, execute: bool,
+    commands: list[dict[str, Any]], runner: CommandRunner,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    local = read_lark_kanban_local_config(config_path) if config_path else {}
+    record_map = _todo_record_map_from_local_config(local)
+    if not execute:
+        return local, record_map
+
+    list_config = LarkKanbanConfig(
+        **{"base_" + "token": config.base_token},
+        table_id=config.table_id,
+        view_id=None,
+        cli_bin=config.cli_bin,
+        identity=config.identity,
+    )
+    list_result = _run_command(build_record_list_command(list_config), execute=True, runner=runner)
+    commands.append(list_result)
+    if list_result.get("ok"):
+        record_map.update(_todo_record_map_from_lark_records(list_result.get("json")))
+    return local, record_map
+
+
+def _todo_record_map_from_local_config(local: dict[str, Any]) -> dict[str, str]:
+    records = local.get("todo_records") if isinstance(local, dict) else None
+    if not isinstance(records, dict):
+        return {}
+    return {str(key): str(value) for key, value in records.items() if str(key).strip() and str(value).strip()}
+
+
+def _todo_record_map_from_lark_records(parsed: Any) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for record in lark_record_rows(parsed if isinstance(parsed, dict) else {}):
+        todo_id = str(record.get("LoopX Todo ID") or "").strip()
+        row_goal_id = str(record.get("LoopX Goal ID") or "").strip()
+        record_id = str(record.get("_record_id") or "").strip()
+        if todo_id and row_goal_id and record_id:
+            result[f"{row_goal_id}:{todo_id}"] = record_id
+    return result
+
+
+def _persist_lark_todo_record_map(
+    config: LarkKanbanConfig, *, config_path: Path | None,
+    local: dict[str, Any], record_map: dict[str, str],
+) -> None:
+    if not config_path:
+        return
+    board = local.get("board") if isinstance(local.get("board"), dict) else {}
+    if not board:
+        board = {
+            "base_token": config.base_token,
+            "table_id": config.table_id,
+            "view_id": config.view_id,
+            "cli_bin": config.cli_bin,
+            "identity": config.identity,
+        }
+    payload = {"schema_version": LARK_KANBAN_LOCAL_CONFIG_VERSION, "board": board, "todo_records": record_map}
+    write_lark_kanban_local_config(config_path, payload)
 
 
 def _lark_record_from_todo_block(

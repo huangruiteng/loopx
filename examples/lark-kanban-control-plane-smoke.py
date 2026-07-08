@@ -392,6 +392,68 @@ def main() -> int:
             "todo_agent_malformed",
         }, scoped_payload
 
+        todo_sync_calls: list[list[str]] = []
+
+        def todo_upsert_runner(args: list[str], cwd: Path | None, timeout: float | None) -> dict[str, object]:
+            todo_sync_calls.append(args)
+            if "+record-list" in args:
+                return {
+                    "returncode": 0,
+                    "stdout": json.dumps(
+                        {
+                            "ok": True,
+                            "data": {
+                                "fields": ["LoopX Goal ID", "LoopX Todo ID"],
+                                "data": [["goal_lark_sync_fixture", "todo_agent_sync"]],
+                                "record_id_list": ["recTodoSyncExisting"],
+                            },
+                        }
+                    ),
+                    "stderr": "",
+                    "timed_out": False,
+                }
+            if "+record-upsert" in args:
+                values = json.loads(args[args.index("--json") + 1])
+                record_id = (
+                    args[args.index("--record-id") + 1]
+                    if "--record-id" in args
+                    else "recTodo" + str(values["LoopX Todo ID"]).replace("_", "")[:24]
+                )
+                return {
+                    "returncode": 0,
+                    "stdout": json.dumps({"ok": True, "data": {"record_id": record_id}}),
+                    "stderr": "",
+                    "timed_out": False,
+                }
+            raise AssertionError(args)
+
+        todo_idempotent_config_path = Path(tmp) / ".loopx" / "todo-idempotent.json"
+        execute_todo_sync = sync_loopx_todos_to_lark_kanban(
+            LarkKanbanConfig(
+                **{"base_" + "token": "base_public_fixture"},
+                table_id="tbl_public_fixture",
+            ),
+            registry_path=registry,
+            goal_id="goal_lark_sync_fixture",
+            config_path=todo_idempotent_config_path,
+            execute=True,
+            runner=todo_upsert_runner,
+        )
+        assert execute_todo_sync["ok"] is True, execute_todo_sync
+        assert execute_todo_sync["todo_count"] == 4, execute_todo_sync
+        todo_upserts = [args for args in todo_sync_calls if "+record-upsert" in args]
+        assert len(todo_upserts) == 4, todo_sync_calls
+        reused_todo_upsert = [args for args in todo_upserts if "recTodoSyncExisting" in args]
+        assert len(reused_todo_upsert) == 1, todo_upserts
+        reused_values = json.loads(reused_todo_upsert[0][reused_todo_upsert[0].index("--json") + 1])
+        assert reused_values["LoopX Todo ID"] == "todo_agent_sync", reused_values
+        stored_todo_config = read_lark_kanban_local_config(todo_idempotent_config_path)
+        assert stored_todo_config["board"]["table_id"] == "tbl_public_fixture", stored_todo_config
+        assert (
+            stored_todo_config["todo_records"]["goal_lark_sync_fixture:todo_agent_sync"]
+            == "recTodoSyncExisting"
+        ), stored_todo_config
+
         projection_payload = {
             "schema_version": "goal_channel_projection_v0",
             "goal_id": "goal_lark_sync_fixture",
