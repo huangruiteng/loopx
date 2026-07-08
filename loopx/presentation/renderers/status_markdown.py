@@ -586,7 +586,9 @@ def append_project_asset_warning_markdown(
             f"requires_archive={archive_warning.get('requires_archive')} "
             f"active_done={archive_warning.get('active_done_count')} "
             f"max_active_done={archive_warning.get('max_active_done_count')} "
-            f"archive_section={markdown_scalar(archive_warning.get('archive_section') or '')}"
+            f"default_archive_keep={archive_warning.get('default_archive_keep_count')} "
+            f"archive_section={markdown_scalar(archive_warning.get('archive_section') or '')} "
+            f"archive_command={markdown_scalar(archive_warning.get('archive_command_template') or '')}"
         )
     replan_obligation = (
         project_asset.get("autonomous_replan_obligation")

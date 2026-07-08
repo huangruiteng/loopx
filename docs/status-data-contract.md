@@ -1245,7 +1245,10 @@ When the payload includes `completed_todo_archive_warning`, the active
 dashboard/status surface to keep current open work visible. Executors should
 move older completed entries into a dedicated `Completed Work Archive` section
 and keep only current open work plus a small recent-done tail under active
-`Agent Todo`. Archive sections are intentionally ignored by active todo parsing.
+`Agent Todo`. The warning's `archive_command_template` includes the projected
+`default_archive_keep_count` as `--max-active-done`, so the copyable command and
+the warning's recent-done tail contract stay aligned. Archive sections are
+intentionally ignored by active todo parsing.
 This warning is a checklist hygiene signal only: it does not change quota
 eligibility, grant write or production permission, or supersede open user/agent
 todo blockers. It also does not mark an open todo complete; executors should

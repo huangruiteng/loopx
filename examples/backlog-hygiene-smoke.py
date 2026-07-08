@@ -167,6 +167,10 @@ def assert_completed_todo_archive_warning() -> None:
         assert warning["active_done_count"] == 13, warning
         assert warning["active_open_count"] == 1, warning
         assert warning["max_active_done_count"] == 12, warning
+        assert warning["default_archive_keep_count"] == 10, warning
+        assert warning["archive_command_template"].endswith(
+            "--max-active-done 10 --execute"
+        ), warning
         assert item["completed_todo_archive_warning"] == warning, item
 
         guard = run_cli("quota", "should-run", "--goal-id", GOAL_ID, registry_path=registry_path, runtime=runtime)

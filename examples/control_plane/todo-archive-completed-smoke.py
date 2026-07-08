@@ -117,7 +117,7 @@ def main() -> int:
         assert warning["max_active_done_count"] == 12, warning
         assert warning["default_archive_keep_count"] == 10, warning
         assert warning["archive_command_template"] == (
-            "loopx todo archive-completed --goal-id <goal-id> --execute"
+            "loopx todo archive-completed --goal-id <goal-id> --max-active-done 10 --execute"
         ), warning
 
         default_dry_run = run_cli(
