@@ -453,6 +453,17 @@ def assert_parallel_jobs_execute_and_preserve_report_order() -> None:
 
 
 def assert_parallel_jobs_keep_marked_smokes_serial() -> None:
+    sensitive_scripts = {
+        "skillsbench-app-server-goal-worker-smoke.py": (
+            "short fake-worker transport deadlines"
+        ),
+        "codex-cli-long-run-benchmark-smoke.py": "timing-sensitive long-horizon",
+    }
+    for script, expected_reason in sensitive_scripts.items():
+        reason = canary_runner._serial_smoke_reason(
+            {"command": f"python3 examples/{script}"}
+        )
+        assert expected_reason in reason, (script, reason)
     original_run_check = canary_runner._run_check
     original_tracked_change_paths = canary_runner._tracked_change_paths
     observed: list[tuple[str, int | None]] = []

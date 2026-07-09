@@ -8,6 +8,8 @@ import json
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -271,8 +273,19 @@ def _load_module():
     return module
 
 
+def assert_inaccessible_proc_fds_are_ignored(module) -> None:
+    turn = SimpleNamespace(
+        work_dir=None,
+        process=SimpleNamespace(pid=12345),
+    )
+    with patch.object(module, "_process_descendant_pids", return_value={12345}):
+        with patch.object(Path, "iterdir", side_effect=PermissionError("denied")):
+            assert module._codex_session_jsonl_paths(turn) == []
+
+
 def main() -> int:
     module = _load_module()
+    assert_inaccessible_proc_fds_are_ignored(module)
     with tempfile.TemporaryDirectory(prefix="gh-codex-app-server-smoke-") as tmp:
         root = Path(tmp)
         fake = root / "codex"

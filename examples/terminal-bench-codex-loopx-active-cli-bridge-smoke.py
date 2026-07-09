@@ -13,6 +13,8 @@ import types
 from pathlib import Path
 from typing import Any
 
+from fixture_support import install_stub_executables_on_path
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -1706,6 +1708,7 @@ def assert_cli_help_exposes_active_bridge_flag() -> None:
 
 
 def main() -> None:
+    install_stub_executables_on_path("uvx")
     assert_doc_contract()
     assert_active_bridge_prompt_and_metadata()
     assert_no_packet_ablation_prompt_and_metadata()

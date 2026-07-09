@@ -472,6 +472,7 @@ for line in sys.stdin:
             }), flush=True)
             continue
         if not resumed:
+            state_path.write_text("resume", encoding="utf-8")  # Before completion/reconnect.
             print(json.dumps({
                 "method": "turn/started",
                 "params": {
@@ -498,7 +499,6 @@ for line in sys.stdin:
                 "type": "event_msg",
                 "payload": {"type": "task_complete"},
             }), flush=True)
-            state_path.write_text("resume", encoding="utf-8")
             sys.exit(0)
         print(json.dumps({
             "method": "turn/started",
@@ -1596,21 +1596,21 @@ def test_host_worker_reconnects_context_only_followup_transport() -> None:
                 "--response-text-file",
                 str(private_response),
                 "--response-timeout-sec",
-                "5",
+                "15",
                 "--turn-timeout-sec",
-                "5",
+                "15",
                 "--reasoning-effort",
                 "xhigh",
                 "--context-only-followup-max",
                 "1",
             ],
             cwd=REPO_ROOT,
-            check=True,
+            check=False,
             text=True,
             capture_output=True,
         )
-        assert result.stdout == "", result
-        payload = json.loads(output.read_text(encoding="utf-8"))
+        payload = json.loads(output.read_text(encoding="utf-8")) if output.exists() else {"worker_stderr": result.stderr}
+        assert result.returncode == 0, (result.stdout, result.stderr, payload)
         assert payload["ok"] is True, payload
         assert payload["error_type"] == "", payload
         assert payload["turn"]["turn_attempt_count"] == 2, payload

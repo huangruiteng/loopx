@@ -10,6 +10,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from fixture_support import assert_public_result_projection
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -199,10 +201,21 @@ def base_args(registry_path: Path, runtime: Path, result_path: Path) -> list[str
 
 
 def assert_public_safe(payload: dict[str, Any]) -> None:
-    text = json.dumps(payload, sort_keys=True)
-    leaked = [marker for marker in FORBIDDEN_TEXT if marker in text]
-    assert not leaked, leaked
-    assert len(text) < 16000, len(text)
+    assert_public_result_projection(
+        payload,
+        forbidden_text=FORBIDDEN_TEXT,
+        max_chars=16000,
+    )
+
+
+def assert_public_projection_boundary() -> None:
+    assert_public_safe({"registry": "/tmp/operator-local.json", "summary": "safe"})
+    try:
+        assert_public_safe({"summary": "/tmp/private-result.json"})
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("non-metadata local paths must remain forbidden")
 
 
 def assert_gate(
@@ -305,6 +318,7 @@ def assert_codex_goal_mode_fixture(registry_path: Path, runtime: Path) -> None:
 
 
 def main() -> None:
+    assert_public_projection_boundary()
     with tempfile.TemporaryDirectory(prefix="benchmark-baseline-gate-") as tmp:
         registry_path, runtime, result_path, run_path = write_fixture(Path(tmp))
         assert_codex_goal_mode_fixture(registry_path, runtime)
