@@ -153,6 +153,17 @@ path, and canary route rather than as a user-facing release baseline.
   #1621, #1625); and relaxes local `next_action` / `recommended_action` text to
   allow local project routing references while still rejecting inline
   credentials (#1645).
+- `v0.1.14` on 2026-07-09 11:49 +08:00: developer-contributed exploration
+  topology and monitor/quota recovery release at the matching `v0.1.14` tag.
+  This release promotes the software exploration result layer (#1546): public
+  explore node/edge/finding records, Lark presentation mapping, graph exports,
+  router/load-profile planning primitives, and deny-by-default
+  `explore_harness` worker/todo branch planners gated by each goal's
+  `spawn_policy`. It also ships the monitor scheduler cadence repairs that
+  keep quiet monitor polls from collapsing back to short intervals (#1699 and
+  related scheduler fixes), plus quota/status/todo read-model hardening for
+  user-gate counts, completed-todo successors, evidence-log counts, delivery
+  lineage, and compact agent-lane status summaries (#1707-#1716).
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.
