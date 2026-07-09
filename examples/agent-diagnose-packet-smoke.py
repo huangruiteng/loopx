@@ -253,6 +253,8 @@ def main() -> int:
         assert "can_self_drive" not in selected, selected
         assert selected["todo_evidence"]["agent_open_count"] == 1, selected
         assert selected["quota_signals"]["should_run"] is True, selected
+        assert selected["quota_signals"]["action_required"] is False, selected
+        assert selected["quota_signals"]["open_count"] == 0, selected
         assert selected["quota_signals"]["goal_frontier_projection"]["replan_required"] is False, (
             selected
         )
@@ -275,6 +277,8 @@ def main() -> int:
         assert "Agent Reasoning Checklist" in markdown, markdown
         assert "These are for the agent to run" in markdown, markdown
         assert "goal_frontier_projection: replan_required=False" in markdown, markdown
+        assert "- action_required: `False`" in markdown, markdown
+        assert "- open_count: `0`" in markdown, markdown
         assert "current_agent_advancement=0" in markdown, markdown
         assert "unclaimed_advancement=1" in markdown, markdown
         assert "scheduler_hint: action=" in markdown, markdown
@@ -288,6 +292,8 @@ def main() -> int:
         gated_selected = gated_packet["selected"]
         assert gated_selected["machine_signal"] == "user_or_controller_attention", gated_selected
         assert gated_selected["todo_evidence"]["user_open_count"] == 1, gated_selected
+        assert gated_selected["quota_signals"]["action_required"] is True, gated_selected
+        assert gated_selected["quota_signals"]["open_count"] == 1, gated_selected
         assert "autonomous=yes/no" in str(gated_selected["user_question"]), gated_selected
         assert "can_self_drive" not in gated_selected, gated_selected
 

@@ -135,6 +135,19 @@ def _interaction_user_required(quota: dict[str, Any]) -> bool:
     return bool(quota.get("requires_user_action") or quota.get("notify_user_on_gate"))
 
 
+def _quota_user_action_required(quota: dict[str, Any]) -> bool:
+    if quota.get("action_required") is not None:
+        return bool(quota.get("action_required"))
+    return _interaction_user_required(quota)
+
+
+def _quota_user_open_count(quota: dict[str, Any]) -> int:
+    value = quota.get("open_count")
+    if isinstance(value, int):
+        return value
+    return _open_count(_as_dict(quota.get("user_todo_summary")))
+
+
 def _machine_signal(*, status_payload: dict[str, Any], item: dict[str, Any] | None, quota: dict[str, Any]) -> str:
     if not status_payload.get("ok"):
         return "status_health_attention"
@@ -143,7 +156,7 @@ def _machine_signal(*, status_payload: dict[str, Any], item: dict[str, Any] | No
     if not quota.get("ok", True):
         return "quota_attention"
     user_summary = _todo_summary(quota, item, role="user")
-    if _interaction_user_required(quota) or _open_count(user_summary) > 0:
+    if _quota_user_action_required(quota) or _open_count(user_summary) > 0:
         return "user_or_controller_attention"
     if quota.get("self_repair_allowed"):
         return "self_repair_attention"
@@ -222,6 +235,8 @@ def _compact_quota_signals(quota: dict[str, Any]) -> dict[str, Any]:
         "autonomous_replan_decision",
     )
     signals = {key: quota.get(key) for key in keys if key in quota}
+    signals["action_required"] = _quota_user_action_required(quota)
+    signals["open_count"] = _quota_user_open_count(quota)
     scheduler_hint = _compact_scheduler_hint(_as_dict(quota.get("scheduler_hint")))
     if scheduler_hint:
         signals["scheduler_hint"] = scheduler_hint
@@ -509,6 +524,8 @@ def render_diagnosis_markdown(payload: dict[str, Any]) -> str:
                 f"- quota_state: `{quota.get('state')}`",
                 f"- quota_should_run: `{quota.get('should_run')}`",
                 f"- effective_action: `{quota.get('effective_action')}`",
+                f"- action_required: `{quota.get('action_required')}`",
+                f"- open_count: `{quota.get('open_count')}`",
                 f"- requires_user_action: `{quota.get('requires_user_action')}`",
                 f"- normal_delivery_allowed: `{quota.get('normal_delivery_allowed')}`",
                 f"- self_repair_allowed: `{quota.get('self_repair_allowed')}`",
