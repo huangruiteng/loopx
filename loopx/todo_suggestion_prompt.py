@@ -30,6 +30,7 @@ ALLOWED_TODO_SUGGESTION_TRIGGERS = (
     "post-connect",
     "no-runnable-todo",
     "repo-changed",
+    "quality-watch",
 )
 
 
@@ -86,6 +87,13 @@ def build_todo_suggestion_prompt_packet(
     project_hint = _project_hint(project)
     agent_label = agent_id or "current project agent"
     source_text = ", ".join(selected_sources)
+    quality_watch_note = (
+        "\n\nBecause this is a `quality-watch` turn, compare fresh signals against the "
+        "last known state first. Return candidates only for new or still-uncovered "
+        "evidence; otherwise return an empty list with a short rationale."
+        if selected_trigger == "quality-watch"
+        else ""
+    )
 
     task_body = f"""Generate a bounded candidate todo decision queue for LoopX goal `{goal_id}`.
 
@@ -104,6 +112,7 @@ decision candidates, not formal LoopX todos. Do not call `loopx todo add`,
 `loopx todo update`, `loopx todo complete`, or edit LoopX state in this turn.
 If the evidence is weak or already covered by existing runnable todos, return an
 empty list with a short rationale.
+{quality_watch_note}
 
 Each candidate must use schema `{SUGGESTED_TODO_CANDIDATE_SCHEMA_VERSION}` and
 include: `candidate_id`, `title`, `why_now`, `evidence`, `first_safe_action`,

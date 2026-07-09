@@ -21,6 +21,9 @@ Useful triggers:
 - explicit user request such as "what looks worth doing next?";
 - no runnable agent todo after status/quota inspection;
 - material repo changes since the last candidate review.
+- `quality-watch` cadence turns, where the agent should compare fresh signals
+  against the last known state and return candidates only for new or
+  still-uncovered evidence.
 
 Avoid running this on every heartbeat. The default limit is 3 and the hard cap
 is 5.

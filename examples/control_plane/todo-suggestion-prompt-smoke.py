@@ -124,6 +124,35 @@ def main() -> int:
         assert "`requires_user_decision=true`" in task_body, task_body
         assert state_file.read_text(encoding="utf-8") == original_state
 
+        watch_result = run_cli(
+            registry_path,
+            "--format",
+            "json",
+            "todo",
+            "suggest",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            "codex-product-capability",
+            "--from",
+            "failing-checks",
+            "--from",
+            "complexity-hotspots",
+            "--trigger",
+            "quality-watch",
+        )
+        watch_payload = json.loads(watch_result.stdout)
+        assert watch_payload["ok"] is True, watch_payload
+        assert watch_payload["trigger"] == "quality-watch", watch_payload
+        assert watch_payload["sources"] == ["failing-checks", "complexity-hotspots"], watch_payload
+        assert watch_payload["formal_todos_written"] is False, watch_payload
+        watch_body = watch_payload["task_body"]
+        assert "Because this is a `quality-watch` turn" in watch_body, watch_body
+        assert "new or still-uncovered evidence" in watch_body, watch_body
+        assert "return an empty list with a short rationale" in watch_body, watch_body
+        assert "quality-watch" in watch_payload["frequency_policy"]["recommended_triggers"], watch_payload
+        assert state_file.read_text(encoding="utf-8") == original_state
+
         markdown = run_cli(
             registry_path,
             "todo",
