@@ -1,0 +1,29 @@
+examples/control_plane/control-plane-integrated-canary-smoke.py
+  s_e3f612788718c1::t_b6c654583567c0 249,400,425
+examples/control_plane/todo-lifecycle-cli-smoke.py
+  s_e3f612788718c1::t_91f18ee50e62cf 108,115,236-238,304,313,377,382,423,428
+loopx/control_plane/todos/contract.py
+  s_e3f612788718c1::t_1dca41d8a9ad31 250-258
+loopx/control_plane/todos/event_writeback.py
+  s_e3f612788718c1::t_171d882549df49 26,307-340
+loopx/todos.py
+  s_e3f612788718c1::t_af76d6966c7a16 30,597-628,1539-1548,1550,1670-1673,1681-1690,1693-1696
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "dbe0daab3ab0dbd032ecf5a2759b48c56b586635",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
