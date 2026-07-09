@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from loopx.cli_commands.status import (
+    _compact_agent_lane_todos_for_status_display,
     _review_handoff_agent,
     _status_collection_limit_for_agent_lane,
     _trim_run_history_for_status_display,
@@ -215,6 +216,88 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert packet["agent_member"]["agent_id"] == "codex-side-bypass", packet
     assert "Agent 成员：agent=codex-side-bypass role=side-agent" in packet["project_agent_handoff"], packet
     assert "authority=advisory_projection" in packet["project_agent_handoff"], packet
+
+
+def assert_status_agent_lane_todo_summary_display_compaction() -> None:
+    long_todos = [
+        {
+            "schema_version": "todo_item_v0",
+            "todo_id": f"todo_compact_{index}",
+            "index": index,
+            "role": "agent",
+            "status": "open",
+            "task_class": "continuous_monitor" if index % 2 else "advancement_task",
+            "claimed_by": "codex-product-capability",
+            "text": f"[P2] Compact status todo summary item {index} " + ("detail " * 40),
+        }
+        for index in range(1, 8)
+    ]
+    agent_todos = {
+        "schema_version": "todo_summary_v0",
+        "source_section": "Agent Todo",
+        "open_count": 7,
+        "done_count": 3,
+        "total_count": 10,
+        "items": long_todos,
+        "first_open_items": long_todos,
+        "monitor_open_items": long_todos,
+        "claimed_open_items": long_todos,
+        "claimed_monitor_open_items": long_todos,
+        "claimed_open_count": 7,
+        "unclaimed_open_count": 0,
+    }
+    user_todos = {
+        "schema_version": "todo_summary_v0",
+        "source_section": "User Todo / Owner Review Reading Queue",
+        "open_count": 1,
+        "done_count": 1,
+        "total_count": 2,
+        "items": long_todos[:3],
+        "first_open_items": long_todos[:1],
+        "handoff_gates": long_todos,
+    }
+    project_asset_agent_summary = project_asset_todo_summary(agent_todos, role="agent")
+    payload = {
+        "attention_queue": {
+            "items": [
+                {
+                    "goal_id": "agent-lane-display-compaction",
+                    "status": "active_state_agent_todo",
+                    "waiting_on": "codex",
+                    "severity": "action",
+                    "recommended_action": long_todos[0]["text"],
+                    "agent_todos": agent_todos,
+                    "user_todos": user_todos,
+                    "project_asset": {
+                        "agent_todos": project_asset_agent_summary,
+                    },
+                }
+            ]
+        }
+    }
+
+    _compact_agent_lane_todos_for_status_display(payload)
+
+    item = payload["attention_queue"]["items"][0]
+    compact_agent = item["agent_todos"]
+    compact_user = item["user_todos"]
+    assert compact_agent["open_count"] == 7, compact_agent
+    assert compact_agent["done_count"] == 3, compact_agent
+    assert len(compact_agent["items"]) == 2, compact_agent
+    assert compact_agent["payload_compaction"]["compacted_lanes"]["items"] == {
+        "shown": 2,
+        "total": 7,
+    }, compact_agent
+    assert compact_user["open_count"] == 1, compact_user
+    assert len(compact_user["handoff_gates"]) == 2, compact_user
+    assert item["project_asset"]["agent_todos"] == project_asset_agent_summary, item
+    marker = payload["agent_lane_todo_summary_compaction"]
+    assert marker["schema_version"] == "agent_lane_status_todo_summary_compaction_v0", marker
+
+    markdown = render_status_markdown(payload)
+    assert "agent_todos: open=7" in markdown, markdown
+    assert "open=None" not in markdown, markdown
+    assert "next_agent_todo:" in markdown, markdown
 
 
 def assert_status_agent_member_selected_lane_claim_survives_truncated_claim_list() -> None:
