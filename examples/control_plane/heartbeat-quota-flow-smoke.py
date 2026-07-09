@@ -803,6 +803,8 @@ def main() -> int:
         assert interaction["agent_channel"]["must_attempt"] is True, interaction
         assert interaction["agent_channel"]["quiet_noop_allowed"] is False, interaction
         assert interaction["cli_channel"]["spend_after_validation"] is True, interaction
+        assert "accountable replan delta" in interaction["cli_channel"]["spend_policy"], interaction
+        assert "surface_only" in " ".join(interaction["cli_channel"]["next_cli_actions"]), interaction
 
         refresh = run_cli(
             root,
@@ -982,6 +984,90 @@ def main() -> int:
             post_poll_guard["heartbeat_recommendation"]["recommended_mode"]
             == "monitor_quiet_until_material_transition"
         ), post_poll_guard
+
+    with tempfile.TemporaryDirectory(prefix="loopx-heartbeat-monitor-replan-surface-only-") as tmp:
+        root = Path(tmp)
+        project, runtime, registry_path = write_monitor_fixture(root)
+        first_guard = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert first_guard["effective_action"] == "autonomous_replan_required", first_guard
+        interaction = first_guard["interaction_contract"]
+        assert interaction["mode"] == "autonomous_replan", interaction
+        assert "accountable replan delta" in interaction["cli_channel"]["spend_policy"], interaction
+
+        refresh = run_cli(
+            root,
+            "refresh-state",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            "codex-side-bypass",
+            "--progress-scope",
+            "agent_lane",
+            "--classification",
+            "monitor_poll_autonomous_replan_recorded_v0",
+            "--autonomous-replan-recorded",
+            "--repair-delta-kind",
+            "watch_lane_continuation",
+            "--repair-delta-kind",
+            "no_followup",
+            "--vision-unchanged-reason",
+            "watch lane continuation recorded; no current acceptance gap is claimed complete",
+            "--delivery-batch-scale",
+            "single_surface",
+            "--delivery-outcome",
+            "surface_only",
+            "--no-global-sync",
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert refresh["ok"] is True, refresh
+        assert refresh["delivery_outcome"] == "surface_only", refresh
+
+        post_refresh_guard = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert post_refresh_guard["effective_action"] == "monitor_quiet_skip", post_refresh_guard
+        post_refresh_interaction = post_refresh_guard["interaction_contract"]
+        assert post_refresh_interaction["mode"] == "monitor_quiet_skip", post_refresh_interaction
+        assert post_refresh_interaction["cli_channel"]["spend_after_validation"] is False, post_refresh_interaction
+
+        spend_rc, spend = run_cli_result(
+            root,
+            "quota",
+            "spend-slot",
+            "--goal-id",
+            GOAL_ID,
+            "--slots",
+            "1",
+            "--source",
+            "heartbeat",
+            "--execute",
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert spend_rc == 1, spend
+        assert spend["ok"] is False, spend
+        assert count_spend_events(runtime) == 0, spend
 
     with tempfile.TemporaryDirectory(prefix="loopx-external-evidence-observation-") as tmp:
         root = Path(tmp)
