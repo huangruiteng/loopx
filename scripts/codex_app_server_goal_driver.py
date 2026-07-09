@@ -129,7 +129,11 @@ def _codex_session_jsonl_paths(turn: CodexAppServerGoalTurn) -> list[Path]:
         fd_dir = proc_root / str(pid) / "fd"
         if not fd_dir.exists():
             continue
-        for fd in fd_dir.iterdir():
+        try:
+            fds = tuple(fd_dir.iterdir())
+        except OSError:
+            continue
+        for fd in fds:
             try:
                 target = Path(os.readlink(fd))
             except OSError:
