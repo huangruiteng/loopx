@@ -4106,13 +4106,13 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             value = public_safe_compact_text(fingerprint.get(field), limit=100)
             if value:
                 compact_fingerprint[field] = value
-        if isinstance(fingerprint.get("line_count"), int) and not isinstance(
-            fingerprint.get("line_count"),
-            bool,
+        line_count = fingerprint.get("line_count")
+        if isinstance(line_count, int) and not isinstance(line_count, bool):
+            compact_fingerprint["line_count"] = line_count
+        for field, limit in (
+            ("matched_patterns", MAX_BENCHMARK_RUN_LIST_ITEMS * 4),
+            ("failure_line_dependency_classes", MAX_BENCHMARK_RUN_LIST_ITEMS * 2),
         ):
-            compact_fingerprint["line_count"] = fingerprint["line_count"]
-        for field, limit in (("matched_patterns", MAX_BENCHMARK_RUN_LIST_ITEMS * 4),
-                             ("failure_line_dependency_classes", MAX_BENCHMARK_RUN_LIST_ITEMS * 2)):
             values = public_safe_compact_list(fingerprint.get(field), limit=limit)
             if values:
                 compact_fingerprint[field] = values
