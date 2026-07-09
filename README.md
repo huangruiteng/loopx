@@ -197,6 +197,12 @@ credentials, or AB/canary gates.
 LoopX will plan before writing state, then create ordered P0/P1/P2 todos that
 make the algorithm, infra, validation, and human gates visible.
 
+This Explore-style harness works best when the task has a measurable offline
+eval, baseline, treatment, and guardrail metrics. It is not recommended for
+open-ended tasks or scenarios where the evaluation metric cannot be quantified
+reliably, because the loop depends on comparable metrics to decide whether an
+exploration branch actually improved the result.
+
 <details>
 <summary>Example visible todos</summary>
 
