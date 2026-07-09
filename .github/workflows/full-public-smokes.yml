@@ -1,0 +1,94 @@
+name: Full Public Smokes
+
+on:
+  workflow_dispatch:
+    inputs:
+      timeout_seconds:
+        description: "Per-smoke timeout in seconds"
+        required: false
+        default: "120"
+        type: string
+  schedule:
+    # Daily off-hours sweep. The workflow is intentionally not a PR-required check.
+    - cron: "37 18 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/full-public-smokes.yml"
+      - "README.md"
+      - "README.zh-CN.md"
+      - "docs/**"
+      - "examples/**"
+      - "loopx/**"
+      - "pyproject.toml"
+      - "scripts/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-public-smokes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-public-smokes:
+    if: github.repository == 'huangruiteng/loopx'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: 0
+            offset: 0
+          - shard: 1
+            offset: 100
+          - shard: 2
+            offset: 200
+          - shard: 3
+            offset: 300
+          - shard: 4
+            offset: 400
+          - shard: 5
+            offset: 500
+    env:
+      SHARD_LIMIT: "100"
+      SMOKE_TIMEOUT_SECONDS: ${{ github.event_name == 'workflow_dispatch' && inputs.timeout_seconds || '120' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Preview full-public shard
+        run: |
+          python3 examples/run-smokes.py \
+            --suite full-public \
+            --offset "${{ matrix.offset }}" \
+            --limit "${SHARD_LIMIT}" \
+            --timeout-seconds "${SMOKE_TIMEOUT_SECONDS}" \
+            --no-execute
+
+      - name: Run full-public shard
+        run: |
+          set -euo pipefail
+          mkdir -p smoke-results
+          python3 examples/run-smokes.py \
+            --suite full-public \
+            --offset "${{ matrix.offset }}" \
+            --limit "${SHARD_LIMIT}" \
+            --timeout-seconds "${SMOKE_TIMEOUT_SECONDS}" \
+            --json \
+            | tee "smoke-results/full-public-shard-${{ matrix.shard }}.json"
+
+      - name: Upload smoke result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-public-smokes-shard-${{ matrix.shard }}
+          path: smoke-results/full-public-shard-${{ matrix.shard }}.json
+          if-no-files-found: ignore
