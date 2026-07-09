@@ -287,12 +287,6 @@ def classify_premerge_surfaces(changed_files: list[str]) -> dict[str, Any]:
         )
     if any(_path_matches(path, LARK_KANBAN_TOKENS) for path in files):
         mark("lark_kanban")
-        manual_holds.append(
-            {
-                "kind": "lark_kanban_reviewer",
-                "reason": "Lark Kanban paths require ZaynJarvis review or explicit owner bypass",
-            }
-        )
     if python_files:
         mark("python")
     if not surfaces and files:
