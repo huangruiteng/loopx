@@ -1,0 +1,25 @@
+examples/skillsbench-uv-cache-smoke.py
+  s_9a5a2bd944fdcb::t_05563449e59a76 1-78
+loopx/benchmark_adapters/skillsbench_uv_cache.py
+  s_9a5a2bd944fdcb::t_b09a4a8084028a 1-111
+scripts/skillsbench_automation_loop.py
+  s_9a5a2bd944fdcb::t_8b90653384131d 119,6280,7028,7081,8611
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c292728e3e8d0b9f5e567db7f499270e74d8ad7b",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
