@@ -308,6 +308,23 @@ def test_current_aggregate_prefers_countable_results() -> None:
             ],
             "active_case_ids": [],
             "runnable_missing_case_ids": ["never-run-case"],
+            "runnable_blocked_uncountable_case_ids": [
+                "canonical-task-source-preflight",
+                "fix-druid-loophole-cve",
+                "fix-erlang-ssh-cve",
+                "flink-query",
+                "pddl-tpp-planning",
+                "reward-artifact-missing",
+            ],
+            "runnable_case_ids": [
+                "canonical-task-source-preflight",
+                "fix-druid-loophole-cve",
+                "fix-erlang-ssh-cve",
+                "flink-query",
+                "never-run-case",
+                "pddl-tpp-planning",
+                "reward-artifact-missing",
+            ],
             "raw_logs_recorded": False,
             "raw_task_text_recorded": False,
             "source_paths_recorded": False,
@@ -696,6 +713,14 @@ def test_current_aggregate_cli_writes_public_safe_json() -> None:
         assert aggregate["active_case_ids"] == ["never-run-case"], aggregate
         assert aggregate["missing_case_ids"] == ["never-run-case"], aggregate
         assert aggregate["runnable_missing_case_ids"] == [], aggregate
+        assert "fix-druid-loophole-cve" in aggregate[
+            "runnable_blocked_uncountable_case_ids"
+        ], aggregate
+        assert "fix-druid-loophole-cve" in aggregate["runnable_case_ids"], aggregate
+        assert "never-run-case" not in aggregate["runnable_case_ids"], aggregate
+        assert aggregate["standard_case_sets"]["runnable_case_ids"] == aggregate[
+            "runnable_case_ids"
+        ], aggregate
         assert aggregate["countable_score_summary"]["countable_case_count"] == 3
         assert aggregate["countable_score_summary"]["countable_score_mean"] == 0.166667
         assert "hello-world" not in aggregate["case_best"]

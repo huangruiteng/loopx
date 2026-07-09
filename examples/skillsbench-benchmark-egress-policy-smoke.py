@@ -162,6 +162,45 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
     assert "--append-history" not in output, output
 
 
+def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
+    env = os.environ.copy()
+    env.update(
+        {
+            "SKILLSBENCH_SSH_DESTINATION": "example.invalid",
+            "SKILLSBENCH_REMOTE_ROOT": "/remote/loopx",
+            "SKILLSBENCH_ROOT": "/remote/skillsbench",
+            "SKILLSBENCH_EXPECTED_LOOPX_GIT_HEAD": "abc1234",
+            "SKILLSBENCH_DOCKER_PROXY_HOST": "host.docker.internal",
+            "SKILLSBENCH_RUN_STAMP": "20260710T000000CST",
+        }
+    )
+    proc = subprocess.run(
+        [
+            str(REPO_ROOT / "scripts" / "skillsbench-launch-goal-xhigh.sh"),
+            "--dry-run",
+            "case-a,case-b,case-c",
+            "batch-smoke",
+            "18186",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+    output = proc.stdout
+    assert "task_ids=case-a,case-b,case-c" in output, output
+    assert "parallel_cases=3" in output, output
+    assert "--task-ids case-a\\,case-b\\,case-c" in output or (
+        "--task-ids case-a,case-b,case-c" in output
+    ), output
+    assert "--parallel-cases 3" in output, output
+    assert "--remote-public-artifact-root" in output, output
+    assert "benchmark_run.compact.json" in output, output
+    assert "--local-run-ledger-path" in output, output
+
+
 def test_verifier_proxy_patch_is_required_only_for_existing_verifier() -> None:
     proxy_env = {
         "LOOPX_SKILLSBENCH_EGRESS_PROXY": "http://benchmark-proxy.example.invalid:18080",
@@ -192,5 +231,6 @@ if __name__ == "__main__":
     test_formal_cli_goal_auto_requires_benchmark_egress_proxy()
     test_formal_cli_goal_proxy_env_is_forwarded_without_public_url()
     test_public_launcher_uses_container_reachable_benchmark_proxy()
+    test_public_launcher_batches_three_cases_with_closeout_sync()
     test_verifier_proxy_patch_is_required_only_for_existing_verifier()
     print("skillsbench-benchmark-egress-policy-smoke: ok")

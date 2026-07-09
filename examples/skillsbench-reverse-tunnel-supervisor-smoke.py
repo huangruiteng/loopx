@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import subprocess
@@ -12,6 +13,12 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.benchmark_core import materialize_public_benchmark_artifacts
+from loopx.benchmark_core.remote_closeout import closeout_remote_benchmark_batch
+
 SCRIPT = REPO_ROOT / "scripts" / "skillsbench_reverse_tunnel_supervisor.py"
 
 
@@ -19,6 +26,8 @@ def _fake_ssh(path: Path, log_path: Path) -> None:
     path.write_text(
         f"""#!/usr/bin/env python3
 import os
+import base64
+import json
 import signal
 import sys
 import time
@@ -46,6 +55,27 @@ if "LOOPX_REVERSE_TUNNEL_PROBE" in remote_command:
 
 if "LOOPX_REMOTE_FAILURE_CLEANUP" in remote_command:
     print('{{"alive_after_count": 0, "docker_matched_count": 1, "docker_removed_count": 1, "docker_status": "ok", "kill_sent_count": 0, "matched_count": 2, "term_sent_count": 2}}')
+    sys.exit(0)
+
+if "benchmark_remote_public_artifact_collection_v0" in remote_command:
+    compact = json.dumps({{
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": "skillsbench@1.1",
+        "task_id": "case-a",
+        "run_id": "case-a-sync-smoke",
+        "route": "codex-cli-goal-baseline",
+        "status": "completed",
+        "official_score": 0.0,
+    }}, sort_keys=True).encode("utf-8")
+    print(json.dumps({{
+        "schema_version": "benchmark_remote_public_artifact_collection_v0",
+        "matched_count": 1,
+        "blocked_count": 0,
+        "artifacts": [{{
+            "relative_path": "job/case/benchmark_run.compact.json",
+            "content_base64": base64.b64encode(compact).decode("ascii"),
+        }}],
+    }}, sort_keys=True))
     sys.exit(0)
 
 if "cat >" in remote_command:
@@ -122,6 +152,146 @@ def test_supervisor_holds_tunnel_and_redacts_private_command() -> None:
         assert opaque_command not in public_text
         assert opaque_command in ssh_log.read_text(encoding="utf-8")
         assert private_log.exists()
+
+
+def test_supervisor_syncs_only_compact_public_artifacts() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-tunnel-sync-") as tmp:
+        root = Path(tmp)
+        fake_ssh = root / "ssh"
+        ssh_log = root / "ssh.log"
+        public_output = root / "public.json"
+        private_log = root / "private.log"
+        synced_dir = root / "synced"
+        ledger_path = root / "live-ledger.json"
+        aggregate_path = root / "standard-aggregate.json"
+        canonical_ids = root / "canonical-case-ids.txt"
+        canonical_ids.write_text("case-a\n", encoding="utf-8")
+        _fake_ssh(fake_ssh, ssh_log)
+
+        opaque_destination = "opaque-benchmark-host.example"
+        opaque_remote_root = "/opaque/private/jobs"
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--ssh-bin",
+                str(fake_ssh),
+                "--ssh-destination",
+                opaque_destination,
+                "--remote-forward",
+                "127.0.0.1:18180:127.0.0.1:18180",
+                "--remote-command",
+                "run-skillsbench --case case-a",
+                "--remote-public-artifact-root",
+                opaque_remote_root,
+                "--remote-public-artifact-glob",
+                "job/*/benchmark_run.compact.json",
+                "--local-public-artifact-dir",
+                str(synced_dir),
+                "--local-run-ledger-path",
+                str(ledger_path),
+                "--local-run-group-id",
+                "skillsbench-codex-cli-goal-xhigh-sync-smoke",
+                "--local-current-aggregate-path",
+                str(aggregate_path),
+                "--local-canonical-case-ids-file",
+                str(canonical_ids),
+                "--local-target-lane-id",
+                "codex-cli-goal-xhigh",
+                "--local-target-run-group-contains",
+                "skillsbench-codex-cli-goal-xhigh-",
+                "--public-output-path",
+                str(public_output),
+                "--private-log-path",
+                str(private_log),
+                "--tunnel-ready-timeout-sec",
+                "5",
+                "--probe-interval-sec",
+                "0.1",
+                "--run-timeout-sec",
+                "5",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        assert proc.returncode == 0, proc.stderr or proc.stdout
+        payload = json.loads(proc.stdout)
+        sync = payload["public_artifact_sync"]
+        assert sync["ok"] is True, sync
+        assert sync["matched_count"] == 1, sync
+        assert sync["written_count"] == 1, sync
+        compact_path = synced_dir / "job" / "case" / "benchmark_run.compact.json"
+        assert compact_path.exists(), sync
+        assert ledger_path.exists(), sync
+        assert aggregate_path.exists(), sync
+        assert sync["local_ledger_update"]["upserted_count"] == 1, sync
+        assert sync["local_aggregate_update"]["canonical_total"] == 1, sync
+        public_text = public_output.read_text(encoding="utf-8")
+        assert opaque_destination not in public_text
+        assert opaque_remote_root not in public_text
+        assert str(synced_dir) not in public_text
+        assert sync["raw_paths_recorded"] is False
+        assert sync["raw_logs_read"] is False
+        assert sync["raw_trajectory_read"] is False
+
+
+def test_public_artifact_materializer_rejects_private_children() -> None:
+    with tempfile.TemporaryDirectory(prefix="benchmark-artifact-boundary-") as tmp:
+        content = base64.b64encode(b"{}\n").decode("ascii")
+        result = materialize_public_benchmark_artifacts(
+            [
+                {
+                    "relative_path": "private/leak.public.json",
+                    "content_base64": content,
+                },
+                {
+                    "relative_path": "case/benchmark_run.compact.json",
+                    "content_base64": content,
+                },
+            ],
+            output_dir=tmp,
+            adapter_kind="skillsbench",
+        )
+        assert result["written_count"] == 1, result
+        assert result["blocked_reasons"] == {"raw_private_surface": 1}, result
+        assert not (Path(tmp) / "private" / "leak.public.json").exists()
+
+
+def test_closeout_requires_compact_when_ledger_is_requested() -> None:
+    with tempfile.TemporaryDirectory(prefix="benchmark-closeout-compact-") as tmp:
+        content = base64.b64encode(b"{}\n").decode("ascii")
+        collection = json.dumps(
+            {
+                "artifacts": [
+                    {
+                        "relative_path": "job/runner_prerequisites.public.json",
+                        "content_base64": content,
+                    }
+                ],
+                "matched_count": 1,
+                "blocked_count": 0,
+            }
+        )
+        result = closeout_remote_benchmark_batch(
+            run_remote_command=lambda _command, _timeout: subprocess.CompletedProcess(
+                args=[], returncode=0, stdout=collection, stderr=""
+            ),
+            remote_root="/opaque/private/jobs",
+            artifact_globs=["job/*.public.json"],
+            local_public_artifact_dir=tmp,
+            adapter_kind="skillsbench",
+            max_bytes=1024,
+            sync_timeout_sec=1,
+            ledger_path=str(Path(tmp) / "ledger.json"),
+        )
+        assert result["ok"] is False, result
+        assert (
+            result["first_blocker"]
+            == "benchmark_compact_missing_after_remote_closeout"
+        ), result
 
 
 def test_supervisor_cleans_remote_failure_without_public_pattern() -> None:
@@ -296,6 +466,9 @@ def test_supervisor_holds_json_bridge_and_materializes_remote_client() -> None:
 
 if __name__ == "__main__":
     test_supervisor_holds_tunnel_and_redacts_private_command()
+    test_supervisor_syncs_only_compact_public_artifacts()
+    test_public_artifact_materializer_rejects_private_children()
+    test_closeout_requires_compact_when_ledger_is_requested()
     test_supervisor_cleans_remote_failure_without_public_pattern()
     test_supervisor_holds_json_bridge_and_materializes_remote_client()
     print("skillsbench-reverse-tunnel-supervisor smoke ok")
