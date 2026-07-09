@@ -116,7 +116,7 @@ from loopx.benchmark_adapters.skillsbench_verifier_bootstrap import (  # noqa: E
 from loopx.benchmark_adapters.skillsbench_task_source import (  # noqa: E402
     classify_missing_task_source,
 )
-from loopx.benchmark_adapters import skillsbench_runner_source as runner_source  # noqa: E402
+from loopx.benchmark_adapters import skillsbench_runner_source as runner_source, skillsbench_uv_cache as uv_cache  # noqa: E402
 from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER,
     SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT,
@@ -6277,6 +6277,7 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
             and "python3 -m pip install" in dockerfile_text
             and "uv==${LOOPX_SKILLSBENCH_UV_VERSION}" in dockerfile_text
         ),
+        **uv_cache.discover_uv_binary_cache_metadata(prepared_task, dockerfile_text),
         "dockerfile_uv_bootstrap_mirror_host": (
             DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
             if DOCKER_UV_BOOTSTRAP_MIRROR_BEGIN in dockerfile_text
@@ -7024,7 +7025,7 @@ def patch_dockerfile_uv_bootstrap_mirror(dockerfile: Path) -> dict[str, Any]:
         "# official uv installer as a bounded mirror-backed fallback.\n"
         f"ARG LOOPX_SKILLSBENCH_UV_RELEASE_MIRROR={DEFAULT_VERIFIER_UV_RELEASE_MIRROR_BASE}\n"
         f"ARG LOOPX_SKILLSBENCH_UV_VERSION={version}\n"
-        "RUN set -eux; \\\n"
+        f"{uv_cache.dockerfile_uv_binary_cache_prelude()}"
         "    if command -v python3 >/dev/null 2>&1; then \\\n"
         "      loopx_pip_break_system_packages=''; \\\n"
         "      if python3 -m pip install --help 2>/dev/null | grep -q -- '--break-system-packages'; then \\\n"
@@ -7077,6 +7078,7 @@ def patch_dockerfile_uv_bootstrap_mirror(dockerfile: Path) -> dict[str, Any]:
             "dockerfile_uv_bootstrap_mirror_patch_required": True,
             "dockerfile_uv_bootstrap_mirror_patch_applied": True,
             "dockerfile_uv_bootstrap_pip_fallback_patch_applied": True,
+            "dockerfile_uv_binary_cache_dockerfile_patch_applied": True,
             "dockerfile_uv_bootstrap_version": version,
             "dockerfile_uv_bootstrap_mirror_host": (
                 DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
@@ -8606,6 +8608,7 @@ def stage_task_for_sandbox(
                     )
                 )
             ),
+            **uv_cache.stage_uv_binary_cache_context(staged_path / "environment"),
             "dockerfile_uv_bootstrap_mirror_host": (
                 str(
                     dockerfile_uv_mirror_metadata.get(
