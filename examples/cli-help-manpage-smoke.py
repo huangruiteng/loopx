@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import gzip
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -141,11 +142,17 @@ def assert_installer_manpage_surface() -> None:
             capture_output=True,
         )
         rendered_man = "\n".join(part for part in (man.stdout, man.stderr) if part)
-        compact_rendered_man = " ".join(rendered_man.split())
+        # man implementations insert presentation-only Unicode hyphens when
+        # wrapping words. Remove those line-break artifacts before checking
+        # the rendered semantics.
+        dehyphenated_man = re.sub(r"[-\u2010-\u2015]\s+", "", rendered_man)
+        compact_rendered_man = " ".join(dehyphenated_man.split())
+        compact_rendered_man = re.sub(r"[-\u2010-\u2015]", "", compact_rendered_man)
         assert "LOOPX(1)" in rendered_man, (man.returncode, man.stdout, man.stderr)
-        assert "LoopX keeps" in compact_rendered_man, rendered_man
-        assert "agent work moving" in compact_rendered_man, rendered_man
-        assert "heartbeat automation" in rendered_man, rendered_man
+        assert "LoopX keeps longrunning agent work moving" in compact_rendered_man, (
+            rendered_man
+        )
+        assert "heartbeat automation" in compact_rendered_man, rendered_man
 
 
 def main() -> int:
