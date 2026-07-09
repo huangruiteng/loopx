@@ -19,6 +19,7 @@ from ..benchmark_core import (
     canonical_lifecycle,
 )
 from ..codex_goal_baseline import build_codex_app_server_goal_worker_plan
+from .skillsbench_failure_signals import skillsbench_pip_bootstrap_failure_evidence
 from .skillsbench_signals import build_skillsbench_solution_quality_signals
 from .skillsbench_result_discovery import (
     SKILLSBENCH_RESULT_DISCOVERY_SCHEMA_VERSION,
@@ -1674,16 +1675,7 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
                 "skillsbench_docker_compose_setup_failure",
                 "skillsbench_environment_setup_error",
             ]
-        if (
-            "pip install" in text
-            or "python -m pip" in text
-            or "python3 -m pip" in text
-            or "files.pythonhosted.org" in text
-            or "pypi.org" in text
-            or "pypi.tuna.tsinghua.edu.cn" in text
-            or "no matching distribution found" in text
-            or "read timed out" in text
-        ):
+        if skillsbench_pip_bootstrap_failure_evidence(text):
             label = "skillsbench_docker_compose_pip_bootstrap_failure"
             return label, label, [
                 label,
@@ -1771,7 +1763,10 @@ def skillsbench_runner_error_fingerprint(error_text: str) -> dict[str, Any]:
         "service_unhealthy": r"unhealthy|healthcheck|health check",
         "container_exited": r"exited with code|container .* exited|exit code",
         "dependency_failed": r"dependency failed|depends_on|dependency",
-        "network_failure": r"network|connection refused|could not connect",
+        "network_failure": (
+            r"network|connection refused|could not connect|read timed out|"
+            r"connection timed out|connection reset|max retries exceeded"
+        ),
         "volume_mount_failure": r"mount|volume|bind source path",
         "permission_denied": r"permission denied|operation not permitted",
         "missing_file": r"no such file|not found|does not exist",
@@ -1783,18 +1778,18 @@ def skillsbench_runner_error_fingerprint(error_text: str) -> dict[str, Any]:
         "image_build": r"failed to solve|failed to build|dockerfile|pull access denied|manifest unknown",
         "port_conflict": r"port is already allocated|address already in use|ports are not available|bind for",
         "apt_failure": r"apt-get|apt update|apt |gpg error|hash sum mismatch|failed to fetch",
-        "pip_bootstrap_failure": (
-            r"pip install|python3? -m pip|files\.pythonhosted\.org|pypi\.org|"
-            r"pypi\.tuna\.tsinghua\.edu\.cn|no matching distribution found"
-        ),
+        "pip_bootstrap_failure": r"$^",
         "subprocess_command_timeout": r"command timed out after \d+ seconds",
         "timeout": r"timeout|timed out|deadline",
     }
-    matched = [
-        label
-        for label, pattern in patterns.items()
-        if re.search(pattern, lowered)
-    ]
+    matched = []
+    for label, pattern in patterns.items():
+        if label == "pip_bootstrap_failure":
+            pattern_matched = skillsbench_pip_bootstrap_failure_evidence(lowered)
+        else:
+            pattern_matched = bool(re.search(pattern, lowered))
+        if pattern_matched:
+            matched.append(label)
     return {
         "schema_version": "skillsbench_runner_failure_fingerprint_v0",
         "error_present": bool(text),

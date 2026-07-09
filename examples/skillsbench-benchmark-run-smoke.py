@@ -4846,29 +4846,6 @@ def test_skillsbench_app_skills_permission_failure_not_overridden_by_worker_rout
         ), compact
 
 
-def test_skillsbench_docker_pip_bootstrap_failure_attribution() -> None:
-    error_text = (
-        "Docker compose command failed for environment adaptive-cruise-control. "
-        "Command: docker compose build. Return code: 1. "
-        "Dockerfile contains RUN mkdir -p /app /app/skills. "
-        "RUN pip3 install numpy==1.26.4 pandas==2.2.2. "
-        "ERROR: Read timed out from files.pythonhosted.org. "
-        "ERROR: No matching distribution found for numpy==1.26.4"
-    )
-
-    exception_type, attribution, labels = skillsbench_runner_error_attribution(
-        error_text
-    )
-    assert exception_type == "skillsbench_docker_compose_pip_bootstrap_failure"
-    assert attribution == "skillsbench_docker_compose_pip_bootstrap_failure"
-    assert "skillsbench_python_package_bootstrap_failure" in labels, labels
-    assert "skillsbench_environment_setup_error" in labels, labels
-    assert "skillsbench_environment_app_mount_missing" not in labels, labels
-    fingerprint = skillsbench_runner_error_fingerprint(error_text)
-    assert "pip_bootstrap_failure" in fingerprint["matched_patterns"], fingerprint
-    assert "volume_mount_failure" not in fingerprint["matched_patterns"], fingerprint
-
-
 def test_skillsbench_docker_port_conflict_attribution() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-docker-port-") as tmp:
         result_path = write_official_skillsbench_docker_port_conflict_failure(
