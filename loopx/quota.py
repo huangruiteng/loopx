@@ -87,6 +87,10 @@ from .control_plane.quota.scheduler_ack import (
     build_quota_scheduler_ack_event,
     record_quota_scheduler_ack_for_decision,
 )
+from .control_plane.quota.selected_todo_projection import (
+    first_todo_id_from_items as _first_todo_id_from_items,
+    selected_todo_projection as _selected_todo_projection,
+)
 from .control_plane.quota.subagent_orchestration import (
     apply_subagent_orchestration_contract,
     attach_subagent_payload_contract,
@@ -1912,6 +1916,12 @@ def build_quota_should_run(
             payload["agent_identity"] = agent_identity
         if agent_lane_next_action:
             payload["agent_lane_next_action"] = agent_lane_next_action
+        selected_todo_projection = _selected_todo_projection(
+            agent_lane_next_action=agent_lane_next_action,
+            work_lane_contract=payload_work_lane_contract,
+        )
+        if selected_todo_projection:
+            payload["selected_todo"] = selected_todo_projection
         if agent_lane_frontier_hint:
             payload["agent_lane_frontier_hint"] = agent_lane_frontier_hint
         if goal_route_hint:
@@ -2203,18 +2213,6 @@ def build_quota_slot_preview(
         quota_status_builder=quota_status,
         self_repair_spend_actions=SELF_REPAIR_SPEND_ACTIONS,
     )
-
-
-def _first_todo_id_from_items(value: Any) -> str | None:
-    if not isinstance(value, list):
-        return None
-    for item in value:
-        if not isinstance(item, dict):
-            continue
-        todo_id = normalize_todo_id(item.get("todo_id") or item.get("id"))
-        if todo_id:
-            return todo_id
-    return None
 
 
 def _required_read_todo_id(decision: dict[str, Any]) -> str | None:

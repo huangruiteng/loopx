@@ -237,6 +237,11 @@ def assert_other_agent_user_gate_does_not_block_current_agent() -> None:
     assert override["from_state"] == "operator_gate", override
     assert override["to_state"] == "eligible", override
     assert payload["agent_lane_next_action"]["todo_id"] == "todo_benchmark_driver", payload
+    assert payload["selected_todo"]["todo_id"] == "todo_benchmark_driver", payload
+    assert payload["selected_todo"]["source"] == (
+        "agent_todo_summary.first_executable_items"
+    ), payload
+    assert payload["selected_todo"]["selected_by"] == "current_agent_claimed_todo", payload
 
 
 def assert_other_agent_user_gate_does_not_notify_non_due_monitor_lane() -> None:
