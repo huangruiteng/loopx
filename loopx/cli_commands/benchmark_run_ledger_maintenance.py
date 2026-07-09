@@ -284,6 +284,16 @@ def handle_benchmark_run_ledger_maintenance_command(
                     for child in sorted(canonical_root.iterdir(), key=lambda item: item.name)
                     if child.is_dir() and child.name
                 )
+            active_case_ids = list(args.active_case_id or [])
+            if args.active_case_ids_file:
+                active_case_ids.extend(
+                    line.strip()
+                    for line in Path(args.active_case_ids_file)
+                    .expanduser()
+                    .read_text(encoding="utf-8")
+                    .splitlines()
+                    if line.strip()
+                )
             merged_ledger = load_benchmark_run_ledger(args.run_ledger_path)
             source_ledger_count = 0
             source_run_count = 0
@@ -313,6 +323,7 @@ def handle_benchmark_run_ledger_maintenance_command(
                 merged_ledger,
                 benchmark_id=args.benchmark_id,
                 canonical_case_ids=canonical_case_ids or None,
+                active_case_ids=active_case_ids or None,
                 source_ledger_count=source_ledger_count,
                 exclude_noncanonical_sanity_sources=not bool(
                     args.include_noncanonical_sanity_sources

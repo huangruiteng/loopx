@@ -462,6 +462,7 @@ def build_benchmark_run_ledger_current_aggregate(
     *,
     benchmark_id: str = "skillsbench@1.1",
     canonical_case_ids: list[str] | None = None,
+    active_case_ids: list[str] | None = None,
     source_ledger_count: int = 1,
     exclude_noncanonical_sanity_sources: bool = True,
     target_lane_id: str | None = None,
@@ -506,6 +507,15 @@ def build_benchmark_run_ledger_current_aggregate(
                 and _current_aggregate_case_is_noncanonical_source(case)
             )
         )
+    active_ids = sorted(
+        {
+            normalized_case_id
+            for case_id in (active_case_ids or [])
+            for normalized_case_id in [_compact_text(case_id, limit=160)]
+            if normalized_case_id
+        }
+    )
+    active_id_set = set(active_ids)
     distribution = {
         "missing": 0,
         "setup_runner_infra": 0,
@@ -583,6 +593,34 @@ def build_benchmark_run_ledger_current_aggregate(
     countable_score_mean = (
         countable_score_sum / len(countable_scores) if countable_scores else None
     )
+    accepted_case_ids = sorted(countable_case_ids)
+    missing_case_ids = sorted(cases_by_bucket.get("missing", []))
+    blocked_uncountable_case_ids = sorted(
+        {
+            case_id
+            for bucket in (
+                "setup_runner_infra",
+                "uncountable_official_score",
+                "verifier_no_reward",
+            )
+            for case_id in cases_by_bucket.get(bucket, [])
+        }
+    )
+    runnable_missing_case_ids = [
+        case_id for case_id in missing_case_ids if case_id not in active_id_set
+    ]
+    standard_case_sets = {
+        "schema_version": "benchmark_run_ledger_standard_case_sets_v0",
+        "policy": "accepted_numeric_official_scores_blocked_uncountable_infra_missing_elsewhere",
+        "accepted_case_ids": accepted_case_ids,
+        "missing_case_ids": missing_case_ids,
+        "blocked_uncountable_case_ids": blocked_uncountable_case_ids,
+        "active_case_ids": active_ids,
+        "runnable_missing_case_ids": runnable_missing_case_ids,
+        "raw_logs_recorded": False,
+        "raw_task_text_recorded": False,
+        "source_paths_recorded": False,
+    }
     return {
         "schema_version": BENCHMARK_RUN_LEDGER_CURRENT_AGGREGATE_SCHEMA_VERSION,
         "benchmark_id": benchmark_id,
@@ -603,13 +641,19 @@ def build_benchmark_run_ledger_current_aggregate(
             ),
             "official_zero_count": sum(1 for score in countable_scores if score == 0.0),
             "uncountable_numeric_case_count": len(uncountable_numeric_case_ids),
-            "countable_case_ids": sorted(countable_case_ids),
+            "countable_case_ids": accepted_case_ids,
             "uncountable_numeric_case_ids": sorted(uncountable_numeric_case_ids),
         },
         "distribution": distribution,
         "cases_by_bucket": {
             bucket: sorted(case_ids) for bucket, case_ids in cases_by_bucket.items()
         },
+        "standard_case_sets": standard_case_sets,
+        "accepted_case_ids": accepted_case_ids,
+        "missing_case_ids": missing_case_ids,
+        "blocked_uncountable_case_ids": blocked_uncountable_case_ids,
+        "active_case_ids": active_ids,
+        "runnable_missing_case_ids": runnable_missing_case_ids,
         "case_best": case_best,
         "deduped_run_count": len(deduped_run_ids),
         "source_ledger_files": source_ledger_count,

@@ -238,6 +238,19 @@ def register_benchmark_run_ledger_maintenance_commands(
         ),
     )
     benchmark_run_ledger_aggregate_parser.add_argument(
+        "--active-case-id",
+        action="append",
+        default=[],
+        help=(
+            "Case id for a currently running or reserved case that should not be "
+            "selected as runnable missing work. May be repeated."
+        ),
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
+        "--active-case-ids-file",
+        help="Text file with one currently running or reserved case id per line.",
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
         "--include-noncanonical-sanity-sources",
         action="store_true",
         help=(

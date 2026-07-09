@@ -185,6 +185,11 @@ def render_benchmark_run_ledger_aggregate_markdown(payload: dict[str, object]) -
         if isinstance(aggregate.get("countable_score_summary"), dict)
         else {}
     )
+    standard_case_sets = (
+        aggregate.get("standard_case_sets")
+        if isinstance(aggregate.get("standard_case_sets"), dict)
+        else {}
+    )
     selection_policy = (
         aggregate.get("selection_policy")
         if isinstance(aggregate.get("selection_policy"), dict)
@@ -195,6 +200,10 @@ def render_benchmark_run_ledger_aggregate_markdown(payload: dict[str, object]) -
         if isinstance(selection_policy.get("target_lane"), dict)
         else {}
     )
+
+    def _list_count(value: object) -> int:
+        return len(value) if isinstance(value, list) else 0
+
     lines = [
         "# Benchmark Run Ledger Current Aggregate",
         "",
@@ -206,6 +215,11 @@ def render_benchmark_run_ledger_aggregate_markdown(payload: dict[str, object]) -
         f"- countable_cases: `{score_summary.get('countable_case_count')}`",
         f"- countable_score_sum: `{score_summary.get('countable_score_sum')}`",
         f"- countable_score_mean: `{score_summary.get('countable_score_mean')}`",
+        f"- accepted_case_count: `{_list_count(standard_case_sets.get('accepted_case_ids'))}`",
+        f"- missing_case_count: `{_list_count(standard_case_sets.get('missing_case_ids'))}`",
+        f"- blocked_uncountable_case_count: `{_list_count(standard_case_sets.get('blocked_uncountable_case_ids'))}`",
+        f"- active_case_count: `{_list_count(standard_case_sets.get('active_case_ids'))}`",
+        f"- runnable_missing_case_count: `{_list_count(standard_case_sets.get('runnable_missing_case_ids'))}`",
         f"- distribution: `{distribution}`",
         f"- selection_rule: `{selection_policy.get('rule')}`",
         f"- target_lane_enabled: `{target_lane.get('enabled')}`",

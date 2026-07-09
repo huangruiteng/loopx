@@ -286,6 +286,39 @@ def test_current_aggregate_prefers_countable_results() -> None:
             ],
             "uncountable_numeric_case_ids": ["fix-erlang-ssh-cve"],
         }, aggregate["countable_score_summary"]
+        assert aggregate["standard_case_sets"] == {
+            "schema_version": "benchmark_run_ledger_standard_case_sets_v0",
+            "policy": (
+                "accepted_numeric_official_scores_blocked_uncountable_infra_"
+                "missing_elsewhere"
+            ),
+            "accepted_case_ids": [
+                "lab-unit-harmonization",
+                "latex-formula-extraction",
+                "manufacturing-codebook-normalization",
+            ],
+            "missing_case_ids": ["never-run-case"],
+            "blocked_uncountable_case_ids": [
+                "canonical-task-source-preflight",
+                "fix-druid-loophole-cve",
+                "fix-erlang-ssh-cve",
+                "flink-query",
+                "pddl-tpp-planning",
+                "reward-artifact-missing",
+            ],
+            "active_case_ids": [],
+            "runnable_missing_case_ids": ["never-run-case"],
+            "raw_logs_recorded": False,
+            "raw_task_text_recorded": False,
+            "source_paths_recorded": False,
+        }, aggregate["standard_case_sets"]
+        assert aggregate["accepted_case_ids"] == aggregate["standard_case_sets"][
+            "accepted_case_ids"
+        ]
+        assert aggregate["missing_case_ids"] == ["never-run-case"]
+        assert aggregate["blocked_uncountable_case_ids"] == aggregate[
+            "standard_case_sets"
+        ]["blocked_uncountable_case_ids"]
         assert (
             aggregate["case_best"]["latex-formula-extraction"]["run_id"]
             == "latex-official-zero"
@@ -642,6 +675,8 @@ def test_current_aggregate_cli_writes_public_safe_json() -> None:
                 "codex-cli-goal-xhigh",
                 "--target-run-group-contains",
                 "-",
+                "--active-case-id",
+                "never-run-case",
                 "--output-json",
                 str(output_path),
                 "--execute",
@@ -658,6 +693,9 @@ def test_current_aggregate_cli_writes_public_safe_json() -> None:
         assert aggregate["canonical_total"] == 5, aggregate
         assert aggregate["case_best"]["latex-formula-extraction"]["bucket"] == "official_zero"
         assert aggregate["case_best"]["fix-druid-loophole-cve"]["bucket"] == "setup_runner_infra"
+        assert aggregate["active_case_ids"] == ["never-run-case"], aggregate
+        assert aggregate["missing_case_ids"] == ["never-run-case"], aggregate
+        assert aggregate["runnable_missing_case_ids"] == [], aggregate
         assert aggregate["countable_score_summary"]["countable_case_count"] == 3
         assert aggregate["countable_score_summary"]["countable_score_mean"] == 0.166667
         assert "hello-world" not in aggregate["case_best"]
