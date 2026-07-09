@@ -28,6 +28,8 @@ _FAILURE_LINE_MARKERS = (
     "failed to download",
     "failed to fetch",
     "failed to solve",
+    "gpg error",
+    "hash sum mismatch",
     "manifest unknown",
     "max retries exceeded",
     "pull access denied",
@@ -35,6 +37,11 @@ _FAILURE_LINE_MARKERS = (
     "temporary failure in name resolution",
 )
 _FAILURE_DEPENDENCY_CLASS_PATTERNS = (
+    (
+        "system_package",
+        r"\bapt-get\b|\bapt\s+update\b|gpg error|hash sum mismatch|"
+        r"failed to fetch",
+    ),
     (
         "container_registry",
         r"registry-1\.docker\.io|docker\.io|gcr\.io|ghcr\.io|manifest unknown|"
