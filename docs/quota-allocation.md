@@ -838,6 +838,10 @@ Post-turn accounting protocol:
   account the latest unspent `outcome_progress` delivery run once; a later
   duplicate spend is rejected because the latest run is then the spend event,
   not the delivery run.
+- autonomous replans follow the same accountable-outcome rule: spend after a
+  concrete successor, blocker, or `outcome_progress`/`primary_goal_outcome`
+  writeback, but do not spend for a `surface_only` watch-lane continuation or
+  no-follow-up rationale that closes into `monitor_quiet_skip`.
 - for unchanged `monitor_quiet_skip` heartbeat polls, append at most one
   no-spend `quota monitor-poll --execute` event and rerun `quota should-run`
   before choosing quiet no-op versus autonomous replan;

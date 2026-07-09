@@ -654,7 +654,12 @@ def interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[
         return [
             first_action,
             f"loopx refresh-state --goal-id {goal_id} --classification autonomous_replan_recorded --autonomous-replan-recorded --repair-delta-kind <delta_kind> --delivery-batch-scale <scale> --delivery-outcome <outcome>",
-            f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute",
+            (
+                "if the replan writeback records an accountable delta such as "
+                "outcome_progress or primary_goal_outcome, run "
+                f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute; "
+                "otherwise do not spend for surface_only watch-lane continuation/no-followup"
+            ),
         ]
     if mode in {
         "bounded_delivery",
@@ -708,6 +713,11 @@ def _interaction_spend_policy(
         return "no spend for moving side-agent work into an independent worktree"
     if mode == "automation_prompt_upgrade":
         return "no spend until the automation reruns quota guard with --agent-id"
+    if mode == "autonomous_replan":
+        return (
+            "spend only after accountable replan delta; no spend for "
+            "surface_only watch-lane continuation"
+        )
     if spend_after_validation:
         return "spend once after validated writeback"
     raw_policy = execution_obligation.get("spend_policy") or heartbeat_recommendation.get(
