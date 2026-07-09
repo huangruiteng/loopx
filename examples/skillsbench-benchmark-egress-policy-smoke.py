@@ -172,6 +172,7 @@ def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
             "SKILLSBENCH_EXPECTED_LOOPX_GIT_HEAD": "abc1234",
             "SKILLSBENCH_DOCKER_PROXY_HOST": "host.docker.internal",
             "SKILLSBENCH_RUN_STAMP": "20260710T000000CST",
+            "SKILLSBENCH_CANONICAL_CASE_IDS_FILE": "/opaque/canonical-ids.txt",
         }
     )
     proc = subprocess.run(
@@ -199,6 +200,9 @@ def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
     assert "--remote-public-artifact-root" in output, output
     assert "benchmark_run.compact.json" in output, output
     assert "--local-run-ledger-path" in output, output
+    assert "--local-target-lane-id codex-cli-goal-xhigh" in output, output
+    assert "--local-target-run-group-contains" not in output, output
+    assert "--local-target-backfill-run-group-contains" not in output, output
 
 
 def test_verifier_proxy_patch_is_required_only_for_existing_verifier() -> None:
