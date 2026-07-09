@@ -1,0 +1,37 @@
+docs/heartbeat-automation-prompt.md
+  s_e3f612788718c1::t_006298e9b212b4 137-153
+docs/interaction-pattern-catalog.md
+  s_e3f612788718c1::t_fb9a48d348f6a9 677-683
+examples/capability-gate-smoke.py
+  s_32e2a9a204a8e4::t_d93f8a2d7768cb 284-327
+examples/control_plane/agent-onboard-host-loop-activation-smoke.py
+  s_32e2a9a204a8e4::t_856c5cb7b12ca1 215,228-235
+examples/control_plane/heartbeat-prompt-smoke.py
+  s_32e2a9a204a8e4::t_4ac2f7bb702cc2 82-90,239-250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a239b3089d8bed7b542e6fa27714376132c62160",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
