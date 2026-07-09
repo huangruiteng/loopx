@@ -1,0 +1,41 @@
+loopx/bootstrap_command_pack.py
+  s_e3f612788718c1::t_ca2ed2666f5840 309-312,316-318,352,505-510,745-750
+loopx/canary/planner.py
+  s_e3f612788718c1::t_7d561e22134ea4 835-839
+loopx/capabilities/catalog.py
+  s_e3f612788718c1::t_e26e069058cf35 38-42,85-89,108
+loopx/capabilities/issue_fix/cli.py
+  s_e3f612788718c1::t_0e4eb89f64ff5c 10-13,20-23,133-205,360-398,433,444-445
+loopx/capabilities/issue_fix/pr_lifecycle.py
+  s_32e2a9a204a8e4::t_aca194822f7a36 1-611
+loopx/capabilities/issue_fix/workflow_plan.py
+  s_e3f612788718c1::t_b1ab9352f5cdd8 41-126,222-226,323-350,411-413,475-508,633-654
+loopx/domain_packs/issue_fix.py
+  s_32e2a9a204a8e4::t_372ebb8db36417 1-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "282b45645891038a9a64e942d3e6ba49a1d75992",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
