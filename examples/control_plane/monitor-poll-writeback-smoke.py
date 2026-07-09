@@ -263,6 +263,14 @@ def assert_unchanged_writeback() -> None:
         assert payload["classification"] == "quota_monitor_poll", payload
         assert payload["delivery_outcome"] == "surface_only", payload
         assert "no quota spend" in payload["health_check"], payload
+        summary = payload["decision_summary"]
+        assert summary["before"] == payload["monitor_event"]["before"], payload
+        assert summary["before"]["effective_action"] == payload["before"]["effective_action"], payload
+        assert "work_lane_contract" not in summary["before"], payload
+        assert payload["before"]["work_lane_contract"]["obligation"] == "attempt_due_monitor", payload
+        assert summary["after"]["effective_action"] == payload["after"]["effective_action"], payload
+        assert "interaction_contract" not in summary["after"], payload
+        assert payload["after"]["interaction_contract"]["mode"] == "bounded_delivery", payload
         records = monitor_poll_records(registry_path)
         assert [record["classification"] for record in records] == ["quota_monitor_poll"], records
 

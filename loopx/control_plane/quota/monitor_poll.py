@@ -157,6 +157,10 @@ def _monitor_poll_failure(
         "result_hash": result_hash,
         "material_change": material_change,
         "reason": reason,
+        "decision_summary": {
+            "before": compact_quota_decision(before),
+            "after": None,
+        },
         "before": before,
         "after": None,
     }
@@ -317,6 +321,10 @@ def record_quota_monitor_poll_for_decision(
         run_history["recent_runs"] = [index_record, *recent_runs]
 
     after = after_decision(after_status)
+    decision_summary = {
+        "before": record["monitor_event"]["before"],
+        "after": compact_quota_decision(after),
+    }
     return {
         "ok": True,
         "mode": "monitor-poll",
@@ -338,6 +346,9 @@ def record_quota_monitor_poll_for_decision(
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
         "index_path": str(index_path),
+        "decision_summary": decision_summary,
+        # Monitor-poll callers may need the full follow-up guard to decide whether
+        # to stay quiet, replan, or continue work after recording the observation.
         "before": before,
         "after": after,
         "reason": (
