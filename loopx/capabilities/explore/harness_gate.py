@@ -54,11 +54,12 @@ def resolve_explore_harness_gate(
 ) -> dict[str, Any]:
     """Fold a goal's orchestration boundary into an explicit planner gate.
 
-    ``orchestration`` is the raw per-goal policy (``goal.spawn_policy`` or
-    ``project_asset.orchestration``); ``None`` means no boundary is known for
-    the goal, which is treated the same as an explicit opt-out. ``max_lanes``
-    is the calling planner's own width ceiling and ``max_lanes_label`` names
-    it in the width-cap audit (e.g. ``max_worker_lanes``, ``max_branch_width``).
+    ``orchestration`` is the registered goal's ``spawn_policy`` projected by
+    quota/status into ``goal_boundary.orchestration``; ``None`` means no
+    boundary is known for the goal, which is treated the same as an explicit
+    opt-out. ``max_lanes`` is the calling planner's own width ceiling and
+    ``max_lanes_label`` names it in the width-cap audit (e.g.
+    ``max_worker_lanes``, ``max_branch_width``).
     """
 
     boundary_provided = isinstance(orchestration, Mapping) and bool(orchestration)
