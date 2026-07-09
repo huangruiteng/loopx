@@ -4967,12 +4967,13 @@ def _apply_codex_cli_goal_countability_guard_attribution(
     )[:120]
 
     missing_task_activity = task_facing_count <= 0 or request_count <= 0
-    terminal_goal_failed_countable = (
-        goal_stage == "goal_failed"
-        and not missing_task_activity
+    completed_task_attempt_countable = (
+        not missing_task_activity
         and str(compact.get("official_score_status") or "") == "completed"
     )
-    goal_failed = trace_present and ok_count <= 0 and not terminal_goal_failed_countable
+    goal_failed = (
+        trace_present and ok_count <= 0 and not completed_task_attempt_countable
+    )
     if not (missing_task_activity or goal_failed):
         return False
 

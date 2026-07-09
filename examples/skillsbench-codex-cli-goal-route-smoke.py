@@ -1126,6 +1126,29 @@ def _assert_cli_goal_active_timeout_is_public_countability_stage() -> None:
     assert contract["goal_stage"] == "goal_active_timeout", contract
     assert contract["raw_material_recorded"] is False, contract
 
+    completed_attempt_trace = dict(trace)
+    completed_attempt_trace.update(
+        {
+            "codex_cli_goal_tui_stage": "timeout",
+            "remote_command_file_bridge_agent_operation_trace_status": (
+                "agent_operation_trace_recorded"
+            ),
+            "remote_command_file_bridge_agent_request_count": 4,
+            "remote_command_file_bridge_agent_task_facing_operation_count": 3,
+            "remote_command_file_bridge_agent_task_facing_success_count": 3,
+        }
+    )
+    compact = {
+        "route": CODEX_CLI_GOAL_BASELINE_ROUTE,
+        "official_score_status": "completed",
+        "official_score": 1.0,
+        "interaction_counters": completed_attempt_trace,
+        "runner_prerequisites": {},
+        "failure_attribution_labels": [],
+    }
+    assert _apply_codex_cli_goal_countability_guard_attribution(compact) is False
+    assert "codex_cli_goal_countability_contract" not in compact
+
     with tempfile.TemporaryDirectory() as temp:
         trace_dir = Path(temp) / "trace"
         relay = SkillsBenchLocalAcpRelay(

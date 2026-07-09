@@ -206,6 +206,31 @@ def _score_countability_label_values(run: dict[str, Any]) -> list[str]:
     return labels
 
 
+def _completed_task_attempt_pass(run: dict[str, Any], score: float) -> bool:
+    score_status = _compact_text(
+        run.get("official_score_status") or run.get("score_status"),
+        limit=80,
+    )
+    if score_status not in {"completed", "passed"} or score < 1:
+        return False
+    if (
+        run.get("official_passed") is not True
+        and _official_task_score_bool_passed(run) is not True
+    ):
+        return False
+    signals = (
+        run.get("solution_quality_signals")
+        if isinstance(run.get("solution_quality_signals"), dict)
+        else {}
+    )
+    activity = (
+        signals.get("worker_activity")
+        if isinstance(signals.get("worker_activity"), dict)
+        else {}
+    )
+    return activity.get("task_facing_activity_observed") is True
+
+
 def benchmark_run_official_score_countability(run: dict[str, Any]) -> dict[str, Any]:
     """Classify whether a compact/ledger run's official score is aggregate-countable."""
 
@@ -237,7 +262,10 @@ def benchmark_run_official_score_countability(run: dict[str, Any]) -> dict[str, 
         if isinstance(run.get("attempt_accounting"), dict)
         else {}
     )
-    if official_score_attempt_uncountable(run, accounting, bool_fallback_allowed):
+    completed_task_pass = _completed_task_attempt_pass(run, score)
+    if not completed_task_pass and official_score_attempt_uncountable(
+        run, accounting, bool_fallback_allowed
+    ):
         return {
             "countable": False,
             "reason": "official_score_attempt_not_countable",
@@ -256,8 +284,21 @@ def benchmark_run_official_score_countability(run: dict[str, Any]) -> dict[str, 
             "reason": "official_score_status_not_countable",
             "score": score,
         }
-    if any("uncountable" in label.lower() for label in _score_countability_label_values(run)):
-        return {"countable": False, "reason": "uncountable_attribution", "score": score}
+    if not completed_task_pass and any(
+        "uncountable" in label.lower()
+        for label in _score_countability_label_values(run)
+    ):
+        return {
+            "countable": False,
+            "reason": "uncountable_attribution",
+            "score": score,
+        }
+    if completed_task_pass:
+        return {
+            "countable": True,
+            "reason": "countable_completed_task_attempt_pass",
+            "score": score,
+        }
     return {"countable": True, "reason": "countable_official_score", "score": score}
 
 
@@ -298,9 +339,6 @@ def official_score_attempt_uncountable(
         or accounting.get("failure_label"),
         limit=180,
     ).lower()
-    if has_official_bool_score:
-        return False
-
     if (
         failure_scope == "runner_or_setup"
         and lifecycle_phase in {"not_started", "runner_accepted_args"}
@@ -313,5 +351,8 @@ def official_score_attempt_uncountable(
 
     if failure_scope == "verifier_or_infra":
         return True
+
+    if has_official_bool_score:
+        return False
 
     return False
