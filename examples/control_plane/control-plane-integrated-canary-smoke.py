@@ -246,7 +246,7 @@ def assert_event_projected_agent_todo(summary: dict[str, Any]) -> None:
         )
     assert [item.get("todo_id") for item in items] == [CANARY_TODO_ID], summary
     item = items[0]
-    assert item.get("title") == CANARY_TODO_TITLE or CANARY_TODO_TITLE in str(item.get("text") or ""), summary
+    assert item["title"] == CANARY_TODO_TITLE, summary
     assert item["claimed_by"] == AGENT_ID, summary
     assert item["task_class"] == "advancement_task", summary
     assert "todo_markdown_fallback" not in json.dumps(summary, sort_keys=True), summary

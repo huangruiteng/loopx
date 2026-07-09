@@ -45,6 +45,7 @@ QUOTA_PAYLOAD_COMPACTION_SCHEMA_VERSION = "quota_todo_summary_payload_compaction
 QUOTA_PAYLOAD_ITEM_FIELDS = (
     "index",
     "text",
+    "title",
     "todo_id",
     "status",
     "priority",
