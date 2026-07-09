@@ -3,7 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from .agent_registry import normalize_registered_agents
-from .control_plane.todos.contract import normalize_todo_claimed_by
+from .control_plane.todos.contract import (
+    normalize_required_capabilities,
+    normalize_todo_claimed_by,
+)
 from .project_prompt import (
     render_heartbeat_prompt_command,
     render_heartbeat_prompt_json_command,
@@ -213,6 +216,7 @@ def _heartbeat_commands(
     agent_type: str,
     cli_bin: str,
     agent_id: str | None,
+    available_capabilities: list[str] | None = None,
 ) -> dict[str, str]:
     scope_by_type = {
         "codex-app": "Codex App heartbeat automation",
@@ -228,12 +232,14 @@ def _heartbeat_commands(
             cli_bin=cli_bin,
             agent_id=agent_id,
             agent_scope=agent_scope,
+            available_capabilities=available_capabilities,
         ),
         "heartbeat_prompt": render_heartbeat_prompt_command(
             goal_id,
             cli_bin=cli_bin,
             agent_id=agent_id,
             agent_scope=agent_scope,
+            available_capabilities=available_capabilities,
         ),
     }
 
@@ -412,6 +418,7 @@ def build_host_loop_activation_packet(
     agent_id: str | None = None,
     registered_agents: list[str] | None = None,
     primary_agent: str | None = None,
+    available_capabilities: list[str] | None = None,
 ) -> dict[str, Any]:
     canonical = normalize_agent_type(agent_type)
     identity = _identity_state(
@@ -421,12 +428,16 @@ def build_host_loop_activation_packet(
     )
     selected_agent_id = identity.get("selected_agent_id")
     activation_allowed = bool(identity.get("activation_allowed"))
+    normalized_available_capabilities = normalize_required_capabilities(
+        available_capabilities
+    )
     commands: dict[str, Any] = (
         _heartbeat_commands(
             goal_id=goal_id,
             agent_type=canonical,
             cli_bin=cli_bin,
             agent_id=str(selected_agent_id) if selected_agent_id else None,
+            available_capabilities=normalized_available_capabilities,
         )
         if activation_allowed
         else {"heartbeat_prompt_json": None, "heartbeat_prompt": None}
@@ -451,6 +462,7 @@ def build_host_loop_activation_packet(
                 agent_type=canonical,
                 cli_bin=cli_bin,
                 agent_id=candidate,
+                available_capabilities=normalized_available_capabilities,
             )
             choices.append(
                 {
@@ -482,6 +494,7 @@ def build_host_loop_activation_packet(
         "goal_id": goal_id,
         "agent_id": selected_agent_id,
         "requested_agent_id": normalize_todo_claimed_by(agent_id),
+        "available_capabilities": normalized_available_capabilities,
         "activation_state": identity["state"],
         "activation_allowed": activation_allowed,
         "identity_contract": identity,

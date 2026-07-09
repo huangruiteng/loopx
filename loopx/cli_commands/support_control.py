@@ -193,6 +193,16 @@ def register_support_control_commands(
         action="append",
         help="Optional natural-language scope for this automation agent. Repeat for multiple scope lines.",
     )
+    heartbeat_prompt_parser.add_argument(
+        "--available-capability",
+        dest="available_capabilities",
+        action="append",
+        help=(
+            "Declare a capability available in this host loop, such as network or "
+            "external_evidence_poll. Repeat for multiple capabilities; generated "
+            "quota guard and spend commands preserve the declaration."
+        ),
+    )
     heartbeat_style_group = heartbeat_prompt_parser.add_mutually_exclusive_group()
     heartbeat_style_group.add_argument(
         "--compact",
@@ -421,6 +431,7 @@ def handle_support_control_command(
                 registered_agents=registered_agents,
                 primary_agent=primary_agent,
                 side_agent_handoff_agent=side_agent_handoff_agent,
+                available_capabilities=args.available_capabilities,
             )
         except Exception as exc:
             fallback_active_state = active_state
@@ -449,6 +460,7 @@ def handle_support_control_command(
                 registered_agents=registered_agents,
                 primary_agent=primary_agent,
                 side_agent_handoff_agent=side_agent_handoff_agent,
+                available_capabilities=args.available_capabilities,
             )
         print_payload(payload, output_format(args), render_heartbeat_prompt_markdown)
         return 0 if payload.get("ok") else 1

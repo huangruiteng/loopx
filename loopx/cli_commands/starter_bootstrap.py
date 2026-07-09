@@ -70,6 +70,12 @@ def register_starter_bootstrap_commands(subparsers: argparse._SubParsersAction) 
         "--task-text",
         help="Optional first task text to include in the bootstrap command pack.",
     )
+    agent_onboard_parser.add_argument(
+        "--available-capability",
+        dest="available_capabilities",
+        action="append",
+        help="Capability available in this host loop. Repeat for multiple capabilities.",
+    )
 
     bootstrap_command_pack_parser = subparsers.add_parser(
         "bootstrap-command-pack",
@@ -91,6 +97,12 @@ def register_starter_bootstrap_commands(subparsers: argparse._SubParsersAction) 
         default="chat-box",
         choices=["chat-box", "codex-app", "codex-cli-tui", "claude-code", "shell", "http", "worker-bridge"],
         help="Host surface where the slash command pack will be exposed.",
+    )
+    bootstrap_command_pack_parser.add_argument(
+        "--available-capability",
+        dest="available_capabilities",
+        action="append",
+        help="Capability available in this host loop. Repeat for multiple capabilities.",
     )
     bootstrap_command_pack_parser.add_argument(
         "--goal-text",
@@ -132,6 +144,12 @@ def register_starter_bootstrap_commands(subparsers: argparse._SubParsersAction) 
         default="codex-app",
         choices=["chat-box", "codex-app", "codex-cli-tui", "claude-code", "shell", "http", "worker-bridge"],
         help="Host surface that will own loop activation after todo writeback.",
+    )
+    start_goal_parser.add_argument(
+        "--available-capability",
+        dest="available_capabilities",
+        action="append",
+        help="Capability available in this host loop. Repeat for multiple capabilities.",
     )
     start_goal_parser.add_argument(
         "--goal-text",
@@ -267,6 +285,7 @@ def handle_agent_onboard_command(
             agent_id=args.agent_id,
             cli_bin=args.cli_bin,
             task_text=args.task_text,
+            available_capabilities=args.available_capabilities,
         )
     except AgentTypeError as exc:
         print_payload(exc.to_payload(), args.format, render_agent_onboarding_markdown)
@@ -286,6 +305,7 @@ def handle_loopx_bootstrap_command_pack_command(
         cli_bin=args.cli_bin,
         host_surface=args.host_surface,
         goal_text=args.goal_text,
+        available_capabilities=args.available_capabilities,
     )
     if bool(getattr(args, "message_only", False)):
         print(str(payload.get("message") or ""))
@@ -314,6 +334,7 @@ def handle_start_goal_command(
         cli_bin=args.cli_bin,
         host_surface=args.host_surface,
         goal_text=args.goal_text,
+        available_capabilities=args.available_capabilities,
     )
     print_payload(payload, args.format, render_start_goal_guided_markdown)
     return 0

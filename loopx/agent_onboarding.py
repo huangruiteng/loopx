@@ -16,6 +16,7 @@ from .host_loop_activation import (
     render_agent_type_catalog_markdown,
 )
 from .project_prompt import (
+    render_available_capability_args,
     render_codex_cli_no_clone_preflight,
     render_quota_guard_command,
     shell_arg,
@@ -41,6 +42,7 @@ def _bootstrap_pack_command(
     agent_type: str,
     cli_bin: str,
     task_text: str | None,
+    available_capabilities: list[str] | None,
 ) -> str:
     surface_by_type = {
         "codex-app": "codex-app",
@@ -63,6 +65,8 @@ def _bootstrap_pack_command(
         parts.extend(["--agent-id", shell_arg(agent_id)])
     if task_text:
         parts.extend(["--goal-text", shell_arg(task_text)])
+    for capability in available_capabilities or []:
+        parts.extend(["--available-capability", shell_arg(capability)])
     return " ".join(parts)
 
 
@@ -86,6 +90,7 @@ def build_agent_onboarding_packet(
     agent_id: str | None = None,
     cli_bin: str = "loopx",
     task_text: str | None = None,
+    available_capabilities: list[str] | None = None,
 ) -> dict[str, Any]:
     canonical_agent_type = normalize_agent_type(agent_type)
     inspection = inspect_bootstrap_connection(project, goal_id=goal_id)
@@ -104,6 +109,7 @@ def build_agent_onboarding_packet(
         agent_id=agent_id,
         registered_agents=registered_agents,
         primary_agent=primary_agent,
+        available_capabilities=available_capabilities,
     )
     selected_agent_id = host_loop_activation.get("agent_id")
     activation_allowed = bool(host_loop_activation.get("activation_allowed"))
@@ -115,6 +121,7 @@ def build_agent_onboarding_packet(
         agent_type=canonical_agent_type,
         cli_bin=cli_bin,
         task_text=task_text,
+        available_capabilities=available_capabilities,
     )
     commands: dict[str, Any] = {
         "doctor_or_install": render_codex_cli_no_clone_preflight(cli_bin=cli_bin),
@@ -124,6 +131,7 @@ def build_agent_onboarding_packet(
                 resolved_goal_id,
                 cli_bin=cli_bin,
                 agent_id=str(selected_agent_id) if selected_agent_id else None,
+                available_capabilities=available_capabilities,
             )
             if activation_allowed
             else None
@@ -138,6 +146,7 @@ def build_agent_onboarding_packet(
                 if selected_agent_id
                 else ""
             )
+            + render_available_capability_args(available_capabilities)
         ),
     }
     if install_command:
@@ -161,6 +170,7 @@ def build_agent_onboarding_packet(
         "goal_id": resolved_goal_id,
         "agent_id": selected_agent_id,
         "requested_agent_id": agent_id,
+        "available_capabilities": host_loop_activation.get("available_capabilities") or [],
         "identity_selection_gate": host_loop_activation.get("identity_selection_gate"),
         "task_text": task_text,
         "project_connection": inspection,

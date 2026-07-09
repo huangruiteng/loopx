@@ -41,11 +41,67 @@ def _capability_missing_action(missing: list[str]) -> str:
     missing_set = set(missing)
     if not missing_set:
         return "run"
-    if missing_set & CAPABILITY_REPAIR_BRIDGE_HINTS:
-        return "repair_bridge"
     if missing_set & CAPABILITY_OWNER_GATE_HINTS:
         return "ask_owner"
+    if missing_set & CAPABILITY_REPAIR_BRIDGE_HINTS:
+        return "repair_bridge"
     return "skip"
+
+
+def _capability_resolution(missing: list[str]) -> dict[str, Any]:
+    owner_missing = [
+        capability for capability in missing if capability in CAPABILITY_OWNER_GATE_HINTS
+    ]
+    repair_missing = [
+        capability for capability in missing if capability in CAPABILITY_REPAIR_BRIDGE_HINTS
+    ]
+    unsupported_missing = [
+        capability
+        for capability in missing
+        if capability not in CAPABILITY_OWNER_GATE_HINTS
+        and capability not in CAPABILITY_REPAIR_BRIDGE_HINTS
+    ]
+    action = _capability_missing_action(missing)
+    decision_owner = (
+        "user"
+        if action == "ask_owner"
+        else "agent"
+        if action == "repair_bridge"
+        else "capability_gate"
+    )
+    resolution_steps: list[dict[str, Any]] = []
+    if owner_missing:
+        resolution_steps.append(
+            {
+                "owner": "user",
+                "action": "provide_or_authorize",
+                "capabilities": owner_missing,
+            }
+        )
+    if repair_missing:
+        resolution_steps.append(
+            {
+                "owner": "agent",
+                "action": "repair_bridge",
+                "capabilities": repair_missing,
+            }
+        )
+    if unsupported_missing:
+        resolution_steps.append(
+            {
+                "owner": "capability_gate",
+                "action": "unsupported",
+                "capabilities": unsupported_missing,
+            }
+        )
+    return {
+        "action": action,
+        "decision_owner": decision_owner,
+        "owner_missing": owner_missing,
+        "repair_missing": repair_missing,
+        "unsupported_missing": unsupported_missing,
+        "resolution_steps": resolution_steps,
+    }
 
 
 def available_capabilities_with_defaults(value: Any) -> list[str]:
@@ -300,7 +356,10 @@ def build_capability_gate(
         for capability in item.get("missing_capabilities") or []:
             if capability not in missing_all:
                 missing_all.append(str(capability))
-    action = _capability_missing_action(missing_all)
+    resolution = _capability_resolution(missing_all)
+    action = str(resolution["action"])
+    owner_missing = list(resolution["owner_missing"])
+    repair_missing = list(resolution["repair_missing"])
     return {
         "schema_version": CAPABILITY_GATE_SCHEMA_VERSION,
         "source": source,
@@ -308,7 +367,11 @@ def build_capability_gate(
         "available": available,
         "missing": missing_all,
         "action": action,
-        "decision_owner": "capability_gate",
+        "decision_owner": resolution["decision_owner"],
+        "owner_missing": owner_missing,
+        "repair_missing": repair_missing,
+        "unsupported_missing": resolution["unsupported_missing"],
+        "resolution_steps": resolution["resolution_steps"],
         "selection_policy": "no_runnable_candidate",
         "runnable_count": 0,
         "runnable_candidates": [],
@@ -316,8 +379,13 @@ def build_capability_gate(
         "blocks_delivery": True,
         "reason": "all visible executable todo candidates require unavailable capabilities",
         "owner_action": (
-            "provide an environment with the missing capability, mark the todo blocked, "
-            "or add a lower-risk fallback todo"
+            "provide or authorize the missing owner-held capability: "
+            + ", ".join(owner_missing)
+            + (
+                "; after that, the agent can repair: " + ", ".join(repair_missing)
+                if repair_missing
+                else ""
+            )
         )
         if action == "ask_owner"
         else None,

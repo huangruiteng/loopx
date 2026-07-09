@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .bootstrap import default_goal_id
+from .control_plane.todos.contract import normalize_required_capabilities
 
 
 DEFAULT_HANDOFF_OBJECTIVE = "<OBJECTIVE_FROM_GOAL_DOC>"
@@ -25,6 +26,13 @@ def shell_arg_or_placeholder(value: str) -> str:
     if text.startswith("<") and text.endswith(">"):
         return text
     return shell_arg(text)
+
+
+def render_available_capability_args(values: Any) -> str:
+    return "".join(
+        f" --available-capability {shell_arg(capability)}"
+        for capability in normalize_required_capabilities(values)
+    )
 
 
 def render_cli_preflight(*, cli_bin: str = "loopx") -> str:
@@ -58,12 +66,19 @@ fi
 {cli_bin_arg} doctor >/dev/null"""
 
 
-def render_quota_guard_command(goal_id: str, *, cli_bin: str = "loopx", agent_id: str | None = None) -> str:
+def render_quota_guard_command(
+    goal_id: str,
+    *,
+    cli_bin: str = "loopx",
+    agent_id: str | None = None,
+    available_capabilities: Any = None,
+) -> str:
     agent_arg = f" --agent-id {shell_arg(agent_id)}" if agent_id else ""
+    capability_args = render_available_capability_args(available_capabilities)
     return (
         f"{shell_arg(cli_bin)} --format json "
         f"--registry {SHARED_GLOBAL_REGISTRY} "
-        f"quota should-run --goal-id {shell_arg(goal_id)}{agent_arg}"
+        f"quota should-run --goal-id {shell_arg(goal_id)}{agent_arg}{capability_args}"
     )
 
 
@@ -73,14 +88,16 @@ def render_quota_spend_command(
     source: str = "adapter",
     cli_bin: str = "loopx",
     agent_id: str | None = None,
+    available_capabilities: Any = None,
 ) -> str:
     agent_arg = f" --agent-id {shell_arg(agent_id)}" if agent_id else ""
+    capability_args = render_available_capability_args(available_capabilities)
     return (
         f"{shell_arg(cli_bin)} "
         f"--registry {SHARED_GLOBAL_REGISTRY} "
         "quota spend-slot "
         f"--goal-id {shell_arg(goal_id)} "
-        f"--slots 1 --source {shell_arg(source)} --execute{agent_arg}"
+        f"--slots 1 --source {shell_arg(source)} --execute{agent_arg}{capability_args}"
     )
 
 
@@ -124,12 +141,14 @@ def render_heartbeat_prompt_command(
     agent_id: str | None = None,
     agent_scope: str = "Codex CLI /goal visible TUI loop",
     body: str = "thin",
+    available_capabilities: Any = None,
 ) -> str:
     agent_arg = f" --agent-id {shell_arg(agent_id)}" if agent_id else ""
     scope_arg = f" --agent-scope {shell_arg(agent_scope)}" if agent_id else ""
+    capability_args = render_available_capability_args(available_capabilities)
     return (
         f"{shell_arg(cli_bin)} heartbeat-prompt --{shell_arg(body)} "
-        f"--goal-id {shell_arg(goal_id)}{agent_arg}{scope_arg}"
+        f"--goal-id {shell_arg(goal_id)}{agent_arg}{scope_arg}{capability_args}"
     )
 
 
@@ -140,12 +159,14 @@ def render_heartbeat_prompt_json_command(
     agent_id: str | None = None,
     agent_scope: str = "Codex CLI /goal visible TUI loop",
     body: str = "thin",
+    available_capabilities: Any = None,
 ) -> str:
     agent_arg = f" --agent-id {shell_arg(agent_id)}" if agent_id else ""
     scope_arg = f" --agent-scope {shell_arg(agent_scope)}" if agent_id else ""
+    capability_args = render_available_capability_args(available_capabilities)
     return (
         f"{shell_arg(cli_bin)} --format json heartbeat-prompt --{shell_arg(body)} "
-        f"--goal-id {shell_arg(goal_id)}{agent_arg}{scope_arg}"
+        f"--goal-id {shell_arg(goal_id)}{agent_arg}{scope_arg}{capability_args}"
     )
 
 

@@ -6,12 +6,16 @@ from typing import Any
 
 from .agent_registry import normalize_registered_agents
 from .project_prompt import (
+    render_available_capability_args,
     render_cli_preflight,
     render_quota_guard_command,
     render_quota_spend_command,
     render_refresh_state_command,
 )
-from .control_plane.todos.contract import normalize_todo_claimed_by
+from .control_plane.todos.contract import (
+    normalize_required_capabilities,
+    normalize_todo_claimed_by,
+)
 
 
 DEFAULT_MATERIAL_QUEUE_RULE = "Do not consume the learning material queue unless the user explicitly asks."
@@ -362,6 +366,7 @@ def build_heartbeat_prompt(
     registered_agents: list[str] | tuple[str, ...] | None = None,
     primary_agent: str | None = None,
     side_agent_handoff_agent: str | None = None,
+    available_capabilities: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     effective_resolved_active_state = resolved_active_state or active_state
     active_state_text = str(active_state.expanduser()) if active_state else "the registry-declared active state"
@@ -445,6 +450,12 @@ def build_heartbeat_prompt(
         agent_id=normalized_agent_id,
         agent_scopes=command_agent_scopes,
     )
+    normalized_available_capabilities = normalize_required_capabilities(
+        available_capabilities
+    )
+    capability_args = render_available_capability_args(
+        normalized_available_capabilities
+    )
     agent_scope_instruction = render_agent_scope_instruction(
         goal_id=goal_id,
         agent_id=normalized_agent_id,
@@ -455,12 +466,18 @@ def build_heartbeat_prompt(
         compact=compact or brief,
         thin=thin,
     )
-    quota_guard_command = render_quota_guard_command(goal_id, cli_bin=cli_bin, agent_id=normalized_agent_id)
+    quota_guard_command = render_quota_guard_command(
+        goal_id,
+        cli_bin=cli_bin,
+        agent_id=normalized_agent_id,
+        available_capabilities=normalized_available_capabilities,
+    )
     quota_spend_command = render_quota_spend_command(
         goal_id,
         source="heartbeat",
         cli_bin=cli_bin,
         agent_id=normalized_agent_id,
+        available_capabilities=normalized_available_capabilities,
     )
     refresh_state_command = render_refresh_state_command(
         goal_id,
@@ -476,10 +493,10 @@ def build_heartbeat_prompt(
         delivery_outcome="outcome_progress",
     )
     cli_preflight = render_cli_preflight(cli_bin=cli_bin)
-    expanded_prompt_command = f"{cli_bin} heartbeat-prompt --goal-id {goal_id}{active_state_arg}{agent_args}"
-    compact_prompt_command = f"{cli_bin} heartbeat-prompt --compact --goal-id {goal_id}{active_state_arg}{agent_args}"
-    brief_prompt_command = f"{cli_bin} heartbeat-prompt --brief --goal-id {goal_id}{active_state_arg}{agent_args}"
-    thin_prompt_command = f"{cli_bin} heartbeat-prompt --thin --goal-id {goal_id}{active_state_arg}{agent_args}"
+    expanded_prompt_command = f"{cli_bin} heartbeat-prompt --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
+    compact_prompt_command = f"{cli_bin} heartbeat-prompt --compact --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
+    brief_prompt_command = f"{cli_bin} heartbeat-prompt --brief --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
+    thin_prompt_command = f"{cli_bin} heartbeat-prompt --thin --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     if thin:
         task_body_renderer = render_thin_heartbeat_task_body
     elif brief:
@@ -525,6 +542,7 @@ def build_heartbeat_prompt(
         "registered_agents": normalized_registered_agents,
         "primary_agent": normalized_primary_agent,
         "side_agent_handoff_agent": normalized_side_agent_handoff_agent,
+        "available_capabilities": normalized_available_capabilities,
         "expanded_prompt_command": expanded_prompt_command,
         "compact_prompt_command": compact_prompt_command,
         "brief_prompt_command": brief_prompt_command,
@@ -564,6 +582,7 @@ def build_heartbeat_prompt_error_payload(
     registered_agents: list[str] | tuple[str, ...] | None = None,
     primary_agent: str | None = None,
     side_agent_handoff_agent: str | None = None,
+    available_capabilities: list[str] | tuple[str, ...] | None = None,
     material_queue_rule: str | None = None,
     permission_rule: str | None = None,
 ) -> dict[str, Any]:
@@ -579,10 +598,16 @@ def build_heartbeat_prompt_error_payload(
         agent_id=str(agent_id).strip() if agent_id else None,
         agent_scopes=projected_agent_scopes,
     )
-    expanded_prompt_command = f"{cli_bin} heartbeat-prompt --goal-id {goal_id}{active_state_arg}{agent_args}"
-    compact_prompt_command = f"{cli_bin} heartbeat-prompt --compact --goal-id {goal_id}{active_state_arg}{agent_args}"
-    brief_prompt_command = f"{cli_bin} heartbeat-prompt --brief --goal-id {goal_id}{active_state_arg}{agent_args}"
-    thin_prompt_command = f"{cli_bin} heartbeat-prompt --thin --goal-id {goal_id}{active_state_arg}{agent_args}"
+    projected_available_capabilities = normalize_required_capabilities(
+        available_capabilities
+    )
+    capability_args = render_available_capability_args(
+        projected_available_capabilities
+    )
+    expanded_prompt_command = f"{cli_bin} heartbeat-prompt --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
+    compact_prompt_command = f"{cli_bin} heartbeat-prompt --compact --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
+    brief_prompt_command = f"{cli_bin} heartbeat-prompt --brief --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
+    thin_prompt_command = f"{cli_bin} heartbeat-prompt --thin --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     normalized_registered_agents = normalize_registered_agents(registered_agents)
     return {
         "ok": False,
@@ -603,6 +628,7 @@ def build_heartbeat_prompt_error_payload(
         "registered_agents": normalized_registered_agents,
         "primary_agent": str(primary_agent).strip() if primary_agent else None,
         "side_agent_handoff_agent": str(side_agent_handoff_agent).strip() if side_agent_handoff_agent else None,
+        "available_capabilities": projected_available_capabilities,
         "expanded_prompt_command": expanded_prompt_command,
         "compact_prompt_command": compact_prompt_command,
         "brief_prompt_command": brief_prompt_command,

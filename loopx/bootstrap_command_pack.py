@@ -14,6 +14,7 @@ from .project_alias import resolve_canonical_project_alias
 from .project_prompt import (
     DEFAULT_HANDOFF_ADAPTER_KIND,
     DEFAULT_HANDOFF_ADAPTER_STATUS,
+    render_available_capability_args,
     render_quota_guard_command,
     shell_arg,
 )
@@ -369,6 +370,7 @@ def build_loopx_bootstrap_command_pack(
     cli_bin: str,
     host_surface: str,
     goal_text: str | None = None,
+    available_capabilities: list[str] | None = None,
 ) -> dict[str, Any]:
     inspection = inspect_bootstrap_connection(project, goal_id=goal_id)
     resolved_project = str(inspection["project"])
@@ -404,6 +406,7 @@ def build_loopx_bootstrap_command_pack(
         agent_id=agent_id,
         registered_agents=registered_agents,
         primary_agent=primary_agent,
+        available_capabilities=available_capabilities,
     )
     selected_agent_id = host_loop_activation.get("agent_id")
     activation_allowed = bool(host_loop_activation.get("activation_allowed"))
@@ -416,6 +419,7 @@ def build_loopx_bootstrap_command_pack(
             resolved_goal_id,
             cli_bin=cli_bin,
             agent_id=str(selected_agent_id) if selected_agent_id else None,
+            available_capabilities=available_capabilities,
         )
         if activation_allowed
         else None
@@ -527,6 +531,7 @@ def build_loopx_bootstrap_command_pack(
                     if selected_agent_id
                     else ""
                 )
+                + render_available_capability_args(available_capabilities)
             ),
             "goal_start_quota_should_run": (
                 (
@@ -537,6 +542,7 @@ def build_loopx_bootstrap_command_pack(
                         if selected_agent_id
                         else ""
                     )
+                    + render_available_capability_args(available_capabilities)
                 )
                 if activation_allowed
                 else None
@@ -593,6 +599,7 @@ def build_start_goal_guided_packet(
     cli_bin: str,
     host_surface: str,
     goal_text: str,
+    available_capabilities: list[str] | None = None,
 ) -> dict[str, Any]:
     command_pack = build_loopx_bootstrap_command_pack(
         project=project,
@@ -601,6 +608,7 @@ def build_start_goal_guided_packet(
         cli_bin=cli_bin,
         host_surface=host_surface,
         goal_text=goal_text,
+        available_capabilities=available_capabilities,
     )
     commands = command_pack.get("commands")
     commands = commands if isinstance(commands, dict) else {}
