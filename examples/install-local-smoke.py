@@ -343,6 +343,19 @@ def main() -> int:
         assert "`boundary_projection_gap`" in self_repair_patterns_text, self_repair_patterns_text
         assert "`skill_cli_contract_drift`" in self_repair_patterns_text, self_repair_patterns_text
         assert "`tiny_turn_under_delivery`" in self_repair_patterns_text, self_repair_patterns_text
+        self_repair_issue_escalation = (
+            codex_home
+            / "skills"
+            / "loopx-self-repair"
+            / "references"
+            / "upstream-issue-escalation.md"
+        )
+        self_repair_issue_escalation_text = self_repair_issue_escalation.read_text(
+            encoding="utf-8"
+        )
+        assert "LOOPX_SELF_REPAIR_AUTO_ISSUE=1" in self_repair_issue_escalation_text
+        assert "gh issue list" in self_repair_issue_escalation_text
+        assert "gh issue create" in self_repair_issue_escalation_text
         assert (
             codex_home / "skills" / "loopx-self-repair" / "agents" / "openai.yaml"
         ).is_file()

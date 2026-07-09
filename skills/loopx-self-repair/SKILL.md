@@ -61,6 +61,30 @@ not only an apology or a one-off explanation.
 7. **Write back the lesson.** Update active goal state, docs, contributor
    tasks, or this skill so the same failure mode is visible next time.
 
+## Upstream Issue Escalation
+
+A public GitHub issue is an optional final escalation, not a default side
+effect of self-repair. Consider it only when the responsible layer is a
+reusable LoopX product, CLI, skill, installer, or control-plane gap and durable
+upstream tracking adds value beyond the local repair or PR.
+
+Read `references/upstream-issue-escalation.md` before publishing anything.
+Invoking this skill never grants publication permission. The guarded path must:
+
+1. reject private, project-specific, support-only, and security-sensitive
+   reports;
+2. reduce the evidence to a minimal public-safe reproduction and scan the
+   draft with `loopx check`;
+3. search open and closed issues by a stable fingerprint before creating one;
+4. auto-submit only under explicit current-turn approval or durable owner
+   opt-in; otherwise show the exact draft and ask once for confirmation;
+5. create at most one issue per repair turn, then record the existing or new
+   issue URL in the relevant LoopX todo/evidence writeback.
+
+If qualification, authority, authentication, boundary scanning, or duplicate
+search is uncertain, preserve the draft and stop before publication. Prefer a
+direct fix or PR when no separate issue is needed for coordination.
+
 ## Vision / Replan Writeback
 
 Use the bounded vision contract when self-repair discovers that LoopX did not
@@ -115,6 +139,8 @@ next quota check can enter replan.
 
 - For known symptom-to-repair mappings, read
   `references/repair-patterns.md`.
+- For guarded public GitHub issue escalation, read
+  `references/upstream-issue-escalation.md`.
 - For user/agent/state channel semantics, read
   `../../docs/state-interaction-model.md` and
   `../../docs/interaction-pattern-catalog.md`.
