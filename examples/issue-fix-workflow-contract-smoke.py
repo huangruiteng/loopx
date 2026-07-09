@@ -87,8 +87,12 @@ def main() -> int:
     assert "loopx bootstrap-command-pack --project ." in readme
     assert "--goal-text \"Fix https://github.com/owner/repo/issues/123\"" in readme
     assert "loopx issue-fix workflow-plan" in readme
+    assert "loopx issue-fix pr-lifecycle" in readme
     assert "ordered LoopX todos" in readme
     assert "PR review packet readiness" in readme
+    assert "## PR Lifecycle Monitor" in readme
+    assert "runnable_successor" in readme
+    assert "examples/issue-fix-pr-lifecycle-smoke.py" in readme
     assert "explicit user gates" in readme
     assert "## Issue-Fix Domain Route" in loopx_goal_command
     assert "loopx issue-fix workflow-plan" in loopx_goal_command
@@ -105,6 +109,7 @@ def main() -> int:
             "**Caller repo branch:**",
             "**Validation:**",
             "**PR review packet:**",
+            "**PR lifecycle monitor:**",
             "**Gate handling:**",
         ],
     )
@@ -118,6 +123,9 @@ def main() -> int:
         ISSUE_FIX_CALLER_REPO_BRANCH_PACKET_SCHEMA_VERSION,
         ISSUE_FIX_VALIDATED_FIX_ARTIFACT_SCHEMA_VERSION,
         "issue_fix_pr_review_packet_v0",
+        "issue_fix_pr_lifecycle_monitor_v0",
+        "issue_fix_pr_lifecycle_transition_v0",
+        "issue_fix_pr_lifecycle_domain_state_projection_v0",
     ):
         assert schema in doc, schema
     for boundary in (

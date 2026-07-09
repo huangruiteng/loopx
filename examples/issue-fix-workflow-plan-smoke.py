@@ -92,9 +92,19 @@ def assert_workflow_shape(payload: dict[str, Any]) -> None:
         "issue_fix_branch_validation",
         "issue_fix_pr_review_packet",
     ]
+    assert any(todo["action_kind"] == "issue_fix_pr_lifecycle_monitor" for todo in todos)
     assert [todo["priority"] for todo in todos[:3]] == ["P0", "P0", "P0"]
     assert all(todo["would_write"] is False for todo in todos)
     assert all(todo["requires_execute_flag"] is True for todo in todos)
+
+    routes = {route["route"]: route for route in payload["resolution_route_candidates"]}
+    assert set(routes) == {"fix_pr", "comment_only", "triage_only"}, routes
+    assert routes["fix_pr"]["next_action_kind"] == "issue_fix_branch_validation"
+    assert routes["comment_only"]["requires_user_gate_before_external_write"] is True
+    post_pr = payload["post_pr_lifecycle_monitor_plan"]
+    assert post_pr["creates_continuous_monitor_todo"] is True, post_pr
+    assert post_pr["monitor_action_kind"] == "issue_fix_pr_lifecycle_monitor", post_pr
+    assert "runnable_successor" in post_pr["decisions"], post_pr
 
     review = payload["review_packet_preview"]
     assert review["schema_version"] == "issue_fix_pr_review_packet_v0", review
@@ -188,7 +198,10 @@ def main() -> int:
     ).stdout
     assert "# LoopX Issue Fix Workflow Plan" in markdown, markdown
     assert "Ordered Todo Writeback Preview" in markdown, markdown
+    assert "Resolution Routes" in markdown, markdown
+    assert "Post-PR Lifecycle Monitor" in markdown, markdown
     assert "issue_fix_pr_review_packet" in markdown, markdown
+    assert "issue_fix_pr_lifecycle_monitor" in markdown, markdown
     assert_public_safe(markdown)
 
     print("issue-fix-workflow-plan-smoke: ok")

@@ -127,6 +127,7 @@ def test_metadata_to_ordered_todos_and_gates() -> None:
         4,
         5,
         6,
+        7,
     ], plan
     assert todo_by_action(plan, "issue_fix_public_metadata_classification")["role"] == "agent"
     assert todo_by_action(plan, "issue_fix_repro_and_route")["priority"] == "P0"
@@ -140,6 +141,22 @@ def test_metadata_to_ordered_todos_and_gates() -> None:
     publish_gate = todo_by_action(plan, "approve_external_issue_publish_or_merge")
     assert publish_gate["role"] == "user", publish_gate
     assert "external_pr_creation" in publish_gate["blocks"], publish_gate
+    lifecycle_monitor = todo_by_action(plan, "issue_fix_pr_lifecycle_monitor")
+    assert lifecycle_monitor["role"] == "agent", lifecycle_monitor
+    assert lifecycle_monitor["task_class"] == "continuous_monitor", lifecycle_monitor
+    assert lifecycle_monitor["depends_on"] == [
+        "issue_fix_pr_review_packet",
+        "approve_external_issue_publish_or_merge",
+    ], lifecycle_monitor
+    routes = {route["route"]: route for route in plan["resolution_route_candidates"]}
+    assert set(routes) == {"fix_pr", "comment_only", "triage_only"}, routes
+    assert routes["fix_pr"]["next_action_kind"] == "issue_fix_branch_validation"
+    assert routes["comment_only"]["external_issue_comment_performed"] is False
+    assert routes["comment_only"]["requires_user_gate_before_external_write"] is True
+    post_pr = plan["post_pr_lifecycle_monitor_plan"]
+    assert post_pr["creates_continuous_monitor_todo"] is True, post_pr
+    assert post_pr["monitor_action_kind"] == "issue_fix_pr_lifecycle_monitor", post_pr
+    assert "no_followup" in post_pr["decisions"], post_pr
 
     review_preview = plan["review_packet_preview"]
     assert review_preview["ready"] is False, review_preview
