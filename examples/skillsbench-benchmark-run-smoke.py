@@ -497,7 +497,7 @@ def test_benchmark_egress_proxy_env_is_public_safe_and_forwarded() -> None:
             assert "example-cache.invalid" in target_env["NO_PROXY"], target_env
 
             previous_docker_config = os.environ.get("DOCKER_CONFIG")
-            with skillsbench_loop._benchmark_egress_proxy_env_applied(args):
+            with skillsbench_loop._benchmark_egress_proxy_env_applied(args, plan=plan):
                 docker_config_dir = Path(os.environ["DOCKER_CONFIG"])
                 docker_config_path = docker_config_dir / "config.json"
                 docker_config = json.loads(docker_config_path.read_text(encoding="utf-8"))
@@ -513,7 +513,7 @@ def test_benchmark_egress_proxy_env_is_public_safe_and_forwarded() -> None:
                 assert os.environ["DOCKER_CONFIG"] == previous_docker_config
             assert not docker_config_dir.exists(), docker_config_dir
 
-            config = plan["runner_config"]
+            config = skillsbench_loop._public_runner_config(plan)
             assert config["benchmark_egress_proxy_required"] is True, config
             assert config["benchmark_egress_proxy_mode_requested"] == "require", config
             assert config["benchmark_egress_proxy_configured"] is True, config
@@ -523,7 +523,7 @@ def test_benchmark_egress_proxy_env_is_public_safe_and_forwarded() -> None:
             assert config["benchmark_egress_no_proxy_entry_count"] >= 5, config
             assert config["benchmark_egress_no_proxy_raw_value_recorded"] is False, config
             assert config["benchmark_egress_proxy_url_recorded"] is False, config
-            assert config["benchmark_egress_proxy_docker_config_injected"] is False, config
+            assert config["benchmark_egress_proxy_docker_config_injected"] is True, config
             assert config["benchmark_egress_proxy_docker_config_path_recorded"] is False, config
             assert config["benchmark_egress_proxy_docker_config_raw_proxy_recorded"] is False, config
             assert proxy_url not in json.dumps(config, sort_keys=True), config

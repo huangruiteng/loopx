@@ -116,7 +116,7 @@ from loopx.benchmark_adapters.skillsbench_verifier_bootstrap import (  # noqa: E
 from loopx.benchmark_adapters.skillsbench_task_source import (  # noqa: E402
     classify_missing_task_source,
 )
-from loopx.benchmark_adapters import skillsbench_runner_source as runner_source, skillsbench_uv_cache as uv_cache  # noqa: E402
+from loopx.benchmark_adapters import skillsbench_proxy_runtime as proxy_runtime, skillsbench_runner_source as runner_source, skillsbench_uv_cache as uv_cache  # noqa: E402
 from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER,
     SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT,
@@ -1965,7 +1965,7 @@ def _docker_config_payload_with_proxy(
 
 @contextlib.contextmanager
 def _benchmark_egress_proxy_env_applied(
-    args: argparse.Namespace,
+    args: argparse.Namespace, *, plan: dict[str, Any] | None = None,
 ) -> Any:
     proxy_env = _benchmark_egress_proxy_env(args)
     if not proxy_env:
@@ -1991,8 +1991,7 @@ def _benchmark_egress_proxy_env_applied(
     keys = set(proxy_env) | set(docker_config_env)
     previous = {key: os.environ.get(key) for key in keys}
     try:
-        os.environ.update(proxy_env)
-        os.environ.update(docker_config_env)
+        proxy_runtime.apply_proxy_runtime_env(os.environ, proxy_env, docker_config_env, plan=plan)
         yield
     finally:
         for key, value in previous.items():
@@ -9843,7 +9842,9 @@ async def run_benchflow_case_with_private_output(
         stream.flush()
         try:
             with redirect_stdout(stream), redirect_stderr(stream):
-                with _benchmark_egress_proxy_env_applied(args):
+                with _benchmark_egress_proxy_env_applied(args, plan=plan):
+                    _write_public_runner_config(plan)
+                    _write_public_runner_prerequisites(plan)
                     result = await run_benchflow_case(args, plan)
         finally:
             stream.write(
@@ -16767,8 +16768,6 @@ async def _async_main_with_observable_handle(
             run_benchflow_case_with_private_output(args, plan),
             timeout=args.outer_timeout_sec,
         )
-        _write_public_runner_config(plan)
-        _write_public_runner_prerequisites(plan)
     compact = reduce_result(args, result_path, plan)
     compact_path = Path(plan["compact_benchmark_run_json"])
     compact_path.parent.mkdir(parents=True, exist_ok=True)
