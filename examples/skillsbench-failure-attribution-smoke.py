@@ -16,6 +16,7 @@ from loopx.benchmark_adapters.skillsbench import (
 )
 from loopx.benchmark_adapters.skillsbench_failure_signals import (
     reconcile_skillsbench_setup_attribution,
+    skillsbench_failure_dependency_classes,
 )
 
 
@@ -107,9 +108,25 @@ def test_supported_setup_attribution_is_unchanged() -> None:
     )
 
 
+def test_failure_dependency_classes_ignore_unrelated_dockerfile_lines() -> None:
+    error_text = (
+        "RUN apt-get update\n"
+        "RUN pip3 install numpy\n"
+        "ERROR: failed to solve: process /bin/sh -c micromamba install scipy "
+        "from https://repo.anaconda.com did not complete successfully: "
+        "connection timed out"
+    )
+    classes = skillsbench_failure_dependency_classes(error_text)
+    assert classes == ["conda_package"], classes
+    fingerprint = skillsbench_runner_error_fingerprint(error_text)
+    assert fingerprint["failure_line_dependency_classes"] == classes, fingerprint
+    assert "repo.anaconda.com" not in str(fingerprint), fingerprint
+
+
 if __name__ == "__main__":
     test_pip_bootstrap_failure_attribution()
     test_injected_pip_lines_do_not_mask_later_build_failure()
     test_setup_attribution_reconciles_to_public_fingerprint()
     test_supported_setup_attribution_is_unchanged()
+    test_failure_dependency_classes_ignore_unrelated_dockerfile_lines()
     print("skillsbench-failure-attribution-smoke: ok")

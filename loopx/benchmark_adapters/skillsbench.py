@@ -22,6 +22,7 @@ from ..codex_goal_baseline import build_codex_app_server_goal_worker_plan
 from .skillsbench_failure_signals import (
     reconcile_skillsbench_setup_attribution,
     skillsbench_pip_bootstrap_failure_evidence,
+    skillsbench_runner_error_fingerprint,
 )
 from .skillsbench_signals import build_skillsbench_solution_quality_signals
 from .skillsbench_result_discovery import (
@@ -1735,80 +1736,6 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
         return label, label, [label, "skillsbench_host_local_acp_recoverable_timeout"]
     label = "skillsbench_runner_error"
     return label, label, [label]
-
-
-def skillsbench_error_len_bucket(text: str) -> str:
-    size = len(text)
-    if size <= 0:
-        return "empty"
-    if size < 200:
-        return "1_199"
-    if size < 500:
-        return "200_499"
-    if size < 1000:
-        return "500_999"
-    if size < 2000:
-        return "1000_1999"
-    return "2000_plus"
-
-
-def skillsbench_runner_error_fingerprint(error_text: str) -> dict[str, Any]:
-    """Return a public-safe shape summary without copying raw error text."""
-
-    text = error_text or ""
-    lowered = text.lower()
-    patterns = {
-        "docker_compose_command_failed": r"docker compose command failed",
-        "docker_daemon_unavailable": (
-            r"cannot connect to the docker daemon|is the docker daemon running|"
-            r"docker daemon is not running|colima is not running|error during connect"
-        ),
-        "service_unhealthy": r"unhealthy|healthcheck|health check",
-        "container_exited": r"exited with code|container .* exited|exit code",
-        "dependency_failed": r"dependency failed|depends_on|dependency",
-        "network_failure": (
-            r"network|connection refused|could not connect|read timed out|"
-            r"connection timed out|connection reset|max retries exceeded"
-        ),
-        "volume_mount_failure": r"mount|volume|bind source path",
-        "permission_denied": r"permission denied|operation not permitted",
-        "missing_file": r"no such file|not found|does not exist",
-        "codex_api_egress_failure": (
-            r"codex api egress preflight|reverse tunnel proxy|"
-            r"loopx_codex_api_reverse_tunnel_proxy"
-        ),
-        "task_output_quiet_timeout": r"codex_exec_task_output_quiet_timeout",
-        "image_build": r"failed to solve|failed to build|dockerfile|pull access denied|manifest unknown",
-        "port_conflict": r"port is already allocated|address already in use|ports are not available|bind for",
-        "apt_failure": r"apt-get|apt update|apt |gpg error|hash sum mismatch|failed to fetch",
-        "pip_bootstrap_failure": r"$^",
-        "subprocess_command_timeout": r"command timed out after \d+ seconds",
-        "timeout": r"timeout|timed out|deadline",
-    }
-    matched = []
-    for label, pattern in patterns.items():
-        if label == "pip_bootstrap_failure":
-            pattern_matched = skillsbench_pip_bootstrap_failure_evidence(lowered)
-        else:
-            pattern_matched = bool(re.search(pattern, lowered))
-        if pattern_matched:
-            matched.append(label)
-    return {
-        "schema_version": "skillsbench_runner_failure_fingerprint_v0",
-        "error_present": bool(text),
-        "error_len_bucket": skillsbench_error_len_bucket(text),
-        "line_count": len(text.splitlines()) if text else 0,
-        "matched_patterns": matched,
-        "has_host_paths": bool(
-            re.search(r"/Users/|/private/|/var/folders/", text)
-        ),
-        "has_urls": bool(re.search(r"https?://", text)),
-        "has_secret_like_tokens": bool(
-            re.search(r"(?i)(api[_-]?key|token|password|secret)", text)
-        ),
-        "raw_error_recorded": False,
-        "fingerprint_confidence": "coarse_public_safe_pattern_match",
-    }
 
 
 def build_skillsbench_benchmark_run(

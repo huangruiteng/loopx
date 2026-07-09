@@ -19,6 +19,65 @@ _FINGERPRINT_SETUP_ATTRIBUTIONS = (
     ("volume_mount_failure", "skillsbench_docker_compose_volume_mount_failure"),
     ("image_build", "skillsbench_docker_compose_image_build_failure"),
 )
+_FAILURE_LINE_MARKERS = (
+    "connection refused",
+    "connection reset",
+    "connection timed out",
+    "could not connect",
+    "did not complete successfully",
+    "failed to download",
+    "failed to fetch",
+    "failed to solve",
+    "manifest unknown",
+    "max retries exceeded",
+    "pull access denied",
+    "read timed out",
+    "temporary failure in name resolution",
+)
+_FAILURE_DEPENDENCY_CLASS_PATTERNS = (
+    (
+        "container_registry",
+        r"registry-1\.docker\.io|docker\.io|gcr\.io|ghcr\.io|manifest unknown|"
+        r"pull access denied|resolve source metadata",
+    ),
+    (
+        "python_package",
+        r"python\S*\s+-m\s+pip\s+install|pip3?\s+install|pypi\.|"
+        r"pythonhosted\.org",
+    ),
+    ("python_uv", r"\buvx?\b|astral\.sh"),
+    ("conda_package", r"\bconda\b|\bmamba\b|anaconda\.(?:com|org)"),
+    ("node_package", r"\bnpm\b|\byarn\b|\bpnpm\b|registry\.npmjs\.org"),
+    (
+        "java_package",
+        r"\bmvn\b|\bmaven\b|\bgradle\b|repo1\.maven\.org|"
+        r"repo\.maven\.apache\.org",
+    ),
+    ("rust_package", r"\bcargo\b|\brustup\b|crates\.io|static\.rust-lang\.org"),
+    ("go_module", r"\bgo\s+(?:mod|install|get)\b|proxy\.golang\.org"),
+    ("git_source", r"\bgit\s+clone\b|github\.com|gitlab\.com"),
+    ("http_download", r"\bcurl\b|\bwget\b"),
+    (
+        "cloud_object_storage",
+        r"s3[.-][^/ ]*amazonaws\.com|storage\.googleapis\.com",
+    ),
+    ("model_artifact", r"huggingface\.co|hf\.co"),
+)
+
+
+def skillsbench_failure_dependency_classes(error_text: str) -> list[str]:
+    """Classify dependencies named on public-safe failure lines."""
+
+    failure_lines = [
+        line.lower()
+        for line in error_text.splitlines()
+        if any(marker in line.lower() for marker in _FAILURE_LINE_MARKERS)
+    ]
+    return [
+        label
+        for label, pattern in _FAILURE_DEPENDENCY_CLASS_PATTERNS
+        if any(re.search(pattern, line) for line in failure_lines)
+    ]
 
 
 def reconcile_skillsbench_setup_attribution(
@@ -153,3 +212,86 @@ def skillsbench_pip_bootstrap_failure_evidence(error_text: str) -> bool:
         and any(marker in line for marker in command_failures)
         for line in text.splitlines()
     )
+
+
+def skillsbench_error_len_bucket(text: str) -> str:
+    size = len(text)
+    if size <= 0:
+        return "empty"
+    if size < 200:
+        return "1_199"
+    if size < 500:
+        return "200_499"
+    if size < 1000:
+        return "500_999"
+    if size < 2000:
+        return "1000_1999"
+    return "2000_plus"
+
+
+def skillsbench_runner_error_fingerprint(error_text: str) -> dict[str, object]:
+    """Return a public-safe shape summary without copying raw error text."""
+
+    text = error_text or ""
+    lowered = text.lower()
+    patterns = {
+        "docker_compose_command_failed": r"docker compose command failed",
+        "docker_daemon_unavailable": (
+            r"cannot connect to the docker daemon|is the docker daemon running|"
+            r"docker daemon is not running|colima is not running|error during connect"
+        ),
+        "service_unhealthy": r"unhealthy|healthcheck|health check",
+        "container_exited": r"exited with code|container .* exited|exit code",
+        "dependency_failed": r"dependency failed|depends_on|dependency",
+        "network_failure": (
+            r"network|connection refused|could not connect|read timed out|"
+            r"connection timed out|connection reset|max retries exceeded"
+        ),
+        "volume_mount_failure": r"mount|volume|bind source path",
+        "permission_denied": r"permission denied|operation not permitted",
+        "missing_file": r"no such file|not found|does not exist",
+        "codex_api_egress_failure": (
+            r"codex api egress preflight|reverse tunnel proxy|"
+            r"loopx_codex_api_reverse_tunnel_proxy"
+        ),
+        "task_output_quiet_timeout": r"codex_exec_task_output_quiet_timeout",
+        "image_build": (
+            r"failed to solve|failed to build|dockerfile|pull access denied|"
+            r"manifest unknown"
+        ),
+        "port_conflict": (
+            r"port is already allocated|address already in use|"
+            r"ports are not available|bind for"
+        ),
+        "apt_failure": (
+            r"apt-get|apt update|apt |gpg error|hash sum mismatch|failed to fetch"
+        ),
+        "pip_bootstrap_failure": r"$^",
+        "subprocess_command_timeout": r"command timed out after \d+ seconds",
+        "timeout": r"timeout|timed out|deadline",
+    }
+    matched = []
+    for label, pattern in patterns.items():
+        if label == "pip_bootstrap_failure":
+            pattern_matched = skillsbench_pip_bootstrap_failure_evidence(lowered)
+        else:
+            pattern_matched = bool(re.search(pattern, lowered))
+        if pattern_matched:
+            matched.append(label)
+    return {
+        "schema_version": "skillsbench_runner_failure_fingerprint_v0",
+        "error_present": bool(text),
+        "error_len_bucket": skillsbench_error_len_bucket(text),
+        "line_count": len(text.splitlines()) if text else 0,
+        "matched_patterns": matched,
+        "failure_line_dependency_classes": skillsbench_failure_dependency_classes(
+            text
+        ),
+        "has_host_paths": bool(re.search(r"/Users/|/private/|/var/folders/", text)),
+        "has_urls": bool(re.search(r"https?://", text)),
+        "has_secret_like_tokens": bool(
+            re.search(r"(?i)(api[_-]?key|token|password|secret)", text)
+        ),
+        "raw_error_recorded": False,
+        "fingerprint_confidence": "coarse_public_safe_pattern_match",
+    }
