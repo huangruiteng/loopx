@@ -405,9 +405,12 @@ def assert_replan_beats_monitor_quiet_skip() -> None:
     required_reads = guard["required_reads"]
     assert required_reads[0]["kind"] == "agent_scoped_evidence_log", required_reads
     assert required_reads[0]["agent_id"] == SIDE_AGENT, required_reads
-    assert required_reads[0]["todo_id"] == "todo_monitor_wait", required_reads
+    assert required_reads[0]["todo_id"] is None, required_reads
     assert "evidence-log" in required_reads[0]["command"], required_reads
     assert " --agent-id codex-side-bypass " in f" {required_reads[0]['command']} ", required_reads
+    assert "--todo-id" not in required_reads[0]["command"], required_reads
+    assert "across this agent lane" in required_reads[0]["reason"], required_reads
+    assert "public-safe search" in required_reads[0]["reason"], required_reads
     assert guard["autonomous_replan_obligation"]["required_reads"] == required_reads, guard
     assert (
         guard["interaction_contract"]["agent_channel"]["required_reads"] == required_reads
@@ -604,6 +607,8 @@ def assert_long_agent_todo_chain_derives_replan_before_linear_delivery() -> None
     assert guard["autonomous_replan_decision"]["triggers"] == ["long_todo_chain"], guard
     required_reads = guard["required_reads"]
     assert required_reads[0]["kind"] == "agent_scoped_evidence_log", required_reads
+    assert required_reads[0]["todo_id"] is None, required_reads
+    assert "--todo-id" not in required_reads[0]["command"], required_reads
     markdown = render_quota_should_run_markdown(guard)
     assert "triggers=long_todo_chain" in markdown, markdown
 

@@ -88,7 +88,6 @@ from .control_plane.quota.scheduler_ack import (
     record_quota_scheduler_ack_for_decision,
 )
 from .control_plane.quota.selected_todo_projection import (
-    first_todo_id_from_items as _first_todo_id_from_items,
     selected_todo_projection as _selected_todo_projection,
 )
 from .control_plane.quota.subagent_orchestration import (
@@ -153,7 +152,6 @@ from .control_plane.todos.contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_BLOCKER,
     normalize_todo_claimed_by,
-    normalize_todo_id,
     normalize_todo_status,
     normalize_todo_task_class,
 )
@@ -2215,40 +2213,6 @@ def build_quota_slot_preview(
     )
 
 
-def _required_read_todo_id(decision: dict[str, Any]) -> str | None:
-    lane_action = (
-        decision.get("agent_lane_next_action")
-        if isinstance(decision.get("agent_lane_next_action"), dict)
-        else {}
-    )
-    todo_id = normalize_todo_id(lane_action.get("todo_id") or lane_action.get("id"))
-    if todo_id:
-        return todo_id
-    agent_scope_frontier = (
-        decision.get("agent_scope_frontier")
-        if isinstance(decision.get("agent_scope_frontier"), dict)
-        else {}
-    )
-    for key in (
-        "deferred_resume_candidates",
-        "route_continuation_replan_candidates",
-        "monitor_blocked_resume_candidates",
-    ):
-        todo_id = _first_todo_id_from_items(agent_scope_frontier.get(key))
-        if todo_id:
-            return todo_id
-    agent_todos = (
-        decision.get("agent_todo_summary")
-        if isinstance(decision.get("agent_todo_summary"), dict)
-        else {}
-    )
-    for key in ("first_executable_items", "first_open_items"):
-        todo_id = _first_todo_id_from_items(agent_todos.get(key))
-        if todo_id:
-            return todo_id
-    return None
-
-
 def _quota_required_reads(decision: dict[str, Any]) -> list[dict[str, Any]]:
     effective_action = str(decision.get("effective_action") or "")
     replan_required = effective_action in {
@@ -2260,10 +2224,9 @@ def _quota_required_reads(decision: dict[str, Any]) -> list[dict[str, Any]]:
     read = build_agent_scoped_required_read(
         goal_id=str(decision.get("goal_id") or ""),
         agent_id=quota_decision_agent_id(decision),
-        todo_id=_required_read_todo_id(decision),
         reason=(
-            "read this agent's thin public-safe evidence ledger before autonomous "
-            "replan; other agents stay frontier-only"
+            "read recent public-safe evidence across this agent lane before "
+            "replan; if local evidence is thin, use bounded public-safe search"
         ),
     )
     return [read] if read else []

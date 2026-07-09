@@ -292,6 +292,13 @@ compact goal-route facts:
 These fields are projections. Writeback still goes through LoopX write APIs,
 not through dashboards, Lark mirrors, or chat text.
 
+When quota requires an autonomous replan, the required evidence read is scoped
+to the current agent's recent public-safe evidence ledger. A todo-specific
+evidence read may be useful as drill-down, but it is not sufficient as the
+decision basis for watch-lane continuation, no-follow-up, or successor choice.
+If local evidence is empty, stale, or contradictory, the agent may use bounded
+public-safe search as supporting evidence and write back source references.
+
 ## Write / Correction Mechanism
 
 Vision correction is a normal state-machine transition, not only a
