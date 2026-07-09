@@ -1,0 +1,23 @@
+examples/codex-app-server-goal-driver-smoke.py
+  s_9a5a2bd944fdcb::t_d6b22fcc0cbb62 11-12,276-285,288
+scripts/codex_app_server_goal_driver.py
+  s_9a5a2bd944fdcb::t_8a4d66a46b6114 132-136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ddac1a7ce560150d6277d2c210ba7d14223cec60",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
