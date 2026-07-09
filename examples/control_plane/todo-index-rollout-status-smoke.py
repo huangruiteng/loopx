@@ -49,11 +49,14 @@ def main() -> None:
         )
 
         history = {"goals": [{"id": "loopx-meta"}]}
-        event_only_index = status_module.build_todo_index(
-            queue={"items": []},
+        event_only_index = status_module.build_status_runtime_summaries(
             history=history,
+            queue={"items": []},
             runtime_root=runtime_root,
-        )
+            goal_id_filter=None,
+            display_limit=10,
+            todo_index_limit=10,
+        )["todo_index"]
         queue = {
             "items": [
                 {
@@ -71,16 +74,20 @@ def main() -> None:
                 }
             ]
         }
-        index = status_module.build_todo_index(
-            queue=queue,
+        index = status_module.build_status_runtime_summaries(
             history=history,
+            queue=queue,
             runtime_root=runtime_root,
-        )
+            goal_id_filter=None,
+            display_limit=10,
+            todo_index_limit=10,
+        )["todo_index"]
         read_model_index = build_todo_index_read_model(
             queue=queue,
             history=history,
             runtime_root=runtime_root,
             public_safe_compact_text=status_module.public_safe_compact_text,
+            limit=10,
         )
 
     event_only_items = event_only_index["items"]

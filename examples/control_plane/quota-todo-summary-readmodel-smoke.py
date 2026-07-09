@@ -272,7 +272,8 @@ def assert_quota_payload_summary_compacts_hot_path_lanes() -> None:
     assert first["todo_id"] == "todo_payload_000", compact
     assert first["text"].endswith("..."), first
     assert len(first["text"]) <= 180, first
-    assert "title" not in first, first
+    assert first["title"].endswith("..."), first
+    assert len(first["title"]) <= 180, first
     assert "handoff_note" not in first, first
     compaction = compact["payload_compaction"]
     assert compaction["schema_version"] == "quota_todo_summary_payload_compaction_v0", compaction

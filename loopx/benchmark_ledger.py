@@ -15,7 +15,11 @@ from .benchmark_core import (
 from .benchmark_adapters.skillsbench_signals import (
     build_skillsbench_solution_quality_signals,
 )
-from .benchmark_ledger_countability import official_score_attempt_uncountable, official_score_bool_fallback_used
+from .benchmark_ledger_countability import (
+    benchmark_run_official_score_countability,
+    official_score_bool_fallback_allowed,
+    official_score_bool_fallback_used,
+)
 
 
 BENCHMARK_RUN_LEDGER_SCHEMA_VERSION = "benchmark_run_ledger_v0"
@@ -403,103 +407,6 @@ def _numeric_score_value(value: Any) -> float | None:
         except ValueError:
             return None
     return None
-
-
-def _score_countability_label_values(run: dict[str, Any]) -> list[str]:
-    labels: list[str] = []
-    for key in (
-        "score_failure_attribution",
-        "failure_class",
-        "attempt_failure_label",
-        "attempt_failure_class",
-        "first_blocker",
-        "runner_return_status",
-    ):
-        text = _compact_text(run.get(key), limit=180)
-        if text:
-            labels.append(text)
-    for key in ("failure_labels", "failure_attribution_labels", "setup_blockers"):
-        for label in _compact_list(run.get(key), limit=16):
-            labels.append(label)
-    accounting = (
-        run.get("attempt_accounting")
-        if isinstance(run.get("attempt_accounting"), dict)
-        else {}
-    )
-    for key in ("failure_label", "failure_class"):
-        text = _compact_text(accounting.get(key), limit=180)
-        if text:
-            labels.append(text)
-    return labels
-
-
-def benchmark_run_official_score_countability(run: dict[str, Any]) -> dict[str, Any]:
-    """Classify whether a compact/ledger run's official score is aggregate-countable."""
-
-    score = _numeric_score_value(run.get("official_score"))
-    if score is None:
-        official = (
-            run.get("official_task_score")
-            if isinstance(run.get("official_task_score"), dict)
-            else {}
-        )
-        score = _numeric_score_value(official.get("value"))
-    if score is None:
-        score, _passed = _official_score_passed_bool_fallback(run)
-    if score is None:
-        return {
-            "countable": False,
-            "reason": "score_missing",
-            "score": None,
-        }
-
-    explicit_attempt_countable = run.get("official_score_attempt_countable")
-    accounting = (
-        run.get("attempt_accounting")
-        if isinstance(run.get("attempt_accounting"), dict)
-        else {}
-    )
-    if explicit_attempt_countable is None:
-        explicit_attempt_countable = accounting.get("official_score_attempt_countable")
-    has_official_bool_score = official_score_bool_fallback_used(run) or run.get("official_score_bool_fallback_used") is True
-    if official_score_attempt_uncountable(run, accounting, has_official_bool_score):
-        return {
-            "countable": False,
-            "reason": "official_score_attempt_not_countable",
-            "score": score,
-        }
-
-    score_status = _compact_text(run.get("official_score_status") or run.get("score_status"), limit=80)
-    if (
-        score_status == "missing"
-        and score is not None
-        and has_official_bool_score
-    ):
-        score_status = "failed" if score < 1 else "passed"
-    if score_status and score_status not in {
-        "completed",
-        "passed",
-        "failed",
-    }:
-        return {
-            "countable": False,
-            "reason": "official_score_status_not_countable",
-            "score": score,
-        }
-
-    labels = _score_countability_label_values(run)
-    if any("uncountable" in label.lower() for label in labels):
-        return {
-            "countable": False,
-            "reason": "uncountable_attribution",
-            "score": score,
-        }
-
-    return {
-        "countable": True,
-        "reason": "countable_official_score",
-        "score": score,
-    }
 
 
 def _round_reward_best_stats(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1024,6 +931,8 @@ def _official_score(benchmark_run: dict[str, Any]) -> tuple[float | int | None, 
     value = benchmark_run.get("official_score")
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return value, value >= 1
+    if not official_score_bool_fallback_allowed(benchmark_run):
+        return None, None
     return _official_score_passed_bool_fallback(benchmark_run)
 
 
@@ -1813,7 +1722,9 @@ def build_benchmark_run_ledger_entry(
     job_name = _compact_text(benchmark_run.get("job_name"), limit=160)
     mode = _compact_text(benchmark_run.get("mode"), limit=120)
     score, passed = _official_score(benchmark_run)
-    bool_fallback_used = official_score_bool_fallback_used(benchmark_run)
+    bool_fallback_used = official_score_bool_fallback_used(
+        benchmark_run
+    ) and official_score_bool_fallback_allowed(benchmark_run)
     score_status = _score_status(benchmark_run, score, passed)
     failure_class = _failure_class(benchmark_run, score)
     failure_scope = _failure_scope(failure_class, score, passed)

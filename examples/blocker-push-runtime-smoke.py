@@ -46,6 +46,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
                 "## User Todo / Owner Review Reading Queue",
                 "",
                 f"- [ ] {USER_TODO}",
+                "  <!-- loopx:todo todo_id=todo_owner_evidence_gate status=open task_class=user_gate action_kind=owner_evidence_gate -->",
                 "",
                 "## Next Action",
                 "",
@@ -151,12 +152,12 @@ def main() -> int:
         assert len(items) == 1, items
         item = items[0]
         assert item["goal_id"] == GOAL_ID, item
-        assert item["status"] == "active_state_user_todo", item
+        assert item["status"] == "active_state_user_gate", item
         assert item["waiting_on"] == "controller", item
         assert item["severity"] == "action", item
         assert item["recommended_action"] == USER_TODO, item
         project_asset = item["project_asset"]
-        assert project_asset["gate"] == "active_state_user_todo", item
+        assert project_asset["gate"] == "active_state_user_gate", item
         assert project_asset["support_mode"] == "decision_support", item
         assert project_asset["quota"]["state"] == "operator_gate", item
         assert item["user_todos"]["open_count"] == 1, item
@@ -178,7 +179,9 @@ def main() -> int:
         assert decision["effective_action"] == "operator_gate_notify", decision
         assert decision["requires_user_action"] is True, decision
         assert "notify_user_on_open_todo" not in decision, decision
-        assert "open_todo_notification_policy" not in decision, decision
+        assert decision["notify_user_on_gate"] is True, decision
+        assert decision["open_todo_notification_policy"] == "repeat_until_resolved", decision
+        assert "owner_evidence_gate" in decision["open_todo_notify_reason"], decision
         assert decision["heartbeat_recommendation"]["recommended_mode"] == "ask_operator_gate", decision
         assert decision["heartbeat_recommendation"]["notify"] == "NOTIFY", decision
         assert decision["interaction_contract"]["mode"] == "user_gate", decision

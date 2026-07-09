@@ -12,7 +12,7 @@ HANDOFF = TOPIC_DIR / "benchmark-program-current-state-handoff-v0.md"
 README = TOPIC_DIR / "README.md"
 STATUS = REPO_ROOT / "loopx" / "status.py"
 REVIEW_PACKET = REPO_ROOT / "loopx" / "review_packet.py"
-HOT_PATH_SMOKE = REPO_ROOT / "examples" / "hot-path-interface-budget-smoke.py"
+HOT_PATH_SMOKE = REPO_ROOT / "examples" / "control_plane" / "hot-path-interface-budget-smoke.py"
 
 HANDOFF_SCHEMA = "benchmark_program_current_state_handoff_v0"
 HANDOFF_DOC_NAME = "benchmark-program-current-state-handoff-v0.md"

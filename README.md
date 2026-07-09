@@ -175,7 +175,7 @@ curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/ins
 export PATH="$HOME/.local/bin:$PATH"
 
 Then run `loopx doctor`. Work only from the current project root: if LoopX state
-already exists, reuse it and do not create or overwrite the active objective; if the project
+already exists, reuse it and do not create or overwrite a goal or the active objective; if the project
 is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
 project state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
 and `.local/` are ignored. If this is Codex App, set the heartbeat automation to start at 3 minutes.
@@ -240,7 +240,7 @@ curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/ins
 export PATH="$HOME/.local/bin:$PATH"
 
 Then run `loopx doctor`. Work only from this project root: if LoopX state
-already exists, reuse it and do not create or overwrite the active objective; if the project
+already exists, reuse it and do not create or overwrite a goal or the active objective; if the project
 is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
 project state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
 and `.local/` are ignored. Keep me in this TUI, do not use hidden headless

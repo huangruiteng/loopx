@@ -6,6 +6,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
+import tempfile
 from typing import Any
 
 
@@ -102,7 +103,15 @@ def main() -> None:
     for run in runs:
         assert status_module.event_ledger_event_class(run) == direct_event_class(run), run
 
-    wrapper = status_module.build_event_ledger_summary(history)
+    with tempfile.TemporaryDirectory(prefix="loopx-event-ledger-summary-") as raw_tmp:
+        wrapper = status_module.build_status_runtime_summaries(
+            history=history,
+            queue={"items": []},
+            runtime_root=Path(raw_tmp),
+            goal_id_filter=None,
+            display_limit=10,
+            todo_index_limit=10,
+        )["event_ledger_summary"]
     direct = direct_summary(history)
     assert normalize_generated_at(direct, wrapper) == wrapper, (direct, wrapper)
 

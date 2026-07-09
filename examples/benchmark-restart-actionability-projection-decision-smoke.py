@@ -13,7 +13,7 @@ DECISION_DOC = TOPIC_DIR / "benchmark-restart-actionability-projection-decision-
 ACTIONABILITY_DOC = TOPIC_DIR / "benchmark-restart-actionability-v0.md"
 STATUS = REPO_ROOT / "loopx" / "status.py"
 REVIEW_PACKET = REPO_ROOT / "loopx" / "review_packet.py"
-HOT_PATH_SMOKE = REPO_ROOT / "examples" / "hot-path-interface-budget-smoke.py"
+HOT_PATH_SMOKE = REPO_ROOT / "examples" / "control_plane" / "hot-path-interface-budget-smoke.py"
 
 ACTIONABILITY_SCHEMA = "benchmark_restart_actionability_v0"
 DECISION_DOC_NAME = "benchmark-restart-actionability-projection-decision-v0.md"

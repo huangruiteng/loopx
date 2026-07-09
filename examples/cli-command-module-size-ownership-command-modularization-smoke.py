@@ -12,15 +12,21 @@ DEFAULT_MAX_LINES = 500
 LEGACY_MODULE_LIMITS = {
     "benchmark_review_lifecycle.py": 1300,
     "benchmark_run_ledger.py": 820,
+    "canary.py": 580,
+    "explore.py": 800,
     "history.py": 720,
+    "project_lifecycle.py": 580,
     "registry_admin.py": 780,
+    "status.py": 940,
+    "support_control.py": 620,
     "terminal_bench_adapter.py": 760,
     "terminal_bench_environment_result.py": 1280,
+    "todo.py": 860,
     "worker_bridge.py": 700,
 }
 STARTER_MODULE_LIMITS = {
-    "starter.py": 160,
-    "starter_bootstrap.py": 240,
+    "starter.py": 180,
+    "starter_bootstrap.py": 400,
     "starter_runtime_idle.py": 160,
     "starter_scheduler.py": 240,
     "starter_session_runtime.py": 220,

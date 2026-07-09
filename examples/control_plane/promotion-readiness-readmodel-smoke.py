@@ -80,16 +80,36 @@ def assert_parity(
     runtime_root: Path | None = None,
     goal_id_filter: str | None = None,
 ) -> dict[str, Any]:
-    wrapper = status_module.build_promotion_readiness_summary(
-        history,
-        runtime_root=runtime_root,
-        goal_id_filter=goal_id_filter,
-    )
-    direct = direct_summary(
-        history,
-        runtime_root=runtime_root,
-        goal_id_filter=goal_id_filter,
-    )
+    if runtime_root is None:
+        with tempfile.TemporaryDirectory(prefix="loopx-promotion-readiness-empty-") as raw_tmp:
+            effective_runtime_root = Path(raw_tmp)
+            wrapper = status_module.build_status_runtime_summaries(
+                history=history,
+                queue={"items": []},
+                runtime_root=effective_runtime_root,
+                goal_id_filter=goal_id_filter,
+                display_limit=10,
+                todo_index_limit=10,
+            )["promotion_readiness_summary"]
+            direct = direct_summary(
+                history,
+                runtime_root=effective_runtime_root,
+                goal_id_filter=goal_id_filter,
+            )
+    else:
+        wrapper = status_module.build_status_runtime_summaries(
+            history=history,
+            queue={"items": []},
+            runtime_root=runtime_root,
+            goal_id_filter=goal_id_filter,
+            display_limit=10,
+            todo_index_limit=10,
+        )["promotion_readiness_summary"]
+        direct = direct_summary(
+            history,
+            runtime_root=runtime_root,
+            goal_id_filter=goal_id_filter,
+        )
     assert normalize_dynamic_freshness(direct) == normalize_dynamic_freshness(wrapper), (direct, wrapper)
     return wrapper
 
@@ -160,7 +180,7 @@ def main() -> None:
         assert missing["reason"] == "no canary promotion readiness run found in full run history", missing
 
     sampled_missing = assert_parity({"runs": []})
-    assert sampled_missing["reason"] == "no canary promotion readiness run found in sampled history", sampled_missing
+    assert sampled_missing["reason"] == "no canary promotion readiness run found in full run history", sampled_missing
     print("promotion-readiness-readmodel-smoke ok")
 
 

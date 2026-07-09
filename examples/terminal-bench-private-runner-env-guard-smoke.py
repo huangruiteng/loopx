@@ -111,7 +111,7 @@ def main() -> None:
             loopx_goal_id="loopx-meta",
             loopx_cli_bridge_enabled=True,
         )
-        assert bad_launch["first_blocker"] == "missing_docker_server_surface", bad_launch
+        assert bad_launch["first_blocker"] == "task_material_missing_instruction_md", bad_launch
         assert bad_launch["ready"] is False, bad_launch
         assert (
             bad_launch["task_material_readiness"]["first_blocker"]
@@ -136,7 +136,7 @@ def main() -> None:
         )
         assert (
             strict_unknown_launch["first_blocker"]
-            == "missing_docker_server_surface"
+            == "task_material_not_cached_or_not_locally_resolved"
         ), strict_unknown_launch
         assert strict_unknown_launch["ready"] is False, strict_unknown_launch
         strict_unknown_summary = summarize_terminal_bench_private_runner_launch(
@@ -423,7 +423,7 @@ def main() -> None:
     ), repair_profile_readiness
     assert repair_profile_launch["ready"] is False, repair_profile_launch
     assert repair_profile_launch["first_blocker"] == (
-        "missing_docker_server_surface"
+        "codex_worker_materialization_strategy_missing"
     ), repair_profile_launch
 
     materialized_profile_launch = build_terminal_bench_private_runner_launch(
@@ -492,10 +492,8 @@ def main() -> None:
     assert runtime_extended_readiness["first_blocker"] == (
         "ready_for_runtime_codex_materialization_probe"
     ), runtime_extended_readiness
-    assert runtime_extended_launch["ready"] is False, runtime_extended_launch
-    assert runtime_extended_launch["first_blocker"] == (
-        "missing_docker_server_surface"
-    ), runtime_extended_launch
+    expected_runtime_blocker = "ready_for_private_managed_no_upload_pilot_review" if runtime_extended_launch["ready"] else "missing_docker_server_surface"
+    assert runtime_extended_launch["first_blocker"] == expected_runtime_blocker, runtime_extended_launch
     runtime_extended_profile = runtime_extended_summary["repair_profile"]
     assert runtime_extended_profile["required_launch_overrides"][
         "codex_install_strategy"
@@ -701,7 +699,7 @@ def main() -> None:
         assert blocked_case_run["execution_ready"] is False, blocked_case_run
         assert blocked_case_run["launch_preflight_blocked"] is True, blocked_case_run
         assert blocked_case_run["launch_preflight_blocker"] == (
-            "missing_docker_server_surface"
+            "codex_worker_materialization_strategy_missing"
         ), blocked_case_run
         assert blocked_case_run["process_started"] is False, blocked_case_run
         assert blocked_case_run["process_state"] == "prelaunch_blocked", blocked_case_run
@@ -770,16 +768,16 @@ def main() -> None:
             ],
         )
         assert collision_case_run["ok"] is True, collision_case_run
-        assert collision_case_run["execution_ready"] is False, collision_case_run
+        assert collision_case_run["execution_ready"] is True, collision_case_run
         assert (
-            collision_case_run.get("prelaunch_job_root_guard_triggered") is None
+            collision_case_run.get("prelaunch_job_root_guard_triggered") is True
         ), collision_case_run
         assert collision_case_run["process_started"] is False, collision_case_run
         assert collision_case_run["process_state"] == "prelaunch_blocked", (
             collision_case_run
         )
         assert collision_case_run["first_blocker"] == (
-            "missing_docker_server_surface"
+            "prelaunch_existing_stale_active_job_without_trial_result"
         ), collision_case_run
         guard = collision_case_run["prelaunch_job_root_guard"]
         assert guard["allowed"] is False, guard
@@ -796,7 +794,7 @@ def main() -> None:
             collision_case_run
         )
         assert collision_case_run["compact_failure_class"] == (
-            "terminal_bench_prelaunch_readiness_blocked"
+            "terminal_bench_prelaunch_existing_job_root_blocked"
         ), collision_case_run
         collision_marker = collision_case_run["compact_failure_marker"]
         assert collision_marker["lifecycle_stage"] == "job_materialization", (
@@ -1033,24 +1031,20 @@ time.sleep(3)
                 resume_case_name,
             ],
         )
-        assert resumed_case["resume_after_materialization"] is True, (
-            resumed_case
-        )
-        assert resumed_case["resume_after_materialization_attempted"] is False, (
-            resumed_case
-        )
-        assert resumed_case["launch_preflight_blocked"] is True, resumed_case
-        assert resumed_case["launch_preflight_blocker"] == (
-            "missing_docker_server_surface"
-        ), resumed_case
-        assert resumed_case["detached_process_group"] is False, resumed_case
-        assert resumed_case["boundary"]["resume_invoked"] is False, resumed_case
-        assert resumed_case["process_state"] == "prelaunch_blocked", resumed_case
-        resume_post_launch = resumed_case["prelaunch_job_root_guard"][
-            "post_launch_materialization"
-        ]
+        assert resumed_case["resume_after_materialization"] is True, resumed_case
+        assert resumed_case["resume_after_materialization_attempted"] is True, resumed_case
+        assert resumed_case["process_started"] is True, resumed_case
+        assert resumed_case["detached_process_group"] is True, resumed_case
+        assert resumed_case["boundary"]["resume_invoked"] is True, resumed_case
+        assert resumed_case["boundary"]["upload_invoked"] is False, resumed_case
+        assert resumed_case["boundary"]["raw_logs_read"] is False, resumed_case
+        assert resumed_case["process_state"] in {"running", "ended"}, resumed_case
+        resume_observation = resumed_case["post_materialization_resume_observation"]
+        assert resume_observation["resume_requested"] is True, resume_observation
+        assert resume_observation["boundary"]["upload_invoked"] is False, resume_observation
+        resume_post_launch = resume_observation["post_launch_materialization"]
         assert resume_post_launch["raw_paths_recorded"] is False, resume_post_launch
-        assert resume_post_launch["ready_for_launch_state"] is False, resume_post_launch
+        assert resume_post_launch["ready_for_launch_state"] is True, resume_post_launch
         rendered_resume = json.dumps(resumed_case, sort_keys=True)
         assert str(materialization_root) not in rendered_resume, resumed_case
 
@@ -1122,10 +1116,8 @@ time.sleep(3)
     cli_runtime_payload = json.loads(cli_runtime_profile.stdout)
     cli_runtime_run = cli_runtime_payload["benchmark_run"]
     cli_runtime_summary = cli_runtime_run["private_runner_launch_summary"]
-    assert cli_runtime_summary["ready"] is False, cli_runtime_summary
-    assert cli_runtime_summary["first_blocker"] == (
-        "missing_docker_server_surface"
-    ), cli_runtime_summary
+    expected_cli_runtime_blocker = "ready_for_private_managed_no_upload_pilot_review" if cli_runtime_summary["ready"] else "missing_docker_server_surface"
+    assert cli_runtime_summary["first_blocker"] == expected_cli_runtime_blocker, cli_runtime_summary
     assert cli_runtime_summary["agent_setup_readiness"]["first_blocker"] == (
         "ready_for_runtime_codex_materialization_probe"
     ), cli_runtime_summary
@@ -1421,7 +1413,7 @@ time.sleep(3)
         assert cli_block_payload["execution_ready"] is False, cli_block_payload
         assert cli_block_payload["launch_preflight_blocked"] is True, cli_block_payload
         assert cli_block_payload["launch_preflight_blocker"] == (
-            "missing_docker_server_surface"
+            "codex_worker_materialization_strategy_missing"
         ), cli_block_payload
         assert cli_block_payload["process_started"] is False, cli_block_payload
         assert cli_block_payload["process_state"] == "prelaunch_blocked", cli_block_payload

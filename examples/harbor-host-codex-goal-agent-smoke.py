@@ -674,6 +674,10 @@ def main() -> int:
             goal_reactivation_succeeded = False
             goal_reactivation_previous_status = ""
             goal_reactivation_result_status = ""
+            post_turn_goal_refresh_attempted = False
+            post_turn_goal_refresh_succeeded = False
+            post_turn_goal_status = ""
+            post_turn_goal_refresh_error_type = ""
             notifications: list[str] = []
             _responses = None
 

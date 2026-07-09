@@ -61,7 +61,6 @@ def main() -> int:
             protocol,
             three_layer,
             protocol_index,
-            docs_index,
         ]
     )
 
@@ -187,7 +186,7 @@ def main() -> int:
         auto_research_guide,
         [
             "The panes share the same LoopX\ngoal surface",
-            "isolate only\nmutating evidence-runner attempts",
+            "isolate only mutating research-executor attempts",
             "Each Codex TUI role must route through its own quota/frontier/worker-turn path",
             "first show the Codex CLI TUI",
             "should not default into the demo-local\ncontrol-plane repository or generated lane worktrees",

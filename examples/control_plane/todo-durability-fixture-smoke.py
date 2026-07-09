@@ -132,7 +132,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
     return registry_path, runtime
 
 
-def assert_parseable_agent_todos(agent_todos: dict) -> None:
+def assert_parseable_agent_todos(agent_todos: dict, *, hot_path: bool = False) -> None:
     assert agent_todos["schema_version"] == "todo_summary_v0", agent_todos
     assert agent_todos["total_count"] == 5, agent_todos
     assert agent_todos["open_count"] == 2, agent_todos
@@ -142,11 +142,12 @@ def assert_parseable_agent_todos(agent_todos: dict) -> None:
 
     first_open = agent_todos["first_open_items"][0]
     assert first_open["schema_version"] == "todo_item_v0", first_open
-    assert first_open["role"] == "agent", first_open
     assert first_open["status"] == "open", first_open
     assert first_open["priority"] == "P1", first_open
-    assert first_open["archive_state"] == "active", first_open
-    assert first_open["source_section"] == "Agent Todo", first_open
+    if not hot_path:
+        assert first_open["role"] == "agent", first_open
+        assert first_open["archive_state"] == "active", first_open
+        assert first_open["source_section"] == "Agent Todo", first_open
     assert first_open["text"] == FIRST_OPEN_TODO, first_open
     assert (
         first_open["title"]
@@ -158,13 +159,14 @@ def assert_parseable_agent_todos(agent_todos: dict) -> None:
     assert second_open["priority"] == "P2", second_open
     assert second_open["status"] == "open", second_open
     assert second_open["text"] == SECOND_OPEN_TODO, second_open
-    handoff_note = second_open["handoff_note"]
-    assert handoff_note["schema_version"] == "handoff_note_v0", handoff_note
-    assert handoff_note["todo_id"] == "todo_handoff_review", handoff_note
-    assert handoff_note["from_agent"] == "codex-builder", handoff_note
-    assert handoff_note["to_agent"] == "codex-reviewer", handoff_note
-    assert handoff_note["intent"] == "review_pr", handoff_note
-    assert handoff_note["evidence_refs"] == ["todo:todo_handoff_review:evidence"], handoff_note
+    if not hot_path:
+        handoff_note = second_open["handoff_note"]
+        assert handoff_note["schema_version"] == "handoff_note_v0", handoff_note
+        assert handoff_note["todo_id"] == "todo_handoff_review", handoff_note
+        assert handoff_note["from_agent"] == "codex-builder", handoff_note
+        assert handoff_note["to_agent"] == "codex-reviewer", handoff_note
+        assert handoff_note["intent"] == "review_pr", handoff_note
+        assert handoff_note["evidence_refs"] == ["todo:todo_handoff_review:evidence"], handoff_note
 
     deferred = agent_todos["deferred_items"][0]
     deferred_by_id = {item["todo_id"]: item for item in agent_todos["deferred_items"]}
@@ -238,7 +240,7 @@ def main() -> int:
 
         guard = run_cli("quota", "should-run", "--goal-id", GOAL_ID, registry_path=registry_path, runtime=runtime)
         assert guard["should_run"] is True, guard
-        assert_parseable_agent_todos(guard["agent_todo_summary"])
+        assert_parseable_agent_todos(guard["agent_todo_summary"], hot_path=True)
         assert "completed_todo_archive_warning" not in guard, guard
 
         first_todo_id = guard["agent_todo_summary"]["first_open_items"][0]["todo_id"]
