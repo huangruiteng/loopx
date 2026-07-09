@@ -31,24 +31,30 @@ open PRs, merge, publish, or run destructive git without an explicit gate.
    todo writeback preview, resolution route candidates, gate preview, post-PR
    lifecycle monitor plan, and PR-review readiness blockers. This stage is
    preview-only and does not write todos.
-4. **LoopX todo writeback:** convert accepted candidates into durable LoopX
-   todos in priority and dependency order. Typical agent todos are repro smoke,
-   code-context route, branch-local patch, validation, and review-packet
-   readiness. User todos represent gates such as private repro material,
-   external issue comment, PR creation, merge, publish, or repository policy.
-5. **Caller repo branch:** use `issue_fix_caller_repo_branch_packet_v0` only
+4. **Feasibility checkpoint:** build `issue_fix_feasibility_v0` from compact
+   public-safe agent observations. The decision must select exactly one
+   `fix_pr`, `comment_only`, or `triage_only` route. `fix_pr` requires bounded
+   scope plus named reproduction and validation surfaces; planned reproduction
+   projects confirmation work before patch work. With a goal id, the compact
+   decision writes issue-fix domain state by default.
+5. **LoopX todo writeback:** initially write only metadata classification and
+   the feasibility checkpoint. Then write the single route-specific successor
+   projected by feasibility, or record its structured no-follow-up. User todos
+   represent concrete external-write, private-material, merge, publish, or
+   repository-policy gates.
+6. **Caller repo branch:** use `issue_fix_caller_repo_branch_packet_v0` only
    after the caller provides an approved local git repo, base branch, issue
    branch policy, and validation command. Dry-run mode must not inspect the
    repo. Execute mode may inspect the approved repo and create or claim a
    `codex/` issue branch, but must refuse branch switches from dirty state.
-6. **Validation:** record focused validation as pass/fail, exit code, and
+7. **Validation:** record focused validation as pass/fail, exit code, and
    public-safe label. Validation stdout, stderr, local paths, and raw git output
    stay out of the packet. A validated fix should prove failing-before and
    passing-after evidence when that repro path is available.
-7. **PR review packet:** emit `issue_fix_pr_review_packet_v0` only when branch,
+8. **PR review packet:** emit `issue_fix_pr_review_packet_v0` only when branch,
    validation, and repo-relative changed-file evidence are sufficient for human
    review. The packet is review evidence, not external publication authority.
-8. **PR lifecycle monitor:** after a PR exists, use
+9. **PR lifecycle monitor:** after a PR exists, use
    `issue_fix_pr_lifecycle_monitor_v0` to project compact public PR state into
    exactly one of `runnable_successor`, `monitor_continuation`, `user_gate`, or
    `no_followup`. Terminal PR states such as `MERGED` and `CLOSED` take
@@ -57,7 +63,7 @@ open PRs, merge, publish, or run destructive git without an explicit gate.
    The command writes compact domain state by default when a `--goal-id` or
    `--ledger-path` is provided, and `--no-write-domain-state` keeps it
    preview-only.
-9. **Gate handling:** surface concrete gates instead of silently blocking. Safe
+10. **Gate handling:** surface concrete gates instead of silently blocking. Safe
    metadata-only triage, public-code search, and focused smoke drafting may
    continue when those gates do not cover the selected action.
 
@@ -103,18 +109,20 @@ useful patch or comment.
 
 ## Domain State
 
-Issue-fix domain state is a project-local read model for long-running monitors:
+Issue-fix domain state is a project-local read model for compact decisions and
+long-running monitors:
 
 ```text
+.loopx/domain-state/<goal-id>/issue_fix/feasibility.jsonl
 .loopx/domain-state/<goal-id>/issue_fix/pr-lifecycle.jsonl
 ```
 
-Rows are keyed by compact `repo` and `pr_ref` and may store public-safe PR
-observations, transition decisions, and observation fingerprints. Domain state
-must not store issue bodies, comment bodies, raw provider payloads, raw check
-logs, local paths, credentials, or destructive-git output. The public packet and
-validation contract remain the source for behavior; domain state only keeps the
-watch lane from forgetting the latest compact observation.
+Feasibility rows are keyed by `repo` and `issue_ref`; PR lifecycle rows are keyed
+by `repo` and `pr_ref`. They may store compact observations, decisions, and
+fingerprints. Domain state must not store issue bodies, comment bodies, raw
+provider payloads, raw logs, local paths, credentials, or destructive-git
+output. Public packet validation remains the behavior contract; domain state
+only keeps the agent from forgetting its latest compact decision.
 
 ## Ready Criteria
 
@@ -136,6 +144,10 @@ An issue-fix workflow is PR-review-ready only when all of these are true:
 - `content_ops_issue_fix_intake_packet_v0`
 - `issue_fix_intake_v0`
 - `issue_fix_workflow_plan_packet_v0`
+- `issue_fix_feasibility_v0`
+- `issue_fix_feasibility_observation_v0`
+- `issue_fix_feasibility_decision_v0`
+- `issue_fix_feasibility_domain_state_projection_v0`
 - `issue_fix_pr_lifecycle_monitor_v0`
 - `issue_fix_pr_lifecycle_transition_v0`
 - `issue_fix_pr_lifecycle_domain_state_projection_v0`

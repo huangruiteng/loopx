@@ -495,7 +495,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
             "scripts/update_notes_release_job.py",
         ],
         surfaces=["product-entry issue-fix content-ops update-note cross-runtime demo"],
-        max_checks_per_profile=5,
+        max_checks_per_profile=6,
     )
     product_entry_profiles = {
         profile["id"]: profile for profile in product_entry_payload["domain_profiles"]
@@ -505,6 +505,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     product_entry_profile = product_entry_profiles["product-entry-workflows"]
     product_entry_commands = [check["command"] for check in product_entry_profile["checks"]]
     assert "python3 examples/issue-fix-workflow-contract-smoke.py" in product_entry_commands, product_entry_profile
+    assert "python3 examples/issue-fix-feasibility-smoke.py" in product_entry_commands, product_entry_profile
     assert "python3 examples/issue-fix-pr-lifecycle-smoke.py" in product_entry_commands, product_entry_profile
     assert "python3 examples/content-ops-issue-fix-intake-smoke.py" in product_entry_commands, product_entry_profile
     assert "python3 examples/public_entry/readme-demo-surface-smoke.py" in product_entry_commands, product_entry_profile

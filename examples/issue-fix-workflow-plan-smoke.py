@@ -82,18 +82,18 @@ def assert_workflow_shape(payload: dict[str, Any]) -> None:
     assert first_screen["agent_can_continue"] is True, first_screen
 
     todos = payload["ordered_loopx_todo_writeback_preview"]
-    assert len(todos) >= 5, todos
+    assert len(todos) >= 2, todos
     assert [todo["planner_order"] for todo in todos] == sorted(
         todo["planner_order"] for todo in todos
     )
-    assert [todo["action_kind"] for todo in todos[:4]] == [
+    assert [todo["action_kind"] for todo in todos[:2]] == [
         "issue_fix_public_metadata_classification",
-        "issue_fix_repro_and_route",
-        "issue_fix_branch_validation",
-        "issue_fix_pr_review_packet",
+        "issue_fix_feasibility_decision",
     ]
-    assert any(todo["action_kind"] == "issue_fix_pr_lifecycle_monitor" for todo in todos)
-    assert [todo["priority"] for todo in todos[:3]] == ["P0", "P0", "P0"]
+    assert not any(
+        todo["action_kind"] == "issue_fix_branch_validation" for todo in todos
+    ), todos
+    assert [todo["priority"] for todo in todos[:2]] == ["P0", "P0"]
     assert all(todo["would_write"] is False for todo in todos)
     assert all(todo["requires_execute_flag"] is True for todo in todos)
 
@@ -101,6 +101,11 @@ def assert_workflow_shape(payload: dict[str, Any]) -> None:
     assert set(routes) == {"fix_pr", "comment_only", "triage_only"}, routes
     assert routes["fix_pr"]["next_action_kind"] == "issue_fix_branch_validation"
     assert routes["comment_only"]["requires_user_gate_before_external_write"] is True
+    feasibility = payload["feasibility_checkpoint_plan"]
+    assert feasibility["selects_exactly_one_route"] is True, feasibility
+    assert feasibility["routes"] == ["fix_pr", "comment_only", "triage_only"]
+    assert feasibility["writes_domain_state_by_default_with_goal_id"] is True
+    assert feasibility["writes_loopx_todo"] is False
     post_pr = payload["post_pr_lifecycle_monitor_plan"]
     assert post_pr["creates_continuous_monitor_todo"] is True, post_pr
     assert post_pr["monitor_action_kind"] == "issue_fix_pr_lifecycle_monitor", post_pr
@@ -198,9 +203,10 @@ def main() -> int:
     ).stdout
     assert "# LoopX Issue Fix Workflow Plan" in markdown, markdown
     assert "Ordered Todo Writeback Preview" in markdown, markdown
+    assert "Feasibility Checkpoint" in markdown, markdown
     assert "Resolution Routes" in markdown, markdown
     assert "Post-PR Lifecycle Monitor" in markdown, markdown
-    assert "issue_fix_pr_review_packet" in markdown, markdown
+    assert "PR Review Packet Preview" in markdown, markdown
     assert "issue_fix_pr_lifecycle_monitor" in markdown, markdown
     assert_public_safe(markdown)
 

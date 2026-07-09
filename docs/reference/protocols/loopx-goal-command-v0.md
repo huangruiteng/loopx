@@ -98,12 +98,24 @@ loopx issue-fix workflow-plan \
 ```
 
 The preview maps public metadata, intake classification, branch planning,
-validation labels, todo writeback previews, and PR review readiness blockers
-into the `/loopx <goal text>` planning checkpoint. Accepted candidates are then
-written with `loopx todo add` in priority and planner order. User todos or
-operator gates must cover private repro material, issue body/comment reads,
-external issue comments, PR creation, merge, publish, destructive git,
-production actions, and repository-policy approvals.
+validation labels, the feasibility checkpoint, and PR review readiness blockers
+into `/loopx <goal text>`. Initially write only metadata classification and the
+feasibility checkpoint in priority and planner order. Then record a compact
+observation and let LoopX select exactly one route:
+
+```bash
+loopx issue-fix feasibility \
+  --url <github-issue-url> \
+  --reproduction-status <confirmed|planned|missing|blocked> \
+  --scope-class <bounded|uncertain|oversized> \
+  --goal-id <goal-id> \
+  --format json
+```
+
+Write only the projected route successor or no-follow-up. User todos or operator
+gates must cover private repro material, issue body/comment reads, external
+issue comments, PR creation, merge, publish, destructive git, production
+actions, and repository-policy approvals.
 
 ## Stop Conditions
 

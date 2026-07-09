@@ -87,24 +87,26 @@ def main() -> int:
     assert "loopx bootstrap-command-pack --project ." in readme
     assert "--goal-text \"Fix https://github.com/owner/repo/issues/123\"" in readme
     assert "loopx issue-fix workflow-plan" in readme
+    assert "loopx issue-fix feasibility" in readme
     assert "loopx issue-fix pr-lifecycle" in readme
-    assert "ordered LoopX todos" in readme
-    assert "PR review packet readiness" in readme
+    assert "selects exactly one" in readme
+    assert "## Feasibility Decision" in readme
     assert "## PR Lifecycle Monitor" in readme
     assert "runnable_successor" in readme
     assert "examples/issue-fix-pr-lifecycle-smoke.py" in readme
-    assert "explicit user gates" in readme
+    assert "explicit gates" in readme
     assert "## Issue-Fix Domain Route" in loopx_goal_command
     assert "loopx issue-fix workflow-plan" in loopx_goal_command
     assert "before writing todos" in loopx_goal_command
     assert "priority and planner order" in loopx_goal_command
-    assert "operator gates must cover private repro material" in loopx_goal_command
+    assert "gates must cover private repro material" in loopx_goal_command
     assert_ordered(
         doc,
         [
             "**Metadata preview:**",
             "**Intake classification:**",
             "**Workflow plan:**",
+            "**Feasibility checkpoint:**",
             "**LoopX todo writeback:**",
             "**Caller repo branch:**",
             "**Validation:**",
@@ -119,6 +121,10 @@ def main() -> int:
         CONTENT_OPS_ISSUE_FIX_INTAKE_PACKET_SCHEMA_VERSION,
         ISSUE_FIX_INTAKE_SCHEMA_VERSION,
         "issue_fix_workflow_plan_packet_v0",
+        "issue_fix_feasibility_v0",
+        "issue_fix_feasibility_observation_v0",
+        "issue_fix_feasibility_decision_v0",
+        "issue_fix_feasibility_domain_state_projection_v0",
         "loopx_todo_writeback_preview_v0",
         ISSUE_FIX_CALLER_REPO_BRANCH_PACKET_SCHEMA_VERSION,
         ISSUE_FIX_VALIDATED_FIX_ARTIFACT_SCHEMA_VERSION,

@@ -136,6 +136,7 @@ def test_goal_text_invocation_plans_ranked_todos_before_activation() -> None:
         assert "Preserve that exact order" in plan_prompt
         assert "GitHub issue/PR fix" in plan_prompt
         assert "loopx issue-fix workflow-plan" in plan_prompt
+        assert "loopx issue-fix feasibility" in plan_prompt
         assert "loopx issue-fix pr-lifecycle" in plan_prompt
         assert "external comments, PR creation, merge, publish" in plan_prompt
         assert "issue_fix_workflow_plan_template" in commands
@@ -144,6 +145,12 @@ def test_goal_text_invocation_plans_ranked_todos_before_activation() -> None:
         assert "--url <github-issue-or-pr-url>" in issue_fix_template
         assert "--repo-path <approved-repo>" in issue_fix_template
         assert "--validation-label '<validation command>'" in issue_fix_template
+        assert "issue_fix_feasibility_template" in commands
+        feasibility_template = str(commands["issue_fix_feasibility_template"])
+        assert "issue-fix feasibility" in feasibility_template
+        assert "--reproduction-status" in feasibility_template
+        assert "--scope-class" in feasibility_template
+        assert "--goal-id" in feasibility_template
         assert "issue_fix_pr_lifecycle_template" in commands
         pr_lifecycle_template = str(commands["issue_fix_pr_lifecycle_template"])
         assert "issue-fix pr-lifecycle" in pr_lifecycle_template
@@ -157,6 +164,7 @@ def test_goal_text_invocation_plans_ranked_todos_before_activation() -> None:
         domain_routes = goal_start["domain_route_hints"]
         assert domain_routes["issue_fix_workflow"]["when"].startswith("goal text contains")
         assert "workflow-plan" in domain_routes["issue_fix_workflow"]["preview_command"]
+        assert "feasibility" in domain_routes["issue_fix_workflow"]["decision_command"]
         assert "pr-lifecycle" in domain_routes["issue_fix_workflow"]["post_pr_monitor_command"]
         assert "explicit gates" in domain_routes["issue_fix_workflow"]["writeback"]
         assert "domain-state" in domain_routes["issue_fix_workflow"]["writeback"]
