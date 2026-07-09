@@ -185,7 +185,7 @@ def write_fixture(root: Path) -> Path:
     return registry_path
 
 
-def run_cli(registry_path: Path) -> dict:
+def run_cli(registry_path: Path, *, limit: int = 10) -> dict:
     result = subprocess.run(
         [
             sys.executable,
@@ -204,7 +204,7 @@ def run_cli(registry_path: Path) -> dict:
             TODO_ID,
             "--thin",
             "--limit",
-            "10",
+            str(limit),
         ],
         cwd=REPO_ROOT,
         check=True,
@@ -216,7 +216,9 @@ def run_cli(registry_path: Path) -> dict:
 
 def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        payload = run_cli(write_fixture(Path(tmp)))
+        registry_path = write_fixture(Path(tmp))
+        payload = run_cli(registry_path)
+        limited = run_cli(registry_path, limit=2)
     assert payload["ok"] is True
     assert payload["schema_version"] == "agent_scoped_evidence_log_v0"
     assert payload["goal_id"] == GOAL_ID
@@ -224,6 +226,12 @@ def main() -> None:
     assert payload["todo_id"] == TODO_ID
     assert payload["rollout_event_count"] == 3
     assert payload["run_history_ref_count"] == 1
+    assert payload["matched_count"] == 4
+    assert payload["ledger_count"] == 4
+    assert payload["truncated"] is False
+    assert limited["matched_count"] == 4
+    assert limited["ledger_count"] == 2
+    assert limited["truncated"] is True
     rendered = json.dumps(payload, ensure_ascii=False)
     assert "authorization token label is safe as prose" in rendered
     assert "sk=should-not-surface" not in rendered

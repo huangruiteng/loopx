@@ -286,7 +286,8 @@ def build_agent_scoped_evidence_log(
             since=since_dt,
         )
     ]
-    ledger_rows = sorted([*event_rows, *run_rows], key=_sort_key, reverse=True)[:max_rows]
+    matched_rows = [*event_rows, *run_rows]
+    ledger_rows = sorted(matched_rows, key=_sort_key, reverse=True)[:max_rows]
 
     return {
         "ok": True,
@@ -298,6 +299,9 @@ def build_agent_scoped_evidence_log(
         "since": since if since_dt else None,
         "event_kinds": sorted(normalized_kinds),
         "limit": max_rows,
+        "matched_count": len(matched_rows),
+        "ledger_count": len(ledger_rows),
+        "truncated": len(matched_rows) > len(ledger_rows),
         "source_refs": [
             "rollout_event_log.public_safe_view",
             "compact_run_history.public_refs",
