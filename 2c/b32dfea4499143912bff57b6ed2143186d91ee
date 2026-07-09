@@ -1,0 +1,23 @@
+examples/control_plane/quota-plan-smoke.py
+  s_e3f612788718c1::t_8a6069e89f2c9f 1251-1301,1328
+loopx/control_plane/quota/slot_accounting.py
+  s_e3f612788718c1::t_49970b766cdbb9 406-408
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2cb32dfea4499143912bff57b6ed2143186d91ee",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
