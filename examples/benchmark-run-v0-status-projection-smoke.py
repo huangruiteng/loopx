@@ -17,6 +17,9 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.review_packet import build_review_packet  # noqa: E402
 from loopx.status import collect_status, compact_benchmark_run, render_status_markdown  # noqa: E402
+from loopx.control_plane.runtime.benchmark_projection import (  # noqa: E402
+    compact_benchmark_run_core,
+)
 from loopx.worker_bridge import build_worker_bridge_outcome  # noqa: E402
 
 
@@ -256,6 +259,60 @@ def assert_no_private_surface(summary: dict[str, Any]) -> None:
     assert not leaked, leaked
 
 
+def assert_core_projection_parity() -> None:
+    source = {
+        "schema_version": "benchmark_run_v0",
+        "source_runner": "fixture-runner",
+        "benchmark_id": "fixture-bench",
+        "job_name": "fixture-job",
+        "mode": "fixture-mode",
+        "task_id": "fixture-case",
+        "case_ids": ["fixture-case", "fixture-case-2"],
+        "worker_mode": "fixture-worker",
+        "first_blocker": "fixture-blocker",
+        "loopx_cli_bridge_contract": "fixture-contract",
+        "real_run": True,
+        "submit_eligible": False,
+        "product_mode": True,
+        "runner_loopx_cli_call_total": 2,
+        "worker_loopx_cli_call_total": 3,
+        "controller_round_timeout_sec": 4.5,
+        "controller_last_decision": "continue",
+        "loopx_prompt_driven_event_counts": {"turn": 2, "ignored": "text"},
+        "private_payload": "must-not-project",
+    }
+    core = compact_benchmark_run_core(
+        source,
+        schema_version="benchmark_run_v0",
+        max_list_items=5,
+    )
+    assert core == {
+        "schema_version": "benchmark_run_v0",
+        "source_runner": "fixture-runner",
+        "benchmark_id": "fixture-bench",
+        "job_name": "fixture-job",
+        "mode": "fixture-mode",
+        "case_id": "fixture-case",
+        "case_ids": ["fixture-case", "fixture-case-2"],
+        "worker_mode": "fixture-worker",
+        "first_blocker": "fixture-blocker",
+        "loopx_cli_bridge_contract": "fixture-contract",
+        "real_run": True,
+        "submit_eligible": False,
+        "product_mode": True,
+        "runner_loopx_cli_call_total": 2,
+        "worker_loopx_cli_call_total": 3,
+        "controller_round_timeout_sec": 4.5,
+        "controller_last_decision": "continue",
+        "loopx_prompt_driven_event_counts": {"turn": 2},
+    }, core
+
+    assembled = compact_benchmark_run(source)
+    assert assembled is not None
+    assert all(assembled.get(key) == value for key, value in core.items()), assembled
+    assert "private_payload" not in assembled, assembled
+
+
 def assert_interrupted_worker_bridge_outcome_projection() -> None:
     compact = compact_benchmark_run(
         {
@@ -295,6 +352,7 @@ def assert_interrupted_worker_bridge_outcome_projection() -> None:
 
 
 def main() -> None:
+    assert_core_projection_parity()
     assert_interrupted_worker_bridge_outcome_projection()
     with tempfile.TemporaryDirectory(prefix="benchmark-run-v0-status-") as tmp:
         registry_path = write_fixture(Path(tmp))
