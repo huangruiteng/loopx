@@ -195,10 +195,21 @@ def assert_all_blocked_owner_capability_stops_delivery() -> None:
     assert gate is not None
     assert gate["source"] == "agent_todo_summary.first_executable_items", gate
     assert gate["action"] == "ask_owner", gate
-    assert gate["decision_owner"] == "capability_gate", gate
+    assert gate["decision_owner"] == "user", gate
+    assert gate["owner_missing"] == ["network"], gate
+    assert gate["repair_missing"] == [], gate
+    assert gate["resolution_steps"] == [
+        {
+            "owner": "user",
+            "action": "provide_or_authorize",
+            "capabilities": ["network"],
+        }
+    ], gate
     assert gate["blocks_delivery"] is True, gate
     assert gate["missing"] == ["network"], gate
-    assert "provide an environment" in gate["owner_action"], gate
+    assert gate["owner_action"] == (
+        "provide or authorize the missing owner-held capability: network"
+    ), gate
 
 
 def assert_requirement_free_advancement_does_not_create_gate() -> None:

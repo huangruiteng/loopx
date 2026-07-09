@@ -236,10 +236,7 @@ def main() -> int:
         "--active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md --agent-id codex-side-bypass"
     ), profile_scoped_payload
     assert "--agent-scope" not in profile_scoped_payload["thin_prompt_command"], profile_scoped_payload
-    assert capability_scoped_payload["available_capabilities"] == [
-        "network",
-        "external_evidence_poll",
-    ], capability_scoped_payload
+    assert "available_capabilities" not in capability_scoped_payload, capability_scoped_payload
     for command_key in (
         "quota_guard_command",
         "quota_spend_command",

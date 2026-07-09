@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 STARTER = ROOT / "loopx" / "cli_commands" / "starter.py"
 BOOTSTRAP = ROOT / "loopx" / "cli_commands" / "starter_bootstrap.py"
+BOOTSTRAP_REGISTRATION = ROOT / "loopx" / "cli_commands" / "starter_bootstrap_registration.py"
 INIT = ROOT / "loopx" / "cli_commands" / "__init__.py"
 
 
@@ -47,6 +48,7 @@ def require_json_success(result: subprocess.CompletedProcess[str]) -> dict[str, 
 def assert_source_shape() -> None:
     starter_source = STARTER.read_text(encoding="utf-8")
     bootstrap_source = BOOTSTRAP.read_text(encoding="utf-8")
+    registration_source = BOOTSTRAP_REGISTRATION.read_text(encoding="utf-8")
     init_source = INIT.read_text(encoding="utf-8")
 
     forbidden_starter_markers = [
@@ -72,7 +74,6 @@ def assert_source_shape() -> None:
         require(marker in starter_source, f"starter.py missing bootstrap delegation marker: {marker}")
 
     for marker in (
-        "def register_starter_bootstrap_commands(",
         "def handle_starter_bootstrap_command(",
         "def handle_new_project_prompt_command(",
         "def handle_codex_cli_bootstrap_message_command(",
@@ -82,6 +83,18 @@ def assert_source_shape() -> None:
         "build_codex_cli_exec_handoff(",
     ):
         require(marker in bootstrap_source, f"starter_bootstrap.py missing marker: {marker}")
+
+    for marker in (
+        "def register_starter_bootstrap_commands(",
+        'subparsers.add_parser(\n        "agent-onboard"',
+        'subparsers.add_parser(\n        "bootstrap-command-pack"',
+        'subparsers.add_parser(\n        "start-goal"',
+        'subparsers.add_parser(\n        "new-project-prompt"',
+    ):
+        require(
+            marker in registration_source,
+            f"starter_bootstrap_registration.py missing marker: {marker}",
+        )
 
     for marker in (
         "handle_starter_bootstrap_command",

@@ -22,10 +22,8 @@ from ..demo import (
     render_demo_markdown,
     run_demo,
 )
-from .starter_bootstrap import (
-    handle_starter_bootstrap_command,
-    register_starter_bootstrap_commands,
-)
+from .starter_bootstrap import handle_starter_bootstrap_command
+from .starter_bootstrap_registration import register_starter_bootstrap_commands
 from .starter_scheduler import (
     handle_starter_scheduler_command,
     register_starter_scheduler_commands,

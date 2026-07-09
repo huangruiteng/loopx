@@ -113,8 +113,8 @@ from .starter_bootstrap import (
     handle_loopx_bootstrap_command_pack_command,
     handle_new_project_prompt_command,
     handle_starter_bootstrap_command,
-    register_starter_bootstrap_commands,
 )
+from .starter_bootstrap_registration import register_starter_bootstrap_commands
 from .starter_scheduler import (
     handle_codex_cli_local_scheduler_exec_command,
     handle_codex_cli_local_scheduler_tick_command,

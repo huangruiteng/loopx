@@ -26,7 +26,8 @@ LEGACY_MODULE_LIMITS = {
 }
 STARTER_MODULE_LIMITS = {
     "starter.py": 180,
-    "starter_bootstrap.py": 400,
+    "starter_bootstrap.py": 220,
+    "starter_bootstrap_registration.py": 240,
     "starter_runtime_idle.py": 160,
     "starter_scheduler.py": 240,
     "starter_session_runtime.py": 220,
@@ -35,10 +36,10 @@ STARTER_MODULE_LIMITS = {
     "starter_visible_pilot.py": 340,
 }
 STARTER_COMMAND_OWNERS = {
-    "new-project-prompt": "starter_bootstrap.py",
-    "codex-cli-bootstrap-message": "starter_bootstrap.py",
-    "codex-cli-tui-bootstrap-smoke-bundle": "starter_bootstrap.py",
-    "codex-cli-exec-handoff": "starter_bootstrap.py",
+    "new-project-prompt": "starter_bootstrap_registration.py",
+    "codex-cli-bootstrap-message": "starter_bootstrap_registration.py",
+    "codex-cli-tui-bootstrap-smoke-bundle": "starter_bootstrap_registration.py",
+    "codex-cli-exec-handoff": "starter_bootstrap_registration.py",
     "codex-cli-one-message-loop-pilot": "starter_visible_pilot.py",
     "codex-cli-visible-local-driver-pilot": "starter_visible_pilot.py",
     "codex-cli-bounded-visible-pilot-adapter": "starter_visible_pilot.py",
