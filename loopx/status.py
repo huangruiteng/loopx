@@ -4111,12 +4111,11 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             bool,
         ):
             compact_fingerprint["line_count"] = fingerprint["line_count"]
-        matched_patterns = public_safe_compact_list(
-            fingerprint.get("matched_patterns"),
-            limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
-        )
-        if matched_patterns:
-            compact_fingerprint["matched_patterns"] = matched_patterns
+        for field, limit in (("matched_patterns", MAX_BENCHMARK_RUN_LIST_ITEMS * 4),
+                             ("failure_line_dependency_classes", MAX_BENCHMARK_RUN_LIST_ITEMS * 2)):
+            values = public_safe_compact_list(fingerprint.get(field), limit=limit)
+            if values:
+                compact_fingerprint[field] = values
         for field in (
             "error_present",
             "has_host_paths",

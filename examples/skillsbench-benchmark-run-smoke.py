@@ -4891,6 +4891,11 @@ def test_skillsbench_docker_apt_failure_attribution() -> None:
         assert "skillsbench_environment_setup_error" in compact[
             "failure_attribution_labels"
         ], compact
+        fingerprint = compact["runner_failure_fingerprint"]
+        assert "apt_failure" in fingerprint["matched_patterns"], fingerprint
+        assert fingerprint["failure_line_dependency_classes"] == [
+            "system_package"
+        ], fingerprint
         text = json.dumps(compact, sort_keys=True)
         assert "Hash Sum mismatch" not in text, compact
         assert "Docker compose command failed" not in text, compact
