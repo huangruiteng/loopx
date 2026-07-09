@@ -2,11 +2,11 @@
 
 <img src="docs/assets/loopx-social-preview.png" alt="LoopX loop engineering social preview banner" width="480">
 
-**Loop engineering for long-running AI agents.**
+**Loop engineering for long-running AI agents and agent teams.**
 
-<sub>Manage Codex, Claude Code, Cursor, and other agent runtimes like
-reviewable digital workers: objectives, gates, todos, quota, evidence, and handoff
-state in one local control plane.</sub>
+<sub>A lightweight state kernel and agent-agnostic local control plane for
+Codex, Claude Code, Cursor, and other runtimes: objectives, gates, todos,
+quota, scheduler hints, evidence, and handoff state in one reviewable loop.</sub>
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
@@ -19,17 +19,17 @@ state in one local control plane.</sub>
 
 ---
 
-LoopX is a local control plane for agent loops that last longer than one chat
-turn. It does not replace Codex, Claude Code, Cursor, or another runtime; it
-keeps the shared state those runtimes need to continue safely across hours,
-days, handoffs, blocked lanes, and changing human feedback.
+LoopX is a lightweight state kernel and local control plane for loop engineering:
+it keeps goals, todos, gates, quota, scheduler hints, evidence, and handoffs
+stable while Codex, Claude Code, Cursor, or another runtime executes each
+bounded turn. It does not replace your agent runtime; it makes long-running
+agent work reviewable, restartable, and easier to hand off.
 
-Use it when an agent is already useful for one session, but the work is too
-long, too gated, or too easy to lose across restarts. LoopX turns that agent
-surface into a reviewable Loop Agent: stable objective, explicit gates, scoped
-next actions, evidence, cost, and handoff state. The agent still needs a CLI,
-task mode, automation hook, or loop scheduler; LoopX supplies the control
-plane, not hidden autonomy.
+Start with a useful loop instead of designing a whole agent platform. LoopX
+ships safe preset cards for daily triage, changelog drafts, PR watching, CI
+sweeping, and dependency sweeping. Beginner presets are report/draft/watch
+only; advanced fixers stay opt-in behind isolated worktrees, verifier checks,
+quota/cost limits, and human review.
 
 [Quick Start](#quick-start) · [User Manual](https://my.feishu.cn/wiki/CaL5wMk9ui17ngkWzeUcMlAYnZg) · [How It Works](#how-it-works) · [See It In Action](#see-it-in-action) ·
 [Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) · [Architecture](docs/architecture.md) ·
@@ -354,9 +354,79 @@ manual, then use the short proof surfaces:
   side agents, and external tools without hiding ownership or scope.
 
 For more cases, open the [showcase catalog](docs/showcases/README.md). For a
-full presenter material, see the experimental notes below.
+full presenter material, see the experimental features below.
 
-### Experimental: Long-Running Agent App Paths
+## Experimental Features
+
+These paths are useful today, but they are intentionally kept below the core
+onboarding path while the first-run UX, safety defaults, and evidence contracts
+settle across more repositories.
+
+### Start With A Useful Loop
+
+Use a preset to see LoopX's value before wiring up a full automation:
+
+```bash
+loopx doctor
+loopx preset list
+loopx preset show daily-triage
+loopx start-goal --guided --project . --goal-text 'Run Daily Triage L1 for this repository: inspect LoopX status, active todos, open gates, stale signals, and next actions; write a compact report and ask before code edits or external writes.'
+```
+
+The preset output is read-only: it renders real `/loopx`, `start-goal`,
+`quota should-run`, and `heartbeat-prompt` command packets without writing
+project state, installing automation, editing docs, or opening PRs. When the
+project is connected, `loopx ready-score --goal-id <goal-id> --agent-id
+<agent-id>` gives a read-only readiness report for recurring loops.
+
+Good first demos:
+
+- **Daily Triage L1**: a safe project digest from status, todos, gates, and the
+  single next action.
+- **Changelog Draft L1**: a release-note draft grounded in merged work and PR
+  links.
+- **PR Watch L1**: review/CI/merge-blocker monitoring without auto-merge.
+- **CI Sweeper L2** and **Dependency Sweeper L2**: high-value opt-in fix lanes
+  that start with dry-run or policy reports before any bounded patch attempt.
+
+### Auto Research One-Click Start
+
+Auto research is the reference experimental preset for agent teams: the user
+provides one open question, the preset supplies research roles and seed todos,
+and the generic multi-agent kernel launches visible Codex CLI panes with
+frontier, quota, evidence, and takeover controls.
+
+```bash
+loopx auto-research "How should we evaluate whether multi-agent auto research creates value?"
+loopx auto-research start "How should we evaluate whether multi-agent auto research creates value?" --execute
+```
+
+The first command renders the contract and next launch packet. The `start`
+command creates an isolated research frontier and launches the visible lanes;
+lane-authored evidence still has to be written back through LoopX state before
+the run can claim progress. See
+[Auto-research command path](docs/guides/auto-research-command-path.md) for the
+full stop, attach, retry, and evidence boundary.
+
+### Review Agent Work
+
+Use the management surface as a read-first experimental entry after a project is
+connected. It lets operators inspect connected projects, user gates, agent
+lanes, todos, and evidence before granting more control.
+
+```bash
+loopx serve-status --global-registry --port 8766 --limit 80
+cd apps/presentation/dashboard && npm run dev
+```
+
+This path is intentionally conservative: CLI state remains the source of truth,
+browser writes require explicit local opt-in, and review signals stay separate
+from execution permission. See the
+[intelligent management surface](docs/product/intelligent-management-surface.md),
+[project-level reward model](docs/product/project-level-reward-model.md), and
+[3-minute demo script](docs/outreach/frontstage-demo-script.md).
+
+### Long-Running Agent App Paths
 
 This is not replacing the first screen. It is an experimental entry point for
 users who already understand the control-plane idea and want to pick one useful
@@ -368,7 +438,7 @@ new control plane every time:
 | --- | --- | --- | --- |
 | Issue / PR fix loop | LoopX slash entry: `Fix <github-issue-or-pr-url>`<br>`loopx issue-fix workflow-plan` | Branch-ready fix packet with repro, smoke result, remaining review owner, and PR-review-ready evidence. | Review comments and issues become a closed loop instead of reminders humans must shepherd by hand. |
 | PR-sized refactor loop | LoopX slash entry: `<refactor task>`<br>`loopx canary plan` | Reviewable slice list, validation notes, successor todo, and merge boundary. | More merged changes without turning the next morning into a giant diff audit. |
-| Research or experiment loop | `loopx auto-research`<br>`loopx ml-experiment preview --format json` | Hypothesis, source/evidence packet, replay or experiment boundary, and next validated question. | Research becomes a resumable long-horizon loop, not just a one-off report. |
+| Research or experiment loop | `loopx auto-research start "<open question>" --execute`<br>`loopx ml-experiment preview --format json` | Hypothesis, source/evidence packet, replay or experiment boundary, and next validated question. | Research becomes a resumable long-horizon loop, not just a one-off report. |
 | Multi-agent work routing | LoopX slash entry: `<task text>`<br>`loopx quota should-run`<br>`loopx todo claim` | Claimed agent lanes with scope, lease, next action, quota decision, and handoff state. | Multiple agents can work in parallel without hiding ownership or stepping on the same todo. |
 | Knowledge / workflow connector | `loopx connect`<br>`loopx lark-kanban`<br>`loopx value-connectors` | LoopX state projected into docs, boards, GitHub, or domain workflows while LoopX remains the source of truth. | Existing work surfaces become agent-aware without copying private state into public artifacts. |
 | P0 blocked -> safe fallback | `loopx quota should-run`<br>`loopx todo claim` | Kernel projection of the exact user gate, safe fallback todo, quota decision, and evidence boundary inside an active project loop. | Less idle agent time while preserving human judgment on the blocked path. |
@@ -724,28 +794,6 @@ The next milestones are a clearer maintainer workflow for issue/PR loops,
 stronger project and domain adapters, safer controller/sub-agent coordination,
 better benchmark-runner ergonomics, and a more polished management surface that
 maps kernel state into the five user questions above.
-
-## Experimental
-
-These surfaces are useful for demos and product iteration, but they are not the
-main getting-started path yet.
-
-### Review Agent Work
-
-After a project is connected, LoopX can be used as a read-first management
-surface before it is trusted with more control. The local dashboard helps you
-inspect all connected projects, search todos, review user gates, compare agent
-lanes, and follow evidence without reading raw logs.
-
-This surface is intentionally conservative: CLI state remains the source of
-truth, browser writes require explicit local opt-in, and review signals are
-kept separate from execution permission. See the
-[intelligent management surface](docs/product/intelligent-management-surface.md)
-and [project-level reward model](docs/product/project-level-reward-model.md)
-for the longer product direction.
-
-For a timed presenter walkthrough, use the
-[3-minute demo script](docs/outreach/frontstage-demo-script.md).
 
 ## License
 

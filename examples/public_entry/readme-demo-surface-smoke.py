@@ -28,8 +28,9 @@ def main() -> int:
         '<div align="center">',
         "docs/assets/loopx-social-preview.png",
         "LoopX loop engineering social preview banner",
-        "Loop engineering for long-running AI agents.",
-        "Manage Codex, Claude Code, Cursor, and other agent runtimes",
+        "Loop engineering for long-running AI agents and agent teams.",
+        "A lightweight state kernel and agent-agnostic local control plane for",
+        "Codex, Claude Code, Cursor, and other runtimes: objectives, gates, todos,",
         "## How It Works",
         "objective / issue / project",
         "LoopX state: objective + gates + todos + scope + evidence + quota",
@@ -41,6 +42,11 @@ def main() -> int:
         "Manual shell / other agents",
         "Candidate: Claude implements + Codex reviews",
         "docs/product/cross-runtime-impl-review-demo.md",
+        "## Experimental Features",
+        "### Start With A Useful Loop",
+        "### Auto Research One-Click Start",
+        "### Review Agent Work",
+        "### Long-Running Agent App Paths",
     ]:
         assert required in readme, required
 
