@@ -28,8 +28,9 @@ open PRs, merge, publish, or run destructive git without an explicit gate.
    todo, top gate when present, and next safe action.
 3. **Workflow plan:** build `issue_fix_workflow_plan_packet_v0` to compose the
    metadata preview, intake, branch dry-run, validation label, ordered LoopX
-   todo writeback preview, gate preview, and PR-review readiness blockers. This
-   stage is preview-only and does not write todos.
+   todo writeback preview, resolution route candidates, gate preview, post-PR
+   lifecycle monitor plan, and PR-review readiness blockers. This stage is
+   preview-only and does not write todos.
 4. **LoopX todo writeback:** convert accepted candidates into durable LoopX
    todos in priority and dependency order. Typical agent todos are repro smoke,
    code-context route, branch-local patch, validation, and review-packet
@@ -47,7 +48,16 @@ open PRs, merge, publish, or run destructive git without an explicit gate.
 7. **PR review packet:** emit `issue_fix_pr_review_packet_v0` only when branch,
    validation, and repo-relative changed-file evidence are sufficient for human
    review. The packet is review evidence, not external publication authority.
-8. **Gate handling:** surface concrete gates instead of silently blocking. Safe
+8. **PR lifecycle monitor:** after a PR exists, use
+   `issue_fix_pr_lifecycle_monitor_v0` to project compact public PR state into
+   exactly one of `runnable_successor`, `monitor_continuation`, `user_gate`, or
+   `no_followup`. Terminal PR states such as `MERGED` and `CLOSED` take
+   precedence over stale review metadata. Failed checks, requested changes, and
+   stale merge states create runnable successors instead of `monitor_quiet_skip`.
+   The command writes compact domain state by default when a `--goal-id` or
+   `--ledger-path` is provided, and `--no-write-domain-state` keeps it
+   preview-only.
+9. **Gate handling:** surface concrete gates instead of silently blocking. Safe
    metadata-only triage, public-code search, and focused smoke drafting may
    continue when those gates do not cover the selected action.
 
@@ -78,10 +88,33 @@ the minimum sufficient plan rather than management filler:
   validation.`
 - `[P1] Prepare the PR review packet with repo-relative changed files,
   validation labels, and remaining gates.`
+- `[P2] Monitor the PR lifecycle and project CI, review, merge, or stale-branch
+  changes into a successor, gate, continuation, or no-follow-up.`
 
 When several todos have the same priority, planner order plus LoopX write order
 is the tie-breaker. Do not infer a gate from prose alone: write it as a user
 todo or operator gate with the concrete action it blocks.
+
+Resolution routes must stay explicit. `fix_pr` is appropriate only when a
+focused repro or validation plan is available. `comment_only` should produce a
+public-safe maintainer comment packet but still needs an explicit external-write
+gate. `triage_only` is valid when the issue lacks enough public evidence for a
+useful patch or comment.
+
+## Domain State
+
+Issue-fix domain state is a project-local read model for long-running monitors:
+
+```text
+.loopx/domain-state/<goal-id>/issue_fix/pr-lifecycle.jsonl
+```
+
+Rows are keyed by compact `repo` and `pr_ref` and may store public-safe PR
+observations, transition decisions, and observation fingerprints. Domain state
+must not store issue bodies, comment bodies, raw provider payloads, raw check
+logs, local paths, credentials, or destructive-git output. The public packet and
+validation contract remain the source for behavior; domain state only keeps the
+watch lane from forgetting the latest compact observation.
 
 ## Ready Criteria
 
@@ -103,6 +136,9 @@ An issue-fix workflow is PR-review-ready only when all of these are true:
 - `content_ops_issue_fix_intake_packet_v0`
 - `issue_fix_intake_v0`
 - `issue_fix_workflow_plan_packet_v0`
+- `issue_fix_pr_lifecycle_monitor_v0`
+- `issue_fix_pr_lifecycle_transition_v0`
+- `issue_fix_pr_lifecycle_domain_state_projection_v0`
 - `loopx_todo_writeback_preview_v0`
 - `issue_fix_caller_repo_branch_packet_v0`
 - `issue_fix_validated_fix_artifact_v0`

@@ -14,13 +14,14 @@ external comments, PRs, merges, or publishes.
 | CLI entry | `loopx issue-fix ...` |
 | Content-ops bridge | `loopx content-ops issue-fix-* ...` |
 | Protocol docs | `docs/capabilities/issue-fix/protocols/` |
-| Smoke | `examples/issue-fix-workflow-plan-smoke.py`, `examples/issue-fix-acceptance-loop-smoke.py` |
+| Smoke | `examples/issue-fix-workflow-plan-smoke.py`, `examples/issue-fix-pr-lifecycle-smoke.py`, `examples/issue-fix-acceptance-loop-smoke.py` |
 
 ## Protocols
 
 - [`issue_fix_workflow_contract_v0`](protocols/issue-fix-workflow-contract-v0.md)
 - [`issue_fix_acceptance_loop_v0`](protocols/issue-fix-acceptance-loop-v0.md)
 - `issue_fix_workflow_plan_packet_v0`
+- `issue_fix_pr_lifecycle_monitor_v0`
 - `github_issue_metadata_preview_v0`
 - `content_ops_issue_fix_metadata_preview_packet_v0`
 - `content_ops_issue_fix_intake_packet_v0`
@@ -71,10 +72,11 @@ loopx issue-fix workflow-plan \
 
 The workflow-plan output is still preview-only. Accepted candidates become
 ordered LoopX todos: public metadata/intake, repro or route selection,
-branch-local patch and validation, then PR review packet readiness. Concrete
-owner actions become explicit user gates, including private repro material,
-issue body/comment reads, external issue comments, PR creation, merge, publish,
-destructive git, production actions, and repository-policy approvals.
+branch-local patch and validation, PR review packet readiness, then a post-PR
+lifecycle monitor. Concrete owner actions become explicit user gates, including
+private repro material, issue body/comment reads, external issue comments, PR
+creation, merge, publish, destructive git, production actions, and
+repository-policy approvals.
 
 ## Workflow Plan
 
@@ -88,10 +90,34 @@ writeback previews, and PR review readiness blockers into one packet. It does
 not write LoopX todos, inspect the local repo in dry-run mode, create external
 comments or PRs, merge, or capture raw issue body/comment material.
 
+## PR Lifecycle Monitor
+
+```bash
+loopx issue-fix pr-lifecycle \
+  --url https://github.com/owner/repo/pull/123 \
+  --metadata-json public-pr-state.json \
+  --goal-id example-goal \
+  --format json
+```
+
+The PR lifecycle projection turns compact public PR state into one of four
+transitions: `runnable_successor`, `monitor_continuation`, `user_gate`, or
+`no_followup`. Terminal PR states such as `MERGED` or `CLOSED` take precedence
+over stale review metadata; failed checks and requested changes create runnable
+successors; quiet states continue the monitor.
+
+When `--goal-id` or `--ledger-path` is provided, the command writes the compact
+observation into `.loopx/domain-state/<goal-id>/issue_fix/pr-lifecycle.jsonl` by
+default. Use `--no-write-domain-state` for preview-only tests. Domain state is
+project-local and gitignored; it records compact row keys, observations,
+transition decisions, and fingerprints, never issue bodies, comments, raw
+provider payloads, raw check logs, local paths, or credentials.
+
 ## Validation
 
 ```bash
 python3 examples/issue-fix-workflow-plan-smoke.py
+python3 examples/issue-fix-pr-lifecycle-smoke.py
 python3 examples/issue-fix-workflow-contract-smoke.py
 python3 examples/content-ops-issue-fix-metadata-preview-smoke.py
 python3 examples/content-ops-issue-fix-intake-smoke.py
