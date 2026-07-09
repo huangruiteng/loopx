@@ -17,6 +17,7 @@ from scripts.skillsbench_automation_loop import (
     build_runner_failure_compact,
     parse_args,
 )
+from scripts.skillsbench_runner_constants import DEFAULT_BUILD_STALL_TIMEOUT_SEC
 
 
 def assert_prerequisites_include(
@@ -41,14 +42,39 @@ def test_skillsbench_runner_failure_marks_build_stall_timeout() -> None:
             ]
         )
         default_plan = build_plan(default_args)
-        assert default_plan["build_stall_timeout_requested_sec"] == 0
-        assert default_plan["build_stall_timeout_sec"] == 0
+        assert default_plan["build_stall_timeout_requested_sec"] == (
+            DEFAULT_BUILD_STALL_TIMEOUT_SEC
+        )
+        assert default_plan["build_stall_timeout_sec"] == (
+            DEFAULT_BUILD_STALL_TIMEOUT_SEC
+        )
         assert default_plan["runner_prerequisites"][
             "benchflow_setup_stall_timeout_enabled"
-        ] is False
+        ] is True
         assert "benchflow_setup_stall_timeout_capped" not in default_plan[
             "runner_prerequisites"
         ]
+
+        disabled_args = parse_args(
+            [
+                "--task-id",
+                "organize-messy-files",
+                "--route",
+                "loopx-product-mode",
+                "--jobs-dir",
+                str(Path(tmp) / "disabled-jobs"),
+                "--job-name",
+                "skillsbench-organize-messy-files-disabled-build-stall-fixture",
+                "--build-stall-timeout-sec",
+                "0",
+            ]
+        )
+        disabled_plan = build_plan(disabled_args)
+        assert disabled_plan["build_stall_timeout_requested_sec"] == 0
+        assert disabled_plan["build_stall_timeout_sec"] == 0
+        assert disabled_plan["runner_prerequisites"][
+            "benchflow_setup_stall_timeout_enabled"
+        ] is False
 
         args = parse_args(
             [
