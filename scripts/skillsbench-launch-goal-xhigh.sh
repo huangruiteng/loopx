@@ -35,8 +35,9 @@ Optional env:
   SKILLSBENCH_REGISTRY                 Optional registry path for history append
   SKILLSBENCH_LOCAL_RUN_LEDGER_PATH    Local private live ledger; default below
                                        the goal's skillsbench-ledgers directory
-  SKILLSBENCH_LOCAL_RUN_LEDGER_SEED    Optional ledger copied when the live
-                                       ledger does not exist yet
+  SKILLSBENCH_LOCAL_RUN_LEDGER_SEED    Optional accepted-lane ledger copied
+                                       when the live ledger does not exist yet;
+                                       keep unrelated benchmark lanes out
   SKILLSBENCH_CANONICAL_CASE_IDS_FILE  Optional canonical case-id file; enables
                                        standard aggregate refresh after closeout
   SKILLSBENCH_STANDARD_AGGREGATE_PATH  Aggregate output path; default beside
@@ -252,8 +253,6 @@ if [[ -n "${SKILLSBENCH_CANONICAL_CASE_IDS_FILE:-}" ]]; then
     --local-current-aggregate-path "$standard_aggregate"
     --local-canonical-case-ids-file "$SKILLSBENCH_CANONICAL_CASE_IDS_FILE"
     --local-target-lane-id codex-cli-goal-xhigh
-    --local-target-run-group-contains skillsbench-codex-cli-goal-xhigh-
-    --local-target-backfill-run-group-contains skillsbench-codex-cli-goal-xhigh-full87-
   )
 fi
 
