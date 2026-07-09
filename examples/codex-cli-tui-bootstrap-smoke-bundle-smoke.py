@@ -38,6 +38,17 @@ def run(command: list[str], *, env: dict[str, str], cwd: Path) -> subprocess.Com
     )
 
 
+def path_without_loopx(path_text: str) -> str:
+    entries: list[str] = []
+    for entry in path_text.split(os.pathsep):
+        if not entry:
+            continue
+        if (Path(entry).expanduser() / "loopx").exists():
+            continue
+        entries.append(entry)
+    return os.pathsep.join(entries)
+
+
 def main() -> None:
     install_script = REPO_ROOT / "scripts" / "install-from-github.sh"
     subprocess.run(["bash", "-n", str(install_script)], check=True)
@@ -77,6 +88,7 @@ def main() -> None:
                 add_tree(tar, REPO_ROOT, name)
 
         env = os.environ.copy()
+        host_path_without_loopx = path_without_loopx(env.get("PATH", ""))
         env.update(
             {
                 "HOME": str(home),
@@ -87,7 +99,7 @@ def main() -> None:
                 "LOOPX_ARCHIVE_URL": f"file://{archive}",
                 "LOOPX_INSTALL_CANARY": "0",
                 "CODEX_CALLED_MARKER": str(codex_called_marker),
-                "PATH": f"{fake_bin}:{env.get('PATH', '')}",
+                "PATH": f"{fake_bin}:{host_path_without_loopx}",
             }
         )
         run(["bash", str(install_script)], env=env, cwd=tmp)

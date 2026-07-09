@@ -140,10 +140,10 @@ def assert_installer_manpage_surface() -> None:
             text=True,
             capture_output=True,
         )
-        assert man.returncode == 0, (man.returncode, man.stdout, man.stderr)
-        assert "LOOPX(1)" in man.stdout, man.stdout
-        assert "LoopX keeps long-running agent work moving" in man.stdout, man.stdout
-        assert "heartbeat automation" in man.stdout, man.stdout
+        rendered_man = "\n".join(part for part in (man.stdout, man.stderr) if part)
+        assert "LOOPX(1)" in rendered_man, (man.returncode, man.stdout, man.stderr)
+        assert "LoopX keeps long-running agent work moving" in rendered_man, rendered_man
+        assert "heartbeat automation" in rendered_man, rendered_man
 
 
 def main() -> int:

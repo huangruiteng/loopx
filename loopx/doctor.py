@@ -79,6 +79,22 @@ def resolve_command_path(name: str) -> Path | None:
     return Path(path_text).expanduser() if path_text else None
 
 
+def current_script_invocation_path() -> Path | None:
+    """Return the active LoopX wrapper when doctor was invoked by absolute path."""
+    if not sys.argv or not sys.argv[0]:
+        return None
+    path = Path(sys.argv[0]).expanduser()
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    try:
+        path = path.resolve()
+    except OSError:
+        path = path.absolute()
+    if path.exists() and path.name == "loopx" and path.parent.name == "scripts":
+        return path
+    return None
+
+
 def is_release_snapshot(root: Path | None) -> bool:
     return bool(root and "releases" in root.parts)
 
@@ -456,8 +472,9 @@ def latest_promotion_readiness_event(runtime_root: Path, goal_id: str | None = N
 
 def collect_doctor() -> dict[str, Any]:
     loopx_path = resolve_command_path("loopx")
+    invocation_path = current_script_invocation_path()
     loopx_canary_path = resolve_command_path("loopx-canary")
-    command_path_primary = loopx_path
+    command_path_primary = loopx_path or invocation_path
     canary_path = loopx_canary_path
     command_path = command_path_primary
     command_realpath = command_path.resolve() if command_path else None
@@ -512,10 +529,22 @@ def collect_doctor() -> dict[str, Any]:
     global_registry_writability = probe_registry_write_path(default_global_registry, create_parent=True)
     checks = [
         {
-            "id": "command_on_path",
+            "id": "command_available",
             "required": True,
             "ok": command_path is not None,
-            "detail": str(command_path) if command_path else "loopx was not found on PATH",
+            "detail": str(loopx_path)
+            if loopx_path
+            else (
+                f"loopx was not found on PATH; using current invocation {invocation_path}"
+                if invocation_path
+                else "loopx was not found on PATH"
+            ),
+        },
+        {
+            "id": "command_on_path",
+            "required": False,
+            "ok": loopx_path is not None,
+            "detail": str(loopx_path) if loopx_path else "loopx was not found on PATH",
         },
         {
             "id": "command_resolves",
@@ -607,8 +636,10 @@ def collect_doctor() -> dict[str, Any]:
             "version": sys.version.split()[0],
         },
         "path": {
-            "loopx": str(loopx_path) if loopx_path else None,
-            "loopx_realpath": str(loopx_realpath) if loopx_realpath else None,
+            "loopx": str(command_path) if command_path else None,
+            "loopx_realpath": str(command_realpath) if command_realpath else None,
+            "loopx_on_path": str(loopx_path) if loopx_path else None,
+            "current_invocation": str(invocation_path) if invocation_path else None,
             "loopx_canary": str(loopx_canary_path) if loopx_canary_path else None,
             "loopx_canary_realpath": str(loopx_canary_realpath) if loopx_canary_realpath else None,
             "user_local_bin": str(local_bin),
