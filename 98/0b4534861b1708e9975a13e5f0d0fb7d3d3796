@@ -1,0 +1,23 @@
+docs/capabilities/issue-fix/README.md
+  s_e3f612788718c1::t_5c8e75fe2660b2 17,24,75-79,93-115,120
+docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md
+  s_e3f612788718c1::t_defa4b16e1fccc 31-33,51-60,91-92,98-118,139-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "980b4534861b1708e9975a13e5f0d0fb7d3d3796",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
