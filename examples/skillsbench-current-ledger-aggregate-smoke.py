@@ -421,6 +421,75 @@ def test_ledger_marks_uncountable_numeric_scores_noncountable() -> None:
     ), entry
 
 
+def test_current_aggregate_keeps_setup_bool_fallback_uncountable() -> None:
+    entry = build_benchmark_run_ledger_entry(
+        {
+            "schema_version": "benchmark_run_v0",
+            "benchmark_id": BENCHMARK_ID,
+            "case_id": "setup-bool-fallback",
+            "run_id": "setup-bool-fallback",
+            "job_name": "skillsbench_1_1_setup_bool_fallback_codex_cli_goal_baseline",
+            "route": "codex-cli-goal-baseline",
+            "official_score_status": "missing",
+            "official_task_score": {
+                "kind": "skillsbench_verifier_reward",
+                "passed": False,
+            },
+            "score_failure_attribution": (
+                "skillsbench_docker_compose_apt_repository_failure"
+            ),
+            "failure_attribution_labels": [
+                "skillsbench_docker_compose_apt_repository_failure",
+            ],
+            "attempt_accounting": {
+                "schema_version": "skillsbench_attempt_accounting_v0",
+                "lifecycle_phase": "runner_accepted_args",
+                "failure_class": "skillsbench_docker_compose_apt_repository_failure",
+                "case_attempt_countable": False,
+                "solver_attempt_countable": False,
+                "verifier_attempt_countable": False,
+                "official_score_attempt_countable": False,
+            },
+        }
+    )
+    assert entry["official_score"] == 0.0, entry
+    assert entry["official_score_bool_fallback_used"] is True, entry
+    assert entry["official_score_countable"] is True, entry
+    assert entry["case_attempt_countable"] is False, entry
+    assert entry["solver_attempt_countable"] is False, entry
+    assert entry["verifier_attempt_countable"] is False, entry
+
+    ledger: dict[str, Any] = {
+        "schema_version": BENCHMARK_RUN_LEDGER_SCHEMA_VERSION,
+        "benchmarks": {},
+    }
+    ledger = upsert_benchmark_run_ledger_entry(ledger, entry)
+    aggregate = build_benchmark_run_ledger_current_aggregate(
+        ledger,
+        benchmark_id=BENCHMARK_ID,
+        canonical_case_ids=["setup-bool-fallback"],
+    )
+    case_best = aggregate["case_best"]["setup-bool-fallback"]
+    assert case_best["official_score"] == 0.0, case_best
+    assert case_best["official_score_countable"] is True, case_best
+    assert case_best["bucket"] == "setup_runner_infra", case_best
+    assert "countable_score" not in case_best, case_best
+    assert aggregate["distribution"]["setup_runner_infra"] == 1, aggregate
+    assert aggregate["distribution"]["official_zero"] == 0, aggregate
+    assert aggregate["countable_score_summary"] == {
+        "schema_version": "benchmark_run_ledger_countable_score_summary_v0",
+        "countable_case_count": 0,
+        "countable_score_sum": 0,
+        "countable_score_mean": None,
+        "pass_count": 0,
+        "partial_count": 0,
+        "official_zero_count": 0,
+        "uncountable_numeric_case_count": 1,
+        "countable_case_ids": [],
+        "uncountable_numeric_case_ids": ["setup-bool-fallback"],
+    }, aggregate["countable_score_summary"]
+
+
 def test_current_aggregate_default_inference_excludes_sanity_sources() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-current-aggregate-default-") as tmp:
         ledger_path = Path(tmp) / "benchmark-run-ledger.json"
@@ -603,6 +672,7 @@ def test_current_aggregate_cli_writes_public_safe_json() -> None:
 if __name__ == "__main__":
     test_current_aggregate_prefers_countable_results()
     test_ledger_marks_uncountable_numeric_scores_noncountable()
+    test_current_aggregate_keeps_setup_bool_fallback_uncountable()
     test_current_aggregate_default_inference_excludes_sanity_sources()
     test_target_lane_aggregate_uses_current_then_full87_backfill()
     test_current_aggregate_cli_writes_public_safe_json()

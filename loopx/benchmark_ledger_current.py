@@ -102,30 +102,48 @@ def _current_aggregate_effective_failure_class(run: dict[str, Any]) -> str:
     return ""
 
 
-def _current_aggregate_bucket(run: dict[str, Any] | None) -> str:
-    if not isinstance(run, dict):
-        return "missing"
-    score = _ledger_score_value(run)
-    if score is not None:
-        if not _official_score_countable(run):
-            return "uncountable_official_score"
-        if score >= 1.0:
-            return "pass"
-        if score > 0.0:
-            return "partial"
-        return "official_zero"
-    labels = _current_aggregate_failure_labels(run)
-    failure_class = _current_aggregate_effective_failure_class(run)
-    failure_scope = _compact_text(run.get("failure_scope"), limit=120)
-    score_status = _compact_text(run.get("score_status"), limit=120)
-    if (
-        "verifier_no_reward" in labels
-        or "verifier_reward_missing" in labels
-        or "reward_missing" in failure_class
-        or "verifier_no_reward" in failure_class
-    ):
-        return "verifier_no_reward"
-    if (
+def _current_aggregate_official_bool_fallback_used(run: dict[str, Any]) -> bool:
+    fallback_fn = getattr(_ledger_module(), "official_score_bool_fallback_used", None)
+    return run.get("official_score_bool_fallback_used") is True or (
+        callable(fallback_fn) and fallback_fn(run) is True
+    )
+
+
+def _current_aggregate_attempt_flag(
+    run: dict[str, Any], field_name: str
+) -> bool | None:
+    value = run.get(field_name)
+    if isinstance(value, bool):
+        return value
+    accounting = (
+        run.get("attempt_accounting")
+        if isinstance(run.get("attempt_accounting"), dict)
+        else {}
+    )
+    value = accounting.get(field_name)
+    if isinstance(value, bool):
+        return value
+    return None
+
+
+def _current_aggregate_core_attempt_marked_uncountable(run: dict[str, Any]) -> bool:
+    return any(
+        _current_aggregate_attempt_flag(run, field_name) is False
+        for field_name in (
+            "case_attempt_countable",
+            "solver_attempt_countable",
+            "verifier_attempt_countable",
+        )
+    )
+
+
+def _current_aggregate_has_setup_runner_infra_signal(
+    *,
+    labels: set[str],
+    failure_class: str,
+    failure_scope: str,
+) -> bool:
+    return (
         failure_scope == "runner_or_setup"
         or failure_scope == "score_missing"
         or "infrastructure" in failure_class
@@ -139,8 +157,64 @@ def _current_aggregate_bucket(run: dict[str, Any] | None) -> str:
             or "setup" in label
             or "compose" in label
             or "docker" in label
+            or "runner" in label
             for label in labels
         )
+    )
+
+
+def _current_aggregate_bool_fallback_setup_runner_infra(
+    run: dict[str, Any],
+    *,
+    labels: set[str],
+    failure_class: str,
+    failure_scope: str,
+) -> bool:
+    return (
+        _current_aggregate_official_bool_fallback_used(run)
+        and _current_aggregate_core_attempt_marked_uncountable(run)
+        and _current_aggregate_has_setup_runner_infra_signal(
+            labels=labels,
+            failure_class=failure_class,
+            failure_scope=failure_scope,
+        )
+    )
+
+
+def _current_aggregate_bucket(run: dict[str, Any] | None) -> str:
+    if not isinstance(run, dict):
+        return "missing"
+    labels = _current_aggregate_failure_labels(run)
+    failure_class = _current_aggregate_effective_failure_class(run)
+    failure_scope = _compact_text(run.get("failure_scope"), limit=120)
+    if _current_aggregate_bool_fallback_setup_runner_infra(
+        run,
+        labels=labels,
+        failure_class=failure_class,
+        failure_scope=failure_scope,
+    ):
+        return "setup_runner_infra"
+    score = _ledger_score_value(run)
+    if score is not None:
+        if not _official_score_countable(run):
+            return "uncountable_official_score"
+        if score >= 1.0:
+            return "pass"
+        if score > 0.0:
+            return "partial"
+        return "official_zero"
+    score_status = _compact_text(run.get("score_status"), limit=120)
+    if (
+        "verifier_no_reward" in labels
+        or "verifier_reward_missing" in labels
+        or "reward_missing" in failure_class
+        or "verifier_no_reward" in failure_class
+    ):
+        return "verifier_no_reward"
+    if _current_aggregate_has_setup_runner_infra_signal(
+        labels=labels,
+        failure_class=failure_class,
+        failure_scope=failure_scope,
     ):
         return "setup_runner_infra"
     if score_status == "missing":
@@ -158,6 +232,8 @@ _CURRENT_AGGREGATE_BUCKET_RANK = {
     "pass": 6,
 }
 
+_CURRENT_AGGREGATE_COUNTABLE_BUCKETS = {"official_zero", "partial", "pass"}
+
 
 def _current_aggregate_run_sort_key(run: dict[str, Any]) -> tuple[Any, ...]:
     bucket = _current_aggregate_bucket(run)
@@ -173,6 +249,8 @@ def _current_aggregate_run_sort_key(run: dict[str, Any]) -> tuple[Any, ...]:
 
 
 def _current_aggregate_countable_run(run: dict[str, Any]) -> bool:
+    if _current_aggregate_bucket(run) not in _CURRENT_AGGREGATE_COUNTABLE_BUCKETS:
+        return False
     countability = _official_score_countability(run)
     return (
         countability.get("countable") is True
@@ -320,7 +398,12 @@ def _current_aggregate_run_summary(run: dict[str, Any] | None) -> dict[str, Any]
     countability = _official_score_countability(run)
     summary["official_score_countable"] = countability["countable"]
     summary["official_score_countability_reason"] = countability["reason"]
-    if countability["countable"] is True and countability.get("score") is not None:
+    summary.pop("countable_score", None)
+    if (
+        summary["bucket"] in _CURRENT_AGGREGATE_COUNTABLE_BUCKETS
+        and countability["countable"] is True
+        and countability.get("score") is not None
+    ):
         summary["countable_score"] = countability["score"]
     effective_failure_class = _current_aggregate_effective_failure_class(run)
     if effective_failure_class:
@@ -487,7 +570,11 @@ def build_benchmark_run_ledger_current_aggregate(
         cases_by_bucket.setdefault(bucket, []).append(case_id)
         case_best[case_id] = summary
         score = _ledger_score_value(summary)
-        if summary.get("official_score_countable") is True and score is not None:
+        if (
+            bucket in _CURRENT_AGGREGATE_COUNTABLE_BUCKETS
+            and summary.get("official_score_countable") is True
+            and score is not None
+        ):
             countable_case_ids.append(case_id)
             countable_scores.append(score)
         elif score is not None:
