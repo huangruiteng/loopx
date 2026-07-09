@@ -723,6 +723,7 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
     goal_frontier_attached = 0
     member_attached = 0
     interaction_attached = 0
+    current_agent_next_action: dict[str, Any] | None = None
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -737,6 +738,8 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
         project_asset = item.get("project_asset")
         changed = False
         if isinstance(next_action, dict):
+            if current_agent_next_action is None:
+                current_agent_next_action = next_action
             item["agent_lane_next_action"] = next_action
             if isinstance(project_asset, dict):
                 project_asset["agent_lane_next_action"] = next_action
@@ -800,7 +803,7 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
         or member_attached
         or interaction_attached
     ):
-        payload["agent_lane_next_action_projection"] = {
+        projection: dict[str, object] = {
             "schema_version": "agent_lane_next_action_projection_v0",
             "agent_id": safe_agent_id,
             "attached_count": attached,
@@ -811,6 +814,23 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
             "agent_interaction_attached_count": interaction_attached,
             "preserves_goal_next_action": True,
         }
+        if isinstance(current_agent_next_action, dict):
+            current_action_text = _compact_member_text(
+                _agent_lane_text(current_agent_next_action),
+                limit=240,
+            )
+            current_todo_id = str(current_agent_next_action.get("todo_id") or "").strip()
+            if current_todo_id:
+                projection["current_agent_todo_id"] = current_todo_id
+            if current_action_text:
+                projection["current_agent_action"] = current_action_text
+            selected_by = str(current_agent_next_action.get("selected_by") or "").strip()
+            if selected_by:
+                projection["selected_by"] = selected_by
+            confidence = str(current_agent_next_action.get("confidence") or "").strip()
+            if confidence:
+                projection["confidence"] = confidence
+        payload["agent_lane_next_action_projection"] = projection
     if member_attached:
         payload["agent_member_projection"] = {
             "schema_version": "agent_member_projection_v0",

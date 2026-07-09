@@ -197,6 +197,10 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert projection["projection_is_authoritative"] is False, projection
     lane_projection = payload["agent_lane_next_action_projection"]
     assert lane_projection["agent_interaction_attached_count"] == 1, lane_projection
+    assert lane_projection["current_agent_todo_id"] == "todo_side_tui", lane_projection
+    assert lane_projection["current_agent_action"] == side_action, lane_projection
+    assert lane_projection["selected_by"] == "current_agent_claimed_todo", lane_projection
+    assert lane_projection["confidence"] == "selected", lane_projection
     markdown = render_status_markdown(payload)
     assert "agent_member: agent=codex-side-bypass role=side-agent" in markdown, markdown
     assert "worktree_policy=independent_worktree_required" in markdown, markdown
