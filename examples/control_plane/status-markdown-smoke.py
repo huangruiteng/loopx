@@ -33,6 +33,7 @@ from loopx.handoff_budget import PROJECT_AGENT_HANDOFF_BUDGET  # noqa: E402
 from status_markdown_agent_lane_fixtures import (  # noqa: E402
     assert_status_agent_lane_frontier_hint_projection,
     assert_status_agent_lane_next_action_projection,
+    assert_status_agent_lane_todo_summary_display_compaction,
     assert_status_agent_lane_vision_lookback_survives_display_trim,
     assert_status_agent_member_handoff_uses_quota_identity,
     assert_status_agent_member_selected_lane_claim_survives_truncated_claim_list,
@@ -1330,6 +1331,7 @@ def main() -> int:
     assert_promotion_readiness_full_scan_fallback()
     assert_promotion_readiness_warning_in_quota_guard()
     assert_status_agent_lane_next_action_projection()
+    assert_status_agent_lane_todo_summary_display_compaction()
     assert_status_agent_member_selected_lane_claim_survives_truncated_claim_list()
     assert_status_agent_member_handoff_uses_quota_identity()
     assert_status_agent_lane_vision_lookback_survives_display_trim()

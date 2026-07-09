@@ -21,6 +21,7 @@ from ..control_plane.runtime.status_projection_cache import (
     write_status_projection_cache,
 )
 from ..control_plane.todos.contract import normalize_todo_claimed_by
+from ..control_plane.todos.quota_summary import compact_quota_todo_summary_for_payload
 
 
 PrintPayload = Callable[
@@ -81,6 +82,40 @@ def _trim_run_history_for_status_display(
                 "status --agent-id collected quota-equivalent run history for "
                 "agent-lane frontier projection, then restored the requested "
                 "status display limit"
+            ),
+        }
+
+
+def _compact_agent_lane_todos_for_status_display(payload: dict[str, object]) -> None:
+    queue = payload.get("attention_queue")
+    if not isinstance(queue, dict):
+        return
+    items = queue.get("items")
+    if not isinstance(items, list):
+        return
+    compacted = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        for key in ("user_todos", "agent_todos"):
+            summary = item.get(key)
+            if not isinstance(summary, dict):
+                continue
+            compact = compact_quota_todo_summary_for_payload(summary)
+            compaction = compact.get("payload_compaction")
+            if isinstance(compaction, dict):
+                compaction["full_detail_cold_path"] = (
+                    "status without --agent-id, todo list, or active state"
+                )
+            item[key] = compact
+            compacted += 1
+    if compacted:
+        payload["agent_lane_todo_summary_compaction"] = {
+            "schema_version": "agent_lane_status_todo_summary_compaction_v0",
+            "compacted_summary_count": compacted,
+            "reason": (
+                "status --agent-id keeps agent-lane display payloads bounded; "
+                "full todo detail remains on cold paths"
             ),
         }
 
@@ -363,6 +398,7 @@ def handle_status_command(
                 display_limit=display_limit,
                 collection_limit=collection_limit,
             )
+            _compact_agent_lane_todos_for_status_display(payload)
     except Exception as exc:
         payload = {
             "ok": False,
