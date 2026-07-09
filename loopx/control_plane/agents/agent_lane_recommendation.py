@@ -9,7 +9,7 @@ from ..todos.contract import (
     normalize_todo_id,
 )
 from ..todos.summary_item import compact_todo_summary_item
-from ..work_items.interaction_contract import protocol_action_text
+from ..work_items.primary_action import protocol_action_text
 from ..work_items.work_lane import work_lane_contract_is_due_monitor_attempt
 from .agent_scope import (
     _todo_item_is_actionable_open,

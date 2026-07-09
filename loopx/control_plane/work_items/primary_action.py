@@ -1,0 +1,263 @@
+from __future__ import annotations
+
+from typing import Any
+
+from ...state_projection import next_action_resolution_trace
+from ..agents.agent_scope_frontier import (
+    agent_scope_frontier_action as _agent_scope_frontier_action,
+)
+from ..todos.contract import TODO_TASK_CLASS_ADVANCEMENT
+from ..todos.projection import todo_item_is_actionable_open, todo_item_task_class
+
+
+def protocol_action_text(value: Any, *, limit: int = 220) -> str | None:
+    if value is None:
+        return None
+    text = " ".join(str(value).strip().split())
+    if not text:
+        return None
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)].rstrip() + "..."
+
+
+def protocol_action_label(value: Any, *, limit: int = 80) -> str | None:
+    text = protocol_action_text(value)
+    if not text:
+        return None
+    head, separator, _tail = text.partition(":")
+    if separator and "[" in head and "]" in head and 8 <= len(head) <= limit:
+        return head.strip()
+    return protocol_action_text(text, limit=limit)
+
+
+def protocol_first_candidate_action(payload: dict[str, Any]) -> str | None:
+    goal_id = str(payload.get("goal_id") or "")
+    agent_lane_next_action = (
+        payload.get("agent_lane_next_action")
+        if isinstance(payload.get("agent_lane_next_action"), dict)
+        else {}
+    )
+    lane_text = protocol_action_label(agent_lane_next_action.get("text"))
+    if lane_text:
+        todo_id = str(agent_lane_next_action.get("todo_id") or "").strip()
+        return f"{todo_id}: {lane_text}" if todo_id else lane_text
+    capability_gate = (
+        payload.get("capability_gate")
+        if isinstance(payload.get("capability_gate"), dict)
+        else {}
+    )
+    if capability_gate.get("action") == "run":
+        runnable_candidates = (
+            capability_gate.get("runnable_candidates")
+            if isinstance(capability_gate.get("runnable_candidates"), list)
+            else []
+        )
+        if runnable_candidates:
+            return (
+                f"choose one of {len(runnable_candidates)} "
+                "capability-runnable todo(s) after steering audit"
+            )
+    scoped_fallback = (
+        payload.get("scoped_user_gate_fallback")
+        if isinstance(payload.get("scoped_user_gate_fallback"), dict)
+        else {}
+    )
+    selected = (
+        scoped_fallback.get("selected_executable")
+        if isinstance(scoped_fallback.get("selected_executable"), dict)
+        else {}
+    )
+    text = protocol_action_label(selected.get("text"))
+    if text:
+        return text
+
+    work_lane = (
+        payload.get("work_lane_contract")
+        if isinstance(payload.get("work_lane_contract"), dict)
+        else {}
+    )
+    if work_lane.get("monitor_kind") == "todo_monitor_due":
+        due_items = (
+            work_lane.get("monitor_due_items")
+            if isinstance(work_lane.get("monitor_due_items"), list)
+            else []
+        )
+        for item in due_items:
+            if not isinstance(item, dict):
+                continue
+            text = protocol_action_label(item.get("text"))
+            if text:
+                todo_id = str(item.get("todo_id") or "").strip()
+                return f"{todo_id}: {text}" if todo_id else text
+
+    agent_todos = (
+        payload.get("agent_todo_summary")
+        if isinstance(payload.get("agent_todo_summary"), dict)
+        else {}
+    )
+    for key in ("first_executable_items", "first_open_items"):
+        items = agent_todos.get(key) if isinstance(agent_todos.get(key), list) else []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if not todo_item_is_actionable_open(item):
+                continue
+            if todo_item_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
+                continue
+            text = protocol_action_label(item.get("text"))
+            if text:
+                return text
+
+    backlog = (
+        payload.get("autonomous_backlog_candidates")
+        if isinstance(payload.get("autonomous_backlog_candidates"), dict)
+        else {}
+    )
+    items = backlog.get("items") if isinstance(backlog.get("items"), list) else []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if goal_id and str(item.get("goal_id") or "") != goal_id:
+            continue
+        text = protocol_action_label(item.get("text"))
+        if text:
+            return text
+
+    reason_codes = (
+        work_lane.get("reason_codes")
+        if isinstance(work_lane.get("reason_codes"), list)
+        else []
+    )
+    if "next_action_requires_advancement" in reason_codes:
+        text = protocol_action_text(payload.get("recommended_action"))
+        if text:
+            return text
+    for key in ("action", "obligation"):
+        text = protocol_action_text(work_lane.get(key))
+        if text:
+            return text
+    return protocol_action_text(payload.get("recommended_action"))
+
+
+def protocol_monitor_action(payload: dict[str, Any]) -> str | None:
+    goal_id = str(payload.get("goal_id") or "")
+    work_lane = (
+        payload.get("work_lane_contract")
+        if isinstance(payload.get("work_lane_contract"), dict)
+        else {}
+    )
+    if work_lane.get("obligation") == "quiet_until_material_monitor_transition":
+        return "quiet until a material monitor transition, regression, or concrete blocker appears"
+    monitors = (
+        payload.get("autonomous_monitor_candidates")
+        if isinstance(payload.get("autonomous_monitor_candidates"), dict)
+        else {}
+    )
+    items = monitors.get("items") if isinstance(monitors.get("items"), list) else []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if goal_id and str(item.get("goal_id") or "") != goal_id:
+            continue
+        text = protocol_action_label(item.get("text"), limit=160)
+        if text:
+            return text
+    return None
+
+
+def resolve_primary_agent_action(payload: dict[str, Any], *, mode: str) -> str:
+    execution_obligation = (
+        payload.get("execution_obligation")
+        if isinstance(payload.get("execution_obligation"), dict)
+        else {}
+    )
+    if mode == "external_evidence_observation":
+        external_observation = (
+            payload.get("external_evidence_observation")
+            if isinstance(payload.get("external_evidence_observation"), dict)
+            else {}
+        )
+        observation_target = protocol_action_text(
+            external_observation.get("observation_target"),
+            limit=220,
+        )
+        if observation_target:
+            return observation_target
+        return (
+            "verify an observable external handle or compact writeback channel; "
+            "write a compact blocker when it is absent"
+        )
+    if mode == "autonomous_replan":
+        lane_action = protocol_first_candidate_action(payload)
+        if lane_action:
+            return f"run one bounded autonomous replan slice around {lane_action}"
+        return "run one bounded self-repair or replan segment before another quiet no-op"
+    if mode == "monitor_quiet_skip":
+        return "record at most one no-spend monitor-poll event, rerun the guard, then stay quiet if unchanged"
+    if _agent_scope_frontier_action(mode) is not None:
+        agent_scope_frontier = (
+            payload.get("agent_scope_frontier")
+            if isinstance(payload.get("agent_scope_frontier"), dict)
+            else {}
+        )
+        action = protocol_action_text(agent_scope_frontier.get("recommended_action"), limit=260)
+        return action or "stay quiet until this agent has a concrete in-scope runnable todo"
+    if mode == "scoped_user_gate_fallback":
+        return protocol_first_candidate_action(payload) or (
+            "surface the scoped user gate, then advance one non-gated fallback"
+        )
+    if mode == "bounded_delivery_with_user_notice":
+        return protocol_first_candidate_action(payload) or "advance one bounded validated segment"
+    if mode == "subagent_orchestration":
+        contract = (
+            payload.get("subagent_orchestration_contract")
+            if isinstance(payload.get("subagent_orchestration_contract"), dict)
+            else {}
+        )
+        lanes = (
+            contract.get("eligible_child_lanes")
+            if isinstance(contract.get("eligible_child_lanes"), list)
+            else []
+        )
+        return (
+            f"spawn/resume child lanes ({len(lanes)} eligible); "
+            "controller reviews returned evidence and writes back accepted state"
+        )
+    if mode in {"user_gate", "user_todo_blocker_push", "user_action_required"}:
+        return "wait for user/owner action after surfacing the blocker or gate"
+    if mode == "outcome_floor_recovery":
+        return "produce the required outcome-floor evidence artifact or write the concrete blocker"
+    if mode == "capability_bridge_repair":
+        return "repair or materialize the missing bridge capability, rewrite the todo, or write a compact blocker"
+    if mode == "side_agent_workspace_repair":
+        return "create or switch to an independent worktree/branch, then rerun quota guard before file edits"
+    if mode == "automation_prompt_upgrade":
+        return "regenerate the installed automation prompt with a registered agent id and scope, then rerun quota guard"
+    if mode == "control_plane_self_repair":
+        return "repair the bounded control-plane/status projection fault exposed by quota"
+    if mode == "boundary_projection_repair":
+        return "repair goal_boundary.write_scope projection before attempting the selected write"
+    if mode == "bounded_delivery":
+        return protocol_first_candidate_action(payload) or "advance one bounded validated segment"
+    if mode == "mapped_noop_if_unchanged":
+        return "confirm no new instruction/evidence/todo/stale source/safe handoff, then quiet no-op"
+    if execution_obligation.get("contract_obligation"):
+        return str(execution_obligation.get("contract_obligation"))
+    return "do not run delivery work for this goal in this turn"
+
+
+def build_primary_action_projection(payload: dict[str, Any], *, mode: str) -> dict[str, Any]:
+    primary_action = resolve_primary_agent_action(payload, mode=mode)
+    projection: dict[str, Any] = {"primary_action": primary_action}
+    resolution_trace = next_action_resolution_trace(
+        primary_action=primary_action,
+        mode=mode,
+        active_state_next_action=payload.get("active_state_next_action"),
+        latest_run_recommended_action=payload.get("latest_run_recommended_action"),
+        selected_recommended_action=payload.get("recommended_action"),
+        agent_lane_next_action=payload.get("agent_lane_next_action"),
+    )
+    if resolution_trace:
+        projection["resolution_trace"] = resolution_trace
+    return projection

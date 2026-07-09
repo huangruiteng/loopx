@@ -12,7 +12,7 @@ from ..todos.projection import (
     todo_item_is_actionable_open,
     todo_item_task_class,
 )
-from ..work_items.interaction_contract import protocol_action_text
+from ..work_items.primary_action import protocol_action_text
 
 
 def open_todo_count(summary: dict[str, Any] | None) -> int:

@@ -40,8 +40,10 @@ from .control_plane.work_items.interaction_contract import (
     attach_user_action_compat_fields,
     build_interaction_contract,
     build_protocol_action_packet,
-    protocol_action_text as _protocol_action_text,
     user_channel_action_required as _user_channel_action_required,
+)
+from .control_plane.work_items.primary_action import (
+    protocol_action_text as _protocol_action_text,
 )
 from .control_plane.goals.goal_frontier import (
     AUTONOMOUS_REPLAN_REQUIRED_MODE,

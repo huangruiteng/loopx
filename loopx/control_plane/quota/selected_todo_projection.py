@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..todos.contract import normalize_todo_id
-from ..work_items.interaction_contract import protocol_action_text
+from ..work_items.primary_action import protocol_action_text
 
 
 SELECTED_TODO_COMPACT_FIELDS = (
