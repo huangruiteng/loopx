@@ -196,12 +196,23 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
         )
         return goal_id, str(run_generated_at).strip() if run_generated_at else None, reward
 
-    def _compact_reward_response(self, payload: dict[str, Any], *, dry_run: bool, appended: bool) -> dict[str, Any]:
+    def _compact_reward_response(
+        self,
+        payload: dict[str, Any],
+        *,
+        dry_run: bool,
+        appended: bool,
+        request_body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        human_reward = payload.get("human_reward")
+        reward_for_preview = dict(human_reward) if isinstance(human_reward, dict) else human_reward
+        if isinstance(reward_for_preview, dict) and not (request_body or {}).get("recorded_at"):
+            reward_for_preview.pop("recorded_at", None)
         preview_payload = {
             "goal_id": payload.get("goal_id"),
             "raw_index_records_before": payload.get("raw_index_records_before"),
             "selected_run": payload.get("selected_run"),
-            "human_reward": payload.get("human_reward"),
+            "human_reward": reward_for_preview,
         }
         return {
             "ok": True,
@@ -211,7 +222,7 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             "raw_index_records_before": payload.get("raw_index_records_before"),
             "preview_id": reward_preview_id(preview_payload),
             "selected_run": payload.get("selected_run"),
-            "human_reward": payload.get("human_reward"),
+            "human_reward": human_reward,
             "active_state_summary": payload.get("active_state_summary"),
             "project_agent_visibility": payload.get("project_agent_visibility"),
         }
@@ -230,7 +241,8 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
 
     def _handle_reward_dry_run(self) -> None:
         try:
-            payload = self._reward_dry_run_payload(self._read_json_body())
+            body = self._read_json_body()
+            payload = self._reward_dry_run_payload(body)
         except Exception as exc:  # noqa: BLE001 - preserve validation diagnostics for the local UI.
             self._send_json(
                 {
@@ -243,7 +255,7 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             )
             return
 
-        self._send_json(self._compact_reward_response(payload, dry_run=True, appended=False))
+        self._send_json(self._compact_reward_response(payload, dry_run=True, appended=False, request_body=body))
 
     def _handle_reward_append(self) -> None:
         if not self.server.reward_write_enabled:
@@ -275,7 +287,12 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             if not preview_id:
                 raise ValueError("preview_id is required")
             dry_run_payload = self._reward_dry_run_payload(body, append=True)
-            expected_preview = self._compact_reward_response(dry_run_payload, dry_run=True, appended=False).get("preview_id")
+            expected_preview = self._compact_reward_response(
+                dry_run_payload,
+                dry_run=True,
+                appended=False,
+                request_body=body,
+            ).get("preview_id")
             if preview_id != expected_preview:
                 self._send_json(
                     {
@@ -309,7 +326,7 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             )
             return
 
-        self._send_json(self._compact_reward_response(payload, dry_run=False, appended=True))
+        self._send_json(self._compact_reward_response(payload, dry_run=False, appended=True, request_body=body))
 
     def _parse_configure_goal_body(self, body: dict[str, Any], *, apply: bool) -> dict[str, Any]:
         allowed = CONFIGURE_GOAL_APPLY_FIELDS if apply else CONFIGURE_GOAL_REQUEST_FIELDS

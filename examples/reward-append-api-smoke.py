@@ -241,6 +241,10 @@ def main() -> None:
             assert status == 403, forbidden
             assert forbidden["appended"] is False, forbidden
 
+            # Server-generated recorded_at must not make a valid preview stale
+            # when the operator clicks append after the next timestamp second.
+            time.sleep(1.1)
+
             status, appended = request_json(
                 "POST",
                 f"{base_url}/reward/append",
