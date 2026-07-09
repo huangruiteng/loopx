@@ -403,15 +403,9 @@ def build_quota_slot_spend_event(
                     )
                 )
             ),
-            "delivery_run_generated_at": preview.get("delivery_run_generated_at")
-            if delivery_completion_spend
-            else None,
-            "delivery_run_classification": preview.get("delivery_run_classification")
-            if delivery_completion_spend
-            else None,
-            "delivery_run_recommended_action": delivery_run_action
-            if delivery_completion_spend and delivery_run_action
-            else None,
+            "delivery_run_generated_at": preview.get("delivery_run_generated_at"),
+            "delivery_run_classification": preview.get("delivery_run_classification"),
+            "delivery_run_recommended_action": delivery_run_action or None,
             "before": before_compact,
             "after": after_compact,
         },

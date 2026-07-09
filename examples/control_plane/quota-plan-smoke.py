@@ -1248,6 +1248,57 @@ def assert_delivery_completion_spend_uses_delivery_action() -> None:
     assert "validated delivery completion" in spend_event["health_check"], spend_event
 
 
+def assert_eligible_spend_preserves_delivery_lineage() -> None:
+    preview = {
+        "ok": True,
+        "goal_id": "eligible-delivery",
+        "slots": 1,
+        "delivery_completion_spend": False,
+        "delivery_run_generated_at": "2026-01-01T00:00:00+00:00",
+        "delivery_run_classification": "state_refreshed",
+        "delivery_run_recommended_action": "Completed delivery action.",
+        "before": {
+            "ok": True,
+            "decision": "run",
+            "should_run": True,
+            "state": "eligible",
+            "effective_action": "normal_run",
+            "quota": {
+                "compute": 1.0,
+                "window_hours": 24,
+                "slot_minutes": 1,
+                "allowed_slots": 1440,
+                "spent_slots": 3,
+                "state": "eligible",
+            },
+        },
+        "after": {
+            "ok": True,
+            "decision": "run",
+            "should_run": True,
+            "state": "eligible",
+            "effective_action": "normal_run",
+            "recommended_action": "Inspect next quota should-run decision.",
+            "quota": {
+                "compute": 1.0,
+                "window_hours": 24,
+                "slot_minutes": 1,
+                "allowed_slots": 1440,
+                "spent_slots": 4,
+                "state": "eligible",
+            },
+        },
+    }
+
+    spend_event = build_quota_slot_spend_event(preview, source="heartbeat")
+
+    assert spend_event["recommended_action"] == "Inspect next quota should-run decision.", spend_event
+    assert spend_event["quota_event"]["delivery_run_generated_at"] == "2026-01-01T00:00:00+00:00", spend_event
+    assert spend_event["quota_event"]["delivery_run_classification"] == "state_refreshed", spend_event
+    assert spend_event["quota_event"]["delivery_run_recommended_action"] == "Completed delivery action.", spend_event
+    assert "quota should-run eligible" in spend_event["health_check"], spend_event
+
+
 def main() -> int:
     assert_default_quota_is_duty_cycle()
     assert_rolling_window_ledger_expires_old_spends()
@@ -1274,6 +1325,7 @@ def main() -> int:
     assert_decision_freshness_warning_in_should_run()
     assert_safe_bypass_slot_preview(status_payload)
     assert_delivery_completion_spend_uses_delivery_action()
+    assert_eligible_spend_preserves_delivery_lineage()
     assert_quota_void_event_net_ledger()
     assert_slot_preview(build_quota_slot_preview(status_payload, goal_id="near-limit-half", slots=1))
     with tempfile.TemporaryDirectory(prefix="loopx-quota-plan-smoke-") as tmp:
