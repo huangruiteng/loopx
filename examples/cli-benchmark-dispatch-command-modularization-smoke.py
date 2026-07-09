@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from fixture_support import create_minimal_goal_registry
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "loopx" / "cli.py"
@@ -96,6 +98,10 @@ def assert_source_shape() -> None:
 
 
 def assert_cli_surfaces() -> None:
+    registry_path, runtime_root = create_minimal_goal_registry(
+        goal_id="loopx-meta",
+        objective="Validate benchmark dispatch modularization.",
+    )
     help_text = require_success(run_cli("benchmark", "--help"))
     for subcommand in (
         "run",
@@ -112,6 +118,10 @@ def assert_cli_surfaces() -> None:
         run_cli(
             "--format",
             "json",
+            "--registry",
+            str(registry_path),
+            "--runtime-root",
+            str(runtime_root),
             "benchmark",
             "run",
             "terminal-bench",

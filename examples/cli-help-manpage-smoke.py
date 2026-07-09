@@ -141,8 +141,10 @@ def assert_installer_manpage_surface() -> None:
             capture_output=True,
         )
         rendered_man = "\n".join(part for part in (man.stdout, man.stderr) if part)
+        compact_rendered_man = " ".join(rendered_man.split())
         assert "LOOPX(1)" in rendered_man, (man.returncode, man.stdout, man.stderr)
-        assert "LoopX keeps long-running agent work moving" in rendered_man, rendered_man
+        assert "LoopX keeps" in compact_rendered_man, rendered_man
+        assert "agent work moving" in compact_rendered_man, rendered_man
         assert "heartbeat automation" in rendered_man, rendered_man
 
 

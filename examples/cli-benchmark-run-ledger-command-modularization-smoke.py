@@ -7,6 +7,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from fixture_support import create_minimal_goal_registry
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -40,6 +42,10 @@ def payload_from(result: subprocess.CompletedProcess[str]) -> dict[str, object]:
 
 
 def main() -> int:
+    registry_path, runtime_root = create_minimal_goal_registry(
+        goal_id="loopx-meta",
+        objective="Validate benchmark run-ledger command modularization.",
+    )
     help_result = run_cli("benchmark", "run", "--help")
     if help_result.returncode != 0:
         raise AssertionError(help_result.stderr or help_result.stdout)
@@ -54,6 +60,10 @@ def main() -> int:
     terminal_result = run_cli(
         "--format",
         "json",
+        "--registry",
+        str(registry_path),
+        "--runtime-root",
+        str(runtime_root),
         "benchmark",
         "run",
         "terminal-bench",
@@ -77,6 +87,10 @@ def main() -> int:
     skillsbench_result = run_cli(
         "--format",
         "json",
+        "--registry",
+        str(registry_path),
+        "--runtime-root",
+        str(runtime_root),
         "benchmark",
         "run",
         "skillsbench",

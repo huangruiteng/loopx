@@ -10,6 +10,8 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+import fixture_support as fixtures
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -75,6 +77,11 @@ def assert_no_execution_attempt_accounting(payload: dict[str, object]) -> None:
 
 
 def main() -> None:
+    fixtures.install_stub_executables_on_path("uvx", "docker", "codex")
+    fixtures.install_minimal_goal_registry_environment(
+        goal_id="loopx-meta",
+        objective="Validate Terminal-Bench private runner environment guards.",
+    )
     with tempfile.TemporaryDirectory(prefix="loopx-task-material-") as tmp:
         dataset = Path(tmp) / "terminal-bench-local"
         good_task = dataset / "good-task"

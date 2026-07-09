@@ -10,6 +10,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from fixture_support import assert_public_result_projection
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -153,10 +155,11 @@ def common_args(registry_path: Path, runtime: Path) -> list[str]:
 
 
 def assert_public_safe(payload: dict[str, Any]) -> None:
-    text = json.dumps(payload, sort_keys=True)
-    leaked = [marker for marker in FORBIDDEN_TEXT if marker in text]
-    assert not leaked, leaked
-    assert len(text) < 18000, len(text)
+    assert_public_result_projection(
+        payload,
+        forbidden_text=FORBIDDEN_TEXT,
+        max_chars=18000,
+    )
 
 
 def assert_doc_contract() -> None:
