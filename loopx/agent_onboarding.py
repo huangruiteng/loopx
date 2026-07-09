@@ -113,6 +113,9 @@ def build_agent_onboarding_packet(
     )
     selected_agent_id = host_loop_activation.get("agent_id")
     activation_allowed = bool(host_loop_activation.get("activation_allowed"))
+    normalized_available_capabilities = list(
+        host_loop_activation.get("available_capabilities") or []
+    )
     install_command = _surface_install_command(canonical_agent_type, cli_bin)
     bootstrap_pack_command = _bootstrap_pack_command(
         project=resolved_project,
@@ -121,7 +124,7 @@ def build_agent_onboarding_packet(
         agent_type=canonical_agent_type,
         cli_bin=cli_bin,
         task_text=task_text,
-        available_capabilities=available_capabilities,
+        available_capabilities=normalized_available_capabilities,
     )
     commands: dict[str, Any] = {
         "doctor_or_install": render_codex_cli_no_clone_preflight(cli_bin=cli_bin),
@@ -131,7 +134,7 @@ def build_agent_onboarding_packet(
                 resolved_goal_id,
                 cli_bin=cli_bin,
                 agent_id=str(selected_agent_id) if selected_agent_id else None,
-                available_capabilities=available_capabilities,
+                available_capabilities=normalized_available_capabilities,
             )
             if activation_allowed
             else None
@@ -146,7 +149,7 @@ def build_agent_onboarding_packet(
                 if selected_agent_id
                 else ""
             )
-            + render_available_capability_args(available_capabilities)
+            + render_available_capability_args(normalized_available_capabilities)
         ),
     }
     if install_command:
@@ -170,7 +173,7 @@ def build_agent_onboarding_packet(
         "goal_id": resolved_goal_id,
         "agent_id": selected_agent_id,
         "requested_agent_id": agent_id,
-        "available_capabilities": host_loop_activation.get("available_capabilities") or [],
+        "available_capabilities": normalized_available_capabilities,
         "identity_selection_gate": host_loop_activation.get("identity_selection_gate"),
         "task_text": task_text,
         "project_connection": inspection,
