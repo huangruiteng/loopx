@@ -674,6 +674,13 @@ If no visible executable todo can run, the gate chooses:
 - `skip` when the missing capability is unsupported and no safe repair or owner
   action is known.
 
+For a mixed missing set, the gate projects `owner_missing`, `repair_missing`,
+and `resolution_steps` separately. An unresolved owner-held capability takes
+precedence for the interaction decision, so a local bridge repair cannot hide
+the concrete user action. Once the launcher truthfully declares that owner-held
+capability available, the user gate disappears and any remaining bridge repair
+returns to the agent lane.
+
 Launchers that really have an extra capability should pass it to both
 `quota should-run` and `quota spend-slot` with `--available-capability`, so the
 preflight and accounting phases agree.

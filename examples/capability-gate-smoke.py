@@ -281,6 +281,50 @@ def main() -> int:
     assert owner_gate["interaction_contract"]["user_channel"]["action_required"] is True, owner_gate
     assert owner_gate["heartbeat_recommendation"]["notify"] == "NOTIFY", owner_gate
 
+    mixed_capability_todo = todo(
+        8,
+        "P0",
+        "[P0] Observe a public external lifecycle and write back the next action.",
+        ["shell", "network", "external_evidence_poll"],
+    )
+    mixed_owner_gate = build_quota_should_run(
+        status_payload([mixed_capability_todo]),
+        goal_id=GOAL_ID,
+        available_capabilities=["shell", "filesystem_write"],
+    )
+    mixed_gate = mixed_owner_gate["capability_gate"]
+    assert mixed_gate["action"] == "ask_owner", mixed_owner_gate
+    assert mixed_gate["decision_owner"] == "user", mixed_owner_gate
+    assert mixed_gate["owner_missing"] == ["network"], mixed_owner_gate
+    assert mixed_gate["repair_missing"] == ["external_evidence_poll"], mixed_owner_gate
+    assert mixed_gate["resolution_steps"] == [
+        {
+            "owner": "user",
+            "action": "provide_or_authorize",
+            "capabilities": ["network"],
+        },
+        {
+            "owner": "agent",
+            "action": "repair_bridge",
+            "capabilities": ["external_evidence_poll"],
+        },
+    ], mixed_owner_gate
+    assert mixed_owner_gate["interaction_contract"]["user_channel"]["action_required"] is True
+    assert "network" in mixed_gate["owner_action"], mixed_owner_gate
+
+    mixed_ready = build_quota_should_run(
+        status_payload([mixed_capability_todo]),
+        goal_id=GOAL_ID,
+        available_capabilities=[
+            "shell",
+            "filesystem_write",
+            "network",
+            "external_evidence_poll",
+        ],
+    )
+    assert mixed_ready["capability_gate"]["action"] == "run", mixed_ready
+    assert mixed_ready["interaction_contract"]["user_channel"]["action_required"] is False
+
     print("capability-gate-smoke ok")
     return 0
 

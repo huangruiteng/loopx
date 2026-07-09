@@ -134,6 +134,23 @@ heartbeat commands pass the same `--agent-id` to both `quota should-run` and
 `quota spend-slot`, so workspace guards and quota accounting evaluate the same
 agent identity.
 
+Host capabilities are declarations, not permission grants. When the selected
+Codex App, CLI, or external launcher already has a capability required by its
+todos, declare it while generating the heartbeat:
+
+```bash
+loopx heartbeat-prompt \
+  --goal-id <GOAL_ID> \
+  --thin \
+  --agent-id <AGENT_ID> \
+  --available-capability network \
+  --available-capability external_evidence_poll
+```
+
+The generated quota guard and spend command preserve the same declarations.
+Do not declare credentials, production access, or another capability merely to
+bypass a gate; the launcher must actually provide it.
+
 - for small AGENTS-eligible validated changes, self-merge and complete the todo
   with `--side-agent-self-merged --evidence "<commit and validation summary>"`;
 - for runtime, benchmark, permission, production, destructive git, publication,

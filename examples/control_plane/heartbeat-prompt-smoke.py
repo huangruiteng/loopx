@@ -79,6 +79,15 @@ def main() -> int:
         registered_agents=["codex-main-control", "codex-side-bypass"],
         primary_agent="codex-main-control",
     )
+    capability_scoped_payload = build_heartbeat_prompt(
+        goal_id=GOAL_ID,
+        active_state=ACTIVE_STATE,
+        thin=True,
+        agent_id="codex-side-bypass",
+        registered_agents=["codex-main-control", "codex-side-bypass"],
+        primary_agent="codex-main-control",
+        available_capabilities=["network", "external_evidence_poll", "network"],
+    )
     missing_agent_id = None
     try:
         build_heartbeat_prompt(
@@ -227,6 +236,18 @@ def main() -> int:
         "--active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md --agent-id codex-side-bypass"
     ), profile_scoped_payload
     assert "--agent-scope" not in profile_scoped_payload["thin_prompt_command"], profile_scoped_payload
+    assert capability_scoped_payload["available_capabilities"] == [
+        "network",
+        "external_evidence_poll",
+    ], capability_scoped_payload
+    for command_key in (
+        "quota_guard_command",
+        "quota_spend_command",
+        "thin_prompt_command",
+    ):
+        command = str(capability_scoped_payload[command_key])
+        assert "--available-capability network" in command, command
+        assert "--available-capability external_evidence_poll" in command, command
     assert "productization showcase docs lane" in normalized(str(profile_scoped_payload["task_body"])), (
         profile_scoped_payload
     )

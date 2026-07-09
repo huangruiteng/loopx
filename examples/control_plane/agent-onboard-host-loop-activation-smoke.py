@@ -212,6 +212,7 @@ def main() -> int:
             cli_bin=cli_bin,
             host_surface="codex-app",
             goal_text="fix a public issue",
+            available_capabilities=["network", "external_evidence_poll"],
         )
         assert selected_pack["host_loop_activation"]["activation_allowed"] is True
         for key in (
@@ -221,6 +222,14 @@ def main() -> int:
             "goal_start_quota_should_run",
         ):
             assert "--agent-id codex-product-capability" in selected_pack["commands"][key], (
+                key,
+                selected_pack["commands"],
+            )
+            assert "--available-capability network" in selected_pack["commands"][key], (
+                key,
+                selected_pack["commands"],
+            )
+            assert "--available-capability external_evidence_poll" in selected_pack["commands"][key], (
                 key,
                 selected_pack["commands"],
             )
