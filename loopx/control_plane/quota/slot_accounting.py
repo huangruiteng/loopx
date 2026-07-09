@@ -636,6 +636,9 @@ def record_quota_slot_void_from_preview(
         ),
     }
     if execute:
+        payload["before"] = record["quota_event"]["before"]
+        payload["after"] = record["quota_event"]["after"]
+    if execute:
         runs_dir.mkdir(parents=True, exist_ok=True)
         json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         markdown_path.write_text(render_quota_slot_preview_markdown(payload) + "\n", encoding="utf-8")
@@ -704,6 +707,9 @@ def record_quota_slot_spend_from_preview(
         ),
     }
     if execute:
+        payload["before"] = record["quota_event"]["before"]
+        payload["after"] = record["quota_event"]["after"]
+    if execute:
         runs_dir.mkdir(parents=True, exist_ok=True)
         json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         markdown_path.write_text(render_quota_slot_preview_markdown(payload) + "\n", encoding="utf-8")
@@ -715,8 +721,8 @@ def record_quota_slot_spend_from_preview(
 def render_quota_slot_preview_markdown(payload: dict[str, Any]) -> str:
     before = payload.get("before") if isinstance(payload.get("before"), dict) else {}
     after = payload.get("after") if isinstance(payload.get("after"), dict) else {}
-    before_quota = before.get("quota") if isinstance(before.get("quota"), dict) else {}
-    after_quota = after.get("quota") if isinstance(after.get("quota"), dict) else {}
+    before_quota = before.get("quota") if isinstance(before.get("quota"), dict) else before
+    after_quota = after.get("quota") if isinstance(after.get("quota"), dict) else after
     lines = [
         "# LoopX Quota Slot Preview",
         "",

@@ -13,7 +13,7 @@ from types import ModuleType
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FIXTURE_PATH = REPO_ROOT / "examples" / "control_plane" / "quota-plan-smoke.py"
+FIXTURE_PATH = REPO_ROOT / "examples" / "control_plane" / "quota_plan_fixtures.py"
 
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -208,6 +208,10 @@ def main() -> int:
         assert scoped_payload["ok"] is True, scoped_payload
         assert scoped_payload["appended"] is True, scoped_payload
         assert scoped_payload["agent_id"] == agent_id, scoped_payload
+        assert scoped_payload["before"] == scoped_payload["quota_event"]["before"], scoped_payload
+        assert scoped_payload["after"] == scoped_payload["quota_event"]["after"], scoped_payload
+        assert scoped_payload["after"]["spent_slots"] == scoped_payload["before"]["spent_slots"] + 1, scoped_payload
+        assert "quota" not in scoped_payload["before"], scoped_payload
 
     print("quota-spend-agent-identity-smoke ok")
     return 0

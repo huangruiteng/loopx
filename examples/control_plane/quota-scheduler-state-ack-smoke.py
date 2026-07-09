@@ -767,6 +767,9 @@ def assert_cli_scheduler_ack_progression() -> None:
         assert ack["scheduler_state_mutated"] is True, ack
         assert ack["scheduler_ack_event"]["scheduler_state"]["last_applied_rrule"] == first_rrule, ack
         assert Path(ack["scheduler_state_path"]).exists(), ack
+        assert ack["before"] == ack["scheduler_ack_event"]["before"], ack
+        assert ack["before"]["spent_slots"] == 0, ack
+        assert "scheduler_hint" not in ack["before"], ack
         assert ack["after"] is None, ack
         assert ack["post_ack_contract"]["do_not_apply_successor_rrule_from_ack_response"] is True, ack
 

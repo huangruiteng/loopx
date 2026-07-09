@@ -177,6 +177,7 @@ def record_quota_scheduler_ack_for_decision(
             use_current_hint=use_current_hint,
         )
     if ack_plan.get("already_applied"):
+        output_before = compact_quota_decision(before) if execute else before
         payload = {
             "ok": True,
             "mode": "scheduler-ack",
@@ -189,8 +190,8 @@ def record_quota_scheduler_ack_for_decision(
             "appended": False,
             "registry_mutated": False,
             "already_applied": True,
-            "before": before,
-            "after": before,
+            "before": output_before,
+            "after": output_before,
             "reason": "scheduler RRULE already applied; no ack write needed",
         }
         if use_current_hint:
@@ -266,7 +267,7 @@ def record_quota_scheduler_ack_for_decision(
         "health_check": record["health_check"],
         "delivery_outcome": record["delivery_outcome"],
         "scheduler_state_path": str(state_path),
-        "before": before,
+        "before": compact_quota_decision(before) if execute else before,
         "after": None,
         "post_ack_contract": {
             "next_action": "wait_for_next_scheduler_tick_or_material_state_transition",
