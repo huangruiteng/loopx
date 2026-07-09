@@ -5893,13 +5893,14 @@ def test_skillsbench_docker_task_staging_rewrites_wget_gpg_key_download() -> Non
             encoding="utf-8"
         )
         assert "wget -qO -" not in staged_text, staged_text
+        curl_retry_all_errors_arg = skillsbench_loop._dockerfile_curl_retry_all_errors_arg()
         assert (
-            "curl -fsSL --retry 8 --retry-all-errors --retry-delay 3 "
+            f"curl -fsSL --retry 8 {curl_retry_all_errors_arg} --retry-delay 3 "
             "--connect-timeout 60 --max-time 300 "
             "https://example.invalid/public.key | gpg --dearmor"
         ) in staged_text, staged_text
         assert (
-            "curl -fsSL --retry 8 --retry-all-errors --retry-delay 3 "
+            f"curl -fsSL --retry 8 {curl_retry_all_errors_arg} --retry-delay 3 "
             "--connect-timeout 60 --max-time 300 "
             "https://aquasecurity.github.io/trivy-repo/deb/public.key | "
             "gpg --dearmor"
@@ -5987,7 +5988,7 @@ def test_skillsbench_docker_task_staging_hardens_build_downloads() -> None:
             "apache-druid-0.20.0-bin.tar.gz"
         ) in staged_text, staged_text
         assert (
-            "curl -fL --retry 5 --retry-all-errors --retry-delay 2 "
+            f"curl -fL --retry 5 {skillsbench_loop._dockerfile_curl_retry_all_errors_arg()} --retry-delay 2 "
             "--connect-timeout 60 --max-time 600 "
             "https://github.com/coursier/coursier/releases/download/"
             "v2.1.25-M23/cs-x86_64-pc-linux.gz"
@@ -6043,7 +6044,7 @@ def test_skillsbench_docker_task_staging_patches_dockerfile_uv_bootstrap() -> No
         ), staged_text
         assert "uv==${LOOPX_SKILLSBENCH_UV_VERSION}" in staged_text, staged_text
         assert "INSTALLER_DOWNLOAD_URL" in staged_text, staged_text
-        assert "--retry-all-errors" in staged_text, staged_text
+        assert skillsbench_loop._dockerfile_curl_retry_all_errors_arg() in staged_text, staged_text
         assert (
             "curl -LsSf https://astral.sh/uv/0.9.22/install.sh | sh &&"
             not in staged_text

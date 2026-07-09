@@ -6991,6 +6991,10 @@ def _dockerfile_instruction_block_end(lines: list[str], start: int) -> int:
     return end
 
 
+def _dockerfile_curl_retry_all_errors_arg() -> str:
+    return "$(curl --help all 2>/dev/null | grep -q -- '--retry-all-errors' && printf '%s' '--retry-all-errors' || true)"
+
+
 def patch_dockerfile_uv_bootstrap_mirror(dockerfile: Path) -> dict[str, Any]:
     """Make staged Dockerfile uv bootstraps tolerate installer egress failures."""
 
@@ -7034,7 +7038,7 @@ def patch_dockerfile_uv_bootstrap_mirror(dockerfile: Path) -> dict[str, Any]:
         "    fi; \\\n"
         "    if ! command -v uvx >/dev/null 2>&1; then \\\n"
         "      export INSTALLER_DOWNLOAD_URL=\"${LOOPX_SKILLSBENCH_UV_RELEASE_MIRROR}/${LOOPX_SKILLSBENCH_UV_VERSION}\"; \\\n"
-        "      curl -LsSf --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 30 \\\n"
+        f"      curl -LsSf --retry 5 {_dockerfile_curl_retry_all_errors_arg()} --retry-delay 2 --connect-timeout 30 \\\n"
         "        \"https://astral.sh/uv/${LOOPX_SKILLSBENCH_UV_VERSION}/install.sh\" | sh; \\\n"
         "    fi; \\\n"
         "    if [ -x \"${HOME}/.local/bin/uv\" ]; then install -m 0755 \"${HOME}/.local/bin/uv\" /usr/local/bin/uv; fi; \\\n"
@@ -7171,7 +7175,8 @@ def patch_dockerfile_wget_gpg_key_retry(dockerfile: Path) -> bool:
 
     def gpg_key_curl_command(url: str) -> str:
         return (
-            "curl -fsSL --retry 8 --retry-all-errors --retry-delay 3 "
+            "curl -fsSL --retry 8 "
+            f"{_dockerfile_curl_retry_all_errors_arg()} --retry-delay 3 "
             f"--connect-timeout 60 --max-time 300 {url} | gpg --dearmor"
         )
 
@@ -7338,7 +7343,7 @@ def patch_dockerfile_network_download_retry(dockerfile: Path) -> bool:
             return match.group(0)
         return (
             "curl"
-            f"{args} --retry 5 --retry-all-errors --retry-delay 2 "
+            f"{args} --retry 5 {_dockerfile_curl_retry_all_errors_arg()} --retry-delay 2 "
             f"--connect-timeout 60 --max-time 600 {match.group('url')}"
         )
 
