@@ -20,6 +20,12 @@ from ...control_plane.todos.projection import (
     todo_projection_sort_key,
 )
 from ...control_plane.work_items.task_lease import scope_root, write_scopes_overlap
+from .harness_gate import (
+    GATE_STATE_ANALYSIS_ONLY,
+    GATE_STATE_DISABLED,
+    explore_harness_required_contract,
+    resolve_explore_harness_gate as _resolve_explore_harness_gate,
+)
 from .speculative_scheduler import (
     build_branch_plan_ab_result,
     partition_invalidated_successors,
@@ -222,12 +228,68 @@ def _claim_command(*, goal_id: str, todo_id: str, agent_id: str | None) -> str |
     return f"loopx todo claim --goal-id {goal_id} --todo-id {todo_id} --claimed-by {owner}"
 
 
+def resolve_todo_branch_plan_gate(
+    orchestration: Mapping[str, Any] | None,
+    *,
+    requested_width: int,
+) -> dict[str, Any]:
+    """Resolve the shared explore-harness gate with this planner's lane ceiling."""
+
+    return _resolve_explore_harness_gate(
+        orchestration,
+        requested_width=requested_width,
+        max_lanes=MAX_BRANCH_WIDTH,
+        max_lanes_label="max_branch_width",
+    )
+
+
+def _disabled_todo_branch_plan(
+    *,
+    goal_id: str,
+    agent_id: str | None,
+    gate: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "schema_version": TODO_BRANCH_PLAN_SCHEMA_VERSION,
+        "goal_id": goal_id,
+        "agent_id": normalize_todo_claimed_by(agent_id) or "",
+        "experimental": True,
+        "dry_run": True,
+        "enabled": False,
+        "strategy": "explore_harness_disabled",
+        "orchestration_gate": dict(gate),
+        "required_contract": explore_harness_required_contract(default_profile="generic"),
+        "issue_width": 0,
+        "candidate_count": 0,
+        "selected_count": 0,
+        "selected_branches": [],
+        "rejected_candidates": [],
+        "accept_reject_trace": [],
+        "boundary": {
+            "writes_state": False,
+            "claims_todos": False,
+            "acquires_leases": False,
+            "starts_agents": False,
+            "changes_quota": False,
+        },
+        "next_action": (
+            "Todo-branch planning is not enabled for this goal. Opt in by setting "
+            "explore_harness.enabled=true on the registered goal's spawn_policy "
+            "(projected into quota should-run as goal_boundary.orchestration), then "
+            "rerun todo-branch-plan; execution always stays in the normal LoopX "
+            "quota/claim/lease lifecycle."
+        ),
+    }
+
+
 def build_explore_todo_branch_plan(
     *,
     goal_id: str,
     todos: Sequence[Mapping[str, Any]],
     projection: Mapping[str, Any] | None = None,
     agent_id: str | None = None,
+    orchestration: Mapping[str, Any] | None = None,
     width: int = DEFAULT_BRANCH_WIDTH,
     allow_unscoped_parallel: bool = True,
     scheduler_strategy: str = "dspark",
@@ -238,10 +300,20 @@ def build_explore_todo_branch_plan(
     This is deliberately a read-only exploration harness. It predicts lanes and
     emits optional claim/lease commands, but it does not mutate active state or
     start worker processes.
+
+    ``orchestration`` is the registered goal's ``spawn_policy`` -- the single
+    source projected into ``goal_boundary.orchestration``. Planning is gated on
+    ``explore_harness.enabled`` (default deny, including when no boundary is
+    provided), suggested commands require ``spawn_allowed``, and issue width
+    is capped by ``max_children`` in addition to ``MAX_BRANCH_WIDTH``.
     """
 
-    normalized_width = min(MAX_BRANCH_WIDTH, max(1, int(width or DEFAULT_BRANCH_WIDTH)))
     normalized_agent = normalize_todo_claimed_by(agent_id)
+    requested_width = max(1, int(width or DEFAULT_BRANCH_WIDTH))
+    gate = resolve_todo_branch_plan_gate(orchestration, requested_width=requested_width)
+    if gate["state"] == GATE_STATE_DISABLED:
+        return _disabled_todo_branch_plan(goal_id=goal_id, agent_id=normalized_agent, gate=gate)
+    normalized_width = int(gate["effective_width"])
     frontier = _frontier_tokens(projection)
 
     candidates: list[dict[str, Any]] = []
@@ -376,6 +448,15 @@ def build_explore_todo_branch_plan(
         rejected.extend(dependency_invalidated)
         selected = dependency_valid_selected
 
+    if gate["state"] == GATE_STATE_ANALYSIS_ONLY:
+        # Analysis stays available (ranking, hazards, A/B estimate), but the
+        # boundary forbids spawning workers, so no claim/lease commands leave
+        # the planner in any branch list.
+        for branch in (*selected, *rejected):
+            if branch.get("suggested_commands"):
+                branch["suggested_commands"] = []
+                branch["commands_suppressed_reason"] = str(gate.get("reason") or "")
+
     return {
         "ok": True,
         "schema_version": TODO_BRANCH_PLAN_SCHEMA_VERSION,
@@ -383,8 +464,11 @@ def build_explore_todo_branch_plan(
         "agent_id": normalized_agent or "",
         "experimental": True,
         "dry_run": True,
+        "enabled": True,
+        "orchestration_gate": gate,
         "strategy": "dspark_confidence_scheduled_todo_branch_prediction",
         "issue_width": normalized_width,
+        "requested_issue_width": requested_width,
         "verification_budget": verification_budget,
         "scheduler": scheduler,
         "accept_reject_trace": dependency_events,
@@ -415,7 +499,12 @@ def build_explore_todo_branch_plan(
             "changes_quota": False,
         },
         "next_action": (
-            "Run the primary branch normally; hand selected speculative branches to side "
+            "Read-only analysis: this goal's orchestration boundary does not permit "
+            "spawning workers, so no claim/lease commands are suggested. Update the "
+            "registered goal's spawn_policy (spawn_allowed, max_children) to receive "
+            "suggested commands; execution stays in the normal LoopX lifecycle."
+            if gate["state"] == GATE_STATE_ANALYSIS_ONLY
+            else "Run the primary branch normally; hand selected speculative branches to side "
             "agents only after claiming/lease commands are accepted and workspace guards pass."
             if len(selected) > 1
             else "Only one safe branch was selected; keep normal single-todo execution."

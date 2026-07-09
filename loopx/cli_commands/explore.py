@@ -20,10 +20,15 @@ from ..capabilities.explore.result_log import (
     explore_result_log_path,
     load_explore_result_events,
 )
-from ..capabilities.explore.todo_branch_plan import build_explore_todo_branch_plan
+from ..capabilities.explore.harness_gate import GATE_STATE_DISABLED
+from ..capabilities.explore.todo_branch_plan import (
+    build_explore_todo_branch_plan,
+    resolve_todo_branch_plan_gate,
+)
 from ..capabilities.explore.worker_branch_plan import (
     DEFAULT_WORKER_HARNESS_PROFILE,
     build_explore_worker_branch_plan,
+    resolve_explore_harness_gate,
     worker_harness_profile_names,
 )
 from ..presentation.sinks.lark.explore_results import (
@@ -360,6 +365,30 @@ def _append_event_payload(
     return payload
 
 
+def _goal_orchestration_boundary(
+    registry: dict[str, object], *, goal_id: str
+) -> dict[str, object] | None:
+    """Per-goal orchestration policy from the registered goal's spawn_policy.
+
+    spawn_policy is the single writable source that the live quota/status
+    pipeline projects into goal_boundary.orchestration (enrich_project_asset
+    derives project_asset.orchestration from it too), so the planner gate must
+    read exactly it -- honoring any other registry key would create a second
+    authorization surface invisible to `quota should-run`. An unregistered
+    goal has no boundary, which the planners treat as opt-out.
+    """
+
+    goals = registry.get("goals")
+    if not isinstance(goals, list):
+        return None
+    for goal in goals:
+        if not isinstance(goal, dict) or str(goal.get("id") or "") != goal_id:
+            continue
+        spawn_policy = goal.get("spawn_policy")
+        return spawn_policy if isinstance(spawn_policy, dict) else None
+    return None
+
+
 def _tree_lines(tree: object, *, indent: int = 0) -> list[str]:
     lines: list[str] = []
     if not isinstance(tree, list):
@@ -405,6 +434,14 @@ def render_explore_markdown(payload: dict[str, object]) -> str:
         lines.append(f"- strategy: `{payload.get('strategy')}`")
     if payload.get("harness_profile"):
         lines.append(f"- harness_profile: `{payload.get('harness_profile')}`")
+    gate = payload.get("orchestration_gate")
+    if isinstance(gate, dict) and gate:
+        lines.append(
+            "- orchestration_gate: "
+            f"`state={gate.get('state')} reason={gate.get('reason')} "
+            f"spawn_allowed={gate.get('spawn_allowed')} max_children={gate.get('max_children')} "
+            f"width={gate.get('effective_width')}/{gate.get('requested_width')}`"
+        )
     if payload.get("issue_width") not in (None, ""):
         lines.append(f"- issue_width: `{payload.get('issue_width')}`")
     if payload.get("worker_width") not in (None, ""):
@@ -504,7 +541,8 @@ def handle_explore_command(
         return None
     fmt = output_format(args)
     try:
-        runtime_root = resolve_runtime_root(load_registry(registry_path), runtime_root_arg)
+        registry = load_registry(registry_path)
+        runtime_root = resolve_runtime_root(registry, runtime_root_arg)
         config_path = (
             Path(args.config_path).expanduser()
             if getattr(args, "config_path", None)
@@ -588,76 +626,108 @@ def handle_explore_command(
                     )
                 payload["out"] = str(out_path)
         elif args.explore_command == "todo-branch-plan":
-            projection = _projection_for(args, runtime_root=runtime_root)
-            todo_payload = list_goal_todos(
-                registry_path=registry_path,
-                goal_id=args.goal_id,
-                role="agent",
-                status="open",
-                agent_id=args.agent_id,
-            )
-            payload = build_explore_todo_branch_plan(
-                goal_id=args.goal_id,
-                todos=[
-                    item
-                    for item in todo_payload.get("todos") or []
-                    if isinstance(item, dict)
-                ],
-                projection=projection,
-                agent_id=args.agent_id,
-                width=args.width,
-                allow_unscoped_parallel=bool(args.allow_unscoped_parallel),
-                scheduler_strategy=args.scheduler_strategy,
-                scheduler_load=args.scheduler_load,
-            )
-            payload["todo_source"] = {
-                "source": todo_payload.get("source"),
-                "state_file": todo_payload.get("state_file"),
-                "todo_count": todo_payload.get("todo_count"),
-            }
+            orchestration = _goal_orchestration_boundary(registry, goal_id=args.goal_id)
+            gate = resolve_todo_branch_plan_gate(orchestration, requested_width=args.width)
+            if gate["state"] == GATE_STATE_DISABLED:
+                # Short-circuit before goal-state projection so disabled and
+                # unregistered goals both get the explicit opt-in packet
+                # instead of a state-file resolution error.
+                payload = build_explore_todo_branch_plan(
+                    goal_id=args.goal_id,
+                    todos=[],
+                    agent_id=args.agent_id,
+                    orchestration=orchestration,
+                    width=args.width,
+                )
+            else:
+                projection = _projection_for(args, runtime_root=runtime_root)
+                todo_payload = list_goal_todos(
+                    registry_path=registry_path,
+                    goal_id=args.goal_id,
+                    role="agent",
+                    status="open",
+                    agent_id=args.agent_id,
+                )
+                payload = build_explore_todo_branch_plan(
+                    goal_id=args.goal_id,
+                    todos=[
+                        item
+                        for item in todo_payload.get("todos") or []
+                        if isinstance(item, dict)
+                    ],
+                    projection=projection,
+                    agent_id=args.agent_id,
+                    orchestration=orchestration,
+                    width=args.width,
+                    allow_unscoped_parallel=bool(args.allow_unscoped_parallel),
+                    scheduler_strategy=args.scheduler_strategy,
+                    scheduler_load=args.scheduler_load,
+                )
+                payload["todo_source"] = {
+                    "source": todo_payload.get("source"),
+                    "state_file": todo_payload.get("state_file"),
+                    "todo_count": todo_payload.get("todo_count"),
+                }
         elif args.explore_command == "worker-branch-plan":
-            projection = _projection_for(args, runtime_root=runtime_root)
-            todo_payload = list_goal_todos(
-                registry_path=registry_path,
-                goal_id=args.goal_id,
-                role="agent",
-                status="open",
-                agent_id=args.agent_id,
+            orchestration = _goal_orchestration_boundary(registry, goal_id=args.goal_id)
+            gate = resolve_explore_harness_gate(
+                orchestration, requested_width=args.worker_width
             )
-            router_state = None
-            if getattr(args, "router_state", None):
-                router_state = json.loads(
-                    Path(args.router_state).read_text(encoding="utf-8-sig")
+            if gate["state"] == GATE_STATE_DISABLED:
+                # Short-circuit before goal-state projection so disabled and
+                # unregistered goals both get the explicit opt-in packet
+                # instead of a state-file resolution error.
+                payload = build_explore_worker_branch_plan(
+                    goal_id=args.goal_id,
+                    todos=[],
+                    agent_id=args.agent_id,
+                    orchestration=orchestration,
+                    worker_width=args.worker_width,
                 )
-            load_profile = None
-            if getattr(args, "load_profile", None):
-                load_profile = json.loads(
-                    Path(args.load_profile).read_text(encoding="utf-8-sig")
+            else:
+                projection = _projection_for(args, runtime_root=runtime_root)
+                todo_payload = list_goal_todos(
+                    registry_path=registry_path,
+                    goal_id=args.goal_id,
+                    role="agent",
+                    status="open",
+                    agent_id=args.agent_id,
                 )
-            payload = build_explore_worker_branch_plan(
-                goal_id=args.goal_id,
-                todos=[
-                    item
-                    for item in todo_payload.get("todos") or []
-                    if isinstance(item, dict)
-                ],
-                projection=projection,
-                agent_id=args.agent_id,
-                worker_width=args.worker_width,
-                max_todos_per_branch=args.max_todos_per_branch,
-                scheduler_load=args.scheduler_load,
-                allow_unscoped_parallel=bool(args.allow_unscoped_parallel),
-                harness_profile=args.harness_profile,
-                branch_fill_policy=args.branch_fill_policy,
-                marginal_score_floor=args.marginal_score_floor,
-                router_state=router_state,
-                load_profile=load_profile,
-            )
-            payload["todo_source"] = {
-                "source": todo_payload.get("source"),
-                "state_file": todo_payload.get("state_file"),
-                "todo_count": todo_payload.get("todo_count"),
-            }
+                router_state = None
+                if getattr(args, "router_state", None):
+                    router_state = json.loads(
+                        Path(args.router_state).read_text(encoding="utf-8-sig")
+                    )
+                load_profile = None
+                if getattr(args, "load_profile", None):
+                    load_profile = json.loads(
+                        Path(args.load_profile).read_text(encoding="utf-8-sig")
+                    )
+                payload = build_explore_worker_branch_plan(
+                    goal_id=args.goal_id,
+                    todos=[
+                        item
+                        for item in todo_payload.get("todos") or []
+                        if isinstance(item, dict)
+                    ],
+                    projection=projection,
+                    agent_id=args.agent_id,
+                    orchestration=orchestration,
+                    worker_width=args.worker_width,
+                    max_todos_per_branch=args.max_todos_per_branch,
+                    scheduler_load=args.scheduler_load,
+                    allow_unscoped_parallel=bool(args.allow_unscoped_parallel),
+                    harness_profile=args.harness_profile,
+                    branch_fill_policy=args.branch_fill_policy,
+                    marginal_score_floor=args.marginal_score_floor,
+                    router_state=router_state,
+                    load_profile=load_profile,
+                )
+                payload["todo_source"] = {
+                    "source": todo_payload.get("source"),
+                    "state_file": todo_payload.get("state_file"),
+                    "todo_count": todo_payload.get("todo_count"),
+                }
         elif args.explore_command == "feishu-setup":
             payload = setup_lark_explore_board(
                 config_path=config_path,

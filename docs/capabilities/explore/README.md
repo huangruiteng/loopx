@@ -84,8 +84,12 @@ dependent* todo chains. It must not be used to size independent parallel
 worker lanes -- that misuse capped an early calibration run's treatment arm
 at 5 of 10 lanes; worker plans now use `schedule_independent_lanes` instead.
 
-The command is read-only. It does not claim todos, acquire leases, launch
-agents, spend quota, or change the active state. Instead it emits a prediction
+The command is read-only and sits behind the same per-goal opt-in gate as
+`worker-branch-plan` (see "Per-Goal Opt-In Gate" below): without
+`explore_harness.enabled=true` on the goal's orchestration boundary it returns
+a disabled packet, and `--width` is capped by `max_children` in addition to
+its own ceiling. It does not claim todos, acquire leases, launch agents,
+spend quota, or change the active state. Instead it emits a prediction
 packet with:
 
 - selected branches, confidence, hazards, and reason codes;
@@ -109,8 +113,8 @@ predicted lane containing a small bundle of LoopX todos, an objective slice,
 required capabilities, write scopes, dependency hints, expected evidence,
 confidence, and suggested claim/lease commands.
 
-This command is still read-only and opt-in. It is designed to sit on top of the
-existing LoopX harness, not beside it and not instead of it:
+This command is read-only and opt-in per goal. It is designed to sit on top of
+the existing LoopX harness, not beside it and not instead of it:
 
 1. LoopX supplies the harness inputs: quota/status context outside this command,
    the open agent todo projection, explore result projection, ownership,
@@ -121,11 +125,53 @@ existing LoopX harness, not beside it and not instead of it:
    `todo claim`, `task-lease acquire`, worker execution, `explore node|edge|finding`,
    `refresh-state`, and `quota spend-slot`.
 
-The packet therefore contains `harness_compatibility` and `boundary` fields:
-`replaces_loopx_runtime=false`, `launches_workers=false`, and
-`claim_and_lease_are_suggested_only=true`. It can be used by a controller or
-human operator to decide which workers to start, but it cannot launch workers
-or mutate the control plane on its own.
+For goals that have opted in, the packet therefore contains
+`harness_compatibility` and `boundary` fields: `replaces_loopx_runtime=false`,
+`launches_workers=false`, and `claim_and_lease_are_suggested_only=true`; the
+deny-by-default disabled packet carries the `boundary` block plus the opt-in
+`required_contract` instead. The packet can be used by a controller or human
+operator to decide which workers to start, but it cannot launch workers or
+mutate the control plane on its own.
+
+### Per-Goal Opt-In Gate
+
+Both experimental planners — `todo-branch-plan` and `worker-branch-plan` —
+are deny-by-default. The gate lives on the registered goal's `spawn_policy`,
+the single writable source that the quota/status pipeline projects into
+`quota should-run` as `goal_boundary.orchestration`. No other registry key is
+honored: a second source would be an authorization surface invisible to the
+quota boundary.
+
+```yaml
+# inside the registered goal entry
+spawn_policy:
+  spawn_allowed: false    # "allowed" is the accepted alias
+  max_children: 3
+  explore_harness:
+    enabled: false        # default: both explore planners are disabled;
+                          # must be boolean true — anything else fails closed
+    profile: generic      # optional pin; overrides the CLI-requested profile
+```
+
+The planner folds this boundary into an `orchestration_gate` section of the
+packet and behaves as follows:
+
+| Boundary state | Planner behavior |
+| --- | --- |
+| `enabled=false` (or goal unregistered / no boundary) | Explicit disabled packet with `required_contract`; no branches are emitted. |
+| `enabled=true`, `spawn_allowed=false` | Read-only ranking and bundle analysis only; every `suggested_commands` list is emptied. |
+| `enabled=true`, `spawn_allowed=true`, `max_children>0` | Suggested claim/lease commands are emitted, still dry-run only. |
+| any enabled state | Lane width (`--width` / `--worker-width`) is capped by `max_children` in addition to the planner's own ceiling (`MAX_BRANCH_WIDTH` / `MAX_WORKER_LANES`); the binding cap is recorded in `orchestration_gate.width_cap_source`. |
+
+`spawn_allowed=true` with `max_children=0` is treated as a contradiction and
+degrades to the analysis-only state rather than granting capacity.
+
+The gate is defense-in-depth for the planning surface, not a substitute for
+runtime authority: permission, quota, gates, claims, leases, spend, and state
+projection remain owned by the normal LoopX lifecycle regardless of the gate
+state. `examples/explore-worker-plan-gate-smoke.py` covers the four states
+for both planners, the `max_children` cap, and the CLI default-off path end
+to end.
 
 Use this worker-lane planner when the experiment is about dynamic branching:
 several Codex workers exploring different routes, each route managing multiple

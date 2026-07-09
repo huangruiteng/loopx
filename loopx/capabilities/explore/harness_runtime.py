@@ -445,6 +445,10 @@ def plan_router_no_prune(
         goal_id=goal_id,
         todos=todos,
         agent_id=agent_id,
+        # This standalone benchmark arm opts in explicitly and consumes value
+        # ordering only; spawn stays disallowed, so the plan carries no
+        # suggested claim/lease commands.
+        orchestration={"explore_harness": {"enabled": True}},
         worker_width=worker_count,
         harness_profile=harness_profile,
         branch_fill_policy=branch_fill_policy,

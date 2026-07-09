@@ -5,6 +5,12 @@ import re
 from typing import Any, Mapping, Sequence
 
 from ...control_plane.todos.contract import normalize_todo_claimed_by, normalize_todo_id
+from .harness_gate import (
+    GATE_STATE_ANALYSIS_ONLY,
+    GATE_STATE_DISABLED,
+    explore_harness_required_contract,
+    resolve_explore_harness_gate as _resolve_explore_harness_gate,
+)
 from .router_state import family_routing_terms, is_router_state
 from .speculative_scheduler import (
     build_accept_reject_event,
@@ -685,12 +691,71 @@ def _baseline_worker_lanes(branch_candidates: Sequence[Mapping[str, Any]], *, wi
     }
 
 
+def resolve_explore_harness_gate(
+    orchestration: Mapping[str, Any] | None,
+    *,
+    requested_width: int,
+) -> dict[str, Any]:
+    """Resolve the shared explore-harness gate with this planner's lane ceiling."""
+
+    return _resolve_explore_harness_gate(
+        orchestration,
+        requested_width=requested_width,
+        max_lanes=MAX_WORKER_LANES,
+        max_lanes_label="max_worker_lanes",
+    )
+
+
+def _disabled_worker_branch_plan(
+    *,
+    goal_id: str,
+    agent_id: str | None,
+    gate: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "schema_version": WORKER_BRANCH_PLAN_SCHEMA_VERSION,
+        "goal_id": goal_id,
+        "agent_id": normalize_todo_claimed_by(agent_id) or "",
+        "experimental": True,
+        "dry_run": True,
+        "enabled": False,
+        "strategy": "explore_harness_disabled",
+        "orchestration_gate": dict(gate),
+        "required_contract": explore_harness_required_contract(
+            default_profile=DEFAULT_WORKER_HARNESS_PROFILE
+        ),
+        "worker_width": 0,
+        "max_worker_lanes": MAX_WORKER_LANES,
+        "branch_candidate_count": 0,
+        "selected_worker_branch_count": 0,
+        "selected_worker_branches": [],
+        "rejected_worker_branches": [],
+        "accept_reject_trace": [],
+        "boundary": {
+            "writes_state": False,
+            "claims_todos": False,
+            "acquires_leases": False,
+            "starts_agents": False,
+            "changes_quota": False,
+        },
+        "next_action": (
+            "Worker-lane planning is not enabled for this goal. Opt in by setting "
+            "explore_harness.enabled=true on the registered goal's spawn_policy "
+            "(projected into quota should-run as goal_boundary.orchestration), then "
+            "rerun worker-branch-plan; execution always stays in the normal LoopX "
+            "quota/claim/lease lifecycle."
+        ),
+    }
+
+
 def build_explore_worker_branch_plan(
     *,
     goal_id: str,
     todos: Sequence[Mapping[str, Any]],
     projection: Mapping[str, Any] | None = None,
     agent_id: str | None = None,
+    orchestration: Mapping[str, Any] | None = None,
     worker_width: int = DEFAULT_BRANCH_WIDTH,
     max_todos_per_branch: int | None = None,
     scheduler_load: float = 0.2,
@@ -707,6 +772,12 @@ def build_explore_worker_branch_plan(
     state and emits worker-lane bundles plus suggested claim/lease commands,
     but it does not launch workers or mutate quota, leases, todos, or state.
 
+    ``orchestration`` is the registered goal's ``spawn_policy`` -- the single
+    source projected into ``goal_boundary.orchestration``. Planning is gated on
+    ``explore_harness.enabled`` (default deny, including when no boundary is
+    provided), suggested commands require ``spawn_allowed``, and worker width
+    is capped by ``max_children`` in addition to ``MAX_WORKER_LANES``.
+
     ``router_state`` (see ``router_state.py``) carries cross-epoch learned
     per-family statistics maintained by the runner; it is consumed only by
     profiles whose ``router_policy`` enables it. ``load_profile`` carries the
@@ -715,14 +786,22 @@ def build_explore_worker_branch_plan(
     """
 
     normalized_agent = normalize_todo_claimed_by(agent_id)
-    profile = _worker_harness_profile(harness_profile)
+    requested_width = max(1, int(worker_width or DEFAULT_BRANCH_WIDTH))
+    gate = resolve_explore_harness_gate(orchestration, requested_width=requested_width)
+    if gate["state"] == GATE_STATE_DISABLED:
+        return _disabled_worker_branch_plan(goal_id=goal_id, agent_id=normalized_agent, gate=gate)
+    pinned_profile = gate.get("goal_pinned_profile")
+    profile = _worker_harness_profile(str(pinned_profile) if pinned_profile else harness_profile)
+    gate["requested_profile"] = str(harness_profile or DEFAULT_WORKER_HARNESS_PROFILE)
+    gate["effective_profile"] = profile.get("profile")
+    gate["profile_source"] = "goal_boundary" if pinned_profile else "planner_request"
     normalized_fill_policy = _normalize_branch_fill_policy(branch_fill_policy, profile=profile)
     normalized_marginal_floor = (
         float(marginal_score_floor)
         if marginal_score_floor is not None
         else float(profile.get("marginal_score_floor") or 0.0)
     )
-    normalized_width = min(MAX_WORKER_LANES, max(1, int(worker_width or DEFAULT_BRANCH_WIDTH)))
+    normalized_width = int(gate["effective_width"])
 
     router_policy = profile.get("router_policy") or {}
     router_supported = bool(router_policy.get("enabled"))
@@ -754,6 +833,13 @@ def build_explore_worker_branch_plan(
         bundle_straggler_factor=float(profile.get("bundle_straggler_factor") or 0.0),
         router_state=router_state if router_used else None,
     )
+    if gate["state"] == GATE_STATE_ANALYSIS_ONLY:
+        # Analysis stays available (ranking, bundles, A/B estimate), but the
+        # boundary forbids spawning workers, so no claim/lease commands leave
+        # the planner in any branch list.
+        for branch in branch_candidates:
+            branch["suggested_commands"] = []
+            branch["commands_suppressed_reason"] = str(gate.get("reason") or "")
     concurrency_mode = str((profile.get("concurrency_policy") or {}).get("mode") or "")
     if concurrency_mode == "independent_lane_admission":
         opportunistic_policy = profile.get("opportunistic_lane_policy") or {}
@@ -893,6 +979,8 @@ def build_explore_worker_branch_plan(
         "agent_id": normalized_agent or "",
         "experimental": True,
         "dry_run": True,
+        "enabled": True,
+        "orchestration_gate": gate,
         "strategy": (
             "moe_router_worker_lane_prediction"
             if router_used
@@ -903,6 +991,7 @@ def build_explore_worker_branch_plan(
         "harness_profile": profile.get("profile"),
         "worker_harness_profile": profile,
         "worker_width": normalized_width,
+        "requested_worker_width": requested_width,
         "max_worker_lanes": MAX_WORKER_LANES,
         "scheduler_model": scheduler.get("strategy"),
         "load_calibration": load_calibration,
@@ -925,6 +1014,7 @@ def build_explore_worker_branch_plan(
         "harness_compatibility": {
             "uses_loopx_todo_projection": True,
             "uses_explore_projection": True,
+            "gated_by_goal_boundary_orchestration": True,
             "replaces_loopx_runtime": False,
             "launches_workers": False,
             "mutates_quota_or_state": False,
@@ -985,7 +1075,12 @@ def build_explore_worker_branch_plan(
             "changes_quota": False,
         },
         "next_action": (
-            "Use quota should-run, then execute each selected worker branch through "
+            "Read-only analysis: this goal's orchestration boundary does not permit "
+            "spawning workers, so no claim/lease commands are suggested. Update the "
+            "registered goal's spawn_policy (spawn_allowed, max_children) to receive "
+            "suggested commands; execution stays in the normal LoopX lifecycle."
+            if gate["state"] == GATE_STATE_ANALYSIS_ONLY
+            else "Use quota should-run, then execute each selected worker branch through "
             "normal LoopX claim, lease, todo execution, explore writeback, refresh-state, "
             "and quota spend-slot."
         ),

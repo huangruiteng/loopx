@@ -14,6 +14,7 @@ Covers the durable public contracts:
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 import subprocess
@@ -36,6 +37,23 @@ from loopx.capabilities.explore.router_state import (  # noqa: E402
 from loopx.capabilities.explore.todo_branch_plan import build_explore_todo_branch_plan  # noqa: E402
 from loopx.capabilities.explore.worker_branch_plan import build_explore_worker_branch_plan  # noqa: E402
 from loopx.presentation.sinks.lark import explore_results  # noqa: E402
+
+# Both exploration planners are deny-by-default behind the per-goal
+# goal_boundary.orchestration.explore_harness gate; every library-level plan
+# call in this smoke opts in with full spawn capacity so the pre-gate planner
+# contracts stay observable. The gate states themselves are covered by
+# examples/explore-worker-plan-gate-smoke.py.
+_EXPLORE_PLAN_OPT_IN = {
+    "spawn_allowed": True,
+    "max_children": 16,
+    "explore_harness": {"enabled": True},
+}
+build_explore_todo_branch_plan = functools.partial(  # noqa: E305
+    build_explore_todo_branch_plan, orchestration=_EXPLORE_PLAN_OPT_IN
+)
+build_explore_worker_branch_plan = functools.partial(
+    build_explore_worker_branch_plan, orchestration=_EXPLORE_PLAN_OPT_IN
+)
 
 
 ABS_PATH_RE = re.compile(r"(?<![A-Za-z])[A-Za-z]:[\\/](?![\\/])|file://|/Users/|/home/")
@@ -741,6 +759,7 @@ def check_harness_domain_purity() -> None:
         "sim_ok", "codegen_ok", "build_ok", "error 5001",
     )
     modules = (
+        "loopx/capabilities/explore/harness_gate.py",
         "loopx/capabilities/explore/harness_runtime.py",
         "loopx/capabilities/explore/router_state.py",
         "loopx/capabilities/explore/speculative_scheduler.py",
@@ -794,6 +813,11 @@ def check_cli_surface() -> None:
                                 "status": "connected-read-only",
                             },
                             "quota": {"compute": 1.0, "window_hours": 24},
+                            "spawn_policy": {
+                                "allowed": True,
+                                "max_children": 8,
+                                "explore_harness": {"enabled": True},
+                            },
                             "coordination": {
                                 "primary_agent": "codex-main-control",
                                 "registered_agents": [
@@ -873,6 +897,8 @@ def check_cli_surface() -> None:
             "2",
         )
         assert branch_plan["ok"] is True and branch_plan["selected_count"] == 2, branch_plan
+        assert branch_plan["enabled"] is True, branch_plan
+        assert branch_plan["orchestration_gate"]["state"] == "commands_suggested", branch_plan
         assert branch_plan["boundary"]["claims_todos"] is False, branch_plan
         assert branch_plan["selected_branches"][0]["todo_id"] == "todo_cli_primary", branch_plan
         assert set(branch_plan["scheduler"]["ab_comparison"]) == {"baseline_serial", "dspark_selected"}, branch_plan
@@ -891,6 +917,8 @@ def check_cli_surface() -> None:
         )
         assert worker_branch_plan["ok"] is True, worker_branch_plan
         assert worker_branch_plan["schema_version"] == "loopx_explore_worker_branch_plan_v0", worker_branch_plan
+        assert worker_branch_plan["enabled"] is True, worker_branch_plan
+        assert worker_branch_plan["orchestration_gate"]["state"] == "commands_suggested", worker_branch_plan
         assert worker_branch_plan["harness_compatibility"]["uses_loopx_todo_projection"] is True, worker_branch_plan
         assert worker_branch_plan["boundary"]["claims_todos"] is False, worker_branch_plan
         assert worker_branch_plan["selected_worker_branch_count"] >= 1, worker_branch_plan
