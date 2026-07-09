@@ -185,6 +185,7 @@ def filtered_todo_summary(
     status: str | None = None,
     todo_id: str | None = None,
     agent_id: str | None = None,
+    resume_source_items: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     items = list((summary or {}).get("items") or [])
     normalized_status = normalize_todo_status(status)
@@ -220,6 +221,7 @@ def filtered_todo_summary(
             items,
             source_section=source_section,
             role=role,
+            resume_source_items=resume_source_items,
             item_limit=None,
         )
         or empty_todo_summary(role=role)
@@ -269,6 +271,8 @@ def _merge_todo_projection_fields(
     event_fields: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     merged: dict[str, Any] = {}
+    merged_items: dict[str, list[dict[str, Any]]] = {"user": [], "agent": []}
+    source_sections: dict[str, str] = {}
     overlay: dict[str, Any] = {
         "schema_version": "todo_list_projection_overlay_v0",
         "base": "markdown_active_state",
@@ -316,10 +320,18 @@ def _merge_todo_projection_fields(
             or (event_fields.get(f"{role}_todos") or {}).get("source_section")
             or TODO_SECTION_HEADINGS[role]
         )
+        merged_items[role] = [by_id[todo_id] for todo_id in order]
+        source_sections[role] = source_section
+
+    resume_source_items = [*merged_items["user"], *merged_items["agent"]]
+    for role in ("user", "agent"):
+        if not merged_items[role]:
+            continue
         summary = compact_todo_group(
-            [by_id[todo_id] for todo_id in order],
-            source_section=source_section,
+            merged_items[role],
+            source_section=source_sections[role],
             role=role,
+            resume_source_items=resume_source_items,
             item_limit=None,
         )
         if summary:
@@ -388,6 +400,10 @@ def list_goal_todos(
         source = "markdown_active_state"
 
     roles = [role] if role else ["user", "agent"]
+    resume_source_items = [
+        *_summary_items(fields, "user"),
+        *_summary_items(fields, "agent"),
+    ]
     summaries: dict[str, dict[str, Any]] = {}
     todos: list[dict[str, Any]] = []
     unfiltered_count = 0
@@ -401,6 +417,7 @@ def list_goal_todos(
             status=status,
             todo_id=normalized_todo_id,
             agent_id=normalized_agent_id,
+            resume_source_items=resume_source_items,
         )
         summaries[key] = summary
         todos.extend(summary.get("items") or [])

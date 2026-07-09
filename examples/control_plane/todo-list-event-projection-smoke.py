@@ -23,6 +23,8 @@ from loopx.event_sourced_state import (  # noqa: E402
 
 
 GOAL_ID = "todo-list-event-projection-fixture"
+GATE_TODO_ID = "todo_markdown_gate_done"
+DEPENDENT_TODO_ID = "todo_event_dependent"
 
 
 def write_fixture(root: Path) -> tuple[Path, Path, Path]:
@@ -38,9 +40,15 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
         "updated_at: 2026-01-01T00:00:00+00:00\n"
         "---\n\n"
         "# Active Goal State\n\n"
+        "## User Todo\n\n"
+        "- [x] [P0] Completed Markdown gate\n"
+        f"  <!-- loopx:todo todo_id={GATE_TODO_ID} status=done task_class=user_gate -->\n\n"
         "## Agent Todo\n\n"
         "- [ ] [P1] Markdown fallback todo\n"
-        "  <!-- loopx:todo todo_id=todo_markdown status=open task_class=advancement_task -->\n",
+        "  <!-- loopx:todo todo_id=todo_markdown status=open task_class=advancement_task -->\n"
+        "- [-] [P1] Continue after the Markdown gate\n"
+        f"  <!-- loopx:todo todo_id={DEPENDENT_TODO_ID} status=deferred "
+        f"task_class=advancement_task resume_when=todo_done:{GATE_TODO_ID} -->\n",
         encoding="utf-8",
     )
     registry_path.parent.mkdir(parents=True)
@@ -154,20 +162,43 @@ def main() -> int:
         assert projected["ok"] is True, projected
         assert projected["read_only"] is True, projected
         assert projected["source"] == "event_projection_with_markdown_overlay", projected
-        assert projected["todo_count"] == 3, projected
+        assert projected["todo_count"] == 4, projected
         assert [item["todo_id"] for item in projected["todos"]] == [
             "todo_event_open",
             "todo_markdown",
+            DEPENDENT_TODO_ID,
             "todo_event_done",
         ], projected
+        dependent = next(
+            item for item in projected["todos"] if item["todo_id"] == DEPENDENT_TODO_ID
+        )
+        assert dependent["resume_ready"] is True, dependent
+        assert dependent["resume_condition"]["target_status"] == "done", dependent
         assert projected["projection_overlay"]["markdown_only_todo_ids"] == [
-            "todo_markdown"
+            GATE_TODO_ID,
+            DEPENDENT_TODO_ID,
+            "todo_markdown",
         ], projected
         assert projected["projection_overlay"]["event_only_todo_ids"] == [
             "todo_event_open",
             "todo_event_done",
         ], projected
         assert projected["state_event_projection"]["source_event_count"] == 3, projected
+
+        dependent_only = run_cli(
+            registry_path,
+            "todo",
+            "list",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            DEPENDENT_TODO_ID,
+        )
+        assert dependent_only["todo_count"] == 1, dependent_only
+        assert dependent_only["relations"]["resume_ready"] is True, dependent_only
+        assert (
+            dependent_only["relations"]["resume_condition"]["target_status"] == "done"
+        ), dependent_only
 
         done_only = run_cli(
             registry_path,
@@ -187,8 +218,24 @@ def main() -> int:
         event_log.unlink()
         fallback = run_cli(registry_path, "todo", "list", "--goal-id", GOAL_ID, "--role", "agent")
         assert fallback["source"] == "markdown_active_state", fallback
-        assert fallback["todo_count"] == 1, fallback
-        assert fallback["todos"][0]["todo_id"] == "todo_markdown", fallback
+        assert fallback["todo_count"] == 2, fallback
+        assert [item["todo_id"] for item in fallback["todos"]] == [
+            "todo_markdown",
+            DEPENDENT_TODO_ID,
+        ], fallback
+        fallback_dependent = run_cli(
+            registry_path,
+            "todo",
+            "list",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            DEPENDENT_TODO_ID,
+        )
+        assert fallback_dependent["relations"]["resume_ready"] is True, fallback_dependent
+        assert (
+            fallback_dependent["relations"]["resume_condition"]["target_status"] == "done"
+        ), fallback_dependent
 
     print("todo-list-event-projection-smoke ok")
     return 0
