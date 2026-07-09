@@ -23,7 +23,8 @@ Optional env:
   SKILLSBENCH_ROUTE                    Route, default codex-cli-goal-baseline
   SKILLSBENCH_MODEL                    Model, default gpt-5.5
   SKILLSBENCH_REASONING_EFFORT         Reasoning effort, default xhigh
-  SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC  Setup stall timeout; 0 disables cap
+  SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC  Setup stall timeout, default 3600;
+                                       0 disables cap
   SKILLSBENCH_RUN_TIMEOUT_SEC          Supervisor timeout, default 28800
   SKILLSBENCH_GOAL_ID                  Local evidence goal id, default loopx-meta
   SKILLSBENCH_RUN_STAMP                Deterministic timestamp override
@@ -76,7 +77,7 @@ goal_id="${SKILLSBENCH_GOAL_ID:-loopx-meta}"
 route="${SKILLSBENCH_ROUTE:-codex-cli-goal-baseline}"
 model="${SKILLSBENCH_MODEL:-gpt-5.5}"
 reasoning_effort="${SKILLSBENCH_REASONING_EFFORT:-xhigh}"
-build_stall_timeout="${SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC:-0}"
+build_stall_timeout="${SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC:-3600}"
 run_timeout="${SKILLSBENCH_RUN_TIMEOUT_SEC:-28800}"
 local_proxy_host="${SKILLSBENCH_LOCAL_CODEX_PROXY_HOST:-127.0.0.1}"
 local_proxy_port="${SKILLSBENCH_LOCAL_CODEX_PROXY_PORT:-18180}"
