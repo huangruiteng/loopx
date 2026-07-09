@@ -241,6 +241,16 @@ python3 examples/run-smokes.py --suite default-public --module canary
 loopx canary smoke-suite --suite default-public --module canary
 ```
 
+For larger source-checkout sweeps, use the runner's bounded parallelism instead
+of moving smoke semantics into a second test framework. `--jobs` keeps the
+LoopX runner payload as the source of truth while preserving serial execution
+for smokes that declare a scheduling-sensitive surface:
+
+```bash
+python3 -m loopx.cli canary smoke-suite --profile public-smoke-watch --jobs 4 --timeout-seconds 60
+python3 examples/run-smokes.py --suite full-public --jobs 4 --timeout-seconds 60
+```
+
 For repeatable canary/refactor batches, prefer named smoke-suite profiles over
 hand-curated script lists. Profiles expand to the same runner payload as
 `--module`, `--script`, catalog selectors, and the pytest facade:

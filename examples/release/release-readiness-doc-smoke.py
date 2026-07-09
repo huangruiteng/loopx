@@ -69,6 +69,8 @@ def main() -> None:
         "near-E2E",
         "do not add new IPs solely to describe a validation bundle",
         "examples/canary/canary-promotion-readiness-smoke.py --no-write-evidence",
+        "python3 -m loopx.cli canary smoke-suite --profile public-smoke-watch --jobs 4 --timeout-seconds 60",
+        "python3 examples/run-smokes.py --suite full-public --jobs 4 --timeout-seconds 60",
         "## What Is Safe To Depend On",
         "loopx doctor",
         "quota should-run",
