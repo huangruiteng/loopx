@@ -14,6 +14,10 @@ from .capabilities.issue_fix.cli import (
     handle_issue_fix_command,
     register_issue_fix_commands,
 )
+from .capabilities.lark_digital_clone.cli import (
+    handle_lark_digital_clone_command,
+    register_lark_digital_clone_commands,
+)
 from .capabilities.auto_research.cli import (
     handle_auto_research_command,
     register_auto_research_commands,
@@ -181,6 +185,7 @@ def main(argv: list[str] | None = None) -> int:
 
     register_project_lifecycle_commands(sub, add_subcommand_format)
     register_lark_kanban_commands(sub, add_subcommand_format)
+    register_lark_digital_clone_commands(sub, add_subcommand_format)
 
     register_status_commands(sub, add_subcommand_format)
     register_summary_all_command(sub, add_subcommand_format)
@@ -390,6 +395,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     if lark_kanban_result is not None:
         return lark_kanban_result
+
+    lark_digital_clone_result = handle_lark_digital_clone_command(
+        args,
+        print_payload=print_payload,
+        output_format=output_format,
+    )
+    if lark_digital_clone_result is not None:
+        return lark_digital_clone_result
 
     if args.command == "check":
         return handle_check_command(
