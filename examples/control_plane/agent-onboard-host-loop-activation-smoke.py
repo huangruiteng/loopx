@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -14,7 +16,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.bootstrap_command_pack import build_loopx_bootstrap_command_pack  # noqa: E402
+from loopx.agent_onboarding import build_agent_onboarding_packet  # noqa: E402
+from loopx.bootstrap_command_pack import (  # noqa: E402
+    build_loopx_bootstrap_command_pack,
+    build_start_goal_guided_packet,
+)
 from loopx.host_loop_activation import (  # noqa: E402
     agent_type_for_host_surface,
     build_agent_type_catalog,
@@ -48,6 +54,26 @@ def main() -> int:
     assert codex_app["activation_method"] == "create_or_update_codex_app_automation", codex_app
     assert codex_cli["host_mutation"]["host_command"] == "/goal <task_body>", codex_cli
     assert claude_code["host_mutation"]["host_command"] == "/loop", claude_code
+    gated_activation = build_host_loop_activation_packet(
+        agent_type="codex-app",
+        goal_id="multi-agent-demo",
+        registered_agents=["codex-main-control", "codex-product-capability"],
+        primary_agent="codex-main-control",
+    )
+    assert gated_activation["activation_state"] == "selection_required", gated_activation
+    assert gated_activation["activation_allowed"] is False, gated_activation
+    assert gated_activation["activation_input_command"] is None, gated_activation
+    assert len(gated_activation["identity_selection_gate"]["choices"]) == 2, gated_activation
+    single_agent_activation = build_host_loop_activation_packet(
+        agent_type="codex-app",
+        goal_id="single-agent-demo",
+        registered_agents=["codex-main-control"],
+        primary_agent="codex-main-control",
+    )
+    assert single_agent_activation["activation_state"] == "single_registered_agent_selected"
+    assert single_agent_activation["agent_id"] == "codex-main-control"
+    assert single_agent_activation["activation_allowed"] is True
+    assert "--agent-id codex-main-control" in single_agent_activation["activation_input_command"]
 
     list_result = run_cli("agent-onboard", "--list-agent-types")
     list_payload = json.loads(list_result.stdout)
@@ -86,6 +112,118 @@ def main() -> int:
     message = payload["message"]
     assert "/goal <task_body>" in message, message
     assert "agent-onboard" in message, message
+
+    with tempfile.TemporaryDirectory(prefix="loopx-agent-onboard-identity-") as tmp:
+        root = Path(tmp)
+        project = root / "project"
+        home = root / "home"
+        state_file = project / ".codex" / "goals" / "multi-agent-goal" / "ACTIVE_GOAL_STATE.md"
+        project_registry = project / ".loopx" / "registry.json"
+        global_registry = home / ".codex" / "loopx" / "registry.global.json"
+        state_file.parent.mkdir(parents=True)
+        project_registry.parent.mkdir(parents=True)
+        global_registry.parent.mkdir(parents=True)
+        state_file.write_text("# Active State\n", encoding="utf-8")
+        registry = {
+            "goals": [
+                {
+                    "id": "multi-agent-goal",
+                    "domain": "smoke",
+                    "status": "active",
+                    "repo": str(project),
+                    "state_file": ".codex/goals/multi-agent-goal/ACTIVE_GOAL_STATE.md",
+                    "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
+                    "coordination": {
+                        "registered_agents": [
+                            "codex-main-control",
+                            "codex-product-capability",
+                        ],
+                        "primary_agent": "codex-main-control",
+                    },
+                }
+            ]
+        }
+        serialized_registry = json.dumps(registry)
+        project_registry.write_text(serialized_registry, encoding="utf-8")
+        global_registry.write_text(serialized_registry, encoding="utf-8")
+        cli_bin = str(REPO_ROOT / "scripts" / "loopx")
+
+        onboarding_gate = build_agent_onboarding_packet(
+            project=project,
+            agent_type="codex-app",
+            goal_id="multi-agent-goal",
+            cli_bin=cli_bin,
+        )
+        gate = onboarding_gate["identity_selection_gate"]
+        assert onboarding_gate["host_loop_activation"]["activation_allowed"] is False
+        assert onboarding_gate["commands"]["quota_guard"] is None
+        assert onboarding_gate["host_loop_activation"]["activation_input_command"] is None
+        assert len(gate["choices"]) == 2, onboarding_gate
+        selected_choice = next(
+            choice
+            for choice in gate["choices"]
+            if choice["agent_id"] == "codex-product-capability"
+        )
+        assert "--agent-id codex-product-capability" in selected_choice["heartbeat_prompt_json"]
+        assert "--agent-scope" in selected_choice["heartbeat_prompt_json"]
+
+        choice_run = subprocess.run(
+            shlex.split(selected_choice["heartbeat_prompt_json"]),
+            cwd=REPO_ROOT,
+            env={**os.environ, "HOME": str(home)},
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        choice_payload = json.loads(choice_run.stdout)
+        assert choice_payload["ok"] is True, choice_payload
+        assert choice_payload["agent_id"] == "codex-product-capability", choice_payload
+        assert choice_payload["task_body"], choice_payload
+
+        command_pack_gate = build_loopx_bootstrap_command_pack(
+            project=project,
+            goal_id="multi-agent-goal",
+            agent_id=None,
+            cli_bin=cli_bin,
+            host_surface="codex-app",
+            goal_text="fix a public issue",
+        )
+        assert command_pack_gate["recommended_next_step"]["kind"] == "select_agent_identity"
+        assert command_pack_gate["commands"]["heartbeat_prompt_json"] is None
+        assert command_pack_gate["commands"]["goal_start_quota_should_run"] is None
+        assert "No unscoped heartbeat or quota command" in command_pack_gate["message"]
+
+        guided_gate = build_start_goal_guided_packet(
+            project=project,
+            goal_id="multi-agent-goal",
+            agent_id=None,
+            cli_bin=cli_bin,
+            host_surface="codex-app",
+            goal_text="fix a public issue",
+        )
+        transaction = guided_gate["guided_transaction"]
+        assert transaction["blocked_by"] == "agent_identity_selection", transaction
+        assert transaction["ordered_steps"][1]["id"] == "select_agent_identity", transaction
+
+        selected_pack = build_loopx_bootstrap_command_pack(
+            project=project,
+            goal_id="multi-agent-goal",
+            agent_id="codex-product-capability",
+            cli_bin=cli_bin,
+            host_surface="codex-app",
+            goal_text="fix a public issue",
+        )
+        assert selected_pack["host_loop_activation"]["activation_allowed"] is True
+        for key in (
+            "heartbeat_prompt_json",
+            "quota_guard",
+            "goal_start_agent_onboard_recheck",
+            "goal_start_quota_should_run",
+        ):
+            assert "--agent-id codex-product-capability" in selected_pack["commands"][key], (
+                key,
+                selected_pack["commands"],
+            )
 
     return 0
 

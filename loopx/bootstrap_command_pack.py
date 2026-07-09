@@ -4,14 +4,16 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .agent_registry import (
+    primary_agent_id_from_registry,
+    registered_agent_ids_from_registry,
+)
 from .bootstrap import default_goal_id
 from .host_loop_activation import agent_type_for_host_surface, build_host_loop_activation_packet
 from .project_alias import resolve_canonical_project_alias
 from .project_prompt import (
     DEFAULT_HANDOFF_ADAPTER_KIND,
     DEFAULT_HANDOFF_ADAPTER_STATUS,
-    render_heartbeat_prompt_command,
-    render_heartbeat_prompt_json_command,
     render_quota_guard_command,
     shell_arg,
 )
@@ -376,6 +378,12 @@ def build_loopx_bootstrap_command_pack(
     normalized_goal_text = " ".join(goal_text.split()) if goal_text else None
     explicit_goal_start = bool(normalized_goal_text)
     agent_type = agent_type_for_host_surface(host_surface)
+    registry_path = Path(str(inspection["registry"]))
+    registered_agents = registered_agent_ids_from_registry(
+        registry_path,
+        resolved_goal_id,
+    )
+    primary_agent = primary_agent_id_from_registry(registry_path, resolved_goal_id)
 
     bootstrap_preview_command = _bootstrap_command(
         project=resolved_project,
@@ -389,25 +397,29 @@ def build_loopx_bootstrap_command_pack(
         cli_bin=cli_bin,
         dry_run=False,
     )
-    heartbeat_prompt_command = render_heartbeat_prompt_command(
-        resolved_goal_id,
-        cli_bin=cli_bin,
-        agent_id=agent_id,
-        agent_scope=f"{host_surface} LoopX command pack",
-    )
-    heartbeat_prompt_json_command = render_heartbeat_prompt_json_command(
-        resolved_goal_id,
-        cli_bin=cli_bin,
-        agent_id=agent_id,
-        agent_scope=f"{host_surface} LoopX command pack",
-    )
     host_loop_activation = build_host_loop_activation_packet(
         agent_type=agent_type,
         goal_id=resolved_goal_id,
         cli_bin=cli_bin,
         agent_id=agent_id,
+        registered_agents=registered_agents,
+        primary_agent=primary_agent,
     )
-    quota_guard_command = render_quota_guard_command(resolved_goal_id, cli_bin=cli_bin, agent_id=agent_id)
+    selected_agent_id = host_loop_activation.get("agent_id")
+    activation_allowed = bool(host_loop_activation.get("activation_allowed"))
+    activation_commands = host_loop_activation.get("commands")
+    activation_commands = activation_commands if isinstance(activation_commands, dict) else {}
+    heartbeat_prompt_command = activation_commands.get("heartbeat_prompt")
+    heartbeat_prompt_json_command = activation_commands.get("heartbeat_prompt_json")
+    quota_guard_command = (
+        render_quota_guard_command(
+            resolved_goal_id,
+            cli_bin=cli_bin,
+            agent_id=str(selected_agent_id) if selected_agent_id else None,
+        )
+        if activation_allowed
+        else None
+    )
     status_command = _project_command(resolved_project, f"{shell_arg(cli_bin)} status")
     goal_start_bootstrap_command = _goal_start_bootstrap_command(
         project=resolved_project,
@@ -418,11 +430,20 @@ def build_loopx_bootstrap_command_pack(
     goal_start_plan_prompt = _goal_start_prompt(
         goal_text=normalized_goal_text,
         goal_id=resolved_goal_id,
-        agent_id=agent_id,
+        agent_id=str(selected_agent_id) if selected_agent_id else None,
     )
     slash_command_catalog = build_slash_command_catalog(cli_bin=cli_bin)
 
-    if explicit_goal_start:
+    identity_selection_gate = host_loop_activation.get("identity_selection_gate")
+    if isinstance(identity_selection_gate, dict):
+        recommended_next_step = {
+            "kind": "select_agent_identity",
+            "requires_user_confirmation": False,
+            "requires_agent_selection": True,
+            "summary": identity_selection_gate.get("reason"),
+            "identity_selection_gate": identity_selection_gate,
+        }
+    elif explicit_goal_start:
         recommended_next_step = {
             "kind": "goal_plan_write_and_activate",
             "requires_user_confirmation": False,
@@ -460,12 +481,18 @@ def build_loopx_bootstrap_command_pack(
         "canonical_cli_command": (
             f"{shell_arg(cli_bin)} bootstrap-command-pack --project {shell_arg(resolved_project)} "
             f"--goal-id {shell_arg(resolved_goal_id)}"
+            + (
+                f" --agent-id {shell_arg(str(selected_agent_id))}"
+                if selected_agent_id
+                else ""
+            )
         ),
         "read_only": True,
         "goal_text": normalized_goal_text,
         "project": resolved_project,
         "goal_id": resolved_goal_id,
-        "agent_id": agent_id,
+        "agent_id": selected_agent_id,
+        "requested_agent_id": agent_id,
         "agent_type": agent_type,
         "host_surface": host_surface,
         "project_connection": inspection,
@@ -495,11 +522,29 @@ def build_loopx_bootstrap_command_pack(
                 f"--agent-type {shell_arg(agent_type)} "
                 f"--project {shell_arg(resolved_project)} "
                 f"--goal-id {shell_arg(resolved_goal_id)}"
-                + (f" --agent-id {shell_arg(agent_id)}" if agent_id else "")
+                + (
+                    f" --agent-id {shell_arg(str(selected_agent_id))}"
+                    if selected_agent_id
+                    else ""
+                )
             ),
             "goal_start_quota_should_run": (
-                f"{shell_arg(cli_bin)} quota should-run --goal-id {shell_arg(resolved_goal_id)}"
-                + (f" --agent-id {shell_arg(agent_id)}" if agent_id else "")
+                (
+                    f"{shell_arg(cli_bin)} quota should-run --goal-id "
+                    f"{shell_arg(resolved_goal_id)}"
+                    + (
+                        f" --agent-id {shell_arg(str(selected_agent_id))}"
+                        if selected_agent_id
+                        else ""
+                    )
+                )
+                if activation_allowed
+                else None
+            ),
+            "identity_selection_choices": (
+                identity_selection_gate.get("choices")
+                if isinstance(identity_selection_gate, dict)
+                else []
             ),
             "issue_fix_workflow_plan_template": (
                 f"{shell_arg(cli_bin)} issue-fix workflow-plan "
@@ -533,6 +578,7 @@ def build_loopx_bootstrap_command_pack(
             "bare_command_mutation_requires_user_confirmation": mutation_confirmation_required,
             "explicit_goal_start_may_write_project_local_state": explicit_goal_start,
             "explicit_goal_start_must_activate_host_loop": explicit_goal_start,
+            "host_loop_activation_allowed": activation_allowed,
         },
     }
     payload["message"] = render_loopx_bootstrap_command_pack_message(payload)
@@ -558,6 +604,9 @@ def build_start_goal_guided_packet(
     )
     commands = command_pack.get("commands")
     commands = commands if isinstance(commands, dict) else {}
+    activation = command_pack.get("host_loop_activation")
+    activation = activation if isinstance(activation, dict) else {}
+    identity_selection_gate = activation.get("identity_selection_gate")
     guided_transaction = {
         "schema_version": GUIDED_START_SCHEMA_VERSION,
         "mode": "dry_run_preview",
@@ -601,7 +650,7 @@ def build_start_goal_guided_packet(
             },
             {
                 "id": "activate_host_loop",
-                "kind": "host_loop",
+                "kind": "identity_gate" if identity_selection_gate else "host_loop",
                 "command": commands.get("goal_start_host_loop_activation"),
                 "purpose": "install or refresh the host loop only when it is missing, unknown, stale, or agent type changed",
             },
@@ -635,6 +684,18 @@ def build_start_goal_guided_packet(
             "preferred_scope_change": "use configure-goal incremental updates instead of force bootstrap when state already exists",
         },
     }
+    if isinstance(identity_selection_gate, dict):
+        guided_transaction["blocked_by"] = "agent_identity_selection"
+        guided_transaction["identity_selection_gate"] = identity_selection_gate
+        guided_transaction["ordered_steps"].insert(
+            1,
+            {
+                "id": "select_agent_identity",
+                "kind": "identity_gate",
+                "choices": identity_selection_gate.get("choices") or [],
+                "purpose": "select one registered agent lane before generating heartbeat or quota commands",
+            },
+        )
     payload = {
         "ok": True,
         "schema_version": GUIDED_START_SCHEMA_VERSION,
@@ -682,6 +743,22 @@ def render_start_goal_guided_markdown(payload: dict[str, Any]) -> str:
             step_lines.append(f"   - command/source: `{str(command).splitlines()[0]}`")
     preserve = transaction.get("preserve_todos_policy")
     preserve = preserve if isinstance(preserve, dict) else {}
+    identity_gate = transaction.get("identity_selection_gate")
+    identity_gate = identity_gate if isinstance(identity_gate, dict) else {}
+    identity_gate_lines = ""
+    if identity_gate:
+        choices = [
+            f"- `{choice.get('agent_id')}` ({choice.get('role')}): "
+            f"`{choice.get('heartbeat_prompt_json')}`"
+            for choice in identity_gate.get("choices") or []
+            if isinstance(choice, dict)
+        ]
+        identity_gate_lines = (
+            "\n## Agent Identity Gate\n\n"
+            f"{identity_gate.get('reason')}\n\n"
+            + "\n".join(choices)
+            + "\n"
+        )
     return f"""# Guided Start Goal
 
 - schema: `{payload.get("schema_version")}`
@@ -696,6 +773,7 @@ behind explicit command execution by the host/agent.
 ## Ordered Transaction
 
 {chr(10).join(step_lines)}
+{identity_gate_lines}
 
 ## Todo Preservation
 
@@ -732,8 +810,27 @@ def render_loopx_bootstrap_command_pack_message(payload: dict[str, Any]) -> str:
     onboarding = onboarding if isinstance(onboarding, dict) else {}
     activation = payload.get("host_loop_activation")
     activation = activation if isinstance(activation, dict) else {}
+    identity_gate = activation.get("identity_selection_gate")
+    identity_gate = identity_gate if isinstance(identity_gate, dict) else {}
 
-    if goal_text:
+    if identity_gate:
+        choices = "\n".join(
+            f"- `{choice.get('agent_id')}` ({choice.get('role')}): "
+            f"`{choice.get('heartbeat_prompt_json')}`"
+            for choice in identity_gate.get("choices") or []
+            if isinstance(choice, dict)
+        )
+        action = f"""Select one registered agent lane before planning writes or host-loop activation.
+No unscoped heartbeat or quota command is advertised for this multi-agent goal.
+
+Reason: {identity_gate.get("reason")}
+
+Identity-aware choices:
+{choices}
+
+Rerun `{payload.get("canonical_cli_command")} --agent-id <registered-agent-id>`
+with the selected identity before continuing."""
+    elif goal_text:
         action = f"""This is an explicit goal-start invocation. Connect project-local LoopX state if needed:
 
 ```bash

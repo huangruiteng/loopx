@@ -3,6 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .agent_registry import (
+    primary_agent_id_from_registry,
+    registered_agent_ids_from_registry,
+)
 from .bootstrap_command_pack import inspect_bootstrap_connection
 from .host_loop_activation import (
     AgentTypeError,
@@ -87,35 +91,53 @@ def build_agent_onboarding_packet(
     inspection = inspect_bootstrap_connection(project, goal_id=goal_id)
     resolved_project = str(inspection["project"])
     resolved_goal_id = str(inspection["goal_id"])
+    registry_path = Path(str(inspection["registry"]))
+    registered_agents = registered_agent_ids_from_registry(
+        registry_path,
+        resolved_goal_id,
+    )
+    primary_agent = primary_agent_id_from_registry(registry_path, resolved_goal_id)
     host_loop_activation = build_host_loop_activation_packet(
         agent_type=canonical_agent_type,
         goal_id=resolved_goal_id,
         cli_bin=cli_bin,
         agent_id=agent_id,
+        registered_agents=registered_agents,
+        primary_agent=primary_agent,
     )
+    selected_agent_id = host_loop_activation.get("agent_id")
+    activation_allowed = bool(host_loop_activation.get("activation_allowed"))
     install_command = _surface_install_command(canonical_agent_type, cli_bin)
     bootstrap_pack_command = _bootstrap_pack_command(
         project=resolved_project,
         goal_id=resolved_goal_id,
-        agent_id=agent_id,
+        agent_id=str(selected_agent_id) if selected_agent_id else None,
         agent_type=canonical_agent_type,
         cli_bin=cli_bin,
         task_text=task_text,
     )
-    commands: dict[str, str] = {
+    commands: dict[str, Any] = {
         "doctor_or_install": render_codex_cli_no_clone_preflight(cli_bin=cli_bin),
         "bootstrap_command_pack": bootstrap_pack_command,
-        "quota_guard": render_quota_guard_command(
-            resolved_goal_id,
-            cli_bin=cli_bin,
-            agent_id=agent_id,
+        "quota_guard": (
+            render_quota_guard_command(
+                resolved_goal_id,
+                cli_bin=cli_bin,
+                agent_id=str(selected_agent_id) if selected_agent_id else None,
+            )
+            if activation_allowed
+            else None
         ),
         "agent_onboard_recheck": (
             f"{shell_arg(cli_bin)} agent-onboard "
             f"--agent-type {shell_arg(canonical_agent_type)} "
             f"--project {shell_arg(resolved_project)} "
             f"--goal-id {shell_arg(resolved_goal_id)}"
-            + (f" --agent-id {shell_arg(agent_id)}" if agent_id else "")
+            + (
+                f" --agent-id {shell_arg(str(selected_agent_id))}"
+                if selected_agent_id
+                else ""
+            )
         ),
     }
     if install_command:
@@ -125,7 +147,11 @@ def build_agent_onboarding_packet(
             f"{shell_arg(cli_bin)} codex-cli-bootstrap-message "
             f"--project {shell_arg(resolved_project)} "
             f"--goal-id {shell_arg(resolved_goal_id)}"
-            + (f" --agent-id {shell_arg(agent_id)}" if agent_id else "")
+            + (
+                f" --agent-id {shell_arg(str(selected_agent_id))}"
+                if selected_agent_id
+                else ""
+            )
         )
     return {
         "ok": True,
@@ -133,11 +159,17 @@ def build_agent_onboarding_packet(
         "agent_type": canonical_agent_type,
         "project": resolved_project,
         "goal_id": resolved_goal_id,
-        "agent_id": agent_id,
+        "agent_id": selected_agent_id,
+        "requested_agent_id": agent_id,
+        "identity_selection_gate": host_loop_activation.get("identity_selection_gate"),
         "task_text": task_text,
         "project_connection": inspection,
         "host_loop_activation": host_loop_activation,
-        "recommended_start": _start_instruction(canonical_agent_type),
+        "recommended_start": (
+            "Select one registered agent lane from identity_selection_gate, then rerun onboarding."
+            if not activation_allowed
+            else _start_instruction(canonical_agent_type)
+        ),
         "commands": commands,
         "cost_model": {
             "onboarding": "run once during install/connect or when the active host loop is missing/stale",
@@ -177,6 +209,8 @@ def render_agent_onboarding_markdown(payload: dict[str, Any]) -> str:
         if isinstance(activation.get("success_criteria"), list)
         else []
     )
+    identity_gate = payload.get("identity_selection_gate")
+    identity_gate = identity_gate if isinstance(identity_gate, dict) else {}
     lines = [
         "# LoopX Agent Onboarding",
         "",
@@ -213,6 +247,15 @@ def render_agent_onboarding_markdown(payload: dict[str, Any]) -> str:
     lines.append("")
     lines.append("Success criteria:")
     lines.extend(f"- {item}" for item in criteria)
+    if identity_gate:
+        lines.extend(["", "## Agent Identity Gate", ""])
+        lines.append(f"- reason: {identity_gate.get('reason')}")
+        for choice in identity_gate.get("choices") or []:
+            if isinstance(choice, dict):
+                lines.append(
+                    f"- `{choice.get('agent_id')}` ({choice.get('role')}): "
+                    f"`{choice.get('heartbeat_prompt_json')}`"
+                )
     lines.extend(
         [
             "",

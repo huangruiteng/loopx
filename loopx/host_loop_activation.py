@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .agent_registry import normalize_registered_agents
+from .control_plane.todos.contract import normalize_todo_claimed_by
 from .project_prompt import (
     render_heartbeat_prompt_command,
     render_heartbeat_prompt_json_command,
@@ -10,6 +12,7 @@ from .project_prompt import (
 
 SCHEMA_VERSION = "loopx_host_loop_activation_v1"
 AGENT_TYPE_CATALOG_SCHEMA_VERSION = "loopx_agent_type_catalog_v0"
+IDENTITY_SELECTION_SCHEMA_VERSION = "loopx_host_loop_identity_selection_v0"
 
 SUPPORTED_AGENT_TYPES = ["codex-app", "codex-cli", "claude-code", "manual", "other-agent"]
 
@@ -235,6 +238,62 @@ def _heartbeat_commands(
     }
 
 
+def _identity_state(
+    *,
+    agent_id: str | None,
+    registered_agents: list[str] | None,
+    primary_agent: str | None,
+) -> dict[str, Any]:
+    registered = normalize_registered_agents(registered_agents)
+    selected = normalize_todo_claimed_by(agent_id)
+    primary = normalize_todo_claimed_by(primary_agent)
+    if not registered:
+        return {
+            "schema_version": IDENTITY_SELECTION_SCHEMA_VERSION,
+            "state": "legacy_unscoped",
+            "activation_allowed": True,
+            "selected_agent_id": selected,
+            "registered_agents": [],
+            "primary_agent": primary,
+            "action_required": False,
+        }
+    if not selected and len(registered) == 1:
+        selected = registered[0]
+        return {
+            "schema_version": IDENTITY_SELECTION_SCHEMA_VERSION,
+            "state": "single_registered_agent_selected",
+            "activation_allowed": True,
+            "selected_agent_id": selected,
+            "registered_agents": registered,
+            "primary_agent": primary,
+            "action_required": False,
+        }
+    if selected in registered:
+        return {
+            "schema_version": IDENTITY_SELECTION_SCHEMA_VERSION,
+            "state": "selected",
+            "activation_allowed": True,
+            "selected_agent_id": selected,
+            "registered_agents": registered,
+            "primary_agent": primary,
+            "action_required": False,
+        }
+    return {
+        "schema_version": IDENTITY_SELECTION_SCHEMA_VERSION,
+        "state": "invalid_selection" if selected else "selection_required",
+        "activation_allowed": False,
+        "selected_agent_id": None,
+        "requested_agent_id": selected,
+        "registered_agents": registered,
+        "primary_agent": primary,
+        "action_required": True,
+        "reason": (
+            f"agent_id={selected!r} is not registered for this goal"
+            if selected
+            else "multiple registered agent lanes exist; select one before host-loop activation"
+        ),
+        "required_cli_arg": "--agent-id <registered-agent-id>",
+    }
 def _codex_app_activation(commands: dict[str, str]) -> dict[str, Any]:
     return {
         "host_surface": "codex_app_heartbeat_automation",
@@ -351,13 +410,26 @@ def build_host_loop_activation_packet(
     goal_id: str,
     cli_bin: str = "loopx",
     agent_id: str | None = None,
+    registered_agents: list[str] | None = None,
+    primary_agent: str | None = None,
 ) -> dict[str, Any]:
     canonical = normalize_agent_type(agent_type)
-    commands = _heartbeat_commands(
-        goal_id=goal_id,
-        agent_type=canonical,
-        cli_bin=cli_bin,
+    identity = _identity_state(
         agent_id=agent_id,
+        registered_agents=registered_agents,
+        primary_agent=primary_agent,
+    )
+    selected_agent_id = identity.get("selected_agent_id")
+    activation_allowed = bool(identity.get("activation_allowed"))
+    commands: dict[str, Any] = (
+        _heartbeat_commands(
+            goal_id=goal_id,
+            agent_type=canonical,
+            cli_bin=cli_bin,
+            agent_id=str(selected_agent_id) if selected_agent_id else None,
+        )
+        if activation_allowed
+        else {"heartbeat_prompt_json": None, "heartbeat_prompt": None}
     )
     if canonical == "codex-app":
         surface = _codex_app_activation(commands)
@@ -370,11 +442,50 @@ def build_host_loop_activation_packet(
         if canonical == "other-agent":
             surface["entry_command_hint"] = "@loopx <task>, $loopx <task>, or another explicit host command facade"
             surface["host_surface"] = "custom_agent_loop_driver"
+    identity_selection_gate = None
+    if not activation_allowed:
+        choices = []
+        for candidate in identity["registered_agents"]:
+            candidate_commands = _heartbeat_commands(
+                goal_id=goal_id,
+                agent_type=canonical,
+                cli_bin=cli_bin,
+                agent_id=candidate,
+            )
+            choices.append(
+                {
+                    "agent_id": candidate,
+                    "role": "primary" if candidate == identity.get("primary_agent") else "side-agent",
+                    "heartbeat_prompt_json": candidate_commands["heartbeat_prompt_json"],
+                    "heartbeat_prompt": candidate_commands["heartbeat_prompt"],
+                }
+            )
+        identity_selection_gate = {
+            **identity,
+            "choices": choices,
+            "external_write_required": False,
+        }
+        surface["activation_method"] = "select_agent_identity_before_host_loop_activation"
+        surface["activation_input_command"] = None
+        surface["activation_steps"] = [
+            "Select one registered agent lane from identity_selection_gate.",
+            "Run that choice's identity-aware heartbeat-prompt JSON command.",
+            *surface["activation_steps"][1:],
+        ]
+        surface["success_criteria"] = [
+            "One registered agent identity is explicitly selected.",
+            *surface["success_criteria"],
+        ]
     return {
         "schema_version": SCHEMA_VERSION,
         "agent_type": canonical,
         "goal_id": goal_id,
-        "agent_id": agent_id,
+        "agent_id": selected_agent_id,
+        "requested_agent_id": normalize_todo_claimed_by(agent_id),
+        "activation_state": identity["state"],
+        "activation_allowed": activation_allowed,
+        "identity_contract": identity,
+        "identity_selection_gate": identity_selection_gate,
         "activation_required_after_todo_write": True,
         "status_probe_policy": {
             "check_once_during_onboarding": True,
