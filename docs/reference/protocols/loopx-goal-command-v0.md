@@ -41,6 +41,13 @@ loopx agent-onboard --list-agent-types
 Ambiguous values such as `codex` must fail closed because Codex App and Codex
 CLI use different host-loop activation paths.
 
+Agent identity follows the same fail-closed rule. A goal with one registered
+agent may select that identity automatically. A goal with multiple registered
+agents and no `--agent-id` must project a concrete identity-selection gate with
+executable scoped choices; it must not advertise unscoped heartbeat or quota
+commands. Once selected, the identity must be preserved across `agent-onboard`,
+`bootstrap-command-pack`, `start-goal`, heartbeat prompt, and quota commands.
+
 The command pack preview is still read-only. It describes the commands and
 contracts; the slash invocation is what authorizes project-local state writes.
 New-user surfaces should also show the compact slash command catalog from the
