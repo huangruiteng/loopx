@@ -1,0 +1,43 @@
+.github/workflows/full-public-smokes.yml
+  s_e3f612788718c1::t_38afa945384b77 58,75,87
+examples/canary/smoke-suite-runner-smoke.py
+  s_e3f612788718c1::t_76ac06d8f289e8 213,220-237,401-528,698,707-709
+examples/full-public-smokes-workflow-smoke.py
+  s_e3f612788718c1::t_55514c509035de 34-35
+examples/run-smokes.py
+  s_e3f612788718c1::t_343556876328f6 95-103,127
+loopx/canary/runner.py
+  s_e3f612788718c1::t_7b42f541a7bd7a 8,30-44,218-225,431-483,504,583-586,617-649,651-664,666-697,699-703,705-710,712-719,721-736,749-766,769,776,794-796,827-829,992-994,1035-1038
+loopx/canary/smoke_profiles.py
+  s_e3f612788718c1::t_1e010b9343887b 75-101
+loopx/capabilities/issue_fix/acceptance_loop.py
+  s_e3f612788718c1::t_dae81ddb08688c 10,227-237,438-439,446-447,483-484
+loopx/cli_commands/canary.py
+  s_9a5a2bd944fdcb::t_9acbb232fc199c 400-405,540
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a8e8b7c4ffeb94493c5ad9f9fe06ee7f325d3214",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
