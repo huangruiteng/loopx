@@ -210,10 +210,29 @@ def assert_named_smoke_profiles_are_discoverable() -> None:
         "canary-runner",
         "public-entry-install-release",
         "docs-project-content-ops",
+        "public-smoke-watch",
     ]:
         assert profile_id in profiles, payload
         assert profiles[profile_id]["modules"], payload
         assert "benchmark" in profiles[profile_id]["exclude_modules"], payload
+
+
+def assert_public_smoke_watch_profile_covers_health_surfaces() -> None:
+    payload = build_canary_smoke_suite_run(
+        suite="default-public",
+        profiles=["public-smoke-watch"],
+        execute=False,
+    )
+    assert payload["ok"] is True, payload
+    assert payload["suite"] == "full-public", payload
+    assert payload["selection_inputs"]["smoke_profiles"] == ["public-smoke-watch"], payload
+    scripts = [check["normalized"]["script"] for check in payload["selected_checks"]]
+    assert "examples/canary/smoke-suite-runner-smoke.py" in scripts, payload
+    assert "examples/control_plane/repo-python-line-budget-smoke.py" in scripts, payload
+    assert "examples/issue-fix-workflow-e2e-smoke.py" in scripts, payload
+    assert any("monitor" in script for script in scripts), payload
+    assert all("skillsbench" not in script for script in scripts), payload
+    assert all("terminal-bench" not in script for script in scripts), payload
 
 
 def assert_named_smoke_profile_can_mix_with_catalog_profile() -> None:
@@ -377,6 +396,134 @@ def assert_execution_reports_progress_indices() -> None:
     assert events[0]["check_index"] == 1, events
     assert events[0]["check_count"] == 1, events
     assert events[1]["status"] == "passed", events
+
+
+def assert_parallel_jobs_execute_and_preserve_report_order() -> None:
+    original_run_check = canary_runner._run_check
+    original_tracked_change_paths = canary_runner._tracked_change_paths
+    events: list[dict[str, object]] = []
+
+    def fake_tracked_change_paths() -> tuple[bool, list[str], str]:
+        return True, [], ""
+
+    try:
+        canary_runner._run_check = _fake_passed_check
+        canary_runner._tracked_change_paths = fake_tracked_change_paths
+        payload = build_canary_smoke_suite_run(
+            suite="default-public",
+            scripts=[
+                "todo-contract-smoke.py",
+                "canary/smoke-suite-subdir-discovery-smoke.py",
+            ],
+            execute=True,
+            timeout_seconds=60,
+            parallel_jobs=4,
+            progress_callback=events.append,
+        )
+    finally:
+        canary_runner._run_check = original_run_check
+        canary_runner._tracked_change_paths = original_tracked_change_paths
+
+    assert payload["ok"] is True, payload
+    assert payload["parallel_jobs"] == 4, payload
+    assert payload["effective_parallel_jobs"] == 2, payload
+    assert payload["executed_check_count"] == 2, payload
+    assert [check["check_index"] for check in payload["selected_checks"]] == [1, 2], payload
+    assert [event["event"] for event in events].count("check_started") == 2, events
+    assert [event["event"] for event in events].count("check_finished") == 2, events
+    rendered = canary_runner.render_canary_smoke_suite_run_markdown(payload)
+    assert "- parallel_jobs: `4`" in rendered, rendered
+    assert "- effective_parallel_jobs: `2`" in rendered, rendered
+    assert "- serial_check_count: `0`" in rendered, rendered
+
+
+def assert_parallel_jobs_keep_marked_smokes_serial() -> None:
+    original_run_check = canary_runner._run_check
+    original_tracked_change_paths = canary_runner._tracked_change_paths
+    observed: list[tuple[str, int | None]] = []
+
+    def fake_tracked_change_paths() -> tuple[bool, list[str], str]:
+        return True, [], ""
+
+    def fake_run_check(
+        check: dict[str, object],
+        *,
+        timeout_seconds: float,
+        check_index: int | None = None,
+        check_count: int | None = None,
+    ) -> dict[str, object]:
+        normalized = canary_runner.normalize_canary_command(str(check.get("command") or ""))
+        observed.append((str(normalized.get("script") or ""), check_index))
+        return _fake_passed_check(
+            check,
+            timeout_seconds=timeout_seconds,
+            check_index=check_index,
+            check_count=check_count,
+        )
+
+    try:
+        canary_runner._run_check = fake_run_check
+        canary_runner._tracked_change_paths = fake_tracked_change_paths
+        payload = build_canary_smoke_suite_run(
+            suite="default-public",
+            scripts=[
+                "issue-fix-workflow-e2e-smoke.py",
+                "todo-contract-smoke.py",
+                "canary/smoke-suite-subdir-discovery-smoke.py",
+            ],
+            execute=True,
+            timeout_seconds=60,
+            parallel_jobs=4,
+        )
+    finally:
+        canary_runner._run_check = original_run_check
+        canary_runner._tracked_change_paths = original_tracked_change_paths
+
+    assert payload["ok"] is True, payload
+    assert payload["parallel_jobs"] == 4, payload
+    assert payload["effective_parallel_jobs"] == 2, payload
+    assert payload["serial_check_count"] == 1, payload
+    assert observed[-1][0] == "examples/issue-fix-workflow-e2e-smoke.py", observed
+    serial_check = next(
+        check
+        for check in payload["selected_checks"]
+        if check.get("serial_execution_required")
+    )
+    assert serial_check["serial_execution_required"] is True, payload
+    assert "temporary git repository" in serial_check["serial_execution_reason"], payload
+    rendered = canary_runner.render_canary_smoke_suite_run_markdown(payload)
+    assert "- serial_check_count: `1`" in rendered, rendered
+    assert "serial_execution_reason" in rendered, rendered
+
+
+def assert_fail_fast_keeps_parallel_jobs_serial() -> None:
+    original_run_check = canary_runner._run_check
+    original_tracked_change_paths = canary_runner._tracked_change_paths
+
+    def fake_tracked_change_paths() -> tuple[bool, list[str], str]:
+        return True, [], ""
+
+    try:
+        canary_runner._run_check = _fake_passed_check
+        canary_runner._tracked_change_paths = fake_tracked_change_paths
+        payload = build_canary_smoke_suite_run(
+            suite="default-public",
+            scripts=[
+                "todo-contract-smoke.py",
+                "canary/smoke-suite-subdir-discovery-smoke.py",
+            ],
+            execute=True,
+            timeout_seconds=60,
+            fail_fast=True,
+            parallel_jobs=4,
+        )
+    finally:
+        canary_runner._run_check = original_run_check
+        canary_runner._tracked_change_paths = original_tracked_change_paths
+
+    assert payload["ok"] is True, payload
+    assert payload["parallel_jobs"] == 4, payload
+    assert payload["effective_parallel_jobs"] == 1, payload
 
 
 def assert_git_probe_contract_is_explicit() -> None:
@@ -548,6 +695,7 @@ def main() -> int:
     assert_legacy_root_script_selector_matches_moved_smokes()
     assert_catalog_profile_preview_is_supported()
     assert_named_smoke_profiles_are_discoverable()
+    assert_public_smoke_watch_profile_covers_health_surfaces()
     assert_named_smoke_profile_expands_to_suite_selection()
     assert_smoke_profile_offset_windows_selection()
     assert_named_smoke_profile_can_mix_with_catalog_profile()
@@ -556,6 +704,9 @@ def main() -> int:
     assert_cli_named_smoke_profiles_list_works()
     assert_run_smokes_profile_preview_matches_runner_selection()
     assert_execution_reports_progress_indices()
+    assert_parallel_jobs_execute_and_preserve_report_order()
+    assert_parallel_jobs_keep_marked_smokes_serial()
+    assert_fail_fast_keeps_parallel_jobs_serial()
     assert_git_probe_contract_is_explicit()
     assert_readonly_run_rejects_and_restores_tracked_side_effects()
     assert_unavailable_git_worktree_is_reported_explicitly()

@@ -31,6 +31,8 @@ def main() -> int:
         "--offset \"${{ matrix.offset }}\"",
         "--limit \"${SHARD_LIMIT}\"",
         "--timeout-seconds \"${SMOKE_TIMEOUT_SECONDS}\"",
+        "SMOKE_JOBS: \"4\"",
+        "--jobs \"${SMOKE_JOBS}\"",
         "--no-execute",
         "--json",
         "actions/upload-artifact@v4",

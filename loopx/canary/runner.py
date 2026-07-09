@@ -5,6 +5,7 @@ import re
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable
 
@@ -25,6 +26,21 @@ EXPLICIT_GROUPED_SMOKES = {
 }
 GIT_REQUIRED_SCRIPTS = {
     "repo-python-line-budget-smoke.py": "requires git ls-files over tracked Python files",
+}
+SERIAL_SMOKE_SCRIPTS = {
+    "issue-fix-workflow-e2e-smoke.py": (
+        "creates a temporary git repository and can race host git cleanup when "
+        "run beside other git-heavy smokes"
+    ),
+    "skillsbench-benchmark-run-smoke.py": (
+        "covers the large SkillsBench runner/ledger integration surface and "
+        "uses shared host/runtime probes that are intentionally validated "
+        "without same-domain parallel noise"
+    ),
+    "skillsbench-host-local-launch-plan-smoke.py": (
+        "exercises host-local bridge timeout probes that are intentionally "
+        "sensitive to concurrent host process scheduling"
+    ),
 }
 PYTHON_BINARIES = {"python", "python3"}
 NODE_BINARIES = {"node"}
@@ -197,6 +213,14 @@ def _git_required_skip(normalized: dict[str, Any]) -> dict[str, Any] | None:
         "git_status_ok": False,
         "git_status_unavailable_reason": git_detail,
     }
+
+
+def _serial_smoke_reason(check: dict[str, Any]) -> str:
+    normalized = check.get("normalized")
+    if not isinstance(normalized, dict):
+        normalized = normalize_canary_command(str(check.get("command") or ""))
+    script_name = Path(str(normalized.get("script") or "")).name
+    return SERIAL_SMOKE_SCRIPTS.get(script_name, "")
 
 
 def _restore_tracked_paths(paths: list[str]) -> dict[str, Any]:
@@ -404,6 +428,59 @@ def _dedupe_checks(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return deduped
 
 
+def _coerce_parallel_jobs(value: int | None) -> int:
+    try:
+        return max(1, int(value or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _progress_check_started(
+    progress_callback: ProgressCallback | None,
+    *,
+    index: int,
+    total: int,
+    check: dict[str, Any],
+) -> None:
+    if not progress_callback:
+        return
+    normalized_check = normalize_canary_command(str(check.get("command") or ""))
+    progress_callback(
+        {
+            "schema_version": "canary_smoke_suite_progress_v0",
+            "event": "check_started",
+            "check_index": index,
+            "check_count": total,
+            "command": " ".join(
+                str(part) for part in normalized_check.get("display_argv") or []
+            )
+            or str(check.get("command") or ""),
+        }
+    )
+
+
+def _progress_check_finished(
+    progress_callback: ProgressCallback | None,
+    *,
+    index: int,
+    total: int,
+    result: dict[str, Any],
+) -> None:
+    if not progress_callback:
+        return
+    progress_callback(
+        {
+            "schema_version": "canary_smoke_suite_progress_v0",
+            "event": "check_finished",
+            "check_index": index,
+            "check_count": total,
+            "status": result.get("status"),
+            "ok": bool(result.get("ok")),
+            "duration_seconds": result.get("duration_seconds"),
+        }
+    )
+
+
 def build_canary_smoke_suite_run(
     *,
     suite: str = "default-public",
@@ -424,6 +501,7 @@ def build_canary_smoke_suite_run(
     timeout_seconds: float = 120.0,
     fail_fast: bool = False,
     allow_tracked_side_effects: bool = False,
+    parallel_jobs: int = 1,
     progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     """Build and optionally execute a continue-on-failure smoke suite.
@@ -502,6 +580,10 @@ def build_canary_smoke_suite_run(
     ]
 
     results: list[dict[str, Any]] = []
+    suite_guard_failures: list[dict[str, Any]] = []
+    requested_parallel_jobs = _coerce_parallel_jobs(parallel_jobs)
+    effective_parallel_jobs = 1
+    serial_check_count = 0
     side_effect_guard: dict[str, Any] = {
         "schema_version": "canary_smoke_suite_side_effect_guard_v0",
         "tracked_side_effects_allowed": allow_tracked_side_effects,
@@ -532,61 +614,126 @@ def build_canary_smoke_suite_run(
         )
         if git_stderr:
             side_effect_guard["git_status_unavailable_reason"] = git_stderr[-800:]
-        for index, check in enumerate(selected, start=1):
-            normalized_check = normalize_canary_command(str(check.get("command") or ""))
-            if progress_callback:
-                progress_callback(
-                    {
-                        "schema_version": "canary_smoke_suite_progress_v0",
-                        "event": "check_started",
-                        "check_index": index,
-                        "check_count": len(selected),
-                        "command": " ".join(
-                            str(part) for part in normalized_check.get("display_argv") or []
-                        )
-                        or str(check.get("command") or ""),
-                    }
+        serial_indexes = {
+            index
+            for index, check in enumerate(selected, start=1)
+            if _serial_smoke_reason(check)
+        }
+        serial_check_count = len(serial_indexes)
+        parallel_check_count = len(selected) - serial_check_count
+        if selected and not fail_fast and parallel_check_count:
+            effective_parallel_jobs = min(requested_parallel_jobs, parallel_check_count)
+        if effective_parallel_jobs <= 1:
+            for index, check in enumerate(selected, start=1):
+                _progress_check_started(
+                    progress_callback,
+                    index=index,
+                    total=len(selected),
+                    check=check,
                 )
-            result = _run_check(
-                check,
-                timeout_seconds=max(1.0, timeout_seconds),
-                check_index=index,
-                check_count=len(selected),
-            )
-            if side_effect_guard["enforced"]:
-                after_ok, tracked_after, after_stderr = _tracked_change_paths()
-                side_effects = sorted(set(tracked_after) - set(tracked_before))
-                if side_effects:
-                    result.update(
-                        {
-                            "ok": False,
-                            "status": "failed_tracked_side_effect",
-                            "tracked_side_effects": side_effects,
-                        }
+                result = _run_check(
+                    check,
+                    timeout_seconds=max(1.0, timeout_seconds),
+                    check_index=index,
+                    check_count=len(selected),
+                )
+                if side_effect_guard["enforced"]:
+                    after_ok, tracked_after, after_stderr = _tracked_change_paths()
+                    side_effects = sorted(set(tracked_after) - set(tracked_before))
+                    if side_effects:
+                        result.update(
+                            {
+                                "ok": False,
+                                "status": "failed_tracked_side_effect",
+                                "tracked_side_effects": side_effects,
+                            }
+                        )
+                        if clean_start:
+                            restore = _restore_tracked_paths(side_effects)
+                            result["tracked_side_effect_restore"] = restore
+                            side_effect_guard["auto_restored"] = (
+                                bool(side_effect_guard.get("auto_restored"))
+                                or bool(restore.get("ok"))
+                            )
+                    if not after_ok and after_stderr:
+                        result["tracked_side_effect_stderr_tail"] = after_stderr[-800:]
+                _progress_check_finished(
+                    progress_callback,
+                    index=index,
+                    total=len(selected),
+                    result=result,
+                )
+                results.append(result)
+                if fail_fast and not result.get("ok"):
+                    break
+        else:
+            indexed_results: dict[int, dict[str, Any]] = {}
+            with ThreadPoolExecutor(max_workers=effective_parallel_jobs) as executor:
+                futures = {}
+                for index, check in enumerate(selected, start=1):
+                    if index in serial_indexes:
+                        continue
+                    _progress_check_started(
+                        progress_callback,
+                        index=index,
+                        total=len(selected),
+                        check=check,
                     )
-                    if clean_start:
-                        restore = _restore_tracked_paths(side_effects)
-                        result["tracked_side_effect_restore"] = restore
-                        side_effect_guard["auto_restored"] = (
-                            bool(side_effect_guard.get("auto_restored")) or bool(restore.get("ok"))
-                        )
-                if not after_ok and after_stderr:
-                    result["tracked_side_effect_stderr_tail"] = after_stderr[-800:]
-            if progress_callback:
-                progress_callback(
-                    {
-                        "schema_version": "canary_smoke_suite_progress_v0",
-                        "event": "check_finished",
-                        "check_index": index,
-                        "check_count": len(selected),
-                        "status": result.get("status"),
-                        "ok": bool(result.get("ok")),
-                        "duration_seconds": result.get("duration_seconds"),
-                    }
+                    future = executor.submit(
+                        _run_check,
+                        check,
+                        timeout_seconds=max(1.0, timeout_seconds),
+                        check_index=index,
+                        check_count=len(selected),
+                    )
+                    futures[future] = (index, check)
+                for future in as_completed(futures):
+                    index, check = futures[future]
+                    try:
+                        result = future.result()
+                    except Exception as exc:
+                        result = {
+                            **check,
+                            "status": "failed",
+                            "ok": False,
+                            "reason": f"smoke runner exception: {exc}",
+                            "returncode": None,
+                            "duration_seconds": None,
+                            "check_index": index,
+                            "check_count": len(selected),
+                        }
+                    indexed_results[index] = result
+                    _progress_check_finished(
+                        progress_callback,
+                        index=index,
+                        total=len(selected),
+                        result=result,
+                    )
+            for index, check in enumerate(selected, start=1):
+                if index not in serial_indexes:
+                    continue
+                _progress_check_started(
+                    progress_callback,
+                    index=index,
+                    total=len(selected),
+                    check=check,
                 )
-            results.append(result)
-            if fail_fast and not result.get("ok"):
-                break
+                result = _run_check(
+                    check,
+                    timeout_seconds=max(1.0, timeout_seconds),
+                    check_index=index,
+                    check_count=len(selected),
+                )
+                result["serial_execution_required"] = True
+                result["serial_execution_reason"] = _serial_smoke_reason(check)
+                indexed_results[index] = result
+                _progress_check_finished(
+                    progress_callback,
+                    index=index,
+                    total=len(selected),
+                    result=result,
+                )
+            results = [indexed_results[index] for index in sorted(indexed_results)]
         if side_effect_guard["enforced"]:
             final_ok, tracked_after, final_stderr = _tracked_change_paths()
             side_effects = sorted(set(tracked_after) - set(tracked_before))
@@ -599,16 +746,34 @@ def build_canary_smoke_suite_run(
             )
             if final_stderr:
                 side_effect_guard["git_status_final_stderr_tail"] = final_stderr[-800:]
+            if effective_parallel_jobs > 1 and side_effects:
+                guard_failure = {
+                    "schema_version": "canary_smoke_suite_guard_failure_v0",
+                    "status": "failed_tracked_side_effect",
+                    "ok": False,
+                    "reason": (
+                        "parallel smoke-suite run produced tracked side effects; "
+                        "rerun with --jobs 1 to attribute the script precisely"
+                    ),
+                    "tracked_side_effects": side_effects,
+                }
+                if clean_start:
+                    restore = _restore_tracked_paths(side_effects)
+                    guard_failure["tracked_side_effect_restore"] = restore
+                    side_effect_guard["auto_restored"] = (
+                        bool(side_effect_guard.get("auto_restored")) or bool(restore.get("ok"))
+                    )
+                suite_guard_failures.append(guard_failure)
 
     display_items = results if execute else normalized
-    failures = [item for item in results if not item.get("ok")]
+    failures = [item for item in results if not item.get("ok")] + suite_guard_failures
     git_required_skips = [
         item for item in results if item.get("status") == "skipped_git_required"
     ]
     timed_out = [item for item in results if item.get("status") == "timed_out"]
     side_effect_failures = [
         item for item in results if item.get("status") == "failed_tracked_side_effect"
-    ]
+    ] + suite_guard_failures
     unsafe = [
         item
         for item in normalized
@@ -626,6 +791,9 @@ def build_canary_smoke_suite_run(
         "creates_runtime_contract": False,
         "timeout_seconds": max(1.0, timeout_seconds),
         "fail_fast": fail_fast,
+        "parallel_jobs": requested_parallel_jobs,
+        "effective_parallel_jobs": effective_parallel_jobs,
+        "serial_check_count": serial_check_count,
         "side_effect_guard": side_effect_guard,
         "offset": normalized_offset,
         "limit": max(0, limit),
@@ -656,6 +824,9 @@ def build_canary_smoke_suite_run(
             "max_checks_per_profile": max_checks_per_profile,
             "offset": normalized_offset,
             "limit": max(0, limit),
+            "parallel_jobs": requested_parallel_jobs,
+            "effective_parallel_jobs": effective_parallel_jobs,
+            "serial_check_count": serial_check_count,
         },
         "catalog_plan": {
             "schema_version": plan.get("schema_version"),
@@ -818,6 +989,9 @@ def render_canary_smoke_suite_run_markdown(payload: dict[str, Any]) -> str:
         f"- limit: `{payload.get('limit')}`",
         f"- selected_checks: `{payload.get('selected_check_count')}`",
         f"- executed_checks: `{payload.get('executed_check_count')}`",
+        f"- parallel_jobs: `{payload.get('parallel_jobs')}`",
+        f"- effective_parallel_jobs: `{payload.get('effective_parallel_jobs')}`",
+        f"- serial_check_count: `{payload.get('serial_check_count')}`",
         f"- failures: `{payload.get('failure_count')}`",
         f"- git_required_skips: `{payload.get('git_required_skip_count')}`",
         f"- timeouts: `{payload.get('timeout_count')}`",
@@ -857,6 +1031,10 @@ def render_canary_smoke_suite_run_markdown(payload: dict[str, Any]) -> str:
                 "- injected_args: `"
                 + ", ".join(str(arg) for arg in normalized.get("injected_args") or [])
                 + "`"
+            )
+        if check.get("serial_execution_required"):
+            lines.append(
+                f"- serial_execution_reason: `{check.get('serial_execution_reason')}`"
             )
         if check.get("returncode") is not None:
             lines.append(f"- returncode: `{check.get('returncode')}`")

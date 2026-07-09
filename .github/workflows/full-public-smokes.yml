@@ -55,6 +55,7 @@ jobs:
     env:
       SHARD_LIMIT: "100"
       SMOKE_TIMEOUT_SECONDS: ${{ github.event_name == 'workflow_dispatch' && inputs.timeout_seconds || '120' }}
+      SMOKE_JOBS: "4"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -71,6 +72,7 @@ jobs:
             --offset "${{ matrix.offset }}" \
             --limit "${SHARD_LIMIT}" \
             --timeout-seconds "${SMOKE_TIMEOUT_SECONDS}" \
+            --jobs "${SMOKE_JOBS}" \
             --no-execute
 
       - name: Run full-public shard
@@ -82,6 +84,7 @@ jobs:
             --offset "${{ matrix.offset }}" \
             --limit "${SHARD_LIMIT}" \
             --timeout-seconds "${SMOKE_TIMEOUT_SECONDS}" \
+            --jobs "${SMOKE_JOBS}" \
             --json \
             | tee "smoke-results/full-public-shard-${{ matrix.shard }}.json"
 
