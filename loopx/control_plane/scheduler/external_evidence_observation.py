@@ -44,6 +44,9 @@ EXTERNAL_EVIDENCE_HANDLE_ABSENT_PATTERNS = (
         r"(?:absent|missing|not\s+available|does\s+not\s+exist|exists\s+yet)\b"
     ),
 )
+EXTERNAL_DEPENDENCY_TARGET_KEY_PATTERN = re.compile(
+    r"(?i)^(?:pr_merged|pr_review(?:ed)?|github_pr|pull_request):"
+)
 
 
 def projected_monitor_handle(summary: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -81,6 +84,56 @@ def scoped_monitor_watch_without_advancement(summary: dict[str, Any] | None) -> 
     return todo_summary_open_task_counts(summary).get("advancement", 0) <= 0
 
 
+def _monitor_item_has_observation_state(item: dict[str, Any]) -> bool:
+    if str(item.get("result_hash") or "").strip():
+        return True
+    if str(item.get("last_checked_at") or "").strip():
+        return True
+    return False
+
+
+def _external_dependency_monitor_needs_first_observation(
+    summary: dict[str, Any] | None,
+) -> bool:
+    for item in todo_summary_monitor_items(summary):
+        target_key = str(item.get("target_key") or "").strip()
+        if not target_key:
+            continue
+        if not EXTERNAL_DEPENDENCY_TARGET_KEY_PATTERN.search(target_key):
+            continue
+        if not _monitor_item_has_observation_state(item):
+            return True
+    return False
+
+
+def _matches_any(patterns: tuple[re.Pattern[str], ...], texts: list[str]) -> bool:
+    return any(pattern.search(text) for pattern in patterns for text in texts)
+
+
+def _monitor_window_allows_poll_signal(
+    summary: dict[str, Any] | None,
+    *,
+    scoped_monitor_watch: bool,
+    scoped_monitor_handle: dict[str, Any] | None,
+    dependency_monitor_pending: bool,
+) -> bool:
+    if (
+        todo_summary_has_only_future_scoped_monitor_work(summary)
+        and not dependency_monitor_pending
+    ):
+        return False
+    if scoped_monitor_watch and not scoped_monitor_handle:
+        return False
+    if (
+        scoped_monitor_watch
+        and todo_summary_monitor_due_count(summary) <= 0
+        and todo_summary_monitor_schedule_gap_count(summary) <= 0
+        and not dependency_monitor_pending
+    ):
+        return False
+    return True
+
+
 def build_external_evidence_poll_signal(
     item: dict[str, Any],
     *,
@@ -97,8 +150,9 @@ def build_external_evidence_poll_signal(
 
     scoped_monitor_handle = projected_monitor_handle(agent_todo_summary)
     scoped_monitor_watch = scoped_monitor_watch_without_advancement(agent_todo_summary)
-    if todo_summary_has_only_future_scoped_monitor_work(agent_todo_summary):
-        return None
+    dependency_monitor_pending = _external_dependency_monitor_needs_first_observation(
+        agent_todo_summary
+    )
     project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
     action_texts = [
         str(value or "").strip()
@@ -146,42 +200,39 @@ def build_external_evidence_poll_signal(
     if not all_texts:
         return None
 
-    direct_observe_action = any(
-        pattern.search(text)
-        for pattern in EXTERNAL_EVIDENCE_OBSERVE_PATTERNS
-        for text in action_texts
+    direct_observe_action = _matches_any(EXTERNAL_EVIDENCE_OBSERVE_PATTERNS, action_texts)
+    direct_observe_todo = _matches_any(EXTERNAL_EVIDENCE_OBSERVE_PATTERNS, todo_texts)
+    direct_observe_state = _matches_any(EXTERNAL_EVIDENCE_OBSERVE_PATTERNS, launched_texts)
+    launched_wait = bool(action_texts) and _matches_any(
+        EXTERNAL_EVIDENCE_LAUNCHED_PATTERNS,
+        launched_texts,
     )
-    direct_observe_todo = any(
-        pattern.search(text)
-        for pattern in EXTERNAL_EVIDENCE_OBSERVE_PATTERNS
-        for text in todo_texts
-    )
-    direct_observe_state = any(
-        pattern.search(text)
-        for pattern in EXTERNAL_EVIDENCE_OBSERVE_PATTERNS
-        for text in launched_texts
-    )
-    launched_wait = bool(action_texts) and any(
-        pattern.search(text)
-        for pattern in EXTERNAL_EVIDENCE_LAUNCHED_PATTERNS
-        for text in launched_texts
-    )
-    handle_absent = any(
-        pattern.search(text)
-        for pattern in EXTERNAL_EVIDENCE_HANDLE_ABSENT_PATTERNS
-        for text in action_texts
-    )
+    handle_absent = _matches_any(EXTERNAL_EVIDENCE_HANDLE_ABSENT_PATTERNS, action_texts)
     if handle_absent and not launched_wait and not direct_observe_action and not direct_observe_state:
         return None
     direct_observe = direct_observe_action or direct_observe_todo or direct_observe_state
-    if not direct_observe and not launched_wait:
+    if launched_wait:
+        matched_signal = "launched_wait"
+        matched_channel = "action"
+    elif dependency_monitor_pending:
+        matched_signal = "external_dependency_wait"
+        matched_channel = "state"
+    elif direct_observe:
+        matched_signal = "direct_observe"
+        matched_channel = (
+            "action"
+            if direct_observe_action
+            else "todo"
+            if direct_observe_todo
+            else "state"
+        )
+    else:
         return None
-    if scoped_monitor_watch and not scoped_monitor_handle:
-        return None
-    if (
-        scoped_monitor_watch
-        and todo_summary_monitor_due_count(agent_todo_summary) <= 0
-        and todo_summary_monitor_schedule_gap_count(agent_todo_summary) <= 0
+    if not _monitor_window_allows_poll_signal(
+        agent_todo_summary,
+        scoped_monitor_watch=scoped_monitor_watch,
+        scoped_monitor_handle=scoped_monitor_handle,
+        dependency_monitor_pending=dependency_monitor_pending,
     ):
         return None
 
@@ -198,14 +249,8 @@ def build_external_evidence_poll_signal(
         "source": "active_state_or_latest_run",
         "trigger": "implicit_launched_external_poll",
         "observation_target": observation_target,
-        "matched_signal": "launched_wait" if launched_wait else "direct_observe",
-        "matched_channel": (
-            "action"
-            if launched_wait or direct_observe_action
-            else "todo"
-            if direct_observe_todo
-            else "state"
-        ),
+        "matched_signal": matched_signal,
+        "matched_channel": matched_channel,
     }
     if scoped_monitor_handle:
         signal["monitor_handle"] = scoped_monitor_handle

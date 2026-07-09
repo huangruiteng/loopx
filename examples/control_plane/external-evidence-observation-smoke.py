@@ -84,6 +84,29 @@ def monitor_todo(
     )
 
 
+def pr_dependency_monitor_todo(
+    *,
+    result_hash: str | None = None,
+    last_checked_at: str | None = None,
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "target_key": "pr_merged:#532",
+        "next_due_at": FUTURE_DUE_AT,
+        "claimed_by": AGENT_ID,
+    }
+    if result_hash:
+        metadata["result_hash"] = result_hash
+    if last_checked_at:
+        metadata["last_checked_at"] = last_checked_at
+    return todo(
+        3,
+        "[P0] Monitor PR #532 review/merge state before resuming the rerun lane.",
+        task_class=TODO_TASK_CLASS_MONITOR,
+        todo_id="todo_pr_dependency_monitor",
+        **metadata,
+    )
+
+
 def advancement_todo() -> dict[str, Any]:
     return todo(
         2,
@@ -107,6 +130,7 @@ def status_payload(
     waiting_on: str = "codex",
     next_action: str = "Observe compact result marker for remote job handle.",
     latest_runs: list[dict[str, Any]] | None = None,
+    lifecycle_flags: list[str] | None = None,
 ) -> dict[str, Any]:
     return quota_status_payload(
         goal_id=GOAL_ID,
@@ -121,7 +145,11 @@ def status_payload(
             "registered_agents": ["codex-main-control", AGENT_ID],
         },
         latest_runs=latest_runs or [],
-        item_extra={"lifecycle_flags": ["launched polling result marker"]},
+        item_extra={
+            "lifecycle_flags": lifecycle_flags
+            if lifecycle_flags is not None
+            else ["launched polling result marker"]
+        },
     )
 
 
@@ -297,6 +325,82 @@ def assert_future_scoped_monitor_does_not_fake_external_poll() -> None:
     assert "external_evidence_observation" not in guard, guard
 
 
+def assert_pr_dependency_wait_requires_first_observation() -> None:
+    summary = agent_todos([pr_dependency_monitor_todo()])
+    next_action = (
+        "Keep PR #532 in review-required state; after maintainer review/merge, "
+        "resume dependent validation lane."
+    )
+    item = selected_item(
+        status_payload(
+            summary,
+            status="active",
+            next_action=next_action,
+            latest_runs=[],
+            lifecycle_flags=[],
+        )
+    )
+    signal = build_external_evidence_poll_signal(item, agent_todo_summary=summary)
+    assert signal and signal["matched_signal"] == "external_dependency_wait", signal
+    assert signal["monitor_handle"]["target_key"] == "pr_merged:#532", signal
+
+    guard = build_quota_should_run(
+        status_payload(
+            summary,
+            status="active",
+            next_action=next_action,
+            latest_runs=[],
+            lifecycle_flags=[],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+    )
+    assert guard["should_run"] is True, guard
+    assert guard["effective_action"] == "external_evidence_observe", guard
+    observation = guard["external_evidence_observation"]
+    assert observation["kind"] == "launched_external_work_monitor", observation
+    assert observation["monitor_handle"]["target_key"] == "pr_merged:#532", observation
+    assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is True, guard
+
+
+def assert_pr_dependency_wait_with_observation_does_not_reobserve_before_due() -> None:
+    summary = agent_todos(
+        [
+            pr_dependency_monitor_todo(
+                result_hash="pr_532_open_review_required",
+                last_checked_at="2026-07-08T18:00:00+08:00",
+            )
+        ]
+    )
+    next_action = (
+        "Keep PR #532 in review-required state; after maintainer review/merge, "
+        "resume dependent validation lane."
+    )
+    item = selected_item(
+        status_payload(
+            summary,
+            status="active",
+            next_action=next_action,
+            lifecycle_flags=[],
+        )
+    )
+    assert build_external_evidence_poll_signal(item, agent_todo_summary=summary) is None
+
+    guard = build_quota_should_run(
+        status_payload(
+            summary,
+            status="active",
+            next_action=next_action,
+            lifecycle_flags=[],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+    )
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    assert "external_evidence_observation" not in guard, guard
+    assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is True, guard
+
+
 def assert_explicit_external_wait_builds_registry_obligation() -> None:
     summary = agent_todos([])
     payload = status_payload(
@@ -323,6 +427,8 @@ def main() -> int:
     assert_recent_due_monitor_no_change_quiets_external_monitor()
     assert_advancement_lane_keeps_external_monitor_as_context()
     assert_future_scoped_monitor_does_not_fake_external_poll()
+    assert_pr_dependency_wait_requires_first_observation()
+    assert_pr_dependency_wait_with_observation_does_not_reobserve_before_due()
     assert_explicit_external_wait_builds_registry_obligation()
     print("external-evidence-observation-smoke ok")
     return 0
