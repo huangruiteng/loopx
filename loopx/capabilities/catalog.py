@@ -32,8 +32,13 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             },
             {
                 "command": "loopx issue-fix workflow-plan --url <github-issue-url> --repo-path <repo> --format json",
-                "purpose": "Compose metadata, intake, ordered LoopX todo previews, validation labels, and PR review readiness blockers.",
+                "purpose": "Compose metadata, intake, the feasibility checkpoint, validation labels, and PR review readiness blockers.",
                 "write_boundary": "preview-only; no todo write, repo execution, external comment, PR creation, merge, or publish",
+            },
+            {
+                "command": "loopx issue-fix feasibility --url <github-issue-url> --reproduction-status <state> --scope-class <scope> --goal-id <goal-id> --format json",
+                "purpose": "Select one fix_pr, comment_only, or triage_only route from compact agent observations.",
+                "write_boundary": "writes compact project-local domain state with goal or ledger context; no raw issue/comment/log capture or external write",
             },
             {
                 "command": "loopx issue-fix pr-lifecycle --url <github-pr-url> --goal-id <goal-id> --format json",
@@ -83,6 +88,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "doc": "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
             },
             {
+                "schema_version": "issue_fix_feasibility_v0",
+                "module": "loopx.capabilities.issue_fix.feasibility",
+                "doc": "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
+            },
+            {
                 "schema_version": "issue_fix_pr_lifecycle_monitor_v0",
                 "module": "loopx.capabilities.issue_fix.pr_lifecycle",
                 "doc": "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
@@ -105,6 +115,7 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
         ],
         "smokes": [
             "python3 examples/issue-fix-workflow-plan-smoke.py",
+            "python3 examples/issue-fix-feasibility-smoke.py",
             "python3 examples/issue-fix-pr-lifecycle-smoke.py",
             "python3 examples/content-ops-issue-fix-metadata-preview-smoke.py",
             "python3 examples/content-ops-issue-fix-intake-smoke.py",
@@ -123,8 +134,8 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "External comments, PR creation, merge, publish, and destructive git remain out of scope.",
         ],
         "next_real_step": (
-            "Put an agent patching step between branch preparation and PR-ready "
-            "packet generation, while keeping external PR/comment actions explicit."
+            "Exercise route selection and continuation on a public issue-fix pilot, "
+            "while keeping external PR/comment actions explicit."
         ),
     },
     {

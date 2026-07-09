@@ -124,6 +124,29 @@ def _post_pr_lifecycle_monitor_plan() -> dict[str, Any]:
     }
 
 
+def _feasibility_checkpoint_plan() -> dict[str, Any]:
+    return {
+        "schema_version": "issue_fix_feasibility_checkpoint_plan_v0",
+        "command_preview": (
+            "loopx issue-fix feasibility --url <github-issue-url> "
+            "--reproduction-status <confirmed|planned|missing|blocked> "
+            "--scope-class <bounded|uncertain|oversized> "
+            "--goal-id <goal-id> --format json"
+        ),
+        "input_contract": "compact_public_safe_agent_observation",
+        "selects_exactly_one_route": True,
+        "routes": ["fix_pr", "comment_only", "triage_only"],
+        "fix_pr_requires": [
+            "bounded_scope",
+            "named_reproduction_or_plan",
+            "named_validation_surface",
+        ],
+        "writes_domain_state_by_default_with_goal_id": True,
+        "writes_loopx_todo": False,
+        "raw_issue_or_log_material_captured": False,
+    }
+
+
 def _branch_plan_from_dry_run(
     *,
     repo_path: str | None,
@@ -223,6 +246,7 @@ def build_issue_fix_workflow_plan_packet(
         repo_label=repo_label,
         issue_label=issue_label,
     )
+    feasibility_checkpoint = _feasibility_checkpoint_plan()
     post_pr_monitor = _post_pr_lifecycle_monitor_plan()
     agent_todos = [
         _todo_preview(
@@ -245,65 +269,20 @@ def build_issue_fix_workflow_plan_packet(
             role="agent",
             priority="P0",
             task_class="advancement_task",
-            action_kind="issue_fix_repro_and_route",
+            action_kind="issue_fix_feasibility_decision",
             text=(
-                "[P0] Create or identify a focused repro smoke, inspect the "
-                "selected repo-relative code route, and stop before private "
-                "repro material or external comments."
+                "[P0] Record a compact feasibility observation and select exactly "
+                "one fix_pr, comment_only, or triage_only route; write only the "
+                "selected successor."
             ),
             depends_on=["issue_fix_public_metadata_classification"],
         ),
-        _todo_preview(
-            planner_order=3,
-            role="agent",
-            priority="P0",
-            task_class="advancement_task",
-            action_kind="issue_fix_branch_validation",
-            text=(
-                "[P0] Prepare or claim the approved issue branch and run the "
-                "caller-declared validation label before declaring review readiness."
-            ),
-            depends_on=["issue_fix_repro_and_route"],
-            blocks=["pr_review_packet_ready"],
-        ),
-        _todo_preview(
-            planner_order=4,
-            role="agent",
-            priority="P1",
-            task_class="advancement_task",
-            action_kind="issue_fix_pr_review_packet",
-            text=(
-                "[P1] Emit a PR review packet with repo-relative changed files, "
-                "validation labels, remaining gates, and no external publication."
-            ),
-            depends_on=["issue_fix_branch_validation"],
-        ),
     ]
-    user_gates = [
-        _todo_preview(
-            planner_order=5,
-            role="user",
-            priority="P1",
-            task_class="user_gate",
-            action_kind="approve_external_issue_publish_or_merge",
-            text=(
-                "[P1] Approve any external issue comment, PR creation, merge, "
-                "publish, or repository-policy exception before LoopX performs it."
-            ),
-            depends_on=["issue_fix_pr_review_packet"],
-            blocks=[
-                "external_issue_comment",
-                "external_pr_creation",
-                "merge",
-                "publish",
-            ],
-        )
-    ]
+    user_gates: list[dict[str, Any]] = []
     if gated_fields:
-        user_gates.insert(
-            0,
+        user_gates.append(
             _todo_preview(
-                planner_order=5,
+                planner_order=3,
                 role="user",
                 priority="P0",
                 task_class="user_gate",
@@ -317,32 +296,6 @@ def build_issue_fix_workflow_plan_packet(
             )
             | {"gated_fields": gated_fields},
         )
-        for offset, gate in enumerate(user_gates, start=5):
-            gate["planner_order"] = offset
-
-    monitor_order = max(
-        int(todo.get("planner_order", 0))
-        for todo in [*agent_todos, *user_gates]
-        if isinstance(todo.get("planner_order"), int)
-    ) + 1
-    agent_todos.append(
-        _todo_preview(
-            planner_order=monitor_order,
-            role="agent",
-            priority="P2",
-            task_class="continuous_monitor",
-            action_kind="issue_fix_pr_lifecycle_monitor",
-            text=(
-                "[P2] After a PR exists, observe public PR lifecycle state and "
-                "project it into runnable_successor, monitor_continuation, "
-                "user_gate, or no_followup."
-            ),
-            depends_on=[
-                "issue_fix_pr_review_packet",
-                "approve_external_issue_publish_or_merge",
-            ],
-        )
-    )
     ordered_previews = sorted(
         agent_todos + user_gates,
         key=lambda preview: int(preview.get("planner_order", 0)),
@@ -385,9 +338,9 @@ def build_issue_fix_workflow_plan_packet(
         "top_agent_todo": agent_todos[0],
         "top_gate": user_gates[0] if gated_fields else None,
         "next_safe_action": (
-            "write the ordered LoopX todo plan only after the metadata preview "
-            "stays body-free; then run branch/validation work inside the "
-            "caller-approved repo context"
+            "write the metadata classification and feasibility checkpoint only; "
+            "then let the feasibility decision project one route-specific "
+            "successor or no-follow-up"
         ),
     }
     packet: dict[str, Any] = {
@@ -409,6 +362,7 @@ def build_issue_fix_workflow_plan_packet(
         "first_screen": first_screen,
         "branch_plan": branch_plan,
         "resolution_route_candidates": resolution_routes,
+        "feasibility_checkpoint_plan": feasibility_checkpoint,
         "post_pr_lifecycle_monitor_plan": post_pr_monitor,
         "ordered_loopx_todo_writeback_preview": ordered_previews,
         "validation_plan": validation_plan,
@@ -494,6 +448,19 @@ def validate_issue_fix_workflow_plan_packet(packet: Mapping[str, Any]) -> dict[s
             errors.append("resolution routes must not create PRs")
         if route.get("requires_user_gate_before_external_write") is not True:
             errors.append("resolution routes must gate external writes")
+
+    feasibility = packet.get("feasibility_checkpoint_plan")
+    if not isinstance(feasibility, Mapping):
+        errors.append("feasibility_checkpoint_plan is required")
+        feasibility = {}
+    if feasibility.get("selects_exactly_one_route") is not True:
+        errors.append("feasibility checkpoint must select exactly one route")
+    if feasibility.get("writes_domain_state_by_default_with_goal_id") is not True:
+        errors.append("feasibility checkpoint must default-write domain state")
+    if feasibility.get("writes_loopx_todo") is not False:
+        errors.append("feasibility checkpoint must not directly write LoopX todos")
+    if feasibility.get("raw_issue_or_log_material_captured") is not False:
+        errors.append("feasibility checkpoint must not capture raw material")
 
     post_pr = packet.get("post_pr_lifecycle_monitor_plan")
     if not isinstance(post_pr, Mapping):
@@ -630,6 +597,21 @@ def render_issue_fix_workflow_plan_markdown(payload: dict[str, Any]) -> str:
                     f"`{todo.get('priority')}` `{todo.get('action_kind')}`: "
                     f"would_write=`{todo.get('would_write')}`"
                 )
+    feasibility = payload.get("feasibility_checkpoint_plan")
+    if isinstance(feasibility, Mapping):
+        lines.extend(
+            [
+                "",
+                "## Feasibility Checkpoint",
+                "",
+                f"- selects_exactly_one_route: "
+                f"`{feasibility.get('selects_exactly_one_route')}`",
+                f"- routes: `{feasibility.get('routes')}`",
+                f"- writes_domain_state_by_default_with_goal_id: "
+                f"`{feasibility.get('writes_domain_state_by_default_with_goal_id')}`",
+                f"- command_preview: `{feasibility.get('command_preview')}`",
+            ]
+        )
     routes = payload.get("resolution_route_candidates")
     if isinstance(routes, Sequence) and not isinstance(routes, (str, bytes)):
         lines.extend(["", "## Resolution Routes", ""])

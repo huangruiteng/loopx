@@ -9,6 +9,8 @@ from typing import Any
 
 from ...domain_packs.issue_fix import (
     default_issue_fix_domain_state_ledger_path,
+    default_issue_fix_feasibility_ledger_path,
+    upsert_issue_fix_feasibility_ledger_jsonl,
     upsert_issue_fix_pr_lifecycle_ledger_jsonl,
 )
 from .acceptance_loop import (
@@ -16,6 +18,10 @@ from .acceptance_loop import (
     build_issue_fix_caller_repo_branch_packet,
     build_issue_fix_repo_branch_fixture_packet,
     render_issue_fix_acceptance_loop_markdown,
+)
+from .feasibility import (
+    build_issue_fix_feasibility_packet,
+    render_issue_fix_feasibility_markdown,
 )
 from .pr_lifecycle import (
     build_issue_fix_pr_lifecycle_monitor_packet,
@@ -129,6 +135,85 @@ def register_issue_fix_commands(
         "--generated-at",
         default="2026-06-23T00:00:00Z",
         help="Public-safe generated_at timestamp for the workflow plan.",
+    )
+    feasibility_parser = issue_fix_sub.add_parser(
+        "feasibility",
+        help=(
+            "Select exactly one fix_pr, comment_only, or triage_only route "
+            "from compact public-safe agent observations."
+        ),
+    )
+    add_subcommand_format(feasibility_parser)
+    feasibility_parser.add_argument(
+        "--repo",
+        default="public_repo_fixture",
+        help="Public-safe repository label for the issue.",
+    )
+    feasibility_parser.add_argument(
+        "--issue-ref",
+        default="issue_123_public_metadata_fixture",
+        help="Public-safe issue reference label.",
+    )
+    feasibility_parser.add_argument(
+        "--url",
+        default=None,
+        help="Optional https://github.com/owner/repo/issues/123 URL.",
+    )
+    feasibility_parser.add_argument(
+        "--reproduction-status",
+        required=True,
+        choices=("confirmed", "planned", "missing", "blocked"),
+        help="Compact agent observation of reproduction readiness.",
+    )
+    feasibility_parser.add_argument(
+        "--scope-class",
+        required=True,
+        choices=("bounded", "uncertain", "oversized"),
+        help="Compact agent observation of expected change scope.",
+    )
+    feasibility_parser.add_argument(
+        "--reproduction-label",
+        default=None,
+        help="Compact public-safe repro or repro-plan label; never raw logs.",
+    )
+    feasibility_parser.add_argument(
+        "--validation-label",
+        default=None,
+        help="Compact public-safe validation surface label.",
+    )
+    feasibility_parser.add_argument(
+        "--comment-value",
+        default="none",
+        choices=("none", "clarification", "diagnosis"),
+        help="Whether a maintainer-facing comment would add public value.",
+    )
+    feasibility_parser.add_argument(
+        "--generated-at",
+        default="2026-06-23T00:00:00Z",
+        help="Public-safe generated_at timestamp for the feasibility decision.",
+    )
+    feasibility_parser.add_argument(
+        "--goal-id",
+        default=None,
+        help="Goal id used for the default issue_fix feasibility ledger path.",
+    )
+    feasibility_parser.add_argument(
+        "--project",
+        default=".",
+        help="Project root for the default issue_fix feasibility ledger path.",
+    )
+    feasibility_parser.add_argument(
+        "--ledger-path",
+        default=None,
+        help="Optional local JSONL ledger path. Overrides the default path.",
+    )
+    feasibility_parser.add_argument(
+        "--no-write-domain-state",
+        action="store_true",
+        help=(
+            "Keep feasibility preview-only even when --goal-id or --ledger-path "
+            "is present."
+        ),
     )
     pr_lifecycle_parser = issue_fix_sub.add_parser(
         "pr-lifecycle",
@@ -357,6 +442,45 @@ def handle_issue_fix_command(
                 generated_at=args.generated_at,
             )
             renderer = render_issue_fix_workflow_plan_markdown
+        elif args.issue_fix_command == "feasibility":
+            payload = build_issue_fix_feasibility_packet(
+                repo=args.repo,
+                issue_ref=args.issue_ref,
+                url=args.url,
+                reproduction_status=args.reproduction_status,
+                scope_class=args.scope_class,
+                reproduction_label=args.reproduction_label,
+                validation_label=args.validation_label,
+                comment_value=args.comment_value,
+                generated_at=args.generated_at,
+            )
+            should_write_domain_state = bool(
+                not args.no_write_domain_state and (args.goal_id or args.ledger_path)
+            )
+            if should_write_domain_state:
+                ledger_path = (
+                    Path(args.ledger_path).expanduser()
+                    if args.ledger_path
+                    else default_issue_fix_feasibility_ledger_path(
+                        project=args.project,
+                        goal_id=args.goal_id,
+                    )
+                )
+                write_result = upsert_issue_fix_feasibility_ledger_jsonl(
+                    ledger_path,
+                    payload,
+                )
+                domain_state = payload.get("domain_state_projection")
+                if isinstance(domain_state, dict):
+                    domain_state["write_performed"] = True
+                    domain_state["write_result"] = write_result
+            else:
+                domain_state = payload.get("domain_state_projection")
+                if isinstance(domain_state, dict) and not args.no_write_domain_state:
+                    domain_state["write_skipped_reason"] = (
+                        "goal_id_or_ledger_path_missing"
+                    )
+            renderer = render_issue_fix_feasibility_markdown
         elif args.issue_fix_command == "pr-lifecycle":
             if args.fetch_metadata and args.metadata_json:
                 raise ValueError("--fetch-metadata cannot be combined with --metadata-json")
@@ -429,8 +553,9 @@ def handle_issue_fix_command(
             renderer = render_issue_fix_acceptance_loop_markdown
         else:
             raise ValueError(
-                "issue-fix requires `workflow-plan`, `acceptance-fixture`, "
-                "`pr-lifecycle`, `repo-branch-fixture`, or `caller-repo-branch`"
+                "issue-fix requires `workflow-plan`, `feasibility`, "
+                "`acceptance-fixture`, `pr-lifecycle`, `repo-branch-fixture`, "
+                "or `caller-repo-branch`"
             )
     except Exception as exc:
         payload = {
@@ -441,6 +566,8 @@ def handle_issue_fix_command(
         renderer = (
             render_issue_fix_workflow_plan_markdown
             if getattr(args, "issue_fix_command", None) == "workflow-plan"
+            else render_issue_fix_feasibility_markdown
+            if getattr(args, "issue_fix_command", None) == "feasibility"
             else render_issue_fix_pr_lifecycle_monitor_markdown
             if getattr(args, "issue_fix_command", None) == "pr-lifecycle"
             else render_issue_fix_acceptance_loop_markdown
