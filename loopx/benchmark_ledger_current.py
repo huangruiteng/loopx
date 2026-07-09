@@ -609,6 +609,14 @@ def build_benchmark_run_ledger_current_aggregate(
     runnable_missing_case_ids = [
         case_id for case_id in missing_case_ids if case_id not in active_id_set
     ]
+    runnable_blocked_uncountable_case_ids = [
+        case_id
+        for case_id in blocked_uncountable_case_ids
+        if case_id not in active_id_set
+    ]
+    runnable_case_ids = sorted(
+        set(runnable_missing_case_ids) | set(runnable_blocked_uncountable_case_ids)
+    )
     standard_case_sets = {
         "schema_version": "benchmark_run_ledger_standard_case_sets_v0",
         "policy": "accepted_numeric_official_scores_blocked_uncountable_infra_missing_elsewhere",
@@ -617,6 +625,10 @@ def build_benchmark_run_ledger_current_aggregate(
         "blocked_uncountable_case_ids": blocked_uncountable_case_ids,
         "active_case_ids": active_ids,
         "runnable_missing_case_ids": runnable_missing_case_ids,
+        "runnable_blocked_uncountable_case_ids": (
+            runnable_blocked_uncountable_case_ids
+        ),
+        "runnable_case_ids": runnable_case_ids,
         "raw_logs_recorded": False,
         "raw_task_text_recorded": False,
         "source_paths_recorded": False,
@@ -654,6 +666,10 @@ def build_benchmark_run_ledger_current_aggregate(
         "blocked_uncountable_case_ids": blocked_uncountable_case_ids,
         "active_case_ids": active_ids,
         "runnable_missing_case_ids": runnable_missing_case_ids,
+        "runnable_blocked_uncountable_case_ids": (
+            runnable_blocked_uncountable_case_ids
+        ),
+        "runnable_case_ids": runnable_case_ids,
         "case_best": case_best,
         "deduped_run_count": len(deduped_run_ids),
         "source_ledger_files": source_ledger_count,

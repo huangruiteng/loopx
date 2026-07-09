@@ -24,6 +24,16 @@ from pathlib import Path
 from typing import Any
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.benchmark_core.remote_closeout import (
+    build_remote_benchmark_closeout_contract,
+    closeout_remote_benchmark_batch,
+)
+
+
 SCHEMA_VERSION = "skillsbench_reverse_tunnel_supervisor_v0"
 DEFAULT_REMOTE_FORWARD = "127.0.0.1:18180:127.0.0.1:18180"
 DEFAULT_TEST_HOST = "chatgpt.com"
@@ -507,6 +517,49 @@ def _write_private_log(
     return True
 
 
+def _public_artifact_sync_requested(args: argparse.Namespace) -> bool:
+    return bool(
+        args.remote_public_artifact_root
+        or args.remote_public_artifact_glob
+        or args.local_public_artifact_dir
+    )
+
+
+def _public_artifact_sync_contract(args: argparse.Namespace) -> dict[str, Any]:
+    return build_remote_benchmark_closeout_contract(
+        requested=_public_artifact_sync_requested(args),
+        ledger_requested=bool(args.local_run_ledger_path),
+        aggregate_requested=bool(args.local_current_aggregate_path),
+    )
+
+
+def _sync_remote_public_artifacts(args: argparse.Namespace) -> dict[str, Any]:
+    return closeout_remote_benchmark_batch(
+        run_remote_command=lambda command, timeout: _run_remote_shell_command(
+            args,
+            command,
+            timeout_sec=timeout,
+        ),
+        remote_root=args.remote_public_artifact_root,
+        artifact_globs=list(args.remote_public_artifact_glob or []),
+        local_public_artifact_dir=args.local_public_artifact_dir,
+        adapter_kind=args.public_artifact_adapter_kind,
+        max_bytes=args.public_artifact_max_bytes,
+        sync_timeout_sec=args.public_artifact_sync_timeout_sec,
+        ledger_path=args.local_run_ledger_path,
+        run_group_id=args.local_run_group_id,
+        aggregate_path=args.local_current_aggregate_path,
+        canonical_case_ids_file=args.local_canonical_case_ids_file,
+        benchmark_id=args.local_benchmark_id,
+        target_lane_id=args.local_target_lane_id,
+        target_run_group_contains=list(args.local_target_run_group_contains or []),
+        target_backfill_run_group_contains=list(
+            args.local_target_backfill_run_group_contains or []
+        ),
+        repo_root=REPO_ROOT,
+    )
+
+
 def _size_bucket(value: str) -> str:
     size = len(value.encode("utf-8", errors="replace"))
     if size <= 0:
@@ -734,6 +787,7 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         "remote_forward": _forward_public_contract(args.remote_forward),
         "json_bridge": _json_bridge_public_contract(args),
         "remote_failure_cleanup": _remote_failure_cleanup_public_contract(args),
+        "public_artifact_sync": _public_artifact_sync_contract(args),
     }
 
     tunnel_proc: subprocess.Popen[Any] | None = None
@@ -878,14 +932,28 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
             stdout_text=stdout_text,
             stderr_text=stderr_text,
         )
-        payload["ok"] = proc.returncode == 0
+        payload["public_artifact_sync"] = _sync_remote_public_artifacts(args)
+        sync_ok = (
+            not _public_artifact_sync_requested(args)
+            or payload["public_artifact_sync"].get("ok") is True
+        )
+        payload["ok"] = proc.returncode == 0 and sync_ok
         if proc.returncode != 0:
             payload["first_blocker"] = "remote_command_exit_nonzero"
             payload["remote_failure_cleanup"] = _run_remote_failure_cleanup(
                 args,
                 trigger="remote_command_exit_nonzero",
             )
-        return finish(0 if proc.returncode == 0 else proc.returncode or 1)
+        elif not sync_ok:
+            payload["first_blocker"] = str(
+                payload["public_artifact_sync"].get("first_blocker")
+                or "public_artifact_sync_failed"
+            )
+        return finish(
+            0
+            if proc.returncode == 0 and sync_ok
+            else proc.returncode or 3
+        )
     except subprocess.TimeoutExpired as exc:
         stdout_text = exc.stdout if isinstance(exc.stdout, str) else ""
         stderr_text = exc.stderr if isinstance(exc.stderr, str) else ""
@@ -1013,6 +1081,68 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--remote-command", default="")
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument(
+        "--remote-public-artifact-root",
+        default="",
+        help=(
+            "Private remote root for post-run compact/public artifact collection. "
+            "The path is never written to public output."
+        ),
+    )
+    parser.add_argument(
+        "--remote-public-artifact-glob",
+        action="append",
+        default=[],
+        help=(
+            "Relative compact/public artifact glob below the private remote root. "
+            "May be repeated; raw artifacts are rejected before transport."
+        ),
+    )
+    parser.add_argument(
+        "--local-public-artifact-dir",
+        default="",
+        help=(
+            "Private local destination for synchronized compact/public artifacts. "
+            "The path is never written to public output."
+        ),
+    )
+    parser.add_argument(
+        "--public-artifact-adapter-kind",
+        default="skillsbench",
+    )
+    parser.add_argument(
+        "--public-artifact-max-bytes",
+        type=int,
+        default=2 * 1024 * 1024,
+    )
+    parser.add_argument(
+        "--public-artifact-sync-timeout-sec",
+        type=float,
+        default=60.0,
+    )
+    parser.add_argument(
+        "--local-run-ledger-path",
+        default="",
+        help=(
+            "Optional private local ledger updated from synchronized compact runs. "
+            "The path is never written to public output."
+        ),
+    )
+    parser.add_argument("--local-run-group-id", default="")
+    parser.add_argument("--local-current-aggregate-path", default="")
+    parser.add_argument("--local-canonical-case-ids-file", default="")
+    parser.add_argument("--local-benchmark-id", default="skillsbench@1.1")
+    parser.add_argument("--local-target-lane-id", default="")
+    parser.add_argument(
+        "--local-target-run-group-contains",
+        action="append",
+        default=[],
+    )
+    parser.add_argument(
+        "--local-target-backfill-run-group-contains",
+        action="append",
+        default=[],
+    )
+    parser.add_argument(
         "--private-log-path",
         default=None,
         help="Optional private stdout/stderr capture for the remote command.",
@@ -1038,6 +1168,28 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             parser.error(
                 "--json-bridge requires "
                 + ", ".join("--" + item.replace("_", "-") for item in missing)
+            )
+    if _public_artifact_sync_requested(args):
+        missing = []
+        if not args.remote_public_artifact_root:
+            missing.append("--remote-public-artifact-root")
+        if not args.remote_public_artifact_glob:
+            missing.append("--remote-public-artifact-glob")
+        if not args.local_public_artifact_dir:
+            missing.append("--local-public-artifact-dir")
+        if missing:
+            parser.error("artifact sync requires " + ", ".join(missing))
+        for pattern in args.remote_public_artifact_glob:
+            parts = Path(pattern).parts
+            if Path(pattern).is_absolute() or ".." in parts:
+                parser.error("--remote-public-artifact-glob must be relative and bounded")
+    if args.local_run_ledger_path and not _public_artifact_sync_requested(args):
+        parser.error("--local-run-ledger-path requires artifact sync")
+    if args.local_current_aggregate_path:
+        if not args.local_run_ledger_path or not args.local_canonical_case_ids_file:
+            parser.error(
+                "--local-current-aggregate-path requires --local-run-ledger-path "
+                "and --local-canonical-case-ids-file"
             )
     return args
 

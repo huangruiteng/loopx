@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -30,6 +32,7 @@ BENCHMARK_PRIVATE_MANIFEST_SUFFIXES = (
     ".local.json",
     ".private.json",
 )
+BENCHMARK_PUBLIC_ARTIFACT_MAX_BYTES = 2 * 1024 * 1024
 BENCHMARK_ARTIFACT_POLICY_REGISTRY: dict[str, dict[str, tuple[str, ...]]] = {
     "default": {
         "public_suffixes": BENCHMARK_PUBLIC_ARTIFACT_SUFFIXES,
@@ -151,13 +154,14 @@ def classify_benchmark_artifact_path(
     normalized = str(path).replace("\\", "/").rstrip("/")
     basename = normalized.rsplit("/", 1)[-1] if normalized else ""
     lower_path = normalized.lower()
+    boundary_path = "/" + lower_path.lstrip("/")
     lower_basename = basename.lower()
     public_compact_candidate = (
         lower_basename.endswith(policy["public_suffixes"])
         or lower_basename in policy["public_filenames"]
     )
     raw_marker = next(
-        (marker for marker in policy["raw_private_markers"] if marker in lower_path),
+        (marker for marker in policy["raw_private_markers"] if marker in boundary_path),
         "",
     )
     private_manifest = lower_basename.endswith(policy["private_suffixes"])
@@ -243,6 +247,95 @@ def filter_public_benchmark_artifact_paths(
             "trajectory_or_origin_log_read": False,
             "intended_use": "preflight benchmark artifact reads before compact ingest",
         },
+    }
+
+
+def materialize_public_benchmark_artifacts(
+    artifacts: Iterable[dict[str, Any]],
+    *,
+    output_dir: str | Path,
+    adapter_kind: str | None = None,
+    max_bytes: int = BENCHMARK_PUBLIC_ARTIFACT_MAX_BYTES,
+) -> dict[str, Any]:
+    """Validate and atomically materialize transported compact/public files."""
+
+    root = Path(output_dir).expanduser().resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    written_basenames: list[str] = []
+    blocked_reasons: dict[str, int] = {}
+    seen_relative_paths: set[str] = set()
+
+    def block(reason: str) -> None:
+        blocked_reasons[reason] = blocked_reasons.get(reason, 0) + 1
+
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            block("invalid_artifact_record")
+            continue
+        relative_text = str(artifact.get("relative_path") or "").replace("\\", "/")
+        relative = Path(relative_text)
+        if (
+            not relative_text
+            or relative.is_absolute()
+            or any(part in {"", ".", ".."} for part in relative.parts)
+        ):
+            block("unsafe_relative_path")
+            continue
+        relative_key = relative.as_posix()
+        if any(
+            part.lower() in {"private", "raw", "logs", "screenshots", "sessions"}
+            for part in relative.parts[:-1]
+        ):
+            block("raw_private_surface")
+            continue
+        if relative_key in seen_relative_paths:
+            block("duplicate_relative_path")
+            continue
+        seen_relative_paths.add(relative_key)
+        classification = classify_benchmark_artifact_path(
+            relative_key,
+            adapter_kind=adapter_kind,
+        )
+        if classification.get("allowed_to_read") is not True:
+            block(str(classification.get("first_blocker") or "artifact_not_public"))
+            continue
+        encoded = artifact.get("content_base64")
+        if not isinstance(encoded, str):
+            block("artifact_content_missing")
+            continue
+        try:
+            content = base64.b64decode(encoded, validate=True)
+        except (ValueError, TypeError):
+            block("artifact_content_invalid_base64")
+            continue
+        if len(content) > max(1, int(max_bytes)):
+            block("artifact_too_large")
+            continue
+        expected_sha256 = str(artifact.get("sha256") or "").lower()
+        if expected_sha256 and hashlib.sha256(content).hexdigest() != expected_sha256:
+            block("artifact_sha256_mismatch")
+            continue
+        destination = (root / relative).resolve()
+        if root not in destination.parents:
+            block("artifact_destination_escape")
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(destination.name + ".tmp")
+        temporary.write_bytes(content)
+        temporary.replace(destination)
+        written_basenames.append(destination.name)
+
+    return {
+        "schema_version": "benchmark_public_artifact_materialization_v0",
+        "ok": not blocked_reasons and bool(written_basenames),
+        "written_count": len(written_basenames),
+        "written_artifact_basenames": sorted(written_basenames),
+        "blocked_count": sum(blocked_reasons.values()),
+        "blocked_reasons": blocked_reasons,
+        "raw_paths_recorded": False,
+        "raw_task_text_read": False,
+        "raw_logs_read": False,
+        "raw_trajectory_read": False,
     }
 
 

@@ -4,10 +4,10 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/skillsbench-launch-goal-xhigh.sh [--dry-run] <task-id> [tag] [remote-proxy-port]
+  scripts/skillsbench-launch-goal-xhigh.sh [--dry-run] <task-id[,task-id...]> [tag] [remote-proxy-port]
 
-Launch one SkillsBench task through the host-local Codex CLI /goal route with
-the command/file bridge. Environment-specific values are supplied by env vars.
+Launch one or more SkillsBench tasks through one host-local Codex CLI /goal
+batch with a shared reverse tunnel. Environment-specific values use env vars.
 
 Required env:
   SKILLSBENCH_SSH_DESTINATION          SSH destination for the remote runner
@@ -26,11 +26,21 @@ Optional env:
   SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC  Setup stall timeout, default 3600;
                                        0 disables cap
   SKILLSBENCH_RUN_TIMEOUT_SEC          Supervisor timeout, default 28800
+  SKILLSBENCH_PARALLEL_CASES           Batch concurrency, default 3
+  SKILLSBENCH_BATCH_CASE_START_GAP_SEC Delay between case starts, default 3
   SKILLSBENCH_GOAL_ID                  Local evidence goal id, default loopx-meta
   SKILLSBENCH_RUN_STAMP                Deterministic timestamp override
   SKILLSBENCH_SSH_OPTIONS              Extra ssh options, one shell word each
   SKILLSBENCH_APPEND_HISTORY           Set to 1 to append LoopX history
   SKILLSBENCH_REGISTRY                 Optional registry path for history append
+  SKILLSBENCH_LOCAL_RUN_LEDGER_PATH    Local private live ledger; default below
+                                       the goal's skillsbench-ledgers directory
+  SKILLSBENCH_LOCAL_RUN_LEDGER_SEED    Optional ledger copied when the live
+                                       ledger does not exist yet
+  SKILLSBENCH_CANONICAL_CASE_IDS_FILE  Optional canonical case-id file; enables
+                                       standard aggregate refresh after closeout
+  SKILLSBENCH_STANDARD_AGGREGATE_PATH  Aggregate output path; default beside
+                                       the local live ledger
 EOF
 }
 
@@ -44,11 +54,19 @@ if [[ "${1:-}" == "--dry-run" ]]; then
   shift
 fi
 
-task_id="${1:-}"
-if [[ -z "$task_id" ]]; then
+task_ids_raw="${1:-}"
+if [[ -z "$task_ids_raw" ]]; then
   usage >&2
   exit 2
 fi
+task_ids_normalized="${task_ids_raw//,/ }"
+read -r -a task_ids <<<"$task_ids_normalized"
+if ((${#task_ids[@]} == 0)); then
+  usage >&2
+  exit 2
+fi
+task_id="${task_ids[0]}"
+task_count="${#task_ids[@]}"
 tag="${2:-${SKILLSBENCH_RUN_TAG:-manual}}"
 remote_proxy_port="${3:-${SKILLSBENCH_REMOTE_CODEX_PROXY_PORT:-18180}}"
 
@@ -72,6 +90,9 @@ stamp="${SKILLSBENCH_RUN_STAMP:-$(date +%Y%m%dT%H%M%SCST)}"
 safe_task="${task_id//[^A-Za-z0-9_ -]/-}"
 safe_task="${safe_task// /-}"
 safe_task="${safe_task//_/-}"
+if ((task_count > 1)); then
+  safe_task="batch-${task_count}"
+fi
 
 goal_id="${SKILLSBENCH_GOAL_ID:-loopx-meta}"
 route="${SKILLSBENCH_ROUTE:-codex-cli-goal-baseline}"
@@ -79,6 +100,11 @@ model="${SKILLSBENCH_MODEL:-gpt-5.5}"
 reasoning_effort="${SKILLSBENCH_REASONING_EFFORT:-xhigh}"
 build_stall_timeout="${SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC:-3600}"
 run_timeout="${SKILLSBENCH_RUN_TIMEOUT_SEC:-28800}"
+parallel_cases="${SKILLSBENCH_PARALLEL_CASES:-3}"
+if ((parallel_cases > task_count)); then
+  parallel_cases="$task_count"
+fi
+batch_case_start_gap="${SKILLSBENCH_BATCH_CASE_START_GAP_SEC:-3}"
 local_proxy_host="${SKILLSBENCH_LOCAL_CODEX_PROXY_HOST:-127.0.0.1}"
 local_proxy_port="${SKILLSBENCH_LOCAL_CODEX_PROXY_PORT:-18180}"
 docker_proxy_host="${SKILLSBENCH_DOCKER_PROXY_HOST:-auto}"
@@ -131,6 +157,16 @@ extra_runner_args=()
 if [[ -n "${SKILLSBENCH_REGISTRY:-}" ]]; then
   extra_runner_args+=(--registry "$SKILLSBENCH_REGISTRY")
 fi
+if ((task_count > 1)); then
+  task_ids_csv="$(IFS=,; printf '%s' "${task_ids[*]}")"
+  extra_runner_args+=(
+    --task-ids "$task_ids_csv"
+    --parallel-cases "$parallel_cases"
+    --batch-case-start-gap-sec "$batch_case_start_gap"
+  )
+else
+  extra_runner_args+=(--task-id "$task_id")
+fi
 if [[ "${SKILLSBENCH_APPEND_HISTORY:-0}" == "1" ]]; then
   extra_runner_args+=(--append-history)
 fi
@@ -157,7 +193,6 @@ remote_command=$(
   printf '%q ' \
     --skillsbench-root "$SKILLSBENCH_ROOT" \
     --expected-loopx-git-head "$SKILLSBENCH_EXPECTED_LOOPX_GIT_HEAD" \
-    --task-id "$task_id" \
     --route "$route" \
     --model "$model" \
     --reasoning-effort "$reasoning_effort" \
@@ -193,13 +228,39 @@ supervisor_cmd=(
   --remote-forward "127.0.0.1:${remote_proxy_port}:${local_proxy_host}:${local_proxy_port}"
   --run-timeout-sec "$run_timeout"
   --remote-command "$remote_command"
+  --remote-public-artifact-root "${SKILLSBENCH_REMOTE_ROOT}/.local/private-benchmark-jobs"
+  --remote-public-artifact-glob "${job_name}*/runner_prerequisites.public.json"
+  --remote-public-artifact-glob "${job_name}*/loopx_controller_trace.public.json"
+  --remote-public-artifact-glob "${job_name}*/runner_config.public.json"
+  --remote-public-artifact-glob "${job_name}*/*/benchmark_run.compact.json"
+  --remote-public-artifact-glob "${job_name}*/host_local_acp_relay_traces/*.compact.json"
+  --local-public-artifact-dir "$public_dir"
+  --local-run-ledger-path "${SKILLSBENCH_LOCAL_RUN_LEDGER_PATH:-.local/goals/${goal_id}/skillsbench-ledgers/live-standard-run-ledger.json}"
+  --local-run-group-id "$run_group"
   --private-log-path "${private_dir}/remote-command.log"
   --public-output-path "${public_dir}/supervisor.public.json"
 )
 
+local_run_ledger="${SKILLSBENCH_LOCAL_RUN_LEDGER_PATH:-.local/goals/${goal_id}/skillsbench-ledgers/live-standard-run-ledger.json}"
+if [[ "$dry_run" == "false" && ! -f "$local_run_ledger" && -n "${SKILLSBENCH_LOCAL_RUN_LEDGER_SEED:-}" ]]; then
+  mkdir -p "$(dirname "$local_run_ledger")"
+  cp "$SKILLSBENCH_LOCAL_RUN_LEDGER_SEED" "$local_run_ledger"
+fi
+if [[ -n "${SKILLSBENCH_CANONICAL_CASE_IDS_FILE:-}" ]]; then
+  standard_aggregate="${SKILLSBENCH_STANDARD_AGGREGATE_PATH:-$(dirname "$local_run_ledger")/standard-current-aggregate.json}"
+  supervisor_cmd+=(
+    --local-current-aggregate-path "$standard_aggregate"
+    --local-canonical-case-ids-file "$SKILLSBENCH_CANONICAL_CASE_IDS_FILE"
+    --local-target-lane-id codex-cli-goal-xhigh
+    --local-target-run-group-contains skillsbench-codex-cli-goal-xhigh-
+    --local-target-backfill-run-group-contains skillsbench-codex-cli-goal-xhigh-full87-
+  )
+fi
+
 if [[ "$dry_run" == "true" ]]; then
   printf 'dry_run=true\n'
-  printf 'task_id=%s\n' "$task_id"
+  printf 'task_ids=%s\n' "$(IFS=,; printf '%s' "${task_ids[*]}")"
+  printf 'parallel_cases=%s\n' "$parallel_cases"
   printf 'run_group=%s\n' "$run_group"
   printf 'job_name=%s\n' "$job_name"
   printf 'public_output=%s/supervisor.public.json\n' "$public_dir"
@@ -237,7 +298,8 @@ PY
 
 cat <<EOF
 pid=${pid}
-task_id=${task_id}
+task_ids=$(IFS=,; printf '%s' "${task_ids[*]}")
+parallel_cases=${parallel_cases}
 run_group=${run_group}
 job_name=${job_name}
 public_output=${public_dir}/supervisor.public.json

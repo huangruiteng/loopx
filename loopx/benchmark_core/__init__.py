@@ -27,6 +27,7 @@ from .artifacts import (
     classify_benchmark_artifact_path,
     classify_benchmark_candidate_source_path,
     filter_public_benchmark_artifact_paths,
+    materialize_public_benchmark_artifacts,
 )
 from .lifecycle import (
     BENCHMARK_CANONICAL_LIFECYCLE_SCHEMA_VERSION,
@@ -174,6 +175,7 @@ __all__ = [
     "LOOPX_PROMPT_POLLING_TEST_ROUTE",
     "IngestResult",
     "filter_public_benchmark_artifact_paths",
+    "materialize_public_benchmark_artifacts",
     "LaunchResult",
     "LedgerUpdate",
     "MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID",
