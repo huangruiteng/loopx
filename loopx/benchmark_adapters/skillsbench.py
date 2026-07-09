@@ -19,7 +19,10 @@ from ..benchmark_core import (
     canonical_lifecycle,
 )
 from ..codex_goal_baseline import build_codex_app_server_goal_worker_plan
-from .skillsbench_failure_signals import skillsbench_pip_bootstrap_failure_evidence
+from .skillsbench_failure_signals import (
+    reconcile_skillsbench_setup_attribution,
+    skillsbench_pip_bootstrap_failure_evidence,
+)
 from .skillsbench_signals import build_skillsbench_solution_quality_signals
 from .skillsbench_result_discovery import (
     SKILLSBENCH_RESULT_DISCOVERY_SCHEMA_VERSION,
@@ -5975,6 +5978,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
         benchmark_run["runner_failure"] = runner_failure
         if runner_failure_fingerprint is not None:
             benchmark_run["runner_failure_fingerprint"] = runner_failure_fingerprint
+    reconcile_skillsbench_setup_attribution(benchmark_run)
     if partial_trajectory and not host_local_acp_codex_exec_failure_present:
         benchmark_run["failure_attribution_labels"].append("partial_trajectory")
     benchmark_run["solution_quality_signals"] = (
