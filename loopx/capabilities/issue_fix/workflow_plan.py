@@ -38,6 +38,92 @@ def _todo_preview(
     }
 
 
+def _resolution_route_candidates(
+    *,
+    repo_label: str,
+    issue_label: str,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "schema_version": "issue_fix_resolution_route_candidate_v0",
+            "route": "fix_pr",
+            "priority": "P0",
+            "when": [
+                "public metadata suggests a bounded bug",
+                "caller-approved repo context is available",
+                "a focused repro or validation label can be named",
+            ],
+            "next_action_kind": "issue_fix_branch_validation",
+            "external_issue_comment_performed": False,
+            "external_pr_created": False,
+            "requires_user_gate_before_external_write": True,
+            "summary": (
+                f"Prepare a small fix branch for {repo_label} {issue_label}, "
+                "validate it, and emit a PR review packet."
+            ),
+        },
+        {
+            "schema_version": "issue_fix_resolution_route_candidate_v0",
+            "route": "comment_only",
+            "priority": "P1",
+            "when": [
+                "the issue needs missing repro detail",
+                "the safe answer is maintainer-facing clarification",
+                "patching would require private material or oversized design work",
+            ],
+            "next_action_kind": "issue_fix_external_comment_packet",
+            "external_issue_comment_performed": False,
+            "external_pr_created": False,
+            "requires_user_gate_before_external_write": True,
+            "summary": (
+                "Draft a public-safe maintainer comment packet, but require an "
+                "explicit gate before posting it."
+            ),
+        },
+        {
+            "schema_version": "issue_fix_resolution_route_candidate_v0",
+            "route": "triage_only",
+            "priority": "P2",
+            "when": [
+                "public metadata is too weak for repro or a useful comment",
+                "the issue is likely policy, product, or environment specific",
+            ],
+            "next_action_kind": "issue_fix_no_followup_or_owner_gate",
+            "external_issue_comment_performed": False,
+            "external_pr_created": False,
+            "requires_user_gate_before_external_write": True,
+            "summary": (
+                "Record a blocker or no-follow-up decision rather than opening "
+                "an ungrounded patch loop."
+            ),
+        },
+    ]
+
+
+def _post_pr_lifecycle_monitor_plan() -> dict[str, Any]:
+    return {
+        "schema_version": "issue_fix_post_pr_lifecycle_monitor_plan_v0",
+        "command_preview": (
+            "loopx issue-fix pr-lifecycle --url <github-pr-url> "
+            "--metadata-json <public-pr-state.json> --format json"
+        ),
+        "creates_continuous_monitor_todo": True,
+        "monitor_action_kind": "issue_fix_pr_lifecycle_monitor",
+        "decisions": [
+            "runnable_successor",
+            "monitor_continuation",
+            "user_gate",
+            "no_followup",
+        ],
+        "terminal_state_precedence": (
+            "PR terminal states such as MERGED or CLOSED win over stale review "
+            "metadata and must close the monitor with no-follow-up."
+        ),
+        "external_writes_performed": False,
+        "raw_check_logs_captured": False,
+    }
+
+
 def _branch_plan_from_dry_run(
     *,
     repo_path: str | None,
@@ -133,6 +219,11 @@ def build_issue_fix_workflow_plan_packet(
 
     repo_label = str(metadata["repo"])
     issue_label = str(metadata["issue_ref"])
+    resolution_routes = _resolution_route_candidates(
+        repo_label=repo_label,
+        issue_label=issue_label,
+    )
+    post_pr_monitor = _post_pr_lifecycle_monitor_plan()
     agent_todos = [
         _todo_preview(
             planner_order=1,
@@ -229,6 +320,34 @@ def build_issue_fix_workflow_plan_packet(
         for offset, gate in enumerate(user_gates, start=5):
             gate["planner_order"] = offset
 
+    monitor_order = max(
+        int(todo.get("planner_order", 0))
+        for todo in [*agent_todos, *user_gates]
+        if isinstance(todo.get("planner_order"), int)
+    ) + 1
+    agent_todos.append(
+        _todo_preview(
+            planner_order=monitor_order,
+            role="agent",
+            priority="P2",
+            task_class="continuous_monitor",
+            action_kind="issue_fix_pr_lifecycle_monitor",
+            text=(
+                "[P2] After a PR exists, observe public PR lifecycle state and "
+                "project it into runnable_successor, monitor_continuation, "
+                "user_gate, or no_followup."
+            ),
+            depends_on=[
+                "issue_fix_pr_review_packet",
+                "approve_external_issue_publish_or_merge",
+            ],
+        )
+    )
+    ordered_previews = sorted(
+        agent_todos + user_gates,
+        key=lambda preview: int(preview.get("planner_order", 0)),
+    )
+
     validation_plan = [
         {
             "schema_version": "issue_fix_validation_command_v0",
@@ -289,7 +408,9 @@ def build_issue_fix_workflow_plan_packet(
         },
         "first_screen": first_screen,
         "branch_plan": branch_plan,
-        "ordered_loopx_todo_writeback_preview": agent_todos + user_gates,
+        "resolution_route_candidates": resolution_routes,
+        "post_pr_lifecycle_monitor_plan": post_pr_monitor,
+        "ordered_loopx_todo_writeback_preview": ordered_previews,
         "validation_plan": validation_plan,
         "review_packet_preview": review_packet_preview,
         "external_reads_performed": bool(metadata_packet["external_reads_performed"]),
@@ -350,6 +471,40 @@ def validate_issue_fix_workflow_plan_packet(packet: Mapping[str, Any]) -> dict[s
         errors.append("branch_plan repo_path_captured must be false")
     if branch_plan.get("private_repo_state_read") is not False:
         errors.append("branch_plan private_repo_state_read must be false")
+
+    routes = packet.get("resolution_route_candidates")
+    if not isinstance(routes, Sequence) or isinstance(routes, (str, bytes)):
+        errors.append("resolution_route_candidates must be a list")
+        routes = []
+    route_names = {
+        route.get("route")
+        for route in routes
+        if isinstance(route, Mapping)
+    }
+    for route_name in ("fix_pr", "comment_only", "triage_only"):
+        if route_name not in route_names:
+            errors.append(f"resolution route {route_name} is required")
+    for route in routes:
+        if not isinstance(route, Mapping):
+            errors.append("resolution route entries must be objects")
+            continue
+        if route.get("external_issue_comment_performed") is not False:
+            errors.append("resolution routes must not perform external comments")
+        if route.get("external_pr_created") is not False:
+            errors.append("resolution routes must not create PRs")
+        if route.get("requires_user_gate_before_external_write") is not True:
+            errors.append("resolution routes must gate external writes")
+
+    post_pr = packet.get("post_pr_lifecycle_monitor_plan")
+    if not isinstance(post_pr, Mapping):
+        errors.append("post_pr_lifecycle_monitor_plan is required")
+        post_pr = {}
+    if post_pr.get("creates_continuous_monitor_todo") is not True:
+        errors.append("post PR lifecycle plan must create a monitor todo")
+    if post_pr.get("external_writes_performed") is not False:
+        errors.append("post PR lifecycle plan must not perform external writes")
+    if post_pr.get("raw_check_logs_captured") is not False:
+        errors.append("post PR lifecycle plan must not capture raw check logs")
 
     previews = packet.get("ordered_loopx_todo_writeback_preview")
     if not isinstance(previews, Sequence) or isinstance(previews, (str, bytes)):
@@ -475,6 +630,28 @@ def render_issue_fix_workflow_plan_markdown(payload: dict[str, Any]) -> str:
                     f"`{todo.get('priority')}` `{todo.get('action_kind')}`: "
                     f"would_write=`{todo.get('would_write')}`"
                 )
+    routes = payload.get("resolution_route_candidates")
+    if isinstance(routes, Sequence) and not isinstance(routes, (str, bytes)):
+        lines.extend(["", "## Resolution Routes", ""])
+        for route in routes:
+            if isinstance(route, Mapping):
+                lines.append(
+                    f"- `{route.get('route')}` `{route.get('priority')}`: "
+                    f"{route.get('summary')}"
+                )
+    post_pr = payload.get("post_pr_lifecycle_monitor_plan")
+    if isinstance(post_pr, Mapping):
+        lines.extend(
+            [
+                "",
+                "## Post-PR Lifecycle Monitor",
+                "",
+                f"- creates_continuous_monitor_todo: "
+                f"`{post_pr.get('creates_continuous_monitor_todo')}`",
+                f"- monitor_action_kind: `{post_pr.get('monitor_action_kind')}`",
+                f"- decisions: `{post_pr.get('decisions')}`",
+            ]
+        )
     review = payload.get("review_packet_preview")
     if isinstance(review, Mapping):
         lines.extend(

@@ -306,10 +306,16 @@ def _goal_start_contract(*, goal_text: str | None, connected: bool, agent_type: 
                     "loopx issue-fix workflow-plan --url <github-issue-or-pr-url> "
                     "--repo-path <approved-repo> --validation-label '<validation command>' --format json"
                 ),
+                "post_pr_monitor_command": (
+                    "loopx issue-fix pr-lifecycle --url <github-pr-url> "
+                    "--goal-id <goal-id> --format json"
+                ),
                 "writeback": (
                     "turn accepted workflow-plan candidates into ordered LoopX agent/user todos; "
                     "private repro material, issue body/comment reads, external comments, PR creation, "
-                    "merge, publish, destructive git, and production actions stay explicit gates"
+                    "merge, publish, destructive git, and production actions stay explicit gates; "
+                    "after PR creation, keep a continuous_monitor todo that calls pr-lifecycle "
+                    "and lets domain-state remember compact public PR observations"
                 ),
             }
         },
@@ -343,7 +349,7 @@ Planning rules:
 4. If several todos share the same priority, their listed order is their relative priority. Preserve that exact order when writing them.
 5. Prefer executable Agent Todo items with `task_class=advancement_task`; use User Todo only for concrete owner decisions or private-material gates.
 6. After writing todos, run `loopx refresh-state --goal-id {goal_id}`, activate the host loop if it is missing, unknown, or stale (Codex App automation, Codex CLI `/goal <task_body>`, Claude Code `/loop`, or a custom host-loop gate), then run `loopx quota should-run --goal-id {goal_id}` and begin the first allowed bounded segment.
-7. If the goal is a GitHub issue/PR fix, first preview `loopx issue-fix workflow-plan --url <github-issue-or-pr-url> --repo-path <approved-repo> --validation-label '<validation command>' --format json`; convert accepted preview candidates into ordered todos and keep private repro material, body/comment reads, external comments, PR creation, merge, publish, destructive git, and production actions as explicit gates.
+7. If the goal is a GitHub issue/PR fix, first preview `loopx issue-fix workflow-plan --url <github-issue-or-pr-url> --repo-path <approved-repo> --validation-label '<validation command>' --format json`; convert accepted preview candidates into ordered todos, include the PR lifecycle continuous_monitor successor, and keep private repro material, body/comment reads, external comments, PR creation, merge, publish, destructive git, and production actions as explicit gates. After a PR exists, the monitor should call `loopx issue-fix pr-lifecycle --url <github-pr-url> --goal-id {goal_id} --format json` so CI, review, merge, stale branch, and no-follow-up states drive LoopX todos instead of chat memory.
 """
 
 
@@ -494,6 +500,12 @@ def build_loopx_bootstrap_command_pack(
                 "--url <github-issue-or-pr-url> "
                 "--repo-path <approved-repo> "
                 "--validation-label '<validation command>' "
+                "--format json"
+            ),
+            "issue_fix_pr_lifecycle_template": (
+                f"{shell_arg(cli_bin)} issue-fix pr-lifecycle "
+                "--url <github-pr-url> "
+                f"--goal-id {shell_arg(resolved_goal_id)} "
                 "--format json"
             ),
         },
@@ -729,6 +741,12 @@ For GitHub issue/PR fix goals, preview the issue-fix route before todo writeback
 ```
 
 Accepted preview candidates become ordered Agent/User todos. Private repro material, issue body/comment reads, external comments, PR creation, merge, publish, destructive git, and production actions stay explicit gates.
+
+After a PR exists, the PR lifecycle monitor should observe compact public PR state and write issue-fix domain state by default:
+
+```bash
+{commands.get("issue_fix_pr_lifecycle_template", "")}
+```
 
 After todo writeback:
 

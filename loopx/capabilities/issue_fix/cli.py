@@ -7,11 +7,19 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from ...domain_packs.issue_fix import (
+    default_issue_fix_domain_state_ledger_path,
+    upsert_issue_fix_pr_lifecycle_ledger_jsonl,
+)
 from .acceptance_loop import (
     build_issue_fix_acceptance_fixture_packet,
     build_issue_fix_caller_repo_branch_packet,
     build_issue_fix_repo_branch_fixture_packet,
     render_issue_fix_acceptance_loop_markdown,
+)
+from .pr_lifecycle import (
+    build_issue_fix_pr_lifecycle_monitor_packet,
+    render_issue_fix_pr_lifecycle_monitor_markdown,
 )
 from .workflow_plan import (
     build_issue_fix_workflow_plan_packet,
@@ -121,6 +129,79 @@ def register_issue_fix_commands(
         "--generated-at",
         default="2026-06-23T00:00:00Z",
         help="Public-safe generated_at timestamp for the workflow plan.",
+    )
+    pr_lifecycle_parser = issue_fix_sub.add_parser(
+        "pr-lifecycle",
+        help=(
+            "Project a public PR lifecycle observation into a successor, "
+            "monitor-continuation, user-gate, or no-follow-up transition."
+        ),
+    )
+    add_subcommand_format(pr_lifecycle_parser)
+    pr_lifecycle_parser.add_argument(
+        "--repo",
+        default="public_repo_fixture",
+        help="Public-safe repository label for the PR metadata.",
+    )
+    pr_lifecycle_parser.add_argument(
+        "--pr-ref",
+        default="pull_123_public_metadata_fixture",
+        help="Public-safe PR reference label.",
+    )
+    pr_lifecycle_parser.add_argument(
+        "--url",
+        default=None,
+        help="Optional https://github.com/owner/repo/pull/123 URL.",
+    )
+    pr_lifecycle_parser.add_argument(
+        "--metadata-json",
+        default=None,
+        help=(
+            "Path to mocked gh pr view JSON metadata, or '-' for stdin. "
+            "Bodies, comments, raw logs, and provider responses stay out."
+        ),
+    )
+    pr_lifecycle_parser.add_argument(
+        "--fetch-metadata",
+        action="store_true",
+        help=(
+            "Explicitly fetch public GitHub PR state with gh pr view. "
+            "Only compact lifecycle fields are captured."
+        ),
+    )
+    pr_lifecycle_parser.add_argument(
+        "--fetch-timeout-seconds",
+        type=int,
+        default=10,
+        help="Timeout for --fetch-metadata.",
+    )
+    pr_lifecycle_parser.add_argument(
+        "--generated-at",
+        default="2026-06-23T00:00:00Z",
+        help="Public-safe generated_at timestamp for the lifecycle projection.",
+    )
+    pr_lifecycle_parser.add_argument(
+        "--goal-id",
+        default=None,
+        help="Goal id used for the default issue_fix domain-state ledger path.",
+    )
+    pr_lifecycle_parser.add_argument(
+        "--project",
+        default=".",
+        help="Project root for the default issue_fix domain-state ledger path.",
+    )
+    pr_lifecycle_parser.add_argument(
+        "--ledger-path",
+        default=None,
+        help="Optional local JSONL ledger path. Overrides the default domain-state path.",
+    )
+    pr_lifecycle_parser.add_argument(
+        "--no-write-domain-state",
+        action="store_true",
+        help=(
+            "Keep the PR lifecycle command preview-only even when --goal-id or "
+            "--ledger-path is present."
+        ),
     )
     acceptance_parser = issue_fix_sub.add_parser(
         "acceptance-fixture",
@@ -276,6 +357,45 @@ def handle_issue_fix_command(
                 generated_at=args.generated_at,
             )
             renderer = render_issue_fix_workflow_plan_markdown
+        elif args.issue_fix_command == "pr-lifecycle":
+            if args.fetch_metadata and args.metadata_json:
+                raise ValueError("--fetch-metadata cannot be combined with --metadata-json")
+            payload = build_issue_fix_pr_lifecycle_monitor_packet(
+                repo=args.repo,
+                pr_ref=args.pr_ref,
+                url=args.url,
+                provider_payload=_load_json_object(args.metadata_json)
+                if args.metadata_json
+                else None,
+                fetch_metadata=args.fetch_metadata,
+                fetch_timeout_seconds=args.fetch_timeout_seconds,
+                generated_at=args.generated_at,
+            )
+            should_write_domain_state = bool(
+                not args.no_write_domain_state and (args.goal_id or args.ledger_path)
+            )
+            if should_write_domain_state:
+                ledger_path = (
+                    Path(args.ledger_path).expanduser()
+                    if args.ledger_path
+                    else default_issue_fix_domain_state_ledger_path(
+                        project=args.project,
+                        goal_id=args.goal_id,
+                    )
+                )
+                write_result = upsert_issue_fix_pr_lifecycle_ledger_jsonl(
+                    ledger_path,
+                    payload,
+                )
+                domain_state = payload.get("domain_state_projection")
+                if isinstance(domain_state, dict):
+                    domain_state["write_performed"] = True
+                    domain_state["write_result"] = write_result
+            else:
+                domain_state = payload.get("domain_state_projection")
+                if isinstance(domain_state, dict) and not args.no_write_domain_state:
+                    domain_state["write_skipped_reason"] = "goal_id_or_ledger_path_missing"
+            renderer = render_issue_fix_pr_lifecycle_monitor_markdown
         elif args.issue_fix_command == "acceptance-fixture":
             payload = build_issue_fix_acceptance_fixture_packet(
                 repo=args.repo,
@@ -310,7 +430,7 @@ def handle_issue_fix_command(
         else:
             raise ValueError(
                 "issue-fix requires `workflow-plan`, `acceptance-fixture`, "
-                "`repo-branch-fixture`, or `caller-repo-branch`"
+                "`pr-lifecycle`, `repo-branch-fixture`, or `caller-repo-branch`"
             )
     except Exception as exc:
         payload = {
@@ -321,6 +441,8 @@ def handle_issue_fix_command(
         renderer = (
             render_issue_fix_workflow_plan_markdown
             if getattr(args, "issue_fix_command", None) == "workflow-plan"
+            else render_issue_fix_pr_lifecycle_monitor_markdown
+            if getattr(args, "issue_fix_command", None) == "pr-lifecycle"
             else render_issue_fix_acceptance_loop_markdown
         )
     print_payload(payload, output_format(args), renderer)

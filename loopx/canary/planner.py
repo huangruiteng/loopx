@@ -833,6 +833,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "guards the public issue-fix workflow contract, gated metadata preview, and todo writeback preview",
             },
             {
+                "command": "python3 examples/issue-fix-pr-lifecycle-smoke.py",
+                "tier": "default",
+                "reason": "guards PR lifecycle transitions, terminal-state precedence, and issue_fix domain-state writeback",
+            },
+            {
                 "command": "python3 examples/content-ops-issue-fix-intake-smoke.py",
                 "tier": "default",
                 "reason": "checks content-ops issue-fix intake from public metadata without external reads or writes",
