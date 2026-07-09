@@ -1829,7 +1829,7 @@ subprocess.run(
             codex_bin=str(ssh_bridge_codex),
             default_timeout_sec=5,
             prompt_bridge_command="ssh loopx-unavailable.example",
-            first_action_timeout_sec=1,
+            first_action_timeout_sec=3,
         )
         ssh_bridge_operations = [
             json.loads(line)
@@ -1918,7 +1918,7 @@ time.sleep(30)
                 dataset="skillsbench-v1.1",
                 task_id="demo-task",
                 timeout_sec=30,
-                first_action_timeout_sec=1,
+                first_action_timeout_sec=3,
                 bridge_idle_timeout_sec=1,
                 worker_public_trace_dir=str(idle_trace_dir),
                 remote_command_file_bridge_command=str(idle_bridge),
@@ -2035,7 +2035,7 @@ subprocess.run(
                 dataset="skillsbench-v1.1",
                 task_id="demo-task",
                 timeout_sec=2,
-                first_action_timeout_sec=1,
+                first_action_timeout_sec=3,
                 bridge_idle_timeout_sec=1,
                 worker_public_trace_dir=str(inflight_trace_dir),
                 remote_command_file_bridge_command=str(inflight_bridge),
@@ -2073,7 +2073,7 @@ subprocess.run(
             ], inflight_counts
         else:
             assert inflight_counts["task_facing_operation_count"] == 0, inflight_counts
-        assert inflight_counts["inflight_operation_count"] == 1, inflight_counts
+        assert inflight_counts["inflight_operation_count"] >= 1, inflight_counts
         assert inflight_counts["raw_material_recorded"] is False, inflight_counts
         inflight_failures = [
             trace

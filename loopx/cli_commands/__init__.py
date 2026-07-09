@@ -66,6 +66,8 @@ from .benchmark_run_ledger_case_analysis import (
 )
 from .benchmark_run_ledger_maintenance import (
     handle_benchmark_run_ledger_maintenance_command,
+)
+from .benchmark_run_ledger_maintenance_registration import (
     register_benchmark_run_ledger_maintenance_commands,
 )
 from .benchmark_run_ledger_parity import (

@@ -53,6 +53,7 @@ from loopx.benchmark_adapters.skillsbench import (  # noqa: E402
     skillsbench_runner_error_attribution,
     skillsbench_runner_error_fingerprint,
 )
+from loopx.benchmark_adapters.skillsbench_batch import parallel_batch_requires_subprocess_isolation  # noqa: E402
 from loopx.benchmark_case_state import (  # noqa: E402
     BENCHMARK_CASE_LOOPX_GOAL_START_SELECTED_TODO_ID,
     BENCHMARK_CASE_LOOPX_GOAL_START_TODO_IDS,
@@ -11580,7 +11581,7 @@ def test_skillsbench_parallel_batch_isolates_case_process_argv() -> None:
             "--append-history",
         ]
     )
-    assert skillsbench_loop._parallel_batch_requires_subprocess_isolation(2) is True
+    assert parallel_batch_requires_subprocess_isolation(2) is True
     case_args = skillsbench_loop._clone_args_for_batch_case(
         args,
         task_id="adaptive-cruise-control",
@@ -14517,6 +14518,8 @@ def test_skillsbench_reduce_only_preserves_round_reward_trace() -> None:
                     rollout_name,
                     "--ledger-path",
                     str(Path(tmp) / "ledger.json"),
+                    "--skip-ledger-inherit",
+                    "--skip-global-ledger-sync",
                     "--reduce-only",
                     "--update-ledger",
                 ]
@@ -14529,8 +14532,10 @@ def test_skillsbench_reduce_only_preserves_round_reward_trace() -> None:
         assert round_trace["first_success_round"] == 2, compact
         assert [item["reward"] for item in round_trace["records"]] == [0.0, 1.0], compact
         assert round_trace["records"][1]["passed"] is True, compact
+        entry = payload["ledger_update"]["primary_ledger_update"]["entry"]
         ledger = load_benchmark_run_ledger(Path(tmp) / "ledger.json")
-        run = ledger["benchmarks"]["skillsbench@1.1"]["cases"]["sample-task"]["runs"][0]
+        runs = ledger["benchmarks"]["skillsbench@1.1"]["cases"]["sample-task"]["runs"]
+        run = next(item for item in runs if item["run_id"] == entry["run_id"])
         assert run["round_reward_count"] == 2, run
         assert run["round_success_observed"] is True, run
         assert [item["reward"] for item in run["round_rewards"]] == [0.0, 1.0], run
@@ -14597,6 +14602,8 @@ def test_skillsbench_reduce_only_preserves_persisted_public_prerequisites() -> N
                     rollout_name,
                     "--ledger-path",
                     str(Path(tmp) / "ledger.json"),
+                    "--skip-ledger-inherit",
+                    "--skip-global-ledger-sync",
                     "--reduce-only",
                     "--update-ledger",
                 ]

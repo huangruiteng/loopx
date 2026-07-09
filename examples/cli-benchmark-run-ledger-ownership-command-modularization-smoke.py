@@ -40,6 +40,18 @@ def main() -> int:
         "maintenance": (
             ROOT / "loopx" / "cli_commands" / "benchmark_run_ledger_maintenance.py"
         ).read_text(encoding="utf-8"),
+        "maintenance_registration": (
+            ROOT
+            / "loopx"
+            / "cli_commands"
+            / "benchmark_run_ledger_maintenance_registration.py"
+        ).read_text(encoding="utf-8"),
+        "maintenance_rendering": (
+            ROOT
+            / "loopx"
+            / "cli_commands"
+            / "benchmark_run_ledger_maintenance_rendering.py"
+        ).read_text(encoding="utf-8"),
         "case_analysis": (
             ROOT
             / "loopx"
@@ -94,12 +106,26 @@ def main() -> int:
 
     assert_markers_owned_by(
         parent_source=sources["ledger"],
-        owner_source=sources["maintenance"],
+        owner_source=sources["maintenance_registration"],
         markers=[
             "benchmark_run_ledger_upsert_parser = benchmark_subparsers.add_parser",
             "benchmark_run_ledger_check_parser = benchmark_subparsers.add_parser",
+        ],
+        parent_name="benchmark_run_ledger.py",
+    )
+    assert_markers_owned_by(
+        parent_source=sources["ledger"],
+        owner_source=sources["maintenance_rendering"],
+        markers=[
             "def render_benchmark_run_ledger_upsert_markdown",
             "def render_benchmark_run_ledger_check_markdown",
+        ],
+        parent_name="benchmark_run_ledger.py",
+    )
+    assert_markers_owned_by(
+        parent_source=sources["ledger"],
+        owner_source=sources["maintenance"],
+        markers=[
             'if args.benchmark_command == "run-ledger-upsert":',
             'if args.benchmark_command == "run-ledger-check":',
             "compact_benchmark_post_launch_materialization",

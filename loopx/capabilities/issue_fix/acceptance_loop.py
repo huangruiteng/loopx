@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -223,6 +224,17 @@ def _require_passed(step: Mapping[str, Any]) -> None:
         raise RuntimeError(f"{step.get('command_label')} failed with exit code {step.get('exit_code')}")
 
 
+def _remove_temporary_git_workspace(workspace: Path) -> None:
+    for attempt in range(5):
+        try:
+            shutil.rmtree(workspace)
+            return
+        except OSError:
+            if attempt == 4:
+                raise
+            time.sleep(0.1 * (attempt + 1))
+
+
 def _write_fixture_workspace(workspace: Path) -> None:
     (workspace / "calculator.py").write_text(
         "\n".join(
@@ -423,13 +435,16 @@ def build_issue_fix_repo_branch_fixture_packet(
     )
     branch_name = "codex/issue-123-public-metadata-fixture"
 
-    with tempfile.TemporaryDirectory(prefix="loopx-issue-fix-git-") as tmpdir:
+    tmpdir = tempfile.mkdtemp(prefix="loopx-issue-fix-git-")
+    try:
         workspace = Path(tmpdir)
         git_steps: list[dict[str, Any]] = []
         for args, label in (
             (["init", "-b", "main"], "git init fixture repo"),
             (["config", "user.name", "LoopX Fixture"], "git config fixture user.name"),
             (["config", "user.email", "loopx-fixture@example.invalid"], "git config fixture user.email"),
+            (["config", "gc.auto", "0"], "git config fixture gc.auto"),
+            (["config", "maintenance.auto", "false"], "git config fixture maintenance.auto"),
         ):
             step = _run_git_step(workspace, args, label)
             git_steps.append(step)
@@ -465,6 +480,8 @@ def build_issue_fix_repo_branch_fixture_packet(
         )
         git_steps.append(diff_step)
         _require_passed(diff_step)
+    finally:
+        _remove_temporary_git_workspace(Path(tmpdir))
 
     artifact = {
         "schema_version": ISSUE_FIX_VALIDATED_FIX_ARTIFACT_SCHEMA_VERSION,

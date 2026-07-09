@@ -413,9 +413,10 @@ def test_goal_start_install_command_seeds_three_ranked_todos() -> None:
             text=True,
         )
         status_payload = json.loads(status.stdout)
-        items = status_payload["attention_queue"]["items"][0]["agent_todos"][
-            "backlog_items"
-        ]
+        agent_todos = status_payload["attention_queue"]["items"][0]["agent_todos"]
+        assert agent_todos["total_count"] == 3
+        assert agent_todos["open_count"] == 3
+        items = agent_todos["first_executable_items"]
         ids = {item["todo_id"] for item in items}
         assert set(BENCHMARK_CASE_LOOPX_GOAL_START_TODO_IDS).issubset(ids)
         assert status_payload["attention_queue"]["items"][0]["agent_lane_next_action"][

@@ -29,8 +29,8 @@ curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/ins
 export PATH="$HOME/.local/bin:$PATH"
 
 Then run `loopx doctor`. Work only from the current project root:
-1. If LoopX state already exists, reuse it and do not create or overwrite the
-   active objective.
+1. If LoopX state already exists, reuse it and do not create or overwrite a
+   goal or the active objective.
 2. If the project is not connected, prefer `loopx connect`; use
    `loopx bootstrap` only when project state clearly needs initialization.
 3. Ensure `.loopx/`, `.codex/goals/`, and `.local/` are ignored.
@@ -163,7 +163,7 @@ it with the official no-clone installer:
 curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
 
 Then run `loopx doctor`. Work only from this project root: if LoopX state
-already exists, reuse it and do not create or overwrite the active objective; if the project
+already exists, reuse it and do not create or overwrite a goal or the active objective; if the project
 is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
 project state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
 and `.local/` are ignored. Keep me in this TUI, do not use hidden headless

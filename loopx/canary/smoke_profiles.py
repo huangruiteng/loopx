@@ -72,6 +72,33 @@ SMOKE_SUITE_PROFILE_MANIFEST: dict[str, dict[str, Any]] = {
         "exclude_modules": NON_BENCHMARK_SMOKE_EXCLUDE_MODULES,
         "description": "Docs, project lifecycle, and content/update-note operations checks.",
     },
+    "public-smoke-watch": {
+        "suite": "full-public",
+        "modules": [
+            "canary",
+            "control-plane",
+            "control_plane",
+            "full-public-smokes",
+            "install",
+            "issue-fix",
+            "line-budget",
+            "monitor",
+            "public-entry",
+            "public_entry",
+            "quota",
+            "readme",
+            "scheduler",
+            "smoke-suite",
+            "smoke_suite",
+            "status",
+            "todo",
+        ],
+        "exclude_modules": NON_BENCHMARK_SMOKE_EXCLUDE_MODULES,
+        "description": (
+            "Recurring public health watch profile for canary runner, public "
+            "entry/install, control-plane monitor, and repository budget checks."
+        ),
+    },
 }
 
 

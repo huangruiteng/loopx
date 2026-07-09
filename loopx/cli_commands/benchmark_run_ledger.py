@@ -23,7 +23,6 @@ from ..benchmark_adapters.terminal_bench import (
     TERMINAL_BENCH_DEFAULT_DATASET,
     TERMINAL_BENCH_DEFAULT_MODEL,
     TERMINAL_BENCH_DEFAULT_TASK,
-    TERMINAL_BENCH_HARDENED_CODEX_BASELINE_PREFLIGHT_MODE,
     TERMINAL_BENCH_MODES,
     TERMINAL_BENCH_WORKER_CODEX_MATERIALIZATION_STRATEGIES,
     build_terminal_bench_benchmark_run,
@@ -52,9 +51,12 @@ from .benchmark_run_ledger_case_analysis import (
     handle_benchmark_run_ledger_case_analysis_command,
     register_benchmark_run_ledger_case_analysis_commands,
 )
+from .benchmark_run_ledger_classification import benchmark_run_ledger_classification
 from .benchmark_run_ledger_maintenance import (
     BENCHMARK_RUN_LEDGER_MAINTENANCE_COMMANDS,
     handle_benchmark_run_ledger_maintenance_command,
+)
+from .benchmark_run_ledger_maintenance_registration import (
     register_benchmark_run_ledger_maintenance_commands,
 )
 from .benchmark_run_ledger_parity import (
@@ -390,66 +392,7 @@ def handle_benchmark_run_ledger_command(
             skillsbench_result_path: Path | None = None
             skillsbench_result_root_path: Path | None = None
             skillsbench_result_discovery: dict[str, object] | None = None
-            if args.benchmark_name == "skillsbench":
-                classification = args.classification or (
-                    "skillsbench_official_benchflow_result_ingest_v0"
-                    if args.skillsbench_result_json or args.skillsbench_result_root
-                    else (
-                        "skillsbench_"
-                        + str(args.skillsbench_route).replace("-", "_")
-                        + "_skeleton_v0"
-                    )
-                )
-            else:
-                classification = args.classification or (
-                    "terminal_bench_harbor_runner_result_ingest_v0"
-                    if args.harbor_job_dir
-                    else
-                    "terminal_bench_active_user_assisted_observation_fixture_v0"
-                    if args.active_user_observation_fixture
-                    else
-                    "terminal_bench_active_user_assisted_treatment_preflight_v0"
-                    if args.active_user_assisted_treatment
-                    else
-                    "terminal_bench_codex_loopx_active_cli_bridge_preflight_v0"
-                    if args.active_cli_bridge
-                    else
-                    "terminal_bench_codex_loopx_worker_cli_bridge_fixture_v0"
-                    if args.worker_cli_bridge_fixture
-                    else
-                    "terminal_bench_codex_loopx_cli_bridge_contract_runner_fixture_v0"
-                    if args.cli_bridge_contract
-                    else (
-                        (
-                            "terminal_bench_codex_loopx_preflight_guard_v0"
-                            if args.mode == "codex-loopx"
-                            else (
-                                TERMINAL_BENCH_HARDENED_CODEX_BASELINE_PREFLIGHT_MODE
-                                + "_v0"
-                            )
-                            if args.mode == "hardened-codex"
-                            else "terminal_bench_codex_goal_mode_baseline_preflight_guard_v0"
-                            if args.mode == "codex-goal-mode"
-                            else "terminal_bench_managed_real_run_preflight_guard_v0"
-                        )
-                        if args.preflight_guard
-                        else (
-                            (
-                                "terminal_bench_codex_loopx_fake_worker_v0"
-                                if args.mode == "codex-loopx"
-                                else "terminal_bench_cli_fake_worker_v0"
-                            )
-                            if args.fake_worker
-                            else (
-                                "terminal_bench_codex_loopx_dry_run_v0"
-                                if args.mode == "codex-loopx"
-                                else "terminal_bench_codex_goal_mode_baseline_dry_run_v0"
-                                if args.mode == "codex-goal-mode"
-                                else "terminal_bench_cli_dry_run_v0"
-                            )
-                        )
-                    )
-                )
+            classification = benchmark_run_ledger_classification(args)
             terminal_bench_only_flags = (
                 args.harbor_job_dir
                 or args.fake_worker
@@ -811,37 +754,7 @@ def handle_benchmark_run_ledger_command(
                 "registry": str(registry_path),
                 "runtime_root": args.runtime_root,
                 "goal_id": args.goal_id,
-                "classification": args.classification
-                or (
-                    (
-                        "skillsbench_official_benchflow_result_ingest_v0"
-                        if getattr(args, "skillsbench_result_json", None)
-                        or getattr(args, "skillsbench_result_root", None)
-                        else (
-                            "skillsbench_"
-                            + str(getattr(args, "skillsbench_route", "")).replace("-", "_")
-                            + "_skeleton_v0"
-                        )
-                    )
-                    if getattr(args, "benchmark_name", None) == "skillsbench"
-                    else
-                    "terminal_bench_active_user_assisted_treatment_preflight_v0"
-                    if getattr(args, "active_user_assisted_treatment", False)
-                    else
-                    "terminal_bench_codex_loopx_worker_cli_bridge_fixture_v0"
-                    if getattr(args, "worker_cli_bridge_fixture", False)
-                    else
-                    "terminal_bench_codex_loopx_cli_bridge_contract_runner_fixture_v0"
-                    if getattr(args, "cli_bridge_contract", False)
-                    else "terminal_bench_codex_goal_mode_baseline_preflight_guard_v0"
-                    if getattr(args, "preflight_guard", False)
-                    and getattr(args, "mode", None) == "codex-goal-mode"
-                    else "terminal_bench_managed_real_run_preflight_guard_v0"
-                    if getattr(args, "preflight_guard", False)
-                    else "terminal_bench_codex_goal_mode_baseline_dry_run_v0"
-                    if getattr(args, "mode", None) == "codex-goal-mode"
-                    else "terminal_bench_cli_dry_run_v0"
-                ),
+                "classification": benchmark_run_ledger_classification(args),
                 "error": str(exc),
             }
         print_payload(payload, args.format, render_benchmark_run_append_markdown)

@@ -398,6 +398,12 @@ def register_canary_commands(
         help="Stop execution at the first failed or timed-out smoke.",
     )
     smoke_parser.add_argument(
+        "--jobs",
+        type=int,
+        default=1,
+        help="Run up to this many smoke scripts concurrently; --fail-fast stays serial.",
+    )
+    smoke_parser.add_argument(
         "--allow-tracked-side-effects",
         action="store_true",
         help=(
@@ -531,6 +537,7 @@ def handle_canary_command(
             timeout_seconds=float(args.timeout_seconds or 120.0),
             fail_fast=bool(args.fail_fast),
             allow_tracked_side_effects=bool(args.allow_tracked_side_effects),
+            parallel_jobs=int(args.jobs or 1),
             progress_callback=(
                 None
                 if bool(args.no_execute) or bool(args.no_progress)

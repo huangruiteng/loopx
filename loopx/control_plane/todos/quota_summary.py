@@ -43,6 +43,7 @@ QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT = 2
 QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT = 2
 QUOTA_PAYLOAD_COMPACTION_SCHEMA_VERSION = "quota_todo_summary_payload_compaction_v0"
 QUOTA_PAYLOAD_ITEM_FIELDS = (
+    "schema_version",
     "index",
     "text",
     "title",
@@ -76,6 +77,7 @@ QUOTA_PAYLOAD_ITEM_FIELDS = (
     "route_key",
     "completed_at",
     "updated_at",
+    "gate_state",
 )
 QUOTA_PAYLOAD_LANE_LIMITS = {
     "monitor_due_items": MONITOR_DUE_ITEM_LIMIT,
@@ -312,7 +314,7 @@ def _compact_quota_payload_item(item: Any) -> Any:
         value = item.get(key)
         if value is None:
             continue
-        if key == "text":
+        if key in {"text", "title"}:
             value = _truncate_quota_payload_text(
                 value,
                 limit=QUOTA_PAYLOAD_ITEM_TEXT_LIMIT,

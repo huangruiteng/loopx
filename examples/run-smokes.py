@@ -93,6 +93,15 @@ def parse_args() -> argparse.Namespace:
         help="Stop execution at the first failed or timed-out smoke.",
     )
     parser.add_argument(
+        "--jobs",
+        type=int,
+        default=1,
+        help=(
+            "Run up to this many smoke scripts concurrently. Defaults to 1. "
+            "--fail-fast keeps execution serial."
+        ),
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Print machine-readable JSON instead of markdown.",
@@ -115,6 +124,7 @@ def main() -> int:
         execute=not bool(args.no_execute),
         timeout_seconds=float(args.timeout_seconds or 120.0),
         fail_fast=bool(args.fail_fast),
+        parallel_jobs=int(args.jobs or 1),
     )
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
