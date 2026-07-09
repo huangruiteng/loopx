@@ -1,6 +1,6 @@
 """Lark/Feishu capability facade for presentation sinks."""
 
-from ...presentation.sinks.lark import kanban, message_card
+from ...presentation.sinks.lark import explore_results, kanban, message_card
 
-__all__ = ["kanban", "message_card"]
+__all__ = ["explore_results", "kanban", "message_card"]
 

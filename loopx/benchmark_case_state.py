@@ -586,6 +586,28 @@ def benchmark_case_active_state_seed_text(
     )
 
 
+def _require_posix_style_path(path: str, *, what: str) -> str:
+    """Reject Windows backslash paths before they reach a POSIX shell command.
+
+    The generated commands are a POSIX contract (posixpath, mktemp, mv). A
+    backslash path fed to them is not resolved as a path at all: mktemp
+    treats the whole string as a literal FILENAME relative to the shell's
+    cwd, and the Cygwin/MSYS layer escapes ':' and '\\' into private-use
+    Unicode, silently littering the cwd with mangled-name files. Fail loudly
+    instead; Windows callers must convert first (e.g. Path.as_posix()).
+    """
+
+    text = str(path or "")
+    if not text.strip():
+        raise ValueError(f"{what} must be a non-empty path")
+    if "\\" in text:
+        raise ValueError(
+            f"{what} must be a POSIX-style path (no backslashes); "
+            f"got {text!r} -- convert with Path.as_posix() or cygpath first"
+        )
+    return text
+
+
 def benchmark_case_active_state_write_command(
     *,
     case_state_path: str,
@@ -593,6 +615,7 @@ def benchmark_case_active_state_write_command(
 ) -> str:
     """Return a shell command that atomically seeds the case active-state file."""
 
+    case_state_path = _require_posix_style_path(case_state_path, what="case_state_path")
     delimiter = "__LOOPX_BENCHMARK_CASE_ACTIVE_STATE_EOF__"
     while delimiter in content:
         delimiter += "_"
@@ -642,6 +665,7 @@ def benchmark_case_goal_doc_text(
 
 
 def _benchmark_case_write_text_command(path: str, content: str) -> str:
+    path = _require_posix_style_path(path, what="path")
     delimiter = "__LOOPX_BENCHMARK_CASE_TEXT_EOF__"
     while delimiter in content:
         delimiter += "_"
@@ -711,6 +735,18 @@ def benchmark_case_loopx_install_command(
     """
 
     del content  # Official bootstrap owns the initial state body.
+    for what, value in (
+        ("case_state_path", case_state_path),
+        ("case_cli_path", case_cli_path),
+        ("case_registry_path", case_registry_path),
+        ("case_runtime_root", case_runtime_root),
+        ("case_goal_doc_path", case_goal_doc_path),
+        ("case_project_root", case_project_root),
+        ("case_home", case_home),
+    ):
+        _require_posix_style_path(value, what=what)
+    if case_loopx_source_path is not None:
+        _require_posix_style_path(case_loopx_source_path, what="case_loopx_source_path")
     cli_prefix = benchmark_case_loopx_command_prefix(
         case_cli_path=case_cli_path,
         case_registry_path=case_registry_path,

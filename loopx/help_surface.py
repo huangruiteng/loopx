@@ -129,6 +129,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
             {"command": "loopx sync-global", "purpose": "Merge project state into the shared registry."},
             {"command": "loopx register-agent", "purpose": "Register an automation agent."},
             {"command": "loopx lark-kanban", "purpose": "Project LoopX state into a Feishu/Lark Base board."},
+            {
+                "command": "loopx explore",
+                "purpose": "Record the exploration topology (nodes, edges, findings) and project it to a Feishu/Lark result board.",
+            },
             {"command": "loopx issue-fix", "purpose": "Build public-safe issue or PR fix workflow packets."},
             {"command": "loopx auto-research", "purpose": "Project public-safe research frontiers."},
             {"command": "loopx multi-agent", "purpose": "Launch visible role-scoped Codex TUI agents."},

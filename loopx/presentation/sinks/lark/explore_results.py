@@ -1,0 +1,845 @@
+"""Project the LoopX exploration topology into a Feishu/Lark Base result board.
+
+This sink renders the bounded projection built by
+``loopx.capabilities.explore.result_log`` into three Bitable tables (Nodes,
+Edges, Findings) plus one interactive result card that answers three operator
+questions: what has been explored, where is the loop blocked and why, and what
+was found. It follows the Lark Kanban adapter contract: all external effects
+go through ``lark-cli`` commands behind an injectable runner, every write is
+dry-run unless ``execute=True``, and shared-visibility rows pass the
+public-safe redaction used by the Kanban sync. Card content is transport-free;
+an approved gateway sends or updates the actual Lark message. The Mermaid
+topology source in the projection is for Feishu docs or any diagram renderer.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Mapping
+
+from ....capabilities.explore.result_log import (
+    EXPLORE_RESULT_PROJECTION_VERSION,
+    FINDING_STATUS_CONFIRMED,
+    FINDING_STATUS_REFUTED,
+    FINDING_STATUS_TENTATIVE,
+    NODE_KINDS,
+    NODE_STATUS_BLOCKED,
+    NODE_STATUS_DEAD_END,
+    NODE_STATUS_EXPLORING,
+    NODE_STATUS_OPEN,
+    NODE_STATUS_RESOLVED,
+    EDGE_TYPES,
+)
+from .kanban import (
+    DEFAULT_CLI_BIN,
+    CommandRunner,
+    _command_error,
+    _extract_base_token,
+    _extract_table_id,
+    _extract_created_record_id,
+    _public_safe_text,
+    _run_command,
+    _select_options,
+    default_subprocess_runner,
+    lark_record_rows,
+    now_lark_datetime,
+    parse_lark_base_url,
+)
+from .message_card import build_lark_markdown_reply_card
+
+LARK_EXPLORE_SCHEMA_VERSION = "loopx_lark_explore_result_board_v0"
+LARK_EXPLORE_LOCAL_CONFIG_VERSION = "loopx_lark_explore_local_config_v0"
+LARK_EXPLORE_SYNC_VERSION = "loopx_lark_explore_sync_v0"
+LARK_EXPLORE_CARD_VERSION = "loopx_lark_explore_card_v0"
+
+DEFAULT_EXPLORE_BASE_NAME = "LoopX Exploration Results"
+SINK_VISIBILITY_OWNER_ONLY = "owner-only"
+SINK_VISIBILITY_SHARED = "shared"
+SINK_VISIBILITIES = {SINK_VISIBILITY_OWNER_ONLY, SINK_VISIBILITY_SHARED}
+
+TABLE_NODES = "nodes"
+TABLE_EDGES = "edges"
+TABLE_FINDINGS = "findings"
+EXPLORE_TABLE_KEYS = (TABLE_NODES, TABLE_EDGES, TABLE_FINDINGS)
+EXPLORE_TABLE_NAMES = {
+    TABLE_NODES: "Nodes",
+    TABLE_EDGES: "Edges",
+    TABLE_FINDINGS: "Findings",
+}
+
+_GOAL_ID_FIELD = "LoopX Goal ID"
+_RESULT_ID_FIELD = "LoopX Result ID"
+
+
+def _number_field(name: str, *, precision: int) -> dict[str, Any]:
+    return {
+        "name": name,
+        "type": "number",
+        "style": {
+            "type": "plain",
+            "precision": precision,
+            "percentage": False,
+            "thousands_separator": False,
+        },
+    }
+
+
+def _text_field(name: str) -> dict[str, Any]:
+    return {"name": name, "type": "text", "style": {"type": "plain"}}
+
+
+def _link_field(name: str, *, link_table: str) -> dict[str, Any]:
+    return {"name": name, "type": "link", "link_table": link_table}
+
+
+def _select_field(name: str, options: list[str]) -> dict[str, Any]:
+    return {
+        "name": name,
+        "type": "select",
+        "multiple": False,
+        "options": _select_options(options),
+    }
+
+
+_LINEAGE_FIELDS = [
+    _text_field(_GOAL_ID_FIELD),
+    _text_field(_RESULT_ID_FIELD),
+    _text_field("Source ID"),
+    _text_field("Row Lifecycle"),
+    _text_field("Supersedes"),
+    _text_field("Superseded By"),
+]
+
+
+def lark_explore_field_definitions(table_key: str) -> list[dict[str, Any]]:
+    if table_key == TABLE_NODES:
+        return [
+            _text_field("Title"),
+            _select_field("Kind", sorted(NODE_KINDS)),
+            _select_field(
+                "Status",
+                [
+                    NODE_STATUS_OPEN,
+                    NODE_STATUS_EXPLORING,
+                    NODE_STATUS_BLOCKED,
+                    NODE_STATUS_RESOLVED,
+                    NODE_STATUS_DEAD_END,
+                ],
+            ),
+            _text_field("Summary"),
+            _text_field("Blocked Reason"),
+            _text_field("Parent Node"),
+            _number_field("Findings", precision=0),
+            _text_field("Evidence Refs"),
+            _text_field("Tags"),
+            _text_field("Agent ID"),
+            _text_field("First Recorded At"),
+            _text_field("Last Updated At"),
+            *_LINEAGE_FIELDS,
+        ]
+    if table_key == TABLE_EDGES:
+        return [
+            _text_field("From Node"),
+            _text_field("To Node"),
+            _link_field("From Node Link", link_table=EXPLORE_TABLE_NAMES[TABLE_NODES]),
+            _link_field("To Node Link", link_table=EXPLORE_TABLE_NAMES[TABLE_NODES]),
+            _select_field("Type", sorted(EDGE_TYPES)),
+            _number_field("Confidence", precision=2),
+            _text_field("Condition"),
+            _text_field("State Transition"),
+            _text_field("Summary"),
+            _text_field("Last Updated At"),
+            _text_field(_GOAL_ID_FIELD),
+            _text_field(_RESULT_ID_FIELD),
+            _text_field("Source ID"),
+        ]
+    if table_key == TABLE_FINDINGS:
+        return [
+            _text_field("Finding"),
+            _text_field("Summary"),
+            _select_field(
+                "Status",
+                [FINDING_STATUS_TENTATIVE, FINDING_STATUS_CONFIRMED, FINDING_STATUS_REFUTED],
+            ),
+            _number_field("Confidence", precision=2),
+            _text_field("Node"),
+            _text_field("Evidence Refs"),
+            _text_field("Tags"),
+            _text_field("Agent ID"),
+            _text_field("First Recorded At"),
+            _text_field("Last Updated At"),
+            *_LINEAGE_FIELDS,
+        ]
+    raise ValueError(f"unknown explore table key: {table_key}")
+
+
+def lark_explore_schema_payload() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "schema_version": LARK_EXPLORE_SCHEMA_VERSION,
+        "source_of_truth": "loopx_explore_result_log_projected_to_lark_base",
+        "adapter_role": "read_only_result_dashboard",
+        "projection_schema_version": EXPLORE_RESULT_PROJECTION_VERSION,
+        "loopx_mapping": {
+            "node": "Nodes row keyed by LoopX Result ID; Status=blocked rows answer where the loop is stuck",
+            "edge": "Edges row keyed by LoopX Result ID; typed relation between two nodes",
+            "finding": "Findings row keyed by LoopX Result ID; latest finding event wins",
+            "topology": "Mermaid flowchart source in the projection, for Feishu docs or any renderer",
+            "lineage": "Row Lifecycle, Supersedes, Superseded By, Source ID columns",
+            "card": "compact interactive card built from the same projection",
+        },
+        "tables": {
+            key: {
+                "name": EXPLORE_TABLE_NAMES[key],
+                "fields": lark_explore_field_definitions(key),
+            }
+            for key in EXPLORE_TABLE_KEYS
+        },
+        "write_boundary": (
+            "Rows are a projection of the local explore result log. The board "
+            "never receives worker commands, local paths, credentials, or raw "
+            "transcripts; card send/update happens through an approved gateway."
+        ),
+    }
+
+
+@dataclass(frozen=True)
+class LarkExploreConfig:
+    base_token: str
+    table_ids: dict[str, str] = field(default_factory=dict)
+    cli_bin: str = DEFAULT_CLI_BIN
+    identity: str = "user"
+
+    def table_id(self, table_key: str) -> str:
+        table_id = str(self.table_ids.get(table_key) or "").strip()
+        if not table_id:
+            raise ValueError(
+                f"missing table id for {table_key}; run `loopx explore feishu-setup` first"
+            )
+        return table_id
+
+
+def default_lark_explore_config_path(registry_path: Path | None = None) -> Path:
+    if registry_path is not None:
+        expanded = registry_path.expanduser()
+        if expanded.parent.name == ".loopx":
+            return expanded.parent / "lark-explore.json"
+    return Path.cwd() / ".loopx" / "lark-explore.json"
+
+
+def read_lark_explore_local_config(path: Path) -> dict[str, Any]:
+    config_path = path.expanduser()
+    if not config_path.exists():
+        return {
+            "ok": True,
+            "exists": False,
+            "schema_version": LARK_EXPLORE_LOCAL_CONFIG_VERSION,
+            "path": str(config_path),
+            "board": None,
+        }
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as exc:
+        return {
+            "ok": False,
+            "exists": True,
+            "schema_version": LARK_EXPLORE_LOCAL_CONFIG_VERSION,
+            "path": str(config_path),
+            "error": f"invalid JSON: {exc}",
+            "board": None,
+        }
+    if not isinstance(payload, dict):
+        return {
+            "ok": False,
+            "exists": True,
+            "schema_version": LARK_EXPLORE_LOCAL_CONFIG_VERSION,
+            "path": str(config_path),
+            "error": "config root must be a JSON object",
+            "board": None,
+        }
+    payload.setdefault("schema_version", LARK_EXPLORE_LOCAL_CONFIG_VERSION)
+    payload["ok"] = True
+    payload["exists"] = True
+    payload["path"] = str(config_path)
+    return payload
+
+
+def write_lark_explore_local_config(path: Path, payload: dict[str, Any]) -> None:
+    config_path = path.expanduser()
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    to_write = dict(payload)
+    to_write.pop("ok", None)
+    to_write.pop("exists", None)
+    to_write.pop("path", None)
+    to_write["schema_version"] = LARK_EXPLORE_LOCAL_CONFIG_VERSION
+    to_write["updated_at"] = now_lark_datetime()
+    config_path.write_text(
+        json.dumps(to_write, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def lark_explore_config_from_payload(payload: Mapping[str, Any]) -> LarkExploreConfig | None:
+    board = payload.get("board")
+    if not isinstance(board, dict):
+        return None
+    base_token = str(board.get("base_token") or "").strip()
+    tables = board.get("tables") if isinstance(board.get("tables"), dict) else {}
+    table_ids = {
+        str(key): str(value).strip()
+        for key, value in tables.items()
+        if str(value or "").strip()
+    }
+    if not base_token or not table_ids:
+        return None
+    return LarkExploreConfig(
+        **{"base_" + "token": base_token},
+        table_ids=table_ids,
+        cli_bin=str(board.get("cli_bin") or DEFAULT_CLI_BIN),
+        identity=str(board.get("identity") or "user"),
+    )
+
+
+def _record_json_args(values: Mapping[str, Any]) -> str:
+    return json.dumps(dict(values), ensure_ascii=False, separators=(",", ":"))
+
+
+def _build_upsert_command(
+    config: LarkExploreConfig,
+    *,
+    table_id: str,
+    record_id: str | None,
+    values: Mapping[str, Any],
+) -> list[str]:
+    args = [
+        config.cli_bin,
+        "base",
+        "+record-upsert",
+        "--as",
+        config.identity,
+        "--base-token",
+        config.base_token,
+        "--table-id",
+        table_id,
+    ]
+    if record_id:
+        args.extend(["--record-id", record_id])
+    args.extend(["--json", _record_json_args(values)])
+    return args
+
+
+def _build_record_list_command(config: LarkExploreConfig, *, table_id: str) -> list[str]:
+    return [
+        config.cli_bin,
+        "base",
+        "+record-list",
+        "--as",
+        config.identity,
+        "--base-token",
+        config.base_token,
+        "--table-id",
+        table_id,
+        "--format",
+        "json",
+        "--offset",
+        "0",
+        "--limit",
+        "200",
+    ]
+
+
+def setup_lark_explore_board(
+    *,
+    config_path: Path,
+    base_name: str = DEFAULT_EXPLORE_BASE_NAME,
+    base_url: str | None = None,
+    base_token: str | None = None,
+    cli_bin: str = DEFAULT_CLI_BIN,
+    identity: str = "user",
+    execute: bool = False,
+    runner: CommandRunner = default_subprocess_runner,
+) -> dict[str, Any]:
+    """Create (or complete) the three-table exploration result board."""
+
+    commands: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    existing = read_lark_explore_local_config(config_path)
+    existing_board = existing.get("board") if isinstance(existing.get("board"), dict) else {}
+    existing_tables = (
+        existing_board.get("tables") if isinstance(existing_board.get("tables"), dict) else {}
+    )
+    parsed_url = parse_lark_base_url(base_url) if base_url else {}
+    effective_base_token = str(
+        base_token or parsed_url.get("base_token") or existing_board.get("base_token") or ""
+    ).strip()
+    effective_base_url = str(base_url or existing_board.get("base_url") or "").strip()
+    table_ids = {
+        key: str(existing_tables.get(key) or "").strip()
+        for key in EXPLORE_TABLE_KEYS
+        if str(existing_tables.get(key) or "").strip()
+    }
+
+    def failure(error: str | None = None) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "schema_version": LARK_EXPLORE_SCHEMA_VERSION,
+            "execute": execute,
+            "config_path": str(config_path),
+            "base_token": effective_base_token or None,
+            "tables": table_ids,
+            "commands": commands,
+            "warnings": warnings,
+            "error": error
+            or next(
+                (_command_error(item) for item in commands if not item.get("ok")),
+                "unknown",
+            ),
+        }
+
+    if not effective_base_token:
+        create = _run_command(
+            [cli_bin, "base", "+base-create", "--as", identity, "--name", base_name],
+            execute=execute,
+            runner=runner,
+        )
+        commands.append(create)
+        if execute:
+            if not create.get("ok"):
+                return failure()
+            effective_base_token = _extract_base_token(create.get("json")) or ""
+            if not effective_base_token:
+                return failure("base-create did not return a usable Base token")
+            create_data = (
+                create.get("json", {}).get("data")
+                if isinstance(create.get("json"), dict)
+                else {}
+            )
+            create_base = (
+                create_data.get("base")
+                if isinstance(create_data, dict) and isinstance(create_data.get("base"), dict)
+                else {}
+            )
+            effective_base_url = str(create_base.get("url") or effective_base_url).strip()
+        else:
+            effective_base_token = "<base-token-from-create>"
+
+    for table_key in EXPLORE_TABLE_KEYS:
+        if table_ids.get(table_key):
+            continue
+        table_create = _run_command(
+            [
+                cli_bin,
+                "base",
+                "+table-create",
+                "--as",
+                identity,
+                "--base-token",
+                effective_base_token,
+                "--name",
+                EXPLORE_TABLE_NAMES[table_key],
+                "--fields",
+                json.dumps(lark_explore_field_definitions(table_key), ensure_ascii=False),
+            ],
+            execute=execute,
+            runner=runner,
+        )
+        commands.append(table_create)
+        if execute:
+            if not table_create.get("ok"):
+                return failure()
+            table_id = _extract_table_id(table_create.get("json")) or ""
+            if not table_id:
+                return failure(
+                    f"table-create for {EXPLORE_TABLE_NAMES[table_key]} did not return a table id"
+                )
+            table_ids[table_key] = table_id
+        else:
+            table_ids[table_key] = f"<table-id-from-table-create:{table_key}>"
+
+    board = {
+        "base_token": effective_base_token,
+        "base_url": effective_base_url,
+        "base_name": base_name or existing_board.get("base_name") or "",
+        "cli_bin": cli_bin,
+        "identity": identity,
+        "tables": table_ids,
+    }
+    if execute:
+        write_lark_explore_local_config(
+            config_path,
+            {
+                "schema_version": LARK_EXPLORE_LOCAL_CONFIG_VERSION,
+                "board": board,
+                "result_records": (
+                    existing.get("result_records")
+                    if isinstance(existing.get("result_records"), dict)
+                    else {}
+                ),
+                "card": existing.get("card") if isinstance(existing.get("card"), dict) else {},
+            },
+        )
+
+    return {
+        "ok": True,
+        "schema_version": LARK_EXPLORE_SCHEMA_VERSION,
+        "execute": execute,
+        "config_path": str(config_path),
+        "base_token": effective_base_token,
+        "tables": table_ids,
+        "board": board,
+        "commands": commands,
+        "warnings": warnings,
+        "next_commands": [
+            "loopx explore node --goal-id <goal-id> --title <topic> --status exploring",
+            "loopx explore finding --goal-id <goal-id> --title <finding> --node <node-id>",
+            "loopx explore feishu-sync --goal-id <goal-id> --execute",
+        ],
+        "error": None,
+    }
+
+
+def _joined(values: Any) -> str:
+    if isinstance(values, list):
+        return ", ".join(str(item) for item in values if str(item or "").strip())
+    return str(values or "")
+
+
+def _lifecycle_values(item: Mapping[str, Any], *, source_id: str) -> dict[str, Any]:
+    return {
+        "Source ID": source_id,
+        "Row Lifecycle": "superseded" if str(item.get("superseded_by") or "") else "current",
+        "Supersedes": _joined(item.get("supersedes")),
+        "Superseded By": str(item.get("superseded_by") or ""),
+    }
+
+
+def _node_record_values(node: Mapping[str, Any], *, goal_id: str, source_id: str) -> dict[str, Any]:
+    return {
+        "Title": str(node.get("title") or ""),
+        "Kind": str(node.get("node_kind") or ""),
+        "Status": str(node.get("status") or ""),
+        "Summary": str(node.get("summary") or ""),
+        "Blocked Reason": str(node.get("blocked_reason") or ""),
+        "Parent Node": str(node.get("parent_id") or ""),
+        "Findings": node.get("finding_count"),
+        "Evidence Refs": _joined(node.get("evidence_refs")),
+        "Tags": _joined(node.get("tags")),
+        "Agent ID": str(node.get("agent_id") or ""),
+        "First Recorded At": str(node.get("first_recorded_at") or ""),
+        "Last Updated At": str(node.get("last_updated_at") or ""),
+        _GOAL_ID_FIELD: goal_id,
+        _RESULT_ID_FIELD: str(node.get("node_id") or ""),
+        **_lifecycle_values(node, source_id=source_id),
+    }
+
+
+def _edge_record_values(edge: Mapping[str, Any], *, goal_id: str, source_id: str) -> dict[str, Any]:
+    return {
+        "From Node": str(edge.get("from_node") or ""),
+        "To Node": str(edge.get("to_node") or ""),
+        "Type": str(edge.get("edge_type") or ""),
+        "Confidence": edge.get("confidence"),
+        "Condition": str(edge.get("summary") or ""),
+        "State Transition": str(edge.get("edge_type") or ""),
+        "Summary": str(edge.get("summary") or ""),
+        "Last Updated At": str(edge.get("last_updated_at") or ""),
+        _GOAL_ID_FIELD: goal_id,
+        _RESULT_ID_FIELD: str(edge.get("edge_id") or ""),
+        "Source ID": source_id,
+    }
+
+
+def _finding_record_values(
+    finding: Mapping[str, Any], *, goal_id: str, source_id: str
+) -> dict[str, Any]:
+    return {
+        "Finding": str(finding.get("finding") or ""),
+        "Summary": str(finding.get("summary") or ""),
+        "Status": str(finding.get("status") or ""),
+        "Confidence": finding.get("confidence"),
+        "Node": str(finding.get("node_id") or ""),
+        "Evidence Refs": _joined(finding.get("evidence_refs")),
+        "Tags": _joined(finding.get("tags")),
+        "Agent ID": str(finding.get("agent_id") or ""),
+        "First Recorded At": str(finding.get("first_recorded_at") or ""),
+        "Last Updated At": str(finding.get("last_updated_at") or ""),
+        _GOAL_ID_FIELD: goal_id,
+        _RESULT_ID_FIELD: str(finding.get("finding_id") or ""),
+        **_lifecycle_values(finding, source_id=source_id),
+    }
+
+
+def _public_safe_values(values: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: _public_safe_text(value) if isinstance(value, str) else value
+        for key, value in values.items()
+    }
+
+
+def _with_edge_link_values(
+    values: dict[str, Any],
+    *,
+    record_map: Mapping[str, str],
+    goal_id: str,
+) -> dict[str, Any]:
+    """Add linked-record cells so the Lark Base itself represents the graph.
+
+    The plain text node ids remain as readable stable keys. The link fields are
+    best-effort because legacy boards may not have the schema yet; Lark ignores
+    unknown fields only when the request is not sent, so callers should create
+    the fields before enabling live sync against an existing board.
+    """
+
+    linked = dict(values)
+    from_record = str(record_map.get(f"{goal_id}:{TABLE_NODES}:{values.get('From Node')}") or "")
+    to_record = str(record_map.get(f"{goal_id}:{TABLE_NODES}:{values.get('To Node')}") or "")
+    if from_record:
+        linked["From Node Link"] = [{"id": from_record}]
+    if to_record:
+        linked["To Node Link"] = [{"id": to_record}]
+    return linked
+
+
+def sync_explore_results_to_lark(
+    config: LarkExploreConfig,
+    *,
+    projection: Mapping[str, Any],
+    config_path: Path | None = None,
+    sink_visibility: str = SINK_VISIBILITY_OWNER_ONLY,
+    execute: bool = False,
+    runner: CommandRunner = default_subprocess_runner,
+) -> dict[str, Any]:
+    if not isinstance(projection, Mapping):
+        raise ValueError("projection must be a JSON object")
+    if projection.get("schema_version") != EXPLORE_RESULT_PROJECTION_VERSION:
+        raise ValueError(
+            f"projection must use schema {EXPLORE_RESULT_PROJECTION_VERSION}"
+        )
+    if sink_visibility not in SINK_VISIBILITIES:
+        raise ValueError(f"sink_visibility must be one of {sorted(SINK_VISIBILITIES)}")
+    public_safe = sink_visibility == SINK_VISIBILITY_SHARED
+    goal_id = str(projection.get("goal_id") or "").strip()
+    if not goal_id:
+        raise ValueError("projection is missing goal_id")
+    source_id = f"loopx-explore:{goal_id}"
+
+    rows_by_table: dict[str, list[dict[str, Any]]] = {
+        TABLE_NODES: [
+            _node_record_values(item, goal_id=goal_id, source_id=source_id)
+            for item in projection.get("nodes") or []
+            if isinstance(item, Mapping)
+        ],
+        TABLE_EDGES: [
+            _edge_record_values(item, goal_id=goal_id, source_id=source_id)
+            for item in projection.get("edges") or []
+            if isinstance(item, Mapping)
+        ],
+        TABLE_FINDINGS: [
+            _finding_record_values(item, goal_id=goal_id, source_id=source_id)
+            for item in projection.get("findings") or []
+            if isinstance(item, Mapping)
+        ],
+    }
+    if public_safe:
+        rows_by_table = {
+            table_key: [_public_safe_values(values) for values in rows]
+            for table_key, rows in rows_by_table.items()
+        }
+
+    local = read_lark_explore_local_config(config_path) if config_path else {}
+    record_map = (
+        dict(local.get("result_records") or {})
+        if isinstance(local.get("result_records"), dict)
+        else {}
+    )
+    commands: list[dict[str, Any]] = []
+    warnings: list[str] = []
+
+    if execute:
+        for table_key in EXPLORE_TABLE_KEYS:
+            if not rows_by_table[table_key]:
+                continue
+            list_result = _run_command(
+                _build_record_list_command(config, table_id=config.table_id(table_key)),
+                execute=True,
+                runner=runner,
+            )
+            commands.append(list_result)
+            if not list_result.get("ok"):
+                warnings.append(
+                    f"record-list for {table_key} failed; continuing with cached record ids"
+                )
+                continue
+            payload = list_result.get("json") if isinstance(list_result.get("json"), dict) else {}
+            for record in lark_record_rows(payload):
+                result_id = str(record.get(_RESULT_ID_FIELD) or "").strip()
+                row_goal_id = str(record.get(_GOAL_ID_FIELD) or "").strip()
+                record_id = str(record.get("_record_id") or "").strip()
+                if result_id and row_goal_id and record_id:
+                    record_map[f"{row_goal_id}:{table_key}:{result_id}"] = record_id
+
+    results: list[dict[str, Any]] = []
+    ok = True
+    for table_key in EXPLORE_TABLE_KEYS:
+        for values in rows_by_table[table_key]:
+            result_id = str(values.get(_RESULT_ID_FIELD) or "").strip()
+            key = f"{goal_id}:{table_key}:{result_id}"
+            result = _run_command(
+                _build_upsert_command(
+                    config,
+                    table_id=config.table_id(table_key),
+                    record_id=record_map.get(key),
+                    values=values,
+                ),
+                execute=execute,
+                runner=runner,
+            )
+            commands.append(result)
+            record_id = _extract_created_record_id(result.get("json")) or record_map.get(key)
+            if execute and result.get("ok") and record_id:
+                record_map[key] = record_id
+            results.append(
+                {
+                    "table": table_key,
+                    "result_id": result_id,
+                    "record_id": record_id,
+                    "command": result,
+                    "values": values,
+                }
+            )
+            ok = ok and bool(result.get("ok"))
+            if execute and not result.get("ok"):
+                break
+        if execute and not ok:
+            break
+
+        if table_key == TABLE_NODES:
+            rows_by_table[TABLE_EDGES] = [
+                _with_edge_link_values(values, record_map=record_map, goal_id=goal_id)
+                for values in rows_by_table[TABLE_EDGES]
+            ]
+
+    if execute and config_path and ok:
+        board = local.get("board") if isinstance(local.get("board"), dict) else {}
+        if not board:
+            board = {
+                "base_token": config.base_token,
+                "tables": dict(config.table_ids),
+                "cli_bin": config.cli_bin,
+                "identity": config.identity,
+            }
+        write_lark_explore_local_config(
+            config_path,
+            {
+                "schema_version": LARK_EXPLORE_LOCAL_CONFIG_VERSION,
+                "board": board,
+                "result_records": record_map,
+                "card": local.get("card") if isinstance(local.get("card"), dict) else {},
+            },
+        )
+
+    return {
+        "ok": ok,
+        "schema_version": LARK_EXPLORE_SYNC_VERSION,
+        "execute": execute,
+        "goal_id": goal_id,
+        "source_id": source_id,
+        "sink_visibility": sink_visibility,
+        "public_safe_redaction": public_safe,
+        "projection_schema_version": projection.get("schema_version"),
+        "row_counts": {table_key: len(rows_by_table[table_key]) for table_key in EXPLORE_TABLE_KEYS},
+        "records": results,
+        "commands": commands,
+        "warnings": warnings,
+        "config_path": str(config_path) if config_path else None,
+        "error": None
+        if ok
+        else next(
+            (_command_error(item) for item in commands if not item.get("ok")),
+            "unknown",
+        ),
+    }
+
+
+def build_explore_card_markdown(projection: Mapping[str, Any]) -> str:
+    counts = projection.get("counts") if isinstance(projection.get("counts"), dict) else {}
+    by_status = (
+        counts.get("nodes_by_status") if isinstance(counts.get("nodes_by_status"), dict) else {}
+    )
+    status_parts = [
+        f"{by_status.get(status, 0)} {label}"
+        for status, label in (
+            (NODE_STATUS_EXPLORING, "exploring"),
+            (NODE_STATUS_BLOCKED, "blocked"),
+            (NODE_STATUS_RESOLVED, "resolved"),
+            (NODE_STATUS_OPEN, "open"),
+        )
+        if by_status.get(status, 0)
+    ]
+    lines = [
+        (
+            f"**Exploration map**: {counts.get('node_count', 0)} nodes"
+            + (f" ({', '.join(status_parts)})" if status_parts else "")
+            + f", {counts.get('edge_count', 0)} edges, "
+            f"{counts.get('finding_count', 0)} findings"
+        ),
+        "",
+    ]
+    stuck = [item for item in projection.get("stuck") or [] if isinstance(item, Mapping)]
+    if stuck:
+        lines.append("**Blocked**")
+        for node in stuck:
+            reason = str(node.get("blocked_reason") or "").strip()
+            lines.append(f"- {node.get('title')}" + (f" - {reason}" if reason else ""))
+        lines.append("")
+    findings = [item for item in projection.get("findings") or [] if isinstance(item, Mapping)]
+    if findings:
+        lines.append("**Latest findings**")
+        for finding in findings[:5]:
+            lines.append(f"- [{finding.get('status')}] {finding.get('finding')}")
+        lines.append("")
+    frontier = [item for item in projection.get("frontier") or [] if isinstance(item, Mapping)]
+    if frontier:
+        lines.append("**Exploring now**")
+        for node in frontier[:5]:
+            lines.append(f"- {node.get('title')}")
+    return "\n".join(lines).strip()
+
+
+def build_explore_result_card(
+    projection: Mapping[str, Any],
+    *,
+    title: str | None = None,
+    template: str = "blue",
+    message_id: str | None = None,
+) -> dict[str, Any]:
+    if not isinstance(projection, Mapping):
+        raise ValueError("projection must be a JSON object")
+    if projection.get("schema_version") != EXPLORE_RESULT_PROJECTION_VERSION:
+        raise ValueError(
+            f"projection must use schema {EXPLORE_RESULT_PROJECTION_VERSION}"
+        )
+    goal_id = str(projection.get("goal_id") or "").strip()
+    markdown = build_explore_card_markdown(projection)
+    card = build_lark_markdown_reply_card(
+        markdown,
+        title=title or f"Exploration map: {goal_id}",
+        template=template,
+        footer=(
+            f"LoopX explore | {projection.get('generated_at')} | "
+            f"{projection.get('source_event_count')} result events"
+        ),
+    )
+    return {
+        "ok": True,
+        "schema_version": LARK_EXPLORE_CARD_VERSION,
+        "goal_id": goal_id,
+        "message_id": message_id or None,
+        "card": card,
+        "card_markdown": markdown,
+        "send_boundary": (
+            "Card content only. Send or update the Lark message through an "
+            "approved gateway (bot or lark-cli) after the operator permits the write."
+        ),
+    }
