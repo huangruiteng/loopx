@@ -26,7 +26,7 @@ def parse_args() -> argparse.Namespace:
         default="default-public",
         help=(
             "Smoke selection mode. default-public excludes explicit grouped checks; "
-            "full-public includes every tracked examples/*-smoke.py."
+            "full-public includes every tracked examples/**/*-smoke.py."
         ),
     )
     parser.add_argument(
@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
         "--script",
         action="append",
         default=[],
-        help="Run a specific examples/*-smoke.py script.",
+        help="Run a specific examples/**/*-smoke.py script.",
     )
     parser.add_argument(
         "--profile",

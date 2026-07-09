@@ -378,6 +378,21 @@ def assert_run_smokes_profile_preview_matches_runner_selection() -> None:
     assert all("status" not in script for script in scripts), payload
 
 
+def assert_run_smokes_help_describes_recursive_discovery() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/run-smokes.py",
+            "--help",
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    )
+    assert "examples/**/*-smoke.py" in completed.stdout, completed.stdout
+
+
 def assert_execution_reports_progress_indices() -> None:
     events: list[dict[str, object]] = []
     payload = build_canary_smoke_suite_run(
@@ -703,6 +718,7 @@ def main() -> int:
     assert_cli_named_smoke_profile_preview_works()
     assert_cli_named_smoke_profiles_list_works()
     assert_run_smokes_profile_preview_matches_runner_selection()
+    assert_run_smokes_help_describes_recursive_discovery()
     assert_execution_reports_progress_indices()
     assert_parallel_jobs_execute_and_preserve_report_order()
     assert_parallel_jobs_keep_marked_smokes_serial()
