@@ -31,6 +31,14 @@ from loopx.benchmark_case_state import (
 from loopx.benchmark_adapters.skillsbench_remote_bridge import (
     run_skillsbench_remote_command_file_bridge_probe,
 )
+from loopx.benchmark_adapters.skillsbench_bridge_summary import (
+    bridge_summary_has_inflight_operation as _bridge_summary_has_inflight_operation,
+    bridge_summary_has_meaningful_agent_progress as _bridge_summary_has_meaningful_agent_progress,
+    bridge_summary_has_successful_task_file_write as _bridge_summary_has_successful_task_file_write,
+    bridge_summary_has_successful_task_operation as _bridge_summary_has_successful_task_operation,
+    bridge_operation_record_interrupted as _bridge_operation_record_interrupted,
+    prompt_requires_meaningful_bridge_progress as _prompt_requires_meaningful_bridge_progress,
+)
 from loopx.benchmark_adapters.skillsbench_codex_goal_recovery import (
     CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT,
     CODEX_CLI_GOAL_POST_BRIDGE_CONTINUE_PROMPT,
@@ -216,145 +224,6 @@ def _public_bridge_operations(value: Any) -> list[dict[str, Any]]:
         if operation:
             operations.append(operation)
     return operations
-
-
-def _bridge_summary_has_inflight_operation(path: Path | None) -> bool:
-    if path is None or not path.exists():
-        return False
-    starts = 0
-    completions = 0
-    try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return False
-    for line in lines:
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(record, dict):
-            continue
-        phase = str(record.get("record_phase") or "").strip().lower()
-        if phase == "complete" and not _bridge_operation_record_interrupted(record):
-            completions += 1
-        elif phase == "start" or record.get("operation_observed") is True:
-            starts += 1
-    return starts > completions
-
-
-def _bridge_summary_has_meaningful_agent_progress(
-    path: Path | None,
-    *,
-    allow_loopx_closeout: bool,
-) -> bool:
-    """Return true once the worker has done task work or a real closeout action."""
-
-    if path is None or not path.exists():
-        return False
-    try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return False
-    closeout_subcommands = {
-        ("todo", "complete"),
-        ("todo", "update"),
-        ("refresh-state",),
-        ("quota", "spend-slot"),
-    }
-    for line in lines:
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(record, dict):
-            continue
-        phase = str(record.get("record_phase") or "").strip().lower()
-        if phase == "complete" and _bridge_operation_record_interrupted(record):
-            continue
-        if record.get("task_facing_operation") is True:
-            return True
-        if allow_loopx_closeout and record.get("loopx_state_write") is True:
-            subcommands = record.get("loopx_subcommands")
-            if isinstance(subcommands, list):
-                key = tuple(str(item) for item in subcommands[:2])
-                if key in closeout_subcommands:
-                    return True
-    return False
-
-
-def _bridge_summary_has_successful_task_file_write(path: Path | None) -> bool:
-    """Return true after the worker successfully writes task-facing files."""
-
-    return _bridge_summary_has_successful_task_operation(path, operation="write_file")
-
-
-def _bridge_summary_has_successful_task_operation(
-    path: Path | None,
-    *,
-    operation: str | None = None,
-) -> bool:
-    """Return true after a successful task-facing bridge operation.
-
-    Some agents create scored outputs via an ``exec`` command rather than the
-    bridge ``write_file`` operation. Treat that as sufficient task-output
-    progress for the quiet closeout watchdog; the verifier remains the source
-    of truth for whether the side effect is correct.
-    """
-
-    if path is None or not path.exists():
-        return False
-    try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return False
-    for line in lines:
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(record, dict):
-            continue
-        phase = str(record.get("record_phase") or "").strip().lower()
-        if phase != "complete" or _bridge_operation_record_interrupted(record):
-            continue
-        if operation is not None and record.get("operation") != operation:
-            continue
-        if record.get("task_facing_operation") is not True:
-            continue
-        if record.get("success") is True or record.get("returncode") == 0:
-            return True
-    return False
-
-
-def _bridge_operation_record_interrupted(record: dict[str, Any]) -> bool:
-    rc = record.get("returncode")
-    if isinstance(rc, int) and not isinstance(rc, bool) and rc < 0:
-        return True
-    category = str(record.get("failure_category") or "")
-    return record.get("interrupted") is True or category in {
-        "bridge_operation_interrupted",
-        "bridge_controller_interrupted",
-    }
-
-
-def _prompt_requires_meaningful_bridge_progress(prompt: str, *, route: str) -> bool:
-    text = prompt or ""
-    if "Private bridge command:" not in text:
-        return False
-    if route == "codex-app-server-goal-baseline":
-        return True
-    lowered = text.lower()
-    return any(
-        marker in lowered
-        for marker in (
-            "--- task instruction ---",
-            "first action required",
-            "mandatory product-mode solver checkpoint",
-            "mandatory host-local bridge recovery checkpoint",
-            "must start with either a task-facing sandbox bridge operation",
-            "task-facing validation or repair operation",
-        )
-    )
 
 
 def _codex_exec_failure_category(
@@ -1323,10 +1192,15 @@ class SkillsBenchLocalAcpRelay:
                     0.0,
                     float(self._config.bridge_idle_timeout_sec or 0.0),
                 )
+                task_output_quiet_timeout_sec = max(
+                    0.0,
+                    float(self._config.task_output_quiet_timeout_sec or 0.0),
+                )
                 next_heartbeat = (
                     time.monotonic()
                     + max(1.0, self._config.stream_heartbeat_interval_sec)
                 )
+                task_output_progress_seen = False
                 while time.monotonic() < deadline:
                     now = time.monotonic()
                     capture = self._last_codex_cli_goal_tui_capture = tmux_capture(tmux_name)
@@ -1353,6 +1227,15 @@ class SkillsBenchLocalAcpRelay:
                                 _bridge_summary_has_meaningful_agent_progress(
                                     bridge_summary_path,
                                     allow_loopx_closeout=False,
+                                )
+                            )
+                        if (
+                            not task_output_progress_seen
+                            and task_output_quiet_timeout_sec > 0
+                        ):
+                            task_output_progress_seen = (
+                                _bridge_summary_has_successful_task_operation(
+                                    bridge_summary_path
                                 )
                             )
                     if "Goal achieved" in capture:
@@ -1680,6 +1563,48 @@ class SkillsBenchLocalAcpRelay:
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_cli_goal_" + post_bridge_blocker_stage
+                        )
+                    if (
+                        task_output_progress_seen
+                        and bridge_summary_path is not None
+                        and task_output_quiet_timeout_sec > 0
+                        and not _bridge_summary_has_inflight_operation(
+                            bridge_summary_path
+                        )
+                        and now - last_bridge_activity_at
+                        >= task_output_quiet_timeout_sec
+                    ):
+                        tmux_kill_session(tmux_name)
+                        self._publish_remote_bridge_agent_operations_trace(
+                            bridge_summary_path=bridge_summary_path,
+                        )
+                        self._publish_codex_cli_goal_trace(
+                            ok=False,
+                            stage="task_output_quiet_timeout",
+                            goal_active_observed=goal_active_observed,
+                            goal_terminal_observed=goal_terminal_observed,
+                            first_action_observed=first_action_seen,
+                            bridge_summary_path=bridge_summary_path,
+                            thread_prewarm_observed=thread_prewarm_observed,
+                            goal_prompt_file_used=goal_prompt_file_used,
+                            goal_command_submission_method=(
+                                goal_command_submission_method
+                            ),
+                            post_bridge_recovery_attempt_count=(
+                                pre_bridge_recovery_attempt_count
+                                + post_bridge_recovery_attempt_count
+                            ),
+                            post_bridge_recovery_action=(
+                                post_bridge_recovery_action
+                                or pre_bridge_recovery_action
+                            ),
+                            post_bridge_recovery_skip_reason=(
+                                post_bridge_recovery_skip_reason
+                                or pre_bridge_recovery_skip_reason
+                            ),
+                        )
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_exec_task_output_quiet_timeout"
                         )
                     if (
                         bridge_activity_seen
