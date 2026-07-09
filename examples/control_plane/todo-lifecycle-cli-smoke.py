@@ -105,12 +105,14 @@ def main() -> int:
         assert completed["changed"] is True, completed
         assert completed["next_todos"][0]["added"] is True, completed
         rebuild_todo_id = completed["next_todos"][0]["todo_id"]
+        assert completed["successor_todo_ids"] == [rebuild_todo_id], completed
         items = parsed_items(state_file)
         completed_item = next(item for item in items if item["todo_id"] == run_todo_id)
         rebuild_item = next(item for item in items if item["todo_id"] == rebuild_todo_id)
         assert completed_item["done"] is True and completed_item["status"] == "done", completed_item
         assert completed_item["evidence"] == "fresh-repeat-result-ready", completed_item
         assert completed_item["claimed_by"] == "codex-main-control", completed_item
+        assert completed_item["successor_todo_ids"] == [rebuild_todo_id], completed_item
         assert rebuild_item["done"] is False and rebuild_item["task_class"] == "advancement_task", rebuild_item
         assert rebuild_item["action_kind"] == "rebuild_score", rebuild_item
         assert rebuild_item["claimed_by"] == "codex-main-control", rebuild_item
@@ -231,6 +233,9 @@ def main() -> int:
             side_continuation_completed
         )
         side_successor_id = side_continuation_completed["next_todos"][0]["todo_id"]
+        assert side_continuation_completed["successor_todo_ids"] == [side_successor_id], (
+            side_continuation_completed
+        )
         side_successor_item = next(item for item in parsed_items(state_file) if item["todo_id"] == side_successor_id)
         assert side_successor_item["done"] is False, side_successor_item
         assert side_successor_item["claimed_by"] == "codex-side-bypass", side_successor_item
@@ -296,6 +301,7 @@ def main() -> int:
         assert side_completed["next_todos"][0]["claimed_by"] == "codex-main-control", side_completed
         assert side_completed["next_todos"][0]["blocks_agent"] == "codex-side-bypass", side_completed
         assert side_completed["next_todos"][0]["unblocks_todo_id"] == side_review_todo_id, side_completed
+        assert side_completed["successor_todo_ids"] == [review_todo_id], side_completed
         items = parsed_items(state_file)
         side_item = next(item for item in items if item["todo_id"] == side_todo_id)
         side_review_item = next(item for item in items if item["todo_id"] == side_review_todo_id)
@@ -304,6 +310,7 @@ def main() -> int:
         assert side_review_item["done"] is True and side_review_item["claimed_by"] == "codex-side-bypass", (
             side_review_item
         )
+        assert side_review_item["successor_todo_ids"] == [review_todo_id], side_review_item
         assert review_item["done"] is False and review_item["claimed_by"] == "codex-main-control", review_item
         assert not review_item.get("action_kind"), review_item
         assert review_item["blocks_agent"] == "codex-side-bypass", review_item
@@ -367,10 +374,12 @@ def main() -> int:
         )
         assert superseded["changed"] is True, superseded
         validate_todo_id = superseded["next_todos"][0]["todo_id"]
+        assert superseded["successor_todo_ids"] == [validate_todo_id], superseded
         items = parsed_items(state_file)
         rebuild_item = next(item for item in items if item["todo_id"] == rebuild_todo_id)
         validate_item = next(item for item in items if item["todo_id"] == validate_todo_id)
         assert rebuild_item["done"] is True and rebuild_item["superseded_by"] == validate_todo_id, rebuild_item
+        assert rebuild_item["successor_todo_ids"] == [validate_todo_id], rebuild_item
         assert validate_item["done"] is False and validate_item["task_class"] == "advancement_task", validate_item
         assert validate_item["claimed_by"] == "codex-main-control", validate_item
 
@@ -411,10 +420,12 @@ def main() -> int:
         assert handoff["changed"] is True, handoff
         assert handoff["next_todos"][0]["claimed_by"] == "codex-side-bypass", handoff
         handoff_successor_id = handoff["next_todos"][0]["todo_id"]
+        assert handoff["successor_todo_ids"] == [handoff_successor_id], handoff
         handoff_items = parsed_items(state_file)
         handoff_source_item = next(item for item in handoff_items if item["todo_id"] == handoff_source["todo_id"])
         handoff_successor_item = next(item for item in handoff_items if item["todo_id"] == handoff_successor_id)
         assert handoff_source_item["superseded_by"] == handoff_successor_id, handoff_source_item
+        assert handoff_source_item["successor_todo_ids"] == [handoff_successor_id], handoff_source_item
         assert handoff_successor_item["claimed_by"] == "codex-side-bypass", handoff_successor_item
 
         unclaimed_source = run_cli(

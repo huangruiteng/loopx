@@ -23,9 +23,9 @@ from .contract import (
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
     build_todo_id,
+    merge_todo_id_lists,
     normalize_todo_claimed_by,
     normalize_todo_id,
-    normalize_todo_id_list,
     todo_done_for_status,
 )
 from .text import (
@@ -255,39 +255,8 @@ def complete_event_projected_goal_todo(
     if clear_claim and item.get("claimed_by"):
         item.pop("claimed_by", None)
     effective_claimed_by = claimed_by or normalize_todo_claimed_by(item.get("claimed_by"))
-    completion_payload: dict[str, Any] = {
-        "completed_at": updated_at,
-        "updated_at": updated_at,
-    }
-    if evidence:
-        completion_payload["evidence"] = evidence
-    if note:
-        completion_payload["note"] = note
-    if no_followup:
-        completion_payload["no_followup"] = "true"
-    normalized_successor_todo_ids = normalize_todo_id_list(successor_todo_ids)
-    if normalized_successor_todo_ids:
-        completion_payload["successor_todo_ids"] = normalized_successor_todo_ids
     store = AppendOnlyStateEventStore(Path(context["event_log_path"]))
     already_done = todo_done_for_status(str(item.get("status") or TODO_STATUS_OPEN))
-    completion_event = make_state_event(
-        event_id=_todo_write_event_id(
-            goal_id=goal_id,
-            todo_id=todo_id,
-            action="complete",
-            updated_at=updated_at,
-            text=evidence or note,
-        ),
-        goal_id=goal_id,
-        event_type=TODO_COMPLETED,
-        refs={"todo_id": todo_id},
-        payload=completion_payload,
-        recorded_at=updated_at,
-        producer="loopx.todo.complete",
-    )
-    if not already_done and not dry_run:
-        store.append(completion_event)
-
     if next_agent_todo and not next_claimed_by:
         next_claimed_by = normalize_todo_claimed_by(effective_claimed_by)
     next_unblocks_todo_id = todo_id if next_agent_todo else None
@@ -334,6 +303,40 @@ def complete_event_projected_goal_todo(
                 dry_run=dry_run,
             )
         )
+
+    normalized_successor_todo_ids = merge_todo_id_lists(
+        successor_todo_ids,
+        [item.get("todo_id") for item in next_results],
+    )
+    completion_payload: dict[str, Any] = {
+        "completed_at": updated_at,
+        "updated_at": updated_at,
+    }
+    if evidence:
+        completion_payload["evidence"] = evidence
+    if note:
+        completion_payload["note"] = note
+    if no_followup:
+        completion_payload["no_followup"] = "true"
+    if normalized_successor_todo_ids:
+        completion_payload["successor_todo_ids"] = normalized_successor_todo_ids
+    completion_event = make_state_event(
+        event_id=_todo_write_event_id(
+            goal_id=goal_id,
+            todo_id=todo_id,
+            action="complete",
+            updated_at=updated_at,
+            text=evidence or note,
+        ),
+        goal_id=goal_id,
+        event_type=TODO_COMPLETED,
+        refs={"todo_id": todo_id},
+        payload=completion_payload,
+        recorded_at=updated_at,
+        producer="loopx.todo.complete",
+    )
+    if not already_done and not dry_run:
+        store.append(completion_event)
 
     return {
         "ok": True,

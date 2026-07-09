@@ -27,6 +27,7 @@ from .control_plane.todos.contract import (
     TODO_TASK_CLASS_USER_GATE,
     build_todo_id,
     format_todo_metadata_line,
+    merge_todo_id_lists,
     normalize_required_capabilities,
     normalize_required_write_scopes,
     normalize_target_capabilities,
@@ -591,6 +592,38 @@ def upsert_todo_metadata(lines: list[str], block: dict[str, Any], metadata_line:
         insert_at -= 1
     lines.insert(insert_at, metadata_line)
     return True
+
+
+def link_generated_successor_todo_ids(
+    lines: list[str],
+    *,
+    update_result: dict[str, Any],
+    role: str | None,
+    successor_todo_ids: list[str],
+) -> bool:
+    merged_successor_ids = merge_todo_id_lists(
+        update_result.get("successor_todo_ids"),
+        successor_todo_ids,
+    )
+    if merged_successor_ids == normalize_todo_id_list(update_result.get("successor_todo_ids")):
+        return False
+    block_match = find_todo_block(
+        lines,
+        todo_id=str(update_result.get("todo_id") or ""),
+        role=role,
+    )
+    if not block_match:
+        return False
+    _resolved_role, _section, _start, _end, block = block_match
+    metadata_updated = upsert_todo_metadata(
+        lines,
+        block,
+        metadata_line_for_block(block, {"successor_todo_ids": merged_successor_ids}),
+    )
+    update_result["successor_todo_ids"] = merged_successor_ids
+    update_result["metadata_updated"] = bool(update_result.get("metadata_updated") or metadata_updated)
+    update_result["changed"] = bool(update_result.get("changed") or metadata_updated)
+    return metadata_updated
 
 
 def todo_metadata_would_change(lines: list[str], block: dict[str, Any], metadata_line: str | None) -> bool:
@@ -1503,8 +1536,18 @@ def complete_goal_todo(
                     updated_at=updated_at,
                 )
             )
+        generated_successor_todo_ids = [
+            todo_id
+            for todo_id in normalize_todo_id_list([item.get("todo_id") for item in next_results])
+        ]
+        successor_metadata_updated = link_generated_successor_todo_ids(
+            lines,
+            update_result=update_result,
+            role=role,
+            successor_todo_ids=generated_successor_todo_ids,
+        )
         next_changed = any(item.get("added") or item.get("metadata_updated") for item in next_results)
-        changed = bool(update_result["changed"] or next_changed)
+        changed = bool(update_result["changed"] or next_changed or successor_metadata_updated)
         new_text = "\n".join(lines) + ("\n" if original.endswith("\n") else "")
         if changed:
             new_text = replace_updated_at(new_text, updated_at)
@@ -1624,6 +1667,10 @@ def supersede_goal_todo(
                 )
             )
         superseded_by = next((item.get("todo_id") for item in next_results if item.get("todo_id")), None)
+        generated_successor_todo_ids = [
+            todo_id
+            for todo_id in normalize_todo_id_list([item.get("todo_id") for item in next_results])
+        ]
         if superseded_by:
             block_match = find_todo_block(lines, todo_id=str(update_result["todo_id"]), role=role)
             if block_match:
@@ -1631,9 +1678,22 @@ def supersede_goal_todo(
                 update_result["metadata_updated"] = upsert_todo_metadata(
                     lines,
                     block,
-                    metadata_line_for_block(block, {"superseded_by": superseded_by}),
+                    metadata_line_for_block(
+                        block,
+                        {
+                            "superseded_by": superseded_by,
+                            "successor_todo_ids": merge_todo_id_lists(
+                                update_result.get("successor_todo_ids"),
+                                generated_successor_todo_ids,
+                            ),
+                        },
+                    ),
                 ) or update_result["metadata_updated"]
                 update_result["superseded_by"] = superseded_by
+                update_result["successor_todo_ids"] = merge_todo_id_lists(
+                    update_result.get("successor_todo_ids"),
+                    generated_successor_todo_ids,
+                )
                 update_result["changed"] = True
         next_changed = any(item.get("added") or item.get("metadata_updated") for item in next_results)
         changed = bool(update_result["changed"] or next_changed)

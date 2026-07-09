@@ -247,6 +247,15 @@ def normalize_todo_id_list(value: Any) -> list[str]:
     return todo_ids
 
 
+def merge_todo_id_lists(*values: Any) -> list[str]:
+    todo_ids: list[str] = []
+    for value in values:
+        for todo_id in normalize_todo_id_list(value):
+            if todo_id not in todo_ids:
+                todo_ids.append(todo_id)
+    return todo_ids
+
+
 def normalize_required_write_scopes(value: Any) -> list[str]:
     if value is None:
         return []

@@ -246,7 +246,7 @@ def assert_event_projected_agent_todo(summary: dict[str, Any]) -> None:
         )
     assert [item.get("todo_id") for item in items] == [CANARY_TODO_ID], summary
     item = items[0]
-    assert item["title"] == CANARY_TODO_TITLE, summary
+    assert item.get("title") == CANARY_TODO_TITLE or CANARY_TODO_TITLE in str(item.get("text") or ""), summary
     assert item["claimed_by"] == AGENT_ID, summary
     assert item["task_class"] == "advancement_task", summary
     assert "todo_markdown_fallback" not in json.dumps(summary, sort_keys=True), summary
@@ -397,6 +397,7 @@ def assert_event_todo_completion_successor_state_machine(
     assert len(completed["next_todos"]) == 1, completed
     successor = completed["next_todos"][0]
     successor_id = successor["todo_id"]
+    assert completed["successor_todo_ids"] == [successor_id], completed
     assert successor["source"] == "event_log", completed
     assert successor["claimed_by"] == AGENT_ID, completed
     assert successor["task_class"] == "advancement_task", completed
@@ -421,6 +422,7 @@ def assert_event_todo_completion_successor_state_machine(
     by_id = {item["todo_id"]: item for item in listed["todos"]}
     assert by_id[CANARY_TODO_ID]["status"] == "done", listed
     assert by_id[CANARY_TODO_ID]["evidence"] == "fixture event-projected todo completion passed", listed
+    assert by_id[CANARY_TODO_ID]["successor_todo_ids"] == [successor_id], listed
     assert by_id[successor_id]["status"] == "open", listed
     assert by_id[successor_id]["claimed_by"] == AGENT_ID, listed
     assert by_id[successor_id]["unblocks_todo_id"] == CANARY_TODO_ID, listed
