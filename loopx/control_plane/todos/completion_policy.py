@@ -11,7 +11,7 @@ from ...agent_registry import (
     require_registered_agent_id,
     side_agent_handoff_agent_id_from_registry,
 )
-from .contract import normalize_todo_claimed_by
+from .contract import normalize_todo_blocks_agent, normalize_todo_claimed_by
 
 
 @dataclass(frozen=True)
@@ -39,6 +39,15 @@ class CompletionPolicy:
 def is_primary_review_action_kind(value: Any) -> bool:
     action_kind = str(value or "").strip()
     return action_kind == "primary_review" or action_kind.startswith("primary_review_")
+
+
+def is_review_only_action_kind(value: Any) -> bool:
+    action_kind = str(value or "").strip()
+    if not action_kind or is_primary_review_action_kind(action_kind):
+        return False
+    return action_kind in {"review", "verification"} or action_kind.endswith(
+        ("_review", "_verification")
+    )
 
 
 def linked_successor_from_todo(todo: Mapping[str, Any]) -> LinkedSuccessor:
@@ -72,6 +81,43 @@ def _linked_handoff_successor_id(
         if successor.todo_id:
             return successor.todo_id
     return None
+
+
+def _linked_same_agent_review_successor_id(
+    *,
+    successors: Iterable[LinkedSuccessor],
+    completing_agent: str | None,
+) -> str | None:
+    if not completing_agent:
+        return None
+    for successor in successors:
+        if successor.role != "agent":
+            continue
+        if successor.status and successor.status != "open":
+            continue
+        if successor.claimed_by != completing_agent:
+            continue
+        if is_primary_review_action_kind(successor.action_kind):
+            continue
+        if successor.todo_id:
+            return successor.todo_id
+    return None
+
+
+def _allows_same_agent_review_continuation(
+    *,
+    completion_todo: Mapping[str, Any] | None,
+    completing_agent: str | None,
+    evidence: str | None,
+) -> bool:
+    if not completion_todo or not completing_agent or not str(evidence or "").strip():
+        return False
+    if not is_review_only_action_kind(completion_todo.get("action_kind")):
+        return False
+    if completion_todo.get("required_write_scopes"):
+        return False
+    blocked_agent = normalize_todo_blocks_agent(completion_todo.get("blocks_agent"))
+    return bool(blocked_agent and blocked_agent != completing_agent)
 
 
 def _goal_allows_role_workflow_successors(registry_path: Path, goal_id: str) -> bool:
@@ -125,7 +171,9 @@ def resolve_completion_policy(
     side_agent_self_merged: bool = False,
     evidence: str | None = None,
     linked_successors: Iterable[LinkedSuccessor] = (),
+    completion_todo: Mapping[str, Any] | None = None,
 ) -> CompletionPolicy:
+    linked_successor_items = list(linked_successors)
     effective_claimed_by = (
         require_registered_agent_id(
             registry_path=registry_path,
@@ -170,9 +218,27 @@ def resolve_completion_policy(
         effective_claimed_by and primary_agent and effective_claimed_by != primary_agent
     )
     linked_handoff_successor_id = _linked_handoff_successor_id(
-        successors=linked_successors,
+        successors=linked_successor_items,
         handoff_agent=handoff_agent,
         completing_agent=effective_claimed_by,
+    )
+    same_agent_review_candidate = bool(
+        side_agent_completion
+        and handoff_agent == effective_claimed_by
+        and not next_agent_todo
+        and _allows_same_agent_review_continuation(
+            completion_todo=completion_todo,
+            completing_agent=effective_claimed_by,
+            evidence=evidence,
+        )
+    )
+    if same_agent_review_candidate and not linked_handoff_successor_id:
+        linked_handoff_successor_id = _linked_same_agent_review_successor_id(
+            successors=linked_successor_items,
+            completing_agent=effective_claimed_by,
+        )
+    same_agent_review_continuation = bool(
+        same_agent_review_candidate and linked_handoff_successor_id
     )
     if (
         side_agent_completion
@@ -180,7 +246,7 @@ def resolve_completion_policy(
         and _goal_allows_role_workflow_successors(registry_path, goal_id)
     ):
         linked_handoff_successor_id = _linked_role_workflow_successor_id(
-            successors=linked_successors,
+            successors=linked_successor_items,
             registered_agents=registered_agents,
             completing_agent=effective_claimed_by,
         )
@@ -208,11 +274,17 @@ def resolve_completion_policy(
                 "or --side-agent-self-merged "
                 "with --evidence for a small validated self-merge"
             )
-        if not side_agent_self_merged and handoff_agent == effective_claimed_by:
+        if (
+            not side_agent_self_merged
+            and handoff_agent == effective_claimed_by
+            and not same_agent_review_continuation
+        ):
             raise ValueError(
                 "side-agent handoff todo cannot be claimed by the completing side agent; "
                 "use --side-agent-self-merged with --evidence for same-agent delivery, "
-                "or configure side_agent_handoff_agent to another registered agent"
+                "configure side_agent_handoff_agent to another registered agent, or close "
+                "an evidence-backed review-only gate with --successor-todo-id pointing "
+                "at an existing same-agent successor"
             )
         if (
             not side_agent_self_merged

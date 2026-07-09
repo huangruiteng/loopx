@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -128,6 +129,11 @@ def write_existing_successor_fixture(
     *,
     successor_todo_id: str,
     successor_claimed_by: str,
+    source_action_kind: str = "state_machine_canary_refactor",
+    source_blocks_agent: str | None = None,
+    source_required_write_scope: str | None = None,
+    successor_action_kind: str = "primary_review",
+    handoff_agent: str | None = None,
 ) -> tuple[Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
@@ -135,6 +141,15 @@ def write_existing_successor_fixture(
     state_path = project / state_file
     registry_path = project / ".loopx" / "registry.json"
     state_path.parent.mkdir(parents=True)
+    source_metadata = (
+        f"todo_id={EXISTING_SUCCESSOR_START_TODO_ID} status=open "
+        f"task_class=advancement_task action_kind={source_action_kind} "
+        f"claimed_by={AGENT_ID}"
+    )
+    if source_blocks_agent:
+        source_metadata += f" blocks_agent={source_blocks_agent}"
+    if source_required_write_scope:
+        source_metadata += f" required_write_scopes={source_required_write_scope}"
     state_path.write_text(
         "---\n"
         "status: active\n"
@@ -149,12 +164,10 @@ def write_existing_successor_fixture(
         f"- {GOAL_NEXT_ACTION}\n\n"
         "## Agent Todo\n\n"
         f"- [ ] [P1] {EXISTING_SUCCESSOR_START_TEXT}\n"
-        f"  <!-- loopx:todo todo_id={EXISTING_SUCCESSOR_START_TODO_ID} status=open "
-        "task_class=advancement_task action_kind=state_machine_canary_refactor "
-        f"claimed_by={AGENT_ID} -->\n"
+        f"  <!-- loopx:todo {source_metadata} -->\n"
         f"- [ ] [P1] {EXISTING_SUCCESSOR_HANDOFF_TEXT}\n"
         f"  <!-- loopx:todo todo_id={successor_todo_id} status=open "
-        "task_class=advancement_task action_kind=primary_review "
+        f"task_class=advancement_task action_kind={successor_action_kind} "
         f"claimed_by={successor_claimed_by} -->\n",
         encoding="utf-8",
     )
@@ -164,6 +177,13 @@ def write_existing_successor_fixture(
         registry_path=registry_path,
         adapter_kind="side_agent_existing_successor_fixture_v0",
     )
+    if handoff_agent:
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        registry["goals"][0]["coordination"]["side_agent_handoff_agent"] = handoff_agent
+        registry_path.write_text(
+            json.dumps(registry, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
     return project, runtime, registry_path
 
 
@@ -463,6 +483,8 @@ def assert_same_agent_existing_successor_still_requires_self_merge_or_handoff() 
             Path(tmp),
             successor_todo_id=EXISTING_SUCCESSOR_SAME_AGENT_TODO_ID,
             successor_claimed_by=AGENT_ID,
+            successor_action_kind="state_machine_followup",
+            handoff_agent=AGENT_ID,
         )
 
         returncode, rejected = run_cli_result(
@@ -484,7 +506,95 @@ def assert_same_agent_existing_successor_still_requires_self_merge_or_handoff() 
             runtime=runtime,
         )
         assert returncode != 0, rejected
-        assert "handoff_agent='codex-main-control'" in rejected["error"], rejected
+        assert "handoff_agent='codex-product-capability'" in rejected["error"], rejected
+        assert "--side-agent-self-merged" in rejected["error"], rejected
+
+
+def assert_review_only_gate_can_continue_with_same_agent_successor() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-side-agent-review-continuation-") as tmp:
+        _project, runtime, registry_path = write_existing_successor_fixture(
+            Path(tmp),
+            successor_todo_id=EXISTING_SUCCESSOR_SAME_AGENT_TODO_ID,
+            successor_claimed_by=AGENT_ID,
+            source_action_kind="pilot_readiness_review",
+            source_blocks_agent=PRIMARY_AGENT_ID,
+            successor_action_kind="pilot_followup",
+            handoff_agent=AGENT_ID,
+        )
+
+        returncode, rejected = run_cli_result(
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            EXISTING_SUCCESSOR_START_TODO_ID,
+            "--claimed-by",
+            AGENT_ID,
+            "--evidence",
+            "independent read-only readiness review passed",
+            "--next-agent-todo",
+            "Generate an unlinked same-agent continuation.",
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert returncode != 0, rejected
+        assert "--successor-todo-id" in rejected["error"], rejected
+
+        completed = run_cli(
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--todo-id",
+            EXISTING_SUCCESSOR_START_TODO_ID,
+            "--claimed-by",
+            AGENT_ID,
+            "--evidence",
+            "independent read-only readiness review passed",
+            "--successor-todo-id",
+            EXISTING_SUCCESSOR_SAME_AGENT_TODO_ID,
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert completed["ok"] is True, completed
+        assert completed["side_agent_self_merged"] is False, completed
+        assert completed["linked_handoff_successor_id"] == EXISTING_SUCCESSOR_SAME_AGENT_TODO_ID, (
+            completed
+        )
+
+    with tempfile.TemporaryDirectory(prefix="loopx-side-agent-review-write-scope-") as tmp:
+        _project, runtime, registry_path = write_existing_successor_fixture(
+            Path(tmp),
+            successor_todo_id=EXISTING_SUCCESSOR_SAME_AGENT_TODO_ID,
+            successor_claimed_by=AGENT_ID,
+            source_action_kind="pilot_readiness_review",
+            source_blocks_agent=PRIMARY_AGENT_ID,
+            source_required_write_scope="loopx/**",
+            successor_action_kind="pilot_followup",
+            handoff_agent=AGENT_ID,
+        )
+        returncode, rejected = run_cli_result(
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--todo-id",
+            EXISTING_SUCCESSOR_START_TODO_ID,
+            "--claimed-by",
+            AGENT_ID,
+            "--evidence",
+            "review included repository delivery",
+            "--successor-todo-id",
+            EXISTING_SUCCESSOR_SAME_AGENT_TODO_ID,
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert returncode != 0, rejected
         assert "--side-agent-self-merged" in rejected["error"], rejected
 
 
@@ -539,6 +649,7 @@ def main() -> int:
     assert_self_iteration_flow()
     assert_existing_handoff_successor_flow()
     assert_same_agent_existing_successor_still_requires_self_merge_or_handoff()
+    assert_review_only_gate_can_continue_with_same_agent_successor()
     assert_capability_fallback_preserves_frontier_and_scheduler()
     print("side-agent-self-iteration-state-machine-smoke ok")
     return 0

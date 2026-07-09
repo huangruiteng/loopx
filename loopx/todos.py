@@ -1413,6 +1413,12 @@ def complete_goal_todo(
         original = resolved_state_file.read_text(encoding="utf-8")
         lines = original.splitlines()
         updated_at = now_local()
+        completion_match = find_todo_block(lines, todo_id=todo_id, role=role)
+        completion_todo = None
+        if completion_match:
+            completion_role, _section, _start, _end, completion_block = completion_match
+            completion_todo = dict(completion_block)
+            completion_todo["role"] = completion_role
         normalized_successor_todo_ids = normalize_todo_id_list(successor_todo_ids)
         if successor_todo_ids and not normalized_successor_todo_ids:
             raise ValueError("successor_todo_ids must contain public todo_<letters-digits-underscore-hyphen> tokens")
@@ -1434,6 +1440,7 @@ def complete_goal_todo(
             side_agent_self_merged=side_agent_self_merged,
             evidence=evidence,
             linked_successors=linked_successors,
+            completion_todo=completion_todo,
         )
         effective_claimed_by = completion_policy.effective_claimed_by
         primary_agent = completion_policy.primary_agent
@@ -1441,7 +1448,7 @@ def complete_goal_todo(
         effective_next_claimed_by = completion_policy.effective_next_claimed_by
         side_agent_completion = completion_policy.side_agent_completion
         effective_side_agent_self_merged = completion_policy.side_agent_self_merged
-        if not find_todo_block(lines, todo_id=todo_id, role=role):
+        if not completion_match:
             event_context = event_projection_todo_context(
                 registry_path=registry_path,
                 goal_id=goal_id,
