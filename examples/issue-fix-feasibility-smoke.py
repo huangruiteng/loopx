@@ -154,6 +154,10 @@ def main() -> int:
         assert ledger.exists(), ledger
         rows = ledger.read_text(encoding="utf-8").splitlines()
         assert len(rows) == 1, rows
+        first_row = json.loads(rows[0])
+        first_projection = first_row["domain_state_projection"]
+        assert first_projection["write_performed"] is True, first_row
+        assert "write_result" not in first_projection, first_row
 
         second_command = command.copy()
         second_command[second_command.index("confirmed")] = "missing"
@@ -174,7 +178,11 @@ def main() -> int:
         assert second_packet["decision"]["route"] == "comment_only", second_packet
         rows = ledger.read_text(encoding="utf-8").splitlines()
         assert len(rows) == 1, rows
-        assert json.loads(rows[0])["decision"]["route"] == "comment_only", rows
+        second_row = json.loads(rows[0])
+        assert second_row["decision"]["route"] == "comment_only", rows
+        second_projection = second_row["domain_state_projection"]
+        assert second_projection["write_performed"] is True, second_row
+        assert "write_result" not in second_projection, second_row
 
     print("issue-fix-feasibility-smoke: ok")
     return 0

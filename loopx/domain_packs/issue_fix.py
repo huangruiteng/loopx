@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +9,34 @@ from ..domain_state import default_domain_state_file_path, upsert_domain_state_j
 
 ISSUE_FIX_DOMAIN_STATE_LEDGER_FILENAME = "pr-lifecycle.jsonl"
 ISSUE_FIX_FEASIBILITY_LEDGER_FILENAME = "feasibility.jsonl"
+
+
+def _upsert_issue_fix_payload(
+    ledger_path: str | Path,
+    payload: dict[str, Any],
+    *,
+    key: dict[str, Any],
+    existing_key_fn: Callable[[dict[str, Any]], dict[str, Any] | None],
+) -> dict[str, Any]:
+    projection = payload.get("domain_state_projection")
+    if not isinstance(projection, dict):
+        raise ValueError("issue-fix payload must include domain_state_projection")
+
+    projection.pop("write_result", None)
+    projection.pop("write_skipped_reason", None)
+    projection["write_performed"] = True
+    try:
+        result = upsert_domain_state_jsonl(
+            ledger_path,
+            payload,
+            key=key,
+            existing_key_fn=existing_key_fn,
+        )
+    except Exception:
+        projection["write_performed"] = False
+        raise
+    projection["write_result"] = result
+    return result
 
 
 def issue_fix_feasibility_ledger_key(payload: dict[str, Any]) -> dict[str, Any]:
@@ -41,7 +70,7 @@ def upsert_issue_fix_feasibility_ledger_jsonl(
     ):
         if payload.get(key) is not False:
             raise ValueError(f"issue-fix domain-state payload must keep {key}=false")
-    return upsert_domain_state_jsonl(
+    return _upsert_issue_fix_payload(
         ledger_path,
         payload,
         key=issue_fix_feasibility_ledger_key(payload),
@@ -80,7 +109,7 @@ def upsert_issue_fix_pr_lifecycle_ledger_jsonl(
     ):
         if payload.get(key) is not False:
             raise ValueError(f"issue-fix domain-state payload must keep {key}=false")
-    return upsert_domain_state_jsonl(
+    return _upsert_issue_fix_payload(
         ledger_path,
         payload,
         key=issue_fix_pr_lifecycle_ledger_key(payload),

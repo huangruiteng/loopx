@@ -214,6 +214,13 @@ def main() -> int:
         assert cli_packet["domain_state_projection"]["write_performed"] is True
         write_result = cli_packet["domain_state_projection"]["write_result"]
         assert write_result["path_recorded"] is False, write_result
+        persisted_rows = [
+            json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()
+        ]
+        assert len(persisted_rows) == 1, persisted_rows
+        persisted_projection = persisted_rows[0]["domain_state_projection"]
+        assert persisted_projection["write_performed"] is True, persisted_rows[0]
+        assert "write_result" not in persisted_projection, persisted_rows[0]
         assert_public_safe(cli_packet)
 
     print("issue-fix-pr-lifecycle-smoke: ok")

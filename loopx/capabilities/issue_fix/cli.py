@@ -466,14 +466,10 @@ def handle_issue_fix_command(
                         goal_id=args.goal_id,
                     )
                 )
-                write_result = upsert_issue_fix_feasibility_ledger_jsonl(
+                upsert_issue_fix_feasibility_ledger_jsonl(
                     ledger_path,
                     payload,
                 )
-                domain_state = payload.get("domain_state_projection")
-                if isinstance(domain_state, dict):
-                    domain_state["write_performed"] = True
-                    domain_state["write_result"] = write_result
             else:
                 domain_state = payload.get("domain_state_projection")
                 if isinstance(domain_state, dict) and not args.no_write_domain_state:
@@ -507,14 +503,10 @@ def handle_issue_fix_command(
                         goal_id=args.goal_id,
                     )
                 )
-                write_result = upsert_issue_fix_pr_lifecycle_ledger_jsonl(
+                upsert_issue_fix_pr_lifecycle_ledger_jsonl(
                     ledger_path,
                     payload,
                 )
-                domain_state = payload.get("domain_state_projection")
-                if isinstance(domain_state, dict):
-                    domain_state["write_performed"] = True
-                    domain_state["write_result"] = write_result
             else:
                 domain_state = payload.get("domain_state_projection")
                 if isinstance(domain_state, dict) and not args.no_write_domain_state:
