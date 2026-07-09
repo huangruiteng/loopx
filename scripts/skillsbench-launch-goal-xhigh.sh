@@ -204,8 +204,7 @@ remote_command=$(
     --host-local-acp-launch \
     --remote-command-file-bridge-probe \
     --run-group-id "$run_group" \
-    --job-name "$job_name" \
-    --update-ledger
+    --job-name "$job_name"
   if ((${#extra_runner_args[@]})); then
     printf '%q ' "${extra_runner_args[@]}"
   fi

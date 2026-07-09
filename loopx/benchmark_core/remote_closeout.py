@@ -92,6 +92,10 @@ def build_remote_benchmark_closeout_contract(
         "raw_task_text_read": False,
         "raw_logs_read": False,
         "raw_trajectory_read": False,
+        "ledger_write_authority": (
+            "local_compact_closeout" if ledger_requested else "none"
+        ),
+        "remote_ledger_write_allowed": False,
         "local_ledger_update": {
             "requested": ledger_requested,
             "updated": False,

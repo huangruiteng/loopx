@@ -87,6 +87,9 @@ Completed slices:
 10. `benchmark_core.attempts` for `benchmark_attempt_accounting_v0` and the
     shared failure taxonomy that keeps runner startup/materialization blockers
     out of case-attempt accounting.
+11. `benchmark_core.remote_closeout` for compact/public-only remote artifact
+    sync and local ledger/aggregate ownership. Remote benchmark runners produce
+    compacts; they do not also maintain a second ledger.
 
 ## Adapter Rollout Matrix
 

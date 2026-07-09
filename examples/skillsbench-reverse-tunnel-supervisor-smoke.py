@@ -223,6 +223,8 @@ def test_supervisor_syncs_only_compact_public_artifacts() -> None:
         assert sync["ok"] is True, sync
         assert sync["matched_count"] == 1, sync
         assert sync["written_count"] == 1, sync
+        assert sync["ledger_write_authority"] == "local_compact_closeout", sync
+        assert sync["remote_ledger_write_allowed"] is False, sync
         compact_path = synced_dir / "job" / "case" / "benchmark_run.compact.json"
         assert compact_path.exists(), sync
         assert ledger_path.exists(), sync
