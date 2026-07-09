@@ -340,6 +340,30 @@ research frontier 并启动可见 lane。研究进展仍必须由 lane 做真实
 状态，不能把启动 pane 或 tick 当成研究完成。完整路径见
 [Auto-research command path](docs/guides/auto-research-command-path.md)。
 
+### Explore Result Layer 和 Explore Harness
+
+更长的探索型目标可以使用新的实验性 Explore Result Layer 和 Explore Harness。
+Result Layer 把探索中的 `node`、`edge`、`finding` 记录成 public-safe、append-only
+的探索图，再折叠成 summary、blocked frontier、Mermaid graph 和可选 operator sink。
+Harness 读取这张图、open todo、ownership、capability 和 write-scope 信息，生成只读的
+todo branch plan 或 worker lane plan。
+
+```bash
+loopx explore node --goal-id <goal-id> --title "Map the next frontier"
+loopx explore finding --goal-id <goal-id> --title "Confirmed reusable contract" --node <node-id>
+loopx explore summary --goal-id <goal-id>
+loopx explore graph --goal-id <goal-id> --graph-format mermaid
+loopx explore worker-branch-plan --goal-id <goal-id> --harness-profile generic
+```
+
+这条路径默认关闭，并且按 goal opt-in。只有注册 goal 的
+`spawn_policy.explore_harness.enabled=true` 时，`todo-branch-plan` 和
+`worker-branch-plan` 才会输出有效规划；即使开启，它们也不会自动 claim todo、
+acquire lease、启动 worker、改状态或 spend quota，只会生成 request packet 和建议命令，
+再由 controller 或人通过正常 LoopX 生命周期显式执行。完整事件模型、per-goal gate、
+adaptive-resilient profile 和 MoE router profile 见
+[Explore capability guide](docs/capabilities/explore/README.md)。
+
 ### 审阅和管理 Agent 工作
 
 项目接入后，可以把管理面作为 read-first 实验入口，而不是一上来就授予更多控制权。
@@ -369,6 +393,7 @@ review 信号不会自动变成执行权限。更完整的设计见
 | Issue / PR fix loop | `/loopx Fix <github-issue-or-pr-url>`<br>`loopx issue-fix workflow-plan` | 可复核的修复包：repro、smoke 结果、剩余 review owner 和 PR-ready evidence。 | issue 和 review comment 不再只是提醒人，而是驱动 agent 闭环的入口。 |
 | PR-sized refactor loop | `/loopx <refactor goal>`<br>`loopx canary plan` | 可 review 的 slice 列表、验证记录、后续 todo、merge 边界。 | 增加可合并 change，而不是第二天早上面对一个巨型 diff。 |
 | Research / experiment loop | `loopx auto-research start "<open question>" --execute`<br>`loopx ml-experiment preview --format json` | hypothesis、source/evidence packet、replay 或实验边界，以及下一步可验证问题。 | research 不只是一次性报告，而是可继续、可沉淀的 long-horizon loop。 |
+| Explore result / harness loop | `loopx explore node\|edge\|finding`<br>`loopx explore worker-branch-plan --goal-id <id>` | public-safe 探索图、blocked frontier、Mermaid/exportable projection，以及默认关闭的 worker branch plan。 | 长程探索从隐藏笔记变成可检查拓扑和 opt-in worker planning。 |
 | Multi-agent work routing | `/loopx <goal text>`<br>`loopx quota should-run`<br>`loopx todo claim` | 带 scope、lease、next action、quota 决策和 handoff state 的已认领 agent lane。 | 多个 agent 可以并行推进，同时不隐藏 ownership，也不抢同一个 todo。 |
 | Knowledge / workflow connector | `loopx connect`<br>`loopx lark-kanban`<br>`loopx value-connectors` | 把 LoopX 状态投影到文档、看板、GitHub 或领域 workflow，但 LoopX 仍是状态源。 | 现有工作界面可以 agent-aware，而不是把私有状态复制进公开材料。 |
 | P0 blocked -> safe fallback | `loopx quota should-run`<br>`loopx todo claim` | 在已有 goal 内由 kernel 投影具体 user gate、安全 fallback todo、quota 决策和证据边界。 | 等人决策时减少 agent 空转，同时保留人类判断。 |

@@ -408,6 +408,32 @@ the run can claim progress. See
 [Auto-research command path](docs/guides/auto-research-command-path.md) for the
 full stop, attach, retry, and evidence boundary.
 
+### Explore Results And Harness Planning
+
+For longer investigations, LoopX now has an experimental Explore Result Layer
+and Explore Harness path. The result layer records public-safe
+`node`/`edge`/`finding` events as an append-only exploration graph, then folds
+them into summaries, blocked-frontier views, Mermaid graphs, and optional
+operator sinks. The harness path reads that graph plus open todos and produces
+read-only branch or worker-lane plans.
+
+```bash
+loopx explore node --goal-id <goal-id> --title "Map the next frontier"
+loopx explore finding --goal-id <goal-id> --title "Confirmed reusable contract" --node <node-id>
+loopx explore summary --goal-id <goal-id>
+loopx explore graph --goal-id <goal-id> --graph-format mermaid
+loopx explore worker-branch-plan --goal-id <goal-id> --harness-profile generic
+```
+
+This is intentionally default-off. `todo-branch-plan` and
+`worker-branch-plan` only become active when the registered goal opts in through
+`spawn_policy.explore_harness.enabled=true`; even then they do not claim todos,
+acquire leases, start workers, mutate state, or spend quota. They emit request
+packets and suggested commands for a controller or human to execute through the
+normal LoopX lifecycle. See the
+[Explore capability guide](docs/capabilities/explore/README.md) for the event
+model, per-goal gate, adaptive-resilient profile, and MoE router profile.
+
 ### Review Agent Work
 
 Use the management surface as a read-first experimental entry after a project is
@@ -439,6 +465,7 @@ new control plane every time:
 | Issue / PR fix loop | LoopX slash entry: `Fix <github-issue-or-pr-url>`<br>`loopx issue-fix workflow-plan` | Branch-ready fix packet with repro, smoke result, remaining review owner, and PR-review-ready evidence. | Review comments and issues become a closed loop instead of reminders humans must shepherd by hand. |
 | PR-sized refactor loop | LoopX slash entry: `<refactor task>`<br>`loopx canary plan` | Reviewable slice list, validation notes, successor todo, and merge boundary. | More merged changes without turning the next morning into a giant diff audit. |
 | Research or experiment loop | `loopx auto-research start "<open question>" --execute`<br>`loopx ml-experiment preview --format json` | Hypothesis, source/evidence packet, replay or experiment boundary, and next validated question. | Research becomes a resumable long-horizon loop, not just a one-off report. |
+| Explore result / harness loop | `loopx explore node\|edge\|finding`<br>`loopx explore worker-branch-plan --goal-id <id>` | Public-safe exploration graph, blocked frontier, Mermaid/exportable projection, and default-off worker branch plan. | Long-running exploration becomes inspectable topology and opt-in worker planning instead of hidden notes. |
 | Multi-agent work routing | LoopX slash entry: `<task text>`<br>`loopx quota should-run`<br>`loopx todo claim` | Claimed agent lanes with scope, lease, next action, quota decision, and handoff state. | Multiple agents can work in parallel without hiding ownership or stepping on the same todo. |
 | Knowledge / workflow connector | `loopx connect`<br>`loopx lark-kanban`<br>`loopx value-connectors` | LoopX state projected into docs, boards, GitHub, or domain workflows while LoopX remains the source of truth. | Existing work surfaces become agent-aware without copying private state into public artifacts. |
 | P0 blocked -> safe fallback | `loopx quota should-run`<br>`loopx todo claim` | Kernel projection of the exact user gate, safe fallback todo, quota decision, and evidence boundary inside an active project loop. | Less idle agent time while preserving human judgment on the blocked path. |
