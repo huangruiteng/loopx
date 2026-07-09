@@ -158,6 +158,11 @@ specific side-agent through
 `coordination.agent_profiles.<agent_id>.review_policy.handoff_agent`. First
 register the agent ids and primary agent in the goal registry:
 
+If `coordination.side_agent_handoff_agent` equals the current side-agent id,
+LoopX treats that as a no-broad-handoff lane for generated prompts. The side
+agent should keep blocked or unclear work claimed by itself with a concrete
+blocker instead of creating a successor review todo for another agent.
+
 `quota should-run --agent-id <side-agent-id>` enforces this as a preflight: when
 the side agent is running from the registered primary checkout, a non-git
 directory, or an unrelated git worktree, it returns `workspace_guard` and blocks

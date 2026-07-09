@@ -1174,6 +1174,69 @@ def main() -> int:
             "task_body"
         ], cli_ignored_review_payload
 
+        no_handoff_registry_path = project / ".loopx" / "no-handoff-registry.json"
+        no_handoff_registry_path.write_text(
+            json.dumps(
+                {
+                    "goals": [
+                        {
+                            "id": GOAL_ID,
+                            "domain": "smoke",
+                            "status": "active",
+                            "repo": str(project),
+                            "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
+                            "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
+                            "coordination": {
+                                "registered_agents": [
+                                    "codex-main-control",
+                                    "codex-side-bypass",
+                                ],
+                                "primary_agent": "codex-main-control",
+                                "side_agent_handoff_agent": "codex-side-bypass",
+                            },
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        cli_no_handoff_json = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--format",
+                "json",
+                "--registry",
+                str(no_handoff_registry_path),
+                "heartbeat-prompt",
+                "--goal-id",
+                GOAL_ID,
+                "--thin",
+                "--agent-id",
+                "codex-side-bypass",
+                "--agent-scope",
+                "auto-research visible validation",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        cli_no_handoff_payload = json.loads(cli_no_handoff_json)
+        assert cli_no_handoff_payload["side_agent_handoff_agent"] == "codex-side-bypass", (
+            cli_no_handoff_payload
+        )
+        no_handoff_task = normalized(cli_no_handoff_payload["task_body"])
+        assert "do not create broad handoff todos" in no_handoff_task, cli_no_handoff_payload
+        assert "keep the todo claimed_by you" in no_handoff_task, cli_no_handoff_payload
+        assert "handoff todo claimed_by `codex-side-bypass`" not in no_handoff_task, (
+            cli_no_handoff_payload
+        )
+        assert "handoff todo claimed_by primary_agent `codex-main-control`" not in no_handoff_task, (
+            cli_no_handoff_payload
+        )
+
         cli_unknown_scoped = subprocess.run(
             [
                 sys.executable,

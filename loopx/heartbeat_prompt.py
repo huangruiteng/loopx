@@ -181,11 +181,21 @@ def render_agent_scope_instruction(
         if agent_id
         else f"{cli_bin} todo claim --goal-id {goal_id} --todo-id <todo_id> --claimed-by <agent_id>"
     )
+    handoff_stays_with_current_agent = bool(
+        agent_role == "side-agent"
+        and side_agent_handoff_agent
+        and agent_id
+        and side_agent_handoff_agent == agent_id
+    )
     handoff_agent = side_agent_handoff_agent or primary_agent
     handoff_owner_label = (
-        f"handoff todo claimed_by `{side_agent_handoff_agent}`"
-        if side_agent_handoff_agent
-        else f"handoff todo claimed_by primary_agent `{primary_agent or '<primary_agent>'}`"
+        "no broad handoff; keep blocked work claimed_by you"
+        if handoff_stays_with_current_agent
+        else (
+            f"handoff todo claimed_by `{side_agent_handoff_agent}`"
+            if side_agent_handoff_agent
+            else f"handoff todo claimed_by primary_agent `{primary_agent or '<primary_agent>'}`"
+        )
     )
     handoff_todo_text = (
         "Review, verify, and continue this side-agent handoff."
@@ -208,8 +218,13 @@ def render_agent_scope_instruction(
         else:
             role_rule = (
                 "Side-agent: independent git worktree/branch; self-merge small "
-                "validated changes with evidence; otherwise finish with a "
-                f"{handoff_owner_label}."
+                "validated changes with evidence; "
+                + (
+                    "if blocked or unclear, write a concrete blocker or keep the "
+                    "todo claimed_by you; do not create broad handoff todos."
+                    if handoff_stays_with_current_agent
+                    else f"otherwise finish with a {handoff_owner_label}."
+                )
             )
         return (
             f"Agent: `{identity}`; role: {agent_role}; primary: `{primary_agent}`; "
@@ -228,12 +243,21 @@ def render_agent_scope_instruction(
                 f"merge/publication, {primary_handoff_tail}"
             )
         else:
-            role_rule = (
-                "You are a side-agent. Use an independent git worktree/branch. "
-                "Self-merge only small AGENTS-eligible validated changes with "
-                "`--side-agent-self-merged --evidence`; otherwise create a handoff "
-                f"todo with `--next-agent-todo` and `--next-claimed-by {handoff_agent}`."
-            )
+            if handoff_stays_with_current_agent:
+                role_rule = (
+                    "You are a side-agent. Use an independent git worktree/branch. "
+                    "Self-merge only small AGENTS-eligible validated changes with "
+                    "`--side-agent-self-merged --evidence`; if blocked or unclear, "
+                    "write a concrete blocker or keep the todo claimed_by you. "
+                    "Do not create broad handoff todos."
+                )
+            else:
+                role_rule = (
+                    "You are a side-agent. Use an independent git worktree/branch. "
+                    "Self-merge only small AGENTS-eligible validated changes with "
+                    "`--side-agent-self-merged --evidence`; otherwise create a handoff "
+                    f"todo with `--next-agent-todo` and `--next-claimed-by {handoff_agent}`."
+                )
         return (
             f"Agent identity and scope: agent_id `{identity}`; role: {agent_role}; "
             f"primary_agent `{primary_agent}`; scope: {scope_text}. {role_rule} "
@@ -253,15 +277,27 @@ def render_agent_scope_instruction(
             f"{primary_handoff_tail}"
         )
     else:
-        role_rule = (
-            f"You are a side-agent for this goal; primary_agent is `{primary_agent}`. "
-            "Do development only in an independent git worktree/branch, never in the "
-            "main checkout. Self-merge only small AGENTS-eligible validated changes; "
-            "never self-merge runtime, benchmark, permission, production, destructive "
-            "git, or public evidence-policy changes that need review. For a "
-            f"self-merge, complete with `{self_merge_command}`. Otherwise complete "
-            f"with a handoff todo, for example `{completion_command}`."
-        )
+        if handoff_stays_with_current_agent:
+            role_rule = (
+                f"You are a side-agent for this goal; primary_agent is `{primary_agent}`. "
+                "Do development only in an independent git worktree/branch, never in the "
+                "main checkout. Self-merge only small AGENTS-eligible validated changes; "
+                "never self-merge runtime, benchmark, permission, production, destructive "
+                "git, or public evidence-policy changes that need review. For a "
+                f"self-merge, complete with `{self_merge_command}`. If blocked or unclear, "
+                "write a concrete blocker or keep the todo claimed_by you; do not create "
+                "a broad handoff todo."
+            )
+        else:
+            role_rule = (
+                f"You are a side-agent for this goal; primary_agent is `{primary_agent}`. "
+                "Do development only in an independent git worktree/branch, never in the "
+                "main checkout. Self-merge only small AGENTS-eligible validated changes; "
+                "never self-merge runtime, benchmark, permission, production, destructive "
+                "git, or public evidence-policy changes that need review. For a "
+                f"self-merge, complete with `{self_merge_command}`. Otherwise complete "
+                f"with a handoff todo, for example `{completion_command}`."
+            )
     return f"""Agent identity and scope:
 
 - agent_id: `{identity}`

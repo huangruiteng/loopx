@@ -142,6 +142,10 @@ agent identity.
   goal registry declares `coordination.side_agent_handoff_agent`, LoopX routes
   the successor there instead. Same-agent broad handoff is rejected; use
   `--side-agent-self-merged --evidence` for same-agent delivery.
+- when `coordination.side_agent_handoff_agent` is the current side-agent id,
+  the scoped prompt treats that as a no-broad-handoff lane: blocked or unclear
+  work should stay claimed by the side agent with a concrete blocker, not be
+  routed to another review owner.
 Once a goal has `coordination.registered_agents`, prompt generation without
 `--agent-id` fails closed. That is the lightweight migration signal for stale
 Codex App automations: the next refresh attempt surfaces a concrete
