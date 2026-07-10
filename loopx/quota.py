@@ -24,7 +24,6 @@ from .control_plane.agents.workspace_guard import build_agent_workspace_guard
 from .control_plane.agents.identity import (
     build_identity_aware_prompt_upgrade,
     build_quota_agent_identity,
-    quota_primary_agent,
     quota_registered_agents,
 )
 from .control_plane import (
@@ -92,14 +91,14 @@ from .control_plane.quota.scheduler_ack import (
 from .control_plane.quota.selected_todo_projection import (
     selected_todo_projection as _selected_todo_projection,
 )
-from .control_plane.quota.subagent_orchestration import (
-    apply_subagent_orchestration_contract,
-    attach_subagent_payload_contract,
+from .control_plane.quota.task_orchestration import (
+    apply_task_orchestration_contract,
+    attach_task_orchestration_payload,
     build_quota_work_lane_contract,
     payload_work_lane_contract as _payload_work_lane_contract,
-    subagent_goal_route_hint,
-    subagent_orchestration_effective_action,
-    subagent_selected_recommended_action,
+    task_goal_route_hint,
+    task_orchestration_effective_action,
+    task_selected_recommended_action,
 )
 from .control_plane.quota.slot_accounting import (
     QUOTA_SLOT_SPENT_CLASSIFICATION,
@@ -1248,7 +1247,7 @@ def _effective_action(
     if recovery_delivery_allowed:
         return "outcome_floor_recovery"
     if workspace_repair_allowed:
-        return "side_agent_workspace_repair"
+        return "agent_workspace_repair"
     if self_repair_allowed:
         repair_action = (
             stall_self_repair.get("effective_action")
@@ -1382,7 +1381,7 @@ def build_quota_should_run(
             agent_todo_summary=agent_todo_summary,
             monitor_due_item_limit=MONITOR_DUE_ITEM_LIMIT,
         )
-        subagent_orchestration_contract, work_lane_contract = apply_subagent_orchestration_contract(
+        task_orchestration_contract, work_lane_contract = apply_task_orchestration_contract(
             fallback_work_lane_contract=work_lane_contract,
             goal_boundary=goal_boundary,
             agent_identity=agent_identity,
@@ -1396,23 +1395,13 @@ def build_quota_should_run(
             ),
         )
         capability_gate, capability_monitor_contract, capability_monitor_fallback = build_capability_gate_with_monitor_fallback(agent_todo_summary, available_capabilities=_effective_available_capabilities(available_capabilities, item=item, project_asset=project_asset), agent_identity=agent_identity, monitor_item_limit=MONITOR_DUE_ITEM_LIMIT)
-        if subagent_orchestration_contract:
+        if task_orchestration_contract:
             capability_monitor_contract = capability_monitor_fallback = None
         work_lane_contract = capability_monitor_contract or work_lane_contract
         agent_frontier_id = (
             normalize_todo_claimed_by(agent_identity.get("agent_id"))
             if isinstance(agent_identity, dict)
             else None
-        )
-        primary_agent_id = (
-            normalize_todo_claimed_by(agent_identity.get("primary_agent"))
-            if isinstance(agent_identity, dict)
-            else None
-        )
-        agent_model = (
-            str(agent_identity.get("agent_model") or "legacy_hierarchy")
-            if isinstance(agent_identity, dict)
-            else "legacy_hierarchy"
         )
         registered_agent_ids = (
             list(agent_identity.get("registered_agents") or [])
@@ -1422,7 +1411,6 @@ def build_quota_should_run(
         goal_frontier_context = build_goal_frontier_projection_context_from_status(
             goal_id=safe_goal_id,
             agent_id=agent_frontier_id,
-            primary_agent_id=primary_agent_id,
             status_payload=status_payload,
             item=item,
             project_asset=project_asset,
@@ -1430,7 +1418,6 @@ def build_quota_should_run(
             agent_todo_summary=agent_todo_summary,
             work_lane_contract=work_lane_contract,
             neutral_replan_ack_classifications=AUTONOMOUS_REPLAN_ACK_NEUTRAL_CLASSIFICATIONS,
-            agent_model=agent_model,
             registered_agent_ids=registered_agent_ids,
         )
         replan_obligation = goal_frontier_context.get("replan_obligation")
@@ -1486,7 +1473,7 @@ def build_quota_should_run(
             self_repair_allowed = False
             capability_repair_allowed = False
             workspace_repair_allowed = True
-            reason = str(workspace_guard.get("reason") or "side-agent workspace guard blocks delivery")
+            reason = str(workspace_guard.get("reason") or "agent workspace guard blocks delivery")
         if automation_prompt_upgrade_required:
             normal_delivery_allowed = False
             recovery_allowed = False
@@ -1514,16 +1501,12 @@ def build_quota_should_run(
             state=state,
             quota=quota,
         )
-        if workspace_guard and agent_model == "peer_v1":
-            effective_action = "agent_workspace_repair"
         replan_decision_allowed = autonomous_replan_decision_allowed(
             replan_obligation=replan_obligation,
             plan_ok=bool(plan.get("ok")),
             workspace_blocked=bool(workspace_guard),
             automation_prompt_upgrade_required=automation_prompt_upgrade_required,
             agent_id=agent_frontier_id,
-            primary_agent_id=primary_agent_id,
-            agent_model=agent_model,
             registered_agent_ids=registered_agent_ids,
         )
         if replan_decision_allowed:
@@ -1538,8 +1521,8 @@ def build_quota_should_run(
         if automation_prompt_upgrade_required:
             should_run = False
             effective_action = "automation_prompt_upgrade_required"
-        effective_action, reason = subagent_orchestration_effective_action(
-            subagent_orchestration_contract,
+        effective_action, reason = task_orchestration_effective_action(
+            task_orchestration_contract,
             should_run=should_run,
             normal_delivery_allowed=normal_delivery_allowed,
             effective_action=effective_action,
@@ -1589,11 +1572,7 @@ def build_quota_should_run(
         if workspace_guard:
             heartbeat_recommendation = {
                 **heartbeat_recommendation,
-                "recommended_mode": (
-                    "repair_agent_workspace"
-                    if agent_model == "peer_v1"
-                    else "repair_side_agent_workspace"
-                ),
+                "recommended_mode": "repair_agent_workspace",
                 "notify": "DONT_NOTIFY",
                 "reason": workspace_guard.get("reason") or heartbeat_recommendation.get("reason"),
                 "spend_policy": (
@@ -1645,7 +1624,6 @@ def build_quota_should_run(
         ready_deferred_resume_candidates: list[dict[str, Any]] = []
         if (
             isinstance(agent_identity, dict)
-            and agent_identity.get("role") == "side-agent"
             and isinstance(agent_todo_summary, dict)
         ):
             ready_deferred_resume_candidates = _agent_scope_deferred_resume_candidates(
@@ -1693,8 +1671,8 @@ def build_quota_should_run(
             agent_todo_summary=agent_todo_summary,
             work_lane_contract=work_lane_contract,
         )
-        selected_recommended_action = subagent_selected_recommended_action(
-            subagent_orchestration_contract,
+        selected_recommended_action = task_selected_recommended_action(
+            task_orchestration_contract,
             selected_recommended_action,
         )
         if capability_monitor_fallback and isinstance(work_lane_contract, dict) and work_lane_contract.get("action"):
@@ -1737,7 +1715,7 @@ def build_quota_should_run(
             allow_unrelated_gate=bool(quota.get("safe_bypass_allowed")),
         )
         agent_lane_next_action = None
-        if not due_monitor_attempt and not subagent_orchestration_contract and not capability_monitor_fallback:
+        if not due_monitor_attempt and not task_orchestration_contract and not capability_monitor_fallback:
             agent_lane_next_action = build_agent_lane_next_action(
                 agent_identity=agent_identity,
                 agent_todo_summary=agent_todo_summary,
@@ -1834,7 +1812,7 @@ def build_quota_should_run(
             latest_run_recommended_action=latest_run_recommended_action_text,
             selected_recommended_action=selected_recommended_action,
         )
-        goal_route_hint = subagent_goal_route_hint(goal_route_hint, subagent_orchestration_contract)
+        goal_route_hint = task_goal_route_hint(goal_route_hint, task_orchestration_contract)
         agent_scope_action = _agent_scope_frontier_action(effective_action)
         payload_work_lane_contract = _payload_work_lane_contract(
             work_lane_contract,
@@ -1934,7 +1912,7 @@ def build_quota_should_run(
             "plan_summary": plan.get("summary"),
             "todo_write_hint": build_todo_write_hint(safe_goal_id),
         }
-        payload = attach_subagent_payload_contract(payload, subagent_orchestration_contract)
+        payload = attach_task_orchestration_payload(payload, task_orchestration_contract)
         autonomous_replan_decision = goal_frontier_projection.get("autonomous_replan_decision")
         if isinstance(autonomous_replan_decision, dict):
             payload["autonomous_replan_decision"] = autonomous_replan_decision

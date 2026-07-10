@@ -166,17 +166,19 @@ def agent_member_summary(item: dict[str, Any] | None) -> str | None:
     ]
     parts = [
         f"agent={member.get('agent_id')}",
-        f"role={member.get('role')}",
+        f"agent_model={member.get('agent_model')}",
         "authority=advisory_projection",
     ]
+    if member.get("profile_role"):
+        parts.append(f"profile_role={member.get('profile_role')}")
     if member.get("scope_summary"):
         parts.append(f"scope={member.get('scope_summary')}")
     if member.get("worktree_policy"):
         parts.append(f"worktree_policy={member.get('worktree_policy')}")
     if claims:
         parts.append(f"claims={','.join(claims[:5])}")
-    if member.get("handoff_agent"):
-        parts.append(f"handoff_agent={member.get('handoff_agent')}")
+    if member.get("review_handoff_status"):
+        parts.append(f"review_handoff={member.get('review_handoff_status')}")
     return compact_packet_text(" ".join(str(part) for part in parts if part))
 
 
@@ -187,7 +189,7 @@ def project_agent_required_reads(
     member = agent_member_from_item(item)
     if not member:
         return []
-    agent_id = str(member.get("agent_id") or member.get("handoff_agent") or "").strip()
+    agent_id = str(member.get("agent_id") or "").strip()
     read = build_agent_scoped_required_read(
         goal_id=goal_id,
         agent_id=agent_id,

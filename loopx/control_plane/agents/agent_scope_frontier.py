@@ -32,7 +32,6 @@ def agent_scope_frontier_action(value: Any) -> AgentScopeFrontierAction | None:
 def build_agent_scope_frontier_payload(
     *,
     agent_id: str,
-    primary_agent: str | None,
     action: AgentScopeFrontierAction,
     quiet_noop_allowed: bool,
     spend_policy: str,
@@ -54,8 +53,6 @@ def build_agent_scope_frontier_payload(
         "recommended_action": recommended_action,
         "candidate_counts": candidate_counts,
     }
-    if primary_agent:
-        payload["primary_agent"] = primary_agent
     if requires_replan:
         payload["requires_replan"] = True
     if extra_fields:

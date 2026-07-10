@@ -16,7 +16,7 @@ from .projection import todo_projection_sort_key
 
 
 TODO_ROUTE_CONTINUATION_SELECTION_POLICY = (
-    "quota may wake the current side-agent for route continuation replan "
+    "quota may wake the current peer for route continuation replan "
     "candidates claimed by that agent or unclaimed; other-agent route "
     "candidates remain diagnostic visibility"
 )

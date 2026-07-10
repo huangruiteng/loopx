@@ -109,18 +109,16 @@ def write_fixture_registry(
     state_file: str | None = None,
     state_event_log: str | None = None,
     registered_agents: Iterable[str] = (),
-    primary_agent: str | None = None,
     quota_allowed_slots: int | None = 10,
-    side_agent_independent_worktree_required: bool | None = None,
+    peer_independent_worktree_required: bool | None = None,
     extra_goal_fields: dict[str, Any] | None = None,
 ) -> Path:
     state_file_value = state_file or default_state_file(goal_id)
     agents = list(registered_agents)
-    coordination: dict[str, Any] = {"registered_agents": agents}
-    if primary_agent:
-        coordination["primary_agent"] = primary_agent
-    elif agents:
-        coordination["primary_agent"] = agents[0]
+    coordination: dict[str, Any] = {
+        "registered_agents": agents,
+        "agent_model": "peer_v1",
+    }
 
     goal: dict[str, Any] = {
         "id": goal_id,
@@ -144,9 +142,9 @@ def write_fixture_registry(
         }
     if state_event_log:
         goal["state_event_log"] = state_event_log
-    if side_agent_independent_worktree_required is not None:
+    if peer_independent_worktree_required is not None:
         goal["workspace_guard_policy"] = {
-            "side_agent_independent_worktree_required": side_agent_independent_worktree_required,
+            "peer_independent_worktree_required": peer_independent_worktree_required,
         }
     if extra_goal_fields:
         goal.update(extra_goal_fields)

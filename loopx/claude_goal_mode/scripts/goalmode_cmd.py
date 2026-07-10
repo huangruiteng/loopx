@@ -210,7 +210,7 @@ def main():
 
     # register the default agent (identity contract) and add the task as a todo
     gh(["--registry", registry, "configure-goal", "--goal-id", goal_id,
-        "--primary-agent", DEFAULT_AGENT, "--registered-agent", DEFAULT_AGENT, "--execute"])
+        "--agent-model", "peer_v1", "--registered-agent", DEFAULT_AGENT, "--execute"])
     add = gh(["--registry", registry, "--format", "json", "todo", "add",
               "--goal-id", goal_id, "--role", "agent", "--text", task])
     todo_id = ""

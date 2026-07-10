@@ -19,7 +19,7 @@ from .projection import todo_item_is_deferred, todo_projection_sort_key
 
 
 TODO_DEFERRED_RESUME_SELECTION_POLICY = (
-    "quota may wake the current side-agent only for ready deferred todos "
+    "quota may wake the current peer only for ready deferred todos "
     "claimed by that agent or unclaimed; other-agent deferred todos remain "
     "diagnostic visibility"
 )

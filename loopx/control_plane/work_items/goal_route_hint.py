@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from ...state_projection import actions_are_projection_aligned
-from ..agents.runtime_model import agent_identity_is_peer
 from ..todos.contract import (
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
@@ -267,7 +266,7 @@ def build_goal_route_hint(
         "schema_version": GOAL_ROUTE_HINT_SCHEMA_VERSION,
         "kind": "agent_lane_synthesis",
         "agent_id": agent_id,
-        "agent_model": agent_identity.get("agent_model") or "legacy_hierarchy",
+        "agent_model": "peer_v1",
         "route_decision": route_decision,
         "reason": reason,
         "preserves_goal_next_action": True,
@@ -286,11 +285,6 @@ def build_goal_route_hint(
         "has_durable_next_action": bool(active_text),
         "has_latest_run_recommended_action": bool(latest_text),
     }
-    if not agent_identity_is_peer(agent_identity):
-        hint["primary_agent"] = normalize_todo_claimed_by(
-            agent_identity.get("primary_agent")
-        )
-        hint["role"] = agent_identity.get("role")
     if current_action:
         hint["current_agent_next_action"] = current_action
     if other_agent_actions:

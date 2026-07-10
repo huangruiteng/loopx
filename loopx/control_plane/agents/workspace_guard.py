@@ -4,10 +4,6 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
-from .runtime_model import agent_identity_is_peer
-
-
-SIDE_AGENT_WORKSPACE_GUARD_SCHEMA_VERSION = "side_agent_workspace_guard_v0"
 AGENT_WORKSPACE_GUARD_SCHEMA_VERSION = "agent_workspace_guard_v1"
 PEER_WRITE_ACTION_KINDS = {
     "fix",
@@ -113,24 +109,17 @@ def build_agent_workspace_guard(
 ) -> dict[str, Any] | None:
     if not isinstance(agent_identity, dict):
         return None
-    peer_runtime = agent_identity_is_peer(agent_identity)
-    legacy_side_agent = agent_identity.get("role") == "side-agent"
-    if not peer_runtime and not legacy_side_agent:
-        return None
     workspace_guard_policy = (
         goal.get("workspace_guard_policy")
         if isinstance(goal.get("workspace_guard_policy"), dict)
         else {}
     )
-    if peer_runtime:
-        if len(agent_identity.get("registered_agents") or []) <= 1:
-            return None
-        if not _peer_work_requires_isolated_workspace(
-            workspace_guard_policy,
-            agent_todo_summary,
-        ):
-            return None
-    elif workspace_guard_policy.get("side_agent_independent_worktree_required") is False:
+    if len(agent_identity.get("registered_agents") or []) <= 1:
+        return None
+    if not _peer_work_requires_isolated_workspace(
+        workspace_guard_policy,
+        agent_todo_summary,
+    ):
         return None
     repo_value = goal.get("repo") or goal.get("project") or goal.get("root")
     if not repo_value:
@@ -141,26 +130,22 @@ def build_agent_workspace_guard(
     current_path = current_path or Path.cwd()
     current_workspace = ""
     if _is_same_or_child_path(current_path, repo_path):
-        current_workspace = "primary_checkout"
+        current_workspace = "canonical_checkout"
     else:
-        primary_root = _git_worktree_root(repo_path) or repo_path
+        canonical_root = _git_worktree_root(repo_path) or repo_path
         current_root = _git_worktree_root(current_path)
-        primary_common = _git_common_dir(primary_root)
+        canonical_common = _git_common_dir(canonical_root)
         current_common = _git_common_dir(current_path) if current_root else None
         if current_root is None:
             current_workspace = "not_git_worktree"
-        elif primary_common is None or current_common is None or current_common != primary_common:
+        elif canonical_common is None or current_common is None or current_common != canonical_common:
             current_workspace = "foreign_git_worktree"
-        elif current_root == primary_root:
-            current_workspace = "primary_checkout"
+        elif current_root == canonical_root:
+            current_workspace = "canonical_checkout"
     if not current_workspace:
         return None
     payload = {
-        "schema_version": (
-            AGENT_WORKSPACE_GUARD_SCHEMA_VERSION
-            if peer_runtime
-            else SIDE_AGENT_WORKSPACE_GUARD_SCHEMA_VERSION
-        ),
+        "schema_version": AGENT_WORKSPACE_GUARD_SCHEMA_VERSION,
         "source": "quota.should-run",
         "action": "move_to_independent_worktree",
         "current_workspace": current_workspace,
@@ -170,33 +155,10 @@ def build_agent_workspace_guard(
         "reason": (
             "peer delivery with repository writes is not running from an independent "
             "worktree; normal delivery must move before repository edits"
-            if peer_runtime
-            else "side-agent quota guard is not running from an independent worktree for "
-            "the registered project; normal delivery must move before repository edits"
         ),
         "required_action": (
             "create or switch to an independent git worktree/branch for this peer lane, "
             "then rerun quota should-run with the same --agent-id before editing files"
-            if peer_runtime
-            else "create or switch to an independent git worktree/branch for this side-agent "
-            "lane, then rerun quota should-run with the same --agent-id before editing files"
         ),
     }
-    if not peer_runtime:
-        payload["primary_agent"] = agent_identity.get("primary_agent")
     return payload
-
-
-def build_side_agent_workspace_guard(
-    goal: dict[str, Any],
-    agent_identity: dict[str, Any] | None,
-    *,
-    current_path: Path | None = None,
-) -> dict[str, Any] | None:
-    """Compatibility wrapper for callers using the legacy function name."""
-
-    return build_agent_workspace_guard(
-        goal,
-        agent_identity,
-        current_path=current_path,
-    )

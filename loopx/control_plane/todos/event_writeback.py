@@ -260,13 +260,9 @@ def complete_event_projected_goal_todo(
     next_task_class: str | None,
     next_action_kind: str | None,
     next_continuation_policy: str | None,
-    agent_model: str,
-    side_agent_completion: bool,
-    side_agent_self_merged: bool,
     self_merged: bool,
     next_blocks_agent: str | None,
     registered_agents: list[str],
-    primary_agent: str | None,
     updated_at: str,
     dry_run: bool,
 ) -> dict[str, Any]:
@@ -280,10 +276,8 @@ def complete_event_projected_goal_todo(
     effective_claimed_by = claimed_by or normalize_todo_claimed_by(item.get("claimed_by"))
     store = AppendOnlyStateEventStore(Path(context["event_log_path"]))
     already_done = todo_done_for_status(str(item.get("status") or TODO_STATUS_OPEN))
-    if agent_model == "legacy_hierarchy" and next_agent_todo and not next_claimed_by:
-        next_claimed_by = normalize_todo_claimed_by(effective_claimed_by)
     next_unblocks_todo_id = todo_id if next_agent_todo else None
-    next_user_blocks_agent = effective_claimed_by or primary_agent
+    next_user_blocks_agent = effective_claimed_by
     if next_user_todo and len(registered_agents) > 1:
         if not next_user_blocks_agent:
             raise ValueError(
@@ -388,10 +382,5 @@ def complete_event_projected_goal_todo(
         "updated_at": updated_at,
         "source": "event_log",
     }
-    if agent_model == "peer_v1":
-        result["self_merged"] = self_merged
-    else:
-        result["side_agent_self_merged"] = bool(
-            side_agent_completion and side_agent_self_merged
-        )
+    result["self_merged"] = self_merged
     return result

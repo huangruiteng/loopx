@@ -109,7 +109,6 @@ class TodoContinuationPolicy(str, Enum):
     INDEPENDENT_HANDOFF = "independent_handoff"
     SAME_AGENT_NON_DELIVERY = "same_agent_non_delivery"
     REVIEW_HANDOFF = "review_handoff"
-    PRIMARY_REVIEW = "primary_review"
 
 
 TODO_CONTINUATION_POLICY_VALUES = {
@@ -197,6 +196,8 @@ def normalize_todo_action_kind(value: Any) -> str | None:
 
 def normalize_todo_continuation_policy(value: Any) -> str | None:
     candidate = str(value or "").strip().lower()
+    if candidate == "primary_review":
+        return TodoContinuationPolicy.REVIEW_HANDOFF.value
     if candidate in TODO_CONTINUATION_POLICY_VALUES:
         return candidate
     return None
@@ -207,7 +208,7 @@ def legacy_todo_continuation_policy_for_action_kind(value: Any) -> str | None:
     if not action_kind:
         return None
     if action_kind == "primary_review" or action_kind.startswith("primary_review_"):
-        return TodoContinuationPolicy.PRIMARY_REVIEW.value
+        return TodoContinuationPolicy.REVIEW_HANDOFF.value
     if action_kind in {"review", "verification"} or action_kind.endswith(
         ("_review", "_verification")
     ):
@@ -234,13 +235,10 @@ def todo_continuation_requires_review(
     *,
     action_kind: Any = None,
 ) -> bool:
-    return resolve_todo_continuation_policy(
-        value,
-        action_kind=action_kind,
-    ) in {
-        TodoContinuationPolicy.REVIEW_HANDOFF,
-        TodoContinuationPolicy.PRIMARY_REVIEW,
-    }
+    return (
+        resolve_todo_continuation_policy(value, action_kind=action_kind)
+        == TodoContinuationPolicy.REVIEW_HANDOFF
+    )
 
 
 def normalize_todo_claimed_by(value: Any) -> str | None:

@@ -54,9 +54,7 @@ AUTO_RESEARCH_DEMO_AVAILABLE_CAPABILITIES = ("benchmark_runner",)
 def _prepare_visible_demo_workspace_route(
     *,
     control_project: Path,
-    demo_root: Path,
     lanes: list[dict[str, object]],
-    primary_agent: str | None,
 ) -> dict[str, object]:
     """Keep visible Codex TUIs off demo-local git worktrees.
 
@@ -68,23 +66,22 @@ def _prepare_visible_demo_workspace_route(
 
     (control_project / ".gitignore").write_text(".local/\n", encoding="utf-8")
 
-    side_count = 0
+    peer_count = 0
     for lane in lanes:
         agent_id = str(lane.get("agent_id") or "").strip()
-        if not agent_id or agent_id == primary_agent:
-            lane["workspace_role"] = "shared_visible_tui_workspace"
+        if not agent_id:
             continue
         lane["workspace_role"] = "shared_visible_tui_workspace"
-        side_count += 1
+        peer_count += 1
 
     return {
         "schema_version": "auto_research_visible_demo_workspace_route_v0",
         "shared_goal_surface": "demo_local_loopx_registry_and_runtime",
-        "primary_workspace": "visible_codex_tui_workspace",
+        "peer_workspace": "visible_codex_tui_workspace",
         "default_visible_workspace": "demo_owned_clean_workspace",
-        "side_lane_workspace": "visible_codex_tui_workspace",
-        "side_lane_worktree_count": 0,
-        "side_lane_count": side_count,
+        "peer_lane_workspace": "visible_codex_tui_workspace",
+        "peer_lane_worktree_count": 0,
+        "peer_lane_count": peer_count,
         "trust_prompt_avoidance": (
             "demo_owned_clean_workspace_with_persisted_codex_trust_config"
         ),
@@ -173,16 +170,11 @@ def _seed_visible_demo_control_plane(
             if str(lane.get("agent_id") or "").strip()
         }
     )
-    primary_agent = (
-        "research-curator"
-        if "research-curator" in agents
-        else (agents[0] if agents else None)
-    )
     configure_goal(
         registry_path=control_registry,
         goal_id=goal_id,
         registered_agents=agents,
-        primary_agent=primary_agent,
+        agent_model="peer_v1",
         waiting_on="codex",
         orchestration_mode="multi_subagent",
         spawn_allowed=True,
@@ -204,7 +196,7 @@ def _seed_visible_demo_control_plane(
                 coordination["available_capabilities"] = capabilities
             goal["workspace_guard_policy"] = {
                 "schema_version": "loopx_workspace_guard_policy_v0",
-                "side_agent_independent_worktree_required": False,
+                "peer_independent_worktree_required": False,
                 "reason": (
                     "auto_research_demo_local_queue uses a demo-owned workspace and "
                     "writes only demo-local LoopX state/evidence; repository edits still "
@@ -280,9 +272,7 @@ def _seed_visible_demo_control_plane(
 
     workspace_route = _prepare_visible_demo_workspace_route(
         control_project=control_project,
-        demo_root=demo_root,
         lanes=lanes,
-        primary_agent=primary_agent,
     )
 
     summary = {
@@ -296,7 +286,7 @@ def _seed_visible_demo_control_plane(
         "state_route": "visible_lanes_use_LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT",
         "workspace_route": workspace_route,
         "workspace_guard_policy": {
-            "side_agent_independent_worktree_required": False,
+            "peer_independent_worktree_required": False,
             "repository_edits_still_require_lane_boundary": True,
         },
         "absolute_paths_recorded": False,

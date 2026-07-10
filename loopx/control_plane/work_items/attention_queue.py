@@ -178,11 +178,7 @@ def build_attention_queue(
                     current_status_run=current_status_run,
                     agent_lane_recommendation=agent_lane_recommendation,
                     active_state_next_action=active_state_next_action,
-                    preferred_agent_id=(
-                        goal.get("coordination", {}).get("primary_agent")
-                        if isinstance(goal.get("coordination"), dict)
-                        else None
-                    ),
+                    preferred_agent_id=None,
                 )
             )
             if latest_run_action:

@@ -6,13 +6,9 @@ from pathlib import Path
 
 from ..agent_registry import (
     agent_profile_from_registry,
-    load_goal_from_registry,
-    primary_agent_id_from_registry,
     registered_agent_ids_from_registry,
     require_registered_agent_id,
-    side_agent_handoff_agent_id_from_registry,
 )
-from ..control_plane.agents.runtime_model import agent_runtime_model_for_goal
 from ..heartbeat_prompt import (
     build_heartbeat_prompt,
     build_heartbeat_prompt_error_payload,
@@ -386,9 +382,6 @@ def handle_support_control_command(
         resolved_active_state = None
         active_state_source = None
         registered_agents = None
-        agent_model = None
-        primary_agent = None
-        side_agent_handoff_agent = None
         effective_agent_id = args.agent_id
         try:
             active_state, resolved_active_state, active_state_source = resolve_heartbeat_active_state(
@@ -402,9 +395,6 @@ def handle_support_control_command(
             if active_state_source.startswith("registry:"):
                 agent_registry_path = Path(active_state_source.removeprefix("registry:"))
             registered_agents = registered_agent_ids_from_registry(agent_registry_path, args.goal_id)
-            registry_goal = load_goal_from_registry(agent_registry_path, args.goal_id)
-            agent_model = agent_runtime_model_for_goal(registry_goal).value
-            primary_agent = primary_agent_id_from_registry(agent_registry_path, args.goal_id)
             agent_profile = None
             if args.agent_id:
                 effective_agent_id = require_registered_agent_id(
@@ -414,11 +404,6 @@ def handle_support_control_command(
                     field="agent_id",
                 )
                 agent_profile = agent_profile_from_registry(agent_registry_path, args.goal_id, effective_agent_id)
-            side_agent_handoff_agent = side_agent_handoff_agent_id_from_registry(
-                agent_registry_path,
-                args.goal_id,
-                agent_id=effective_agent_id,
-            )
             payload = build_heartbeat_prompt(
                 goal_id=args.goal_id,
                 active_state=active_state,
@@ -434,9 +419,6 @@ def handle_support_control_command(
                 agent_scopes=args.agent_scopes,
                 agent_profile=agent_profile,
                 registered_agents=registered_agents,
-                agent_model=agent_model,
-                primary_agent=primary_agent,
-                side_agent_handoff_agent=side_agent_handoff_agent,
                 available_capabilities=args.available_capabilities,
             )
         except Exception as exc:
@@ -464,9 +446,6 @@ def handle_support_control_command(
                 agent_id=effective_agent_id or args.agent_id,
                 agent_scopes=args.agent_scopes,
                 registered_agents=registered_agents,
-                agent_model=agent_model,
-                primary_agent=primary_agent,
-                side_agent_handoff_agent=side_agent_handoff_agent,
                 available_capabilities=args.available_capabilities,
             )
         print_payload(payload, output_format(args), render_heartbeat_prompt_markdown)

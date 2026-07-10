@@ -157,19 +157,10 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         lines.append(f"- project_asset_source: {payload.get('project_asset_source')}")
     agent_identity = as_dict(payload.get("agent_identity"))
     if agent_identity:
-        if agent_identity.get("agent_model") == "peer_v1":
-            lines.append(
-                "- agent_identity: "
-                f"agent_id={agent_identity.get('agent_id')} agent_model=peer_v1"
-            )
-        else:
-            lines.append(
-                "- agent_identity: "
-                f"agent_id={agent_identity.get('agent_id')} "
-                f"role={agent_identity.get('role')} "
-                f"primary_agent={agent_identity.get('primary_agent')} "
-                f"handoff_agent={agent_identity.get('handoff_agent')}"
-            )
+        lines.append(
+            "- agent_identity: "
+            f"agent_id={agent_identity.get('agent_id')} agent_model=peer_v1"
+        )
     if payload.get("active_state_next_action"):
         lines.append(f"- active_state_next_action: {markdown_scalar(payload.get('active_state_next_action'))}")
     if payload.get("latest_run_recommended_action"):
@@ -282,16 +273,6 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                     f"done={vision_gap_judge.get('done')} "
                     f"decision={vision_gap_judge.get('decision')}"
                 )
-    subagent_orchestration = as_dict(payload.get("subagent_orchestration_contract"))
-    if subagent_orchestration:
-        child_lanes = as_list(subagent_orchestration.get("eligible_child_lanes"))
-        lines.append(
-            "- subagent_orchestration: "
-            f"mode={subagent_orchestration.get('mode')} "
-            f"spawn_required={subagent_orchestration.get('spawn_required')} "
-            f"child_lanes={len(child_lanes)} "
-            f"writeback_owner={subagent_orchestration.get('writeback_owner')}"
-        )
     task_orchestration = as_dict(payload.get("task_orchestration_contract"))
     if task_orchestration:
         peer_lanes = as_list(task_orchestration.get("eligible_peer_lanes"))
@@ -323,20 +304,22 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             "- automation_prompt_upgrade: "
             f"required={automation_prompt_upgrade.get('required')} "
             f"blocks_should_run={automation_prompt_upgrade.get('blocks_should_run')} "
-            f"contract={automation_prompt_upgrade.get('contract')}"
+            f"contract={automation_prompt_upgrade.get('contract')} "
+            f"migration_id={automation_prompt_upgrade.get('migration_id')}"
         )
         if automation_prompt_upgrade.get("recommended_action"):
             lines.append(f"- automation_prompt_upgrade_action: {automation_prompt_upgrade.get('recommended_action')}")
-        if automation_prompt_upgrade.get("primary_example_command"):
-            lines.append(f"- automation_prompt_upgrade_primary: {automation_prompt_upgrade.get('primary_example_command')}")
         for example in as_list(automation_prompt_upgrade.get("agent_example_commands")):
             if isinstance(example, dict) and example.get("command"):
                 lines.append(
                     f"- automation_prompt_upgrade_agent[{example.get('agent_id')}]: "
                     f"{example.get('command')}"
                 )
-        if automation_prompt_upgrade.get("side_agent_example_command"):
-            lines.append(f"- automation_prompt_upgrade_side: {automation_prompt_upgrade.get('side_agent_example_command')}")
+        if automation_prompt_upgrade.get("completion_command"):
+            lines.append(
+                "- automation_prompt_upgrade_complete: "
+                f"{automation_prompt_upgrade.get('completion_command')}"
+            )
     capability_gate = (
         payload.get("capability_gate")
         if isinstance(payload.get("capability_gate"), dict)

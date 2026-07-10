@@ -166,7 +166,7 @@ def protocol_monitor_action(payload: dict[str, Any]) -> str | None:
     return None
 
 
-def resolve_primary_agent_action(payload: dict[str, Any], *, mode: str) -> str:
+def resolve_canonical_primary_action(payload: dict[str, Any], *, mode: str) -> str:
     execution_obligation = (
         payload.get("execution_obligation")
         if isinstance(payload.get("execution_obligation"), dict)
@@ -209,21 +209,6 @@ def resolve_primary_agent_action(payload: dict[str, Any], *, mode: str) -> str:
         )
     if mode == "bounded_delivery_with_user_notice":
         return protocol_first_candidate_action(payload) or "advance one bounded validated segment"
-    if mode == "subagent_orchestration":
-        contract = (
-            payload.get("subagent_orchestration_contract")
-            if isinstance(payload.get("subagent_orchestration_contract"), dict)
-            else {}
-        )
-        lanes = (
-            contract.get("eligible_child_lanes")
-            if isinstance(contract.get("eligible_child_lanes"), list)
-            else []
-        )
-        return (
-            f"spawn/resume child lanes ({len(lanes)} eligible); "
-            "controller reviews returned evidence and writes back accepted state"
-        )
     if mode == "task_orchestration":
         contract = (
             payload.get("task_orchestration_contract")
@@ -245,10 +230,13 @@ def resolve_primary_agent_action(payload: dict[str, Any], *, mode: str) -> str:
         return "produce the required outcome-floor evidence artifact or write the concrete blocker"
     if mode == "capability_bridge_repair":
         return "repair or materialize the missing bridge capability, rewrite the todo, or write a compact blocker"
-    if mode in {"agent_workspace_repair", "side_agent_workspace_repair"}:
+    if mode == "agent_workspace_repair":
         return "create or switch to an independent worktree/branch, then rerun quota guard before file edits"
     if mode == "automation_prompt_upgrade":
-        return "regenerate the installed automation prompt with a registered agent id and scope, then rerun quota guard"
+        return (
+            "update the installed automation once using the stable migration id, "
+            "run its completion ack, then rerun quota guard"
+        )
     if mode == "control_plane_self_repair":
         return "repair the bounded control-plane/status projection fault exposed by quota"
     if mode == "boundary_projection_repair":
@@ -263,7 +251,7 @@ def resolve_primary_agent_action(payload: dict[str, Any], *, mode: str) -> str:
 
 
 def build_primary_action_projection(payload: dict[str, Any], *, mode: str) -> dict[str, Any]:
-    primary_action = resolve_primary_agent_action(payload, mode=mode)
+    primary_action = resolve_canonical_primary_action(payload, mode=mode)
     projection: dict[str, Any] = {"primary_action": primary_action}
     resolution_trace = next_action_resolution_trace(
         primary_action=primary_action,

@@ -10,7 +10,6 @@ from .agent_scope_frontier import (
     agent_scope_frontier_action as _agent_scope_frontier_action,
     build_agent_scope_frontier_payload,
 )
-from .runtime_model import agent_identity_is_peer
 from ..todos.decision_scope import todo_gate_relation, todo_gate_relation_blocks_agent
 from ..work_items.work_lane import (
     work_lane_contract_is_due_monitor_attempt,
@@ -86,21 +85,8 @@ _ACTION_SCOPE_STOPWORDS = {
 def _agent_identity_has_scoped_lane(agent_identity: dict[str, Any] | None) -> bool:
     return bool(
         isinstance(agent_identity, dict)
-        and (
-            agent_identity_is_peer(agent_identity)
-            or agent_identity.get("role") == "side-agent"
-        )
+        and normalize_todo_claimed_by(agent_identity.get("agent_id"))
     )
-
-
-def _legacy_primary_agent(agent_identity: dict[str, Any] | None) -> str | None:
-    if not isinstance(agent_identity, dict) or agent_identity_is_peer(agent_identity):
-        return None
-    return normalize_todo_claimed_by(agent_identity.get("primary_agent"))
-
-
-def _scoped_agent_label(agent_identity: dict[str, Any] | None) -> str:
-    return "agent" if agent_identity_is_peer(agent_identity) else "side-agent"
 
 
 def _todo_task_class(item: dict[str, Any]) -> str:
@@ -518,7 +504,6 @@ def _agent_lane_frontier_hint(
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
     if not agent_id:
         return None
-    primary_agent = _legacy_primary_agent(agent_identity)
 
     def build_hint(
         decision: AgentLaneFrontierHintDecision,
@@ -533,14 +518,12 @@ def _agent_lane_frontier_hint(
             "schema_version": AGENT_LANE_FRONTIER_HINT_SCHEMA_VERSION,
             "decision": decision.value,
             "agent_id": agent_id,
-            "agent_model": agent_identity.get("agent_model") or "legacy_hierarchy",
+            "agent_model": "peer_v1",
             "source": source,
             "reason_code": reason_code,
             "quiet_noop_allowed": quiet_noop_allowed,
             "uses_structured_frontier": True,
         }
-        if primary_agent:
-            hint["primary_agent"] = primary_agent
         if target_todo_id:
             hint["target_todo_id"] = target_todo_id
         if next_cli_action:
@@ -951,8 +934,7 @@ def _agent_scope_no_candidate_frontier(
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
     if not agent_id or not isinstance(agent_todo_summary, dict):
         return None
-    agent_label = _scoped_agent_label(agent_identity)
-    primary_agent = _legacy_primary_agent(agent_identity)
+    agent_label = "agent"
     if isinstance(agent_lane_next_action, dict):
         return None
     if work_lane_contract_is_due_monitor_attempt(work_lane_contract):
@@ -1013,7 +995,6 @@ def _agent_scope_no_candidate_frontier(
         )
         return build_agent_scope_frontier_payload(
             agent_id=agent_id,
-            primary_agent=primary_agent,
             action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
             quiet_noop_allowed=False,
             spend_policy="spend once after validated standing-monitor gate repair/todo writeback",
@@ -1047,7 +1028,6 @@ def _agent_scope_no_candidate_frontier(
         )
         return build_agent_scope_frontier_payload(
             agent_id=agent_id,
-            primary_agent=primary_agent,
             action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
             quiet_noop_allowed=False,
             spend_policy="spend once after validated successor replan/todo writeback",
@@ -1089,7 +1069,6 @@ def _agent_scope_no_candidate_frontier(
         )
         return build_agent_scope_frontier_payload(
             agent_id=agent_id,
-            primary_agent=primary_agent,
             action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
             quiet_noop_allowed=False,
             spend_policy="spend once after validated route continuation replan/todo writeback",
@@ -1133,7 +1112,6 @@ def _agent_scope_no_candidate_frontier(
         )
         return build_agent_scope_frontier_payload(
             agent_id=agent_id,
-            primary_agent=primary_agent,
             action=AgentScopeFrontierAction.AGENT_SCOPE_WAIT,
             quiet_noop_allowed=True,
             spend_policy="no quota spend while the current agent has no in-scope runnable candidate",
@@ -1176,7 +1154,6 @@ def _agent_scope_no_candidate_frontier(
         )
         return build_agent_scope_frontier_payload(
             agent_id=agent_id,
-            primary_agent=primary_agent,
             action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
             quiet_noop_allowed=False,
             spend_policy="spend once after validated successor replan/todo writeback",
@@ -1248,12 +1225,8 @@ def _agent_scope_no_candidate_frontier(
                 "unclaimed advancement todo before delivery."
             )
         else:
-            action = (
-                AgentScopeFrontierAction.AGENT_SCOPE_WAIT
-                if primary_agent and primary_agent in other_claimants
-                else AgentScopeFrontierAction.REASSIGNMENT_REQUIRED
-            )
-            owner = primary_agent or ", ".join(other_claimants) or "the owning agent"
+            action = AgentScopeFrontierAction.REASSIGNMENT_REQUIRED
+            owner = ", ".join(other_claimants) or "the owning agent"
             reason = (
                 f"current {agent_label} {agent_id} has no current/unclaimed advancement "
                 f"candidate; visible advancement work is claimed by {owner}"
@@ -1276,7 +1249,6 @@ def _agent_scope_no_candidate_frontier(
 
     return build_agent_scope_frontier_payload(
         agent_id=agent_id,
-        primary_agent=primary_agent,
         action=action,
         quiet_noop_allowed=True,
         spend_policy="no quota spend while the current agent has no in-scope runnable candidate",

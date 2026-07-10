@@ -248,23 +248,16 @@ def _identity_state(
     *,
     agent_id: str | None,
     registered_agents: list[str] | None,
-    primary_agent: str | None,
-    agent_model: str = "legacy_hierarchy",
 ) -> dict[str, Any]:
     registered = normalize_registered_agents(registered_agents)
     selected = normalize_todo_claimed_by(agent_id)
-    primary = normalize_todo_claimed_by(primary_agent)
-    peer_runtime = agent_model == "peer_v1"
 
     def identity_payload(values: dict[str, Any]) -> dict[str, Any]:
-        payload = {
+        return {
             "schema_version": IDENTITY_SELECTION_SCHEMA_VERSION,
-            "agent_model": agent_model,
+            "agent_model": "peer_v1",
             **values,
         }
-        if not peer_runtime:
-            payload["primary_agent"] = primary
-        return payload
 
     if not registered:
         return identity_payload(
@@ -432,16 +425,12 @@ def build_host_loop_activation_packet(
     cli_bin: str = "loopx",
     agent_id: str | None = None,
     registered_agents: list[str] | None = None,
-    primary_agent: str | None = None,
-    agent_model: str = "legacy_hierarchy",
     available_capabilities: list[str] | None = None,
 ) -> dict[str, Any]:
     canonical = normalize_agent_type(agent_type)
     identity = _identity_state(
         agent_id=agent_id,
         registered_agents=registered_agents,
-        primary_agent=primary_agent,
-        agent_model=agent_model,
     )
     selected_agent_id = identity.get("selected_agent_id")
     activation_allowed = bool(identity.get("activation_allowed"))
@@ -484,17 +473,6 @@ def build_host_loop_activation_packet(
             choices.append(
                 {
                     "agent_id": candidate,
-                    **(
-                        {}
-                        if agent_model == "peer_v1"
-                        else {
-                            "role": (
-                                "primary"
-                                if candidate == identity.get("primary_agent")
-                                else "side-agent"
-                            )
-                        }
-                    ),
                     "heartbeat_prompt_json": candidate_commands["heartbeat_prompt_json"],
                     "heartbeat_prompt": candidate_commands["heartbeat_prompt"],
                 }
@@ -518,7 +496,7 @@ def build_host_loop_activation_packet(
     return {
         "schema_version": SCHEMA_VERSION,
         "agent_type": canonical,
-        "agent_model": agent_model,
+        "agent_model": "peer_v1",
         "goal_id": goal_id,
         "agent_id": selected_agent_id,
         "requested_agent_id": normalize_todo_claimed_by(agent_id),

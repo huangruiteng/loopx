@@ -19,7 +19,6 @@ from .agent_scope import (
     agent_scope_item_claimed_by_agent_or_unclaimed,
 )
 from .capability_gate import _agent_lane_candidate_sort_key
-from .runtime_model import agent_identity_is_peer
 
 
 PublicSafeText = Callable[..., Optional[str]]
@@ -242,10 +241,6 @@ def build_agent_lane_next_action(
                         "replaces_gated_goal_next_action": True,
                     }
                 )
-                if not agent_identity_is_peer(agent_identity):
-                    payload["primary_agent"] = normalize_todo_claimed_by(
-                        agent_identity.get("primary_agent")
-                    )
                 if not claimed_by:
                     payload["claim_required_before_work"] = True
                 return payload
@@ -289,7 +284,6 @@ def build_agent_lane_next_action(
     )
 
     preferred_todo_ids = _todo_ids_from_action(active_next_action)
-    primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
     active_next_action_items = (
         agent_todo_summary.get("active_next_action_executable_items")
         if isinstance(agent_todo_summary.get("active_next_action_executable_items"), list)
@@ -329,7 +323,6 @@ def build_agent_lane_next_action(
             key=lambda candidate: _agent_lane_candidate_sort_key(
                 candidate,
                 agent_id=agent_id,
-                primary_agent=primary_agent,
                 preferred_todo_ids=preferred_todo_ids,
             ),
         ):
@@ -382,10 +375,6 @@ def build_agent_lane_next_action(
                     "preserves_goal_next_action": True,
                 }
             )
-            if not agent_identity_is_peer(agent_identity):
-                payload["primary_agent"] = normalize_todo_claimed_by(
-                    agent_identity.get("primary_agent")
-                )
             return payload
     return None
 

@@ -1328,17 +1328,23 @@ def append_attention_queue_project_asset_markdown(
             for claim in (agent_member.get("current_claims") or [])
             if str(claim or "").strip()
         )
-        lines.append(
-            "    - agent_member: "
-            f"agent={markdown_scalar(agent_member.get('agent_id') or '')} "
-            f"role={markdown_scalar(agent_member.get('role') or '')} "
-            f"scope={markdown_scalar(agent_member.get('scope_summary') or '')} "
-            f"worktree_policy={markdown_scalar(agent_member.get('worktree_policy') or '')} "
-            f"claims={markdown_scalar(current_claims)} "
-            f"handoff_agent={markdown_scalar(agent_member.get('handoff_agent') or '')} "
-            f"source={markdown_scalar(agent_member.get('profile_source') or '')} "
-            "authority=advisory_projection"
+        member_fields = [
+            f"agent={markdown_scalar(agent_member.get('agent_id') or '')}",
+            f"agent_model={markdown_scalar(agent_member.get('agent_model') or '')}",
+        ]
+        if agent_member.get("profile_role"):
+            member_fields.append(f"profile_role={markdown_scalar(agent_member['profile_role'])}")
+        if agent_member.get("scope_summary"):
+            member_fields.append(f"scope={markdown_scalar(agent_member['scope_summary'])}")
+        member_fields.extend(
+            [
+                f"claims={markdown_scalar(current_claims)}",
+                f"review_handoff={markdown_scalar(agent_member.get('review_handoff_status') or '')}",
+                f"source={markdown_scalar(agent_member.get('profile_source') or '')}",
+                "authority=advisory_projection",
+            ]
         )
+        lines.append("    - agent_member: " + " ".join(member_fields))
 
     agent_interaction = (
         project_asset.get("agent_interaction_summary")

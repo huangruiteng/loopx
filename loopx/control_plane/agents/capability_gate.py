@@ -174,10 +174,8 @@ def _agent_lane_candidate_sort_key(
     raw_item: dict[str, Any],
     *,
     agent_id: str | None,
-    primary_agent: str | None,
     preferred_todo_ids: set[str] | None = None,
 ) -> tuple[int, int, int, int, int, int, int]:
-    del primary_agent
     preferred_todo_ids = preferred_todo_ids or set()
     todo_id = str(raw_item.get("todo_id") or "").strip()
     active_next_rank = 0 if todo_id and todo_id in preferred_todo_ids else 1
@@ -205,7 +203,6 @@ def _sort_capability_runnable_candidates(
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
     if not agent_id:
         return runnable, None
-    primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
     policy = "active_next_then_claim_then_unblock_handoff_then_priority_then_repair"
     return (
         sorted(
@@ -213,7 +210,6 @@ def _sort_capability_runnable_candidates(
             key=lambda item: _agent_lane_candidate_sort_key(
                 item,
                 agent_id=agent_id,
-                primary_agent=primary_agent,
             ),
         ),
         policy,

@@ -46,9 +46,6 @@ def project_root_for(cwd) -> Path | None:
 
 def _agent_of(goal: dict):
     coord = goal.get("coordination") or {}
-    primary = coord.get("primary_agent")
-    if primary:
-        return str(primary)
     for entry in coord.get("registered_agents") or []:
         if isinstance(entry, dict):
             val = entry.get("id") or entry.get("agent_id") or entry.get("name")
@@ -93,7 +90,7 @@ def goal_context(cwd) -> dict | None:
     Returns goal_id, registry path, agent_id, write_scope (the goal's repo), and
     project_root — everything the hooks / MCP / statusline need. When the project
     is armed (`.claude/loop.md` carries a `loopx:armed` marker), the marker's goal
-    is authoritative; otherwise we fall back to the primary-agent / first goal."""
+    is authoritative; otherwise we fall back to the first registry goal."""
     reg = find_registry(cwd)
     if not reg:
         return None
@@ -115,7 +112,7 @@ def goal_context(cwd) -> dict | None:
         if chosen is not None:
             armed_agent = armed.get("agent_id")
     if chosen is None:
-        chosen = next((g for g in goals if (g.get("coordination") or {}).get("primary_agent")), goals[0])
+        chosen = goals[0]
     repo = chosen.get("repo")
     scope = [str(repo).replace("\\", "/")] if repo else [str(root).replace("\\", "/")]
     return {

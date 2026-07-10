@@ -447,10 +447,10 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 ),
             },
             {
-                "command": "python3 examples/control_plane/side-agent-self-iteration-state-machine-smoke.py",
+                "command": "python3 examples/control_plane/peer-agent-continuation-state-machine-smoke.py",
                 "tier": "default",
                 "reason": (
-                    "guards side-agent self-merge continuation through successor todo selection, "
+                    "guards peer self-merge continuation through successor todo selection, "
                     "agent-lane refresh, scheduler ack, quota spend, and preserved goal next action"
                 ),
             },
@@ -1180,7 +1180,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "agent_workspace_guard",
             "loopx/control_plane/agents",
             "loopx/control_plane/todos/completion_policy.py",
-            "loopx/control_plane/quota/subagent_orchestration.py",
+            "loopx/control_plane/quota/task_orchestration.py",
             "loopx/heartbeat_prompt.py",
             "loopx/configure_goal.py",
         ),
@@ -1211,12 +1211,12 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "guards atomic registry backup/cutover and peer heartbeat prompts",
             },
             {
-                "command": "python3 examples/control_plane/side-agent-workspace-guard-smoke.py",
+                "command": "python3 examples/control_plane/peer-agent-workspace-guard-smoke.py",
                 "tier": "deep",
                 "reason": "guards symmetric write-aware worktree isolation in real git worktrees",
             },
             {
-                "command": "python3 examples/control_plane/primary-controller-subagent-orchestration-smoke.py",
+                "command": "python3 examples/control_plane/task-orchestration-smoke.py",
                 "tier": "deep",
                 "reason": "guards deterministic task-scoped coordination without durable leader authority",
             },
