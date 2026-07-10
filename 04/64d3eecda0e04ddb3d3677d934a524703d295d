@@ -1,0 +1,23 @@
+examples/issue-fix-outcome-projection-smoke.py
+  s_32e2a9a204a8e4::t_55ed1762f700a3 4,15,18-29,34,136-266,402-403
+examples/issue-fix-pr-lifecycle-smoke.py
+  s_32e2a9a204a8e4::t_779a43cb54f5fc 175,185,246-247
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0464d3eecda0e04ddb3d3677d934a524703d295d",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
