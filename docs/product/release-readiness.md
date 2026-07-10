@@ -164,6 +164,22 @@ path, and canary route rather than as a user-facing release baseline.
   related scheduler fixes), plus quota/status/todo read-model hardening for
   user-gate counts, completed-todo successors, evidence-log counts, delivery
   lineage, and compact agent-lane status summaries (#1707-#1716).
+- `v0.1.15` on 2026-07-10: actionable routing and long-run reliability release
+  at the matching `v0.1.15` tag. This release makes the agent-facing current
+  action and quota-selected todo more explicit, centralizes primary-action
+  resolution, and preserves replan acknowledgements, filtered resumes, vision
+  lifecycle state, and due monitors across bounded progress (#1720, #1731,
+  #1751, #1757, #1764-#1766, #1769-#1770). It hardens external monitor and
+  multi-agent continuation through quiet-timeout handling, identity/capability
+  gates, no-handoff lane fidelity, and typed continuation policies (#1722-#1724,
+  #1745, #1747, #1754, #1773). Experimental issue-fix and SkillsBench routes
+  gain feasibility, lifecycle, evidence, failure-attribution, cache/proxy,
+  prewarm, and ledger-closeout improvements (#1726, #1734, #1738-#1744,
+  #1748-#1750, #1753, #1756, #1759-#1763, #1767-#1768, #1771-#1772). The
+  release also adds and repairs the parallel full-public smoke sweep, fixes
+  direct-install doctor behavior, clarifies Explore's measurable-metric fit,
+  and closes the todo CLI ownership-budget regression (#1721, #1725, #1727-#1730,
+  #1735, #1743, #1752, #1774).
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.
