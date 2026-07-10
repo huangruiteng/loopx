@@ -284,32 +284,38 @@ def build_issue_fix_repository_memory_hook(
                 "metadata while unverified"
             )
 
-        source_id = _memory_ref_id(
-            provider=provider,
-            namespace=namespace,
-            memory_ref=memory_ref,
-        )
-        source_summary = f"{summary} Checkout verification: {verification_status}."
-        if verification_reference:
-            source_summary += f" Evidence: {verification_reference}."
-        sources.append(
-            {
-                "source_id": source_id,
-                "source_kind": "memory_retrieval",
-                "reference": f"memory:{source_id.removeprefix('memory-')}",
-                "trust": "advisory",
-                "freshness": (
-                    "current"
-                    if verification_status in {"confirmed", "refuted"}
-                    else "unknown"
-                ),
-                "supports": supports,
-                "summary": source_summary,
-            }
-        )
+        if verification_status == "confirmed":
+            source_id = _memory_ref_id(
+                provider=provider,
+                namespace=namespace,
+                memory_ref=memory_ref,
+            )
+            source_summary = (
+                f"{summary} Checkout verification: confirmed. "
+                f"Evidence: {verification_reference}."
+            )
+            sources.append(
+                {
+                    "source_id": source_id,
+                    "source_kind": "memory_retrieval",
+                    "reference": f"memory:{source_id.removeprefix('memory-')}",
+                    "trust": "advisory",
+                    "freshness": "current",
+                    "supports": supports,
+                    "summary": source_summary,
+                }
+            )
 
     projection = _empty_projection(
-        status="used" if sources else "empty",
+        status=(
+            "used"
+            if sources
+            else "verification_required"
+            if counts["unverified"]
+            else "no_usable_results"
+            if counts["refuted"]
+            else "empty"
+        ),
         provider=provider,
         namespace=namespace,
         search_performed=search_performed,
@@ -319,7 +325,7 @@ def build_issue_fix_repository_memory_hook(
         {
             "query_summary": query_summary,
             "observed_at": observed_at,
-            "result_count": len(sources),
+            "result_count": len(raw_results),
             "confirmed_count": counts["confirmed"],
             "refuted_count": counts["refuted"],
             "unverified_count": counts["unverified"],

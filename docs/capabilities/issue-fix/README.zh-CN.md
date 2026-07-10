@@ -459,7 +459,8 @@ host-provider hook，不是 LoopX 内置的 memory client：host 只在调用方
 namespace 中显式执行 `search`，再对选中的命中执行 `read`，把蒸馏后的 public-safe
 摘要封装成 `issue_fix_repository_memory_read_result_v0`。LoopX 会 hash provider ref，
 始终把 memory source 保持为 advisory；只有已经在 pinned checkout revision 上验证的
-命中才允许影响 patch。紧凑 hook projection 仍写入现有 repository context，不建立
+命中才允许影响 patch。未验证或已被 refute 的命中只进入计数，其摘要不会持久化。
+紧凑 hook projection 仍写入现有 repository context，不建立
 第二套 ledger。Provider 不可用、空结果或缺少 revision 时，仓库工作流 fail-open；
 raw memory body、自动 transcript capture、memory writeback、私有 namespace 与凭据
 都会被拒绝。

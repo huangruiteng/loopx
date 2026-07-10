@@ -519,7 +519,8 @@ namespace, reads selected hits, distils public-safe summaries, and passes an
 `issue_fix_repository_memory_read_result_v0` packet. LoopX hashes provider
 references, keeps every memory source advisory, allows patch influence only
 for hits verified against the pinned checkout revision, and persists the
-compact hook projection in the existing repository context. Provider
+compact hook projection in the existing repository context. Unverified or
+refuted hits contribute counts only; their summaries are not persisted. Provider
 unavailability, empty retrieval, or a missing revision is fail-open for the
 repository workflow; raw memory bodies, automatic transcript capture, memory
 writeback, private namespaces, and credentials are rejected.

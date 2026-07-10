@@ -138,7 +138,7 @@ def main() -> int:
     memory_sources = [
         row for row in context["sources"] if row["source_kind"] == "memory_retrieval"
     ]
-    assert len(memory_sources) == 2, memory_sources
+    assert len(memory_sources) == 1, memory_sources
     assert all(row["trust"] == "advisory" for row in memory_sources), memory_sources
     assert all(row["reference"].startswith("memory:") for row in memory_sources)
     assert_boundary(context)

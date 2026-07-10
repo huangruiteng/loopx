@@ -383,7 +383,7 @@ def validate_issue_fix_repository_context_packet(
     errors: list[str] = []
     if packet.get("schema_version") != ISSUE_FIX_REPOSITORY_CONTEXT_SCHEMA_VERSION:
         errors.append("packet schema_version must be issue_fix_repository_context_v0")
-    if packet.get("external_reads_performed") not in {True, False}:
+    if not isinstance(packet.get("external_reads_performed"), bool):
         errors.append("packet external_reads_performed must be a boolean")
     for key in (
         "external_writes_performed",
