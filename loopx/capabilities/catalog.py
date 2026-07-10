@@ -46,6 +46,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "write_boundary": "writes compact project-local domain state when goal or ledger context is provided; no external comment, PR creation, merge, raw logs, or body/comment capture",
             },
             {
+                "command": "loopx issue-fix outcome --goal-id <goal-id> --repo <owner/repo> --issue-ref <issue-ref> --pr-ref <pr-ref> --format json",
+                "purpose": "Compose one operator-facing issue status/output card from existing feasibility, repository context, optional delivery evidence, and PR lifecycle state.",
+                "write_boundary": "read-only derived projection; writes no source ledger and performs no external action",
+            },
+            {
                 "command": "loopx issue-fix acceptance-fixture --format json",
                 "purpose": "Prove the failure-before/fix-after acceptance loop on a deterministic fixture.",
                 "write_boundary": "temporary local fixture only",
@@ -103,6 +108,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "doc": "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
             },
             {
+                "schema_version": "issue_fix_outcome_projection_v0",
+                "module": "loopx.capabilities.issue_fix.outcome_projection",
+                "doc": "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
+            },
+            {
                 "schema_version": "issue_fix_acceptance_loop_v0",
                 "module": "loopx.capabilities.issue_fix.acceptance_loop",
                 "doc": "docs/capabilities/issue-fix/protocols/issue-fix-acceptance-loop-v0.md",
@@ -123,6 +133,7 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "python3 examples/issue-fix-repository-context-smoke.py",
             "python3 examples/issue-fix-feasibility-smoke.py",
             "python3 examples/issue-fix-pr-lifecycle-smoke.py",
+            "python3 examples/issue-fix-outcome-projection-smoke.py",
             "python3 examples/content-ops-issue-fix-metadata-preview-smoke.py",
             "python3 examples/content-ops-issue-fix-intake-smoke.py",
             "python3 examples/issue-fix-acceptance-loop-smoke.py",

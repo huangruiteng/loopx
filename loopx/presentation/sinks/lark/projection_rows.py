@@ -359,6 +359,28 @@ def projection_rows_from_payload(
             )
         )
 
+    for index, outcome in enumerate(
+        _as_mapping_list(projection.get("issue_fix_outcomes")), start=1
+    ):
+        identity = outcome.get("outcome_id") or outcome.get("issue_ref") or index
+        add_row(
+            _projection_row(
+                source_id=source_id,
+                goal_id=resolved_goal_id,
+                kind="issue_fix_outcome",
+                identity=identity,
+                role="agent",
+                item={
+                    **outcome,
+                    "action_kind": "issue_fix_outcome",
+                    "task_class": outcome.get("task_class") or "continuous_monitor",
+                    "_include_done_by_default": True,
+                },
+                fallback_text=f"Issue-fix outcome {index}",
+                projection_agent_id=payload_agent_id or agent_id,
+            )
+        )
+
     next_action = _as_mapping(projection.get("agent_lane_next_action"))
     if not next_action and projection.get("next_action"):
         next_action = {

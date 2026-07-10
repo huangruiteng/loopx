@@ -1992,6 +1992,7 @@ def _lark_record_from_projection_block(
     if original_id:
         evidence_parts.append(f"original_todo_id={original_id}")
     evidence_parts.extend(_projection_lifecycle_parts(block, source_id=source_id))
+    evidence_parts = list(dict.fromkeys(part for part in evidence_parts if part))
     lifecycle_state = _projection_lifecycle_state(block)
     default_handoff = f"Synced from LoopX projection source={source_id}"
     if lifecycle_state in {"superseded", "migrated", "retired"}:
@@ -2003,7 +2004,7 @@ def _lark_record_from_projection_block(
             "LoopX Todo ID": str(block.get("todo_id") or ""),
             "Scope": _compact_text(block.get("scope") or block.get("source_section") or f"projection_source={source_id}"),
             "Handoff": _compact_text(block.get("handoff") or default_handoff),
-            "Evidence": _compact_text("; ".join(part for part in evidence_parts if part)),
+            "Evidence": _compact_text("; ".join(evidence_parts)),
             "Run History": _compact_text(
                 "; ".join(
                     part
