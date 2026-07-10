@@ -1,0 +1,35 @@
+examples/issue-fix-outcome-projection-smoke.py
+  s_e3f612788718c1::t_a7116988caa66a 164-171
+examples/lark-kanban-control-plane-smoke.py
+  s_e3f612788718c1::t_12df2e83878f78 17,43-46,166-185,198,207,219-220,234-235,339-354
+loopx/presentation/sinks/lark/issue_fix_surface.py
+  s_e3f612788718c1::t_51a9aaa9f0f37d 1-327
+loopx/presentation/sinks/lark/kanban.py
+  s_76ee28abb3c3a4::t_f19495dbc9ea0a 10,24,140,183,203,209-210,990,1094,1303,1454-1473,1550,1639,1822,2116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "48602e38fd24c9f334a698fd93084b6980d0a1ba",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
