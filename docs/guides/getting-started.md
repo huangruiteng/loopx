@@ -146,6 +146,14 @@ only when a deliberately narrow archive is sufficient. Treat the archive and
 manifest as private local recovery material; do not commit them or publish
 their contents.
 
+The preview reports **logical source bytes before compression**, not the final
+archive footprint. Full runtime history and project-local goal evidence are
+included intentionally so the archive can support a faithful rollback. The
+category breakdown shows which surface contributes the bytes, while contained
+route overlap identifies active-state or source-registry files also covered by
+a parent project directory. After `--execute`, use `archive_size_bytes` and the
+archive/logical ratio to judge the actual storage cost.
+
 ## Codex CLI TUI Setup
 
 For Codex CLI users, the product target is: start in the Codex TUI, send one
