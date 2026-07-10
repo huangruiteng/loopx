@@ -9,11 +9,14 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from scripts import skillsbench_automation_loop as skillsbench_loop
+from loopx.benchmark_adapters import skillsbench_proxy_runtime as proxy_runtime
 
 
 def _make_skillsbench_root(root: Path) -> Path:
@@ -232,10 +235,58 @@ def test_verifier_proxy_patch_is_required_only_for_existing_verifier() -> None:
         assert patched["benchmark_egress_proxy_verifier_env_key_count"] > 0
 
 
+def test_proxy_runtime_prewarms_external_base_images_without_public_refs() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-base-image-prewarm-") as tmp:
+        dockerfile = Path(tmp) / "Dockerfile"
+        image = "gcr.io/oss-fuzz-base/base-builder-python:latest"
+        dockerfile.write_text(
+            f"FROM {image} AS builder\n"
+            "FROM builder AS final\n",
+            encoding="utf-8",
+        )
+        calls: list[list[str]] = []
+
+        def fake_run(argv: list[str], **_kwargs: object) -> SimpleNamespace:
+            calls.append(argv)
+            cached = argv[1:3] == ["image", "inspect"]
+            return SimpleNamespace(returncode=1 if cached else 0)
+
+        with mock.patch.object(
+            proxy_runtime.shutil,
+            "which",
+            side_effect=lambda name: f"/usr/bin/{name}",
+        ), mock.patch.object(proxy_runtime.subprocess, "run", side_effect=fake_run):
+            metadata = proxy_runtime.prewarm_dockerfile_base_images(
+                dockerfile,
+                enabled=True,
+            )
+
+        assert metadata["benchmark_egress_proxy_base_image_prewarm_status"] == "completed"
+        assert metadata["benchmark_egress_proxy_base_image_prewarm_candidate_count"] == 1
+        assert metadata["benchmark_egress_proxy_base_image_prewarm_attempted_count"] == 1
+        assert metadata["benchmark_egress_proxy_base_image_prewarm_loaded_count"] == 1
+        assert metadata["benchmark_egress_proxy_base_image_prewarm_failed_count"] == 0
+        assert metadata["benchmark_egress_proxy_base_image_prewarm_raw_image_refs_recorded"] is False
+        assert metadata["benchmark_egress_proxy_base_image_prewarm_raw_output_recorded"] is False
+        assert image not in json.dumps(metadata, sort_keys=True), metadata
+        public_prerequisites = skillsbench_loop._public_runner_prerequisites(metadata)
+        public_config = skillsbench_loop._public_runner_config(
+            {"runner_prerequisites": metadata}
+        )
+        assert public_prerequisites == metadata, public_prerequisites
+        for key, value in metadata.items():
+            assert public_config[key] == value, public_config
+        assert image not in json.dumps(public_prerequisites, sort_keys=True)
+        skopeo_calls = [call for call in calls if call[0] == "/usr/bin/skopeo"]
+        assert len(skopeo_calls) == 1, calls
+        assert skopeo_calls[0][-2:] == [f"docker://{image}", f"docker-daemon:{image}"]
+
+
 if __name__ == "__main__":
     test_formal_cli_goal_auto_requires_benchmark_egress_proxy()
     test_formal_cli_goal_proxy_env_is_forwarded_without_public_url()
     test_public_launcher_uses_container_reachable_benchmark_proxy()
     test_public_launcher_batches_three_cases_with_closeout_sync()
     test_verifier_proxy_patch_is_required_only_for_existing_verifier()
+    test_proxy_runtime_prewarms_external_base_images_without_public_refs()
     print("skillsbench-benchmark-egress-policy-smoke: ok")

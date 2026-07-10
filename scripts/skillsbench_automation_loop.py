@@ -1930,77 +1930,14 @@ def _benchmark_egress_proxy_env(args: argparse.Namespace | None) -> dict[str, st
     return env
 
 
-def _docker_config_payload_with_proxy(
-    *,
-    proxy_url: str,
-    no_proxy: str,
-) -> dict[str, Any]:
-    """Return a Docker client config that forwards proxies without mutating home."""
-
-    docker_config_dir = os.environ.get("DOCKER_CONFIG")
-    source_config = (
-        Path(docker_config_dir).expanduser() / "config.json"
-        if docker_config_dir
-        else Path.home() / ".docker" / "config.json"
-    )
-    payload: dict[str, Any] = {}
-    if source_config.exists():
-        try:
-            loaded = json.loads(source_config.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            loaded = {}
-        if isinstance(loaded, dict):
-            payload = loaded
-    proxies = payload.setdefault("proxies", {})
-    if not isinstance(proxies, dict):
-        proxies = {}
-        payload["proxies"] = proxies
-    proxies["default"] = {
-        "httpProxy": proxy_url,
-        "httpsProxy": proxy_url,
-        "noProxy": no_proxy,
-    }
-    return payload
-
-
 @contextlib.contextmanager
 def _benchmark_egress_proxy_env_applied(
     args: argparse.Namespace, *, plan: dict[str, Any] | None = None,
 ) -> Any:
-    proxy_env = _benchmark_egress_proxy_env(args)
-    if not proxy_env:
+    with proxy_runtime.proxy_runtime_env_applied(
+        _benchmark_egress_proxy_env(args), plan=plan
+    ):
         yield
-        return
-    docker_config_tmp: tempfile.TemporaryDirectory[str] | None = None
-    docker_config_env: dict[str, str] = {}
-    proxy_url = proxy_env.get("LOOPX_SKILLSBENCH_EGRESS_PROXY", "")
-    if proxy_url:
-        docker_config_tmp = tempfile.TemporaryDirectory(
-            prefix="loopx-skillsbench-docker-proxy-"
-        )
-        docker_config_path = Path(docker_config_tmp.name) / "config.json"
-        docker_config_payload = _docker_config_payload_with_proxy(
-            proxy_url=proxy_url,
-            no_proxy=proxy_env.get("NO_PROXY", "localhost,127.0.0.1,::1"),
-        )
-        docker_config_path.write_text(
-            json.dumps(docker_config_payload, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-        docker_config_env["DOCKER_CONFIG"] = docker_config_tmp.name
-    keys = set(proxy_env) | set(docker_config_env)
-    previous = {key: os.environ.get(key) for key in keys}
-    try:
-        proxy_runtime.apply_proxy_runtime_env(os.environ, proxy_env, docker_config_env, plan=plan)
-        yield
-    finally:
-        for key, value in previous.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-        if docker_config_tmp is not None:
-            docker_config_tmp.cleanup()
 
 
 def _host_local_acp_target_env(
@@ -2999,6 +2936,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
             compact[field] = value[field]
     compact.update(runner_source.compact_runner_source_public_fields(value))
+    compact.update(proxy_runtime.compact_base_image_prewarm_fields(value))
     target_keys = value.get("host_local_acp_target_env_keys")
     if isinstance(target_keys, list):
         compact["host_local_acp_target_env_keys"] = [
@@ -9553,6 +9491,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         value = prerequisites.get("benchmark_egress_no_proxy_entry_count")
         if isinstance(value, int) and not isinstance(value, bool):
             config["benchmark_egress_no_proxy_entry_count"] = value
+        config.update(proxy_runtime.compact_base_image_prewarm_fields(prerequisites))
     app_server_observability = _app_server_goal_worker_observability(plan)
     if app_server_observability:
         config["app_server_goal_worker_observability"] = app_server_observability
@@ -13632,6 +13571,21 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     )
     plan["task_staging"] = staging_metadata
     plan["effective_task_path"] = str(effective_task_path)
+    prerequisites["benchflow_run_stage"] = "base_image_prewarm"
+    _write_public_runner_config(plan)
+    _write_public_runner_prerequisites(plan)
+    prerequisites.update(
+        proxy_runtime.prewarm_dockerfile_base_images(
+            effective_task_path / "environment" / "Dockerfile",
+            enabled=(
+                args.sandbox == "docker"
+                and bool(_benchmark_egress_proxy_env(args))
+            ),
+        )
+    )
+    prerequisites["benchflow_run_stage"] = "base_image_prewarm_complete"
+    _write_public_runner_config(plan)
+    _write_public_runner_prerequisites(plan)
 
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
