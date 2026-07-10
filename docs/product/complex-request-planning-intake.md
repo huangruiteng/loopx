@@ -122,7 +122,7 @@ card:
 
 - themes extracted from the request;
 - proposed todo batch with priority, role, and claim status;
-- current-agent claim decisions versus primary review handoffs;
+- current-agent claim decisions versus explicit review handoffs;
 - evidence expected for the first proof slice;
 - unresolved user gates, if any;
 - a link to any local-only management note without exposing its contents.

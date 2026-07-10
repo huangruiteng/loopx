@@ -70,7 +70,7 @@ status markers stay out of showcase URLs and appear only after an explicit
 
 For contributor onboarding, use `/frontstage?mode=developer`. This is still a
 public-safe read-only view: it shows the agent-first start path, quota/status
-health checks, side-agent worktree guard, todo claiming, local server checks,
+health checks, peer workspace guard, todo claiming, local server checks,
 and writeback boundary without loading live registry data. It is meant to help
 new developers understand how to enter LoopX from Codex CLI or another
 agent TUI before they open the denser ops board.

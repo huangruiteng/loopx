@@ -1075,42 +1075,6 @@ def assert_agent_scoped_replan_beats_agent_scope_wait() -> None:
     assert "agent_scope_wait" in guard["autonomous_replan_decision"]["not_disturbed_by"], guard
 
 
-def assert_unscoped_replan_defaults_to_primary_agent() -> None:
-    primary_guard = build_quota_should_run(
-        status_payload([primary_claimed_advancement()]),
-        goal_id=GOAL_ID,
-        agent_id=PRIMARY_AGENT,
-    )
-    assert primary_guard["decision"] == "autonomous_replan_required", primary_guard
-    assert primary_guard["effective_action"] == "autonomous_replan_required", primary_guard
-    assert primary_guard["autonomous_replan_scope"]["scope"] == "default_primary_agent", primary_guard
-    assert primary_guard["autonomous_replan_scope"]["applies"] is True, primary_guard
-
-    side_guard = build_quota_should_run(
-        status_payload([primary_claimed_advancement()]),
-        goal_id=GOAL_ID,
-        agent_id=SIDE_AGENT,
-    )
-    assert side_guard["effective_action"] == "agent_scope_wait", side_guard
-    assert side_guard["should_run"] is False, side_guard
-    assert side_guard["interaction_contract"]["mode"] == "agent_scope_wait", side_guard
-    assert side_guard["autonomous_replan_scope"]["scope"] == "default_primary_agent", side_guard
-    assert side_guard["autonomous_replan_scope"]["applies"] is False, side_guard
-    assert side_guard.get("autonomous_replan_obligation") is None, side_guard
-    assert side_guard["goal_frontier_projection"]["replan_required"] is False, side_guard
-
-    monitor_side_guard = build_quota_should_run(
-        status_payload([monitor_item(), primary_claimed_advancement()]),
-        goal_id=GOAL_ID,
-        agent_id=SIDE_AGENT,
-    )
-    assert monitor_side_guard["effective_action"] == "monitor_quiet_skip", monitor_side_guard
-    assert monitor_side_guard["should_run"] is False, monitor_side_guard
-    assert monitor_side_guard["interaction_contract"]["mode"] == "monitor_quiet_skip", monitor_side_guard
-    assert monitor_side_guard["autonomous_replan_scope"]["applies"] is False, monitor_side_guard
-    assert monitor_side_guard.get("autonomous_replan_obligation") is None, monitor_side_guard
-
-
 def assert_unscoped_peer_replan_has_one_deterministic_owner() -> None:
     payload = peer_status_payload([primary_claimed_advancement()])
     guards = {

@@ -27,7 +27,7 @@
   },
   "generated_at": "2026-06-24T00:00:00Z",
   "summary": {
-    "headline": "Public-safe protocol work advanced and one primary review remains.",
+    "headline": "Public-safe protocol work advanced and one peer review remains.",
     "progress_count": 2,
     "open_gate_count": 0,
     "runnable_todo_count": 3,
@@ -77,7 +77,7 @@
       "evidence_refs": [
         "pr_review_pending"
       ],
-      "next_safe_action": "Keep the primary review todo visible until the PR is merged or superseded."
+      "next_safe_action": "Keep the peer review todo visible until the PR is merged or superseded."
     }
   ],
   "actions": [

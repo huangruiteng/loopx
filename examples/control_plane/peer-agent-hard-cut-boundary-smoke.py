@@ -13,12 +13,14 @@ SCAN_ROOTS = (
     REPO_ROOT / "docs",
     REPO_ROOT / "skills",
     REPO_ROOT / "apps" / "presentation" / "dashboard" / "src",
+    REPO_ROOT / "apps" / "presentation" / "dashboard" / "smoke",
     REPO_ROOT / "examples" / "fixtures",
 )
 SCAN_FILES = (
     REPO_ROOT / "README.md",
     REPO_ROOT / "README.zh-CN.md",
     REPO_ROOT / "CONTRIBUTOR_TASKS.md",
+    REPO_ROOT / "apps" / "presentation" / "dashboard" / "README.md",
     REPO_ROOT / "examples" / "status.example.json",
     REPO_ROOT / "examples" / "registry.example.json",
     REPO_ROOT / "examples" / "peer-agent-task-orchestration.registry.example.json",
@@ -29,11 +31,13 @@ SCAN_FILES = (
 ALLOWED_LEGACY_PATHS = {
     REPO_ROOT / "loopx" / "configure_goal.py",
     REPO_ROOT / "loopx" / "control_plane" / "agents" / "runtime_model.py",
+    REPO_ROOT / "loopx" / "control_plane" / "todos" / "contract.py",
     REPO_ROOT / "docs" / "reference" / "protocols" / "peer-agent-runtime-v1.md",
+    REPO_ROOT / "docs" / "project-agent-todo-contract.md",
     REPO_ROOT / "docs" / "product" / "agent-profile-contract.md",
 }
 LEGACY_PATTERN = re.compile(
-    r"primary_agent|side_agent|handoff_agent|agent_profile_v0|primary_checkout|"
+    r"primary_agent|primary_review|side_agent|handoff_agent|agent_profile_v0|primary_checkout|"
     r"\bprimary agent\b|\bside agent\b|\bside-agent\b|\bmain controller\b|"
     r"controller/sub-agent|controller-subagent|controller owns|"
     r'"role"\s*:\s*"(?:controller|subagent)"',

@@ -244,9 +244,8 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
             "For complete/supersede with --next-agent-todo, soft-claim the successor "
             "todo for a registered agent. In peer_v1, independent and review handoffs "
             "remain unclaimed unless explicitly assigned, while same-agent non-delivery "
-            "continuations keep the current owner. Legacy hierarchy goals retain their "
-            "configured handoff behavior. Use --self-merged with --evidence for an "
-            "eligible same-agent delivery."
+            "continuations keep the current owner. Use --self-merged with --evidence "
+            "for an eligible same-agent delivery."
         ),
     )
     todo_parser.add_argument(

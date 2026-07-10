@@ -471,7 +471,7 @@ carry `schema_version=todo_summary_v0`; individual items carry
 optional `action_kind`, `claimed_by`, `required_capabilities`, and
 `target_capabilities`. `action_kind` is extensible; optional
 `continuation_policy` is limited to `independent_handoff`,
-`same_agent_non_delivery`, or `primary_review`. Primary review handoffs may also carry
+`same_agent_non_delivery`, or `review_handoff`. Review handoffs may also carry
 `blocks_agent`, `unblocks_todo_id`, and `no_followup=true` to show which
 agent/todo they release and whether a completed handoff intentionally has no
 successor.
