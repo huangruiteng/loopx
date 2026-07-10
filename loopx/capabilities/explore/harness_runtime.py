@@ -3,9 +3,16 @@ from __future__ import annotations
 import json
 import threading
 import time
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+from .harness_checkpoint import (
+    HARNESS_CHECKPOINT_SCHEMA_VERSION,
+    build_arm_checkpoint,
+    load_arm_checkpoint,
+    write_arm_checkpoint,
+)
 from .router_state import (
     advance_epoch,
     family_routing_terms,
@@ -55,12 +62,25 @@ implementation):
   ``variant_spec`` attached, own ``concurrency_key``).
 - ``flag_weights`` is implicit: the adapter reports weights per record, so
   the harness never holds a domain weight table.
+- ``item_failure_policy`` may be set to ``"fatal"`` on the adapter to make
+  execution exceptions propagate; the default ``"record"`` policy emits a
+  zero-value structured observation and keeps independent lanes running.
 """
 
 
 HARNESS_ARM_SCHEMA_VERSION = "loopx_explore_harness_arm_v0"
 VARIANT_CATALOG_SCHEMA_VERSION = "loopx_explore_variant_catalog_v0"
 FRONTIER_REQUESTS_SCHEMA_VERSION = "loopx_explore_frontier_requests_v0"
+HARNESS_RUNTIME_POLICY_SCHEMA_VERSION = "loopx_explore_harness_runtime_policy_v0"
+
+class ItemFailurePolicy(str, Enum):
+    RECORD = "record"
+    FATAL = "fatal"
+
+
+ITEM_FAILURE_POLICY_RECORD = ItemFailurePolicy.RECORD.value
+ITEM_FAILURE_POLICY_FATAL = ItemFailurePolicy.FATAL.value
+ITEM_FAILURE_POLICIES = {policy.value for policy in ItemFailurePolicy}
 
 DEFAULT_OBSERVATION_WEIGHT = 1.0
 _MIN_DURATION_MINUTES = 0.05
@@ -82,6 +102,51 @@ def _read_json(path: Path) -> Any:
         return json.loads(path.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError:
         return None
+
+
+def _normalize_item_failure_policy(value: Any) -> str:
+    if isinstance(value, ItemFailurePolicy):
+        return value.value
+    policy = str(value or ITEM_FAILURE_POLICY_RECORD).strip().lower().replace("_", "-")
+    if policy not in ITEM_FAILURE_POLICIES:
+        raise ValueError(
+            "item_failure_policy must be one of: "
+            + ", ".join(sorted(ITEM_FAILURE_POLICIES))
+        )
+    return policy
+
+
+def _adapter_error_record(
+    item: Mapping[str, Any],
+    error: Exception,
+    *,
+    duration_minutes: float,
+) -> dict[str, Any]:
+    message = " ".join(str(error).split())
+    return {
+        "item_id": item.get("item_id"),
+        "family": item.get("family"),
+        "is_variant": bool(item.get("is_variant")),
+        "variant_spec_id": (
+            (item.get("variant_spec") or {}).get("spec_id")
+            if item.get("is_variant")
+            else None
+        ),
+        "execution_status": "adapter_error",
+        "item_failure_policy": ITEM_FAILURE_POLICY_RECORD,
+        "accepted": False,
+        "observation_keys": [],
+        "weighted_flags": {},
+        "duration_minutes": max(_MIN_DURATION_MINUTES, float(duration_minutes)),
+        "retryable_infra_error": bool(
+            getattr(error, "retryable_infra_error", False)
+        ),
+        "adapter_error": {
+            "schema_version": "loopx_explore_adapter_error_v0",
+            "type": type(error).__name__,
+            "message": message[:240],
+        },
+    }
 
 
 class NoveltyLedger:
@@ -129,6 +194,7 @@ def run_queue_epoch(
     arm: str,
     epoch: int,
     stagger_seconds: float = 0.0,
+    item_failure_policy: str = ITEM_FAILURE_POLICY_RECORD,
 ) -> list[dict[str, Any]]:
     """Drain one epoch's work items through a shared pull queue.
 
@@ -138,6 +204,7 @@ def run_queue_epoch(
     Returns per-worker lane records.
     """
 
+    failure_policy = _normalize_item_failure_policy(item_failure_policy)
     lock = threading.Lock()
     pending: list[dict[str, Any]] = [dict(item) for item in items]
     in_flight: set[str] = set()
@@ -169,20 +236,31 @@ def run_queue_epoch(
                 time.sleep(0.5)
                 continue
             key = str(item.get("concurrency_key") or item.get("family") or "")
+            item_started = time.perf_counter()
             try:
                 record = execute(
                     item, run_root=run_root, arm=arm, epoch=epoch, branch_id=branch_id
                 )
+                if not isinstance(record, dict):
+                    raise TypeError("adapter execute must return a dict observation record")
                 record.setdefault("item_id", item.get("item_id"))
                 record.setdefault("family", item.get("family"))
                 record.setdefault("is_variant", bool(item.get("is_variant")))
                 if item.get("is_variant"):
                     record.setdefault("variant_spec_id", (item.get("variant_spec") or {}).get("spec_id"))
-                results.append(record)
+            except Exception as error:
+                if failure_policy == ITEM_FAILURE_POLICY_FATAL:
+                    raise
+                record = _adapter_error_record(
+                    item,
+                    error,
+                    duration_minutes=_now_perf_minutes(item_started),
+                )
             finally:
                 if key:
                     with lock:
                         in_flight.discard(key)
+            results.append(record)
         return {
             "branch_id": branch_id,
             "launch_index": worker_index,
@@ -271,6 +349,10 @@ class VariantCatalog:
 
     def consume(self, spec_id: str) -> None:
         self.consumed.add(str(spec_id))
+        _write_json(self.consumption_path, sorted(self.consumed))
+
+    def restore_consumed(self, spec_ids: Sequence[Any]) -> None:
+        self.consumed = {str(spec_id) for spec_id in spec_ids if str(spec_id).strip()}
         _write_json(self.consumption_path, sorted(self.consumed))
 
 
@@ -476,6 +558,32 @@ def plan_router_no_prune(
     return ordered
 
 
+def _arm_runtime_signature(
+    adapter: Any,
+    *,
+    arm_key: str,
+    worker_count: int,
+    use_router: bool,
+    frontier_max_lanes: int,
+    variant_catalog_enabled: bool,
+    goal_id: str,
+    agent_id: str,
+    item_failure_policy: str,
+) -> dict[str, Any]:
+    adapter_type = f"{type(adapter).__module__}.{type(adapter).__qualname__}"
+    return {
+        "arm_key": str(arm_key),
+        "adapter_type": adapter_type,
+        "worker_count": max(1, int(worker_count)),
+        "use_router": bool(use_router),
+        "frontier_max_lanes": max(0, int(frontier_max_lanes)),
+        "variant_catalog_enabled": bool(variant_catalog_enabled),
+        "goal_id": str(goal_id),
+        "agent_id": str(agent_id),
+        "item_failure_policy": item_failure_policy,
+    }
+
+
 def run_budget_arm(
     adapter: Any,
     *,
@@ -492,16 +600,44 @@ def run_budget_arm(
     stagger_seconds: float = 0.0,
     duration_guard_factor: float = 1.15,
     duration_guard_recent: int = 3,
+    resumable: bool = False,
+    resume: bool = False,
+    checkpoint_path: Path | None = None,
+    item_failure_policy: str | None = None,
 ) -> dict[str, Any]:
     """Run ONE arm alone against its wall-clock budget; return arm payload.
 
     ``use_router=False`` is the blind baseline (round-robin sweep, no
     variants). ``use_router=True`` adds router-ordered no-prune planning,
     router-state feedback, and -- when a variant catalog path is given --
-    agent-authored frontier variants appended to each epoch's queue.
+    agent-authored frontier variants appended to each epoch's queue. Restart
+    is opt-in and only trusts the validated epoch-boundary checkpoint manifest;
+    rolling progress remains an observability surface.
     """
 
     run_root = Path(run_root)
+    failure_policy = _normalize_item_failure_policy(
+        item_failure_policy
+        if item_failure_policy is not None
+        else getattr(adapter, "item_failure_policy", None)
+    )
+    checkpoint_enabled = bool(resumable or resume or checkpoint_path is not None)
+    checkpoint_file = (
+        Path(checkpoint_path)
+        if checkpoint_path is not None
+        else run_root / f"arm_checkpoint_{arm_key}.json"
+    )
+    runtime_signature = _arm_runtime_signature(
+        adapter,
+        arm_key=arm_key,
+        worker_count=worker_count,
+        use_router=use_router,
+        frontier_max_lanes=frontier_max_lanes,
+        variant_catalog_enabled=variant_catalog_path is not None,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        item_failure_policy=failure_policy,
+    )
     ledger = NoveltyLedger()
     router_state = initial_router_state() if use_router else None
     load_profile: Mapping[str, Any] | None = None
@@ -519,10 +655,47 @@ def run_budget_arm(
     raw_cum = 0.0
     novel_cum = 0.0
     variant_records_cum = 0
+    next_epoch = 1
+    elapsed_offset = 0.0
+    if resume:
+        state = load_arm_checkpoint(
+            checkpoint_file,
+            expected_signature=runtime_signature,
+        )
+        epochs = [dict(epoch) for epoch in state["epochs"]]
+        checkpoints = [dict(checkpoint) for checkpoint in state["checkpoints"]]
+        ledger.seen = {str(key) for key in state["novelty_seen"]}
+        router_state = (
+            dict(state["router_state"])
+            if isinstance(state.get("router_state"), Mapping)
+            else None
+        )
+        load_profile = (
+            dict(state["load_profile"])
+            if isinstance(state.get("load_profile"), Mapping)
+            else None
+        )
+        coverage_first_seen = {
+            str(family): float(minutes)
+            for family, minutes in state["coverage_first_seen"].items()
+        }
+        raw_cum = float(state.get("raw_value_total") or 0.0)
+        novel_cum = float(state.get("novel_value_total") or 0.0)
+        variant_records_cum = int(state.get("variant_records_total") or 0)
+        next_epoch = int(state["next_epoch"])
+        elapsed_offset = float(state.get("elapsed_minutes") or 0.0)
+        if catalog is not None:
+            catalog.restore_consumed(state["catalog_consumed"])
+    elif checkpoint_enabled and catalog is not None:
+        # Reusing a run_root is not an implicit restart contract. A fresh arm
+        # starts with fresh consumption; only resume restores prior attempts.
+        catalog.restore_consumed([])
+    if not resume:
+        checkpoint_file.unlink(missing_ok=True)
     stop_reason = "max_epochs"
     started = time.perf_counter()
-    for epoch in range(1, int(max_epochs) + 1):
-        elapsed = _now_perf_minutes(started)
+    for epoch in range(next_epoch, int(max_epochs) + 1):
+        elapsed = elapsed_offset + _now_perf_minutes(started)
         remaining = float(budget_minutes) - elapsed
         if epochs and remaining <= 0:
             stop_reason = "budget_exhausted"
@@ -579,6 +752,7 @@ def run_budget_arm(
             arm=arm_key,
             epoch=epoch,
             stagger_seconds=stagger_seconds,
+            item_failure_policy=failure_policy,
         )
         epoch_wall = _now_perf_minutes(epoch_start)
         epoch_raw = 0.0
@@ -596,7 +770,7 @@ def run_budget_arm(
                 records.append(record)
         raw_cum += epoch_raw
         novel_cum += epoch_novel
-        elapsed_after = _now_perf_minutes(started)
+        elapsed_after = elapsed_offset + _now_perf_minutes(started)
         for record in records:
             family = str(record.get("family") or "")
             if family:
@@ -652,6 +826,26 @@ def run_budget_arm(
                 "lanes": lanes,
             }
         )
+        if checkpoint_enabled:
+            write_arm_checkpoint(
+                checkpoint_file,
+                build_arm_checkpoint(
+                    arm_key=arm_key,
+                    runtime_signature=runtime_signature,
+                    next_epoch=epoch + 1,
+                    elapsed_minutes=elapsed_after,
+                    epochs=epochs,
+                    checkpoints=checkpoints,
+                    novelty_seen=sorted(ledger.seen),
+                    router_state=router_state,
+                    load_profile=load_profile,
+                    catalog_consumed=sorted(catalog.consumed) if catalog else [],
+                    coverage_first_seen=coverage_first_seen,
+                    raw_value_total=raw_cum,
+                    novel_value_total=novel_cum,
+                    variant_records_total=variant_records_cum,
+                ),
+            )
         _write_json(
             run_root / f"rolling_progress_{arm_key}.json",
             {"arm": arm_key, "completed_epochs": len(epochs), "last_checkpoint": checkpoints[-1]},
@@ -660,7 +854,7 @@ def run_budget_arm(
         "schema_version": HARNESS_ARM_SCHEMA_VERSION,
         "arm_key": arm_key,
         "budget_minutes": float(budget_minutes),
-        "elapsed_minutes": round(_now_perf_minutes(started), 3),
+        "elapsed_minutes": round(elapsed_offset + _now_perf_minutes(started), 3),
         "stop_reason": stop_reason,
         "epoch_count": len(epochs),
         "raw_value_total": round(raw_cum, 3),
@@ -670,6 +864,29 @@ def run_budget_arm(
         "coverage_first_seen_minutes": coverage_first_seen,
         "checkpoints": checkpoints,
         "epochs": epochs,
+        "resume": {
+            "schema_version": "loopx_explore_harness_resume_v0",
+            "enabled": checkpoint_enabled,
+            "resumed": bool(resume),
+            "checkpoint_schema_version": HARNESS_CHECKPOINT_SCHEMA_VERSION,
+            "checkpoint_path": str(checkpoint_file) if checkpoint_enabled else None,
+            "restored_epoch_count": next_epoch - 1 if resume else 0,
+        },
+        "runtime_policy": {
+            "schema_version": HARNESS_RUNTIME_POLICY_SCHEMA_VERSION,
+            "item_failure_policy": failure_policy,
+            "item_exception_isolation": failure_policy == ITEM_FAILURE_POLICY_RECORD,
+            "planner_guidance": {
+                "retry_backoff": {
+                    "enforced": False,
+                    "owner": "external_runner",
+                },
+                "infra_cooldown": {
+                    "enforced": False,
+                    "owner": "external_runner",
+                },
+            },
+        },
     }
 
 
