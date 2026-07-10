@@ -135,6 +135,7 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
             "SKILLSBENCH_ROOT": "/remote/skillsbench",
             "SKILLSBENCH_EXPECTED_LOOPX_GIT_HEAD": "abc1234",
             "SKILLSBENCH_DOCKER_PROXY_HOST": "host.docker.internal",
+            "SKILLSBENCH_DOCKER_API_VERSION": "1.43",
             "SKILLSBENCH_RUN_STAMP": "20260709T000000CST",
         }
     )
@@ -160,6 +161,7 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
         "LOOPX_SKILLSBENCH_EGRESS_PROXY=http://host.docker.internal:18186"
         in output
     ), output
+    assert "DOCKER_API_VERSION=1.43" in output, output
     assert "--codex-api-reverse-tunnel-proxy http://127.0.0.1:18186" in output, output
     assert "--benchmark-egress-proxy-mode require" in output, output
     assert "--append-history" not in output, output
@@ -174,6 +176,7 @@ def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
             "SKILLSBENCH_ROOT": "/remote/skillsbench",
             "SKILLSBENCH_EXPECTED_LOOPX_GIT_HEAD": "abc1234",
             "SKILLSBENCH_DOCKER_PROXY_HOST": "host.docker.internal",
+            "SKILLSBENCH_DOCKER_API_VERSION": "1.43",
             "SKILLSBENCH_RUN_STAMP": "20260710T000000CST",
             "SKILLSBENCH_CANONICAL_CASE_IDS_FILE": "/opaque/canonical-ids.txt",
         }
@@ -214,6 +217,63 @@ def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
     assert "--local-target-lane-id codex-cli-goal-xhigh" in output, output
     assert "--local-target-run-group-contains" not in output, output
     assert "--local-target-backfill-run-group-contains" not in output, output
+
+
+def test_public_launcher_applies_ssh_options_to_remote_discovery() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-launch-ssh-options-") as tmp:
+        root = Path(tmp)
+        fake_bin = root / "bin"
+        fake_bin.mkdir()
+        ssh_log = root / "ssh.log"
+        fake_ssh = fake_bin / "ssh"
+        fake_ssh.write_text(
+            "#!/usr/bin/env bash\n"
+            "printf '%s\\n' \"$*\" >> \"$SKILLSBENCH_TEST_SSH_LOG\"\n"
+            "if [[ \"$*\" == *'ip -4 addr show docker0'* ]]; then\n"
+            "  printf 'docker-bridge.example.invalid\\n'\n"
+            "else\n"
+            "  printf '1.43\\n'\n"
+            "fi\n",
+            encoding="utf-8",
+        )
+        fake_ssh.chmod(0o755)
+        env = os.environ.copy()
+        env.update(
+            {
+                "PATH": f"{fake_bin}:{env['PATH']}",
+                "SKILLSBENCH_TEST_SSH_LOG": str(ssh_log),
+                "SKILLSBENCH_SSH_DESTINATION": "example.invalid",
+                "SKILLSBENCH_SSH_OPTIONS": "Port=2222",
+                "SKILLSBENCH_REMOTE_ROOT": "/remote/loopx",
+                "SKILLSBENCH_ROOT": "/remote/skillsbench",
+                "SKILLSBENCH_EXPECTED_LOOPX_GIT_HEAD": "abc1234",
+                "SKILLSBENCH_RUN_STAMP": "20260710T010000CST",
+            }
+        )
+        env.pop("SKILLSBENCH_DOCKER_PROXY_HOST", None)
+        env.pop("SKILLSBENCH_DOCKER_API_VERSION", None)
+        proc = subprocess.run(
+            [
+                str(REPO_ROOT / "scripts" / "skillsbench-launch-goal-xhigh.sh"),
+                "--dry-run",
+                "citation-check",
+                "ssh-options-smoke",
+                "18186",
+            ],
+            cwd=REPO_ROOT,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+        )
+
+        discovery_calls = ssh_log.read_text(encoding="utf-8").splitlines()
+        assert len(discovery_calls) == 2, discovery_calls
+        assert all("-o Port=2222" in call for call in discovery_calls), discovery_calls
+        assert "docker_proxy_host=docker-bridge.example.invalid" in proc.stdout, proc.stdout
+        assert "docker_api_version=1.43" in proc.stdout, proc.stdout
+        assert "DOCKER_API_VERSION=1.43" in proc.stdout, proc.stdout
 
 
 def test_verifier_proxy_patch_is_required_only_for_existing_verifier() -> None:
@@ -336,6 +396,7 @@ if __name__ == "__main__":
     test_formal_cli_goal_proxy_env_is_forwarded_without_public_url()
     test_public_launcher_uses_container_reachable_benchmark_proxy()
     test_public_launcher_batches_three_cases_with_closeout_sync()
+    test_public_launcher_applies_ssh_options_to_remote_discovery()
     test_verifier_proxy_patch_is_required_only_for_existing_verifier()
     test_verifier_proxy_patch_failure_blocks_task_staging()
     test_proxy_runtime_prewarms_external_base_images_without_public_refs()

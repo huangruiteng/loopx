@@ -1655,6 +1655,17 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
         ]
     if "docker compose command failed" in text:
         if (
+            "client version" in text
+            and "is too new" in text
+            and "maximum supported api version" in text
+        ):
+            label = "skillsbench_docker_api_version_mismatch"
+            return label, label, [
+                label,
+                "skillsbench_docker_compose_setup_failure",
+                "skillsbench_environment_setup_error",
+            ]
+        if (
             "cannot connect to the docker daemon" in text
             or "is the docker daemon running" in text
             or "docker daemon is not running" in text

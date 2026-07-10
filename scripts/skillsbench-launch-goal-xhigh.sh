@@ -20,6 +20,8 @@ Optional env:
   SKILLSBENCH_LOCAL_CODEX_PROXY_PORT   Local proxy port, default 18180
   SKILLSBENCH_DOCKER_PROXY_HOST        Remote Docker bridge host for benchmark
                                        setup/verifier egress; default auto
+  SKILLSBENCH_DOCKER_API_VERSION       Remote Docker daemon API version passed
+                                       to Docker CLI/Compose; default auto
   SKILLSBENCH_ROUTE                    Route, default codex-cli-goal-baseline
   SKILLSBENCH_MODEL                    Model, default gpt-5.5
   SKILLSBENCH_REASONING_EFFORT         Reasoning effort, default xhigh
@@ -87,6 +89,17 @@ done
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
+ssh_command_options=(-o BatchMode=yes -o ConnectTimeout=10)
+ssh_options=(--ssh-option ConnectTimeout=10)
+if [[ -n "${SKILLSBENCH_SSH_OPTIONS:-}" ]]; then
+  # shellcheck disable=SC2206
+  extra_ssh_options=(${SKILLSBENCH_SSH_OPTIONS})
+  for option in "${extra_ssh_options[@]}"; do
+    ssh_command_options+=(-o "$option")
+    ssh_options+=(--ssh-option "$option")
+  done
+fi
+
 stamp="${SKILLSBENCH_RUN_STAMP:-$(date +%Y%m%dT%H%M%SCST)}"
 safe_task="${task_id//[^A-Za-z0-9_ -]/-}"
 safe_task="${safe_task// /-}"
@@ -111,13 +124,28 @@ local_proxy_port="${SKILLSBENCH_LOCAL_CODEX_PROXY_PORT:-18180}"
 docker_proxy_host="${SKILLSBENCH_DOCKER_PROXY_HOST:-auto}"
 if [[ -z "$docker_proxy_host" || "$docker_proxy_host" == "auto" ]]; then
   docker_proxy_host="$(
-    ssh -o BatchMode=yes -o ConnectTimeout=10 "$SKILLSBENCH_SSH_DESTINATION" \
+    ssh "${ssh_command_options[@]}" "$SKILLSBENCH_SSH_DESTINATION" \
       "ip -4 addr show docker0 2>/dev/null | awk '/inet /{print \$2}' | cut -d/ -f1 | head -n1"
   )"
   if [[ -z "$docker_proxy_host" ]]; then
     echo "missing remote Docker bridge host; set SKILLSBENCH_DOCKER_PROXY_HOST" >&2
     exit 2
   fi
+fi
+docker_api_version="${SKILLSBENCH_DOCKER_API_VERSION:-auto}"
+if [[ -z "$docker_api_version" || "$docker_api_version" == "auto" ]]; then
+  docker_api_probe_py='import json, sys; print(json.load(sys.stdin)["ApiVersion"])'
+  printf -v docker_api_probe_command \
+    'curl --silent --show-error --fail --unix-socket /var/run/docker.sock http://localhost/version | python3 -c %q' \
+    "$docker_api_probe_py"
+  docker_api_version="$(
+    ssh "${ssh_command_options[@]}" "$SKILLSBENCH_SSH_DESTINATION" \
+      "$docker_api_probe_command"
+  )"
+fi
+if [[ ! "$docker_api_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+  echo "invalid remote Docker API version; set SKILLSBENCH_DOCKER_API_VERSION" >&2
+  exit 2
 fi
 bridge_proxy_url="http://${docker_proxy_host}:${remote_proxy_port}"
 loopback_proxy_url="http://127.0.0.1:${remote_proxy_port}"
@@ -190,6 +218,7 @@ remote_command=$(
   printf 'sleep 0.5; '
   printf '%q ' \
     "LOOPX_SKILLSBENCH_EGRESS_PROXY=${bridge_proxy_url}" \
+    "DOCKER_API_VERSION=${docker_api_version}" \
     python3 \
     scripts/skillsbench_automation_loop.py
   printf '%q ' \
@@ -210,15 +239,6 @@ remote_command=$(
     printf '%q ' "${extra_runner_args[@]}"
   fi
 )
-
-ssh_options=(--ssh-option ConnectTimeout=10)
-if [[ -n "${SKILLSBENCH_SSH_OPTIONS:-}" ]]; then
-  # shellcheck disable=SC2206
-  extra_ssh_options=(${SKILLSBENCH_SSH_OPTIONS})
-  for option in "${extra_ssh_options[@]}"; do
-    ssh_options+=(--ssh-option "$option")
-  done
-fi
 
 supervisor_cmd=(
   python3
@@ -270,6 +290,7 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'private_dir=%s\n' "$private_dir"
   printf 'remote_proxy_port=%s\n' "$remote_proxy_port"
   printf 'docker_proxy_host=%s\n' "$docker_proxy_host"
+  printf 'docker_api_version=%s\n' "$docker_api_version"
   printf 'remote_command=%s\n' "$remote_command"
   printf 'supervisor_command='
   printf '%q ' "${supervisor_cmd[@]}"
@@ -309,4 +330,5 @@ public_output=${public_dir}/supervisor.public.json
 private_dir=${private_dir}
 remote_proxy_port=${remote_proxy_port}
 docker_proxy_host=${docker_proxy_host}
+docker_api_version=${docker_api_version}
 EOF

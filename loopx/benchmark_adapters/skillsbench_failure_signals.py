@@ -4,6 +4,7 @@ import re
 
 
 _SETUP_ATTRIBUTION_FINGERPRINT_PATTERNS = {
+    "skillsbench_docker_api_version_mismatch": "docker_api_version_mismatch",
     "skillsbench_docker_daemon_unavailable": "docker_daemon_unavailable",
     "skillsbench_docker_compose_port_conflict": "port_conflict",
     "skillsbench_docker_compose_pip_bootstrap_failure": "pip_bootstrap_failure",
@@ -12,6 +13,7 @@ _SETUP_ATTRIBUTION_FINGERPRINT_PATTERNS = {
     "skillsbench_docker_compose_image_build_failure": "image_build",
 }
 _FINGERPRINT_SETUP_ATTRIBUTIONS = (
+    ("docker_api_version_mismatch", "skillsbench_docker_api_version_mismatch"),
     ("docker_daemon_unavailable", "skillsbench_docker_daemon_unavailable"),
     ("port_conflict", "skillsbench_docker_compose_port_conflict"),
     ("pip_bootstrap_failure", "skillsbench_docker_compose_pip_bootstrap_failure"),
@@ -243,6 +245,10 @@ def skillsbench_runner_error_fingerprint(error_text: str) -> dict[str, object]:
     lowered = text.lower()
     patterns = {
         "docker_compose_command_failed": r"docker compose command failed",
+        "docker_api_version_mismatch": (
+            r"client version \d+(?:\.\d+)+ is too new.*"
+            r"maximum supported api version is \d+(?:\.\d+)+"
+        ),
         "docker_daemon_unavailable": (
             r"cannot connect to the docker daemon|is the docker daemon running|"
             r"docker daemon is not running|colima is not running|error during connect"
