@@ -1,0 +1,29 @@
+docs/capabilities/issue-fix/README.md
+  s_32e2a9a204a8e4::t_9b55a9c9ece9db 460-464
+docs/capabilities/issue-fix/README.zh-CN.md
+  s_32e2a9a204a8e4::t_4d1cd9f9b4f08c 417-420
+examples/issue-fix-outcome-projection-smoke.py
+  s_32e2a9a204a8e4::t_40fa7f0631ff8c 222-234
+loopx/capabilities/issue_fix/cli.py
+  s_32e2a9a204a8e4::t_f50609321aa570 740-748
+loopx/capabilities/issue_fix/outcome_projection.py
+  s_32e2a9a204a8e4::t_604ffb1d52a884 149-150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "63a140a14ce18c1cc14993e5a8a7b61d04ac8b76",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
