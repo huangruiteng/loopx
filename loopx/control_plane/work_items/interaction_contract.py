@@ -278,6 +278,8 @@ def _interaction_mode(payload: dict[str, Any]) -> str:
         return "autonomous_replan"
     if effective_action == "orchestrate_child_lanes":
         return "subagent_orchestration"
+    if effective_action == "coordinate_task_bundle":
+        return "task_orchestration"
     agent_scope_action = _agent_scope_frontier_action(effective_action)
     if agent_scope_action is not None:
         return agent_scope_action.value
@@ -287,8 +289,8 @@ def _interaction_mode(payload: dict[str, Any]) -> str:
         return "outcome_floor_recovery"
     if effective_action == "capability_bridge_repair":
         return "capability_bridge_repair"
-    if effective_action == "side_agent_workspace_repair":
-        return "side_agent_workspace_repair"
+    if effective_action in {"agent_workspace_repair", "side_agent_workspace_repair"}:
+        return effective_action
     if effective_action == "boundary_projection_repair":
         return "boundary_projection_repair"
     if payload.get("self_repair_allowed"):
@@ -397,7 +399,7 @@ def interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[
             f"loopx refresh-state --goal-id {goal_id} --classification <compact_blocker_or_transition>",
             f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute",
         ]
-    if mode == "side_agent_workspace_repair":
+    if mode in {"agent_workspace_repair", "side_agent_workspace_repair"}:
         agent_identity = (
             payload.get("agent_identity")
             if isinstance(payload.get("agent_identity"), dict)
@@ -478,8 +480,8 @@ def _interaction_spend_policy(
         return "spend once after validated successor replan/todo writeback"
     if _agent_scope_frontier_action(mode) is not None:
         return "no spend while the current agent has no in-scope runnable candidate"
-    if mode == "side_agent_workspace_repair":
-        return "no spend for moving side-agent work into an independent worktree"
+    if mode in {"agent_workspace_repair", "side_agent_workspace_repair"}:
+        return "no spend for moving agent work into an independent worktree"
     if mode == "automation_prompt_upgrade":
         return "no spend until the automation reruns quota guard with --agent-id"
     if mode == "autonomous_replan":
@@ -578,6 +580,7 @@ def _interaction_spend_after_validation(mode: str) -> bool:
         "boundary_projection_repair",
         "external_evidence_observation",
         "subagent_orchestration",
+        "task_orchestration",
         AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
         "scoped_user_gate_fallback",
         "bounded_delivery_with_user_notice",

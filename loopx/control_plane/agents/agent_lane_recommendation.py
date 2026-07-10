@@ -19,6 +19,7 @@ from .agent_scope import (
     agent_scope_item_claimed_by_agent_or_unclaimed,
 )
 from .capability_gate import _agent_lane_candidate_sort_key
+from .runtime_model import agent_identity_is_peer
 
 
 PublicSafeText = Callable[..., Optional[str]]
@@ -234,9 +235,6 @@ def build_agent_lane_next_action(
                     {
                         "schema_version": AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION,
                         "agent_id": agent_id,
-                        "primary_agent": normalize_todo_claimed_by(
-                            agent_identity.get("primary_agent")
-                        ),
                         "source": "scoped_user_gate_fallback.selected_executable",
                         "selected_by": "scoped_user_gate_fallback",
                         "confidence": "selected",
@@ -244,6 +242,10 @@ def build_agent_lane_next_action(
                         "replaces_gated_goal_next_action": True,
                     }
                 )
+                if not agent_identity_is_peer(agent_identity):
+                    payload["primary_agent"] = normalize_todo_claimed_by(
+                        agent_identity.get("primary_agent")
+                    )
                 if not claimed_by:
                     payload["claim_required_before_work"] = True
                 return payload
@@ -369,9 +371,6 @@ def build_agent_lane_next_action(
                 {
                     "schema_version": AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION,
                     "agent_id": agent_id,
-                    "primary_agent": normalize_todo_claimed_by(
-                        agent_identity.get("primary_agent")
-                    ),
                     "source": lineage_source,
                     "selected_by": selected_by,
                     "confidence": (
@@ -383,6 +382,10 @@ def build_agent_lane_next_action(
                     "preserves_goal_next_action": True,
                 }
             )
+            if not agent_identity_is_peer(agent_identity):
+                payload["primary_agent"] = normalize_todo_claimed_by(
+                    agent_identity.get("primary_agent")
+                )
             return payload
     return None
 

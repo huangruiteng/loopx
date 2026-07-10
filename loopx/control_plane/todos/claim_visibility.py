@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..agents.runtime_model import agent_identity_is_peer
 from .contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
@@ -64,8 +65,7 @@ def build_agent_claim_scoped_open_items(
     claim_scope = {
         "schema_version": TODO_AGENT_CLAIM_SCOPE_SCHEMA_VERSION,
         "agent_id": agent_id,
-        "agent_role": str(agent_identity.get("role") or ""),
-        "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+        "agent_model": agent_identity.get("agent_model") or "legacy_hierarchy",
         "selection_order": "current_agent_claimed_then_unclaimed",
         "selectable_open_count": len(selectable_items),
         "current_agent_claimed_open_count": len(current_agent_items),
@@ -82,6 +82,11 @@ def build_agent_claim_scoped_open_items(
             limit=diagnostic_item_limit,
         ),
     }
+    if not agent_identity_is_peer(agent_identity):
+        claim_scope["agent_role"] = str(agent_identity.get("role") or "")
+        claim_scope["primary_agent"] = normalize_todo_claimed_by(
+            agent_identity.get("primary_agent")
+        )
     return selectable_items, claim_scope
 
 

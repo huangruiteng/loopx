@@ -11,6 +11,7 @@ from ...agent_registry import (
     require_registered_agent_id,
     side_agent_handoff_agent_id_from_registry,
 )
+from ..agents.runtime_model import AgentRuntimeModel, agent_runtime_model_for_goal
 from .contract import (
     TODO_TASK_CLASS_MONITOR,
     TodoContinuationPolicy,
@@ -18,6 +19,7 @@ from .contract import (
     normalize_todo_claimed_by,
     normalize_todo_continuation_policy,
     resolve_todo_continuation_policy,
+    todo_continuation_requires_review,
 )
 
 
@@ -34,6 +36,7 @@ class LinkedSuccessor:
 
 @dataclass(frozen=True)
 class CompletionPolicy:
+    agent_model: str
     effective_claimed_by: str | None
     primary_agent: str | None
     registered_agents: list[str]
@@ -41,7 +44,12 @@ class CompletionPolicy:
     effective_next_claimed_by: str | None
     side_agent_completion: bool
     side_agent_self_merged: bool
-    linked_handoff_successor_id: str | None = None
+    self_merged: bool
+    linked_successor_id: str | None = None
+
+    @property
+    def linked_handoff_successor_id(self) -> str | None:
+        return self.linked_successor_id
 
 
 def linked_successor_from_todo(todo: Mapping[str, Any]) -> LinkedSuccessor:
@@ -94,10 +102,10 @@ def _linked_same_agent_non_delivery_successor_id(
             continue
         if successor.claimed_by != completing_agent:
             continue
-        if resolve_todo_continuation_policy(
+        if todo_continuation_requires_review(
             successor.continuation_policy,
             action_kind=successor.action_kind,
-        ) == TodoContinuationPolicy.PRIMARY_REVIEW:
+        ):
             continue
         if successor.todo_id:
             return successor.todo_id
@@ -170,10 +178,10 @@ def _linked_role_workflow_successor_id(
             continue
         if successor.claimed_by not in registered_agent_set:
             continue
-        if resolve_todo_continuation_policy(
+        if todo_continuation_requires_review(
             successor.continuation_policy,
             action_kind=successor.action_kind,
-        ) == TodoContinuationPolicy.PRIMARY_REVIEW:
+        ):
             continue
         return successor.todo_id
     return None
@@ -204,8 +212,77 @@ def resolve_completion_policy(
         if claimed_by
         else None
     )
-    primary_agent = primary_agent_id_from_registry(registry_path, goal_id)
+    goal = load_goal_from_registry(registry_path, goal_id)
+    runtime_model = agent_runtime_model_for_goal(goal)
+    primary_agent = (
+        primary_agent_id_from_registry(registry_path, goal_id)
+        if runtime_model == AgentRuntimeModel.LEGACY_HIERARCHY
+        else None
+    )
     registered_agents = registered_agent_ids_from_registry(registry_path, goal_id)
+    effective_next_claimed_by = (
+        require_registered_agent_id(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            agent_id=next_claimed_by,
+            field="next_claimed_by",
+        )
+        if next_claimed_by
+        else None
+    )
+    if runtime_model == AgentRuntimeModel.PEER_V1:
+        if side_agent_self_merged and not evidence:
+            raise ValueError(
+                "self-merged completion requires --evidence with the merge, commit, "
+                "and validation summary"
+            )
+        next_requires_review = todo_continuation_requires_review(
+            next_continuation_policy,
+            action_kind=next_action_kind,
+        )
+        if (
+            next_agent_todo
+            and next_requires_review
+            and effective_next_claimed_by
+            and effective_next_claimed_by == effective_claimed_by
+        ):
+            raise ValueError(
+                "review_handoff successor must be unclaimed or claimed by a different "
+                "registered peer"
+            )
+        if (
+            next_agent_todo
+            and not effective_next_claimed_by
+            and resolve_todo_continuation_policy(
+                next_continuation_policy,
+                action_kind=next_action_kind,
+            ) == TodoContinuationPolicy.SAME_AGENT_NON_DELIVERY
+        ):
+            effective_next_claimed_by = effective_claimed_by
+        if effective_next_claimed_by and not next_agent_todo:
+            raise ValueError("--next-claimed-by requires --next-agent-todo")
+        linked_successor_id = next(
+            (
+                successor.todo_id
+                for successor in linked_successor_items
+                if successor.role == "agent"
+                and successor.todo_id
+                and (not successor.status or successor.status == "open")
+            ),
+            None,
+        )
+        return CompletionPolicy(
+            agent_model=runtime_model.value,
+            effective_claimed_by=effective_claimed_by,
+            primary_agent=None,
+            registered_agents=registered_agents,
+            handoff_agent=None,
+            effective_next_claimed_by=effective_next_claimed_by,
+            side_agent_completion=False,
+            side_agent_self_merged=False,
+            self_merged=bool(side_agent_self_merged),
+            linked_successor_id=linked_successor_id,
+        )
     configured_handoff_agent = side_agent_handoff_agent_id_from_registry(
         registry_path,
         goal_id,
@@ -219,16 +296,6 @@ def resolve_completion_policy(
             agent_id=configured_handoff_agent,
             field="side_agent_handoff_agent",
         )
-    effective_next_claimed_by = (
-        require_registered_agent_id(
-            registry_path=registry_path,
-            goal_id=goal_id,
-            agent_id=next_claimed_by,
-            field="next_claimed_by",
-        )
-        if next_claimed_by
-        else None
-    )
     if effective_claimed_by and not primary_agent:
         raise ValueError(
             "todo complete with --claimed-by requires coordination.primary_agent "
@@ -342,6 +409,7 @@ def resolve_completion_policy(
         raise ValueError("--next-claimed-by requires --next-agent-todo")
 
     return CompletionPolicy(
+        agent_model=runtime_model.value,
         effective_claimed_by=effective_claimed_by,
         primary_agent=primary_agent,
         registered_agents=registered_agents,
@@ -349,5 +417,6 @@ def resolve_completion_policy(
         effective_next_claimed_by=effective_next_claimed_by,
         side_agent_completion=side_agent_completion,
         side_agent_self_merged=bool(side_agent_completion and side_agent_self_merged),
-        linked_handoff_successor_id=linked_handoff_successor_id,
+        self_merged=bool(side_agent_completion and side_agent_self_merged),
+        linked_successor_id=linked_handoff_successor_id,
     )

@@ -16,6 +16,7 @@ from .control_plane.todos.contract import (
     normalize_required_capabilities,
     normalize_todo_claimed_by,
 )
+from .control_plane.agents.runtime_model import AgentRuntimeModel
 
 
 DEFAULT_MATERIAL_QUEUE_RULE = "Do not consume the learning material queue unless the user explicitly asks."
@@ -139,11 +140,23 @@ def build_identity_required_error(
     thin: bool,
     registered_agents: list[str],
     primary_agent: str | None,
+    agent_model: str = AgentRuntimeModel.LEGACY_HIERARCHY.value,
 ) -> str:
     mode_arg = " --thin" if thin else " --brief" if brief else " --compact" if compact else ""
     primary_hint = primary_agent if primary_agent in registered_agents else registered_agents[0]
     side_hint = next((agent for agent in registered_agents if agent != primary_hint), registered_agents[0])
     base = f"{cli_bin} heartbeat-prompt{mode_arg} --goal-id {shlex.quote(goal_id)}{active_state_arg}"
+    if agent_model == AgentRuntimeModel.PEER_V1.value:
+        examples = "; ".join(
+            f"`{base} --agent-id {shlex.quote(agent)} --agent-scope 'peer task claims and leases'`"
+            for agent in registered_agents[:2]
+        )
+        return (
+            "identity-aware peer heartbeat prompt required: "
+            f"coordination.registered_agents is configured for goal_id={goal_id!r}, "
+            "so automation prompts without --agent-id are not accepted. Regenerate each "
+            f"installed automation with its registered identity. Examples: {examples}."
+        )
     primary_command = (
         f"{base} --agent-id {shlex.quote(primary_hint)} "
         "--agent-scope 'primary review, verification, merge, and coordination'"
@@ -170,6 +183,7 @@ def render_agent_scope_instruction(
     agent_id: str | None,
     agent_scopes: list[str],
     primary_agent: str | None,
+    agent_model: str = AgentRuntimeModel.LEGACY_HIERARCHY.value,
     cli_bin: str,
     side_agent_handoff_agent: str | None = None,
     compact: bool = False,
@@ -185,6 +199,41 @@ def render_agent_scope_instruction(
         if agent_id
         else f"{cli_bin} todo claim --goal-id {goal_id} --todo-id <todo_id> --claimed-by <agent_id>"
     )
+    if agent_model == AgentRuntimeModel.PEER_V1.value:
+        peer_rule = (
+            "You are an equal peer agent. Claim or lease in-scope work before delivery; "
+            "use an independent worktree for repository writes; follow todo continuation "
+            "policy for direct completion, same-agent continuation, or independent review. "
+            "Task-scoped coordination does not grant durable authority over other agents."
+        )
+        if thin:
+            return (
+                f"Agent: `{identity}`; model: peer_v1; scope: {scope_text}. {peer_rule} "
+                "Do not write scope into todo metadata."
+            )
+        if compact:
+            return (
+                f"Agent identity and scope: agent_id `{identity}`; model: peer_v1; "
+                f"scope: {scope_text}. {peer_rule} Claim with `{claim_command}`. "
+                "Do not write scope into todo metadata."
+            )
+        return f"""Agent identity and scope:
+
+- agent_id: `{identity}`
+- agent_model: `peer_v1`
+- scope: {scope_text}
+
+{peer_rule}
+
+Before delivery, claim an in-scope open todo:
+
+```bash
+{claim_command}
+```
+
+If a todo is claimed or leased by another peer, choose another in-scope item or
+report no in-scope work. Scope belongs in the heartbeat prompt, not todo metadata.
+"""
     handoff_stays_with_current_agent = bool(
         agent_role == "side-agent"
         and side_agent_handoff_agent
@@ -364,6 +413,7 @@ def build_heartbeat_prompt(
     agent_scopes: list[str] | tuple[str, ...] | None = None,
     agent_profile: dict[str, Any] | None = None,
     registered_agents: list[str] | tuple[str, ...] | None = None,
+    agent_model: str | None = None,
     primary_agent: str | None = None,
     side_agent_handoff_agent: str | None = None,
     available_capabilities: list[str] | tuple[str, ...] | None = None,
@@ -387,6 +437,18 @@ def build_heartbeat_prompt(
     if normalized_agent_scopes and not normalized_agent_id:
         raise ValueError("--agent-scope requires --agent-id so claimed_by uses a registered agent")
     normalized_registered_agents = normalize_registered_agents(registered_agents)
+    normalized_agent_model = str(agent_model or "").strip() or (
+        AgentRuntimeModel.PEER_V1.value
+        if normalized_registered_agents and not primary_agent
+        else AgentRuntimeModel.LEGACY_HIERARCHY.value
+    )
+    try:
+        runtime_model = AgentRuntimeModel(normalized_agent_model)
+    except ValueError as error:
+        raise ValueError(
+            "agent_model must be one of: "
+            + ", ".join(model.value for model in AgentRuntimeModel)
+        ) from error
     normalized_primary_agent = normalize_todo_claimed_by(primary_agent) if primary_agent else None
     if primary_agent and not normalized_primary_agent:
         raise ValueError("primary_agent must be a public-safe registered agent id")
@@ -406,6 +468,7 @@ def build_heartbeat_prompt(
                 thin=thin,
                 registered_agents=normalized_registered_agents,
                 primary_agent=normalized_primary_agent,
+                agent_model=runtime_model.value,
             )
         )
     if normalized_agent_id:
@@ -417,9 +480,15 @@ def build_heartbeat_prompt(
                 f"registered_agents={', '.join(normalized_registered_agents)}"
             )
     if normalized_agent_id and normalized_registered_agents:
-        if not normalized_primary_agent:
+        if (
+            runtime_model == AgentRuntimeModel.LEGACY_HIERARCHY
+            and not normalized_primary_agent
+        ):
             raise ValueError("primary_agent must be configured when registered_agents are configured")
-        if normalized_primary_agent not in normalized_registered_agents:
+        if (
+            normalized_primary_agent
+            and normalized_primary_agent not in normalized_registered_agents
+        ):
             raise ValueError(
                 f"primary_agent={normalized_primary_agent!r} is not registered; "
                 f"registered_agents={', '.join(normalized_registered_agents)}"
@@ -439,7 +508,9 @@ def build_heartbeat_prompt(
             f"registered_agents={', '.join(normalized_registered_agents)}"
         )
     agent_role = (
-        "primary-agent"
+        "peer-agent"
+        if runtime_model == AgentRuntimeModel.PEER_V1 and normalized_agent_id
+        else "primary-agent"
         if normalized_agent_id and normalized_primary_agent and normalized_agent_id == normalized_primary_agent
         else "side-agent"
         if normalized_agent_id
@@ -461,6 +532,7 @@ def build_heartbeat_prompt(
         agent_id=normalized_agent_id,
         agent_scopes=normalized_agent_scopes,
         primary_agent=normalized_primary_agent,
+        agent_model=runtime_model.value,
         cli_bin=cli_bin,
         side_agent_handoff_agent=normalized_side_agent_handoff_agent,
         compact=compact or brief,
@@ -522,7 +594,7 @@ def build_heartbeat_prompt(
         brief_prompt_command=brief_prompt_command,
         thin_prompt_command=thin_prompt_command,
     )
-    return {
+    payload = {
         "ok": True,
         "goal_id": goal_id,
         "active_state": active_state_text,
@@ -540,17 +612,15 @@ def build_heartbeat_prompt(
         "agent_scope_source": agent_scope_source,
         "agent_profile": agent_profile_prompt_projection(agent_profile),
         "registered_agents": normalized_registered_agents,
-        "primary_agent": normalized_primary_agent,
-        "side_agent_handoff_agent": normalized_side_agent_handoff_agent,
         "expanded_prompt_command": expanded_prompt_command,
         "compact_prompt_command": compact_prompt_command,
         "brief_prompt_command": brief_prompt_command,
         "thin_prompt_command": thin_prompt_command,
-            "quota_guard_command": quota_guard_command,
-            "quota_spend_command": quota_spend_command,
-            "refresh_state_command": refresh_state_command,
-            "progress_refresh_state_command": progress_refresh_state_command,
-            "cli_preflight": cli_preflight,
+        "quota_guard_command": quota_guard_command,
+        "quota_spend_command": quota_spend_command,
+        "refresh_state_command": refresh_state_command,
+        "progress_refresh_state_command": progress_refresh_state_command,
+        "cli_preflight": cli_preflight,
         "material_queue_rule": resolved_material_rule,
         "permission_rule": resolved_permission_rule,
         "interface_budget": build_interface_budget(
@@ -563,6 +633,12 @@ def build_heartbeat_prompt(
         ),
         "task_body": task_body,
     }
+    if runtime_model == AgentRuntimeModel.PEER_V1:
+        payload["agent_model"] = runtime_model.value
+    else:
+        payload["primary_agent"] = normalized_primary_agent
+        payload["side_agent_handoff_agent"] = normalized_side_agent_handoff_agent
+    return payload
 
 
 def build_heartbeat_prompt_error_payload(
@@ -579,6 +655,7 @@ def build_heartbeat_prompt_error_payload(
     agent_id: str | None = None,
     agent_scopes: list[str] | tuple[str, ...] | None = None,
     registered_agents: list[str] | tuple[str, ...] | None = None,
+    agent_model: str | None = None,
     primary_agent: str | None = None,
     side_agent_handoff_agent: str | None = None,
     available_capabilities: list[str] | tuple[str, ...] | None = None,
@@ -608,7 +685,12 @@ def build_heartbeat_prompt_error_payload(
     brief_prompt_command = f"{cli_bin} heartbeat-prompt --brief --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     thin_prompt_command = f"{cli_bin} heartbeat-prompt --thin --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     normalized_registered_agents = normalize_registered_agents(registered_agents)
-    return {
+    normalized_agent_model = str(agent_model or "").strip() or (
+        AgentRuntimeModel.PEER_V1.value
+        if normalized_registered_agents and not primary_agent
+        else AgentRuntimeModel.LEGACY_HIERARCHY.value
+    )
+    payload = {
         "ok": False,
         "goal_id": goal_id,
         "error": error,
@@ -625,8 +707,6 @@ def build_heartbeat_prompt_error_payload(
         "agent_scope_source": "argument" if projected_agent_scopes else None,
         "agent_profile": None,
         "registered_agents": normalized_registered_agents,
-        "primary_agent": str(primary_agent).strip() if primary_agent else None,
-        "side_agent_handoff_agent": str(side_agent_handoff_agent).strip() if side_agent_handoff_agent else None,
         "expanded_prompt_command": expanded_prompt_command,
         "compact_prompt_command": compact_prompt_command,
         "brief_prompt_command": brief_prompt_command,
@@ -639,6 +719,14 @@ def build_heartbeat_prompt_error_payload(
         "interface_budget": None,
         "task_body": None,
     }
+    if normalized_agent_model == AgentRuntimeModel.PEER_V1.value:
+        payload["agent_model"] = normalized_agent_model
+    else:
+        payload["primary_agent"] = str(primary_agent).strip() if primary_agent else None
+        payload["side_agent_handoff_agent"] = (
+            str(side_agent_handoff_agent).strip() if side_agent_handoff_agent else None
+        )
+    return payload
 
 
 def render_heartbeat_task_body(
@@ -1063,30 +1151,47 @@ credentials, destructive git, or unauthorized production actions{permission_tail
 
 def render_heartbeat_generator_inputs_markdown(payload: dict[str, Any]) -> str:
     interface_budget = payload.get("interface_budget") if isinstance(payload.get("interface_budget"), dict) else {}
-    return f"""## Generator Inputs
-
-- goal_id: `{payload.get("goal_id")}`
-- active_state: `{payload.get("active_state")}`
-- active_state_source: `{payload.get("active_state_source")}`
-- resolved_active_state: `{payload.get("resolved_active_state")}`
-- compact: `{payload.get("compact")}`
-- brief: `{payload.get("brief")}`
-- thin: `{payload.get("thin")}`
-- cli_bin: `{payload.get("cli_bin")}`
-- agent_id: `{payload.get("agent_id")}`
-- agent_role: `{payload.get("agent_role")}`
-- primary_agent: `{payload.get("primary_agent")}`
-- side_agent_handoff_agent: `{payload.get("side_agent_handoff_agent")}`
-- agent_scopes: `{payload.get("agent_scopes")}`
-- expanded_prompt_command: `{payload.get("expanded_prompt_command")}`
-- compact_prompt_command: `{payload.get("compact_prompt_command")}`
-- brief_prompt_command: `{payload.get("brief_prompt_command")}`
-- thin_prompt_command: `{payload.get("thin_prompt_command")}`
-- quota_guard_command: `{payload.get("quota_guard_command")}`
-- quota_spend_command: `{payload.get("quota_spend_command")}`
-- cli_preflight: `{payload.get("cli_preflight")}`
-- interface_budget: mode=`{interface_budget.get("mode")}` budget_chars=`{interface_budget.get("budget_char_count")}` max_chars=`{interface_budget.get("max_chars")}` within_budget=`{interface_budget.get("within_budget")}`
-"""
+    lines = [
+        "## Generator Inputs",
+        "",
+        f"- goal_id: `{payload.get('goal_id')}`",
+        f"- active_state: `{payload.get('active_state')}`",
+        f"- active_state_source: `{payload.get('active_state_source')}`",
+        f"- resolved_active_state: `{payload.get('resolved_active_state')}`",
+        f"- compact: `{payload.get('compact')}`",
+        f"- brief: `{payload.get('brief')}`",
+        f"- thin: `{payload.get('thin')}`",
+        f"- cli_bin: `{payload.get('cli_bin')}`",
+        f"- agent_id: `{payload.get('agent_id')}`",
+        f"- agent_model: `{payload.get('agent_model')}`",
+        f"- agent_role: `{payload.get('agent_role')}`",
+    ]
+    if payload.get("agent_model") != AgentRuntimeModel.PEER_V1.value:
+        lines.extend(
+            [
+                f"- primary_agent: `{payload.get('primary_agent')}`",
+                f"- side_agent_handoff_agent: `{payload.get('side_agent_handoff_agent')}`",
+            ]
+        )
+    lines.extend(
+        [
+            f"- agent_scopes: `{payload.get('agent_scopes')}`",
+            f"- expanded_prompt_command: `{payload.get('expanded_prompt_command')}`",
+            f"- compact_prompt_command: `{payload.get('compact_prompt_command')}`",
+            f"- brief_prompt_command: `{payload.get('brief_prompt_command')}`",
+            f"- thin_prompt_command: `{payload.get('thin_prompt_command')}`",
+            f"- quota_guard_command: `{payload.get('quota_guard_command')}`",
+            f"- quota_spend_command: `{payload.get('quota_spend_command')}`",
+            f"- cli_preflight: `{payload.get('cli_preflight')}`",
+            "- interface_budget: "
+            f"mode=`{interface_budget.get('mode')}` "
+            f"budget_chars=`{interface_budget.get('budget_char_count')}` "
+            f"max_chars=`{interface_budget.get('max_chars')}` "
+            f"within_budget=`{interface_budget.get('within_budget')}`",
+            "",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def render_heartbeat_prompt_error_markdown(payload: dict[str, Any]) -> str:

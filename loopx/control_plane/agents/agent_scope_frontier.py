@@ -45,7 +45,6 @@ def build_agent_scope_frontier_payload(
     payload: dict[str, Any] = {
         "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
         "agent_id": agent_id,
-        "primary_agent": primary_agent,
         "action": action.value,
         "effective_action": action.value,
         "blocks_delivery": True,
@@ -55,6 +54,8 @@ def build_agent_scope_frontier_payload(
         "recommended_action": recommended_action,
         "candidate_counts": candidate_counts,
     }
+    if primary_agent:
+        payload["primary_agent"] = primary_agent
     if requires_replan:
         payload["requires_replan"] = True
     if extra_fields:

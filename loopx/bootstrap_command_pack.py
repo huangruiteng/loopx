@@ -5,9 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from .agent_registry import (
+    load_goal_from_registry,
     primary_agent_id_from_registry,
     registered_agent_ids_from_registry,
 )
+from .control_plane.agents.runtime_model import agent_runtime_model_for_goal
 from .bootstrap import default_goal_id
 from .host_loop_activation import agent_type_for_host_surface, build_host_loop_activation_packet
 from .project_alias import resolve_canonical_project_alias
@@ -388,6 +390,9 @@ def build_loopx_bootstrap_command_pack(
         resolved_goal_id,
     )
     primary_agent = primary_agent_id_from_registry(registry_path, resolved_goal_id)
+    agent_model = agent_runtime_model_for_goal(
+        load_goal_from_registry(registry_path, resolved_goal_id)
+    ).value
 
     bootstrap_preview_command = _bootstrap_command(
         project=resolved_project,
@@ -408,6 +413,7 @@ def build_loopx_bootstrap_command_pack(
         agent_id=agent_id,
         registered_agents=registered_agents,
         primary_agent=primary_agent,
+        agent_model=agent_model,
         available_capabilities=available_capabilities,
     )
     selected_agent_id = host_loop_activation.get("agent_id")

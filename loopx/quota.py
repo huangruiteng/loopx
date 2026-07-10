@@ -20,7 +20,7 @@ from .control_plane.agents.agent_lane_recommendation import (
     selected_action_with_agent_lane,
     selected_recommended_action_from_work_lane,
 )
-from .control_plane.agents.workspace_guard import build_side_agent_workspace_guard
+from .control_plane.agents.workspace_guard import build_agent_workspace_guard
 from .control_plane.agents.identity import (
     build_identity_aware_prompt_upgrade,
     build_quota_agent_identity,
@@ -1353,7 +1353,11 @@ def build_quota_should_run(
             recovery_allowed = False
             reason = str(quota["reason"])
         goal_boundary = _goal_boundary(item)
-        workspace_guard = build_side_agent_workspace_guard(item, agent_identity)
+        workspace_guard = build_agent_workspace_guard(
+            item,
+            agent_identity,
+            agent_todo_summary=agent_todo_summary,
+        )
         automation_prompt_upgrade = _automation_prompt_upgrade(
             item,
             goal_id=safe_goal_id,
@@ -1383,6 +1387,13 @@ def build_quota_should_run(
             goal_boundary=goal_boundary,
             agent_identity=agent_identity,
             agent_todo_summary=agent_todo_summary,
+            raw_agent_todo_summary=(
+                item.get("agent_todos")
+                if isinstance(item.get("agent_todos"), dict)
+                else project_asset.get("agent_todos")
+                if isinstance(project_asset.get("agent_todos"), dict)
+                else None
+            ),
         )
         capability_gate, capability_monitor_contract, capability_monitor_fallback = build_capability_gate_with_monitor_fallback(agent_todo_summary, available_capabilities=_effective_available_capabilities(available_capabilities, item=item, project_asset=project_asset), agent_identity=agent_identity, monitor_item_limit=MONITOR_DUE_ITEM_LIMIT)
         if subagent_orchestration_contract:
@@ -1398,6 +1409,16 @@ def build_quota_should_run(
             if isinstance(agent_identity, dict)
             else None
         )
+        agent_model = (
+            str(agent_identity.get("agent_model") or "legacy_hierarchy")
+            if isinstance(agent_identity, dict)
+            else "legacy_hierarchy"
+        )
+        registered_agent_ids = (
+            list(agent_identity.get("registered_agents") or [])
+            if isinstance(agent_identity, dict)
+            else []
+        )
         goal_frontier_context = build_goal_frontier_projection_context_from_status(
             goal_id=safe_goal_id,
             agent_id=agent_frontier_id,
@@ -1409,6 +1430,8 @@ def build_quota_should_run(
             agent_todo_summary=agent_todo_summary,
             work_lane_contract=work_lane_contract,
             neutral_replan_ack_classifications=AUTONOMOUS_REPLAN_ACK_NEUTRAL_CLASSIFICATIONS,
+            agent_model=agent_model,
+            registered_agent_ids=registered_agent_ids,
         )
         replan_obligation = goal_frontier_context.get("replan_obligation")
         replan_scope = goal_frontier_context.get("replan_scope") or {}
@@ -1491,6 +1514,8 @@ def build_quota_should_run(
             state=state,
             quota=quota,
         )
+        if workspace_guard and agent_model == "peer_v1":
+            effective_action = "agent_workspace_repair"
         replan_decision_allowed = autonomous_replan_decision_allowed(
             replan_obligation=replan_obligation,
             plan_ok=bool(plan.get("ok")),
@@ -1498,6 +1523,8 @@ def build_quota_should_run(
             automation_prompt_upgrade_required=automation_prompt_upgrade_required,
             agent_id=agent_frontier_id,
             primary_agent_id=primary_agent_id,
+            agent_model=agent_model,
+            registered_agent_ids=registered_agent_ids,
         )
         if replan_decision_allowed:
             normal_delivery_allowed = False
@@ -1562,7 +1589,11 @@ def build_quota_should_run(
         if workspace_guard:
             heartbeat_recommendation = {
                 **heartbeat_recommendation,
-                "recommended_mode": "repair_side_agent_workspace",
+                "recommended_mode": (
+                    "repair_agent_workspace"
+                    if agent_model == "peer_v1"
+                    else "repair_side_agent_workspace"
+                ),
                 "notify": "DONT_NOTIFY",
                 "reason": workspace_guard.get("reason") or heartbeat_recommendation.get("reason"),
                 "spend_policy": (

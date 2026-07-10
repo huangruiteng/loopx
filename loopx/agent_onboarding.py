@@ -4,9 +4,11 @@ from pathlib import Path
 from typing import Any
 
 from .agent_registry import (
+    load_goal_from_registry,
     primary_agent_id_from_registry,
     registered_agent_ids_from_registry,
 )
+from .control_plane.agents.runtime_model import agent_runtime_model_for_goal
 from .bootstrap_command_pack import inspect_bootstrap_connection
 from .host_loop_activation import (
     AgentTypeError,
@@ -102,6 +104,9 @@ def build_agent_onboarding_packet(
         resolved_goal_id,
     )
     primary_agent = primary_agent_id_from_registry(registry_path, resolved_goal_id)
+    agent_model = agent_runtime_model_for_goal(
+        load_goal_from_registry(registry_path, resolved_goal_id)
+    ).value
     host_loop_activation = build_host_loop_activation_packet(
         agent_type=canonical_agent_type,
         goal_id=resolved_goal_id,
@@ -109,6 +114,7 @@ def build_agent_onboarding_packet(
         agent_id=agent_id,
         registered_agents=registered_agents,
         primary_agent=primary_agent,
+        agent_model=agent_model,
         available_capabilities=available_capabilities,
     )
     selected_agent_id = host_loop_activation.get("agent_id")

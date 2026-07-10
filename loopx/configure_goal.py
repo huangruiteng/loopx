@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
+import shutil
+import tempfile
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +26,10 @@ from .orchestration import (
 from .quota import goal_quota_config
 from .registry import read_json, registry_goals
 from .control_plane.todos.contract import normalize_todo_claimed_by
+from .control_plane.agents.runtime_model import (
+    AgentRuntimeModel,
+    agent_runtime_model_for_goal,
+)
 
 
 WAITING_ON_CHOICES = (
@@ -34,6 +41,7 @@ WAITING_ON_CHOICES = (
 
 MULTI_SUBAGENT_FEATURE_CHOICES = ("off", "enabled")
 DEFAULT_MULTI_SUBAGENT_MAX_CHILDREN = 2
+AGENT_MODEL_CHOICES = tuple(model.value for model in AgentRuntimeModel)
 
 
 def _now_iso() -> str:
@@ -102,7 +110,8 @@ def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
     control_plane = compact_control_plane_policy(goal.get("control_plane"))
     orchestration = compact_orchestration_policy(goal.get("spawn_policy"))
     coordination = goal.get("coordination") if isinstance(goal.get("coordination"), dict) else {}
-    return {
+    agent_model = agent_runtime_model_for_goal(goal)
+    summary = {
         "quota": {
             "compute": quota.get("compute"),
             "window_hours": quota.get("window_hours"),
@@ -113,8 +122,11 @@ def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
         "write_scope": _clean_write_scope(coordination.get("write_scope") or []) or [],
         "checkpointed_boundary_authority": checkpointed_boundary_authority_summary(coordination),
         "registered_agents": normalize_registered_agents(coordination.get("registered_agents")),
-        "primary_agent": primary_agent_id_for_goal(goal),
+        "agent_model": agent_model.value,
     }
+    if agent_model == AgentRuntimeModel.LEGACY_HIERARCHY:
+        summary["primary_agent"] = primary_agent_id_for_goal(goal)
+    return summary
 
 
 def _multi_subagent_feature_status(orchestration: dict[str, Any]) -> str:
@@ -136,7 +148,14 @@ def _changed_fields(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
     return changed
 
 
-def _heartbeat_scope_hint(agent_id: str, *, primary_agent: str | None) -> str:
+def _heartbeat_scope_hint(
+    agent_id: str,
+    *,
+    agent_model: str,
+    primary_agent: str | None,
+) -> str:
+    if agent_model == AgentRuntimeModel.PEER_V1.value:
+        return "peer task claims, leases, evidence, and bounded delivery"
     if primary_agent and agent_id == primary_agent:
         return "primary review, verification, merge, and coordination"
     return "bounded registered-agent work in its assigned lane"
@@ -148,7 +167,10 @@ def _build_heartbeat_prompt_migration(
     changed_fields: list[str],
     after: dict[str, Any],
 ) -> dict[str, Any] | None:
-    if not any(field in changed_fields for field in ("registered_agents", "primary_agent")):
+    if not any(
+        field in changed_fields
+        for field in ("registered_agents", "primary_agent", "agent_model")
+    ):
         return None
     registered_agents = [
         str(agent).strip()
@@ -158,6 +180,7 @@ def _build_heartbeat_prompt_migration(
     if not registered_agents:
         return None
     primary_agent = str(after.get("primary_agent") or "").strip() or None
+    agent_model = str(after.get("agent_model") or AgentRuntimeModel.LEGACY_HIERARCHY.value)
     ordered_agents: list[str] = []
     if primary_agent and primary_agent in registered_agents:
         ordered_agents.append(primary_agent)
@@ -166,28 +189,54 @@ def _build_heartbeat_prompt_migration(
             ordered_agents.append(agent)
     commands = []
     for agent in ordered_agents:
-        scope = _heartbeat_scope_hint(agent, primary_agent=primary_agent)
-        commands.append(
-            {
-                "agent_id": agent,
-                "role": "primary" if primary_agent and agent == primary_agent else "registered_agent",
-                "command": (
-                    "loopx heartbeat-prompt --thin "
-                    f"--goal-id {shlex.quote(goal_id)} "
-                    f"--agent-id {shlex.quote(agent)} "
-                    f"--agent-scope {shlex.quote(scope)}"
-                ),
-            }
+        scope = _heartbeat_scope_hint(
+            agent,
+            agent_model=agent_model,
+            primary_agent=primary_agent,
         )
+        command = {
+            "agent_id": agent,
+            "command": (
+                "loopx heartbeat-prompt --thin "
+                f"--goal-id {shlex.quote(goal_id)} "
+                f"--agent-id {shlex.quote(agent)} "
+                f"--agent-scope {shlex.quote(scope)}"
+            ),
+        }
+        if agent_model == AgentRuntimeModel.LEGACY_HIERARCHY.value:
+            command["role"] = (
+                "primary" if primary_agent and agent == primary_agent else "registered_agent"
+            )
+        commands.append(command)
     return {
-        "schema_version": "heartbeat_prompt_migration_v0",
+        "schema_version": "heartbeat_prompt_migration_v1",
+        "agent_model": agent_model,
         "reason": (
-            "coordination.registered_agents or coordination.primary_agent changed; "
+            "coordination agent identity changed; "
             "installed heartbeats should be regenerated with identity-aware prompt args"
         ),
         "action": "update any installed Codex App automation task body with a matching heartbeat-prompt command",
         "commands": commands,
     }
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    temporary_path = Path(temporary)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def configure_goal(
@@ -210,6 +259,7 @@ def configure_goal(
     clear_explore_harness_profile: bool = False,
     registered_agents: list[str] | None = None,
     clear_registered_agents: bool = False,
+    agent_model: str | None = None,
     primary_agent: str | None = None,
     clear_primary_agent: bool = False,
     write_scope: list[str] | None = None,
@@ -239,6 +289,12 @@ def configure_goal(
         raise ValueError("--clear-primary-agent cannot be combined with --primary-agent")
     if clear_registered_agents and primary_agent:
         raise ValueError("--clear-registered-agents cannot be combined with --primary-agent")
+    if agent_model is not None:
+        agent_model = str(agent_model).strip().lower()
+        if agent_model not in AGENT_MODEL_CHOICES:
+            raise ValueError("--agent-model must be one of: " + ", ".join(AGENT_MODEL_CHOICES))
+    if agent_model == AgentRuntimeModel.PEER_V1.value and primary_agent:
+        raise ValueError("--agent-model peer_v1 cannot be combined with --primary-agent")
     if clear_write_scope and write_scope:
         raise ValueError("--clear-write-scope cannot be combined with --write-scope")
     if replace_write_scope and not write_scope:
@@ -392,6 +448,7 @@ def configure_goal(
     if (
         clear_registered_agents
         or registered_agents is not None
+        or agent_model is not None
         or normalized_primary_agent is not None
         or clear_primary_agent
         or write_scope is not None
@@ -402,6 +459,16 @@ def configure_goal(
         coordination = goal.get("coordination") if isinstance(goal.get("coordination"), dict) else {}
         existing_registered_agents = normalize_registered_agents(coordination.get("registered_agents"))
         effective_registered_agents = registered_agents if registered_agents is not None else existing_registered_agents
+        effective_agent_model = agent_model
+        if effective_agent_model is None:
+            effective_agent_model = str(coordination.get("agent_model") or "").strip() or None
+        if (
+            effective_agent_model is None
+            and registered_agents is not None
+            and not normalized_primary_agent
+            and not coordination.get("primary_agent")
+        ):
+            effective_agent_model = AgentRuntimeModel.PEER_V1.value
         if normalized_primary_agent and normalized_primary_agent not in effective_registered_agents:
             raise ValueError(
                 f"--primary-agent {normalized_primary_agent!r} must also be listed in coordination.registered_agents; "
@@ -410,12 +477,26 @@ def configure_goal(
         if clear_registered_agents:
             coordination.pop("registered_agents", None)
             coordination.pop("primary_agent", None)
+            coordination.pop("agent_model", None)
+            effective_agent_model = None
         elif registered_agents is not None:
             coordination["registered_agents"] = registered_agents
         if clear_primary_agent:
             coordination.pop("primary_agent", None)
         elif normalized_primary_agent is not None:
             coordination["primary_agent"] = normalized_primary_agent
+        if effective_agent_model and not clear_registered_agents:
+            coordination["agent_model"] = effective_agent_model
+        if effective_agent_model == AgentRuntimeModel.PEER_V1.value:
+            coordination.pop("primary_agent", None)
+            coordination.pop("side_agent_handoff_agent", None)
+        elif effective_agent_model == AgentRuntimeModel.LEGACY_HIERARCHY.value:
+            effective_primary = normalize_todo_claimed_by(coordination.get("primary_agent"))
+            if effective_registered_agents and not effective_primary:
+                raise ValueError(
+                    "legacy_hierarchy with registered agents requires --primary-agent; "
+                    "use --agent-model peer_v1 for equal peer agents"
+                )
         if clear_write_scope:
             coordination["write_scope"] = []
         elif write_scope is not None:
@@ -445,13 +526,18 @@ def configure_goal(
     after = _settings_summary(goal)
     changed_fields = _changed_fields(before, after)
     dry_run = not execute
+    model_changed = before.get("agent_model") != after.get("agent_model")
+    backup_path = None
 
     if execute and changed_fields:
         payload["updated_at"] = _now_iso()
-        registry_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        if model_changed:
+            stamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%z")
+            backup_path = registry_path.with_name(
+                f"{registry_path.name}.before-agent-model-{stamp}.bak"
+            )
+            shutil.copy2(registry_path, backup_path)
+        _atomic_write_json(registry_path, payload)
 
     return {
         "ok": True,
@@ -461,6 +547,7 @@ def configure_goal(
         "goal_id": goal_id,
         "changed": bool(changed_fields),
         "changed_fields": changed_fields,
+        "backup_path": str(backup_path) if backup_path else None,
         "before": before,
         "after": after,
         "written": bool(execute and changed_fields),

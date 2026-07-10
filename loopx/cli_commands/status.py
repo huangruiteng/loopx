@@ -560,6 +560,7 @@ def _build_agent_member_projection(
     if not isinstance(identity, dict):
         return None
     coordination = item.get("coordination") if isinstance(item.get("coordination"), dict) else {}
+    peer_runtime = identity.get("agent_model") == "peer_v1"
     profile = _agent_profile_for(coordination, agent_id)
     role = _compact_member_text(profile.get("role"), limit=80) or _compact_member_text(
         identity.get("role"),
@@ -568,20 +569,28 @@ def _build_agent_member_projection(
     worktree_policy, requires_independent_worktree = _profile_worktree_policy(profile)
     claims = _current_claims_with_selected_lane(item, guard=guard, agent_id=agent_id)
     member: dict[str, Any] = {
-        "schema_version": "agent_member_v0",
+        "schema_version": "agent_member_v1" if peer_runtime else "agent_member_v0",
         "agent_id": agent_id,
-        "role": role,
-        "primary_agent": normalize_todo_claimed_by(identity.get("primary_agent")),
+        "agent_model": identity.get("agent_model") or "legacy_hierarchy",
         "profile_source": "registry.coordination.agent_profiles" if profile else "quota.agent_identity",
         "authority_source": "registry+quota_should_run+todo_projection",
-        "role_is_advisory": True,
         "current_claims": claims[:10],
         "current_claim_count": len(claims),
         "lease_projection": {
-            "source": "todo.claimed_by",
-            "hard_lease_available": False,
+            "source": "todo.claimed_by+task_lease" if peer_runtime else "todo.claimed_by",
+            "hard_lease_available": peer_runtime,
         },
     }
+    if peer_runtime:
+        if role:
+            member["profile_role"] = role
+            member["profile_role_is_advisory"] = True
+    else:
+        member["role"] = role
+        member["primary_agent"] = normalize_todo_claimed_by(
+            identity.get("primary_agent")
+        )
+        member["role_is_advisory"] = True
     scope_summary = _profile_scope_summary(profile)
     if scope_summary:
         member["scope_summary"] = scope_summary

@@ -44,6 +44,7 @@ from .control_plane.todos.contract import (
     normalize_todo_resume_when,
     normalize_todo_status,
     parse_todo_metadata_line,
+    todo_continuation_requires_review,
     todo_done_for_status,
     todo_marker_for_status,
 )
@@ -1547,6 +1548,25 @@ def complete_goal_todo(
         effective_next_claimed_by = completion_policy.effective_next_claimed_by
         side_agent_completion = completion_policy.side_agent_completion
         effective_side_agent_self_merged = completion_policy.side_agent_self_merged
+        effective_self_merged = completion_policy.self_merged
+        peer_review_successor = bool(
+            completion_policy.agent_model == "peer_v1"
+            and next_agent_todo
+            and todo_continuation_requires_review(
+                next_continuation_policy,
+                action_kind=next_action_kind,
+            )
+        )
+        policy_next_blocks_agent = (
+            effective_claimed_by
+            if (
+                side_agent_completion
+                and next_agent_todo
+                and not effective_side_agent_self_merged
+            )
+            or peer_review_successor
+            else None
+        )
         if not completion_match:
             if event_context:
                 event_result = complete_event_projected_goal_todo(
@@ -1564,16 +1584,21 @@ def complete_goal_todo(
                     next_task_class=next_task_class,
                     next_action_kind=next_action_kind,
                     next_continuation_policy=next_continuation_policy,
+                    agent_model=completion_policy.agent_model,
                     side_agent_completion=side_agent_completion,
                     side_agent_self_merged=effective_side_agent_self_merged,
+                    self_merged=effective_self_merged,
+                    next_blocks_agent=policy_next_blocks_agent,
                     registered_agents=registered_agents,
                     primary_agent=primary_agent,
                     updated_at=updated_at,
                     dry_run=dry_run,
                 )
-                event_result["linked_handoff_successor_id"] = (
-                    completion_policy.linked_handoff_successor_id
-                )
+                event_result["linked_successor_id"] = completion_policy.linked_successor_id
+                if completion_policy.agent_model != "peer_v1":
+                    event_result["linked_handoff_successor_id"] = (
+                        completion_policy.linked_handoff_successor_id
+                    )
                 return event_result
         update_result = apply_todo_update_to_lines(
             lines,
@@ -1588,7 +1613,11 @@ def complete_goal_todo(
             successor_todo_ids=normalized_successor_todo_ids if successor_todo_ids is not None else None,
             updated_at=updated_at,
         )
-        if next_agent_todo and not effective_next_claimed_by:
+        if (
+            completion_policy.agent_model == "legacy_hierarchy"
+            and next_agent_todo
+            and not effective_next_claimed_by
+        ):
             effective_next_claimed_by = normalize_todo_claimed_by(update_result.get("claimed_by"))
         next_blocks_agent = None
         next_unblocks_todo_id = (
@@ -1596,15 +1625,14 @@ def complete_goal_todo(
             if next_agent_todo
             else None
         )
-        if side_agent_completion and next_agent_todo and not effective_side_agent_self_merged:
-            next_blocks_agent = effective_claimed_by
+        next_blocks_agent = policy_next_blocks_agent
         next_user_blocks_agent = None
         if next_user_todo and len(registered_agents) > 1:
             next_user_blocks_agent = effective_claimed_by or primary_agent
             if not next_user_blocks_agent:
                 raise ValueError(
                     "multi-agent --next-user-todo requires a completing --claimed-by "
-                    "agent or coordination.primary_agent so the user_gate can be scoped"
+                    "agent so the user_gate can be scoped"
                 )
         next_results: list[dict[str, Any]] = []
         if next_agent_todo:
@@ -1656,7 +1684,7 @@ def complete_goal_todo(
             new_text = replace_updated_at(new_text, updated_at)
         if changed and not dry_run:
             resolved_state_file.write_text(new_text, encoding="utf-8")
-    return {
+    result = {
         "ok": True,
         "dry_run": dry_run,
         "completed": True,
@@ -1664,12 +1692,17 @@ def complete_goal_todo(
         **update_result,
         "changed": changed,
         "next_todos": next_results,
-        "side_agent_self_merged": effective_side_agent_self_merged,
-        "linked_handoff_successor_id": completion_policy.linked_handoff_successor_id,
+        "linked_successor_id": completion_policy.linked_successor_id,
         "state_file": str(resolved_state_file),
         "project": str(resolved_project) if resolved_project else None,
         "updated_at": updated_at if changed else None,
     }
+    if completion_policy.agent_model == "peer_v1":
+        result["self_merged"] = effective_self_merged
+    else:
+        result["side_agent_self_merged"] = effective_side_agent_self_merged
+        result["linked_handoff_successor_id"] = completion_policy.linked_handoff_successor_id
+    return result
 
 def supersede_goal_todo(
     *,

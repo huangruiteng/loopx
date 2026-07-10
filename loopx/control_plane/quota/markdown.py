@@ -157,13 +157,19 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         lines.append(f"- project_asset_source: {payload.get('project_asset_source')}")
     agent_identity = as_dict(payload.get("agent_identity"))
     if agent_identity:
-        lines.append(
-            "- agent_identity: "
-            f"agent_id={agent_identity.get('agent_id')} "
-            f"role={agent_identity.get('role')} "
-            f"primary_agent={agent_identity.get('primary_agent')} "
-            f"handoff_agent={agent_identity.get('handoff_agent')}"
-        )
+        if agent_identity.get("agent_model") == "peer_v1":
+            lines.append(
+                "- agent_identity: "
+                f"agent_id={agent_identity.get('agent_id')} agent_model=peer_v1"
+            )
+        else:
+            lines.append(
+                "- agent_identity: "
+                f"agent_id={agent_identity.get('agent_id')} "
+                f"role={agent_identity.get('role')} "
+                f"primary_agent={agent_identity.get('primary_agent')} "
+                f"handoff_agent={agent_identity.get('handoff_agent')}"
+            )
     if payload.get("active_state_next_action"):
         lines.append(f"- active_state_next_action: {markdown_scalar(payload.get('active_state_next_action'))}")
     if payload.get("latest_run_recommended_action"):
@@ -286,6 +292,16 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"child_lanes={len(child_lanes)} "
             f"writeback_owner={subagent_orchestration.get('writeback_owner')}"
         )
+    task_orchestration = as_dict(payload.get("task_orchestration_contract"))
+    if task_orchestration:
+        peer_lanes = as_list(task_orchestration.get("eligible_peer_lanes"))
+        lines.append(
+            "- task_orchestration: "
+            f"mode={task_orchestration.get('mode')} "
+            f"activation_required={task_orchestration.get('activation_required')} "
+            f"peer_lanes={len(peer_lanes)} "
+            f"writeback_owner={task_orchestration.get('writeback_owner')}"
+        )
     replan_decision = (
         payload.get("autonomous_replan_decision")
         if isinstance(payload.get("autonomous_replan_decision"), dict)
@@ -313,6 +329,12 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             lines.append(f"- automation_prompt_upgrade_action: {automation_prompt_upgrade.get('recommended_action')}")
         if automation_prompt_upgrade.get("primary_example_command"):
             lines.append(f"- automation_prompt_upgrade_primary: {automation_prompt_upgrade.get('primary_example_command')}")
+        for example in as_list(automation_prompt_upgrade.get("agent_example_commands")):
+            if isinstance(example, dict) and example.get("command"):
+                lines.append(
+                    f"- automation_prompt_upgrade_agent[{example.get('agent_id')}]: "
+                    f"{example.get('command')}"
+                )
         if automation_prompt_upgrade.get("side_agent_example_command"):
             lines.append(f"- automation_prompt_upgrade_side: {automation_prompt_upgrade.get('side_agent_example_command')}")
     capability_gate = (

@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..agents.runtime_model import (
+    agent_identity_is_peer,
+    peer_work_key,
+    select_peer_for_work,
+)
 from ..agents.agent_scope_frontier import AgentScopeFrontierAction
 from ..todos.todo_summary import normalize_todo_claimed_by
 from ..work_items.work_lane import WORK_LANE_CONTRACT_SCHEMA_VERSION
@@ -58,11 +63,13 @@ def apply_subagent_orchestration_contract(
     goal_boundary: dict[str, Any],
     agent_identity: dict[str, Any] | None,
     agent_todo_summary: dict[str, Any],
+    raw_agent_todo_summary: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     contract = _subagent_orchestration_contract(
         goal_boundary=goal_boundary,
         agent_identity=agent_identity,
         agent_todo_summary=agent_todo_summary,
+        raw_agent_todo_summary=raw_agent_todo_summary,
     )
     if not contract:
         return None, fallback_work_lane_contract
@@ -83,6 +90,12 @@ def subagent_orchestration_effective_action(
         and normal_delivery_allowed
         and effective_action == "normal_run"
     ):
+        if contract.get("schema_version") == "task_orchestration_contract_v1":
+            return (
+                "coordinate_task_bundle",
+                "the deterministic task coordinator must activate or resume eligible "
+                "peer lanes before doing its own worker-lane delivery",
+            )
         return (
             "orchestrate_child_lanes",
             "primary agent must spawn or resume eligible child lanes before "
@@ -97,7 +110,12 @@ def subagent_selected_recommended_action(
 ) -> str | None:
     if not contract:
         return fallback
-    return str(contract.get("controller_obligation") or fallback or "")
+    return str(
+        contract.get("coordinator_obligation")
+        or contract.get("controller_obligation")
+        or fallback
+        or ""
+    )
 
 
 def subagent_goal_route_hint(
@@ -106,12 +124,21 @@ def subagent_goal_route_hint(
 ) -> dict[str, Any] | None:
     if not contract or not isinstance(goal_route_hint, dict):
         return goal_route_hint
-    child_lanes = contract.get("eligible_child_lanes")
+    peer_runtime = contract.get("schema_version") == "task_orchestration_contract_v1"
+    child_lanes = contract.get(
+        "eligible_peer_lanes" if peer_runtime else "eligible_child_lanes"
+    )
     return {
         **{key: value for key, value in goal_route_hint.items() if key != "current_agent_next_action"},
-        "kind": "subagent_orchestration",
-        "route_decision": "orchestrate_child_lanes",
-        "reason": "primary controller must spawn/resume eligible child lanes",
+        "kind": "task_orchestration" if peer_runtime else "subagent_orchestration",
+        "route_decision": (
+            "coordinate_task_bundle" if peer_runtime else "orchestrate_child_lanes"
+        ),
+        "reason": (
+            "task-scoped coordinator must activate/resume eligible peer lanes"
+            if peer_runtime
+            else "primary controller must spawn/resume eligible child lanes"
+        ),
         "child_lane_count": len(child_lanes) if isinstance(child_lanes, list) else 0,
     }
 
@@ -121,7 +148,12 @@ def attach_subagent_payload_contract(
     contract: dict[str, Any] | None,
 ) -> dict[str, Any]:
     if contract:
-        payload["subagent_orchestration_contract"] = contract
+        key = (
+            "task_orchestration_contract"
+            if contract.get("schema_version") == "task_orchestration_contract_v1"
+            else "subagent_orchestration_contract"
+        )
+        payload[key] = contract
     return payload
 
 
@@ -179,12 +211,16 @@ def _subagent_orchestration_contract(
     goal_boundary: dict[str, Any],
     agent_identity: dict[str, Any] | None,
     agent_todo_summary: dict[str, Any],
+    raw_agent_todo_summary: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     if not isinstance(agent_identity, dict):
         return None
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    peer_runtime = agent_identity_is_peer(agent_identity)
     primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
-    if not agent_id or agent_id != primary_agent:
+    if not agent_id:
+        return None
+    if not peer_runtime and agent_id != primary_agent:
         return None
     orchestration = (
         goal_boundary.get("orchestration")
@@ -198,14 +234,19 @@ def _subagent_orchestration_contract(
     max_children = orchestration.get("max_children")
     if not isinstance(max_children, int) or max_children <= 0:
         return None
-    other_items = (
-        agent_todo_summary.get("claimed_by_others_items")
+    source_items = (
+        raw_agent_todo_summary.get("items")
+        if peer_runtime
+        and isinstance(raw_agent_todo_summary, dict)
+        and isinstance(raw_agent_todo_summary.get("items"), list)
+        else agent_todo_summary.get("claimed_by_others_items")
         if isinstance(agent_todo_summary.get("claimed_by_others_items"), list)
         else []
     )
-    child_lanes: list[dict[str, Any]] = []
+    candidate_lanes: list[dict[str, Any]] = []
     seen_agents: set[str] = set()
-    for item in other_items:
+    registered_agents = set(agent_identity.get("registered_agents") or [])
+    for item in source_items:
         if not isinstance(item, dict):
             continue
         if str(item.get("task_class") or "") != "advancement_task":
@@ -213,7 +254,9 @@ def _subagent_orchestration_contract(
         child_agent = normalize_todo_claimed_by(item.get("claimed_by"))
         if not child_agent or child_agent in seen_agents:
             continue
-        child_lanes.append(
+        if peer_runtime and child_agent not in registered_agents:
+            continue
+        candidate_lanes.append(
             {
                 "agent_id": child_agent,
                 "todo_id": str(item.get("todo_id") or "").strip() or None,
@@ -224,10 +267,47 @@ def _subagent_orchestration_contract(
             }
         )
         seen_agents.add(child_agent)
-        if len(child_lanes) >= max_children:
-            break
-    if not child_lanes:
+    if not candidate_lanes:
         return None
+    if peer_runtime:
+        assignment_key = peer_work_key(
+            {
+                "mode": "task_scoped_peer",
+                "lanes": [
+                    {"agent_id": lane["agent_id"], "todo_id": lane["todo_id"]}
+                    for lane in candidate_lanes
+                ],
+            },
+            fallback="task_orchestration",
+        )
+        coordinator = select_peer_for_work(
+            agent_identity.get("registered_agents") or [],
+            work_key=assignment_key,
+        )
+        if not coordinator or agent_id != coordinator:
+            return None
+        peer_lanes = [
+            lane for lane in candidate_lanes if lane["agent_id"] != coordinator
+        ][:max_children]
+        if not peer_lanes:
+            return None
+        return {
+            "schema_version": "task_orchestration_contract_v1",
+            "mode": "task_scoped_peer",
+            "coordinator_agent_id": coordinator,
+            "assignment_key": assignment_key,
+            "activation_required": True,
+            "activation_allowed": True,
+            "max_peer_lanes": max_children,
+            "eligible_peer_lanes": peer_lanes,
+            "blocked_peer_lanes": [],
+            "writeback_owner": "task_coordinator",
+            "coordinator_obligation": (
+                "activate or resume eligible peer lanes, review returned evidence, "
+                "then write accepted state/todos for this task bundle"
+            ),
+        }
+    child_lanes = candidate_lanes[:max_children]
     return {
         "schema_version": "subagent_orchestration_contract_v0",
         "mode": "multi_subagent",
@@ -246,7 +326,24 @@ def _subagent_orchestration_contract(
 
 
 def _subagent_work_lane_contract(contract: dict[str, Any]) -> dict[str, Any]:
-    child_lanes = contract.get("eligible_child_lanes")
+    peer_runtime = contract.get("schema_version") == "task_orchestration_contract_v1"
+    child_lanes = contract.get(
+        "eligible_peer_lanes" if peer_runtime else "eligible_child_lanes"
+    )
+    if peer_runtime:
+        return {
+            "schema_version": "work_lane_contract_v1",
+            "lane": "task_orchestration",
+            "next_lane": "peer_evidence_review",
+            "obligation": "coordinate_task_bundle",
+            "must_attempt_work": True,
+            "reason_codes": ["eligible_peer_lanes"],
+            "monitor_policy": "material_transition_only",
+            "action": contract["coordinator_obligation"],
+            "eligible_peer_lane_count": (
+                len(child_lanes) if isinstance(child_lanes, list) else 0
+            ),
+        }
     return {
         "schema_version": "work_lane_contract_v1",
         "lane": "subagent_orchestration",

@@ -142,20 +142,25 @@ def _registered_agents(status_payload: dict[str, Any]) -> dict[str, dict[str, An
             continue
         goal_id = _compact(goal.get("id"), limit=180)
         coordination = _as_dict(goal.get("coordination"))
+        agent_model = str(coordination.get("agent_model") or "").strip() or (
+            "peer_v1"
+            if coordination.get("registered_agents") and not coordination.get("primary_agent")
+            else "legacy_hierarchy"
+        )
         primary = normalize_todo_claimed_by(coordination.get("primary_agent"))
         for raw_agent in _as_list(coordination.get("registered_agents")):
             agent_id = normalize_todo_claimed_by(raw_agent)
             if not agent_id:
                 continue
-            row = rows.setdefault(
-                agent_id,
-                {
+            row_payload = {
                     "agent_id": agent_id,
-                    "role": "primary" if agent_id == primary else "side-agent",
+                    "agent_model": agent_model,
                     "_goal_ids": [],
                     "_todos": [],
-                },
-            )
+                }
+            if agent_model != "peer_v1":
+                row_payload["role"] = "primary" if agent_id == primary else "side-agent"
+            row = rows.setdefault(agent_id, row_payload)
             if goal_id and goal_id not in row["_goal_ids"]:
                 row["_goal_ids"].append(goal_id)
     return rows
@@ -474,7 +479,7 @@ def build_agent_management_projection(status_payload: dict[str, Any]) -> dict[st
                     handoff_refs.append(ref)
         agent_row: dict[str, Any] = {
             "agent_id": agent_id,
-            "role": raw_row.get("role") or "agent",
+            "agent_model": raw_row.get("agent_model") or "unregistered",
             "state": _agent_state(all_todos, current=current),
             "current_todo": _todo_row(current) if current else None,
             "next_action": _safe_next_action(current),
@@ -483,6 +488,8 @@ def build_agent_management_projection(status_payload: dict[str, Any]) -> dict[st
             "handoff_refs": handoff_refs[:MAX_REFS],
             "goal_ids": _as_list(raw_row.get("_goal_ids"))[:MAX_REFS],
         }
+        if raw_row.get("role"):
+            agent_row["role"] = raw_row.get("role")
         workspace_ref = _workspace_ref_from_todo(current)
         if workspace_ref:
             agent_row["workspace_ref"] = workspace_ref

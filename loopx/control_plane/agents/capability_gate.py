@@ -9,6 +9,7 @@ from ..todos.contract import (
     normalize_target_capabilities,
     normalize_todo_claimed_by,
     resolve_todo_continuation_policy,
+    todo_continuation_requires_review,
 )
 from ..todos.projection import (
     todo_index_rank,
@@ -155,17 +156,16 @@ def _unblock_handoff_rank(
     )
 
 
-def _primary_review_rank(raw_item: dict[str, Any], *, agent_id: str | None) -> int:
+def _review_handoff_rank(raw_item: dict[str, Any], *, agent_id: str | None) -> int:
     claimed_by = agent_scope_item_claimed_by(raw_item)
-    continuation_policy = resolve_todo_continuation_policy(
-        raw_item.get("continuation_policy"),
-        action_kind=raw_item.get("action_kind"),
-    )
     return (
         0
         if agent_id
         and claimed_by == agent_id
-        and continuation_policy == TodoContinuationPolicy.PRIMARY_REVIEW
+        and todo_continuation_requires_review(
+            raw_item.get("continuation_policy"),
+            action_kind=raw_item.get("action_kind"),
+        )
         else 1
     )
 
@@ -189,7 +189,7 @@ def _agent_lane_candidate_sort_key(
         claim_rank,
         _unblock_handoff_rank(raw_item, agent_id=agent_id),
         todo_priority_rank(raw_item),
-        _primary_review_rank(raw_item, agent_id=agent_id),
+        _review_handoff_rank(raw_item, agent_id=agent_id),
         repair_rank,
         todo_index_rank(raw_item),
     )

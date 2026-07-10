@@ -10,6 +10,7 @@ from .agent_scope_frontier import (
     agent_scope_frontier_action as _agent_scope_frontier_action,
     build_agent_scope_frontier_payload,
 )
+from .runtime_model import agent_identity_is_peer
 from ..todos.decision_scope import todo_gate_relation, todo_gate_relation_blocks_agent
 from ..work_items.work_lane import (
     work_lane_contract_is_due_monitor_attempt,
@@ -80,6 +81,26 @@ _ACTION_SCOPE_STOPWORDS = {
     "whether",
     "with",
 }
+
+
+def _agent_identity_has_scoped_lane(agent_identity: dict[str, Any] | None) -> bool:
+    return bool(
+        isinstance(agent_identity, dict)
+        and (
+            agent_identity_is_peer(agent_identity)
+            or agent_identity.get("role") == "side-agent"
+        )
+    )
+
+
+def _legacy_primary_agent(agent_identity: dict[str, Any] | None) -> str | None:
+    if not isinstance(agent_identity, dict) or agent_identity_is_peer(agent_identity):
+        return None
+    return normalize_todo_claimed_by(agent_identity.get("primary_agent"))
+
+
+def _scoped_agent_label(agent_identity: dict[str, Any] | None) -> str:
+    return "agent" if agent_identity_is_peer(agent_identity) else "side-agent"
 
 
 def _todo_task_class(item: dict[str, Any]) -> str:
@@ -492,12 +513,12 @@ def _agent_lane_frontier_hint(
     agent_scope_frontier: dict[str, Any] | None,
     work_lane_contract: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    if not isinstance(agent_identity, dict) or agent_identity.get("role") != "side-agent":
+    if not _agent_identity_has_scoped_lane(agent_identity):
         return None
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
     if not agent_id:
         return None
-    primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
+    primary_agent = _legacy_primary_agent(agent_identity)
 
     def build_hint(
         decision: AgentLaneFrontierHintDecision,
@@ -512,12 +533,14 @@ def _agent_lane_frontier_hint(
             "schema_version": AGENT_LANE_FRONTIER_HINT_SCHEMA_VERSION,
             "decision": decision.value,
             "agent_id": agent_id,
-            "primary_agent": primary_agent,
+            "agent_model": agent_identity.get("agent_model") or "legacy_hierarchy",
             "source": source,
             "reason_code": reason_code,
             "quiet_noop_allowed": quiet_noop_allowed,
             "uses_structured_frontier": True,
         }
+        if primary_agent:
+            hint["primary_agent"] = primary_agent
         if target_todo_id:
             hint["target_todo_id"] = target_todo_id
         if next_cli_action:
@@ -923,11 +946,13 @@ def _agent_scope_no_candidate_frontier(
 ) -> dict[str, Any] | None:
     if not candidate_should_run:
         return None
-    if not isinstance(agent_identity, dict) or agent_identity.get("role") != "side-agent":
+    if not _agent_identity_has_scoped_lane(agent_identity):
         return None
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
     if not agent_id or not isinstance(agent_todo_summary, dict):
         return None
+    agent_label = _scoped_agent_label(agent_identity)
+    primary_agent = _legacy_primary_agent(agent_identity)
     if isinstance(agent_lane_next_action, dict):
         return None
     if work_lane_contract_is_due_monitor_attempt(work_lane_contract):
@@ -977,7 +1002,7 @@ def _agent_scope_no_candidate_frontier(
             or "<monitor_todo_id>"
         )
         reason = (
-            f"current side-agent {agent_id} has advancement todo {candidate_todo_id} "
+            f"current {agent_label} {agent_id} has advancement todo {candidate_todo_id} "
             f"gated by open continuous_monitor {monitor_todo_id}; a standing monitor "
             "cannot be the todo_done prerequisite for autonomous continuation"
         )
@@ -988,7 +1013,7 @@ def _agent_scope_no_candidate_frontier(
         )
         return build_agent_scope_frontier_payload(
             agent_id=agent_id,
-            primary_agent=normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            primary_agent=primary_agent,
             action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
             quiet_noop_allowed=False,
             spend_policy="spend once after validated standing-monitor gate repair/todo writeback",
@@ -1013,7 +1038,7 @@ def _agent_scope_no_candidate_frontier(
         first_candidate = deferred_resume_candidates[0]
         candidate_todo_id = str(first_candidate.get("todo_id") or "").strip() or "<todo_id>"
         reason = (
-            f"current side-agent {agent_id} has no open current/unclaimed "
+            f"current {agent_label} {agent_id} has no open current/unclaimed "
             "advancement candidate, but a deferred successor resume condition is satisfied"
         )
         recommended_action = (
@@ -1022,7 +1047,7 @@ def _agent_scope_no_candidate_frontier(
         )
         return build_agent_scope_frontier_payload(
             agent_id=agent_id,
-            primary_agent=normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            primary_agent=primary_agent,
             action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
             quiet_noop_allowed=False,
             spend_policy="spend once after validated successor replan/todo writeback",
@@ -1053,7 +1078,7 @@ def _agent_scope_no_candidate_frontier(
             or "<route>"
         )
         reason = (
-            f"current side-agent {agent_id} has no open current/unclaimed "
+            f"current {agent_label} {agent_id} has no open current/unclaimed "
             "advancement candidate, but the route continuation projection "
             f"requires a successor replan for {route_label}"
         )
@@ -1064,7 +1089,7 @@ def _agent_scope_no_candidate_frontier(
         )
         return build_agent_scope_frontier_payload(
             agent_id=agent_id,
-            primary_agent=normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            primary_agent=primary_agent,
             action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
             quiet_noop_allowed=False,
             spend_policy="spend once after validated route continuation replan/todo writeback",
@@ -1098,7 +1123,7 @@ def _agent_scope_no_candidate_frontier(
         )
         owner = ", ".join(blocking_review_claimants) or "the owning agent"
         reason = (
-            f"current side-agent {agent_id} has no current/unclaimed advancement "
+            f"current {agent_label} {agent_id} has no current/unclaimed advancement "
             f"candidate; blocking handoff work is claimed by {owner}"
         )
         recommended_action = (
@@ -1108,7 +1133,7 @@ def _agent_scope_no_candidate_frontier(
         )
         return build_agent_scope_frontier_payload(
             agent_id=agent_id,
-            primary_agent=normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            primary_agent=primary_agent,
             action=AgentScopeFrontierAction.AGENT_SCOPE_WAIT,
             quiet_noop_allowed=True,
             spend_policy="no quota spend while the current agent has no in-scope runnable candidate",
@@ -1140,7 +1165,7 @@ def _agent_scope_no_candidate_frontier(
             else ""
         )
         reason = (
-            f"current side-agent {agent_id} has no open current/unclaimed "
+            f"current {agent_label} {agent_id} has no open current/unclaimed "
             f"advancement candidate, but blocking handoff {blocker_todo_id}"
             f"{target_text} is already done without a projected successor"
         )
@@ -1151,7 +1176,7 @@ def _agent_scope_no_candidate_frontier(
         )
         return build_agent_scope_frontier_payload(
             agent_id=agent_id,
-            primary_agent=normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            primary_agent=primary_agent,
             action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
             quiet_noop_allowed=False,
             spend_policy="spend once after validated successor replan/todo writeback",
@@ -1207,7 +1232,6 @@ def _agent_scope_no_candidate_frontier(
         if isinstance(agent_todo_summary.get("claim_scope"), dict)
         else {}
     )
-    primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
     if not has_advancement_contract and not other_advancement_items:
         return None
     if other_advancement_items:
@@ -1215,7 +1239,7 @@ def _agent_scope_no_candidate_frontier(
             action = AgentScopeFrontierAction.AGENT_SCOPE_WAIT
             owner = ", ".join(blocking_review_claimants)
             reason = (
-                f"current side-agent {agent_id} has no current/unclaimed advancement "
+                f"current {agent_label} {agent_id} has no current/unclaimed advancement "
                 f"candidate; blocking handoff work is claimed by {owner}"
             )
             recommended_action = (
@@ -1231,7 +1255,7 @@ def _agent_scope_no_candidate_frontier(
             )
             owner = primary_agent or ", ".join(other_claimants) or "the owning agent"
             reason = (
-                f"current side-agent {agent_id} has no current/unclaimed advancement "
+                f"current {agent_label} {agent_id} has no current/unclaimed advancement "
                 f"candidate; visible advancement work is claimed by {owner}"
             )
             recommended_action = (
@@ -1242,12 +1266,12 @@ def _agent_scope_no_candidate_frontier(
     else:
         action = AgentScopeFrontierAction.AGENT_SCOPE_EXHAUSTED
         reason = (
-            f"current side-agent {agent_id} has no projected current/unclaimed "
+            f"current {agent_label} {agent_id} has no projected current/unclaimed "
             "advancement candidate despite a goal-level advancement lane"
         )
         recommended_action = (
             f"Keep {agent_id} active but quiet until LoopX projects a concrete "
-            "current-agent or unclaimed advancement todo, or the primary reassigns work."
+            "current-agent or unclaimed advancement todo, or another peer transfers work."
         )
 
     return build_agent_scope_frontier_payload(

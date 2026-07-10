@@ -8,6 +8,11 @@ from ...agent_registry import (
     side_agent_handoff_agent_id_for_goal,
 )
 from ..todos.contract import normalize_todo_claimed_by
+from .runtime_model import (
+    PEER_AGENT_IDENTITY_SCHEMA_VERSION,
+    AgentRuntimeModel,
+    agent_runtime_model_for_goal,
+)
 
 
 def quota_registered_agents(goal: dict[str, Any]) -> list[str]:
@@ -39,6 +44,15 @@ def build_quota_agent_identity(
             f"agent_id={normalized_agent_id!r} is not registered; "
             f"registered_agents={', '.join(registered_agents)}"
         )
+    runtime_model = agent_runtime_model_for_goal(goal)
+    if runtime_model == AgentRuntimeModel.PEER_V1:
+        return {
+            "schema_version": PEER_AGENT_IDENTITY_SCHEMA_VERSION,
+            "agent_model": runtime_model.value,
+            "agent_id": normalized_agent_id,
+            "registered": True,
+            "registered_agents": registered_agents,
+        }
     primary_agent = quota_primary_agent(goal)
     handoff_agent = side_agent_handoff_agent_id_for_goal(goal, agent_id=normalized_agent_id)
     if handoff_agent:
@@ -66,6 +80,34 @@ def build_identity_aware_prompt_upgrade(
     registered_agents = quota_registered_agents(goal)
     if not registered_agents or agent_identity:
         return None
+    runtime_model = agent_runtime_model_for_goal(goal)
+    if runtime_model == AgentRuntimeModel.PEER_V1:
+        return {
+            "contract": "peer_agent_heartbeat_prompt_v1",
+            "required": True,
+            "blocks_should_run": True,
+            "reason": (
+                "coordination.registered_agents is configured for peer_v1, but quota "
+                "should-run was called without --agent-id; the installed automation "
+                "prompt is stale or unscoped"
+            ),
+            "agent_model": runtime_model.value,
+            "registered_agents": registered_agents,
+            "recommended_action": (
+                "Regenerate each installed heartbeat with its registered --agent-id, "
+                "then rerun quota should-run with the same identity."
+            ),
+            "agent_example_commands": [
+                {
+                    "agent_id": agent,
+                    "command": (
+                        f"loopx heartbeat-prompt --thin --goal-id {goal_id} "
+                        f"--agent-id {agent} --agent-scope 'peer task claims and leases'"
+                    ),
+                }
+                for agent in registered_agents
+            ],
+        }
     primary_agent = quota_primary_agent(goal)
     primary_hint = primary_agent if primary_agent in registered_agents else registered_agents[0]
     side_hint = next((agent for agent in registered_agents if agent != primary_hint), primary_hint)

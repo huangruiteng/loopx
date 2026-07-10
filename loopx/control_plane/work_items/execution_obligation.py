@@ -24,22 +24,33 @@ def build_execution_obligation(
         if isinstance(external_evidence_observation, dict)
         else {}
     )
-    if should_run and recommended_mode == "repair_side_agent_workspace":
+    if should_run and recommended_mode in {
+        "repair_agent_workspace",
+        "repair_side_agent_workspace",
+    }:
+        peer_runtime = recommended_mode == "repair_agent_workspace"
         return {
             "must_attempt_work": True,
-            "kind": "side_agent_workspace_repair",
+            "kind": (
+                "agent_workspace_repair" if peer_runtime else "side_agent_workspace_repair"
+            ),
             "minimum": "one_workspace_move_then_guard_rerun",
             "delivery_allowed": False,
             "notify_is_execution_gate": False,
-            "contract": "side_agent_workspace_guard",
+            "contract": (
+                "agent_workspace_guard" if peer_runtime else "side_agent_workspace_guard"
+            ),
             "contract_obligation": (
-                "do not edit repository files from the registered primary checkout; "
+                "do not edit repository files from a shared checkout; "
                 "create or switch to an independent worktree/branch, then rerun "
                 "quota should-run with the same agent id"
             ),
             "spend_policy": heartbeat_recommendation.get("spend_policy"),
             "reason": (
-                "side-agent identity is active while the current workspace is the "
+                "peer delivery includes repository writes while the current workspace "
+                "is shared or is not an independent worktree"
+                if peer_runtime
+                else "side-agent identity is active while the current workspace is the "
                 "registered primary checkout"
             ),
         }

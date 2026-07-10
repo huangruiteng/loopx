@@ -260,8 +260,11 @@ def complete_event_projected_goal_todo(
     next_task_class: str | None,
     next_action_kind: str | None,
     next_continuation_policy: str | None,
+    agent_model: str,
     side_agent_completion: bool,
     side_agent_self_merged: bool,
+    self_merged: bool,
+    next_blocks_agent: str | None,
     registered_agents: list[str],
     primary_agent: str | None,
     updated_at: str,
@@ -277,7 +280,7 @@ def complete_event_projected_goal_todo(
     effective_claimed_by = claimed_by or normalize_todo_claimed_by(item.get("claimed_by"))
     store = AppendOnlyStateEventStore(Path(context["event_log_path"]))
     already_done = todo_done_for_status(str(item.get("status") or TODO_STATUS_OPEN))
-    if next_agent_todo and not next_claimed_by:
+    if agent_model == "legacy_hierarchy" and next_agent_todo and not next_claimed_by:
         next_claimed_by = normalize_todo_claimed_by(effective_claimed_by)
     next_unblocks_todo_id = todo_id if next_agent_todo else None
     next_user_blocks_agent = effective_claimed_by or primary_agent
@@ -285,7 +288,7 @@ def complete_event_projected_goal_todo(
         if not next_user_blocks_agent:
             raise ValueError(
                 "multi-agent --next-user-todo requires a completing --claimed-by "
-                "agent or coordination.primary_agent so the user_gate can be scoped"
+                "agent so the user_gate can be scoped"
             )
 
     next_results: list[dict[str, Any]] = []
@@ -302,7 +305,7 @@ def complete_event_projected_goal_todo(
                 action_kind=next_action_kind,
                 continuation_policy=next_continuation_policy,
                 claimed_by=next_claimed_by,
-                blocks_agent=None,
+                blocks_agent=next_blocks_agent,
                 unblocks_todo_id=next_unblocks_todo_id,
                 dry_run=dry_run,
             )
@@ -360,7 +363,7 @@ def complete_event_projected_goal_todo(
     if not already_done and not dry_run:
         store.append(completion_event)
 
-    return {
+    result = {
         "ok": True,
         "dry_run": dry_run,
         "completed": True,
@@ -380,9 +383,15 @@ def complete_event_projected_goal_todo(
         "continuation_policy": item.get("continuation_policy"),
         "successor_todo_ids": normalized_successor_todo_ids,
         "next_todos": next_results,
-        "side_agent_self_merged": bool(side_agent_completion and side_agent_self_merged),
         "state_file": str(context.get("state_file") or ""),
         "project": str(context.get("project") or "") or None,
         "updated_at": updated_at,
         "source": "event_log",
     }
+    if agent_model == "peer_v1":
+        result["self_merged"] = self_merged
+    else:
+        result["side_agent_self_merged"] = bool(
+            side_agent_completion and side_agent_self_merged
+        )
+    return result

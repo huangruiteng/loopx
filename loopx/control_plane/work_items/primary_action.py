@@ -224,13 +224,28 @@ def resolve_primary_agent_action(payload: dict[str, Any], *, mode: str) -> str:
             f"spawn/resume child lanes ({len(lanes)} eligible); "
             "controller reviews returned evidence and writes back accepted state"
         )
+    if mode == "task_orchestration":
+        contract = (
+            payload.get("task_orchestration_contract")
+            if isinstance(payload.get("task_orchestration_contract"), dict)
+            else {}
+        )
+        lanes = (
+            contract.get("eligible_peer_lanes")
+            if isinstance(contract.get("eligible_peer_lanes"), list)
+            else []
+        )
+        return (
+            f"activate/resume peer lanes ({len(lanes)} eligible); "
+            "the task coordinator reviews evidence and writes back this bundle"
+        )
     if mode in {"user_gate", "user_todo_blocker_push", "user_action_required"}:
         return "wait for user/owner action after surfacing the blocker or gate"
     if mode == "outcome_floor_recovery":
         return "produce the required outcome-floor evidence artifact or write the concrete blocker"
     if mode == "capability_bridge_repair":
         return "repair or materialize the missing bridge capability, rewrite the todo, or write a compact blocker"
-    if mode == "side_agent_workspace_repair":
+    if mode in {"agent_workspace_repair", "side_agent_workspace_repair"}:
         return "create or switch to an independent worktree/branch, then rerun quota guard before file edits"
     if mode == "automation_prompt_upgrade":
         return "regenerate the installed automation prompt with a registered agent id and scope, then rerun quota guard"

@@ -351,6 +351,14 @@ def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> 
         help="Clear coordination.registered_agents.",
     )
     configure_goal_parser.add_argument(
+        "--agent-model",
+        choices=("peer_v1", "legacy_hierarchy"),
+        help=(
+            "Agent runtime model. peer_v1 removes identity rank and routes work through "
+            "claims, leases, deterministic task assignment, and task-scoped coordination."
+        ),
+    )
+    configure_goal_parser.add_argument(
         "--primary-agent",
         help=(
             "The single registered agent id that owns main-control review, "
@@ -603,6 +611,7 @@ def handle_registry_admin_command(
                 clear_explore_harness_profile=bool(args.clear_explore_harness_profile),
                 registered_agents=args.registered_agents,
                 clear_registered_agents=bool(args.clear_registered_agents),
+                agent_model=args.agent_model,
                 primary_agent=args.primary_agent,
                 clear_primary_agent=bool(args.clear_primary_agent),
                 write_scope=args.write_scope,

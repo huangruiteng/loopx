@@ -8,6 +8,11 @@ from ..agents.agent_scope import (
     agent_scope_item_claimed_by,
     agent_scope_item_claimed_by_agent_or_unclaimed,
 )
+from ..agents.runtime_model import (
+    AgentRuntimeModel,
+    peer_work_key,
+    select_peer_for_work,
+)
 from ..work_items.autonomous_replan_ack import (
     autonomous_replan_ack_matches_agent,
     latest_autonomous_replan_ack_for_projection,
@@ -84,6 +89,8 @@ def autonomous_replan_decision_allowed(
     automation_prompt_upgrade_required: bool,
     agent_id: str | None = None,
     primary_agent_id: str | None = None,
+    agent_model: str = AgentRuntimeModel.LEGACY_HIERARCHY.value,
+    registered_agent_ids: list[str] | None = None,
 ) -> bool:
     return bool(
         autonomous_replan_is_required(replan_obligation)
@@ -91,6 +98,8 @@ def autonomous_replan_decision_allowed(
             replan_obligation,
             agent_id=agent_id,
             primary_agent_id=primary_agent_id,
+            agent_model=agent_model,
+            registered_agent_ids=registered_agent_ids,
         ).get("applies")
         and plan_ok
         and not workspace_blocked
@@ -142,6 +151,8 @@ def autonomous_replan_scope_decision(
     *,
     agent_id: str | None,
     primary_agent_id: str | None,
+    agent_model: str = AgentRuntimeModel.LEGACY_HIERARCHY.value,
+    registered_agent_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Return whether a replan obligation belongs to this agent lane.
 
@@ -150,10 +161,15 @@ def autonomous_replan_scope_decision(
     not repeatedly consume another lane's stalled Next Action.
     """
 
+    try:
+        runtime_model = AgentRuntimeModel(str(agent_model))
+    except ValueError as error:
+        raise ValueError(f"unsupported agent runtime model: {agent_model!r}") from error
     normalized_agent_id = _normalize_replan_agent_id(agent_id)
     normalized_primary_agent_id = _normalize_replan_agent_id(primary_agent_id)
     owners = _autonomous_replan_owner_agent_ids(replan_obligation)
     required = autonomous_replan_is_required(replan_obligation)
+    selected_peer_agent = None
     if not required:
         applies = False
         scope = "not_required"
@@ -163,21 +179,36 @@ def autonomous_replan_scope_decision(
     elif owners:
         applies = normalized_agent_id in owners
         scope = "explicit_agent_owner"
+    elif runtime_model == AgentRuntimeModel.PEER_V1:
+        selected_peer_agent = select_peer_for_work(
+            registered_agent_ids or [],
+            work_key=peer_work_key(
+                replan_obligation,
+                fallback="autonomous_replan",
+            ),
+        )
+        applies = bool(selected_peer_agent and normalized_agent_id == selected_peer_agent)
+        scope = "deterministic_peer_assignment"
     elif normalized_primary_agent_id:
         applies = normalized_agent_id == normalized_primary_agent_id
         scope = "default_primary_agent"
     else:
         applies = True
         scope = "single_agent_or_unknown_primary"
-    return {
+    payload = {
         "schema_version": AUTONOMOUS_REPLAN_SCOPE_SCHEMA_VERSION,
         "required": required,
         "applies": applies,
         "scope": scope,
         "agent_id": normalized_agent_id,
-        "primary_agent_id": normalized_primary_agent_id,
+        "agent_model": runtime_model.value,
         "owner_agent_ids": owners,
     }
+    if runtime_model == AgentRuntimeModel.PEER_V1:
+        payload["selected_peer_agent"] = selected_peer_agent
+    else:
+        payload["primary_agent_id"] = normalized_primary_agent_id
+    return payload
 
 
 def _compact_projection_text(value: Any, *, limit: int = 360) -> str | None:
@@ -1203,6 +1234,8 @@ def build_goal_frontier_projection_context_from_status(
     agent_todo_summary: dict[str, Any] | None,
     work_lane_contract: dict[str, Any] | None,
     neutral_replan_ack_classifications: set[str],
+    agent_model: str = AgentRuntimeModel.LEGACY_HIERARCHY.value,
+    registered_agent_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build the quota-facing goal-frontier read model.
 
@@ -1216,6 +1249,8 @@ def build_goal_frontier_projection_context_from_status(
         replan_obligation,
         agent_id=agent_id,
         primary_agent_id=primary_agent_id,
+        agent_model=agent_model,
+        registered_agent_ids=registered_agent_ids,
     )
     if replan_scope.get("required") and not replan_scope.get("applies"):
         replan_obligation = None
@@ -1260,6 +1295,8 @@ def build_goal_frontier_projection_context_from_status(
             replan_obligation,
             agent_id=agent_id,
             primary_agent_id=primary_agent_id,
+            agent_model=agent_model,
+            registered_agent_ids=registered_agent_ids,
         )
 
     goal_frontier_projection = build_goal_frontier_projection_from_summaries(

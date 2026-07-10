@@ -108,6 +108,7 @@ TODO_ACTION_KIND_MONITOR_VALUES = {
 class TodoContinuationPolicy(str, Enum):
     INDEPENDENT_HANDOFF = "independent_handoff"
     SAME_AGENT_NON_DELIVERY = "same_agent_non_delivery"
+    REVIEW_HANDOFF = "review_handoff"
     PRIMARY_REVIEW = "primary_review"
 
 
@@ -226,6 +227,20 @@ def resolve_todo_continuation_policy(
     if legacy:
         return TodoContinuationPolicy(legacy)
     return TodoContinuationPolicy.INDEPENDENT_HANDOFF
+
+
+def todo_continuation_requires_review(
+    value: Any,
+    *,
+    action_kind: Any = None,
+) -> bool:
+    return resolve_todo_continuation_policy(
+        value,
+        action_kind=action_kind,
+    ) in {
+        TodoContinuationPolicy.REVIEW_HANDOFF,
+        TodoContinuationPolicy.PRIMARY_REVIEW,
+    }
 
 
 def normalize_todo_claimed_by(value: Any) -> str | None:
