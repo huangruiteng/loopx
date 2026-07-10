@@ -1,0 +1,29 @@
+docs/capabilities/issue-fix/README.md
+  s_32e2a9a204a8e4::t_7fe079f01ba32d 522-523
+docs/capabilities/issue-fix/README.zh-CN.md
+  s_32e2a9a204a8e4::t_d1232cd8dd9d9b 462-463
+examples/issue-fix-repository-memory-smoke.py
+  s_32e2a9a204a8e4::t_328257a5dd433a 141
+loopx/capabilities/issue_fix/repository_context.py
+  s_32e2a9a204a8e4::t_c9856b30d6bcf8 386
+loopx/capabilities/issue_fix/repository_memory.py
+  s_32e2a9a204a8e4::t_33e95708b7fd28 287-307,310-318,328
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ad2c5faefee448e3c9cccfe0179df9094c741d24",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
