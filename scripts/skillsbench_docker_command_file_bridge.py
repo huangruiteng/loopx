@@ -303,20 +303,39 @@ class DockerCommandFileBridge:
         command = str(request.get("command") or "").strip()
         if not command:
             raise ValueError("command_missing")
+        return _json_response(
+            self._exec_response(
+                cwd=cwd,
+                command=command,
+                timeout_seconds=timeout_seconds,
+            )
+        )
+
+    def _exec_response(
+        self,
+        *,
+        cwd: str,
+        command: str,
+        timeout_seconds: int,
+    ) -> dict[str, Any]:
         capture_dir = f"{BRIDGE_TEMP_ROOT}/{uuid.uuid4().hex}.exec"
         stdout_path = capture_dir + "/stdout"
         stderr_path = capture_dir + "/stderr"
+        exit_code_path = capture_dir + "/exit_code"
         proc = self._compose_exec(
             "mkdir -p "
             + shlex.quote(capture_dir)
-            + " && timeout "
+            + " && { timeout "
             + shlex.quote(str(timeout_seconds))
             + " sh -lc "
             + shlex.quote(command)
             + " > "
             + shlex.quote(stdout_path)
             + " 2> "
-            + shlex.quote(stderr_path),
+            + shlex.quote(stderr_path)
+            + "; command_rc=$?; printf '%s\\n' \"$command_rc\" > "
+            + shlex.quote(exit_code_path)
+            + "; }",
             cwd=cwd,
             timeout_seconds=timeout_seconds,
         )
@@ -334,6 +353,13 @@ class DockerCommandFileBridge:
                 timeout_seconds=timeout_seconds,
             )
         )
+        exit_code_rc, exit_code_bytes, exit_code_copy_stderr = (
+            self._read_container_file_via_copy(
+                exit_code_path,
+                max_bytes=16,
+                timeout_seconds=timeout_seconds,
+            )
+        )
         self._remove_container_path(
             capture_dir,
             recursive=True,
@@ -343,28 +369,59 @@ class DockerCommandFileBridge:
             stdout_bytes, limit=MAX_CAPTURE_BYTES
         )
         stderr_source = stderr_bytes
-        if stdout_rc != 0 or stderr_rc != 0:
-            stderr_source += proc.stderr + stdout_copy_stderr + stderr_copy_stderr
+        try:
+            captured_exit_code = int(exit_code_bytes.decode("ascii").strip())
+            if not 0 <= captured_exit_code <= 255:
+                raise ValueError
+        except (UnicodeDecodeError, ValueError):
+            captured_exit_code = None
+        if (
+            proc.returncode != 0
+            or stdout_rc != 0
+            or stderr_rc != 0
+            or exit_code_rc != 0
+        ):
+            stderr_source += (
+                proc.stderr
+                + stdout_copy_stderr
+                + stderr_copy_stderr
+                + exit_code_copy_stderr
+            )
+        if exit_code_rc == 0 and captured_exit_code is None:
+            stderr_source += b"container exit status capture invalid\n"
         stderr, stderr_truncated = _bounded_text(
             stderr_source, limit=MAX_CAPTURE_BYTES
         )
-        capture_ok = stdout_rc == 0 and stderr_rc == 0
+        output_capture_ok = stdout_rc == 0 and stderr_rc == 0
+        status_capture_ok = exit_code_rc == 0 and captured_exit_code is not None
+        effective_exit_code = (
+            proc.returncode
+            if proc.returncode != 0
+            else captured_exit_code if captured_exit_code is not None else 1
+        )
         blocker = None
         if proc.returncode != 0:
             blocker = "exec_failed"
-        elif not capture_ok:
+        elif not status_capture_ok:
+            blocker = "exec_status_capture_failed"
+        elif not output_capture_ok:
             blocker = "exec_output_capture_failed"
-        return _json_response(
-            _operation_response(
-                ok=proc.returncode == 0 and capture_ok,
-                operation="exec",
-                first_blocker=blocker,
-                exit_code=proc.returncode,
-                stdout=stdout,
-                stderr=stderr,
-                stdout_truncated=stdout_truncated,
-                stderr_truncated=stderr_truncated,
-            )
+        elif effective_exit_code != 0:
+            blocker = "exec_failed"
+        return _operation_response(
+            ok=(
+                proc.returncode == 0
+                and output_capture_ok
+                and status_capture_ok
+                and effective_exit_code == 0
+            ),
+            operation="exec",
+            first_blocker=blocker,
+            exit_code=effective_exit_code,
+            stdout=stdout,
+            stderr=stderr,
+            stdout_truncated=stdout_truncated,
+            stderr_truncated=stderr_truncated,
         )
 
     def _run_read_file(self, request: dict[str, Any], timeout_seconds: int) -> int:
@@ -440,11 +497,9 @@ class DockerCommandFileBridge:
     def probe(self, timeout_seconds: int) -> tuple[list[dict[str, Any]], str | None]:
         probe_dir = BRIDGE_TEMP_ROOT
         marker = probe_dir + "/marker.txt"
-        exec_proc = self._compose_exec(
-            "mkdir -p "
-            + shlex.quote(probe_dir)
-            + " && test -d "
-            + shlex.quote(probe_dir),
+        exec_response = self._exec_response(
+            cwd="/tmp",
+            command="exit 7",
             timeout_seconds=timeout_seconds,
         )
         write_proc = self._compose_exec(
@@ -462,12 +517,17 @@ class DockerCommandFileBridge:
             timeout_seconds=timeout_seconds,
         )
         read_text, _ = _bounded_text(read_bytes, limit=MAX_CAPTURE_BYTES)
+        exit_status_roundtrip_ok = (
+            exec_response.get("ok") is False
+            and exec_response.get("first_blocker") == "exec_failed"
+            and exec_response.get("exit_code") == 7
+        )
         operations = [
             {
                 "kind": "exec",
-                "label": "bounded_noop_command",
-                "status": "ok" if exec_proc.returncode == 0 else "failed",
-                "exit_code_zero": exec_proc.returncode == 0,
+                "label": "nonzero_exit_status_roundtrip",
+                "status": "ok" if exit_status_roundtrip_ok else "failed",
+                "nonzero_exit_status_detected": exit_status_roundtrip_ok,
             },
             {
                 "kind": "write_file",
