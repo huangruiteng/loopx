@@ -670,6 +670,94 @@ def build_explore_mermaid(
     return "\n".join(lines)
 
 
+def build_explore_graph_view(
+    nodes: Sequence[Mapping[str, Any]],
+    edges: Sequence[Mapping[str, Any]],
+    *,
+    statuses: Sequence[str] | None = None,
+    tags: Sequence[str] | None = None,
+    include_ancestors: bool = True,
+    node_limit: int = DEFAULT_MERMAID_NODE_LIMIT,
+) -> dict[str, Any]:
+    """Build a focused graph without mutating the full result projection.
+
+    Status and tag filters are combined with AND semantics. Tag matching uses
+    exact values and is OR within the requested tag set. Ancestors are included
+    by default so a focused executive graph keeps enough topology to explain
+    where each matched node belongs.
+    """
+
+    requested_statuses = {
+        _choice(status, choices=NODE_STATUSES, default="", field="status")
+        for status in statuses or []
+    }
+    requested_tags = {str(tag or "").strip() for tag in tags or []}
+    requested_tags.discard("")
+
+    node_list = [dict(node) for node in nodes]
+    edge_list = [dict(edge) for edge in edges]
+    node_by_id = {
+        str(node.get("node_id") or ""): node
+        for node in node_list
+        if str(node.get("node_id") or "")
+    }
+
+    def matches(node: Mapping[str, Any]) -> bool:
+        if requested_statuses and str(node.get("status") or "") not in requested_statuses:
+            return False
+        node_tags = {str(tag) for tag in node.get("tags") or []}
+        if requested_tags and requested_tags.isdisjoint(node_tags):
+            return False
+        return True
+
+    filtering = bool(requested_statuses or requested_tags)
+    matched_ids = {
+        node_id for node_id, node in node_by_id.items() if not filtering or matches(node)
+    }
+    selected_ids = set(matched_ids)
+    if filtering and include_ancestors:
+        parents = _parent_map(node_list, edge_list)
+        for node_id in tuple(matched_ids):
+            seen = {node_id}
+            parent = parents.get(node_id)
+            while parent and parent not in seen and parent in node_by_id:
+                selected_ids.add(parent)
+                seen.add(parent)
+                parent = parents.get(parent)
+
+    selected_nodes = [
+        node for node in node_list if str(node.get("node_id") or "") in selected_ids
+    ]
+    selected_edges = [
+        edge
+        for edge in edge_list
+        if str(edge.get("from_node") or "") in selected_ids
+        and str(edge.get("to_node") or "") in selected_ids
+    ]
+    return {
+        "nodes": selected_nodes,
+        "edges": selected_edges,
+        "mermaid": build_explore_mermaid(
+            selected_nodes,
+            selected_edges,
+            node_limit=max(1, int(node_limit)),
+        ),
+        "graph_counts": {
+            "node_count": len(selected_nodes),
+            "edge_count": len(selected_edges),
+            "matched_node_count": len(matched_ids),
+            "context_node_count": len(selected_ids - matched_ids),
+        },
+        "filter": {
+            "active": filtering,
+            "statuses": sorted(requested_statuses),
+            "tags": sorted(requested_tags),
+            "include_ancestors": bool(include_ancestors),
+            "semantics": "status_and_any_tag",
+        },
+    }
+
+
 def build_explore_result_projection(
     events: Sequence[Mapping[str, Any]],
     *,

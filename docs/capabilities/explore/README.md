@@ -65,6 +65,27 @@ parent/`subtopic_of` topology tree, and Mermaid flowchart source.
 `loopx explore graph --graph-format mermaid|json [--out <file>]` exports the
 topology for a Feishu doc, whiteboard, or any Mermaid renderer.
 
+For an executive view, keep the append-only result log as the single source
+and export a focused graph instead of maintaining a second hand-written
+Mermaid file:
+
+```bash
+loopx explore graph \
+  --goal-id <id> \
+  --status exploring \
+  --status blocked \
+  --tag executive \
+  --graph-format mermaid \
+  --out explore-executive.mmd
+```
+
+Repeated statuses match any requested status, repeated tags match any exact
+requested tag, and the status and tag groups are combined with AND. Matching
+nodes keep their ancestors by default so the focused graph retains explanatory
+context; pass `--no-include-ancestors` for a leaf-only view. Filtering changes
+only the graph export. It does not mutate the full result projection or the
+Lark node, edge, and finding tables.
+
 ## Experimental Todo Branch Plan
 
 `loopx explore todo-branch-plan` is a narrow experimental harness for

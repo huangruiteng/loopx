@@ -15,6 +15,7 @@ from ..capabilities.explore.result_log import (
     append_explore_result_event,
     build_explore_edge_event,
     build_explore_finding_event,
+    build_explore_graph_view,
     build_explore_node_event,
     build_explore_result_projection,
     explore_result_log_path,
@@ -129,6 +130,27 @@ def register_explore_commands(
         "--graph-format",
         choices=["mermaid", "json"],
         default="mermaid",
+    )
+    graph.add_argument(
+        "--status",
+        dest="graph_statuses",
+        action="append",
+        choices=sorted(NODE_STATUSES),
+        default=[],
+        help="Keep nodes with this status. Repeatable; combined with --tag using AND.",
+    )
+    graph.add_argument(
+        "--tag",
+        dest="graph_tags",
+        action="append",
+        default=[],
+        help="Keep nodes with any requested exact tag. Repeatable.",
+    )
+    graph.add_argument(
+        "--include-ancestors",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Keep ancestors of matching nodes so the focused topology retains context.",
     )
     graph.add_argument("--out", help="Also write the graph to this local file.")
 
@@ -599,26 +621,38 @@ def handle_explore_command(
             payload = _projection_for(args, runtime_root=runtime_root)
         elif args.explore_command == "graph":
             projection = _projection_for(args, runtime_root=runtime_root)
+            graph_view = build_explore_graph_view(
+                projection.get("nodes") or [],
+                projection.get("edges") or [],
+                statuses=args.graph_statuses,
+                tags=args.graph_tags,
+                include_ancestors=bool(args.include_ancestors),
+                node_limit=max(1, int(args.mermaid_node_limit)),
+            )
             payload = {
                 "ok": True,
                 "schema_version": "loopx_explore_graph_v0",
                 "goal_id": args.goal_id,
                 "graph_format": args.graph_format,
                 "counts": projection.get("counts"),
-                "nodes": projection.get("nodes"),
-                "edges": projection.get("edges"),
-                "mermaid": projection.get("mermaid"),
+                "graph_counts": graph_view.get("graph_counts"),
+                "filter": graph_view.get("filter"),
+                "nodes": graph_view.get("nodes"),
+                "edges": graph_view.get("edges"),
+                "mermaid": graph_view.get("mermaid"),
             }
             if args.out:
                 out_path = Path(args.out).expanduser()
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 if args.graph_format == "mermaid":
-                    out_path.write_text(str(projection.get("mermaid") or "") + "\n", encoding="utf-8")
+                    out_path.write_text(str(graph_view.get("mermaid") or "") + "\n", encoding="utf-8")
                 else:
                     graph_json = {
                         "goal_id": args.goal_id,
-                        "nodes": projection.get("nodes"),
-                        "edges": projection.get("edges"),
+                        "graph_counts": graph_view.get("graph_counts"),
+                        "filter": graph_view.get("filter"),
+                        "nodes": graph_view.get("nodes"),
+                        "edges": graph_view.get("edges"),
                     }
                     out_path.write_text(
                         json.dumps(graph_json, ensure_ascii=False, indent=2) + "\n",
