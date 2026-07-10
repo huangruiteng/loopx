@@ -1,0 +1,45 @@
+examples/control_plane/todo-deferred-capacity-cli-smoke.py
+  s_e3f612788718c1::t_82fc9acf803631 1-210
+loopx/canary/planner.py
+  s_e3f612788718c1::t_4040362b5e61ee 720-724
+loopx/cli_commands/todo.py
+  s_9a5a2bd944fdcb::t_bef7b9827128db 73,190-192,399
+loopx/control_plane/todos/contract.py
+  s_9a5a2bd944fdcb::t_b7b87094d1a260 20-25,257-283
+loopx/control_plane/todos/deferred_resume.py
+  s_9a5a2bd944fdcb::t_d026c921886e84 6,10,34-91
+loopx/control_plane/todos/quota_summary.py
+  s_e3f612788718c1::t_3adfd407d7e2da 20,603,605-612
+loopx/control_plane/todos/todo_summary.py
+  s_e3f612788718c1::t_bb4730d172d7f0 8,741-748
+loopx/quota.py
+  s_e3f612788718c1::t_2e4d64b51c6da2 1305-1309,1315,1321,1394
+loopx/todos.py
+  s_9a5a2bd944fdcb::t_e35a8c0b576eb7 26,46,49,742,767-770,793,804,817,822-823,832,834-835,860-861,876-877,882,923,953-957,1018-1020,1030,1049,1052,1054,1063,1069,1090,1147,1174,1216-1217,1367,1387,1408-1413
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c89993f0cda486bbe07ccd5aae0a17522325d1b4",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
