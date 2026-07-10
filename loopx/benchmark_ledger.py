@@ -3072,6 +3072,78 @@ def render_benchmark_run_ledger_markdown(ledger: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def update_benchmark_run_ledger_entries(
+    *,
+    ledger_path: str | Path,
+    entries: list[dict[str, Any]],
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Atomically upsert a compact batch of terminal public ledger entries."""
+
+    path = Path(ledger_path)
+    markdown_path = path.with_suffix(".md")
+    accepted = [
+        dict(entry)
+        for entry in entries
+        if isinstance(entry, dict) and _entry_is_public_ledger_closeout(entry)
+    ]
+
+    def apply_entries(ledger: dict[str, Any]) -> dict[str, Any]:
+        for entry in accepted:
+            ledger = upsert_benchmark_run_ledger_entry(ledger, entry)
+        return ledger
+
+    if dry_run:
+        updated = apply_entries(load_benchmark_run_ledger(path))
+    elif accepted:
+        with _LedgerWriteLock(path):
+            updated = apply_entries(load_benchmark_run_ledger(path))
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = path.with_suffix(path.suffix + ".tmp")
+            tmp_markdown_path = markdown_path.with_suffix(markdown_path.suffix + ".tmp")
+            tmp_path.write_text(
+                json.dumps(updated, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            tmp_markdown_path.write_text(
+                render_benchmark_run_ledger_markdown(updated),
+                encoding="utf-8",
+            )
+            tmp_path.replace(path)
+            tmp_markdown_path.replace(markdown_path)
+    else:
+        updated = load_benchmark_run_ledger(path)
+
+    case_decisions = []
+    for entry in accepted:
+        case = (
+            updated.get("benchmarks", {})
+            .get(entry["benchmark_id"], {})
+            .get("cases", {})
+            .get(entry["case_id"], {})
+        )
+        case_decisions.append(
+            {
+                "benchmark_id": entry["benchmark_id"],
+                "case_id": entry["case_id"],
+                "decision": case.get("latest_decision", {}),
+            }
+        )
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "updated": bool(accepted) and not dry_run,
+        "schema_version": BENCHMARK_RUN_LEDGER_SCHEMA_VERSION,
+        "ledger_path": str(path),
+        "markdown_path": str(markdown_path),
+        "input_entry_count": len(entries),
+        "accepted_entry_count": len(accepted),
+        "skipped_entry_count": len(entries) - len(accepted),
+        "upserted_count": len(accepted) if not dry_run else 0,
+        "case_decisions": case_decisions,
+    }
+
+
 def update_benchmark_run_ledger(
     *,
     ledger_path: str | Path,
@@ -3112,38 +3184,25 @@ def update_benchmark_run_ledger(
             "entry": entry,
             "case_decision": {},
         }
-    if dry_run:
-        updated = upsert_benchmark_run_ledger_entry(load_benchmark_run_ledger(path), entry)
-    else:
-        with _LedgerWriteLock(path):
-            updated = upsert_benchmark_run_ledger_entry(
-                load_benchmark_run_ledger(path),
-                entry,
-            )
-            path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_path = path.with_suffix(path.suffix + ".tmp")
-            tmp_markdown_path = markdown_path.with_suffix(markdown_path.suffix + ".tmp")
-            tmp_path.write_text(
-                json.dumps(updated, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
-            tmp_markdown_path.write_text(
-                render_benchmark_run_ledger_markdown(updated),
-                encoding="utf-8",
-            )
-            tmp_path.replace(path)
-            tmp_markdown_path.replace(markdown_path)
+    batch = update_benchmark_run_ledger_entries(
+        ledger_path=path,
+        entries=[entry],
+        dry_run=dry_run,
+    )
+    case_decision = (
+        batch["case_decisions"][0]["decision"]
+        if batch.get("case_decisions")
+        else {}
+    )
     return {
         "ok": True,
         "dry_run": dry_run,
-        "updated": not dry_run,
+        "updated": batch["updated"],
         "schema_version": BENCHMARK_RUN_LEDGER_SCHEMA_VERSION,
         "ledger_path": str(path),
         "markdown_path": str(markdown_path),
         "entry": entry,
-        "case_decision": updated["benchmarks"][entry["benchmark_id"]]["cases"][
-            entry["case_id"]
-        ]["latest_decision"],
+        "case_decision": case_decision,
     }
 
 

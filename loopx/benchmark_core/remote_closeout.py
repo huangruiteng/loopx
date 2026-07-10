@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..file_lock import exclusive_file_lock
-from .artifacts import materialize_public_benchmark_artifacts
+from .artifacts import (
+    classify_benchmark_artifact_path,
+    materialize_public_benchmark_artifacts,
+)
 
 
 RemoteCommandRunner = Callable[[str, float], subprocess.CompletedProcess[str]]
@@ -78,6 +81,7 @@ def build_remote_benchmark_closeout_contract(
     requested: bool,
     ledger_requested: bool,
     aggregate_requested: bool,
+    ledger_catchup_requested: bool = False,
 ) -> dict[str, Any]:
     return {
         "schema_version": "benchmark_remote_public_artifact_sync_v0",
@@ -100,6 +104,7 @@ def build_remote_benchmark_closeout_contract(
             "requested": ledger_requested,
             "updated": False,
             "compact_count": 0,
+            "catchup_requested": ledger_catchup_requested,
             "raw_paths_recorded": False,
         },
         "local_aggregate_update": {
@@ -136,12 +141,22 @@ def _refresh_ledger_and_aggregate(
     target_lane_id: str,
     target_run_group_contains: list[str],
     target_backfill_run_group_contains: list[str],
+    ledger_catchup_root: str,
+    ledger_catchup_run_group_contains: list[str],
+    ledger_catchup_max_bytes: int,
     repo_root: Path,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     ledger_payload = {
         "requested": bool(ledger_path),
         "updated": False,
         "compact_count": 0,
+        "catchup_requested": bool(ledger_catchup_root),
+        "catchup_compact_count": 0,
+        "catchup_run_group_count": 0,
+        "catchup_upserted_count": 0,
+        "catchup_already_present_count": 0,
+        "catchup_skipped_count": 0,
+        "catchup_blocked_count": 0,
         "raw_paths_recorded": False,
     }
     aggregate_payload = {
@@ -151,38 +166,136 @@ def _refresh_ledger_and_aggregate(
     }
     if not ledger_path:
         return ledger_payload, aggregate_payload
+    catchup_root = Path(ledger_catchup_root).expanduser()
+    if ledger_catchup_root and not catchup_root.is_dir():
+        raise ValueError("ledger catch-up root must be an existing directory")
 
     from ..benchmark_ledger import (
+        build_benchmark_run_ledger_entry,
         build_benchmark_run_ledger_current_aggregate,
         load_benchmark_run_ledger,
-        update_benchmark_run_ledger,
+        update_benchmark_run_ledger_entries,
     )
 
     compact_paths = sorted(public_artifact_dir.rglob("benchmark_run.compact.json"))
-    updated = 0
+    current_entries: list[dict[str, Any]] = []
     skipped = 0
     for compact_path in compact_paths:
         compact = json.loads(compact_path.read_text(encoding="utf-8"))
         if not isinstance(compact, dict):
             skipped += 1
             continue
-        update = update_benchmark_run_ledger(
-            ledger_path=Path(ledger_path).expanduser(),
-            benchmark_run=compact,
-            run_group_id=run_group_id or None,
-            notes="remote batch compact/public closeout sync",
-            dry_run=False,
-            cwd=repo_root,
+        current_entries.append(
+            build_benchmark_run_ledger_entry(
+                compact,
+                run_group_id=run_group_id or None,
+                notes="remote batch compact/public closeout sync",
+                cwd=repo_root,
+            )
         )
-        if update.get("updated") is True:
-            updated += 1
-        else:
-            skipped += 1
+    current_update = update_benchmark_run_ledger_entries(
+        ledger_path=Path(ledger_path).expanduser(),
+        entries=current_entries,
+        dry_run=False,
+    )
+    updated = int(current_update.get("upserted_count") or 0)
+    skipped += int(current_update.get("skipped_entry_count") or 0)
+
+    catchup_paths: list[tuple[Path, str]] = []
+    catchup_blocked = 0
+    if compact_paths and ledger_catchup_root:
+        current_paths = {
+            str(path.resolve(strict=False))
+            for path in compact_paths
+        }
+        for compact_path in sorted(catchup_root.rglob("benchmark_run.compact.json")):
+            try:
+                relative = compact_path.relative_to(catchup_root)
+            except ValueError:
+                continue
+            if len(relative.parts) < 2:
+                continue
+            historical_run_group_id = relative.parts[0]
+            if ledger_catchup_run_group_contains and not any(
+                marker in historical_run_group_id
+                for marker in ledger_catchup_run_group_contains
+            ):
+                continue
+            classification = classify_benchmark_artifact_path(relative)
+            if (
+                classification.get("allowed_to_read") is not True
+                or compact_path.is_symlink()
+            ):
+                catchup_blocked += 1
+                continue
+            try:
+                if compact_path.stat().st_size > ledger_catchup_max_bytes:
+                    catchup_blocked += 1
+                    continue
+            except OSError:
+                catchup_blocked += 1
+                continue
+            if str(compact_path.resolve(strict=False)) in current_paths:
+                continue
+            catchup_paths.append((compact_path, historical_run_group_id))
+
+    catchup_updated = 0
+    catchup_already_present = 0
+    catchup_skipped = 0
+    catchup_run_groups: set[str] = set()
+    catchup_entries: list[dict[str, Any]] = []
+    if catchup_paths:
+        ledger = load_benchmark_run_ledger(Path(ledger_path).expanduser())
+        ledger_run_ids = {
+            str(run.get("run_id") or "")
+            for benchmark in (ledger.get("benchmarks") or {}).values()
+            if isinstance(benchmark, dict)
+            for case in (benchmark.get("cases") or {}).values()
+            if isinstance(case, dict)
+            for run in (case.get("runs") or [])
+            if isinstance(run, dict) and run.get("run_id")
+        }
+        for compact_path, historical_run_group_id in catchup_paths:
+            catchup_run_groups.add(historical_run_group_id)
+            try:
+                compact = json.loads(compact_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                catchup_skipped += 1
+                continue
+            if not isinstance(compact, dict):
+                catchup_skipped += 1
+                continue
+            entry = build_benchmark_run_ledger_entry(
+                compact,
+                run_group_id=historical_run_group_id,
+                notes="public compact catch-up during remote batch closeout",
+                cwd=repo_root,
+            )
+            run_id = str(entry.get("run_id") or "")
+            if run_id and run_id in ledger_run_ids:
+                catchup_already_present += 1
+                continue
+            catchup_entries.append(entry)
+            if run_id:
+                ledger_run_ids.add(run_id)
+    catchup_update = update_benchmark_run_ledger_entries(
+        ledger_path=Path(ledger_path).expanduser(),
+        entries=catchup_entries,
+        dry_run=False,
+    )
+    catchup_updated = int(catchup_update.get("upserted_count") or 0)
+    catchup_skipped += int(catchup_update.get("skipped_entry_count") or 0)
     ledger_payload.update(
         compact_count=len(compact_paths),
-        upserted_count=updated,
-        skipped_count=skipped,
-        updated=bool(updated),
+        upserted_count=updated + catchup_updated,
+        skipped_count=skipped + catchup_skipped,
+        updated=bool(updated or catchup_updated),
+        catchup_compact_count=len(catchup_paths),
+        catchup_run_group_count=len(catchup_run_groups),
+        catchup_upserted_count=catchup_updated,
+        catchup_already_present_count=catchup_already_present,
+        catchup_skipped_count=catchup_skipped,
+        catchup_blocked_count=catchup_blocked,
     )
 
     if not aggregate_path:
@@ -246,6 +359,8 @@ def closeout_remote_benchmark_batch(
     target_lane_id: str = "",
     target_run_group_contains: list[str] | None = None,
     target_backfill_run_group_contains: list[str] | None = None,
+    ledger_catchup_root: str = "",
+    ledger_catchup_run_group_contains: list[str] | None = None,
     repo_root: str | Path = ".",
 ) -> dict[str, Any]:
     requested = bool(remote_root or artifact_globs or local_public_artifact_dir)
@@ -253,6 +368,7 @@ def closeout_remote_benchmark_batch(
         requested=requested,
         ledger_requested=bool(ledger_path),
         aggregate_requested=bool(aggregate_path),
+        ledger_catchup_requested=bool(ledger_catchup_root),
     )
     if not requested:
         return payload
@@ -334,6 +450,11 @@ def closeout_remote_benchmark_batch(
                 target_backfill_run_group_contains=list(
                     target_backfill_run_group_contains or []
                 ),
+                ledger_catchup_root=ledger_catchup_root,
+                ledger_catchup_run_group_contains=list(
+                    ledger_catchup_run_group_contains or []
+                ),
+                ledger_catchup_max_bytes=max_bytes,
                 repo_root=Path(repo_root),
             )
     except (OSError, TimeoutError, ValueError, TypeError, json.JSONDecodeError) as exc:

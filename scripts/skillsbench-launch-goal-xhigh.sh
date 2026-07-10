@@ -175,7 +175,8 @@ fi
 run_group="skillsbench-codex-cli-goal-xhigh-${safe_task}-${tag}-${stamp}"
 job_name="${safe_task}__codex_cli_goal_xhigh_${tag}_${stamp}"
 
-public_dir=".local/goals/${goal_id}/skillsbench-runs/${run_group}"
+public_root=".local/goals/${goal_id}/skillsbench-runs"
+public_dir="${public_root}/${run_group}"
 private_dir=".local/goals/${goal_id}/private/skillsbench-runs/${run_group}"
 mkdir -p "$public_dir" "$private_dir"
 
@@ -237,6 +238,8 @@ supervisor_cmd=(
   --local-public-artifact-dir "$public_dir"
   --local-run-ledger-path "${SKILLSBENCH_LOCAL_RUN_LEDGER_PATH:-.local/goals/${goal_id}/skillsbench-ledgers/live-standard-run-ledger.json}"
   --local-run-group-id "$run_group"
+  --local-ledger-catchup-root "$public_root"
+  --local-ledger-catchup-run-group-contains "skillsbench-codex-cli-goal-xhigh-"
   --private-log-path "${private_dir}/remote-command.log"
   --public-output-path "${public_dir}/supervisor.public.json"
 )
