@@ -138,6 +138,7 @@ from loopx.benchmark_core import (  # noqa: E402
     build_benchmark_launch_observable_handle,
     canonical_lifecycle,
     compact_benchmark_canonical_lifecycle,
+    run_container_command_with_exit_status,
     write_benchmark_run_observable_status,
 )
 from loopx.benchmark_core.loop_protocol import (  # noqa: E402
@@ -2682,6 +2683,10 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_final_verifier_timeout_triggered",
         "benchflow_final_verifier_timeout_raw_command_recorded",
         "benchflow_final_verifier_timeout_raw_output_recorded",
+        "benchflow_verifier_completion_poll_enabled",
+        "benchflow_verifier_completion_poll_timeout_triggered",
+        "benchflow_verifier_completion_poll_raw_command_recorded",
+        "benchflow_verifier_completion_poll_raw_output_recorded",
         "benchflow_setup_stall_timeout_enabled",
         "benchflow_setup_stall_timeout_triggered",
         "benchflow_setup_stall_raw_logs_read",
@@ -3514,6 +3519,10 @@ def install_benchflow_verifier_prep_timeout_override(
     prerequisites["benchflow_verifier_prep_timeout_raw_command_recorded"] = False
     prerequisites["benchflow_final_verifier_timeout_enabled"] = final_timeout_enabled
     prerequisites["benchflow_final_verifier_timeout_raw_command_recorded"] = False
+    prerequisites["benchflow_verifier_completion_poll_enabled"] = False
+    prerequisites["benchflow_verifier_completion_poll_timeout_triggered"] = False
+    prerequisites["benchflow_verifier_completion_poll_raw_command_recorded"] = False
+    prerequisites["benchflow_verifier_completion_poll_raw_output_recorded"] = False
     prerequisites["benchflow_intermediate_soft_verify_timeout_enabled"] = (
         soft_timeout_enabled
     )
@@ -3535,6 +3544,10 @@ def install_benchflow_verifier_prep_timeout_override(
         trace["benchflow_verifier_prep_timeout_raw_command_recorded"] = False
         trace["benchflow_final_verifier_timeout_enabled"] = final_timeout_enabled
         trace["benchflow_final_verifier_timeout_raw_command_recorded"] = False
+        trace["benchflow_verifier_completion_poll_enabled"] = False
+        trace["benchflow_verifier_completion_poll_timeout_triggered"] = False
+        trace["benchflow_verifier_completion_poll_raw_command_recorded"] = False
+        trace["benchflow_verifier_completion_poll_raw_output_recorded"] = False
         trace["benchflow_intermediate_soft_verify_timeout_enabled"] = (
             soft_timeout_enabled
         )
@@ -3602,7 +3615,51 @@ def install_benchflow_verifier_prep_timeout_override(
                     kwargs = dict(kwargs)
                     kwargs["timeout_sec"] = soft_verifier_timeout_sec
                     soft_timeout_override_count += 1
-            return await original_exec(*args, **kwargs)
+            verifier_exec = _looks_like_final_verifier_exec(args, kwargs)
+            try:
+                completion_timeout = float(kwargs.get("timeout_sec") or 0)
+            except (TypeError, ValueError):
+                completion_timeout = 0
+            docker_completion_poll = (
+                verifier_exec
+                and hasattr(env, "_run_docker_compose_command")
+                and completion_timeout > 0
+            )
+            if not docker_completion_poll:
+                return await original_exec(*args, **kwargs)
+
+            command = kwargs.get("command")
+            positional_command = command is None and bool(args)
+            if command is None and positional_command:
+                command = args[0]
+            if not isinstance(command, str):
+                return await original_exec(*args, **kwargs)
+
+            call_kwargs = dict(kwargs)
+            call_kwargs.pop("command", None)
+            call_args = args[1:] if positional_command else args
+
+            prerequisites["benchflow_verifier_completion_poll_enabled"] = True
+            if isinstance(trace, dict):
+                trace["benchflow_verifier_completion_poll_enabled"] = True
+
+            try:
+                return await run_container_command_with_exit_status(
+                    original_exec,
+                    command,
+                    timeout_sec=completion_timeout,
+                    exec_args=call_args,
+                    exec_kwargs=call_kwargs,
+                )
+            except asyncio.TimeoutError:
+                prerequisites[
+                    "benchflow_verifier_completion_poll_timeout_triggered"
+                ] = True
+                if isinstance(trace, dict):
+                    trace[
+                        "benchflow_verifier_completion_poll_timeout_triggered"
+                    ] = True
+                raise
 
         phase_timeout_sec = 0
         if phase == "verify" and final_timeout_enabled:
@@ -4201,6 +4258,14 @@ def _runner_prerequisite_failure_attribution(
         return label, label, [
             label,
             "skillsbench_compact_closeout_recorded",
+            "skillsbench_runner_error",
+        ]
+
+    if value.get("benchflow_verifier_completion_poll_timeout_triggered") is True:
+        label = "skillsbench_verifier_completion_timeout"
+        return label, label, [
+            label,
+            "skillsbench_verifier_timeout",
             "skillsbench_runner_error",
         ]
 

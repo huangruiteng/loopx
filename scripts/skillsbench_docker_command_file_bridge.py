@@ -17,6 +17,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,10 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_PROBE_REQUEST_SCHEMA_VERSION,
     build_skillsbench_remote_command_file_bridge_probe_response,
+)
+from loopx.benchmark_core.container_exec import (  # noqa: E402
+    parse_container_exit_status,
+    wrap_container_command_with_exit_status,
 )
 
 
@@ -322,10 +327,8 @@ class DockerCommandFileBridge:
         stdout_path = capture_dir + "/stdout"
         stderr_path = capture_dir + "/stderr"
         exit_code_path = capture_dir + "/exit_code"
-        proc = self._compose_exec(
-            "mkdir -p "
-            + shlex.quote(capture_dir)
-            + " && { timeout "
+        captured_command = (
+            "timeout "
             + shlex.quote(str(timeout_seconds))
             + " sh -lc "
             + shlex.quote(command)
@@ -333,12 +336,36 @@ class DockerCommandFileBridge:
             + shlex.quote(stdout_path)
             + " 2> "
             + shlex.quote(stderr_path)
-            + "; command_rc=$?; printf '%s\\n' \"$command_rc\" > "
-            + shlex.quote(exit_code_path)
-            + "; }",
+        )
+        started_at = time.monotonic()
+        proc = self._compose_exec(
+            wrap_container_command_with_exit_status(
+                captured_command,
+                exit_code_path,
+            ),
             cwd=cwd,
             timeout_seconds=timeout_seconds,
         )
+        deadline = started_at + timeout_seconds + 2
+        exit_code_rc = 1
+        exit_code_bytes = b""
+        exit_code_copy_stderr = b"container exit status capture unavailable"
+        captured_exit_code = None
+        while captured_exit_code is None:
+            remaining = deadline - time.monotonic()
+            exit_code_rc, exit_code_bytes, exit_code_copy_stderr = (
+                self._read_container_file_via_copy(
+                    exit_code_path,
+                    max_bytes=16,
+                    timeout_seconds=max(1, min(5, int(max(remaining, 1)))),
+                )
+            )
+            if exit_code_rc == 0:
+                captured_exit_code = parse_container_exit_status(exit_code_bytes)
+            if captured_exit_code is None:
+                if remaining <= 0:
+                    break
+                time.sleep(min(0.5, max(0.0, remaining)))
         stdout_rc, stdout_bytes, stdout_copy_stderr = (
             self._read_container_file_via_copy(
                 stdout_path,
@@ -353,13 +380,6 @@ class DockerCommandFileBridge:
                 timeout_seconds=timeout_seconds,
             )
         )
-        exit_code_rc, exit_code_bytes, exit_code_copy_stderr = (
-            self._read_container_file_via_copy(
-                exit_code_path,
-                max_bytes=16,
-                timeout_seconds=timeout_seconds,
-            )
-        )
         self._remove_container_path(
             capture_dir,
             recursive=True,
@@ -369,12 +389,6 @@ class DockerCommandFileBridge:
             stdout_bytes, limit=MAX_CAPTURE_BYTES
         )
         stderr_source = stderr_bytes
-        try:
-            captured_exit_code = int(exit_code_bytes.decode("ascii").strip())
-            if not 0 <= captured_exit_code <= 255:
-                raise ValueError
-        except (UnicodeDecodeError, ValueError):
-            captured_exit_code = None
         if (
             proc.returncode != 0
             or stdout_rc != 0
@@ -387,7 +401,7 @@ class DockerCommandFileBridge:
                 + stderr_copy_stderr
                 + exit_code_copy_stderr
             )
-        if exit_code_rc == 0 and captured_exit_code is None:
+        if captured_exit_code is None:
             stderr_source += b"container exit status capture invalid\n"
         stderr, stderr_truncated = _bounded_text(
             stderr_source, limit=MAX_CAPTURE_BYTES
