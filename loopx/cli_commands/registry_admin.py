@@ -11,6 +11,7 @@ from ..agent_registry import (
 from ..configure_goal import configure_goal, render_configure_goal_markdown
 from ..global_registry import render_global_sync_markdown, sync_project_registry_to_global
 from ..history import load_registry
+from ..orchestration import EXPLORE_HARNESS_PROFILES
 from ..paths import DEFAULT_RUNTIME_ROOT, global_registry_path, resolve_runtime_root
 from ..project_uninstall import render_project_uninstall_markdown, uninstall_project
 from ..registry_writability import probe_registry_write_path
@@ -316,6 +317,25 @@ def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> 
         help="Clear allowed child-agent domains.",
     )
     configure_goal_parser.add_argument(
+        "--explore-harness-enabled",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Enable or disable analysis-only explore planning for this goal. "
+            "This does not grant child-agent spawn permission."
+        ),
+    )
+    configure_goal_parser.add_argument(
+        "--explore-harness-profile",
+        choices=EXPLORE_HARNESS_PROFILES,
+        help="Pin the explore planner profile on this goal's orchestration boundary.",
+    )
+    configure_goal_parser.add_argument(
+        "--clear-explore-harness-profile",
+        action="store_true",
+        help="Remove the goal-pinned explore profile while preserving the opt-in bit.",
+    )
+    configure_goal_parser.add_argument(
         "--registered-agent",
         dest="registered_agents",
         action="append",
@@ -578,6 +598,9 @@ def handle_registry_admin_command(
                 max_children=args.max_children,
                 allowed_domains=args.allowed_domain,
                 clear_allowed_domains=bool(args.clear_allowed_domains),
+                explore_harness_enabled=args.explore_harness_enabled,
+                explore_harness_profile=args.explore_harness_profile,
+                clear_explore_harness_profile=bool(args.clear_explore_harness_profile),
                 registered_agents=args.registered_agents,
                 clear_registered_agents=bool(args.clear_registered_agents),
                 primary_agent=args.primary_agent,

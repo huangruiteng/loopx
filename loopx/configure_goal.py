@@ -15,6 +15,7 @@ from .agent_registry import normalize_registered_agents, primary_agent_id_for_go
 from .control_plane import compact_control_plane_policy, control_plane_policy_summary
 from .orchestration import (
     DEFAULT_ORCHESTRATION_MODE,
+    EXPLORE_HARNESS_PROFILES,
     MULTI_SUBAGENT_ORCHESTRATION_MODE,
     compact_orchestration_policy,
     orchestration_policy_summary,
@@ -204,6 +205,9 @@ def configure_goal(
     max_children: int | None = None,
     allowed_domains: list[str] | None = None,
     clear_allowed_domains: bool = False,
+    explore_harness_enabled: bool | None = None,
+    explore_harness_profile: str | None = None,
+    clear_explore_harness_profile: bool = False,
     registered_agents: list[str] | None = None,
     clear_registered_agents: bool = False,
     primary_agent: str | None = None,
@@ -225,6 +229,10 @@ def configure_goal(
         raise FileNotFoundError(f"registry file does not exist: {registry_path}")
     if clear_allowed_domains and allowed_domains:
         raise ValueError("--clear-allowed-domains cannot be combined with --allowed-domain")
+    if clear_explore_harness_profile and explore_harness_profile:
+        raise ValueError(
+            "--clear-explore-harness-profile cannot be combined with --explore-harness-profile"
+        )
     if clear_registered_agents and registered_agents:
         raise ValueError("--clear-registered-agents cannot be combined with --registered-agent")
     if clear_primary_agent and primary_agent:
@@ -260,6 +268,13 @@ def configure_goal(
             "--multi-subagent-feature cannot be combined with --orchestration-mode or --spawn-allowed; "
             "use --max-children/--allowed-domain for bounded feature settings"
         )
+    if explore_harness_profile is not None:
+        explore_harness_profile = str(explore_harness_profile).strip().lower().replace("_", "-")
+        if explore_harness_profile not in EXPLORE_HARNESS_PROFILES:
+            raise ValueError(
+                "--explore-harness-profile must be one of: "
+                + ", ".join(EXPLORE_HARNESS_PROFILES)
+            )
 
     quota_compute = _positive_number(quota_compute, field="quota_compute")
     quota_window_hours = _positive_number(quota_window_hours, field="quota_window_hours")
@@ -317,6 +332,9 @@ def configure_goal(
         or max_children is not None
         or allowed_domains is not None
         or clear_allowed_domains
+        or explore_harness_enabled is not None
+        or explore_harness_profile is not None
+        or clear_explore_harness_profile
     ):
         spawn_policy = goal.get("spawn_policy") if isinstance(goal.get("spawn_policy"), dict) else {}
         if multi_subagent_feature == "enabled":
@@ -344,6 +362,26 @@ def configure_goal(
             spawn_policy["allowed_domains"] = []
         elif allowed_domains is not None:
             spawn_policy["allowed_domains"] = allowed_domains
+        if (
+            explore_harness_enabled is not None
+            or explore_harness_profile is not None
+            or clear_explore_harness_profile
+        ):
+            explore_harness = (
+                spawn_policy.get("explore_harness")
+                if isinstance(spawn_policy.get("explore_harness"), dict)
+                else {}
+            )
+            if explore_harness_enabled is not None:
+                explore_harness["enabled"] = explore_harness_enabled
+            if clear_explore_harness_profile:
+                explore_harness.pop("profile", None)
+            elif explore_harness_profile is not None:
+                explore_harness["profile"] = explore_harness_profile
+            if explore_harness:
+                spawn_policy["explore_harness"] = explore_harness
+            else:
+                spawn_policy.pop("explore_harness", None)
         goal["spawn_policy"] = spawn_policy
 
     if waiting_on is not None:
@@ -430,6 +468,10 @@ def configure_goal(
         "orchestration_summary": orchestration_policy_summary(after.get("orchestration")),
         "feature_summary": {
             "multi_subagent": _multi_subagent_feature_status(after.get("orchestration") or {}),
+            "explore_harness": deepcopy(
+                (after.get("orchestration") or {}).get("explore_harness")
+                or {"enabled": False}
+            ),
             "default": "off",
             "configuration_entry": "multi_subagent_feature",
         },
@@ -464,6 +506,12 @@ def render_configure_goal_markdown(payload: dict[str, Any]) -> str:
     feature_summary = payload.get("feature_summary")
     if isinstance(feature_summary, dict):
         lines.append(f"- feature_multi_subagent: `{feature_summary.get('multi_subagent')}`")
+        harness = feature_summary.get("explore_harness")
+        if isinstance(harness, dict):
+            harness_state = "on" if harness.get("enabled") else "off"
+            if harness.get("profile"):
+                harness_state += f"({harness.get('profile')})"
+            lines.append(f"- feature_explore_harness: `{harness_state}`")
     migration = payload.get("heartbeat_prompt_migration")
     if isinstance(migration, dict):
         lines.append(f"- heartbeat_prompt_migration: {migration.get('action')}")

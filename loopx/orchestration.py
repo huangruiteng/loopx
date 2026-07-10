@@ -9,6 +9,11 @@ VALID_ORCHESTRATION_MODES = {
     DEFAULT_ORCHESTRATION_MODE,
     MULTI_SUBAGENT_ORCHESTRATION_MODE,
 }
+EXPLORE_HARNESS_PROFILES = (
+    "generic",
+    "adaptive-resilient",
+    "moe-router",
+)
 
 
 def _int_number(value: Any, *, default: int = 0) -> int:
