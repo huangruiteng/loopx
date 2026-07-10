@@ -83,6 +83,10 @@ from examples.skillsbench_fixtures import (  # noqa: E402
     write_official_skillsbench_unclassified_compose_failure,
     write_official_skillsbench_volume_mount_failure,
 )
+from loopx.benchmark_adapters.skillsbench_codex_runtime import (  # noqa: E402
+    LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION,
+    materialize_local_codex_participant,
+)
 from scripts.skillsbench_automation_loop import (  # noqa: E402
     CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD,
     CODEX_ACP_RUNTIME_DEPS_SETUP_CMD,
@@ -113,7 +117,6 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DOCKER_UV_BOOTSTRAP_MIRROR_BEGIN,
     DOCKER_HOST_CPU_ENV,
     HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC,
-    LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION,
     PRODUCT_MODE_MIN_FORMAL_MAX_ROUNDS,
     PRODUCT_MODE_CASE_STATE_PATH,
     PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION,
@@ -157,7 +160,6 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     append_history,
     build_runner_failure_compact,
     main as skillsbench_automation_loop_main,
-    materialize_local_codex_participant,
     inspect_skillsbench_worker_handshake,
     parse_args,
     product_mode_case_state_seed_text,

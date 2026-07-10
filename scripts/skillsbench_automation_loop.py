@@ -116,7 +116,7 @@ from loopx.benchmark_adapters.skillsbench_verifier_bootstrap import (  # noqa: E
 from loopx.benchmark_adapters.skillsbench_task_source import (  # noqa: E402
     classify_missing_task_source,
 )
-from loopx.benchmark_adapters import skillsbench_proxy_runtime as proxy_runtime, skillsbench_runner_source as runner_source, skillsbench_uv_cache as uv_cache  # noqa: E402
+from loopx.benchmark_adapters import skillsbench_codex_runtime as codex_runtime, skillsbench_proxy_runtime as proxy_runtime, skillsbench_runner_source as runner_source, skillsbench_uv_cache as uv_cache  # noqa: E402
 from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER,
     SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT,
@@ -685,130 +685,6 @@ def _host_local_proxy_endpoint_probe(
         "status": "not_configured",
         "raw_proxy_url_recorded": False,
     }
-
-
-def materialize_local_codex_participant(
-    *,
-    codex_bin: str = "codex",
-    timeout_sec: int = 120,
-) -> dict[str, Any]:
-    """Run a fixed local Codex CLI ping and return a compact materialization proof.
-
-    This proves only the local CLI participant. It does not claim that the
-    SkillsBench A2A/worker handshake is wired, and it deliberately drops raw
-    JSONL events, stderr, prompts, paths, and credentials.
-    """
-
-    resolved = shutil.which(codex_bin) if os.sep not in codex_bin else codex_bin
-    if not resolved or (os.sep in str(resolved) and not Path(resolved).exists()):
-        return {
-            "schema_version": LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION,
-            "ready": False,
-            "first_blocker": "local_codex_cli_not_on_path",
-            "codex_cli_available": False,
-            "codex_cli_invoked": False,
-            "raw_output_recorded": False,
-            "raw_event_jsonl_recorded": False,
-            "credential_values_recorded": False,
-            "host_paths_recorded": False,
-            "a2a_worker_handshake_ready": False,
-        }
-
-    with tempfile.TemporaryDirectory(prefix="gh-skillsbench-codex-") as tmp:
-        tmpdir = Path(tmp)
-        output_path = tmpdir / "last-message.txt"
-        prompt = (
-            "Respond with exactly this single line and nothing else: "
-            f"{LOCAL_CODEX_PARTICIPANT_READY_MARKER}"
-        )
-        cmd = [
-            resolved,
-            "exec",
-            "--ephemeral",
-            "--skip-git-repo-check",
-            "--sandbox",
-            "read-only",
-            "-C",
-            str(tmpdir),
-            "--output-last-message",
-            str(output_path),
-            "--json",
-            prompt,
-        ]
-        try:
-            proc = subprocess.run(
-                cmd,
-                cwd=tmpdir,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=timeout_sec,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:
-            return {
-                "schema_version": LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION,
-                "ready": False,
-                "first_blocker": "local_codex_cli_participant_timeout",
-                "codex_cli_available": True,
-                "codex_cli_invoked": True,
-                "exit_code": None,
-                "timeout_sec": timeout_sec,
-                "stdout_len_bucket": _compact_size_bucket(
-                    len(exc.stdout or "")
-                    if isinstance(exc.stdout, str)
-                    else len(exc.stdout or b"")
-                ),
-                "stderr_len_bucket": _compact_size_bucket(
-                    len(exc.stderr or "")
-                    if isinstance(exc.stderr, str)
-                    else len(exc.stderr or b"")
-                ),
-                "raw_output_recorded": False,
-                "raw_event_jsonl_recorded": False,
-                "credential_values_recorded": False,
-                "host_paths_recorded": False,
-                "a2a_worker_handshake_ready": False,
-            }
-
-        marker = ""
-        if output_path.exists():
-            try:
-                marker = output_path.read_text(encoding="utf-8").strip()
-            except OSError:
-                marker = ""
-        stdout = proc.stdout or ""
-        stderr = proc.stderr or ""
-        event_count = len([line for line in stdout.splitlines() if line.strip()])
-        ready = proc.returncode == 0 and marker == LOCAL_CODEX_PARTICIPANT_READY_MARKER
-        if ready:
-            first_blocker = "local_codex_cli_participant_ready"
-        elif proc.returncode != 0:
-            first_blocker = "local_codex_cli_participant_exit_nonzero"
-        else:
-            first_blocker = "local_codex_cli_participant_marker_missing"
-        return {
-            "schema_version": LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION,
-            "ready": ready,
-            "first_blocker": first_blocker,
-            "codex_cli_available": True,
-            "codex_cli_invoked": True,
-            "exit_code": proc.returncode,
-            "marker_matched": marker == LOCAL_CODEX_PARTICIPANT_READY_MARKER,
-            "json_event_count": event_count,
-            "stdout_len_bucket": _compact_size_bucket(len(stdout)),
-            "stderr_len_bucket": _compact_size_bucket(len(stderr)),
-            "raw_output_recorded": False,
-            "raw_event_jsonl_recorded": False,
-            "credential_values_recorded": False,
-            "host_paths_recorded": False,
-            "a2a_worker_handshake_ready": False,
-            "next_blocker_after_ready": (
-                "skillsbench_local_acp_relay_missing"
-                if ready
-                else first_blocker
-            ),
-        }
 
 
 def _prepend_skillsbench_site_packages(skillsbench_root: Path) -> None:
@@ -2939,6 +2815,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
             compact[field] = value[field]
     compact.update(runner_source.compact_runner_source_public_fields(value))
     compact.update(proxy_runtime.compact_base_image_prewarm_fields(value))
+    compact.update(codex_runtime.compact_public_fields(value))
     target_keys = value.get("host_local_acp_target_env_keys")
     if isinstance(target_keys, list):
         compact["host_local_acp_target_env_keys"] = [
@@ -4363,6 +4240,10 @@ def _runner_prerequisite_failure_attribution(
     ):
         label = "skillsbench_codex_acp_runtime_dependency_preflight_failed"
         return label, label, [label, "skillsbench_runner_setup_error"]
+
+    codex_preflight_failure = codex_runtime.failure_attribution(value)
+    if codex_preflight_failure:
+        return codex_preflight_failure
 
     if value.get("host_local_acp_launch_status") == "failed":
         label = "skillsbench_host_local_acp_launch_failed"
@@ -16725,6 +16606,15 @@ async def _async_main_with_observable_handle(
             "task missing from canonical tasks source before full case run"
         )
 
+    codex_runtime.run_preflight_if_required(
+        args,
+        plan,
+        writeback=lambda: (
+            _write_public_runner_config(plan),
+            _write_public_runner_prerequisites(plan),
+        ),
+    )
+
     if (
         _codex_api_egress_preflight_required(args)
         and not args.reduce_only
@@ -17477,7 +17367,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
         return 2
     if args.local_codex_participant_ping:
-        payload = materialize_local_codex_participant(
+        payload = codex_runtime.materialize_local_codex_participant(
             codex_bin=args.local_codex_bin,
             timeout_sec=args.local_codex_ping_timeout_sec,
         )

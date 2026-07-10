@@ -136,6 +136,7 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
             "SKILLSBENCH_EXPECTED_LOOPX_GIT_HEAD": "abc1234",
             "SKILLSBENCH_DOCKER_PROXY_HOST": "host.docker.internal",
             "SKILLSBENCH_DOCKER_API_VERSION": "1.43",
+            "SKILLSBENCH_REMOTE_CODEX_BIN": "/remote/bin/codex",
             "SKILLSBENCH_RUN_STAMP": "20260709T000000CST",
         }
     )
@@ -164,6 +165,8 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
     assert "DOCKER_API_VERSION=1.43" in output, output
     assert "--codex-api-reverse-tunnel-proxy http://127.0.0.1:18186" in output, output
     assert "--benchmark-egress-proxy-mode require" in output, output
+    assert "--local-codex-bin /remote/bin/codex" in output, output
+    assert "remote_codex_bin_mode=explicit" in output, output
     assert "--append-history" not in output, output
 
 
