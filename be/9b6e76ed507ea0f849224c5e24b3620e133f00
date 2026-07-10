@@ -1,0 +1,47 @@
+docs/capabilities/issue-fix/README.md
+  s_9a5a2bd944fdcb::t_0d67672bc247bf 173,195-205,231-235,276,400-401,557
+docs/capabilities/issue-fix/README.zh-CN.md
+  s_9a5a2bd944fdcb::t_6d800e5ce78d2d 156,176-182,206-209,246,359-360,502
+docs/capabilities/issue-fix/protocols/issue-fix-reviewer-request-v0.md
+  s_9a5a2bd944fdcb::t_9f32c3471681d0 4-7,19-23,26-30,40-46,63-64,88,91-92,96-102,104-107,119-122,133-135
+examples/bootstrap-command-pack-smoke.py
+  s_9a5a2bd944fdcb::t_19fed83e281972 142-144,185-187
+examples/issue-fix-capability-guide-smoke.py
+  s_9a5a2bd944fdcb::t_aa8370c2219fb4 99-100,121-122,147-148
+examples/issue-fix-reviewer-request-smoke.py
+  s_9a5a2bd944fdcb::t_88ed7864f93d0c 2,65-69,72-88,104-106,111-113,116,122,129-138,192-194,213-215,221-310,314,328
+loopx/bootstrap_command_pack.py
+  s_9a5a2bd944fdcb::t_09c51b86281932 334-335,371
+loopx/capabilities/catalog.py
+  s_9a5a2bd944fdcb::t_41653a39728de3 50-51,176
+loopx/capabilities/issue_fix/cli.py
+  s_9a5a2bd944fdcb::t_322cd466bffa3d 509-510,563-564
+loopx/capabilities/issue_fix/reviewer_request.py
+  s_32e2a9a204a8e4::t_d77802ed0d016e 20-30,67,93-114,119-120,142,166,169-173,177-202,204-206,210-240,275,306,312,330-334,350-372,391-393,396,403-411,474-476,488-489,509,516-603,608,610-612,623-627,636-640,713-750,772-775
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "be9b6e76ed507ea0f849224c5e24b3620e133f00",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
