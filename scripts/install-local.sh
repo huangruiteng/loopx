@@ -140,11 +140,14 @@ if [[ -d "$release_tmp/apps" ]]; then
     \( -name node_modules -o -name .next -o -name dist -o -name build -o -name coverage \) \
     -type d -prune -exec rm -rf {} +
 fi
-PYTHONPATH="$release_tmp${PYTHONPATH:+:$PYTHONPATH}" "${LOOPX_PYTHON:-python3}" -m loopx.release_manifest \
-  "$release_tmp" \
-  --release-id "$release_id" \
-  --source-root "$repo_root" \
-  --installed-at "$installed_at"
+(
+  cd "$release_tmp"
+  PYTHONPATH="$release_tmp" "${LOOPX_PYTHON:-python3}" -m loopx.release_manifest \
+    "$release_tmp" \
+    --release-id "$release_id" \
+    --source-root "$repo_root" \
+    --installed-at "$installed_at"
+)
 chmod +x "$release_tmp/scripts/loopx"
 if [[ -e "$release_dir" ]]; then
   rm -rf "$release_tmp"

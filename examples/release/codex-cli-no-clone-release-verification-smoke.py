@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -26,6 +28,17 @@ FIRST_RUN_COMMANDS = (
 
 def normalize(text: str) -> str:
     return " ".join(text.split())
+
+
+def package_version(root: Path) -> str:
+    match = re.search(
+        r'^__version__\s*=\s*"([^"]+)"$',
+        (root / "loopx" / "__init__.py").read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    if not match:
+        raise AssertionError(f"missing LoopX version in {root}")
+    return match.group(1)
 
 
 def run(
@@ -97,6 +110,18 @@ def assert_installed_release(
     }
     doctor = run([str(installed), "doctor"], env=runtime_env, cwd=fresh_repo)
     assert "ok: `True`" in doctor.stdout, doctor.stdout
+    doctor_payload = json.loads(
+        run(
+            [str(installed), "--format", "json", "doctor"],
+            env=runtime_env,
+            cwd=fresh_repo,
+        ).stdout
+    )
+    expected_version = package_version(release_dir)
+    manifest_package = doctor_payload["release_manifest"]["manifest"]["package"]
+    assert manifest_package["version"] == expected_version, manifest_package
+    assert manifest_package["version_tag"] == f"v{expected_version}", manifest_package
+    assert doctor_payload["install_freshness"]["manifest_package_version_matches_runtime"] is True, doctor_payload
 
     help_text = run([str(installed), "--help"], env=runtime_env, cwd=fresh_repo).stdout
     assert "loopx commands" in help_text, help_text
@@ -205,12 +230,24 @@ def main() -> None:
         home = tmp / "home"
         fake_bin = tmp / "fake-bin"
         fresh_repo = tmp / "public-fresh-project"
+        stale_checkout = tmp / "stale-loopx-checkout"
         releases_dir = home / ".local" / "share" / "loopx" / "releases"
         codex_called_marker = tmp / "codex-called"
         home.mkdir()
         fake_bin.mkdir()
         fresh_repo.mkdir()
         (fresh_repo / "README.md").write_text("# Public fresh project\n", encoding="utf-8")
+        shutil.copytree(REPO_ROOT / "loopx", stale_checkout / "loopx")
+        stale_init = stale_checkout / "loopx" / "__init__.py"
+        stale_init.write_text(
+            re.sub(
+                r'^__version__\s*=\s*"[^"]+"$',
+                '__version__ = "9.9.9"',
+                stale_init.read_text(encoding="utf-8"),
+                flags=re.MULTILINE,
+            ),
+            encoding="utf-8",
+        )
 
         fake_codex = fake_bin / "codex"
         fake_codex.write_text(
@@ -235,6 +272,7 @@ def main() -> None:
                 add_tree(tar, REPO_ROOT, name)
 
         env = os.environ.copy()
+        env.pop("PYTHONPATH", None)
         env.update(
             {
                 "HOME": str(home),
@@ -248,7 +286,7 @@ def main() -> None:
                 "PATH": f"{fake_bin}:{env.get('PATH', '')}",
             }
         )
-        install = run(["bash", str(install_script)], env=env, cwd=tmp)
+        install = run(["bash", str(install_script)], env=env, cwd=stale_checkout)
         assert "loopx installed locally" in install.stdout, install.stdout
         assert "canary executable: skipped" in install.stdout, install.stdout
 
