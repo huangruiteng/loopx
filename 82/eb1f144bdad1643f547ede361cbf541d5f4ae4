@@ -1,0 +1,35 @@
+docs/capabilities/issue-fix/README.md
+  s_9a5a2bd944fdcb::t_cb5ee1fc29d502 524-527,556-562,616
+docs/capabilities/issue-fix/README.zh-CN.md
+  s_9a5a2bd944fdcb::t_f81278ee7e75c0 465-467,491-496,548
+docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md
+  s_32e2a9a204a8e4::t_f4c853729b6061 71-73,83-85,180
+docs/lark-kanban-control-plane-adapter.md
+  s_9a5a2bd944fdcb::t_068251291e7a5e 138-142,176-177,184-188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "82eb1f144bdad1643f547ede361cbf541d5f4ae4",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
