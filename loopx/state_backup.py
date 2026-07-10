@@ -509,6 +509,7 @@ def render_state_backup_markdown(payload: dict[str, Any]) -> str:
         if isinstance(summary.get("contained_overlap_stats"), dict)
         else {}
     )
+    logical_source_bytes = summary.get("logical_source_bytes", total.get("bytes"))
     lines = [
         "# LoopX State Backup",
         "",
@@ -521,8 +522,8 @@ def render_state_backup_markdown(payload: dict[str, Any]) -> str:
         f"- Included targets: `{summary.get('included_target_count')}`",
         f"- Missing targets: `{summary.get('missing_target_count')}`",
         f"- Total paths: `{total.get('paths')}`",
-        f"- Logical source bytes (before compression): `{summary.get('logical_source_bytes')}`",
-        f"- Contained route overlap bytes: `{overlap.get('logical_bytes')}`",
+        f"- Logical source bytes (before compression): `{logical_source_bytes}`",
+        f"- Contained target overlap bytes: `{overlap.get('logical_bytes')}`",
         f"- Unique source bytes (estimate): `{overlap.get('unique_source_bytes_estimate')}`",
         f"- Recommended action: {payload.get('recommended_action')}",
     ]
