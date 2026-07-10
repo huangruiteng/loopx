@@ -1,0 +1,23 @@
+docs/guides/getting-started.md
+  s_9a5a2bd944fdcb::t_4f54f0e6549267 153-156
+loopx/state_backup.py
+  s_9a5a2bd944fdcb::t_25a5a8d2e0cbe4 512,525-526
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5f4b8ea22eefbb37357eb54d75e606930d6f4f3f",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
