@@ -10,6 +10,8 @@ Current capability paths:
   caller-approved local issue branches and PR-review evidence.
 - [content-ops](content-ops/README.md): collect public/private content signals
   into reviewable source, angle, draft, feedback, and publish-gate packets.
+- [lark-digital-clone](lark-digital-clone/README.md): turn Lark message scans
+  into owner-reviewed reply drafts, weekly material, and candidate LoopX todos.
 - [value-connectors](value-connectors/README.md): install and run public-safe
   external-value connector starters, beginning with body-free GitHub public
   channel metadata probes, plus gated candidate profiles such as X/browser
