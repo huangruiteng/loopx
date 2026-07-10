@@ -6011,6 +6011,8 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "verifier_uv_bootstrap_mirror_patch_required",
         "verifier_uv_bootstrap_mirror_patch_applied",
         "verifier_uv_bootstrap_pip_fallback_patch_applied",
+        "verifier_script_executable_required",
+        "verifier_script_executable_ready",
         "benchmark_egress_proxy_verifier_env_patch_required",
         "benchmark_egress_proxy_verifier_env_patch_applied",
         "benchmark_egress_proxy_verifier_env_raw_proxy_recorded",
@@ -6085,7 +6087,7 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         )
     except OSError:
         dockerfile_text = ""
-    verifier = prepared_task / "verifier" / "test.sh"
+    verifier = proxy_runtime.skillsbench_verifier_script(prepared_task)
     try:
         verifier_text = (
             verifier.read_text(encoding="utf-8", errors="replace")
@@ -6169,6 +6171,10 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
             and not (prepared_task / "environment" / "skills").exists()
         ),
         "original_task_mutated": False,
+        "verifier_script_executable_required": verifier.is_file(),
+        "verifier_script_executable_ready": (
+            verifier.is_file() and os.access(verifier, os.X_OK)
+        ),
     }
     dockerfile_uv_versions = _dockerfile_uv_bootstrap_versions(dockerfile_text)
     if DOCKER_UV_BOOTSTRAP_MIRROR_BEGIN in dockerfile_text:
@@ -8133,6 +8139,18 @@ def ensure_empty_skills_build_context(dockerfile: Path) -> bool:
     return True
 
 
+def ensure_verifier_script_executable(verifier: Path) -> bool:
+    """Ensure a staged verifier remains executable after atomic text patches."""
+
+    if not verifier.is_file():
+        return False
+    try:
+        verifier.chmod(verifier.stat().st_mode | 0o111)
+        return bool(verifier.stat().st_mode & 0o111)
+    except OSError:
+        return False
+
+
 def stage_task_for_sandbox(
     *,
     task_path: Path,
@@ -8188,6 +8206,8 @@ def stage_task_for_sandbox(
         "verifier_uv_bootstrap_mirror_patch_required": False,
         "verifier_uv_bootstrap_mirror_patch_applied": False,
         "verifier_uv_bootstrap_pip_fallback_patch_applied": False,
+        "verifier_script_executable_required": False,
+        "verifier_script_executable_ready": False,
         "benchmark_egress_proxy_verifier_env_patch_required": False,
         "benchmark_egress_proxy_verifier_env_patch_applied": False,
         "benchmark_egress_proxy_verifier_env_key_count": 0,
@@ -8253,8 +8273,9 @@ def stage_task_for_sandbox(
         benchmark_egress_proxy_env
     )
     verifier_script = proxy_runtime.skillsbench_verifier_script(task_path)
+    verifier_script_present = verifier_script.is_file()
     needs_verifier_proxy_env_patch = bool(
-        verifier_proxy_exports and verifier_script.is_file()
+        verifier_proxy_exports and verifier_script_present
     )
     needs_dockerfile_proxy_env_patch = bool(
         verifier_proxy_exports and (task_path / "environment" / "Dockerfile").exists()
@@ -8314,6 +8335,7 @@ def stage_task_for_sandbox(
     metadata["verifier_uv_bootstrap_mirror_patch_required"] = (
         needs_verifier_uv_mirror_patch
     )
+    metadata["verifier_script_executable_required"] = verifier_script_present
     metadata["benchmark_egress_proxy_verifier_env_patch_required"] = (
         needs_verifier_proxy_env_patch
     )
@@ -8345,6 +8367,7 @@ def stage_task_for_sandbox(
         and not needs_maven_mirror_patch
         and not needs_runtime_tools_patch
         and not needs_verifier_uv_mirror_patch
+        and not verifier_script_present
         and not needs_verifier_proxy_env_patch
         and not needs_dockerfile_proxy_env_patch
     ):
@@ -8424,6 +8447,9 @@ def stage_task_for_sandbox(
         staged_verifier_script,
         proxy_env=benchmark_egress_proxy_env,
     )
+    verifier_script_executable_ready = ensure_verifier_script_executable(
+        staged_verifier_script
+    )
     resource_cap_patch = patch_task_cpu_cap_for_local_docker(
         staged_path / "task.toml",
         host_cpus=host_cpus,
@@ -8489,6 +8515,7 @@ def stage_task_for_sandbox(
             "codex_acp_runtime_tools_patch_applied": runtime_tools_patched,
             "empty_skills_build_context_required": empty_skills_context_required,
             "empty_skills_build_context_created": empty_skills_context_created,
+            "verifier_script_executable_ready": verifier_script_executable_ready,
             "app_skills_mount_target": "/app/skills",
             "original_task_mutated": False,
             "task_skills_removed": task_skills_removed,
@@ -8515,6 +8542,13 @@ def stage_task_for_sandbox(
         metadata[key] = value
     metadata.update(dockerfile_proxy_metadata)
     metadata.update(verifier_proxy_metadata)
+    if (
+        metadata.get("verifier_script_executable_required") is True
+        and metadata.get("verifier_script_executable_ready") is not True
+    ):
+        raise SkillsBenchSetupPreflightBlocked(
+            "skillsbench staged verifier script is not executable"
+        )
     if (
         metadata.get("benchmark_egress_proxy_verifier_env_patch_required") is True
         and metadata.get("benchmark_egress_proxy_verifier_env_patch_applied")

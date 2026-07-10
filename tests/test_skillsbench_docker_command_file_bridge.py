@@ -79,6 +79,7 @@ def test_read_file_uses_bounded_docker_copy(monkeypatch, capsys) -> None:
 
 def test_exec_and_probe_do_not_depend_on_attached_stdout(monkeypatch, capsys) -> None:
     bridge = _bridge()
+    exit_codes = iter((b"0", b"7"))
 
     def fake_compose_exec(_shell_command, **_kwargs):
         return subprocess.CompletedProcess([], 0, b"", b"")
@@ -88,6 +89,8 @@ def test_exec_and_probe_do_not_depend_on_attached_stdout(monkeypatch, capsys) ->
             return 0, b"visible output\n", b""
         if path.endswith("/stderr"):
             return 0, b"", b""
+        if path.endswith("/exit_code"):
+            return 0, next(exit_codes), b""
         return 0, MARKER_CONTENT.encode(), b""
 
     monkeypatch.setattr(bridge, "_compose_exec", fake_compose_exec)
@@ -101,3 +104,34 @@ def test_exec_and_probe_do_not_depend_on_attached_stdout(monkeypatch, capsys) ->
     operations, blocker = bridge.probe(5)
     assert blocker is None
     assert all(operation["status"] == "ok" for operation in operations)
+
+
+def test_exec_recovers_container_exit_code_when_compose_reports_zero(
+    monkeypatch, capsys
+) -> None:
+    bridge = _bridge()
+    compose_commands: list[str] = []
+
+    def fake_compose_exec(shell_command, **_kwargs):
+        compose_commands.append(shell_command)
+        return subprocess.CompletedProcess([], 0, b"", b"")
+
+    def fake_read(path, **_kwargs):
+        if path.endswith("/stdout"):
+            return 0, b"", b""
+        if path.endswith("/stderr"):
+            return 0, b"command failed\n", b""
+        if path.endswith("/exit_code"):
+            return 0, b"7\n", b""
+        raise AssertionError(path)
+
+    monkeypatch.setattr(bridge, "_compose_exec", fake_compose_exec)
+    monkeypatch.setattr(bridge, "_read_container_file_via_copy", fake_read)
+
+    assert bridge._run_exec({"cwd": "/app", "command": "exit 7"}, 5) == 0
+    response = json.loads(capsys.readouterr().out)
+    assert response["ok"] is False
+    assert response["first_blocker"] == "exec_failed"
+    assert response["exit_code"] == 7
+    assert "command_rc=$?" in compose_commands[0]
+    assert "/exit_code" in compose_commands[0]

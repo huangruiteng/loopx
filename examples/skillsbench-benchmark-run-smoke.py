@@ -6207,10 +6207,14 @@ def test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror() 
             metadata
         )
         assert metadata["verifier_uv_bootstrap_version"] == "0.9.7", metadata
+        assert metadata["verifier_script_executable_required"] is True, metadata
+        assert metadata["verifier_script_executable_ready"] is True, metadata
         assert metadata["verifier_uv_bootstrap_mirror_host"] == (
             DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
         ), metadata
         assert verifier.read_text(encoding="utf-8") == original_verifier
+        assert not os.access(verifier, os.X_OK), verifier
+        assert os.access(staged_path / "tests" / "test.sh", os.X_OK), staged_path
         staged_verifier = (staged_path / "tests" / "test.sh").read_text(
             encoding="utf-8"
         )
@@ -7284,6 +7288,8 @@ def test_skillsbench_task_staging_metadata_is_compacted() -> None:
             "verifier_uv_bootstrap_risk_detected": True,
             "verifier_uv_bootstrap_mirror_patch_required": True,
             "verifier_uv_bootstrap_mirror_patch_applied": True,
+            "verifier_script_executable_required": True,
+            "verifier_script_executable_ready": True,
             "verifier_uv_bootstrap_version": "0.9.7",
             "verifier_uv_bootstrap_mirror_host": (
                 DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
@@ -7325,6 +7331,8 @@ def test_skillsbench_task_staging_metadata_is_compacted() -> None:
             "verifier_uv_bootstrap_risk_detected": True,
             "verifier_uv_bootstrap_mirror_patch_required": True,
             "verifier_uv_bootstrap_mirror_patch_applied": True,
+            "verifier_script_executable_required": True,
+            "verifier_script_executable_ready": True,
             "verifier_uv_bootstrap_version": "0.9.7",
             "verifier_uv_bootstrap_mirror_host": (
                 DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
