@@ -530,6 +530,7 @@ def _public_artifact_sync_contract(args: argparse.Namespace) -> dict[str, Any]:
         requested=_public_artifact_sync_requested(args),
         ledger_requested=bool(args.local_run_ledger_path),
         aggregate_requested=bool(args.local_current_aggregate_path),
+        ledger_catchup_requested=bool(args.local_ledger_catchup_root),
     )
 
 
@@ -555,6 +556,10 @@ def _sync_remote_public_artifacts(args: argparse.Namespace) -> dict[str, Any]:
         target_run_group_contains=list(args.local_target_run_group_contains or []),
         target_backfill_run_group_contains=list(
             args.local_target_backfill_run_group_contains or []
+        ),
+        ledger_catchup_root=args.local_ledger_catchup_root,
+        ledger_catchup_run_group_contains=list(
+            args.local_ledger_catchup_run_group_contains or []
         ),
         repo_root=REPO_ROOT,
     )
@@ -1128,6 +1133,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--local-run-group-id", default="")
+    parser.add_argument(
+        "--local-ledger-catchup-root",
+        default="",
+        help=(
+            "Optional local public artifact root laid out as "
+            "<run-group-id>/**/benchmark_run.compact.json. Missing terminal rows "
+            "are upserted before aggregation; raw artifacts are never read."
+        ),
+    )
+    parser.add_argument(
+        "--local-ledger-catchup-run-group-contains",
+        action="append",
+        default=[],
+        help=(
+            "Optional substring filter for catch-up run-group directories. "
+            "May be repeated."
+        ),
+    )
     parser.add_argument("--local-current-aggregate-path", default="")
     parser.add_argument("--local-canonical-case-ids-file", default="")
     parser.add_argument("--local-benchmark-id", default="skillsbench@1.1")
@@ -1185,6 +1208,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 parser.error("--remote-public-artifact-glob must be relative and bounded")
     if args.local_run_ledger_path and not _public_artifact_sync_requested(args):
         parser.error("--local-run-ledger-path requires artifact sync")
+    if args.local_ledger_catchup_root and not args.local_run_ledger_path:
+        parser.error("--local-ledger-catchup-root requires --local-run-ledger-path")
     if args.local_current_aggregate_path:
         if not args.local_run_ledger_path or not args.local_canonical_case_ids_file:
             parser.error(
