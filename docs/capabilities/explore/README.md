@@ -153,6 +153,22 @@ spawn_policy:
     profile: generic      # optional pin; overrides the CLI-requested profile
 ```
 
+Use the incremental configuration path instead of editing the registry:
+
+```bash
+loopx configure-goal \
+  --goal-id <id> \
+  --explore-harness-enabled \
+  --explore-harness-profile adaptive-resilient \
+  --execute
+```
+
+This is analysis-only while spawn permission remains disabled. Use
+`--no-explore-harness-enabled` to close the gate again, or
+`--clear-explore-harness-profile` to let each planner request its own profile.
+Preview without `--execute` shows the exact orchestration delta and preserves
+unrelated `spawn_policy` keys.
+
 The planner folds this boundary into an `orchestration_gate` section of the
 packet and behaves as follows:
 
@@ -205,6 +221,11 @@ It deliberately does not control segment duration, does not force N=10, does
 not saturate every available branch, and does not enable the earlier
 coverage-floor calibration arm by default. Those remain runner or future-experiment decisions, not part of
 the generalized harness design.
+
+Retry/backoff and infrastructure cooldown are planner metadata for an external
+runner; the generic runtime does not enforce them. Runtime results expose this
+boundary explicitly instead of implying that selecting the profile activates a
+hidden retry loop.
 
 ```text
 loopx explore worker-branch-plan \
@@ -273,6 +294,25 @@ Without `--router-state` the profile still plans (router disabled, cold
 static scoring); passing state to a non-router profile is ignored, which
 keeps `adaptive-resilient` clean as the B-min ablation arm.
 
+### Runtime Restart And Item Failures
+
+`run_budget_arm` can write an atomic epoch-boundary checkpoint manifest.
+Restart is opt-in: start an arm with `resumable=True` (or an explicit
+`checkpoint_path`), then pass `resume=True` to restore completed epochs,
+novelty keys, router state, catalog consumption,
+cumulative metrics, coverage timestamps, and the next epoch. Missing, corrupt,
+or runtime-incompatible manifests fail closed with a concrete `ValueError`;
+loose rolling progress files are observability only and are never restart
+authority.
+
+Adapter exceptions default to the `record` item failure policy: the failed item
+becomes a zero-value structured observation and independent queue lanes keep
+running. Concurrency keys are released in every path. Pass
+`item_failure_policy="fatal"`, or set the adapter's `item_failure_policy`
+attribute to `"fatal"`, to retain exception propagation. These policies isolate
+work-item failures; they do not implement the planner profile's retry/backoff or
+cooldown guidance.
+
 ## Presentation Sink: Lark Mapping
 
 | LoopX concept | Lark surface |
@@ -332,6 +372,7 @@ operator permits the write.
 
 ```bash
 python3 examples/explore-result-layer-smoke.py
+python3 examples/explore-harness-runtime-resume-smoke.py
 ```
 
 The smoke proves the projection contract (folding, blocked reasons, tree,
