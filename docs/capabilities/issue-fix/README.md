@@ -165,6 +165,7 @@ loopx issue-fix reviewer-plan \
   --base-ref origin/main \
   --exclude-reviewer @pull-request-author \
   --exclude-author-name "PR Author Git Name" \
+  --reviewer-sources-json reviewer-sources.json \
   --execute \
   --format json
 ```
@@ -177,6 +178,7 @@ loopx issue-fix reviewer-request \
   --url https://github.com/owner/repo/pull/123 \
   --repo-path /path/to/approved/repo \
   --base-ref origin/main \
+  --reviewer-sources-json reviewer-sources.json \
   --execute \
   --format json
 ```
@@ -184,14 +186,19 @@ loopx issue-fix reviewer-request \
 The current evidence order is deliberately conservative:
 
 1. repository `CODEOWNERS` matches for each changed path;
-2. commit history for the exact changed path;
-3. nearest module-directory history when a new file has no usable path
-   history.
+2. caller-verified public maintainer maps whose most-specific path route names
+   a primary contact;
+3. commit history for the exact changed path;
+4. nearest module-directory history when a new file has no usable path
+   history;
+5. maintainer-map fallback or cross-module contacts when no scoped route
+   applies or the primary contact is excluded.
 
 The packet ranks candidates with source kinds, reason codes, changed-path
-coverage, history counts, recency, confidence, and whether a GitHub handle is
-actually requestable. It never captures commit email addresses, never records
-the local repo path, and `reviewer-plan` never sends a review request.
+coverage, history counts, recency, confidence, public `source_refs`, compact
+matched-route evidence, and whether a GitHub handle is actually requestable.
+It never captures the maintainer-map body or commit email addresses, never
+records the local repo path, and `reviewer-plan` never sends a review request.
 `reviewer-request` fetches the live PR author, existing review requests,
 completed reviews, and LoopX-marked reviewer comments; excludes them
 automatically; and asks the top remaining requestable candidate. It first uses
@@ -206,6 +213,14 @@ author; `--exclude-author-name` covers unresolved git-name aliases.
 When a human confirms that an unresolved git display name belongs to a specific
 GitHub account, `--identity-map-json` records that compact mapping as verified
 identity evidence and reranks the same repository-native contribution evidence.
+
+`--reviewer-sources-json` is the bridge for repository-specific public routing
+knowledge. The host reads an approved public source, such as a maintainer-map
+issue or repository document, and supplies only stable source id, public URL,
+trust, freshness, observation time, path-prefix/glob routes, and
+primary/fallback handles. LoopX
+does not fetch or persist the raw page. The output keeps the URL beside each
+candidate so a maintainer can audit why that person was selected.
 
 `CODEOWNERS` remains the strongest repository-native signal. Commit volume is
 only evidence of familiarity; it is not proof of maintainership, availability,
@@ -272,7 +287,7 @@ tests whether the system is a durable employee rather than a scripted demo.
 | Workflow plan | `loopx issue-fix workflow-plan` | Compose body-free metadata, intake, branch plan, validation label, ordered todo previews, gates, and PR-readiness blockers. |
 | Repository context | `--repository-context-json` | Pin policy, architecture, change-scope, reproduction, and validation evidence with trust and freshness. |
 | Feasibility | `loopx issue-fix feasibility` | Select exactly one `fix_pr`, `comment_only`, or `triage_only` route and optionally persist compact domain state. |
-| Reviewer plan | `loopx issue-fix reviewer-plan` | Rank explainable reviewer candidates from CODEOWNERS and changed-path/module history without requesting review. |
+| Reviewer plan | `loopx issue-fix reviewer-plan` | Rank explainable reviewer candidates from CODEOWNERS, caller-verified public maintainer maps, and changed-path/module history without requesting review. |
 | Reviewer notification | `loopx issue-fix reviewer-request` | Under standing authority, exclude the live PR author and existing coverage, request the top candidate, fall back to one verified `@reviewer` comment only on permission denial, and avoid duplicates. |
 | PR lifecycle | `loopx issue-fix pr-lifecycle` | Project CI, review, merge state, draft, merged, and closed signals into monitor transitions. |
 | Acceptance fixture | `loopx issue-fix acceptance-fixture` | Prove failure-before, minimal patch, and pass-after in a deterministic fixture. |
@@ -322,15 +337,18 @@ failure; compare the pinned base and changed hunks before attribution.
 
 The reviewer recommendation layer separates three concepts:
 
-1. **ownership evidence**: CODEOWNERS and path/module contribution history;
+1. **ownership evidence**: CODEOWNERS, caller-verified public maintainer maps,
+   and path/module contribution history;
 2. **review recommendation**: explainable ranked candidates;
 3. **review request**: a default post-PR action governed by repository policy
    and explicit or standing boundary authority.
 
-Current scoring gives CODEOWNERS matches dominant weight, then uses recency-
-weighted commit history. A new file falls back to its nearest module directory
-only when no non-excluded exact-path history is usable. The packet exposes the
-reason instead of presenting a score as authority.
+Current scoring gives CODEOWNERS matches dominant weight. A current verified
+maintainer-map primary contact ranks above history-only familiarity, while map
+fallback contacts rank below primary routing. Trust and freshness reduce map
+weight. A new file falls back to its nearest module directory only when no
+non-excluded exact-path history is usable. The packet exposes matched routes,
+source links, and reason codes instead of presenting a score as authority.
 
 The default policy requests one top requestable candidate when authority is
 active. Existing requested or completed review counts toward that limit. The
@@ -343,13 +361,16 @@ Important safeguards:
 - do not expose commit email addresses;
 - do not treat bots, anonymous identities, or unresolved names as requestable;
 - cap candidates and show path coverage;
+- retain public source references while rejecting local/private source URLs and
+  raw maintainer-map bodies;
 - keep team handles distinct from individual handles;
 - respect required-review and branch-protection policy outside the ranking;
 - never infer merge authority from reviewer familiarity.
 
 Planned signals, added only with real call sites and public-safe evidence:
 
-- package/module maintainer metadata beyond CODEOWNERS;
+- automatic discovery of checked-in package/module maintainer metadata beyond
+  caller-supplied source packets;
 - recent review participation and accepted-review history;
 - reviewer load, stale request detection, and fallback routing;
 - bus-factor/risk hints when one person dominates a critical module;
@@ -396,7 +417,8 @@ the current repository revision remains authoritative.
 - repository-context provenance;
 - deterministic and caller-repo repair artifacts;
 - focused validation evidence;
-- reviewer recommendation from repository-native ownership evidence;
+- reviewer recommendation from CODEOWNERS, public repository-declared routing
+  sources, and repository-native contribution evidence;
 - authority-gated, idempotent reviewer notification with formal-request-first,
   permission-only comment fallback, and PR readback;
 - PR lifecycle projection;
@@ -551,6 +573,7 @@ loopx issue-fix reviewer-plan \
   --base-ref origin/main \
   --exclude-reviewer @pull-request-author \
   --exclude-author-name "PR Author Git Name" \
+  --reviewer-sources-json reviewer-sources.json \
   --execute \
   --format json
 
@@ -559,6 +582,7 @@ loopx issue-fix reviewer-request \
   --url https://github.com/owner/repo/pull/456 \
   --repo-path /path/to/approved/repo \
   --base-ref origin/main \
+  --reviewer-sources-json reviewer-sources.json \
   --execute \
   --format json
 

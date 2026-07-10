@@ -13,8 +13,9 @@ The default strategy is `request_top_requestable_when_authorized`:
 1. read live PR metadata;
 2. exclude the PR author, bots, explicitly excluded identities, reviewers
    already requested, and people who already reviewed;
-3. rank remaining candidates from repository `CODEOWNERS`, exact changed-path
-   contribution history, and nearest-module history;
+3. rank remaining candidates from repository `CODEOWNERS`, caller-verified
+   public maintainer maps, exact changed-path contribution history, and
+   nearest-module history;
 4. request the highest-ranked candidate with a resolvable GitHub handle;
 5. if and only if GitHub confirms that the formal request lacks permission,
    post one concise PR comment mentioning the same reviewer;
@@ -55,6 +56,7 @@ loopx issue-fix reviewer-request \
   --repo-path /path/to/approved/repo \
   --base-ref origin/main \
   --identity-map-json verified-identities.json \
+  --reviewer-sources-json reviewer-sources.json \
   --execute \
   --format json
 ```
@@ -68,6 +70,7 @@ loopx issue-fix reviewer-request \
   --url https://github.com/owner/repo/pull/123 \
   --repo-path /path/to/approved/repo \
   --base-ref origin/main \
+  --reviewer-sources-json reviewer-sources.json \
   --metadata-json pr-metadata.json \
   --format json
 ```
@@ -80,6 +83,9 @@ the output packet.
 handle mapping when the strongest contribution candidate could not be resolved
 from public noreply identity evidence. The mapping resolves identity but does
 not change the underlying ownership score.
+`--reviewer-sources-json` passes the same compact, public-safe source packet
+used by `reviewer-plan`. Source references explain ranking; they do not grant
+write authority or bypass live author/existing-reviewer exclusion.
 
 ## Output And Transitions
 
@@ -90,7 +96,8 @@ The packet records:
 - whether the request was performed and fully verified;
 - notification mode, fallback performance/verification, and the public comment
   URL when the fallback is used;
-- the recommendation status and public-safe evidence candidates;
+- the recommendation status, public-safe evidence candidates, and reviewer
+  source references;
 - one structured transition.
 
 Successful verified requests emit `issue_fix_reviewer_request_verified` with
@@ -116,7 +123,9 @@ Every packet keeps these fields false:
 - `commit_emails_captured`
 
 It stores no credential, local path, raw provider response, raw git log, issue
-body, comment body, transcript, or runtime state. The fallback comment contains
+body, comment body, transcript, or runtime state. Public source URLs and matched
+route metadata may be retained; the linked maintainer-map body is not captured.
+The fallback comment contains
 only the public reviewer handle, a generic review request, and hidden
 idempotency markers. Repository history is read only from the explicitly
 approved checkout and affects the compact ranking evidence.
@@ -133,4 +142,6 @@ The generic fixture verifies live-author exclusion, top-candidate selection,
 successful request and readback, permission-only comment fallback, fallback
 URL/marker verification, idempotent retry without duplicate comments,
 unclassified-provider blockers, public-safety boundaries, and no-write CLI
-preview. It contains no OpenViking-specific branch or candidate.
+preview. It also proves that a public maintainer-map candidate reaches the
+request packet without weakening the external-write gate. It contains no
+OpenViking-specific branch or candidate.
