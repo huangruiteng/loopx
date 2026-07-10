@@ -110,13 +110,17 @@ from loopx.benchmark_adapters.skillsbench_batch import (  # noqa: E402
     parallel_batch_requires_subprocess_isolation as _parallel_isolation_required,
     split_task_ids_arg as _split_task_ids_arg,
 )
-from loopx.benchmark_adapters.skillsbench_verifier_bootstrap import (  # noqa: E402
-    apply_skillsbench_verifier_bootstrap_missing_score_attribution,
-)
 from loopx.benchmark_adapters.skillsbench_task_source import (  # noqa: E402
     classify_missing_task_source,
 )
-from loopx.benchmark_adapters import skillsbench_codex_runtime as codex_runtime, skillsbench_proxy_runtime as proxy_runtime, skillsbench_runner_source as runner_source, skillsbench_uv_cache as uv_cache  # noqa: E402
+from loopx.benchmark_adapters import (  # noqa: E402
+    skillsbench_codex_runtime as codex_runtime,
+    skillsbench_proxy_runtime as proxy_runtime,
+    skillsbench_runner_source as runner_source,
+    skillsbench_uv_cache as uv_cache,
+    skillsbench_verifier_bootstrap as verifier_bootstrap,
+    skillsbench_verifier_cache as verifier_cache,
+)
 from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER,
     SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT,
@@ -364,12 +368,6 @@ DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST = "mirrors.huaweicloud.com"
 DEFAULT_DOCKER_MAVEN_MIRROR_URL = "https://repo.huaweicloud.com/repository/maven"
 DEFAULT_DOCKER_MAVEN_MIRROR_HOST = "repo.huaweicloud.com"
 DEFAULT_DOCKER_MAVEN_SETTINGS_PATH = "/opt/loopx-maven/settings.xml"
-VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN = (
-    "# BEGIN LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR"
-)
-VERIFIER_UV_BOOTSTRAP_MIRROR_END = (
-    "# END LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR"
-)
 VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN = (
     "# BEGIN LOOPX_SKILLSBENCH_VERIFIER_BENCHMARK_EGRESS_PROXY"
 )
@@ -377,11 +375,19 @@ VERIFIER_BENCHMARK_EGRESS_PROXY_END = (
     "# END LOOPX_SKILLSBENCH_VERIFIER_BENCHMARK_EGRESS_PROXY"
 )
 DEFAULT_VERIFIER_UV_RELEASE_MIRROR_BASE = (
-    "https://releases.astral.sh/github/uv/releases/download"
+    verifier_bootstrap.DEFAULT_VERIFIER_UV_RELEASE_MIRROR_BASE
 )
-DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST = "releases.astral.sh"
-DEFAULT_DOCKER_PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
-DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL = "https://pypi.org/simple"
+DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST = (
+    verifier_bootstrap.DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
+)
+VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN = (
+    verifier_bootstrap.VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN
+)
+VERIFIER_UV_BOOTSTRAP_MIRROR_END = verifier_bootstrap.VERIFIER_UV_BOOTSTRAP_MIRROR_END
+DEFAULT_DOCKER_PIP_INDEX_URL = verifier_bootstrap.DEFAULT_DOCKER_PIP_INDEX_URL
+DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL = (
+    verifier_bootstrap.DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL
+)
 DEFAULT_DOCKER_PIP_INDEX_HOST = "pypi.tuna.tsinghua.edu.cn"
 DOCKER_HOST_CPU_ENV = "LOOPX_SKILLSBENCH_DOCKER_CPUS"
 SANDBOX_PATH_RE = re.compile(r"/(?:app|root|workspace|tmp)/[A-Za-z0-9_./-]+")
@@ -2555,6 +2561,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchmark_egress_proxy_env_key",
         "benchmark_egress_proxy_scheme",
         "benchmark_egress_proxy_endpoint_kind",
+        "verifier_dependency_cache_mode",
         "host_local_acp_proxy_endpoint_status",
         "host_local_acp_proxy_endpoint_env_key",
         "host_local_acp_proxy_endpoint_scheme",
@@ -2648,6 +2655,12 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "loopx_source_upload_fallback_supported",
         "loopx_source_upload_fallback_attempted",
         "loopx_source_upload_raw_material_recorded",
+        "verifier_dependency_cache_requested",
+        "verifier_dependency_cache_ready",
+        "verifier_dependency_cache_mount_injected",
+        "verifier_dependency_cache_raw_path_recorded",
+        "verifier_dependency_cache_solver_write_access",
+        "verifier_dependency_cache_scoring_material_cached",
         "benchflow_agent_timeout_overridden",
         "codex_app_server_goal_worker_adapter_present",
         "codex_app_server_goal_worker_turn_start_required",
@@ -2760,6 +2773,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_setup_stall_cleanup_term_sent_count",
         "benchflow_setup_stall_cleanup_kill_sent_count",
         "benchflow_setup_stall_cleanup_alive_after_count",
+        "verifier_dependency_cache_env_key_count",
         "goal_start_planned_todo_count_expected",
         "remote_command_file_bridge_solver_trace_count",
         "remote_command_file_bridge_solver_probe_ready_count",
@@ -6073,11 +6087,16 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "bootstrap_light_fail_fast_defaulted",
         "verifier_bootstrap_risk_detected",
         "verifier_uv_bootstrap_risk_detected",
+        "verifier_external_download_risk_detected",
+        "verifier_package_install_risk_detected",
         "verifier_uv_bootstrap_mirror_patch_required",
         "verifier_uv_bootstrap_mirror_patch_applied",
         "verifier_uv_bootstrap_pip_fallback_patch_applied",
         "verifier_script_executable_required",
         "verifier_script_executable_ready",
+        "verifier_dependency_cache_required",
+        "verifier_dependency_cache_env_patch_applied",
+        "verifier_dependency_cache_raw_path_recorded",
         "benchmark_egress_proxy_verifier_env_patch_required",
         "benchmark_egress_proxy_verifier_env_patch_applied",
         "benchmark_egress_proxy_verifier_env_raw_proxy_recorded",
@@ -6112,9 +6131,19 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
     key_count = value.get("benchmark_egress_proxy_verifier_env_key_count")
     if isinstance(key_count, int) and not isinstance(key_count, bool) and key_count >= 0:
         compact["benchmark_egress_proxy_verifier_env_key_count"] = key_count
+    key_count = value.get("verifier_dependency_cache_env_key_count")
+    if isinstance(key_count, int) and not isinstance(key_count, bool) and key_count >= 0:
+        compact["verifier_dependency_cache_env_key_count"] = key_count
     key_count = value.get("benchmark_egress_proxy_dockerfile_env_key_count")
     if isinstance(key_count, int) and not isinstance(key_count, bool) and key_count >= 0:
         compact["benchmark_egress_proxy_dockerfile_env_key_count"] = key_count
+    categories = value.get("verifier_bootstrap_risk_categories")
+    if isinstance(categories, list):
+        compact["verifier_bootstrap_risk_categories"] = [
+            item[:80]
+            for item in categories
+            if isinstance(item, str) and item
+        ][:8]
     resource_cap = value.get("resource_cap_patch")
     if isinstance(resource_cap, dict):
         safe_cap: dict[str, Any] = {}
@@ -6161,7 +6190,7 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         )
     except OSError:
         verifier_text = ""
-    uv_versions = _verifier_uv_bootstrap_versions(verifier_text)
+    uv_versions = verifier_bootstrap.verifier_uv_bootstrap_versions(verifier_text)
     include_task_skills = bool(plan.get("include_task_skills"))
     discovered = {
         "schema_version": "skillsbench_task_staging_v0",
@@ -6252,7 +6281,7 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         )
         if dockerfile_uv_versions:
             discovered["dockerfile_uv_bootstrap_version"] = dockerfile_uv_versions[0]
-    if VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN in verifier_text:
+    if verifier_bootstrap.VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN in verifier_text:
         discovered.update(
             {
                 "verifier_uv_bootstrap_risk_detected": True,
@@ -7576,7 +7605,9 @@ def skillsbench_task_setup_preflight(
 
     apt_risk = dockerfile_needs_apt_retry_patch(dockerfile)
     pip_risk = dockerfile_needs_pip_bootstrap_patch(dockerfile)
-    verifier_risk = skillsbench_verifier_bootstrap_risk(expanded_task_path)
+    verifier_risk = verifier_bootstrap.skillsbench_verifier_bootstrap_risk(
+        expanded_task_path
+    )
     preflight.update(verifier_risk)
     verifier_bootstrap_risk = bool(
         verifier_risk.get("verifier_bootstrap_risk_detected")
@@ -7615,204 +7646,6 @@ def skillsbench_task_setup_preflight(
         }
     )
     return preflight
-
-
-def skillsbench_verifier_bootstrap_risk(task_path: Path) -> dict[str, Any]:
-    """Return public-safe verifier dependency bootstrap risk flags.
-
-    The check reads only the verifier wrapper shape and records booleans, not
-    raw task text, logs, trajectories, or verifier output. It catches cases
-    where the official verifier would spend the final closeout on network
-    bootstrap such as uv installation, curl/wget downloads, or package install
-    commands.
-    """
-
-    verifier = proxy_runtime.skillsbench_verifier_script(task_path)
-    result: dict[str, Any] = {
-        "verifier_present": verifier.exists(),
-        "verifier_bootstrap_risk_detected": False,
-        "verifier_uv_bootstrap_risk_detected": False,
-        "verifier_external_download_risk_detected": False,
-        "verifier_package_install_risk_detected": False,
-        "verifier_bootstrap_risk_categories": [],
-    }
-    if not verifier.exists():
-        return result
-    try:
-        text = verifier.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return result
-
-    uv_versions = _verifier_uv_bootstrap_versions(text)
-    if uv_versions:
-        result["verifier_uv_bootstrap_version"] = uv_versions[0]
-    categories: list[str] = []
-    uv_bootstrap_pattern = (
-        r"astral\.sh/uv|"
-        r"(?:^|[;&|(\s])uv(?:x|\s+add|\s+sync|\s+pip|\s+tool)"
-    )
-    if re.search(uv_bootstrap_pattern, text):
-        result["verifier_uv_bootstrap_risk_detected"] = True
-        categories.append("uv_bootstrap")
-    if re.search(r"(?:curl|wget)\s+[^;\n]*(?:https?://|astral\.sh)", text):
-        result["verifier_external_download_risk_detected"] = True
-        categories.append("external_download")
-    if re.search(
-        r"(?:python\s+-m\s+pip|pip3?|uv\s+pip|uv\s+add|"
-        r"poetry\s+install|npm\s+install|pnpm\s+install|"
-        r"yarn\s+install|apt-get\s+(?:update|install))",
-        text,
-    ):
-        result["verifier_package_install_risk_detected"] = True
-        categories.append("package_install")
-    result["verifier_bootstrap_risk_categories"] = sorted(set(categories))
-    result["verifier_bootstrap_risk_detected"] = bool(categories)
-    return result
-
-
-def _verifier_uv_bootstrap_versions(text: str) -> list[str]:
-    versions: list[str] = []
-    seen: set[str] = set()
-    for match in re.finditer(
-        r"https?://astral\.sh/uv/(?P<version>[0-9A-Za-z][0-9A-Za-z._+-]*)/install\.sh",
-        text,
-    ):
-        version = match.group("version")
-        if version and version not in seen:
-            versions.append(version)
-            seen.add(version)
-    return versions
-
-
-def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
-    """Point staged uv installer bootstrap at a reachable public mirror.
-
-    The patch is applied only to the copied prepared task. It does not alter
-    scoring assertions, task instructions, or verifier command order; it only
-    supplies uv's installer with the tarball URL that the official installer
-    would otherwise derive from a GitHub release URL.
-    """
-
-    metadata: dict[str, Any] = {
-        "verifier_uv_bootstrap_risk_detected": False,
-        "verifier_uv_bootstrap_mirror_patch_required": False,
-        "verifier_uv_bootstrap_mirror_patch_applied": False,
-        "verifier_uv_bootstrap_pip_fallback_patch_applied": False,
-        "verifier_uv_env_source_guard_patch_applied": False,
-    }
-    if not verifier.exists():
-        return metadata
-    try:
-        original = verifier.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return metadata
-    text = _strip_marker_block(
-        original,
-        VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN,
-        VERIFIER_UV_BOOTSTRAP_MIRROR_END,
-    )
-    versions = _verifier_uv_bootstrap_versions(text)
-    if not versions:
-        return metadata
-
-    version = versions[0]
-    block = (
-        f"{VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN}\n"
-        "# Prefer the PyPI uv wheel for verifier bootstrap; the official uv\n"
-        "# installer release tarball remains as a bounded fallback.\n"
-        f"loopx_uv_release_mirror={shlex.quote(DEFAULT_VERIFIER_UV_RELEASE_MIRROR_BASE)}\n"
-        f"loopx_uv_version={shlex.quote(version)}\n"
-        "if ! command -v uvx >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then\n"
-        "  loopx_pip_break_system_packages=''\n"
-        "  if python3 -m pip install --help 2>/dev/null | grep -q -- '--break-system-packages'; then\n"
-        "    loopx_pip_break_system_packages='--break-system-packages'\n"
-        "  fi\n"
-        "  python3 -m pip install ${loopx_pip_break_system_packages} \\\n"
-        "    --no-cache-dir --timeout 120 --retries 5 \\\n"
-        f"    --index-url {shlex.quote(DEFAULT_DOCKER_PIP_INDEX_URL)} \\\n"
-        f"    --extra-index-url {shlex.quote(DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL)} \\\n"
-        "    \"uv==${loopx_uv_version}\" || true\n"
-        "  unset loopx_pip_break_system_packages\n"
-        "fi\n"
-        "if [ -z \"${INSTALLER_DOWNLOAD_URL:-}\" ]; then\n"
-        "  export INSTALLER_DOWNLOAD_URL=\"${loopx_uv_release_mirror}/${loopx_uv_version}\"\n"
-        "fi\n"
-        "loopx_uv_installer_timeout_sec=${LOOPX_SKILLSBENCH_UV_INSTALL_TIMEOUT_SEC:-180}\n"
-        f"{VERIFIER_UV_BOOTSTRAP_MIRROR_END}"
-    )
-    patched_lines: list[str] = []
-    inserted = False
-    for line in text.splitlines():
-        if (
-            not inserted
-            and "astral.sh/uv/" in line
-            and "install.sh" in line
-        ):
-            patched_lines.extend(block.splitlines())
-            inserted = True
-            if "curl" in line and "|" in line:
-                fallback_line = shlex.quote(line)
-                patched_lines.extend(
-                    [
-                        "if ! command -v uvx >/dev/null 2>&1; then",
-                        "  if command -v timeout >/dev/null 2>&1; then",
-                        f"    timeout \"${{loopx_uv_installer_timeout_sec}}\" sh -c {fallback_line}",
-                        "  else",
-                        f"    sh -c {fallback_line}",
-                        "  fi",
-                        "fi",
-                    ]
-                )
-                continue
-        patched_lines.append(line)
-    if not inserted:
-        patched_lines.extend(block.splitlines())
-    patched = "\n".join(patched_lines).rstrip() + "\n"
-    patched, source_guard_applied = _patch_verifier_uv_env_source_guard(patched)
-    if patched != original:
-        _write_text_atomic(verifier, patched)
-    metadata.update(
-        {
-            "verifier_uv_bootstrap_risk_detected": True,
-            "verifier_uv_bootstrap_mirror_patch_required": True,
-            "verifier_uv_bootstrap_mirror_patch_applied": True,
-            "verifier_uv_bootstrap_pip_fallback_patch_applied": True,
-            "verifier_uv_env_source_guard_patch_applied": source_guard_applied,
-            "verifier_uv_bootstrap_version": version,
-            "verifier_uv_bootstrap_mirror_host": (
-                DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
-            ),
-        }
-    )
-    return metadata
-
-
-def _patch_verifier_uv_env_source_guard(text: str) -> tuple[str, bool]:
-    """Guard uv installer env sourcing when the pip wheel already provided uvx."""
-
-    source_lines = {
-        'source "$HOME/.local/bin/env"',
-        "source $HOME/.local/bin/env",
-        '. "$HOME/.local/bin/env"',
-        ". $HOME/.local/bin/env",
-    }
-    replacement = [
-        'if [ -f "$HOME/.local/bin/env" ]; then',
-        '  . "$HOME/.local/bin/env"',
-        "fi",
-    ]
-    patched_lines: list[str] = []
-    applied = False
-    for line in text.splitlines():
-        if line.strip() in source_lines:
-            indent = line[: len(line) - len(line.lstrip())]
-            patched_lines.extend(f"{indent}{part}" for part in replacement)
-            applied = True
-        else:
-            patched_lines.append(line)
-    if not applied:
-        return text, False
-    return "\n".join(patched_lines).rstrip() + "\n", True
 
 
 def _verifier_benchmark_egress_proxy_exports(
@@ -8225,6 +8058,7 @@ def stage_task_for_sandbox(
     include_task_skills: bool = True,
     benchmark_egress_proxy_env: Mapping[str, str] | None = None,
     docker_gcr_mirror_prefix: str = "",
+    verifier_dependency_cache_enabled: bool = False,
 ) -> tuple[Path, dict[str, Any]]:
     """Return the task path to run, staging Docker tasks when setup needs it."""
 
@@ -8268,11 +8102,18 @@ def stage_task_for_sandbox(
         "empty_skills_build_context_required": False,
         "empty_skills_build_context_created": False,
         "verifier_uv_bootstrap_risk_detected": False,
+        "verifier_external_download_risk_detected": False,
+        "verifier_package_install_risk_detected": False,
+        "verifier_bootstrap_risk_categories": [],
         "verifier_uv_bootstrap_mirror_patch_required": False,
         "verifier_uv_bootstrap_mirror_patch_applied": False,
         "verifier_uv_bootstrap_pip_fallback_patch_applied": False,
         "verifier_script_executable_required": False,
         "verifier_script_executable_ready": False,
+        "verifier_dependency_cache_required": False,
+        "verifier_dependency_cache_env_patch_applied": False,
+        "verifier_dependency_cache_env_key_count": 0,
+        "verifier_dependency_cache_raw_path_recorded": False,
         "benchmark_egress_proxy_verifier_env_patch_required": False,
         "benchmark_egress_proxy_verifier_env_patch_applied": False,
         "benchmark_egress_proxy_verifier_env_key_count": 0,
@@ -8329,7 +8170,7 @@ def stage_task_for_sandbox(
     needs_maven_mirror_patch = dockerfile_needs_maven_mirror_patch(
         task_path / "environment" / "Dockerfile"
     )
-    verifier_risk = skillsbench_verifier_bootstrap_risk(task_path)
+    verifier_risk = verifier_bootstrap.skillsbench_verifier_bootstrap_risk(task_path)
     needs_verifier_uv_mirror_patch = bool(
         verifier_risk.get("verifier_uv_bootstrap_risk_detected")
         and verifier_risk.get("verifier_uv_bootstrap_version")
@@ -8341,6 +8182,11 @@ def stage_task_for_sandbox(
     verifier_script_present = verifier_script.is_file()
     needs_verifier_proxy_env_patch = bool(
         verifier_proxy_exports and verifier_script_present
+    )
+    needs_verifier_dependency_cache = bool(
+        verifier_dependency_cache_enabled
+        and verifier_script_present
+        and verifier_risk.get("verifier_bootstrap_risk_detected")
     )
     needs_dockerfile_proxy_env_patch = bool(
         verifier_proxy_exports and (task_path / "environment" / "Dockerfile").exists()
@@ -8397,10 +8243,22 @@ def stage_task_for_sandbox(
     metadata["verifier_uv_bootstrap_risk_detected"] = bool(
         verifier_risk.get("verifier_uv_bootstrap_risk_detected")
     )
+    metadata["verifier_external_download_risk_detected"] = bool(
+        verifier_risk.get("verifier_external_download_risk_detected")
+    )
+    metadata["verifier_package_install_risk_detected"] = bool(
+        verifier_risk.get("verifier_package_install_risk_detected")
+    )
+    metadata["verifier_bootstrap_risk_categories"] = list(
+        verifier_risk.get("verifier_bootstrap_risk_categories") or []
+    )
     metadata["verifier_uv_bootstrap_mirror_patch_required"] = (
         needs_verifier_uv_mirror_patch
     )
     metadata["verifier_script_executable_required"] = verifier_script_present
+    metadata["verifier_dependency_cache_required"] = (
+        needs_verifier_dependency_cache
+    )
     metadata["benchmark_egress_proxy_verifier_env_patch_required"] = (
         needs_verifier_proxy_env_patch
     )
@@ -8434,6 +8292,7 @@ def stage_task_for_sandbox(
         and not needs_verifier_uv_mirror_patch
         and not verifier_script_present
         and not needs_verifier_proxy_env_patch
+        and not needs_verifier_dependency_cache
         and not needs_dockerfile_proxy_env_patch
     ):
         metadata["resource_cap_patch"] = {
@@ -8505,12 +8364,16 @@ def stage_task_for_sandbox(
         staged_path / "environment" / "Dockerfile"
     )
     staged_verifier_script = proxy_runtime.skillsbench_verifier_script(staged_path)
-    uv_mirror_metadata = patch_verifier_uv_bootstrap_mirror(
+    uv_mirror_metadata = verifier_bootstrap.patch_verifier_uv_bootstrap_mirror(
         staged_verifier_script
     )
     verifier_proxy_metadata = patch_verifier_benchmark_egress_proxy_env(
         staged_verifier_script,
         proxy_env=benchmark_egress_proxy_env,
+    )
+    verifier_cache_metadata = verifier_cache.patch_verifier_dependency_cache_env(
+        staged_verifier_script,
+        enabled=needs_verifier_dependency_cache,
     )
     verifier_script_executable_ready = ensure_verifier_script_executable(
         staged_verifier_script
@@ -8607,6 +8470,7 @@ def stage_task_for_sandbox(
         metadata[key] = value
     metadata.update(dockerfile_proxy_metadata)
     metadata.update(verifier_proxy_metadata)
+    metadata.update(verifier_cache_metadata)
     if (
         metadata.get("verifier_script_executable_required") is True
         and metadata.get("verifier_script_executable_ready") is not True
@@ -8621,6 +8485,13 @@ def stage_task_for_sandbox(
     ):
         raise SkillsBenchSetupPreflightBlocked(
             "skillsbench verifier egress proxy patch required but not applied"
+        )
+    if (
+        metadata.get("verifier_dependency_cache_required") is True
+        and metadata.get("verifier_dependency_cache_env_patch_applied") is not True
+    ):
+        raise SkillsBenchSetupPreflightBlocked(
+            "skillsbench verifier dependency cache required but not applied"
         )
     return staged_path, metadata
 
@@ -9308,6 +9179,10 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 args.final_verifier_timeout_sec or 0
             ),
             "benchflow_final_verifier_timeout_raw_command_recorded": False,
+            "verifier_dependency_cache_mode": (
+                args.verifier_dependency_cache_mode
+            ),
+            "verifier_dependency_cache_raw_path_recorded": False,
             "benchflow_verifier_prep_timeout_sec": int(
                 args.verifier_prep_timeout_sec or 0
             ),
@@ -13583,6 +13458,10 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             "LoopX source mount requested but local source files are missing; "
             "use --no-loopx-source-mount to test the public GitHub installer instead"
         )
+    verifier_dependency_cache_policy_enabled = verifier_cache.dependency_cache_enabled(
+        sandbox=args.sandbox,
+        mode=args.verifier_dependency_cache_mode,
+    )
     prerequisites["benchflow_run_stage"] = "task_staging"
     effective_task_path, staging_metadata = stage_task_for_sandbox(
         task_path=task_path,
@@ -13592,9 +13471,25 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         include_task_skills=bool(args.include_task_skills),
         benchmark_egress_proxy_env=_benchmark_egress_proxy_env(args),
         docker_gcr_mirror_prefix=args.docker_gcr_mirror_prefix,
+        verifier_dependency_cache_enabled=(
+            verifier_dependency_cache_policy_enabled
+        ),
     )
     plan["task_staging"] = staging_metadata
     plan["effective_task_path"] = str(effective_task_path)
+    verifier_dependency_cache_root, verifier_dependency_cache_contract = (
+        verifier_cache.prepare_dependency_cache(
+            args.verifier_dependency_cache_root,
+            requested=bool(
+                staging_metadata.get("verifier_dependency_cache_required")
+            ),
+            sandbox_user=str(args.sandbox_user),
+        )
+    )
+    verifier_dependency_cache_contract["verifier_dependency_cache_mode"] = (
+        args.verifier_dependency_cache_mode
+    )
+    prerequisites.update(verifier_dependency_cache_contract)
     prerequisites["benchflow_run_stage"] = "base_image_prewarm"
     _write_public_runner_config(plan)
     _write_public_runner_prerequisites(plan)
@@ -13645,7 +13540,14 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         else []
     )
     loopx_source_mounts = _loopx_source_mounts(args)
-    container_mounts = [*runtime_mounts, *loopx_source_mounts]
+    verifier_dependency_cache_mounts = verifier_cache.dependency_cache_mount(
+        verifier_dependency_cache_root
+    )
+    container_mounts = [
+        *runtime_mounts,
+        *loopx_source_mounts,
+        *verifier_dependency_cache_mounts,
+    ]
 
     async def connect_host_local_acp(
         env: Any,
@@ -14022,35 +13924,17 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         if original_create_environment is None:
             raise RuntimeError("BenchFlow rollout planes create_environment missing")
         env = original_create_environment(self, *call_args, **call_kwargs)
-        prerequisites = plan.setdefault("runner_prerequisites", {})
         environment = str(call_args[0]) if call_args else ""
-        if container_mounts and environment == "docker":
-            existing_mounts = getattr(env, "_mounts_json", None) or []
-            setattr(env, "_mounts_json", [*existing_mounts, *container_mounts])
-            if runtime_mounts:
-                prerequisites["benchflow_agent_runtime_mount_injected"] = True
-                prerequisites["benchflow_agent_runtime_mount_read_only"] = True
-                prerequisites["benchflow_agent_runtime_mount_source_recorded"] = False
-            if loopx_source_mounts:
-                prerequisites["loopx_source_mount_injected"] = True
-                prerequisites["loopx_source_mount_read_only"] = True
-                prerequisites["loopx_source_mount_source_recorded"] = False
-        elif container_mounts:
-            if runtime_mounts:
-                prerequisites["benchflow_agent_runtime_mount_injected"] = False
-                prerequisites["benchflow_agent_runtime_mount_read_only"] = True
-                prerequisites["benchflow_agent_runtime_mount_source_recorded"] = False
-            if loopx_source_mounts:
-                prerequisites["loopx_source_mount_injected"] = False
-                prerequisites["loopx_source_mount_read_only"] = True
-                prerequisites["loopx_source_mount_source_recorded"] = False
-        return env
+        return _record_container_mount_injection(env, environment)
 
     def _record_container_mount_injection(env: Any, environment: str) -> Any:
         prerequisites = plan.setdefault("runner_prerequisites", {})
         if container_mounts and environment == "docker":
             existing_mounts = getattr(env, "_mounts_json", None) or []
-            setattr(env, "_mounts_json", [*existing_mounts, *container_mounts])
+            missing_mounts = [
+                mount for mount in container_mounts if mount not in existing_mounts
+            ]
+            setattr(env, "_mounts_json", [*existing_mounts, *missing_mounts])
             if runtime_mounts:
                 prerequisites["benchflow_agent_runtime_mount_injected"] = True
                 prerequisites["benchflow_agent_runtime_mount_read_only"] = True
@@ -14059,6 +13943,9 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
                 prerequisites["loopx_source_mount_injected"] = True
                 prerequisites["loopx_source_mount_read_only"] = True
                 prerequisites["loopx_source_mount_source_recorded"] = False
+            if verifier_dependency_cache_mounts:
+                prerequisites["verifier_dependency_cache_mount_injected"] = True
+                prerequisites["verifier_dependency_cache_raw_path_recorded"] = False
         elif container_mounts:
             if runtime_mounts:
                 prerequisites["benchflow_agent_runtime_mount_injected"] = False
@@ -14068,6 +13955,9 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
                 prerequisites["loopx_source_mount_injected"] = False
                 prerequisites["loopx_source_mount_read_only"] = True
                 prerequisites["loopx_source_mount_source_recorded"] = False
+            if verifier_dependency_cache_mounts:
+                prerequisites["verifier_dependency_cache_mount_injected"] = False
+                prerequisites["verifier_dependency_cache_raw_path_recorded"] = False
         return env
 
     def create_environment_function_with_runtime_mount(
@@ -14650,7 +14540,7 @@ def reduce_result(
                         if item not in existing_labels:
                             existing_labels.append(item)
                     compact["failure_attribution_labels"] = existing_labels
-    apply_skillsbench_verifier_bootstrap_missing_score_attribution(
+    verifier_bootstrap.apply_skillsbench_verifier_bootstrap_missing_score_attribution(
         compact,
         task_staging=task_staging,
         setup_preflight=_public_task_setup_preflight(
@@ -15544,7 +15434,7 @@ def build_runner_failure_compact(
     if not recovered:
         _recover_runner_failure_score_from_verifier_artifact(reduced, plan)
     _apply_codex_cli_goal_countability_guard_attribution(reduced)
-    apply_skillsbench_verifier_bootstrap_missing_score_attribution(
+    verifier_bootstrap.apply_skillsbench_verifier_bootstrap_missing_score_attribution(
         reduced,
         task_staging=_effective_public_task_staging(plan),
         setup_preflight=_public_task_setup_preflight(
@@ -15969,6 +15859,27 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "0 preserves upstream verifier behavior; nonzero failures close "
             "out with compact public-safe verifier-timeout attribution and no "
             "raw verifier output."
+        ),
+    )
+    parser.add_argument(
+        "--verifier-dependency-cache-mode",
+        choices=("off", "shared"),
+        default="shared",
+        help=(
+            "Reuse package-manager and browser artifacts for Docker verifier "
+            "bootstrap. shared is the default; tasks without detected verifier "
+            "bootstrap risk do not receive the cache mount."
+        ),
+    )
+    parser.add_argument(
+        "--verifier-dependency-cache-root",
+        default=os.environ.get(
+            "LOOPX_SKILLSBENCH_VERIFIER_DEPENDENCY_CACHE_ROOT",
+            verifier_cache.DEFAULT_VERIFIER_DEPENDENCY_CACHE_ROOT,
+        ),
+        help=(
+            "Private host cache root for verifier dependency artifacts. The "
+            "path is never written to public benchmark output."
         ),
     )
     parser.add_argument(
