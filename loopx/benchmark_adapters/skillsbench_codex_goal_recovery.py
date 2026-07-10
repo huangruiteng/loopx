@@ -3,7 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 import uuid
 
-from loopx.codex_cli_goal_tui import codex_cli_tui_input_prompt_visible
+from loopx.codex_cli_goal_tui import (
+    codex_cli_tui_input_prompt_visible,
+    codex_cli_tui_turn_active,
+)
 
 
 PRE_BRIDGE_RECOVERY_ATTEMPT_LIMIT = 2
@@ -102,7 +105,7 @@ def codex_cli_tui_pre_bridge_blocker_stage(
 ) -> str:
     """Classify public-safe Codex CLI TUI blockers before bridge activity."""
 
-    if not prompt_visible:
+    if not prompt_visible or codex_cli_tui_turn_active(capture):
         return ""
     if _capture_has_rate_limit(capture):
         return "pre_bridge_tui_rate_limit"
@@ -163,7 +166,7 @@ def codex_cli_tui_pre_bridge_terminal_stage(
 ) -> str:
     """Classify a terminal goal that ended before any bridge activity."""
 
-    if not prompt_visible:
+    if not prompt_visible or codex_cli_tui_turn_active(capture):
         return ""
     if _capture_has_rate_limit(capture):
         return "pre_bridge_tui_rate_limit"
@@ -198,7 +201,7 @@ def codex_cli_tui_post_bridge_blocker_stage(
 ) -> str:
     """Classify public-safe Codex CLI TUI blockers after bridge activity."""
 
-    if not prompt_visible:
+    if not prompt_visible or codex_cli_tui_turn_active(capture):
         return ""
     if _capture_has_rate_limit(capture):
         return "post_bridge_tui_rate_limit"

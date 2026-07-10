@@ -809,6 +809,35 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         )
         == "post_bridge_tui_model_timeout"
     )
+    active_after_timeout = "\n".join(
+        [
+            "request timed out while waiting for model",
+            "• Working (3m 15s • esc to interrupt)",
+            "› Run /review on my current changes",
+            "Pursuing goal (3m)",
+        ]
+    )
+    assert (
+        codex_cli_tui_pre_bridge_blocker_stage(
+            active_after_timeout,
+            prompt_visible=True,
+        )
+        == ""
+    )
+    assert (
+        codex_cli_tui_pre_bridge_terminal_stage(
+            active_after_timeout,
+            prompt_visible=True,
+        )
+        == ""
+    )
+    assert (
+        codex_cli_tui_post_bridge_blocker_stage(
+            active_after_timeout,
+            prompt_visible=True,
+        )
+        == ""
+    )
     stale_timeout_scrollback = "\n".join(
         [
             "request timed out while waiting for model",
