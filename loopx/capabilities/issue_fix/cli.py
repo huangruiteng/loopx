@@ -9,6 +9,7 @@ from typing import Any
 
 from ...agent_registry import load_goal_from_registry
 from ...boundary_authority import checkpointed_boundary_authority_summary
+from ...control_plane.runtime.time import now_utc_iso
 from ...domain_packs.issue_fix import (
     default_issue_fix_domain_state_ledger_path,
     default_issue_fix_feasibility_ledger_path,
@@ -152,6 +153,21 @@ def _add_repository_memory_provider_args(parser: argparse.ArgumentParser) -> Non
     )
 
 
+def _add_generated_at_arg(
+    parser: argparse.ArgumentParser,
+    *,
+    artifact: str,
+) -> None:
+    parser.add_argument(
+        "--generated-at",
+        default=None,
+        help=(
+            f"Public-safe generated_at timestamp for {artifact}; "
+            "defaults to current UTC invocation time."
+        ),
+    )
+
+
 def _load_jsonl_row(
     path: Path,
     *,
@@ -250,10 +266,7 @@ def register_issue_fix_commands(
         action="store_true",
         help="Perform the provider resource write. Without this flag, return a plan.",
     )
-    memory_sync_parser.add_argument(
-        "--generated-at",
-        default="2026-07-11T00:00:00Z",
-    )
+    _add_generated_at_arg(memory_sync_parser, artifact="the resource sync")
     workflow_parser = issue_fix_sub.add_parser(
         "workflow-plan",
         help=(
@@ -340,11 +353,7 @@ def register_issue_fix_commands(
         ),
     )
     _add_repository_memory_provider_args(workflow_parser)
-    workflow_parser.add_argument(
-        "--generated-at",
-        default="2026-06-23T00:00:00Z",
-        help="Public-safe generated_at timestamp for the workflow plan.",
-    )
+    _add_generated_at_arg(workflow_parser, artifact="the workflow plan")
     feasibility_parser = issue_fix_sub.add_parser(
         "feasibility",
         help=(
@@ -421,11 +430,7 @@ def register_issue_fix_commands(
         ),
     )
     _add_repository_memory_provider_args(feasibility_parser)
-    feasibility_parser.add_argument(
-        "--generated-at",
-        default="2026-06-23T00:00:00Z",
-        help="Public-safe generated_at timestamp for the feasibility decision.",
-    )
+    _add_generated_at_arg(feasibility_parser, artifact="the feasibility decision")
     feasibility_parser.add_argument(
         "--goal-id",
         default=None,
@@ -503,11 +508,7 @@ def register_issue_fix_commands(
         default=10,
         help="Timeout for --fetch-metadata.",
     )
-    pr_lifecycle_parser.add_argument(
-        "--generated-at",
-        default="2026-06-23T00:00:00Z",
-        help="Public-safe generated_at timestamp for the lifecycle projection.",
-    )
+    _add_generated_at_arg(pr_lifecycle_parser, artifact="the lifecycle projection")
     pr_lifecycle_parser.add_argument(
         "--goal-id",
         default=None,
@@ -569,11 +570,7 @@ def register_issue_fix_commands(
         "--agent-id",
         help="Optional registered agent id projected as the case owner.",
     )
-    outcome_parser.add_argument(
-        "--generated-at",
-        default="2026-07-10T00:00:00Z",
-        help="Public-safe generated_at timestamp for the read model.",
-    )
+    _add_generated_at_arg(outcome_parser, artifact="the read model")
     reviewer_parser = issue_fix_sub.add_parser(
         "reviewer-plan",
         help=(
@@ -662,11 +659,7 @@ def register_issue_fix_commands(
             "does not request review or perform any external write."
         ),
     )
-    reviewer_parser.add_argument(
-        "--generated-at",
-        default="2026-07-10T00:00:00Z",
-        help="Public-safe generated_at timestamp for the recommendation packet.",
-    )
+    _add_generated_at_arg(reviewer_parser, artifact="the recommendation packet")
     reviewer_request_parser = issue_fix_sub.add_parser(
         "reviewer-request",
         help=(
@@ -746,11 +739,7 @@ def register_issue_fix_commands(
             "and verify the result."
         ),
     )
-    reviewer_request_parser.add_argument(
-        "--generated-at",
-        default="2026-07-10T00:00:00Z",
-        help="Public-safe generated_at timestamp for the request packet.",
-    )
+    _add_generated_at_arg(reviewer_request_parser, artifact="the request packet")
     acceptance_parser = issue_fix_sub.add_parser(
         "acceptance-fixture",
         help=(
@@ -774,11 +763,7 @@ def register_issue_fix_commands(
         default=None,
         help="Optional public GitHub issue or PR URL for metadata parsing.",
     )
-    acceptance_parser.add_argument(
-        "--generated-at",
-        default="2026-06-23T00:00:00Z",
-        help="Public-safe generated_at timestamp for the fixture artifact.",
-    )
+    _add_generated_at_arg(acceptance_parser, artifact="the fixture artifact")
     branch_parser = issue_fix_sub.add_parser(
         "repo-branch-fixture",
         help=(
@@ -802,11 +787,7 @@ def register_issue_fix_commands(
         default=None,
         help="Optional public GitHub issue or PR URL for metadata parsing.",
     )
-    branch_parser.add_argument(
-        "--generated-at",
-        default="2026-06-23T00:00:00Z",
-        help="Public-safe generated_at timestamp for the fixture artifact.",
-    )
+    _add_generated_at_arg(branch_parser, artifact="the fixture artifact")
     caller_branch_parser = issue_fix_sub.add_parser(
         "caller-repo-branch",
         help=(
@@ -872,11 +853,7 @@ def register_issue_fix_commands(
             "and run the caller-declared validation."
         ),
     )
-    caller_branch_parser.add_argument(
-        "--generated-at",
-        default="2026-06-23T00:00:00Z",
-        help="Public-safe generated_at timestamp for the artifact.",
-    )
+    _add_generated_at_arg(caller_branch_parser, artifact="the artifact")
 
 
 def handle_issue_fix_command(
@@ -887,6 +864,7 @@ def handle_issue_fix_command(
     print_payload: PrintPayload,
 ) -> int:
     try:
+        generated_at = str(args.generated_at or now_utc_iso()).strip()
         if args.issue_fix_command == "repository-memory-sync":
             provider_path = (
                 args.repository_memory_provider_json
@@ -907,7 +885,7 @@ def handle_issue_fix_command(
                 repo_path=args.repo_path,
                 repository_revision=revision,
                 references=args.resource_reference,
-                observed_at=args.generated_at,
+                observed_at=generated_at,
                 execute=args.execute,
             )
             renderer = render_issue_fix_repository_memory_sync_markdown
@@ -946,7 +924,7 @@ def handle_issue_fix_command(
                 query=args.repository_memory_query,
                 supports=args.repository_memory_support,
                 validation_label=args.validation_label,
-                observed_at=args.generated_at,
+                observed_at=generated_at,
             )
             payload = build_issue_fix_workflow_plan_packet(
                 repo=args.repo,
@@ -963,7 +941,7 @@ def handle_issue_fix_command(
                 validation_label=args.validation_label,
                 repository_context_input=repository_context_input,
                 repository_memory_input=repository_memory_input,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             renderer = render_issue_fix_workflow_plan_markdown
         elif args.issue_fix_command == "feasibility":
@@ -997,7 +975,7 @@ def handle_issue_fix_command(
                 query=args.repository_memory_query,
                 supports=args.repository_memory_support,
                 validation_label=args.validation_label,
-                observed_at=args.generated_at,
+                observed_at=generated_at,
             )
             boundary_authority_scopes, boundary_authority_resolved = (
                 _goal_boundary_authority_projection(
@@ -1018,7 +996,7 @@ def handle_issue_fix_command(
                 repository_memory_input=repository_memory_input,
                 boundary_authority_scopes=boundary_authority_scopes,
                 boundary_authority_resolved=boundary_authority_resolved,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             should_write_domain_state = bool(
                 not args.no_write_domain_state and (args.goal_id or args.ledger_path)
@@ -1056,7 +1034,7 @@ def handle_issue_fix_command(
                 else None,
                 fetch_metadata=args.fetch_metadata,
                 fetch_timeout_seconds=args.fetch_timeout_seconds,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             should_write_domain_state = bool(
                 not args.no_write_domain_state and (args.goal_id or args.ledger_path)
@@ -1144,7 +1122,7 @@ def handle_issue_fix_command(
                     else None
                 ),
                 agent_id=args.agent_id,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             renderer = render_issue_fix_outcome_projection_markdown
         elif args.issue_fix_command == "reviewer-plan":
@@ -1168,7 +1146,7 @@ def handle_issue_fix_command(
                     else None
                 ),
                 execute=args.execute,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             renderer = render_issue_fix_reviewer_recommendation_markdown
         elif args.issue_fix_command == "reviewer-request":
@@ -1203,7 +1181,7 @@ def handle_issue_fix_command(
                     else None
                 ),
                 execute=args.execute,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             renderer = render_issue_fix_reviewer_request_markdown
         elif args.issue_fix_command == "acceptance-fixture":
@@ -1211,7 +1189,7 @@ def handle_issue_fix_command(
                 repo=args.repo,
                 issue_ref=args.issue_ref,
                 url=args.url,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             renderer = render_issue_fix_acceptance_loop_markdown
         elif args.issue_fix_command == "repo-branch-fixture":
@@ -1219,7 +1197,7 @@ def handle_issue_fix_command(
                 repo=args.repo,
                 issue_ref=args.issue_ref,
                 url=args.url,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             renderer = render_issue_fix_acceptance_loop_markdown
         elif args.issue_fix_command == "caller-repo-branch":
@@ -1234,7 +1212,7 @@ def handle_issue_fix_command(
                 validation_label=args.validation_label,
                 execute=args.execute,
                 timeout_seconds=args.timeout_seconds,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             renderer = render_issue_fix_acceptance_loop_markdown
         else:
