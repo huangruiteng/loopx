@@ -1,0 +1,27 @@
+docs/capabilities/issue-fix/README.md
+  s_32e2a9a204a8e4::t_c2623f427319a9 168,181,189-195,198-201,217-224,290,340-341,346-351,364-365,372-373,420-421,576,585
+docs/capabilities/issue-fix/README.zh-CN.md
+  s_32e2a9a204a8e4::t_cd7b1b7edb2093 151,164,172-175,178-180,193-197,255,302-303,307-310,321,328,371-372,513,522
+docs/capabilities/issue-fix/protocols/issue-fix-reviewer-recommendation-v0.md
+  s_32e2a9a204a8e4::t_871d18fa45851c 21-22,24-25,33-46,66,80,103-109,112-155,169-170,190-195,218,225-227,235-236,253,271-274
+docs/capabilities/issue-fix/protocols/issue-fix-reviewer-request-v0.md
+  s_32e2a9a204a8e4::t_c34e5a4d53e926 16-18,59,73,86-88,99-100,126-128,145-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a1ff8be320eda64b962bbeaaabe8c60b01fc259e",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
