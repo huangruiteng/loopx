@@ -884,18 +884,22 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "title": "Issue-fix reviewer routing and bilingual guide",
         "purpose": (
             "Check the bilingual issue-fix product entry and explainable local "
-            "reviewer recommendation contract without external review requests."
+            "reviewer recommendation plus authority-gated verified request contract."
         ),
         "catalog_families": ["Human Decision", "Evidence Lifecycle", "State And Boundary"],
         "trigger_hints": (
             "reviewer-plan",
             "reviewer recommendation",
             "issue_fix_reviewer_recommendation",
+            "reviewer-request",
+            "issue_fix_reviewer_request",
             "docs/capabilities/issue-fix/README",
             "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-recommendation",
             "examples/issue-fix-capability-guide-smoke.py",
             "examples/issue-fix-reviewer-recommendation-smoke.py",
+            "examples/issue-fix-reviewer-request-smoke.py",
             "loopx/capabilities/issue_fix/reviewer_recommendation.py",
+            "loopx/capabilities/issue_fix/reviewer_request.py",
         ),
         "checks": [
             {
@@ -906,7 +910,12 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             {
                 "command": "python3 examples/issue-fix-reviewer-recommendation-smoke.py",
                 "tier": "default",
-                "reason": "guards explainable CODEOWNERS and base-revision changed-path/module-history reviewer recommendations without external review requests",
+                "reason": "guards explainable CODEOWNERS and base-revision changed-path/module-history reviewer recommendations",
+            },
+            {
+                "command": "python3 examples/issue-fix-reviewer-request-smoke.py",
+                "tier": "default",
+                "reason": "guards author exclusion, default top-candidate request, idempotency, blockers, and post-write verification",
             },
         ],
     },

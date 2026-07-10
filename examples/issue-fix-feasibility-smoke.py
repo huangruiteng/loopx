@@ -65,6 +65,7 @@ def main() -> int:
     assert default_gate["authorized_before"] == [], default_gate
     assert default_gate["blocked_before"] == [
         "external_pr_creation",
+        "external_review_request",
         "merge",
         "publish",
     ], default_gate
@@ -183,6 +184,7 @@ def main() -> int:
         assert gate["authority_source"] == "goal_checkpointed_boundary_authority", gate
         assert gate["authorized_before"] == [
             "external_pr_creation",
+            "external_review_request",
             "publish",
         ], gate
         assert gate["blocked_before"] == ["merge"], gate

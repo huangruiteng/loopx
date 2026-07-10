@@ -316,6 +316,11 @@ def _goal_start_contract(*, goal_text: str | None, connected: bool, agent_type: 
                     "--repository-context-json <compact-context.json> "
                     "--goal-id <goal-id> --format json"
                 ),
+                "post_pr_reviewer_request_command": (
+                    "loopx issue-fix reviewer-request --url <github-pr-url> "
+                    "--repo-path <approved-repo> --base-ref <base-ref> "
+                    "--execute --format json"
+                ),
                 "post_pr_monitor_command": (
                     "loopx issue-fix pr-lifecycle --url <github-pr-url> "
                     "--goal-id <goal-id> --format json"
@@ -325,8 +330,10 @@ def _goal_start_contract(*, goal_text: str | None, connected: bool, agent_type: 
                     "write only its selected route successor or no-follow-up; "
                     "private repro material, issue body/comment reads, external comments, PR creation, "
                     "merge, publish, destructive git, and production actions stay explicit gates; "
-                    "after PR creation, keep a continuous_monitor todo that calls pr-lifecycle "
-                    "and lets domain-state remember compact public PR observations"
+                    "after PR creation, use active external-review-request authority to call "
+                    "reviewer-request, verify the visible request, then keep a continuous_monitor "
+                    "todo that calls pr-lifecycle and lets domain-state remember compact public "
+                    "PR observations"
                 ),
             }
         },
@@ -360,7 +367,7 @@ Planning rules:
 4. If several todos share the same priority, their listed order is their relative priority. Preserve that exact order when writing them.
 5. Prefer executable Agent Todo items with `task_class=advancement_task`; use User Todo only for concrete owner decisions or private-material gates.
 6. After writing todos, run `loopx refresh-state --goal-id {goal_id}`, activate the host loop if it is missing, unknown, or stale (Codex App automation, Codex CLI `/goal <task_body>`, Claude Code `/loop`, or a custom host-loop gate), then run `loopx quota should-run --goal-id {goal_id}` and begin the first allowed bounded segment.
-7. If the goal is a GitHub issue/PR fix, first preview `loopx issue-fix workflow-plan --url <github-issue-or-pr-url> --repo-path <approved-repo> --repository-context-json <compact-context.json> --validation-label '<validation command>' --format json`; write only metadata classification plus the feasibility checkpoint. Repository context should pin current repo policy, architecture, change-scope, reproduction, and validation refs; memory and external experts remain advisory until verified against the pinned revision. After a compact public-safe observation, run `loopx issue-fix feasibility --url <github-issue-url> --reproduction-status <state> --scope-class <scope> --repository-context-json <compact-context.json> --goal-id {goal_id} --format json` and write only its selected route successor or no-follow-up. Keep private repro material, body/comment reads, external comments, PR creation, merge, publish, destructive git, and production actions as explicit gates. After a PR exists, the monitor should call `loopx issue-fix pr-lifecycle --url <github-pr-url> --goal-id {goal_id} --format json` so CI, review, merge, stale branch, and no-follow-up states drive LoopX todos instead of chat memory.
+7. If the goal is a GitHub issue/PR fix, first preview `loopx issue-fix workflow-plan --url <github-issue-or-pr-url> --repo-path <approved-repo> --repository-context-json <compact-context.json> --validation-label '<validation command>' --format json`; write only metadata classification plus the feasibility checkpoint. Repository context should pin current repo policy, architecture, change-scope, reproduction, and validation refs; memory and external experts remain advisory until verified against the pinned revision. After a compact public-safe observation, run `loopx issue-fix feasibility --url <github-issue-url> --reproduction-status <state> --scope-class <scope> --repository-context-json <compact-context.json> --goal-id {goal_id} --format json` and write only its selected route successor or no-follow-up. Keep private repro material, body/comment reads, external comments, PR creation, merge, publish, destructive git, and production actions as explicit gates. After a PR exists and `external_review_request` or `publish` authority is active, call `loopx issue-fix reviewer-request --url <github-pr-url> --repo-path <approved-repo> --base-ref <base-ref> --execute --format json`; do not mark it complete until the request is visible on the PR. Then the monitor should call `loopx issue-fix pr-lifecycle --url <github-pr-url> --goal-id {goal_id} --format json` so CI, review, merge, stale branch, and no-follow-up states drive LoopX todos instead of chat memory.
 """
 
 
@@ -576,6 +583,13 @@ def build_loopx_bootstrap_command_pack(
                 "--url <github-pr-url> "
                 f"--goal-id {shell_arg(resolved_goal_id)} "
                 "--format json"
+            ),
+            "issue_fix_reviewer_request_template": (
+                f"{shell_arg(cli_bin)} issue-fix reviewer-request "
+                "--url <github-pr-url> "
+                "--repo-path <approved-repo> "
+                "--base-ref <base-ref> "
+                "--execute --format json"
             ),
         },
         "safety_contract": {
@@ -870,6 +884,12 @@ Write only metadata classification plus the feasibility checkpoint from this pre
 ```
 
 Private repro material, issue body/comment reads, external comments, PR creation, merge, publish, destructive git, and production actions stay explicit gates.
+
+After a PR exists and external-review-request authority is active, request the default top requestable non-author reviewer and require post-write verification:
+
+```bash
+{commands.get("issue_fix_reviewer_request_template", "")}
+```
 
 After a PR exists, the PR lifecycle monitor should observe compact public PR state and write issue-fix domain state by default:
 

@@ -41,6 +41,16 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "write_boundary": "writes compact project-local domain state with goal or ledger context; no raw issue/comment/log capture or external write",
             },
             {
+                "command": "loopx issue-fix reviewer-plan --repo-path <repo> --repo <owner/repo> --base-ref <base-ref> --execute --format json",
+                "purpose": "Rank explainable reviewer candidates from CODEOWNERS and changed-path/module history.",
+                "write_boundary": "approved local repo read only; no external review request",
+            },
+            {
+                "command": "loopx issue-fix reviewer-request --url <github-pr-url> --repo-path <repo> --base-ref <base-ref> --execute --format json",
+                "purpose": "Under external-review-request authority, exclude the live PR author, request the top requestable reviewer, and verify the request.",
+                "write_boundary": "one bounded GitHub review request when --execute asserts authority; no comment, push, merge, or publish",
+            },
+            {
                 "command": "loopx issue-fix pr-lifecycle --url <github-pr-url> --goal-id <goal-id> --format json",
                 "purpose": "Project public PR lifecycle state into a successor, monitor continuation, user gate, or no-follow-up transition.",
                 "write_boundary": "writes compact project-local domain state when goal or ledger context is provided; no external comment, PR creation, merge, raw logs, or body/comment capture",
@@ -108,6 +118,16 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "doc": "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
             },
             {
+                "schema_version": "issue_fix_reviewer_recommendation_v0",
+                "module": "loopx.capabilities.issue_fix.reviewer_recommendation",
+                "doc": "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-recommendation-v0.md",
+            },
+            {
+                "schema_version": "issue_fix_reviewer_request_v0",
+                "module": "loopx.capabilities.issue_fix.reviewer_request",
+                "doc": "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-request-v0.md",
+            },
+            {
                 "schema_version": "issue_fix_outcome_projection_v0",
                 "module": "loopx.capabilities.issue_fix.outcome_projection",
                 "doc": "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
@@ -134,6 +154,8 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "python3 examples/issue-fix-feasibility-smoke.py",
             "python3 examples/issue-fix-pr-lifecycle-smoke.py",
             "python3 examples/issue-fix-outcome-projection-smoke.py",
+            "python3 examples/issue-fix-reviewer-recommendation-smoke.py",
+            "python3 examples/issue-fix-reviewer-request-smoke.py",
             "python3 examples/content-ops-issue-fix-metadata-preview-smoke.py",
             "python3 examples/content-ops-issue-fix-intake-smoke.py",
             "python3 examples/issue-fix-acceptance-loop-smoke.py",
@@ -142,6 +164,8 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "docs/capabilities/issue-fix/README.md",
             "docs/capabilities/issue-fix/openviking-pilot-handoff.md",
             "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
+            "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-recommendation-v0.md",
+            "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-request-v0.md",
             "docs/capabilities/issue-fix/protocols/issue-fix-acceptance-loop-v0.md",
             "docs/reference/protocols/content-ops-surface-v0.md",
             "docs/reference/protocols/issue-fix-acceptance-loop-v0.md",
@@ -149,7 +173,7 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
         "boundaries": [
             "GitHub issue body, comments, timeline, and raw provider payloads are gated and not copied.",
             "Caller repo mode reads and writes only the explicitly approved local git repo.",
-            "External comments, PR creation, merge, publish, and destructive git remain out of scope.",
+            "External comments, PR creation, merge, publish, and destructive git remain separately gated; reviewer-request performs only the explicitly authorized review request.",
         ],
         "next_real_step": (
             "Exercise route selection and continuation on a public issue-fix pilot, "
