@@ -1,0 +1,23 @@
+examples/issue-fix-reviewer-notification-sink-smoke.py
+  s_9a5a2bd944fdcb::t_abcc39a76b5738 43,51,95,340-356
+loopx/capabilities/issue_fix/reviewer_notification.py
+  s_9a5a2bd944fdcb::t_d0319acbc55d3d 220-241,579-582
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a1f134848fb183f56d684c5f63d2a80f28b6c4b0",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
