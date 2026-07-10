@@ -55,6 +55,7 @@ def upsert_domain_state_jsonl(
     *,
     key: dict[str, Any],
     existing_key_fn: Callable[[dict[str, Any]], dict[str, Any] | None] | None = None,
+    unchanged_fn: Callable[[dict[str, Any], dict[str, Any]], bool] | None = None,
 ) -> dict[str, Any]:
     """Upsert a payload into a JSONL domain-state file by stable key."""
 
@@ -69,6 +70,8 @@ def upsert_domain_state_jsonl(
         try:
             rows: list[dict[str, Any]] = []
             updated = False
+            unchanged = False
+            candidate = {**payload, "domain_state_key": key}
             if path.exists():
                 for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
                     if not line.strip():
@@ -82,34 +85,40 @@ def upsert_domain_state_jsonl(
                         row_key = existing_key_fn(row)
                     if isinstance(row, dict) and row_key == key:
                         if not updated:
-                            rows.append({**payload, "domain_state_key": key})
+                            if unchanged_fn is not None and unchanged_fn(row, candidate):
+                                rows.append(row)
+                                unchanged = True
+                            else:
+                                rows.append(candidate)
                             updated = True
                         continue
                     rows.append(row)
             if not updated:
-                rows.append({**payload, "domain_state_key": key})
+                rows.append(candidate)
 
-            with tempfile.NamedTemporaryFile(
-                "w",
-                encoding="utf-8",
-                dir=path.parent,
-                prefix=f"{path.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as tmp_file:
-                tmp_name = tmp_file.name
-                tmp_file.write(
-                    "".join(
-                        json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n"
-                        for row in rows
+            if not unchanged:
+                with tempfile.NamedTemporaryFile(
+                    "w",
+                    encoding="utf-8",
+                    dir=path.parent,
+                    prefix=f"{path.name}.",
+                    suffix=".tmp",
+                    delete=False,
+                ) as tmp_file:
+                    tmp_name = tmp_file.name
+                    tmp_file.write(
+                        "".join(
+                            json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n"
+                            for row in rows
+                        )
                     )
-                )
-            os.replace(tmp_name, path)
+                os.replace(tmp_name, path)
         finally:
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
     return {
-        "status": "updated" if updated else "inserted",
+        "status": "unchanged" if unchanged else "updated" if updated else "inserted",
+        "write_performed": not unchanged,
         "row_count": len(rows),
         "ledger_key": key,
         "path_recorded": False,

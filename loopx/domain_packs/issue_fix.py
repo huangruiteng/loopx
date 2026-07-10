@@ -17,6 +17,7 @@ def _upsert_issue_fix_payload(
     *,
     key: dict[str, Any],
     existing_key_fn: Callable[[dict[str, Any]], dict[str, Any] | None],
+    unchanged_fn: Callable[[dict[str, Any], dict[str, Any]], bool] | None = None,
 ) -> dict[str, Any]:
     projection = payload.get("domain_state_projection")
     if not isinstance(projection, dict):
@@ -31,10 +32,14 @@ def _upsert_issue_fix_payload(
             payload,
             key=key,
             existing_key_fn=existing_key_fn,
+            unchanged_fn=unchanged_fn,
         )
     except Exception:
         projection["write_performed"] = False
         raise
+    if result.get("write_performed") is False:
+        projection["write_performed"] = False
+        projection["write_skipped_reason"] = "observation_fingerprint_unchanged"
     projection["write_result"] = result
     return result
 
@@ -109,11 +114,30 @@ def upsert_issue_fix_pr_lifecycle_ledger_jsonl(
     ):
         if payload.get(key) is not False:
             raise ValueError(f"issue-fix domain-state payload must keep {key}=false")
+    def unchanged_quiet_observation(
+        existing: dict[str, Any],
+        incoming: dict[str, Any],
+    ) -> bool:
+        existing_fingerprint = str(existing.get("observation_fingerprint") or "")
+        incoming_fingerprint = str(incoming.get("observation_fingerprint") or "")
+        transition = incoming.get("transition")
+        material_change = (
+            transition.get("material_change")
+            if isinstance(transition, dict)
+            else None
+        )
+        return bool(
+            existing_fingerprint
+            and existing_fingerprint == incoming_fingerprint
+            and material_change is False
+        )
+
     return _upsert_issue_fix_payload(
         ledger_path,
         payload,
         key=issue_fix_pr_lifecycle_ledger_key(payload),
         existing_key_fn=issue_fix_pr_lifecycle_ledger_key,
+        unchanged_fn=unchanged_quiet_observation,
     )
 
 
