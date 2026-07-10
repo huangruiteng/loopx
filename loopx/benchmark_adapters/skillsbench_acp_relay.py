@@ -40,12 +40,10 @@ from loopx.benchmark_adapters.skillsbench_bridge_summary import (
     prompt_requires_meaningful_bridge_progress as _prompt_requires_meaningful_bridge_progress,
 )
 from loopx.benchmark_adapters.skillsbench_codex_goal_recovery import (
-    CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT,
     CODEX_CLI_GOAL_POST_BRIDGE_CONTINUE_PROMPT,
     POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
     PRE_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
     codex_cli_tui_post_bridge_blocker_stage,
-    codex_cli_tui_post_bridge_closeout_recovery_action,
     codex_cli_tui_post_bridge_recovery_action,
     codex_cli_tui_post_bridge_recovery_skip_reason,
     codex_cli_tui_pre_bridge_blocker_stage,
@@ -1081,7 +1079,6 @@ class SkillsBenchLocalAcpRelay:
             post_bridge_recovery_attempt_count = 0
             post_bridge_recovery_action = ""
             post_bridge_recovery_skip_reason = ""
-            post_bridge_closeout_attempt_count = 0
             pre_bridge_terminal_stage = ""
             try:
                 subprocess.run(
@@ -1499,27 +1496,6 @@ class SkillsBenchLocalAcpRelay:
                                 + max(1.0, self._config.stream_heartbeat_interval_sec)
                             )
                             continue
-                        closeout_action = (
-                            codex_cli_tui_post_bridge_closeout_recovery_action(
-                                recovery_action=recovery_action,
-                                recovery_attempt_count=post_bridge_recovery_attempt_count,
-                                closeout_attempted=post_bridge_closeout_attempt_count > 0,
-                                closeout_attempt_count=post_bridge_closeout_attempt_count,
-                            )
-                        )
-                        if closeout_action == "typed_closeout":
-                            post_bridge_closeout_attempt_count += 1
-                            post_bridge_recovery_action = closeout_action
-                            tmux_type_text_and_submit(
-                                tmux_name=tmux_name,
-                                text=CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT,
-                            )
-                            last_bridge_activity_at = now
-                            next_heartbeat = (
-                                now
-                                + max(1.0, self._config.stream_heartbeat_interval_sec)
-                            )
-                            continue
                         post_bridge_recovery_skip_reason = (
                             codex_cli_tui_post_bridge_recovery_skip_reason(
                                 capture,
@@ -1531,7 +1507,7 @@ class SkillsBenchLocalAcpRelay:
                             not post_bridge_recovery_skip_reason
                             and recovery_action in {"press_enter", "typed_continue"}
                         ):
-                            post_bridge_recovery_skip_reason = "closeout_retry_limit_reached" if post_bridge_closeout_attempt_count else "retry_limit_reached"
+                            post_bridge_recovery_skip_reason = "retry_limit_reached"
                         tmux_kill_session(tmux_name)
                         self._publish_remote_bridge_agent_operations_trace(
                             bridge_summary_path=bridge_summary_path,
@@ -2211,6 +2187,9 @@ LoopX SkillsBench remote workspace bridge:
   - {{"operation":"cleanup","path":"/app/path/to/temp"}}
 - Allowed sandbox path roots are `/app`, `/tmp`, and `/root`; use `/root`
   when the task instruction names a scored input or output path there.
+- SkillsBench evaluates relative output filenames from `/root`. If the task
+  asks for `report.json`, `answer.json`, or another relative output file, write
+  and self-check `/root/<name>`; an `/app/<name>` copy alone is not scored.
 - Do not upload, submit, expose credentials, quote the bridge command in final output, or record raw stdout/stderr/task text in public artifacts.
 - The bridge readiness probe completed with ready=true and operation_count={operation_count}.
 - If a LoopX product-mode lifecycle contract is present later in this prompt,

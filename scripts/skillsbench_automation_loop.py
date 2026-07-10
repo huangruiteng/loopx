@@ -4909,8 +4909,18 @@ def _apply_codex_cli_goal_countability_guard_attribution(
         not missing_task_activity
         and str(compact.get("official_score_status") or "") == "completed"
     )
+    terminal_goal_failure_stages = {
+        "post_bridge_tui_model_timeout",
+        "post_bridge_tui_error_prompt",
+        "post_bridge_tui_rate_limit",
+    }
     goal_failed = (
-        trace_present and ok_count <= 0 and not completed_task_attempt_countable
+        trace_present
+        and ok_count <= 0
+        and (
+            not completed_task_attempt_countable
+            or goal_stage in terminal_goal_failure_stages
+        )
     )
     if not (missing_task_activity or goal_failed):
         return False
@@ -4924,8 +4934,24 @@ def _apply_codex_cli_goal_countability_guard_attribution(
         label = "skillsbench_codex_cli_goal_uncountable_pre_bridge_tui_error"
     elif goal_stage == "pre_bridge_tui_rate_limit":
         label = "skillsbench_codex_cli_goal_uncountable_pre_bridge_rate_limit"
+    elif goal_stage == "post_bridge_tui_model_timeout":
+        label = "skillsbench_codex_cli_goal_uncountable_post_bridge_model_timeout"
+    elif goal_stage == "post_bridge_tui_error_prompt":
+        label = "skillsbench_codex_cli_goal_uncountable_post_bridge_tui_error"
+    elif goal_stage == "post_bridge_tui_rate_limit":
+        label = "skillsbench_codex_cli_goal_uncountable_post_bridge_rate_limit"
     if goal_failed and not missing_task_activity:
-        label = "skillsbench_codex_cli_goal_uncountable_goal_failed"
+        label = {
+            "post_bridge_tui_model_timeout": (
+                "skillsbench_codex_cli_goal_uncountable_post_bridge_model_timeout"
+            ),
+            "post_bridge_tui_error_prompt": (
+                "skillsbench_codex_cli_goal_uncountable_post_bridge_tui_error"
+            ),
+            "post_bridge_tui_rate_limit": (
+                "skillsbench_codex_cli_goal_uncountable_post_bridge_rate_limit"
+            ),
+        }.get(goal_stage, "skillsbench_codex_cli_goal_uncountable_goal_failed")
     compact["score_failure_attribution"] = label
     compact["first_blocker"] = label
     compact["repeat_blocked_by"] = label

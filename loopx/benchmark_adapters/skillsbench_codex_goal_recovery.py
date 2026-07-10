@@ -10,19 +10,10 @@ PRE_BRIDGE_RECOVERY_ATTEMPT_LIMIT = 2
 CODEX_CLI_GOAL_PRIVATE_TUI_TAIL_MAX_LINES = 160
 CODEX_CLI_GOAL_PRIVATE_TUI_TAIL_MAX_CHARS = 60000
 CODEX_CLI_GOAL_POST_BRIDGE_CONTINUE_PROMPT = (
-    "Continue the active SkillsBench goal after the transient model timeout. "
-    "If ./skillsbench-task-prompt.md exists, read it before acting. Use the "
-    "private bridge command from the task instructions for one task-facing "
-    "action, then finish with compact status."
-)
-CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT = (
-    "Close out the active SkillsBench goal after repeated post-bridge model "
-    "timeouts. Do not start a new investigation. If the task is complete, "
-    "finish the active goal now with compact status. If the task is not "
-    "complete, report the blocker compactly and end the active goal."
+    "Continue the existing SkillsBench task from where you left off after the "
+    "transient model timeout."
 )
 POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT = 6
-POST_BRIDGE_CLOSEOUT_ATTEMPT_LIMIT = 8
 TUI_BLOCKER_RECENT_LINE_WINDOW = 40
 
 
@@ -256,25 +247,3 @@ def codex_cli_tui_post_bridge_recovery_skip_reason(
     if not _capture_has_retry_affordance(capture):
         return "no_retry_affordance"
     return "unsupported_recovery_action"
-
-
-def codex_cli_tui_post_bridge_closeout_recovery_action(
-    *,
-    recovery_action: str,
-    recovery_attempt_count: int,
-    closeout_attempted: bool,
-    closeout_attempt_count: int = 0,
-) -> str:
-    """Return the final bounded closeout action after continue retries are spent."""
-
-    if recovery_action not in {"press_enter", "typed_continue"}:
-        return ""
-    if recovery_attempt_count < POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT:
-        return ""
-    effective_closeout_count = max(
-        int(closeout_attempted),
-        max(0, int(closeout_attempt_count or 0)),
-    )
-    if effective_closeout_count >= POST_BRIDGE_CLOSEOUT_ATTEMPT_LIMIT:
-        return ""
-    return "typed_closeout"

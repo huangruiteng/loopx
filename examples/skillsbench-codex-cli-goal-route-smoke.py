@@ -651,13 +651,11 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         SkillsBenchLocalAcpRelay,
     )
     from loopx.benchmark_adapters.skillsbench_codex_goal_recovery import (
-        CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT,
-        POST_BRIDGE_CLOSEOUT_ATTEMPT_LIMIT,
+        CODEX_CLI_GOAL_POST_BRIDGE_CONTINUE_PROMPT,
         POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
         PRE_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
         TUI_BLOCKER_RECENT_LINE_WINDOW,
         codex_cli_tui_post_bridge_blocker_stage,
-        codex_cli_tui_post_bridge_closeout_recovery_action,
         codex_cli_tui_post_bridge_recovery_action,
         codex_cli_tui_post_bridge_recovery_skip_reason,
         codex_cli_tui_pre_bridge_blocker_stage,
@@ -672,12 +670,13 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
     )
 
     assert POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT == 6
-    assert POST_BRIDGE_CLOSEOUT_ATTEMPT_LIMIT == 8
     assert PRE_BRIDGE_RECOVERY_ATTEMPT_LIMIT == 2
     assert TUI_BLOCKER_RECENT_LINE_WINDOW == 40
-    assert "Close out the active SkillsBench goal" in (
-        CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT
+    assert "Continue the existing SkillsBench task from where you left off" in (
+        CODEX_CLI_GOAL_POST_BRIDGE_CONTINUE_PROMPT
     )
+    assert "one task-facing action" not in CODEX_CLI_GOAL_POST_BRIDGE_CONTINUE_PROMPT
+    assert "compact status" not in CODEX_CLI_GOAL_POST_BRIDGE_CONTINUE_PROMPT
     assert (
         codex_cli_tui_pre_bridge_blocker_stage(
             "request timed out while waiting for model\n› ",
@@ -880,31 +879,6 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         == ""
     )
     assert (
-        codex_cli_tui_post_bridge_closeout_recovery_action(
-            recovery_action="typed_continue",
-            recovery_attempt_count=POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
-            closeout_attempted=False,
-        )
-        == "typed_closeout"
-    )
-    assert (
-        codex_cli_tui_post_bridge_closeout_recovery_action(
-            recovery_action="typed_continue",
-            recovery_attempt_count=POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
-            closeout_attempted=True,
-        )
-        == "typed_closeout"
-    )
-    assert (
-        codex_cli_tui_post_bridge_closeout_recovery_action(
-            recovery_action="typed_continue",
-            recovery_attempt_count=POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
-            closeout_attempted=True,
-            closeout_attempt_count=POST_BRIDGE_CLOSEOUT_ATTEMPT_LIMIT,
-        )
-        == ""
-    )
-    assert (
         codex_cli_tui_post_bridge_blocker_stage(
             "rate limit reached\n› ",
             prompt_visible=True,
@@ -1019,8 +993,8 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
             first_action_observed=True,
             bridge_summary_path=bridge_summary,
             post_bridge_recovery_attempt_count=POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
-            post_bridge_recovery_action="typed_closeout",
-            post_bridge_recovery_skip_reason="closeout_retry_limit_reached",
+            post_bridge_recovery_action="typed_continue",
+            post_bridge_recovery_skip_reason="retry_limit_reached",
         )
         plan = {
             "route": "codex-cli-goal-baseline",
@@ -1036,28 +1010,28 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         trace["codex_cli_goal_tui_post_bridge_recovery_attempt_count"]
         == POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT
     )
-    assert trace["codex_cli_goal_tui_post_bridge_recovery_action"] == "typed_closeout"
+    assert trace["codex_cli_goal_tui_post_bridge_recovery_action"] == "typed_continue"
     assert (
         trace["codex_cli_goal_tui_post_bridge_recovery_skip_reason"]
-        == "closeout_retry_limit_reached"
+        == "retry_limit_reached"
     )
     assert trace["codex_cli_goal_tui_post_bridge_recovery_skip_reasons"] == [
-        "closeout_retry_limit_reached"
+        "retry_limit_reached"
     ]
     public_prerequisites = _public_runner_prerequisites(prerequisites)
     assert (
         public_prerequisites["codex_cli_goal_tui_post_bridge_recovery_action"]
-        == "typed_closeout"
+        == "typed_continue"
     )
     assert (
         public_prerequisites[
             "codex_cli_goal_tui_post_bridge_recovery_skip_reason"
         ]
-        == "closeout_retry_limit_reached"
+        == "retry_limit_reached"
     )
     assert public_prerequisites[
         "codex_cli_goal_tui_post_bridge_recovery_skip_reasons"
-    ] == ["closeout_retry_limit_reached"]
+    ] == ["retry_limit_reached"]
 
 
 def _assert_cli_goal_active_timeout_is_public_countability_stage() -> None:
@@ -1148,6 +1122,26 @@ def _assert_cli_goal_active_timeout_is_public_countability_stage() -> None:
     }
     assert _apply_codex_cli_goal_countability_guard_attribution(compact) is False
     assert "codex_cli_goal_countability_contract" not in compact
+
+    post_bridge_timeout_trace = dict(completed_attempt_trace)
+    post_bridge_timeout_trace.update(
+        {
+            "codex_cli_goal_tui_stage": "post_bridge_tui_model_timeout",
+            "codex_cli_goal_tui_ok_count": 0,
+        }
+    )
+    compact = {
+        "route": CODEX_CLI_GOAL_BASELINE_ROUTE,
+        "official_score_status": "completed",
+        "official_score": 0.0,
+        "interaction_counters": post_bridge_timeout_trace,
+        "runner_prerequisites": {},
+        "failure_attribution_labels": ["official_score_zero_case_failure"],
+    }
+    assert _apply_codex_cli_goal_countability_guard_attribution(compact) is True
+    assert compact["score_failure_attribution"] == (
+        "skillsbench_codex_cli_goal_uncountable_post_bridge_model_timeout"
+    )
 
     with tempfile.TemporaryDirectory() as temp:
         trace_dir = Path(temp) / "trace"
@@ -1338,6 +1332,8 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
         bridge_command_for_agent="/tmp/private-bridge",
     )
     assert "FIRST ACTION REQUIRED" in packet, packet
+    assert "relative output filenames from `/root`" in packet, packet
+    assert "an `/app/<name>` copy alone is not scored" in packet, packet
     assert _prompt_requires_bridge_first_action(packet) is True
     assert (
         _prompt_requires_meaningful_bridge_progress(
@@ -1374,10 +1370,10 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
         not in source
     )
     assert "post_bridge_recovery_attempt_count" in source
-    assert "post_bridge_closeout_attempt_count" in source
     assert "POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT" in source
-    assert "CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT" in source
-    assert "typed_closeout" in source
+    assert "post_bridge_closeout_attempt_count" not in source
+    assert "CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT" not in source
+    assert "typed_closeout" not in source
     assert "post_bridge_recovery_attempt_count < 2" not in source
     assert "last_bridge_activity_at >= 30.0" in source
     assert "task_output_quiet_timeout_sec = max(" in source
