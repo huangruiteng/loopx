@@ -27,6 +27,20 @@ _DOCKERFILE_FROM_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 _SAFE_IMAGE_REFERENCE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/:@+-]{0,511}$")
+_VERIFIER_SCRIPT_CANDIDATES = (
+    Path("tests/test.sh"),
+    Path("verifier/test.sh"),
+)
+
+
+def skillsbench_verifier_script(task_path: Path) -> Path:
+    """Return the active verifier entrypoint for current or legacy task layouts."""
+
+    for relative_path in _VERIFIER_SCRIPT_CANDIDATES:
+        candidate = task_path / relative_path
+        if candidate.is_file():
+            return candidate
+    return task_path / _VERIFIER_SCRIPT_CANDIDATES[0]
 
 
 def apply_proxy_runtime_env(

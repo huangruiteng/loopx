@@ -6167,7 +6167,7 @@ def test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror() 
         root = Path(tmp)
         task = root / "tasks" / "citation-check"
         dockerfile = task / "environment" / "Dockerfile"
-        verifier = task / "verifier" / "test.sh"
+        verifier = task / "tests" / "test.sh"
         dockerfile.parent.mkdir(parents=True)
         verifier.parent.mkdir(parents=True)
         dockerfile.write_text("FROM python:3.12-slim\n", encoding="utf-8")
@@ -6209,7 +6209,7 @@ def test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror() 
             DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
         ), metadata
         assert verifier.read_text(encoding="utf-8") == original_verifier
-        staged_verifier = (staged_path / "verifier" / "test.sh").read_text(
+        staged_verifier = (staged_path / "tests" / "test.sh").read_text(
             encoding="utf-8"
         )
         assert VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN in staged_verifier, staged_verifier

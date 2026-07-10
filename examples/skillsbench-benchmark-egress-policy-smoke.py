@@ -240,6 +240,45 @@ def test_verifier_proxy_patch_is_required_only_for_existing_verifier() -> None:
         assert patched["benchmark_egress_proxy_verifier_env_key_count"] > 0
 
 
+def test_verifier_proxy_patch_failure_blocks_task_staging() -> None:
+    proxy_url = "http://benchmark-proxy.example.invalid:18080"
+    with tempfile.TemporaryDirectory(prefix="skillsbench-verifier-proxy-block-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "citation-check"
+        dockerfile = task / "environment" / "Dockerfile"
+        verifier = task / "tests" / "test.sh"
+        dockerfile.parent.mkdir(parents=True)
+        verifier.parent.mkdir(parents=True)
+        dockerfile.write_text("FROM python:3.12-slim\n", encoding="utf-8")
+        verifier.write_text("#!/bin/sh\npytest -q\n", encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+        failed_patch = {
+            "benchmark_egress_proxy_verifier_env_patch_required": True,
+            "benchmark_egress_proxy_verifier_env_patch_applied": False,
+            "benchmark_egress_proxy_verifier_env_key_count": 1,
+            "benchmark_egress_proxy_verifier_env_raw_proxy_recorded": False,
+        }
+        with mock.patch.object(
+            skillsbench_loop,
+            "patch_verifier_benchmark_egress_proxy_env",
+            return_value=failed_patch,
+        ):
+            try:
+                skillsbench_loop.stage_task_for_sandbox(
+                    task_path=task,
+                    jobs_dir=root / "jobs",
+                    job_name="citation-check-goal",
+                    sandbox="docker",
+                    benchmark_egress_proxy_env={
+                        "LOOPX_SKILLSBENCH_EGRESS_PROXY": proxy_url,
+                    },
+                )
+            except skillsbench_loop.SkillsBenchSetupPreflightBlocked as exc:
+                assert "verifier egress proxy patch required" in str(exc), exc
+            else:  # pragma: no cover - script-style assertion path
+                raise AssertionError("missing verifier proxy patch must block staging")
+
+
 def test_proxy_runtime_prewarms_external_base_images_without_public_refs() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-base-image-prewarm-") as tmp:
         dockerfile = Path(tmp) / "Dockerfile"
@@ -296,5 +335,6 @@ if __name__ == "__main__":
     test_public_launcher_uses_container_reachable_benchmark_proxy()
     test_public_launcher_batches_three_cases_with_closeout_sync()
     test_verifier_proxy_patch_is_required_only_for_existing_verifier()
+    test_verifier_proxy_patch_failure_blocks_task_staging()
     test_proxy_runtime_prewarms_external_base_images_without_public_refs()
     print("skillsbench-benchmark-egress-policy-smoke: ok")

@@ -7673,7 +7673,7 @@ def skillsbench_verifier_bootstrap_risk(task_path: Path) -> dict[str, Any]:
     commands.
     """
 
-    verifier = task_path / "verifier" / "test.sh"
+    verifier = proxy_runtime.skillsbench_verifier_script(task_path)
     result: dict[str, Any] = {
         "verifier_present": verifier.exists(),
         "verifier_bootstrap_risk_detected": False,
@@ -8369,8 +8369,9 @@ def stage_task_for_sandbox(
     verifier_proxy_exports = _verifier_benchmark_egress_proxy_exports(
         benchmark_egress_proxy_env
     )
+    verifier_script = proxy_runtime.skillsbench_verifier_script(task_path)
     needs_verifier_proxy_env_patch = bool(
-        verifier_proxy_exports and (task_path / "verifier" / "test.sh").exists()
+        verifier_proxy_exports and verifier_script.is_file()
     )
     needs_dockerfile_proxy_env_patch = bool(
         verifier_proxy_exports and (task_path / "environment" / "Dockerfile").exists()
@@ -8532,11 +8533,12 @@ def stage_task_for_sandbox(
     runtime_tools_patched = patch_dockerfile_codex_acp_runtime_tools(
         staged_path / "environment" / "Dockerfile"
     )
+    staged_verifier_script = proxy_runtime.skillsbench_verifier_script(staged_path)
     uv_mirror_metadata = patch_verifier_uv_bootstrap_mirror(
-        staged_path / "verifier" / "test.sh"
+        staged_verifier_script
     )
     verifier_proxy_metadata = patch_verifier_benchmark_egress_proxy_env(
-        staged_path / "verifier" / "test.sh",
+        staged_verifier_script,
         proxy_env=benchmark_egress_proxy_env,
     )
     resource_cap_patch = patch_task_cpu_cap_for_local_docker(
@@ -8630,6 +8632,14 @@ def stage_task_for_sandbox(
         metadata[key] = value
     metadata.update(dockerfile_proxy_metadata)
     metadata.update(verifier_proxy_metadata)
+    if (
+        metadata.get("benchmark_egress_proxy_verifier_env_patch_required") is True
+        and metadata.get("benchmark_egress_proxy_verifier_env_patch_applied")
+        is not True
+    ):
+        raise SkillsBenchSetupPreflightBlocked(
+            "skillsbench verifier egress proxy patch required but not applied"
+        )
     return staged_path, metadata
 
 
