@@ -16,6 +16,7 @@ from .paths import DEFAULT_RUNTIME_ROOT
 
 STATE_BACKUP_SCHEMA_VERSION = "loopx_state_backup_v0"
 ARCHIVE_SEGMENT_PATTERN = re.compile(r"[^a-zA-Z0-9._-]+")
+STAT_FIELDS = ("paths", "files", "directories", "symlinks", "bytes")
 
 
 def _utc_timestamp() -> str:
@@ -291,6 +292,72 @@ def _discover_targets(
     return targets, missing, warnings, discovery
 
 
+def _empty_stats() -> dict[str, int]:
+    return {field: 0 for field in STAT_FIELDS}
+
+
+def _sum_target_stats(targets: list[dict[str, Any]]) -> dict[str, int]:
+    return {
+        field: sum(int(item.get("stats", {}).get(field, 0)) for item in targets)
+        for field in STAT_FIELDS
+    }
+
+
+def _target_category(key: str) -> str:
+    if key == "runtime_root":
+        return "runtime"
+    if key.startswith("project_") or key.startswith("registry_project_"):
+        return "project_state"
+    if key.startswith("registry_active_state:"):
+        return "active_state_routes"
+    if key.startswith("registry_source_registry:"):
+        return "source_registries"
+    if key == "codex_automations":
+        return "automations"
+    if key.startswith("codex_skill:"):
+        return "skills"
+    return "other"
+
+
+def _category_stats(targets: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
+    categories: dict[str, dict[str, int]] = {}
+    for item in targets:
+        category = _target_category(str(item.get("key") or ""))
+        stats = categories.setdefault(category, {"target_count": 0, **_empty_stats()})
+        stats["target_count"] += 1
+        item_stats = item.get("stats") if isinstance(item.get("stats"), dict) else {}
+        for field in STAT_FIELDS:
+            stats[field] += int(item_stats.get(field, 0))
+    return categories
+
+
+def _contained_overlap_stats(
+    targets: list[dict[str, Any]],
+    *,
+    logical_source_bytes: int,
+) -> dict[str, int]:
+    source_paths = [
+        _resolved(Path(str(item.get("source_path") or "")))
+        for item in targets
+    ]
+    contained: list[dict[str, Any]] = []
+    for index, item in enumerate(targets):
+        source = source_paths[index]
+        if any(
+            index != parent_index
+            and source != parent
+            and _is_relative_to(source, parent)
+            for parent_index, parent in enumerate(source_paths)
+        ):
+            contained.append(item)
+    overlap_bytes = _sum_target_stats(contained)["bytes"]
+    return {
+        "contained_target_count": len(contained),
+        "logical_bytes": overlap_bytes,
+        "unique_source_bytes_estimate": max(logical_source_bytes - overlap_bytes, 0),
+    }
+
+
 def build_state_backup_plan(
     *,
     project: Path | str = ".",
@@ -315,13 +382,8 @@ def build_state_backup_plan(
         include_skills=include_skills,
         include_registry_projects=include_registry_projects,
     )
-    total_stats = {
-        "paths": sum(int(item.get("stats", {}).get("paths", 0)) for item in targets),
-        "files": sum(int(item.get("stats", {}).get("files", 0)) for item in targets),
-        "directories": sum(int(item.get("stats", {}).get("directories", 0)) for item in targets),
-        "symlinks": sum(int(item.get("stats", {}).get("symlinks", 0)) for item in targets),
-        "bytes": sum(int(item.get("stats", {}).get("bytes", 0)) for item in targets),
-    }
+    total_stats = _sum_target_stats(targets)
+    logical_source_bytes = total_stats["bytes"]
     return {
         "ok": True,
         "schema_version": STATE_BACKUP_SCHEMA_VERSION,
@@ -345,6 +407,12 @@ def build_state_backup_plan(
             "missing_target_count": len(missing),
             "warning_count": len(warnings),
             "total_stats": total_stats,
+            "logical_source_bytes": logical_source_bytes,
+            "category_stats": _category_stats(targets),
+            "contained_overlap_stats": _contained_overlap_stats(
+                targets,
+                logical_source_bytes=logical_source_bytes,
+            ),
         },
         "execution": None,
         "recommended_action": (
@@ -418,6 +486,13 @@ def execute_state_backup_plan(payload: dict[str, Any]) -> dict[str, Any]:
     execution = dict(updated["execution"])
     execution["archive_sha256"] = _sha256_file(archive_path)
     execution["archive_size_bytes"] = archive_path.stat().st_size
+    summary = updated.get("summary") if isinstance(updated.get("summary"), dict) else {}
+    logical_source_bytes = int(summary.get("logical_source_bytes") or 0)
+    if logical_source_bytes:
+        ratio = execution["archive_size_bytes"] / logical_source_bytes
+        execution["archive_to_logical_ratio"] = round(ratio, 6)
+    else:
+        execution["archive_to_logical_ratio"] = None
     updated["execution"] = execution
     manifest_path.write_text(json.dumps(updated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return updated
@@ -426,6 +501,14 @@ def execute_state_backup_plan(payload: dict[str, Any]) -> dict[str, Any]:
 def render_state_backup_markdown(payload: dict[str, Any]) -> str:
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
     total = summary.get("total_stats") if isinstance(summary.get("total_stats"), dict) else {}
+    category_stats = (
+        summary.get("category_stats") if isinstance(summary.get("category_stats"), dict) else {}
+    )
+    overlap = (
+        summary.get("contained_overlap_stats")
+        if isinstance(summary.get("contained_overlap_stats"), dict)
+        else {}
+    )
     lines = [
         "# LoopX State Backup",
         "",
@@ -438,9 +521,19 @@ def render_state_backup_markdown(payload: dict[str, Any]) -> str:
         f"- Included targets: `{summary.get('included_target_count')}`",
         f"- Missing targets: `{summary.get('missing_target_count')}`",
         f"- Total paths: `{total.get('paths')}`",
-        f"- Total bytes: `{total.get('bytes')}`",
+        f"- Logical source bytes (before compression): `{summary.get('logical_source_bytes')}`",
+        f"- Contained route overlap bytes: `{overlap.get('logical_bytes')}`",
+        f"- Unique source bytes (estimate): `{overlap.get('unique_source_bytes_estimate')}`",
         f"- Recommended action: {payload.get('recommended_action')}",
     ]
+    if category_stats:
+        lines.extend(["", "## Logical Size By Category", ""])
+        for category, stats in category_stats.items():
+            if isinstance(stats, dict):
+                lines.append(
+                    f"- `{category}`: `{stats.get('bytes')}` bytes "
+                    f"across `{stats.get('target_count')}` targets"
+                )
     execution = payload.get("execution")
     if isinstance(execution, dict):
         lines.extend(
@@ -452,6 +545,7 @@ def render_state_backup_markdown(payload: dict[str, Any]) -> str:
                 f"- Manifest: `{execution.get('manifest_path')}`",
                 f"- Archive sha256: `{execution.get('archive_sha256')}`",
                 f"- Archive bytes: `{execution.get('archive_size_bytes')}`",
+                f"- Archive/logical ratio: `{execution.get('archive_to_logical_ratio')}`",
             ]
         )
     included = payload.get("included") if isinstance(payload.get("included"), list) else []

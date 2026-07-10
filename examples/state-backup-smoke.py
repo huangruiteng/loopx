@@ -15,7 +15,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.state_backup import build_state_backup_plan, execute_state_backup_plan
+from loopx.state_backup import (
+    build_state_backup_plan,
+    execute_state_backup_plan,
+    render_state_backup_markdown,
+)
 
 
 def write_text(path: Path, text: str) -> None:
@@ -113,6 +117,10 @@ def assert_archive(payload: dict[str, object]) -> None:
     execution = manifest["execution"]
     assert execution["archive_sha256"], execution
     assert execution["archive_size_bytes"] > 0, execution
+    assert execution["archive_to_logical_ratio"] > 0, execution
+    rendered = render_state_backup_markdown(manifest)
+    assert "Logical source bytes (before compression)" in rendered, rendered
+    assert "Archive/logical ratio" in rendered, rendered
     with tarfile.open(archive_path, "r:gz") as archive:
         names = set(archive.getnames())
     included = {
@@ -156,6 +164,19 @@ def main() -> int:
             assert plan["ok"] is True, plan
             assert plan["dry_run"] is True, plan
             assert plan["summary"]["included_target_count"] >= 5, plan
+            summary = plan["summary"]
+            assert summary["logical_source_bytes"] == summary["total_stats"]["bytes"], summary
+            category_stats = summary["category_stats"]
+            assert category_stats["runtime"]["bytes"] > 0, category_stats
+            assert category_stats["project_state"]["bytes"] > 0, category_stats
+            assert category_stats["active_state_routes"]["target_count"] == 2, category_stats
+            assert category_stats["source_registries"]["target_count"] == 2, category_stats
+            assert category_stats["automations"]["target_count"] == 1, category_stats
+            assert category_stats["skills"]["target_count"] == 1, category_stats
+            overlap = summary["contained_overlap_stats"]
+            assert overlap["contained_target_count"] >= 4, overlap
+            assert overlap["logical_bytes"] > 0, overlap
+            assert overlap["unique_source_bytes_estimate"] < summary["logical_source_bytes"], overlap
             assert plan["registry_discovery"] == {
                 "enabled": True,
                 "global_registry": str((runtime / "registry.global.json").resolve()),
@@ -185,6 +206,7 @@ def main() -> int:
                 include_registry_projects=False,
             )
             assert current_only["registry_discovery"]["enabled"] is False, current_only
+            assert current_only["summary"]["logical_source_bytes"] > 0, current_only
             assert not any(
                 str(item.get("key") or "").startswith("registry_")
                 for item in current_only["included"]
