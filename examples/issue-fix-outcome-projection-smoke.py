@@ -219,6 +219,19 @@ def main() -> None:
     )
     assert comment_outcome["result"]["terminal"] is True, comment_outcome
 
+    blocked_delivery = delivery_evidence()
+    blocked_delivery["outcome_status"] = "blocked"
+    blocked_delivery["validation_status"] = "failed"
+    blocked = build_issue_fix_outcome_projection(
+        goal_id="issue-fix-fixture-goal",
+        feasibility_packet=feasibility_packet(),
+        pr_lifecycle_packet=lifecycle_packet(),
+        delivery_evidence_input=blocked_delivery,
+    )
+    blocked_outcome = blocked["issue_fix_outcomes"][0]
+    assert blocked_outcome["stage"] == "delivery_blocked", blocked_outcome
+    assert blocked_outcome["status"] == "blocked", blocked_outcome
+
     unsafe = delivery_evidence()
     unsafe["changed_files"] = ["/Users/example/private.py"]
     try:

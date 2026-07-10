@@ -737,9 +737,15 @@ def handle_issue_fix_command(
                     domain_state["write_skipped_reason"] = "goal_id_or_ledger_path_missing"
             renderer = render_issue_fix_pr_lifecycle_monitor_markdown
         elif args.issue_fix_command == "outcome":
-            if args.feasibility_json == "-" and (
-                args.pr_lifecycle_json == "-" or args.delivery_evidence_json == "-"
-            ):
+            stdin_input_count = sum(
+                value == "-"
+                for value in (
+                    args.feasibility_json,
+                    args.pr_lifecycle_json,
+                    args.delivery_evidence_json,
+                )
+            )
+            if stdin_input_count > 1:
                 raise ValueError("only one outcome JSON input may read from stdin")
             project = Path(args.project).expanduser()
             feasibility_packet = (

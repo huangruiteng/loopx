@@ -457,6 +457,11 @@ machine. It derives one stable `issue_fix_outcome_projection_v0` case from the
 existing feasibility row, revision-pinned repository context, optional compact
 delivery evidence, and optional PR lifecycle row.
 
+Compact delivery evidence uses `outcome_status=in_progress|completed|blocked`
+and `validation_status=passed|failed|partial|not_run`. Terminal PR state still
+takes precedence, while an explicit blocked delivery remains visible over a
+non-terminal wait such as pending CI.
+
 The case card exposes the selected route and current stage; issue and PR links;
 repository revision and context fingerprint; reproduction and validation
 status; repo-relative changed files and commit ref when explicitly supplied;

@@ -146,6 +146,8 @@ def _stage_and_card_status(
             return "merged", "done", "P1"
         if state == "CLOSED":
             return "closed_without_merge", "done", "P1"
+        if delivery_outcome_status == "blocked":
+            return "delivery_blocked", "blocked", "P0"
         if checks_aggregate == "FAILING":
             return "ci_failed", "blocked", "P0"
         if review_decision == "CHANGES_REQUESTED":
