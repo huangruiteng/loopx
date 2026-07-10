@@ -1089,6 +1089,48 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "explore-harness",
+        "title": "Explore Harness configuration and runtime",
+        "purpose": (
+            "Check the deny-by-default goal boundary, planner agreement, resumable "
+            "runtime state, and per-item failure isolation."
+        ),
+        "catalog_families": ["Work Routing", "State And Boundary", "Evidence Lifecycle"],
+        "trigger_hints": (
+            "explore harness",
+            "explore-harness",
+            "harness_runtime",
+            "harness_checkpoint",
+            "explore_harness",
+            "loopx/capabilities/explore",
+            "docs/capabilities/explore",
+            "examples/explore-configure-goal-smoke.py",
+            "examples/explore-harness-runtime-resume-smoke.py",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/explore-configure-goal-smoke.py",
+                "tier": "default",
+                "reason": "guards configure-goal opt-in and quota/planner boundary agreement",
+            },
+            {
+                "command": "python3 examples/explore-harness-runtime-resume-smoke.py",
+                "tier": "default",
+                "reason": "guards validated resume state, novelty/variant restoration, and item failure isolation",
+            },
+            {
+                "command": "python3 examples/explore-worker-plan-gate-smoke.py",
+                "tier": "default",
+                "reason": "guards profile pinning, analysis-only planning, and lane-width authority",
+            },
+            {
+                "command": "python3 examples/explore-result-layer-smoke.py",
+                "tier": "deep",
+                "reason": "samples the wider Explore result and presentation contract",
+            },
+        ],
+    },
+    {
         "id": "catalog-canary-contract",
         "title": "Catalog canary contract",
         "purpose": "Check catalog-to-canary planning, JSON actionability, shell-free no-write execution, and full/module smoke-suite selection.",

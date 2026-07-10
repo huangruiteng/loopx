@@ -610,6 +610,24 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert all(check["tier"] == "default" for check in auto_research_profile["checks"]), auto_research_profile
     assert auto_research_profile["deep_checks_available"] is True, auto_research_profile
 
+    explore_payload = build_catalog_canary_plan(
+        changed_files=[
+            "loopx/capabilities/explore/harness_runtime.py",
+            "loopx/configure_goal.py",
+        ],
+        surfaces=["explore harness resume configure-goal"],
+    )
+    explore_profiles = {
+        profile["id"]: profile for profile in explore_payload["domain_profiles"]
+    }
+    assert "explore-harness" in explore_profiles, explore_payload
+    explore_profile = explore_profiles["explore-harness"]
+    explore_commands = [check["command"] for check in explore_profile["checks"]]
+    assert "python3 examples/explore-configure-goal-smoke.py" in explore_commands
+    assert "python3 examples/explore-harness-runtime-resume-smoke.py" in explore_commands
+    assert "python3 examples/explore-worker-plan-gate-smoke.py" in explore_commands
+    assert explore_profile["deep_checks_available"] is True, explore_profile
+
 
 def assert_explicit_profile_can_include_deep_checks() -> None:
     payload = build_catalog_canary_plan(
