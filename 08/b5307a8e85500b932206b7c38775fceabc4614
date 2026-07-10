@@ -1,0 +1,25 @@
+examples/control_plane/peer-agent-migration-smoke.py
+  s_32e2a9a204a8e4::t_cf2657ae03c8ec 101-137
+examples/upgrade-plan-smoke.py
+  s_32e2a9a204a8e4::t_98668d5065bdac 353-354
+loopx/upgrade.py
+  s_32e2a9a204a8e4::t_711a8743024c4a 354-357
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "08b5307a8e85500b932206b7c38775fceabc4614",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
