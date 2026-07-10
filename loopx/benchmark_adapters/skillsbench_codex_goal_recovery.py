@@ -74,6 +74,7 @@ def _capture_has_rate_limit(capture: str) -> bool:
             "too many requests",
             "status 429",
             "error 429",
+            "at capacity",
         )
     )
 

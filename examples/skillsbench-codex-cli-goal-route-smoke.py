@@ -924,6 +924,14 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
     )
     assert (
         codex_cli_tui_post_bridge_blocker_stage(
+            "Selected model is at capacity. Please try a different model.\n"
+            "Goal blocked\n› ",
+            prompt_visible=True,
+        )
+        == "post_bridge_tui_rate_limit"
+    )
+    assert (
+        codex_cli_tui_post_bridge_blocker_stage(
             "rate limit reached\n",
             prompt_visible=False,
         )

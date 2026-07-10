@@ -1069,6 +1069,7 @@ class SkillsBenchLocalAcpRelay:
             goal_active_observed = False
             goal_terminal_observed = False
             goal_failed_observed = False
+            post_bridge_terminal_stage = ""
             first_action_seen = False
             bridge_activity_seen = False
             last_bridge_summary_size = 0
@@ -1371,6 +1372,15 @@ class SkillsBenchLocalAcpRelay:
                             prompt_visible = codex_cli_tui_input_prompt_visible(capture)
                             pre_bridge_recovery_skip_reason = codex_cli_tui_pre_bridge_terminal_skip_reason(capture, prompt_visible=prompt_visible)
                             pre_bridge_terminal_stage = codex_cli_tui_pre_bridge_terminal_stage(capture, prompt_visible=prompt_visible)
+                        elif bridge_summary_path is not None:
+                            post_bridge_terminal_stage = (
+                                codex_cli_tui_post_bridge_blocker_stage(
+                                    capture,
+                                    prompt_visible=(
+                                        codex_cli_tui_input_prompt_visible(capture)
+                                    ),
+                                )
+                            )
                         goal_terminal_observed = True
                         goal_failed_observed = True
                         break
@@ -1647,7 +1657,17 @@ class SkillsBenchLocalAcpRelay:
                     )
                 self._publish_codex_cli_goal_trace(
                     ok=bool(goal_terminal_observed and not goal_failed_observed),
-                    stage=pre_bridge_terminal_stage or ("goal_achieved" if goal_terminal_observed and not goal_failed_observed else "goal_failed" if goal_failed_observed else "timeout"),
+                    stage=(
+                        pre_bridge_terminal_stage
+                        or post_bridge_terminal_stage
+                        or (
+                            "goal_achieved"
+                            if goal_terminal_observed and not goal_failed_observed
+                            else "goal_failed"
+                            if goal_failed_observed
+                            else "timeout"
+                        )
+                    ),
                     goal_active_observed=goal_active_observed,
                     goal_terminal_observed=goal_terminal_observed,
                     first_action_observed=first_action_seen,
@@ -1671,6 +1691,10 @@ class SkillsBenchLocalAcpRelay:
                     return "codex cli /goal completed"
                 if pre_bridge_terminal_stage:
                     return _recoverable_codex_turn_failure_message("codex_cli_goal_" + pre_bridge_terminal_stage)
+                if post_bridge_terminal_stage:
+                    return _recoverable_codex_turn_failure_message(
+                        "codex_cli_goal_" + post_bridge_terminal_stage
+                    )
                 if goal_failed_observed:
                     return _recoverable_codex_turn_failure_message(
                         "codex_exec_failed"
