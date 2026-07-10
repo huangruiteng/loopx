@@ -1,0 +1,29 @@
+docs/guides/getting-started.md
+  s_32e2a9a204a8e4::t_0d63824c158f40 139-147
+examples/cli-support-control-command-modularization-smoke.py
+  s_32e2a9a204a8e4::t_a3617b20949726 93-99
+examples/state-backup-smoke.py
+  s_32e2a9a204a8e4::t_e68b0db3d9f156 38,40-70,118-122,126,130-135,159-176,181-191
+loopx/cli_commands/support_control.py
+  s_32e2a9a204a8e4::t_dd1c4abcb08ebf 135-139,159-163,373
+loopx/state_backup.py
+  s_32e2a9a204a8e4::t_3ec38894aeb798 9,18,41-59,127-128,132,136-139,155,158-255,273-291,302,310,316,335
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "211de9a09907fa4ffb10ce47a83d0a4ddf6195f2",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
