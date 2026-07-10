@@ -208,6 +208,8 @@ def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
         "--local-ledger-catchup-run-group-contains "
         "skillsbench-codex-cli-goal-xhigh-" in output
     ), output
+    assert "--remote-failure-cleanup-pattern" in output, output
+    assert "--remote-failure-cleanup-include-docker" in output, output
     assert "--update-ledger" not in output, output
     assert "--local-target-lane-id codex-cli-goal-xhigh" in output, output
     assert "--local-target-run-group-contains" not in output, output
