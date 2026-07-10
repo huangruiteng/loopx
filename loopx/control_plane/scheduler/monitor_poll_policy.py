@@ -88,6 +88,35 @@ def quota_decision_due_monitor_item(decision: dict[str, Any]) -> dict[str, Any]:
     return item
 
 
+def _requested_auxiliary_due_monitor_item(
+    decision: dict[str, Any],
+    *,
+    todo_id: str | None,
+    target_key: str | None,
+) -> dict[str, Any]:
+    if not todo_id and not target_key:
+        return {}
+    summary = (
+        decision.get("agent_todo_summary")
+        if isinstance(decision.get("agent_todo_summary"), dict)
+        else {}
+    )
+    due_items = (
+        summary.get("monitor_due_items")
+        if isinstance(summary.get("monitor_due_items"), list)
+        else []
+    )
+    for item in due_items:
+        if not isinstance(item, dict) or todo_item_task_class(item) != TODO_TASK_CLASS_MONITOR:
+            continue
+        if todo_id and normalize_todo_id(item.get("todo_id")) != normalize_todo_id(todo_id):
+            continue
+        if target_key and str(item.get("target_key") or "").strip() != str(target_key).strip():
+            continue
+        return item
+    return {}
+
+
 def allows_due_monitor_poll(
     decision: dict[str, Any],
     *,
@@ -99,10 +128,17 @@ def allows_due_monitor_poll(
         if isinstance(decision.get("work_lane_contract"), dict)
         else {}
     )
-    if contract.get("obligation") != DUE_MONITOR_OBLIGATION:
-        return False
     if contract.get("must_attempt_work") is not True:
         return False
+    if contract.get("obligation") != DUE_MONITOR_OBLIGATION:
+        return bool(
+            "due_monitor_context" in work_lane_reason_codes(contract)
+            and _requested_auxiliary_due_monitor_item(
+                decision,
+                todo_id=todo_id,
+                target_key=target_key,
+            )
+        )
     item = quota_decision_due_monitor_item(decision)
     if not item:
         return False

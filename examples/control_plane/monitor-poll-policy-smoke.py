@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 import sys
 
@@ -164,10 +165,51 @@ def assert_due_monitor_policy_from_contract_selection() -> None:
     assert allows_due_monitor_poll(not_attemptable, todo_id="todo_due_selected") is False
 
 
+def assert_auxiliary_due_monitor_context_policy() -> None:
+    decision = {
+        "work_lane_contract": {
+            "lane": "advancement_task",
+            "obligation": "advance_one_bounded_segment",
+            "must_attempt_work": True,
+            "reason_codes": ["open_agent_todo", "due_monitor_context"],
+        },
+        "agent_todo_summary": {
+            "monitor_due_items": [
+                {
+                    "todo_id": "todo_due_auxiliary",
+                    "task_class": "continuous_monitor",
+                    "target_key": "auxiliary-target",
+                }
+            ],
+        },
+        "agent_lane_next_action": {
+            "todo_id": "todo_advancement_selected",
+            "task_class": "advancement_task",
+        },
+    }
+    assert allows_due_monitor_poll(decision, todo_id="todo_due_auxiliary") is True
+    assert allows_due_monitor_poll(decision, target_key="auxiliary-target") is True
+    assert allows_due_monitor_poll(
+        decision,
+        todo_id="todo_due_auxiliary",
+        target_key="wrong-target",
+    ) is False
+    assert allows_due_monitor_poll(decision) is False
+    assert allows_due_monitor_poll(decision, todo_id="todo_not_due") is False
+
+    missing_context = deepcopy(decision)
+    missing_context["work_lane_contract"]["reason_codes"] = ["open_agent_todo"]
+    assert allows_due_monitor_poll(
+        missing_context,
+        todo_id="todo_due_auxiliary",
+    ) is False
+
+
 def main() -> int:
     assert_external_monitor_observation_policy()
     assert_due_monitor_policy_from_next_action()
     assert_due_monitor_policy_from_contract_selection()
+    assert_auxiliary_due_monitor_context_policy()
     print("monitor-poll-policy-smoke ok")
     return 0
 
