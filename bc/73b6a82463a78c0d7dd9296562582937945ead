@@ -1,0 +1,59 @@
+examples/codex-subagent-orchestration-contract-smoke.py
+  s_32e2a9a204a8e4::t_1d974889727aad 32
+examples/control_plane/capability-gate-projection-smoke.py
+  s_32e2a9a204a8e4::t_8faaf6b110163e 33,55-56,107,116,126,128
+examples/control_plane/peer-agent-continuation-state-machine-smoke.py
+  s_32e2a9a204a8e4::t_497d50194b3411 2,47-49,145,174,176-177,183
+examples/control_plane/quota-cleared-blocker-successor-gate-smoke.py
+  s_32e2a9a204a8e4::t_596a07d4db0293 35,54-55,98-99,113-114,202,214,253-254,264,281,339,348-350,352-353,359-360,371,373,494
+examples/control_plane/refresh-state-agent-lane-scope-smoke.py
+  s_32e2a9a204a8e4::t_4c461cf1ae77b3 226,247
+examples/control_plane/status_markdown_agent_lane_fixtures.py
+  s_32e2a9a204a8e4::t_177c69563b0be9 175
+examples/control_plane/todo-claim-lease-roadmap-smoke.py
+  s_32e2a9a204a8e4::t_9e792dde060397 58
+examples/control_plane/todo-claim-visibility-lanes-smoke.py
+  s_32e2a9a204a8e4::t_6d38c544ff99a6 36,47,112,118-119,135-136,139-140,153,163,166,172-173,193,275-276
+examples/control_plane/todo-continuation-policy-smoke.py
+  s_32e2a9a204a8e4::t_ea2cedd71dd760 25,68,74-75,77-79,88-89,92,94-108,140-141,145-182
+examples/control_plane/todo-durability-fixture-smoke.py
+  s_32e2a9a204a8e4::t_8e4936bcc7ad0e 80,167
+examples/control_plane/todo-lifecycle-cli-smoke.py
+  s_32e2a9a204a8e4::t_05e7a58d4b7fa4 388-390,392,413-417,422-423,436-438
+examples/control_plane/todo-user-gate-scope-smoke.py
+  s_32e2a9a204a8e4::t_3e582af6242e9f 377-406
+examples/control_plane/todo_lifecycle_fixtures.py
+  s_32e2a9a204a8e4::t_0c6c0b6db7c77d 204-206,212-214,221-222,261-263,265
+examples/control_plane/work-lane-contract-smoke.py
+  s_32e2a9a204a8e4::t_c5215174a2b7e4 1453-1454,1466,1473,1483,1520-1522,1525-1528,1532-1533,1535-1536,1538,1881,1886,1911-1912,1916,1925,1927,1929,1931,1933,1936,1941,1966-1967,1971,1979,1981,1983-1984,1987,1992,2017-2018,2022,2031-2034,2206,2211-2213
+examples/fixtures/global-manager-command.public.json
+  s_32e2a9a204a8e4::t_f69f8f0a236a78 88,96
+examples/fixtures/local-agent-launch-plan.public.json
+  s_32e2a9a204a8e4::t_09062593626c3c 55-56,58-61,95
+examples/fixtures/task-graph-projection-status.public.json
+  s_32e2a9a204a8e4::t_624da87c9b5823 90,163
+examples/lark-kanban-control-plane-smoke.py
+  s_32e2a9a204a8e4::t_ebe0859972651c 602-610,644
+examples/peer-agent-task-orchestration.registry.example.json
+  s_32e2a9a204a8e4::t_71d8d98ffcbec9 56
+examples/project/global-manager-command-protocol-smoke.py
+  s_32e2a9a204a8e4::t_fa52cb81ce4334 125-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "bc73b6a82463a78c0d7dd9296562582937945ead",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
