@@ -454,16 +454,49 @@ repo-relative source ref。当前 checkout 证据保持最高权威；memory/exp
 [OpenViking pilot handoff](openviking-pilot-handoff.md) 展示真实 pilot 如何应用该证据
 顺序，同时不引入仓库特判控制路径。
 
-两者也接受 `--repository-memory-json <compact-search-read-result.json>`。这是
-host-provider hook，不是 LoopX 内置的 memory client：host 只在调用方批准的公开
-namespace 中显式执行 `search`，再对选中的命中执行 `read`，把蒸馏后的 public-safe
-摘要封装成 `issue_fix_repository_memory_read_result_v0`。LoopX 会 hash provider ref，
-始终把 memory source 保持为 advisory；只有已经在 pinned checkout revision 上验证的
-命中才允许影响 patch。未验证或已被 refute 的命中只进入计数，其摘要不会持久化。
-紧凑 hook projection 仍写入现有 repository context，不建立
-第二套 ledger。Provider 不可用、空结果或缺少 revision 时，仓库工作流 fail-open；
-raw memory body、自动 transcript capture、memory writeback、私有 namespace 与凭据
-都会被拒绝。
+两者既接受 `--repository-memory-json <compact-search-read-result.json>`，也可以调用已配置的
+context provider。这里采用明确分层：LoopX 通用 context-provider module 负责 OpenViking
+CLI/版本/服务 preflight、有上限的显式 `search -> read`、超时与结果 cap、fail-open，
+以及需要独立授权的 resource sync；issue-fix 只负责领域 query、revision-scoped namespace、
+把命中映射回 repo-relative 文件，并对当前 checkout 做 exact-content 验证。通用层不会写
+`repo == OpenViking` 一类特判。
+
+可以把本地私有 `issue_fix_repository_memory_provider_config_v0` 路径写入
+`LOOPX_ISSUE_FIX_REPOSITORY_MEMORY_PROVIDER_CONFIG`，也可以显式传
+`--repository-memory-provider-json`。当 provider、公开 scope、当前 revision 和调用方批准的
+checkout 都可用时，`workflow-plan` 与 `feasibility` 默认调用 provider；显式
+`--repository-memory-json` 仍可覆盖环境默认。LoopX 会 hash provider ref，始终把 memory
+source 保持为 advisory；只有与 pinned checkout 文件做 canonical-text exact match，或
+非空行匹配率至少 98% 的 parser chunk，才允许影响 patch（仅归一化传输层换行符与一个
+末尾换行）。
+未验证命中只进入计数，其摘要不会持久化。紧凑 hook projection 仍写入现有 repository
+context，不建立第二套 ledger。Provider 不可用、空结果或 checkout 缺失时 fail-open；raw
+memory body、自动 transcript capture、memory writeback、私有 namespace、凭据和 provider
+配置路径都不会被保留。
+
+最小本地 provider 配置如下；`scope_ref` 也必须包含当前 revision：
+
+```json
+{
+  "schema_version": "issue_fix_repository_memory_provider_config_v0",
+  "enabled": true,
+  "provider": "openviking",
+  "namespace": "public-repository",
+  "visibility": "public",
+  "scope_ref": "viking://resources/public-repository/<git-revision>",
+  "repository_revision": "<full-git-revision>",
+  "max_results": 3,
+  "timeout_seconds": 15,
+  "sync_timeout_seconds": 180,
+  "resource_references": ["src/module.py", "tests/test_module.py"]
+}
+```
+
+Resource indexing 与 retrieval 刻意分离。先用
+`loopx issue-fix repository-memory-sync` 预览有限数量的 repo-relative 公开文件；只有
+provider resource write 已获授权时才加 `--execute`。同一个 immutable revision scope
+重复执行时，内容一致会幂等通过；出现冲突则停止，不会覆盖或自动改名。只读 retrieval
+与 resource sync 使用独立且有上限的 timeout，因为语义索引通常比 search/read 更慢。
 
 是否默认开启必须由真实证据决定，而不是安装即默认。项目应先在多个独立 issue/context
 run 和至少一次重启边界上 dogfood；只有当该 hook 能反复提供经 checkout 验证的新证据，
@@ -525,6 +558,17 @@ loopx issue-fix workflow-plan \
   --repo-path /path/to/approved/repo \
   --repository-context-json context.json \
   --repository-memory-json compact-search-read-result.json \
+  --validation-label "focused unit test" \
+  --format json
+
+# 也可以一次配置通用 OpenViking provider。配置只留在本机，并把公开
+# viking:// scope 绑定到精确 repository revision。
+export LOOPX_ISSUE_FIX_REPOSITORY_MEMORY_PROVIDER_CONFIG=/path/to/provider.json
+loopx issue-fix workflow-plan \
+  --url https://github.com/owner/repo/issues/123 \
+  --repo-path /path/to/approved/repo \
+  --repository-context-json context.json \
+  --repository-memory-query "affected module reproduction validation" \
   --validation-label "focused unit test" \
   --format json
 

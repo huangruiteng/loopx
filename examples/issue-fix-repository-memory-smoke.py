@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,9 +22,86 @@ from loopx.capabilities.issue_fix.feasibility import (  # noqa: E402
 from loopx.capabilities.issue_fix.repository_context import (  # noqa: E402
     build_issue_fix_repository_context_packet,
 )
+from loopx.capabilities.issue_fix.repository_memory_provider import (  # noqa: E402
+    retrieve_issue_fix_repository_memory,
+)
+from loopx.capabilities.context_providers.base import (  # noqa: E402
+    ContextProviderItem,
+    ContextProviderRetrieval,
+)
+from loopx.capabilities.context_providers.openviking import (  # noqa: E402
+    OpenVikingContextProvider,
+)
 
 REVISION = "9cf42405a8bb0a8a17a66d4f953515f5a2c82620"
 ISSUE_URL = "https://github.com/volcengine/OpenViking/issues/3124"
+
+
+class ContractProvider:
+    provider_id = "contract_provider"
+
+    def __init__(self, *, resource_ref: str, content: str) -> None:
+        self.resource_ref = resource_ref
+        self.content = content
+
+    def retrieve(self, **kwargs: Any) -> ContextProviderRetrieval:
+        return ContextProviderRetrieval(
+            provider="contract_provider",
+            namespace=str(kwargs["namespace"]),
+            status="completed",
+            query_summary=str(kwargs["query_summary"]),
+            observed_at=str(kwargs["observed_at"]),
+            search_performed=True,
+            read_performed=True,
+            requested_limit=int(kwargs["max_results"]),
+            items=(
+                ContextProviderItem(
+                    resource_ref=self.resource_ref,
+                    summary="Provider returned the bounded current source candidate.",
+                    content=self.content,
+                    score=0.91,
+                ),
+            ),
+        )
+
+    def sync(self, **kwargs: Any) -> Any:  # pragma: no cover - retrieval contract only.
+        raise AssertionError(kwargs)
+
+
+class OpenVikingContractRunner:
+    def __init__(self, *, scope_ref: str) -> None:
+        self.scope_ref = scope_ref
+        self.calls: list[list[str]] = []
+
+    def __call__(
+        self, command: list[str], **_kwargs: Any
+    ) -> subprocess.CompletedProcess[str]:
+        self.calls.append(command)
+        if command[1:] == ["--version"]:
+            stdout = "openviking 0.4.9.dev11\n"
+        elif command[1:3] == ["status", "-o"]:
+            stdout = json.dumps({"status": "healthy"})
+        elif command[1] == "search":
+            stdout = json.dumps(
+                {
+                    "result": {
+                        "resources": [
+                            {
+                                "uri": f"{self.scope_ref}/src/worker.py",
+                                "abstract": "Bounded public worker contract evidence.",
+                                "score": 0.93,
+                            }
+                        ]
+                    }
+                }
+            )
+        elif command[1] == "read":
+            stdout = json.dumps(
+                {"result": {"content": "private-to-call transient provider body"}}
+            )
+        else:
+            raise AssertionError(command)
+        return subprocess.CompletedProcess(command, 0, stdout=stdout)
 
 
 def repository_context() -> dict[str, object]:
@@ -171,6 +250,99 @@ def main() -> int:
     assert unavailable_hook["source_refs"] == []
     assert_boundary(unavailable)
 
+    ov_scope = f"viking://resources/public-repo/{REVISION}"
+    ov_runner = OpenVikingContractRunner(scope_ref=ov_scope)
+    ov_provider = OpenVikingContextProvider(
+        executable="ov-contract",
+        runner=ov_runner,
+    )
+    ov_retrieval = ov_provider.retrieve(
+        namespace="public-repository",
+        scope_ref=ov_scope,
+        query="worker contract",
+        query_summary="Current worker contract evidence.",
+        max_results=2,
+        timeout_seconds=5,
+        observed_at="2026-07-11T03:30:00+08:00",
+    )
+    assert ov_retrieval.status == "completed", ov_retrieval
+    assert ov_retrieval.search_performed is True
+    assert ov_retrieval.read_performed is True
+    assert len(ov_retrieval.items) == 1
+    assert any(call[1] == "search" for call in ov_runner.calls)
+    assert any(call[1] == "read" for call in ov_runner.calls)
+    ov_public = ov_retrieval.public_packet()
+    assert "private-to-call transient provider body" not in json.dumps(ov_public)
+    assert ov_scope not in json.dumps(ov_public)
+    assert_boundary(ov_public)
+
+    with tempfile.TemporaryDirectory(prefix="loopx-memory-provider-") as tmpdir:
+        checkout = Path(tmpdir)
+        source = checkout / "src" / "worker.py"
+        source.parent.mkdir(parents=True)
+        source.write_text(
+            "def current_contract():\n    return 'verified'\n", encoding="utf-8"
+        )
+        scope_ref = f"viking://resources/public-repo/{REVISION}"
+        sync_plan = ov_provider.sync(
+            namespace="public-repository",
+            resources=[
+                (
+                    str(source),
+                    f"viking://resources/public-repo/{REVISION}/src/worker.py",
+                )
+            ],
+            timeout_seconds=5,
+            observed_at="2026-07-11T03:30:00+08:00",
+            execute=False,
+        ).public_packet()
+        assert sync_plan["status"] == "planned", sync_plan
+        assert sync_plan["ok"] is True, sync_plan
+        assert sync_plan["external_writes_performed"] is False, sync_plan
+        assert_boundary(sync_plan)
+        provider_result = retrieve_issue_fix_repository_memory(
+            config={
+                "schema_version": "issue_fix_repository_memory_provider_config_v0",
+                "enabled": True,
+                "provider": "contract_provider",
+                "namespace": "public-repository",
+                "visibility": "public",
+                "scope_ref": scope_ref,
+                "repository_revision": REVISION,
+                "max_results": 3,
+                "timeout_seconds": 5,
+            },
+            repo_path=checkout,
+            repository_revision=REVISION,
+            query="current worker contract validation",
+            query_summary="Current worker contract evidence.",
+            supports=["change_scope", "validation"],
+            observed_at="2026-07-11T03:30:00+08:00",
+            provider=ContractProvider(
+                resource_ref=f"{scope_ref}/src/worker.py",
+                content=source.read_text(encoding="utf-8"),
+            ),
+        )
+        provider_memory = provider_result["memory_input"]
+        assert provider_memory["results"][0]["verification_status"] == "confirmed"
+        assert (
+            provider_memory["results"][0]["verification_reference"] == "src/worker.py"
+        )
+        assert provider_memory["latency_ms"] == 0
+        assert provider_memory["requested_limit"] == 3
+        assert provider_memory["configured_resource_count"] == 0
+        assert provider_memory["stale_or_unmapped_count"] == 0
+        assert provider_memory["verification_mode"] == "canonical_text_or_parser_chunk"
+        assert provider_result["provider_projection"]["checkout_verification"] == {
+            "revision": REVISION,
+            "confirmed_count": 1,
+            "stale_or_unmapped_count": 0,
+            "patch_influence_allowed_count": 1,
+            "configured_resource_count": 0,
+            "verification_mode": "canonical_text_or_parser_chunk",
+        }
+        assert_boundary(provider_result)
+
     invalid_capture = dict(memory_input)
     invalid_capture["automatic_capture_performed"] = True
     try:
@@ -223,6 +395,62 @@ def main() -> int:
         assert cli_hook["status"] == "used", cli_hook
         assert cli_hook["confirmed_count"] == 1, cli_hook
         assert_boundary(cli_packet)
+
+        provider_config_path = tmp / "provider-config.json"
+        provider_config_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "issue_fix_repository_memory_provider_config_v0",
+                    "enabled": False,
+                    "provider": "openviking",
+                    "namespace": "public-repository",
+                    "visibility": "public",
+                    "scope_ref": f"viking://resources/public-repo/{REVISION}",
+                    "repository_revision": REVISION,
+                    "max_results": 3,
+                    "timeout_seconds": 5,
+                }
+            ),
+            encoding="utf-8",
+        )
+        configured_command = [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--format",
+            "json",
+            "issue-fix",
+            "workflow-plan",
+            "--url",
+            ISSUE_URL,
+            "--repo-path",
+            str(tmp),
+            "--repository-context-json",
+            str(context_path),
+            "--validation-label",
+            "focused VLM status regression",
+        ]
+        configured_result = subprocess.run(
+            configured_command,
+            cwd=ROOT,
+            env={
+                **os.environ,
+                "LOOPX_ISSUE_FIX_REPOSITORY_MEMORY_PROVIDER_CONFIG": str(
+                    provider_config_path
+                ),
+            },
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        configured_packet = json.loads(configured_result.stdout)
+        configured_hook = configured_packet["repository_context"]["memory_projection"][
+            "retrieval_hook"
+        ]
+        assert configured_hook["status"] == "disabled", configured_hook
+        assert configured_hook["provider"] == "openviking", configured_hook
+        assert_boundary(configured_packet)
 
     print("issue-fix-repository-memory-smoke: ok")
     return 0

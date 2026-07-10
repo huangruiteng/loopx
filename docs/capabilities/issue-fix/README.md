@@ -512,18 +512,57 @@ until verified. The public
 pilot applies that evidence order without introducing a repository-specific
 control path.
 
-They also accept `--repository-memory-json
-<compact-search-read-result.json>`. This is a host-provider hook, not a memory
-client inside LoopX: the host explicitly searches a caller-approved public
-namespace, reads selected hits, distils public-safe summaries, and passes an
-`issue_fix_repository_memory_read_result_v0` packet. LoopX hashes provider
-references, keeps every memory source advisory, allows patch influence only
-for hits verified against the pinned checkout revision, and persists the
-compact hook projection in the existing repository context. Unverified or
-refuted hits contribute counts only; their summaries are not persisted. Provider
-unavailability, empty retrieval, or a missing revision is fail-open for the
-repository workflow; raw memory bodies, automatic transcript capture, memory
-writeback, private namespaces, and credentials are rejected.
+They also accept either `--repository-memory-json
+<compact-search-read-result.json>` or a configured context provider. The
+provider path is deliberately layered: the reusable LoopX context-provider
+module owns OpenViking CLI/version/service preflight, bounded explicit
+`search -> read`, time/result caps, fail-open errors, and authority-gated
+resource sync. Issue-fix owns the domain query, revision-scoped namespace,
+mapping retrieved resources back to repo-relative files, and exact current
+checkout verification. There is no repository-name special case.
+
+Set `LOOPX_ISSUE_FIX_REPOSITORY_MEMORY_PROVIDER_CONFIG` to a local-private
+`issue_fix_repository_memory_provider_config_v0` file, or pass
+`--repository-memory-provider-json`. When the configured provider, public
+scope, current revision, and caller-approved checkout are available,
+`workflow-plan` and `feasibility` run the provider by default. An explicit
+`--repository-memory-json` still overrides the environment default. LoopX
+hashes provider references, keeps every memory source advisory, allows patch
+influence only for canonical-text exact matches or parser chunks whose
+non-empty lines match the pinned checkout at least 98% (transport line
+endings and one terminal newline are normalised), and
+persists only the compact hook projection in the existing repository context.
+Unverified hits contribute counts only; their summaries are not persisted.
+Provider unavailability, empty retrieval, or a missing checkout is fail-open;
+raw memory bodies, automatic transcript capture, memory writeback, private
+namespaces, credentials, and provider config paths are never retained.
+
+Minimal local provider config (the revision must also appear in `scope_ref`):
+
+```json
+{
+  "schema_version": "issue_fix_repository_memory_provider_config_v0",
+  "enabled": true,
+  "provider": "openviking",
+  "namespace": "public-repository",
+  "visibility": "public",
+  "scope_ref": "viking://resources/public-repository/<git-revision>",
+  "repository_revision": "<full-git-revision>",
+  "max_results": 3,
+  "timeout_seconds": 15,
+  "sync_timeout_seconds": 180,
+  "resource_references": ["src/module.py", "tests/test_module.py"]
+}
+```
+
+Resource indexing is intentionally separate from retrieval. Use
+`loopx issue-fix repository-memory-sync` to preview a bounded set of
+repo-relative public files; add `--execute` only after the provider-resource
+write is authorized. Re-running the same immutable revision scope is
+idempotent when stored content still matches and stops on a conflict instead
+of replacing or auto-renaming it. Retrieval and resource sync use separate
+bounded timeouts because semantic indexing can legitimately take longer than
+read-only search.
 
 Default enablement is an evidence decision rather than an installation side
 effect. A project should first dogfood the hook across several independent
@@ -597,6 +636,17 @@ loopx issue-fix workflow-plan \
   --repo-path /path/to/approved/repo \
   --repository-context-json context.json \
   --repository-memory-json compact-search-read-result.json \
+  --validation-label "focused unit test" \
+  --format json
+
+# Or configure the reusable OpenViking provider once. The config stays local
+# and binds a public viking:// scope to the exact repository revision.
+export LOOPX_ISSUE_FIX_REPOSITORY_MEMORY_PROVIDER_CONFIG=/path/to/provider.json
+loopx issue-fix workflow-plan \
+  --url https://github.com/owner/repo/issues/123 \
+  --repo-path /path/to/approved/repo \
+  --repository-context-json context.json \
+  --repository-memory-query "affected module reproduction validation" \
   --validation-label "focused unit test" \
   --format json
 

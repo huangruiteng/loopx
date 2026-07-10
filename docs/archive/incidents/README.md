@@ -13,3 +13,4 @@ Current records:
 - [Agent-scoped replan precedence incident, 2026-07-03](agent-scoped-replan-precedence-incident-20260703.md)
 - [Auto-research replan and multi-round demo bad case, 2026-07-05](auto-research-replan-multiround-badcase-20260705.md)
 - [SkillsBench PR #1680 replan bad case, 2026-07-09](skillsbench-pr1680-replan-badcase-20260709.md)
+- [SkillsBench Goal baseline comparison incident, 2026-07-11](skillsbench-goal-baseline-comparison-incident-20260711.md)

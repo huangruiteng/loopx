@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import re
 import subprocess
@@ -235,6 +236,7 @@ def main() -> int:
             ),
             encoding="utf-8",
         )
+        invoked_after = datetime.now(timezone.utc).replace(microsecond=0)
         cli_result = run_cli(
             [
                 "issue-fix",
@@ -252,7 +254,13 @@ def main() -> int:
             ]
         )
         cli_packet = json.loads(cli_result.stdout)
+        completed_before = datetime.now(timezone.utc).replace(microsecond=0)
         assert_packet_shape(cli_packet)
+        cli_generated_at = datetime.fromisoformat(
+            str(cli_packet["generated_at"]).replace("Z", "+00:00")
+        )
+        assert invoked_after <= cli_generated_at <= completed_before, cli_packet
+        assert cli_packet["generated_at"] != "2026-06-23T00:00:00Z", cli_packet
         assert cli_packet["domain_state_projection"]["write_performed"] is False
         write_result = cli_packet["domain_state_projection"]["write_result"]
         assert write_result["status"] == "unchanged", write_result
@@ -267,6 +275,23 @@ def main() -> int:
         assert persisted_projection["write_performed"] is True, persisted_rows[0]
         assert "write_result" not in persisted_projection, persisted_rows[0]
         assert_public_safe(cli_packet)
+
+        explicit_time = "2026-06-23T00:00:00Z"
+        explicit_result = run_cli(
+            [
+                "issue-fix",
+                "pr-lifecycle",
+                "--url",
+                "https://github.com/huangruiteng/loopx/pull/1715",
+                "--metadata-json",
+                str(metadata_path),
+                "--generated-at",
+                explicit_time,
+                "--no-write-domain-state",
+            ]
+        )
+        explicit_packet = json.loads(explicit_result.stdout)
+        assert explicit_packet["generated_at"] == explicit_time, explicit_packet
 
         material_result = upsert_issue_fix_pr_lifecycle_ledger_jsonl(ledger, failing)
         assert material_result["status"] == "updated", material_result

@@ -9,6 +9,7 @@ from typing import Any
 
 from ...agent_registry import load_goal_from_registry
 from ...boundary_authority import checkpointed_boundary_authority_summary
+from ...control_plane.runtime.time import now_utc_iso
 from ...domain_packs.issue_fix import (
     default_issue_fix_domain_state_ledger_path,
     default_issue_fix_feasibility_ledger_path,
@@ -41,6 +42,13 @@ from .reviewer_request import (
     build_issue_fix_reviewer_request_packet,
     render_issue_fix_reviewer_request_markdown,
 )
+from .repository_memory import SUPPORT_ASPECTS
+from .repository_memory_provider import (
+    default_repository_memory_provider_config_path,
+    render_issue_fix_repository_memory_sync_markdown,
+    retrieve_issue_fix_repository_memory,
+    sync_issue_fix_repository_memory,
+)
 from .workflow_plan import (
     build_issue_fix_workflow_plan_packet,
     render_issue_fix_workflow_plan_markdown,
@@ -63,6 +71,101 @@ def _load_json_object(path_text: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"{path_text} must contain a JSON object")
     return payload
+
+
+def _configured_repository_memory_input(
+    *,
+    provider_path: str | None,
+    raw_memory_path: str | None,
+    repo_path: str | None,
+    repository_context_input: dict[str, Any] | None,
+    repo: str,
+    issue_ref: str,
+    query: str | None,
+    supports: list[str],
+    validation_label: str | None,
+    observed_at: str,
+) -> dict[str, Any] | None:
+    if raw_memory_path and provider_path:
+        raise ValueError(
+            "--repository-memory-json cannot be combined with a configured provider"
+        )
+    if raw_memory_path:
+        return _load_json_object(raw_memory_path)
+    if not provider_path:
+        return None
+    if not repo_path or not repository_context_input:
+        return None
+    revision = str(repository_context_input.get("repository_revision") or "").strip()
+    if not revision:
+        return None
+    retrieval_query = query or " ".join(
+        value
+        for value in (
+            repo,
+            issue_ref,
+            validation_label or "repository architecture reproduction validation",
+        )
+        if value
+    )
+    query_summary = (
+        query
+        or f"Public repository context for {repo} {issue_ref} before patch planning."
+    )
+    result = retrieve_issue_fix_repository_memory(
+        config=_load_json_object(provider_path),
+        repo_path=repo_path,
+        repository_revision=revision,
+        query=retrieval_query,
+        query_summary=query_summary,
+        supports=(
+            supports or ["architecture", "change_scope", "reproduction", "validation"]
+        ),
+        observed_at=observed_at,
+    )
+    return result["memory_input"]
+
+
+def _add_repository_memory_provider_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--repository-memory-provider-json",
+        default=None,
+        help=(
+            "Optional local-private issue_fix_repository_memory_provider_config_v0. "
+            "Defaults to LOOPX_ISSUE_FIX_REPOSITORY_MEMORY_PROVIDER_CONFIG. "
+            "The path, provider command, credentials, and raw payloads are never kept."
+        ),
+    )
+    parser.add_argument(
+        "--repository-memory-query",
+        default=None,
+        help=(
+            "Optional compact public query for configured provider search/read. "
+            "A bounded issue/ref/validation query is derived when omitted."
+        ),
+    )
+    parser.add_argument(
+        "--repository-memory-support",
+        action="append",
+        default=[],
+        choices=sorted(SUPPORT_ASPECTS),
+        help="Repository aspect supported by retrieved context. Repeat as needed.",
+    )
+
+
+def _add_generated_at_arg(
+    parser: argparse.ArgumentParser,
+    *,
+    artifact: str,
+) -> None:
+    parser.add_argument(
+        "--generated-at",
+        default=None,
+        help=(
+            f"Public-safe generated_at timestamp for {artifact}; "
+            "defaults to current UTC invocation time."
+        ),
+    )
 
 
 def _load_jsonl_row(
@@ -133,6 +236,37 @@ def register_issue_fix_commands(
         dest="issue_fix_command",
         required=True,
     )
+    memory_sync_parser = issue_fix_sub.add_parser(
+        "repository-memory-sync",
+        help=(
+            "Plan or explicitly execute a bounded revision-scoped public resource "
+            "sync through the reusable context-provider module."
+        ),
+    )
+    add_subcommand_format(memory_sync_parser)
+    memory_sync_parser.add_argument("--repo-path", required=True)
+    memory_sync_parser.add_argument("--repository-context-json", required=True)
+    memory_sync_parser.add_argument(
+        "--repository-memory-provider-json",
+        default=None,
+        help=(
+            "Local-private provider config; defaults to "
+            "LOOPX_ISSUE_FIX_REPOSITORY_MEMORY_PROVIDER_CONFIG."
+        ),
+    )
+    memory_sync_parser.add_argument(
+        "--resource-reference",
+        action="append",
+        default=[],
+        required=True,
+        help="Repo-relative public file to index. Repeat up to the bounded cap.",
+    )
+    memory_sync_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Perform the provider resource write. Without this flag, return a plan.",
+    )
+    _add_generated_at_arg(memory_sync_parser, artifact="the resource sync")
     workflow_parser = issue_fix_sub.add_parser(
         "workflow-plan",
         help=(
@@ -218,11 +352,8 @@ def register_issue_fix_commands(
             "LoopX keeps only compact advisory refs and checkout verification."
         ),
     )
-    workflow_parser.add_argument(
-        "--generated-at",
-        default="2026-06-23T00:00:00Z",
-        help="Public-safe generated_at timestamp for the workflow plan.",
-    )
+    _add_repository_memory_provider_args(workflow_parser)
+    _add_generated_at_arg(workflow_parser, artifact="the workflow plan")
     feasibility_parser = issue_fix_sub.add_parser(
         "feasibility",
         help=(
@@ -291,10 +422,15 @@ def register_issue_fix_commands(
         ),
     )
     feasibility_parser.add_argument(
-        "--generated-at",
-        default="2026-06-23T00:00:00Z",
-        help="Public-safe generated_at timestamp for the feasibility decision.",
+        "--repo-path",
+        default=None,
+        help=(
+            "Optional caller-approved current checkout used only to verify provider "
+            "content. The path is never retained."
+        ),
     )
+    _add_repository_memory_provider_args(feasibility_parser)
+    _add_generated_at_arg(feasibility_parser, artifact="the feasibility decision")
     feasibility_parser.add_argument(
         "--goal-id",
         default=None,
@@ -372,11 +508,7 @@ def register_issue_fix_commands(
         default=10,
         help="Timeout for --fetch-metadata.",
     )
-    pr_lifecycle_parser.add_argument(
-        "--generated-at",
-        default="2026-06-23T00:00:00Z",
-        help="Public-safe generated_at timestamp for the lifecycle projection.",
-    )
+    _add_generated_at_arg(pr_lifecycle_parser, artifact="the lifecycle projection")
     pr_lifecycle_parser.add_argument(
         "--goal-id",
         default=None,
@@ -438,11 +570,7 @@ def register_issue_fix_commands(
         "--agent-id",
         help="Optional registered agent id projected as the case owner.",
     )
-    outcome_parser.add_argument(
-        "--generated-at",
-        default="2026-07-10T00:00:00Z",
-        help="Public-safe generated_at timestamp for the read model.",
-    )
+    _add_generated_at_arg(outcome_parser, artifact="the read model")
     reviewer_parser = issue_fix_sub.add_parser(
         "reviewer-plan",
         help=(
@@ -531,11 +659,7 @@ def register_issue_fix_commands(
             "does not request review or perform any external write."
         ),
     )
-    reviewer_parser.add_argument(
-        "--generated-at",
-        default="2026-07-10T00:00:00Z",
-        help="Public-safe generated_at timestamp for the recommendation packet.",
-    )
+    _add_generated_at_arg(reviewer_parser, artifact="the recommendation packet")
     reviewer_request_parser = issue_fix_sub.add_parser(
         "reviewer-request",
         help=(
@@ -615,11 +739,7 @@ def register_issue_fix_commands(
             "and verify the result."
         ),
     )
-    reviewer_request_parser.add_argument(
-        "--generated-at",
-        default="2026-07-10T00:00:00Z",
-        help="Public-safe generated_at timestamp for the request packet.",
-    )
+    _add_generated_at_arg(reviewer_request_parser, artifact="the request packet")
     acceptance_parser = issue_fix_sub.add_parser(
         "acceptance-fixture",
         help=(
@@ -643,11 +763,7 @@ def register_issue_fix_commands(
         default=None,
         help="Optional public GitHub issue or PR URL for metadata parsing.",
     )
-    acceptance_parser.add_argument(
-        "--generated-at",
-        default="2026-06-23T00:00:00Z",
-        help="Public-safe generated_at timestamp for the fixture artifact.",
-    )
+    _add_generated_at_arg(acceptance_parser, artifact="the fixture artifact")
     branch_parser = issue_fix_sub.add_parser(
         "repo-branch-fixture",
         help=(
@@ -671,11 +787,7 @@ def register_issue_fix_commands(
         default=None,
         help="Optional public GitHub issue or PR URL for metadata parsing.",
     )
-    branch_parser.add_argument(
-        "--generated-at",
-        default="2026-06-23T00:00:00Z",
-        help="Public-safe generated_at timestamp for the fixture artifact.",
-    )
+    _add_generated_at_arg(branch_parser, artifact="the fixture artifact")
     caller_branch_parser = issue_fix_sub.add_parser(
         "caller-repo-branch",
         help=(
@@ -741,11 +853,7 @@ def register_issue_fix_commands(
             "and run the caller-declared validation."
         ),
     )
-    caller_branch_parser.add_argument(
-        "--generated-at",
-        default="2026-06-23T00:00:00Z",
-        help="Public-safe generated_at timestamp for the artifact.",
-    )
+    _add_generated_at_arg(caller_branch_parser, artifact="the artifact")
 
 
 def handle_issue_fix_command(
@@ -756,20 +864,68 @@ def handle_issue_fix_command(
     print_payload: PrintPayload,
 ) -> int:
     try:
-        if args.issue_fix_command == "workflow-plan":
+        generated_at = str(args.generated_at or now_utc_iso()).strip()
+        if args.issue_fix_command == "repository-memory-sync":
+            provider_path = (
+                args.repository_memory_provider_json
+                or default_repository_memory_provider_config_path()
+            )
+            if not provider_path:
+                raise ValueError("repository memory provider config is required")
+            if provider_path == "-" and args.repository_context_json == "-":
+                raise ValueError("only one JSON input may read from stdin")
+            repository_context_input = _load_json_object(args.repository_context_json)
+            revision = str(
+                repository_context_input.get("repository_revision") or ""
+            ).strip()
+            if not revision:
+                raise ValueError("repository context must pin repository_revision")
+            payload = sync_issue_fix_repository_memory(
+                config=_load_json_object(provider_path),
+                repo_path=args.repo_path,
+                repository_revision=revision,
+                references=args.resource_reference,
+                observed_at=generated_at,
+                execute=args.execute,
+            )
+            renderer = render_issue_fix_repository_memory_sync_markdown
+        elif args.issue_fix_command == "workflow-plan":
             if args.fetch_metadata and args.metadata_json:
                 raise ValueError("--fetch-metadata cannot be combined with --metadata-json")
+            provider_path = args.repository_memory_provider_json or (
+                None
+                if args.repository_memory_json
+                else default_repository_memory_provider_config_path()
+            )
             stdin_inputs = [
                 value
                 for value in (
                     args.metadata_json,
                     args.repository_context_json,
                     args.repository_memory_json,
+                    provider_path,
                 )
                 if value == "-"
             ]
             if len(stdin_inputs) > 1:
                 raise ValueError("only one JSON input may read from stdin")
+            repository_context_input = (
+                _load_json_object(args.repository_context_json)
+                if args.repository_context_json
+                else None
+            )
+            repository_memory_input = _configured_repository_memory_input(
+                provider_path=provider_path,
+                raw_memory_path=args.repository_memory_json,
+                repo_path=args.repo_path,
+                repository_context_input=repository_context_input,
+                repo=args.repo,
+                issue_ref=args.issue_ref,
+                query=args.repository_memory_query,
+                supports=args.repository_memory_support,
+                validation_label=args.validation_label,
+                observed_at=generated_at,
+            )
             payload = build_issue_fix_workflow_plan_packet(
                 repo=args.repo,
                 issue_ref=args.issue_ref,
@@ -783,25 +939,44 @@ def handle_issue_fix_command(
                 base_branch=args.base_branch,
                 issue_branch=args.issue_branch,
                 validation_label=args.validation_label,
-                repository_context_input=(
-                    _load_json_object(args.repository_context_json)
-                    if args.repository_context_json
-                    else None
-                ),
-                repository_memory_input=(
-                    _load_json_object(args.repository_memory_json)
-                    if args.repository_memory_json
-                    else None
-                ),
-                generated_at=args.generated_at,
+                repository_context_input=repository_context_input,
+                repository_memory_input=repository_memory_input,
+                generated_at=generated_at,
             )
             renderer = render_issue_fix_workflow_plan_markdown
         elif args.issue_fix_command == "feasibility":
+            provider_path = args.repository_memory_provider_json or (
+                None
+                if args.repository_memory_json
+                else default_repository_memory_provider_config_path()
+            )
             if (
                 args.repository_context_json == "-"
                 and args.repository_memory_json == "-"
             ):
                 raise ValueError("only one JSON input may read from stdin")
+            if provider_path == "-" and (
+                args.repository_context_json == "-"
+                or args.repository_memory_json == "-"
+            ):
+                raise ValueError("only one JSON input may read from stdin")
+            repository_context_input = (
+                _load_json_object(args.repository_context_json)
+                if args.repository_context_json
+                else None
+            )
+            repository_memory_input = _configured_repository_memory_input(
+                provider_path=provider_path,
+                raw_memory_path=args.repository_memory_json,
+                repo_path=args.repo_path,
+                repository_context_input=repository_context_input,
+                repo=args.repo,
+                issue_ref=args.issue_ref,
+                query=args.repository_memory_query,
+                supports=args.repository_memory_support,
+                validation_label=args.validation_label,
+                observed_at=generated_at,
+            )
             boundary_authority_scopes, boundary_authority_resolved = (
                 _goal_boundary_authority_projection(
                     registry_path=registry_path,
@@ -817,19 +992,11 @@ def handle_issue_fix_command(
                 reproduction_label=args.reproduction_label,
                 validation_label=args.validation_label,
                 comment_value=args.comment_value,
-                repository_context_input=(
-                    _load_json_object(args.repository_context_json)
-                    if args.repository_context_json
-                    else None
-                ),
-                repository_memory_input=(
-                    _load_json_object(args.repository_memory_json)
-                    if args.repository_memory_json
-                    else None
-                ),
+                repository_context_input=repository_context_input,
+                repository_memory_input=repository_memory_input,
                 boundary_authority_scopes=boundary_authority_scopes,
                 boundary_authority_resolved=boundary_authority_resolved,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             should_write_domain_state = bool(
                 not args.no_write_domain_state and (args.goal_id or args.ledger_path)
@@ -867,7 +1034,7 @@ def handle_issue_fix_command(
                 else None,
                 fetch_metadata=args.fetch_metadata,
                 fetch_timeout_seconds=args.fetch_timeout_seconds,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             should_write_domain_state = bool(
                 not args.no_write_domain_state and (args.goal_id or args.ledger_path)
@@ -955,7 +1122,7 @@ def handle_issue_fix_command(
                     else None
                 ),
                 agent_id=args.agent_id,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             renderer = render_issue_fix_outcome_projection_markdown
         elif args.issue_fix_command == "reviewer-plan":
@@ -979,7 +1146,7 @@ def handle_issue_fix_command(
                     else None
                 ),
                 execute=args.execute,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             renderer = render_issue_fix_reviewer_recommendation_markdown
         elif args.issue_fix_command == "reviewer-request":
@@ -1014,7 +1181,7 @@ def handle_issue_fix_command(
                     else None
                 ),
                 execute=args.execute,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             renderer = render_issue_fix_reviewer_request_markdown
         elif args.issue_fix_command == "acceptance-fixture":
@@ -1022,7 +1189,7 @@ def handle_issue_fix_command(
                 repo=args.repo,
                 issue_ref=args.issue_ref,
                 url=args.url,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             renderer = render_issue_fix_acceptance_loop_markdown
         elif args.issue_fix_command == "repo-branch-fixture":
@@ -1030,7 +1197,7 @@ def handle_issue_fix_command(
                 repo=args.repo,
                 issue_ref=args.issue_ref,
                 url=args.url,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             renderer = render_issue_fix_acceptance_loop_markdown
         elif args.issue_fix_command == "caller-repo-branch":
@@ -1045,12 +1212,12 @@ def handle_issue_fix_command(
                 validation_label=args.validation_label,
                 execute=args.execute,
                 timeout_seconds=args.timeout_seconds,
-                generated_at=args.generated_at,
+                generated_at=generated_at,
             )
             renderer = render_issue_fix_acceptance_loop_markdown
         else:
             raise ValueError(
-                "issue-fix requires `workflow-plan`, `feasibility`, "
+                "issue-fix requires `repository-memory-sync`, `workflow-plan`, `feasibility`, "
                 "`acceptance-fixture`, `pr-lifecycle`, `outcome`, `reviewer-plan`, "
                 "`reviewer-request`, "
                 "`repo-branch-fixture`, or `caller-repo-branch`"
@@ -1062,7 +1229,9 @@ def handle_issue_fix_command(
             "error": str(exc),
         }
         renderer = (
-            render_issue_fix_workflow_plan_markdown
+            render_issue_fix_repository_memory_sync_markdown
+            if getattr(args, "issue_fix_command", None) == "repository-memory-sync"
+            else render_issue_fix_workflow_plan_markdown
             if getattr(args, "issue_fix_command", None) == "workflow-plan"
             else render_issue_fix_feasibility_markdown
             if getattr(args, "issue_fix_command", None) == "feasibility"
