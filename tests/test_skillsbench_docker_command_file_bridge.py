@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 import scripts.skillsbench_docker_command_file_bridge as bridge_module
+from loopx.benchmark_core.container_exec import parse_container_exit_status
 from scripts.skillsbench_docker_command_file_bridge import (
     MARKER_CONTENT,
     DockerCommandFileBridge,
@@ -18,6 +19,14 @@ def _bridge() -> DockerCommandFileBridge:
         compose_files=["/tmp/demo-project/compose.yaml"],
         service="main",
     )
+
+
+def test_container_exit_status_parser_fails_closed() -> None:
+    assert parse_container_exit_status(b"0\n") == 0
+    assert parse_container_exit_status("255") == 255
+    assert parse_container_exit_status(b"") is None
+    assert parse_container_exit_status(b"256") is None
+    assert parse_container_exit_status(b"not-a-status") is None
 
 
 def test_resolve_container_id_uses_compose_labels(monkeypatch) -> None:
@@ -127,11 +136,50 @@ def test_exec_recovers_container_exit_code_when_compose_reports_zero(
 
     monkeypatch.setattr(bridge, "_compose_exec", fake_compose_exec)
     monkeypatch.setattr(bridge, "_read_container_file_via_copy", fake_read)
+    completion_times = iter((0.0, 20.0))
+    monkeypatch.setattr(
+        bridge_module.time,
+        "monotonic",
+        lambda: next(completion_times),
+    )
 
     assert bridge._run_exec({"cwd": "/app", "command": "exit 7"}, 5) == 0
     response = json.loads(capsys.readouterr().out)
     assert response["ok"] is False
     assert response["first_blocker"] == "exec_failed"
     assert response["exit_code"] == 7
-    assert "command_rc=$?" in compose_commands[0]
+    assert "loopx_command_rc=$?" in compose_commands[0]
     assert "/exit_code" in compose_commands[0]
+
+
+def test_exec_waits_for_delayed_container_exit_status(monkeypatch, capsys) -> None:
+    bridge = _bridge()
+    status_reads = 0
+
+    def fake_compose_exec(_shell_command, **_kwargs):
+        return subprocess.CompletedProcess([], 0, b"", b"")
+
+    def fake_read(path, **_kwargs):
+        nonlocal status_reads
+        if path.endswith("/exit_code"):
+            status_reads += 1
+            if status_reads < 3:
+                return 1, b"", b"status pending"
+            return 0, b"7\n", b""
+        if path.endswith("/stdout"):
+            return 0, b"", b""
+        if path.endswith("/stderr"):
+            return 0, b"late failure\n", b""
+        raise AssertionError(path)
+
+    monkeypatch.setattr(bridge, "_compose_exec", fake_compose_exec)
+    monkeypatch.setattr(bridge, "_read_container_file_via_copy", fake_read)
+    monkeypatch.setattr(bridge_module.time, "sleep", lambda _seconds: None)
+
+    assert bridge._run_exec({"cwd": "/app", "command": "exit 7"}, 5) == 0
+    response = json.loads(capsys.readouterr().out)
+    assert status_reads == 3
+    assert response["ok"] is False
+    assert response["first_blocker"] == "exec_failed"
+    assert response["exit_code"] == 7
+    assert response["stderr"] == "late failure\n"

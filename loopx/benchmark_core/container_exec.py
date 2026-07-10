@@ -1,0 +1,104 @@
+"""Container command completion markers shared by benchmark runners."""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import re
+import shlex
+import time
+import uuid
+from collections.abc import Awaitable, Callable, Mapping
+from pathlib import PurePosixPath
+from typing import Any
+
+
+_EXIT_STATUS_PATTERN = re.compile(r"^[0-9]{1,3}$")
+
+
+def wrap_container_command_with_exit_status(command: str, status_path: str) -> str:
+    """Run *command* in a subshell and atomically leave its exit status behind."""
+
+    parent = str(PurePosixPath(status_path).parent)
+    return (
+        f"mkdir -p {shlex.quote(parent)} && {{ "
+        f"( {command} ); loopx_command_rc=$?; "
+        f"printf '%s\\n' \"$loopx_command_rc\" > {shlex.quote(status_path)}; "
+        'exit "$loopx_command_rc"; }'
+    )
+
+
+def parse_container_exit_status(payload: bytes | str | None) -> int | None:
+    """Return a valid POSIX shell exit status from a completion marker."""
+
+    if isinstance(payload, bytes):
+        try:
+            text = payload.decode("ascii")
+        except UnicodeDecodeError:
+            return None
+    elif isinstance(payload, str):
+        text = payload
+    else:
+        return None
+    text = text.strip()
+    if not _EXIT_STATUS_PATTERN.fullmatch(text):
+        return None
+    value = int(text)
+    return value if 0 <= value <= 255 else None
+
+
+async def run_container_command_with_exit_status(
+    exec_fn: Callable[..., Awaitable[Any]],
+    command: str,
+    *,
+    timeout_sec: float,
+    exec_args: tuple[Any, ...] = (),
+    exec_kwargs: Mapping[str, Any] | None = None,
+    poll_interval_sec: float = 0.5,
+) -> Any:
+    """Run a container command and wait for its side-channel completion marker."""
+
+    status_path = (
+        "/tmp/loopx-benchmark-exec-status/"
+        f"{uuid.uuid4().hex}.status"
+    )
+    kwargs = dict(exec_kwargs or {})
+    kwargs["timeout_sec"] = timeout_sec
+    service = kwargs.get("service", "main")
+    deadline = time.monotonic() + timeout_sec
+    try:
+        result = await exec_fn(
+            wrap_container_command_with_exit_status(command, status_path),
+            *exec_args,
+            **kwargs,
+        )
+        captured_exit_code = None
+        while captured_exit_code is None:
+            remaining = deadline - time.monotonic()
+            probe = await exec_fn(
+                f"cat {shlex.quote(status_path)} 2>/dev/null",
+                timeout_sec=max(1.0, min(10.0, max(remaining, 1.0))),
+                user="root",
+                service=service,
+            )
+            captured_exit_code = parse_container_exit_status(
+                getattr(probe, "stdout", None)
+            )
+            if captured_exit_code is None:
+                if remaining <= 0:
+                    raise asyncio.TimeoutError(
+                        "container completion marker timed out"
+                    )
+                await asyncio.sleep(min(poll_interval_sec, remaining))
+        if hasattr(result, "model_copy"):
+            return result.model_copy(update={"return_code": captured_exit_code})
+        setattr(result, "return_code", captured_exit_code)
+        return result
+    finally:
+        with contextlib.suppress(Exception):
+            await exec_fn(
+                f"rm -f {shlex.quote(status_path)}",
+                timeout_sec=10,
+                user="root",
+                service=service,
+            )

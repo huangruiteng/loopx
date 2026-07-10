@@ -29,6 +29,11 @@ from .artifacts import (
     filter_public_benchmark_artifact_paths,
     materialize_public_benchmark_artifacts,
 )
+from .container_exec import (
+    parse_container_exit_status,
+    run_container_command_with_exit_status,
+    wrap_container_command_with_exit_status,
+)
 from .lifecycle import (
     BENCHMARK_CANONICAL_LIFECYCLE_SCHEMA_VERSION,
     BENCHMARK_LIFECYCLE_STATE_SCHEMA_VERSION,
@@ -181,10 +186,12 @@ __all__ = [
     "MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID",
     "Observation",
     "PACKET_ONLY_OBSERVATION_PROTOCOL_ID",
+    "parse_container_exit_status",
     "PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID",
     "PreflightResult",
     "RoundReward",
     "RunHandle",
+    "run_container_command_with_exit_status",
     "RUN_PERMISSION_POLICY_SCHEMA_VERSION",
     "RUN_PERMISSION_QUOTA_PROJECTION_SCHEMA_VERSION",
     "RunPermissionAction",
@@ -202,4 +209,5 @@ __all__ = [
     "summarize_round_rewards",
     "validate_run_permission_policy",
     "validate_benchmark_route_profile",
+    "wrap_container_command_with_exit_status",
 ]
