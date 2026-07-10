@@ -132,6 +132,7 @@ from .control_plane.work_items.attention_fields import (
     readiness_attention_fields as _readiness_attention_fields_read_model,
 )
 from .control_plane.work_items.autonomous_replan_ack import (
+    AUTONOMOUS_REPLAN_ACK_MATERIAL_RUN_WINDOW,
     autonomous_replan_ack_recorded,
     compact_autonomous_replan_ack,
     latest_autonomous_replan_ack_for_projection as _latest_autonomous_replan_ack_for_projection_read_model,
@@ -595,7 +596,7 @@ MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS = _MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS_READ_MO
 MAX_AUTONOMOUS_REPLAN_TRIGGERS = _MAX_AUTONOMOUS_REPLAN_TRIGGERS_READ_MODEL
 AUTONOMOUS_REPLAN_STALL_THRESHOLD = 2
 DEAD_MONITOR_REPEAT_THRESHOLD = 6
-AUTONOMOUS_REPLAN_PERIODIC_RUN_THRESHOLD = 20
+AUTONOMOUS_REPLAN_PERIODIC_RUN_THRESHOLD = AUTONOMOUS_REPLAN_ACK_MATERIAL_RUN_WINDOW
 AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK = 30
 BACKLOG_HYGIENE_SECTION_HEADINGS = ("Next Action", "Operating Lessons")
 BACKLOG_HYGIENE_BULLET_PATTERN = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(.+?)\s*$")

@@ -103,6 +103,17 @@ def side_agent_claimed_advancement(
     }
 
 
+def long_side_agent_todo_chain() -> list[dict]:
+    return [
+        side_agent_claimed_advancement(
+            index=index,
+            todo_id=f"todo_side_chain_{index:02d}",
+            text=f"[P1] Continue long-chain fixture slice {index}.",
+        )
+        for index in range(1, 16)
+    ]
+
+
 def completed_side_agent_advancement_without_successor() -> dict:
     return {
         "index": 3,
@@ -305,6 +316,19 @@ def watch_lane_continuation_ack_run(
             },
         },
     }
+
+
+def material_progress_runs_after_replan_ack(count: int) -> list[dict]:
+    return [
+        {
+            "classification": "benchmark_rotation_iteration",
+            "generated_at": f"2026-07-04T00:{minute:02d}:00+00:00",
+            "agent_id": SIDE_AGENT,
+            "progress_scope": "agent_lane",
+            "delivery_outcome": "outcome_progress",
+        }
+        for minute in range(count, 0, -1)
+    ]
 
 
 def missing_vision_checkpoint_run(*, agent_id: str = SIDE_AGENT) -> dict:
@@ -574,16 +598,8 @@ def assert_replan_preserves_current_agent_runnable_frontier() -> None:
 
 
 def assert_long_agent_todo_chain_derives_replan_before_linear_delivery() -> None:
-    long_chain = [
-        side_agent_claimed_advancement(
-            index=index,
-            todo_id=f"todo_side_chain_{index:02d}",
-            text=f"[P1] Continue long-chain fixture slice {index}.",
-        )
-        for index in range(1, 16)
-    ]
     guard = build_quota_should_run(
-        status_payload(long_chain, replan_obligation=None),
+        status_payload(long_side_agent_todo_chain(), replan_obligation=None),
         goal_id=GOAL_ID,
         agent_id=SIDE_AGENT,
     )
@@ -611,6 +627,48 @@ def assert_long_agent_todo_chain_derives_replan_before_linear_delivery() -> None
     assert "--todo-id" not in required_reads[0]["command"], required_reads
     markdown = render_quota_should_run_markdown(guard)
     assert "triggers=long_todo_chain" in markdown, markdown
+
+
+def assert_material_progress_does_not_immediately_invalidate_long_chain_replan_ack() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            long_side_agent_todo_chain(),
+            replan_obligation=None,
+            latest_runs=[
+                *material_progress_runs_after_replan_ack(1),
+                watch_lane_continuation_ack_run(
+                    delta_kinds=["runnable_todo_set", "monitor_target"]
+                ),
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["decision"] == "run", guard
+    assert guard["effective_action"] == "normal_run", guard
+    assert "autonomous_replan_obligation" not in guard, guard
+
+
+def assert_long_chain_replan_ack_expires_after_material_review_window() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            long_side_agent_todo_chain(),
+            replan_obligation=None,
+            latest_runs=[
+                *material_progress_runs_after_replan_ack(20),
+                watch_lane_continuation_ack_run(
+                    delta_kinds=["runnable_todo_set", "monitor_target"]
+                ),
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    assert guard["autonomous_replan_obligation"]["triggers"][0]["kind"] == (
+        "long_todo_chain"
+    ), guard
 
 
 def assert_agent_vision_gap_derives_replan() -> None:
@@ -1180,6 +1238,8 @@ def main() -> None:
     assert_completed_advancement_without_successor_beats_monitor_quiet_skip()
     assert_replan_preserves_current_agent_runnable_frontier()
     assert_long_agent_todo_chain_derives_replan_before_linear_delivery()
+    assert_material_progress_does_not_immediately_invalidate_long_chain_replan_ack()
+    assert_long_chain_replan_ack_expires_after_material_review_window()
     assert_agent_vision_gap_derives_replan()
     assert_closed_agent_vision_allows_bounded_monitor_wait()
     assert_goal_frontier_context_helper_matches_quota_payload()

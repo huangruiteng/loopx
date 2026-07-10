@@ -3,6 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 
+AUTONOMOUS_REPLAN_ACK_MATERIAL_RUN_WINDOW = 20
+
+
 def autonomous_replan_ack_recorded(run: dict[str, Any]) -> bool:
     ack = run.get("autonomous_replan_ack")
     if not isinstance(ack, dict) or ack.get("recorded") is not True:
@@ -60,8 +63,9 @@ def latest_autonomous_replan_ack_for_projection(
     *,
     neutral_classifications: set[str],
 ) -> dict[str, Any] | None:
-    """Return the newest durable replan ACK, skipping neutral accounting runs."""
+    """Return a recent durable replan ACK within the material review window."""
 
+    material_run_count = 0
     for run in latest_runs or []:
         if not isinstance(run, dict):
             continue
@@ -75,5 +79,7 @@ def latest_autonomous_replan_ack_for_projection(
             continue
         if classification == "quota_monitor_poll":
             continue
-        return None
+        material_run_count += 1
+        if material_run_count >= AUTONOMOUS_REPLAN_ACK_MATERIAL_RUN_WINDOW:
+            return None
     return None
