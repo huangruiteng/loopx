@@ -1,0 +1,207 @@
+examples/agent-diagnose-packet-smoke.py
+  s_32e2a9a204a8e4::t_8d1526ca744534 191,195-196,200-201
+examples/auto-research-rollout-readpath-smoke.py
+  s_32e2a9a204a8e4::t_8ce85bf6b59d08 178
+examples/auto-research-worker-turn-smoke.py
+  s_32e2a9a204a8e4::t_d0aaa53040e5e7 179-182,184,480
+examples/benchmark-developer-workflow-doc-smoke.py
+  s_32e2a9a204a8e4::t_e34deb570d7ba5 94
+examples/canary/canary-promotion-readiness-writeback-smoke.py
+  s_32e2a9a204a8e4::t_b8e8872b10faa1 105
+examples/canary/catalog-planner-smoke.py
+  s_32e2a9a204a8e4::t_06fb702f02c977 206
+examples/claude-goalmode-lifecycle-smoke.py
+  s_32e2a9a204a8e4::t_32754aa896d867 44,50,52,90
+examples/cli-control-plane-command-modularization-smoke.py
+  s_32e2a9a204a8e4::t_76ecd7ae57afa6 62
+examples/cli-project-lifecycle-command-modularization-smoke.py
+  s_32e2a9a204a8e4::t_0b902b3c0cb566 132-133
+examples/cli-registry-admin-command-modularization-smoke.py
+  s_32e2a9a204a8e4::t_a1f2df680a230e 85,201
+examples/codex-subagent-orchestration-contract-smoke.py
+  s_32e2a9a204a8e4::t_9f631b9ae012d4 23,26,30-32,41-43
+examples/control_plane/agent-identity-readmodel-smoke.py
+  s_32e2a9a204a8e4::t_5554f93c206bce 24-27,31-32,37-44,46,49-52,56,58,60-65,67-70,74,77-79,82-85,90-92,95,97,99,103-104,106,108,114-117
+examples/control_plane/agent-management-live-status-smoke.py
+  s_32e2a9a204a8e4::t_b6f549f0eef3d2 121,201-202
+examples/control_plane/agent-onboard-host-loop-activation-smoke.py
+  s_32e2a9a204a8e4::t_a1851b868d0231 146
+examples/control_plane/agent-scope-projection-characterization-smoke.py
+  s_32e2a9a204a8e4::t_7d9c27cc253790 69,355
+examples/control_plane/agent-scope-work-lane-consistency-smoke.py
+  s_32e2a9a204a8e4::t_a8825d05063dfe 2,58,117,119,122,129,132,136,144
+examples/control_plane/auto-research-role-successor-completion-smoke.py
+  s_32e2a9a204a8e4::t_95869495bf6be2 2,72,106,126-127,129-133,138
+examples/control_plane/capability-gate-projection-smoke.py
+  s_32e2a9a204a8e4::t_357db38f82820a 120,154,181,203,230
+examples/control_plane/control-plane-configure-api-smoke.py
+  s_32e2a9a204a8e4::t_0a6437efabb489 200,236,303,340
+examples/control_plane/control-plane-integrated-canary-smoke.py
+  s_32e2a9a204a8e4::t_f09c874cd1db44 79,146,304-306,377,392,667,681
+examples/control_plane/control-plane-risk-characterization-smoke.py
+  s_32e2a9a204a8e4::t_9af5ad935efda1 61,377,388,390,399,433
+examples/control_plane/event-sourced-downstream-read-path-smoke.py
+  s_32e2a9a204a8e4::t_591d6f59d7ee9b 164
+examples/control_plane/external-evidence-observation-smoke.py
+  s_32e2a9a204a8e4::t_efcb70fea6e26b 144
+examples/control_plane/heartbeat-prompt-error-smoke.py
+  s_32e2a9a204a8e4::t_76f13323a70b79 59
+examples/control_plane/heartbeat-prompt-smoke.py
+  s_32e2a9a204a8e4::t_2f259a2a3b46b9 71,106,171-172,204-205,225,246-249,258-260,262-264,844,847,879,947,1012-1013,1049,1124,1166,1198
+examples/control_plane/heartbeat-quota-flow-smoke.py
+  s_32e2a9a204a8e4::t_f67dfce04e7da3 475,1226-1235
+examples/control_plane/monitor-scheduler-contract-smoke.py
+  s_32e2a9a204a8e4::t_4e03a15444cf8a 62,395,597,601-602,674,705
+examples/control_plane/peer-agent-continuation-state-machine-smoke.py
+  s_32e2a9a204a8e4::t_ac0fca84899d48 2,21-26,29,38,42,44-50,56,59,61,63-67,70,72,74-80,85,92,97,101-102,104-109,121-122,124,128,135,137-141,144-146,155,157,159,161,164,166-167,169-175,179-181
+examples/control_plane/peer-agent-hard-cut-boundary-smoke.py
+  s_32e2a9a204a8e4::t_9194bfd74c5296 2,6,10-32,36-45,49-60
+examples/control_plane/peer-agent-migration-smoke.py
+  s_32e2a9a204a8e4::t_fde2f37dc5fd55 2,17-23,41,43-63,81-98,106-107,109-121,126,130,141-150,153,156-170,184
+examples/control_plane/peer-agent-runtime-v1-smoke.py
+  s_32e2a9a204a8e4::t_4e633bfceed3ea 14,18-20
+examples/control_plane/peer-agent-workspace-guard-smoke.py
+  s_32e2a9a204a8e4::t_02ea37dede652d 2,16-17,21-26,31-33,57-58,61-62,64-67,69,78,82-86,88,102,105,115-116,119,130,133-136,138-150,155-174
+examples/control_plane/primary-action-resolution-parity-smoke.py
+  s_32e2a9a204a8e4::t_2734b966f1b081 45
+examples/control_plane/private-boundary-monitor-priority-smoke.py
+  s_32e2a9a204a8e4::t_7d6759b7c2976b 32
+examples/control_plane/quota-agent-scoped-user-gate-smoke.py
+  s_32e2a9a204a8e4::t_ca0ce6dd3d21ac 31
+examples/control_plane/quota-cleared-blocker-successor-gate-smoke.py
+  s_32e2a9a204a8e4::t_32643bdb91f1aa 176,391,393,462,464,479
+examples/control_plane/quota-no-git-status-smoke.py
+  s_32e2a9a204a8e4::t_7e2153344644d3 53
+examples/control_plane/quota-plan-smoke.py
+  s_32e2a9a204a8e4::t_6ff98505df0a2f 1050,1085,1090,1101-1105,1107-1111
+examples/control_plane/quota-replan-decision-plane-smoke.py
+  s_32e2a9a204a8e4::t_fdcd0584a2ca02 219-222,241
+examples/control_plane/quota-resume-gated-open-todo-smoke.py
+  s_32e2a9a204a8e4::t_3135fe3c740b7d 69
+examples/control_plane/quota-spend-agent-identity-smoke.py
+  s_32e2a9a204a8e4::t_bae555875a9a87 72
+examples/control_plane/quota_plan_fixtures.py
+  s_32e2a9a204a8e4::t_b07b7b52f32457 364
+examples/control_plane/refresh-state-agent-lane-scope-smoke.py
+  s_32e2a9a204a8e4::t_0f86a8b6542d11 80,180-193,195-196
+examples/control_plane/review-packet-cli-smoke.py
+  s_32e2a9a204a8e4::t_0877c27772d79b 276,278-279
+examples/control_plane/run-history-agent-context-retention-smoke.py
+  s_32e2a9a204a8e4::t_6a0e4b58026d09 41
+examples/control_plane/run-history-readmodel-smoke.py
+  s_32e2a9a204a8e4::t_3ddea6aedfdbbe 89,208-209
+examples/control_plane/runtime-handoff-status-read-path-smoke.py
+  s_32e2a9a204a8e4::t_2859468bfa39c5 134
+examples/control_plane/status-neutral-run-window-smoke.py
+  s_32e2a9a204a8e4::t_354fc38a41e854 144,352-353,359
+examples/control_plane/status-projection-cache-smoke.py
+  s_32e2a9a204a8e4::t_ff1f4f38692ab1 69
+examples/control_plane/status-quota-perf-budget-smoke.py
+  s_32e2a9a204a8e4::t_9f7991e04b4c8a 78
+examples/control_plane/status-quota-review-packet-parity-smoke.py
+  s_32e2a9a204a8e4::t_5490555326107e 62,75
+examples/control_plane/status_markdown_agent_lane_fixtures.py
+  s_32e2a9a204a8e4::t_2483c1e9267bb2 60,64,66,164,166-168,170-171,173-176,198-200,215-216,352,446,579,641
+examples/control_plane/task-lease-runtime-smoke.py
+  s_32e2a9a204a8e4::t_8078df3c1defa6 59
+examples/control_plane/task-orchestration-smoke.py
+  s_32e2a9a204a8e4::t_ca1464dac7a2f5 2,9,17-18,21-39,52,59,65-67,71-72,74,79-80,85,87,91,95-96,98,100-107,109-113,116,123
+examples/control_plane/todo-claim-lease-roadmap-smoke.py
+  s_32e2a9a204a8e4::t_dd47812334a4c7 15,41-42,54-56,66-67,72,82-83,85
+examples/control_plane/todo-claim-visibility-lanes-smoke.py
+  s_32e2a9a204a8e4::t_b7af0d006c9130 80,92-93
+examples/control_plane/todo-cli-smoke.py
+  s_32e2a9a204a8e4::t_8cca0a76377b01 63,283-284,559
+examples/control_plane/todo-concurrent-write-lock-smoke.py
+  s_32e2a9a204a8e4::t_8072e65fdf1d9a 65
+examples/control_plane/todo-continuation-policy-smoke.py
+  s_32e2a9a204a8e4::t_96f5ed255c95e9 2,22,27-29,32-33,41,52-55,57-62,64-65,67,70-72,75-120,122-123,125-129
+examples/control_plane/todo-first-open-summary-smoke.py
+  s_32e2a9a204a8e4::t_84947ca0e3d4ce 207,301,338,474,502,583,611,627-628
+examples/control_plane/todo-lifecycle-cli-smoke.py
+  s_32e2a9a204a8e4::t_713312e2d6864f 33,43-44,105,140,154-159,161-162,166,170,225-226,278,280,294,297,330,339,387-388,390,408-411,486-487
+examples/control_plane/todo-list-event-projection-smoke.py
+  s_32e2a9a204a8e4::t_38f4a2b5df05b7 76,283-284
+examples/control_plane/todo-projection-shared-helper-smoke.py
+  s_32e2a9a204a8e4::t_8c35c215884d56 113
+examples/control_plane/todo-succession-contract-smoke.py
+  s_32e2a9a204a8e4::t_d2003d0e2a36aa 113
+examples/control_plane/todo-user-gate-scope-smoke.py
+  s_32e2a9a204a8e4::t_6fbb62eaf9ab84 61
+examples/control_plane/todo-write-correctness-smoke.py
+  s_32e2a9a204a8e4::t_1ae3b0bfbbb54a 62
+examples/control_plane/todo_lifecycle_fixtures.py
+  s_32e2a9a204a8e4::t_7ae8ef9d9c7825 102-103,150,160,202-204,209-210,217-218,220,254-257,259,263,271-272,314,431,453,458,508
+examples/control_plane/work-lane-contract-smoke.py
+  s_32e2a9a204a8e4::t_0cff762575906a 1151,1206,1261,1307,1317,1336,1343,1363,1367,1371,1373,1387,1399,1401,1410,1425,1506,1572,1636,1790,1852,1909,1967,2019,2075,2168,2227
+examples/controller-subagents.registry.example.json
+  s_32e2a9a204a8e4::t_1d53b47be844d5 42,78,108
+examples/execution-obligation-policy-smoke.py
+  s_32e2a9a204a8e4::t_1601accf4100a9 59,61,66-68,70,73
+examples/explore-result-layer-smoke.py
+  s_32e2a9a204a8e4::t_015f95970fbca4 822
+examples/fixtures/frontstage-rollout-projections.public.json
+  s_32e2a9a204a8e4::t_78ca6904fe3d94 722,939
+examples/fixtures/global-manager-command.public.json
+  s_32e2a9a204a8e4::t_ad4d415339e26d 49,57,85,88-90,96
+examples/fixtures/local-agent-launch-plan.public.json
+  s_32e2a9a204a8e4::t_5a2c2fe0f37bc2 2,13,15,18,23-24,26,32-33,35,41-42,51,54-59,63-64,66,70-71,73,78,82,92,94,96,141
+examples/fixtures/long-horizon-self-iteration-rollout.public.json
+  s_32e2a9a204a8e4::t_44836e09b410c1 111,113-115,120-121,127-128,143,193,235,287,338,386,428,481,572
+examples/fixtures/task-graph-projection-status.public.json
+  s_32e2a9a204a8e4::t_40b7b2488cd12a 92
+examples/interaction-pattern-catalog-smoke.py
+  s_32e2a9a204a8e4::t_68456b3999457b 146
+examples/local-agent-launch-plan-smoke.py
+  s_32e2a9a204a8e4::t_e6666e2d6df90a 2,13,19-21,26,92,95,103-106,112,115-116,124-125,131,135-136,145
+examples/long-horizon-self-iteration-rollout-fixture-smoke.py
+  s_32e2a9a204a8e4::t_5dc7759a3ccbf2 89,164
+examples/long-task-cadence-policy-smoke.py
+  s_32e2a9a204a8e4::t_459536fb7ef09f 176
+examples/multi-agent-visible-launcher-protocol-smoke.py
+  s_32e2a9a204a8e4::t_fa3c01a05904bb 12,73,168
+examples/project/configure-goal-smoke.py
+  s_32e2a9a204a8e4::t_f9ab888169e8cf 116-117,137,143,146-147,177-178,206,315,317
+examples/project/connect-route-collision-guard-smoke.py
+  s_32e2a9a204a8e4::t_8e8d53639ed3d4 30
+examples/project/global-manager-command-protocol-smoke.py
+  s_32e2a9a204a8e4::t_39e761b27efe75 125
+examples/project/goal-rollout-event-log-smoke.py
+  s_32e2a9a204a8e4::t_05e52a06bd37a4 115
+examples/project/goal-vision-refresh-state-budget-smoke.py
+  s_32e2a9a204a8e4::t_5ab1c9ef29b42e 54
+examples/project/next-action-projection-contract-smoke.py
+  s_32e2a9a204a8e4::t_addd7ff6f92442 82,250,252,292,294
+examples/protocol/protocol-action-packet-smoke.py
+  s_32e2a9a204a8e4::t_ef75f88ba4a0eb 336
+examples/registry.example.json
+  s_32e2a9a204a8e4::t_cccdc5c0858a52 70
+examples/showcase-catalog-smoke.py
+  s_32e2a9a204a8e4::t_706d02aca23b91 204,217
+examples/showcase-html-pages.py
+  s_32e2a9a204a8e4::t_698d8f1db8ba7d 104,253-254,269,281-282,297,310-311,338-339,407,409,435-436,438
+examples/state-migration-smoke.py
+  s_32e2a9a204a8e4::t_b858a593966d27 93
+examples/status.example.json
+  s_32e2a9a204a8e4::t_049e33010d2826 445-446,477-478,504-505,518-519
+examples/upgrade-plan-smoke.py
+  s_32e2a9a204a8e4::t_284d2d42a93398 17,345-346,350-354,379-390,401
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7e890c7f3ead6e0100ec142879739eca414efea2",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
