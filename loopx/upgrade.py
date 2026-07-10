@@ -351,7 +351,10 @@ def peer_runtime_upgrade_migration(
     migration_id = peer_agent_runtime_migration_id(goal_id, goal)
     host_updates = []
     for target, prompt_status in installed.items():
-        if prompt_status.get("status") == "not_installed":
+        if not (
+            prompt_status.get("installed") is True
+            and prompt_status.get("requires_update") is True
+        ):
             continue
         generated = generated_prompts.get(target) or {}
         host_updates.append(

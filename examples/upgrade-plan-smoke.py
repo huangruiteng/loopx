@@ -350,7 +350,8 @@ def assert_registered_agent_activation_is_checked(root: Path) -> None:
     assert "primary_agent" not in goal, payload
     migration = goal["peer_runtime_automation_migration"]
     assert migration["required"] is True, migration
-    assert migration["host_update_required_once"] is True, migration
+    assert migration["host_update_required_once"] is False, migration
+    assert migration["host_updates"] == [], migration
     assert migration["migration_id"] in migration["completion_command"], migration
     assert "thin:codex-current" in goal["generated_prompts"], payload
     assert "thin:codex-current" in goal["installed_prompts"], payload

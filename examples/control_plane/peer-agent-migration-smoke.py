@@ -98,6 +98,43 @@ def main() -> int:
         assert first["migration_id"] in first["completion_command"], first
         migration_id = first["migration_id"]
 
+        host_migration = peer_runtime_upgrade_migration(
+            legacy_goal,
+            goal_id=GOAL_ID,
+            installed={
+                "thin:codex-alpha": {
+                    "status": "stale",
+                    "installed": True,
+                    "requires_update": True,
+                    "automation_id": "alpha-heartbeat",
+                    "agent_id": AGENTS[0],
+                },
+                "thin:codex-beta": {
+                    "status": "unknown",
+                    "installed": False,
+                    "requires_update": True,
+                    "automation_id": None,
+                    "agent_id": AGENTS[1],
+                },
+                "thin:codex-current": {
+                    "status": "current",
+                    "installed": True,
+                    "requires_update": False,
+                    "automation_id": "current-heartbeat",
+                    "agent_id": "codex-current",
+                },
+            },
+            generated_prompts={
+                "thin:codex-alpha": {"command": "loopx heartbeat-prompt --thin"},
+                "thin:codex-beta": {"command": "loopx heartbeat-prompt --thin"},
+                "thin:codex-current": {"command": "loopx heartbeat-prompt --thin"},
+            },
+        )
+        assert host_migration["host_update_required_once"] is True, host_migration
+        assert [
+            item["automation_id"] for item in host_migration["host_updates"]
+        ] == ["alpha-heartbeat"], host_migration
+
         preview = configure_goal(
             registry_path=registry_path,
             goal_id=GOAL_ID,
