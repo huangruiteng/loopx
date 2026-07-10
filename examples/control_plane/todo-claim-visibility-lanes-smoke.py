@@ -77,8 +77,7 @@ def assert_agent_claim_scope_prefers_current_then_unclaimed() -> None:
         open_items,
         agent_identity={
             "agent_id": CURRENT_AGENT,
-            "role": "side-agent",
-            "primary_agent": OTHER_AGENT,
+            "agent_model": "peer_v1",
         },
         diagnostic_item_limit=3,
     )
@@ -90,7 +89,8 @@ def assert_agent_claim_scope_prefers_current_then_unclaimed() -> None:
     assert claim_scope is not None, claim_scope
     assert claim_scope["schema_version"] == TODO_AGENT_CLAIM_SCOPE_SCHEMA_VERSION
     assert claim_scope["agent_id"] == CURRENT_AGENT
-    assert claim_scope["primary_agent"] == OTHER_AGENT
+    assert claim_scope["agent_model"] == "peer_v1"
+    assert "primary_agent" not in claim_scope
     assert claim_scope["selection_order"] == "current_agent_claimed_then_unclaimed"
     assert claim_scope["selectable_open_count"] == 3
     assert claim_scope["current_agent_claimed_open_count"] == 2

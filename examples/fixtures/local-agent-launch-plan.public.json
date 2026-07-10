@@ -1,5 +1,5 @@
 {
-  "fixture": "local_agent_launch_plan_public_v0",
+  "fixture": "local_agent_launch_plan_public_v1",
   "ok": true,
   "attention_queue": {
     "available": true,
@@ -10,33 +10,36 @@
         "status": "active",
         "waiting_on": "codex",
         "severity": "action",
-        "recommended_action": "Preview local agent role assignment before any runtime launcher exists.",
+        "recommended_action": "Preview peer task assignment before any runtime launcher exists.",
         "local_agent_launch_plan": {
-          "schema_version": "local_agent_launch_plan_v0",
+          "schema_version": "local_agent_launch_plan_v1",
           "mode": "dry_run",
           "goal_id": "loopx-meta",
-          "primary_agent_id": "codex-main-control",
+          "agent_model": "peer_v1",
           "generated_at": "2026-06-27T04:00:00Z",
           "configured_agents": [
             {
               "agent_id": "codex-main-control",
-              "role": "primary",
+              "agent_model": "peer_v1",
+              "profile_role": "release-validation",
               "source": "registry.coordination.registered_agents",
-              "scope_summary": "Primary controller reviews non-small changes and owns final merge decisions.",
+              "scope_summary": "Validates release and review tasks explicitly assigned to this peer.",
               "can_receive_work": true,
               "blocked_by": []
             },
             {
               "agent_id": "codex-side-bypass",
-              "role": "side_agent",
+              "agent_model": "peer_v1",
+              "profile_role": "public-validation",
               "source": "registry.coordination.registered_agents",
-              "scope_summary": "Side agent performs independent public-safe validation slices in an isolated worktree.",
+              "scope_summary": "Performs public validation slices with task-scoped workspace policy.",
               "can_receive_work": true,
               "blocked_by": []
             },
             {
               "agent_id": "codex-product-capability",
-              "role": "reviewer",
+              "agent_model": "peer_v1",
+              "profile_role": "product-validation",
               "source": "registry.coordination.registered_agents",
               "scope_summary": "Product capability agent owns product-surface validation and separate capability gates.",
               "can_receive_work": false,
@@ -45,36 +48,38 @@
               ]
             }
           ],
-          "role_assignments": [
+          "task_assignments": [
             {
               "agent_id": "codex-main-control",
-              "lane": "primary_control",
-              "responsibility": "Review and merge work that exceeds small self-merge rules.",
-              "claim_policy": "owns_primary_review_todos",
-              "handoff_target_agent_id": null
+              "todo_id": "todo_review_local_agent_launch_plan",
+              "assignment_kind": "review_handoff",
+              "responsibility": "Review this protocol slice when repository policy requires independent review.",
+              "claim_policy": "explicit_review_handoff_only",
+              "blocks_agent": "codex-side-bypass",
+              "unblocks_todo_id": "todo_a7ebeabb3c0c"
             },
             {
               "agent_id": "codex-side-bypass",
-              "lane": "bounded_delivery",
+              "todo_id": "todo_a7ebeabb3c0c",
+              "assignment_kind": "claimed",
               "responsibility": "Deliver one verifiable public dry-run protocol slice.",
-              "claim_policy": "claim_current_agent_todo_before_delivery",
-              "handoff_target_agent_id": "codex-main-control"
+              "claim_policy": "claim_current_agent_todo_before_delivery"
             },
             {
               "agent_id": "codex-product-capability",
-              "lane": "blocked",
+              "todo_id": "todo_product_validation_wait",
+              "assignment_kind": "blocked",
               "responsibility": "Wait for its own capability gate before product-surface validation.",
-              "claim_policy": "do_not_steal_other_agent_todos",
-              "handoff_target_agent_id": null
+              "claim_policy": "do_not_steal_other_agent_todos"
             }
           ],
           "launch_preview": [
             {
-              "preview_id": "preview_side_bypass_public_slice",
+              "preview_id": "preview_peer_public_slice",
               "agent_id": "codex-side-bypass",
               "todo_id": "todo_a7ebeabb3c0c",
               "next_step_label": "Build the public local-agent launch dry-run fixture and smoke.",
-              "worktree_policy": "independent_worktree_required",
+              "workspace_policy": "selected_task_requires_isolation",
               "host_execution": {
                 "will_start_process": false,
                 "tool_call_allowed": false,
@@ -84,11 +89,11 @@
               }
             },
             {
-              "preview_id": "preview_primary_review_handoff",
+              "preview_id": "preview_peer_review_handoff",
               "agent_id": "codex-main-control",
-              "todo_id": "todo_primary_review_local_agent_launch_plan",
+              "todo_id": "todo_review_local_agent_launch_plan",
               "next_step_label": "Review the protocol slice if it is not eligible for small self-merge.",
-              "worktree_policy": "no_launcher_worktree_change",
+              "workspace_policy": "task_policy_selected",
               "host_execution": {
                 "will_start_process": false,
                 "tool_call_allowed": false,
@@ -133,7 +138,7 @@
             "raw_transcripts_copied": false,
             "credentials_copied": false,
             "private_paths_copied": false,
-            "public_safe_summary": "The plan previews configured agents, roles, and handoff status without launching a runtime."
+            "public_safe_summary": "The plan previews peer identities, task assignments, and explicit review state without launching a runtime."
           },
           "future_gates": [
             {

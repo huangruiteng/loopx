@@ -112,7 +112,7 @@ updated_at: 2026-06-21T00:00:00+08:00
                         "repo": str(project),
                         "state_file": "ACTIVE_GOAL_STATE.md",
                         "coordination": {
-                            "primary_agent": "codex-main-control",
+                            "agent_model": "peer_v1",
                             "registered_agents": ["codex-main-control"],
                         },
                     }

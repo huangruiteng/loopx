@@ -110,7 +110,7 @@ def status_payload(agent_todos: dict) -> dict:
         source="active_state",
         registry_status="active",
         coordination={
-            "primary_agent": "codex-main-control",
+            "agent_model": "peer_v1",
             "registered_agents": ["codex-main-control", AGENT_ID],
         },
         latest_runs=[],

@@ -86,7 +86,7 @@ def main() -> int:
     assert public_boundary.get("private_material_body_recorded") is False, public_boundary
 
     lanes = {lane["lane_id"]: lane for lane in payload["lanes"]}
-    assert {"primary_control", "product_capability", "implementation_lane"} <= set(
+    assert {"release_validation", "product_capability", "implementation_lane"} <= set(
         lanes
     ), lanes
     assert lanes["implementation_lane"]["agent_id"] == "codex-side-bypass", lanes
@@ -161,7 +161,7 @@ def main() -> int:
             saw_deferred_resume = True
 
     assert saw_gate, "human/fixture gate missing"
-    assert saw_handoff, "side-agent handoff missing"
+    assert saw_handoff, "peer handoff missing"
     assert saw_validation, "validation event missing"
     assert saw_pr_ref, "PR evidence missing"
     assert saw_deferred_resume, "deferred-to-ready transition missing"

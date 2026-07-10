@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PROTOCOL = ROOT / "docs/reference/protocols/multi-agent-visible-launcher-v0.md"
 THREE_LAYER = ROOT / "docs/reference/protocols/multi-agent-three-layer-minimality-v0.md"
-LOCAL_PLAN = ROOT / "docs/reference/protocols/local-agent-launch-plan-v0.md"
+LOCAL_PLAN = ROOT / "docs/reference/protocols/local-agent-launch-plan-v1.md"
 AUTO_RESEARCH_PROFILE = ROOT / "docs/reference/protocols/auto-research-role-profile-v0.md"
 AUTO_RESEARCH_GUIDE = ROOT / "docs/guides/auto-research-command-path.md"
 PROTOCOL_INDEX = ROOT / "docs/reference/protocols/README.md"
@@ -70,7 +70,7 @@ def main() -> int:
         protocol,
         [
             "multi_agent_visible_launcher_v0",
-            "local_agent_launch_plan_v0",
+            "local_agent_launch_plan_v1",
             "Domain capabilities",
             "not become a leader agent",
             "multi_agent_three_layer_minimality_contract_v0",
@@ -165,7 +165,7 @@ def main() -> int:
     require(
         local_plan,
         [
-            "local_agent_launch_plan_v0",
+            "local_agent_launch_plan_v1",
             "mode=dry_run",
             "It must not start a process",
         ],

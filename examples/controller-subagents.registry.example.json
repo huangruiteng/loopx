@@ -39,7 +39,7 @@
           "codex-validation-map",
           "codex-implementation-slice"
         ],
-        "primary_agent": "codex-main-control",
+        "agent_model": "peer_v1",
         "write_scope": [
           "docs/**",
           "examples/**",
@@ -75,7 +75,7 @@
         "registered_agents": [
           "codex-docs-map"
         ],
-        "primary_agent": "codex-docs-map",
+        "agent_model": "peer_v1",
         "write_scope": [],
         "claim_ttl_minutes": 15,
         "requires_parent_approval": [
@@ -105,7 +105,7 @@
         "registered_agents": [
           "codex-validation-map"
         ],
-        "primary_agent": "codex-validation-map",
+        "agent_model": "peer_v1",
         "write_scope": [],
         "claim_ttl_minutes": 15,
         "requires_parent_approval": [

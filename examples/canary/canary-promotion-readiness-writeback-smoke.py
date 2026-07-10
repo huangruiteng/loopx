@@ -102,7 +102,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
                         "repo": str(project),
                         "state_file": state_file,
                         "coordination": {
-                            "primary_agent": "codex-main-control",
+                            "agent_model": "peer_v1",
                             "registered_agents": [
                                 "codex-main-control",
                                 "codex-product-capability",

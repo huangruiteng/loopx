@@ -59,7 +59,7 @@ def status_payload(
         coordination=coordination
         or {
             "registered_agents": [AGENT_ID],
-            "primary_agent": AGENT_ID,
+            "agent_model": "peer_v1",
         },
         latest_runs=latest_runs
         if latest_runs is not None
@@ -392,7 +392,7 @@ def assert_unscheduled_monitor_repair_survives_handoff_gates() -> None:
         ],
         coordination={
             "registered_agents": ["codex-main-control", AGENT_ID],
-            "primary_agent": "codex-main-control",
+            "agent_model": "peer_v1",
         },
     )
     lane = guard["work_lane_contract"]
@@ -594,11 +594,12 @@ def assert_due_monitor_is_not_overridden_by_side_agent_scope_wait() -> None:
         ],
         coordination={
             "registered_agents": [other_agent, AGENT_ID],
-            "primary_agent": other_agent,
+            "agent_model": "peer_v1",
         },
     )
     lane = guard["work_lane_contract"]
-    assert guard["agent_identity"]["role"] == "side-agent", guard
+    assert guard["agent_identity"]["agent_model"] == "peer_v1", guard
+    assert "role" not in guard["agent_identity"], guard
     assert guard["decision"] == "run", guard
     assert guard["effective_action"] == "normal_run", guard
     assert guard["should_run"] is True, guard
@@ -670,7 +671,7 @@ def assert_other_agent_due_monitor_does_not_preempt_current_agent_lane() -> None
         ],
         coordination={
             "registered_agents": [other_agent, AGENT_ID],
-            "primary_agent": other_agent,
+            "agent_model": "peer_v1",
         },
     )
     lane = guard["work_lane_contract"]
@@ -701,7 +702,7 @@ def assert_other_agent_claimed_work_stays_diagnostic_when_no_current_lane() -> N
         ],
         coordination={
             "registered_agents": [other_agent, AGENT_ID],
-            "primary_agent": other_agent,
+            "agent_model": "peer_v1",
         },
     )
     summary = guard["agent_todo_summary"]

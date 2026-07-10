@@ -67,7 +67,7 @@
           "codex-main-control",
           "codex-side-bypass"
         ],
-        "primary_agent": "codex-main-control",
+        "agent_model": "peer_v1",
         "write_scope": [
           "docs/**",
           "examples/**"

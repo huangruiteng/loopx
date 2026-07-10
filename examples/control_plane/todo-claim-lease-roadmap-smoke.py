@@ -12,7 +12,7 @@ ARCHITECTURE = REPO_ROOT / "docs" / "architecture.md"
 ROADMAP = REPO_ROOT / "docs" / "frontstage-channel-lease-roadmap.md"
 TODO_CONTRACT = REPO_ROOT / "docs" / "project-agent-todo-contract.md"
 REGISTRY_EXAMPLE = REPO_ROOT / "examples" / "registry.example.json"
-CONTROLLER_SUBAGENTS_EXAMPLE = REPO_ROOT / "examples" / "controller-subagents.registry.example.json"
+PEER_AGENTS_EXAMPLE = REPO_ROOT / "examples" / "controller-subagents.registry.example.json"
 
 
 def require(text: str, snippets: list[str], *, source: Path) -> None:
@@ -38,8 +38,8 @@ def main() -> int:
             "There is no separate issue object",
             "`(goal_id, todo_id)` is the contention unit",
             "Different todos under the same goal may proceed in parallel",
-            "`coordination.primary_agent`",
-            "independent git\nworktrees/branches",
+            "Registered identities are peers",
+            "workspace-isolation rule",
         ],
         source=ARCHITECTURE,
     )
@@ -51,9 +51,9 @@ def main() -> int:
             "LoopX does not have a separate issue object",
             "one active pending lease per\n  `(goal_id, todo_id)`",
             "not one active lease per goal or project",
-            "side agents claim scoped todos and work in separate git worktrees",
-            "self-merge small AGENTS-eligible validated changes",
-            "primary-agent review todo",
+            "repository-writing peers use isolated worktrees",
+            "self-merge with\nevidence",
+            "`review_handoff` assigned to a different peer",
         ],
         source=ROADMAP,
     )
@@ -63,13 +63,13 @@ def main() -> int:
             "a `goal_id` is the LoopX control-plane boundary",
             "A `todo_id` is a structured work item inside that goal",
             "does not\ncurrently model issues as a separate runtime object",
-            "one `coordination.primary_agent`",
-            "independent git worktree/branch",
+            "`coordination.agent_model=peer_v1`",
+            "Create or switch to a separate worktree",
             "`--next-claimed-by`",
         ],
         source=TODO_CONTRACT,
     )
-    for source in (REGISTRY_EXAMPLE, CONTROLLER_SUBAGENTS_EXAMPLE):
+    for source in (REGISTRY_EXAMPLE, PEER_AGENTS_EXAMPLE):
         registry = json.loads(source.read_text(encoding="utf-8"))
         for goal in registry.get("goals") or []:
             coordination = goal.get("coordination") or {}
@@ -79,10 +79,10 @@ def main() -> int:
             assert isinstance(registered_agents, list) and registered_agents, (
                 f"{source}: goal {goal.get('id')} has claim_ttl_minutes but no registered_agents"
             )
-            primary_agent = coordination.get("primary_agent")
-            assert isinstance(primary_agent, str) and primary_agent in registered_agents, (
-                f"{source}: goal {goal.get('id')} must declare one registered primary_agent"
+            assert coordination.get("agent_model") == "peer_v1", (
+                f"{source}: goal {goal.get('id')} must use the peer runtime"
             )
+            assert "primary_agent" not in coordination, f"{source}: durable hierarchy is forbidden"
 
     print("todo-claim-lease-roadmap-smoke ok")
     return 0

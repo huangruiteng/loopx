@@ -82,7 +82,7 @@ def write_fixture(project: Path) -> tuple[Path, Path, Path, Path]:
         "adapter": {"kind": "read_only_project_map_v0", "status": "connected-read-only"},
         "coordination": {
             "registered_agents": [{"id": "codex-main-control", "role": "primary"}],
-            "primary_agent": "codex-main-control",
+            "agent_model": "peer_v1",
         },
         "guards": ["dry-run registry admin smoke fixture only"],
     }
@@ -198,7 +198,7 @@ def main() -> None:
 
     for command, options in {
         "configure-goal": ("--quota-compute", "--registered-agent", "--execute"),
-        "register-agent": ("--agent-id", "--primary-agent", "--execute"),
+        "register-agent": ("--agent-id", "--execute"),
         "archive-runtime": ("--archive-root", "--allow-registered", "--execute"),
         "uninstall-project": ("--goal-id", "--archive-state", "--remove-empty-registry", "--execute"),
         "sync-global": ("--replace-state", "--dry-run"),

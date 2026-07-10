@@ -56,7 +56,7 @@ def write_fixture(root: Path) -> Path:
                         "authority_sources": [],
                         "coordination": {
                             "registered_agents": ["codex-main-control", "codex-side-bypass"],
-                            "primary_agent": "codex-main-control",
+                            "agent_model": "peer_v1",
                         },
                     }
                 ],

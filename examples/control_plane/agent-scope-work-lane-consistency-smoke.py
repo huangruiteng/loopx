@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test agent-scope wait consistency for legacy work-lane projection."""
+"""Smoke-test peer reassignment consistency for the work-lane projection."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ def _status_payload() -> dict:
     )
     assert agent_todos is not None
     coordination = {
-        "primary_agent": PRIMARY_AGENT,
+        "agent_model": "peer_v1",
         "registered_agents": [PRIMARY_AGENT, SIDE_AGENT],
     }
     return {
@@ -114,26 +114,26 @@ def main() -> None:
         agent_id=SIDE_AGENT,
     )
 
-    assert guard["decision"] == "agent_scope_wait", guard
+    assert guard["decision"] == "reassignment_required", guard
     assert guard["should_run"] is False, guard
-    assert guard["effective_action"] == "agent_scope_wait", guard
+    assert guard["effective_action"] == "reassignment_required", guard
 
     lane = guard["work_lane_contract"]
-    assert lane["lane"] == "agent_scope_wait", lane
+    assert lane["lane"] == "reassignment_required", lane
     assert lane["obligation"] == "wait_for_current_agent_or_unclaimed_advancement", lane
     assert lane["must_attempt_work"] is False, lane
     assert lane["blocked_by_agent_scope"] is True, lane
     assert lane["deferred_work_lane"]["obligation"] == (
         "materialize_advancement_todo_or_blocker"
     ), lane
-    assert "agent_scope_wait" in lane["reason_codes"], lane
+    assert "reassignment_required" in lane["reason_codes"], lane
 
     obligation = guard["execution_obligation"]
-    assert obligation["kind"] == "agent_scope_wait", obligation
+    assert obligation["kind"] == "reassignment_required", obligation
     assert obligation["must_attempt_work"] is False, obligation
 
     contract = guard["interaction_contract"]
-    assert contract["mode"] == "agent_scope_wait", contract
+    assert contract["mode"] == "reassignment_required", contract
     assert contract["agent_channel"]["must_attempt"] is False, contract
     assert contract["agent_channel"]["delivery_allowed"] is False, contract
     assert contract["agent_channel"]["quiet_noop_allowed"] is True, contract
@@ -141,7 +141,7 @@ def main() -> None:
     markdown = render_quota_should_run_markdown(guard)
     assert "obligation=materialize_advancement_todo_or_blocker" not in markdown, markdown
     assert (
-        "work_lane_contract: lane=agent_scope_wait next=advancement_task" in markdown
+        "work_lane_contract: lane=reassignment_required next=advancement_task" in markdown
     ), markdown
     print("agent-scope-work-lane-consistency-smoke ok")
 

@@ -56,21 +56,21 @@ def assert_exact_mode(
 
 
 def main() -> int:
-    side_agent = obligation(
+    peer_workspace = obligation(
         recommendation={
-            "recommended_mode": "repair_side_agent_workspace",
+            "recommended_mode": "repair_agent_workspace",
             "spend_policy": "no spend until relocated",
         }
     )
     assert_exact_mode(
-        "side-agent-workspace",
-        side_agent,
-        kind="side_agent_workspace_repair",
+        "peer-agent-workspace",
+        peer_workspace,
+        kind="agent_workspace_repair",
         minimum="one_workspace_move_then_guard_rerun",
-        contract="side_agent_workspace_guard",
+        contract="agent_workspace_guard",
         delivery_allowed=False,
     )
-    assert side_agent["spend_policy"] == "no spend until relocated", side_agent
+    assert peer_workspace["spend_policy"] == "no spend until relocated", peer_workspace
 
     evidence = obligation(
         should_run=False,

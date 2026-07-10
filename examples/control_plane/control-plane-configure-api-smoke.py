@@ -197,9 +197,8 @@ def configure_payload() -> dict[str, Any]:
         "allowed_domains": ["docs", "validation"],
         "clear_allowed_domains": False,
         "registered_agents": ["codex-main-control", "codex-side-bypass"],
-        "primary_agent": "codex-main-control",
+        "agent_model": "peer_v1",
         "clear_registered_agents": False,
-        "clear_primary_agent": False,
         "write_scope": ["docs/**", "tests/**"],
         "replace_write_scope": False,
         "clear_write_scope": False,
@@ -234,7 +233,7 @@ def main() -> None:
             assert dry["changed"] is True, dry
             assert dry["written"] is False, dry
             assert dry["after"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], dry
-            assert dry["after"]["primary_agent"] == "codex-main-control", dry
+            assert dry["after"]["agent_model"] == "peer_v1", dry
             assert dry["after"]["write_scope"] == ["docs/**", "tests/**"], dry
             assert dry["feature_summary"]["multi_subagent"] == "enabled", dry
             assert goal_from_registry(registry)["quota"]["compute"] == 1
@@ -301,7 +300,7 @@ def main() -> None:
             assert status == 200, dry
             assert dry["preview_id"], dry
             assert dry["after"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], dry
-            assert dry["after"]["primary_agent"] == "codex-main-control", dry
+            assert dry["after"]["agent_model"] == "peer_v1", dry
             assert dry["after"]["write_scope"] == ["docs/**", "tests/**"], dry
             assert dry["feature_summary"]["multi_subagent"] == "enabled", dry
             status, stale = request_json(
@@ -338,7 +337,7 @@ def main() -> None:
             assert goal["spawn_policy"]["max_children"] == 2, goal
             assert goal["spawn_policy"]["allowed_domains"] == ["docs", "validation"], goal
             assert goal["coordination"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], goal
-            assert goal["coordination"]["primary_agent"] == "codex-main-control", goal
+            assert goal["coordination"]["agent_model"] == "peer_v1", goal
             assert goal["coordination"]["write_scope"] == ["docs/**", "tests/**"], goal
             status, refreshed = request_json("GET", f"{base_url}/status.json")
             assert status == 200, refreshed

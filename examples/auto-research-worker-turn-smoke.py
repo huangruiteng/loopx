@@ -176,8 +176,12 @@ def write_registry(path: Path, *, project: Path, state_file: Path, runtime_root:
                         "status": "active",
                         "repo": str(project),
                         "state_file": str(state_file),
+                        "adapter": {
+                            "kind": "auto_research_demo_local_queue",
+                            "status": "connected",
+                        },
                         "coordination": {
-                            "primary_agent": CURATOR_AGENT_ID,
+                            "agent_model": "peer_v1",
                             "registered_agents": [
                                 CURATOR_AGENT_ID,
                                 HYPOTHESIS_AGENT_ID,
@@ -473,7 +477,7 @@ def main() -> int:
             note="auto-research curator review routed the next hypothesis round",
             evidence="state-summary agent=research-curator action=review_research_contract linked next hypothesis successor",
             successor_todo_ids=curator_successor_ids,
-            side_agent_self_merged=True,
+            self_merged=True,
             dry_run=False,
         )
         assert curator_completion["completed"] is True, curator_completion

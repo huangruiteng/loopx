@@ -73,7 +73,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
                         "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
                         "coordination": {
                             "registered_agents": [PRIMARY_AGENT, SIDE_AGENT],
-                            "primary_agent": PRIMARY_AGENT,
+                            "agent_model": "peer_v1",
                             "side_agent_handoff_agent": SIDE_AGENT,
                         },
                         "authority_sources": [],
@@ -280,8 +280,8 @@ def main() -> int:
             "--successor-todo-id",
             EVENT_SUCCESSOR_TODO_ID,
         )
-        assert completed["linked_handoff_successor_id"] == EVENT_SUCCESSOR_TODO_ID, completed
-        assert completed["side_agent_self_merged"] is False, completed
+        assert completed["linked_successor_id"] == EVENT_SUCCESSOR_TODO_ID, completed
+        assert completed["self_merged"] is False, completed
 
         event_log.unlink()
         fallback = run_cli(registry_path, "todo", "list", "--goal-id", GOAL_ID, "--role", "agent")

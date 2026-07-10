@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the atomic legacy-hierarchy to peer-agent registry migration."""
+"""Exercise the one-time hierarchy-to-peer automation/runtime migration."""
 
 from __future__ import annotations
 
@@ -14,6 +14,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.configure_goal import configure_goal  # noqa: E402
+from loopx.control_plane.agents.identity import (  # noqa: E402
+    build_identity_aware_prompt_upgrade,
+    build_quota_agent_identity,
+)
+from loopx.control_plane.agents.runtime_model import (  # noqa: E402
+    PEER_AGENT_RUNTIME_MIGRATION,
+)
 from loopx.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
 
 
@@ -31,8 +38,29 @@ def write_legacy_registry(path: Path) -> None:
                         "id": GOAL_ID,
                         "coordination": {
                             "registered_agents": AGENTS,
-                            "primary_agent": AGENTS[0],
+                            "agent_model": "peer_v1",
                             "side_agent_handoff_agent": AGENTS[0],
+                            "agent_profiles": {
+                                AGENTS[0]: {
+                                    "schema_version": "agent_profile_v0",
+                                    "role": "primary-agent",
+                                    "scope_summary": "runtime and release work",
+                                    "review_policy": {
+                                        "can_self_merge": True,
+                                        "reviews_side_agent_work": True,
+                                    },
+                                },
+                                AGENTS[1]: {
+                                    "schema_version": "agent_profile_v0",
+                                    "role": "side-agent",
+                                    "primary_agent": AGENTS[0],
+                                    "scope_summary": "docs and validation work",
+                                    "review_policy": {
+                                        "can_self_merge": "small_validated_only",
+                                        "handoff_agent": AGENTS[0],
+                                    },
+                                },
+                            },
                             "write_scope": ["loopx/**"],
                         },
                     }
@@ -50,6 +78,24 @@ def main() -> int:
         registry_path = Path(tmp) / "registry.json"
         write_legacy_registry(registry_path)
         original = registry_path.read_text(encoding="utf-8")
+        legacy_goal = json.loads(original)["goals"][0]
+        identity = build_quota_agent_identity(legacy_goal, agent_id=AGENTS[0])
+
+        first = build_identity_aware_prompt_upgrade(
+            legacy_goal,
+            goal_id=GOAL_ID,
+            agent_identity=identity,
+        )
+        repeated_projection = build_identity_aware_prompt_upgrade(
+            legacy_goal,
+            goal_id=GOAL_ID,
+            agent_identity=identity,
+        )
+        assert first["migration_id"] == repeated_projection["migration_id"], first
+        assert first["delivery_semantics"] == "stable_idempotent_until_ack", first
+        assert first["host_update_idempotency_key"] == first["migration_id"], first
+        assert first["migration_id"] in first["completion_command"], first
+        migration_id = first["migration_id"]
 
         preview = configure_goal(
             registry_path=registry_path,
@@ -57,25 +103,31 @@ def main() -> int:
             agent_model="peer_v1",
         )
         assert preview["dry_run"] is True, preview
-        assert preview["after"]["agent_model"] == "peer_v1", preview
-        assert "primary_agent" not in preview["after"], preview
-        assert preview["backup_path"] is None, preview
+        assert preview["after"]["legacy_hierarchy_present"] is True, preview
+        assert preview["heartbeat_prompt_migration"]["migration_id"] == migration_id
         assert registry_path.read_text(encoding="utf-8") == original
-        migration = preview["heartbeat_prompt_migration"]
-        assert migration["agent_model"] == "peer_v1", migration
-        assert all("role" not in command for command in migration["commands"]), migration
-        assert all(
-            "peer task claims" in command["command"]
-            for command in migration["commands"]
-        ), migration
+
+        try:
+            configure_goal(
+                registry_path=registry_path,
+                goal_id=GOAL_ID,
+                agent_model="peer_v1",
+                execute=True,
+            )
+        except ValueError as exc:
+            assert migration_id in str(exc), exc
+            assert "host automation migration" in str(exc), exc
+        else:
+            raise AssertionError("registry hard cut must require the host-update ack")
 
         applied = configure_goal(
             registry_path=registry_path,
             goal_id=GOAL_ID,
-            agent_model="peer_v1",
+            automation_prompt_migration_ack=migration_id,
             execute=True,
         )
         assert applied["written"] is True, applied
+        assert applied["automation_prompt_migration"]["status"] == "completed", applied
         backup_path = Path(applied["backup_path"])
         assert backup_path.exists(), applied
         assert backup_path.read_text(encoding="utf-8") == original
@@ -86,15 +138,36 @@ def main() -> int:
         assert coordination["write_scope"] == ["loopx/**"], coordination
         assert "primary_agent" not in coordination, coordination
         assert "side_agent_handoff_agent" not in coordination, coordination
+        assert set(coordination["agent_profiles"]) == set(AGENTS), coordination
+        for profile in coordination["agent_profiles"].values():
+            assert profile["schema_version"] == "agent_profile_v1", profile
+            assert "role" not in profile and "primary_agent" not in profile, profile
+            assert "worktree_policy" not in profile and "review_policy" not in profile, profile
+        completed = coordination["completed_migrations"][PEER_AGENT_RUNTIME_MIGRATION]
+        assert completed["migration_id"] == migration_id, completed
+        assert completed["status"] == "completed", completed
 
-        repeated = configure_goal(
+        repeated_ack = configure_goal(
             registry_path=registry_path,
             goal_id=GOAL_ID,
-            agent_model="peer_v1",
+            automation_prompt_migration_ack=migration_id,
             execute=True,
         )
-        assert repeated["changed"] is False, repeated
-        assert repeated["backup_path"] is None, repeated
+        assert repeated_ack["changed"] is False, repeated_ack
+        assert repeated_ack["backup_path"] is None, repeated_ack
+        assert repeated_ack["automation_prompt_migration"]["status"] == (
+            "already_completed"
+        ), repeated_ack
+
+        migrated_identity = build_quota_agent_identity(goal, agent_id=AGENTS[0])
+        assert (
+            build_identity_aware_prompt_upgrade(
+                goal,
+                goal_id=GOAL_ID,
+                agent_identity=migrated_identity,
+            )
+            is None
+        )
 
         fresh_registry = Path(tmp) / "fresh-registry.json"
         fresh_registry.write_text(
@@ -108,11 +181,7 @@ def main() -> int:
             execute=True,
         )
         assert fresh["after"]["agent_model"] == "peer_v1", fresh
-        fresh_goal = json.loads(fresh_registry.read_text(encoding="utf-8"))["goals"][0]
-        assert fresh_goal["coordination"] == {
-            "registered_agents": AGENTS,
-            "agent_model": "peer_v1",
-        }, fresh_goal
+        assert fresh["automation_prompt_migration"]["status"] == "not_required", fresh
 
         heartbeat = build_heartbeat_prompt(
             goal_id=GOAL_ID,
@@ -120,7 +189,6 @@ def main() -> int:
             agent_id=AGENTS[0],
             agent_scopes=["peer task claims and leases"],
             registered_agents=AGENTS,
-            agent_model="peer_v1",
         )
         assert heartbeat["agent_model"] == "peer_v1", heartbeat
         assert heartbeat["agent_role"] == "peer-agent", heartbeat

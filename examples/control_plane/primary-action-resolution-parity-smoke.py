@@ -42,7 +42,7 @@ def status_payload(
         quota_state=quota_state,
         project_asset_source="project_asset",
         coordination={
-            "primary_agent": PRIMARY_AGENT_ID,
+            "agent_model": "peer_v1",
             "registered_agents": [PRIMARY_AGENT_ID, AGENT_ID],
         },
         latest_runs=[],

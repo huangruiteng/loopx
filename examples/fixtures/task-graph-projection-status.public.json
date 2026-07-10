@@ -89,7 +89,7 @@
             {
               "node_id": "node_primary_review_handoff",
               "kind": "handoff",
-              "title": "Primary agent reviews runtime implementation only after fixture contract is stable.",
+              "title": "Selected peer reviews runtime implementation only after fixture contract is stable.",
               "state": "waiting",
               "refs": {
                 "lease_ids": [

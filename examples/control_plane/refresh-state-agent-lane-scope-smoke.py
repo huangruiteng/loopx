@@ -77,7 +77,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
                         "state_file": state_file,
                         "adapter": {"kind": "fixture", "status": "connected-read-only"},
                         "coordination": {
-                            "primary_agent": "codex-main-control",
+                            "agent_model": "peer_v1",
                             "registered_agents": [
                                 "codex-main-control",
                                 "codex-side-bypass",
@@ -177,24 +177,23 @@ def main() -> None:
                 ),
             )
 
-            expect_value_error(
-                "goal-scope refresh-state requires the primary agent",
-                lambda: state_refresh.refresh_state_run(
-                    registry_path=registry_path,
-                    runtime_root_override=str(runtime),
-                    goal_id=GOAL_ID,
-                    project=project,
-                    state_file=None,
-                    classification="frontstage_side_goal_scope",
-                    recommended_action=SIDE_ACTION,
-                    delivery_batch_scale="single_surface",
-                    delivery_outcome="outcome_progress",
-                    agent_id="codex-side-bypass",
-                    progress_scope="goal",
-                    dry_run=True,
-                    sync_global=False,
-                ),
+            peer_goal_scope = state_refresh.refresh_state_run(
+                registry_path=registry_path,
+                runtime_root_override=str(runtime),
+                goal_id=GOAL_ID,
+                project=project,
+                state_file=None,
+                classification="frontstage_peer_goal_scope",
+                recommended_action=SIDE_ACTION,
+                delivery_batch_scale="single_surface",
+                delivery_outcome="outcome_progress",
+                agent_id="codex-side-bypass",
+                progress_scope="goal",
+                dry_run=True,
+                sync_global=False,
             )
+            assert peer_goal_scope["progress_scope"] == "goal", peer_goal_scope
+            assert peer_goal_scope["agent_id"] == "codex-side-bypass", peer_goal_scope
 
             state_refresh.now_local = lambda: "2026-06-20T00:01:00+00:00"
             side_payload = state_refresh.refresh_state_run(

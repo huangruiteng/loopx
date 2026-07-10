@@ -79,7 +79,7 @@ def write_fixture(root: Path, *, include_next_action: bool = True) -> tuple[Path
                         "state_file": state_file,
                         "adapter": {"kind": "fixture", "status": "connected-read-only"},
                         "coordination": {
-                            "primary_agent": "codex-main-control",
+                            "agent_model": "peer_v1",
                             "registered_agents": ["codex-main-control", "codex-side-bypass"],
                         },
                         "authority_sources": [],
@@ -247,9 +247,9 @@ def main() -> None:
             assert first_decision["active_state_next_action"] == ACTIVE_NEXT_ACTION, first_decision
             assert first_decision["latest_run_recommended_action"] == RUN_RECOMMENDATION, first_decision
             first_agent_channel = first_decision["interaction_contract"]["agent_channel"]
-            assert "independent worktree/branch" in first_agent_channel["primary_action"], first_decision
+            assert SIDE_AGENT_ACTION in first_agent_channel["primary_action"], first_decision
             first_trace = first_agent_channel["resolution_trace"]
-            assert first_trace["summary"] == "source=selected drift=true", first_decision
+            assert first_trace["summary"] == "source=agent_lane drift=true", first_decision
             first_warning = first_decision["next_action_projection_warning"]
             assert first_warning["severity"] == "info", first_decision
             assert first_warning["requires_state_writeback"] is False, first_decision
@@ -289,9 +289,9 @@ def main() -> None:
             assert second_decision["active_state_next_action"] == UPDATED_NEXT_ACTION, second_decision
             assert second_decision["latest_run_recommended_action"] == UPDATED_RUN_RECOMMENDATION, second_decision
             second_agent_channel = second_decision["interaction_contract"]["agent_channel"]
-            assert "independent worktree/branch" in second_agent_channel["primary_action"], second_decision
+            assert SIDE_AGENT_ACTION in second_agent_channel["primary_action"], second_decision
             second_trace = second_agent_channel["resolution_trace"]
-            assert second_trace["summary"] == "source=selected drift=true", second_decision
+            assert second_trace["summary"] == "source=agent_lane drift=true", second_decision
             lane = second_decision["agent_lane_next_action"]
             assert lane["todo_id"] == "todo_side", second_decision
             assert lane["title"] == SIDE_AGENT_ACTION, second_decision

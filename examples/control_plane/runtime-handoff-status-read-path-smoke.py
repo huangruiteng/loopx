@@ -131,7 +131,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
                         },
                         "coordination": {
                             "registered_agents": [AGENT_ID],
-                            "primary_agent": AGENT_ID,
+                            "agent_model": "peer_v1",
                         },
                         "authority_sources": [],
                     }

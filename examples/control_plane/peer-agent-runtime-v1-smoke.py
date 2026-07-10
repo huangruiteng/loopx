@@ -11,11 +11,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHECKS = (
     "examples/control_plane/agent-identity-readmodel-smoke.py",
+    "examples/control_plane/peer-agent-hard-cut-boundary-smoke.py",
     "examples/control_plane/quota-replan-decision-plane-smoke.py",
     "examples/control_plane/todo-continuation-policy-smoke.py",
     "examples/control_plane/peer-agent-migration-smoke.py",
-    "examples/control_plane/side-agent-workspace-guard-smoke.py",
-    "examples/control_plane/primary-controller-subagent-orchestration-smoke.py",
+    "examples/control_plane/peer-agent-workspace-guard-smoke.py",
+    "examples/control_plane/peer-agent-continuation-state-machine-smoke.py",
+    "examples/control_plane/task-orchestration-smoke.py",
     "examples/control_plane/agent-onboard-host-loop-activation-smoke.py",
 )
 

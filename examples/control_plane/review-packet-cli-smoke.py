@@ -273,8 +273,10 @@ def assert_connected_delivery_surface_loop_requires_macro_evidence() -> None:
                         "next_action": "Attempt a ranker / cross-domain evidence segment or report blocker.",
                         "stop_condition": "stop if useful work needs unapproved scope",
                         "agent_member": {
+                            "schema_version": "agent_member_v1",
                             "agent_id": "codex-side-bypass",
-                            "role": "side-agent",
+                            "agent_model": "peer_v1",
+                            "profile_role": "delivery-validation",
                             "scope_summary": "delivery-side-bypass",
                         },
                         "agent_todos": {

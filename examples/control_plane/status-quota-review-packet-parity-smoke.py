@@ -59,7 +59,7 @@ def write_registry(project: Path, runtime: Path) -> Path:
             "state_file": write_state(project, GOAL_ID, claimed_by=AGENT_ID),
             "adapter": {"kind": "smoke_v0", "status": "connected-read-only"},
             "coordination": {
-                "primary_agent": PRIMARY_AGENT_ID,
+                "agent_model": "peer_v1",
                 "registered_agents": [PRIMARY_AGENT_ID, AGENT_ID],
             },
             "authority_sources": [],
@@ -72,7 +72,7 @@ def write_registry(project: Path, runtime: Path) -> Path:
             "state_file": write_state(project, OTHER_GOAL_ID, claimed_by=PRIMARY_AGENT_ID),
             "adapter": {"kind": "smoke_v0", "status": "connected-read-only"},
             "coordination": {
-                "primary_agent": PRIMARY_AGENT_ID,
+                "agent_model": "peer_v1",
                 "registered_agents": [PRIMARY_AGENT_ID, AGENT_ID],
             },
             "authority_sources": [],

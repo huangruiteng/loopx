@@ -472,7 +472,7 @@ def write_scoped_future_external_monitor_fixture(root: Path) -> tuple[Path, Path
                                 "codex-main-control",
                                 "codex-side-bypass",
                             ],
-                            "primary_agent": "codex-main-control",
+                            "agent_model": "peer_v1",
                         },
                         "authority_sources": [],
                         "quota": {
@@ -1223,17 +1223,16 @@ def main() -> int:
         assert lane["lane"] == "continuous_monitor", lane
         assert lane["obligation"] == "quiet_until_material_monitor_transition", lane
         assert lane["must_attempt_work"] is False, lane
-        hint = guard["agent_lane_frontier_hint"]
-        assert hint["decision"] == "quiet_noop_blocker", hint
-        assert hint["reason_code"] == "only_current_agent_monitor_work_remains", hint
-        if guard["effective_action"] == "monitor_quiet_skip":
-            interaction = guard["interaction_contract"]
-            assert interaction["mode"] == "monitor_quiet_skip", interaction
-            assert interaction["agent_channel"]["must_attempt"] is False, interaction
-            assert interaction["agent_channel"]["quiet_noop_allowed"] is True, interaction
-        else:
-            assert guard["effective_action"] == "side_agent_workspace_repair", guard
-            assert guard["workspace_guard"]["blocks_delivery"] is True, guard
+        assert guard["decision"] == "autonomous_replan_required", guard
+        interaction = guard["interaction_contract"]
+        assert interaction["mode"] == "autonomous_replan", interaction
+        assert interaction["agent_channel"]["must_attempt"] is True, interaction
+        assert interaction["agent_channel"]["delivery_allowed"] is True, interaction
+        required_reads = interaction["agent_channel"]["required_reads"]
+        assert required_reads[0]["kind"] == "agent_scoped_evidence_log", required_reads
+        assert required_reads[0]["agent_id"] == "codex-side-bypass", required_reads
+        assert required_reads[0]["todo_id"] is None, required_reads
+        assert "--agent-id codex-side-bypass" in required_reads[0]["command"], required_reads
 
     with tempfile.TemporaryDirectory(prefix="loopx-external-evidence-projection-") as tmp:
         root = Path(tmp)

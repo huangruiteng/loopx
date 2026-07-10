@@ -59,7 +59,7 @@ def assert_help_surfaces() -> None:
     todo_help = run_cli("todo", "--help")
     assert todo_help.returncode == 0, todo_help.stderr
     assert_contains(todo_help.stdout, "archive-completed", "todo help")
-    assert_contains(todo_help.stdout, "--side-agent-self-merged", "todo help")
+    assert_contains(todo_help.stdout, "--self-merged", "todo help")
     assert_contains(todo_help.stdout, "--next-agent-todo", "todo help")
 
     quota_help = run_cli("quota", "--help")

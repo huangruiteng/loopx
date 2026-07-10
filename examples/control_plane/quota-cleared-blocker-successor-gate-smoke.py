@@ -173,7 +173,7 @@ def status_payload(items: list[dict], *, recommended_action: str) -> dict:
                     "adapter_kind": "fixture_adapter_v0",
                     "adapter_status": "connected",
                     "coordination": {
-                        "primary_agent": PRIMARY_AGENT,
+                        "agent_model": "peer_v1",
                         "registered_agents": [PRIMARY_AGENT, BLOCKED_AGENT],
                     },
                     "latest_runs": [],
@@ -388,9 +388,9 @@ def assert_archived_completed_blocker_does_not_wake_agent() -> None:
         goal_id=GOAL_ID,
         agent_id=BLOCKED_AGENT,
     )
-    assert payload["decision"] == "agent_scope_wait", payload
+    assert payload["decision"] == "reassignment_required", payload
     assert payload["should_run"] is False, payload
-    assert payload["agent_scope_frontier"]["action"] == "agent_scope_wait", payload
+    assert payload["agent_scope_frontier"]["action"] == "reassignment_required", payload
     assert "current_agent_handoff_gates" not in payload["agent_todo_summary"], payload
     assert "current_agent_cleared_without_successor_handoff_count" not in (
         payload["agent_todo_summary"]
@@ -459,9 +459,9 @@ def assert_superseded_completed_blocker_does_not_wake_agent() -> None:
         goal_id=GOAL_ID,
         agent_id=BLOCKED_AGENT,
     )
-    assert payload["decision"] == "agent_scope_wait", payload
+    assert payload["decision"] == "reassignment_required", payload
     assert payload["should_run"] is False, payload
-    assert payload["agent_scope_frontier"]["action"] == "agent_scope_wait", payload
+    assert payload["agent_scope_frontier"]["action"] == "reassignment_required", payload
     summary = payload["agent_todo_summary"]
     assert summary["current_agent_handoff_gates"][0]["gate_state"] == "superseded", payload
     assert summary["current_agent_cleared_without_successor_handoff_count"] == 0, payload
@@ -476,7 +476,7 @@ def assert_no_followup_completed_blocker_does_not_wake_agent() -> None:
         goal_id=GOAL_ID,
         agent_id=BLOCKED_AGENT,
     )
-    assert payload["decision"] == "agent_scope_wait", payload
+    assert payload["decision"] == "reassignment_required", payload
     assert payload["should_run"] is False, payload
     summary = payload["agent_todo_summary"]
     gate = summary["current_agent_handoff_gates"][0]

@@ -141,7 +141,7 @@ def status_payload(
         agent_todos=summary,
         quota_extra={"allowed_slots": 1440},
         coordination={
-            "primary_agent": "codex-main-control",
+            "agent_model": "peer_v1",
             "registered_agents": ["codex-main-control", AGENT_ID],
         },
         latest_runs=latest_runs or [],

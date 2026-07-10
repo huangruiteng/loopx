@@ -66,7 +66,7 @@ def build_agent_todos(*, prerequisite_status: str) -> dict:
 
 def status_payload(agent_todos: dict, *, next_action: str) -> dict:
     coordination = {
-        "primary_agent": PRIMARY_AGENT,
+        "agent_model": "peer_v1",
         "registered_agents": [PRIMARY_AGENT, "codex-side-bypass", AGENT_ID],
     }
     return quota_status_payload(

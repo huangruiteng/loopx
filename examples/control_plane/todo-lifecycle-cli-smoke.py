@@ -30,7 +30,7 @@ from todo_lifecycle_fixtures import (  # noqa: E402
     UNCLAIMED_SUCCESSOR_TODO,
     VALIDATE_TODO,
     assert_complete_links_existing_successor,
-    assert_configured_side_agent_handoff,
+    assert_configured_peer_handoff,
     assert_no_followup_cli_metadata,
     assert_same_title_completion_creates_fresh_successor,
     parsed_items,
@@ -40,8 +40,8 @@ from todo_lifecycle_fixtures import (  # noqa: E402
 )
 
 
-def assert_side_agent_monitor_no_followup() -> None:
-    with tempfile.TemporaryDirectory(prefix="loopx-side-monitor-no-followup-") as tmp:
+def assert_peer_monitor_no_followup() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-peer-monitor-no-followup-") as tmp:
         registry_path, state_file = write_fixture(Path(tmp))
         side_monitor_added = run_cli(
             registry_path,
@@ -102,7 +102,7 @@ def assert_side_agent_monitor_no_followup() -> None:
             "--no-follow-up",
         )
         assert side_monitor_completed["changed"] is True, side_monitor_completed
-        assert side_monitor_completed["side_agent_self_merged"] is False, (
+        assert side_monitor_completed["self_merged"] is False, (
             side_monitor_completed
         )
         assert side_monitor_completed["no_followup"] is True, side_monitor_completed
@@ -137,7 +137,7 @@ def assert_side_agent_monitor_no_followup() -> None:
             "--next-due-at",
             "2026-07-11T00:00:00Z",
         )
-        write_monitor_rejected = run_cli_error(
+        write_monitor_completed = run_cli(
             registry_path,
             "todo",
             "complete",
@@ -151,17 +151,23 @@ def assert_side_agent_monitor_no_followup() -> None:
             "monitor closeout included repository delivery",
             "--no-follow-up",
         )
-        assert "side-agent completion" in write_monitor_rejected["error"], (
-            write_monitor_rejected
+        assert write_monitor_completed["changed"] is True, write_monitor_completed
+        assert write_monitor_completed["no_followup"] is True, write_monitor_completed
+        write_monitor_item = next(
+            item
+            for item in parsed_items(state_file)
+            if item["todo_id"] == write_monitor_added["todo_id"]
         )
+        assert write_monitor_item["status"] == "done", write_monitor_item
+        assert write_monitor_item["no_followup"] is True, write_monitor_item
 
 
 def main() -> int:
-    assert_configured_side_agent_handoff()
+    assert_configured_peer_handoff()
     assert_no_followup_cli_metadata()
     assert_complete_links_existing_successor()
     assert_same_title_completion_creates_fresh_successor()
-    assert_side_agent_monitor_no_followup()
+    assert_peer_monitor_no_followup()
 
     with tempfile.TemporaryDirectory(prefix="loopx-todo-lifecycle-smoke-") as tmp:
         root = Path(tmp)
@@ -216,6 +222,8 @@ def main() -> int:
             "fresh-repeat-result-ready",
             "--next-agent-todo",
             REBUILD_TODO,
+            "--next-claimed-by",
+            "codex-main-control",
             "--next-action-kind",
             "rebuild_score",
         )
@@ -257,23 +265,6 @@ def main() -> int:
         side_todo_id = side_added["todo_id"]
         side_item = next(item for item in parsed_items(state_file) if item["todo_id"] == side_todo_id)
         assert side_item.get("updated_at"), side_item
-        missing_review = run_cli_error(
-            registry_path,
-            "todo",
-            "complete",
-            "--goal-id",
-            GOAL_ID,
-            "--todo-id",
-            side_todo_id,
-            "--claimed-by",
-            "codex-side-bypass",
-            "--evidence",
-            "side-worktree-contract-diff",
-        )
-        assert "side-agent completion" in missing_review["error"], missing_review
-        assert "--next-agent-todo" in missing_review["error"], missing_review
-        assert "--side-agent-self-merged" in missing_review["error"], missing_review
-
         missing_evidence = run_cli_error(
             registry_path,
             "todo",
@@ -284,9 +275,9 @@ def main() -> int:
             side_todo_id,
             "--claimed-by",
             "codex-side-bypass",
-            "--side-agent-self-merged",
+            "--self-merged",
         )
-        assert "--side-agent-self-merged requires --evidence" in missing_evidence["error"], missing_evidence
+        assert "--self-merged requires --evidence" in missing_evidence["error"], missing_evidence
 
         side_self_merged = run_cli(
             registry_path,
@@ -300,10 +291,10 @@ def main() -> int:
             "codex-side-bypass",
             "--evidence",
             "self-merged commit abc123 after focused validation",
-            "--side-agent-self-merged",
+            "--self-merged",
         )
         assert side_self_merged["changed"] is True, side_self_merged
-        assert side_self_merged["side_agent_self_merged"] is True, side_self_merged
+        assert side_self_merged["self_merged"] is True, side_self_merged
         assert side_self_merged["next_todos"] == [], side_self_merged
 
         side_continuation_added = run_cli(
@@ -336,7 +327,7 @@ def main() -> int:
             "codex-side-bypass",
             "--evidence",
             "self-merged commit def456 after focused validation",
-            "--side-agent-self-merged",
+            "--self-merged",
             "--next-agent-todo",
             SIDE_CONTINUATION_TODO,
             "--next-claimed-by",
@@ -345,7 +336,7 @@ def main() -> int:
             "contract_refine",
         )
         assert side_continuation_completed["changed"] is True, side_continuation_completed
-        assert side_continuation_completed["side_agent_self_merged"] is True, side_continuation_completed
+        assert side_continuation_completed["self_merged"] is True, side_continuation_completed
         assert side_continuation_completed["next_todos"][0]["claimed_by"] == "codex-side-bypass", (
             side_continuation_completed
         )
@@ -393,8 +384,10 @@ def main() -> int:
             REVIEW_TODO,
             "--next-claimed-by",
             "codex-side-bypass",
+            "--next-continuation-policy",
+            "review_handoff",
         )
-        assert "side-agent completion handoff todo must be claimed_by handoff_agent='codex-main-control'" in (
+        assert "review_handoff successor must be unclaimed or claimed by a different registered peer" in (
             side_review_claim_error["error"]
         ), side_review_claim_error
 
@@ -412,6 +405,10 @@ def main() -> int:
             "side-worktree-contract-diff",
             "--next-agent-todo",
             REVIEW_TODO,
+            "--next-claimed-by",
+            "codex-main-control",
+            "--next-continuation-policy",
+            "review_handoff",
         )
         assert side_completed["changed"] is True, side_completed
         review_todo_id = side_completed["next_todos"][0]["todo_id"]
@@ -486,6 +483,8 @@ def main() -> int:
             "folded-into-validation-step",
             "--next-agent-todo",
             VALIDATE_TODO,
+            "--next-claimed-by",
+            "codex-main-control",
             "--next-action-kind",
             "validate",
         )

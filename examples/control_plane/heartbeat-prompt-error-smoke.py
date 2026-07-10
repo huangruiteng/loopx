@@ -56,7 +56,7 @@ def main() -> int:
                         "id": GOAL_ID,
                         "coordination": {
                             "registered_agents": [AGENT_ID],
-                            "primary_agent": AGENT_ID,
+                            "agent_model": "peer_v1",
                         },
                     }
                 ]

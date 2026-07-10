@@ -28,7 +28,7 @@ VALUE_AGENT = "codex-value-explorer"
 
 def coordination(*agents: str, primary_agent: str = PRIMARY_AGENT) -> dict:
     return {
-        "primary_agent": primary_agent,
+        "agent_model": "peer_v1",
         "registered_agents": [primary_agent, *agents],
     }
 

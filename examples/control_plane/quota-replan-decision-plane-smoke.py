@@ -216,6 +216,10 @@ def status_payload(
                         "reason": "eligible fixture",
                     },
                     "project_asset": project_asset,
+                    "coordination": {
+                        "agent_model": "peer_v1",
+                        "registered_agents": [PRIMARY_AGENT, SIDE_AGENT],
+                    },
                 }
             ]
         },
@@ -234,8 +238,8 @@ def status_payload(
                         "allowed_slots": 10,
                     },
                     "coordination": {
+                        "agent_model": "peer_v1",
                         "registered_agents": [PRIMARY_AGENT, SIDE_AGENT],
-                        "primary_agent": PRIMARY_AGENT,
                     },
                     "latest_runs": latest_runs or [],
                 }
@@ -824,7 +828,6 @@ def assert_goal_frontier_context_helper_matches_quota_payload() -> None:
     context = build_goal_frontier_projection_context_from_status(
         goal_id=GOAL_ID,
         agent_id=SIDE_AGENT,
-        primary_agent_id=PRIMARY_AGENT,
         status_payload=payload,
         item=item,
         project_asset=item["project_asset"],
@@ -1345,7 +1348,6 @@ def main() -> None:
     assert_missing_vision_checkpoint_derives_agent_scoped_replan()
     assert_satisfied_vision_checkpoint_supersedes_older_missing_but_not_empty_frontier()
     assert_agent_scoped_replan_beats_agent_scope_wait()
-    assert_unscoped_replan_defaults_to_primary_agent()
     assert_unscoped_peer_replan_has_one_deterministic_owner()
     assert_monitor_schedule_gap_requires_bounded_repair()
     assert_agent_ack_survives_other_agent_run_and_monitor_poll()

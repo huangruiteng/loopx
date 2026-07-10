@@ -204,7 +204,7 @@ def build_blocked_priority_fallback_status_payload() -> dict:
                     "registry_member": True,
                     "status": "active",
                     "coordination": {
-                        "primary_agent": "codex-main-control",
+                        "agent_model": "peer_v1",
                         "registered_agents": ["codex-main-control", "codex-side-bypass"],
                     },
                     "quota": {"compute": 1.0, "window_hours": 24},
@@ -298,7 +298,7 @@ def assert_claimed_frontstage_lanes_visible() -> None:
         "source": "latest_run",
         "recommended_action": "Use priority candidates for scheduling but keep claimed frontstage work visible.",
         "coordination": {
-            "primary_agent": "codex-main-control",
+            "agent_model": "peer_v1",
             "registered_agents": ["codex-main-control", "codex-side-bypass"],
         },
         "quota": {
@@ -335,7 +335,7 @@ def assert_claimed_frontstage_lanes_visible() -> None:
                     "registry_member": True,
                     "status": "active",
                     "coordination": {
-                        "primary_agent": "codex-main-control",
+                        "agent_model": "peer_v1",
                         "registered_agents": ["codex-main-control", "codex-side-bypass"],
                     },
                     "quota": {"compute": 1.0, "window_hours": 24},
@@ -471,7 +471,7 @@ def assert_claimed_markdown_todos_survive_visibility_lanes() -> None:
                     "source": "latest_run",
                     "recommended_action": "Keep claimed markdown todos visible outside scheduler top-N.",
                     "coordination": {
-                        "primary_agent": "codex-main-control",
+                        "agent_model": "peer_v1",
                         "registered_agents": ["codex-main-control", "codex-side-bypass"],
                     },
                     "quota": {
@@ -499,7 +499,7 @@ def assert_claimed_markdown_todos_survive_visibility_lanes() -> None:
                     "registry_member": True,
                     "status": "active",
                     "coordination": {
-                        "primary_agent": "codex-main-control",
+                        "agent_model": "peer_v1",
                         "registered_agents": ["codex-main-control", "codex-side-bypass"],
                     },
                     "quota": {"compute": 1.0, "window_hours": 24},
@@ -580,7 +580,7 @@ def assert_claimed_advancement_lanes_preserve_claimants() -> None:
                     "source": "latest_run",
                     "recommended_action": "Use claimed advancement lanes without losing side agents.",
                     "coordination": {
-                        "primary_agent": "codex-main-control",
+                        "agent_model": "peer_v1",
                         "registered_agents": ["codex-main-control", "codex-side-bypass"],
                     },
                     "quota": {
@@ -608,7 +608,7 @@ def assert_claimed_advancement_lanes_preserve_claimants() -> None:
                     "registry_member": True,
                     "status": "active",
                     "coordination": {
-                        "primary_agent": "codex-main-control",
+                        "agent_model": "peer_v1",
                         "registered_agents": ["codex-main-control", "codex-side-bypass"],
                     },
                     "quota": {"compute": 1.0, "window_hours": 24},
@@ -624,7 +624,8 @@ def assert_claimed_advancement_lanes_preserve_claimants() -> None:
     )
     primary_summary = primary_decision["agent_todo_summary"]
     assert primary_summary["first_executable_items"][0]["todo_id"] == "todo_primary_1", primary_summary
-    assert primary_summary["claim_scope"]["agent_role"] == "primary-agent", primary_summary
+    assert primary_summary["claim_scope"]["agent_model"] == "peer_v1", primary_summary
+    assert "agent_role" not in primary_summary["claim_scope"], primary_summary
     assert primary_summary["claim_scope"]["other_agent_claimed_items"][0]["todo_id"] == "todo_side_tui", primary_summary
     assert "Primary claimed advancement item 1" in primary_decision["recommended_action"], primary_decision
     assert "state_action_projection_warning" not in primary_decision, primary_decision

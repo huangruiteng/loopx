@@ -75,9 +75,8 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
         adapter_kind="generic_project_goal_v0",
         state_event_log=f".codex/goals/{GOAL_ID}/events.jsonl",
         registered_agents=[PRIMARY_AGENT_ID, AGENT_ID],
-        primary_agent=PRIMARY_AGENT_ID,
         quota_allowed_slots=10,
-        side_agent_independent_worktree_required=False,
+        peer_independent_worktree_required=False,
     )
     return registry_path, state_file, event_log
 
@@ -110,7 +109,6 @@ def write_monitor_fixture(root: Path) -> tuple[Path, Path]:
         domain="control-plane-canary",
         adapter_kind="generic_project_goal_v0",
         registered_agents=[AGENT_ID],
-        primary_agent=AGENT_ID,
         quota_allowed_slots=10,
     )
     return registry_path, runtime
@@ -144,9 +142,8 @@ def write_markdown_continuation_fixture(root: Path) -> tuple[Path, Path, Path]:
         domain="control-plane-canary",
         adapter_kind="generic_project_goal_v0",
         registered_agents=[PRIMARY_AGENT_ID, AGENT_ID],
-        primary_agent=PRIMARY_AGENT_ID,
         quota_allowed_slots=10,
-        side_agent_independent_worktree_required=False,
+        peer_independent_worktree_required=False,
     )
     return registry_path, runtime, project
 
@@ -304,8 +301,9 @@ def assert_bounded_delivery_state_machine_bundle(quota_payload: dict[str, Any]) 
     assert liveness["automation_action"] == "execute_bounded_work", liveness
 
     identity = quota_payload["agent_identity"]
-    assert identity["role"] == "side-agent", identity
-    assert identity["primary_agent"] == PRIMARY_AGENT_ID, identity
+    assert identity["agent_model"] == "peer_v1", identity
+    assert "role" not in identity, identity
+    assert "primary_agent" not in identity, identity
     assert quota_payload["agent_lane_next_action"]["preserves_goal_next_action"] is True, quota_payload
 
 
@@ -376,7 +374,7 @@ def assert_event_todo_completion_successor_state_machine(
         CANARY_TODO_ID,
         "--claimed-by",
         AGENT_ID,
-        "--side-agent-self-merged",
+        "--self-merged",
         "--evidence",
         "fixture event-projected todo completion passed",
         "--next-agent-todo",
@@ -391,7 +389,7 @@ def assert_event_todo_completion_successor_state_machine(
     assert completed["ok"] is True, completed
     assert completed["source"] == "event_log", completed
     assert completed["completed"] is True, completed
-    assert completed["side_agent_self_merged"] is True, completed
+    assert completed["self_merged"] is True, completed
     assert completed["todo_id"] == CANARY_TODO_ID, completed
     assert completed["status"] == "done", completed
     assert len(completed["next_todos"]) == 1, completed
@@ -666,7 +664,7 @@ def assert_markdown_same_agent_continuation_read_path(root: Path) -> None:
         source_todo_id,
         "--claimed-by",
         AGENT_ID,
-        "--side-agent-self-merged",
+        "--self-merged",
         "--evidence",
         "fixture same-agent markdown continuation passed",
         "--next-agent-todo",
@@ -680,7 +678,7 @@ def assert_markdown_same_agent_continuation_read_path(root: Path) -> None:
     )
     assert completed["ok"] is True, completed
     assert completed["completed"] is True, completed
-    assert completed["side_agent_self_merged"] is True, completed
+    assert completed["self_merged"] is True, completed
     assert len(completed["next_todos"]) == 1, completed
     successor = completed["next_todos"][0]
     successor_todo_id = successor["todo_id"]

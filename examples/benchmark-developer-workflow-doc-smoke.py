@@ -91,7 +91,7 @@ def main() -> int:
             "loopx_case_scheduler_command_count",
             "loopx_case_rollout_event_counts",
             "loopx_case_rollout_trace.public.json",
-            "main project goal or side-agent",
+            "main project goal or an unrelated peer lane",
             "benchflow_js_agent_runtime",
             "scripts/skillsbench_agent_runtime_layer.py",
             "scripts/terminal_bench_no_upload_smoke.py",

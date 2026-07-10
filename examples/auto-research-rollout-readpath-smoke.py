@@ -175,7 +175,7 @@ def main() -> None:
                             "state_file": "ACTIVE_GOAL_STATE.md",
                             "adapter": {"kind": "fixture", "status": "connected-read-only"},
                             "coordination": {
-                                "primary_agent": "research-curator",
+                                "agent_model": "peer_v1",
                                 "registered_agents": ["research-curator", AGENT_ID],
                             },
                             "authority_sources": [],

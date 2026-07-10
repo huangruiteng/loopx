@@ -46,7 +46,7 @@
       "goal_id": "loopx-meta",
       "agent_id": "codex-main-control",
       "status": "review_requested",
-      "top_todo_id": "todo_primary_review",
+      "top_todo_id": "todo_peer_review",
       "last_event_id": "event_review_todo_created",
       "next_safe_action": "Review and merge the public-safe protocol PR after validation."
     }
@@ -54,7 +54,7 @@
   "gates": [],
   "todos": [
     {
-      "todo_id": "todo_primary_review",
+      "todo_id": "todo_peer_review",
       "role": "agent",
       "claimed_by": "codex-main-control",
       "state": "open",
@@ -82,17 +82,18 @@
   ],
   "actions": [
     {
-      "action_id": "act_primary_review",
+      "action_id": "act_peer_review",
       "kind": "review",
       "requires_user_approval": false,
-      "requires_primary_agent": true,
-      "preview": "Ask the primary agent to review the public-safe protocol PR."
+      "requires_review_handoff": true,
+      "target_agent_id": "codex-reviewer",
+      "preview": "Assign the public-safe protocol PR to the selected reviewing peer."
     },
     {
       "action_id": "act_promote_candidate",
       "kind": "promote_todo",
       "requires_user_approval": true,
-      "requires_primary_agent": false,
+      "requires_review_handoff": false,
       "preview": "Promote a suggested todo only after the user or controller accepts it."
     }
   ],

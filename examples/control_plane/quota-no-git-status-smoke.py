@@ -50,7 +50,7 @@ def write_fixture(root: Path) -> Path:
                         "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
                         "coordination": {
                             "registered_agents": [AGENT_ID],
-                            "primary_agent": AGENT_ID,
+                            "agent_model": "peer_v1",
                         },
                     }
                 ],
