@@ -29,6 +29,7 @@ from .control_plane.todos.contract import (
     merge_todo_id_lists,
     normalize_required_capabilities,
     normalize_required_write_scopes,
+    normalize_explore_result_node_refs,
     normalize_target_capabilities,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
@@ -84,6 +85,7 @@ TODO_METADATA_FIELDS = (
     "required_write_scopes",
     "required_capabilities",
     "target_capabilities",
+    "explore_result_node_refs",
     "decision_scope",
     "required_decision_scopes",
     "claimed_by",
@@ -510,6 +512,11 @@ def block_metadata(block: dict[str, Any]) -> dict[str, Any]:
             if capabilities:
                 metadata[key] = capabilities
             continue
+        if key == "explore_result_node_refs":
+            refs = normalize_explore_result_node_refs(value)
+            if refs:
+                metadata[key] = refs
+            continue
         if key == "continuation_policy":
             continuation_policy = normalize_todo_continuation_policy(value)
             if continuation_policy:
@@ -563,6 +570,12 @@ def metadata_line_for_block(block: dict[str, Any], updates: dict[str, Any]) -> s
             capabilities = normalize_target_capabilities(value)
             if capabilities:
                 metadata[key] = capabilities
+            else:
+                metadata.pop(key, None)
+        elif key == "explore_result_node_refs":
+            refs = normalize_explore_result_node_refs(value)
+            if refs:
+                metadata[key] = refs
             else:
                 metadata.pop(key, None)
         elif key == "continuation_policy":
@@ -745,6 +758,7 @@ def add_todo_to_lines(
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
     target_capabilities: list[str] | None = None,
+    explore_result_node_refs: list[str] | None = None,
     decision_scope: Any = None,
     required_decision_scopes: Any = None,
     claimed_by: str | None = None,
@@ -807,6 +821,7 @@ def add_todo_to_lines(
             required_write_scopes=required_write_scopes,
             required_capabilities=required_capabilities,
             target_capabilities=target_capabilities,
+            explore_result_node_refs=explore_result_node_refs,
             decision_scope=decision_scope,
             required_decision_scopes=required_decision_scopes,
             claimed_by=claimed_by,
@@ -844,6 +859,8 @@ def add_todo_to_lines(
             updates["required_capabilities"] = required_capabilities
         if target_capabilities is not None:
             updates["target_capabilities"] = target_capabilities
+        if explore_result_node_refs is not None:
+            updates["explore_result_node_refs"] = explore_result_node_refs
         if decision_scope is not None:
             updates["decision_scope"] = decision_scope
         if required_decision_scopes is not None:
@@ -893,6 +910,9 @@ def add_todo_to_lines(
         "target_capabilities": normalize_target_capabilities(
             effective_metadata.get("target_capabilities") or target_capabilities
         ),
+        "explore_result_node_refs": normalize_explore_result_node_refs(
+            effective_metadata.get("explore_result_node_refs") or explore_result_node_refs
+        ),
         "decision_scope": normalize_todo_decision_scope(
             effective_metadata.get("decision_scope") or decision_scope
         ),
@@ -926,6 +946,7 @@ def add_goal_todo(
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
     target_capabilities: list[str] | None = None,
+    explore_result_node_refs: list[str] | None = None,
     decision_scope: Any = None,
     required_decision_scopes: Any = None,
     claimed_by: str | None = None,
@@ -1033,6 +1054,7 @@ def add_goal_todo(
             required_write_scopes=required_write_scopes,
             required_capabilities=required_capabilities,
             target_capabilities=target_capabilities,
+            explore_result_node_refs=explore_result_node_refs,
             decision_scope=decision_scope,
             required_decision_scopes=required_decision_scopes,
             claimed_by=effective_claimed_by,
@@ -1072,6 +1094,7 @@ def add_goal_todo(
         "required_write_scopes": add_result.get("required_write_scopes"),
         "required_capabilities": add_result.get("required_capabilities"),
         "target_capabilities": add_result.get("target_capabilities"),
+        "explore_result_node_refs": add_result.get("explore_result_node_refs"),
         "decision_scope": add_result.get("decision_scope"),
         "required_decision_scopes": add_result.get("required_decision_scopes"),
         "claimed_by": add_result.get("claimed_by"),
@@ -1129,6 +1152,7 @@ def apply_todo_update_to_lines(
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
     target_capabilities: list[str] | None = None,
+    explore_result_node_refs: list[str] | None = None,
     decision_scope: Any = None,
     required_decision_scopes: Any = None,
     claimed_by: str | None = None,
@@ -1190,6 +1214,8 @@ def apply_todo_update_to_lines(
         updates["required_capabilities"] = required_capabilities
     if target_capabilities is not None:
         updates["target_capabilities"] = target_capabilities
+    if explore_result_node_refs is not None:
+        updates["explore_result_node_refs"] = explore_result_node_refs
     if decision_scope is not None:
         updates["decision_scope"] = decision_scope
     if required_decision_scopes is not None:
@@ -1248,6 +1274,9 @@ def apply_todo_update_to_lines(
         "target_capabilities": normalize_target_capabilities(
             effective_metadata.get("target_capabilities")
         ),
+        "explore_result_node_refs": normalize_explore_result_node_refs(
+            effective_metadata.get("explore_result_node_refs")
+        ),
         "decision_scope": normalize_todo_decision_scope(effective_metadata.get("decision_scope")),
         "required_decision_scopes": normalize_todo_required_decision_scopes(
             effective_metadata.get("required_decision_scopes")
@@ -1282,6 +1311,7 @@ def update_goal_todo(
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
     target_capabilities: list[str] | None = None,
+    explore_result_node_refs: list[str] | None = None,
     decision_scope: Any = None,
     required_decision_scopes: Any = None,
     claimed_by: str | None = None,
@@ -1430,6 +1460,7 @@ def update_goal_todo(
             required_write_scopes=required_write_scopes,
             required_capabilities=required_capabilities,
             target_capabilities=target_capabilities,
+            explore_result_node_refs=explore_result_node_refs,
             decision_scope=decision_scope,
             required_decision_scopes=required_decision_scopes,
             claimed_by=effective_claimed_by,

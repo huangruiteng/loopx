@@ -14,6 +14,7 @@ from .contract import (
     build_todo_id,
     normalize_required_capabilities,
     normalize_required_write_scopes,
+    normalize_explore_result_node_refs,
     normalize_target_capabilities,
     normalize_todo_action_kind,
     normalize_todo_blocks_agent,
@@ -311,6 +312,11 @@ def structured_todo_item(
     target_capabilities = normalize_target_capabilities(item.get("target_capabilities"))
     if target_capabilities:
         normalized["target_capabilities"] = target_capabilities
+    explore_result_node_refs = normalize_explore_result_node_refs(
+        item.get("explore_result_node_refs")
+    )
+    if explore_result_node_refs:
+        normalized["explore_result_node_refs"] = explore_result_node_refs
     decision_scope = normalize_todo_decision_scope(item.get("decision_scope"))
     if decision_scope:
         normalized["decision_scope"] = decision_scope
@@ -364,6 +370,7 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "required_write_scopes",
         "required_capabilities",
         "target_capabilities",
+        "explore_result_node_refs",
         "decision_scope",
         "required_decision_scopes",
         "claimed_by",
@@ -821,6 +828,7 @@ def todo_item_is_succession_tracked_completion(item: dict[str, Any]) -> bool:
             "required_write_scopes",
             "required_capabilities",
             "target_capabilities",
+            "explore_result_node_refs",
             "decision_scope",
             "required_decision_scopes",
             "unblocks_todo_id",

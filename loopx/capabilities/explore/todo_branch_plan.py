@@ -31,6 +31,7 @@ from .speculative_scheduler import (
     partition_invalidated_successors,
     schedule_confidence_prefix,
 )
+from .todo_evidence import build_todo_typed_evidence_audit
 
 
 TODO_BRANCH_PLAN_SCHEMA_VERSION = "loopx_explore_todo_branch_plan_v0"
@@ -348,6 +349,9 @@ def build_explore_todo_branch_plan(
             "claim_bucket": _claim_bucket(item, agent_id=normalized_agent),
             "source_index": item.get("index"),
         }
+        typed_evidence_audit = build_todo_typed_evidence_audit(item, projection)
+        if typed_evidence_audit is not None:
+            candidate["typed_evidence_audit"] = typed_evidence_audit
         candidates.append(candidate)
 
     candidates.sort(
@@ -489,6 +493,10 @@ def build_explore_todo_branch_plan(
             "unscoped": (
                 "treated as speculative read-or-coordination work by default; disable with "
                 "--no-allow-unscoped-parallel"
+            ),
+            "typed_evidence": (
+                "explicit Explore result-node links add bounded diagnostic-only "
+                "dead-end/refutation warnings; they do not change score or authority"
             ),
         },
         "boundary": {

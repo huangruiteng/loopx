@@ -14,6 +14,8 @@ TODO_ACTION_KIND_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 TODO_ID_PATTERN = re.compile(r"^todo_[a-z0-9_-]{3,64}$")
 TODO_AGENT_CLAIM_PATTERN = re.compile(r"^[a-z][a-z0-9_.:@-]{0,79}$")
 TODO_CAPABILITY_PATTERN = re.compile(r"^[a-z][a-z0-9_:-]{0,63}$")
+TODO_EXPLORE_RESULT_NODE_REF_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,95}$")
+TODO_EXPLORE_RESULT_NODE_REF_LIMIT = 8
 TODO_DECISION_SCOPE_KEY_PATTERN = re.compile(r"^(?:\*|[a-z0-9][a-z0-9_.:@*/-]{0,95})$")
 TODO_RESUME_KIND_TODO_DONE = "todo_done"
 TODO_RESUME_KIND_PR_MERGED = "pr_merged"
@@ -400,6 +402,27 @@ def normalize_target_capabilities(value: Any) -> list[str]:
     return normalize_required_capabilities(value)
 
 
+def normalize_explore_result_node_refs(value: Any) -> list[str]:
+    """Normalize explicit public-safe Explore node ids attached to a todo."""
+
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        raw_values = [str(item or "") for item in value]
+    else:
+        raw_values = re.split(r"[,;|]", str(value or ""))
+    refs: list[str] = []
+    for raw in raw_values:
+        ref = compact_todo_text(raw)
+        if not ref or not TODO_EXPLORE_RESULT_NODE_REF_PATTERN.match(ref):
+            continue
+        if ref not in refs:
+            refs.append(ref)
+        if len(refs) >= TODO_EXPLORE_RESULT_NODE_REF_LIMIT:
+            break
+    return refs
+
+
 def normalize_todo_decision_scope(value: Any) -> dict[str, str] | None:
     """Normalize the compact decision-scope metadata token.
 
@@ -588,6 +611,10 @@ def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
             capabilities = normalize_target_capabilities(value)
             if capabilities:
                 metadata["target_capabilities"] = capabilities
+        elif key in {"explore_result_node_ref", "explore_result_node_refs"}:
+            refs = normalize_explore_result_node_refs(value)
+            if refs:
+                metadata["explore_result_node_refs"] = refs
         elif key == "decision_scope":
             decision_scope = normalize_todo_decision_scope(value)
             if decision_scope:
@@ -647,6 +674,7 @@ def format_todo_metadata_line(
     required_write_scopes: Any = None,
     required_capabilities: Any = None,
     target_capabilities: Any = None,
+    explore_result_node_refs: Any = None,
     decision_scope: Any = None,
     required_decision_scopes: Any = None,
     claimed_by: str | None = None,
@@ -733,6 +761,18 @@ def format_todo_metadata_line(
         fields.append(
             "target_capabilities="
             f"{encode_metadata_value(','.join(normalized_target_capabilities))}"
+        )
+    normalized_explore_result_node_refs = normalize_explore_result_node_refs(
+        explore_result_node_refs
+    )
+    if explore_result_node_refs and not normalized_explore_result_node_refs:
+        raise ValueError(
+            "explore_result_node_refs must contain public-safe Explore node ids"
+        )
+    if normalized_explore_result_node_refs:
+        fields.append(
+            "explore_result_node_refs="
+            f"{encode_metadata_value(','.join(normalized_explore_result_node_refs))}"
         )
     normalized_decision_scope = decision_scope_metadata_value(decision_scope)
     if decision_scope and not normalized_decision_scope:
