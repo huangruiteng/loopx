@@ -381,7 +381,9 @@ def main() -> int:
             + "- [ ] Repair removed agent gate routing.\n"
             + f"  <!-- loopx:todo todo_id=todo_removed_agent_gate status=open task_class=advancement_task blocks_agent={SIDE_AGENT} -->\n"
             + "- [ ] Repair an unknown executor exclusion.\n"
-            + "  <!-- loopx:todo todo_id=todo_unknown_exclusion status=open task_class=advancement_task excluded_agents=codex-unknown -->\n",
+            + "  <!-- loopx:todo todo_id=todo_unknown_exclusion status=open task_class=advancement_task excluded_agents=codex-unknown -->\n"
+            + "- [ ] Repair malformed executor exclusion metadata.\n"
+            + "  <!-- loopx:todo todo_id=todo_malformed_exclusion status=open task_class=advancement_task excluded_agents=%%% -->\n",
             encoding="utf-8",
         )
         hard_cut_check = check_contract(
@@ -401,6 +403,10 @@ def main() -> int:
         ), hard_cut_check
         assert any(
             "todo_unknown_exclusion" in item and "unregistered agents" in item
+            for item in hard_cut_check["errors"]
+        ), hard_cut_check
+        assert any(
+            "todo_malformed_exclusion" in item and "malformed excluded_agents" in item
             for item in hard_cut_check["errors"]
         ), hard_cut_check
 
