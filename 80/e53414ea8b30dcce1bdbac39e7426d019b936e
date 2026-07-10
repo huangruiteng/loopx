@@ -1,0 +1,45 @@
+loopx/capabilities/context_providers/base.py
+  s_9a5a2bd944fdcb::t_22c9f6070cd3d7 1-183
+loopx/capabilities/issue_fix/repository_memory_provider.py
+  s_9a5a2bd944fdcb::t_01281223cddc26 1-484
+docs/capabilities/issue-fix/README.zh-CN.md
+  s_32e2a9a204a8e4::t_ca0ff9319947a4 457-499,564-574
+docs/capabilities/issue-fix/README.md
+  s_32e2a9a204a8e4::t_67129a5c14bd3c 515-565,642-652
+loopx/capabilities/context_providers/factory.py
+  s_32e2a9a204a8e4::t_468ccc6ab00578 1-19
+loopx/capabilities/issue_fix/repository_memory.py
+  s_9a5a2bd944fdcb::t_9129d75a426bc4 41-46,93-109,192-239,267,290,408
+loopx/capabilities/context_providers/__init__.py
+  s_9a5a2bd944fdcb::t_9ae841e552a15e 1-23
+examples/issue-fix-repository-memory-smoke.py
+  s_9a5a2bd944fdcb::t_cf7368db8148f0 7,12,25-34,40-106,253-345,399-454
+loopx/capabilities/issue_fix/cli.py
+  s_32e2a9a204a8e4::t_ea025fe419a229 44-50,75-154,223-256,342,415-423,890-914,917-921,928,934-950,964-965,970-974,980-1001,1017-1018,1242,1254-1256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "80e53414ea8b30dcce1bdbac39e7426d019b936e",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
