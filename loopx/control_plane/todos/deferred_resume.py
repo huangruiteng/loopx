@@ -3,9 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from .contract import (
+    TODO_RESUME_KIND_CAPACITY_AVAILABLE,
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
+    normalize_required_capabilities,
     normalize_required_write_scopes,
     normalize_todo_claimed_by,
     normalize_todo_decision_scope,
@@ -27,6 +29,50 @@ TODO_MONITOR_BLOCKED_RESUME_SELECTION_POLICY = (
     "open advancement todos gated by todo_done:<continuous_monitor> must "
     "project as successor replan/state repair instead of quiet monitor wait"
 )
+
+
+def resolve_capacity_resume_summary(
+    value: Any,
+    *,
+    available_capabilities: Any,
+) -> Any:
+    """Resolve capacity-backed deferred todos from the quota host capability set."""
+    if not isinstance(value, dict):
+        return value
+    available = set(normalize_required_capabilities(available_capabilities))
+    resolved = dict(value)
+    deferred_items = todo_summary_deferred_items(value, "deferred_items")
+    for item in deferred_items:
+        resume_when = normalize_todo_resume_when(item.get("resume_when")) or ""
+        kind, separator, target = resume_when.partition(":")
+        if kind != TODO_RESUME_KIND_CAPACITY_AVAILABLE or not separator or not target:
+            continue
+        satisfied = target in available
+        condition = (
+            dict(item.get("resume_condition"))
+            if isinstance(item.get("resume_condition"), dict)
+            else {}
+        )
+        condition.update(
+            {
+                "schema_version": "todo_resume_condition_v0",
+                "resume_when": resume_when,
+                "kind": kind,
+                "target": target,
+                "capability": target,
+                "provider": "runtime_available_capabilities",
+                "provider_required": False,
+                "satisfied": satisfied,
+            }
+        )
+        condition.pop("unsupported", None)
+        item["resume_condition"] = condition
+        item["resume_ready"] = satisfied
+    resolved["deferred_items"] = deferred_items
+    resolved["deferred_resume_candidates"] = [
+        item for item in deferred_items if item.get("resume_ready") is True
+    ]
+    return resolved
 
 
 def _todo_task_class(item: dict[str, Any]) -> str:

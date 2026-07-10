@@ -1302,16 +1302,23 @@ def build_quota_should_run(
             reason = "status or contract health is not ok; skip automatic compute"
         project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
         agent_identity = build_quota_agent_identity(item, agent_id=agent_id)
+        effective_available_capabilities = _effective_available_capabilities(
+            available_capabilities,
+            item=item,
+            project_asset=project_asset,
+        )
         user_todo_summary = select_quota_todo_summary(
             item.get("user_todos"),
             project_asset.get("user_todos") if project_asset else None,
             agent_identity=agent_identity,
             filter_user_gate_blocks_agent=True,
+            available_capabilities=effective_available_capabilities,
         )
         agent_todo_summary = select_quota_todo_summary(
             item.get("agent_todos"),
             project_asset.get("agent_todos") if project_asset else None,
             agent_identity=agent_identity,
+            available_capabilities=effective_available_capabilities,
         )
         agent_scoped_user_gate_override = _agent_scoped_user_gate_override(
             state=state,
@@ -1384,7 +1391,7 @@ def build_quota_should_run(
             agent_identity=agent_identity,
             agent_todo_summary=agent_todo_summary,
         )
-        capability_gate, capability_monitor_contract, capability_monitor_fallback = build_capability_gate_with_monitor_fallback(agent_todo_summary, available_capabilities=_effective_available_capabilities(available_capabilities, item=item, project_asset=project_asset), agent_identity=agent_identity, monitor_item_limit=MONITOR_DUE_ITEM_LIMIT)
+        capability_gate, capability_monitor_contract, capability_monitor_fallback = build_capability_gate_with_monitor_fallback(agent_todo_summary, available_capabilities=effective_available_capabilities, agent_identity=agent_identity, monitor_item_limit=MONITOR_DUE_ITEM_LIMIT)
         if subagent_orchestration_contract:
             capability_monitor_contract = capability_monitor_fallback = None
         work_lane_contract = capability_monitor_contract or work_lane_contract
