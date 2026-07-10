@@ -111,7 +111,7 @@ def build_sanitized_approved_command_packet() -> str:
             "",
             "【用户/Gate】",
             "待办：无",
-            "Gate：无；建议：直接转发给项目 Agent；不追加写权限、主控接管或生产动作授权。",
+            "Gate：无；建议：直接转发给已认领的项目 Agent；不追加写权限、全局接管或生产动作授权。",
             "边界：只执行已批准的只读/dry-run agent_command；如需写入或更高权限，项目 Agent 必须再次停下。",
             "",
             "【给项目 Agent】",
@@ -184,7 +184,7 @@ def main() -> int:
     assert "Status/history inspection only" in packet_builder
     assert "保持 focus_wait 并用中文回报仍在等待什么" in packet_builder
     assert "不执行交付路径、写入、reward append 或生产动作" in packet_builder
-    assert "直接转发给项目 Agent；不追加写权限、主控接管或生产动作授权。" in packet_builder
+    assert "直接转发给已认领的项目 Agent；不追加写权限、全局接管或生产动作授权。" in packet_builder
     assert "只执行已批准的只读/dry-run agent_command" in packet_builder
     assert "Approved agent command" in packet_builder
     assert_order(action_packet_source, ["【GH Packet】", "【用户/Gate】", "【给项目 Agent】"])
@@ -311,7 +311,7 @@ def main() -> int:
         approved_packet,
         [
             "【用户/Gate】",
-            "Gate：无；建议：直接转发给项目 Agent",
+            "Gate：无；建议：直接转发给已认领的项目 Agent",
             "只执行已批准的只读/dry-run agent_command",
             "【给项目 Agent】",
             "Approved agent command",
@@ -319,7 +319,7 @@ def main() -> int:
     )
     assert "同意让 Codex 沿 safe path 继续" not in approved_packet, approved_packet
     assert "如果下一步需要写入、reward append、approval" not in approved_packet, approved_packet
-    assert "不追加写权限、主控接管或生产动作授权" in approved_packet, approved_packet
+    assert "不追加写权限、全局接管或生产动作授权" in approved_packet, approved_packet
     assert len(approved_packet.splitlines()) <= 18, approved_packet
 
     focus_wait_packet = build_sanitized_focus_wait_packet()
