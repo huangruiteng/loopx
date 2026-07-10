@@ -210,6 +210,15 @@ def register_issue_fix_commands(
         ),
     )
     workflow_parser.add_argument(
+        "--repository-memory-json",
+        default=None,
+        help=(
+            "Optional issue_fix_repository_memory_read_result_v0 JSON path, or '-' "
+            "for stdin. The host must perform explicit public-namespace search/read; "
+            "LoopX keeps only compact advisory refs and checkout verification."
+        ),
+    )
+    workflow_parser.add_argument(
         "--generated-at",
         default="2026-06-23T00:00:00Z",
         help="Public-safe generated_at timestamp for the workflow plan.",
@@ -271,6 +280,14 @@ def register_issue_fix_commands(
         help=(
             "Optional issue_fix_repository_context_input_v0 JSON path, or '-' for "
             "stdin. The compact projection is persisted with feasibility domain state."
+        ),
+    )
+    feasibility_parser.add_argument(
+        "--repository-memory-json",
+        default=None,
+        help=(
+            "Optional issue_fix_repository_memory_read_result_v0 JSON path, or '-' "
+            "for stdin. Provider failures stay fail-open and no writeback is allowed."
         ),
     )
     feasibility_parser.add_argument(
@@ -742,7 +759,16 @@ def handle_issue_fix_command(
         if args.issue_fix_command == "workflow-plan":
             if args.fetch_metadata and args.metadata_json:
                 raise ValueError("--fetch-metadata cannot be combined with --metadata-json")
-            if args.metadata_json == "-" and args.repository_context_json == "-":
+            stdin_inputs = [
+                value
+                for value in (
+                    args.metadata_json,
+                    args.repository_context_json,
+                    args.repository_memory_json,
+                )
+                if value == "-"
+            ]
+            if len(stdin_inputs) > 1:
                 raise ValueError("only one JSON input may read from stdin")
             payload = build_issue_fix_workflow_plan_packet(
                 repo=args.repo,
@@ -762,10 +788,20 @@ def handle_issue_fix_command(
                     if args.repository_context_json
                     else None
                 ),
+                repository_memory_input=(
+                    _load_json_object(args.repository_memory_json)
+                    if args.repository_memory_json
+                    else None
+                ),
                 generated_at=args.generated_at,
             )
             renderer = render_issue_fix_workflow_plan_markdown
         elif args.issue_fix_command == "feasibility":
+            if (
+                args.repository_context_json == "-"
+                and args.repository_memory_json == "-"
+            ):
+                raise ValueError("only one JSON input may read from stdin")
             boundary_authority_scopes, boundary_authority_resolved = (
                 _goal_boundary_authority_projection(
                     registry_path=registry_path,
@@ -784,6 +820,11 @@ def handle_issue_fix_command(
                 repository_context_input=(
                     _load_json_object(args.repository_context_json)
                     if args.repository_context_json
+                    else None
+                ),
+                repository_memory_input=(
+                    _load_json_object(args.repository_memory_json)
+                    if args.repository_memory_json
                     else None
                 ),
                 boundary_authority_scopes=boundary_authority_scopes,

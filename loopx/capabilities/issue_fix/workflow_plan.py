@@ -216,6 +216,7 @@ def build_issue_fix_workflow_plan_packet(
     issue_branch: str | None = None,
     validation_label: str = "caller-declared validation",
     repository_context_input: Mapping[str, Any] | None = None,
+    repository_memory_input: Mapping[str, Any] | None = None,
     generated_at: str | None = "2026-06-23T00:00:00Z",
 ) -> dict[str, Any]:
     """Build a public-safe issue-fix workflow plan without writing state."""
@@ -250,6 +251,7 @@ def build_issue_fix_workflow_plan_packet(
         repo=repo_label,
         issue_ref=issue_label,
         context_input=repository_context_input,
+        memory_retrieval_input=repository_memory_input,
         generated_at=generated_at,
     )
     unresolved_context = list(

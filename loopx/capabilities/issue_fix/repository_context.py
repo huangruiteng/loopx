@@ -9,6 +9,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from ...control_plane.runtime.public_safety import public_safe_compact_text
+from .repository_memory import build_issue_fix_repository_memory_hook
 
 
 ISSUE_FIX_REPOSITORY_CONTEXT_INPUT_SCHEMA_VERSION = (
@@ -103,6 +104,8 @@ def _normalise_source(raw: Any, *, index: int, has_revision: bool) -> dict[str, 
         raise ValueError(f"sources[{index}].trust must be one of {sorted(TRUST_LEVELS)}")
     if source_kind == "external_expert" and trust != "advisory":
         raise ValueError("external_expert sources must remain advisory")
+    if source_kind == "memory_retrieval" and trust != "advisory":
+        raise ValueError("memory_retrieval sources must remain advisory")
     freshness = str(raw.get("freshness") or "unknown").strip()
     if freshness not in FRESHNESS_STATES:
         raise ValueError(
@@ -235,13 +238,14 @@ def build_issue_fix_repository_context_packet(
     repo: str,
     issue_ref: str,
     context_input: Mapping[str, Any] | None = None,
+    memory_retrieval_input: Mapping[str, Any] | None = None,
     generated_at: str | None = "2026-06-23T00:00:00Z",
 ) -> dict[str, Any]:
-    """Build compact repository knowledge evidence without retrieving or writing it."""
+    """Compose compact repository and host-retrieved memory evidence."""
 
-    provided = context_input is not None
+    provided = context_input is not None or memory_retrieval_input is not None
     raw_input: Mapping[str, Any] = context_input or {}
-    if provided:
+    if context_input is not None:
         if raw_input.get("schema_version") != ISSUE_FIX_REPOSITORY_CONTEXT_INPUT_SCHEMA_VERSION:
             raise ValueError(
                 "repository context schema_version must be "
@@ -260,11 +264,16 @@ def build_issue_fix_repository_context_packet(
     raw_sources = raw_input.get("sources") or []
     if not isinstance(raw_sources, Sequence) or isinstance(raw_sources, (str, bytes)):
         raise ValueError("repository context sources must be a list")
-    if len(raw_sources) > MAX_SOURCES:
+    memory_hook = build_issue_fix_repository_memory_hook(
+        memory_input=memory_retrieval_input,
+        repository_revision=repository_revision,
+    )
+    composed_sources = [*raw_sources, *memory_hook["sources"]]
+    if len(composed_sources) > MAX_SOURCES:
         raise ValueError(f"repository context supports at most {MAX_SOURCES} sources")
     sources = [
         _normalise_source(raw, index=index, has_revision=bool(repository_revision))
-        for index, raw in enumerate(raw_sources)
+        for index, raw in enumerate(composed_sources)
     ]
     source_ids = [source["source_id"] for source in sources]
     if len(source_ids) != len(set(source_ids)):
@@ -288,6 +297,7 @@ def build_issue_fix_repository_context_packet(
                 "issue_ref": issue_ref,
                 "repository_revision": repository_revision,
                 "sources": sources,
+                "memory_hook": memory_hook["projection"],
             },
             ensure_ascii=True,
             sort_keys=True,
@@ -332,9 +342,13 @@ def build_issue_fix_repository_context_packet(
             "schema_version": "issue_fix_repository_memory_projection_v0",
             "source_refs": memory_refs,
             "knowledge_bundle_refs": bundle_refs,
-            "live_retrieval_performed": False,
+            "live_retrieval_performed": bool(
+                memory_hook["projection"].get("search_performed")
+                or memory_hook["projection"].get("read_performed")
+            ),
             "writeback_performed": False,
             "raw_memory_captured": False,
+            "retrieval_hook": memory_hook["projection"],
             "writeback_policy": (
                 "After a validated outcome, write only distilled reusable facts with "
                 "repository revision, provenance, freshness, and supersession metadata."
@@ -346,7 +360,10 @@ def build_issue_fix_repository_context_packet(
             "external_expert_is_advisory": True,
             "context_cannot_authorize_external_writes": True,
         },
-        "external_reads_performed": False,
+        "external_reads_performed": bool(
+            memory_hook["projection"].get("search_performed")
+            or memory_hook["projection"].get("read_performed")
+        ),
         "external_writes_performed": False,
         "raw_content_captured": False,
         "raw_responses_captured": False,
@@ -366,8 +383,9 @@ def validate_issue_fix_repository_context_packet(
     errors: list[str] = []
     if packet.get("schema_version") != ISSUE_FIX_REPOSITORY_CONTEXT_SCHEMA_VERSION:
         errors.append("packet schema_version must be issue_fix_repository_context_v0")
+    if packet.get("external_reads_performed") not in {True, False}:
+        errors.append("packet external_reads_performed must be a boolean")
     for key in (
-        "external_reads_performed",
         "external_writes_performed",
         "raw_content_captured",
         "raw_responses_captured",
@@ -398,6 +416,8 @@ def validate_issue_fix_repository_context_packet(
             errors.append("packet sources must not capture raw responses")
         if source.get("source_kind") == "external_expert" and source.get("trust") != "advisory":
             errors.append("external expert sources must remain advisory")
+        if source.get("source_kind") == "memory_retrieval" and source.get("trust") != "advisory":
+            errors.append("memory retrieval sources must remain advisory")
     truth = packet.get("truth_contract")
     if not isinstance(truth, Mapping) or truth.get(
         "context_cannot_authorize_external_writes"

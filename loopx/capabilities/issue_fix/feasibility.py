@@ -222,6 +222,7 @@ def build_issue_fix_feasibility_packet(
     validation_label: str | None = None,
     comment_value: str = "none",
     repository_context_input: Mapping[str, Any] | None = None,
+    repository_memory_input: Mapping[str, Any] | None = None,
     boundary_authority_scopes: Sequence[str] = (),
     boundary_authority_resolved: bool = False,
     generated_at: str | None = "2026-06-23T00:00:00Z",
@@ -244,6 +245,7 @@ def build_issue_fix_feasibility_packet(
         repo=str(reference["repo"]),
         issue_ref=str(reference["issue_ref"]),
         context_input=repository_context_input,
+        memory_retrieval_input=repository_memory_input,
         generated_at=generated_at,
     )
     safe_reproduction_label = _safe_label(
