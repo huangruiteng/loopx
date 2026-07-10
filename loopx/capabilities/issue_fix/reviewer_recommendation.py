@@ -87,6 +87,24 @@ def _normalise_author_name(value: Any) -> str | None:
     return " ".join(text.lower().split()) if text else None
 
 
+def _normalise_resolved_identities(
+    values: Mapping[str, Any] | None,
+) -> dict[str, str]:
+    resolved: dict[str, str] = {}
+    for raw_name, raw_handle in (values or {}).items():
+        name = _normalise_author_name(raw_name)
+        handle = _normalise_reviewer_handle(raw_handle)
+        if not name or not handle:
+            raise ValueError(
+                "resolved reviewer identities require a public-safe git display "
+                "name and normalized GitHub handle"
+            )
+        resolved[name] = handle
+    if len(resolved) > 50:
+        raise ValueError("at most 50 reviewer identities may be resolved per request")
+    return resolved
+
+
 def _codeowners_tokens(line: str) -> tuple[str, list[str]] | None:
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
@@ -260,6 +278,7 @@ def build_issue_fix_reviewer_recommendation_packet(
     max_candidates: int = 5,
     exclude_reviewers: Sequence[str] = (),
     exclude_author_names: Sequence[str] = (),
+    resolved_identities: Mapping[str, Any] | None = None,
     execute: bool = False,
     generated_at: str | None = "2026-07-10T00:00:00Z",
 ) -> dict[str, Any]:
@@ -285,6 +304,7 @@ def build_issue_fix_reviewer_recommendation_packet(
         if name
     }
     excluded_author_names.update(handle.lstrip("@").lower() for handle in excluded)
+    resolved = _normalise_resolved_identities(resolved_identities)
 
     packet: dict[str, Any] = {
         "ok": True,
@@ -299,6 +319,7 @@ def build_issue_fix_reviewer_recommendation_packet(
         "candidates": [],
         "excluded_reviewer_handles": sorted(excluded),
         "excluded_author_name_count": len(excluded_author_names),
+        "resolved_identity_count": len(resolved),
         "evidence_summary": {
             "schema_version": "issue_fix_reviewer_evidence_summary_v0",
             "authority_order": [
@@ -319,13 +340,17 @@ def build_issue_fix_reviewer_recommendation_packet(
         "policy": {
             "schema_version": "issue_fix_reviewer_policy_v0",
             "recommendation_is_assignment": False,
-            "automatic_review_request_allowed": False,
+            "automatic_review_request_allowed": True,
+            "automatic_request_policy": "request_top_requestable_when_authorized",
+            "external_review_request_authority_required": True,
+            "default_max_review_requests": 1,
             "repository_policy_still_applies": True,
-            "current_author_should_be_excluded_by_caller": True,
+            "current_author_should_be_excluded_by_request_command": True,
             "identity_resolution_required_for_non_handle_candidates": True,
             "next_action": (
-                "Review the ranked evidence under repository policy; request review "
-                "only through a separately authorized external-write action."
+                "After PR creation, run reviewer-request under external-review-request "
+                "authority; it excludes the live PR author and requests the top "
+                "requestable candidate."
             ),
         },
         "external_reads_performed": False,
@@ -380,11 +405,19 @@ def build_issue_fix_reviewer_recommendation_packet(
         usable_history_rows = [
             row
             for row in history_rows
-            if (_github_handle_from_email(row[1]) or "") not in excluded
+            if (
+                _github_handle_from_email(row[1])
+                or resolved.get(_normalise_author_name(row[0]) or "")
+                or ""
+            )
+            not in excluded
             and _normalise_author_name(row[0]) not in excluded_author_names
             and not _looks_like_automated_history_identity(
                 display_name=row[0],
-                handle=_github_handle_from_email(row[1]),
+                handle=(
+                    _github_handle_from_email(row[1])
+                    or resolved.get(_normalise_author_name(row[0]) or "")
+                ),
             )
         ]
         if not usable_history_rows:
@@ -398,7 +431,8 @@ def build_issue_fix_reviewer_recommendation_packet(
                 )
                 history_reason = "changed_module_commit_history"
         for rank, (name, email) in enumerate(history_rows, start=1):
-            handle = _github_handle_from_email(email)
+            resolved_handle = resolved.get(_normalise_author_name(name) or "")
+            handle = _github_handle_from_email(email) or resolved_handle
             if handle and handle in excluded:
                 continue
             if _normalise_author_name(name) in excluded_author_names:
@@ -419,6 +453,9 @@ def build_issue_fix_reviewer_recommendation_packet(
             if recent_rank is None or rank < recent_rank:
                 row["most_recent_history_rank"] = rank
             _append_unique(row, "source_kinds", "git_history")
+            if resolved_handle:
+                _append_unique(row, "source_kinds", "verified_identity_mapping")
+                _append_unique(row, "reason_codes", "caller_verified_github_identity")
             _append_unique(row, "reason_codes", history_reason)
             if rank <= 5:
                 _append_unique(row, "reason_codes", "recent_changed_path_contributor")
@@ -447,8 +484,8 @@ def build_issue_fix_reviewer_recommendation_packet(
             "candidates": ranked,
             "private_repo_state_read": True,
             "next_safe_action": (
-                "Review candidate evidence and repository policy before any external "
-                "review request."
+                "Run reviewer-request after PR creation when external-review-request "
+                "authority is active."
             ),
         }
     )
@@ -504,8 +541,10 @@ def validate_issue_fix_reviewer_recommendation_packet(
     policy = packet.get("policy")
     if not isinstance(policy, Mapping):
         errors.append("policy is required")
-    elif policy.get("automatic_review_request_allowed") is not False:
-        errors.append("reviewer recommendation must not authorize external requests")
+    elif policy.get("automatic_review_request_allowed") is not True:
+        errors.append("reviewer policy must allow the authority-gated default request")
+    elif policy.get("external_review_request_authority_required") is not True:
+        errors.append("automatic reviewer requests require external-write authority")
     return {
         "ok": not errors,
         "schema_version": "issue_fix_reviewer_recommendation_validation_v0",

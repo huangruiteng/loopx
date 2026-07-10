@@ -53,14 +53,20 @@ def temporary_git_repo() -> Iterator[Path]:
                 time.sleep(0.05)
 
 
-def run_git(repo: Path, *args: str, author: str | None = None) -> None:
+def run_git(
+    repo: Path,
+    *args: str,
+    author: str | None = None,
+    author_email: str | None = None,
+) -> None:
     env = dict(os.environ)
     if author:
         login = author.lower().replace(" ", "-")
         env.update(
             {
                 "GIT_AUTHOR_NAME": author,
-                "GIT_AUTHOR_EMAIL": f"{login}@users.noreply.github.com",
+                "GIT_AUTHOR_EMAIL": author_email
+                or f"{login}@users.noreply.github.com",
                 "GIT_COMMITTER_NAME": author,
                 "GIT_COMMITTER_EMAIL": f"{login}@users.noreply.github.com",
             }
@@ -81,9 +87,22 @@ def write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def commit(repo: Path, message: str, author: str) -> None:
+def commit(
+    repo: Path,
+    message: str,
+    author: str,
+    *,
+    author_email: str | None = None,
+) -> None:
     run_git(repo, "add", "-A")
-    run_git(repo, "commit", "-m", message, author=author)
+    run_git(
+        repo,
+        "commit",
+        "-m",
+        message,
+        author=author,
+        author_email=author_email,
+    )
 
 
 def assert_public_safe(payload: dict[str, Any]) -> None:
@@ -165,11 +184,19 @@ def main() -> int:
 
         write(repo / "docs/guide.md", "# Guide\n\nAuthored before the feature.\n")
         commit(repo, "Refresh guide before feature", "Current Author")
+        write(repo / "src/manual.py", "MANUAL = 1\n")
+        commit(
+            repo,
+            "Add manually resolved module",
+            "Human Confirmed",
+            author_email="human-confirmed@example.test",
+        )
 
         run_git(repo, "checkout", "-b", "feature/reviewer-plan")
         write(repo / "src/service.py", "VALUE = 3\n")
         write(repo / "src/new_module.py", "NEW = True\n")
         write(repo / "docs/guide.md", "# Guide\n\nUpdated.\n")
+        write(repo / "src/manual.py", "MANUAL = 2\n")
         commit(repo, "Update service and docs", "Current Author")
 
         packet = build_issue_fix_reviewer_recommendation_packet(
@@ -180,6 +207,7 @@ def main() -> int:
             max_candidates=10,
             exclude_reviewers=["@current-author"],
             exclude_author_names=["Current Author"],
+            resolved_identities={"Human Confirmed": "@human-confirmed"},
             execute=True,
         )
         assert packet["ok"] is True, packet
@@ -187,6 +215,7 @@ def main() -> int:
         assert packet["recommendation_status"] == "candidates_ready", packet
         assert packet["changed_files"] == [
             "docs/guide.md",
+            "src/manual.py",
             "src/new_module.py",
             "src/service.py",
         ], packet
@@ -209,12 +238,26 @@ def main() -> int:
         assert "@core-team" in by_handle, by_handle
         assert "@alice-maintainer" in by_handle, by_handle
         assert "@bob-contributor" in by_handle, by_handle
+        assert "@human-confirmed" in by_handle, by_handle
+        assert "verified_identity_mapping" in by_handle["@human-confirmed"][
+            "source_kinds"
+        ]
+        assert "caller_verified_github_identity" in by_handle["@human-confirmed"][
+            "reason_codes"
+        ]
+        assert packet["resolved_identity_count"] == 1
         assert by_handle["@service-owner"]["confidence"] == "medium"
         assert "repository_codeowners_match" in by_handle["@service-owner"]["reason_codes"]
         assert "changed_module_commit_history" in by_handle["@alice-maintainer"]["reason_codes"]
-        assert packet["policy"]["automatic_review_request_allowed"] is False
+        assert packet["policy"]["automatic_review_request_allowed"] is True
+        assert packet["policy"]["automatic_request_policy"] == (
+            "request_top_requestable_when_authorized"
+        )
+        assert packet["policy"]["external_review_request_authority_required"] is True
         assert_public_safe(packet)
 
+        identity_map = repo / "identity-map.json"
+        write(identity_map, json.dumps({"Human Confirmed": "@human-confirmed"}))
         cli_packet = run_cli(
             [
                 "issue-fix",
@@ -229,6 +272,8 @@ def main() -> int:
                 "@current-author",
                 "--exclude-author-name",
                 "Current Author",
+                "--identity-map-json",
+                str(identity_map),
                 "--execute",
             ]
         )

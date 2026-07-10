@@ -3,7 +3,8 @@
 [中文](README.zh-CN.md) · [Capability index](../README.md) ·
 [Workflow contract](protocols/issue-fix-workflow-contract-v0.md) ·
 [Acceptance loop](protocols/issue-fix-acceptance-loop-v0.md) ·
-[Reviewer recommendation](protocols/issue-fix-reviewer-recommendation-v0.md)
+[Reviewer recommendation](protocols/issue-fix-reviewer-recommendation-v0.md) ·
+[Reviewer request](protocols/issue-fix-reviewer-request-v0.md)
 
 Issue-fix is LoopX's product path for turning a public repository issue into a
 small, validated, reviewable pull request and then keeping that PR moving until
@@ -152,7 +153,7 @@ the patch small, explainable, and consistent with nearby repository patterns.
 Add or adjust a focused test that would fail without the fix. Expand validation
 only in proportion to risk.
 
-### 5. Reviewer recommendation
+### 5. Reviewer recommendation and default request
 
 Reviewer selection is part of the control plane because a correct patch can
 still stall when the wrong person is asked to review it. LoopX now provides:
@@ -168,6 +169,18 @@ loopx issue-fix reviewer-plan \
   --format json
 ```
 
+After the PR exists, a host with standing `external_review_request` or
+`publish` authority should notify the default reviewer directly:
+
+```bash
+loopx issue-fix reviewer-request \
+  --url https://github.com/owner/repo/pull/123 \
+  --repo-path /path/to/approved/repo \
+  --base-ref origin/main \
+  --execute \
+  --format json
+```
+
 The current evidence order is deliberately conservative:
 
 1. repository `CODEOWNERS` matches for each changed path;
@@ -178,16 +191,29 @@ The current evidence order is deliberately conservative:
 The packet ranks candidates with source kinds, reason codes, changed-path
 coverage, history counts, recency, confidence, and whether a GitHub handle is
 actually requestable. It never captures commit email addresses, never records
-the local repo path, and never sends a review request. The caller should
-exclude the PR author and any known unavailable reviewer. History is read at
-the base revision so feature-branch commits do not recommend the author;
-`--exclude-author-name` covers unresolved git-name aliases.
+the local repo path, and `reviewer-plan` never sends a review request.
+`reviewer-request` fetches the live PR author, existing review requests,
+completed reviews, and LoopX-marked reviewer comments; excludes them
+automatically; and asks the top remaining requestable candidate. It first uses
+a formal GitHub review request. Only when GitHub confirms that this action lacks
+permission does it fall back to one concise PR comment mentioning the same
+reviewer. The command reads the PR again and verifies either provider state or
+the fallback comment marker plus public URL before claiming success. A retry
+recognizes the marker and sends no duplicate comment. Network and unknown
+provider errors remain blockers rather than triggering comments. History is
+read at the base revision so feature-branch commits do not recommend the
+author; `--exclude-author-name` covers unresolved git-name aliases.
+When a human confirms that an unresolved git display name belongs to a specific
+GitHub account, `--identity-map-json` records that compact mapping as verified
+identity evidence and reranks the same repository-native contribution evidence.
 
 `CODEOWNERS` remains the strongest repository-native signal. Commit volume is
 only evidence of familiarity; it is not proof of maintainership, availability,
 or review authority. See the [reviewer recommendation
 contract](protocols/issue-fix-reviewer-recommendation-v0.md) for scoring,
-identity, and future-signal details.
+identity, and future-signal details, and the [reviewer request
+contract](protocols/issue-fix-reviewer-request-v0.md) for the external-write,
+idempotency, and verification rules.
 
 ### 6. PR publication and public-write boundary
 
@@ -202,7 +228,11 @@ Before an external write, prepare a public-safe package containing:
 
 PR creation, public comments, push, merge, and publish are external writes.
 The host agent may perform only the actions covered by current boundary
-authority. Recommendation packets themselves remain read-only.
+authority. Reviewer notification is also an external write, but a standing
+`external_review_request` or `publish` authority lets the agent perform the
+formal request and its permission-only comment fallback automatically without
+another user prompt. This does not authorize arbitrary comments.
+Recommendation packets themselves remain read-only.
 
 ### 7. Continuous PR lifecycle
 
@@ -243,6 +273,7 @@ tests whether the system is a durable employee rather than a scripted demo.
 | Repository context | `--repository-context-json` | Pin policy, architecture, change-scope, reproduction, and validation evidence with trust and freshness. |
 | Feasibility | `loopx issue-fix feasibility` | Select exactly one `fix_pr`, `comment_only`, or `triage_only` route and optionally persist compact domain state. |
 | Reviewer plan | `loopx issue-fix reviewer-plan` | Rank explainable reviewer candidates from CODEOWNERS and changed-path/module history without requesting review. |
+| Reviewer notification | `loopx issue-fix reviewer-request` | Under standing authority, exclude the live PR author and existing coverage, request the top candidate, fall back to one verified `@reviewer` comment only on permission denial, and avoid duplicates. |
 | PR lifecycle | `loopx issue-fix pr-lifecycle` | Project CI, review, merge state, draft, merged, and closed signals into monitor transitions. |
 | Acceptance fixture | `loopx issue-fix acceptance-fixture` | Prove failure-before, minimal patch, and pass-after in a deterministic fixture. |
 | Git branch fixture | `loopx issue-fix repo-branch-fixture` | Exercise the same repair contract through a temporary git branch. |
@@ -293,17 +324,22 @@ The reviewer recommendation layer separates three concepts:
 
 1. **ownership evidence**: CODEOWNERS and path/module contribution history;
 2. **review recommendation**: explainable ranked candidates;
-3. **review request**: an external write governed by repository policy and
-   boundary authority.
+3. **review request**: a default post-PR action governed by repository policy
+   and explicit or standing boundary authority.
 
 Current scoring gives CODEOWNERS matches dominant weight, then uses recency-
 weighted commit history. A new file falls back to its nearest module directory
 only when no non-excluded exact-path history is usable. The packet exposes the
 reason instead of presenting a score as authority.
 
+The default policy requests one top requestable candidate when authority is
+active. Existing requested or completed review counts toward that limit. The
+request is complete only after provider readback confirms it.
+
 Important safeguards:
 
-- exclude the PR author and explicitly unavailable reviewers;
+- fetch and exclude the live PR author, existing reviewers, and explicitly
+  unavailable reviewers;
 - do not expose commit email addresses;
 - do not treat bots, anonymous identities, or unresolved names as requestable;
 - cap candidates and show path coverage;
@@ -361,12 +397,14 @@ the current repository revision remains authoritative.
 - deterministic and caller-repo repair artifacts;
 - focused validation evidence;
 - reviewer recommendation from repository-native ownership evidence;
+- authority-gated, idempotent reviewer notification with formal-request-first,
+  permission-only comment fallback, and PR readback;
 - PR lifecycle projection;
 - LoopX todo/quota/monitor/Kanban integration through the host agent.
 
 ### Next stage
 
-- integrate reviewer recommendation into PR-ready and lifecycle packets;
+- integrate reviewer-request transitions into PR-ready and lifecycle domain state;
 - resolve public GitHub identities and repository teams without leaking email;
 - make publication authority visible per external action;
 - make unchanged lifecycle observations physically idempotent everywhere;
@@ -516,6 +554,14 @@ loopx issue-fix reviewer-plan \
   --execute \
   --format json
 
+# Notify the default top non-author reviewer and verify the formal request or permission fallback.
+loopx issue-fix reviewer-request \
+  --url https://github.com/owner/repo/pull/456 \
+  --repo-path /path/to/approved/repo \
+  --base-ref origin/main \
+  --execute \
+  --format json
+
 # Project PR lifecycle into LoopX continuation state.
 loopx issue-fix pr-lifecycle \
   --url https://github.com/owner/repo/pull/456 \
@@ -540,6 +586,7 @@ loopx issue-fix outcome \
 ```bash
 python3 examples/issue-fix-capability-guide-smoke.py
 python3 examples/issue-fix-reviewer-recommendation-smoke.py
+python3 examples/issue-fix-reviewer-request-smoke.py
 python3 examples/issue-fix-workflow-plan-smoke.py
 python3 examples/issue-fix-workflow-contract-smoke.py
 python3 examples/issue-fix-repository-context-smoke.py

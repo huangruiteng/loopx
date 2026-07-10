@@ -3,14 +3,17 @@
 `issue_fix_reviewer_recommendation_v0` is the public-safe contract for ranking
 people or teams who may be appropriate reviewers for an issue-fix change. It
 turns repository-native ownership evidence into an explainable recommendation;
-it does not assign a reviewer, request review, or grant publication authority.
+it does not itself assign a reviewer, request review, or grant publication
+authority. Its default downstream policy is to let the separately authorized
+`reviewer-request` command invite the top requestable candidate.
 
 ## Product Intent
 
 A long-running issue-to-PR agent should not stop after producing a correct
 patch. It should also prepare a credible review route that helps the change
 reach a maintainer. Reviewer selection is therefore part of issue-fix planning,
-while the external GitHub review request remains a separately authorized write.
+while the external GitHub review request remains a separately authorized,
+verified write.
 
 The contract must answer four questions:
 
@@ -51,6 +54,7 @@ loopx issue-fix reviewer-plan \
   --changed-file src/service.py \
   --exclude-reviewer @pull-request-author \
   --exclude-author-name "PR Author Git Name" \
+  --identity-map-json verified-identities.json \
   --format json
 ```
 
@@ -83,6 +87,9 @@ network access, a GitHub review request, a comment, a push, or a merge.
   including the PR author and known unavailable identities;
 - `exclude_author_names`: git display-name aliases for an excluded handle when
   identity resolution is unavailable; only the count is retained in output;
+- `identity_map_json`: optional public-safe, human-verified mapping from git
+  display names to GitHub handles; the raw mapping is not retained, while the
+  resolved handle and `caller_verified_github_identity` evidence are visible;
 - `execute`: whether local repository state may be read.
 
 Changed paths must be non-empty and repo-relative. Preview mode does not
@@ -101,14 +108,20 @@ contains:
   `CODEOWNERS` patterns, history count, recency rank, path coverage, and
   confidence;
 - `evidence_summary` describing the authority order and fallbacks;
-- `policy` stating that recommendation is not assignment and automatic review
-  request is forbidden;
+- `policy` stating that recommendation is not assignment, the default request
+  strategy is `request_top_requestable_when_authorized`, the default maximum is
+  one reviewer, and external-review-request authority is required;
 - public-safety and side-effect flags.
 
 Candidates without a verified GitHub handle remain visible as familiarity
 evidence but are marked `requestable: false` with
 `github_identity_resolution_required`. The packet never exposes the underlying
 commit email.
+
+A human may resolve an ambiguous display name once. The caller-verified handle
+then becomes requestable and is reranked using the candidate's original
+repository contribution evidence; the human assertion resolves identity only
+and does not fabricate ownership or contribution evidence.
 
 ## Ranking Rules
 
@@ -135,7 +148,9 @@ Every valid packet preserves:
 - `local_paths_captured: false`
 - `raw_git_output_captured: false`
 - `commit_emails_captured: false`
-- `automatic_review_request_allowed: false`
+- `automatic_review_request_allowed: true`
+- `automatic_request_policy: request_top_requestable_when_authorized`
+- `external_review_request_authority_required: true`
 
 `private_repo_state_read` is `false` in preview and `true` only after an
 explicit `--execute` against the caller-approved checkout. No raw `CODEOWNERS`
@@ -152,9 +167,11 @@ Before any external review request, the host agent or human must verify:
 - ownership is not being inferred solely from a large historical commit count;
 - sensitive or architectural changes receive any additional mandatory review.
 
-A later authority-gated connector may consume this packet, but the connector
-must record a separate external-write decision. This schema must never be used
-as implicit review-request authority.
+`loopx issue-fix reviewer-request` consumes the same evidence after fetching
+live PR metadata. The command must record a separate external-write decision,
+exclude the live author and existing reviewers, and verify the provider state.
+This recommendation schema must never be used as implicit review-request
+authority. See [issue_fix_reviewer_request_v0](issue-fix-reviewer-request-v0.md).
 
 ## Planned Extensions
 
