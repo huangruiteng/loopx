@@ -52,6 +52,7 @@ QUOTA_PAYLOAD_ITEM_FIELDS = (
     "priority",
     "task_class",
     "action_kind",
+    "continuation_policy",
     "claimed_by",
     "blocks_agent",
     "global_gate",

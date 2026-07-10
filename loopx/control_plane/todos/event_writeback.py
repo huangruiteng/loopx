@@ -20,11 +20,14 @@ from ..goals.active_state_event_projection import (
 from ..goals.path_resolution import resolve_goal_local_path
 from .active_state_todo_parser import parse_active_state_todos
 from .contract import (
+    TODO_CONTINUATION_POLICY_VALUES,
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
     build_todo_id,
+    legacy_todo_continuation_policy_for_action_kind,
     merge_todo_id_lists,
     normalize_todo_claimed_by,
+    normalize_todo_continuation_policy,
     normalize_todo_id,
     todo_done_for_status,
 )
@@ -139,6 +142,7 @@ def _append_event_projected_successor(
     fields: dict[str, Any],
     task_class: str | None,
     action_kind: str | None,
+    continuation_policy: str | None,
     claimed_by: str | None,
     dry_run: bool,
     blocks_agent: str | None = None,
@@ -167,6 +171,20 @@ def _append_event_projected_successor(
         payload["task_class"] = task_class
     if action_kind:
         payload["action_kind"] = action_kind
+    normalized_continuation_policy = normalize_todo_continuation_policy(
+        continuation_policy
+    )
+    if continuation_policy and not normalized_continuation_policy:
+        raise ValueError(
+            "todo continuation_policy must be one of: "
+            + ", ".join(sorted(TODO_CONTINUATION_POLICY_VALUES))
+        )
+    effective_continuation_policy = (
+        normalized_continuation_policy
+        or legacy_todo_continuation_policy_for_action_kind(action_kind)
+    )
+    if effective_continuation_policy:
+        payload["continuation_policy"] = effective_continuation_policy
     if blocks_agent:
         payload["blocks_agent"] = blocks_agent
     if unblocks_todo_id:
@@ -217,6 +235,7 @@ def _append_event_projected_successor(
         "todo_id": todo_id,
         "task_class": task_class,
         "action_kind": action_kind,
+        "continuation_policy": effective_continuation_policy,
         "claimed_by": claimed_by,
         "blocks_agent": blocks_agent,
         "unblocks_todo_id": unblocks_todo_id,
@@ -240,6 +259,7 @@ def complete_event_projected_goal_todo(
     next_claimed_by: str | None,
     next_task_class: str | None,
     next_action_kind: str | None,
+    next_continuation_policy: str | None,
     side_agent_completion: bool,
     side_agent_self_merged: bool,
     registered_agents: list[str],
@@ -280,6 +300,7 @@ def complete_event_projected_goal_todo(
                 fields=context["fields"],
                 task_class=next_task_class or "advancement_task",
                 action_kind=next_action_kind,
+                continuation_policy=next_continuation_policy,
                 claimed_by=next_claimed_by,
                 blocks_agent=None,
                 unblocks_todo_id=next_unblocks_todo_id,
@@ -297,6 +318,7 @@ def complete_event_projected_goal_todo(
                 fields=context["fields"],
                 task_class="user_gate",
                 action_kind="gate",
+                continuation_policy=None,
                 claimed_by=None,
                 blocks_agent=next_user_blocks_agent,
                 unblocks_todo_id=None,
@@ -355,6 +377,7 @@ def complete_event_projected_goal_todo(
         "claimed_by": normalize_todo_claimed_by(effective_claimed_by),
         "task_class": item.get("task_class"),
         "action_kind": item.get("action_kind"),
+        "continuation_policy": item.get("continuation_policy"),
         "successor_todo_ids": normalized_successor_todo_ids,
         "next_todos": next_results,
         "side_agent_self_merged": bool(side_agent_completion and side_agent_self_merged),

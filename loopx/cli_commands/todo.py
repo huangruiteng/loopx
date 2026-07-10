@@ -4,6 +4,7 @@ import argparse
 from collections.abc import Callable
 from pathlib import Path
 
+from ..control_plane.todos.contract import TODO_CONTINUATION_POLICY_VALUES
 from ..todo_suggestion_prompt import (
     ALLOWED_TODO_SUGGESTION_SOURCES,
     ALLOWED_TODO_SUGGESTION_TRIGGERS,
@@ -87,6 +88,14 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         help=(
             "For todo add, optional public-safe action token such as run_eval, "
             "rebuild_score, compact_blocker_writeback, or monitor."
+        ),
+    )
+    todo_parser.add_argument(
+        "--continuation-policy",
+        choices=sorted(TODO_CONTINUATION_POLICY_VALUES),
+        help=(
+            "Closed completion/handoff policy for this todo. action_kind remains "
+            "an extensible domain token; defaults to independent_handoff."
         ),
     )
     todo_parser.add_argument(
@@ -253,6 +262,11 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
     )
     todo_parser.add_argument("--next-action-kind", help="Action kind for --next-agent-todo.")
     todo_parser.add_argument(
+        "--next-continuation-policy",
+        choices=sorted(TODO_CONTINUATION_POLICY_VALUES),
+        help="Continuation policy for --next-agent-todo.",
+    )
+    todo_parser.add_argument(
         "--max-active-done",
         type=int,
         default=ARCHIVE_COMPLETED_DEFAULT_MAX_ACTIVE_DONE,
@@ -345,6 +359,7 @@ def handle_todo_command(
                     ("--reason", args.reason),
                     ("--task-class", args.task_class),
                     ("--action-kind", args.action_kind),
+                    ("--continuation-policy", args.continuation_policy),
                     ("--required-write-scope", args.required_write_scopes),
                     ("--required-capability", args.required_capabilities),
                     ("--target-capability", args.target_capabilities),
@@ -367,6 +382,7 @@ def handle_todo_command(
                     ("--next-claimed-by", args.next_claimed_by),
                     ("--next-task-class", args.next_task_class),
                     ("--next-action-kind", args.next_action_kind),
+                    ("--next-continuation-policy", args.next_continuation_policy),
                     ("--side-agent-self-merged", args.side_agent_self_merged),
                     ("--from", args.suggestion_sources),
                     ("--limit", args.suggestion_limit),
@@ -402,6 +418,8 @@ def handle_todo_command(
                 raise ValueError("todo add accepts --claimed-by but not --clear-claim")
             if args.next_claimed_by:
                 raise ValueError("todo add does not support --next-claimed-by")
+            if args.next_continuation_policy:
+                raise ValueError("todo add does not support --next-continuation-policy")
             if args.side_agent_self_merged:
                 raise ValueError("todo add does not support --side-agent-self-merged")
             if args.no_follow_up:
@@ -415,6 +433,7 @@ def handle_todo_command(
                 text=args.text,
                 task_class=args.task_class,
                 action_kind=args.action_kind,
+                continuation_policy=args.continuation_policy,
                 required_write_scopes=args.required_write_scopes,
                 required_capabilities=args.required_capabilities,
                 target_capabilities=args.target_capabilities,
@@ -453,6 +472,7 @@ def handle_todo_command(
                     ("--reason", args.reason),
                     ("--task-class", args.task_class),
                     ("--action-kind", args.action_kind),
+                    ("--continuation-policy", args.continuation_policy),
                     ("--required-write-scope", args.required_write_scopes),
                     ("--required-capability", args.required_capabilities),
                     ("--target-capability", args.target_capabilities),
@@ -473,6 +493,7 @@ def handle_todo_command(
                     ("--next-claimed-by", args.next_claimed_by),
                     ("--next-task-class", args.next_task_class),
                     ("--next-action-kind", args.next_action_kind),
+                    ("--next-continuation-policy", args.next_continuation_policy),
                     ("--side-agent-self-merged", args.side_agent_self_merged),
                     ("--follow-up", args.followups),
                 )
@@ -509,6 +530,7 @@ def handle_todo_command(
                 args.reason,
                 args.task_class,
                 args.action_kind,
+                args.continuation_policy,
                 args.required_write_scopes,
                 args.required_capabilities,
                 args.target_capabilities,
@@ -527,13 +549,15 @@ def handle_todo_command(
                 args.expires_at,
                 args.clear_claim,
             ]):
-                raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --required-write-scope, --required-capability, --target-capability, --decision-scope, --required-decision-scope, --claimed-by, --blocks-agent, --global-gate, --unblocks-todo-id, --successor-todo-id, --resume-when, --monitor-target-key, --cadence, --next-due-at, --expires-at, --no-follow-up, or --clear-claim")
+                raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --continuation-policy, --required-write-scope, --required-capability, --target-capability, --decision-scope, --required-decision-scope, --claimed-by, --blocks-agent, --global-gate, --unblocks-todo-id, --successor-todo-id, --resume-when, --monitor-target-key, --cadence, --next-due-at, --expires-at, --no-follow-up, or --clear-claim")
             if args.no_follow_up and not (args.note or args.reason or args.evidence):
                 raise ValueError("--no-follow-up requires --note, --reason, or --evidence")
             if args.followups:
                 raise ValueError("todo update does not support --follow-up; use `todo capture-followups`")
             if args.next_claimed_by:
                 raise ValueError("todo update does not support --next-claimed-by")
+            if args.next_continuation_policy:
+                raise ValueError("todo update does not support --next-continuation-policy")
             if args.side_agent_self_merged:
                 raise ValueError("todo update does not support --side-agent-self-merged")
             payload = update_goal_todo(
@@ -548,6 +572,7 @@ def handle_todo_command(
                 reason=args.reason,
                 task_class=args.task_class,
                 action_kind=args.action_kind,
+                continuation_policy=args.continuation_policy,
                 required_write_scopes=args.required_write_scopes,
                 required_capabilities=args.required_capabilities,
                 target_capabilities=args.target_capabilities,
@@ -591,6 +616,14 @@ def handle_todo_command(
                 raise ValueError("--no-follow-up requires --note or --evidence")
             if args.followups:
                 raise ValueError("todo complete does not support --follow-up; use `todo capture-followups`")
+            if args.continuation_policy:
+                raise ValueError(
+                    "todo complete does not update --continuation-policy; use todo update first"
+                )
+            if args.next_continuation_policy and not args.next_agent_todo:
+                raise ValueError(
+                    "--next-continuation-policy requires --next-agent-todo"
+                )
             payload = complete_goal_todo(
                 registry_path=registry_path,
                 goal_id=args.goal_id,
@@ -607,6 +640,7 @@ def handle_todo_command(
                 next_claimed_by=args.next_claimed_by,
                 next_task_class=args.next_task_class,
                 next_action_kind=args.next_action_kind,
+                next_continuation_policy=args.next_continuation_policy,
                 side_agent_self_merged=bool(args.side_agent_self_merged),
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
@@ -629,6 +663,14 @@ def handle_todo_command(
                 raise ValueError("todo supersede does not support --no-follow-up")
             if args.followups:
                 raise ValueError("todo supersede does not support --follow-up; use `todo capture-followups`")
+            if args.continuation_policy:
+                raise ValueError(
+                    "todo supersede does not update --continuation-policy; use todo update first"
+                )
+            if args.next_continuation_policy and not args.next_agent_todo:
+                raise ValueError(
+                    "--next-continuation-policy requires --next-agent-todo"
+                )
             if args.blocks_agent or args.global_gate or args.unblocks_todo_id or args.resume_when:
                 raise ValueError("todo supersede does not support --blocks-agent, --global-gate, --unblocks-todo-id, or --resume-when; update the source todo first so the successor can inherit dependency metadata")
             if args.successor_todo_ids:
@@ -646,6 +688,7 @@ def handle_todo_command(
                 next_claimed_by=args.next_claimed_by,
                 next_task_class=args.next_task_class,
                 next_action_kind=args.next_action_kind,
+                next_continuation_policy=args.next_continuation_policy,
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
                 dry_run=bool(args.dry_run),
@@ -685,6 +728,7 @@ def handle_todo_command(
                     ("--reason", args.reason),
                     ("--task-class", args.task_class),
                     ("--action-kind", args.action_kind),
+                    ("--continuation-policy", args.continuation_policy),
                     ("--required-write-scope", args.required_write_scopes),
                     ("--required-capability", args.required_capabilities),
                     ("--target-capability", args.target_capabilities),
@@ -707,6 +751,7 @@ def handle_todo_command(
                     ("--next-claimed-by", args.next_claimed_by),
                     ("--next-task-class", args.next_task_class),
                     ("--next-action-kind", args.next_action_kind),
+                    ("--next-continuation-policy", args.next_continuation_policy),
                     ("--side-agent-self-merged", args.side_agent_self_merged),
                     ("--follow-up", args.followups),
                     ("--state-file", args.state_file),
@@ -758,6 +803,7 @@ def handle_todo_command(
                     ("--next-claimed-by", args.next_claimed_by),
                     ("--next-task-class", args.next_task_class),
                     ("--next-action-kind", args.next_action_kind),
+                    ("--next-continuation-policy", args.next_continuation_policy),
                     ("--side-agent-self-merged", args.side_agent_self_merged),
                     ("--agent-id", args.agent_id),
                     ("--from", args.suggestion_sources),

@@ -17,6 +17,7 @@ from .contract import (
     normalize_todo_action_kind,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_continuation_policy,
     normalize_todo_decision_scope,
     normalize_todo_global_gate,
     normalize_todo_id,
@@ -295,6 +296,11 @@ def structured_todo_item(
     action_kind = normalize_todo_action_kind(item.get("action_kind"))
     if action_kind:
         normalized["action_kind"] = action_kind
+    continuation_policy = normalize_todo_continuation_policy(
+        item.get("continuation_policy")
+    )
+    if continuation_policy:
+        normalized["continuation_policy"] = continuation_policy
     required_write_scopes = normalize_required_write_scopes(item.get("required_write_scopes"))
     if required_write_scopes:
         normalized["required_write_scopes"] = required_write_scopes
@@ -353,6 +359,7 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "source_section",
         "task_class",
         "action_kind",
+        "continuation_policy",
         "required_write_scopes",
         "required_capabilities",
         "target_capabilities",
@@ -798,6 +805,7 @@ def todo_item_is_succession_tracked_completion(item: dict[str, Any]) -> bool:
         item.get(key) is not None
         for key in (
             "action_kind",
+            "continuation_policy",
             "claimed_by",
             "completed_at",
             "updated_at",

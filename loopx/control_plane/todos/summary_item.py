@@ -25,6 +25,7 @@ TODO_SUMMARY_COMPACT_FIELDS = (
     "source_section",
     "task_class",
     "action_kind",
+    "continuation_policy",
     "required_write_scopes",
     "required_capabilities",
     "target_capabilities",
