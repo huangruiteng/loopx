@@ -143,6 +143,23 @@ packet with:
 - the safety boundary that makes the packet experimental rather than a
   replacement for `quota should-run`.
 
+An advancement todo may opt into typed result diagnostics by attaching one or
+more explicit Explore node ids:
+
+```bash
+loopx todo add --goal-id <id> --role agent --text "Evaluate the rejected route" \
+  --task-class advancement_task --explore-result-node-ref node_rejected_route
+```
+
+`todo-branch-plan` resolves only those explicit links. Its bounded
+`typed_evidence_audit` reports linked node lifecycle, finding statuses,
+relevant `supports`/`refutes` edges, unknown ids, and dead-end/refutation
+hazards. The audit is diagnostic-only (`score_delta=0`) and cannot claim,
+lease, launch, write state, or spend quota. Unlinked todos retain the prior
+planner behavior. Repair a stale link by replacing it with another repeated
+`--explore-result-node-ref`, or remove all links with
+`loopx todo update ... --clear-explore-result-node-refs`.
+
 Todos without declared write scopes are treated as speculative read or
 coordination work by default, because many exploration tasks are read-only.
 Use `--no-allow-unscoped-parallel` when the controller wants unknown scopes to
