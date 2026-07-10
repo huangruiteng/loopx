@@ -4913,6 +4913,7 @@ def _apply_codex_cli_goal_countability_guard_attribution(
         "post_bridge_tui_model_timeout",
         "post_bridge_tui_error_prompt",
         "post_bridge_tui_rate_limit",
+        "task_output_quiet_timeout",
     }
     goal_failed = (
         trace_present
@@ -4940,6 +4941,8 @@ def _apply_codex_cli_goal_countability_guard_attribution(
         label = "skillsbench_codex_cli_goal_uncountable_post_bridge_tui_error"
     elif goal_stage == "post_bridge_tui_rate_limit":
         label = "skillsbench_codex_cli_goal_uncountable_post_bridge_rate_limit"
+    elif goal_stage == "task_output_quiet_timeout":
+        label = "skillsbench_codex_cli_goal_uncountable_task_output_quiet_timeout"
     if goal_failed and not missing_task_activity:
         label = {
             "post_bridge_tui_model_timeout": (
@@ -4950,6 +4953,9 @@ def _apply_codex_cli_goal_countability_guard_attribution(
             ),
             "post_bridge_tui_rate_limit": (
                 "skillsbench_codex_cli_goal_uncountable_post_bridge_rate_limit"
+            ),
+            "task_output_quiet_timeout": (
+                "skillsbench_codex_cli_goal_uncountable_task_output_quiet_timeout"
             ),
         }.get(goal_stage, "skillsbench_codex_cli_goal_uncountable_goal_failed")
     compact["score_failure_attribution"] = label

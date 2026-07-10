@@ -420,6 +420,14 @@ def _assert_cli_goal_tui_ready_wait_rejects_startup_artifacts() -> None:
     assert goal_tui.codex_cli_tui_startup_blocker(historical_loading_then_ready) == ""
     assert goal_tui.codex_cli_tui_input_prompt_visible(historical_loading_then_ready)
     assert goal_tui.codex_cli_tui_input_prompt_visible("  > \n")
+    active_turn = (
+        "• Working (14m 00s • esc to interrupt)\n"
+        "› Explain this codebase\n"
+        "gpt-5.5 xhigh · workspace… Pursuing goal (13m)\n"
+    )
+    assert goal_tui.codex_cli_tui_input_prompt_visible(active_turn)
+    assert goal_tui.codex_cli_tui_turn_active(active_turn)
+    assert not goal_tui.codex_cli_tui_turn_active("› Explain this codebase\n")
 
 
 def _assert_cli_goal_tui_ready_wait_auto_accepts_trust_prompt() -> None:
@@ -1143,6 +1151,26 @@ def _assert_cli_goal_active_timeout_is_public_countability_stage() -> None:
         "skillsbench_codex_cli_goal_uncountable_post_bridge_model_timeout"
     )
 
+    task_output_quiet_trace = dict(completed_attempt_trace)
+    task_output_quiet_trace.update(
+        {
+            "codex_cli_goal_tui_stage": "task_output_quiet_timeout",
+            "codex_cli_goal_tui_ok_count": 0,
+        }
+    )
+    compact = {
+        "route": CODEX_CLI_GOAL_BASELINE_ROUTE,
+        "official_score_status": "completed",
+        "official_score": 0.0,
+        "interaction_counters": task_output_quiet_trace,
+        "runner_prerequisites": {},
+        "failure_attribution_labels": ["official_score_zero_case_failure"],
+    }
+    assert _apply_codex_cli_goal_countability_guard_attribution(compact) is True
+    assert compact["score_failure_attribution"] == (
+        "skillsbench_codex_cli_goal_uncountable_task_output_quiet_timeout"
+    )
+
     with tempfile.TemporaryDirectory() as temp:
         trace_dir = Path(temp) / "trace"
         relay = SkillsBenchLocalAcpRelay(
@@ -1378,6 +1406,9 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "last_bridge_activity_at >= 30.0" in source
     assert "task_output_quiet_timeout_sec = max(" in source
     assert "_bridge_summary_has_successful_task_operation(" in source
+    assert "turn_active = codex_cli_tui_turn_active(capture)" in source
+    assert "and not turn_active" in source
+    assert "now - last_task_output_activity_at" in source
     assert "stage=\"task_output_quiet_timeout\"" in source
     assert "codex_exec_task_output_quiet_timeout" in source
     tui_loop_start = source.index(

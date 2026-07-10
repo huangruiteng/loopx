@@ -61,6 +61,7 @@ from loopx.codex_cli_goal_tui import (
     codex_cli_tui_environment,
     codex_cli_tui_shell_command,
     codex_cli_tui_input_prompt_visible,
+    codex_cli_tui_turn_active,
     prewarm_codex_cli_goal_thread,
     tmux_capture,
     tmux_kill_session,
@@ -1198,9 +1199,13 @@ class SkillsBenchLocalAcpRelay:
                     + max(1.0, self._config.stream_heartbeat_interval_sec)
                 )
                 task_output_progress_seen = False
+                last_task_output_activity_at = last_bridge_activity_at
                 while time.monotonic() < deadline:
                     now = time.monotonic()
                     capture = self._last_codex_cli_goal_tui_capture = tmux_capture(tmux_name)
+                    turn_active = codex_cli_tui_turn_active(capture)
+                    if turn_active:
+                        last_task_output_activity_at = now
                     if "Goal active" in capture or "Pursuing goal" in capture:
                         goal_active_observed = True
                     goal_failed_now = "Goal failed" in capture or "Goal blocked" in capture
@@ -1212,6 +1217,7 @@ class SkillsBenchLocalAcpRelay:
                         if current_bridge_summary_size > last_bridge_summary_size:
                             last_bridge_summary_size = current_bridge_summary_size
                             last_bridge_activity_at = now
+                            last_task_output_activity_at = now
                             bridge_activity_seen = True
                             first_action_seen = True
                         elif (
@@ -1544,10 +1550,11 @@ class SkillsBenchLocalAcpRelay:
                         task_output_progress_seen
                         and bridge_summary_path is not None
                         and task_output_quiet_timeout_sec > 0
+                        and not turn_active
                         and not _bridge_summary_has_inflight_operation(
                             bridge_summary_path
                         )
-                        and now - last_bridge_activity_at
+                        and now - last_task_output_activity_at
                         >= task_output_quiet_timeout_sec
                     ):
                         tmux_kill_session(tmux_name)

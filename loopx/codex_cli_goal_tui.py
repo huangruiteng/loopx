@@ -326,6 +326,19 @@ def codex_cli_tui_input_prompt_visible(capture: str) -> bool:
     return False
 
 
+def codex_cli_tui_turn_active(capture: str) -> bool:
+    """Return true while the visible TUI is still running the current turn."""
+
+    recent_lines = (capture or "").splitlines()[-20:]
+    for raw_line in recent_lines:
+        line = raw_line.lower()
+        if "working (" in line and "esc to interrupt" in line:
+            return True
+        if "queued follow-up inputs" in line:
+            return True
+    return False
+
+
 def wait_for_codex_cli_tui_ready(
     tmux_name: str,
     *,
