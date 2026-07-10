@@ -3543,9 +3543,9 @@ const shareGoalSpecs: ShareGoalSpec[] = [
   },
   {
     id: "showcase-side-agent-self-iteration",
-    label: "Side Agent 自迭代",
-    subtitle: "公开 repo 事实 / 旁路产品化",
-    emphasis: "主控聚焦高风险主线，旁路 Agent 在独立 worktree 中推进产品化、文档和展示。",
+    label: "Peer Agent 自迭代",
+    subtitle: "公开 repo 事实 / 平级协作",
+    emphasis: "平级 Agent 通过 claim、边界和独立 worktree 推进产品化、文档与验证。",
     accent: "border-t-rose-500",
     icon: ShieldCheck,
   },
@@ -3565,7 +3565,7 @@ const shareStatusLabel: Record<string, string> = {
   dashboard_home_route_smoke_contract: "主屏路由合约已验证",
   state_refreshed: "状态已刷新",
   quota_slot_spent: "已记录配额",
-  side_bypass_tau2_non_category_profile_admission_sweep: "旁路证据扫描",
+  side_bypass_tau2_non_category_profile_admission_sweep: "独立证据扫描",
 };
 
 const shareDeliveryScaleLabel: Record<string, string> = {
@@ -4346,7 +4346,7 @@ function ShareGuardEvidence({
             { label: "控制", value: "暂缓不花 quota" },
             { label: "写回", value: "证据或 blocker" },
           ]}
-          title="旁路：防止重复小步"
+          title="独立 peer：防止重复小步"
           tone="rose"
         />
 
@@ -4540,7 +4540,7 @@ function ShareEvidenceView({
                   把多项目 Agent 工作变成可管理的 Todo、证据和配额
                 </h1>
                 <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600">
-                  这个看板只展示公开 showcases：user gate、side-agent 自迭代、creator operator 和 LoopX Meta 统一到同一套控制面。
+                  这个看板只展示公开 showcases：user gate、peer-agent 自迭代、creator operator 和 LoopX Meta 统一到同一套控制面。
                   用户待办单独挂起，Agent 高优任务继续推进，配额守卫和交接合约负责防止重复空转。
                 </p>
               </div>
@@ -4712,7 +4712,7 @@ function buildHumanFriendlyActionPacket({
     operatorQuestion: item.operatorQuestion,
     suggestedReply: reply,
     gateFallbackDecision: approvedAgentCommand
-      ? "直接转发给项目 Agent；不追加写权限、主控接管或生产动作授权。"
+      ? "直接转发给已认领的项目 Agent；不追加写权限、全局接管或生产动作授权。"
       : suggestedDecisionLine(item.kind, item, item.goalId),
     boundary: approvedAgentCommand
       ? "只执行已批准的只读/dry-run agent_command；如需写入或更高权限，项目 Agent 必须再次停下。"

@@ -89,7 +89,8 @@ const frontstageShowcases = showcaseCases.filter((item) => item.frontend_card);
 type RolloutLane = {
   lane_id: string;
   agent_id: string;
-  role: string;
+  agent_model: "peer_v1";
+  profile_role: string;
   display_name: string;
 };
 
@@ -1738,7 +1739,7 @@ function buildTrajectoryAnalysis(fixture: LongHorizonRolloutFixture) {
       isSynthetic: event.confidence === "synthetic_bridge" || event.display_hint === "dashed_edge",
       kind: event.kind,
       laneLabel: lane?.display_name ?? event.lane_id,
-      laneRole: lane?.role ?? "agent",
+      laneRole: lane?.profile_role ?? "peer",
       progress: Math.round((index / lastIndex) * 100),
       sourceEventIds: event.source_event_ids,
       stageLabel: rolloutStageLabel(event),
@@ -2546,7 +2547,7 @@ function SelfIterationTimelinePanel() {
           <div>
             <h3 className="text-base font-semibold text-slate-950">Three-lane control-plane story</h3>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
-              A public fixture turns LoopX self-iteration into visible lanes: primary control, product capability, and implementation handoff, with human gates and evidence writeback kept explicit.
+              A public fixture turns LoopX self-iteration into visible peer lanes for release, product, and implementation validation, with human gates and evidence writeback kept explicit.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -2585,7 +2586,7 @@ function SelfIterationTimelinePanel() {
               >
                 <div className="border-b border-slate-200 bg-white px-3 py-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="info">{lane.role}</Badge>
+                    <Badge variant="info">{lane.profile_role}</Badge>
                     <Badge variant="neutral">{lane.lane_id}</Badge>
                   </div>
                   <h4 className="mt-2 text-sm font-semibold leading-6 text-slate-950">{lane.display_name}</h4>
@@ -2808,7 +2809,7 @@ const developerOnboardingSteps = [
     icon: ShieldCheck,
     label: "Guard",
     title: "Run quota/status before edits, then fail closed on missing identity or wrong worktree.",
-    body: "Side agents move to an independent worktree; primary control stays protected from accidental edits.",
+    body: "Repository-writing peers move to independent worktrees so the canonical checkout stays protected from accidental edits.",
   },
   {
     icon: ListChecks,
@@ -2935,7 +2936,7 @@ function DeveloperOnboardingPanel() {
             {[
               ["identity", "heartbeat uses --agent-id and scoped automation identity"],
               ["health", "quota/status agree on user todos, runnable candidates, and gate state"],
-              ["workspace", "workspace_guard blocks side-agent edits in the primary checkout"],
+              ["workspace", "workspace_guard isolates peer writes from the canonical checkout"],
               ["handoff", "TUI steering stays visible while LoopX owns quota/status/writeback"],
             ].map(([label, value]) => (
               <div className="rounded-md border border-white/10 bg-white/[0.06] px-3 py-2" key={label}>

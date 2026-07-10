@@ -12,6 +12,7 @@ SCAN_ROOTS = (
     REPO_ROOT / "loopx",
     REPO_ROOT / "docs",
     REPO_ROOT / "skills",
+    REPO_ROOT / "apps" / "presentation" / "dashboard" / "src",
     REPO_ROOT / "examples" / "fixtures",
 )
 SCAN_FILES = (
@@ -22,6 +23,8 @@ SCAN_FILES = (
     REPO_ROOT / "examples" / "registry.example.json",
     REPO_ROOT / "examples" / "peer-agent-task-orchestration.registry.example.json",
     REPO_ROOT / "examples" / "complex-project-readonly-map.example.json",
+    REPO_ROOT / "examples" / "dashboard-frontstage-browser-smoke.mjs",
+    REPO_ROOT / "examples" / "dashboard-home-browser-smoke.mjs",
 )
 ALLOWED_LEGACY_PATHS = {
     REPO_ROOT / "loopx" / "configure_goal.py",
@@ -36,6 +39,7 @@ LEGACY_PATTERN = re.compile(
     r'"role"\s*:\s*"(?:controller|subagent)"',
     re.IGNORECASE,
 )
+LEGACY_STABLE_IDENTIFIERS = ("showcase-side-agent-self-iteration",)
 
 
 def candidate_files() -> list[Path]:
@@ -44,7 +48,7 @@ def candidate_files() -> list[Path]:
         for path in root.rglob("*"):
             if not path.is_file() or "archive" in path.parts:
                 continue
-            if path.suffix.lower() not in {".py", ".md", ".json", ".html"}:
+            if path.suffix.lower() not in {".py", ".md", ".json", ".html", ".ts", ".tsx", ".mjs"}:
                 continue
             files.append(path)
     return sorted(set(files))
@@ -57,7 +61,10 @@ def main() -> int:
             continue
         text = path.read_text(encoding="utf-8")
         for line_number, line in enumerate(text.splitlines(), start=1):
-            if LEGACY_PATTERN.search(line):
+            scan_line = line
+            for identifier in LEGACY_STABLE_IDENTIFIERS:
+                scan_line = scan_line.replace(identifier, "")
+            if LEGACY_PATTERN.search(scan_line):
                 violations.append(f"{path.relative_to(REPO_ROOT)}:{line_number}: {line.strip()}")
     assert not violations, "legacy agent hierarchy escaped migration boundary:\n" + "\n".join(
         violations[:40]
