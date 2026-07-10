@@ -1,0 +1,25 @@
+examples/explore-harness-runtime-resume-smoke.py
+  s_32e2a9a204a8e4::t_0e6f3f277e73d6 1-279
+loopx/capabilities/explore/harness_checkpoint.py
+  s_32e2a9a204a8e4::t_6b7a97253eaeb4 1-171
+loopx/capabilities/explore/harness_runtime.py
+  s_32e2a9a204a8e4::t_f87c1b2155e55c 6,10-15,65-67,74-83,107-151,197,207,239,244-245,251-258,263,354-357,561-586,603-606,613-615,619-640,658-694,697-698,755,773,829-848,857,867-889
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0feadbd1d1060abffdc210b9c66a0b04194dadd3",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
