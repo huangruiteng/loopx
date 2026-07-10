@@ -6,10 +6,11 @@ import asyncio
 import contextlib
 import re
 import shlex
+import tempfile
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -47,6 +48,33 @@ def parse_container_exit_status(payload: bytes | str | None) -> int | None:
     return value if 0 <= value <= 255 else None
 
 
+async def read_container_file_via_compose_copy(
+    compose_fn: Callable[..., Awaitable[Any]],
+    container_path: str,
+    *,
+    service: str,
+    timeout_sec: float,
+) -> bytes | None:
+    """Copy a container file to the host when exec stdout is unreliable."""
+
+    with tempfile.TemporaryDirectory(prefix="loopx-container-file-") as tmp_dir:
+        destination = Path(tmp_dir) / "payload"
+        try:
+            result = await compose_fn(
+                ["cp", f"{service}:{container_path}", str(destination)],
+                check=False,
+                timeout_sec=max(1, min(10, int(timeout_sec))),
+            )
+        except (OSError, RuntimeError, TimeoutError):
+            return None
+        if getattr(result, "return_code", 1) != 0:
+            return None
+        try:
+            return destination.read_bytes()
+        except OSError:
+            return None
+
+
 async def run_container_command_with_exit_status(
     exec_fn: Callable[..., Awaitable[Any]],
     command: str,
@@ -55,13 +83,12 @@ async def run_container_command_with_exit_status(
     exec_args: tuple[Any, ...] = (),
     exec_kwargs: Mapping[str, Any] | None = None,
     poll_interval_sec: float = 0.5,
+    status_reader_fn: Callable[[str, str, float], Awaitable[bytes | str | None]]
+    | None = None,
 ) -> Any:
     """Run a container command and wait for its side-channel completion marker."""
 
-    status_path = (
-        "/tmp/loopx-benchmark-exec-status/"
-        f"{uuid.uuid4().hex}.status"
-    )
+    status_path = f"/tmp/loopx-benchmark-exec-status/{uuid.uuid4().hex}.status"
     kwargs = dict(exec_kwargs or {})
     kwargs["timeout_sec"] = timeout_sec
     service = kwargs.get("service", "main")
@@ -75,20 +102,20 @@ async def run_container_command_with_exit_status(
         captured_exit_code = None
         while captured_exit_code is None:
             remaining = deadline - time.monotonic()
-            probe = await exec_fn(
-                f"cat {shlex.quote(status_path)} 2>/dev/null",
-                timeout_sec=max(1.0, min(10.0, max(remaining, 1.0))),
-                user="root",
-                service=service,
-            )
-            captured_exit_code = parse_container_exit_status(
-                getattr(probe, "stdout", None)
-            )
+            if status_reader_fn is not None:
+                payload = await status_reader_fn(status_path, service, remaining)
+            else:
+                probe = await exec_fn(
+                    f"cat {shlex.quote(status_path)} 2>/dev/null",
+                    timeout_sec=max(1.0, min(10.0, max(remaining, 1.0))),
+                    user="root",
+                    service=service,
+                )
+                payload = getattr(probe, "stdout", None)
+            captured_exit_code = parse_container_exit_status(payload)
             if captured_exit_code is None:
                 if remaining <= 0:
-                    raise asyncio.TimeoutError(
-                        "container completion marker timed out"
-                    )
+                    raise asyncio.TimeoutError("container completion marker timed out")
                 await asyncio.sleep(min(poll_interval_sec, remaining))
         if hasattr(result, "model_copy"):
             return result.model_copy(update={"return_code": captured_exit_code})

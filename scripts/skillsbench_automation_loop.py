@@ -142,6 +142,7 @@ from loopx.benchmark_core import (  # noqa: E402
     build_benchmark_launch_observable_handle,
     canonical_lifecycle,
     compact_benchmark_canonical_lifecycle,
+    read_container_file_via_compose_copy,
     run_container_command_with_exit_status,
     write_benchmark_run_observable_status,
 )
@@ -3654,8 +3655,33 @@ def install_benchflow_verifier_prep_timeout_override(
             call_args = args[1:] if positional_command else args
 
             prerequisites["benchflow_verifier_completion_poll_enabled"] = True
+            compose_fn = getattr(env, "_run_docker_compose_command", None)
+            status_reader_fn = None
+            if callable(compose_fn):
+                async def status_reader_fn(
+                    status_path: str,
+                    service: str,
+                    remaining: float,
+                ) -> bytes | None:
+                    return await read_container_file_via_compose_copy(
+                        compose_fn,
+                        status_path,
+                        service=service,
+                        timeout_sec=remaining,
+                    )
+
+                prerequisites["benchflow_verifier_completion_poll_reader"] = (
+                    "compose_copy"
+                )
+            else:
+                prerequisites["benchflow_verifier_completion_poll_reader"] = (
+                    "exec_stdout"
+                )
             if isinstance(trace, dict):
                 trace["benchflow_verifier_completion_poll_enabled"] = True
+                trace["benchflow_verifier_completion_poll_reader"] = prerequisites[
+                    "benchflow_verifier_completion_poll_reader"
+                ]
 
             try:
                 return await run_container_command_with_exit_status(
@@ -3664,6 +3690,7 @@ def install_benchflow_verifier_prep_timeout_override(
                     timeout_sec=completion_timeout,
                     exec_args=call_args,
                     exec_kwargs=call_kwargs,
+                    status_reader_fn=status_reader_fn,
                 )
             except asyncio.TimeoutError:
                 prerequisites[

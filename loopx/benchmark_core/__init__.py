@@ -31,6 +31,7 @@ from .artifacts import (
 )
 from .container_exec import (
     parse_container_exit_status,
+    read_container_file_via_compose_copy,
     run_container_command_with_exit_status,
     wrap_container_command_with_exit_status,
 )
@@ -191,6 +192,7 @@ __all__ = [
     "PreflightResult",
     "RoundReward",
     "RunHandle",
+    "read_container_file_via_compose_copy",
     "run_container_command_with_exit_status",
     "RUN_PERMISSION_POLICY_SCHEMA_VERSION",
     "RUN_PERMISSION_QUOTA_PROJECTION_SCHEMA_VERSION",
