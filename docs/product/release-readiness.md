@@ -180,6 +180,13 @@ path, and canary route rather than as a user-facing release baseline.
   direct-install doctor behavior, clarifies Explore's measurable-metric fit,
   and closes the todo CLI ownership-budget regression (#1721, #1725, #1727-#1730,
   #1735, #1743, #1752, #1774).
+- `v0.1.16` on 2026-07-10: archive-install provenance hotfix at the matching
+  `v0.1.16` tag. This release isolates release-manifest generation from the
+  caller's working directory and inherited Python path, so running an update
+  from an older LoopX checkout cannot stamp that checkout's package version
+  into the new stable snapshot. The no-clone release gate now covers this
+  stale-checkout invocation directly (#1776). No product capability or state
+  migration changes in this hotfix.
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.
