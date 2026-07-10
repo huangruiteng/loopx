@@ -5,6 +5,7 @@ import re
 
 _SETUP_ATTRIBUTION_FINGERPRINT_PATTERNS = {
     "skillsbench_docker_api_version_mismatch": "docker_api_version_mismatch",
+    "skillsbench_docker_compose_plugin_unavailable": "docker_compose_plugin_unavailable",
     "skillsbench_docker_daemon_unavailable": "docker_daemon_unavailable",
     "skillsbench_docker_compose_port_conflict": "port_conflict",
     "skillsbench_docker_compose_pip_bootstrap_failure": "pip_bootstrap_failure",
@@ -14,6 +15,7 @@ _SETUP_ATTRIBUTION_FINGERPRINT_PATTERNS = {
 }
 _FINGERPRINT_SETUP_ATTRIBUTIONS = (
     ("docker_api_version_mismatch", "skillsbench_docker_api_version_mismatch"),
+    ("docker_compose_plugin_unavailable", "skillsbench_docker_compose_plugin_unavailable"),
     ("docker_daemon_unavailable", "skillsbench_docker_daemon_unavailable"),
     ("port_conflict", "skillsbench_docker_compose_port_conflict"),
     ("pip_bootstrap_failure", "skillsbench_docker_compose_pip_bootstrap_failure"),
@@ -248,6 +250,9 @@ def skillsbench_runner_error_fingerprint(error_text: str) -> dict[str, object]:
         "docker_api_version_mismatch": (
             r"client version \d+(?:\.\d+)+ is too new.*"
             r"maximum supported api version is \d+(?:\.\d+)+"
+        ),
+        "docker_compose_plugin_unavailable": (
+            r"unknown flag:\s*--project-name[\s\S]*usage:\s+docker"
         ),
         "docker_daemon_unavailable": (
             r"cannot connect to the docker daemon|is the docker daemon running|"

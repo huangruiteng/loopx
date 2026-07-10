@@ -1654,6 +1654,13 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
             "skillsbench_environment_setup_error",
         ]
     if "docker compose command failed" in text:
+        if "unknown flag: --project-name" in text and "usage:  docker" in text:
+            label = "skillsbench_docker_compose_plugin_unavailable"
+            return label, label, [
+                label,
+                "skillsbench_docker_compose_setup_failure",
+                "skillsbench_environment_setup_error",
+            ]
         if (
             "client version" in text
             and "is too new" in text

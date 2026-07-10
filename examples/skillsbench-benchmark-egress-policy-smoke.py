@@ -276,6 +276,48 @@ def test_public_launcher_applies_ssh_options_to_remote_discovery() -> None:
         assert "DOCKER_API_VERSION=1.43" in proc.stdout, proc.stdout
 
 
+def test_proxy_runtime_preserves_docker_cli_plugins() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-docker-config-") as tmp:
+        root = Path(tmp)
+        source_config = root / "source"
+        source_plugins = source_config / "cli-plugins"
+        source_plugins.mkdir(parents=True)
+        (source_plugins / "docker-compose").write_text("fixture\n", encoding="utf-8")
+        (source_config / "config.json").write_text("{}\n", encoding="utf-8")
+        previous = os.environ.get("DOCKER_CONFIG")
+        os.environ["DOCKER_CONFIG"] = str(source_config)
+        plan: dict[str, object] = {}
+        active_config: Path | None = None
+        try:
+            with proxy_runtime.proxy_runtime_env_applied(
+                {
+                    "LOOPX_SKILLSBENCH_EGRESS_PROXY": (
+                        "http://benchmark-proxy.example.invalid:18080"
+                    ),
+                    "NO_PROXY": "localhost",
+                },
+                plan=plan,
+            ):
+                active_config = Path(os.environ["DOCKER_CONFIG"])
+                linked_plugins = active_config / "cli-plugins"
+                assert linked_plugins.is_symlink(), linked_plugins
+                assert linked_plugins.resolve() == source_plugins.resolve()
+                prerequisites = plan["runner_prerequisites"]
+                assert isinstance(prerequisites, dict)
+                assert prerequisites[
+                    "benchmark_egress_proxy_docker_cli_plugins_preserved"
+                ] is True
+                assert prerequisites[
+                    "benchmark_egress_proxy_docker_cli_plugin_paths_recorded"
+                ] is False
+        finally:
+            if previous is None:
+                os.environ.pop("DOCKER_CONFIG", None)
+            else:
+                os.environ["DOCKER_CONFIG"] = previous
+        assert active_config is not None and not active_config.exists()
+
+
 def test_verifier_proxy_patch_is_required_only_for_existing_verifier() -> None:
     proxy_env = {
         "LOOPX_SKILLSBENCH_EGRESS_PROXY": "http://benchmark-proxy.example.invalid:18080",
@@ -397,6 +439,7 @@ if __name__ == "__main__":
     test_public_launcher_uses_container_reachable_benchmark_proxy()
     test_public_launcher_batches_three_cases_with_closeout_sync()
     test_public_launcher_applies_ssh_options_to_remote_discovery()
+    test_proxy_runtime_preserves_docker_cli_plugins()
     test_verifier_proxy_patch_is_required_only_for_existing_verifier()
     test_verifier_proxy_patch_failure_blocks_task_staging()
     test_proxy_runtime_prewarms_external_base_images_without_public_refs()

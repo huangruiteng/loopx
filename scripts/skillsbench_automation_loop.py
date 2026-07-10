@@ -2721,6 +2721,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchmark_egress_proxy_docker_config_injected",
         "benchmark_egress_proxy_docker_config_path_recorded",
         "benchmark_egress_proxy_docker_config_raw_proxy_recorded",
+        "benchmark_egress_proxy_docker_cli_plugins_preserved",
+        "benchmark_egress_proxy_docker_cli_plugin_paths_recorded",
         "host_local_acp_codex_exec_preflight_response_marker_observed",
         "host_local_acp_codex_exec_preflight_bridge_action_required",
         "host_local_acp_codex_exec_preflight_bridge_action_observed",
