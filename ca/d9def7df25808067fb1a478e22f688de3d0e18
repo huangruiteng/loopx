@@ -1,0 +1,23 @@
+examples/skillsbench-failure-attribution-smoke.py
+  s_9a5a2bd944fdcb::t_32651c1ea04d1f 21-23,181-226,236-237
+scripts/skillsbench_automation_loop.py
+  s_9a5a2bd944fdcb::t_c0c585e9131787 4667,4676-4696
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cad9def7df25808067fb1a478e22f688de3d0e18",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
