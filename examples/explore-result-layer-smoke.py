@@ -67,6 +67,7 @@ def build_sample_events(goal_id: str) -> list[dict[str, object]]:
             node_id="node_root",
             node_kind="area",
             status="exploring",
+            tags=["portfolio"],
             recorded_at="2026-07-06T01:00:00Z",
         ),
         result_log.build_explore_node_event(
@@ -87,6 +88,7 @@ def build_sample_events(goal_id: str) -> list[dict[str, object]]:
             status="blocked",
             blocked_reason="vendor licence terms unclear",
             parent_id="node_root",
+            tags=["priority"],
             recorded_at="2026-07-06T02:00:00Z",
         ),
         result_log.build_explore_edge_event(
@@ -147,6 +149,39 @@ def check_result_log_contract() -> dict[str, object]:
         assert mermaid.startswith("flowchart TD"), mermaid
         assert "node_kcg" in mermaid and ":::blocked" in mermaid, mermaid
         assert "-->|subtopic_of|" in mermaid, mermaid
+
+        focused = result_log.build_explore_graph_view(
+            projection["nodes"],
+            projection["edges"],
+            statuses=["blocked"],
+            tags=["priority"],
+        )
+        assert focused["filter"] == {
+            "active": True,
+            "statuses": ["blocked"],
+            "tags": ["priority"],
+            "include_ancestors": True,
+            "semantics": "status_and_any_tag",
+        }, focused
+        assert [node["node_id"] for node in focused["nodes"]] == [
+            "node_root",
+            "node_kcg",
+        ], focused
+        assert focused["graph_counts"] == {
+            "node_count": 2,
+            "edge_count": 1,
+            "matched_node_count": 1,
+            "context_node_count": 1,
+        }, focused
+
+        leaf_only = result_log.build_explore_graph_view(
+            projection["nodes"],
+            projection["edges"],
+            tags=["priority"],
+            include_ancestors=False,
+        )
+        assert [node["node_id"] for node in leaf_only["nodes"]] == ["node_kcg"], leaf_only
+        assert leaf_only["edges"] == [], leaf_only
 
     # Public-safety gates at record time.
     try:
@@ -866,6 +901,8 @@ def check_cli_surface() -> None:
             "node_cli_root",
             "--status",
             "exploring",
+            "--tag",
+            "executive",
         )
         assert node["ok"] is True and node["result_id"] == "node_cli_root", node
         finding = run_cli(
@@ -886,6 +923,21 @@ def check_cli_surface() -> None:
         assert summary["counts"]["finding_count"] == 1, summary
         graph = run_cli("explore", "graph", "--goal-id", goal_id)
         assert str(graph["mermaid"]).startswith("flowchart TD"), graph
+        focused_graph = run_cli(
+            "explore",
+            "graph",
+            "--goal-id",
+            goal_id,
+            "--status",
+            "exploring",
+            "--tag",
+            "executive",
+        )
+        assert focused_graph["filter"]["active"] is True, focused_graph
+        assert focused_graph["graph_counts"]["matched_node_count"] == 1, focused_graph
+        assert [item["node_id"] for item in focused_graph["nodes"]] == [
+            "node_cli_root"
+        ], focused_graph
         branch_plan = run_cli(
             "explore",
             "todo-branch-plan",
