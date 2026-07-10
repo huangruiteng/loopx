@@ -1,0 +1,63 @@
+examples/issue-fix-reviewer-recommendation-smoke.py
+  s_32e2a9a204a8e4::t_703d612c8b96f9 1-245
+examples/issue-fix-capability-guide-smoke.py
+  s_9a5a2bd944fdcb::t_98f105160e9b3e 1-143
+docs/capabilities/issue-fix/README.md
+  s_e3f612788718c1::t_edb99c8441dd2f 3-60,62,64,66-100,102,104-108,110,112-116,118-146,148-158,161-167,171-236,238-411,414-416,419-429,433-440,442-451,454-462,465-466,469,473-481,483,485-486,494-495,497,502,504-513
+docs/capabilities/README.md
+  s_32e2a9a204a8e4::t_0dec073770dcb7 9-11
+loopx/canary/planner.py
+  s_32e2a9a204a8e4::t_1e5372b48e0bb3 901-908,910
+  s_32e2a9a204a8e4::t_9ef6632adfa8b7 898-900
+  s_32e2a9a204a8e4::t_2225847281773a 909
+  s_32e2a9a204a8e4::t_1d6ece26e81a8b 911-912
+  s_32e2a9a204a8e4::t_e0560e58eaeda2 882-897
+docs/capabilities/issue-fix/README.zh-CN.md
+  s_e3f612788718c1::t_db7dcb39dc6915 1-469
+loopx/capabilities/issue_fix/cli.py
+  s_9a5a2bd944fdcb::t_7dce9eee8009ae 30-33,311-388,625-638,673-674,689-690
+docs/capabilities/issue-fix/protocols/issue-fix-reviewer-recommendation-v0.md
+  s_32e2a9a204a8e4::t_0907107d72ef17 1-183
+README.zh-CN.md
+  s_32e2a9a204a8e4::t_81b6945173b805 397
+README.md
+  s_32e2a9a204a8e4::t_6512ff6da0c1f4 471
+loopx/capabilities/issue_fix/reviewer_recommendation.py
+  s_32e2a9a204a8e4::t_befccc6a231a87 1-547
+examples/canary/catalog-planner-smoke.py
+  s_32e2a9a204a8e4::t_477222306298ad 504,518-525
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9ab3bcdc6f964775f8156ae13af671383c40238c",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
