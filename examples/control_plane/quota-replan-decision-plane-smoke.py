@@ -850,7 +850,7 @@ def assert_goal_frontier_context_helper_matches_quota_payload() -> None:
     assert context["acceptance_gaps"] == guard["goal_frontier_projection"]["acceptance_gaps"], guard
 
 
-def assert_open_agent_vision_beats_watch_lane_continuation_ack() -> None:
+def assert_open_agent_vision_uses_watch_lane_continuation_ack() -> None:
     guard = build_quota_should_run(
         status_payload(
             [monitor_item()],
@@ -863,21 +863,66 @@ def assert_open_agent_vision_beats_watch_lane_continuation_ack() -> None:
         goal_id=GOAL_ID,
         agent_id=SIDE_AGENT,
     )
-    assert guard["decision"] == "autonomous_replan_required", guard
-    assert guard["effective_action"] == "autonomous_replan_required", guard
+    assert guard["decision"] == "skip", guard
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
     gaps = guard["goal_frontier_projection"]["acceptance_gaps"]
     assert len(gaps) == 1, guard
     assert gaps[0]["kind"] == "vision_acceptance_gap", guard
     assert gaps[0]["acceptance_summary"].startswith("A visible successor"), guard
+    assert gaps[0]["replan_trigger_source"] == "implicit_open_acceptance", guard
     assert "acceptance evidence still required" in (
         gaps[0]["replan_trigger_summary"]
     ), guard
-    obligation = guard["autonomous_replan_obligation"]
-    assert obligation["triggers"][0]["kind"] == "vision_acceptance_gap", guard
+    assert guard["goal_frontier_projection"]["replan_required"] is False, guard
+    assert guard.get("autonomous_replan_obligation") is None, guard
     assert guard["vision_continuation_audit"]["required"] is True, guard
-    assert guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is False, (
+    assert guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is True, (
         guard
     )
+
+
+def assert_due_monitor_runs_under_watched_open_agent_vision() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            [monitor_item(next_due_at="2000-01-01T00:00:00+00:00")],
+            replan_obligation=None,
+            latest_runs=[
+                watch_lane_continuation_ack_run(),
+                agent_vision_acceptance_only_run(),
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["decision"] == "run", guard
+    assert guard["effective_action"] == "normal_run", guard
+    lane = guard["work_lane_contract"]
+    assert lane["obligation"] == "attempt_due_monitor", guard
+    assert lane["selected_todo_id"] == "todo_monitor_wait", guard
+    assert guard["goal_frontier_projection"]["replan_required"] is False, guard
+    assert guard.get("autonomous_replan_obligation") is None, guard
+    assert guard["vision_continuation_audit"]["required"] is True, guard
+
+
+def assert_non_watch_replan_ack_does_not_suppress_open_agent_vision() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            [monitor_item()],
+            replan_obligation=None,
+            latest_runs=[
+                watch_lane_continuation_ack_run(
+                    delta_kinds=["runnable_todo_set"]
+                ),
+                agent_vision_acceptance_only_run(),
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    obligation = guard["autonomous_replan_obligation"]
+    assert obligation["triggers"][0]["kind"] == "vision_acceptance_gap", guard
 
 
 def assert_open_agent_vision_with_runnable_frontier_uses_neutral_gap_trigger() -> None:
@@ -1342,7 +1387,9 @@ def main() -> None:
     assert_closed_agent_vision_allows_bounded_monitor_wait()
     assert_custom_agent_vision_state_remains_open()
     assert_goal_frontier_context_helper_matches_quota_payload()
-    assert_open_agent_vision_beats_watch_lane_continuation_ack()
+    assert_open_agent_vision_uses_watch_lane_continuation_ack()
+    assert_due_monitor_runs_under_watched_open_agent_vision()
+    assert_non_watch_replan_ack_does_not_suppress_open_agent_vision()
     assert_open_agent_vision_with_runnable_frontier_uses_neutral_gap_trigger()
     assert_retired_agent_vision_allows_bounded_monitor_wait()
     assert_missing_vision_checkpoint_derives_agent_scoped_replan()
