@@ -343,7 +343,12 @@ def main(argv: list[str] | None = None) -> int:
         return handle_content_ops_command(args, output_format=output_format, print_payload=print_payload)
 
     if args.command == "issue-fix":
-        return handle_issue_fix_command(args, output_format=output_format, print_payload=print_payload)
+        return handle_issue_fix_command(
+            args,
+            registry_path=registry_path,
+            output_format=output_format,
+            print_payload=print_payload,
+        )
 
     if args.command == "value-connectors":
         return handle_value_connector_command(args, output_format=output_format, print_payload=print_payload)

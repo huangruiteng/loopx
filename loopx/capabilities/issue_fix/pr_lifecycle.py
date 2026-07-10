@@ -33,7 +33,7 @@ PENDING_CHECK_STATES = {
     "WAITING",
 }
 PASSING_CHECK_STATES = {"NEUTRAL", "SKIPPED", "SUCCESS"}
-BRANCH_BLOCKED_MERGE_STATES = {"BEHIND", "BLOCKED", "DIRTY", "UNKNOWN"}
+BRANCH_REPLAN_MERGE_STATES = {"BEHIND", "DIRTY"}
 
 
 def _upper_label(value: Any, default: str = "UNKNOWN") -> str:
@@ -266,13 +266,13 @@ def _decide_transition(observation: Mapping[str, Any]) -> dict[str, Any]:
             "terminal_state_precedence": False,
             "material_change": True,
         }
-    if merge_state in BRANCH_BLOCKED_MERGE_STATES:
+    if merge_state in BRANCH_REPLAN_MERGE_STATES:
         return _transition_preview(
             decision="runnable_successor",
             action_kind="issue_fix_branch_or_merge_blocker_replan",
             priority="P1",
             task_class="advancement_task",
-            reason="PR merge state is blocked or stale; decide rebase, blocker note, or no-follow-up.",
+            reason="PR branch is stale or conflicted; decide rebase, blocker note, or no-follow-up.",
             depends_on=["issue_fix_pr_lifecycle_monitor"],
         ) | {
             "terminal_state_precedence": False,

@@ -139,6 +139,37 @@ def main() -> int:
     assert requested["transition"]["decision"] == "runnable_successor", requested
     assert requested["transition"]["action_kind"] == "issue_fix_review_changes_replan"
 
+    blocked_pending = build_issue_fix_pr_lifecycle_monitor_packet(
+        url="https://github.com/huangruiteng/loopx/pull/1715",
+        provider_payload={
+            "state": "OPEN",
+            "reviewDecision": "REVIEW_REQUIRED",
+            "mergeStateStatus": "BLOCKED",
+            "statusCheckRollup": [{"name": "lint", "status": "IN_PROGRESS"}],
+        },
+    )
+    assert_packet_shape(blocked_pending)
+    assert blocked_pending["transition"]["decision"] == "monitor_continuation"
+    assert blocked_pending["transition"]["action_kind"] == (
+        "issue_fix_pr_checks_pending_monitor"
+    )
+    assert blocked_pending["transition"]["material_change"] is False
+
+    stale = build_issue_fix_pr_lifecycle_monitor_packet(
+        url="https://github.com/huangruiteng/loopx/pull/1715",
+        provider_payload={
+            "state": "OPEN",
+            "reviewDecision": "REVIEW_REQUIRED",
+            "mergeStateStatus": "BEHIND",
+            "statusCheckRollup": [{"name": "lint", "conclusion": "SUCCESS"}],
+        },
+    )
+    assert_packet_shape(stale)
+    assert stale["transition"]["decision"] == "runnable_successor"
+    assert stale["transition"]["action_kind"] == (
+        "issue_fix_branch_or_merge_blocker_replan"
+    )
+
     quiet = build_issue_fix_pr_lifecycle_monitor_packet(
         url="https://github.com/huangruiteng/loopx/pull/1715",
         provider_payload={

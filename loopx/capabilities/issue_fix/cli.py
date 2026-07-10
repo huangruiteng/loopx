@@ -7,6 +7,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from ...agent_registry import load_goal_from_registry
+from ...boundary_authority import checkpointed_boundary_authority_summary
 from ...domain_packs.issue_fix import (
     default_issue_fix_domain_state_ledger_path,
     default_issue_fix_feasibility_ledger_path,
@@ -49,6 +51,30 @@ def _load_json_object(path_text: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"{path_text} must contain a JSON object")
     return payload
+
+
+def _goal_boundary_authority_projection(
+    *,
+    registry_path: Path | None,
+    goal_id: str | None,
+) -> tuple[list[str], bool]:
+    if registry_path is None or not goal_id:
+        return [], False
+    goal = load_goal_from_registry(registry_path, goal_id)
+    if not isinstance(goal, dict):
+        return [], False
+    coordination = (
+        goal.get("coordination")
+        if isinstance(goal.get("coordination"), dict)
+        else {}
+    )
+    summary = checkpointed_boundary_authority_summary(coordination)
+    scopes = (
+        list(summary.get("active_write_scope") or [])
+        if isinstance(summary, dict)
+        else []
+    )
+    return [str(scope) for scope in scopes], True
 
 
 def register_issue_fix_commands(
@@ -435,6 +461,7 @@ def register_issue_fix_commands(
 def handle_issue_fix_command(
     args: argparse.Namespace,
     *,
+    registry_path: Path | None = None,
     output_format: FormatSelector,
     print_payload: PrintPayload,
 ) -> int:
@@ -466,6 +493,12 @@ def handle_issue_fix_command(
             )
             renderer = render_issue_fix_workflow_plan_markdown
         elif args.issue_fix_command == "feasibility":
+            boundary_authority_scopes, boundary_authority_resolved = (
+                _goal_boundary_authority_projection(
+                    registry_path=registry_path,
+                    goal_id=args.goal_id,
+                )
+            )
             payload = build_issue_fix_feasibility_packet(
                 repo=args.repo,
                 issue_ref=args.issue_ref,
@@ -480,6 +513,8 @@ def handle_issue_fix_command(
                     if args.repository_context_json
                     else None
                 ),
+                boundary_authority_scopes=boundary_authority_scopes,
+                boundary_authority_resolved=boundary_authority_resolved,
                 generated_at=args.generated_at,
             )
             should_write_domain_state = bool(

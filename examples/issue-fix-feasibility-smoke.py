@@ -18,6 +18,9 @@ from loopx.capabilities.issue_fix.feasibility import (  # noqa: E402
     ISSUE_FIX_FEASIBILITY_PACKET_SCHEMA_VERSION,
     build_issue_fix_feasibility_packet,
 )
+from loopx.boundary_authority import (  # noqa: E402
+    build_checkpointed_boundary_authority_entry,
+)
 
 
 URL = "https://github.com/owner/repo/issues/123"
@@ -58,6 +61,13 @@ def main() -> int:
     assert fix["transition"]["projected_todo"]["action_kind"] == (
         "issue_fix_branch_validation"
     ), fix
+    default_gate = fix["transition"]["external_write_gate"]
+    assert default_gate["authorized_before"] == [], default_gate
+    assert default_gate["blocked_before"] == [
+        "external_pr_creation",
+        "merge",
+        "publish",
+    ], default_gate
     assert_boundary(fix)
 
     planned = build_issue_fix_feasibility_packet(
@@ -110,10 +120,35 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="loopx-issue-fix-feasibility-") as tmpdir:
         project = Path(tmpdir)
+        registry = project / ".loopx" / "registry.json"
+        registry.parent.mkdir(parents=True, exist_ok=True)
+        authority = build_checkpointed_boundary_authority_entry(
+            write_scopes=["write", "publish"],
+            source="operator approval fixture",
+            decision_id="public-fix-pr-pilot",
+            recorded_at="2026-07-10T00:00:00+00:00",
+        )
+        registry.write_text(
+            json.dumps(
+                {
+                    "goals": [
+                        {
+                            "id": "pilot-goal",
+                            "coordination": {
+                                "checkpointed_boundary_authority": [authority]
+                            },
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
         command = [
             sys.executable,
             "-m",
             "loopx.cli",
+            "--registry",
+            str(registry),
             "--format",
             "json",
             "issue-fix",
@@ -143,6 +178,15 @@ def main() -> int:
         )
         first_packet = json.loads(first.stdout)
         assert first_packet["domain_state_projection"]["write_performed"] is True
+        gate = first_packet["transition"]["external_write_gate"]
+        assert gate["authority_projection_resolved"] is True, gate
+        assert gate["authority_source"] == "goal_checkpointed_boundary_authority", gate
+        assert gate["authorized_before"] == [
+            "external_pr_creation",
+            "publish",
+        ], gate
+        assert gate["blocked_before"] == ["merge"], gate
+        assert gate["satisfied"] is False, gate
         ledger = (
             project
             / ".loopx"

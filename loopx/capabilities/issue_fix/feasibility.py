@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ...control_plane.runtime.public_safety import public_safe_compact_text
@@ -20,6 +20,12 @@ REPRODUCTION_STATES = {"confirmed", "planned", "missing", "blocked"}
 SCOPE_CLASSES = {"bounded", "uncertain", "oversized"}
 COMMENT_VALUES = {"none", "clarification", "diagnosis"}
 RESOLUTION_ROUTES = {"fix_pr", "comment_only", "triage_only"}
+EXTERNAL_ACTION_AUTHORITY_SCOPE_ALIASES = {
+    "external_pr_creation": {"external_pr_creation", "publish"},
+    "external_issue_comment": {"external_issue_comment", "publish"},
+    "merge": {"merge"},
+    "publish": {"publish"},
+}
 
 
 def _safe_label(value: str | None, *, field: str, required: bool = False) -> str | None:
@@ -70,6 +76,8 @@ def _project_transition(
     repo: str,
     issue_ref: str,
     reproduction_status: str,
+    boundary_authority_scopes: Sequence[str],
+    boundary_authority_resolved: bool,
 ) -> dict[str, Any]:
     base = {
         "schema_version": "issue_fix_feasibility_transition_v0",
@@ -99,10 +107,11 @@ def _project_transition(
                 "would_write": False,
                 "requires_execute_flag": True,
             },
-            "external_write_gate": {
-                "required_before": ["external_pr_creation", "merge", "publish"],
-                "satisfied": False,
-            },
+            "external_write_gate": _project_external_write_gate(
+                required_before=["external_pr_creation", "merge", "publish"],
+                boundary_authority_scopes=boundary_authority_scopes,
+                boundary_authority_resolved=boundary_authority_resolved,
+            ),
             "no_followup": False,
         }
     if route == "comment_only":
@@ -121,10 +130,11 @@ def _project_transition(
                 "would_write": False,
                 "requires_execute_flag": True,
             },
-            "external_write_gate": {
-                "required_before": ["external_issue_comment"],
-                "satisfied": False,
-            },
+            "external_write_gate": _project_external_write_gate(
+                required_before=["external_issue_comment"],
+                boundary_authority_scopes=boundary_authority_scopes,
+                boundary_authority_resolved=boundary_authority_resolved,
+            ),
             "no_followup": False,
         }
     return base | {
@@ -132,6 +142,40 @@ def _project_transition(
         "projected_todo": None,
         "external_write_gate": None,
         "no_followup": True,
+    }
+
+
+def _project_external_write_gate(
+    *,
+    required_before: Sequence[str],
+    boundary_authority_scopes: Sequence[str],
+    boundary_authority_resolved: bool,
+) -> dict[str, Any]:
+    active_scopes = {
+        str(scope).strip()
+        for scope in boundary_authority_scopes
+        if str(scope).strip()
+    }
+    required = [str(action) for action in required_before]
+    authorized = [
+        action
+        for action in required
+        if EXTERNAL_ACTION_AUTHORITY_SCOPE_ALIASES.get(action, {action})
+        & active_scopes
+    ]
+    blocked = [action for action in required if action not in authorized]
+    return {
+        "schema_version": "issue_fix_external_write_gate_v0",
+        "required_before": required,
+        "authorized_before": authorized,
+        "blocked_before": blocked,
+        "satisfied": not blocked,
+        "authority_projection_resolved": boundary_authority_resolved,
+        "authority_source": (
+            "goal_checkpointed_boundary_authority"
+            if boundary_authority_resolved
+            else "not_available"
+        ),
     }
 
 
@@ -172,6 +216,8 @@ def build_issue_fix_feasibility_packet(
     validation_label: str | None = None,
     comment_value: str = "none",
     repository_context_input: Mapping[str, Any] | None = None,
+    boundary_authority_scopes: Sequence[str] = (),
+    boundary_authority_resolved: bool = False,
     generated_at: str | None = "2026-06-23T00:00:00Z",
 ) -> dict[str, Any]:
     """Select one issue-fix route from compact, public-safe agent observations."""
@@ -237,6 +283,8 @@ def build_issue_fix_feasibility_packet(
         repo=str(reference["repo"]),
         issue_ref=str(reference["issue_ref"]),
         reproduction_status=reproduction_status,
+        boundary_authority_scopes=boundary_authority_scopes,
+        boundary_authority_resolved=boundary_authority_resolved,
     )
     fingerprint = hashlib.sha256(
         json.dumps(
@@ -353,6 +401,24 @@ def validate_issue_fix_feasibility_packet(packet: Mapping[str, Any]) -> dict[str
         errors.append("comment_only requires a useful comment value")
     if route == "triage_only" and transition.get("no_followup") is not True:
         errors.append("triage_only must project no_followup")
+    gate = transition.get("external_write_gate")
+    if route in {"fix_pr", "comment_only"}:
+        if not isinstance(gate, Mapping):
+            errors.append("runnable external-write route requires a gate projection")
+        else:
+            required = list(gate.get("required_before") or [])
+            authorized = list(gate.get("authorized_before") or [])
+            blocked = list(gate.get("blocked_before") or [])
+            if (
+                any(
+                    (action in authorized) == (action in blocked)
+                    for action in required
+                )
+                or any(action not in required for action in authorized + blocked)
+            ):
+                errors.append("external-write gate must partition required actions")
+            if gate.get("satisfied") is not (not blocked):
+                errors.append("external-write gate satisfied must match blocked actions")
 
     return {
         "ok": not errors,
