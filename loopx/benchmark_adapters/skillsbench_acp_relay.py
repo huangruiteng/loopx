@@ -147,6 +147,17 @@ def _prompt_requires_bridge_first_action(prompt: str) -> bool:
     return any(marker in lowered for marker in required_markers)
 
 
+def _codex_cli_goal_watchdog_expired(
+    *,
+    deadline: float,
+    now: float,
+    turn_active: bool,
+) -> bool:
+    """Keep bounded watchdogs from interrupting an active Codex turn."""
+
+    return bool(deadline and now >= deadline and not turn_active)
+
+
 def _is_bridge_action_preflight_prompt(prompt: str) -> bool:
     text = prompt or ""
     return (
@@ -1416,8 +1427,11 @@ class SkillsBenchLocalAcpRelay:
                         )
                     if (
                         not first_action_seen
-                        and first_action_deadline
-                        and now >= first_action_deadline
+                        and _codex_cli_goal_watchdog_expired(
+                            deadline=first_action_deadline,
+                            now=now,
+                            turn_active=turn_active,
+                        )
                     ):
                         tmux_kill_session(tmux_name)
                         if bridge_summary_path is not None:
@@ -1443,8 +1457,11 @@ class SkillsBenchLocalAcpRelay:
                     if (
                         meaningful_progress_required
                         and not meaningful_progress_seen
-                        and meaningful_progress_deadline
-                        and now >= meaningful_progress_deadline
+                        and _codex_cli_goal_watchdog_expired(
+                            deadline=meaningful_progress_deadline,
+                            now=now,
+                            turn_active=turn_active,
+                        )
                     ):
                         tmux_kill_session(tmux_name)
                         if bridge_summary_path is not None:

@@ -1376,6 +1376,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     from loopx.benchmark_adapters.skillsbench_acp_relay import (
         CodexExecConfig,
         SkillsBenchLocalAcpRelay,
+        _codex_cli_goal_watchdog_expired,
         _prompt_requires_bridge_first_action,
         _prompt_requires_meaningful_bridge_progress,
     )
@@ -1406,6 +1407,30 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
             route="codex-cli-goal-baseline",
         )
         is True
+    )
+    assert (
+        _codex_cli_goal_watchdog_expired(
+            deadline=100.0,
+            now=101.0,
+            turn_active=True,
+        )
+        is False
+    )
+    assert (
+        _codex_cli_goal_watchdog_expired(
+            deadline=100.0,
+            now=101.0,
+            turn_active=False,
+        )
+        is True
+    )
+    assert (
+        _codex_cli_goal_watchdog_expired(
+            deadline=0.0,
+            now=101.0,
+            turn_active=False,
+        )
+        is False
     )
     for relative in (
         "loopx/benchmark_adapters/skillsbench_acp_relay.py",
@@ -1444,6 +1469,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "task_output_quiet_timeout_sec = max(" in source
     assert "_bridge_summary_has_successful_task_operation(" in source
     assert "turn_active = codex_cli_tui_turn_active(capture)" in source
+    assert source.count("_codex_cli_goal_watchdog_expired(") == 3
     assert "and not turn_active" in source
     assert "now - last_task_output_activity_at" in source
     assert "stage=\"task_output_quiet_timeout\"" in source
