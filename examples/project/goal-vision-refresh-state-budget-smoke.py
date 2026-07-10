@@ -273,6 +273,40 @@ def main() -> int:
         assert inline["vision_checkpoint"]["agent_id"] == AGENT_ID, inline
         assert inline["vision_checkpoint"]["decision"] == "patched", inline
 
+        closed_alias = payload(
+            run_cli(
+                registry_path,
+                runtime,
+                inline_vision_args=[
+                    "--vision-state",
+                    "vision_satisfied",
+                    "--vision-summary",
+                    "Close the bounded research route after authoritative validation.",
+                ],
+                check=True,
+            )
+        )
+        assert closed_alias["agent_vision"]["state"] == "vision_closed", (
+            closed_alias
+        )
+
+        invalid_state_result = run_cli(
+            registry_path,
+            runtime,
+            inline_vision_args=[
+                "--vision-state",
+                "vision is done",
+                "--vision-summary",
+                "Invalid lifecycle prose should fail.",
+            ],
+            check=False,
+        )
+        assert invalid_state_result.returncode == 1, invalid_state_result
+        invalid_state = payload(invalid_state_result)
+        assert "lower snake_case lifecycle token" in invalid_state["error"], (
+            invalid_state
+        )
+
         unchanged = payload(
             run_cli(
                 registry_path,

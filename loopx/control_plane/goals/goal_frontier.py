@@ -16,6 +16,7 @@ from ..work_items.autonomous_replan_obligation import (
     build_autonomous_replan_obligation_payload,
 )
 from ..work_items.repair_delta import repair_delta_kinds_have_frontier_delta
+from .goal_vision_state import goal_vision_state_is_closed
 
 
 GOAL_FRONTIER_PROJECTION_SCHEMA_VERSION = "goal_frontier_projection_v0"
@@ -34,16 +35,6 @@ TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
 TODO_TASK_CLASS_MONITOR = "continuous_monitor"
 LONG_TODO_CHAIN_ADVANCEMENT_THRESHOLD = 15
 LONG_TODO_CHAIN_OPEN_THRESHOLD = 20
-AGENT_VISION_CLOSED_STATES = {
-    "closed",
-    "satisfied",
-    "vision_closed",
-    "retired",
-    "retired_or_superseded",
-    "superseded",
-    "no_followup",
-    "no-followup",
-}
 VISION_CHECKPOINT_SATISFIED_DECISIONS = {
     "patched",
     "retired_or_superseded",
@@ -384,8 +375,8 @@ def acceptance_gaps_from_agent_vision(
     if not isinstance(agent_vision, dict):
         return []
     patch = agent_vision.get("vision_patch") if isinstance(agent_vision.get("vision_patch"), dict) else {}
-    state = str(agent_vision.get("state") or "").strip().lower()
-    if state in AGENT_VISION_CLOSED_STATES:
+    state = str(agent_vision.get("state") or "").strip()
+    if goal_vision_state_is_closed(state):
         return []
     acceptance = _compact_projection_text(patch.get("acceptance_summary"), limit=420)
     trigger = _compact_projection_text(patch.get("replan_trigger_summary"), limit=240)

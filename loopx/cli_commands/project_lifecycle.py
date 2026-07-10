@@ -163,7 +163,12 @@ def register_project_lifecycle_commands(
     )
     refresh_state_parser.add_argument(
         "--vision-state",
-        help="Optional state for an inline goal_vision_replan_contract_v0 patch.",
+        help=(
+            "Optional lower snake_case lifecycle state for an inline "
+            "goal_vision_replan_contract_v0 patch. Closure aliases such as "
+            "satisfied and vision_satisfied normalize to vision_closed; "
+            "custom states remain open until explicitly closed."
+        ),
     )
     refresh_state_parser.add_argument(
         "--vision-summary",

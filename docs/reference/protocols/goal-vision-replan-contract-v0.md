@@ -77,6 +77,14 @@ the same `agent_id` as the refresh run. This keeps `research-executor`,
 `evaluator-promoter`, and other roles from overwriting or satisfying each
 other's active vision.
 
+`state` is a lower `snake_case` lifecycle token. Domain-specific states remain
+extensible and are treated as open. The write path canonicalizes closure aliases
+such as `closed`, `satisfied`, and `vision_satisfied` to `vision_closed`, and
+`closed_no_followup` to `no_followup`. Quota/status use the same centralized
+closure predicate when reading older persisted packets, so a legacy alias cannot
+silently reopen a satisfied vision. Prose or malformed state values fail at the
+write boundary with an actionable error.
+
 When a valid packet includes `replan_trigger_summary`, status/quota projects it
 as `goal_frontier_projection.acceptance_gaps[]`. If no runnable advancement
 frontier remains, that gap is evaluated before monitor quiet skip and can
@@ -212,6 +220,11 @@ stateDiagram-v2
 | `VisionPatchProposed` | The patch is ready to apply. | Budget check and local-state write correctness. |
 | `Superseded` | Another route replaces this packet. | `superseded_by` or successor id. |
 | `Retired` | The route is complete or intentionally closed. | Acceptance evidence or no-follow-up evidence. |
+
+The canonical stored close states are `vision_closed`, `retired`,
+`retired_or_superseded`, `superseded`, and `no_followup`. A state such as
+`completed_current_slice` intentionally remains open because completing one
+slice is not evidence that the per-agent vision acceptance is satisfied.
 
 ## Replan Triggers
 

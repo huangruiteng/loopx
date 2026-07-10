@@ -3,6 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from ...feedback import validate_public_safe_text
+from .goal_vision_state import (
+    GOAL_VISION_DEFAULT_STATE,
+    normalize_goal_vision_state,
+)
 
 
 GOAL_VISION_REPLAN_SCHEMA_VERSION = "goal_vision_replan_contract_v0"
@@ -158,10 +162,12 @@ def normalize_goal_vision_packet(
         raise ValueError("agent_vision requires agent_id from packet or --agent-id")
     validate_public_safe_text("agent_vision.agent_id", resolved_agent_id)
 
-    state = _bounded_public_text(
-        field="state",
-        value=packet.get("state") or "vision_patch_proposed",
-        limit=80,
+    state = normalize_goal_vision_state(
+        _bounded_public_text(
+            field="state",
+            value=packet.get("state") or GOAL_VISION_DEFAULT_STATE,
+            limit=80,
+        )
     )
     vision_patch: dict[str, str] = {}
     field_usage: dict[str, int] = {}
