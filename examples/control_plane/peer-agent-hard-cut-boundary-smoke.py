@@ -37,7 +37,8 @@ ALLOWED_LEGACY_PATHS = {
     REPO_ROOT / "docs" / "product" / "agent-profile-contract.md",
 }
 LEGACY_PATTERN = re.compile(
-    r"primary_agent|primary_review|side_agent|handoff_agent|agent_profile_v0|primary_checkout|"
+    r"\bprimary_agent\b|\bprimary_review\b|\bside_agent\b|\bhandoff_agent\b|"
+    r"\bagent_profile_v0\b|\bprimary_checkout\b|"
     r"\bprimary agent\b|\bside agent\b|\bside-agent\b|\bmain controller\b|"
     r"controller/sub-agent|controller-subagent|controller owns|"
     r'"role"\s*:\s*"(?:controller|subagent)"',
@@ -59,6 +60,18 @@ def candidate_files() -> list[Path]:
 
 
 def main() -> int:
+    for token in (
+        "primary_agent",
+        "primary_review",
+        "side_agent",
+        "handoff_agent",
+        "agent_profile_v0",
+        "primary_checkout",
+    ):
+        assert LEGACY_PATTERN.search(token), token
+    for domain_term in ("primary_reviewers", "primary_review_score"):
+        assert not LEGACY_PATTERN.search(domain_term), domain_term
+
     violations: list[str] = []
     for path in candidate_files():
         if path in ALLOWED_LEGACY_PATHS:
