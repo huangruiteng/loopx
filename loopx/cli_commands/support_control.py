@@ -132,7 +132,11 @@ def register_support_control_commands(
     backup_state_parser.add_argument(
         "--project",
         default=".",
-        help="Project root whose .loopx, .codex/goals, and .local/goals state should be included.",
+        help=(
+            "Current project root whose .loopx, .codex/goals, .claude/goals, and "
+            ".local/goals state is included alongside every project discovered from "
+            "the global registry."
+        ),
     )
     backup_state_parser.add_argument(
         "--output-dir",
@@ -151,6 +155,11 @@ def register_support_control_commands(
         "--no-skills",
         action="store_true",
         help="Exclude $CODEX_HOME/skills/loopx-* skill directories from the backup.",
+    )
+    backup_state_parser.add_argument(
+        "--current-project-only",
+        action="store_true",
+        help="Do not discover additional project state from the global registry.",
     )
     backup_state_parser.add_argument(
         "--execute",
@@ -361,6 +370,7 @@ def handle_support_control_command(
                 backup_id=args.backup_id,
                 include_automations=not bool(args.no_automations),
                 include_skills=not bool(args.no_skills),
+                include_registry_projects=not bool(args.current_project_only),
             )
             if args.execute:
                 payload = execute_state_backup_plan(payload)

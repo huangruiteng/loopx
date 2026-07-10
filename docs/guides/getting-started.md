@@ -136,11 +136,15 @@ Write the archive only when the preview looks right:
 loopx backup-state --project . --execute
 ```
 
-The backup is written under `~/.codex/loopx/backups` by default and captures the
-shared LoopX runtime root, this project's `.loopx`, `.codex/goals`, and
-`.local/goals` state, Codex App automations, and installed `loopx-*` skills
-when present. Treat the archive and manifest as private local recovery
-material; do not commit them or publish their contents.
+The backup is written under `~/.codex/loopx/backups` by default. It captures the
+shared LoopX runtime root, Codex App automations, installed `loopx-*` skills,
+the current project's state, and every reachable project's `.loopx`,
+`.codex/goals`, `.claude/goals`, `.local/goals`, registry-declared active state,
+and source registry discovered from the global registry. Missing or stale
+project routes remain visible in the manifest. Use `--current-project-only`
+only when a deliberately narrow archive is sufficient. Treat the archive and
+manifest as private local recovery material; do not commit them or publish
+their contents.
 
 ## Codex CLI TUI Setup
 
