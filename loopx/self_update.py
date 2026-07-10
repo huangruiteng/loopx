@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
+import re
 import shlex
 import subprocess
 from typing import Any
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 
 from .doctor import NO_CLONE_INSTALL_URL, collect_doctor
 
@@ -13,6 +16,10 @@ UPDATE_PLAN_SCHEMA_VERSION = "loopx_update_plan_v0"
 DEFAULT_UPDATE_REPO = "huangruiteng/loopx"
 DEFAULT_UPDATE_REF = "stable"
 ROLLBACK_PREVIOUS_ALIAS = "previous"
+SOURCE_VERSION_CHECK_SCHEMA_VERSION = "loopx_source_version_check_v0"
+SOURCE_VERSION_CHECK_TIMEOUT_SECONDS = 3
+SOURCE_VERSION_READ_LIMIT_BYTES = 64 * 1024
+_PACKAGE_VERSION_PATTERN = re.compile(r'^__version__\s*=\s*"([^"]+)"$', re.MULTILINE)
 
 
 def _source_config(
@@ -58,6 +65,77 @@ def _command_for_source(source: dict[str, Any]) -> str:
         'export PATH="$HOME/.local/bin:$PATH"\n'
         "loopx doctor"
     )
+
+
+def _source_version_check(source: dict[str, Any]) -> dict[str, Any]:
+    base = {
+        "schema_version": SOURCE_VERSION_CHECK_SCHEMA_VERSION,
+        "attempted": False,
+        "status": "skipped",
+        "version": None,
+        "version_tag": None,
+        "matches_current": None,
+        "source_url": None,
+        "reason": None,
+    }
+    if source.get("channel") == "github_archive_url_override":
+        return {
+            **base,
+            "reason": "custom archive URL is not assumed to match the configured GitHub repo/ref",
+        }
+
+    repo = str(source.get("repo") or "")
+    ref = str(source.get("ref") or "")
+    repo_parts = repo.split("/")
+    if len(repo_parts) != 2 or not all(
+        re.fullmatch(r"[A-Za-z0-9_.-]+", part) for part in repo_parts
+    ):
+        return {**base, "reason": "GitHub repo must use owner/name syntax"}
+    if not ref:
+        return {**base, "reason": "GitHub ref is missing"}
+
+    owner, name = repo_parts
+    source_url = (
+        "https://raw.githubusercontent.com/"
+        f"{quote(owner, safe='')}/{quote(name, safe='')}/{quote(ref, safe='')}/loopx/__init__.py"
+    )
+    request = Request(
+        source_url,
+        headers={"Accept": "text/plain", "User-Agent": "LoopX-update-check"},
+    )
+    try:
+        with urlopen(  # noqa: S310 - the host is fixed to raw.githubusercontent.com.
+            request,
+            timeout=SOURCE_VERSION_CHECK_TIMEOUT_SECONDS,
+        ) as response:
+            body = response.read(SOURCE_VERSION_READ_LIMIT_BYTES).decode("utf-8")
+    except Exception as exc:  # Remote comparison is advisory and must degrade offline.
+        return {
+            **base,
+            "attempted": True,
+            "status": "unavailable",
+            "source_url": source_url,
+            "reason": f"remote version check unavailable ({type(exc).__name__})",
+        }
+
+    match = _PACKAGE_VERSION_PATTERN.search(body)
+    if not match:
+        return {
+            **base,
+            "attempted": True,
+            "status": "unavailable",
+            "source_url": source_url,
+            "reason": "remote package version was not found",
+        }
+    version = match.group(1)
+    return {
+        **base,
+        "attempted": True,
+        "status": "available",
+        "version": version,
+        "version_tag": f"v{version}",
+        "source_url": source_url,
+    }
 
 
 def _release_root_from_doctor(doctor_payload: dict[str, Any]) -> str | None:
@@ -222,8 +300,45 @@ def build_update_plan(
     dry_run = not execute
     path = doctor.get("path") if isinstance(doctor.get("path"), dict) else {}
     requires_upgrade = install_freshness.get("requires_upgrade")
+    current_version = install_freshness.get("current_version")
+    source_version_check = _source_version_check(source) if check_only else {
+        "schema_version": SOURCE_VERSION_CHECK_SCHEMA_VERSION,
+        "attempted": False,
+        "status": "not_requested",
+        "version": None,
+        "version_tag": None,
+        "matches_current": None,
+        "source_url": None,
+        "reason": "remote source comparison runs only for update --check",
+    }
+    source_version = source_version_check.get("version")
+    if source_version_check.get("status") == "available":
+        source_version_check["matches_current"] = (
+            source_version == current_version
+            if isinstance(current_version, str) and current_version
+            else None
+        )
     if execute:
         recommended_action = "review execution result and post-update doctor output"
+    elif check_only and source_version_check.get("matches_current") is False:
+        recommended_action = (
+            f"source version v{source_version} differs from installed version "
+            f"v{current_version}; run `loopx update --dry-run`, then `loopx update --execute`"
+        )
+    elif check_only and source_version_check.get("matches_current") is True and requires_upgrade is False:
+        recommended_action = "installed version matches the selected source; no update needed"
+    elif check_only and requires_upgrade is True:
+        recommended_action = "run `loopx update --dry-run` to review the source and rollback plan"
+    elif check_only and source_version_check.get("status") == "unavailable":
+        recommended_action = (
+            "local install health is known, but the selected source version could not be checked; "
+            "retry online or run `loopx update --execute` to refresh"
+        )
+    elif check_only and source_version_check.get("status") == "skipped":
+        recommended_action = (
+            "local install health is known, but source version comparison was skipped; "
+            "run `loopx update --dry-run` to review the source"
+        )
     elif requires_upgrade is False:
         recommended_action = (
             "no update needed; use `loopx update --dry-run` or "
@@ -241,10 +356,11 @@ def build_update_plan(
         "dry_run": dry_run,
         "execute_requested": execute,
         "source": source,
+        "source_version_check": source_version_check,
         "current": {
             "loopx_command": path.get("loopx"),
             "loopx_realpath": path.get("loopx_realpath"),
-            "current_version": install_freshness.get("current_version"),
+            "current_version": current_version,
             "current_version_tag": install_freshness.get("current_version_tag"),
             "manifest_package_version": install_freshness.get("manifest_package_version"),
             "manifest_package_version_tag": install_freshness.get("manifest_package_version_tag"),
@@ -418,6 +534,11 @@ def render_update_plan_markdown(payload: dict[str, Any]) -> str:
         return "\n".join(lines) + "\n"
 
     source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
+    source_version_check = (
+        payload.get("source_version_check")
+        if isinstance(payload.get("source_version_check"), dict)
+        else {}
+    )
     current = payload.get("current") if isinstance(payload.get("current"), dict) else {}
     plan = payload.get("plan") if isinstance(payload.get("plan"), dict) else {}
     backup = plan.get("backup") if isinstance(plan.get("backup"), dict) else {}
@@ -428,6 +549,11 @@ def render_update_plan_markdown(payload: dict[str, Any]) -> str:
         f"- Mode: `{plan.get('action')}`",
         f"- Dry run: `{payload.get('dry_run')}`",
         f"- Source: `{source.get('repo')}` @ `{source.get('ref')}`",
+        f"- Source version check: `{source_version_check.get('status')}`",
+        f"- Source version: `{source_version_check.get('version')}`",
+        f"- Source version tag: `{source_version_check.get('version_tag')}`",
+        f"- Source version matches current: `{source_version_check.get('matches_current')}`",
+        f"- Source version check reason: `{source_version_check.get('reason')}`",
         f"- Current version: `{current.get('current_version')}`",
         f"- Current version tag: `{current.get('current_version_tag')}`",
         f"- Manifest package version: `{current.get('manifest_package_version')}`",

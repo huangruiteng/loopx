@@ -90,6 +90,12 @@ The update command plans the source archive, reports the installed release
 snapshot, preserves runtime state under `~/.codex/loopx`, and refreshes the
 executable and skills together when `--execute` is accepted.
 
+For the normal GitHub repo/ref source, `--check` compares the installed package
+version with that exact ref using a short, read-only network probe. Offline
+checks still report local install health and make the missing remote comparison
+explicit. Custom archive URLs skip this comparison rather than guessing which
+version they contain.
+
 `loopx update` uses the same `stable` ref by default. Use `loopx update --ref
 main` only when you intentionally want a dev/head refresh instead of the stable
 channel.

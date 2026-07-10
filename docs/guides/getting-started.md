@@ -324,9 +324,14 @@ loopx update --dry-run
 loopx update --execute
 ```
 
-`--check` and `--dry-run` are read-only. `--execute` reruns the no-clone
-installer, reports the source archive, keeps the previous release snapshot as a
-rollback target when possible, and validates the result with `loopx doctor`.
+`--check` and `--dry-run` are read-only. For a GitHub repo/ref source,
+`--check` also performs a bounded version read from that exact ref. If the
+network is unavailable, it keeps the local health result and says that the
+latest source version could not be confirmed; a custom archive URL skips the
+comparison because LoopX cannot assume it matches the configured repo/ref.
+`--execute` reruns the no-clone installer, reports the source archive, keeps the
+previous release snapshot as a rollback target when possible, and validates the
+result with `loopx doctor`.
 
 This is the recommended install repair path for Codex CLI users because an
 agent can run it from inside the TUI without asking the user to clone this

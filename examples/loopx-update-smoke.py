@@ -9,6 +9,7 @@ import subprocess
 import sys
 from tempfile import TemporaryDirectory
 from pathlib import Path
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -185,9 +186,67 @@ def test_fresh_check_is_noop_recommendation() -> None:
     assert payload["ok"] is True, payload
     assert payload["check_only"] is True, payload
     assert payload["current"]["requires_upgrade"] is False, payload
-    assert "no update needed" in payload["recommended_action"], payload
-    assert "force a refresh" in payload["recommended_action"], payload
-    assert "--execute` if you accept" not in payload["recommended_action"], payload
+    assert payload["source_version_check"]["status"] == "skipped", payload
+    assert "source version comparison was skipped" in payload["recommended_action"], payload
+
+
+class FakeVersionResponse:
+    def __init__(self, version: str) -> None:
+        self.body = f'__version__ = "{version}"\n'.encode()
+
+    def __enter__(self) -> "FakeVersionResponse":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def read(self, limit: int) -> bytes:
+        return self.body[:limit]
+
+
+def test_check_compares_selected_source_version() -> None:
+    with mock.patch("loopx.self_update.urlopen", return_value=FakeVersionResponse("9.9.9")) as fetch:
+        payload = build_update_plan(
+            repo="example/loopx",
+            ref="stable",
+            check_only=True,
+            doctor_payload=fake_fresh_doctor_payload(),
+        )
+    source_check = payload["source_version_check"]
+    assert source_check["status"] == "available", payload
+    assert source_check["version"] == "9.9.9", payload
+    assert source_check["version_tag"] == "v9.9.9", payload
+    assert source_check["matches_current"] is False, payload
+    assert "differs from installed version" in payload["recommended_action"], payload
+    request = fetch.call_args.args[0]
+    assert request.full_url == (
+        "https://raw.githubusercontent.com/example/loopx/stable/loopx/__init__.py"
+    ), request.full_url
+
+    with mock.patch("loopx.self_update.urlopen", return_value=FakeVersionResponse(__version__)):
+        current_payload = build_update_plan(
+            repo="example/loopx",
+            ref="stable",
+            check_only=True,
+            doctor_payload=fake_fresh_doctor_payload(),
+        )
+    assert current_payload["source_version_check"]["matches_current"] is True, current_payload
+    assert "no update needed" in current_payload["recommended_action"], current_payload
+
+
+def test_check_degrades_when_source_version_is_unavailable() -> None:
+    with mock.patch("loopx.self_update.urlopen", side_effect=OSError("offline")):
+        payload = build_update_plan(
+            repo="example/loopx",
+            ref="stable",
+            check_only=True,
+            doctor_payload=fake_fresh_doctor_payload(),
+        )
+    source_check = payload["source_version_check"]
+    assert payload["ok"] is True, payload
+    assert source_check["status"] == "unavailable", payload
+    assert source_check["attempted"] is True, payload
+    assert "could not be checked" in payload["recommended_action"], payload
 
 
 def test_rollback_previous_executes_with_temp_home() -> None:
@@ -300,6 +359,8 @@ def main() -> int:
     test_module_plan()
     test_default_source_uses_stable_ref()
     test_fresh_check_is_noop_recommendation()
+    test_check_compares_selected_source_version()
+    test_check_degrades_when_source_version_is_unavailable()
     test_rollback_previous_executes_with_temp_home()
     test_rollback_restores_previous_when_doctor_fails()
     test_cli_check()
