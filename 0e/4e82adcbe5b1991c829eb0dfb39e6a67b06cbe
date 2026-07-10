@@ -1,0 +1,29 @@
+apps/presentation/dashboard/src/views/dashboard-page.tsx
+  s_32e2a9a204a8e4::t_ad7f35dabfc282 3546-3548,3568,4349,4543,4715
+apps/presentation/dashboard/src/views/frontstage-page.tsx
+  s_32e2a9a204a8e4::t_3b36836d9a3ef8 92-93,1742,2550,2589,2812,2939
+examples/control_plane/peer-agent-hard-cut-boundary-smoke.py
+  s_32e2a9a204a8e4::t_bc6d8c1d43078d 15,26-27,42,51,64-67
+examples/dashboard-frontstage-browser-smoke.mjs
+  s_32e2a9a204a8e4::t_b7ad539b13be71 405,477
+examples/dashboard-home-browser-smoke.mjs
+  s_32e2a9a204a8e4::t_630369c4941417 644
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0e4e82adcbe5b1991c829eb0dfb39e6a67b06cbe",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
