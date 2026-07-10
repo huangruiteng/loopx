@@ -1,0 +1,23 @@
+loopx/benchmark_core/__init__.py
+  s_9a5a2bd944fdcb::t_b926937fd48b25 32-36,189,194,212
+scripts/skillsbench_automation_loop.py
+  s_9a5a2bd944fdcb::t_70f6a3cdfc251b 141,2686-2689,3522-3525,3547-3550,3618-3662,4264-4271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3a4f528b08cca2f17f90a462c35ff7542cf63b09",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
