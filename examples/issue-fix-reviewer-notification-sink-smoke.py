@@ -216,12 +216,16 @@ def main() -> int:
     assert send[:3] == ["lark-cli", "--profile", "cli-private-profile"]
     assert send[send.index("--as") + 1] == "bot"
     assert send[send.index("--chat-id") + 1] == "oc_private_destination"
+    provider_key = send[send.index("--idempotency-key") + 1]
+    assert provider_key.startswith("loopx-")
+    assert len(provider_key) <= 50
     assert "ou_private_member" in send[send.index("--content") + 1]
     assert (
         "https://github.com/owner/repo/pull/42" in (send[send.index("--content") + 1])
     )
     receipt = sent["receipts"][0]
     assert re.fullmatch(r"sha256:[a-f0-9]{64}", receipt)
+    assert provider_key != receipt
     assert_public_safe(sent)
 
     retry_input = fixture()

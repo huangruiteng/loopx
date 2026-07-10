@@ -291,6 +291,7 @@ def _lark_result(
         )
 
     marker = f"loopx-reviewer-notification:{key.partition(':')[2][:16]}"
+    provider_idempotency_key = f"loopx-{key.partition(':')[2][:32]}"
     mentions = " ".join(
         f'<at user_id="{member_id}">{html.escape(display_name)}</at>'
         for _, member_id, display_name in resolved
@@ -298,7 +299,8 @@ def _lark_result(
     content = json.dumps(
         {
             "text": (
-                f"{mentions} 请协助 review 这个 focused issue-fix PR：{pr_url}\n\n"
+                f"{mentions} please review this focused issue-fix PR / "
+                f"请协助 review：{pr_url}\n\n"
                 f"[{marker}]"
             )
         },
@@ -318,7 +320,7 @@ def _lark_result(
         "--msg-type",
         "text",
         "--idempotency-key",
-        key,
+        provider_idempotency_key,
         "--as",
         "bot",
         "--format",

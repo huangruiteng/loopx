@@ -72,9 +72,9 @@ request may permit an explicitly configured secondary sink. `--execute` is the
 write assertion; preview never calls the provider.
 
 Each logical `(repository, PR, sink instance, reviewer set)` produces a stable
-`sha256:` idempotency key. The Lark adapter passes that key to the provider and
-embeds a compact marker in the message. A verified key is returned as a
-receipt. Callers store only that compact receipt in existing issue-fix state
+`sha256:` idempotency key. The Lark adapter derives a provider-bounded key from
+that digest and embeds a compact marker in the message. The full verified key
+is returned as a receipt. Callers store only that compact receipt in existing issue-fix state
 and pass it back on retry; a matching receipt returns `already_notified`
 without a provider call.
 

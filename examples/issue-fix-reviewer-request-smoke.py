@@ -90,13 +90,16 @@ def metadata(
     *,
     requested: list[str] | None = None,
     comments: list[dict[str, Any]] | None = None,
+    reviewed: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
         "author": {"login": "current-author"},
         "comments": comments or [],
         "isDraft": False,
         "reviewRequests": [{"login": login} for login in (requested or [])],
-        "reviews": [],
+        "reviews": [
+            {"author": {"login": login}} for login in (reviewed or [])
+        ],
         "state": "OPEN",
         "url": "https://github.com/owner/repo/pull/42",
     }
@@ -307,6 +310,26 @@ def main() -> int:
         assert with_secondary["secondary_notifications"]["receipts"]
         assert len(combined.lark_calls) == 3
         assert_public_safe(with_secondary)
+
+        reviewed_combined = FakeCombinedRunner(
+            FakeGitHubRunner(before=metadata(reviewed=["service-owner"]))
+        )
+        already_reviewed = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            notification_sinks_input=sinks_input,
+            execute=True,
+            runner=reviewed_combined,
+        )
+        assert already_reviewed["ok"] is True, already_reviewed
+        assert already_reviewed["reviewer_notification_verified"] is True
+        assert already_reviewed["secondary_notification_status"] == (
+            "skipped_reviewer_already_reviewed"
+        )
+        assert already_reviewed["secondary_notification_verified"] is False
+        assert reviewed_combined.lark_calls == []
+        assert_public_safe(already_reviewed)
 
         already_runner = FakeGitHubRunner(before=metadata(requested=["service-owner"]))
         already = build_issue_fix_reviewer_request_packet(

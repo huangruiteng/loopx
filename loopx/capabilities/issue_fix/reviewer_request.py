@@ -678,6 +678,13 @@ def build_issue_fix_reviewer_request_packet(
             if execute
             else list(packet.get("selected_reviewers") or [])
         )
+        if execute:
+            completed_reviewers = set(packet.get("existing_reviewed_by") or [])
+            notification_targets = [
+                handle
+                for handle in notification_targets
+                if handle not in completed_reviewers
+            ]
         canonical_ready = bool(
             not execute or packet.get("reviewer_notification_verified") is True
         )
@@ -705,7 +712,9 @@ def build_issue_fix_reviewer_request_packet(
         else:
             packet["secondary_notification_status"] = (
                 "skipped_canonical_notification_unverified"
-                if execute
+                if execute and not canonical_ready
+                else "skipped_reviewer_already_reviewed"
+                if execute and packet.get("existing_reviewed_by")
                 else "skipped_reviewer_unavailable"
             )
 
