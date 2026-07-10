@@ -1,0 +1,27 @@
+examples/control_plane/todo-claim-visibility-lanes-smoke.py
+  s_32e2a9a204a8e4::t_8cd3ae35d7157b 19-20,34-35,44-45,110-215,273-274
+loopx/control_plane/todos/claim_visibility.py
+  s_32e2a9a204a8e4::t_facb4aa1a472c2 13,54-69,98-103
+loopx/control_plane/todos/projection.py
+  s_32e2a9a204a8e4::t_e9a3b7892a0d98 21,25,233-253
+loopx/control_plane/agents/agent_scope.py
+  s_32e2a9a204a8e4::t_0afcd0a751bd12 32,35,247-250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2ab743e2eb75ef7171b05ab14af4051064feb216",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
