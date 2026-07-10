@@ -153,7 +153,7 @@ def write_json(path: Path, value: dict) -> None:
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="loopx-goal-vision-budget-") as tmp:
         root = Path(tmp)
-        registry_path, runtime, _project = write_fixture(root)
+        registry_path, runtime, project = write_fixture(root)
         valid_path = root / "valid-vision.json"
         invalid_path = root / "invalid-vision.json"
 
@@ -322,6 +322,33 @@ def main() -> int:
         assert unchanged["agent_vision"] is None, unchanged
         assert unchanged["vision_checkpoint"]["agent_id"] == AGENT_ID, unchanged
         assert unchanged["vision_checkpoint"]["decision"] == "unchanged_with_reason", unchanged
+
+        state_path = (
+            project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
+        )
+        state_before_rejected_refresh = state_path.read_text(encoding="utf-8")
+        oversized_unchanged_reason_result = run_cli(
+            registry_path,
+            runtime,
+            inline_vision_args=["--vision-unchanged-reason", "x" * 241],
+            extra_args=[
+                "--next-action",
+                "This rejected refresh must not replace the durable action.",
+                "--progress-scope",
+                "goal",
+            ],
+            dry_run=False,
+            check=False,
+        )
+        assert oversized_unchanged_reason_result.returncode == 1, (
+            oversized_unchanged_reason_result
+        )
+        oversized_unchanged_reason = payload(oversized_unchanged_reason_result)
+        assert (
+            "vision_unchanged_reason exceeds 240 chars"
+            in oversized_unchanged_reason["error"]
+        ), oversized_unchanged_reason
+        assert state_path.read_text(encoding="utf-8") == state_before_rejected_refresh
 
         missing_checkpoint = payload(
             run_cli(
