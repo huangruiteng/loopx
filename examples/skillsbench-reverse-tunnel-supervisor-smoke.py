@@ -162,10 +162,12 @@ def test_supervisor_syncs_only_compact_public_artifacts() -> None:
         public_output = root / "public.json"
         private_log = root / "private.log"
         synced_dir = root / "synced"
+        catchup_root = root / "public-runs"
         ledger_path = root / "live-ledger.json"
         aggregate_path = root / "standard-aggregate.json"
         canonical_ids = root / "canonical-case-ids.txt"
         canonical_ids.write_text("case-a\n", encoding="utf-8")
+        catchup_root.mkdir()
         _fake_ssh(fake_ssh, ssh_log)
 
         opaque_destination = "opaque-benchmark-host.example"
@@ -192,6 +194,10 @@ def test_supervisor_syncs_only_compact_public_artifacts() -> None:
                 str(ledger_path),
                 "--local-run-group-id",
                 "skillsbench-codex-cli-goal-xhigh-sync-smoke",
+                "--local-ledger-catchup-root",
+                str(catchup_root),
+                "--local-ledger-catchup-run-group-contains",
+                "skillsbench-codex-cli-goal-xhigh-",
                 "--local-current-aggregate-path",
                 str(aggregate_path),
                 "--local-canonical-case-ids-file",
@@ -229,7 +235,10 @@ def test_supervisor_syncs_only_compact_public_artifacts() -> None:
         assert compact_path.exists(), sync
         assert ledger_path.exists(), sync
         assert aggregate_path.exists(), sync
-        assert sync["local_ledger_update"]["upserted_count"] == 1, sync
+        ledger_update = sync["local_ledger_update"]
+        assert ledger_update["upserted_count"] == 1, ledger_update
+        assert ledger_update["catchup_requested"] is True, ledger_update
+        assert ledger_update["catchup_compact_count"] == 0, ledger_update
         assert sync["local_aggregate_update"]["canonical_total"] == 1, sync
         public_text = public_output.read_text(encoding="utf-8")
         assert opaque_destination not in public_text

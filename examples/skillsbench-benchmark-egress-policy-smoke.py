@@ -203,6 +203,11 @@ def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
     assert "--remote-public-artifact-root" in output, output
     assert "benchmark_run.compact.json" in output, output
     assert "--local-run-ledger-path" in output, output
+    assert "--local-ledger-catchup-root" in output, output
+    assert (
+        "--local-ledger-catchup-run-group-contains "
+        "skillsbench-codex-cli-goal-xhigh-" in output
+    ), output
     assert "--update-ledger" not in output, output
     assert "--local-target-lane-id codex-cli-goal-xhigh" in output, output
     assert "--local-target-run-group-contains" not in output, output
