@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable
@@ -18,11 +19,16 @@ _STRING_FIELDS = (
     "host_local_codex_cli_preflight_status",
     "host_local_codex_cli_preflight_first_blocker",
     "host_local_codex_cli_preflight_failure_category",
+    "host_local_codex_cli_preflight_sandbox_mode",
+    "host_local_codex_cli_preflight_sandbox_probe_status",
 )
 _BOOL_FIELDS = (
     "host_local_codex_cli_preflight_requested",
     "host_local_codex_cli_preflight_ready",
     "host_local_codex_cli_preflight_version_probe_invoked",
+    "host_local_codex_cli_preflight_sandbox_probe_required",
+    "host_local_codex_cli_preflight_sandbox_probe_invoked",
+    "host_local_codex_cli_preflight_sandbox_probe_ready",
     "host_local_codex_cli_preflight_raw_output_recorded",
     "host_local_codex_cli_preflight_path_recorded",
 )
@@ -165,6 +171,11 @@ def _fail(prerequisites: dict[str, Any], blocker: str, category: str) -> None:
 
 def run_preflight(args: Any, plan: dict[str, Any]) -> None:
     prerequisites = plan.setdefault("runner_prerequisites", {})
+    sandbox_mode = str(
+        getattr(args, "local_codex_sandbox", "workspace-write")
+        or "workspace-write"
+    )
+    sandbox_probe_required = sandbox_mode != "danger-full-access"
     prerequisites.update(
         {
             "host_local_codex_cli_preflight_requested": True,
@@ -173,6 +184,15 @@ def run_preflight(args: Any, plan: dict[str, Any]) -> None:
             "host_local_codex_cli_preflight_first_blocker": "",
             "host_local_codex_cli_preflight_failure_category": "",
             "host_local_codex_cli_preflight_version_probe_invoked": False,
+            "host_local_codex_cli_preflight_sandbox_mode": sandbox_mode,
+            "host_local_codex_cli_preflight_sandbox_probe_required": (
+                sandbox_probe_required
+            ),
+            "host_local_codex_cli_preflight_sandbox_probe_invoked": False,
+            "host_local_codex_cli_preflight_sandbox_probe_ready": False,
+            "host_local_codex_cli_preflight_sandbox_probe_status": (
+                "pending" if sandbox_probe_required else "not_required"
+            ),
             "host_local_codex_cli_preflight_raw_output_recorded": False,
             "host_local_codex_cli_preflight_path_recorded": False,
         }
@@ -203,6 +223,48 @@ def run_preflight(args: Any, plan: dict[str, Any]) -> None:
             "codex_cli_version_probe_failed",
         )
         raise RuntimeError("host-local Codex CLI version probe failed")
+    if sandbox_probe_required:
+        prerequisites[
+            "host_local_codex_cli_preflight_sandbox_probe_invoked"
+        ] = True
+        sandbox_probe_command = shutil.which("true") or "true"
+        try:
+            with tempfile.TemporaryDirectory(
+                prefix="gh-skillsbench-codex-sandbox-"
+            ) as tmp:
+                proc = subprocess.run(
+                    [
+                        resolved,
+                        "sandbox",
+                        "-c",
+                        f'sandbox_mode="{sandbox_mode}"',
+                        "--",
+                        sandbox_probe_command,
+                    ],
+                    cwd=tmp,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=10,
+                    check=False,
+                )
+        except (OSError, subprocess.TimeoutExpired):
+            proc = None
+        if proc is None or proc.returncode != 0:
+            prerequisites[
+                "host_local_codex_cli_preflight_sandbox_probe_status"
+            ] = "failed"
+            _fail(
+                prerequisites,
+                "skillsbench_host_local_codex_cli_sandbox_probe_failed",
+                "codex_cli_sandbox_probe_failed",
+            )
+            raise RuntimeError("host-local Codex CLI sandbox probe failed")
+        prerequisites[
+            "host_local_codex_cli_preflight_sandbox_probe_ready"
+        ] = True
+        prerequisites[
+            "host_local_codex_cli_preflight_sandbox_probe_status"
+        ] = "ready"
     prerequisites["host_local_codex_cli_preflight_ready"] = True
     prerequisites["host_local_codex_cli_preflight_status"] = "ready"
 
