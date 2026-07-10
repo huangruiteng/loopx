@@ -244,6 +244,24 @@ def status_payload(
     }
 
 
+def peer_status_payload(
+    agent_todo_items: list[dict],
+    *,
+    replan_obligation: dict | None = GLOBAL_REPLAN_OBLIGATION,
+) -> dict:
+    payload = status_payload(
+        agent_todo_items,
+        replan_obligation=replan_obligation,
+    )
+    coordination = {
+        "agent_model": "peer_v1",
+        "registered_agents": [PRIMARY_AGENT, SIDE_AGENT],
+    }
+    payload["attention_queue"]["items"][0]["coordination"] = coordination
+    payload["run_history"]["goals"][0]["coordination"] = coordination
+    return payload
+
+
 def agent_vision_gap_run() -> dict:
     return {
         "classification": "state_refreshed",
@@ -1045,6 +1063,62 @@ def assert_unscoped_replan_defaults_to_primary_agent() -> None:
     assert monitor_side_guard.get("autonomous_replan_obligation") is None, monitor_side_guard
 
 
+def assert_unscoped_peer_replan_has_one_deterministic_owner() -> None:
+    payload = peer_status_payload([primary_claimed_advancement()])
+    guards = {
+        agent_id: build_quota_should_run(
+            payload,
+            goal_id=GOAL_ID,
+            agent_id=agent_id,
+        )
+        for agent_id in (PRIMARY_AGENT, SIDE_AGENT)
+    }
+    selected = {
+        guard["autonomous_replan_scope"]["selected_peer_agent"]
+        for guard in guards.values()
+    }
+    assert len(selected) == 1, guards
+    selected_agent = selected.pop()
+    assert selected_agent in guards, guards
+
+    selected_guard = guards[selected_agent]
+    assert selected_guard["agent_identity"]["agent_model"] == "peer_v1", selected_guard
+    assert "role" not in selected_guard["agent_identity"], selected_guard
+    assert "primary_agent" not in selected_guard["agent_identity"], selected_guard
+    assert selected_guard["decision"] == "autonomous_replan_required", selected_guard
+    assert selected_guard["effective_action"] == "autonomous_replan_required", selected_guard
+    assert selected_guard["autonomous_replan_scope"]["scope"] == (
+        "deterministic_peer_assignment"
+    ), selected_guard
+    assert selected_guard["autonomous_replan_scope"]["applies"] is True, selected_guard
+    assert "primary_agent_id" not in selected_guard["autonomous_replan_scope"], selected_guard
+
+    waiting_agent = next(agent for agent in guards if agent != selected_agent)
+    waiting_guard = guards[waiting_agent]
+    assert waiting_guard["autonomous_replan_scope"]["scope"] == (
+        "deterministic_peer_assignment"
+    ), waiting_guard
+    assert waiting_guard["autonomous_replan_scope"]["applies"] is False, waiting_guard
+    assert waiting_guard.get("autonomous_replan_obligation") is None, waiting_guard
+    assert waiting_guard["effective_action"] != "autonomous_replan_required", waiting_guard
+
+    reversed_payload = peer_status_payload([primary_claimed_advancement()])
+    reversed_payload["attention_queue"]["items"][0]["coordination"][
+        "registered_agents"
+    ].reverse()
+    reversed_payload["run_history"]["goals"][0]["coordination"][
+        "registered_agents"
+    ].reverse()
+    reversed_guard = build_quota_should_run(
+        reversed_payload,
+        goal_id=GOAL_ID,
+        agent_id=selected_agent,
+    )
+    assert reversed_guard["autonomous_replan_scope"]["selected_peer_agent"] == (
+        selected_agent
+    ), reversed_guard
+
+
 def assert_monitor_schedule_gap_requires_bounded_repair() -> None:
     guard = build_quota_should_run(
         status_payload([monitor_item(cadence=None, next_due_at=None)], replan_obligation=None),
@@ -1272,6 +1346,7 @@ def main() -> None:
     assert_satisfied_vision_checkpoint_supersedes_older_missing_but_not_empty_frontier()
     assert_agent_scoped_replan_beats_agent_scope_wait()
     assert_unscoped_replan_defaults_to_primary_agent()
+    assert_unscoped_peer_replan_has_one_deterministic_owner()
     assert_monitor_schedule_gap_requires_bounded_repair()
     assert_agent_ack_survives_other_agent_run_and_monitor_poll()
     assert_non_frontier_replan_ack_does_not_clear_monitor_replan()

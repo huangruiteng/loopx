@@ -131,6 +131,20 @@ def build_payload() -> dict:
     }
 
 
+def build_peer_payload(*, reverse_agents: bool = False) -> dict:
+    payload = build_payload()
+    registered_agents = [PRIMARY_AGENT, CHILD_AGENT_A, CHILD_AGENT_B]
+    if reverse_agents:
+        registered_agents.reverse()
+    coordination = {
+        "agent_model": "peer_v1",
+        "registered_agents": registered_agents,
+    }
+    payload["run_history"]["goals"][0]["coordination"] = coordination
+    payload["attention_queue"]["items"][0]["coordination"] = coordination
+    return payload
+
+
 def main() -> int:
     decision = build_quota_should_run(
         build_payload(),
@@ -163,6 +177,48 @@ def main() -> int:
         "spawn/resume child lanes"
     ), decision
     assert "subagent_orchestration: mode=multi_subagent spawn_required=True child_lanes=2" in markdown, markdown
+
+    peer_decisions = {
+        agent_id: build_quota_should_run(
+            build_peer_payload(),
+            goal_id=GOAL_ID,
+            agent_id=agent_id,
+        )
+        for agent_id in (PRIMARY_AGENT, CHILD_AGENT_A, CHILD_AGENT_B)
+    }
+    coordinators = [
+        agent_id
+        for agent_id, peer_decision in peer_decisions.items()
+        if "task_orchestration_contract" in peer_decision
+    ]
+    assert len(coordinators) == 1, peer_decisions
+    coordinator = coordinators[0]
+    peer_decision = peer_decisions[coordinator]
+    peer_contract = peer_decision["task_orchestration_contract"]
+    assert peer_decision["effective_action"] == "coordinate_task_bundle", peer_decision
+    assert peer_decision["interaction_contract"]["mode"] == "task_orchestration", peer_decision
+    assert peer_decision["goal_route_hint"]["route_decision"] == (
+        "coordinate_task_bundle"
+    ), peer_decision
+    assert peer_contract["coordinator_agent_id"] == coordinator, peer_contract
+    assert peer_contract["writeback_owner"] == "task_coordinator", peer_contract
+    assert "controller_agent_id" not in peer_contract, peer_contract
+    assert "eligible_child_lanes" not in peer_contract, peer_contract
+    assert all(
+        lane["agent_id"] != coordinator
+        for lane in peer_contract["eligible_peer_lanes"]
+    ), peer_contract
+    peer_markdown = render_quota_should_run_markdown(peer_decision)
+    assert "task_orchestration: mode=task_scoped_peer" in peer_markdown, peer_markdown
+
+    reversed_decision = build_quota_should_run(
+        build_peer_payload(reverse_agents=True),
+        goal_id=GOAL_ID,
+        agent_id=coordinator,
+    )
+    assert reversed_decision["task_orchestration_contract"][
+        "coordinator_agent_id"
+    ] == coordinator, reversed_decision
     print("primary-controller-subagent-orchestration-smoke ok")
     return 0
 

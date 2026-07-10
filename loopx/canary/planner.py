@@ -1162,6 +1162,72 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "peer-agent-runtime",
+        "title": "Peer agent runtime and migration",
+        "purpose": (
+            "Check equal peer identity, deterministic task assignment, task-policy "
+            "completion, symmetric workspace isolation, task-scoped coordination, "
+            "and atomic registry/heartbeat migration."
+        ),
+        "catalog_families": ["Work Routing", "State And Boundary", "Evidence Lifecycle"],
+        "trigger_hints": (
+            "peer agent",
+            "peer-agent",
+            "peer_v1",
+            "agent_model",
+            "review_handoff",
+            "task_orchestration_contract",
+            "agent_workspace_guard",
+            "loopx/control_plane/agents",
+            "loopx/control_plane/todos/completion_policy.py",
+            "loopx/control_plane/quota/subagent_orchestration.py",
+            "loopx/heartbeat_prompt.py",
+            "loopx/configure_goal.py",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/control_plane/peer-agent-runtime-v1-smoke.py",
+                "tier": "default",
+                "reason": "guards the complete peer identity, routing, completion, workspace, orchestration, migration, and host-loop contract",
+            },
+            {
+                "command": "python3 examples/control_plane/agent-identity-readmodel-smoke.py",
+                "tier": "deep",
+                "reason": "guards rank-free peer identity and deterministic assignment",
+            },
+            {
+                "command": "python3 examples/control_plane/quota-replan-decision-plane-smoke.py",
+                "tier": "deep",
+                "reason": "guards exactly-one peer ownership for unscoped replans",
+            },
+            {
+                "command": "python3 examples/control_plane/todo-continuation-policy-smoke.py",
+                "tier": "deep",
+                "reason": "guards task-policy completion and independent review handoff",
+            },
+            {
+                "command": "python3 examples/control_plane/peer-agent-migration-smoke.py",
+                "tier": "deep",
+                "reason": "guards atomic registry backup/cutover and peer heartbeat prompts",
+            },
+            {
+                "command": "python3 examples/control_plane/side-agent-workspace-guard-smoke.py",
+                "tier": "deep",
+                "reason": "guards symmetric write-aware worktree isolation in real git worktrees",
+            },
+            {
+                "command": "python3 examples/control_plane/primary-controller-subagent-orchestration-smoke.py",
+                "tier": "deep",
+                "reason": "guards deterministic task-scoped coordination without durable leader authority",
+            },
+            {
+                "command": "python3 examples/control_plane/agent-onboard-host-loop-activation-smoke.py",
+                "tier": "deep",
+                "reason": "guards rank-free host-loop identity selection and regeneration",
+            },
+        ],
+    },
+    {
         "id": "catalog-canary-contract",
         "title": "Catalog canary contract",
         "purpose": "Check catalog-to-canary planning, JSON actionability, shell-free no-write execution, and full/module smoke-suite selection.",

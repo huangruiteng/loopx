@@ -138,6 +138,34 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
     return primary, independent, runtime, registry_path
 
 
+def enable_peer_runtime(
+    primary: Path,
+    registry_path: Path,
+    *,
+    claimed_by: str,
+) -> None:
+    payload = json.loads(registry_path.read_text(encoding="utf-8"))
+    goal = payload["goals"][0]
+    goal["coordination"] = {
+        "agent_model": "peer_v1",
+        "registered_agents": [PRIMARY_AGENT_ID, SIDE_AGENT_ID],
+    }
+    goal.pop("workspace_guard_policy", None)
+    registry_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    state_path = primary / goal["state_file"]
+    state = state_path.read_text(encoding="utf-8")
+    state = state.replace(
+        "action_kind=state_machine_canary_refactor",
+        "action_kind=fix",
+    )
+    for agent_id in (PRIMARY_AGENT_ID, SIDE_AGENT_ID):
+        state = state.replace(f"claimed_by={agent_id}", f"claimed_by={claimed_by}")
+    state_path.write_text(state, encoding="utf-8")
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-side-agent-workspace-guard-") as tmp:
         root = Path(tmp)
@@ -203,6 +231,62 @@ def main() -> None:
         assert primary_from_primary["agent_identity"]["role"] == "primary-agent", primary_from_primary
         assert primary_from_primary["effective_action"] != "side_agent_workspace_repair", primary_from_primary
         assert "workspace_guard" not in primary_from_primary, primary_from_primary
+
+        enable_peer_runtime(primary, registry_path, claimed_by=SIDE_AGENT_ID)
+        peer_from_primary = run_cli(
+            primary,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            SIDE_AGENT_ID,
+            "--scan-path",
+            str(primary),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert peer_from_primary["effective_action"] == "agent_workspace_repair", peer_from_primary
+        assert peer_from_primary["workspace_guard"]["schema_version"] == (
+            "agent_workspace_guard_v1"
+        ), peer_from_primary
+        assert "primary_agent" not in peer_from_primary["workspace_guard"], peer_from_primary
+        assert peer_from_primary["interaction_contract"]["mode"] == (
+            "agent_workspace_repair"
+        ), peer_from_primary
+
+        peer_from_independent = run_cli(
+            independent,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            SIDE_AGENT_ID,
+            "--scan-path",
+            str(primary),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert "workspace_guard" not in peer_from_independent, peer_from_independent
+
+        enable_peer_runtime(primary, registry_path, claimed_by=PRIMARY_AGENT_ID)
+        other_peer_from_primary = run_cli(
+            primary,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            PRIMARY_AGENT_ID,
+            "--scan-path",
+            str(primary),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert other_peer_from_primary["effective_action"] == (
+            "agent_workspace_repair"
+        ), other_peer_from_primary
 
 
 if __name__ == "__main__":
