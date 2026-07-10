@@ -20,16 +20,17 @@ REQUIRED_PHRASES = (
     "`writeback_spend_contract`",
     "`child_decision`",
     "`continue`, `wait`, or `reuse_existing_evidence`",
-    "The main controller owns the shared-control-plane handoff and the final",
-    "child reports evidence only; parent writes and spends",
+    "temporary task coordinator",
+    "child worker reports evidence only; task coordinator writes accepted state and spends",
     "control_plane_handoff_version",
-    "A child may produce evidence, a validation result, or a blocker",
+    "It does not own durable goal authority",
     "one pending lease for `(goal_id, todo_id)`",
     "`goal_id` is the shared control-plane lane",
     "`todo_id` is the work item being claimed",
-    "`coordination.primary_agent`",
-    "independent git worktrees/branches",
-    "primary-agent review todo",
+    '"agent_model": "peer_v1"',
+    "independent worktrees",
+    "explicit `review_handoff`",
+    "Dormant registered agents and closed, blocked, or deferred todos are not coordinator candidates.",
 )
 
 FORBIDDEN_PHRASES = (
@@ -38,6 +39,14 @@ FORBIDDEN_PHRASES = (
     "~/.codex/sessions",
     "raw_thread",
     "session_history",
+    "coordination.primary_agent",
+    "primary-agent review todo",
+    "side agents",
+    "main controller",
+    '"role": "controller"',
+    '"role": "subagent"',
+    "controller owns",
+    "parent writes and spends",
 )
 
 

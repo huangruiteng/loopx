@@ -641,7 +641,7 @@ async function main() {
       "Creator Operator",
       "热点",
       "合成案例",
-      "Side Agent 自迭代",
+      "Peer Agent 自迭代",
       "需要 Codex recovery",
       "排序器 / 跨域证据",
       "具体 blocker",

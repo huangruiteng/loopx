@@ -248,58 +248,66 @@ def _identity_state(
     *,
     agent_id: str | None,
     registered_agents: list[str] | None,
-    primary_agent: str | None,
 ) -> dict[str, Any]:
     registered = normalize_registered_agents(registered_agents)
     selected = normalize_todo_claimed_by(agent_id)
-    primary = normalize_todo_claimed_by(primary_agent)
-    if not registered:
+
+    def identity_payload(values: dict[str, Any]) -> dict[str, Any]:
         return {
             "schema_version": IDENTITY_SELECTION_SCHEMA_VERSION,
-            "state": "legacy_unscoped",
-            "activation_allowed": True,
-            "selected_agent_id": selected,
-            "registered_agents": [],
-            "primary_agent": primary,
-            "action_required": False,
+            "agent_model": "peer_v1",
+            **values,
         }
+
+    if not registered:
+        return identity_payload(
+            {
+                "state": "legacy_unscoped",
+                "activation_allowed": True,
+                "selected_agent_id": selected,
+                "registered_agents": [],
+                "action_required": False,
+            }
+        )
     if not selected and len(registered) == 1:
         selected = registered[0]
-        return {
-            "schema_version": IDENTITY_SELECTION_SCHEMA_VERSION,
-            "state": "single_registered_agent_selected",
-            "activation_allowed": True,
-            "selected_agent_id": selected,
-            "registered_agents": registered,
-            "primary_agent": primary,
-            "action_required": False,
-        }
+        return identity_payload(
+            {
+                "state": "single_registered_agent_selected",
+                "activation_allowed": True,
+                "selected_agent_id": selected,
+                "registered_agents": registered,
+                "action_required": False,
+            }
+        )
     if selected in registered:
-        return {
-            "schema_version": IDENTITY_SELECTION_SCHEMA_VERSION,
-            "state": "selected",
-            "activation_allowed": True,
-            "selected_agent_id": selected,
+        return identity_payload(
+            {
+                "state": "selected",
+                "activation_allowed": True,
+                "selected_agent_id": selected,
+                "registered_agents": registered,
+                "action_required": False,
+            }
+        )
+    return identity_payload(
+        {
+            "state": "invalid_selection" if selected else "selection_required",
+            "activation_allowed": False,
+            "selected_agent_id": None,
+            "requested_agent_id": selected,
             "registered_agents": registered,
-            "primary_agent": primary,
-            "action_required": False,
+            "action_required": True,
+            "reason": (
+                f"agent_id={selected!r} is not registered for this goal"
+                if selected
+                else "multiple registered agent lanes exist; select one before host-loop activation"
+            ),
+            "required_cli_arg": "--agent-id <registered-agent-id>",
         }
-    return {
-        "schema_version": IDENTITY_SELECTION_SCHEMA_VERSION,
-        "state": "invalid_selection" if selected else "selection_required",
-        "activation_allowed": False,
-        "selected_agent_id": None,
-        "requested_agent_id": selected,
-        "registered_agents": registered,
-        "primary_agent": primary,
-        "action_required": True,
-        "reason": (
-            f"agent_id={selected!r} is not registered for this goal"
-            if selected
-            else "multiple registered agent lanes exist; select one before host-loop activation"
-        ),
-        "required_cli_arg": "--agent-id <registered-agent-id>",
-    }
+    )
+
+
 def _codex_app_activation(commands: dict[str, str]) -> dict[str, Any]:
     return {
         "host_surface": "codex_app_heartbeat_automation",
@@ -417,14 +425,12 @@ def build_host_loop_activation_packet(
     cli_bin: str = "loopx",
     agent_id: str | None = None,
     registered_agents: list[str] | None = None,
-    primary_agent: str | None = None,
     available_capabilities: list[str] | None = None,
 ) -> dict[str, Any]:
     canonical = normalize_agent_type(agent_type)
     identity = _identity_state(
         agent_id=agent_id,
         registered_agents=registered_agents,
-        primary_agent=primary_agent,
     )
     selected_agent_id = identity.get("selected_agent_id")
     activation_allowed = bool(identity.get("activation_allowed"))
@@ -467,7 +473,6 @@ def build_host_loop_activation_packet(
             choices.append(
                 {
                     "agent_id": candidate,
-                    "role": "primary" if candidate == identity.get("primary_agent") else "side-agent",
                     "heartbeat_prompt_json": candidate_commands["heartbeat_prompt_json"],
                     "heartbeat_prompt": candidate_commands["heartbeat_prompt"],
                 }
@@ -491,6 +496,7 @@ def build_host_loop_activation_packet(
     return {
         "schema_version": SCHEMA_VERSION,
         "agent_type": canonical,
+        "agent_model": "peer_v1",
         "goal_id": goal_id,
         "agent_id": selected_agent_id,
         "requested_agent_id": normalize_todo_claimed_by(agent_id),

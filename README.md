@@ -2,11 +2,11 @@
 
 <img src="docs/assets/loopx-social-preview.png" alt="LoopX loop engineering social preview banner" width="480">
 
-**Loop engineering for long-running AI agents and agent teams.**
+**Loop engineering for long-running AI agents and peer agent teams.**
 
 <sub>A lightweight state kernel and agent-agnostic local control plane for
 Codex, Claude Code, Cursor, and other runtimes: objectives, gates, todos,
-quota, scheduler hints, evidence, and handoff state in one reviewable loop.</sub>
+quota, scheduler hints, evidence, and typed continuation in one reviewable loop.</sub>
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
@@ -24,6 +24,10 @@ it keeps goals, todos, gates, quota, scheduler hints, evidence, and handoffs
 stable while Codex, Claude Code, Cursor, or another runtime executes each
 bounded turn. It does not replace your agent runtime; it makes long-running
 agent work reviewable, restartable, and easier to hand off.
+
+Registered agents are peers. Claims and leases, task boundaries, capabilities,
+and typed continuation decide who acts next; no durable leader identity is
+required.
 
 Start with a useful loop instead of designing a whole agent platform. LoopX
 ships safe preset cards for daily triage, changelog drafts, PR watching, CI
@@ -113,7 +117,7 @@ Start here if you are running:
 - recurring heartbeat or monitor-style agent work;
 - projects with owner/SOP gates, human reward judgments, or public/private
   boundary checks;
-- controller/side-agent workflows where todo ownership and handoff matter;
+- peer-agent teams where todo ownership, leases, and handoff matter;
 - creator, research, or operations workflows where non-engineering users need
   agent progress translated into clear state, blockers, and feedback prompts.
 
@@ -140,8 +144,8 @@ Choose your surface:
 - **Codex App**: best for a long-running agent that can wake up, re-check gates,
   and keep moving. Paste the setup message below, then invoke `$loopx
   <complex task>` or choose `loopx` from `/skills`.
-- **Codex CLI**: best when the visible TUI should stay primary while LoopX keeps
-  the state. Run `codex`, paste the setup message, then invoke `$loopx
+- **Codex CLI**: best when the visible TUI should stay in the foreground while
+  LoopX keeps the state. Run `codex`, paste the setup message, then invoke `$loopx
   <complex task>` or choose `loopx` from `/skills`; after todos are written,
   LoopX must activate the visible `/goal <task_body>` loop or show the exact
   pasteable gate.
@@ -228,8 +232,8 @@ updates.
 
 ### Codex CLI
 
-Best when the visible TUI should stay primary. Open Codex CLI from your project
-repo:
+Best when the visible TUI should stay in the foreground. Open Codex CLI from
+your project repo:
 
 ```bash
 cd /path/to/your-project
@@ -326,7 +330,7 @@ loopx quota spend-slot      # account for a completed automatic slice
 This is the shape used by advanced showcases such as
 [dynamic workflow orchestration](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html):
 your agents can orchestrate external tools, devices, domain-specific runners,
-or side agents, while LoopX keeps goals, gates, todos, evidence, quota, and
+or peer agents, while LoopX keeps goals, gates, todos, evidence, quota, and
 handoff state reviewable.
 
 Clone-based install is only for contributors who want the live canary wrapper:
@@ -356,8 +360,8 @@ manual, then use the short proof surfaces:
   fallback work continues.
 - [LoopX self-iteration](docs/showcases/cases/0619-loopx-self-iteration.md)
   and [dynamic workflow orchestration](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html):
-  public-safe evidence that one control plane can coordinate primary agents,
-  side agents, and external tools without hiding ownership or scope.
+  public-safe evidence that one control plane can coordinate peer agents and
+  external tools without hiding ownership or scope.
 
 For more cases, open the [showcase catalog](docs/showcases/README.md). For a
 full presenter material, see the experimental features below.
@@ -435,8 +439,8 @@ This is intentionally default-off. `todo-branch-plan` and
 `worker-branch-plan` only become active when the registered goal opts in through
 `spawn_policy.explore_harness.enabled=true`; even then they do not claim todos,
 acquire leases, start workers, mutate state, or spend quota. They emit request
-packets and suggested commands for a controller or human to execute through the
-normal LoopX lifecycle. See the
+packets and suggested commands for a host runtime or human to execute through
+the normal LoopX lifecycle. See the
 [Explore capability guide](docs/capabilities/explore/README.md) for the event
 model, per-goal gate, adaptive-resilient profile, and MoE router profile.
 
@@ -621,7 +625,7 @@ debugging the control plane by hand:
 ```text
 Diagnose LoopX for this project end to end. Do not ask me to run shell
 commands. Run loopx diagnose, tell me whether the project can
-self-drive, what blocks it, the exact user/controller question if one exists,
+self-drive, what blocks it, the exact user/operator question if one exists,
 and what you will do next.
 ```
 
@@ -657,10 +661,13 @@ loopx quota spend-slot --goal-id your-project-goal --slots 1 --source heartbeat 
 
 For shared-control-plane or agent-team goals, generate the automation with a
 registered identity, for example
-`loopx heartbeat-prompt --thin --goal-id your-project-goal --agent-id codex-main-control --agent-scope "primary coordination"`.
-After `configure-goal` or the control-plane UI changes `registered_agents` or
-`primary_agent`, use the returned `heartbeat_prompt_migration` commands to
-refresh any installed Codex App automation body. Scheduler cadence updates
+`loopx heartbeat-prompt --thin --goal-id your-project-goal --agent-id codex-research --agent-scope "peer task claims and bounded delivery"`.
+After `configure-goal` or the control-plane UI changes `registered_agents`, use
+the returned `heartbeat_prompt_migration` commands to refresh installed Codex
+App automation bodies. A v0.1 hierarchy upgrade instead appears once as a
+blocking `automation_prompt_upgrade` with a stable migration id: update the
+host automation idempotently, then run its completion command. Repeating that
+completion acknowledgement is a no-op. Scheduler cadence updates
 should run `scheduler_hint.codex_app.ack_hint.cli_args`; current payloads use
 `quota scheduler-ack-current`, which re-reads the latest hint instead of making
 agents copy short-lived reset tokens.
@@ -674,7 +681,7 @@ For stalled control-plane repair, `control_plane.self_repair.enabled=true` lets
 `quota should-run` return a bounded `decision=self_repair` contract; missing
 policy defaults off. When the payload includes a `gate_prompt` or
 `operator_question`, the target heartbeat should proactively ask that concrete
-user/controller gate and do not call the turn "no new user action" while they
+user/operator gate and do not call the turn "no new user action" while they
 remain open. Even after a bounded safe-bypass step, its report still has to
 list existing open user todos. When `notify_user_on_open_todo=true`, skip
 delivery work and quota spend for that blocker-push turn.
@@ -824,7 +831,7 @@ heartbeats, read-only project maps, benchmark control-plane evidence, runtime
 bridges, collaboration projections, and a small multi-project dashboard.
 
 The next milestones are a clearer maintainer workflow for issue/PR loops,
-stronger project and domain adapters, safer controller/sub-agent coordination,
+stronger project and domain adapters, safer peer task coordination,
 better benchmark-runner ergonomics, and a more polished management surface that
 maps kernel state into the five user questions above.
 

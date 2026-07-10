@@ -140,7 +140,7 @@ def register_starter_bootstrap_commands(subparsers: argparse._SubParsersAction) 
     prompt_parser.add_argument("--adapter-kind", default=DEFAULT_HANDOFF_ADAPTER_KIND)
     prompt_parser.add_argument("--adapter-status", default=DEFAULT_HANDOFF_ADAPTER_STATUS)
     prompt_parser.add_argument("--next-probe", help="Optional read-only pre-tick command for the target project.")
-    prompt_parser.add_argument("--spawn-allowed", action="store_true", help="Include controller/sub-agent flags.")
+    prompt_parser.add_argument("--spawn-allowed", action="store_true", help="Include task-scoped worker flags.")
     prompt_parser.add_argument("--allowed-domain", action="append", default=[], help="Allowed child work domain. Repeatable.")
     prompt_parser.add_argument("--write-scope", action="append", default=[], help="Allowed write scope such as docs/**. Repeatable.")
 

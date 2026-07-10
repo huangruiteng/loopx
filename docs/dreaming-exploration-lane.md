@@ -71,7 +71,7 @@ Default permissions are intentionally narrow:
 - never publish private evidence into public docs or examples.
 
 The output of dreaming is a proposal, warning, or candidate patch plan. The
-operator or project controller decides whether it becomes normal project work.
+operator or an eligible peer decides whether it becomes normal project work.
 
 ## Relationship To Replanning
 

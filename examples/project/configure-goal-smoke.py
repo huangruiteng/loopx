@@ -113,8 +113,8 @@ def main() -> int:
             "codex-main-control",
             "--registered-agent",
             "codex-side-bypass,codex-main-control",
-            "--primary-agent",
-            "codex-main-control",
+            "--agent-model",
+            "peer_v1",
             "--write-scope",
             "docs/**",
             "--write-scope",
@@ -134,17 +134,17 @@ def main() -> int:
         assert "waiting_on" in dry["changed_fields"], dry
         assert "checkpointed_boundary_authority" in dry["changed_fields"], dry
         assert "registered_agents" in dry["changed_fields"], dry
-        assert "primary_agent" in dry["changed_fields"], dry
+        assert "configured_agent_model" in dry["changed_fields"], dry
         assert "write_scope" in dry["changed_fields"], dry
         assert dry["after"]["waiting_on"] == "user_or_controller", dry
         assert dry["after"]["write_scope"] == ["docs/**", "tests/**"], dry
         assert dry["after"]["checkpointed_boundary_authority"]["active_write_scope"] == ["docs/**"], dry
         assert dry["after"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], dry
-        assert dry["after"]["primary_agent"] == "codex-main-control", dry
+        assert dry["after"]["agent_model"] == "peer_v1", dry
         assert dry["feature_summary"]["multi_subagent"] == "enabled", dry
         migration = dry["heartbeat_prompt_migration"]
-        assert migration["schema_version"] == "heartbeat_prompt_migration_v0", migration
-        assert "coordination.registered_agents" in migration["reason"], migration
+        assert migration["schema_version"] == "heartbeat_prompt_migration_v1", migration
+        assert "agent identity changed" in migration["reason"], migration
         migration_commands = migration["commands"]
         assert [item["agent_id"] for item in migration_commands] == [
             "codex-main-control",
@@ -174,8 +174,8 @@ def main() -> int:
             "docs,validation",
             "--registered-agent",
             "codex-main-control,codex-side-bypass",
-            "--primary-agent",
-            "codex-main-control",
+            "--agent-model",
+            "peer_v1",
             "--write-scope",
             "docs/**,tests/**",
             "--waiting-on",
@@ -203,7 +203,7 @@ def main() -> int:
         assert goal["spawn_policy"]["max_children"] == 2, goal
         assert goal["spawn_policy"]["allowed_domains"] == ["docs", "validation"], goal
         assert goal["coordination"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], goal
-        assert goal["coordination"]["primary_agent"] == "codex-main-control", goal
+        assert goal["coordination"]["agent_model"] == "peer_v1", goal
         assert goal["coordination"]["write_scope"] == ["docs/**", "tests/**"], goal
         assert goal["waiting_on"] == "user_or_controller", goal
         authority = goal["coordination"]["checkpointed_boundary_authority"][0]
@@ -312,9 +312,9 @@ def main() -> int:
         assert agents_cleared["ok"] is True, agents_cleared
         assert agents_cleared["changed"] is True, agents_cleared
         assert "registered_agents" in agents_cleared["changed_fields"], agents_cleared
-        assert "primary_agent" in agents_cleared["changed_fields"], agents_cleared
+        assert "configured_agent_model" in agents_cleared["changed_fields"], agents_cleared
         assert "registered_agents" not in goal_from_registry(registry_path)["coordination"], agents_cleared
-        assert "primary_agent" not in goal_from_registry(registry_path)["coordination"], agents_cleared
+        assert "agent_model" not in goal_from_registry(registry_path)["coordination"], agents_cleared
 
         scope_cleared = payload(run_cli(
             registry_path,

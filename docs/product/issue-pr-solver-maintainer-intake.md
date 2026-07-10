@@ -51,7 +51,7 @@ issue_pr_solver_maintainer_intake_v0:
     post_comment: false
   owner_routing:
     maintainer_contact: "public-safe handle or channel label"
-    primary_owner: "human | primary_agent | partner_solver | unknown"
+    route_owner: "human | registered_peer | partner_solver | unknown"
     review_required_before: ["patch", "public_comment", "showcase"]
   evidence_boundary:
     allowed_evidence:

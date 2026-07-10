@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Canary auto-research role successors without weakening side-agent handoff."""
+"""Canary existing-successor completion across peer task domains."""
 
 from __future__ import annotations
 
@@ -69,8 +69,7 @@ def write_fixture(root: Path, *, auto_research: bool) -> tuple[Path, Path, Path]
         ),
         adapter_status="connected",
         registered_agents=[CURATOR, PROPOSER, EXECUTOR],
-        primary_agent=CURATOR,
-        side_agent_independent_worktree_required=False,
+        peer_independent_worktree_required=False,
     )
     return project, runtime, registry_path
 
@@ -104,7 +103,7 @@ def assert_auto_research_role_successor_allowed() -> None:
         assert returncode == 0, completed
         assert completed["ok"] is True, completed
         assert completed["status"] == "done", completed
-        assert completed["linked_handoff_successor_id"] == EXECUTOR_TODO, completed
+        assert completed["linked_successor_id"] == EXECUTOR_TODO, completed
         assert completed["successor_todo_ids"] == [EXECUTOR_TODO], completed
         assert completed["next_todos"] == [], completed
 
@@ -124,18 +123,19 @@ def assert_auto_research_role_successor_allowed() -> None:
         assert successor_lookup["todo"]["claimed_by"] == EXECUTOR, successor_lookup
 
 
-def assert_normal_side_agent_route_stays_strict() -> None:
-    with tempfile.TemporaryDirectory(prefix="loopx-normal-role-successor-reject-") as tmp:
+def assert_generic_peer_route_links_existing_successor() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-generic-peer-successor-") as tmp:
         _project, runtime, registry_path = write_fixture(Path(tmp), auto_research=False)
-        returncode, rejected = complete_proposer(registry_path, runtime)
-        assert returncode != 0, rejected
-        assert rejected["ok"] is False, rejected
-        assert "handoff_agent='research-curator'" in rejected["error"], rejected
+        returncode, completed = complete_proposer(registry_path, runtime)
+        assert returncode == 0, completed
+        assert completed["ok"] is True, completed
+        assert completed["linked_successor_id"] == EXECUTOR_TODO, completed
+        assert completed["successor_todo_ids"] == [EXECUTOR_TODO], completed
 
 
 def main() -> None:
     assert_auto_research_role_successor_allowed()
-    assert_normal_side_agent_route_stays_strict()
+    assert_generic_peer_route_links_existing_successor()
     print("auto-research-role-successor-completion-smoke ok")
 
 

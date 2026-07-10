@@ -103,7 +103,7 @@ incident report, or launch draft.
 - [Computer-use runtime connector v0](reference/protocols/computer-use-runtime-connector-v0.md)
 - [Host integration plugin plan v0](reference/protocols/host-integration-plugin-plan-v0.md)
 - [Codex App host command registry v0](reference/protocols/codex-app-host-command-registry-v0.md)
-- [Local agent launch plan v0](reference/protocols/local-agent-launch-plan-v0.md)
+- [Local agent launch plan v1](reference/protocols/local-agent-launch-plan-v1.md)
 - [Multi-agent visible launcher v0](reference/protocols/multi-agent-visible-launcher-v0.md)
 - [Goal vision replan contract v0](reference/protocols/goal-vision-replan-contract-v0.md)
 - [Runtime connector catalog](runtime-connector-catalog.md)
@@ -127,7 +127,7 @@ incident report, or launch draft.
 - [Long-task cadence hint](long-task-cadence-policy.md)
 - [Dreaming exploration lane](dreaming-exploration-lane.md)
 - [Session runtime control-plane adapter](session-runtime-control-plane-adapter.md)
-- [Codex subagent orchestration](codex-subagent-orchestration.md)
+- [Codex peer task orchestration](codex-subagent-orchestration.md)
 - [Dashboard frontend selection](dashboard-frontend-selection.md)
 - [Experiment controller milestone](experiment-controller-milestone.md)
 

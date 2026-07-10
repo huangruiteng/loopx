@@ -6,10 +6,8 @@ from pathlib import Path
 
 from ..agent_registry import (
     agent_profile_from_registry,
-    primary_agent_id_from_registry,
     registered_agent_ids_from_registry,
     require_registered_agent_id,
-    side_agent_handoff_agent_id_from_registry,
 )
 from ..heartbeat_prompt import (
     build_heartbeat_prompt,
@@ -134,7 +132,11 @@ def register_support_control_commands(
     backup_state_parser.add_argument(
         "--project",
         default=".",
-        help="Project root whose .loopx, .codex/goals, and .local/goals state should be included.",
+        help=(
+            "Current project root whose .loopx, .codex/goals, .claude/goals, and "
+            ".local/goals state is included alongside every project discovered from "
+            "the global registry."
+        ),
     )
     backup_state_parser.add_argument(
         "--output-dir",
@@ -153,6 +155,11 @@ def register_support_control_commands(
         "--no-skills",
         action="store_true",
         help="Exclude $CODEX_HOME/skills/loopx-* skill directories from the backup.",
+    )
+    backup_state_parser.add_argument(
+        "--current-project-only",
+        action="store_true",
+        help="Do not discover additional project state from the global registry.",
     )
     backup_state_parser.add_argument(
         "--execute",
@@ -363,6 +370,7 @@ def handle_support_control_command(
                 backup_id=args.backup_id,
                 include_automations=not bool(args.no_automations),
                 include_skills=not bool(args.no_skills),
+                include_registry_projects=not bool(args.current_project_only),
             )
             if args.execute:
                 payload = execute_state_backup_plan(payload)
@@ -384,8 +392,6 @@ def handle_support_control_command(
         resolved_active_state = None
         active_state_source = None
         registered_agents = None
-        primary_agent = None
-        side_agent_handoff_agent = None
         effective_agent_id = args.agent_id
         try:
             active_state, resolved_active_state, active_state_source = resolve_heartbeat_active_state(
@@ -399,7 +405,6 @@ def handle_support_control_command(
             if active_state_source.startswith("registry:"):
                 agent_registry_path = Path(active_state_source.removeprefix("registry:"))
             registered_agents = registered_agent_ids_from_registry(agent_registry_path, args.goal_id)
-            primary_agent = primary_agent_id_from_registry(agent_registry_path, args.goal_id)
             agent_profile = None
             if args.agent_id:
                 effective_agent_id = require_registered_agent_id(
@@ -409,11 +414,6 @@ def handle_support_control_command(
                     field="agent_id",
                 )
                 agent_profile = agent_profile_from_registry(agent_registry_path, args.goal_id, effective_agent_id)
-            side_agent_handoff_agent = side_agent_handoff_agent_id_from_registry(
-                agent_registry_path,
-                args.goal_id,
-                agent_id=effective_agent_id,
-            )
             payload = build_heartbeat_prompt(
                 goal_id=args.goal_id,
                 active_state=active_state,
@@ -429,8 +429,6 @@ def handle_support_control_command(
                 agent_scopes=args.agent_scopes,
                 agent_profile=agent_profile,
                 registered_agents=registered_agents,
-                primary_agent=primary_agent,
-                side_agent_handoff_agent=side_agent_handoff_agent,
                 available_capabilities=args.available_capabilities,
             )
         except Exception as exc:
@@ -458,8 +456,6 @@ def handle_support_control_command(
                 agent_id=effective_agent_id or args.agent_id,
                 agent_scopes=args.agent_scopes,
                 registered_agents=registered_agents,
-                primary_agent=primary_agent,
-                side_agent_handoff_agent=side_agent_handoff_agent,
                 available_capabilities=args.available_capabilities,
             )
         print_payload(payload, output_format(args), render_heartbeat_prompt_markdown)

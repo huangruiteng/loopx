@@ -188,15 +188,17 @@ def write_agent_scoped_registry(root: Path, runtime: Path) -> Path:
                             "window_hours": 24,
                         },
                         "coordination": {
-                            "primary_agent": "codex-main-control",
+                            "agent_model": "peer_v1",
                             "registered_agents": ["codex-main-control", "codex-side-observer"],
                             "agent_profiles": {
                                 "codex-main-control": {
-                                    "role": "primary-agent",
+                                    "schema_version": "agent_profile_v1",
+                                    "profile_role": "release-validation",
                                     "scope": "review, merge, final closeout",
                                 },
                                 "codex-side-observer": {
-                                    "role": "side-agent",
+                                    "schema_version": "agent_profile_v1",
+                                    "profile_role": "read-only-observation",
                                     "scope": "read-only observation",
                                 },
                             },

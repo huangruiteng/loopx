@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise typed todo continuation policy and legacy compatibility."""
+"""Exercise typed continuation policy for equal peers."""
 
 from __future__ import annotations
 
@@ -19,30 +19,26 @@ from loopx.control_plane.todos.completion_policy import (  # noqa: E402
 )
 from loopx.control_plane.todos.contract import (  # noqa: E402
     TodoContinuationPolicy,
-    format_todo_metadata_line,
-    parse_todo_metadata_line,
+    normalize_todo_continuation_policy,
     resolve_todo_continuation_policy,
 )
 
 
-GOAL_ID = "todo-continuation-policy-fixture"
-PRIMARY_AGENT = "codex-main-control"
-SIDE_AGENT = "codex-side-bypass"
-SUCCESSOR_ID = "todo_continuation_successor"
+GOAL_ID = "continuation-policy-fixture"
+PEER_ALPHA = "codex-alpha"
+PEER_BETA = "codex-beta"
 
 
-def write_registry(root: Path) -> Path:
-    registry_path = root / "registry.json"
-    registry_path.write_text(
+def write_registry(path: Path) -> None:
+    path.write_text(
         json.dumps(
             {
                 "goals": [
                     {
                         "id": GOAL_ID,
                         "coordination": {
-                            "registered_agents": [PRIMARY_AGENT, SIDE_AGENT],
-                            "primary_agent": PRIMARY_AGENT,
-                            "side_agent_handoff_agent": SIDE_AGENT,
+                            "agent_model": "peer_v1",
+                            "registered_agents": [PEER_ALPHA, PEER_BETA],
                         },
                     }
                 ]
@@ -51,156 +47,86 @@ def write_registry(root: Path) -> Path:
         + "\n",
         encoding="utf-8",
     )
-    return registry_path
-
-
-def source_todo(
-    *,
-    action_kind: str,
-    continuation_policy: str | None,
-    write_scoped: bool = False,
-) -> dict:
-    item = {
-        "role": "agent",
-        "task_class": "advancement_task",
-        "action_kind": action_kind,
-        "claimed_by": SIDE_AGENT,
-        "blocks_agent": PRIMARY_AGENT,
-    }
-    if continuation_policy:
-        item["continuation_policy"] = continuation_policy
-    if write_scoped:
-        item["required_write_scopes"] = ["loopx/**"]
-    return item
-
-
-def successor(policy: str = "independent_handoff") -> LinkedSuccessor:
-    return LinkedSuccessor(
-        todo_id=SUCCESSOR_ID,
-        role="agent",
-        status="open",
-        task_class="advancement_task",
-        action_kind="continue_lane",
-        continuation_policy=policy,
-        claimed_by=SIDE_AGENT,
-    )
-
-
-def resolve_existing(
-    registry_path: Path,
-    *,
-    source: dict,
-    linked_successor: LinkedSuccessor | None = None,
-):
-    return resolve_completion_policy(
-        registry_path=registry_path,
-        goal_id=GOAL_ID,
-        claimed_by=SIDE_AGENT,
-        evidence="public-safe non-delivery evidence",
-        linked_successors=[linked_successor or successor()],
-        completion_todo=source,
-    )
-
-
-def expect_rejected(callable_) -> None:
-    try:
-        callable_()
-    except ValueError as exc:
-        assert "--side-agent-self-merged" in str(exc), exc
-    else:
-        raise AssertionError("expected side-agent completion policy rejection")
-
-
-def assert_action_agnostic_non_delivery_policy(registry_path: Path) -> None:
-    for action_kind in (
-        "readiness_check",
-        "evidence_audit",
-        "pilot_readiness_review",
-        "artifact_verification",
-    ):
-        policy = resolve_existing(
-            registry_path,
-            source=source_todo(
-                action_kind=action_kind,
-                continuation_policy="same_agent_non_delivery",
-            ),
-        )
-        assert policy.linked_handoff_successor_id == SUCCESSOR_ID, policy
-        assert policy.side_agent_self_merged is False, policy
-
-
-def assert_delivery_and_primary_review_stay_gated(registry_path: Path) -> None:
-    expect_rejected(
-        lambda: resolve_existing(
-            registry_path,
-            source=source_todo(
-                action_kind="readiness_check",
-                continuation_policy="independent_handoff",
-            ),
-        )
-    )
-    expect_rejected(
-        lambda: resolve_existing(
-            registry_path,
-            source=source_todo(
-                action_kind="readiness_check",
-                continuation_policy="same_agent_non_delivery",
-                write_scoped=True,
-            ),
-        )
-    )
-    expect_rejected(
-        lambda: resolve_existing(
-            registry_path,
-            source=source_todo(
-                action_kind="readiness_check",
-                continuation_policy="same_agent_non_delivery",
-            ),
-            linked_successor=successor("primary_review"),
-        )
-    )
-
-
-def assert_primary_review_override_is_typed(registry_path: Path) -> None:
-    policy = resolve_completion_policy(
-        registry_path=registry_path,
-        goal_id=GOAL_ID,
-        claimed_by=SIDE_AGENT,
-        next_claimed_by=PRIMARY_AGENT,
-        next_agent_todo="Review the validated delivery.",
-        next_action_kind="merge_gate",
-        next_continuation_policy="primary_review",
-        evidence="validated delivery evidence",
-    )
-    assert policy.effective_next_claimed_by == PRIMARY_AGENT, policy
-
-
-def assert_legacy_names_materialize_typed_policy() -> None:
-    metadata = format_todo_metadata_line(
-        todo_id="todo_legacy_review",
-        status="open",
-        task_class="advancement_task",
-        action_kind="pilot_readiness_review",
-    )
-    parsed = parse_todo_metadata_line(metadata or "") or {}
-    assert parsed["continuation_policy"] == "same_agent_non_delivery", parsed
-    assert resolve_todo_continuation_policy(
-        None,
-        action_kind="primary_review_merge",
-    ) == TodoContinuationPolicy.PRIMARY_REVIEW
-    assert resolve_todo_continuation_policy(
-        None,
-        action_kind="implementation_slice",
-    ) == TodoContinuationPolicy.INDEPENDENT_HANDOFF
 
 
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="loopx-continuation-policy-") as tmp:
-        registry_path = write_registry(Path(tmp))
-        assert_action_agnostic_non_delivery_policy(registry_path)
-        assert_delivery_and_primary_review_stay_gated(registry_path)
-        assert_primary_review_override_is_typed(registry_path)
-    assert_legacy_names_materialize_typed_policy()
+        registry_path = Path(tmp) / "registry.json"
+        write_registry(registry_path)
+
+        same_peer = resolve_completion_policy(
+            registry_path=registry_path,
+            goal_id=GOAL_ID,
+            claimed_by=PEER_ALPHA,
+            next_agent_todo="Continue a read-only validation lane.",
+            next_continuation_policy="same_agent_non_delivery",
+        )
+        assert same_peer.agent_model == "peer_v1", same_peer
+        assert same_peer.effective_next_claimed_by == PEER_ALPHA, same_peer
+
+        review = resolve_completion_policy(
+            registry_path=registry_path,
+            goal_id=GOAL_ID,
+            claimed_by=PEER_ALPHA,
+            next_claimed_by=PEER_BETA,
+            next_agent_todo="Independently review the delivery.",
+            next_continuation_policy="review_handoff",
+        )
+        assert review.effective_next_claimed_by == PEER_BETA, review
+        assert not hasattr(review, "primary_agent"), review
+
+        try:
+            resolve_completion_policy(
+                registry_path=registry_path,
+                goal_id=GOAL_ID,
+                claimed_by=PEER_ALPHA,
+                next_claimed_by=PEER_ALPHA,
+                next_agent_todo="Review your own delivery.",
+                next_continuation_policy="review_handoff",
+            )
+        except ValueError as exc:
+            assert "different registered peer" in str(exc), exc
+        else:
+            raise AssertionError("review handoff must not self-claim")
+
+        try:
+            resolve_completion_policy(
+                registry_path=registry_path,
+                goal_id=GOAL_ID,
+                claimed_by=PEER_ALPHA,
+                self_merged=True,
+            )
+        except ValueError as exc:
+            assert "--self-merged requires --evidence" in str(exc), exc
+        else:
+            raise AssertionError("self-merged completion requires evidence")
+
+        merged = resolve_completion_policy(
+            registry_path=registry_path,
+            goal_id=GOAL_ID,
+            claimed_by=PEER_ALPHA,
+            self_merged=True,
+            evidence="commit and focused validation passed",
+            linked_successors=[
+                LinkedSuccessor(
+                    todo_id="todo_peer_successor",
+                    role="agent",
+                    status="open",
+                    claimed_by=PEER_BETA,
+                )
+            ],
+        )
+        assert merged.self_merged is True, merged
+        assert merged.linked_successor_id == "todo_peer_successor", merged
+
+        assert normalize_todo_continuation_policy("primary_review") == (
+            TodoContinuationPolicy.REVIEW_HANDOFF.value
+        )
+        assert resolve_todo_continuation_policy(
+            None,
+            action_kind="primary_review_merge",
+        ) == TodoContinuationPolicy.REVIEW_HANDOFF
+
     print("todo-continuation-policy-smoke ok")
     return 0
 

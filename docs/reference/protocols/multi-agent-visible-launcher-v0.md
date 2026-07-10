@@ -9,7 +9,7 @@ writeback.
 
 This contract intentionally sits between two existing surfaces:
 
-- `local_agent_launch_plan_v0` previews what could be launched and remains
+- `local_agent_launch_plan_v1` previews what could be launched and remains
   `mode=dry_run` only.
 - Domain capabilities, such as auto-research, provide role profiles, frontier
   commands, and evidence packets.
@@ -336,7 +336,7 @@ surface, high-reasoning launch flags, or pane survival checks.
 A public fixture or implementation satisfies the contract when:
 
 1. the packet or protocol names `multi_agent_visible_launcher_v0`;
-2. it distinguishes `local_agent_launch_plan_v0` preview from visible launch;
+2. it distinguishes `local_agent_launch_plan_v1` preview from visible launch;
 3. it says the launcher is not a leader agent, scheduler, promotion authority,
    or second source of truth;
 4. it exposes shared goal surface through registry, runtime root, goal id,

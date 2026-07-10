@@ -16,6 +16,11 @@ from .control_plane.todos.contract import (
     normalize_required_capabilities,
     normalize_todo_claimed_by,
 )
+from .control_plane.agents.runtime_model import (
+    AgentRuntimeModel,
+    LEGACY_HIERARCHY_ROLES,
+    PEER_AGENT_PROFILE_SCHEMA_VERSION,
+)
 
 
 DEFAULT_MATERIAL_QUEUE_RULE = "Do not consume the learning material queue unless the user explicitly asks."
@@ -102,8 +107,7 @@ def agent_profile_prompt_projection(profile: dict[str, Any] | None) -> dict[str,
     public_keys = {
         "schema_version",
         "agent_id",
-        "role",
-        "primary_agent",
+        "profile_role",
         "scope_summary",
         "default_scope",
         "scope",
@@ -113,10 +117,12 @@ def agent_profile_prompt_projection(profile: dict[str, Any] | None) -> dict[str,
         "default_task_classes",
         "preferred_action_kinds",
         "avoid_action_kinds",
-        "worktree_policy",
-        "review_policy",
     }
     projection = {key: value for key, value in profile.items() if key in public_keys}
+    legacy_role = str(profile.get("role") or "").strip()
+    if legacy_role and legacy_role not in LEGACY_HIERARCHY_ROLES:
+        projection.setdefault("profile_role", legacy_role)
+    projection["schema_version"] = PEER_AGENT_PROFILE_SCHEMA_VERSION
     return projection or None
 
 
@@ -129,7 +135,7 @@ def agent_prompt_command_args(*, agent_id: str | None, agent_scopes: list[str]) 
     return "".join(f" {shlex.quote(part)}" for part in parts)
 
 
-def build_identity_required_error(
+def build_peer_identity_required_error(
     *,
     goal_id: str,
     cli_bin: str,
@@ -138,190 +144,86 @@ def build_identity_required_error(
     brief: bool,
     thin: bool,
     registered_agents: list[str],
-    primary_agent: str | None,
 ) -> str:
-    mode_arg = " --thin" if thin else " --brief" if brief else " --compact" if compact else ""
-    primary_hint = primary_agent if primary_agent in registered_agents else registered_agents[0]
-    side_hint = next((agent for agent in registered_agents if agent != primary_hint), registered_agents[0])
-    base = f"{cli_bin} heartbeat-prompt{mode_arg} --goal-id {shlex.quote(goal_id)}{active_state_arg}"
-    primary_command = (
-        f"{base} --agent-id {shlex.quote(primary_hint)} "
-        "--agent-scope 'primary review, verification, merge, and coordination'"
+    mode_arg = (
+        " --thin"
+        if thin
+        else " --brief"
+        if brief
+        else " --compact"
+        if compact
+        else ""
     )
-    side_command = (
-        f"{base} --agent-id {shlex.quote(side_hint)} "
-        "--agent-scope 'bounded side-agent work in an independent worktree'"
+    base = (
+        f"{cli_bin} heartbeat-prompt{mode_arg} "
+        f"--goal-id {shlex.quote(goal_id)}{active_state_arg}"
     )
-    primary_text = primary_agent or "missing coordination.primary_agent"
+    examples = "; ".join(
+        f"`{base} --agent-id {shlex.quote(agent)} "
+        "--agent-scope 'peer task claims and leases'`"
+        for agent in registered_agents[:2]
+    )
     return (
-        "identity-aware heartbeat prompt required: coordination.registered_agents "
-        f"is configured for goal_id={goal_id!r}, so old automation prompts without "
-        "--agent-id are no longer accepted. Regenerate the installed automation "
-        f"with a registered --agent-id and at least one --agent-scope. "
-        f"registered_agents={', '.join(registered_agents)}; primary_agent={primary_text}. "
-        f"Primary example: `{primary_command}`. "
-        f"Side-agent example: `{side_command}`."
+        "identity-aware peer heartbeat prompt required: "
+        f"coordination.registered_agents is configured for goal_id={goal_id!r}, "
+        "so automation prompts without --agent-id are not accepted. Regenerate each "
+        f"installed automation with its registered identity. Examples: {examples}."
     )
 
 
-def render_agent_scope_instruction(
+def render_peer_agent_scope_instruction(
     *,
     goal_id: str,
     agent_id: str | None,
     agent_scopes: list[str],
-    primary_agent: str | None,
     cli_bin: str,
-    side_agent_handoff_agent: str | None = None,
     compact: bool = False,
     thin: bool = False,
 ) -> str:
     if not agent_id and not agent_scopes:
         return ""
-    identity = agent_id or "unclaimed-agent"
-    agent_role = "primary-agent" if agent_id and primary_agent and agent_id == primary_agent else "side-agent"
-    scope_text = "; ".join(agent_scopes) if agent_scopes else "read goal state and choose only clearly in-scope work"
+    identity = agent_id or "<registered-agent-id>"
+    scope_text = "; ".join(agent_scopes) if agent_scopes else "registered peer lane"
     claim_command = (
-        f"{cli_bin} todo claim --goal-id {goal_id} --todo-id <todo_id> --claimed-by {agent_id}"
+        f"{cli_bin} todo claim --goal-id {goal_id} --todo-id <todo_id> "
+        f"--claimed-by {agent_id}"
         if agent_id
-        else f"{cli_bin} todo claim --goal-id {goal_id} --todo-id <todo_id> --claimed-by <agent_id>"
+        else f"{cli_bin} todo claim --goal-id {goal_id} --todo-id <todo_id> "
+        "--claimed-by <agent_id>"
     )
-    handoff_stays_with_current_agent = bool(
-        agent_role == "side-agent"
-        and side_agent_handoff_agent
-        and agent_id
-        and side_agent_handoff_agent == agent_id
-    )
-    handoff_agent = side_agent_handoff_agent or primary_agent
-    handoff_owner_label = (
-        "no broad handoff; keep blocked work claimed_by you"
-        if handoff_stays_with_current_agent
-        else (
-            f"handoff todo claimed_by `{side_agent_handoff_agent}`"
-            if side_agent_handoff_agent
-            else f"handoff todo claimed_by primary_agent `{primary_agent or '<primary_agent>'}`"
-        )
-    )
-    handoff_todo_text = (
-        "Review, verify, and continue this side-agent handoff."
-        if side_agent_handoff_agent
-        else "Review, verify, and merge this side-agent work."
-    )
-    completion_command = (
-        f"{cli_bin} todo complete --goal-id {goal_id} --todo-id <todo_id> "
-        f"--claimed-by {agent_id or '<agent_id>'} --next-agent-todo "
-        f"{shlex.quote(handoff_todo_text)} --next-claimed-by {handoff_agent or '<handoff_agent>'}"
-    )
-    self_merge_command = (
-        f"{cli_bin} todo complete --goal-id {goal_id} --todo-id <todo_id> "
-        f"--claimed-by {agent_id or '<agent_id>'} --side-agent-self-merged "
-        "--evidence '<public-safe self-merge commit and validation summary>'"
+    peer_rule = (
+        "You are an equal peer agent. Claim or lease in-scope work before delivery; "
+        "use an independent worktree for repository writes; follow todo continuation "
+        "policy for direct completion, same-agent continuation, or independent review. "
+        "Task-scoped coordination does not grant durable authority over other agents."
     )
     if thin:
-        if agent_role == "primary-agent":
-            role_rule = "Primary: own review, verification, merge/publication, and reassignment."
-        else:
-            role_rule = (
-                "Side-agent: independent git worktree/branch; self-merge small "
-                "validated changes with evidence; "
-                + (
-                    "if blocked or unclear, write a concrete blocker or keep the "
-                    "todo claimed_by you; do not create broad handoff todos."
-                    if handoff_stays_with_current_agent
-                    else f"otherwise finish with a {handoff_owner_label}."
-                )
-            )
         return (
-            f"Agent: `{identity}`; role: {agent_role}; primary: `{primary_agent}`; "
-            f"scope: {scope_text}. {role_rule} Claim in-scope todo first. "
+            f"Agent: `{identity}`; model: peer_v1; scope: {scope_text}. {peer_rule} "
             "Do not write scope into todo metadata."
         )
-    if compact or thin:
-        if agent_role == "primary-agent":
-            primary_handoff_tail = (
-                "side-agent handoff todos claimed_by you."
-                if not side_agent_handoff_agent or side_agent_handoff_agent == primary_agent
-                else f"final review and reassignment; handoff todos may route to `{side_agent_handoff_agent}`."
-            )
-            role_rule = (
-                "You are the single primary agent: own review, verification, "
-                f"merge/publication, {primary_handoff_tail}"
-            )
-        else:
-            if handoff_stays_with_current_agent:
-                role_rule = (
-                    "You are a side-agent. Use an independent git worktree/branch. "
-                    "Self-merge only small AGENTS-eligible validated changes with "
-                    "`--side-agent-self-merged --evidence`; if blocked or unclear, "
-                    "write a concrete blocker or keep the todo claimed_by you. "
-                    "Do not create broad handoff todos."
-                )
-            else:
-                role_rule = (
-                    "You are a side-agent. Use an independent git worktree/branch. "
-                    "Self-merge only small AGENTS-eligible validated changes with "
-                    "`--side-agent-self-merged --evidence`; otherwise create a handoff "
-                    f"todo with `--next-agent-todo` and `--next-claimed-by {handoff_agent}`."
-                )
+    if compact:
         return (
-            f"Agent identity and scope: agent_id `{identity}`; role: {agent_role}; "
-            f"primary_agent `{primary_agent}`; scope: {scope_text}. {role_rule} "
-            f"Before delivery, claim an in-scope todo with "
-            f"`{claim_command}`; if claimed/outside scope, choose another or "
-            "report none. Do not write scope into todo metadata."
+            f"Agent identity and scope: agent_id `{identity}`; model: peer_v1; "
+            f"scope: {scope_text}. {peer_rule} Claim with `{claim_command}`. "
+            "Do not write scope into todo metadata."
         )
-    if agent_role == "primary-agent":
-        primary_handoff_tail = (
-            "Side-agent handoff todos claimed_by you are your responsibility."
-            if not side_agent_handoff_agent or side_agent_handoff_agent == primary_agent
-            else f"Side-agent handoff todos may route to `{side_agent_handoff_agent}`; you still own final review and reassignment."
-        )
-        role_rule = (
-            "You are the single primary agent for this goal: own final review, "
-            "verification, merge/publication decisions, and reassignment. "
-            f"{primary_handoff_tail}"
-        )
-    else:
-        if handoff_stays_with_current_agent:
-            role_rule = (
-                f"You are a side-agent for this goal; primary_agent is `{primary_agent}`. "
-                "Do development only in an independent git worktree/branch, never in the "
-                "main checkout. Self-merge only small AGENTS-eligible validated changes; "
-                "never self-merge runtime, benchmark, permission, production, destructive "
-                "git, or public evidence-policy changes that need review. For a "
-                f"self-merge, complete with `{self_merge_command}`. If blocked or unclear, "
-                "write a concrete blocker or keep the todo claimed_by you; do not create "
-                "a broad handoff todo."
-            )
-        else:
-            role_rule = (
-                f"You are a side-agent for this goal; primary_agent is `{primary_agent}`. "
-                "Do development only in an independent git worktree/branch, never in the "
-                "main checkout. Self-merge only small AGENTS-eligible validated changes; "
-                "never self-merge runtime, benchmark, permission, production, destructive "
-                "git, or public evidence-policy changes that need review. For a "
-                f"self-merge, complete with `{self_merge_command}`. Otherwise complete "
-                f"with a handoff todo, for example `{completion_command}`."
-            )
     return f"""Agent identity and scope:
 
 - agent_id: `{identity}`
-- role: `{agent_role}`
-- primary_agent: `{primary_agent}`
-- side_agent_handoff_agent: `{side_agent_handoff_agent}`
+- agent_model: `peer_v1`
 - scope: {scope_text}
 
-{role_rule}
+{peer_rule}
 
-Before delivery, choose an unclaimed open agent todo that matches this scope and
-soft-claim it:
+Before delivery, claim an in-scope open todo:
 
 ```bash
 {claim_command}
 ```
 
-If the first executable todo is claimed by another agent or outside this scope,
-choose another in-scope unclaimed todo or report no in-scope work. Do not write
-agent scope into todo metadata; scope belongs in this automation/handoff prompt.
+If a todo is claimed or leased by another peer, choose another in-scope item or
+report no in-scope work. Scope belongs in the heartbeat prompt, not todo metadata.
 """
 
 
@@ -364,8 +266,6 @@ def build_heartbeat_prompt(
     agent_scopes: list[str] | tuple[str, ...] | None = None,
     agent_profile: dict[str, Any] | None = None,
     registered_agents: list[str] | tuple[str, ...] | None = None,
-    primary_agent: str | None = None,
-    side_agent_handoff_agent: str | None = None,
     available_capabilities: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     effective_resolved_active_state = resolved_active_state or active_state
@@ -383,21 +283,13 @@ def build_heartbeat_prompt(
     explicit_agent_scopes = normalize_agent_scopes(agent_scopes)
     profile_agent_scopes = agent_profile_scopes(agent_profile)
     normalized_agent_scopes = explicit_agent_scopes or profile_agent_scopes
-    agent_scope_source = "argument" if explicit_agent_scopes else "agent_profile_v0" if profile_agent_scopes else None
+    agent_scope_source = "argument" if explicit_agent_scopes else "agent_profile_v1" if profile_agent_scopes else None
     if normalized_agent_scopes and not normalized_agent_id:
         raise ValueError("--agent-scope requires --agent-id so claimed_by uses a registered agent")
     normalized_registered_agents = normalize_registered_agents(registered_agents)
-    normalized_primary_agent = normalize_todo_claimed_by(primary_agent) if primary_agent else None
-    if primary_agent and not normalized_primary_agent:
-        raise ValueError("primary_agent must be a public-safe registered agent id")
-    normalized_side_agent_handoff_agent = (
-        normalize_todo_claimed_by(side_agent_handoff_agent) if side_agent_handoff_agent else None
-    )
-    if side_agent_handoff_agent and not normalized_side_agent_handoff_agent:
-        raise ValueError("side_agent_handoff_agent must be a public-safe registered agent id")
     if normalized_registered_agents and not normalized_agent_id:
         raise ValueError(
-            build_identity_required_error(
+            build_peer_identity_required_error(
                 goal_id=goal_id,
                 cli_bin=cli_bin,
                 active_state_arg=active_state_arg,
@@ -405,7 +297,6 @@ def build_heartbeat_prompt(
                 brief=brief,
                 thin=thin,
                 registered_agents=normalized_registered_agents,
-                primary_agent=normalized_primary_agent,
             )
         )
     if normalized_agent_id:
@@ -416,35 +307,7 @@ def build_heartbeat_prompt(
                 f"agent_id={normalized_agent_id!r} is not registered; "
                 f"registered_agents={', '.join(normalized_registered_agents)}"
             )
-    if normalized_agent_id and normalized_registered_agents:
-        if not normalized_primary_agent:
-            raise ValueError("primary_agent must be configured when registered_agents are configured")
-        if normalized_primary_agent not in normalized_registered_agents:
-            raise ValueError(
-                f"primary_agent={normalized_primary_agent!r} is not registered; "
-                f"registered_agents={', '.join(normalized_registered_agents)}"
-            )
-    elif normalized_primary_agent and normalized_registered_agents and normalized_primary_agent not in normalized_registered_agents:
-        raise ValueError(
-            f"primary_agent={normalized_primary_agent!r} is not registered; "
-            f"registered_agents={', '.join(normalized_registered_agents)}"
-        )
-    if (
-        normalized_side_agent_handoff_agent
-        and normalized_registered_agents
-        and normalized_side_agent_handoff_agent not in normalized_registered_agents
-    ):
-        raise ValueError(
-            f"side_agent_handoff_agent={normalized_side_agent_handoff_agent!r} is not registered; "
-            f"registered_agents={', '.join(normalized_registered_agents)}"
-        )
-    agent_role = (
-        "primary-agent"
-        if normalized_agent_id and normalized_primary_agent and normalized_agent_id == normalized_primary_agent
-        else "side-agent"
-        if normalized_agent_id
-        else None
-    )
+    agent_role = "peer-agent" if normalized_agent_id else None
     command_agent_scopes = explicit_agent_scopes
     agent_args = agent_prompt_command_args(
         agent_id=normalized_agent_id,
@@ -456,13 +319,11 @@ def build_heartbeat_prompt(
     capability_args = render_available_capability_args(
         normalized_available_capabilities
     )
-    agent_scope_instruction = render_agent_scope_instruction(
+    agent_scope_instruction = render_peer_agent_scope_instruction(
         goal_id=goal_id,
         agent_id=normalized_agent_id,
         agent_scopes=normalized_agent_scopes,
-        primary_agent=normalized_primary_agent,
         cli_bin=cli_bin,
-        side_agent_handoff_agent=normalized_side_agent_handoff_agent,
         compact=compact or brief,
         thin=thin,
     )
@@ -522,7 +383,7 @@ def build_heartbeat_prompt(
         brief_prompt_command=brief_prompt_command,
         thin_prompt_command=thin_prompt_command,
     )
-    return {
+    payload = {
         "ok": True,
         "goal_id": goal_id,
         "active_state": active_state_text,
@@ -540,17 +401,15 @@ def build_heartbeat_prompt(
         "agent_scope_source": agent_scope_source,
         "agent_profile": agent_profile_prompt_projection(agent_profile),
         "registered_agents": normalized_registered_agents,
-        "primary_agent": normalized_primary_agent,
-        "side_agent_handoff_agent": normalized_side_agent_handoff_agent,
         "expanded_prompt_command": expanded_prompt_command,
         "compact_prompt_command": compact_prompt_command,
         "brief_prompt_command": brief_prompt_command,
         "thin_prompt_command": thin_prompt_command,
-            "quota_guard_command": quota_guard_command,
-            "quota_spend_command": quota_spend_command,
-            "refresh_state_command": refresh_state_command,
-            "progress_refresh_state_command": progress_refresh_state_command,
-            "cli_preflight": cli_preflight,
+        "quota_guard_command": quota_guard_command,
+        "quota_spend_command": quota_spend_command,
+        "refresh_state_command": refresh_state_command,
+        "progress_refresh_state_command": progress_refresh_state_command,
+        "cli_preflight": cli_preflight,
         "material_queue_rule": resolved_material_rule,
         "permission_rule": resolved_permission_rule,
         "interface_budget": build_interface_budget(
@@ -563,6 +422,8 @@ def build_heartbeat_prompt(
         ),
         "task_body": task_body,
     }
+    payload["agent_model"] = AgentRuntimeModel.PEER_V1.value
+    return payload
 
 
 def build_heartbeat_prompt_error_payload(
@@ -579,8 +440,6 @@ def build_heartbeat_prompt_error_payload(
     agent_id: str | None = None,
     agent_scopes: list[str] | tuple[str, ...] | None = None,
     registered_agents: list[str] | tuple[str, ...] | None = None,
-    primary_agent: str | None = None,
-    side_agent_handoff_agent: str | None = None,
     available_capabilities: list[str] | tuple[str, ...] | None = None,
     material_queue_rule: str | None = None,
     permission_rule: str | None = None,
@@ -608,7 +467,7 @@ def build_heartbeat_prompt_error_payload(
     brief_prompt_command = f"{cli_bin} heartbeat-prompt --brief --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     thin_prompt_command = f"{cli_bin} heartbeat-prompt --thin --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     normalized_registered_agents = normalize_registered_agents(registered_agents)
-    return {
+    payload = {
         "ok": False,
         "goal_id": goal_id,
         "error": error,
@@ -625,8 +484,6 @@ def build_heartbeat_prompt_error_payload(
         "agent_scope_source": "argument" if projected_agent_scopes else None,
         "agent_profile": None,
         "registered_agents": normalized_registered_agents,
-        "primary_agent": str(primary_agent).strip() if primary_agent else None,
-        "side_agent_handoff_agent": str(side_agent_handoff_agent).strip() if side_agent_handoff_agent else None,
         "expanded_prompt_command": expanded_prompt_command,
         "compact_prompt_command": compact_prompt_command,
         "brief_prompt_command": brief_prompt_command,
@@ -639,6 +496,8 @@ def build_heartbeat_prompt_error_payload(
         "interface_budget": None,
         "task_body": None,
     }
+    payload["agent_model"] = AgentRuntimeModel.PEER_V1.value
+    return payload
 
 
 def render_heartbeat_task_body(
@@ -979,8 +838,8 @@ If `should_run=true`:
    validate/save/spend/refresh/`NOTIFY`; `mapped_noop_if_unchanged` plus
    `stop_if_unchanged=true` means quiet no-op if no new instruction/evidence/
    todo/stale source/safe handoff.
-   `subagent_orchestration_contract`: spawn/resume eligible child lanes;
-   review/write.
+   `task_orchestration_contract`: activate/resume eligible peer lanes; the
+   task-scoped coordinator reviews accepted evidence and writes this bundle.
    Check `delivery_batch_scale`, `delivery_outcome`,
    `post_handoff_outcome_gap_streak`, `handoff_delivery_contract`; obey
    repeated-small/surface-loop contracts.
@@ -1063,30 +922,40 @@ credentials, destructive git, or unauthorized production actions{permission_tail
 
 def render_heartbeat_generator_inputs_markdown(payload: dict[str, Any]) -> str:
     interface_budget = payload.get("interface_budget") if isinstance(payload.get("interface_budget"), dict) else {}
-    return f"""## Generator Inputs
-
-- goal_id: `{payload.get("goal_id")}`
-- active_state: `{payload.get("active_state")}`
-- active_state_source: `{payload.get("active_state_source")}`
-- resolved_active_state: `{payload.get("resolved_active_state")}`
-- compact: `{payload.get("compact")}`
-- brief: `{payload.get("brief")}`
-- thin: `{payload.get("thin")}`
-- cli_bin: `{payload.get("cli_bin")}`
-- agent_id: `{payload.get("agent_id")}`
-- agent_role: `{payload.get("agent_role")}`
-- primary_agent: `{payload.get("primary_agent")}`
-- side_agent_handoff_agent: `{payload.get("side_agent_handoff_agent")}`
-- agent_scopes: `{payload.get("agent_scopes")}`
-- expanded_prompt_command: `{payload.get("expanded_prompt_command")}`
-- compact_prompt_command: `{payload.get("compact_prompt_command")}`
-- brief_prompt_command: `{payload.get("brief_prompt_command")}`
-- thin_prompt_command: `{payload.get("thin_prompt_command")}`
-- quota_guard_command: `{payload.get("quota_guard_command")}`
-- quota_spend_command: `{payload.get("quota_spend_command")}`
-- cli_preflight: `{payload.get("cli_preflight")}`
-- interface_budget: mode=`{interface_budget.get("mode")}` budget_chars=`{interface_budget.get("budget_char_count")}` max_chars=`{interface_budget.get("max_chars")}` within_budget=`{interface_budget.get("within_budget")}`
-"""
+    lines = [
+        "## Generator Inputs",
+        "",
+        f"- goal_id: `{payload.get('goal_id')}`",
+        f"- active_state: `{payload.get('active_state')}`",
+        f"- active_state_source: `{payload.get('active_state_source')}`",
+        f"- resolved_active_state: `{payload.get('resolved_active_state')}`",
+        f"- compact: `{payload.get('compact')}`",
+        f"- brief: `{payload.get('brief')}`",
+        f"- thin: `{payload.get('thin')}`",
+        f"- cli_bin: `{payload.get('cli_bin')}`",
+        f"- agent_id: `{payload.get('agent_id')}`",
+        f"- agent_model: `{payload.get('agent_model')}`",
+        f"- agent_role: `{payload.get('agent_role')}`",
+    ]
+    lines.extend(
+        [
+            f"- agent_scopes: `{payload.get('agent_scopes')}`",
+            f"- expanded_prompt_command: `{payload.get('expanded_prompt_command')}`",
+            f"- compact_prompt_command: `{payload.get('compact_prompt_command')}`",
+            f"- brief_prompt_command: `{payload.get('brief_prompt_command')}`",
+            f"- thin_prompt_command: `{payload.get('thin_prompt_command')}`",
+            f"- quota_guard_command: `{payload.get('quota_guard_command')}`",
+            f"- quota_spend_command: `{payload.get('quota_spend_command')}`",
+            f"- cli_preflight: `{payload.get('cli_preflight')}`",
+            "- interface_budget: "
+            f"mode=`{interface_budget.get('mode')}` "
+            f"budget_chars=`{interface_budget.get('budget_char_count')}` "
+            f"max_chars=`{interface_budget.get('max_chars')}` "
+            f"within_budget=`{interface_budget.get('within_budget')}`",
+            "",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def render_heartbeat_prompt_error_markdown(payload: dict[str, Any]) -> str:

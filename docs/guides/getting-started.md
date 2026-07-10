@@ -136,11 +136,15 @@ Write the archive only when the preview looks right:
 loopx backup-state --project . --execute
 ```
 
-The backup is written under `~/.codex/loopx/backups` by default and captures the
-shared LoopX runtime root, this project's `.loopx`, `.codex/goals`, and
-`.local/goals` state, Codex App automations, and installed `loopx-*` skills
-when present. Treat the archive and manifest as private local recovery
-material; do not commit them or publish their contents.
+The backup is written under `~/.codex/loopx/backups` by default. It captures the
+shared LoopX runtime root, Codex App automations, installed `loopx-*` skills,
+the current project's state, and every reachable project's `.loopx`,
+`.codex/goals`, `.claude/goals`, `.local/goals`, registry-declared active state,
+and source registry discovered from the global registry. Missing or stale
+project routes remain visible in the manifest. Use `--current-project-only`
+only when a deliberately narrow archive is sufficient. Treat the archive and
+manifest as private local recovery material; do not commit them or publish
+their contents.
 
 ## Codex CLI TUI Setup
 
@@ -702,7 +706,6 @@ prompt, then let the agent soft-claim matching todos with a registered
 loopx register-agent --goal-id your-project-goal \
   --agent-id codex-main-control \
   --agent-id codex-side-bypass \
-  --primary-agent codex-main-control \
   --execute
 
 loopx heartbeat-prompt --compact --goal-id your-project-goal \
@@ -716,9 +719,12 @@ surface an upgrade error instead of silently running without identity or
 scope. Old goal registries without `coordination.registered_agents` also fail
 closed when a scoped heartbeat or todo claim names an agent; register the agent
 identity first instead of letting workers invent claim ids.
-When `configure-goal` changes `registered_agents` or `primary_agent`, its JSON
-and markdown output includes `heartbeat_prompt_migration` commands for the
-installed automations that need a refreshed identity-aware task body.
+For a hierarchy-era registry, the next `quota should-run` and `upgrade-plan`
+return a stable peer-runtime migration id, one heartbeat command per registered
+peer, and a completion command. Update installed automations idempotently with
+that migration id, then run the completion command once. Repeating the same
+completion acknowledgement is a no-op, and later quota checks do not project
+the completed migration again.
 
 `register-agent` resolves the existing global entry's `source_registry`, writes
 the project-local source of truth, and then syncs the shared global projection.
@@ -728,14 +734,13 @@ health error. Fix the shared runtime permission or run from a host that can
 write the LoopX runtime root, then rerun the command. Use `--no-global-sync`
 only when you intentionally want an explicit local-only connection.
 
-Set exactly one `coordination.primary_agent`: that primary agent owns final
-review, verification, merge, publication, and reassignment. Side agents are
-prompted to work in separate worktrees, and `quota should-run --agent-id
-<side-agent-id>` fails closed with `workspace_guard` when a side agent runs
-from the primary checkout. Small AGENTS-eligible validated changes may be
-self-merged with explicit LoopX evidence; higher-risk or unclear work should
-still create a successor handoff todo, claimed by the primary agent by default
-or by `coordination.side_agent_handoff_agent` when configured.
+Registered agents use `agent_model=peer_v1`: no identity is the durable leader.
+Todo claims or task leases select the current owner. A repository-writing peer
+uses an independent worktree when task or goal policy requires it, and
+`workspace_guard` fails closed when that isolation is missing. Small
+AGENTS-eligible validated changes may be self-merged with explicit LoopX
+evidence. Higher-risk work should create an independent successor or an
+explicit `review_handoff` assigned to a different registered peer.
 
 See [heartbeat automation prompt](../heartbeat-automation-prompt.md) and
 [project agent todo contract](../project-agent-todo-contract.md).
@@ -862,7 +867,7 @@ Start here:
 - [Public launch narrative draft](../outreach/public-launch-narrative-draft.md)
 - [Xiaohongshu launch draft](../outreach/xiaohongshu-launch-draft.md)
 - [Dashboard status contract](../status-data-contract.md)
-- [Codex subagent orchestration](../codex-subagent-orchestration.md)
+- [Codex peer task orchestration](../codex-subagent-orchestration.md)
 - [Benchmark long-run design](../research/long-horizon-agent-benchmarks/codex-cli-long-run-benchmark-design.md)
 
 ## Command Reference

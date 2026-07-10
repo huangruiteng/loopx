@@ -86,7 +86,7 @@ Each agent row is a compact card or table row for one registered agent.
 Required fields:
 
 - `agent_id`;
-- `role`: for example `primary`, `side-agent`, `reviewer`, or `operator`;
+- `agent_model`: `peer_v1`;
 - `state`: one of `running`, `waiting`, `blocked`, `monitoring`,
   `scope_wait`, `stale`, or `unknown`;
 - `current_todo`: a `todo_row_v0` object or `null`;
@@ -99,6 +99,8 @@ Required fields:
 
 Optional fields:
 
+- `profile_role`: an advisory functional label such as `reviewer`, `monitor`,
+  or `runtime-validation`; it is not rank or authority;
 - `scope_summary`;
 - `quota_state`;
 - `scheduler_state`;
@@ -202,7 +204,7 @@ clear the claim, reassign work, or discard evidence from this projection alone.
 
 ```json
 {
-  "kind": "primary_checkout|worktree|external|unknown",
+  "kind": "canonical_checkout|worktree|external|unknown",
   "label": "codex/value-explorer",
   "path_safe": false,
   "branch": "codex/value-explorer-post702",

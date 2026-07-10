@@ -58,17 +58,26 @@ def main() -> int:
         agent_type="codex-app",
         goal_id="multi-agent-demo",
         registered_agents=["codex-main-control", "codex-product-capability"],
-        primary_agent="codex-main-control",
     )
     assert gated_activation["activation_state"] == "selection_required", gated_activation
     assert gated_activation["activation_allowed"] is False, gated_activation
     assert gated_activation["activation_input_command"] is None, gated_activation
     assert len(gated_activation["identity_selection_gate"]["choices"]) == 2, gated_activation
+    peer_activation = build_host_loop_activation_packet(
+        agent_type="codex-app",
+        goal_id="peer-agent-demo",
+        registered_agents=["codex-alpha", "codex-beta"],
+    )
+    assert peer_activation["agent_model"] == "peer_v1", peer_activation
+    assert "primary_agent" not in peer_activation["identity_contract"], peer_activation
+    assert all(
+        "role" not in choice
+        for choice in peer_activation["identity_selection_gate"]["choices"]
+    ), peer_activation
     single_agent_activation = build_host_loop_activation_packet(
         agent_type="codex-app",
         goal_id="single-agent-demo",
         registered_agents=["codex-main-control"],
-        primary_agent="codex-main-control",
     )
     assert single_agent_activation["activation_state"] == "single_registered_agent_selected"
     assert single_agent_activation["agent_id"] == "codex-main-control"
@@ -134,11 +143,11 @@ def main() -> int:
                     "state_file": ".codex/goals/multi-agent-goal/ACTIVE_GOAL_STATE.md",
                     "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
                     "coordination": {
+                        "agent_model": "peer_v1",
                         "registered_agents": [
                             "codex-main-control",
                             "codex-product-capability",
                         ],
-                        "primary_agent": "codex-main-control",
                     },
                 }
             ]

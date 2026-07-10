@@ -143,7 +143,7 @@ def main() -> int:
             "connector_runtime_boundary_gap",
             "shell_pr_comment_command_substitution",
             "The correction stayed in chat/model belief",
-            "Agent-scoped quota does not distinguish \"goal has runnable work\" from \"this agent has runnable work\"",
+            "Agent-scoped quota does not distinguish \"goal has runnable work\" from \"this peer has runnable work\"",
             "Deferred work was modeled as absence of todo instead of a gate-resume lifecycle condition",
             "Handoff lifecycle was inferred from open todo lanes instead of a small state machine",
             "`todo_handoff_gate_v0`",

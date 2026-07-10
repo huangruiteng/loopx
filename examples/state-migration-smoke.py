@@ -90,7 +90,7 @@ def main() -> int:
                         },
                         "coordination": {
                             "registered_agents": ["codex-main-control", "codex-side-bypass"],
-                            "primary_agent": "codex-main-control",
+                            "agent_model": "peer_v1",
                             "write_scope": [],
                             "claim_ttl_minutes": 30,
                             "requires_parent_approval": ["write", "publish"],

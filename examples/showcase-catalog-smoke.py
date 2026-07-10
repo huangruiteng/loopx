@@ -201,7 +201,7 @@ def main() -> int:
             assert isinstance(estimated_days, dict), efficiency
             assert estimated_days.get("low", 0) >= 50, estimated_days
             assert estimated_days.get("high", 0) >= estimated_days.get("low", 0), estimated_days
-            assert "side_agent_scope" in case.get("pattern_tags", []), case
+            assert "peer_claim_scope" in case.get("pattern_tags", []), case
             assert "efficiency_evidence_model" in case.get("pattern_tags", []), case
             page_text = read(page)
             for phrase in (
@@ -214,7 +214,7 @@ def main() -> int:
                 "Benchmark and adapter maturation",
                 "Control-plane correctness",
                 "Planning and dreaming lanes",
-                "--side-agent-self-merged --evidence",
+                "--self-merged --evidence",
                 "The workload signal is the whole public repository through fixed anchor commit",
                 "completion evidence recorded self-merge and validation outcomes",
             ):
@@ -236,7 +236,7 @@ def main() -> int:
     ):
         assert phrase in feedback_loop, phrase
     for phrase in (
-        "Loop engineering for long-running AI agents and agent teams.",
+        "Loop engineering for long-running AI agents and peer agent teams.",
         "A lightweight state kernel and agent-agnostic local control plane for",
         "https://huangruiteng.github.io/loopx/frontstage/",
         "docs/outreach/frontstage-demo-script.md",

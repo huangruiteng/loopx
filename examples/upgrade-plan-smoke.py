@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from loopx.configure_goal import configure_goal  # noqa: E402
 from loopx.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
 from loopx.upgrade import build_upgrade_plan, prompt_digest, render_upgrade_plan_markdown  # noqa: E402
 
@@ -341,11 +342,17 @@ def assert_registered_agent_activation_is_checked(root: Path) -> None:
     assert payload["summary"]["host_loop_activated_goal_count"] == 0, payload
     assert payload["summary"]["host_loop_missing_goal_count"] == 1, payload
     assert payload["summary"]["ready_for_default_promotion"] is False, payload
-    assert "activate missing host loops" in payload["recommended_action"], payload
+    assert "peer runtime automation migration" in payload["recommended_action"], payload
+    assert payload["summary"]["peer_runtime_automation_migration_count"] == 1, payload
     goal = payload["managed_heartbeats"][0]
     assert goal["requires_update"] is True, payload
     assert goal["registered_agents"] == [REGISTERED_AGENT_ID], payload
-    assert goal["primary_agent"] == REGISTERED_AGENT_ID, payload
+    assert "primary_agent" not in goal, payload
+    migration = goal["peer_runtime_automation_migration"]
+    assert migration["required"] is True, migration
+    assert migration["host_update_required_once"] is False, migration
+    assert migration["host_updates"] == [], migration
+    assert migration["migration_id"] in migration["completion_command"], migration
     assert "thin:codex-current" in goal["generated_prompts"], payload
     assert "thin:codex-current" in goal["installed_prompts"], payload
     activation = goal["host_loop_activation"]
@@ -363,7 +370,6 @@ def assert_registered_agent_activation_is_checked(root: Path) -> None:
         cli_bin="loopx",
         agent_id=REGISTERED_AGENT_ID,
         registered_agents=[REGISTERED_AGENT_ID],
-        primary_agent=REGISTERED_AGENT_ID,
     )["task_body"]
     expected_sha = goal["generated_prompts"]["thin:codex-current"]["sha256"]
     assert prompt_digest(rendered) == expected_sha, payload
@@ -371,6 +377,18 @@ def assert_registered_agent_activation_is_checked(root: Path) -> None:
     old_codex_home = os.environ.get("CODEX_HOME")
     os.environ["CODEX_HOME"] = str(root / "registered-codex-home")
     try:
+        pending_payload = build_upgrade_plan(registry_path=registry_path, cli_bin="loopx")
+        pending_migration = pending_payload["managed_heartbeats"][0][
+            "peer_runtime_automation_migration"
+        ]
+        pending_markdown = render_upgrade_plan_markdown(pending_payload)
+        assert pending_migration["migration_id"] in pending_markdown, pending_markdown
+        configure_goal(
+            registry_path=registry_path,
+            goal_id=REGISTERED_GOAL_ID,
+            automation_prompt_migration_ack=pending_migration["migration_id"],
+            execute=True,
+        )
         current_payload = build_upgrade_plan(registry_path=registry_path, cli_bin="loopx")
     finally:
         if old_codex_home is None:
@@ -381,6 +399,7 @@ def assert_registered_agent_activation_is_checked(root: Path) -> None:
     assert current_payload["summary"]["current_prompt_count"] == 1, current_payload
     assert current_payload["summary"]["host_loop_activated_goal_count"] == 1, current_payload
     assert current_payload["summary"]["host_loop_missing_goal_count"] == 0, current_payload
+    assert current_payload["summary"]["peer_runtime_automation_migration_count"] == 0, current_payload
     assert current_payload["summary"]["ready_for_default_promotion"] is True, current_payload
     assert current_goal["installed_prompts"]["thin:codex-current"]["status"] == "current", current_payload
     assert current_goal["requires_update"] is False, current_payload

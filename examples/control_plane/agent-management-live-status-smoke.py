@@ -118,7 +118,7 @@ def fixture_status_payload() -> dict[str, Any]:
                 {
                     "id": "fixture-goal",
                     "coordination": {
-                        "primary_agent": "agent-main",
+                        "agent_model": "peer_v1",
                         "registered_agents": ["agent-main", "agent-reviewer"],
                     },
                 }
@@ -198,7 +198,8 @@ def assert_synthetic_projection() -> None:
         for row in projection.get("agents", [])
         if isinstance(row, dict)
     }
-    assert by_agent["agent-main"]["role"] == "primary", by_agent
+    assert by_agent["agent-main"]["agent_model"] == "peer_v1", by_agent
+    assert "role" not in by_agent["agent-main"], by_agent
     assert by_agent["agent-main"]["current_todo"]["todo_id"] == "todo_agent_id_fallback", by_agent
     assert by_agent["agent-reviewer"]["current_todo"]["todo_id"] == "todo_live_handoff", by_agent
     assert by_agent["agent-reviewer"]["handoff_refs"] == ["handoff_live_handoff"], by_agent

@@ -336,10 +336,10 @@ candidate remains in `runnable_candidates` with `capability_repair_mode=true`,
 `missing_target_capabilities`. This avoids a circular gate where a todo cannot
 develop `benchmark_runner` because it does not already have `benchmark_runner`.
 
-For multi-agent goals, executable primary-review handoffs can carry
-`blocks_agent=<side-agent>` and `unblocks_todo_id=<todo_id>`. When the current
-agent is the primary agent and the handoff is already claimed by that primary
-agent, `agent_lane_next_action` ranks that explicit unblock ahead of ordinary
+For multi-agent goals, explicit `review_handoff` todos can carry
+`blocks_agent=<completing-peer>` and `unblocks_todo_id=<todo_id>`. When the
+current peer owns that review todo, `agent_lane_next_action` ranks the explicit
+unblock ahead of ordinary
 same-priority backlog, even if the goal-level `Next Action` prose is stale.
 The same tie-breaker orders `capability_gate.runnable_candidates`, so the
 first visible runnable candidate matches the selected inter-agent unblock
@@ -351,9 +351,9 @@ Deferred todo visibility is a separate gate-resume lane, not executable
 backlog and not part of the no-candidate quiet-wait semantics. Status/quota may
 expose up to eight sorted `deferred_items` and up to eight ready
 `deferred_resume_candidates` after the sorted open todo lanes. In agent-scoped
-`quota should-run --agent-id <side-agent>`, all deferred items may remain
+`quota should-run --agent-id <peer>`, all deferred items may remain
 visible for diagnosis, but only ready candidates claimed by the current agent
-or left unclaimed can wake that side agent. If such a candidate exists and no
+or left unclaimed can wake that peer. If such a candidate exists and no
 open current-agent/unclaimed advancement todo exists, quota returns
 `effective_action=successor_replan_required`, `normal_delivery_allowed=false`,
 and `execution_obligation.contract = deferred_resume_projection`. The worker
@@ -724,7 +724,7 @@ The response also includes `scheduler_hint.schema_version=scheduler_hint_v0`.
 That hint is not a delivery permission. It is the cross-runtime wait policy:
 `run_now` keeps the active cadence for required work; `backoff_waiting_for_user`
 slows Codex App and stops CLI/Claude loops after repeated unchanged polls;
-`backoff_until_reassigned` handles side-agent scope waits without dropping
+`backoff_until_reassigned` handles peer reassignment waits without dropping
 agent-to-agent handoff cadence too quickly;
 `backoff_until_material_transition` handles monitor-only quiet polls; and
 `backoff_until_fresh_evidence` handles mapped or post-handoff no-op waits.

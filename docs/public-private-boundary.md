@@ -10,7 +10,7 @@ These are safe to keep in the public repository:
 - runtime directory conventions,
 - generic CLI code,
 - adapter lifecycle rules,
-- controller/sub-agent lifecycle states,
+- peer task and ephemeral worker lifecycle states,
 - generic coordination rules,
 - validation commands,
 - sanitized examples,

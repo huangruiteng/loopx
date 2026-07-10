@@ -37,9 +37,9 @@ minimal video project under an ignored scratch directory or a future
 The first video should have four scenes:
 
 1. **Gate appears**: a user decision blocks one lane, but stays visible.
-2. **Safe side path moves**: a claimed side-agent todo advances with evidence.
+2. **Safe independent path moves**: a claimed peer todo advances with evidence.
 3. **Run history accumulates**: validated writes make the next turn recoverable.
-4. **Async agent team**: primary and side agents keep working across turns while
+4. **Async agent team**: peers keep independently claimed work moving across turns while
    the human keeps judgment.
 
 Success means:

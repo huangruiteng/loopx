@@ -87,9 +87,9 @@
               }
             },
             {
-              "node_id": "node_primary_review_handoff",
+              "node_id": "node_review_handoff",
               "kind": "handoff",
-              "title": "Primary agent reviews runtime implementation only after fixture contract is stable.",
+              "title": "Selected peer reviews runtime implementation only after fixture contract is stable.",
               "state": "waiting",
               "refs": {
                 "lease_ids": [
@@ -158,9 +158,9 @@
               }
             },
             {
-              "edge_id": "edge_fixture_hands_off_to_primary",
+              "edge_id": "edge_fixture_hands_off_to_reviewer",
               "from_node_id": "node_fixture_validation",
-              "to_node_id": "node_primary_review_handoff",
+              "to_node_id": "node_review_handoff",
               "relation": "hands_off_to",
               "reason": "Runtime implementation should wait until the design fixture is reviewed or merged.",
               "refs": {

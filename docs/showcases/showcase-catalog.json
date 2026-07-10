@@ -492,24 +492,24 @@
       ],
       "pattern_tags": [
         "self_iteration",
-        "side_agent_scope",
+        "peer_claim_scope",
         "todo_claim_ownership",
         "identity_aware_prompt",
         "self_merge_policy",
         "evidence_writeback",
         "efficiency_evidence_model"
       ],
-      "headline": "A high-churn LoopX repo stayed legible while benchmark, product, docs, planning, and side-agent lanes moved in parallel.",
-      "problem": "A long-running agent engineering repo needed to keep many public commits, benchmark routes, planning lanes, user gates, docs, smokes, and side-agent changes reviewable without relying on private chat memory.",
+      "headline": "A high-churn LoopX repo stayed legible while benchmark, product, docs, planning, and peer lanes moved in parallel.",
+      "problem": "A long-running agent engineering repo needed to keep many public commits, benchmark routes, planning lanes, user gates, docs, smokes, and peer changes reviewable without relying on private chat memory.",
       "loopx_behavior": [
         "preserve durable goal, todo, gate, quota, evidence, and run-history state across high repository churn",
-        "separate benchmark, productization, documentation, planning, and side-agent lanes into reviewable obligations",
-        "register primary and side-agent identities and project side-agent scope through automation prompts",
+        "separate benchmark, productization, documentation, planning, and peer lanes into reviewable obligations",
+        "register peer identities and project advisory scope through automation prompts",
         "claim and complete scoped todos with public-safe evidence",
-        "allow small validated side-agent self-merges while preserving primary review for risky work",
+        "allow small validated peer self-merges while requiring explicit review handoff for risky work",
         "keep public showcases and smokes free of private chat, internal docs, raw trajectories, and raw benchmark evidence"
       ],
-      "user_value": "The operator can let a fast-moving multi-lane agent project continue across benchmark, product, docs, and side-agent work while keeping ownership, gates, validation, follow-up, and conservative efficiency evidence visible in one shared control plane.",
+      "user_value": "The operator can let a fast-moving multi-lane agent project continue across benchmark, product, docs, and peer work while keeping ownership, gates, validation, follow-up, and conservative efficiency evidence visible in one shared control plane.",
       "workload_signal": {
         "anchor_commit": "86d6d9d",
         "scope": "whole_public_repository",
@@ -568,25 +568,25 @@
         "planning and dreaming lane separation",
         "user/operator surfaces including diagnostics, dashboard framing, onboarding, quickstart, README, and showcases",
         "registered todo claim ownership and identity-aware scoped heartbeat prompts",
-        "side-agent self-merge completion flag with evidence",
+        "peer self-merge completion flag with evidence",
         "public-boundary smokes and showcase catalog checks",
         "conservative efficiency evidence model that converts commits into maturity-adjusted product requirement clusters"
       ],
       "evidence_boundary": "Public Git evidence only; no private thread text, local active-state bodies, internal document links, screenshots, raw benchmark material, credentials, or machine-specific paths.",
       "frontend_card": {
-        "visual_metaphor": "many repo lanes flowing through one control plane, with a side-agent lane branching safely beside the primary benchmark lane",
+        "visual_metaphor": "many repo lanes flowing through one control plane, with independently claimed peer lanes branching safely",
         "primary_metric_hint": "801 public commits, 244 recent commits, and a conservative 59-92 AI-assisted developer-day baseline show self-iteration throughput.",
         "badges": [
           "self-iteration",
           "commit-backed",
-          "side-agent",
+          "peer-agent",
           "efficiency-model"
         ],
         "story_beats": [
           "whole repo moves quickly across benchmark, runtime, docs, dashboard, planning, and smoke surfaces",
           "LoopX keeps durable goals, todos, gates, quota, evidence, and run history visible",
-          "side-agent lane progresses beside the primary benchmark lane",
-          "validated side changes can self-merge while risky work stays on primary review",
+          "one peer lane progresses beside a separately claimed benchmark lane",
+          "validated peer changes can self-merge while risky work uses explicit review handoff",
           "public Git history is converted into conservative product requirement clusters",
           "public docs and smokes turn the experience into a reusable case"
         ]

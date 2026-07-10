@@ -58,7 +58,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
                         "state_file": "ACTIVE_GOAL_STATE.md",
                         "adapter": {"kind": "harness_self_improvement"},
                         "coordination": {
-                            "primary_agent": PRIMARY_AGENT,
+                            "agent_model": "peer_v1",
                             "registered_agents": [PRIMARY_AGENT, SIDE_AGENT],
                         },
                     }

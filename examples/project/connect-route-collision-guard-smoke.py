@@ -27,7 +27,7 @@ def goal_entry(project: Path, registry_path: Path, *, agents: list[str] | None =
     }
     if agents is not None:
         coordination["registered_agents"] = agents
-        coordination["primary_agent"] = agents[0]
+        coordination["agent_model"] = "peer_v1"
     return {
         "id": GOAL_ID,
         "domain": "collision-smoke",

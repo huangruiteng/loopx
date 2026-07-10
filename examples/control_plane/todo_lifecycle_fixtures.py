@@ -63,7 +63,6 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
         domain="todo-lifecycle-fixture",
         adapter_kind="generic_project_goal_v0",
         registered_agents=["codex-main-control", "codex-side-bypass"],
-        primary_agent="codex-main-control",
         quota_allowed_slots=None,
     )
     return registry_path, state_file
@@ -100,14 +99,13 @@ def parsed_agent_summary(state_file: Path) -> dict:
     return fields["agent_todos"]
 
 
-def assert_configured_side_agent_handoff() -> None:
-    with tempfile.TemporaryDirectory(prefix="loopx-side-agent-handoff-smoke-") as tmp:
+def assert_configured_peer_handoff() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-peer-handoff-smoke-") as tmp:
         root = Path(tmp)
         registry_path, state_file = write_fixture(root)
         registry = json.loads(registry_path.read_text(encoding="utf-8"))
         coordination = registry["goals"][0]["coordination"]
         coordination["registered_agents"].append("codex-side-reviewer")
-        coordination["side_agent_handoff_agent"] = "codex-side-reviewer"
         registry_path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
         side_handoff_added = run_cli(
@@ -149,9 +147,7 @@ def assert_configured_side_agent_handoff() -> None:
         assert side_handoff_completed["next_todos"][0]["claimed_by"] == "codex-side-reviewer", (
             side_handoff_completed
         )
-        assert side_handoff_completed["next_todos"][0]["blocks_agent"] == "codex-side-bypass", (
-            side_handoff_completed
-        )
+        assert side_handoff_completed["next_todos"][0]["blocks_agent"] is None, side_handoff_completed
         assert side_handoff_completed["next_todos"][0]["unblocks_todo_id"] == side_handoff_added["todo_id"], (
             side_handoff_completed
         )
@@ -161,13 +157,12 @@ def assert_configured_side_agent_handoff() -> None:
         assert not side_handoff_successor.get("action_kind"), side_handoff_successor
         assert side_handoff_successor["claimed_by"] == "codex-side-reviewer", side_handoff_successor
 
-    with tempfile.TemporaryDirectory(prefix="loopx-explicit-primary-review-handoff-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-explicit-review-handoff-smoke-") as tmp:
         root = Path(tmp)
         registry_path, state_file = write_fixture(root)
         registry = json.loads(registry_path.read_text(encoding="utf-8"))
         coordination = registry["goals"][0]["coordination"]
         coordination["registered_agents"].append("codex-side-reviewer")
-        coordination["side_agent_handoff_agent"] = "codex-side-reviewer"
         registry_path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
         review_source_added = run_cli(
@@ -204,28 +199,27 @@ def assert_configured_side_agent_handoff() -> None:
             "--next-claimed-by",
             "codex-main-control",
             "--next-action-kind",
-            "primary_review_merge",
+            "review_merge",
+            "--next-continuation-policy",
+            "review_handoff",
         )
         assert explicit_primary_review["changed"] is True, explicit_primary_review
         review_successor = explicit_primary_review["next_todos"][0]
         assert review_successor["claimed_by"] == "codex-main-control", explicit_primary_review
-        assert review_successor["action_kind"] == "primary_review_merge", explicit_primary_review
-        assert review_successor["continuation_policy"] == "primary_review", explicit_primary_review
+        assert review_successor["action_kind"] == "review_merge", explicit_primary_review
+        assert review_successor["continuation_policy"] == "review_handoff", explicit_primary_review
         assert review_successor["blocks_agent"] == "codex-side-bypass", explicit_primary_review
         assert review_successor["unblocks_todo_id"] == review_source_added["todo_id"], explicit_primary_review
         review_successor_item = next(
             item for item in parsed_items(state_file) if item["todo_id"] == review_successor["todo_id"]
         )
         assert review_successor_item["claimed_by"] == "codex-main-control", review_successor_item
-        assert review_successor_item["action_kind"] == "primary_review_merge", review_successor_item
-        assert review_successor_item["continuation_policy"] == "primary_review", review_successor_item
+        assert review_successor_item["action_kind"] == "review_merge", review_successor_item
+        assert review_successor_item["continuation_policy"] == "review_handoff", review_successor_item
 
-    with tempfile.TemporaryDirectory(prefix="loopx-side-agent-handoff-self-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-review-handoff-self-smoke-") as tmp:
         root = Path(tmp)
         registry_path, _state_file = write_fixture(root)
-        registry = json.loads(registry_path.read_text(encoding="utf-8"))
-        registry["goals"][0]["coordination"]["side_agent_handoff_agent"] = "codex-side-bypass"
-        registry_path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         side_handoff_added = run_cli(
             registry_path,
             "todo",
@@ -257,66 +251,25 @@ def assert_configured_side_agent_handoff() -> None:
             "side-worktree-contract-diff",
             "--next-agent-todo",
             SIDE_HANDOFF_TODO,
+            "--next-claimed-by",
+            "codex-side-bypass",
+            "--next-continuation-policy",
+            "review_handoff",
         )
-        assert "side-agent handoff todo cannot be claimed by the completing side agent" in (
+        assert "review_handoff successor must be unclaimed or claimed by a different registered peer" in (
             same_agent_handoff["error"]
         ), same_agent_handoff
 
-    with tempfile.TemporaryDirectory(prefix="loopx-ignored-side-agent-review-smoke-") as tmp:
-        root = Path(tmp)
-        registry_path, _state_file = write_fixture(root)
-        registry = json.loads(registry_path.read_text(encoding="utf-8"))
-        coordination = registry["goals"][0]["coordination"]
-        coordination["registered_agents"].append("codex-side-reviewer")
-        coordination["side_agent_review_agent"] = "codex-side-reviewer"
-        registry_path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        ignored_review_added = run_cli(
-            registry_path,
-            "todo",
-            "add",
-            "--goal-id",
-            GOAL_ID,
-            "--role",
-            "agent",
-            "--text",
-            SIDE_HANDOFF_SOURCE_TODO,
-            "--claimed-by",
-            "codex-side-bypass",
-            "--task-class",
-            "advancement_task",
-            "--action-kind",
-            "contract_refine",
-        )
-        ignored_review_handoff = run_cli_error(
-            registry_path,
-            "todo",
-            "complete",
-            "--goal-id",
-            GOAL_ID,
-            "--todo-id",
-            ignored_review_added["todo_id"],
-            "--claimed-by",
-            "codex-side-bypass",
-            "--evidence",
-            "side-worktree-contract-diff",
-            "--next-agent-todo",
-            SIDE_HANDOFF_TODO,
-            "--next-claimed-by",
-            "codex-side-reviewer",
-        )
-        assert "handoff_agent='codex-main-control'" in ignored_review_handoff["error"], ignored_review_handoff
-
-    with tempfile.TemporaryDirectory(prefix="loopx-profile-side-agent-handoff-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="loopx-advisory-profile-handoff-smoke-") as tmp:
         root = Path(tmp)
         registry_path, state_file = write_fixture(root)
         registry = json.loads(registry_path.read_text(encoding="utf-8"))
         coordination = registry["goals"][0]["coordination"]
         coordination["registered_agents"].append("codex-product-capability")
-        coordination["side_agent_handoff_agent"] = "codex-side-bypass"
         coordination["agent_profiles"] = {
             "codex-product-capability": {
-                "schema_version": "agent_profile_v0",
-                "review_policy": {"handoff_agent": "codex-main-control"},
+                "schema_version": "agent_profile_v1",
+                "profile_role": "product-validation",
             }
         }
         registry_path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -358,9 +311,7 @@ def assert_configured_side_agent_handoff() -> None:
         assert profile_handoff_completed["next_todos"][0]["claimed_by"] == "codex-main-control", (
             profile_handoff_completed
         )
-        assert profile_handoff_completed["next_todos"][0]["blocks_agent"] == "codex-product-capability", (
-            profile_handoff_completed
-        )
+        assert profile_handoff_completed["next_todos"][0]["blocks_agent"] is None, profile_handoff_completed
         assert profile_handoff_completed["next_todos"][0]["unblocks_todo_id"] == profile_handoff_added["todo_id"], (
             profile_handoff_completed
         )
@@ -477,7 +428,7 @@ def assert_complete_links_existing_successor() -> None:
             "codex-side-bypass",
             "--evidence",
             "self-merged commit ghi789 after focused validation",
-            "--side-agent-self-merged",
+            "--self-merged",
             "--successor-todo-id",
             successor_id,
             "--next-agent-todo",
@@ -499,12 +450,12 @@ def assert_complete_links_existing_successor() -> None:
             "codex-side-bypass",
             "--evidence",
             "self-merged commit ghi789 after focused validation",
-            "--side-agent-self-merged",
+            "--self-merged",
             "--successor-todo-id",
             successor_id,
         )
         assert completed["changed"] is True, completed
-        assert completed["side_agent_self_merged"] is True, completed
+        assert completed["self_merged"] is True, completed
         assert completed["next_todos"] == [], completed
         assert completed["successor_todo_ids"] == [successor_id], completed
 
@@ -554,7 +505,7 @@ def assert_same_title_completion_creates_fresh_successor() -> None:
             "codex-side-bypass",
             "--evidence",
             "self-merged commit same-title after focused validation",
-            "--side-agent-self-merged",
+            "--self-merged",
             "--next-agent-todo",
             title,
             "--next-claimed-by",

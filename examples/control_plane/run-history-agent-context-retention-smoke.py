@@ -38,7 +38,7 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
                         "state_file": ".local/goals/fixture.md",
                         "adapter": {"kind": "fixture", "status": "connected-read-only"},
                         "coordination": {
-                            "primary_agent": "codex-main-control",
+                            "agent_model": "peer_v1",
                             "registered_agents": [
                                 "codex-main-control",
                                 SIDE_AGENT,

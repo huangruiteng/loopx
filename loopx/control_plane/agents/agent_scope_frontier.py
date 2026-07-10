@@ -32,7 +32,6 @@ def agent_scope_frontier_action(value: Any) -> AgentScopeFrontierAction | None:
 def build_agent_scope_frontier_payload(
     *,
     agent_id: str,
-    primary_agent: str | None,
     action: AgentScopeFrontierAction,
     quiet_noop_allowed: bool,
     spend_policy: str,
@@ -45,7 +44,6 @@ def build_agent_scope_frontier_payload(
     payload: dict[str, Any] = {
         "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
         "agent_id": agent_id,
-        "primary_agent": primary_agent,
         "action": action.value,
         "effective_action": action.value,
         "blocks_delivery": True,

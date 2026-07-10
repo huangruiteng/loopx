@@ -110,7 +110,7 @@ def status_payload(agent_todos: dict) -> dict:
         next_action="Use the first executable advancement todo.",
         agent_todos=agent_todos,
         coordination={
-            "primary_agent": "codex-main-control",
+            "agent_model": "peer_v1",
             "registered_agents": ["codex-main-control", AGENT_ID],
         },
         latest_runs=[],

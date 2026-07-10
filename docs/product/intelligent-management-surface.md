@@ -49,7 +49,7 @@ The first real user is the maintainer managing LoopX work. This matters because
 the maintainer has the hardest version of the problem:
 
 - many active project lanes;
-- primary and side agents with different scopes;
+- registered peers with different advisory scopes and claimed tasks;
 - public docs, benchmark work, frontend work, and partner exploration moving in
   parallel;
 - frequent user feedback that is useful but fragmentary;
@@ -100,17 +100,17 @@ without becoming an anchor.
 
 ### 3. Agent Lane Board
 
-The lane board shows the current Loop Agents and their responsibilities:
+The lane board shows registered peers by current claim and functional profile:
 
-- primary agent;
-- side agents;
-- product or capability agents;
-- domain-pack agents;
+- runtime or release validation;
+- product or capability work;
+- monitoring and evidence observation;
+- domain-pack work;
 - external partner workers when they are only evidence producers.
 
-For each lane, show current todo, claim, scope, workspace policy, latest
-evidence, blocker, and next stop condition. Side agents should be visible as
-scoped contributors, not as hidden background work.
+For each lane, show current todo, claim, advisory scope, task workspace policy,
+latest evidence, blocker, and next stop condition. Peer work should be visible,
+not hidden in background chat.
 
 ### 4. Review Feed
 
@@ -273,7 +273,7 @@ The first PoC should be narrow:
 
 - project selector: all projects or one project;
 - todo search by id/text/claim/status;
-- lane summary for primary and side agents;
+- lane summary for registered peers and their current claims;
 - user-gate panel with concrete questions;
 - evidence/review feed with useful/not-useful actions mocked or local-only;
 - one performance review panel showing output count, quality label, token cost

@@ -101,7 +101,7 @@ ZH_COPY = {
         "headline": "高变更、多车道项目可保持状态、边界和证据。",
         "proof_point": "高 churn 多 lane agent repo 可以保持状态、证据和边界一致。",
         "loopx_intervention": "todo、quota、gate、evidence、review packet、frontstage",
-        "beats": ["benchmark、产品、文档和 side-agent 并行推进。", "状态、gate、quota 和 evidence 收敛到同一控制面。", "公开 Git 窗口形成保守效率证据。"],
+        "beats": ["benchmark、产品、文档和 peer lanes 并行推进。", "状态、gate、quota 和 evidence 收敛到同一控制面。", "公开 Git 窗口形成保守效率证据。"],
     },
     "2026-06-17-blocked-p0-safe-rotation": {
         "title": "P0 block 后推进 P1/P2",
@@ -250,8 +250,8 @@ CASE_DETAILS = {
             "evidence": [
                 ("todo ownership", "`event_sourced_state_contract_v0` 把 `todo_claimed` 定义为 canonical event，记录 ownership、lease 或 `claimed_by`。"),
                 ("review packet", "`loopx/review_packet.py` 在 open-todo rendering 和 handoff ranking 路径中保留 `claimed_by`，让 review packet 能显示 owner。"),
-                ("side-agent contract", "`docs/heartbeat-automation-prompt.md` 规定 side-agent 小变更可带 evidence 自合并，否则创建 claimed-by handoff todo。"),
-                ("CLI smokes", "`examples/control_plane/todo-lifecycle-cli-smoke.py` 和 `examples/control_plane/todo-cli-smoke.py` 覆盖 claim、handoff successor、side-agent self-merge、review handoff 和 same-agent handoff rejection。"),
+                ("peer continuation contract", "`docs/heartbeat-automation-prompt.md` 规定 peer 小变更可带 evidence 自合并，其他后续使用 typed continuation。"),
+                ("CLI smokes", "`examples/control_plane/todo-lifecycle-cli-smoke.py` 和 `examples/control_plane/todo-cli-smoke.py` 覆盖 claim、typed successor、peer self-merge、explicit review handoff 和 same-agent review rejection。"),
             ],
             "mechanism": [
                 "PR feedback 先成为一个有 owner 的 todo，而不是 chat reminder。",
@@ -266,7 +266,7 @@ CASE_DETAILS = {
             "source_refs": [
                 ("event-sourced todo claim", "docs/reference/protocols/event-sourced-state-contract-v0.md"),
                 ("review packet code", "loopx/review_packet.py"),
-                ("side-agent prompt contract", "docs/heartbeat-automation-prompt.md"),
+                ("peer prompt contract", "docs/heartbeat-automation-prompt.md"),
                 ("todo lifecycle smoke", "examples/control_plane/todo-lifecycle-cli-smoke.py"),
             ],
         },
@@ -278,8 +278,8 @@ CASE_DETAILS = {
             "evidence": [
                 ("Todo ownership", "`event_sourced_state_contract_v0` defines `todo_claimed` as a canonical event for ownership, lease, or `claimed_by`."),
                 ("Review packet", "`loopx/review_packet.py` preserves `claimed_by` in open-todo rendering and handoff ranking so review packets can show ownership."),
-                ("Side-agent contract", "`docs/heartbeat-automation-prompt.md` requires side agents to self-merge only small validated evidence-backed work or create a claimed handoff todo."),
-                ("CLI smokes", "`examples/control_plane/todo-lifecycle-cli-smoke.py` and `examples/control_plane/todo-cli-smoke.py` cover claim, handoff successor, side-agent self-merge, review handoff, and same-agent handoff rejection."),
+                ("Peer continuation contract", "`docs/heartbeat-automation-prompt.md` lets peers self-merge only small validated evidence-backed work and otherwise requires typed continuation."),
+                ("CLI smokes", "`examples/control_plane/todo-lifecycle-cli-smoke.py` and `examples/control_plane/todo-cli-smoke.py` cover claims, typed successors, peer self-merge, explicit review handoff, and same-agent review rejection."),
             ],
             "mechanism": [
                 "PR feedback becomes an owned todo rather than a chat reminder.",
@@ -294,7 +294,7 @@ CASE_DETAILS = {
             "source_refs": [
                 ("event-sourced todo claim", "docs/reference/protocols/event-sourced-state-contract-v0.md"),
                 ("review packet code", "loopx/review_packet.py"),
-                ("side-agent prompt contract", "docs/heartbeat-automation-prompt.md"),
+                ("peer prompt contract", "docs/heartbeat-automation-prompt.md"),
                 ("todo lifecycle smoke", "examples/control_plane/todo-lifecycle-cli-smoke.py"),
             ],
         },
@@ -307,8 +307,8 @@ CASE_DETAILS = {
             ],
             "evidence": [
                 ("successor path", "`docs/lark-kanban-control-plane-adapter.md` 明确 real successor 使用 `todo complete --next-*`，replacement 或 narrower split 使用 `todo supersede --next-agent-todo`。"),
-                ("side-agent completion", "`docs/heartbeat-automation-prompt.md` 要求非平凡完成创建 successor todo 或写 no-follow-up rationale。"),
-                ("CLI validation", "`examples/control_plane/todo-lifecycle-cli-smoke.py` 覆盖 `--next-agent-todo` successor、`todo supersede`、claim 继承、handoff successor、same-agent handoff rejection 和 side-agent self-merge evidence。"),
+                ("peer completion", "`docs/heartbeat-automation-prompt.md` 要求非平凡完成创建 typed successor todo 或写 no-follow-up rationale。"),
+                ("CLI validation", "`examples/control_plane/todo-lifecycle-cli-smoke.py` 覆盖 `--next-agent-todo` successor、`todo supersede`、claim 继承、typed continuation、same-agent review rejection 和 peer self-merge evidence。"),
                 ("review shape", "`loopx review-packet` 把当前 open todo、claimed_by 和 handoff 状态打包成 reviewer 可读的 packet。"),
             ],
             "mechanism": [
@@ -335,8 +335,8 @@ CASE_DETAILS = {
             ],
             "evidence": [
                 ("Successor path", "`docs/lark-kanban-control-plane-adapter.md` says real successors use `todo complete --next-*`, while replacements or narrower splits use `todo supersede --next-agent-todo`."),
-                ("Side-agent completion", "`docs/heartbeat-automation-prompt.md` requires nontrivial completion to create a successor todo or a no-follow-up rationale."),
-                ("CLI validation", "`examples/control_plane/todo-lifecycle-cli-smoke.py` covers `--next-agent-todo` successors, `todo supersede`, claim inheritance, handoff successors, same-agent handoff rejection, and side-agent self-merge evidence."),
+                ("Peer completion", "`docs/heartbeat-automation-prompt.md` requires nontrivial completion to create a typed successor todo or a no-follow-up rationale."),
+                ("CLI validation", "`examples/control_plane/todo-lifecycle-cli-smoke.py` covers `--next-agent-todo` successors, `todo supersede`, claim inheritance, typed continuation, same-agent review rejection, and peer self-merge evidence."),
                 ("Review shape", "`loopx review-packet` packages open todos, claimed_by, and handoff state for reviewer consumption."),
             ],
             "mechanism": [
@@ -404,9 +404,9 @@ CASE_DETAILS = {
             ],
             "mechanism": [
                 "registry、prompt contracts 和 registered agents 命名 primary/side identities，不靠聊天记忆。",
-                "benchmark、productization、documentation、planning 和 side-agent lanes 被拆成 reviewable obligations。",
+                "benchmark、productization、documentation、planning 和 peer lanes 被拆成 reviewable obligations。",
                 "quota/status projection 区分 executable work、monitor work、user gates 和 blockers。",
-                "side-agent scope 留在 prompt/handoff，todo metadata 只保留 `claimed_by`。",
+                "advisory peer scope 留在 profile/prompt，todo metadata 保留 `claimed_by` 和 typed continuation。",
                 "public docs 和 smokes 把可复用经验沉淀为仓库 artifact。",
             ],
             "user_outcome": [
@@ -432,10 +432,10 @@ CASE_DETAILS = {
                 ("Efficiency model", "The case maps public repo capabilities to 9 requirement clusters and estimates 59-92 AI-coding-assisted developer-days against a 19.6-day public window."),
             ],
             "mechanism": [
-                "Registry and prompt contracts name primary and side-agent identities instead of relying on chat memory.",
-                "Benchmark, productization, documentation, planning, and side-agent lanes become reviewable obligations.",
+                "Registry and prompt contracts name peer identities instead of relying on chat memory.",
+                "Benchmark, productization, documentation, planning, and peer lanes become reviewable obligations.",
                 "Quota and status projection distinguish executable work, monitor work, user gates, and blockers.",
-                "Side-agent scope lives in prompt and handoff; todo metadata keeps the compact `claimed_by` owner.",
+                "Advisory peer scope lives in profile and prompt; todo metadata keeps `claimed_by` plus typed continuation.",
                 "Public docs and smokes turn reusable lessons into repository artifacts.",
             ],
             "user_outcome": [

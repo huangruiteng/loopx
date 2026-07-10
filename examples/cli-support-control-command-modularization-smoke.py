@@ -90,7 +90,13 @@ def main() -> None:
     require("handle_support_control_command" in init_source, "__init__ omitted support/control handler")
 
     for command, options in {
-        "backup-state": ("--project", "--output-dir", "--backup-id", "--execute"),
+        "backup-state": (
+            "--project",
+            "--output-dir",
+            "--backup-id",
+            "--current-project-only",
+            "--execute",
+        ),
         "heartbeat-prompt": ("--goal-id", "--agent-id", "--thin"),
         "promotion-gate": ("--format",),
         "upgrade-plan": ("--installed-manifest", "--cli-bin", "--mode"),

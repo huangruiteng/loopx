@@ -129,9 +129,8 @@ def write_fixture(project: Path) -> tuple[Path, Path, Path]:
                             "status": "connected-read-only",
                         },
                         "coordination": {
-                            "registered_agents": [
-                                {"id": "codex-product-capability", "role": "side-agent"}
-                            ]
+                            "agent_model": "peer_v1",
+                            "registered_agents": ["codex-product-capability"],
                         },
                         "guards": ["dry-run smoke fixture only"],
                     }

@@ -1,392 +1,176 @@
-# Codex Sub-Agent Orchestration
+# Codex Peer Task Orchestration
 
-LoopX should support Codex-style work where one main controller starts
-multiple sub-agents. This is useful for large repos, multi-surface validation,
-and parallel exploration, but it needs a stronger contract than a single-agent
-goal tick.
+LoopX supports two different concepts that must not be conflated:
 
-## Role Split
+- durable registered agents are equal peers;
+- a host runtime may launch an ephemeral child worker for one bounded task.
 
-The main controller owns the goal:
+No registered identity owns the goal. Claims, leases, task boundaries,
+capabilities, and continuation policy decide who acts. When parallel work is
+useful, LoopX may choose one temporary task coordinator from the participating
+peers. That responsibility ends with the task bundle.
 
-- reads the active goal state,
-- chooses the bounded progress segment,
-- checks the goal's current compute quota before spawning or continuing child
-  work,
-- decides which sub-agents are worth starting,
-- assigns disjoint scopes,
-- integrates or rejects their results,
-- writes the final run record and next action.
+## Peer Runtime Contract
 
-Sub-agents own scoped work:
+A registered identity uses `agent_model=peer_v1`. It has no rank-bearing role,
+implicit review authority, or permanent writeback ownership. A task coordinator
+may:
 
-- one repo question,
-- one implementation slice,
-- one validation surface,
-- one docs or benchmark audit,
-- one independent risk check.
+- activate or resume eligible peer lanes;
+- issue complete briefs to ephemeral child workers;
+- aggregate returned evidence;
+- write accepted task-bundle state and account for the completed turn.
 
-Sub-agents should not independently redefine the goal, widen scope, force-push,
-publish private state, or launch production actions.
+It does not own durable goal authority. Repository policy, explicit decision
+scopes, and todo continuation still govern review, merge, publication, and
+production actions.
 
-## Dreaming / Exploration Lane
+## When To Parallelize
 
-Some Codex work should not run inside the project agent that is actively
-shipping changes. Broad exploration, slow memory consolidation, refactor
-warnings, and cross-project pattern mining are useful, but they create scope
-pressure when mixed into the delivery lane.
+Parallelize when it reduces uncertainty or latency:
 
-LoopX should model this as a separate dreaming / exploration lane:
+- map disjoint code, docs, test, or runtime surfaces;
+- implement isolated slices in independent worktrees;
+- run an independent review or validation pass;
+- inspect separate adapter, evidence, or boundary questions.
 
-- it reads run history and project state over a wider time window;
-- it has its own compute quota so background exploration cannot starve delivery
-  work;
-- it proposes options, warnings, and memory-consolidation patches;
-- it does not mutate project truth or imply user approval;
-- its outputs enter the operator gate for review before becoming project work.
+Keep tightly coupled decisions in one peer lane. Do not launch workers merely
+to make the activity graph look busy, and never let worker count override
+quota, user gates, write scope, or repository policy.
 
-See [dreaming-exploration-lane.md](dreaming-exploration-lane.md) for priority,
-permissions, and proposed run shape.
+## Fresh, Fork, Or Resume
 
-## When To Spawn
+The temporary task coordinator chooses a worker context from the work shape:
 
-Spawn sub-agents when parallelism reduces uncertainty or latency:
+| Work type | Context | Required task brief |
+| --- | --- | --- |
+| Broad mapping, prior-art search, risk discovery | Fresh worker | Objective, authority source, allowed sources, boundary, expected output, non-goals |
+| Independent review or adversarial validation | Fresh worker | Claim under review, exact evidence, validation command, acceptance and merge rules |
+| Failed-smoke repair or review-comment follow-up | Resume or fork | Worktree, failing evidence, latest patch, next bounded repair |
+| Disjoint implementation | Fresh worker in an independent worktree | Claimed todo, allowed paths, write scope, validation, continuation policy |
+| Long-running claimed lane | Resume the registered peer task | Agent id, todo or lease, latest accepted evidence |
+| Production action or emergency rollback | No automatic worker | Operator approval, stop condition, reversible command plan |
 
-- large repo map: split docs, code, tests, and runtime evidence;
-- implementation batch: split disjoint file ownership;
-- verification: run an independent check while the main controller continues;
-- high-complexity adapter: let separate agents inspect TODO, docs, eval, and
-  public/private boundary.
+Fresh workers are useful only when the task coordinator can provide a complete
+brief. Missing authority, scope, expected output, or validation is a planning
+gap, not a reason to launch an under-specified worker.
 
-Do not spawn sub-agents for work that is tightly coupled to the next immediate
-decision. If the main controller is blocked on the answer, it should usually do
-that part itself.
+## Shared Control Plane Handoff
 
-## Context Policy: Fresh, Fork, Resume
+Every child-worker brief starts from the shared control plane. A worker must not
+infer current authority from chat history, an old packet, or another worker's
+summary.
 
-The controller should choose the child context shape from the work type. LoopX
-can record the decision and provide hints, but the active agent loop still owns
-whether to launch a child, continue itself, or wait.
+The existing host-child packet name remains
+`subagent_control_plane_handoff_v0` for compatibility. Its lineage fields do
+not create durable rank:
 
-| Work type | Preferred context | Why | Required parent brief |
-| --- | --- | --- | --- |
-| Exploration, broad mapping, prior-art scan, risk discovery | Fresh child | Clean context reduces inherited assumptions and is cheaper than copying a long parent thread. | Objective, authority artifact, allowed sources, public/private boundary, expected output, and non-goals. |
-| Independent review, adversarial check, public/private scan, validation map | Fresh child | The child should not inherit the parent's conclusion or local tunnel vision. | Candidate claim to review, exact evidence to inspect, validation command or acceptance rule, and merge rule. |
-| Same-branch bug follow-up, failed smoke repair, review-comment fix | Resume or fork child | The child needs recent debugging context, branch state, and failed-command history. | Branch/worktree, failing evidence, latest patch summary, and the next bounded fix target. |
-| Disjoint implementation slice after controller planning | Fresh child with a narrow handoff | The implementation should start from the shared control plane, not from the controller's whole chat history. | Claimed todo, allowed paths, write scope, validation, and parent review requirement. |
-| Long-running owned side lane | Resume existing side agent | Stable ownership is more valuable than a new agent for each tick. | Agent id, lane scope, due monitor or todo, and latest accepted evidence. |
-| Emergency rollback or production action | No automatic child by default | Boundary risk is high and usually needs explicit operator control. | Operator approval, stop condition, and reversible command plan. |
+- `parent_goal_id`: shared goal lineage, not an owner identity;
+- `authority_artifact`: current goal, policy, or review authority;
+- `latest_state_ref`: state hash, run id, or generated-at value to read first;
+- `quota_gate_snapshot`: current eligibility, wait, or gate state;
+- `evidence_boundary`: allowed sources, paths, and public/private rule;
+- `writeback_spend_contract`: who may accept evidence and account for the turn;
+- `child_decision`: `continue`, `wait`, or `reuse_existing_evidence`.
 
-This policy is deliberately asymmetric: exploration and review default to fresh
-children, while continuous repair and same-branch follow-up default to resume or
-fork. Fresh children are useful only when the parent can write a complete brief.
-If the parent cannot state the authority, boundary, expected output, and merge
-rule, spawning a fresh child only hides ambiguity.
+Only then should the brief include todo id, work scope, expected artifact,
+validation, and continuation policy. The compact rule is: child worker reports
+evidence only; the temporary task coordinator writes accepted state and spends.
 
-The control plane should eventually expose a compact advisory hint rather than
-a hard scheduler decision:
-
-```json
-{
-  "subagent_context_hint": {
-    "recommended_context": "fresh",
-    "reason": "independent_review",
-    "parent_brief_required": true,
-    "may_spawn_idle_agent": true,
-    "writeback_owner": "parent"
-  }
-}
-```
-
-`recommended_context` can be `fresh`, `resume`, `fork`, or
-`do_not_spawn`. The hint should be derived from todo class, claim state,
-evidence freshness, validation needs, and risk boundary. It must not override
-quota, user gates, parent approval, write-scope checks, or the controller's
-local judgment.
-
-## Handoff Contract
-
-Every sub-agent brief should start from the shared control plane before it
-describes the task. A child worker should never infer current authority from a
-chat thread, an old packet, or another child's summary.
-
-The shared control-plane handoff is `subagent_control_plane_handoff_v0`:
-
-- `parent_goal_id` and optional `parent_run_id`,
-- `authority_artifact`: the source doc, registry entry, or review packet the
-  child must treat as current authority,
-- `latest_state_ref`: the active-state hash, run id, or generated-at timestamp
-  the child must read before work,
-- `quota_gate_snapshot`: whether the parent goal is eligible, gated, waiting,
-  or in focus wait,
-- `evidence_boundary`: public/private boundary, allowed files, and whether the
-  child may write or must stay read-only,
-- `writeback_spend_contract`: who may write the final run record and spend
-  quota,
-- `child_decision`: one of `continue`, `wait`, or `reuse_existing_evidence`.
-
-Only after that shared-control-plane prefix should the task brief include:
-
-- `goal_id`,
-- role: `explorer`, `worker`, or `validator`,
-- scope and explicit non-goals,
-- allowed files or read-only boundary,
-- expected output,
-- validation command if applicable,
-- merge rule: what the main controller may accept, ignore, or retry.
-
-For the lightweight shared-control-plane model, the brief or automation prompt
-is also where agent scope lives. Do not stamp a scope field onto every todo.
-Instead, register the agent id, give the child that `agent_id` and scope, then
-have it claim only matching open todos:
-
-```bash
-loopx configure-goal \
-  --goal-id <goal-id> \
-  --registered-agent codex-main-control \
-  --registered-agent codex-side-bypass \
-  --primary-agent codex-main-control \
-  --execute
-
-loopx todo claim \
-  --goal-id <goal-id> \
-  --todo-id <todo_id> \
-  --claimed-by codex-side-bypass
-```
-
-The claim is soft ownership for visibility and conflict avoidance. It does not
-replace disjoint write scopes, parent approval, quota, or user gates. The CLI
-rejects unregistered claim ids so child agents learn the shared-control-plane
-identity before writing. If the first executable todo is already claimed by
-another agent or is outside the child's scope, the child should pick another
-in-scope unclaimed todo or report that no in-scope work is available.
-The controller goal should declare exactly one primary agent. Side agents use
-independent git worktrees/branches for repository edits. They may self-merge
-small AGENTS-eligible validated changes with explicit LoopX evidence;
-otherwise they finish by adding a primary-agent review todo so the main
-controller can review, verify, and merge.
-When this becomes a server-backed pending/lease path, the contention unit should
-stay per todo: one pending lease for `(goal_id, todo_id)`, not a broad lock on
-the whole goal. In this context, `goal_id` is the shared control-plane lane and
-`todo_id` is the work item being claimed.
-
-The main controller owns the shared-control-plane handoff and the final
-writeback. A child may produce evidence, a validation result, or a blocker, but
-the controller decides whether to accept it and whether quota can be spent.
-
-Example:
-
-```text
+```yaml
 subagent_control_plane_handoff_v0:
-  parent_goal_id: agent-harness-main-control
-  authority_artifact: review-packet generated_at=2026-01-01T00:00:00+00:00
-  latest_state_ref: active_state_sha256_16=0123456789abcdef
-  quota_gate_snapshot: operator_gate
-  evidence_boundary: read-only docs/TODO.md and docs/meta/DOC_REGISTRY.yaml
-  writeback_spend_contract: child reports evidence only; parent writes and spends
+  parent_goal_id: example-peer-task-goal
+  authority_artifact: .codex/goals/example-peer-task-goal/ACTIVE_GOAL_STATE.md
+  latest_state_ref: state_hash_or_run_id
+  quota_gate_snapshot: eligible
+  evidence_boundary: public-safe read-only repository map
+  writeback_spend_contract: child worker reports evidence only; task coordinator writes accepted state and spends
   child_decision: continue
-
-goal_id: agent-harness-main-control
-role: explorer
-scope: inspect docs/TODO.md and doc registry only
-non_goals: do not edit files; do not inspect private prod logs
-expected_output: current task clusters, likely blockers, validation surfaces
-merge_rule: main controller turns this into a read-only map, not direct actions
+goal_id: example-peer-task-goal
+todo_id: todo_docs_map
+work_scope: inspect docs and return evidence paths
+validation: cite files and residual risk; do not edit
+continuation_policy: independent_handoff
 ```
 
-## Registry Contract
+The host may still expose a `subagent_context_hint` with `fresh`, `resume`,
+`fork`, or `do_not_spawn`. It is advisory and cannot widen authority.
 
-Controller/sub-agent fields should stay minimal in v0.1:
+## Claims, Leases, And Worktrees
 
-```json
-{
-  "role": "controller",
-  "parent_goal_id": null,
-  "spawn_policy": {
-    "mode": "multi_subagent",
-    "allowed": true,
-    "max_children": 3,
-    "allowed_domains": ["docs-map", "validation-map", "implementation-slice"],
-    "max_child_agent_turns_per_window": 3
-  },
-  "quota": {
-    "compute": 0.5,
-    "window_hours": 24,
-    "max_agent_turns": 12
-  },
-  "coordination": {
-    "registered_agents": ["codex-main-control", "codex-docs-map", "codex-validation-map", "codex-implementation-slice"],
-    "primary_agent": "codex-main-control",
-    "write_scope": ["docs/**", "examples/**"],
-    "claim_ttl_minutes": 30,
-    "requires_parent_approval": ["write", "publish", "production-action"]
-  }
-}
-```
+Registered peers claim work through LoopX todos and leases. The control plane
+allows one pending lease for `(goal_id, todo_id)`. `goal_id` is the shared
+control-plane lane; `todo_id` is the work item being claimed. A host child may
+carry the claim context in its brief, but it does not become a ranked agent.
 
-`spawn_policy.mode` is the control-plane execution mode. `default` means the
-goal should run as a single ordinary Codex worker. `multi_subagent` means the
-controller may launch child workers within `max_children`, `allowed_domains`,
-and the coordination/write-scope rules. Status and quota derive the same
-compact `orchestration` projection from this policy so agents do not need to
-infer sub-agent permissions from chat history.
+Repository-writing peers and child workers use independent worktrees. Overlap
+is resolved through task boundaries and repository policy, not through a
+permanent controller. Completion uses typed continuation:
 
-The user-facing switch is intentionally default-off. Prefer configuring it with
-the feature wrapper:
+- `independent_handoff`: leave the successor available to peers;
+- `same_agent_non_delivery`: keep a non-delivery follow-up with the same peer;
+- explicit `review_handoff`: route review to a different peer or leave it
+  unclaimed; self-review is invalid.
+
+## Enabling Bounded Orchestration
+
+The feature remains opt-in:
 
 ```bash
 loopx configure-goal \
-  --goal-id your-project-goal \
+  --goal-id example-peer-task-goal \
   --multi-subagent-feature enabled \
   --max-children 2 \
   --allowed-domain docs \
-  --allowed-domain validation
+  --allowed-domain validation \
+  --execute
 ```
 
-Use `--multi-subagent-feature off` to return the goal to single-agent mode.
-The older `--orchestration-mode` and `--spawn-allowed` flags remain as low-level
-compatibility knobs, but product surfaces should expose the feature wrapper.
+`multi_subagent` is the compatibility name for host child-worker capacity. It
+does not select an agent hierarchy. `quota should-run` hashes the current open
+participant lanes, selects one task-scoped coordinator, and projects a
+`task_orchestration_contract_v1`. Dormant registered agents and closed,
+blocked, or deferred todos are not coordinator candidates.
 
-The controller goal should declare exactly one `coordination.primary_agent`.
-That main agent owns final review, verification, merge, publication, and
-reassignment. Child or bypass agents are side agents: they should use independent
-git worktrees/branches for repository edits, should not merge directly into the
-primary checkout, and should finish by adding a primary-agent review todo.
+Use `--multi-subagent-feature off` to disable worker spawning. The low-level
+`--orchestration-mode` and `--spawn-allowed` flags remain available for host
+integrations.
 
-For a child goal:
+## Run History And Observation
+
+Run history should attribute task coordination without persisting rank:
 
 ```json
 {
-  "role": "subagent",
-  "parent_goal_id": "agent-harness-main-control",
-  "coordination": {
-    "registered_agents": ["codex-docs-map"],
-    "primary_agent": "codex-docs-map",
-    "write_scope": [],
-    "requires_parent_approval": ["write"]
-  }
-}
-```
-
-These fields describe permission and coordination expectations. They do not
-turn LoopX into a lock service. They do make compute quota explicit so
-the main controller and automations do not encode priority only through timer
-cadence.
-
-## Run Record Shape
-
-LoopX run history should eventually record sub-agent activity as first
-class evidence:
-
-```json
-{
-  "goal_id": "agent-harness-main-control",
-  "run_id": "2026-06-01T02-00-00+08-00",
-  "controller": "codex-goal",
-  "classification": "ready_for_parallel_probe",
-  "recommended_action": "spawn docs-map and validation-map explorers",
-  "subagents": [
-    {
-      "id": "subagent-docs-map",
-      "control_plane_handoff_version": "subagent_control_plane_handoff_v0",
-      "child_decision": "continue",
-      "role": "explorer",
-      "scope": "docs/TODO.md + doc registry",
-      "status": "completed",
-      "changed_files": [],
-      "summary": "Found 4 task clusters and 3 validation surfaces."
-    }
+  "agent_model": "peer_v1",
+  "task_coordinator": "codex-alpha",
+  "control_plane_handoff_version": "subagent_control_plane_handoff_v0",
+  "peer_lanes": [
+    {"agent_id": "codex-beta", "todo_id": "todo_docs_map", "state": "completed"},
+    {"agent_id": "codex-gamma", "todo_id": "todo_validation", "state": "running"}
   ],
-  "merge_decision": "accepted docs-map as evidence; no file edits",
-  "next_action": "ask main controller to connect read-only adapter"
+  "accepted_evidence_count": 1,
+  "next_action": "review the remaining validation evidence"
 }
 ```
 
-The exact schema can stay loose in v0.1, but the contract should remain stable:
-the controller records who did what, why it was safe, what changed, what was
-validated, and what was deliberately ignored.
-
-Useful child-run fields:
-
-- `run_id`,
-- `parent_run_id`,
-- `spawned_by_goal_id`,
-- `agent_role`,
-- `claim_id`,
-- `work_scope`,
-- `touched_paths`,
-- `handoff_summary`,
-- `approval_state`,
-- `result_status`.
-
-Concurrent child runs should use stable `run_id` values so history readers do
-not confuse overlapping work with duplicate index records.
-
-## Long-Term Implementation Plan
-
-LoopX should grow this policy as a set of small control-plane surfaces, not as a
-large automatic orchestrator.
-
-1. **Documented advisory contract.** Keep the decision matrix above as the
-   public contract. Teach agent skills and runtime prompts to prefer fresh
-   children for exploration and review, and resume or fork for same-branch
-   follow-up.
-2. **Todo and status hints.** Add optional projected fields such as
-   `subagent_context_hint`, `spawn_reason`, `recommended_child_role`, and
-   `parent_brief_missing_fields` to status/review packets. These fields help the
-   agent loop decide; they do not launch work by themselves.
-3. **Brief completeness check.** Provide a lightweight checker that tells the
-   parent whether a fresh-child brief contains objective, authority, scope,
-   boundary, expected output, validation, and merge rule. Missing fields should
-   block fresh-child launch and ask the parent to refine the brief.
-4. **Idle-child handoff path.** When a suitable idle agent exists, let the
-   controller emit a `subagent_control_plane_handoff_v0` packet with
-   `recommended_context=fresh`. The child starts from that packet and the shared
-   control plane, not from an inherited hidden chat.
-5. **Resume/fork evidence path.** For same-branch repairs, attach the failed
-   command, branch/worktree, touched paths, and latest accepted patch summary to
-   the handoff so a resumed or forked child can continue without re-mining the
-   whole parent thread.
-6. **Run-history attribution.** Record whether each child used fresh, fork, or
-   resume context; why that was chosen; what evidence it produced; and whether
-   the parent accepted, retried, or ignored it.
-7. **Outcome review.** Compare fresh-review children against forked/resumed
-   follow-up children on token cost, latency, false assumptions, duplicated
-   work, and parent integration quality before making stronger defaults.
-
-The first useful product behavior is not automatic spawning. It is helping the
-parent agent notice that a task is an exploration or review task and can be
-delegated to an idle fresh child with a complete, auditable brief.
+Useful observation surfaces include task bundle, participant peers, worker
+context (`fresh`, `fork`, or `resume`), accepted or rejected evidence, leases,
+worktrees, quota state, and typed continuation. They must not reconstruct a
+durable leader from a temporary coordination event.
 
 ## Safety Rules
 
-- Prefer read-only explorers before worker sub-agents in complex repos.
-- Prefer fresh children for exploration and review; prefer resume or fork for
-  same-branch repair and continuous side lanes.
-- Do not launch a fresh child without a complete parent brief.
-- Give workers disjoint write sets.
-- Tell every worker that other agents may be editing nearby files and that it
-  must not revert unrelated changes.
-- Keep production, credentials, private docs, and user-specific state outside
-  public run records.
-- The main controller, not sub-agents, performs the final public/private scan.
-- The main controller decides the final response and state writeback.
+- Do not spawn when quota or the selected user gate blocks the task.
+- Do not infer permissions from an agent name, profile label, or old prompt.
+- Do not launch a fresh worker without a complete task brief.
+- Do not put credentials, private links, raw logs, or production material in a
+  public handoff packet.
+- Keep implementation scopes disjoint and use independent worktrees.
+- Let repository policy decide review and merge; peer identity grants neither.
+- Let one temporary coordinator accept bundle evidence and write one spend
+  event after validated progress.
 
-## UI Implication
-
-A future multi-project UI should not show only one status per goal. It should
-show the controller run, child sub-agent runs, and compute quota state:
-
-```text
-goal
-  quota: eligible, compute=0.5, 240/720 minute-slots spent today
-  controller run
-    subagent: docs-map       completed
-    subagent: validation-map completed
-    subagent: implementation running
-  merge decision
-  next action
-```
-
-This keeps Codex parallelism inspectable instead of turning it into invisible
-background work.
+The result is parallel execution without a permanent leader: durable agents
+remain peers, while task coordination and host-child relationships stay bounded
+to the work that requires them.

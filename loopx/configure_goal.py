@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
+import shutil
+import tempfile
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
@@ -11,7 +14,7 @@ from .boundary_authority import (
     build_checkpointed_boundary_authority_entry,
     checkpointed_boundary_authority_summary,
 )
-from .agent_registry import normalize_registered_agents, primary_agent_id_for_goal
+from .agent_registry import normalize_registered_agents
 from .control_plane import compact_control_plane_policy, control_plane_policy_summary
 from .orchestration import (
     DEFAULT_ORCHESTRATION_MODE,
@@ -23,6 +26,17 @@ from .orchestration import (
 from .quota import goal_quota_config
 from .registry import read_json, registry_goals
 from .control_plane.todos.contract import normalize_todo_claimed_by
+from .control_plane.agents.runtime_model import (
+    AgentRuntimeModel,
+    PEER_AGENT_RUNTIME_MIGRATION,
+    agent_runtime_model_for_goal,
+    completed_peer_agent_runtime_migration,
+    legacy_agent_hierarchy_present,
+    migrate_agent_profiles_to_peer_v1,
+    normalized_peer_agent_ids,
+    peer_agent_runtime_migration_completed,
+    peer_agent_runtime_migration_id,
+)
 
 
 WAITING_ON_CHOICES = (
@@ -34,6 +48,7 @@ WAITING_ON_CHOICES = (
 
 MULTI_SUBAGENT_FEATURE_CHOICES = ("off", "enabled")
 DEFAULT_MULTI_SUBAGENT_MAX_CHILDREN = 2
+AGENT_MODEL_CHOICES = tuple(model.value for model in AgentRuntimeModel)
 
 
 def _now_iso() -> str:
@@ -102,7 +117,8 @@ def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
     control_plane = compact_control_plane_policy(goal.get("control_plane"))
     orchestration = compact_orchestration_policy(goal.get("spawn_policy"))
     coordination = goal.get("coordination") if isinstance(goal.get("coordination"), dict) else {}
-    return {
+    agent_model = agent_runtime_model_for_goal(goal)
+    summary = {
         "quota": {
             "compute": quota.get("compute"),
             "window_hours": quota.get("window_hours"),
@@ -113,8 +129,14 @@ def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
         "write_scope": _clean_write_scope(coordination.get("write_scope") or []) or [],
         "checkpointed_boundary_authority": checkpointed_boundary_authority_summary(coordination),
         "registered_agents": normalize_registered_agents(coordination.get("registered_agents")),
-        "primary_agent": primary_agent_id_for_goal(goal),
+        "agent_model": agent_model.value,
+        "configured_agent_model": coordination.get("agent_model"),
+        "legacy_hierarchy_present": legacy_agent_hierarchy_present(goal),
+        "peer_runtime_migration": deepcopy(
+            completed_peer_agent_runtime_migration(goal)
+        ),
     }
+    return summary
 
 
 def _multi_subagent_feature_status(orchestration: dict[str, Any]) -> str:
@@ -136,10 +158,11 @@ def _changed_fields(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
     return changed
 
 
-def _heartbeat_scope_hint(agent_id: str, *, primary_agent: str | None) -> str:
-    if primary_agent and agent_id == primary_agent:
-        return "primary review, verification, merge, and coordination"
-    return "bounded registered-agent work in its assigned lane"
+def _heartbeat_scope_hint(
+    agent_id: str,
+) -> str:
+    del agent_id
+    return "peer task claims, leases, evidence, and bounded delivery"
 
 
 def _build_heartbeat_prompt_migration(
@@ -147,8 +170,17 @@ def _build_heartbeat_prompt_migration(
     goal_id: str,
     changed_fields: list[str],
     after: dict[str, Any],
+    migration_id: str | None = None,
+    migration_acknowledged: bool = False,
 ) -> dict[str, Any] | None:
-    if not any(field in changed_fields for field in ("registered_agents", "primary_agent")):
+    if not migration_id and not any(
+        field in changed_fields
+        for field in (
+            "registered_agents",
+            "configured_agent_model",
+            "legacy_hierarchy_present",
+        )
+    ):
         return None
     registered_agents = [
         str(agent).strip()
@@ -157,37 +189,67 @@ def _build_heartbeat_prompt_migration(
     ]
     if not registered_agents:
         return None
-    primary_agent = str(after.get("primary_agent") or "").strip() or None
-    ordered_agents: list[str] = []
-    if primary_agent and primary_agent in registered_agents:
-        ordered_agents.append(primary_agent)
-    for agent in registered_agents:
-        if agent not in ordered_agents:
-            ordered_agents.append(agent)
+    agent_model = AgentRuntimeModel.PEER_V1.value
+    ordered_agents = list(registered_agents)
     commands = []
     for agent in ordered_agents:
-        scope = _heartbeat_scope_hint(agent, primary_agent=primary_agent)
-        commands.append(
-            {
-                "agent_id": agent,
-                "role": "primary" if primary_agent and agent == primary_agent else "registered_agent",
-                "command": (
-                    "loopx heartbeat-prompt --thin "
-                    f"--goal-id {shlex.quote(goal_id)} "
-                    f"--agent-id {shlex.quote(agent)} "
-                    f"--agent-scope {shlex.quote(scope)}"
-                ),
-            }
-        )
-    return {
-        "schema_version": "heartbeat_prompt_migration_v0",
+        scope = _heartbeat_scope_hint(agent)
+        command = {
+            "agent_id": agent,
+            "command": (
+                "loopx heartbeat-prompt --thin "
+                f"--goal-id {shlex.quote(goal_id)} "
+                f"--agent-id {shlex.quote(agent)} "
+                f"--agent-scope {shlex.quote(scope)}"
+            ),
+        }
+        commands.append(command)
+    payload = {
+        "schema_version": "heartbeat_prompt_migration_v1",
+        "agent_model": agent_model,
+        "migration_id": migration_id,
+        "host_update_idempotency_key": migration_id,
+        "status": "completed" if migration_acknowledged else "required",
         "reason": (
-            "coordination.registered_agents or coordination.primary_agent changed; "
-            "installed heartbeats should be regenerated with identity-aware prompt args"
+            "the host automation update was acknowledged and the registry hard cut completed"
+            if migration_acknowledged
+            else "coordination agent identity changed; installed heartbeats should be "
+            "regenerated with identity-aware prompt args"
         ),
-        "action": "update any installed Codex App automation task body with a matching heartbeat-prompt command",
-        "commands": commands,
+        "action": (
+            "none; this migration id is complete and will not be projected again"
+            if migration_acknowledged
+            else "update each installed host automation once using migration_id as the "
+            "idempotency key, then run completion_command"
+        ),
+        "commands": [] if migration_acknowledged else commands,
     }
+    if migration_id and not migration_acknowledged:
+        payload["completion_command"] = (
+            "loopx configure-goal "
+            f"--goal-id {shlex.quote(goal_id)} "
+            f"--ack-automation-prompt-migration {shlex.quote(migration_id)} --execute"
+        )
+    return payload
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    temporary_path = Path(temporary)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def configure_goal(
@@ -210,8 +272,8 @@ def configure_goal(
     clear_explore_harness_profile: bool = False,
     registered_agents: list[str] | None = None,
     clear_registered_agents: bool = False,
-    primary_agent: str | None = None,
-    clear_primary_agent: bool = False,
+    agent_model: str | None = None,
+    automation_prompt_migration_ack: str | None = None,
     write_scope: list[str] | None = None,
     replace_write_scope: bool = False,
     clear_write_scope: bool = False,
@@ -235,10 +297,21 @@ def configure_goal(
         )
     if clear_registered_agents and registered_agents:
         raise ValueError("--clear-registered-agents cannot be combined with --registered-agent")
-    if clear_primary_agent and primary_agent:
-        raise ValueError("--clear-primary-agent cannot be combined with --primary-agent")
-    if clear_registered_agents and primary_agent:
-        raise ValueError("--clear-registered-agents cannot be combined with --primary-agent")
+    if agent_model is not None:
+        agent_model = str(agent_model).strip().lower()
+        if agent_model not in AGENT_MODEL_CHOICES:
+            raise ValueError("--agent-model must be one of: " + ", ".join(AGENT_MODEL_CHOICES))
+    if automation_prompt_migration_ack is not None:
+        automation_prompt_migration_ack = str(
+            automation_prompt_migration_ack
+        ).strip()
+        if not automation_prompt_migration_ack:
+            raise ValueError("--ack-automation-prompt-migration requires a migration id")
+        if registered_agents is not None or clear_registered_agents:
+            raise ValueError(
+                "--ack-automation-prompt-migration cannot change registered agents; "
+                "complete the runtime cutover first, then update the peer set separately"
+            )
     if clear_write_scope and write_scope:
         raise ValueError("--clear-write-scope cannot be combined with --write-scope")
     if replace_write_scope and not write_scope:
@@ -287,9 +360,6 @@ def configure_goal(
             raise ValueError("--multi-subagent-feature off cannot be combined with --allowed-domain")
     registered_agents = _clean_registered_agents(registered_agents)
     write_scope = _clean_write_scope(write_scope)
-    normalized_primary_agent = normalize_todo_claimed_by(primary_agent) if primary_agent else None
-    if primary_agent and not normalized_primary_agent:
-        raise ValueError("--primary-agent must be a public-safe registered agent id")
 
     payload = read_json(registry_path)
     goals = registry_goals(payload)
@@ -299,6 +369,39 @@ def configure_goal(
 
     before_goal = deepcopy(goal)
     before = _settings_summary(before_goal)
+    legacy_hierarchy_before = legacy_agent_hierarchy_present(before_goal)
+    expected_migration_id = peer_agent_runtime_migration_id(goal_id, before_goal)
+    completed_migration_before = completed_peer_agent_runtime_migration(before_goal)
+    migration_completed_before = peer_agent_runtime_migration_completed(before_goal)
+    migration_already_completed = bool(
+        completed_migration_before
+        and completed_migration_before.get("migration_id")
+        == automation_prompt_migration_ack
+        and migration_completed_before
+    )
+    if automation_prompt_migration_ack is not None:
+        if migration_already_completed:
+            pass
+        elif not legacy_hierarchy_before:
+            raise ValueError(
+                "no pending peer runtime automation migration matches this goal"
+            )
+        elif automation_prompt_migration_ack != expected_migration_id:
+            raise ValueError(
+                "automation prompt migration id does not match the current goal state; "
+                f"expected {expected_migration_id}"
+            )
+    elif execute and legacy_hierarchy_before and not migration_completed_before and (
+        agent_model is not None
+        or registered_agents is not None
+        or clear_registered_agents
+    ):
+        raise ValueError(
+            "legacy agent hierarchy requires the one-time host automation migration first; "
+            "regenerate/update the installed peer heartbeat, then run "
+            f"`loopx configure-goal --goal-id {goal_id} "
+            f"--ack-automation-prompt-migration {expected_migration_id} --execute`"
+        )
 
     if quota_compute is not None or quota_window_hours is not None:
         quota = goal.get("quota") if isinstance(goal.get("quota"), dict) else {}
@@ -392,30 +495,46 @@ def configure_goal(
     if (
         clear_registered_agents
         or registered_agents is not None
-        or normalized_primary_agent is not None
-        or clear_primary_agent
+        or agent_model is not None
+        or automation_prompt_migration_ack is not None
         or write_scope is not None
         or clear_write_scope
         or clear_boundary_authority
         or adding_boundary_authority
     ):
         coordination = goal.get("coordination") if isinstance(goal.get("coordination"), dict) else {}
-        existing_registered_agents = normalize_registered_agents(coordination.get("registered_agents"))
-        effective_registered_agents = registered_agents if registered_agents is not None else existing_registered_agents
-        if normalized_primary_agent and normalized_primary_agent not in effective_registered_agents:
-            raise ValueError(
-                f"--primary-agent {normalized_primary_agent!r} must also be listed in coordination.registered_agents; "
-                "pass --registered-agent for it in the same command or register it first"
-            )
+        effective_agent_model = AgentRuntimeModel.PEER_V1.value
         if clear_registered_agents:
             coordination.pop("registered_agents", None)
-            coordination.pop("primary_agent", None)
+            coordination.pop("agent_model", None)
         elif registered_agents is not None:
             coordination["registered_agents"] = registered_agents
-        if clear_primary_agent:
+        if not clear_registered_agents:
+            coordination["agent_model"] = effective_agent_model
+        if automation_prompt_migration_ack is not None and not migration_already_completed:
             coordination.pop("primary_agent", None)
-        elif normalized_primary_agent is not None:
-            coordination["primary_agent"] = normalized_primary_agent
+            coordination.pop("side_agent_handoff_agent", None)
+            coordination["registered_agents"] = normalized_peer_agent_ids(
+                coordination.get("registered_agents") or []
+            )
+            migrated_profiles = migrate_agent_profiles_to_peer_v1(
+                coordination.get("agent_profiles")
+            )
+            if migrated_profiles:
+                coordination["agent_profiles"] = migrated_profiles
+            else:
+                coordination.pop("agent_profiles", None)
+            completed_migrations = (
+                coordination.get("completed_migrations")
+                if isinstance(coordination.get("completed_migrations"), dict)
+                else {}
+            )
+            completed_migrations[PEER_AGENT_RUNTIME_MIGRATION] = {
+                "migration_id": automation_prompt_migration_ack,
+                "status": "completed",
+                "completed_at": _now_iso() if execute else None,
+            }
+            coordination["completed_migrations"] = completed_migrations
         if clear_write_scope:
             coordination["write_scope"] = []
         elif write_scope is not None:
@@ -445,13 +564,22 @@ def configure_goal(
     after = _settings_summary(goal)
     changed_fields = _changed_fields(before, after)
     dry_run = not execute
+    model_changed = bool(
+        before.get("legacy_hierarchy_present")
+        or before.get("agent_model") != after.get("agent_model")
+        or automation_prompt_migration_ack is not None
+    )
+    backup_path = None
 
     if execute and changed_fields:
         payload["updated_at"] = _now_iso()
-        registry_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        if model_changed:
+            stamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%z")
+            backup_path = registry_path.with_name(
+                f"{registry_path.name}.before-agent-model-{stamp}.bak"
+            )
+            shutil.copy2(registry_path, backup_path)
+        _atomic_write_json(registry_path, payload)
 
     return {
         "ok": True,
@@ -461,9 +589,23 @@ def configure_goal(
         "goal_id": goal_id,
         "changed": bool(changed_fields),
         "changed_fields": changed_fields,
+        "backup_path": str(backup_path) if backup_path else None,
         "before": before,
         "after": after,
         "written": bool(execute and changed_fields),
+        "automation_prompt_migration": {
+            "migration_id": automation_prompt_migration_ack,
+            "status": (
+                "already_completed"
+                if migration_already_completed
+                else "completed"
+                if automation_prompt_migration_ack is not None
+                else "pending"
+                if legacy_hierarchy_before
+                else "not_required"
+            ),
+            "exactly_once_effect": True,
+        },
         "control_plane_summary": control_plane_policy_summary(after.get("control_plane")),
         "orchestration_summary": orchestration_policy_summary(after.get("orchestration")),
         "feature_summary": {
@@ -479,6 +621,14 @@ def configure_goal(
             goal_id=goal_id,
             changed_fields=changed_fields,
             after=after,
+            migration_id=(
+                automation_prompt_migration_ack
+                if automation_prompt_migration_ack is not None
+                else expected_migration_id
+                if legacy_hierarchy_before and not migration_completed_before
+                else None
+            ),
+            migration_acknowledged=automation_prompt_migration_ack is not None,
         ),
     }
 

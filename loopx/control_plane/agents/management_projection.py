@@ -142,7 +142,6 @@ def _registered_agents(status_payload: dict[str, Any]) -> dict[str, dict[str, An
             continue
         goal_id = _compact(goal.get("id"), limit=180)
         coordination = _as_dict(goal.get("coordination"))
-        primary = normalize_todo_claimed_by(coordination.get("primary_agent"))
         for raw_agent in _as_list(coordination.get("registered_agents")):
             agent_id = normalize_todo_claimed_by(raw_agent)
             if not agent_id:
@@ -151,7 +150,7 @@ def _registered_agents(status_payload: dict[str, Any]) -> dict[str, dict[str, An
                 agent_id,
                 {
                     "agent_id": agent_id,
-                    "role": "primary" if agent_id == primary else "side-agent",
+                    "agent_model": "peer_v1",
                     "_goal_ids": [],
                     "_todos": [],
                 },
@@ -474,7 +473,7 @@ def build_agent_management_projection(status_payload: dict[str, Any]) -> dict[st
                     handoff_refs.append(ref)
         agent_row: dict[str, Any] = {
             "agent_id": agent_id,
-            "role": raw_row.get("role") or "agent",
+            "agent_model": raw_row.get("agent_model") or "unregistered",
             "state": _agent_state(all_todos, current=current),
             "current_todo": _todo_row(current) if current else None,
             "next_action": _safe_next_action(current),

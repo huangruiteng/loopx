@@ -203,7 +203,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
         state_machine_profile
     )
     assert (
-        "python3 examples/control_plane/side-agent-self-iteration-state-machine-smoke.py"
+        "python3 examples/control_plane/peer-agent-continuation-state-machine-smoke.py"
         in state_machine_commands
     ), state_machine_profile
     assert "python3 examples/control_plane/interaction-contract-state-machine-smoke.py" in state_machine_commands, (

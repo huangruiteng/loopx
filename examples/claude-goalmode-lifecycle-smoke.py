@@ -41,15 +41,15 @@ def test_goal_context_prefers_armed_goal():
     with tempfile.TemporaryDirectory(prefix="loopx-armed-") as d:
         root = Path(d)
         (root / ".loopx").mkdir()
-        # Two goals, BOTH with a primary_agent -> the old heuristic would take the
+        # Two goals share peer registration; the armed marker, not registry order,
         # first (goal-A). The armed marker points at goal-B.
         registry = {
             "schema_version": "0.1",
             "goals": [
                 {"id": "goal-A", "repo": str(root),
-                 "coordination": {"primary_agent": "agentA", "registered_agents": ["agentA"]}},
+                 "coordination": {"agent_model": "peer_v1", "registered_agents": ["agentA"]}},
                 {"id": "goal-B", "repo": str(root),
-                 "coordination": {"primary_agent": "agentB", "registered_agents": ["agentB"]}},
+                 "coordination": {"agent_model": "peer_v1", "registered_agents": ["agentB"]}},
             ],
         }
         (root / ".loopx" / "registry.json").write_text(json.dumps(registry), encoding="utf-8")
@@ -87,7 +87,7 @@ def test_complete_with_next_todo_uses_registered_agent():
         registry = str(proj / ".loopx" / "registry.json")
         # /loopx registers only `cc` (primary + registered)
         r = loopx(["--registry", registry, "configure-goal", "--goal-id", gid,
-                   "--primary-agent", "cc", "--registered-agent", "cc", "--execute"], home=home)
+                   "--agent-model", "peer_v1", "--registered-agent", "cc", "--execute"], home=home)
         assert r.returncode == 0, f"configure-goal failed:\n{r.stdout}\n{r.stderr}"
         add = loopx(["--registry", registry, "--format", "json", "todo", "add",
                      "--goal-id", gid, "--role", "agent", "--text", "first segment"], home=home)

@@ -86,7 +86,7 @@ def main() -> None:
                 "adapter_kind": "harness_self_improvement",
                 "adapter_status": "connected-read-only",
                 "coordination": {
-                    "primary_agent": "codex-main-control",
+                    "agent_model": "peer_v1",
                     "registered_agents": ["codex-main-control", "codex-product-capability"],
                     "side_agent_handoff_agent": "codex-product-capability",
                     "checkpointed_boundary_authority": [
@@ -205,7 +205,8 @@ def main() -> None:
 
     meta = full["goals"][0]
     assert meta["quota"] is not None, meta
-    assert meta["coordination"]["primary_agent"] == "codex-main-control", meta
+    assert meta["coordination"]["agent_model"] == "peer_v1", meta
+    assert "primary_agent" not in meta["coordination"], meta
     assert meta["coordination"]["registered_agents"] == [
         "codex-main-control",
         "codex-product-capability",

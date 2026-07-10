@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from loopx.cli_commands.status import (
     _compact_agent_lane_todos_for_status_display,
-    _review_handoff_agent,
     _status_collection_limit_for_agent_lane,
     _trim_run_history_for_status_display,
     attach_agent_lane_next_actions,
@@ -58,22 +57,14 @@ def assert_status_agent_lane_next_action_projection() -> None:
         "first_executable_items": [side_todo],
     }
     coordination = {
-        "primary_agent": "codex-main-control",
+        "agent_model": "peer_v1",
         "registered_agents": ["codex-main-control", "codex-side-bypass"],
         "agent_profiles": {
             "codex-side-bypass": {
-                "schema_version": "agent_profile_v0",
+                "schema_version": "agent_profile_v1",
                 "agent_id": "codex-side-bypass",
-                "role": "side-agent",
+                "profile_role": "product-validation",
                 "scope_summary": "productization showcase docs lane",
-                "worktree_policy": {
-                    "mode": "independent_worktree_required",
-                    "requires_independent_worktree": True,
-                },
-                "review_policy": {
-                    "handoff_agent": "codex-main-control",
-                    "can_self_merge": "small_validated_docs_or_metadata_only",
-                },
             }
         },
     }
@@ -170,17 +161,19 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert item["recommended_action"] == primary_action, item
     assert item["project_asset"]["next_action"] == primary_action, item
     member = item["agent_member"]
-    assert member["schema_version"] == "agent_member_v0", member
+    assert member["schema_version"] == "agent_member_v1", member
     assert member["agent_id"] == "codex-side-bypass", member
-    assert member["role"] == "side-agent", member
+    assert member["agent_model"] == "peer_v1", member
+    assert member["profile_role"] == "product-validation", member
+    assert member["profile_role_is_advisory"] is True, member
     assert member["scope_summary"] == "productization showcase docs lane", member
-    assert member["worktree_policy"] == "independent_worktree_required", member
-    assert member["requires_independent_worktree"] is True, member
+    assert "worktree_policy" not in member, member
+    assert "requires_independent_worktree" not in member, member
     assert member["current_claims"] == ["todo_side_tui"], member
-    assert member["lease_projection"]["source"] == "todo.claimed_by", member
-    assert member["lease_projection"]["hard_lease_available"] is False, member
-    assert member["handoff_agent"] == "codex-main-control", member
-    assert member["role_is_advisory"] is True, member
+    assert member["lease_projection"]["source"] == "todo.claimed_by+task_lease", member
+    assert member["lease_projection"]["hard_lease_available"] is True, member
+    assert member["review_handoff_status"] == "task_policy_selected", member
+    assert "handoff_agent" not in member, member
     assert item["project_asset"]["agent_member"] == member, item
     interaction = item["agent_interaction_summary"]
     assert interaction["schema_version"] == "agent_interaction_summary_v0", interaction
@@ -202,8 +195,9 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert lane_projection["selected_by"] == "current_agent_claimed_todo", lane_projection
     assert lane_projection["confidence"] == "selected", lane_projection
     markdown = render_status_markdown(payload)
-    assert "agent_member: agent=codex-side-bypass role=side-agent" in markdown, markdown
-    assert "worktree_policy=independent_worktree_required" in markdown, markdown
+    assert "agent_member: agent=codex-side-bypass agent_model=peer_v1" in markdown, markdown
+    assert "profile_role=product-validation" in markdown, markdown
+    assert "worktree_policy=" not in markdown, markdown
     assert "claims=todo_side_tui" in markdown, markdown
     assert "current_agent_interaction: agent=codex-side-bypass mode=bounded_delivery" in markdown, markdown
     assert "action_required=False open_count=0" in markdown, markdown
@@ -218,7 +212,8 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert f"asset_agent_todo: {primary_action} claimed_by=codex-main-control scope=goal_all_agents" in markdown, markdown
     packet = build_review_packet(payload, goal_id=goal_id, action_kind="codex")
     assert packet["agent_member"]["agent_id"] == "codex-side-bypass", packet
-    assert "Agent 成员：agent=codex-side-bypass role=side-agent" in packet["project_agent_handoff"], packet
+    assert "Agent 成员：agent=codex-side-bypass agent_model=peer_v1" in packet["project_agent_handoff"], packet
+    assert "profile_role=product-validation" in packet["project_agent_handoff"], packet
     assert "authority=advisory_projection" in packet["project_agent_handoff"], packet
 
 
@@ -354,7 +349,7 @@ def assert_status_agent_member_selected_lane_claim_survives_truncated_claim_list
         "first_executable_items": [selected_todo],
     }
     coordination = {
-        "primary_agent": "codex-main-control",
+        "agent_model": "peer_v1",
         "registered_agents": ["codex-main-control", "codex-side-bypass"],
     }
     payload = {
@@ -422,27 +417,6 @@ def assert_status_agent_member_selected_lane_claim_survives_truncated_claim_list
     assert "claims=todo_selected_lane,todo_visible_stale_claim_0" in markdown, markdown
 
 
-def assert_status_agent_member_handoff_uses_quota_identity() -> None:
-    assert (
-        _review_handoff_agent(
-            coordination={},
-            profile={},
-            identity={"handoff_agent": "codex-product-capability"},
-            role="side-agent",
-        )
-        == "codex-product-capability"
-    )
-    assert (
-        _review_handoff_agent(
-            coordination={"side_agent_handoff_agent": "codex-main-control"},
-            profile={},
-            identity={"handoff_agent": "codex-product-capability"},
-            role="side-agent",
-        )
-        == "codex-product-capability"
-    )
-
-
 def assert_status_agent_lane_vision_lookback_survives_display_trim() -> None:
     goal_id = "agent-lane-vision-lookback-fixture"
     agent_id = "codex-product-capability"
@@ -469,7 +443,7 @@ def assert_status_agent_lane_vision_lookback_survives_display_trim() -> None:
         "first_executable_items": [side_todo],
     }
     coordination = {
-        "primary_agent": "codex-main-control",
+        "agent_model": "peer_v1",
         "registered_agents": ["codex-main-control", agent_id],
     }
     stale_runs = [
@@ -602,7 +576,7 @@ def assert_status_agent_lane_frontier_hint_projection() -> None:
         "items": [primary_todo],
     }
     coordination = {
-        "primary_agent": "codex-main-control",
+        "agent_model": "peer_v1",
         "registered_agents": ["codex-main-control", "codex-side-bypass"],
     }
     payload = {
@@ -664,7 +638,7 @@ def assert_status_agent_lane_frontier_hint_projection() -> None:
     item = payload["attention_queue"]["items"][0]
     assert "agent_lane_next_action" not in item, item
     frontier = item["agent_scope_frontier"]
-    assert frontier["action"] == "agent_scope_wait", frontier
+    assert frontier["action"] == "reassignment_required", frontier
     goal_frontier = item["goal_frontier_projection"]
     assert goal_frontier["remaining_advancement_frontier"] == {
         "current_agent_claimed_advancement_count": 0,

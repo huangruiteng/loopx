@@ -117,7 +117,7 @@ def assert_current_agent_candidate_order_contract() -> None:
         runnable,
         agent_identity={
             "agent_id": AGENT_ID,
-            "primary_agent": PRIMARY_AGENT,
+            "agent_model": "peer_v1",
         },
     )
     assert policy == "active_next_then_claim_then_unblock_handoff_then_priority_then_repair"
@@ -151,7 +151,7 @@ def assert_gate_prefers_active_next_and_exposes_blocked_fallback() -> None:
             "executable_backlog_items": [runnable],
         },
         available_capabilities=["shell"],
-        agent_identity={"agent_id": AGENT_ID, "primary_agent": PRIMARY_AGENT},
+        agent_identity={"agent_id": AGENT_ID, "agent_model": "peer_v1"},
     )
     assert gate is not None
     assert gate["schema_version"] == "capability_gate_v0", gate
@@ -178,7 +178,7 @@ def assert_target_capability_creates_repair_hint_not_hard_block() -> None:
     gate = build_capability_gate(
         {"executable_backlog_items": [item]},
         available_capabilities=["shell"],
-        agent_identity={"agent_id": AGENT_ID, "primary_agent": PRIMARY_AGENT},
+        agent_identity={"agent_id": AGENT_ID, "agent_model": "peer_v1"},
     )
     assert gate is not None
     assert gate["action"] == "run", gate
@@ -200,7 +200,7 @@ def assert_all_blocked_owner_capability_stops_delivery() -> None:
     gate = build_capability_gate(
         {"first_executable_items": [item]},
         available_capabilities=["shell"],
-        agent_identity={"agent_id": AGENT_ID, "primary_agent": PRIMARY_AGENT},
+        agent_identity={"agent_id": AGENT_ID, "agent_model": "peer_v1"},
     )
     assert gate is not None
     assert gate["source"] == "agent_todo_summary.first_executable_items", gate
@@ -227,7 +227,7 @@ def assert_requirement_free_advancement_does_not_create_gate() -> None:
     gate = build_capability_gate(
         {"executable_backlog_items": [item]},
         available_capabilities=[],
-        agent_identity={"agent_id": AGENT_ID, "primary_agent": PRIMARY_AGENT},
+        agent_identity={"agent_id": AGENT_ID, "agent_model": "peer_v1"},
     )
     assert gate is None
 

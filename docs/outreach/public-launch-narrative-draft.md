@@ -27,7 +27,7 @@ The important product detail is not that the harness stores more state. It is
 that the state becomes actionable:
 
 - the blocked human decision remains visible as a concrete user todo;
-- primary and side agents can see who owns which todo and scope;
+- registered peers can see who owns each todo and which task policy applies;
 - safe fallback work can continue without pretending the fallback is now the
   main lane;
 - quota, validation, public/private boundaries, and run evidence remain tied to

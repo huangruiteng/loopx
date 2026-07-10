@@ -173,7 +173,7 @@ def assert_status_and_quota_projection() -> None:
                             "state_file": ".codex/goals/cadence/ACTIVE_GOAL_STATE.md",
                             "agent_id": "codex-cadence",
                             "coordination": {
-                                "primary_agent": "codex-cadence",
+                                "agent_model": "peer_v1",
                                 "registered_agents": ["codex-cadence"],
                             },
                             "adapter": {

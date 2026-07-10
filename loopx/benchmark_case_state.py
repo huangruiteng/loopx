@@ -792,7 +792,7 @@ def benchmark_case_loopx_install_command(
         f"{cli_prefix} configure-goal "
         f"--goal-id {shlex.quote(goal_id)} "
         f"--registered-agent {shlex.quote(case_agent_id)} "
-        f"--primary-agent {shlex.quote(case_agent_id)} "
+        "--agent-model peer_v1 "
         "--execute"
     )
     goal_start_pack_cmd = (

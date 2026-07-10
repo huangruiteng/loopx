@@ -155,7 +155,6 @@ def write_fixture(
         domain="monitor-poll-writeback",
         adapter_kind="generic_project_goal_v0",
         registered_agents=[AGENT_ID],
-        primary_agent=AGENT_ID,
         quota_allowed_slots=None,
     )
     return registry_path, state_file

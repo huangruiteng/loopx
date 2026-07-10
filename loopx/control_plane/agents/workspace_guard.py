@@ -4,8 +4,14 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
-
-SIDE_AGENT_WORKSPACE_GUARD_SCHEMA_VERSION = "side_agent_workspace_guard_v0"
+AGENT_WORKSPACE_GUARD_SCHEMA_VERSION = "agent_workspace_guard_v1"
+PEER_WRITE_ACTION_KINDS = {
+    "fix",
+    "implement",
+    "rebuild",
+    "repair",
+    "writeback",
+}
 
 
 def _is_same_or_child_path(path: Path, root: Path) -> bool:
@@ -61,20 +67,59 @@ def _git_common_dir(path: Path) -> Path | None:
         return None
 
 
-def build_side_agent_workspace_guard(
+def _peer_candidate_items(agent_todo_summary: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(agent_todo_summary, dict):
+        return []
+    for key in (
+        "active_next_action_executable_items",
+        "executable_backlog_items",
+        "first_executable_items",
+    ):
+        items = agent_todo_summary.get(key)
+        if isinstance(items, list) and items:
+            return [item for item in items if isinstance(item, dict)]
+    return []
+
+
+def _peer_work_requires_isolated_workspace(
+    workspace_guard_policy: dict[str, Any],
+    agent_todo_summary: dict[str, Any] | None,
+) -> bool:
+    explicit = workspace_guard_policy.get("peer_independent_worktree_required")
+    if explicit is not None:
+        return explicit is True
+    candidates = _peer_candidate_items(agent_todo_summary)
+    if not candidates:
+        return False
+    candidate = candidates[0]
+    if candidate.get("required_write_scopes"):
+        return True
+    action_kind = str(candidate.get("action_kind") or "").strip().lower()
+    return action_kind in PEER_WRITE_ACTION_KINDS or action_kind.startswith(
+        tuple(f"{prefix}_" for prefix in PEER_WRITE_ACTION_KINDS)
+    )
+
+
+def build_agent_workspace_guard(
     goal: dict[str, Any],
     agent_identity: dict[str, Any] | None,
     *,
+    agent_todo_summary: dict[str, Any] | None = None,
     current_path: Path | None = None,
 ) -> dict[str, Any] | None:
-    if not isinstance(agent_identity, dict) or agent_identity.get("role") != "side-agent":
+    if not isinstance(agent_identity, dict):
         return None
     workspace_guard_policy = (
         goal.get("workspace_guard_policy")
         if isinstance(goal.get("workspace_guard_policy"), dict)
         else {}
     )
-    if workspace_guard_policy.get("side_agent_independent_worktree_required") is False:
+    if len(agent_identity.get("registered_agents") or []) <= 1:
+        return None
+    if not _peer_work_requires_isolated_workspace(
+        workspace_guard_policy,
+        agent_todo_summary,
+    ):
         return None
     repo_value = goal.get("repo") or goal.get("project") or goal.get("root")
     if not repo_value:
@@ -85,35 +130,35 @@ def build_side_agent_workspace_guard(
     current_path = current_path or Path.cwd()
     current_workspace = ""
     if _is_same_or_child_path(current_path, repo_path):
-        current_workspace = "primary_checkout"
+        current_workspace = "canonical_checkout"
     else:
-        primary_root = _git_worktree_root(repo_path) or repo_path
+        canonical_root = _git_worktree_root(repo_path) or repo_path
         current_root = _git_worktree_root(current_path)
-        primary_common = _git_common_dir(primary_root)
+        canonical_common = _git_common_dir(canonical_root)
         current_common = _git_common_dir(current_path) if current_root else None
         if current_root is None:
             current_workspace = "not_git_worktree"
-        elif primary_common is None or current_common is None or current_common != primary_common:
+        elif canonical_common is None or current_common is None or current_common != canonical_common:
             current_workspace = "foreign_git_worktree"
-        elif current_root == primary_root:
-            current_workspace = "primary_checkout"
+        elif current_root == canonical_root:
+            current_workspace = "canonical_checkout"
     if not current_workspace:
         return None
-    return {
-        "schema_version": SIDE_AGENT_WORKSPACE_GUARD_SCHEMA_VERSION,
+    payload = {
+        "schema_version": AGENT_WORKSPACE_GUARD_SCHEMA_VERSION,
         "source": "quota.should-run",
         "action": "move_to_independent_worktree",
         "current_workspace": current_workspace,
         "required_workspace": "independent_git_worktree",
         "blocks_delivery": True,
         "agent_id": agent_identity.get("agent_id"),
-        "primary_agent": agent_identity.get("primary_agent"),
         "reason": (
-            "side-agent quota guard is not running from an independent worktree for "
-            "the registered project; normal delivery must move before repository edits"
+            "peer delivery with repository writes is not running from an independent "
+            "worktree; normal delivery must move before repository edits"
         ),
         "required_action": (
-            "create or switch to an independent git worktree/branch for this side-agent "
-            "lane, then rerun quota should-run with the same --agent-id before editing files"
+            "create or switch to an independent git worktree/branch for this peer lane, "
+            "then rerun quota should-run with the same --agent-id before editing files"
         ),
     }
+    return payload

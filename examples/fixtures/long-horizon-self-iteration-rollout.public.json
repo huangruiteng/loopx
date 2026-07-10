@@ -108,21 +108,24 @@
   ],
   "lanes": [
     {
-      "lane_id": "primary_control",
+      "lane_id": "release_validation",
       "agent_id": "codex-main-control",
-      "role": "primary",
-      "display_name": "Primary control"
+      "agent_model": "peer_v1",
+      "profile_role": "release-validation",
+      "display_name": "Release validation"
     },
     {
       "lane_id": "product_capability",
       "agent_id": "codex-product-capability",
-      "role": "side-agent",
+      "agent_model": "peer_v1",
+      "profile_role": "product-validation",
       "display_name": "Product capability"
     },
     {
       "lane_id": "implementation_lane",
       "agent_id": "codex-side-bypass",
-      "role": "side-agent",
+      "agent_model": "peer_v1",
+      "profile_role": "implementation-validation",
       "display_name": "Implementation lane"
     }
   ],
@@ -137,7 +140,7 @@
       "todo_id": "todo_protocol_contract",
       "lane": {
         "lane_id": "product_capability",
-        "agent_role": "side-agent"
+        "agent_model": "peer_v1"
       },
       "state_transition": {
         "from_state": "protocol_draft",
@@ -187,7 +190,7 @@
       "run_id": "run_frontstage_fixture_validation",
       "lane": {
         "lane_id": "product_capability",
-        "agent_role": "side-agent"
+        "agent_model": "peer_v1"
       },
       "state_transition": {
         "from_state": "full_history_fixture_planned",
@@ -229,7 +232,7 @@
       "todo_id": "todo_frontstage_timeline",
       "lane": {
         "lane_id": "implementation_lane",
-        "agent_role": "side-agent"
+        "agent_model": "peer_v1"
       },
       "state_transition": {
         "from_state": "open_product_capability_claim",
@@ -281,7 +284,7 @@
       "todo_id": "todo_frontstage_sufficiency",
       "lane": {
         "lane_id": "implementation_lane",
-        "agent_role": "side-agent"
+        "agent_model": "peer_v1"
       },
       "state_transition": {
         "from_state": "open_product_capability_claim",
@@ -332,7 +335,7 @@
       "run_id": "run_frontstage_fixture_validation",
       "lane": {
         "lane_id": "product_capability",
-        "agent_role": "side-agent"
+        "agent_model": "peer_v1"
       },
       "state_transition": {
         "from_state": "minimal_rollout_fixture_required",
@@ -380,7 +383,7 @@
       "case_id": "public_frontstage_rollout",
       "lane": {
         "lane_id": "implementation_lane",
-        "agent_role": "side-agent"
+        "agent_model": "peer_v1"
       },
       "state_transition": {
         "from_state": "deferred_implementation_claim",
@@ -422,7 +425,7 @@
       "case_id": "public_frontstage_rollout",
       "lane": {
         "lane_id": "implementation_lane",
-        "agent_role": "side-agent"
+        "agent_model": "peer_v1"
       },
       "state_transition": {
         "from_state": "deferred_implementation_claim",
@@ -475,7 +478,7 @@
     },
     {
       "animation_event_id": "anim_frontstage_delegation",
-      "lane_id": "primary_control",
+      "lane_id": "release_validation",
       "kind": "human_gate",
       "title": "Operator delegates UI implementation",
       "source_event_ids": [
@@ -566,7 +569,7 @@
   ],
   "frontend_acceptance": {
     "minimum_lane_ids": [
-      "primary_control",
+      "release_validation",
       "product_capability",
       "implementation_lane"
     ],

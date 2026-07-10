@@ -64,8 +64,7 @@ def build_agent_claim_scoped_open_items(
     claim_scope = {
         "schema_version": TODO_AGENT_CLAIM_SCOPE_SCHEMA_VERSION,
         "agent_id": agent_id,
-        "agent_role": str(agent_identity.get("role") or ""),
-        "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+        "agent_model": "peer_v1",
         "selection_order": "current_agent_claimed_then_unclaimed",
         "selectable_open_count": len(selectable_items),
         "current_agent_claimed_open_count": len(current_agent_items),

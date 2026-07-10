@@ -4,10 +4,7 @@ import argparse
 from collections.abc import Callable
 from pathlib import Path
 
-from ..agent_registry import (
-    normalize_registered_agents,
-    primary_agent_id_from_registry,
-)
+from ..agent_registry import normalize_registered_agents
 from ..configure_goal import configure_goal, render_configure_goal_markdown
 from ..global_registry import render_global_sync_markdown, sync_project_registry_to_global
 from ..history import load_registry
@@ -31,6 +28,7 @@ from .registry_authority import (
     handle_registry_authority_command,
     register_registry_authority_commands,
 )
+from .registry_admin_peer import register_peer_runtime_arguments
 
 
 PrintPayload = Callable[
@@ -58,7 +56,6 @@ def register_agent_via_source_registry(
     runtime_root_arg: str | None,
     goal_id: str,
     agent_ids: list[str],
-    primary_agent: str | None,
     execute: bool,
 ) -> dict[str, object]:
     global_path = explicit_global_registry(runtime_root_arg)
@@ -86,7 +83,6 @@ def register_agent_via_source_registry(
     for agent_id in requested_agents:
         if agent_id not in merged_agents:
             merged_agents.append(agent_id)
-    effective_primary = primary_agent or primary_agent_id_from_registry(source_registry_path, goal_id)
     global_writability: dict[str, object] | None = None
     if execute:
         global_writability = probe_registry_write_path(global_path, create_parent=True)
@@ -101,7 +97,6 @@ def register_agent_via_source_registry(
                 "existing_agents": existing_agents,
                 "requested_agents": requested_agents,
                 "registered_agents": merged_agents,
-                "primary_agent": effective_primary,
                 "changed": merged_agents != existing_agents,
                 "written": False,
                 "host_loop_activation": loop_activation_for_goal(
@@ -127,7 +122,7 @@ def register_agent_via_source_registry(
         registry_path=source_registry_path,
         goal_id=goal_id,
         registered_agents=merged_agents,
-        primary_agent=effective_primary,
+        agent_model="peer_v1",
         execute=execute,
     )
     sync_payload: dict[str, object] | None = None
@@ -148,7 +143,6 @@ def register_agent_via_source_registry(
         "existing_agents": existing_agents,
         "requested_agents": requested_agents,
         "registered_agents": merged_agents,
-        "primary_agent": effective_primary,
         "changed": configure_payload.get("changed"),
         "written": configure_payload.get("written"),
         "configure_goal": configure_payload,
@@ -233,7 +227,6 @@ def render_register_agent_markdown(payload: dict[str, object]) -> str:
         f"- goal_id: `{payload.get('goal_id')}`",
         f"- global_registry: `{payload.get('global_registry')}`",
         f"- source_registry: `{payload.get('source_registry')}`",
-        f"- primary_agent: `{payload.get('primary_agent')}`",
         f"- changed: `{payload.get('changed')}`",
         f"- written: `{payload.get('written')}`",
     ]
@@ -350,18 +343,7 @@ def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> 
         action="store_true",
         help="Clear coordination.registered_agents.",
     )
-    configure_goal_parser.add_argument(
-        "--primary-agent",
-        help=(
-            "The single registered agent id that owns main-control review, "
-            "verification, merge, and final project coordination."
-        ),
-    )
-    configure_goal_parser.add_argument(
-        "--clear-primary-agent",
-        action="store_true",
-        help="Clear coordination.primary_agent.",
-    )
+    register_peer_runtime_arguments(configure_goal_parser)
     configure_goal_parser.add_argument(
         "--write-scope",
         action="append",
@@ -437,10 +419,6 @@ def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> 
         action="append",
         required=True,
         help="Public-safe agent id to add. Repeatable; comma-separated values are also accepted.",
-    )
-    register_agent_parser.add_argument(
-        "--primary-agent",
-        help="Optional primary agent id to set; defaults to the existing primary agent.",
     )
     register_agent_parser.add_argument(
         "--execute",
@@ -603,8 +581,8 @@ def handle_registry_admin_command(
                 clear_explore_harness_profile=bool(args.clear_explore_harness_profile),
                 registered_agents=args.registered_agents,
                 clear_registered_agents=bool(args.clear_registered_agents),
-                primary_agent=args.primary_agent,
-                clear_primary_agent=bool(args.clear_primary_agent),
+                agent_model=args.agent_model,
+                automation_prompt_migration_ack=args.ack_automation_prompt_migration,
                 write_scope=args.write_scope,
                 replace_write_scope=bool(args.replace_write_scope),
                 clear_write_scope=bool(args.clear_write_scope),
@@ -644,7 +622,6 @@ def handle_registry_admin_command(
                 runtime_root_arg=args.runtime_root,
                 goal_id=args.goal_id,
                 agent_ids=args.agent_id,
-                primary_agent=args.primary_agent,
                 execute=bool(args.execute),
             )
         except Exception as exc:

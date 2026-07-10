@@ -66,8 +66,7 @@ def todo(
 def agent_identity() -> dict[str, Any]:
     return {
         "agent_id": AGENT_ID,
-        "role": "side-agent",
-        "primary_agent": PRIMARY_AGENT,
+        "agent_model": "peer_v1",
     }
 
 
@@ -236,7 +235,6 @@ def assert_agent_scoped_user_gate_override_contract() -> None:
 def assert_agent_scope_frontier_builder_contract() -> None:
     payload = build_agent_scope_frontier_payload(
         agent_id=AGENT_ID,
-        primary_agent=PRIMARY_AGENT,
         action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
         quiet_noop_allowed=False,
         spend_policy="spend once after validated successor replan/todo writeback",
@@ -354,7 +352,7 @@ def assert_other_agent_frontier_wait_contract() -> None:
     )
 
     assert frontier is not None, frontier
-    assert frontier["action"] == "agent_scope_wait"
+    assert frontier["action"] == "reassignment_required"
     assert frontier["quiet_noop_allowed"] is True
     assert frontier["spend_policy"] == (
         "no quota spend while the current agent has no in-scope runnable candidate"

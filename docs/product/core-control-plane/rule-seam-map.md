@@ -66,7 +66,7 @@ Keep these areas in `quota.py` until the characterization fixture exists:
   scheduler-ack write paths.
 
 Those areas mix projection with policy. Moving them without a parity fixture
-can silently change which todo a side-agent sees, whether a monitor item is due,
+can silently change which todo a peer sees, whether a monitor item is due,
 or whether automation reports quiet wait versus required progress.
 
 The next module-boundary PR should therefore:
@@ -88,7 +88,7 @@ The next module-boundary PR should therefore:
 | Family | Current anchors | Target seam | Extraction guard |
 | --- | --- | --- | --- |
 | Work-lane policy | `_work_lane_contract` | Pure policy module that chooses lane, obligation, monitor policy, and reason codes from compact status inputs. | Parity snapshot for advancement, due monitor, external evidence, and quiet skip cases. |
-| Capability and boundary gates | `_capability_gate`, `_side_agent_workspace_guard`, `_automation_prompt_upgrade` | Gate evaluators that return typed decisions without mutating payloads. | Existing quota contract fields and workspace guard failure mode remain stable. |
+| Capability and boundary gates | `_capability_gate`, `build_agent_workspace_guard`, `_automation_prompt_upgrade` | Gate evaluators that return typed decisions without mutating payloads. | Existing quota contract fields and workspace guard failure mode remain stable. |
 | Agent-lane selection | `_agent_lane_next_action`, `_agent_lane_frontier_hint` | Agent-scoped selector over normalized todo projections. | Current-agent claimed todos outrank unrelated agents; frontier hints stay diagnostic when no runnable candidate exists. |
 | Goal frontier and replan decision | `loopx.control_plane.goals.goal_frontier`, `build_quota_should_run` adapter | Goal-frontier policy owns completion/replan projection; quota only selects the resulting interaction mode. | Required autonomous replan is decided before monitor quiet or agent-scope wait classification, without growing per-agent vision logic inside quota. |
 | Agent vision and goal routing contract | Future goal-route policy/CLI adapter plus `goal_vision_replan_contract_v0` | CLI-enforced bounded vision fields, per-agent vision checkpoints, and the vision/replan state machine. | Over-budget vision fails or compacts before status/quota; material closeouts emit `vision_checkpoint_v0`; quota consumes projection only and does not own per-agent vision storage. |

@@ -44,7 +44,7 @@ The v0 driver should be explicit and conservative:
    <agent>`.
 3. If user action is required, the driver surfaces only the concrete user gate
    and stops.
-4. If the side-agent workspace guard fires, the driver relocates to an
+4. If the peer task workspace guard fires, the driver relocates to an
    independent worktree before any file edit.
 5. The driver runs `loopx codex-cli-visible-driver-plan`.
 6. If the plan proves a visible attach path, the driver may attempt a visible

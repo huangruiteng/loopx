@@ -58,7 +58,7 @@ def status_payload(
         quota_state=quota_state,
         safe_bypass=safe_bypass,
         coordination={
-            "primary_agent": PRIMARY_AGENT_ID,
+            "agent_model": "peer_v1",
             "registered_agents": [PRIMARY_AGENT_ID, AGENT_ID],
         },
         latest_runs=[],
@@ -374,7 +374,7 @@ def assert_standing_monitor_gate_does_not_quiet_skip_gated_advancement() -> None
     assert interaction["agent_channel"]["quiet_noop_allowed"] is False, interaction
 
 
-def assert_agent_scope_wait_scheduler_contract() -> None:
+def assert_reassignment_scheduler_contract() -> None:
     payload = status_payload(
         [
             todo_item(
@@ -385,9 +385,9 @@ def assert_agent_scope_wait_scheduler_contract() -> None:
         ]
     )
     quota = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=AGENT_ID)
-    assert quota["decision"] == "agent_scope_wait", quota
+    assert quota["decision"] == "reassignment_required", quota
     assert quota["should_run"] is False, quota
-    assert quota["effective_action"] == "agent_scope_wait", quota
+    assert quota["effective_action"] == "reassignment_required", quota
     assert quota["agent_lane_frontier_hint"]["reason_code"] == (
         "blocked_by_other_agent_frontier"
     ), quota
@@ -396,7 +396,7 @@ def assert_agent_scope_wait_scheduler_contract() -> None:
     ), quota
 
     contract = quota["interaction_contract"]
-    assert contract["mode"] == "agent_scope_wait", contract
+    assert contract["mode"] == "reassignment_required", contract
     assert contract["user_channel"]["action_required"] is False, contract
     assert contract["user_channel"]["notify"] == "DONT_NOTIFY", contract
     assert contract["agent_channel"]["must_attempt"] is False, contract
@@ -430,7 +430,7 @@ def main() -> None:
     assert_higher_priority_due_monitor_preempts_advancement()
     assert_monitor_only_frontier_requires_replan_without_delta()
     assert_standing_monitor_gate_does_not_quiet_skip_gated_advancement()
-    assert_agent_scope_wait_scheduler_contract()
+    assert_reassignment_scheduler_contract()
     print("control-plane-risk-characterization-smoke ok")
 
 

@@ -151,7 +151,7 @@ def build_quota_slot_preview_for_decision(
         and before.get("capability_repair_allowed") is True
     )
     workspace_repair_no_spend = (
-        before.get("effective_action") == "side_agent_workspace_repair"
+        before.get("effective_action") == "agent_workspace_repair"
         and before.get("workspace_repair_allowed") is True
     )
     if workspace_repair_no_spend:
@@ -165,7 +165,7 @@ def build_quota_slot_preview_for_decision(
             "appended": False,
             "registry_mutated": False,
             "reason": (
-                "side-agent workspace guard requires moving to an independent "
+                "agent workspace guard requires moving to an independent "
                 "worktree and rerunning quota should-run before quota spend"
             ),
             "before": before,

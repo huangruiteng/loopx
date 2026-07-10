@@ -64,7 +64,7 @@
       "id": "multi-agent-shared-state",
       "time_seconds": [16, 21],
       "source_case_ids": ["2026-06-19-dynamic-workflow-hardware-agent"],
-      "visual": "primary and side-agent lanes claim separate todos against one catalog-backed board",
+      "visual": "peer lanes claim separate todos against one catalog-backed board",
       "copy": "Multiple agents can share one project memory without guessing each other's state.",
       "motion_notes": "show claims and handoff lines as lightweight beams into shared state"
     },

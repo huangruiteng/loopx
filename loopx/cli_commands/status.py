@@ -465,35 +465,6 @@ def _profile_scope_summary(profile: dict[str, Any]) -> str | None:
     return None
 
 
-def _profile_worktree_policy(profile: dict[str, Any]) -> tuple[str | None, bool | None]:
-    policy = profile.get("worktree_policy")
-    if isinstance(policy, dict):
-        mode = _compact_member_text(policy.get("mode"), limit=80)
-        requires = policy.get("requires_independent_worktree")
-        return mode, requires if isinstance(requires, bool) else None
-    return _compact_member_text(policy, limit=80), None
-
-
-def _review_handoff_agent(
-    *,
-    coordination: dict[str, Any],
-    profile: dict[str, Any],
-    identity: dict[str, Any],
-    role: str | None,
-) -> str | None:
-    review_policy = profile.get("review_policy")
-    if isinstance(review_policy, dict):
-        handoff_agent = normalize_todo_claimed_by(review_policy.get("handoff_agent"))
-        if handoff_agent:
-            return handoff_agent
-    handoff_agent = normalize_todo_claimed_by(identity.get("handoff_agent"))
-    if handoff_agent:
-        return handoff_agent
-    if role == "side-agent":
-        return normalize_todo_claimed_by(coordination.get("side_agent_handoff_agent"))
-    return None
-
-
 def _current_claims_for_agent(item: dict[str, Any], *, agent_id: str) -> list[str]:
     claims: list[str] = []
     todo_sources: list[Any] = [item.get("agent_todos")]
@@ -561,50 +532,28 @@ def _build_agent_member_projection(
         return None
     coordination = item.get("coordination") if isinstance(item.get("coordination"), dict) else {}
     profile = _agent_profile_for(coordination, agent_id)
-    role = _compact_member_text(profile.get("role"), limit=80) or _compact_member_text(
-        identity.get("role"),
-        limit=80,
-    )
-    worktree_policy, requires_independent_worktree = _profile_worktree_policy(profile)
+    role = _compact_member_text(profile.get("profile_role"), limit=80)
     claims = _current_claims_with_selected_lane(item, guard=guard, agent_id=agent_id)
     member: dict[str, Any] = {
-        "schema_version": "agent_member_v0",
+        "schema_version": "agent_member_v1",
         "agent_id": agent_id,
-        "role": role,
-        "primary_agent": normalize_todo_claimed_by(identity.get("primary_agent")),
+        "agent_model": "peer_v1",
         "profile_source": "registry.coordination.agent_profiles" if profile else "quota.agent_identity",
         "authority_source": "registry+quota_should_run+todo_projection",
-        "role_is_advisory": True,
         "current_claims": claims[:10],
         "current_claim_count": len(claims),
         "lease_projection": {
-            "source": "todo.claimed_by",
-            "hard_lease_available": False,
+            "source": "todo.claimed_by+task_lease",
+            "hard_lease_available": True,
         },
     }
+    if role:
+        member["profile_role"] = role
+        member["profile_role_is_advisory"] = True
     scope_summary = _profile_scope_summary(profile)
     if scope_summary:
         member["scope_summary"] = scope_summary
-    if worktree_policy:
-        member["worktree_policy"] = worktree_policy
-    if requires_independent_worktree is not None:
-        member["requires_independent_worktree"] = requires_independent_worktree
-    handoff_agent = _review_handoff_agent(
-        coordination=coordination,
-        profile=profile,
-        identity=identity,
-        role=role,
-    )
-    if handoff_agent:
-        member["handoff_agent"] = handoff_agent
-        member["review_handoff_status"] = "handoff_agent_configured"
-    else:
-        member["review_handoff_status"] = "no_agent_specific_handoff"
-    review_policy = profile.get("review_policy")
-    if isinstance(review_policy, dict):
-        can_self_merge = review_policy.get("can_self_merge")
-        if isinstance(can_self_merge, (bool, str)):
-            member["can_self_merge"] = can_self_merge
+    member["review_handoff_status"] = "task_policy_selected"
     return member
 
 

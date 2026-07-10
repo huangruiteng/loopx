@@ -324,7 +324,7 @@ def _complete_selected_todo(
         ),
         no_followup=not linked_successors,
         successor_todo_ids=linked_successors or None,
-        side_agent_self_merged=True,
+        self_merged=True,
         dry_run=False,
     )
     return {
@@ -334,7 +334,7 @@ def _complete_selected_todo(
         "changed": bool(result.get("changed")),
         "todo_id": result.get("todo_id"),
         "status": "done" if result.get("completed") else None,
-        "side_agent_self_merged": bool(result.get("side_agent_self_merged")),
+        "self_merged": bool(result.get("self_merged")),
         "successor_todo_ids": result.get("successor_todo_ids") or linked_successors,
     }
 

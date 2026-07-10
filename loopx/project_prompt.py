@@ -589,7 +589,7 @@ run:
 
 If this command returns a known goal, even with a normal delivery gate or
 workspace guard, treat the goal as already connected and reuse the existing
-global route/source_registry. In an independent side-agent worktree, do not
+global route/source_registry. In an independent peer-agent worktree, do not
 run `loopx bootstrap` for the same `goal_id`; that can create a route collision
 between the primary checkout and the worktree. Only run bootstrap when the
 probe clearly says the goal is absent from the registered quota plan.

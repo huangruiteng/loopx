@@ -1047,7 +1047,7 @@ def assert_goal_boundary_in_should_run() -> None:
                     "managed-mirror-sync",
                 ],
                 "registered_agents": ["codex-main-control", "codex-side-bypass", "codex-side-reviewer"],
-                "primary_agent": "codex-main-control",
+                "agent_model": "peer_v1",
                 "side_agent_handoff_agent": "codex-side-reviewer",
             },
             "spawn_policy": {
@@ -1082,12 +1082,12 @@ def assert_goal_boundary_in_should_run() -> None:
     decision = build_quota_should_run(payload, goal_id="delivery-side-bypass")
     boundary = decision["goal_boundary"]
     markdown = render_quota_should_run_markdown(decision)
-    side_agent_decision = build_quota_should_run(
+    peer_decision = build_quota_should_run(
         payload,
         goal_id="delivery-side-bypass",
         agent_id="codex-side-bypass",
     )
-    side_agent_markdown = render_quota_should_run_markdown(side_agent_decision)
+    peer_markdown = render_quota_should_run_markdown(peer_decision)
 
     assert decision["decision"] == "automation_prompt_upgrade", decision
     assert decision["should_run"] is False, decision
@@ -1098,16 +1098,17 @@ def assert_goal_boundary_in_should_run() -> None:
     assert decision["interaction_contract"]["agent_channel"]["delivery_allowed"] is False, decision
     assert decision["automation_prompt_upgrade"]["required"] is True, decision
     assert decision["automation_prompt_upgrade"]["blocks_should_run"] is True, decision
-    assert "--agent-id codex-main-control" in decision["automation_prompt_upgrade"]["primary_example_command"], decision
+    commands = decision["automation_prompt_upgrade"]["agent_example_commands"]
+    assert "--agent-id codex-main-control" in commands[0]["command"], decision
+    assert decision["automation_prompt_upgrade"]["migration_id"] in decision[
+        "automation_prompt_upgrade"
+    ]["completion_command"], decision
     assert "- automation_prompt_upgrade: required=True blocks_should_run=True" in markdown, markdown
-    assert side_agent_decision["agent_identity"]["agent_id"] == "codex-side-bypass", side_agent_decision
-    assert side_agent_decision["agent_identity"]["role"] == "side-agent", side_agent_decision
-    assert side_agent_decision["agent_identity"]["handoff_agent"] == "codex-side-reviewer", side_agent_decision
-    assert "automation_prompt_upgrade" not in side_agent_decision, side_agent_decision
-    assert (
-        "agent_identity: agent_id=codex-side-bypass role=side-agent "
-        "primary_agent=codex-main-control handoff_agent=codex-side-reviewer"
-    ) in side_agent_markdown, side_agent_markdown
+    assert peer_decision["agent_identity"]["agent_id"] == "codex-side-bypass", peer_decision
+    assert peer_decision["agent_identity"]["agent_model"] == "peer_v1", peer_decision
+    assert "role" not in peer_decision["agent_identity"], peer_decision
+    assert peer_decision["decision"] == "automation_prompt_upgrade", peer_decision
+    assert "agent_identity: agent_id=codex-side-bypass agent_model=peer_v1" in peer_markdown, peer_markdown
     assert boundary["adapter"]["status"] == "connected-delivery", boundary
     assert boundary["write_scope"] == ["docs/design/**", "src/agent_harness/**", "tests/**"], boundary
     assert "production-action" in boundary["requires_parent_approval"], boundary

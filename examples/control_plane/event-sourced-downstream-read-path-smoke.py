@@ -161,7 +161,7 @@ def status_payload_from_fields(project: Path, fields: dict) -> dict:
                     "status": "active",
                     "quota": {"compute": 1.0, "window_hours": 24},
                     "coordination": {
-                        "primary_agent": "codex-main-control",
+                        "agent_model": "peer_v1",
                         "registered_agents": [
                             "codex-main-control",
                             "codex-product-capability",
@@ -251,9 +251,6 @@ def test_event_projected_due_monitor_is_read_only_for_writeback() -> None:
         }, fields
 
         status = status_payload_from_fields(project, fields)
-        status["run_history"]["goals"][0]["coordination"]["primary_agent"] = (
-            "codex-product-capability"
-        )
         guard = build_quota_should_run(
             status,
             goal_id=GOAL_ID,

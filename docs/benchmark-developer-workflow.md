@@ -598,7 +598,7 @@ final active-todo count only, never raw commands, diffs, logs, task text, or
 verifier output.
 Global LoopX commands are optional context only; they must not select
 todos for the benchmark case. This keeps parallel cases isolated and prevents
-the main project goal or side-agent lane from leaking into benchmark treatment
+the main project goal or an unrelated peer lane from leaking into benchmark treatment
 control.
 
 This is not a submit/upload path and should still be reduced to compact public

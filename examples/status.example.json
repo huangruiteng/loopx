@@ -442,7 +442,8 @@
     "agents": [
       {
         "agent_id": "codex-main-control",
-        "role": "primary",
+        "agent_model": "peer_v1",
+        "profile_role": "release-validation",
         "state": "blocked",
         "next_action": "Continue projected todo todo_2bf560b48a0c.",
         "last_activity_at": "2026-06-29T00:49:36+08:00",
@@ -473,7 +474,8 @@
       },
       {
         "agent_id": "codex-product-capability",
-        "role": "side-agent",
+        "agent_model": "peer_v1",
+        "profile_role": "product-validation",
         "state": "monitoring",
         "next_action": "Continue projected todo todo_ded745761822.",
         "last_activity_at": "2026-07-06T06:29:53Z",
@@ -499,7 +501,8 @@
       },
       {
         "agent_id": "codex-side-bypass",
-        "role": "side-agent",
+        "agent_model": "peer_v1",
+        "profile_role": "implementation-validation",
         "state": "waiting",
         "next_action": "Inspect status projection before taking work.",
         "last_activity_at": "2026-07-06T06:32:16Z",
@@ -512,7 +515,8 @@
       },
       {
         "agent_id": "codex-value-explorer",
-        "role": "side-agent",
+        "agent_model": "peer_v1",
+        "profile_role": "value-exploration",
         "state": "monitoring",
         "next_action": "Continue projected todo todo_584f55f8f3b4.",
         "last_activity_at": "2026-07-06T09:39:59+08:00",

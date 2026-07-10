@@ -144,8 +144,9 @@ payloads, credentials, local absolute paths, or private source bodies.
       "action_id": "act_review_pr",
       "kind": "review",
       "requires_user_approval": false,
-      "requires_primary_agent": true,
-      "preview": "Ask the primary agent to review the protocol PR."
+      "requires_review_handoff": true,
+      "target_agent_id": "codex-reviewer",
+      "preview": "Assign protocol review to the selected registered peer."
     }
   ],
   "omissions": [
@@ -161,15 +162,15 @@ Responses may include actions, but each action must declare its authority:
 | Action kind | Default authority |
 | --- | --- |
 | `read_more` | Agent may run another read-only compact command. |
-| `review` | Target reviewer or primary agent owns the review. |
+| `review` | An explicit `review_handoff` selects the registered reviewing peer. |
 | `promote_todo` | Requires user/controller approval before `loopx todo add`. |
 | `ask_user` | User-facing question; no delivery on blocked path until answered. |
 | `pause_or_resume` | Requires explicit operator approval. |
-| `merge_or_publish` | Requires repository policy plus clean validation; primary agent owns final decision unless self-merge is explicitly allowed. |
+| `merge_or_publish` | Requires repository policy, clean validation, and any explicit review or operator gate. |
 | `rollback_or_history_rewrite` | Requires a `rollback_packet_v0` and explicit approval. |
 
 The protocol should make it obvious when the user is being asked to decide,
-when a primary agent should review, and when a side agent can safely continue.
+when an explicit peer review is required, and when the current peer can safely continue.
 
 ## Privacy Boundary
 

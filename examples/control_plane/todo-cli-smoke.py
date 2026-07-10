@@ -60,7 +60,7 @@ def write_fixture(root: Path, *, register_agents: bool = True) -> tuple[Path, Pa
     if register_agents:
         goal["coordination"] = {
             "registered_agents": ["codex-main-control", "codex-side-bypass"],
-            "primary_agent": "codex-main-control",
+            "agent_model": "peer_v1",
         }
     registry_path.write_text(
         json.dumps(
@@ -280,8 +280,8 @@ def main() -> int:
             "--claimed-by",
             "codex-main-control",
         )
-        assert "legacy project" in legacy_claim["error"], legacy_claim
-        assert "Register this agent identity first" in legacy_claim["error"], legacy_claim
+        assert "has no coordination.registered_agents" in legacy_claim["error"], legacy_claim
+        assert "Register this peer identity first" in legacy_claim["error"], legacy_claim
         assert "--registered-agent codex-main-control" in legacy_claim["error"], legacy_claim
         wrapped_agent_todo = "- [ ] Summarize the read-only evidence after the user\n  checklist is done."
         state_file.write_text(
@@ -556,7 +556,7 @@ def main() -> int:
                         "adapter_status": "connected",
                         "coordination": {
                             "registered_agents": ["codex-main-control", "codex-side-bypass"],
-                            "primary_agent": "codex-main-control",
+                            "agent_model": "peer_v1",
                         },
                         "latest_runs": [],
                     }

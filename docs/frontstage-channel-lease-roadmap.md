@@ -164,33 +164,35 @@ truth contract. `loopx --format json status` and the loopback
 `attention_queue.items[].goal_channel_projection`, so a dashboard can render the
 channel without recomputing project truth.
 
-### `agent_profile_v0` And `agent_member_v0`
+### `agent_profile_v1` And `agent_member_v1`
 
-The registry-owned `agent_profile_v0` contract is defined in
+The registry-owned `agent_profile_v1` contract is defined in
 [`docs/product/agent-profile-contract.md`](product/agent-profile-contract.md).
-Use it as the source of truth for registered agent id, primary/side role,
-default scope, worktree policy, and review handoff policy. The channel roadmap
-only needs the read-only member projection.
+Use it as the source of truth for registered agent id and advisory capability,
+scope, and action preferences. Runtime authority still comes from peer identity,
+task claims/leases, boundaries, repository policy, and explicit continuation policy.
+The channel roadmap only needs the read-only member projection.
 
-This is an identity and permission projection for an actor participating in a
-goal:
+This is an identity and activity projection for an actor participating in a goal:
 
 ```json
 {
-  "schema_version": "agent_member_v0",
+  "schema_version": "agent_member_v1",
   "agent_id": "codex-local-controller",
-  "role": "controller",
+  "agent_model": "peer_v1",
+  "profile_role": "reviewer",
+  "profile_role_is_advisory": true,
   "goal_id": "loopx-meta",
-  "write_scope": ["docs/**", "examples/**", "loopx/**"],
+  "current_claims": ["todo_abc123"],
   "last_action": "refresh_state",
-  "claim_id": null
+  "review_handoff_status": "task_policy_selected"
 }
 ```
 
-Roles should stay product-level and portable: controller, executor, reviewer,
-monitor, critic, dreaming_proposer. A role can guide UI copy and default
-permissions, but the concrete authority still comes from `goal_boundary`,
-leases, and active-state todos.
+Profile roles should stay product-level and portable: executor, reviewer,
+monitor, critic, dreaming proposer. They guide UI copy and discovery, not
+identity rank or default permission. Concrete authority comes from
+`goal_boundary`, claims/leases, typed task policy, and active-state todos.
 
 ### `task_lease_v0`
 
@@ -201,11 +203,11 @@ should remain independently claimable when gates and write scopes allow it.
 LoopX does not have a separate issue object in this runtime model:
 `goal_id` names the control-plane boundary, and `todo_id` names the work item
 inside that boundary.
-The v0.1 control plane still keeps role assignment simple: one
-`coordination.primary_agent` owns review/merge/publication for the goal, and
-side agents claim scoped todos and work in separate git worktrees. They may
-self-merge small AGENTS-eligible validated changes with explicit evidence;
-otherwise they add a primary-agent review todo when finishing.
+The peer control plane keeps assignment explicit: `claimed_by` or a task lease
+owns one todo, and repository-writing peers use isolated worktrees when task or
+goal policy requires it. A small AGENTS-eligible change may self-merge with
+evidence; otherwise completion creates an independent successor or an explicit
+`review_handoff` assigned to a different peer.
 
 ```json
 {

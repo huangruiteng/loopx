@@ -361,7 +361,7 @@ def write_cli_fixture(root: Path, *, scoped_agents: bool = False) -> tuple[Path,
         if scoped_agents:
             goal_record["coordination"] = {
                 "registered_agents": ["codex-main-control", SCOPED_AGENT_ID],
-                "primary_agent": SCOPED_AGENT_ID,
+                "agent_model": "peer_v1",
             }
         registry_goals.append(goal_record)
         runs_dir = runtime / "goals" / goal_id / "runs"

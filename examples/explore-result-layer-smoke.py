@@ -854,7 +854,7 @@ def check_cli_surface() -> None:
                                 "explore_harness": {"enabled": True},
                             },
                             "coordination": {
-                                "primary_agent": "codex-main-control",
+                                "agent_model": "peer_v1",
                                 "registered_agents": [
                                     {"agent_id": "codex-main-control", "role": "primary"}
                                 ],

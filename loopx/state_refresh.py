@@ -142,15 +142,6 @@ def registered_agents_for_goal(registry_goal: dict[str, Any] | None) -> list[str
     return registered_agents
 
 
-def primary_agent_for_goal(registry_goal: dict[str, Any] | None) -> str | None:
-    coordination = (
-        registry_goal.get("coordination")
-        if registry_goal and isinstance(registry_goal.get("coordination"), dict)
-        else {}
-    )
-    return normalize_todo_claimed_by(coordination.get("primary_agent") if coordination else None)
-
-
 def normalize_progress_scope(value: str | None) -> str:
     normalized = str(value or "").strip()
     if not normalized:
@@ -809,10 +800,7 @@ def refresh_state_run(
     expected_write_state_text = state_text
     normalized_next_action = normalize_next_action_text(next_action) if next_action else None
     registered_agents = registered_agents_for_goal(registry_goal)
-    primary_agent = primary_agent_for_goal(registry_goal)
     known_agents = {agent for agent in registered_agents if agent}
-    if primary_agent:
-        known_agents.add(primary_agent)
     multi_agent_goal = len(known_agents) > 1
     if normalized_agent_id and known_agents and normalized_agent_id not in known_agents:
         raise ValueError(
@@ -832,16 +820,11 @@ def refresh_state_run(
         if normalized_next_action:
             raise ValueError(
                 "agent-lane refresh-state cannot update the durable active-state Next Action; "
-                "rerun without --next-action or use --progress-scope goal with the primary agent"
+                "rerun without --next-action or use --progress-scope goal from a registered peer"
             )
     if normalized_progress_scope == GOAL_PROGRESS_SCOPE:
         if normalized_agent_lane:
             raise ValueError("--agent-lane requires --progress-scope agent_lane")
-        if primary_agent and normalized_agent_id and normalized_agent_id != primary_agent:
-            raise ValueError(
-                "goal-scope refresh-state requires the primary agent "
-                f"{primary_agent!r}; got {normalized_agent_id!r}"
-            )
     agent_vision: dict[str, Any] | None = None
     if (agent_vision_packet is not None or vision_unchanged_reason) and not normalized_agent_id:
         raise ValueError("vision writeback requires --agent-id")

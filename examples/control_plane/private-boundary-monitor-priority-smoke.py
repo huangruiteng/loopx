@@ -29,7 +29,7 @@ def status_payload(*, monitor_todo: dict, advancement_todo: dict) -> dict:
         next_action=advancement_todo["text"],
         claim_scope_agent_id=AGENT_ID,
         coordination={
-            "primary_agent": "codex-main-control",
+            "agent_model": "peer_v1",
             "registered_agents": [
                 "codex-main-control",
                 AGENT_ID,

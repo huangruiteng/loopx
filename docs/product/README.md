@@ -102,9 +102,9 @@ runtime contract, benchmark route, or launch draft.
   visibly through the first guard and steering decision, while scheduled
   same-TUI attach stays blocked until proof and idle evidence pass.
 - [Agent profile contract](agent-profile-contract.md): the registry-owned
-  identity/scope contract for primary and side agents, including worktree and
-  review handoff policy, while keeping todo ownership in `claimed_by` and future
-  leases.
+  advisory capability/scope contract for peers, while task and repository
+  policy own workspace/review requirements and todos retain ownership through
+  `claimed_by` and future leases.
 - [Non-technical operator status model](nontechnical-operator-status-model.md):
   first-screen Agent Work Feed and card model for people who need to review
   agent outputs, progress, blockers, next moves, signal inbox, anchor

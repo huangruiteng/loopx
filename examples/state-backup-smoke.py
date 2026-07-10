@@ -33,10 +33,41 @@ def seed_fixture(root: Path) -> tuple[Path, Path, Path]:
     runtime = codex_home / "loopx"
     project = root / "project"
 
-    write_json(runtime / "registry.global.json", {"schema_version": "0.1", "goals": [{"id": "fixture"}]})
     write_json(project / ".loopx" / "registry.json", {"schema_version": "0.1", "goals": [{"id": "fixture"}]})
     write_text(project / ".codex" / "goals" / "fixture" / "ACTIVE_GOAL_STATE.md", "# fixture\n")
+    write_text(project / ".claude" / "goals" / "fixture" / "ACTIVE_GOAL_STATE.md", "# claude fixture\n")
     write_text(project / ".local" / "goals" / "fixture" / "ACTIVE_GOAL_STATE.md", "# local fixture\n")
+
+    remote_project = root / "remote-project"
+    remote_registry = remote_project / ".loopx" / "registry.json"
+    remote_state = remote_project / ".codex" / "goals" / "remote" / "ACTIVE_GOAL_STATE.md"
+    write_json(remote_registry, {"schema_version": "0.1", "goals": [{"id": "remote"}]})
+    write_text(remote_state, "# remote fixture\n")
+    write_json(
+        runtime / "registry.global.json",
+        {
+            "schema_version": "0.1",
+            "goals": [
+                {
+                    "id": "fixture",
+                    "repo": str(project),
+                    "state_file": ".codex/goals/fixture/ACTIVE_GOAL_STATE.md",
+                    "source_registry": str(project / ".loopx" / "registry.json"),
+                },
+                {
+                    "id": "remote",
+                    "repo": str(remote_project),
+                    "state_file": ".codex/goals/remote/ACTIVE_GOAL_STATE.md",
+                    "source_registry": str(remote_registry),
+                },
+                {
+                    "id": "missing-project",
+                    "repo": str(root / "missing-project"),
+                    "state_file": ".local/goals/missing/ACTIVE_GOAL_STATE.md",
+                },
+            ],
+        },
+    )
     write_json(codex_home / "automations" / "fixture.json", {"automation_id": "fixture"})
     write_text(codex_home / "skills" / "loopx-fixture" / "SKILL.md", "# fixture skill\n")
 
@@ -84,12 +115,24 @@ def assert_archive(payload: dict[str, object]) -> None:
     assert execution["archive_size_bytes"] > 0, execution
     with tarfile.open(archive_path, "r:gz") as archive:
         names = set(archive.getnames())
+    included = {
+        str(item["key"]): item
+        for item in payload.get("included", [])
+        if isinstance(item, dict) and item.get("key")
+    }
     assert "runtime-root/registry.global.json" in names, names
     assert "project/.loopx/registry.json" in names, names
     assert "project/.codex/goals/fixture/ACTIVE_GOAL_STATE.md" in names, names
+    assert "project/.claude/goals/fixture/ACTIVE_GOAL_STATE.md" in names, names
     assert "project/.local/goals/fixture/ACTIVE_GOAL_STATE.md" in names, names
     assert "codex/automations/fixture.json" in names, names
     assert "codex/skills/loopx-fixture/SKILL.md" in names, names
+    remote_goals = included["registry_project_codex_goals:remote"]
+    remote_state = included["registry_active_state:remote"]
+    remote_registry = included["registry_source_registry:remote"]
+    assert f"{remote_goals['archive_path']}/remote/ACTIVE_GOAL_STATE.md" in names, names
+    assert str(remote_state["archive_path"]) in names, names
+    assert str(remote_registry["archive_path"]) in names, names
     assert "manifest.json" in names, names
     assert "runtime-root/backups/old/stale.txt" not in names, names
 
@@ -113,10 +156,39 @@ def main() -> int:
             assert plan["ok"] is True, plan
             assert plan["dry_run"] is True, plan
             assert plan["summary"]["included_target_count"] >= 5, plan
+            assert plan["registry_discovery"] == {
+                "enabled": True,
+                "global_registry": str((runtime / "registry.global.json").resolve()),
+                "goal_count": 3,
+                "project_count": 3,
+                "reachable_project_count": 2,
+                "missing_project_count": 1,
+                "active_state_route_count": 3,
+                "active_state_included_count": 2,
+                "active_state_missing_count": 1,
+                "source_registry_route_count": 2,
+                "source_registry_included_count": 2,
+                "source_registry_missing_count": 0,
+            }, plan
+            assert any(
+                item.get("key") == "registry_project:missing-project"
+                for item in plan["missing"]
+            ), plan
             applied = execute_state_backup_plan(plan)
             assert applied["ok"] is True, applied
             assert applied["dry_run"] is False, applied
             assert_archive(applied)
+            current_only = build_state_backup_plan(
+                project=project,
+                runtime_root=runtime,
+                backup_id="current-only-fixture",
+                include_registry_projects=False,
+            )
+            assert current_only["registry_discovery"]["enabled"] is False, current_only
+            assert not any(
+                str(item.get("key") or "").startswith("registry_")
+                for item in current_only["included"]
+            ), current_only
         finally:
             if old_home is None:
                 os.environ.pop("HOME", None)

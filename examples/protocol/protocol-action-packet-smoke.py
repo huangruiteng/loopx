@@ -333,7 +333,7 @@ def assert_agent_scoped_user_gate_stays_diagnostic_only() -> None:
     )
     payload["attention_queue"]["items"][0]["quota"]["state"] = "operator_gate"
     payload["run_history"]["goals"][0]["coordination"] = {
-        "primary_agent": "codex-main-control",
+        "agent_model": "peer_v1",
         "registered_agents": [
             "codex-main-control",
             "codex-product-capability",

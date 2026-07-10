@@ -719,7 +719,7 @@
           {
             "unit_id": "req_profile_handoff_route",
             "order": 7,
-            "requirement": "Route side-agent handoffs by profile instead of prose",
+            "requirement": "Route explicit peer review handoffs by task policy instead of profile or prose",
             "triggered_by": "multi-agent rollout needs a clean next receiver",
             "outcome": "PR #775 keeps the open handoff route visible for review.",
             "state": "open",
@@ -936,7 +936,7 @@
           "node_id": "pr_775",
           "kind": "pull_request",
           "label": "#775",
-          "title": "Fix profile-scoped side-agent handoff routing",
+          "title": "Fix task-scoped peer review handoff routing",
           "state": "merged",
           "lane_id": "kernel_runtime",
           "url": "https://github.com/huangruiteng/loopx/pull/775",

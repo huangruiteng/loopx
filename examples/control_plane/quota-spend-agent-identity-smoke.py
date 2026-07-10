@@ -69,8 +69,7 @@ def assert_monitor_poll_event_carries_agent_id(agent_id: str) -> None:
             "agent_identity": {
                 "agent_id": agent_id,
                 "registered": True,
-                "role": "side-agent",
-                "primary_agent": "codex-main-control",
+                "agent_model": "peer_v1",
                 "registered_agents": ["codex-main-control", agent_id],
             },
         },

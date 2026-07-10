@@ -333,7 +333,7 @@ Projection, authority, write scope, and lease integrity.
 | P0 | IP-026 | Agent-Scoped No-Candidate Gap | Status/quota | no interruption | project scope exhaustion or agent-scope wait instead of forcing delivery |
 | P1 | IP-011 | Authority Material Intake | Agent plus registry | notify only on gate/conflict | register redacted source contract before relying on material |
 | P1 | IP-016 | Task Lease Claim | Controller/agent | no interruption unless conflict requires decision | claim bounded work with TTL, write scope, and conflict policy |
-| P1 | IP-019 | Side-Agent Scoped Continuation | Primary plus side agent | no interruption unless scope/review is ambiguous | side agent claims scoped todo, uses independent worktree, then self-merges small validated work or hands review to primary |
+| P1 | IP-019 | Peer Scoped Continuation | Registered peer | no interruption unless scope/review is ambiguous | peer claims scoped work, obeys task workspace policy, then completes directly or uses a typed successor |
 | P1 | IP-020 | Todo Claim / Supersede / Successor Lifecycle | Agent plus controller | no interruption unless successor is a user todo or conflict needs decision | claim before delivery; supersede stale work; complete slices with successor or no-follow-up rationale |
 | P1 | IP-022 | Claimed Todo Visibility And Agent-Lane Next Action | Status/quota/frontstage | no interruption | keep scheduler candidates separate from claimed-work visibility lanes and expose the current agent's slice |
 | P1 | IP-023 | Status Neutral Run Window | Status/quota/history | no interruption | ignore neutral run noise for state authority while retaining it as stall evidence |
@@ -595,7 +595,7 @@ without naming the blocked user decision, so the fallback becomes the main
 story and the human loses the critical gate.
 
 A third bad smell is an agent-scoped user gate overreach. A user todo says it
-blocks one registered product or side agent, but quota treats it as a global
+blocks one registered peer, but quota treats it as a global
 operator gate for every `--agent-id` call. The non-target agent then stops even
 though it has its own runnable todo. This is not IP-026 scope exhaustion; it is
 IP-003 scope metadata being ignored by the user-todo blocking summary.
@@ -653,7 +653,7 @@ When `capability_gate.action=run`, the decision contract is:
 - `decision_owner=agent`;
 - `selection_policy=agent_steering_audit_over_runnable_candidates`;
 - `runnable_candidates` is the allowed candidate set for this turn;
-- for a primary agent, same-priority candidates that unblock another agent via
+- for the current peer, same-priority candidates that unblock another peer via
   `blocks_agent` plus `unblocks_todo_id` are ordered before ordinary backlog,
   so the candidate list and `agent_lane_next_action` expose the same handoff
   priority;
@@ -942,7 +942,7 @@ flowchart TD
 **Bad smell**
 
 A ready deferred successor is rendered only inside an agent-scoped
-no-candidate payload. The side agent reports "nothing runnable" even though the
+no-candidate payload. The current peer reports "nothing runnable" even though the
 system knows a previous gate is now satisfied. The opposite failure is also
 bad: deferred items are mixed into ordinary open backlog before the lifecycle
 step, so stale or future work outranks live open tasks.
@@ -1410,73 +1410,67 @@ files because the only ownership signal was a chat message or dashboard label.
 - `docs/architecture.md` local server / daemon roadmap
 - future `task_lease_v0` status and conflict smoke.
 
-#### IP-019 Side-Agent Scoped Continuation
+#### IP-019 Peer Scoped Continuation
 
 **Trigger**
 
-- a shared-control-plane goal declares `coordination.registered_agents` and one
-  `coordination.primary_agent`;
-- a side agent has an automation prompt or handoff scope, such as product docs,
-  showcase work, validation, or another low-conflict side lane;
-- an in-scope agent todo can be claimed with `claimed_by`, while the primary
-  agent remains responsible for high-risk review, publication, reassignment,
-  and merge decisions outside self-merge policy.
+- a shared-control-plane goal declares `coordination.agent_model=peer_v1` and
+  `coordination.registered_agents`;
+- a peer has an advisory profile/scope and a current-agent or unclaimed todo;
+- task, goal, capability, and repository policy permit the selected action.
 
 **Expected behavior**
 
-The control plane should keep identity and ownership visible without turning
-scope into todo metadata. The side agent learns its scope from the automation
-prompt or handoff, then claims only a concrete in-scope todo:
+The control plane keeps identity and ownership visible without turning scope
+into rank or copying broad scope into todo metadata. The peer claims one
+concrete eligible todo:
 
 ```bash
 loopx todo claim \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
-  --claimed-by <side-agent-id>
+  --claimed-by <peer-agent-id>
 ```
 
-Repository edits happen in an independent worktree/branch. When the slice is
-small, validated, public-safe, and allowed by repository policy, the side agent
-may self-merge and complete the todo with evidence:
+When the selected task writes repository state, `agent_workspace_guard_v1`
+enforces the task/repository isolation policy. Read-only and monitor-only work
+does not require an isolated checkout merely because of agent identity. When a
+slice is small, validated, and allowed by repository policy, the peer may
+self-merge and complete with evidence:
 
 ```bash
 loopx todo complete \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
-  --claimed-by <side-agent-id> \
-  --side-agent-self-merged \
+  --claimed-by <peer-agent-id> \
+  --self-merged \
   --evidence "<commit, validation, and self-merge summary>"
 ```
 
-If the self-merged lane has an obvious same-scope continuation, the completion
-may atomically add a successor and claim it back to the same side agent. If the
-work is broad, risky, unclear, or outside the side scope, completion must create
-a successor handoff todo claimed by the configured
-`coordination.side_agent_handoff_agent` when set, otherwise by the primary
-agent. LoopX does not need a separate kernel-level "review" object here: the
-machine-readable contract is the successor todo plus `claimed_by`,
-`blocks_agent`, and `unblocks_todo_id`. Same-agent broad handoff is rejected;
-use `--side-agent-self-merged --evidence` for same-agent delivery. `claimed_by`
-remains a soft owner and not a permission grant: quota, user gates,
-public/private boundary checks, write scopes, and repository rules still apply.
+Completion uses typed task policy. `independent_handoff` creates a non-blocking
+successor, `same_agent_non_delivery` keeps a continuation with the same peer,
+and only explicit `review_handoff` to a different registered peer creates
+`blocks_agent` / `unblocks_todo_id`. No profile or goal field supplies an
+implicit reviewer. `claimed_by` remains a soft owner and not a permission
+grant: quota, user gates, boundaries, capabilities, write scopes, and
+repository rules still apply.
 
 Because prompt text alone is not a reliable guard, `quota should-run --agent-id
-<side-agent-id>` should also project `workspace_guard` when the side agent is
-running from the registered primary checkout, a non-git directory, or an
-unrelated git worktree. In that state `normal_delivery_allowed=false` and
-`interaction_contract.mode=side_agent_workspace_repair`: the only allowed action
-is to create or switch to an independent worktree/branch and rerun the guard
-before editing repository files. Moving workspaces is a preflight repair and
-does not get quota spend.
+<peer-agent-id>` projects `workspace_guard` when a repository-writing task is
+running from a non-git, unrelated, or non-isolated checkout. In that state
+`normal_delivery_allowed=false` and
+`interaction_contract.mode=agent_workspace_repair`: the only allowed action is
+to move to a compliant worktree/branch and rerun the guard before editing.
+Workspace repair is preflight and does not spend quota.
 
 The same scoped identity must be carried through the whole successful turn.
-If `quota should-run` was evaluated with `--agent-id <side-agent-id>`, follow-up
+If `quota should-run` was evaluated with `--agent-id <peer-agent-id>`, follow-up
 commands that interpret the same turn's control-plane state, especially
 `refresh-state` and `quota spend-slot`, should use that same registered
 `--agent-id` when the subcommand supports it. Otherwise the spend/accounting
 preview can be evaluated as an unscoped automation and report
 `automation_prompt_upgrade_required` even though the delivery decision was
-made under a valid side-agent scope. The fix is not to ignore that warning; the
+made under a valid peer scope. The fix is not to ignore that warning; the
 fix is to preserve the identity envelope across guard, writeback, accounting,
 and rollout evidence.
 
@@ -1484,29 +1478,32 @@ and rollout evidence.
 
 ```mermaid
 flowchart TD
-  S["registered side agent wakes with scope"] --> T{"in-scope open todo?"}
-  T -->|"no"| Q["quiet no-op or add public-safe candidate todo"]
-  T -->|"yes"| C["claim todo with claimed_by side-agent"]
-  C --> W["work in independent worktree / branch"]
-  W --> V{"validated and AGENTS self-merge eligible?"}
+  S["registered peer wakes with scope"] --> T{"current-agent or unclaimed todo?"}
+  T -->|"no"| Q["reassignment required or quiet wait"]
+  T -->|"yes"| C["claim todo with claimed_by peer"]
+  C --> W{"repository-writing task needs isolation?"}
+  W -->|"yes"| B["satisfy workspace guard"]
+  W -->|"no"| V
+  B --> V{"validated and AGENTS self-merge eligible?"}
   V -->|"yes"| M["self-merge small change with evidence"]
   M --> I["refresh/spend with same --agent-id"]
   I --> K{"same-scope continuation?"}
-  K -->|"yes"| N["complete + add successor claimed_by same side agent"]
+  K -->|"yes"| N["same_agent_non_delivery successor"]
   K -->|"no"| X["complete with no successor or no-follow-up rationale"]
-  V -->|"no"| R["complete with successor handoff todo"]
-  R --> P["successor claimed_by handoff owner, else primary_agent"]
+  V -->|"no"| R{"blocking independent review needed?"}
+  R -->|"yes"| P["review_handoff to a different peer"]
+  R -->|"no"| H["independent_handoff successor"]
 ```
 
 **Bad smell**
 
-A side agent edits the primary checkout, chooses work from chat memory instead
-of the shared todo list, encodes scope into todo metadata, self-merges broad or
-runtime-sensitive work, or creates a review successor and claims it back to
-itself without the explicit self-merge path. A related bad smell is treating
+An agent edits from a workspace forbidden by the selected task, chooses work
+from chat memory instead of the shared todo list, encodes scope into todo
+metadata, self-merges broad or runtime-sensitive work, or invents an implicit
+review owner. A related bad smell is treating
 "the prompt said use a worktree" as sufficient product protection; the guard
 must be machine-visible before the first file edit. Another bad smell is a
-scoped side-agent run that passes `quota should-run --agent-id ...` but later
+scoped peer run that passes `quota should-run --agent-id ...` but later
 spends without `--agent-id`, producing an unscoped accounting snapshot that
 looks like a stale automation prompt instead of the completed scoped turn.
 
@@ -1519,7 +1516,7 @@ looks like a stale automation prompt instead of the completed scoped turn.
 - `examples/control_plane/todo-cli-smoke.py`
 - `examples/control_plane/todo-concurrent-write-lock-smoke.py`
 - `examples/control_plane/heartbeat-prompt-smoke.py`
-- `examples/side-agent-workspace-guard-smoke.py`
+- `examples/control_plane/peer-agent-workspace-guard-smoke.py`
 
 #### IP-020 Todo Claim / Supersede / Successor Lifecycle
 
@@ -1624,8 +1621,8 @@ permission to ignore gates and boundaries.
 
 - status or quota summarizes a todo set with more open work than the small
   scheduler top-N can show;
-- registered agents use `claimed_by`, especially side agents whose scoped work
-  may sit behind higher-priority primary or benchmark todos;
+- registered peers use `claimed_by`, especially when one peer's scoped work may
+  sit behind higher-priority work claimed by another peer;
 - a dashboard, review packet, or heartbeat prompt needs to show ownership,
   current-agent work, and monitor responsibilities without changing which
   executable todo the scheduler selects.
@@ -1707,7 +1704,7 @@ flowchart TD
 
 **Bad smell**
 
-A side agent claims a productization todo, but status/quota only expose the
+A peer claims a productization todo, but status/quota only expose the
 first few priority-ranked benchmark todos. The agent then appears idle or
 unowned work appears available even though the control plane already knows its
 owner. The opposite bad smell is also harmful: a large claimed-work list is fed
@@ -1728,8 +1725,8 @@ monitor through status/quota/todo projection.
 - `docs/status-data-contract.md`
 - `examples/control_plane/todo-first-open-summary-smoke.py`
 - `examples/control_plane/work-lane-contract-smoke.py` for `agent_lane_next_action_v0`
-  preserving the primary/global `Next Action` while surfacing the side-agent
-  TUI slice.
+  preserving the goal-wide `Next Action` while surfacing the current peer's TUI
+  slice.
 - `examples/control_plane/status-markdown-smoke.py` for `status --agent-id` rendering the same
   agent-lane pointer without replacing the project route.
 - PR #262 / commit `292a2c8`: additive status/quota visibility lanes with a
@@ -1765,10 +1762,8 @@ machine states:
 
 - `scope_exhausted`: no current-agent or unclaimed candidate matches the
   registered agent profile and boundary;
-- `agent_scope_wait`: the remaining useful step is progress, merge,
-  reassignment, or decision by the agent/controller that owns the blocking
-  work; this may be the primary agent, another side agent, or an explicitly
-  claimed reviewer that blocks the current agent's handoff;
+- `agent_scope_wait`: an explicit blocking review/handoff dependency is owned
+  by another peer and must clear before the current peer can continue;
 - `reassignment_required`: useful work exists, but ownership must be changed
   before this agent may treat it as its lane.
 
@@ -1782,7 +1777,7 @@ agent_channel.quiet_noop_allowed=true
 
 The user channel remains quiet unless a concrete user todo exists. The
 recommended action should name the scoped condition, not borrow the global
-goal-level route. A side agent should be allowed to no-op without spend, or
+goal-level route. A peer should be allowed to no-op without spend, or
 claim a newly exposed in-scope todo before delivery becomes allowed again.
 
 This pattern is the runtime counterpart of IP-022. IP-022 makes claimed,
@@ -1816,7 +1811,7 @@ flowchart TD
 
 **Bad smell**
 
-A side-agent heartbeat receives `should_run=true`,
+A peer heartbeat receives `should_run=true`,
 `delivery_allowed=true`, and `quiet_noop_allowed=false` even though
 `agent_lane_next_action=None`, `current_agent_claimed_advancement_items=[]`,
 and the only recommendation is another agent's benchmark or runtime lane. The
@@ -1830,9 +1825,9 @@ or future work outranks live open tasks.
 
 **Validation**
 
-- future quota/status regression with two registered agents where all runnable
-  work is claimed by the primary and the side-agent `--agent-id` call returns
-  `scope_exhausted` or `agent_scope_wait`;
+- future quota/status regression with two registered peers where all runnable
+  work is claimed by the other peer and the current `--agent-id` call returns
+  `reassignment_required` unless an explicit blocking review dependency exists;
 - `examples/control_plane/work-lane-contract-smoke.py` should cover that an empty
   current-agent frontier cannot produce `delivery_allowed=true`;
 - `docs/project-agent-todo-contract.md`

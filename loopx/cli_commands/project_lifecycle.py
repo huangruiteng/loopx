@@ -221,7 +221,7 @@ def register_project_lifecycle_commands(
         choices=PROGRESS_SCOPE_CHOICES,
         help=(
             "Refresh scope. In multi-agent goals, use agent_lane for per-agent runnable "
-            "status, or goal with the primary agent for durable goal-level status/Next Action."
+            "status, or goal with any registered peer for durable goal-level status/Next Action."
         ),
     )
     refresh_state_parser.add_argument(

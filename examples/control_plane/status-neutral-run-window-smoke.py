@@ -141,7 +141,7 @@ def write_agent_lane_registry(root: Path) -> Path:
                             "window_hours": 24,
                         },
                         "coordination": {
-                            "primary_agent": AGENT_ID,
+                            "agent_model": "peer_v1",
                             "registered_agents": [AGENT_ID],
                             "write_scope": ["loopx/**", "examples/**"],
                         },
@@ -349,14 +349,14 @@ def main() -> int:
         item = status["attention_queue"]["items"][0]
         assert item["goal_id"] == AGENT_LANE_GOAL_ID, item
         assert item["status"] == "stale_goal_status", item
-        assert item["latest_run_recommended_action"] == AGENT_LANE_ACTION, item
-        assert item["latest_run_recommended_action_source"] == "agent_lane_recommendation", item
+        assert item["latest_run_recommended_action"] == STALE_GOAL_ACTION, item
+        assert item["latest_run_recommended_action_source"] == "latest_status_run", item
         assert item["agent_lane_recommendation"]["agent_id"] == AGENT_ID, item
         assert item["agent_lane_recommendation"]["recommended_action"] == AGENT_LANE_ACTION, item
 
         quota = build_quota_should_run(status, goal_id=AGENT_LANE_GOAL_ID, agent_id=AGENT_ID)
         assert quota["recommended_action"] == AGENT_LANE_TODO, quota
-        assert quota["latest_run_recommended_action"] == AGENT_LANE_ACTION, quota
+        assert quota["latest_run_recommended_action"] == STALE_GOAL_ACTION, quota
         assert quota["agent_lane_next_action"]["todo_id"] == "todo_agent_lane_repair", quota
         assert quota["interaction_contract"]["agent_channel"]["must_attempt"] is True, quota
 

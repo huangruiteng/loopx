@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test the public local_agent_launch_plan_v0 fixture and contract."""
+"""Smoke-test the public local_agent_launch_plan_v1 fixture and contract."""
 
 from __future__ import annotations
 
@@ -10,21 +10,20 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_PATH = REPO_ROOT / "examples" / "fixtures" / "local-agent-launch-plan.public.json"
-CONTRACT_PATH = REPO_ROOT / "docs" / "reference" / "protocols" / "local-agent-launch-plan-v0.md"
+CONTRACT_PATH = REPO_ROOT / "docs" / "reference" / "protocols" / "local-agent-launch-plan-v1.md"
 PROTOCOL_INDEX_PATH = REPO_ROOT / "docs" / "reference" / "protocols" / "README.md"
 DOCS_INDEX_PATH = REPO_ROOT / "docs" / "README.md"
 STATUS_CONTRACT_PATH = REPO_ROOT / "docs" / "status-data-contract.md"
 HOST_SURFACE_PATH = REPO_ROOT / "docs" / "reference" / "protocols" / "host-integration-surface-v0.md"
 
-ALLOWED_AGENT_ROLES = {"primary", "side_agent", "reviewer", "observer", "blocked"}
-ALLOWED_ASSIGNMENT_LANES = {
-    "primary_control",
-    "bounded_delivery",
+ALLOWED_ASSIGNMENT_KINDS = {
+    "claimed",
+    "unclaimed_candidate",
     "review_handoff",
     "monitor_only",
     "blocked",
 }
-ALLOWED_WAITING_ON = {"agent", "primary", "user", "controller", "runtime", "none"}
+ALLOWED_WAITING_ON = {"agent", "user", "controller", "runtime", "none"}
 ALLOWED_GATE_STATES = {"clear", "user_todo", "operator_gate", "blocked", "deferred"}
 ALLOWED_QUOTA_STATES = {"eligible", "throttled", "operator_gate", "blocked"}
 ALLOWED_LAUNCH_STATES = {"preview_only", "blocked", "future_gated"}
@@ -90,10 +89,10 @@ def main() -> int:
         assert_public_safe(text, label)
 
     for needle in [
-        "local_agent_launch_plan_v0",
+        "local_agent_launch_plan_v1",
         "mode=dry_run",
         "configured_agents",
-        "role_assignments",
+        "task_assignments",
         "launch_preview",
         "server_daemon_launch",
         "external_agent_execution",
@@ -101,19 +100,20 @@ def main() -> int:
         "Status And Evidence Projection",
     ]:
         assert_contains(contract, needle, "contract")
-    assert_contains(protocol_index, "local_agent_launch_plan_v0", "protocol index")
-    assert_contains(docs_index, "Local agent launch plan v0", "docs index")
-    assert_contains(status_contract, "local_agent_launch_plan_v0", "status contract")
-    assert_contains(host_surface, "local_agent_launch_plan_v0", "host surface")
+    assert_contains(protocol_index, "local_agent_launch_plan_v1", "protocol index")
+    assert_contains(docs_index, "Local agent launch plan v1", "docs index")
+    assert_contains(status_contract, "local_agent_launch_plan_v1", "status contract")
+    assert_contains(host_surface, "local_agent_launch_plan_v1", "host surface")
 
     payload = json.loads(fixture_text)
     item = payload["attention_queue"]["items"][0]
     plan = item["local_agent_launch_plan"]
 
-    assert plan["schema_version"] == "local_agent_launch_plan_v0", plan
+    assert plan["schema_version"] == "local_agent_launch_plan_v1", plan
     assert plan["mode"] == "dry_run", plan
     assert plan["goal_id"] == item["goal_id"], plan
-    assert plan["primary_agent_id"] == "codex-main-control", plan
+    assert plan["agent_model"] == "peer_v1", plan
+    assert "primary_agent_id" not in plan, plan
 
     configured_agents = plan["configured_agents"]
     agent_ids = {agent["agent_id"] for agent in configured_agents}
@@ -121,17 +121,19 @@ def main() -> int:
     assert "codex-side-bypass" in agent_ids, configured_agents
     assert len(agent_ids) == len(configured_agents), configured_agents
     for agent in configured_agents:
-        assert agent["role"] in ALLOWED_AGENT_ROLES, agent
+        assert agent["agent_model"] == "peer_v1", agent
+        assert "role" not in agent, agent
         assert agent["source"] == "registry.coordination.registered_agents", agent
         assert isinstance(agent["scope_summary"], str) and agent["scope_summary"], agent
         assert isinstance(agent["can_receive_work"], bool), agent
         assert isinstance(agent["blocked_by"], list), agent
 
-    assignments = plan["role_assignments"]
+    assignments = plan["task_assignments"]
     assignment_ids = {assignment["agent_id"] for assignment in assignments}
     assert agent_ids <= assignment_ids, assignments
     for assignment in assignments:
-        assert assignment["lane"] in ALLOWED_ASSIGNMENT_LANES, assignment
+        assert assignment["assignment_kind"] in ALLOWED_ASSIGNMENT_KINDS, assignment
+        assert isinstance(assignment["todo_id"], str) and assignment["todo_id"], assignment
         assert isinstance(assignment["responsibility"], str) and assignment["responsibility"], assignment
         assert isinstance(assignment["claim_policy"], str) and assignment["claim_policy"], assignment
 
@@ -140,7 +142,7 @@ def main() -> int:
     for preview in previews:
         assert preview["agent_id"] in agent_ids, preview
         assert isinstance(preview["next_step_label"], str) and preview["next_step_label"], preview
-        assert preview["worktree_policy"], preview
+        assert preview["workspace_policy"], preview
         host_execution = preview["host_execution"]
         assert host_execution["will_start_process"] is False, preview
         assert host_execution["tool_call_allowed"] is False, preview

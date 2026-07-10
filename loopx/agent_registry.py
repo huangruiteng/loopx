@@ -40,65 +40,6 @@ def registered_agent_ids_for_goal(goal: dict[str, Any] | None) -> list[str]:
     return agents
 
 
-def primary_agent_id_for_goal(goal: dict[str, Any] | None) -> str | None:
-    if not isinstance(goal, dict):
-        return None
-    candidates: list[Any] = []
-    coordination = goal.get("coordination")
-    if isinstance(coordination, dict):
-        candidates.append(coordination.get("primary_agent"))
-    candidates.append(goal.get("primary_agent"))
-    spawn_policy = goal.get("spawn_policy")
-    if isinstance(spawn_policy, dict):
-        candidates.append(spawn_policy.get("primary_agent"))
-    for candidate in candidates:
-        agent = normalize_todo_claimed_by(candidate)
-        if agent:
-            return agent
-    return None
-
-
-def _agent_profile_handoff_agent_id(profile: dict[str, Any] | None) -> str | None:
-    if not isinstance(profile, dict):
-        return None
-    candidates: list[Any] = []
-    review_policy = profile.get("review_policy")
-    if isinstance(review_policy, dict):
-        candidates.append(review_policy.get("handoff_agent"))
-        candidates.append(review_policy.get("side_agent_handoff_agent"))
-    candidates.append(profile.get("handoff_agent"))
-    candidates.append(profile.get("side_agent_handoff_agent"))
-    for candidate in candidates:
-        agent = normalize_todo_claimed_by(candidate)
-        if agent:
-            return agent
-    return None
-
-
-def side_agent_handoff_agent_id_for_goal(
-    goal: dict[str, Any] | None,
-    agent_id: str | None = None,
-) -> str | None:
-    if not isinstance(goal, dict):
-        return None
-    profile_handoff_agent = _agent_profile_handoff_agent_id(agent_profile_for_goal(goal, agent_id))
-    if profile_handoff_agent:
-        return profile_handoff_agent
-    candidates: list[Any] = []
-    coordination = goal.get("coordination")
-    if isinstance(coordination, dict):
-        candidates.append(coordination.get("side_agent_handoff_agent"))
-    candidates.append(goal.get("side_agent_handoff_agent"))
-    spawn_policy = goal.get("spawn_policy")
-    if isinstance(spawn_policy, dict):
-        candidates.append(spawn_policy.get("side_agent_handoff_agent"))
-    for candidate in candidates:
-        agent = normalize_todo_claimed_by(candidate)
-        if agent:
-            return agent
-    return None
-
-
 def agent_profile_for_goal(goal: dict[str, Any] | None, agent_id: str | None) -> dict[str, Any] | None:
     normalized_agent_id = normalize_todo_claimed_by(agent_id)
     if not isinstance(goal, dict) or not normalized_agent_id:
@@ -141,21 +82,6 @@ def registered_agent_ids_from_registry(registry_path: Path, goal_id: str) -> lis
     return registered_agent_ids_for_goal(load_goal_from_registry(registry_path, goal_id))
 
 
-def primary_agent_id_from_registry(registry_path: Path, goal_id: str) -> str | None:
-    return primary_agent_id_for_goal(load_goal_from_registry(registry_path, goal_id))
-
-
-def side_agent_handoff_agent_id_from_registry(
-    registry_path: Path,
-    goal_id: str,
-    agent_id: str | None = None,
-) -> str | None:
-    return side_agent_handoff_agent_id_for_goal(
-        load_goal_from_registry(registry_path, goal_id),
-        agent_id=agent_id,
-    )
-
-
 def agent_profile_from_registry(registry_path: Path, goal_id: str, agent_id: str | None) -> dict[str, Any] | None:
     return agent_profile_for_goal(load_goal_from_registry(registry_path, goal_id), agent_id)
 
@@ -174,8 +100,7 @@ def require_registered_agent_id(
     if not registered:
         raise ValueError(
             f"{field}={normalized!r} cannot be used because goal {goal_id!r} "
-            "has no registered agent list (legacy project or missing "
-            "coordination.registered_agents). Register this agent identity first: "
+            "has no coordination.registered_agents list. Register this peer identity first: "
             "loopx configure-goal --goal-id "
             f"{goal_id} --registered-agent {normalized} --execute"
         )

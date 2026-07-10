@@ -4,10 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .agent_registry import (
-    primary_agent_id_from_registry,
-    registered_agent_ids_from_registry,
-)
+from .agent_registry import registered_agent_ids_from_registry
 from .bootstrap import default_goal_id
 from .host_loop_activation import agent_type_for_host_surface, build_host_loop_activation_packet
 from .project_alias import resolve_canonical_project_alias
@@ -395,7 +392,6 @@ def build_loopx_bootstrap_command_pack(
         registry_path,
         resolved_goal_id,
     )
-    primary_agent = primary_agent_id_from_registry(registry_path, resolved_goal_id)
 
     bootstrap_preview_command = _bootstrap_command(
         project=resolved_project,
@@ -415,7 +411,6 @@ def build_loopx_bootstrap_command_pack(
         cli_bin=cli_bin,
         agent_id=agent_id,
         registered_agents=registered_agents,
-        primary_agent=primary_agent,
         available_capabilities=available_capabilities,
     )
     selected_agent_id = host_loop_activation.get("agent_id")

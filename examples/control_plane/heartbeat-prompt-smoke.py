@@ -45,7 +45,6 @@ def main() -> int:
             "do not take benchmark execution todos unless reassigned",
         ],
         registered_agents=["codex-main-control", "codex-side-bypass"],
-        primary_agent="codex-main-control",
     )
     primary_scoped_payload = build_heartbeat_prompt(
         goal_id=GOAL_ID,
@@ -54,7 +53,6 @@ def main() -> int:
         agent_id="codex-main-control",
         agent_scopes=["benchmark readiness and final review"],
         registered_agents=["codex-main-control", "codex-side-bypass"],
-        primary_agent="codex-main-control",
     )
     thin_scoped_payload = build_heartbeat_prompt(
         goal_id=GOAL_ID,
@@ -63,7 +61,6 @@ def main() -> int:
         agent_id="codex-side-bypass",
         agent_scopes=["control-plane coordination and todo claim ergonomics"],
         registered_agents=["codex-main-control", "codex-side-bypass"],
-        primary_agent="codex-main-control",
     )
     profile_scoped_payload = build_heartbeat_prompt(
         goal_id=GOAL_ID,
@@ -71,13 +68,12 @@ def main() -> int:
         thin=True,
         agent_id="codex-side-bypass",
         agent_profile={
-            "schema_version": "agent_profile_v0",
+            "schema_version": "agent_profile_v1",
             "agent_id": "codex-side-bypass",
             "scope_summary": "productization showcase docs lane",
             "private_note": "must stay out of heartbeat payload",
         },
         registered_agents=["codex-main-control", "codex-side-bypass"],
-        primary_agent="codex-main-control",
     )
     capability_scoped_payload = build_heartbeat_prompt(
         goal_id=GOAL_ID,
@@ -85,7 +81,6 @@ def main() -> int:
         thin=True,
         agent_id="codex-side-bypass",
         registered_agents=["codex-main-control", "codex-side-bypass"],
-        primary_agent="codex-main-control",
         available_capabilities=["network", "external_evidence_poll", "network"],
     )
     missing_agent_id = None
@@ -105,11 +100,10 @@ def main() -> int:
             active_state=ACTIVE_STATE,
             compact=True,
             registered_agents=["codex-main-control", "codex-side-bypass"],
-            primary_agent="codex-main-control",
         )
     except ValueError as exc:
         registered_without_agent_id = str(exc)
-    assert registered_without_agent_id and "identity-aware heartbeat prompt required" in registered_without_agent_id, (
+    assert registered_without_agent_id and "identity-aware peer heartbeat prompt required" in registered_without_agent_id, (
         registered_without_agent_id
     )
     assert "--agent-id codex-main-control" in registered_without_agent_id, registered_without_agent_id
@@ -120,7 +114,6 @@ def main() -> int:
             active_state=ACTIVE_STATE,
             agent_id="unregistered-agent",
             registered_agents=["codex-side-bypass"],
-            primary_agent="codex-side-bypass",
         )
     except ValueError as exc:
         unregistered_agent = str(exc)
@@ -175,8 +168,8 @@ def main() -> int:
         "ranker/cross-domain evidence artifact",
         "status/log/metric/marker poll",
         "heartbeat_recommendation",
-        "subagent_orchestration_contract",
-        "spawn/resume eligible child lanes",
+        "task_orchestration_contract",
+        "activate/resume eligible peer lanes",
         "goal_boundary",
         "delivery_batch_scale",
         "delivery_outcome",
@@ -208,8 +201,8 @@ def main() -> int:
     assert "using `the registry-declared active state`" in registry_default_task, registry_default_task
     scoped_task = normalized(str(scoped_payload["task_body"]))
     assert scoped_payload["agent_id"] == "codex-side-bypass", scoped_payload
-    assert scoped_payload["agent_role"] == "side-agent", scoped_payload
-    assert scoped_payload["primary_agent"] == "codex-main-control", scoped_payload
+    assert scoped_payload["agent_role"] == "peer-agent", scoped_payload
+    assert "primary_agent" not in scoped_payload, scoped_payload
     assert scoped_payload["agent_scopes"] == [
         "control-plane coordination and todo claim ergonomics",
         "do not take benchmark execution todos unless reassigned",
@@ -229,7 +222,7 @@ def main() -> int:
         "quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute --agent-id codex-main-control"
     ), primary_scoped_payload
     assert profile_scoped_payload["agent_scopes"] == ["productization showcase docs lane"], profile_scoped_payload
-    assert profile_scoped_payload["agent_scope_source"] == "agent_profile_v0", profile_scoped_payload
+    assert profile_scoped_payload["agent_scope_source"] == "agent_profile_v1", profile_scoped_payload
     assert "private_note" not in profile_scoped_payload["agent_profile"], profile_scoped_payload
     assert profile_scoped_payload["thin_prompt_command"] == (
         "loopx heartbeat-prompt --thin --goal-id public-heartbeat-goal "
@@ -250,13 +243,10 @@ def main() -> int:
     )
     for phrase in (
         "Agent identity and scope",
-        "role: side-agent",
-        "primary_agent `codex-main-control`",
-        "independent git worktree/branch",
-        "Self-merge only small AGENTS-eligible validated changes",
-        "--side-agent-self-merged --evidence",
-        "--next-agent-todo",
-        "--next-claimed-by codex-main-control",
+        "model: peer_v1",
+        "equal peer agent",
+        "independent worktree",
+        "Task-scoped coordination",
         "agent_id `codex-side-bypass`",
         "control-plane coordination and todo claim ergonomics",
         "do not take benchmark execution todos unless reassigned",
@@ -265,13 +255,13 @@ def main() -> int:
     ):
         assert phrase in scoped_task, phrase
     primary_task = normalized(str(primary_scoped_payload["task_body"]))
-    assert primary_scoped_payload["agent_role"] == "primary-agent", primary_scoped_payload
-    assert "role: primary-agent" in primary_task, primary_task
-    assert "single primary agent" in primary_task, primary_task
+    assert primary_scoped_payload["agent_role"] == "peer-agent", primary_scoped_payload
+    assert "model: peer_v1" in primary_task, primary_task
+    assert "single primary agent" not in primary_task, primary_task
     thin_scoped_task = normalized(str(thin_scoped_payload["task_body"]))
-    assert "role: side-agent" in thin_scoped_task, thin_scoped_task
-    assert "independent git worktree/branch" in thin_scoped_task, thin_scoped_task
-    assert "handoff todo claimed_by primary_agent `codex-main-control`" in thin_scoped_task, thin_scoped_task
+    assert "model: peer_v1" in thin_scoped_task, thin_scoped_task
+    assert "independent worktree" in thin_scoped_task, thin_scoped_task
+    assert "primary_agent" not in thin_scoped_task, thin_scoped_task
     assert "--active-state" not in registry_default_payload["expanded_prompt_command"], registry_default_payload
     assert brief_payload["brief"] is True, brief_payload
     assert brief_payload["compact"] is False, brief_payload
@@ -851,10 +841,10 @@ def main() -> int:
                             "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
                             "coordination": {
                                 "registered_agents": ["codex-main-control", "codex-side-bypass"],
-                                "primary_agent": "codex-main-control",
+                                "agent_model": "peer_v1",
                                 "agent_profiles": {
                                     "codex-side-bypass": {
-                                        "schema_version": "agent_profile_v0",
+                                        "schema_version": "agent_profile_v1",
                                         "scope_summary": "productization showcase docs lane",
                                     }
                                 },
@@ -886,7 +876,7 @@ def main() -> int:
         )
         assert cli_registry_default_result.returncode != 0, cli_registry_default_result.stdout
         cli_registry_default_error = json.loads(cli_registry_default_result.stdout)
-        assert "identity-aware heartbeat prompt required" in cli_registry_default_error["error"], (
+        assert "identity-aware peer heartbeat prompt required" in cli_registry_default_error["error"], (
             cli_registry_default_error
         )
         assert "--agent-id codex-main-control" in cli_registry_default_error["error"], (
@@ -954,7 +944,7 @@ def main() -> int:
         )
         assert cli_registry_thin_result.returncode != 0, cli_registry_thin_result.stdout
         cli_registry_thin_error = json.loads(cli_registry_thin_result.stdout)
-        assert "identity-aware heartbeat prompt required" in cli_registry_thin_error["error"], (
+        assert "identity-aware peer heartbeat prompt required" in cli_registry_thin_error["error"], (
             cli_registry_thin_error
         )
         assert "heartbeat-prompt --thin" in cli_registry_thin_error["error"], cli_registry_thin_error
@@ -1019,8 +1009,8 @@ def main() -> int:
         ).stdout
         cli_scoped_payload = json.loads(cli_scoped_json)
         assert cli_scoped_payload["agent_id"] == "codex-side-bypass", cli_scoped_payload
-        assert cli_scoped_payload["agent_role"] == "side-agent", cli_scoped_payload
-        assert cli_scoped_payload["primary_agent"] == "codex-main-control", cli_scoped_payload
+        assert cli_scoped_payload["agent_role"] == "peer-agent", cli_scoped_payload
+        assert "primary_agent" not in cli_scoped_payload, cli_scoped_payload
         assert cli_scoped_payload["agent_scopes"] == [
             "control-plane coordination and todo claim ergonomics"
         ], cli_scoped_payload
@@ -1056,7 +1046,7 @@ def main() -> int:
         assert cli_profile_scoped_payload["agent_scopes"] == ["productization showcase docs lane"], (
             cli_profile_scoped_payload
         )
-        assert cli_profile_scoped_payload["agent_scope_source"] == "agent_profile_v0", cli_profile_scoped_payload
+        assert cli_profile_scoped_payload["agent_scope_source"] == "agent_profile_v1", cli_profile_scoped_payload
         assert cli_profile_scoped_payload["thin_prompt_command"] == (
             "loopx heartbeat-prompt --thin --goal-id public-heartbeat-goal --agent-id codex-side-bypass"
         ), cli_profile_scoped_payload
@@ -1065,194 +1055,6 @@ def main() -> int:
         )
         assert "productization showcase docs lane" in normalized(cli_profile_scoped_payload["task_body"]), (
             cli_profile_scoped_payload
-        )
-
-        profile_handoff_registry_path = project / ".loopx" / "profile-handoff-registry.json"
-        profile_handoff_registry_path.write_text(
-            json.dumps(
-                {
-                    "goals": [
-                        {
-                            "id": GOAL_ID,
-                            "domain": "smoke",
-                            "status": "active",
-                            "repo": str(project),
-                            "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
-                            "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
-                            "coordination": {
-                                "registered_agents": [
-                                    "codex-main-control",
-                                    "codex-side-bypass",
-                                    "codex-product-capability",
-                                ],
-                                "primary_agent": "codex-main-control",
-                                "side_agent_handoff_agent": "codex-side-bypass",
-                                "agent_profiles": {
-                                    "codex-product-capability": {
-                                        "schema_version": "agent_profile_v0",
-                                        "scope_summary": "product capability and runtime contracts",
-                                        "review_policy": {"handoff_agent": "codex-main-control"},
-                                    }
-                                },
-                            },
-                        }
-                    ]
-                }
-            ),
-            encoding="utf-8",
-        )
-        cli_profile_handoff_json = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "loopx.cli",
-                "--format",
-                "json",
-                "--registry",
-                str(profile_handoff_registry_path),
-                "heartbeat-prompt",
-                "--goal-id",
-                GOAL_ID,
-                "--thin",
-                "--agent-id",
-                "codex-product-capability",
-            ],
-            cwd=REPO_ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout
-        cli_profile_handoff_payload = json.loads(cli_profile_handoff_json)
-        assert cli_profile_handoff_payload["side_agent_handoff_agent"] == "codex-main-control", (
-            cli_profile_handoff_payload
-        )
-        assert "handoff todo claimed_by `codex-side-bypass`" not in cli_profile_handoff_payload["task_body"], (
-            cli_profile_handoff_payload
-        )
-        assert "handoff todo claimed_by `codex-main-control`" in cli_profile_handoff_payload["task_body"], (
-            cli_profile_handoff_payload
-        )
-
-        ignored_review_registry_path = project / ".loopx" / "ignored-review-registry.json"
-        ignored_review_registry_path.write_text(
-            json.dumps(
-                {
-                    "goals": [
-                        {
-                            "id": GOAL_ID,
-                            "domain": "smoke",
-                            "status": "active",
-                            "repo": str(project),
-                            "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
-                            "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
-                            "coordination": {
-                                "registered_agents": [
-                                    "codex-main-control",
-                                    "codex-side-bypass",
-                                    "codex-side-reviewer",
-                                ],
-                                "primary_agent": "codex-main-control",
-                                "side_agent_review_agent": "codex-side-reviewer",
-                            },
-                        }
-                    ]
-                }
-            ),
-            encoding="utf-8",
-        )
-        cli_ignored_review_json = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "loopx.cli",
-                "--format",
-                "json",
-                "--registry",
-                str(ignored_review_registry_path),
-                "heartbeat-prompt",
-                "--goal-id",
-                GOAL_ID,
-                "--thin",
-                "--agent-id",
-                "codex-side-bypass",
-                "--agent-scope",
-                "control-plane coordination and todo claim ergonomics",
-            ],
-            cwd=REPO_ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout
-        cli_ignored_review_payload = json.loads(cli_ignored_review_json)
-        assert cli_ignored_review_payload["side_agent_handoff_agent"] is None, cli_ignored_review_payload
-        assert "handoff todo claimed_by `codex-side-reviewer`" not in cli_ignored_review_payload["task_body"], (
-            cli_ignored_review_payload
-        )
-        assert "handoff todo claimed_by primary_agent `codex-main-control`" in cli_ignored_review_payload[
-            "task_body"
-        ], cli_ignored_review_payload
-
-        no_handoff_registry_path = project / ".loopx" / "no-handoff-registry.json"
-        no_handoff_registry_path.write_text(
-            json.dumps(
-                {
-                    "goals": [
-                        {
-                            "id": GOAL_ID,
-                            "domain": "smoke",
-                            "status": "active",
-                            "repo": str(project),
-                            "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
-                            "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
-                            "coordination": {
-                                "registered_agents": [
-                                    "codex-main-control",
-                                    "codex-side-bypass",
-                                ],
-                                "primary_agent": "codex-main-control",
-                                "side_agent_handoff_agent": "codex-side-bypass",
-                            },
-                        }
-                    ]
-                }
-            ),
-            encoding="utf-8",
-        )
-        cli_no_handoff_json = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "loopx.cli",
-                "--format",
-                "json",
-                "--registry",
-                str(no_handoff_registry_path),
-                "heartbeat-prompt",
-                "--goal-id",
-                GOAL_ID,
-                "--thin",
-                "--agent-id",
-                "codex-side-bypass",
-                "--agent-scope",
-                "auto-research visible validation",
-            ],
-            cwd=REPO_ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout
-        cli_no_handoff_payload = json.loads(cli_no_handoff_json)
-        assert cli_no_handoff_payload["side_agent_handoff_agent"] == "codex-side-bypass", (
-            cli_no_handoff_payload
-        )
-        no_handoff_task = normalized(cli_no_handoff_payload["task_body"])
-        assert "do not create broad handoff todos" in no_handoff_task, cli_no_handoff_payload
-        assert "keep the todo claimed_by you" in no_handoff_task, cli_no_handoff_payload
-        assert "handoff todo claimed_by `codex-side-bypass`" not in no_handoff_task, (
-            cli_no_handoff_payload
-        )
-        assert "handoff todo claimed_by primary_agent `codex-main-control`" not in no_handoff_task, (
-            cli_no_handoff_payload
         )
 
         cli_unknown_scoped = subprocess.run(
@@ -1319,8 +1121,7 @@ def main() -> int:
         )
         assert cli_legacy_scoped.returncode != 0, cli_legacy_scoped.stdout
         cli_legacy_payload = json.loads(cli_legacy_scoped.stdout)
-        assert "legacy project" in cli_legacy_payload["error"], cli_legacy_payload
-        assert "Register this agent identity first" in cli_legacy_payload["error"], cli_legacy_payload
+        assert "Register this peer identity first" in cli_legacy_payload["error"], cli_legacy_payload
         assert "--registered-agent codex-side-bypass" in cli_legacy_payload["error"], cli_legacy_payload
 
     with tempfile.TemporaryDirectory() as fallback_tmp:
@@ -1362,7 +1163,7 @@ def main() -> int:
                             "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
                             "coordination": {
                                 "registered_agents": ["codex-side-bypass"],
-                                "primary_agent": "codex-side-bypass",
+                                "agent_model": "peer_v1",
                             },
                         }
                     ]
@@ -1394,7 +1195,7 @@ def main() -> int:
         )
         assert cli_global_fallback_result.returncode != 0, cli_global_fallback_result.stdout
         cli_global_fallback_error = json.loads(cli_global_fallback_result.stdout)
-        assert "identity-aware heartbeat prompt required" in cli_global_fallback_error["error"], (
+        assert "identity-aware peer heartbeat prompt required" in cli_global_fallback_error["error"], (
             cli_global_fallback_error
         )
         assert "--agent-id codex-side-bypass" in cli_global_fallback_error["error"], (

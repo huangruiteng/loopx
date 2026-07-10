@@ -234,9 +234,6 @@ def build_agent_lane_next_action(
                     {
                         "schema_version": AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION,
                         "agent_id": agent_id,
-                        "primary_agent": normalize_todo_claimed_by(
-                            agent_identity.get("primary_agent")
-                        ),
                         "source": "scoped_user_gate_fallback.selected_executable",
                         "selected_by": "scoped_user_gate_fallback",
                         "confidence": "selected",
@@ -287,7 +284,6 @@ def build_agent_lane_next_action(
     )
 
     preferred_todo_ids = _todo_ids_from_action(active_next_action)
-    primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
     active_next_action_items = (
         agent_todo_summary.get("active_next_action_executable_items")
         if isinstance(agent_todo_summary.get("active_next_action_executable_items"), list)
@@ -327,7 +323,6 @@ def build_agent_lane_next_action(
             key=lambda candidate: _agent_lane_candidate_sort_key(
                 candidate,
                 agent_id=agent_id,
-                primary_agent=primary_agent,
                 preferred_todo_ids=preferred_todo_ids,
             ),
         ):
@@ -369,9 +364,6 @@ def build_agent_lane_next_action(
                 {
                     "schema_version": AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION,
                     "agent_id": agent_id,
-                    "primary_agent": normalize_todo_claimed_by(
-                        agent_identity.get("primary_agent")
-                    ),
                     "source": lineage_source,
                     "selected_by": selected_by,
                     "confidence": (

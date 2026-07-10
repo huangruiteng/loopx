@@ -242,20 +242,18 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         "--next-claimed-by",
         help=(
             "For complete/supersede with --next-agent-todo, soft-claim the successor "
-            "todo for a registered agent. If omitted, claimed successors inherit the "
-            "completed/superseded todo owner when available; broad side-agent handoffs "
-            "default to coordination.side_agent_handoff_agent when configured, otherwise "
-            "primary_agent. Same-agent broad handoff is rejected; use "
-            "--side-agent-self-merged with --evidence for same-agent delivery."
+            "todo for a registered agent. In peer_v1, independent and review handoffs "
+            "remain unclaimed unless explicitly assigned, while same-agent non-delivery "
+            "continuations keep the current owner. Use --self-merged with --evidence "
+            "for an eligible same-agent delivery."
         ),
     )
     todo_parser.add_argument(
-        "--side-agent-self-merged",
+        "--self-merged",
         action="store_true",
         help=(
-            "For todo complete by a side agent, explicitly record that a small validated "
-            "side-agent change was self-merged; requires --evidence and bypasses the "
-            "default review successor todo."
+            "For todo complete, record that a small validated change was self-merged; "
+            "requires --evidence."
         ),
     )
     todo_parser.add_argument(
@@ -385,8 +383,8 @@ def handle_todo_command(
                 raise ValueError("todo add does not support --next-claimed-by")
             if args.next_continuation_policy:
                 raise ValueError("todo add does not support --next-continuation-policy")
-            if args.side_agent_self_merged:
-                raise ValueError("todo add does not support --side-agent-self-merged")
+            if args.self_merged:
+                raise ValueError("todo add does not support --self-merged")
             if args.no_follow_up:
                 raise ValueError("todo add does not support --no-follow-up")
             if args.successor_todo_ids:
@@ -460,7 +458,7 @@ def handle_todo_command(
                     ("--next-task-class", args.next_task_class),
                     ("--next-action-kind", args.next_action_kind),
                     ("--next-continuation-policy", args.next_continuation_policy),
-                    ("--side-agent-self-merged", args.side_agent_self_merged),
+                    ("--self-merged", args.self_merged),
                     ("--follow-up", args.followups),
                 )
                 if value
@@ -524,8 +522,8 @@ def handle_todo_command(
                 raise ValueError("todo update does not support --next-claimed-by")
             if args.next_continuation_policy:
                 raise ValueError("todo update does not support --next-continuation-policy")
-            if args.side_agent_self_merged:
-                raise ValueError("todo update does not support --side-agent-self-merged")
+            if args.self_merged:
+                raise ValueError("todo update does not support --self-merged")
             payload = update_goal_todo(
                 registry_path=registry_path,
                 goal_id=args.goal_id,
@@ -569,7 +567,7 @@ def handle_todo_command(
             if args.claimed_by and args.clear_claim:
                 raise ValueError("todo complete accepts either --claimed-by or --clear-claim, not both")
             if args.blocks_agent or args.global_gate or args.unblocks_todo_id or args.resume_when:
-                raise ValueError("todo complete does not support --blocks-agent, --global-gate, --unblocks-todo-id, or --resume-when; use todo update before completion or side-agent handoff successor metadata")
+                raise ValueError("todo complete does not support --blocks-agent, --global-gate, --unblocks-todo-id, or --resume-when; use todo update before completion or peer successor metadata")
             if args.monitor_target_key or args.cadence or args.next_due_at or args.expires_at:
                 raise ValueError("todo complete does not support monitor schedule metadata; use todo update before completion")
             if args.no_follow_up and (args.next_agent_todo or args.next_user_todo):
@@ -607,7 +605,7 @@ def handle_todo_command(
                 next_task_class=args.next_task_class,
                 next_action_kind=args.next_action_kind,
                 next_continuation_policy=args.next_continuation_policy,
-                side_agent_self_merged=bool(args.side_agent_self_merged),
+                self_merged=bool(args.self_merged),
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
                 dry_run=bool(args.dry_run),
@@ -623,8 +621,8 @@ def handle_todo_command(
                 )
             if args.clear_claim:
                 raise ValueError("todo supersede does not support --clear-claim")
-            if args.side_agent_self_merged:
-                raise ValueError("todo supersede does not support --side-agent-self-merged")
+            if args.self_merged:
+                raise ValueError("todo supersede does not support --self-merged")
             if args.no_follow_up:
                 raise ValueError("todo supersede does not support --no-follow-up")
             if args.followups:
@@ -664,8 +662,8 @@ def handle_todo_command(
                 raise ValueError("todo archive-completed does not support --claimed-by or --clear-claim")
             if args.next_claimed_by:
                 raise ValueError("todo archive-completed does not support --next-claimed-by")
-            if args.side_agent_self_merged:
-                raise ValueError("todo archive-completed does not support --side-agent-self-merged")
+            if args.self_merged:
+                raise ValueError("todo archive-completed does not support --self-merged")
             if args.no_follow_up:
                 raise ValueError("todo archive-completed does not support --no-follow-up")
             if args.followups:

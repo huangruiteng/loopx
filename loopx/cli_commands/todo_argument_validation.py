@@ -39,7 +39,7 @@ TODO_OPTION_FIELDS = (
     ("--next-task-class", "next_task_class"),
     ("--next-action-kind", "next_action_kind"),
     ("--next-continuation-policy", "next_continuation_policy"),
-    ("--side-agent-self-merged", "side_agent_self_merged"),
+    ("--self-merged", "self_merged"),
     ("--agent-id", "agent_id"),
     ("--from", "suggestion_sources"),
     ("--limit", "suggestion_limit"),

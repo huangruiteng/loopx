@@ -2,7 +2,7 @@
 
 Status: scheduling contract for the next Codex CLI product slice.
 
-This note exists because a side-agent can drift toward visible, easy-to-ship
+This note exists because any peer can drift toward visible, easy-to-ship
 frontstage work even when the user has just steered the product priority back
 to Codex CLI TUI adoption. Frontstage and showcase work are important support
 surfaces, but they must not outrank a runnable Codex CLI TUI continuation task.

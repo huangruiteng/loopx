@@ -13,10 +13,10 @@ the same Git history that produced the product behavior: the repo records the
 workload, the feature chain, the validation surfaces, and the boundaries of
 what evidence is safe to publish.
 
-This is not a claim that one side agent authored every commit. The point is
+This is not a claim that one peer authored every commit. The point is
 stronger and more product-relevant: LoopX can keep a high-churn,
-multi-lane agent engineering project coherent while primary and side work move
-in parallel.
+multi-lane agent engineering project coherent while independently claimed peer
+work moves in parallel.
 
 ## Public Repository Signal
 
@@ -72,7 +72,7 @@ design note, or partial adapter.
 | --- | --- | --- | --- |
 | Local control-plane kernel: bootstrap/connect, registry, status, history, check, review packet, todo CLI, public boundary scan | `loopx/`, README, status contracts, docs, smokes | shipped core | 11-16 developer-days |
 | Gate, quota, heartbeat, reward, blocker, and safe-fallback lifecycle | quota/status modules, heartbeat prompt docs, state interaction docs, regression smokes | shipped core with ongoing hardening | 10-15 developer-days |
-| Multi-agent ownership and side-agent delivery discipline | `claimed_by`, registered-agent checks, identity-aware heartbeat prompts, worktree guard, self-merge evidence flag | shipped coordination slice | 5-8 developer-days |
+| Multi-agent ownership and peer delivery discipline | `claimed_by`, registered-peer checks, identity-aware heartbeat prompts, task workspace guard, typed continuation, self-merge evidence flag | shipped coordination slice | 5-8 developer-days |
 | Benchmark and evaluation control contracts | Terminal-Bench, SkillsBench, ALE, Codex Goal worker contracts, reducers, readiness docs | partial product surface; not full leaderboard automation | 10-16 developer-days |
 | Dashboard, frontstage, and projection surfaces | dashboard app, status server, frontstage fixtures, showcase prototype, goal-channel projection | prototype to beta | 5-8 developer-days |
 | Public smokes, docs governance, and redaction discipline | `examples/`, showcase catalog checks, boundary checks, docs governance smoke | shipped support system | 8-12 developer-days |
@@ -129,10 +129,10 @@ only a todo/claim feature:
    plane easier for humans and future agents to understand.
 5. **Multi-agent ownership**: the repo added registered todo ownership,
    `claimed_by`, registered-agent checks, identity-aware heartbeat prompts,
-   side-agent scope rules, and independent worktree policy.
-6. **Side-agent self-merge discipline**: small validated side-agent work can be
-   completed with `--side-agent-self-merged --evidence`, while broad, risky, or
-   unclear work still routes to primary review.
+   advisory peer scope, and task-scoped worktree policy.
+6. **Peer completion discipline**: small validated peer work can be
+   completed with `--self-merged --evidence`, while broad, risky, or
+   unclear work uses an explicit `review_handoff` when independent review is required.
 7. **Evidence and public-boundary discipline**: public smokes, regression
    wrappers, docs governance, showcase catalog checks, and public/private
    boundary scans keep the case reproducible without exposing private chats,
@@ -147,20 +147,20 @@ product behavior:
 - Which gate is waiting for a human?
 - What can safely continue while another path is gated?
 - Which validation or public evidence proves the move happened?
-- Which work can self-merge, and which work must go to primary review?
+- Which work can self-merge, and which work needs explicit peer review?
 
 ## LoopX Behavior
 
 LoopX made the full loop durable in several places:
 
-- the registry and prompt contracts named primary and side-agent identities
-  instead of relying on chat memory;
+- the registry and prompt contracts named peer identities instead of relying
+  on chat memory;
 - active todos separated benchmark, productization, documentation, planning,
   and follow-up work into reviewable obligations;
 - quota and status projection kept executable work, monitor work, user gates,
   and blockers distinct;
-- side-agent scope stayed in the agent prompt and handoff, while todo metadata
-  kept a simple `claimed_by` owner;
+- advisory peer scope stayed in the agent profile/prompt, while todo metadata
+  kept a simple `claimed_by` owner and typed continuation;
 - completion evidence recorded self-merge and validation outcomes instead of
   leaving them only in conversation;
 - public docs and smokes turned reusable lessons into repository artifacts;
@@ -176,13 +176,13 @@ from public project surfaces.
 
 For an operator, this case shows how LoopX reduces coordination load:
 
-- the primary agent can keep focus on a high-priority benchmark lane;
-- side agents can improve product, docs, and control-plane surfaces without
-  silently racing the primary agent;
+- one peer can keep focus on a high-priority benchmark lane;
+- other peers can improve product, docs, and control-plane surfaces without
+  silently racing its claim;
 - user gates remain explicit instead of turning into hidden idle time;
 - safe fallback or side work can continue when the gated path is blocked;
-- small validated side changes do not become primary-agent queue pressure;
-- larger or riskier side work still flows through primary review.
+- small validated changes do not create unnecessary review queue pressure;
+- larger or riskier work flows through explicit peer review.
 
 For a potential user, the reusable pattern is this: LoopX lets a project
 delegate bounded improvement lanes to agents without losing ownership, evidence,
@@ -202,9 +202,9 @@ machine-specific paths.
    runtime, docs, dashboard, planning, and smoke surfaces.
 2. LoopX keeps the whole project legible through durable goals, todos,
    gates, quota, evidence, and run history.
-3. A side-agent lane is introduced so productization and coordination work can
-   progress beside the primary benchmark lane.
-4. The side lane ships ownership, identity-aware prompts, showcase material,
+3. A peer lane is claimed so productization and coordination work can progress
+   beside another peer's benchmark lane.
+4. The peer lane ships ownership, identity-aware prompts, showcase material,
    self-merge policy, and outcome-floor projection with focused validation.
 5. Public docs and smokes turn the experience into a reusable case without
    publishing private chat, internal docs, or raw benchmark evidence.

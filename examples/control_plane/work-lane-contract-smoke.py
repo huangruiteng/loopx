@@ -1148,7 +1148,7 @@ def assert_side_agent_monitor_watch_without_handle_stays_quiet() -> None:
                 "result marker arrives."
             ),
             coordination={
-                "primary_agent": "codex-main-control",
+                "agent_model": "peer_v1",
                 "registered_agents": ["codex-main-control", "codex-side-bypass"],
             },
             agent_todo_items=[
@@ -1203,7 +1203,7 @@ def assert_side_agent_monitor_watch_with_handle_requires_observation() -> None:
                 "result marker arrives."
             ),
             coordination={
-                "primary_agent": "codex-main-control",
+                "agent_model": "peer_v1",
                 "registered_agents": ["codex-main-control", "codex-side-bypass"],
             },
             agent_todo_items=[
@@ -1258,7 +1258,7 @@ def assert_side_agent_next_action_projects_without_stealing_goal_next_action() -
             status="primary_goal_route_active",
             next_action=primary_action,
             coordination={
-                "primary_agent": "codex-main-control",
+                "agent_model": "peer_v1",
                 "registered_agents": ["codex-main-control", "codex-side-bypass"],
             },
             agent_todo_items=[
@@ -1304,7 +1304,7 @@ def assert_side_agent_next_action_projects_without_stealing_goal_next_action() -
     next_action = guard["agent_lane_next_action"]
     assert next_action["schema_version"] == "agent_lane_next_action_v0", next_action
     assert next_action["agent_id"] == "codex-side-bypass", next_action
-    assert next_action["primary_agent"] == "codex-main-control", next_action
+    assert "agent_model" not in next_action and "primary_agent" not in next_action, next_action
     assert next_action["todo_id"] == "todo_side_tui", next_action
     assert next_action["selected_by"] == "current_agent_claimed_todo", next_action
     assert next_action["confidence"] == "selected", next_action
@@ -1314,7 +1314,7 @@ def assert_side_agent_next_action_projects_without_stealing_goal_next_action() -
     assert route_hint["schema_version"] == "goal_route_hint_v0", route_hint
     assert route_hint["route_decision"] == "run_current_agent_lane", route_hint
     assert route_hint["agent_id"] == "codex-side-bypass", route_hint
-    assert route_hint["primary_agent"] == "codex-main-control", route_hint
+    assert route_hint["agent_model"] == "peer_v1" and "primary_agent" not in route_hint, route_hint
     assert route_hint["preserves_goal_next_action"] is True, route_hint
     assert route_hint["goal_next_action_mutation"] == "none", route_hint
     assert route_hint["has_durable_next_action"] is True, route_hint
@@ -1333,14 +1333,14 @@ def assert_side_agent_next_action_projects_without_stealing_goal_next_action() -
     assert primary_action not in guard["agent_lane_next_action"]["text"], guard
 
 
-def assert_side_agent_waits_when_only_other_agent_has_claimed_work() -> None:
+def assert_peer_requires_reassignment_when_only_other_peer_has_claimed_work() -> None:
     primary_action = "[P0] Run SWE-Marathon full-suite polling and record compact results."
     guard = build_quota_should_run(
         status_payload(
             status="side_agent_other_claimed_frontier",
             next_action=primary_action,
             coordination={
-                "primary_agent": "codex-main-control",
+                "agent_model": "peer_v1",
                 "registered_agents": ["codex-main-control", "codex-side-bypass"],
             },
             agent_todo_items=[
@@ -1360,17 +1360,17 @@ def assert_side_agent_waits_when_only_other_agent_has_claimed_work() -> None:
         goal_id=GOAL_ID,
         agent_id="codex-side-bypass",
     )
-    assert guard["decision"] == "agent_scope_wait", guard
+    assert guard["decision"] == "reassignment_required", guard
     assert guard["should_run"] is False, guard
     assert guard["normal_delivery_allowed"] is False, guard
     assert guard["actionable_by_codex"] is False, guard
-    assert guard["effective_action"] == "agent_scope_wait", guard
+    assert guard["effective_action"] == "reassignment_required", guard
     assert "agent_lane_next_action" not in guard, guard
     frontier = guard["agent_scope_frontier"]
     assert frontier["schema_version"] == "agent_scope_frontier_v0", frontier
-    assert frontier["action"] == "agent_scope_wait", frontier
+    assert frontier["action"] == "reassignment_required", frontier
     assert frontier["agent_id"] == "codex-side-bypass", frontier
-    assert frontier["primary_agent"] == "codex-main-control", frontier
+    assert "primary_agent" not in frontier, frontier
     assert frontier["candidate_counts"]["current_agent_claimed_advancement_count"] == 0, frontier
     assert frontier["candidate_counts"]["unclaimed_advancement_count"] == 0, frontier
     assert frontier["candidate_counts"]["other_agent_claimed_advancement_count"] == 1, frontier
@@ -1384,7 +1384,7 @@ def assert_side_agent_waits_when_only_other_agent_has_claimed_work() -> None:
     assert hint["quiet_noop_allowed"] is True, hint
     route_hint = guard["goal_route_hint"]
     assert route_hint["schema_version"] == "goal_route_hint_v0", route_hint
-    assert route_hint["route_decision"] == "agent_scope_wait", route_hint
+    assert route_hint["route_decision"] == "reassignment_required", route_hint
     assert route_hint["preserves_goal_next_action"] is True, route_hint
     assert route_hint["has_durable_next_action"] is True, route_hint
     assert route_hint["frontier_hint"]["decision"] == "quiet_noop_blocker", route_hint
@@ -1396,9 +1396,9 @@ def assert_side_agent_waits_when_only_other_agent_has_claimed_work() -> None:
     assert "SWE-Marathon" not in guard["recommended_action"], guard
     obligation = guard["execution_obligation"]
     assert obligation["must_attempt_work"] is False, obligation
-    assert obligation["kind"] == "agent_scope_wait", obligation
+    assert obligation["kind"] == "reassignment_required", obligation
     contract = guard["interaction_contract"]
-    assert contract["mode"] == "agent_scope_wait", contract
+    assert contract["mode"] == "reassignment_required", contract
     assert contract["agent_channel"]["must_attempt"] is False, contract
     assert contract["agent_channel"]["delivery_allowed"] is False, contract
     assert contract["agent_channel"]["quiet_noop_allowed"] is True, contract
@@ -1407,7 +1407,7 @@ def assert_side_agent_waits_when_only_other_agent_has_claimed_work() -> None:
     assert "no quota spend" in contract["cli_channel"]["next_cli_actions"][0], contract
     assert "codex-side-bypass has no current/unclaimed" in contract["user_channel"]["reason"], contract
     markdown = render_quota_should_run_markdown(guard)
-    assert "agent_scope_frontier: action=agent_scope_wait" in markdown, markdown
+    assert "agent_scope_frontier: action=reassignment_required" in markdown, markdown
     assert "agent_lane_frontier_hint: decision=quiet_noop_blocker" in markdown, markdown
     assert "quiet_noop_allowed=True" in markdown, markdown
 
@@ -1422,7 +1422,7 @@ def assert_side_agent_scope_wait_mentions_blocking_owner() -> None:
             status="value_explorer_side_bypass_review_wait",
             next_action=primary_action,
             coordination={
-                "primary_agent": "codex-main-control",
+                "agent_model": "peer_v1",
                 "registered_agents": [
                     "codex-main-control",
                     "codex-side-bypass",
@@ -1503,7 +1503,7 @@ def assert_side_agent_replans_route_continuation_before_blocking_wait() -> None:
         has_agent_todo=False,
         next_action="Continue the visible launch e2e route after the review gate.",
         coordination={
-            "primary_agent": "codex-main-control",
+            "agent_model": "peer_v1",
             "registered_agents": ["codex-main-control", "codex-side-bypass"],
         },
     )
@@ -1569,7 +1569,7 @@ def assert_scoped_user_gate_does_not_steal_other_agent_fallback() -> None:
             status="side_agent_scoped_gate_other_agent_fallback",
             next_action=gated_action,
             coordination={
-                "primary_agent": "codex-main-control",
+                "agent_model": "peer_v1",
                 "registered_agents": ["codex-main-control", "codex-product-capability"],
             },
             user_todo_items=[
@@ -1633,7 +1633,7 @@ def assert_side_agent_replans_when_deferred_successor_is_ready() -> None:
         has_agent_todo=False,
         next_action="Continue the ready deferred issue-surface successor.",
         coordination={
-            "primary_agent": "codex-main-control",
+            "agent_model": "peer_v1",
             "registered_agents": ["codex-main-control", "codex-side-bypass"],
         },
     )
@@ -1787,7 +1787,7 @@ def assert_side_agent_can_take_unclaimed_work() -> None:
             status="side_agent_unclaimed_frontier",
             next_action=primary_action,
             coordination={
-                "primary_agent": "codex-main-control",
+                "agent_model": "peer_v1",
                 "registered_agents": ["codex-main-control", "codex-side-bypass"],
             },
             agent_todo_items=[
@@ -1849,7 +1849,7 @@ def assert_agent_lane_next_action_prefers_capability_repair_candidate() -> None:
             status="target_capabilities_gate_merged",
             next_action=ordinary_action,
             coordination={
-                "primary_agent": "codex-main-control",
+                "agent_model": "peer_v1",
                 "registered_agents": ["codex-main-control"],
             },
             agent_todo_items=[
@@ -1898,27 +1898,27 @@ def assert_agent_lane_next_action_prefers_capability_repair_candidate() -> None:
     assert "agent_lane_next_action: todo_id=todo_bridge_repair" in markdown, markdown
 
 
-def assert_primary_agent_prioritizes_claimed_review_handoff() -> None:
-    primary_action = "[P0] Run SWE-Marathon full-suite polling and record compact results."
-    review_action = "[P0] Review PR #464 for the side-agent Frontstage handoff."
+def assert_peer_prioritizes_claimed_review_handoff() -> None:
+    current_action = "[P0] Run SWE-Marathon full-suite polling and record compact results."
+    review_action = "[P0] Review PR #464 to unblock the peer Frontstage delivery."
     guard = build_quota_should_run(
         status_payload(
-            status="primary_review_handoff_frontier",
-            next_action=primary_action,
+            status="review_handoff_frontier",
+            next_action=current_action,
             coordination={
-                "primary_agent": "codex-main-control",
+                "agent_model": "peer_v1",
                 "registered_agents": ["codex-main-control", "codex-side-bypass"],
             },
             agent_todo_items=[
                 {
                     "index": 1,
-                    "text": primary_action,
+                    "text": current_action,
                     "role": "agent",
                     "status": "open",
                     "priority": "P0",
                     "task_class": "advancement_task",
                     "claimed_by": "codex-main-control",
-                    "todo_id": "todo_primary_suite",
+                    "todo_id": "todo_current_suite",
                     "required_capabilities": ["shell"],
                 },
                 {
@@ -1928,9 +1928,9 @@ def assert_primary_agent_prioritizes_claimed_review_handoff() -> None:
                     "status": "open",
                     "priority": "P0",
                     "task_class": "advancement_task",
-                    "action_kind": "primary_review",
+                    "continuation_policy": "review_handoff",
                     "claimed_by": "codex-main-control",
-                    "todo_id": "todo_primary_review",
+                    "todo_id": "todo_review",
                     "required_capabilities": ["shell"],
                     "blocks_agent": "codex-side-bypass",
                     "unblocks_todo_id": "todo_frontstage_showcase",
@@ -1941,11 +1941,11 @@ def assert_primary_agent_prioritizes_claimed_review_handoff() -> None:
         agent_id="codex-main-control",
     )
     next_action = guard["agent_lane_next_action"]
-    assert next_action["todo_id"] == "todo_primary_review", guard
+    assert next_action["todo_id"] == "todo_review", guard
     assert guard["capability_gate"]["candidate_order_policy"] == (
         "active_next_then_claim_then_unblock_handoff_then_priority_then_repair"
     ), guard
-    assert guard["capability_gate"]["runnable_candidates"][0]["todo_id"] == "todo_primary_review", guard
+    assert guard["capability_gate"]["runnable_candidates"][0]["todo_id"] == "todo_review", guard
     assert next_action["selected_by"] == "current_agent_claimed_todo", next_action
     assert next_action["unblock_handoff"] == {
         "blocks_agent": "codex-side-bypass",
@@ -1953,30 +1953,30 @@ def assert_primary_agent_prioritizes_claimed_review_handoff() -> None:
     }, next_action
     assert guard["recommended_action"] == review_action, guard
     markdown = render_quota_should_run_markdown(guard)
-    assert "agent_lane_next_action: todo_id=todo_primary_review" in markdown, markdown
+    assert "agent_lane_next_action: todo_id=todo_review" in markdown, markdown
 
 
-def assert_primary_agent_prioritizes_handoff_without_unblocks_todo_id() -> None:
-    primary_action = "[P0] Run the current benchmark frontier."
-    review_action = "[P0] Review PR #675 to unblock the value-explorer agent."
+def assert_peer_prioritizes_handoff_without_unblocks_todo_id() -> None:
+    current_action = "[P0] Run the current benchmark frontier."
+    review_action = "[P0] Review PR #675 to unblock the value-explorer peer."
     guard = build_quota_should_run(
         status_payload(
-            status="primary_review_handoff_without_link_frontier",
-            next_action=primary_action,
+            status="review_handoff_without_link_frontier",
+            next_action=current_action,
             coordination={
-                "primary_agent": "codex-main-control",
+                "agent_model": "peer_v1",
                 "registered_agents": ["codex-main-control", "codex-value-explorer"],
             },
             agent_todo_items=[
                 {
                     "index": 1,
-                    "text": primary_action,
+                    "text": current_action,
                     "role": "agent",
                     "status": "open",
                     "priority": "P0",
                     "task_class": "advancement_task",
                     "claimed_by": "codex-main-control",
-                    "todo_id": "todo_primary_frontier",
+                    "todo_id": "todo_current_frontier",
                     "required_capabilities": ["shell"],
                 },
                 {
@@ -1986,7 +1986,7 @@ def assert_primary_agent_prioritizes_handoff_without_unblocks_todo_id() -> None:
                     "status": "open",
                     "priority": "P0-review",
                     "task_class": "advancement_task",
-                    "action_kind": "side_agent_review",
+                    "continuation_policy": "review_handoff",
                     "claimed_by": "codex-main-control",
                     "todo_id": "todo_value_connector_review",
                     "required_capabilities": ["shell"],
@@ -2008,27 +2008,27 @@ def assert_primary_agent_prioritizes_handoff_without_unblocks_todo_id() -> None:
     assert guard["recommended_action"] == review_action, guard
 
 
-def assert_primary_agent_handoff_crosses_ordinary_priority_boundary() -> None:
-    primary_action = "[P0] Run the current benchmark frontier."
-    review_action = "[P1] Review PR #464 for the side-agent Frontstage handoff."
+def assert_review_handoff_crosses_ordinary_priority_boundary() -> None:
+    current_action = "[P0] Run the current benchmark frontier."
+    review_action = "[P1] Review PR #464 to unblock the peer Frontstage delivery."
     guard = build_quota_should_run(
         status_payload(
-            status="primary_review_handoff_lower_priority_frontier",
-            next_action=primary_action,
+            status="review_handoff_lower_priority_frontier",
+            next_action=current_action,
             coordination={
-                "primary_agent": "codex-main-control",
+                "agent_model": "peer_v1",
                 "registered_agents": ["codex-main-control", "codex-side-bypass"],
             },
             agent_todo_items=[
                 {
                     "index": 1,
-                    "text": primary_action,
+                    "text": current_action,
                     "role": "agent",
                     "status": "open",
                     "priority": "P0",
                     "task_class": "advancement_task",
                     "claimed_by": "codex-main-control",
-                    "todo_id": "todo_primary_frontier",
+                    "todo_id": "todo_current_frontier",
                     "required_capabilities": ["shell"],
                 },
                 {
@@ -2038,7 +2038,7 @@ def assert_primary_agent_handoff_crosses_ordinary_priority_boundary() -> None:
                     "status": "open",
                     "priority": "P1",
                     "task_class": "advancement_task",
-                    "action_kind": "primary_review",
+                    "continuation_policy": "review_handoff",
                     "claimed_by": "codex-main-control",
                     "todo_id": "todo_lower_priority_review",
                     "required_capabilities": ["shell"],
@@ -2053,7 +2053,7 @@ def assert_primary_agent_handoff_crosses_ordinary_priority_boundary() -> None:
     next_action = guard["agent_lane_next_action"]
     assert next_action["todo_id"] == "todo_lower_priority_review", guard
     assert guard["capability_gate"]["runnable_candidates"][0]["todo_id"] == "todo_lower_priority_review", guard
-    assert guard["capability_gate"]["runnable_candidates"][1]["todo_id"] == "todo_primary_frontier", guard
+    assert guard["capability_gate"]["runnable_candidates"][1]["todo_id"] == "todo_current_frontier", guard
     assert guard["recommended_action"] == review_action, guard
 
 
@@ -2072,7 +2072,7 @@ def assert_agent_lane_next_action_prefers_explicit_next_action_todo_id() -> None
                 "another full-suite polling slice."
             ),
             coordination={
-                "primary_agent": "codex-main-control",
+                "agent_model": "peer_v1",
                 "registered_agents": ["codex-main-control"],
             },
             agent_todo_items=[
@@ -2165,7 +2165,7 @@ def assert_active_next_action_todo_survives_compact_candidate_limits() -> None:
             "SkillsBench product-mode lifecycle observation semantics."
         ),
         coordination={
-            "primary_agent": "codex-main-control",
+            "agent_model": "peer_v1",
             "registered_agents": ["codex-main-control"],
         },
         agent_todo_items=[],
@@ -2224,16 +2224,16 @@ def main() -> int:
     assert_side_agent_monitor_watch_without_handle_stays_quiet()
     assert_side_agent_monitor_watch_with_handle_requires_observation()
     assert_side_agent_next_action_projects_without_stealing_goal_next_action()
-    assert_side_agent_waits_when_only_other_agent_has_claimed_work()
+    assert_peer_requires_reassignment_when_only_other_peer_has_claimed_work()
     assert_side_agent_scope_wait_mentions_blocking_owner()
     assert_side_agent_replans_route_continuation_before_blocking_wait()
     assert_scoped_user_gate_does_not_steal_other_agent_fallback()
     assert_side_agent_replans_when_deferred_successor_is_ready()
     assert_side_agent_can_take_unclaimed_work()
     assert_agent_lane_next_action_prefers_capability_repair_candidate()
-    assert_primary_agent_prioritizes_claimed_review_handoff()
-    assert_primary_agent_prioritizes_handoff_without_unblocks_todo_id()
-    assert_primary_agent_handoff_crosses_ordinary_priority_boundary()
+    assert_peer_prioritizes_claimed_review_handoff()
+    assert_peer_prioritizes_handoff_without_unblocks_todo_id()
+    assert_review_handoff_crosses_ordinary_priority_boundary()
     assert_agent_lane_next_action_prefers_explicit_next_action_todo_id()
     assert_active_next_action_todo_survives_compact_candidate_limits()
     print("work-lane-contract-smoke ok")
