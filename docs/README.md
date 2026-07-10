@@ -127,7 +127,7 @@ incident report, or launch draft.
 - [Long-task cadence hint](long-task-cadence-policy.md)
 - [Dreaming exploration lane](dreaming-exploration-lane.md)
 - [Session runtime control-plane adapter](session-runtime-control-plane-adapter.md)
-- [Codex subagent orchestration](codex-subagent-orchestration.md)
+- [Codex peer task orchestration](codex-subagent-orchestration.md)
 - [Dashboard frontend selection](dashboard-frontend-selection.md)
 - [Experiment controller milestone](experiment-controller-milestone.md)
 

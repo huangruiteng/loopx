@@ -29,9 +29,16 @@ intake, then projected back to Lark with `sync-loopx-todos`.
 | Scope | `Scope` text, advisory in v0. |
 | Quota | Omitted in v0; the prototype assumes no quota limit. |
 | Worker launch | `Worker Command` and `Workdir`, consumed by heartbeat. |
+| Issue-fix outcome | One stable `Work Item Type=Issue Fix` row with `Repository`, `Issue`, `Pull Request`, `Route`, `Stage`, `Validation`, and `Outcome`. |
 
 The Kanban view groups by `Status`, so the board is the operator-facing
 control surface. Agent workers use the filtered `Worker Queue` view.
+
+Issue-fix execution todos and issue outcomes deliberately remain different
+rows. Todos answer what should happen next. The outcome row answers what has
+happened to one issue and stays keyed by repository plus issue across PR
+lifecycle changes. It is a read model derived from existing LoopX issue-fix
+state, not a second workflow ledger.
 
 ## Operator View
 
@@ -48,6 +55,16 @@ fields visible on the card:
 All other fields remain in the record detail and `All Tasks` grid. This keeps
 the first page light enough to scan while preserving complete task context for
 agents, handoff, audit, and recovery.
+
+Issue work has two dedicated views so it does not disappear inside the todo
+queue:
+
+- `Issue Fix Outcomes`: grid view filtered to `Work Item Type=Issue Fix`;
+- `Issue Fix Kanban`: Kanban view with the same filter, grouped by `Stage`.
+
+Their visible fields are `Task`, `Repository`, `Issue`, `Pull Request`,
+`Route`, `Stage`, `Validation`, `Outcome`, and `Status`. This keeps the existing
+todo Kanban compact while making per-issue state and output directly scannable.
 
 `lark-cli` 1.0.56 exposes `base +view-set-visible-fields`, so
 `lark-kanban setup` writes this compact Kanban card field list directly. Verify
@@ -138,6 +155,12 @@ python3 -m loopx.cli lark-kanban sync-loopx-todos --goal-id <goal-id> --execute
 The local config stores the reusable Base token, table id, view ids, identity,
 and synced `goal_id:todo_id -> record_id` mappings. The file lives under
 `.loopx/`, which is gitignored.
+
+Running `setup --execute` against an existing board is also the schema
+reconciliation path. It lists current fields, creates only missing fields,
+creates missing issue-fix views, and then reapplies filters, grouping, and
+visible-field configuration. Existing todo rows and stable outcome record ids
+are reused.
 
 To use someone else's shared board, store its URL or IDs:
 

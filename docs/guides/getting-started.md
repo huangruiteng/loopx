@@ -863,7 +863,7 @@ Start here:
 - [Public launch narrative draft](../outreach/public-launch-narrative-draft.md)
 - [Xiaohongshu launch draft](../outreach/xiaohongshu-launch-draft.md)
 - [Dashboard status contract](../status-data-contract.md)
-- [Codex subagent orchestration](../codex-subagent-orchestration.md)
+- [Codex peer task orchestration](../codex-subagent-orchestration.md)
 - [Benchmark long-run design](../research/long-horizon-agent-benchmarks/codex-cli-long-run-benchmark-design.md)
 
 ## Command Reference

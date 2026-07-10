@@ -261,7 +261,7 @@ def main() -> int:
     )
     assert_contains(
         readme,
-        "`gate_prompt` or `operator_question`, the target heartbeat should proactively ask that concrete user/controller gate",
+        "`gate_prompt` or `operator_question`, the target heartbeat should proactively ask that concrete user/operator gate",
         label="README",
     )
     assert_contains(

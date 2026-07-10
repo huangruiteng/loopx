@@ -37,6 +37,42 @@ def test_pip_bootstrap_failure_attribution() -> None:
     assert "pip_bootstrap_failure" in fingerprint["matched_patterns"], fingerprint
 
 
+def test_docker_api_version_mismatch_attribution() -> None:
+    error_text = (
+        "Docker compose command failed. Error response from daemon: "
+        "client version 1.52 is too new. Maximum supported API version is 1.43"
+    )
+
+    exception_type, attribution, labels = skillsbench_runner_error_attribution(
+        error_text
+    )
+    expected = "skillsbench_docker_api_version_mismatch"
+    assert exception_type == expected
+    assert attribution == expected
+    assert "skillsbench_docker_compose_setup_failure" in labels, labels
+    fingerprint = skillsbench_runner_error_fingerprint(error_text)
+    assert "docker_api_version_mismatch" in fingerprint["matched_patterns"], fingerprint
+
+
+def test_docker_compose_plugin_unavailable_attribution() -> None:
+    error_text = (
+        "Docker compose command failed. Stdout: unknown flag: --project-name\n"
+        "Usage:  docker [OPTIONS] COMMAND\nRun 'docker --help' for more information"
+    )
+
+    exception_type, attribution, labels = skillsbench_runner_error_attribution(
+        error_text
+    )
+    expected = "skillsbench_docker_compose_plugin_unavailable"
+    assert exception_type == expected
+    assert attribution == expected
+    assert "skillsbench_docker_compose_setup_failure" in labels, labels
+    fingerprint = skillsbench_runner_error_fingerprint(error_text)
+    assert "docker_compose_plugin_unavailable" in fingerprint["matched_patterns"], (
+        fingerprint
+    )
+
+
 def test_injected_pip_lines_do_not_mask_later_build_failure() -> None:
     error_text = (
         "Docker compose command failed.\n"
@@ -125,6 +161,8 @@ def test_failure_dependency_classes_ignore_unrelated_dockerfile_lines() -> None:
 
 if __name__ == "__main__":
     test_pip_bootstrap_failure_attribution()
+    test_docker_api_version_mismatch_attribution()
+    test_docker_compose_plugin_unavailable_attribution()
     test_injected_pip_lines_do_not_mask_later_build_failure()
     test_setup_attribution_reconciles_to_public_fingerprint()
     test_supported_setup_attribution_is_unchanged()

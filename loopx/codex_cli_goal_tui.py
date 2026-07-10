@@ -334,6 +334,8 @@ def codex_cli_tui_turn_active(capture: str) -> bool:
         line = raw_line.lower()
         if "working (" in line and "esc to interrupt" in line:
             return True
+        if "pursuing goal (" in line:
+            return True
         if "queued follow-up inputs" in line:
             return True
     return False

@@ -95,6 +95,11 @@ registry backup, atomically removes hierarchy authority fields, and records the
 completed migration. Repeating the same acknowledgement is a no-op, and future
 quota checks do not project the completed migration again.
 
+The completion marker is final for this migration version. If a stale v0.1
+writer later reintroduces a hierarchy field, peer runtime ignores that field
+and does not wake the user with the same automation migration again. Upgrade
+diagnostics may still expose the stale input for cleanup.
+
 Rollback restores the returned `backup_path`, then regenerates installed host
 loops from that restored registry. Registry restoration and host-loop
 regeneration are one operational rollback.

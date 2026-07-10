@@ -34,6 +34,7 @@ from .control_plane.agents.runtime_model import (
     legacy_agent_hierarchy_present,
     migrate_agent_profiles_to_peer_v1,
     normalized_peer_agent_ids,
+    peer_agent_runtime_migration_completed,
     peer_agent_runtime_migration_id,
 )
 
@@ -371,12 +372,12 @@ def configure_goal(
     legacy_hierarchy_before = legacy_agent_hierarchy_present(before_goal)
     expected_migration_id = peer_agent_runtime_migration_id(goal_id, before_goal)
     completed_migration_before = completed_peer_agent_runtime_migration(before_goal)
+    migration_completed_before = peer_agent_runtime_migration_completed(before_goal)
     migration_already_completed = bool(
-        not legacy_hierarchy_before
-        and completed_migration_before
+        completed_migration_before
         and completed_migration_before.get("migration_id")
         == automation_prompt_migration_ack
-        and completed_migration_before.get("status") == "completed"
+        and migration_completed_before
     )
     if automation_prompt_migration_ack is not None:
         if migration_already_completed:
@@ -390,7 +391,7 @@ def configure_goal(
                 "automation prompt migration id does not match the current goal state; "
                 f"expected {expected_migration_id}"
             )
-    elif execute and legacy_hierarchy_before and (
+    elif execute and legacy_hierarchy_before and not migration_completed_before and (
         agent_model is not None
         or registered_agents is not None
         or clear_registered_agents
@@ -624,7 +625,7 @@ def configure_goal(
                 automation_prompt_migration_ack
                 if automation_prompt_migration_ack is not None
                 else expected_migration_id
-                if legacy_hierarchy_before
+                if legacy_hierarchy_before and not migration_completed_before
                 else None
             ),
             migration_acknowledged=automation_prompt_migration_ack is not None,

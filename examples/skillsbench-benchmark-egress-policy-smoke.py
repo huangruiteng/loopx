@@ -135,6 +135,7 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
             "SKILLSBENCH_ROOT": "/remote/skillsbench",
             "SKILLSBENCH_EXPECTED_LOOPX_GIT_HEAD": "abc1234",
             "SKILLSBENCH_DOCKER_PROXY_HOST": "host.docker.internal",
+            "SKILLSBENCH_DOCKER_API_VERSION": "1.43",
             "SKILLSBENCH_RUN_STAMP": "20260709T000000CST",
         }
     )
@@ -160,6 +161,7 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
         "LOOPX_SKILLSBENCH_EGRESS_PROXY=http://host.docker.internal:18186"
         in output
     ), output
+    assert "DOCKER_API_VERSION=1.43" in output, output
     assert "--codex-api-reverse-tunnel-proxy http://127.0.0.1:18186" in output, output
     assert "--benchmark-egress-proxy-mode require" in output, output
     assert "--append-history" not in output, output
@@ -174,6 +176,7 @@ def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
             "SKILLSBENCH_ROOT": "/remote/skillsbench",
             "SKILLSBENCH_EXPECTED_LOOPX_GIT_HEAD": "abc1234",
             "SKILLSBENCH_DOCKER_PROXY_HOST": "host.docker.internal",
+            "SKILLSBENCH_DOCKER_API_VERSION": "1.43",
             "SKILLSBENCH_RUN_STAMP": "20260710T000000CST",
             "SKILLSBENCH_CANONICAL_CASE_IDS_FILE": "/opaque/canonical-ids.txt",
         }
@@ -208,10 +211,111 @@ def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
         "--local-ledger-catchup-run-group-contains "
         "skillsbench-codex-cli-goal-xhigh-" in output
     ), output
+    assert "--remote-failure-cleanup-pattern" in output, output
+    assert "--remote-failure-cleanup-include-docker" in output, output
     assert "--update-ledger" not in output, output
     assert "--local-target-lane-id codex-cli-goal-xhigh" in output, output
     assert "--local-target-run-group-contains" not in output, output
     assert "--local-target-backfill-run-group-contains" not in output, output
+
+
+def test_public_launcher_applies_ssh_options_to_remote_discovery() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-launch-ssh-options-") as tmp:
+        root = Path(tmp)
+        fake_bin = root / "bin"
+        fake_bin.mkdir()
+        ssh_log = root / "ssh.log"
+        fake_ssh = fake_bin / "ssh"
+        fake_ssh.write_text(
+            "#!/usr/bin/env bash\n"
+            "printf '%s\\n' \"$*\" >> \"$SKILLSBENCH_TEST_SSH_LOG\"\n"
+            "if [[ \"$*\" == *'ip -4 addr show docker0'* ]]; then\n"
+            "  printf 'docker-bridge.example.invalid\\n'\n"
+            "else\n"
+            "  printf '1.43\\n'\n"
+            "fi\n",
+            encoding="utf-8",
+        )
+        fake_ssh.chmod(0o755)
+        env = os.environ.copy()
+        env.update(
+            {
+                "PATH": f"{fake_bin}:{env['PATH']}",
+                "SKILLSBENCH_TEST_SSH_LOG": str(ssh_log),
+                "SKILLSBENCH_SSH_DESTINATION": "example.invalid",
+                "SKILLSBENCH_SSH_OPTIONS": "Port=2222",
+                "SKILLSBENCH_REMOTE_ROOT": "/remote/loopx",
+                "SKILLSBENCH_ROOT": "/remote/skillsbench",
+                "SKILLSBENCH_EXPECTED_LOOPX_GIT_HEAD": "abc1234",
+                "SKILLSBENCH_RUN_STAMP": "20260710T010000CST",
+            }
+        )
+        env.pop("SKILLSBENCH_DOCKER_PROXY_HOST", None)
+        env.pop("SKILLSBENCH_DOCKER_API_VERSION", None)
+        proc = subprocess.run(
+            [
+                str(REPO_ROOT / "scripts" / "skillsbench-launch-goal-xhigh.sh"),
+                "--dry-run",
+                "citation-check",
+                "ssh-options-smoke",
+                "18186",
+            ],
+            cwd=REPO_ROOT,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+        )
+
+        discovery_calls = ssh_log.read_text(encoding="utf-8").splitlines()
+        assert len(discovery_calls) == 2, discovery_calls
+        assert all("-o Port=2222" in call for call in discovery_calls), discovery_calls
+        assert "docker_proxy_host=docker-bridge.example.invalid" in proc.stdout, proc.stdout
+        assert "docker_api_version=1.43" in proc.stdout, proc.stdout
+        assert "DOCKER_API_VERSION=1.43" in proc.stdout, proc.stdout
+
+
+def test_proxy_runtime_preserves_docker_cli_plugins() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-docker-config-") as tmp:
+        root = Path(tmp)
+        source_config = root / "source"
+        source_plugins = source_config / "cli-plugins"
+        source_plugins.mkdir(parents=True)
+        (source_plugins / "docker-compose").write_text("fixture\n", encoding="utf-8")
+        (source_config / "config.json").write_text("{}\n", encoding="utf-8")
+        previous = os.environ.get("DOCKER_CONFIG")
+        os.environ["DOCKER_CONFIG"] = str(source_config)
+        plan: dict[str, object] = {}
+        active_config: Path | None = None
+        try:
+            with proxy_runtime.proxy_runtime_env_applied(
+                {
+                    "LOOPX_SKILLSBENCH_EGRESS_PROXY": (
+                        "http://benchmark-proxy.example.invalid:18080"
+                    ),
+                    "NO_PROXY": "localhost",
+                },
+                plan=plan,
+            ):
+                active_config = Path(os.environ["DOCKER_CONFIG"])
+                linked_plugins = active_config / "cli-plugins"
+                assert linked_plugins.is_symlink(), linked_plugins
+                assert linked_plugins.resolve() == source_plugins.resolve()
+                prerequisites = plan["runner_prerequisites"]
+                assert isinstance(prerequisites, dict)
+                assert prerequisites[
+                    "benchmark_egress_proxy_docker_cli_plugins_preserved"
+                ] is True
+                assert prerequisites[
+                    "benchmark_egress_proxy_docker_cli_plugin_paths_recorded"
+                ] is False
+        finally:
+            if previous is None:
+                os.environ.pop("DOCKER_CONFIG", None)
+            else:
+                os.environ["DOCKER_CONFIG"] = previous
+        assert active_config is not None and not active_config.exists()
 
 
 def test_verifier_proxy_patch_is_required_only_for_existing_verifier() -> None:
@@ -334,6 +438,8 @@ if __name__ == "__main__":
     test_formal_cli_goal_proxy_env_is_forwarded_without_public_url()
     test_public_launcher_uses_container_reachable_benchmark_proxy()
     test_public_launcher_batches_three_cases_with_closeout_sync()
+    test_public_launcher_applies_ssh_options_to_remote_discovery()
+    test_proxy_runtime_preserves_docker_cli_plugins()
     test_verifier_proxy_patch_is_required_only_for_existing_verifier()
     test_verifier_proxy_patch_failure_blocks_task_staging()
     test_proxy_runtime_prewarms_external_base_images_without_public_refs()

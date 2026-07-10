@@ -20,6 +20,7 @@ from .control_plane.todos.contract import (
     TODO_MONITOR_METADATA_FIELDS,
     TODO_CONTINUATION_POLICY_VALUES,
     TodoContinuationPolicy,
+    TODO_STATUS_DEFERRED,
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_USER_GATE,
@@ -39,10 +40,12 @@ from .control_plane.todos.contract import (
     normalize_todo_no_followup,
     normalize_todo_required_decision_scopes,
     normalize_todo_resume_when,
+    normalize_supported_todo_resume_when,
     normalize_todo_status,
     parse_todo_metadata_line,
     resolve_todo_continuation_policy,
     todo_continuation_requires_review,
+    require_supported_todo_resume_when,
     todo_done_for_status,
     todo_marker_for_status,
 )
@@ -735,6 +738,7 @@ def add_todo_to_lines(
     *,
     role: str,
     text: str,
+    status: str | None = None,
     task_class: str | None = None,
     action_kind: str | None = None,
     continuation_policy: str | None = None,
@@ -759,6 +763,10 @@ def add_todo_to_lines(
         global_gate=global_gate,
     )
     todo_text = normalize_new_todo(text)
+    normalized_status = normalize_todo_status(status) if status else TODO_STATUS_OPEN
+    if status and not normalized_status:
+        raise ValueError("todo status must be one of: open, done, blocked, deferred")
+    normalized_resume_when = require_supported_todo_resume_when(resume_when)
     normalized_monitor_metadata = require_monitor_metadata_scope(
         monitor_metadata=monitor_metadata,
         role=role,
@@ -781,6 +789,7 @@ def add_todo_to_lines(
     ) if bounds else None
     added = block is None
     metadata_updated = False
+    status_changed = False
 
     if block is None:
         todo_id = build_todo_id(
@@ -791,7 +800,7 @@ def add_todo_to_lines(
         )
         metadata_line = format_todo_metadata_line(
             todo_id=todo_id,
-            status=TODO_STATUS_OPEN,
+            status=normalized_status,
             task_class=task_class,
             action_kind=action_kind,
             continuation_policy=continuation_policy,
@@ -804,12 +813,13 @@ def add_todo_to_lines(
             blocks_agent=blocks_agent,
             global_gate=global_gate,
             unblocks_todo_id=unblocks_todo_id,
-            resume_when=resume_when,
+            resume_when=normalized_resume_when,
             **normalized_monitor_metadata,
             evidence=evidence,
             updated_at=updated_at,
         )
-        todo_line = "\n".join([f"- [ ] {todo_text}", metadata_line] if metadata_line else [f"- [ ] {todo_text}"])
+        marker = todo_marker_for_status(normalized_status)
+        todo_line = "\n".join([f"- [{marker}] {todo_text}", metadata_line] if metadata_line else [f"- [{marker}] {todo_text}"])
         if bounds:
             insert_into_existing_section(lines, bounds[0], bounds[1], todo_line)
         else:
@@ -818,8 +828,10 @@ def add_todo_to_lines(
     else:
         updates: dict[str, Any] = {
             "todo_id": block.get("todo_id"),
-            "status": block.get("status") or TODO_STATUS_OPEN,
+            "status": normalized_status if status else block.get("status") or TODO_STATUS_OPEN,
         }
+        if status:
+            status_changed = set_todo_marker(lines, block, normalized_status)
         if task_class:
             updates["task_class"] = task_class
         if action_kind:
@@ -844,8 +856,8 @@ def add_todo_to_lines(
             updates["global_gate"] = global_gate
         if unblocks_todo_id:
             updates["unblocks_todo_id"] = unblocks_todo_id
-        if resume_when:
-            updates["resume_when"] = resume_when
+        if normalized_resume_when:
+            updates["resume_when"] = normalized_resume_when
         updates.update(normalized_monitor_metadata)
         if evidence:
             updates["evidence"] = evidence
@@ -860,10 +872,13 @@ def add_todo_to_lines(
         "added": added,
         "already_exists": not added,
         "metadata_updated": metadata_updated,
+        "status_changed": status_changed,
+        "changed": added or metadata_updated or status_changed,
         "role": role,
         "section": section,
         "todo": todo_text,
         "todo_id": todo_id,
+        "status": normalize_todo_status(effective_metadata.get("status")) or normalized_status,
         "task_class": effective_metadata.get("task_class") or task_class,
         "action_kind": effective_metadata.get("action_kind") or action_kind,
         "continuation_policy": normalize_todo_continuation_policy(
@@ -904,6 +919,7 @@ def add_goal_todo(
     goal_id: str,
     role: str,
     text: str,
+    status: str | None = None,
     task_class: str | None = None,
     action_kind: str | None = None,
     continuation_policy: str | None = None,
@@ -933,6 +949,11 @@ def add_goal_todo(
     )
     if global_gate and not (role == "user" and task_class == TODO_TASK_CLASS_USER_GATE):
         raise ValueError("global_gate is only valid for `--role user --task-class user_gate`")
+    normalized_status = normalize_todo_status(status) if status else TODO_STATUS_OPEN
+    if status and not normalized_status:
+        raise ValueError("todo status must be one of: open, done, blocked, deferred")
+    if normalized_status == TODO_STATUS_DONE:
+        raise ValueError("todo add cannot create completed work; add it open and use `loopx todo complete`")
     todo_text = normalize_new_todo(text)
     resolved_project, resolved_state_file = resolve_todo_state_path(
         registry_path=registry_path,
@@ -993,9 +1014,9 @@ def add_goal_todo(
         normalized_unblocks_todo_id = normalize_todo_id(unblocks_todo_id) if unblocks_todo_id else None
         if unblocks_todo_id and not normalized_unblocks_todo_id:
             raise ValueError("unblocks_todo_id must use the public token shape todo_<letters-digits-underscore-hyphen>")
-        normalized_resume_when = normalize_todo_resume_when(resume_when) if resume_when else None
-        if resume_when and not normalized_resume_when:
-            raise ValueError("resume_when must be public-safe, e.g. todo_done:todo_ab12cd34ef56 or pr_merged:#532")
+        normalized_resume_when = require_supported_todo_resume_when(resume_when)
+        if normalized_status == TODO_STATUS_DEFERRED and not normalized_resume_when:
+            raise ValueError("deferred todo add requires --resume-when with a supported condition")
         normalized_monitor_metadata = require_monitor_metadata_scope(
             monitor_metadata=monitor_metadata,
             role=role,
@@ -1005,6 +1026,7 @@ def add_goal_todo(
             lines,
             role=role,
             text=todo_text,
+            status=normalized_status,
             task_class=task_class,
             action_kind=action_kind,
             continuation_policy=continuation_policy,
@@ -1023,11 +1045,12 @@ def add_goal_todo(
         )
         added = bool(add_result["added"])
         metadata_updated = bool(add_result["metadata_updated"])
+        changed = bool(add_result["changed"])
 
         new_text = "\n".join(lines) + ("\n" if original.endswith("\n") else "")
-        if added or metadata_updated:
+        if changed:
             new_text = replace_updated_at(new_text, updated_at)
-        if (added or metadata_updated) and not dry_run:
+        if changed and not dry_run:
             resolved_state_file.write_text(new_text, encoding="utf-8")
 
     payload = {
@@ -1036,11 +1059,13 @@ def add_goal_todo(
         "added": added,
         "already_exists": bool(add_result["already_exists"]),
         "metadata_updated": metadata_updated,
+        "status_changed": bool(add_result.get("status_changed")),
         "goal_id": goal_id,
         "role": role,
         "section": add_result.get("section"),
         "todo": todo_text,
         "todo_id": add_result.get("todo_id"),
+        "status": add_result.get("status"),
         "task_class": add_result.get("task_class"),
         "action_kind": add_result.get("action_kind"),
         "continuation_policy": add_result.get("continuation_policy"),
@@ -1061,7 +1086,7 @@ def add_goal_todo(
         "expires_at": add_result.get("expires_at"),
         "state_file": str(resolved_state_file),
         "project": str(resolved_project) if resolved_project else None,
-        "updated_at": updated_at if added or metadata_updated else None,
+        "updated_at": updated_at if changed else None,
     }
     return _attach_todo_write_correctness_dry_run_packet(
         payload,
@@ -1118,6 +1143,7 @@ def apply_todo_update_to_lines(
     claim_only: bool = False,
     updated_at: str,
 ) -> dict[str, Any]:
+    normalized_resume_when = require_supported_todo_resume_when(resume_when)
     normalized_todo_id = normalize_todo_id(todo_id)
     if not normalized_todo_id:
         raise ValueError("todo_id must use the public token shape todo_<letters-digits-underscore-hyphen>")
@@ -1144,7 +1170,7 @@ def apply_todo_update_to_lines(
     }
     if normalized_status == TODO_STATUS_DONE and not block.get("completed_at"):
         updates["completed_at"] = updated_at
-    elif normalized_status and not todo_done_for_status(normalized_status):
+    elif normalized_status and normalized_status != TODO_STATUS_DONE:
         updates["completed_at"] = None
     if note:
         updates["note"] = note
@@ -1186,8 +1212,8 @@ def apply_todo_update_to_lines(
         updates["unblocks_todo_id"] = unblocks_todo_id
     if successor_todo_ids is not None:
         updates["successor_todo_ids"] = successor_todo_ids
-    if resume_when:
-        updates["resume_when"] = resume_when
+    if normalized_resume_when:
+        updates["resume_when"] = normalized_resume_when
     if no_followup is not None:
         updates["no_followup"] = no_followup
     for key, value in (monitor_metadata or {}).items():
@@ -1337,7 +1363,7 @@ def update_goal_todo(
             if status
             else str(existing_block.get("status") or TODO_STATUS_OPEN)
         )
-        if status and target_role == "agent" and todo_done_for_status(target_status):
+        if status and target_role == "agent" and target_status == TODO_STATUS_DONE:
             raise ValueError(
                 "agent todo completion must use complete_goal_todo "
                 "(CLI: `loopx todo complete`) so completion policy, successor, "
@@ -1357,7 +1383,7 @@ def update_goal_todo(
             target_blocks_agent = effective_agent_id
             effective_blocks_agent = effective_agent_id
         target_global_gate = True if global_gate else existing_global_gate
-        if not todo_done_for_status(target_status):
+        if target_status != TODO_STATUS_DONE:
             require_user_todo_task_class(
                 role=target_role,
                 task_class=target_task_class,
@@ -1378,9 +1404,12 @@ def update_goal_todo(
         normalized_successor_todo_ids = normalize_todo_id_list(successor_todo_ids)
         if successor_todo_ids and not normalized_successor_todo_ids:
             raise ValueError("successor_todo_ids must contain public todo_<letters-digits-underscore-hyphen> tokens")
-        normalized_resume_when = normalize_todo_resume_when(resume_when) if resume_when else None
-        if resume_when and not normalized_resume_when:
-            raise ValueError("resume_when must be public-safe, e.g. todo_done:todo_ab12cd34ef56 or pr_merged:#532")
+        normalized_resume_when = require_supported_todo_resume_when(resume_when)
+        effective_resume_when = normalized_resume_when or normalize_supported_todo_resume_when(
+            existing_block.get("resume_when")
+        )
+        if status and target_status == TODO_STATUS_DEFERRED and not effective_resume_when:
+            raise ValueError("transition to deferred requires --resume-when with a supported condition")
         normalized_monitor_metadata = require_monitor_metadata_scope(
             monitor_metadata=monitor_metadata,
             role=target_role,

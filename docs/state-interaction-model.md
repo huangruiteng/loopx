@@ -274,7 +274,7 @@ surfaces:
 - `bounded_delivery`: Codex owns one validated work segment. It should run the
   steering audit, choose a P0/P1/P2 lane, implement, validate, write back, and
   spend exactly once after delivery.
-- `user_gate`: the user/controller owns the next decision. The agent asks a
+- `user_gate`: the user/operator owns the next decision. The agent asks a
   concise question and does not run the gated path. If the CLI exposes safe
   bypass, a later turn may do unrelated bounded P1/P2 work after the gate has
   been surfaced.
@@ -481,7 +481,7 @@ treated as required.
 | Store | Owner | Reader | Writer | Purpose |
 | --- | --- | --- | --- | --- |
 | Project registry | Project goal | CLI, executor, status | `connect`, `bootstrap`, narrow project setup | Declares goal identity, repo, adapter, authority, guards. |
-| Active goal state | Project goal | Executor, adapters, user review | Executor or project controller | Durable context, latest progress, next action, validation surfaces. |
+| Active goal state | Project goal | Executor, adapters, user review | Eligible peer or operator | Durable context, latest progress, next action, validation surfaces. |
 | Shared global registry | Local control plane | Status, dashboard, any project shell | `connect`, `refresh-state`, `sync-global` | Multi-project discovery without manually copying registry entries. |
 | Run payloads | Goal runtime | Executor, local reviewer | Adapters, `refresh-state`, `read-only-map` | Rich private evidence for one run. |
 | Compact run index | Goal runtime | Status, dashboard, heartbeats | Adapters, reward overlay writer | Public-safe timeline and latest status. |

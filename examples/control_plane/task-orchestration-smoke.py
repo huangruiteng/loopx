@@ -16,10 +16,13 @@ from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
 
 GOAL_ID = "task-orchestration-fixture"
 PEERS = ["codex-alpha", "codex-beta", "codex-gamma"]
+DORMANT_PEER = "codex-dormant"
 
 
 def payload(*, reverse_agents: bool = False) -> dict:
-    registered_agents = list(reversed(PEERS)) if reverse_agents else PEERS
+    registered_agents = [*PEERS, DORMANT_PEER]
+    if reverse_agents:
+        registered_agents = list(reversed(registered_agents))
     coordination = {
         "agent_model": "peer_v1",
         "registered_agents": registered_agents,
@@ -36,6 +39,17 @@ def payload(*, reverse_agents: bool = False) -> dict:
         }
         for index, agent_id in enumerate(PEERS, start=1)
     ]
+    todos.append(
+        {
+            "index": len(todos) + 1,
+            "status": "done",
+            "todo_id": "todo_dormant_done",
+            "task_class": "advancement_task",
+            "priority": "P0",
+            "text": "A completed lane must not join the task bundle.",
+            "claimed_by": DORMANT_PEER,
+        }
+    )
     goal = {
         "id": GOAL_ID,
         "status": "active",
@@ -102,11 +116,16 @@ def main() -> int:
     assert decision["effective_action"] == "coordinate_task_bundle", decision
     assert decision["interaction_contract"]["mode"] == "task_orchestration", decision
     assert contract["coordinator_agent_id"] == coordinator, contract
+    assert coordinator in PEERS and coordinator != DORMANT_PEER, contract
     assert contract["writeback_owner"] == "task_coordinator", contract
     assert "controller_agent_id" not in contract, contract
     assert "eligible_child_lanes" not in contract, contract
     assert all(
         lane["agent_id"] != coordinator for lane in contract["eligible_peer_lanes"]
+    ), contract
+    assert all(
+        lane["agent_id"] != DORMANT_PEER
+        for lane in contract["eligible_peer_lanes"]
     ), contract
     assert len(contract["eligible_peer_lanes"]) == 2, contract
     markdown = render_quota_should_run_markdown(decision)

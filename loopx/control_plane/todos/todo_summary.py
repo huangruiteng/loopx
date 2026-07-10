@@ -5,6 +5,7 @@ import re
 from typing import Any, Callable, Optional
 
 from .contract import (
+    TODO_RESUME_KIND_CAPACITY_AVAILABLE,
     TODO_RESUME_KIND_PR_MERGED,
     TODO_RESUME_KIND_TODO_DONE,
     TODO_TASK_CLASS_ADVANCEMENT,
@@ -737,6 +738,14 @@ def apply_resume_conditions(
             condition["satisfied"] = condition["target_status"] == "done"
         elif kind == TODO_RESUME_KIND_PR_MERGED and target:
             condition.update(pr_merged_condition(target, rollout_events or []))
+        elif kind == TODO_RESUME_KIND_CAPACITY_AVAILABLE and target:
+            condition.update(
+                {
+                    "provider": "runtime_available_capabilities",
+                    "provider_required": True,
+                    "capability": target,
+                }
+            )
         else:
             condition["unsupported"] = True
         item["resume_condition"] = condition

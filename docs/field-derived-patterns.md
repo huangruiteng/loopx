@@ -259,16 +259,16 @@ Codex-ready.
 Large projects often need several agents, but parallelism only works when
 claims are explicit:
 
-- controller owns the objective, final merge, public/private scan, and state
-  writeback;
-- child agents own scoped read-only exploration, one implementation slice, or
-  one validation surface;
+- registered agents remain equal peers;
+- claims and leases assign scoped read-only exploration, implementation, or
+  validation work;
 - write scopes should be disjoint;
-- shared canonical sources such as TODO, authority registry, and global schema
-  should normally be changed by the controller, not by independent children.
+- a temporary task coordinator may accept bundle evidence, but repository
+  policy and operator gates still decide merge, publication, and production
+  authority.
 
-LoopX should record these as proposed sub-agent scopes in read-only
-maps, then let the controller accept, edit, or reject them.
+LoopX should record proposed peer task scopes in read-only maps, then let an
+eligible peer claim them or let the operator edit the task boundary.
 
 ## 10. Anti-Patterns To Block
 

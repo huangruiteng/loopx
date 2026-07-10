@@ -520,6 +520,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert reviewer_commands == [
         "python3 examples/issue-fix-capability-guide-smoke.py",
         "python3 examples/issue-fix-reviewer-recommendation-smoke.py",
+        "python3 examples/issue-fix-reviewer-request-smoke.py",
     ], reviewer_profile
     assert all(check["tier"] == "default" for check in reviewer_profile["checks"]), reviewer_profile
     assert reviewer_profile["deep_checks_available"] is False, reviewer_profile

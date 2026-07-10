@@ -20,8 +20,8 @@ REQUIRED_PHRASES = (
     "`writeback_spend_contract`",
     "`child_decision`",
     "`continue`, `wait`, or `reuse_existing_evidence`",
-    "The temporary task coordinator may aggregate child evidence",
-    "child reports evidence only; parent writes and spends",
+    "temporary task coordinator",
+    "child worker reports evidence only; task coordinator writes accepted state and spends",
     "control_plane_handoff_version",
     "It does not own durable goal authority",
     "one pending lease for `(goal_id, todo_id)`",
@@ -30,6 +30,7 @@ REQUIRED_PHRASES = (
     '"agent_model": "peer_v1"',
     "independent worktrees",
     "explicit `review_handoff`",
+    "Dormant registered agents and closed, blocked, or deferred todos are not coordinator candidates.",
 )
 
 FORBIDDEN_PHRASES = (
@@ -41,6 +42,11 @@ FORBIDDEN_PHRASES = (
     "coordination.primary_agent",
     "primary-agent review todo",
     "side agents",
+    "main controller",
+    '"role": "controller"',
+    '"role": "subagent"',
+    "controller owns",
+    "parent writes and spends",
 )
 
 

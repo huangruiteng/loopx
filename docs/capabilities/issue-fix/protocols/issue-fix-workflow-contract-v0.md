@@ -72,6 +72,12 @@ open PRs, merge, publish, or run destructive git without an explicit gate.
 11. **Gate handling:** surface concrete gates instead of silently blocking. Safe
    metadata-only triage, public-code search, and focused smoke drafting may
    continue when those gates do not cover the selected action.
+12. **Outcome projection:** use `issue_fix_outcome_projection_v0` to derive one
+   stable operator-facing case from the existing feasibility row, repository
+   context, optional `issue_fix_delivery_evidence_input_v0`, and optional PR
+   lifecycle row. This projection writes no source state and creates no parallel
+   workflow state machine. It must keep unknown delivery evidence explicit,
+   retain terminal outputs, and remain consumable by generic projection sinks.
 
 ## Public-Safe Boundary
 
@@ -163,6 +169,9 @@ An issue-fix workflow is PR-review-ready only when all of these are true:
 - `issue_fix_pr_lifecycle_monitor_v0`
 - `issue_fix_pr_lifecycle_transition_v0`
 - `issue_fix_pr_lifecycle_domain_state_projection_v0`
+- `issue_fix_delivery_evidence_input_v0`
+- `issue_fix_outcome_case_v0`
+- `issue_fix_outcome_projection_v0`
 - `loopx_todo_writeback_preview_v0`
 - `issue_fix_caller_repo_branch_packet_v0`
 - `issue_fix_validated_fix_artifact_v0`

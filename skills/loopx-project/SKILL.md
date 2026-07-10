@@ -562,19 +562,19 @@ loopx connect \
 `connect` should create or update the local registry/state and auto-sync the
 public-safe entry into `~/.codex/loopx/registry.global.json`.
 
-One repository can host multiple goals, such as a main controller and a
-low-conflict bypass lane. Run `connect` once per stable `goal_id`; keep one
+One repository can host multiple peer-owned goals, such as delivery and a
+low-conflict validation lane. Run `connect` once per stable `goal_id`; keep one
 shared `.loopx/registry.json`, but use one active state per goal:
 
 ```text
-.codex/goals/<main-goal-id>/ACTIVE_GOAL_STATE.md
-.codex/goals/<bypass-goal-id>/ACTIVE_GOAL_STATE.md
+.codex/goals/<delivery-goal-id>/ACTIVE_GOAL_STATE.md
+.codex/goals/<validation-goal-id>/ACTIVE_GOAL_STATE.md
 ```
 
 Do not reuse one `state_file` for two goal ids. `loopx registry` treats
 that as a health error, and `read-only-map` checks the selected goal's own
-`.codex/goals/<goal-id>/` directory so a healthy main lane does not hide a
-missing bypass state.
+`.codex/goals/<goal-id>/` directory so one healthy lane does not hide another
+lane's missing state.
 
 If the goal state or registry contains private evidence, add `.loopx/`
 and `.codex/goals/` to that project's `.gitignore`.

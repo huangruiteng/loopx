@@ -22,6 +22,7 @@ from loopx.control_plane.agents.runtime_model import (  # noqa: E402
     PEER_AGENT_RUNTIME_MIGRATION,
 )
 from loopx.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
+from loopx.upgrade import peer_runtime_upgrade_migration  # noqa: E402
 
 
 GOAL_ID = "peer-agent-migration-fixture"
@@ -168,6 +169,46 @@ def main() -> int:
             )
             is None
         )
+
+        # A stale v0.1 writer may reintroduce legacy fields after cutover. The
+        # completed migration remains final authority: runtime ignores those
+        # fields and neither quota nor upgrade planning wakes the user again.
+        coordination["primary_agent"] = AGENTS[0]
+        coordination["side_agent_handoff_agent"] = AGENTS[1]
+        assert (
+            build_identity_aware_prompt_upgrade(
+                goal,
+                goal_id=GOAL_ID,
+                agent_identity=migrated_identity,
+            )
+            is None
+        )
+        completed_upgrade = peer_runtime_upgrade_migration(
+            goal,
+            goal_id=GOAL_ID,
+            installed={},
+            generated_prompts={},
+        )
+        assert completed_upgrade == {
+            "schema_version": "peer_runtime_automation_migration_v1",
+            "required": False,
+            "status": "completed",
+            "migration_id": migration_id,
+        }, completed_upgrade
+        reintroduced_registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        reintroduced_registry["goals"][0] = goal
+        registry_path.write_text(
+            json.dumps(reintroduced_registry, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        repeated_after_legacy_write = configure_goal(
+            registry_path=registry_path,
+            goal_id=GOAL_ID,
+            automation_prompt_migration_ack=migration_id,
+            execute=True,
+        )
+        assert repeated_after_legacy_write["changed"] is False, repeated_after_legacy_write
+        assert repeated_after_legacy_write["backup_path"] is None, repeated_after_legacy_write
 
         fresh_registry = Path(tmp) / "fresh-registry.json"
         fresh_registry.write_text(

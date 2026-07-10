@@ -116,6 +116,13 @@ def completed_peer_agent_runtime_migration(
     return migration if isinstance(migration, Mapping) else None
 
 
+def peer_agent_runtime_migration_completed(
+    goal: Mapping[str, Any] | None,
+) -> bool:
+    migration = completed_peer_agent_runtime_migration(goal)
+    return bool(migration and migration.get("status") == "completed")
+
+
 def agent_identity_is_peer(agent_identity: Mapping[str, Any] | None) -> bool:
     return bool(
         isinstance(agent_identity, Mapping)

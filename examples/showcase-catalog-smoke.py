@@ -236,7 +236,7 @@ def main() -> int:
     ):
         assert phrase in feedback_loop, phrase
     for phrase in (
-        "Loop engineering for long-running AI agents and agent teams.",
+        "Loop engineering for long-running AI agents and peer agent teams.",
         "A lightweight state kernel and agent-agnostic local control plane for",
         "https://huangruiteng.github.io/loopx/frontstage/",
         "docs/outreach/frontstage-demo-script.md",

@@ -64,13 +64,17 @@ def apply_proxy_runtime_env(
         prerequisites["benchmark_egress_proxy_docker_config_raw_proxy_recorded"] = False
 
 
-def _docker_config_payload_with_proxy(*, proxy_url: str, no_proxy: str) -> dict[str, Any]:
+def _docker_config_source_dir() -> Path:
     docker_config_dir = os.environ.get("DOCKER_CONFIG")
-    source_config = (
-        Path(docker_config_dir).expanduser() / "config.json"
+    return (
+        Path(docker_config_dir).expanduser()
         if docker_config_dir
-        else Path.home() / ".docker" / "config.json"
+        else Path.home() / ".docker"
     )
+
+
+def _docker_config_payload_with_proxy(*, proxy_url: str, no_proxy: str) -> dict[str, Any]:
+    source_config = _docker_config_source_dir() / "config.json"
     payload: dict[str, Any] = {}
     if source_config.exists():
         try:
@@ -105,6 +109,12 @@ def proxy_runtime_env_applied(
         docker_config_tmp = tempfile.TemporaryDirectory(
             prefix="loopx-skillsbench-docker-proxy-"
         )
+        source_plugins = _docker_config_source_dir() / "cli-plugins"
+        plugins_preserved = source_plugins.is_dir()
+        if plugins_preserved:
+            (Path(docker_config_tmp.name) / "cli-plugins").symlink_to(
+                source_plugins.resolve(), target_is_directory=True
+            )
         docker_config_path = Path(docker_config_tmp.name) / "config.json"
         docker_config_path.write_text(
             json.dumps(
@@ -119,6 +129,15 @@ def proxy_runtime_env_applied(
             encoding="utf-8",
         )
         docker_config_env["DOCKER_CONFIG"] = docker_config_tmp.name
+        if isinstance(plan, dict):
+            prerequisites = plan.setdefault("runner_prerequisites", {})
+            if isinstance(prerequisites, dict):
+                prerequisites[
+                    "benchmark_egress_proxy_docker_cli_plugins_preserved"
+                ] = plugins_preserved
+                prerequisites[
+                    "benchmark_egress_proxy_docker_cli_plugin_paths_recorded"
+                ] = False
     keys = set(proxy_env) | set(docker_config_env)
     previous = {key: os.environ.get(key) for key in keys}
     try:

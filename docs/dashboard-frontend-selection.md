@@ -48,7 +48,7 @@ needs an action-oriented queue and trustworthy drill-downs:
 - filterable goal and run tables,
 - URL-addressable status filters,
 - run detail pages with compact JSON/Markdown links,
-- event or timeline views for controller/sub-agent work,
+- event or timeline views for peer task coordination and child-worker evidence,
 - later graph views for goal dependencies and handoffs.
 
 ## Decision
@@ -125,7 +125,7 @@ not marketing pages.
 
 Recharts is enough for the first dashboard because the immediate visualizations
 are counts, history trends, and small comparisons. Custom graph work should be
-added only when controller/sub-agent relationships need a dedicated graph view.
+added only when task-scoped peer relationships need a dedicated graph view.
 
 ## Rejected Options
 

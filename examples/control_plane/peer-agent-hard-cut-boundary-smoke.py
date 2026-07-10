@@ -15,10 +15,13 @@ SCAN_ROOTS = (
     REPO_ROOT / "examples" / "fixtures",
 )
 SCAN_FILES = (
+    REPO_ROOT / "README.md",
+    REPO_ROOT / "README.zh-CN.md",
     REPO_ROOT / "CONTRIBUTOR_TASKS.md",
     REPO_ROOT / "examples" / "status.example.json",
     REPO_ROOT / "examples" / "registry.example.json",
-    REPO_ROOT / "examples" / "controller-subagents.registry.example.json",
+    REPO_ROOT / "examples" / "peer-agent-task-orchestration.registry.example.json",
+    REPO_ROOT / "examples" / "complex-project-readonly-map.example.json",
 )
 ALLOWED_LEGACY_PATHS = {
     REPO_ROOT / "loopx" / "configure_goal.py",
@@ -28,7 +31,9 @@ ALLOWED_LEGACY_PATHS = {
 }
 LEGACY_PATTERN = re.compile(
     r"primary_agent|side_agent|handoff_agent|agent_profile_v0|primary_checkout|"
-    r"\bprimary agent\b|\bside agent\b|\bside-agent\b",
+    r"\bprimary agent\b|\bside agent\b|\bside-agent\b|\bmain controller\b|"
+    r"controller/sub-agent|controller-subagent|controller owns|"
+    r'"role"\s*:\s*"(?:controller|subagent)"',
     re.IGNORECASE,
 )
 

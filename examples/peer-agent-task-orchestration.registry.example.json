@@ -1,0 +1,61 @@
+{
+  "schema_version": "0.1",
+  "updated_at": "2026-07-10",
+  "common_runtime_root": "./runtime",
+  "goals": [
+    {
+      "id": "example-peer-task-goal",
+      "domain": "complex-project-control-plane",
+      "status": "active",
+      "repo": "/path/to/project",
+      "state_file": ".codex/goals/example-peer-task-goal/ACTIVE_GOAL_STATE.md",
+      "authority_sources": [
+        {
+          "kind": "goal_doc",
+          "path": "docs/GOAL.md",
+          "role": "canonical_goal_document"
+        }
+      ],
+      "adapter": {
+        "kind": "project_pre_tick_v0",
+        "status": "connected"
+      },
+      "spawn_policy": {
+        "mode": "multi_subagent",
+        "allowed": true,
+        "max_children": 2,
+        "allowed_domains": [
+          "docs-map",
+          "validation-map",
+          "implementation-slice"
+        ]
+      },
+      "coordination": {
+        "agent_model": "peer_v1",
+        "registered_agents": [
+          "codex-alpha",
+          "codex-beta",
+          "codex-gamma"
+        ],
+        "write_scope": [
+          "docs/**",
+          "examples/**",
+          "src/adapters/**"
+        ],
+        "claim_ttl_minutes": 30,
+        "requires_parent_approval": [
+          "publish",
+          "production-action"
+        ]
+      },
+      "next_probe": "python3 scripts/project-pre-tick.py --format json --save-run",
+      "guards": [
+        "registered agents are equal peers",
+        "open task participants determine the temporary coordinator",
+        "repository-writing peers use independent worktrees",
+        "review_handoff requires a different peer or an unclaimed successor",
+        "task coordination cannot widen write or production authority"
+      ]
+    }
+  ]
+}

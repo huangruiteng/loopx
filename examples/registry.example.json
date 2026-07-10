@@ -7,15 +7,13 @@
       "id": "example-project-goal",
       "domain": "knowledge-work-control-plane",
       "status": "active",
-      "role": "controller",
-      "parent_goal_id": null,
       "repo": "/path/to/project",
       "state_file": ".codex/goals/example-project-goal/ACTIVE_GOAL_STATE.md",
       "authority_sources": [
         {
           "kind": "goal_doc",
           "path": "docs/GOAL.md",
-          "role": "primary_goal_document"
+          "role": "canonical_goal_document"
         }
       ],
       "authority_registry": {

@@ -17,6 +17,12 @@ TODO_CAPABILITY_PATTERN = re.compile(r"^[a-z][a-z0-9_:-]{0,63}$")
 TODO_DECISION_SCOPE_KEY_PATTERN = re.compile(r"^(?:\*|[a-z0-9][a-z0-9_.:@*/-]{0,95})$")
 TODO_RESUME_KIND_TODO_DONE = "todo_done"
 TODO_RESUME_KIND_PR_MERGED = "pr_merged"
+TODO_RESUME_KIND_CAPACITY_AVAILABLE = "capacity_available"
+TODO_RESUME_KIND_VALUES = {
+    TODO_RESUME_KIND_TODO_DONE,
+    TODO_RESUME_KIND_PR_MERGED,
+    TODO_RESUME_KIND_CAPACITY_AVAILABLE,
+}
 TODO_RESUME_WHEN_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,31}(?::[a-z0-9_.:@-]{1,96})?$")
 TODO_RESUME_PR_MERGED_PATTERN = re.compile(
     r"^pr_merged:(?:(?:[a-z0-9_.-]{1,80})/(?:[a-z0-9_.-]{1,100}))?#[1-9][0-9]{0,8}$"
@@ -259,6 +265,33 @@ def normalize_todo_resume_when(value: Any) -> str | None:
     if candidate and TODO_RESUME_WHEN_PATTERN.match(candidate):
         return candidate
     return None
+
+
+def normalize_supported_todo_resume_when(value: Any) -> str | None:
+    """Normalize resume conditions that LoopX can safely evaluate."""
+    candidate = normalize_todo_resume_when(value)
+    if not candidate:
+        return None
+    kind, separator, target = candidate.partition(":")
+    if kind == TODO_RESUME_KIND_TODO_DONE:
+        return candidate if separator and normalize_todo_id(target) else None
+    if kind == TODO_RESUME_KIND_PR_MERGED:
+        return candidate if TODO_RESUME_PR_MERGED_PATTERN.match(candidate) else None
+    if kind == TODO_RESUME_KIND_CAPACITY_AVAILABLE:
+        return candidate if separator and TODO_CAPABILITY_PATTERN.match(target) else None
+    return None
+
+
+def require_supported_todo_resume_when(value: Any) -> str | None:
+    if value is None or not str(value).strip():
+        return None
+    normalized = normalize_supported_todo_resume_when(value)
+    if normalized:
+        return normalized
+    raise ValueError(
+        "resume_when must use a supported condition: todo_done:<todo_id>, "
+        "pr_merged:[owner/repo]#<number>, or capacity_available:<capability>"
+    )
 
 
 def normalize_todo_no_followup(value: Any) -> bool | None:

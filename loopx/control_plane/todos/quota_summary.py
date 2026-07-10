@@ -17,6 +17,7 @@ from .contract import (
 from .deferred_resume import (
     build_todo_deferred_visibility_lanes,
     build_todo_resume_blocked_visibility_lanes,
+    resolve_capacity_resume_summary,
 )
 from .handoff_gate import build_todo_handoff_gate_lanes
 from .projection import (
@@ -599,7 +600,16 @@ def select_quota_todo_summary(
     *,
     agent_identity: dict[str, Any] | None = None,
     filter_user_gate_blocks_agent: bool = False,
+    available_capabilities: Any = None,
 ) -> dict[str, Any] | None:
+    canonical_value = resolve_capacity_resume_summary(
+        canonical_value,
+        available_capabilities=available_capabilities,
+    )
+    project_asset_value = resolve_capacity_resume_summary(
+        project_asset_value,
+        available_capabilities=available_capabilities,
+    )
     canonical_summary = summarize_user_todos_for_quota(
         canonical_value,
         agent_identity=agent_identity,

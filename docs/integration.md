@@ -347,7 +347,7 @@ registry and state contract so the first adapter can be added deliberately.
 
 For a large project, prefer a read-only adapter map before any writes. The map
 should identify authority sources, work clusters, validation surfaces, proposed
-sub-agent scopes, boundary findings, and a short controller handoff packet. See
+peer task scopes, boundary findings, and a short claim/decision packet. See
 [complex-project-readonly-adapter.md](complex-project-readonly-adapter.md).
 
 ## Controller / Sub-Agent Coordination
@@ -684,7 +684,7 @@ Put generic code here:
 - contract checker,
 - generic schema and docs,
 - sanitized adapter examples,
-- controller/sub-agent lifecycle examples.
+- peer task and ephemeral worker lifecycle examples.
 
 Keep in the project repo:
 

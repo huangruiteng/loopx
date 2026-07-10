@@ -1,8 +1,8 @@
 {
-  "goal_id": "complex-project-main-control",
+  "goal_id": "complex-project-peer-goal",
   "generated_at": "2026-06-01T02:30:00+08:00",
   "classification": "read_only_map_ready",
-  "recommended_action": "ask the project controller to opt in before mutations",
+  "recommended_action": "ask the operator to opt in before mutations",
   "authority_sources": [
     {
       "id": "todo",
@@ -44,21 +44,21 @@
   "work_clusters": [
     {
       "id": "docs-map",
-      "status": "needs-controller-review",
+      "status": "needs-peer-claim",
       "safe_next_probe": "inspect docs/TODO.md and document registry",
       "can_parallelize": true,
       "validation_surface": "markdown structure, link checks, registry consistency"
     },
     {
       "id": "validation-map",
-      "status": "needs-controller-review",
+      "status": "needs-peer-claim",
       "safe_next_probe": "list available tests, scripts, CI checks, and run reports",
       "can_parallelize": true,
       "validation_surface": "command availability and coverage gaps"
     },
     {
       "id": "boundary-map",
-      "status": "needs-controller-review",
+      "status": "needs-peer-claim",
       "safe_next_probe": "scan public docs, examples, and scripts for private material",
       "can_parallelize": true,
       "validation_surface": "public/private boundary check"
@@ -86,10 +86,10 @@
       "proof": "README quickstart, examples, and sensitive-pattern scan"
     }
   ],
-  "subagent_scopes": [
+  "peer_task_scopes": [
     {
       "id": "docs-map",
-      "role": "explorer",
+      "profile": "explorer",
       "work_scope": [
         "docs/**",
         "README.md"
@@ -99,7 +99,7 @@
     },
     {
       "id": "validation-map",
-      "role": "validator",
+      "profile": "validator",
       "work_scope": [
         "tests/**",
         "scripts/**",
@@ -110,7 +110,7 @@
     },
     {
       "id": "boundary-map",
-      "role": "explorer",
+      "profile": "explorer",
       "work_scope": [
         "docs/**",
         "examples/**",
@@ -127,13 +127,13 @@
     }
   ],
   "handoff_packet": {
-    "audience": "project-main-controller",
-    "summary": "Read-only map is ready; controller should choose whether to spawn child probes.",
+    "audience": "eligible-peer-or-operator",
+    "summary": "Read-only map is ready; an eligible peer may claim a bounded probe after operator gates clear.",
     "hard_guards": [
-      "no mutations before controller opt-in",
-      "sub-agents default read-only",
-      "overlapping write scopes require parent arbitration",
-      "final state writeback belongs to the controller"
+      "no mutations before operator opt-in",
+      "unclaimed probes default read-only",
+      "overlapping write scopes require an explicit task boundary",
+      "accepted task evidence is written by one temporary coordinator"
     ],
     "residual_risk": "validation commands and active branches are project-specific and must be confirmed locally"
   }

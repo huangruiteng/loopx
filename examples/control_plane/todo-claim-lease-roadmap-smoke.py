@@ -12,7 +12,9 @@ ARCHITECTURE = REPO_ROOT / "docs" / "architecture.md"
 ROADMAP = REPO_ROOT / "docs" / "frontstage-channel-lease-roadmap.md"
 TODO_CONTRACT = REPO_ROOT / "docs" / "project-agent-todo-contract.md"
 REGISTRY_EXAMPLE = REPO_ROOT / "examples" / "registry.example.json"
-PEER_AGENTS_EXAMPLE = REPO_ROOT / "examples" / "controller-subagents.registry.example.json"
+PEER_AGENTS_EXAMPLE = (
+    REPO_ROOT / "examples" / "peer-agent-task-orchestration.registry.example.json"
+)
 
 
 def require(text: str, snippets: list[str], *, source: Path) -> None:

@@ -11,8 +11,8 @@ The adapter's job is to answer:
 - Which files or systems are authoritative?
 - Which work clusters are active?
 - Which validation surfaces prove progress?
-- Which sub-agent scopes are safe to run in parallel?
-- What should be handed to the project main controller?
+- Which peer task scopes are safe to run in parallel?
+- Which open peer should claim or coordinate the next task bundle?
 
 ## Read-Only Map Shape
 
@@ -22,18 +22,18 @@ A read-only adapter map should contain:
 {
   "goal_id": "complex-project-main-control",
   "classification": "read_only_map_ready",
-  "recommended_action": "ask the project controller to opt in before mutations",
+  "recommended_action": "ask the operator to opt in before mutations",
   "authority_sources": [],
   "work_clusters": [],
   "validation_surfaces": [],
-  "subagent_scopes": [],
+  "peer_task_scopes": [],
   "boundary_findings": [],
   "handoff_packet": {}
 }
 ```
 
-The map is evidence, not a command. The project controller still decides what
-to do next.
+The map is evidence, not a command. Claims, gates, and operator decisions still
+decide what happens next.
 
 ## Authority Sources
 
@@ -158,12 +158,12 @@ The controller may accept, edit, or reject these scopes before spawning agents.
 
 ## Handoff Packet
 
-The final output to the project controller should be short:
+The final output to an eligible peer or operator should be short:
 
 - current classification,
 - one recommended action,
 - active work clusters,
-- proposed sub-agent scopes,
+- proposed peer task scopes,
 - validation surfaces,
 - hard guards,
 - files inspected,
@@ -178,7 +178,7 @@ Use staged adapter status:
 
 1. `planned`: goal exists in registry, no run yet.
 2. `read-only-map-ready`: adapter can produce a current map.
-3. `connected-read-only`: project controller has opted in to read-only runs.
+3. `connected-read-only`: the operator has opted in to read-only runs.
 4. `selective-assist`: controller may ask LoopX for bounded edits with
    explicit write scopes.
 

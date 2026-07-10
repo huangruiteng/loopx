@@ -16,7 +16,9 @@ from .history import load_registry
 from .paths import DEFAULT_RUNTIME_ROOT, global_registry_path, resolve_runtime_root
 from .registry import registry_goals, resolve_state_file
 from .control_plane.agents.runtime_model import (
+    completed_peer_agent_runtime_migration,
     legacy_agent_hierarchy_present,
+    peer_agent_runtime_migration_completed,
     peer_agent_runtime_migration_id,
 )
 
@@ -332,6 +334,14 @@ def peer_runtime_upgrade_migration(
     installed: dict[str, dict[str, Any]],
     generated_prompts: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
+    if peer_agent_runtime_migration_completed(goal):
+        completed = completed_peer_agent_runtime_migration(goal) or {}
+        return {
+            "schema_version": "peer_runtime_automation_migration_v1",
+            "required": False,
+            "status": "completed",
+            "migration_id": completed.get("migration_id"),
+        }
     if not legacy_agent_hierarchy_present(goal):
         return {
             "schema_version": "peer_runtime_automation_migration_v1",

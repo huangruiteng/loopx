@@ -8,6 +8,7 @@ from .runtime_model import (
     PEER_AGENT_IDENTITY_SCHEMA_VERSION,
     agent_runtime_model_for_goal,
     legacy_agent_hierarchy_present,
+    peer_agent_runtime_migration_completed,
     peer_agent_runtime_migration_id,
 )
 
@@ -55,6 +56,8 @@ def build_identity_aware_prompt_upgrade(
 ) -> dict[str, Any] | None:
     registered_agents = quota_registered_agents(goal)
     if not registered_agents:
+        return None
+    if peer_agent_runtime_migration_completed(goal):
         return None
     migration_required = legacy_agent_hierarchy_present(goal)
     if agent_identity and not migration_required:

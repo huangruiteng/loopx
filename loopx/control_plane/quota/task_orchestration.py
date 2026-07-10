@@ -216,6 +216,9 @@ def _task_orchestration_contract(
     for item in source_items:
         if not isinstance(item, dict):
             continue
+        status = str(item.get("status") or "").strip().lower()
+        if item.get("done") is True or status not in {"", "open"}:
+            continue
         if str(item.get("task_class") or "") != "advancement_task":
             continue
         peer_agent = normalize_todo_claimed_by(item.get("claimed_by"))
@@ -238,18 +241,22 @@ def _task_orchestration_contract(
         seen_agents.add(peer_agent)
     if not candidate_lanes:
         return None
+    candidate_agents = [lane["agent_id"] for lane in candidate_lanes]
     assignment_key = peer_work_key(
         {
             "mode": "task_scoped_peer",
-            "lanes": [
-                {"agent_id": lane["agent_id"], "todo_id": lane["todo_id"]}
-                for lane in candidate_lanes
-            ],
+            "lanes": sorted(
+                [
+                    {"agent_id": lane["agent_id"], "todo_id": lane["todo_id"]}
+                    for lane in candidate_lanes
+                ],
+                key=lambda lane: (lane["agent_id"], lane["todo_id"] or ""),
+            ),
         },
         fallback="task_orchestration",
     )
     coordinator = select_peer_for_work(
-        agent_identity.get("registered_agents") or [],
+        candidate_agents,
         work_key=assignment_key,
     )
     if not coordinator or agent_id != coordinator:
