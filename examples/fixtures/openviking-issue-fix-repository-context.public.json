@@ -1,0 +1,80 @@
+{
+  "schema_version": "issue_fix_repository_context_input_v0",
+  "repository_revision": "cbdab573539d64621b51da0090330e2552acd0a7",
+  "sources": [
+    {
+      "source_id": "openviking-contributing",
+      "source_kind": "repository_policy",
+      "reference": "CONTRIBUTING.md",
+      "trust": "authoritative",
+      "freshness": "current",
+      "supports": [
+        "change_scope",
+        "ownership"
+      ],
+      "summary": "Repository-owned contribution and maintainer routing rules."
+    },
+    {
+      "source_id": "openviking-pr-agent-rules",
+      "source_kind": "repository_policy",
+      "reference": ".pr_agent.toml",
+      "trust": "authoritative",
+      "freshness": "current",
+      "supports": [
+        "change_scope",
+        "validation"
+      ],
+      "summary": "Repository-owned review invariants and risk rules."
+    },
+    {
+      "source_id": "openviking-vikingbot-readme",
+      "source_kind": "architecture_doc",
+      "reference": "bot/README.md",
+      "trust": "verified",
+      "freshness": "current",
+      "supports": [
+        "architecture",
+        "reproduction",
+        "validation"
+      ],
+      "summary": "VikingBot setup, tools, memory behavior, and test entry points."
+    },
+    {
+      "source_id": "openviking-vikingbot-context",
+      "source_kind": "source_code",
+      "reference": "bot/vikingbot/agent/context.py",
+      "trust": "verified",
+      "freshness": "current",
+      "supports": [
+        "architecture",
+        "change_scope"
+      ],
+      "summary": "Current context assembly for bootstrap files, skills, and retrieved memory."
+    },
+    {
+      "source_id": "openviking-memory-preview",
+      "source_kind": "memory_retrieval",
+      "reference": "openviking:repository-memory-preview",
+      "trust": "advisory",
+      "freshness": "unknown",
+      "supports": [
+        "architecture",
+        "change_scope"
+      ],
+      "summary": "Prior repository lessons require verification against the pinned revision."
+    },
+    {
+      "source_id": "openviking-vikingbot-expert",
+      "source_kind": "external_expert",
+      "reference": "vikingbot:openviking-development",
+      "trust": "advisory",
+      "freshness": "current",
+      "supports": [
+        "architecture",
+        "ownership"
+      ],
+      "consultation_state": "available",
+      "summary": "Optional repository expert consultation; answers require local verification."
+    }
+  ]
+}

@@ -7,6 +7,7 @@ from typing import Any
 
 from ...control_plane.runtime.public_safety import public_safe_compact_text
 from .metadata_preview import normalise_github_issue_reference
+from .repository_context import build_issue_fix_repository_context_packet
 
 
 ISSUE_FIX_FEASIBILITY_PACKET_SCHEMA_VERSION = "issue_fix_feasibility_v0"
@@ -134,6 +135,32 @@ def _project_transition(
     }
 
 
+def _repository_context_effect(context: Mapping[str, Any]) -> dict[str, Any]:
+    coverage = context.get("coverage") if isinstance(context.get("coverage"), Mapping) else {}
+
+    def refs_for(aspect: str) -> list[str]:
+        row = coverage.get(aspect)
+        return list(row.get("source_refs") or []) if isinstance(row, Mapping) else []
+
+    return {
+        "schema_version": "issue_fix_repository_context_effect_v0",
+        "context_status": context.get("context_status"),
+        "context_fingerprint": context.get("context_fingerprint"),
+        "route_confidence": context.get("context_status"),
+        "change_scope_evidence_refs": refs_for("change_scope"),
+        "reproduction_evidence_refs": refs_for("reproduction"),
+        "validation_evidence_refs": refs_for("validation"),
+        "unresolved_required_aspects": list(
+            context.get("unresolved_required_aspects") or []
+        ),
+        "expert_next_action": (
+            context.get("expert_consultation") or {}
+        ).get("next_action"),
+        "route_overridden": False,
+        "external_write_authorized": False,
+    }
+
+
 def build_issue_fix_feasibility_packet(
     *,
     repo: str = "public_repo_fixture",
@@ -144,6 +171,7 @@ def build_issue_fix_feasibility_packet(
     reproduction_label: str | None = None,
     validation_label: str | None = None,
     comment_value: str = "none",
+    repository_context_input: Mapping[str, Any] | None = None,
     generated_at: str | None = "2026-06-23T00:00:00Z",
 ) -> dict[str, Any]:
     """Select one issue-fix route from compact, public-safe agent observations."""
@@ -159,6 +187,12 @@ def build_issue_fix_feasibility_packet(
         repo=repo,
         issue_ref=issue_ref,
         url=url,
+    )
+    repository_context = build_issue_fix_repository_context_packet(
+        repo=str(reference["repo"]),
+        issue_ref=str(reference["issue_ref"]),
+        context_input=repository_context_input,
+        generated_at=generated_at,
     )
     safe_reproduction_label = _safe_label(
         reproduction_label,
@@ -177,6 +211,9 @@ def build_issue_fix_feasibility_packet(
         validation_label=safe_validation_label,
         comment_value=comment_value,
     )
+    reason_codes.append(
+        f"repository_context_{repository_context['context_status']}"
+    )
     observation = {
         "schema_version": ISSUE_FIX_FEASIBILITY_OBSERVATION_SCHEMA_VERSION,
         "repo": reference["repo"],
@@ -189,6 +226,7 @@ def build_issue_fix_feasibility_packet(
         "scope_class": scope_class,
         "validation_label": safe_validation_label,
         "comment_value": comment_value,
+        "repository_context": repository_context,
         "issue_body_captured": False,
         "comment_bodies_captured": False,
         "raw_logs_captured": False,
@@ -220,6 +258,7 @@ def build_issue_fix_feasibility_packet(
             "reason_codes": reason_codes,
             "observation_fingerprint": fingerprint,
         },
+        "repository_context_effect": _repository_context_effect(repository_context),
         "transition": transition,
         "domain_state_projection": {
             "schema_version": "issue_fix_feasibility_domain_state_projection_v0",
@@ -282,6 +321,25 @@ def validate_issue_fix_feasibility_packet(packet: Mapping[str, Any]) -> dict[str
         transition = {}
     if transition.get("route") != route:
         errors.append("transition route must match the selected route")
+    repository_context = observation.get("repository_context")
+    context_effect = packet.get("repository_context_effect")
+    if repository_context is not None or context_effect is not None:
+        if not isinstance(repository_context, Mapping):
+            errors.append("observation repository_context must be an object when present")
+            repository_context = {}
+        if repository_context.get("ok") is not True:
+            errors.append("observation repository_context must be valid")
+        if not isinstance(context_effect, Mapping):
+            errors.append("repository_context_effect must be an object when present")
+            context_effect = {}
+        if context_effect.get("context_fingerprint") != repository_context.get(
+            "context_fingerprint"
+        ):
+            errors.append("repository context effect fingerprint must match observation")
+        if context_effect.get("route_overridden") is not False:
+            errors.append("repository context must not silently override feasibility route")
+        if context_effect.get("external_write_authorized") is not False:
+            errors.append("repository context must not authorize external writes")
     if route == "fix_pr":
         if observation.get("scope_class") != "bounded":
             errors.append("fix_pr requires bounded scope")
@@ -317,8 +375,11 @@ def render_issue_fix_feasibility_markdown(payload: dict[str, Any]) -> str:
             f"- reproduction_status: `{observation.get('reproduction_status')}`",
             f"- scope_class: `{observation.get('scope_class')}`",
             f"- route: `{decision.get('route')}`",
+            f"- repository_context_status: "
+            f"`{(payload.get('repository_context_effect') or {}).get('context_status')}`",
             f"- transition: `{transition.get('decision')}`",
             f"- external_writes_performed: `{payload.get('external_writes_performed')}`",
-            f"- domain_state_write_performed: `{(payload.get('domain_state_projection') or {}).get('write_performed')}`",
+            f"- domain_state_write_performed: "
+            f"`{(payload.get('domain_state_projection') or {}).get('write_performed')}`",
         ]
     )

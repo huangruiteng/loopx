@@ -91,12 +91,15 @@ def main() -> int:
     assert "loopx issue-fix pr-lifecycle" in readme
     assert "selects exactly one" in readme
     assert "## Feasibility Decision" in readme
+    assert "## Repository Context" in readme
+    assert "openviking-pilot-handoff.md" in readme
     assert "## PR Lifecycle Monitor" in readme
     assert "runnable_successor" in readme
     assert "examples/issue-fix-pr-lifecycle-smoke.py" in readme
     assert "explicit gates" in readme
     assert "## Issue-Fix Domain Route" in loopx_goal_command
     assert "loopx issue-fix workflow-plan" in loopx_goal_command
+    assert "--repository-context-json <compact-context.json>" in loopx_goal_command
     assert "before writing todos" in loopx_goal_command
     assert "priority and planner order" in loopx_goal_command
     assert "gates must cover private repro material" in loopx_goal_command
@@ -121,6 +124,9 @@ def main() -> int:
         CONTENT_OPS_ISSUE_FIX_INTAKE_PACKET_SCHEMA_VERSION,
         ISSUE_FIX_INTAKE_SCHEMA_VERSION,
         "issue_fix_workflow_plan_packet_v0",
+        "issue_fix_repository_context_input_v0",
+        "issue_fix_repository_context_v0",
+        "issue_fix_repository_context_effect_v0",
         "issue_fix_feasibility_v0",
         "issue_fix_feasibility_observation_v0",
         "issue_fix_feasibility_decision_v0",

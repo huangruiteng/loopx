@@ -144,12 +144,14 @@ def test_goal_text_invocation_plans_ranked_todos_before_activation() -> None:
         assert "issue-fix workflow-plan" in issue_fix_template
         assert "--url <github-issue-or-pr-url>" in issue_fix_template
         assert "--repo-path <approved-repo>" in issue_fix_template
+        assert "--repository-context-json <compact-context.json>" in issue_fix_template
         assert "--validation-label '<validation command>'" in issue_fix_template
         assert "issue_fix_feasibility_template" in commands
         feasibility_template = str(commands["issue_fix_feasibility_template"])
         assert "issue-fix feasibility" in feasibility_template
         assert "--reproduction-status" in feasibility_template
         assert "--scope-class" in feasibility_template
+        assert "--repository-context-json <compact-context.json>" in feasibility_template
         assert "--goal-id" in feasibility_template
         assert "issue_fix_pr_lifecycle_template" in commands
         pr_lifecycle_template = str(commands["issue_fix_pr_lifecycle_template"])

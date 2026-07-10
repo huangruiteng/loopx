@@ -100,21 +100,26 @@ before writing todos:
 loopx issue-fix workflow-plan \
   --url <github-issue-or-pr-url> \
   --repo-path <approved-repo> \
+  --repository-context-json <compact-context.json> \
   --validation-label "<validation command>" \
   --format json
 ```
 
-The preview maps public metadata, intake classification, branch planning,
-validation labels, the feasibility checkpoint, and PR review readiness blockers
-into `/loopx <goal text>`. Initially write only metadata classification and the
-feasibility checkpoint in priority and planner order. Then record a compact
-observation and let LoopX select exactly one route:
+The preview maps public metadata, repository context, intake classification,
+branch planning, validation labels, the feasibility checkpoint, and PR review
+readiness blockers into `/loopx <goal text>`. Repository context pins compact
+policy, architecture, change-scope, reproduction, and validation refs to a
+revision; memory and external experts stay advisory until repository-verified.
+Initially write only metadata classification and the feasibility checkpoint in
+priority and planner order. Then record a compact observation and let LoopX
+select exactly one route:
 
 ```bash
 loopx issue-fix feasibility \
   --url <github-issue-url> \
   --reproduction-status <confirmed|planned|missing|blocked> \
   --scope-class <bounded|uncertain|oversized> \
+  --repository-context-json <compact-context.json> \
   --goal-id <goal-id> \
   --format json
 ```

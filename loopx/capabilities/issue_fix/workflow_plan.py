@@ -5,6 +5,7 @@ from typing import Any
 
 from .acceptance_loop import build_issue_fix_caller_repo_branch_packet
 from .intake_surface import build_content_ops_issue_fix_metadata_preview_packet
+from .repository_context import build_issue_fix_repository_context_packet
 
 
 ISSUE_FIX_WORKFLOW_PLAN_PACKET_SCHEMA_VERSION = "issue_fix_workflow_plan_packet_v0"
@@ -131,6 +132,7 @@ def _feasibility_checkpoint_plan() -> dict[str, Any]:
             "loopx issue-fix feasibility --url <github-issue-url> "
             "--reproduction-status <confirmed|planned|missing|blocked> "
             "--scope-class <bounded|uncertain|oversized> "
+            "--repository-context-json <compact-context.json> "
             "--goal-id <goal-id> --format json"
         ),
         "input_contract": "compact_public_safe_agent_observation",
@@ -142,6 +144,7 @@ def _feasibility_checkpoint_plan() -> dict[str, Any]:
             "named_validation_surface",
         ],
         "writes_domain_state_by_default_with_goal_id": True,
+        "persists_repository_context_with_feasibility": True,
         "writes_loopx_todo": False,
         "raw_issue_or_log_material_captured": False,
     }
@@ -212,6 +215,7 @@ def build_issue_fix_workflow_plan_packet(
     base_branch: str = "main",
     issue_branch: str | None = None,
     validation_label: str = "caller-declared validation",
+    repository_context_input: Mapping[str, Any] | None = None,
     generated_at: str | None = "2026-06-23T00:00:00Z",
 ) -> dict[str, Any]:
     """Build a public-safe issue-fix workflow plan without writing state."""
@@ -242,6 +246,15 @@ def build_issue_fix_workflow_plan_packet(
 
     repo_label = str(metadata["repo"])
     issue_label = str(metadata["issue_ref"])
+    repository_context = build_issue_fix_repository_context_packet(
+        repo=repo_label,
+        issue_ref=issue_label,
+        context_input=repository_context_input,
+        generated_at=generated_at,
+    )
+    unresolved_context = list(
+        repository_context.get("unresolved_required_aspects") or []
+    )
     resolution_routes = _resolution_route_candidates(
         repo_label=repo_label,
         issue_label=issue_label,
@@ -257,11 +270,14 @@ def build_issue_fix_workflow_plan_packet(
             action_kind="issue_fix_public_metadata_classification",
             text=(
                 f"[P0] Classify {repo_label} {issue_label} from body-free public "
-                "metadata and pick the first safe repro/code-context route."
+                "metadata and compact repository context; ground any missing "
+                "change-scope, reproduction, or validation evidence, or preserve it "
+                "as unresolved before routing."
             ),
             depends_on=[
                 "content_ops_issue_fix_metadata_preview_packet_v0",
                 "issue_fix_intake_v0",
+                "issue_fix_repository_context_v0",
             ],
         ),
         _todo_preview(
@@ -338,9 +354,17 @@ def build_issue_fix_workflow_plan_packet(
         "top_agent_todo": agent_todos[0],
         "top_gate": user_gates[0] if gated_fields else None,
         "next_safe_action": (
-            "write the metadata classification and feasibility checkpoint only; "
-            "then let the feasibility decision project one route-specific "
-            "successor or no-follow-up"
+            (
+                "inspect current repository evidence for "
+                f"{', '.join(unresolved_context)}; ground what is available and "
+                "preserve the rest as unresolved in feasibility instead of guessing"
+            )
+            if unresolved_context
+            else (
+                "use the grounded repository context in the metadata classification "
+                "and feasibility checkpoint; then let feasibility project one "
+                "route-specific successor or no-follow-up"
+            )
         ),
     }
     packet: dict[str, Any] = {
@@ -359,6 +383,7 @@ def build_issue_fix_workflow_plan_packet(
             "body_captured": False,
             "comment_bodies_captured": False,
         },
+        "repository_context": repository_context,
         "first_screen": first_screen,
         "branch_plan": branch_plan,
         "resolution_route_candidates": resolution_routes,
@@ -426,6 +451,21 @@ def validate_issue_fix_workflow_plan_packet(packet: Mapping[str, Any]) -> dict[s
     if branch_plan.get("private_repo_state_read") is not False:
         errors.append("branch_plan private_repo_state_read must be false")
 
+    repository_context = packet.get("repository_context")
+    if repository_context is not None:
+        if not isinstance(repository_context, Mapping):
+            errors.append("repository_context must be an object when present")
+            repository_context = {}
+        if repository_context.get("ok") is not True:
+            errors.append("repository_context must be valid")
+        if repository_context.get("external_writes_performed") is not False:
+            errors.append("repository_context must not perform external writes")
+        truth_contract = repository_context.get("truth_contract")
+        if not isinstance(truth_contract, Mapping) or truth_contract.get(
+            "context_cannot_authorize_external_writes"
+        ) is not True:
+            errors.append("repository_context must deny external-write authority")
+
     routes = packet.get("resolution_route_candidates")
     if not isinstance(routes, Sequence) or isinstance(routes, (str, bytes)):
         errors.append("resolution_route_candidates must be a list")
@@ -457,6 +497,11 @@ def validate_issue_fix_workflow_plan_packet(packet: Mapping[str, Any]) -> dict[s
         errors.append("feasibility checkpoint must select exactly one route")
     if feasibility.get("writes_domain_state_by_default_with_goal_id") is not True:
         errors.append("feasibility checkpoint must default-write domain state")
+    if (
+        packet.get("repository_context") is not None
+        and feasibility.get("persists_repository_context_with_feasibility") is not True
+    ):
+        errors.append("feasibility checkpoint must persist repository context")
     if feasibility.get("writes_loopx_todo") is not False:
         errors.append("feasibility checkpoint must not directly write LoopX todos")
     if feasibility.get("raw_issue_or_log_material_captured") is not False:
@@ -570,6 +615,22 @@ def render_issue_fix_workflow_plan_markdown(payload: dict[str, Any]) -> str:
                 f"- kind: `{issue_signal.get('kind')}`",
                 f"- state: `{issue_signal.get('state')}`",
                 f"- labels: `{issue_signal.get('labels')}`",
+            ]
+        )
+    repository_context = payload.get("repository_context")
+    if isinstance(repository_context, Mapping):
+        lines.extend(
+            [
+                "",
+                "## Repository Context",
+                "",
+                f"- status: `{repository_context.get('context_status')}`",
+                f"- repository_revision: `{repository_context.get('repository_revision')}`",
+                f"- context_fingerprint: `{repository_context.get('context_fingerprint')}`",
+                f"- unresolved_required_aspects: "
+                f"`{repository_context.get('unresolved_required_aspects')}`",
+                f"- expert_next_action: "
+                f"`{(repository_context.get('expert_consultation') or {}).get('next_action')}`",
             ]
         )
     branch = payload.get("branch_plan")

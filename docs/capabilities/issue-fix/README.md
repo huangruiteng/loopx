@@ -14,13 +14,14 @@ external comments, PRs, merges, or publishes.
 | CLI entry | `loopx issue-fix ...` |
 | Content-ops bridge | `loopx content-ops issue-fix-* ...` |
 | Protocol docs | `docs/capabilities/issue-fix/protocols/` |
-| Smoke | `examples/issue-fix-workflow-plan-smoke.py`, `examples/issue-fix-feasibility-smoke.py`, `examples/issue-fix-pr-lifecycle-smoke.py`, `examples/issue-fix-acceptance-loop-smoke.py` |
+| Smoke | `examples/issue-fix-workflow-plan-smoke.py`, `examples/issue-fix-repository-context-smoke.py`, `examples/issue-fix-feasibility-smoke.py`, `examples/issue-fix-pr-lifecycle-smoke.py`, `examples/issue-fix-acceptance-loop-smoke.py` |
 
 ## Protocols
 
 - [`issue_fix_workflow_contract_v0`](protocols/issue-fix-workflow-contract-v0.md)
 - [`issue_fix_acceptance_loop_v0`](protocols/issue-fix-acceptance-loop-v0.md)
 - `issue_fix_workflow_plan_packet_v0`
+- `issue_fix_repository_context_v0`
 - `issue_fix_feasibility_v0`
 - `issue_fix_pr_lifecycle_monitor_v0`
 - `github_issue_metadata_preview_v0`
@@ -67,6 +68,7 @@ workflow planner before todo writeback:
 loopx issue-fix workflow-plan \
   --url https://github.com/owner/repo/issues/123 \
   --repo-path <approved-repo> \
+  --repository-context-json repository-context.json \
   --validation-label "<validation command>" \
   --format json
 ```
@@ -91,6 +93,28 @@ writeback previews, and PR review readiness blockers into one packet. It does
 not write LoopX todos, inspect the local repo in dry-run mode, create external
 comments or PRs, merge, or capture raw issue body/comment material.
 
+## Repository Context
+
+`--repository-context-json` accepts an
+`issue_fix_repository_context_input_v0` object with a pinned repository
+revision and up to 16 compact source records. Each record names only a source
+id, kind, public-safe reference, trust, freshness, supported decision aspects,
+and an optional compact summary. Raw source content, expert responses, logs,
+credentials, and local paths are rejected.
+
+The projection distinguishes `authoritative`, `verified`, and `advisory`
+evidence across architecture, ownership, change scope, reproduction, and
+validation. Only current repository evidence can ground a decision. External
+experts always remain advisory and cannot authorize comments, PRs, merges, or
+other external writes. The workflow plan uses missing coverage to name the
+next repository reads without adding another lifecycle state or todo chain.
+
+Memory systems such as OpenViking may supply compact `memory_retrieval` source
+refs. They do not become the source of truth: retrieved claims must be checked
+against the pinned repository revision. Knowledge bundles remain
+format-agnostic so an Open Knowledge Format bundle can be referenced without
+making the issue-fix state machine depend on that draft interchange format.
+
 ## Feasibility Decision
 
 ```bash
@@ -100,6 +124,7 @@ loopx issue-fix feasibility \
   --reproduction-label "focused repro plan" \
   --scope-class bounded \
   --validation-label "focused unit test" \
+  --repository-context-json repository-context.json \
   --goal-id example-goal \
   --format json
 ```
@@ -113,7 +138,12 @@ a planned repro first projects `issue_fix_confirm_reproduction`, not patch work.
 
 With `--goal-id` or `--ledger-path`, the decision is upserted by repo and issue
 reference into `.loopx/domain-state/<goal-id>/issue_fix/feasibility.jsonl`.
-Use `--no-write-domain-state` for preview-only checks.
+The same row keeps the compact repository-context fingerprint, source refs,
+coverage, expert policy, and memory policy so the next agent turn does not lose
+its evidence basis. Use `--no-write-domain-state` for preview-only checks.
+
+For a concrete public pilot and staged adoption plan, see
+[`OpenViking issue-fix pilot handoff`](openviking-pilot-handoff.md).
 
 ## PR Lifecycle Monitor
 
@@ -142,6 +172,7 @@ provider payloads, raw check logs, local paths, or credentials.
 
 ```bash
 python3 examples/issue-fix-workflow-plan-smoke.py
+python3 examples/issue-fix-repository-context-smoke.py
 python3 examples/issue-fix-feasibility-smoke.py
 python3 examples/issue-fix-pr-lifecycle-smoke.py
 python3 examples/issue-fix-workflow-contract-smoke.py

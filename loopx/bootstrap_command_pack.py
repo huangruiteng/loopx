@@ -307,11 +307,13 @@ def _goal_start_contract(*, goal_text: str | None, connected: bool, agent_type: 
                 "when": "goal text contains a public GitHub issue/PR URL or asks for an issue-fix workflow",
                 "preview_command": (
                     "loopx issue-fix workflow-plan --url <github-issue-or-pr-url> "
-                    "--repo-path <approved-repo> --validation-label '<validation command>' --format json"
+                    "--repo-path <approved-repo> --repository-context-json "
+                    "<compact-context.json> --validation-label '<validation command>' --format json"
                 ),
                 "decision_command": (
                     "loopx issue-fix feasibility --url <github-issue-url> "
                     "--reproduction-status <state> --scope-class <scope> "
+                    "--repository-context-json <compact-context.json> "
                     "--goal-id <goal-id> --format json"
                 ),
                 "post_pr_monitor_command": (
@@ -358,7 +360,7 @@ Planning rules:
 4. If several todos share the same priority, their listed order is their relative priority. Preserve that exact order when writing them.
 5. Prefer executable Agent Todo items with `task_class=advancement_task`; use User Todo only for concrete owner decisions or private-material gates.
 6. After writing todos, run `loopx refresh-state --goal-id {goal_id}`, activate the host loop if it is missing, unknown, or stale (Codex App automation, Codex CLI `/goal <task_body>`, Claude Code `/loop`, or a custom host-loop gate), then run `loopx quota should-run --goal-id {goal_id}` and begin the first allowed bounded segment.
-7. If the goal is a GitHub issue/PR fix, first preview `loopx issue-fix workflow-plan --url <github-issue-or-pr-url> --repo-path <approved-repo> --validation-label '<validation command>' --format json`; write only metadata classification plus the feasibility checkpoint. After a compact public-safe observation, run `loopx issue-fix feasibility --url <github-issue-url> --reproduction-status <state> --scope-class <scope> --goal-id {goal_id} --format json` and write only its selected route successor or no-follow-up. Keep private repro material, body/comment reads, external comments, PR creation, merge, publish, destructive git, and production actions as explicit gates. After a PR exists, the monitor should call `loopx issue-fix pr-lifecycle --url <github-pr-url> --goal-id {goal_id} --format json` so CI, review, merge, stale branch, and no-follow-up states drive LoopX todos instead of chat memory.
+7. If the goal is a GitHub issue/PR fix, first preview `loopx issue-fix workflow-plan --url <github-issue-or-pr-url> --repo-path <approved-repo> --repository-context-json <compact-context.json> --validation-label '<validation command>' --format json`; write only metadata classification plus the feasibility checkpoint. Repository context should pin current repo policy, architecture, change-scope, reproduction, and validation refs; memory and external experts remain advisory until verified against the pinned revision. After a compact public-safe observation, run `loopx issue-fix feasibility --url <github-issue-url> --reproduction-status <state> --scope-class <scope> --repository-context-json <compact-context.json> --goal-id {goal_id} --format json` and write only its selected route successor or no-follow-up. Keep private repro material, body/comment reads, external comments, PR creation, merge, publish, destructive git, and production actions as explicit gates. After a PR exists, the monitor should call `loopx issue-fix pr-lifecycle --url <github-pr-url> --goal-id {goal_id} --format json` so CI, review, merge, stale branch, and no-follow-up states drive LoopX todos instead of chat memory.
 """
 
 
@@ -556,6 +558,7 @@ def build_loopx_bootstrap_command_pack(
                 f"{shell_arg(cli_bin)} issue-fix workflow-plan "
                 "--url <github-issue-or-pr-url> "
                 "--repo-path <approved-repo> "
+                "--repository-context-json <compact-context.json> "
                 "--validation-label '<validation command>' "
                 "--format json"
             ),
@@ -564,6 +567,7 @@ def build_loopx_bootstrap_command_pack(
                 "--url <github-issue-url> "
                 "--reproduction-status <confirmed|planned|missing|blocked> "
                 "--scope-class <bounded|uncertain|oversized> "
+                "--repository-context-json <compact-context.json> "
                 f"--goal-id {shell_arg(resolved_goal_id)} "
                 "--format json"
             ),

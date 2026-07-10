@@ -132,6 +132,14 @@ def register_issue_fix_commands(
         help="Public-safe validation label stored in the workflow plan.",
     )
     workflow_parser.add_argument(
+        "--repository-context-json",
+        default=None,
+        help=(
+            "Optional issue_fix_repository_context_input_v0 JSON path, or '-' for "
+            "stdin. Only compact source refs, trust, freshness, and coverage are kept."
+        ),
+    )
+    workflow_parser.add_argument(
         "--generated-at",
         default="2026-06-23T00:00:00Z",
         help="Public-safe generated_at timestamp for the workflow plan.",
@@ -186,6 +194,14 @@ def register_issue_fix_commands(
         default="none",
         choices=("none", "clarification", "diagnosis"),
         help="Whether a maintainer-facing comment would add public value.",
+    )
+    feasibility_parser.add_argument(
+        "--repository-context-json",
+        default=None,
+        help=(
+            "Optional issue_fix_repository_context_input_v0 JSON path, or '-' for "
+            "stdin. The compact projection is persisted with feasibility domain state."
+        ),
     )
     feasibility_parser.add_argument(
         "--generated-at",
@@ -426,6 +442,8 @@ def handle_issue_fix_command(
         if args.issue_fix_command == "workflow-plan":
             if args.fetch_metadata and args.metadata_json:
                 raise ValueError("--fetch-metadata cannot be combined with --metadata-json")
+            if args.metadata_json == "-" and args.repository_context_json == "-":
+                raise ValueError("only one JSON input may read from stdin")
             payload = build_issue_fix_workflow_plan_packet(
                 repo=args.repo,
                 issue_ref=args.issue_ref,
@@ -439,6 +457,11 @@ def handle_issue_fix_command(
                 base_branch=args.base_branch,
                 issue_branch=args.issue_branch,
                 validation_label=args.validation_label,
+                repository_context_input=(
+                    _load_json_object(args.repository_context_json)
+                    if args.repository_context_json
+                    else None
+                ),
                 generated_at=args.generated_at,
             )
             renderer = render_issue_fix_workflow_plan_markdown
@@ -452,6 +475,11 @@ def handle_issue_fix_command(
                 reproduction_label=args.reproduction_label,
                 validation_label=args.validation_label,
                 comment_value=args.comment_value,
+                repository_context_input=(
+                    _load_json_object(args.repository_context_json)
+                    if args.repository_context_json
+                    else None
+                ),
                 generated_at=args.generated_at,
             )
             should_write_domain_state = bool(

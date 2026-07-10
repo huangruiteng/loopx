@@ -105,6 +105,8 @@ def assert_workflow_shape(payload: dict[str, Any]) -> None:
     assert feasibility["selects_exactly_one_route"] is True, feasibility
     assert feasibility["routes"] == ["fix_pr", "comment_only", "triage_only"]
     assert feasibility["writes_domain_state_by_default_with_goal_id"] is True
+    assert feasibility["persists_repository_context_with_feasibility"] is True
+    assert "--repository-context-json" in feasibility["command_preview"]
     assert feasibility["writes_loopx_todo"] is False
     post_pr = payload["post_pr_lifecycle_monitor_plan"]
     assert post_pr["creates_continuous_monitor_todo"] is True, post_pr

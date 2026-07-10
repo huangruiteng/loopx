@@ -31,13 +31,13 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "write_boundary": "fixture-only; no external read or write",
             },
             {
-                "command": "loopx issue-fix workflow-plan --url <github-issue-url> --repo-path <repo> --format json",
-                "purpose": "Compose metadata, intake, the feasibility checkpoint, validation labels, and PR review readiness blockers.",
+                "command": "loopx issue-fix workflow-plan --url <github-issue-url> --repo-path <repo> --repository-context-json <context.json> --format json",
+                "purpose": "Compose metadata, repository context, intake, feasibility, validation labels, and PR review readiness blockers.",
                 "write_boundary": "preview-only; no todo write, repo execution, external comment, PR creation, merge, or publish",
             },
             {
-                "command": "loopx issue-fix feasibility --url <github-issue-url> --reproduction-status <state> --scope-class <scope> --goal-id <goal-id> --format json",
-                "purpose": "Select one fix_pr, comment_only, or triage_only route from compact agent observations.",
+                "command": "loopx issue-fix feasibility --url <github-issue-url> --reproduction-status <state> --scope-class <scope> --repository-context-json <context.json> --goal-id <goal-id> --format json",
+                "purpose": "Select one route and persist its compact repository evidence basis with feasibility domain state.",
                 "write_boundary": "writes compact project-local domain state with goal or ledger context; no raw issue/comment/log capture or external write",
             },
             {
@@ -88,6 +88,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "doc": "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
             },
             {
+                "schema_version": "issue_fix_repository_context_v0",
+                "module": "loopx.capabilities.issue_fix.repository_context",
+                "doc": "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
+            },
+            {
                 "schema_version": "issue_fix_feasibility_v0",
                 "module": "loopx.capabilities.issue_fix.feasibility",
                 "doc": "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
@@ -115,6 +120,7 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
         ],
         "smokes": [
             "python3 examples/issue-fix-workflow-plan-smoke.py",
+            "python3 examples/issue-fix-repository-context-smoke.py",
             "python3 examples/issue-fix-feasibility-smoke.py",
             "python3 examples/issue-fix-pr-lifecycle-smoke.py",
             "python3 examples/content-ops-issue-fix-metadata-preview-smoke.py",
@@ -123,6 +129,7 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
         ],
         "docs": [
             "docs/capabilities/issue-fix/README.md",
+            "docs/capabilities/issue-fix/openviking-pilot-handoff.md",
             "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
             "docs/capabilities/issue-fix/protocols/issue-fix-acceptance-loop-v0.md",
             "docs/reference/protocols/content-ops-surface-v0.md",
