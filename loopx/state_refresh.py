@@ -252,14 +252,7 @@ def build_vision_checkpoint(
         triggers.append({"kind": "durable_next_action_update"})
 
     delta_kinds = set(repair_delta_kinds or [])
-    unchanged = " ".join(str(vision_unchanged_reason or "").strip().split())
-    if unchanged:
-        validate_public_safe_text("vision_unchanged_reason", unchanged)
-        if len(unchanged) > VISION_UNCHANGED_REASON_LIMIT:
-            raise ValueError(
-                "vision_unchanged_reason exceeds "
-                f"{VISION_UNCHANGED_REASON_LIMIT} chars"
-            )
+    unchanged = normalize_vision_unchanged_reason(vision_unchanged_reason)
 
     required = bool(triggers)
     if agent_vision:
@@ -300,6 +293,21 @@ def build_vision_checkpoint(
             "link_successor_or_supersede",
         ]
     return checkpoint
+
+
+def normalize_vision_unchanged_reason(value: str | None) -> str:
+    """Normalize and validate a vision closeout reason before state mutation."""
+
+    unchanged = " ".join(str(value or "").strip().split())
+    if not unchanged:
+        return ""
+    validate_public_safe_text("vision_unchanged_reason", unchanged)
+    if len(unchanged) > VISION_UNCHANGED_REASON_LIMIT:
+        raise ValueError(
+            "vision_unchanged_reason exceeds "
+            f"{VISION_UNCHANGED_REASON_LIMIT} chars"
+        )
+    return unchanged
 
 
 def next_action_section_bounds(lines: list[str]) -> tuple[int, int] | None:
@@ -843,6 +851,9 @@ def refresh_state_run(
             goal_id=safe_goal_id,
             agent_id=normalized_agent_id or None,
         )
+    normalized_vision_unchanged_reason = normalize_vision_unchanged_reason(
+        vision_unchanged_reason
+    )
     generated_at = now_local()
     active_state_next_action_update: dict[str, Any] | None = None
     if normalized_next_action:
@@ -891,7 +902,7 @@ def refresh_state_run(
     vision_checkpoint = build_vision_checkpoint(
         agent_id=normalized_agent_id or None,
         agent_vision=agent_vision,
-        vision_unchanged_reason=vision_unchanged_reason,
+        vision_unchanged_reason=normalized_vision_unchanged_reason,
         delivery_outcome=normalized_delivery_outcome,
         autonomous_replan_recorded=bool(autonomous_replan_recorded),
         active_state_next_action_update=active_state_next_action_update,
