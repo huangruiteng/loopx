@@ -1,0 +1,27 @@
+loopx/cli_commands/task_lease.py
+  s_32e2a9a204a8e4::t_df31e67a61812e 123,137,152,193
+loopx/contract.py
+  s_32e2a9a204a8e4::t_3843d40f38b1ad 27-28,306,321-328,336-341
+loopx/control_plane/todos/contract.py
+  s_32e2a9a204a8e4::t_176e54c29a999f 573,577-589,591
+loopx/control_plane/work_items/task_lease.py
+  s_32e2a9a204a8e4::t_3666136c7d0e5d 17,103-182,262,277-285,341,362-367,370-377,397,438,456-461,485,507-512,581,590-613,620,623
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "24a7794d0240bebd9ae3f0a9d1165f3a1114b4c5",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
