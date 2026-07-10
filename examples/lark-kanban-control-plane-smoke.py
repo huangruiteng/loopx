@@ -217,6 +217,17 @@ def main() -> int:
         "Status",
     ]
     assert schema["operator_view"]["issue_fix_card_fields"] == issue_fix_surface.ISSUE_FIX_CARD_FIELDS
+    issue_fields = {field["name"]: field for field in schema["fields"]}
+    assert issue_fields["Issue"]["style"]["type"] == "url", issue_fields["Issue"]
+    assert issue_fields["Pull Request"]["style"]["type"] == "url", issue_fields["Pull Request"]
+    assert issue_fix_surface.ISSUE_FIX_STAGE_OPTIONS[:6] == [
+        "reproduction_planned",
+        "fix_in_progress",
+        "fix_review_ready",
+        "ci_pending",
+        "ci_failed",
+        "review_wait",
+    ], issue_fix_surface.ISSUE_FIX_STAGE_OPTIONS
     assert {issue_fix_surface.DEFAULT_ISSUE_FIX_GRID_VIEW, issue_fix_surface.DEFAULT_ISSUE_FIX_KANBAN_VIEW} <= {view["name"] for view in schema["views"]}
 
     plan = build_create_board_plan(
@@ -233,6 +244,9 @@ def main() -> int:
     assert any("+view-set-visible-fields" in command for command in joined), joined
     assert sum("+view-set-filter" in command and "Work Item Type" in command for command in joined) == 2, joined
     assert any("+view-set-group" in command and "Issue Fix Kanban" in command and "Stage" in command for command in joined), joined
+    assert sum("+field-update" in command and "--yes" in command for command in joined) == 3, joined
+    assert any("+field-update" in command and "--field-id Issue" in command and '\"type\": \"url\"' in command for command in joined), joined
+    assert any("+field-update" in command and "--field-id Stage" in command and "ci_pending" in command for command in joined), joined
 
     heartbeat = lark_kanban_heartbeat(
         LarkKanbanConfig(

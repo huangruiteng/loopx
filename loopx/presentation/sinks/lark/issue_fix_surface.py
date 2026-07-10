@@ -24,19 +24,19 @@ ISSUE_FIX_CARD_FIELDS = [
 
 ISSUE_FIX_STAGE_OPTIONS = [
     "reproduction_planned",
-    "reproduction_blocked",
     "fix_in_progress",
-    "fix_blocked",
-    "delivery_blocked",
     "fix_review_ready",
-    "draft_pr",
     "ci_pending",
     "ci_failed",
     "review_wait",
     "changes_requested",
+    "merge_ready",
+    "reproduction_blocked",
+    "fix_blocked",
+    "delivery_blocked",
+    "draft_pr",
     "branch_stale_or_conflicted",
     "pr_open",
-    "merge_ready",
     "merged",
     "closed_without_merge",
     "comment_packet",
@@ -57,8 +57,8 @@ def issue_fix_field_definitions(
             "options": select_options(["Todo", "Issue Fix"]),
         },
         {"name": "Repository", "type": "text", "style": {"type": "plain"}},
-        {"name": "Issue", "type": "text", "style": {"type": "plain"}},
-        {"name": "Pull Request", "type": "text", "style": {"type": "plain"}},
+        {"name": "Issue", "type": "text", "style": {"type": "url"}},
+        {"name": "Pull Request", "type": "text", "style": {"type": "url"}},
         {
             "name": "Route",
             "type": "select",
@@ -102,17 +102,25 @@ def issue_fix_record_values(
     result = block.get("result") if isinstance(block.get("result"), Mapping) else {}
     issue_number = issue.get("number")
     pr_number = pull_request.get("number")
+    issue_url = compact_text(issue.get("url"), limit=320)
+    pr_url = compact_text(pull_request.get("url"), limit=320)
     validation_status = compact_text(validation.get("status"), limit=80)
     validation_label = compact_text(validation.get("label"), limit=220)
     return {
         "Work Item Type": "Issue Fix",
         "Repository": compact_text(block.get("repo"), limit=160),
-        "Issue": f"#{issue_number}"
-        if issue_number is not None
-        else compact_text(block.get("issue_ref"), limit=80),
-        "Pull Request": f"#{pr_number}"
-        if pr_number is not None
-        else compact_text(pull_request.get("ref"), limit=80),
+        "Issue": issue_url
+        or (
+            f"#{issue_number}"
+            if issue_number is not None
+            else compact_text(block.get("issue_ref"), limit=80)
+        ),
+        "Pull Request": pr_url
+        or (
+            f"#{pr_number}"
+            if pr_number is not None
+            else compact_text(pull_request.get("ref"), limit=80)
+        ),
         "Route": compact_text(block.get("route"), limit=80),
         "Stage": compact_text(block.get("stage"), limit=80),
         "Validation": compact_text(
@@ -191,6 +199,25 @@ def issue_fix_view_configuration_commands(
     commands = [
         [
             *common[:2],
+            "+field-update",
+            *common[2:],
+            "--field-id",
+            definition["name"],
+            "--json",
+            json.dumps(definition, ensure_ascii=False),
+            "--yes",
+        ]
+        for definition in issue_fix_field_definitions(
+            lambda options: [
+                {"name": option, "hue": "Blue", "lightness": "Light"}
+                for option in options
+            ]
+        )
+        if definition["name"] in {"Issue", "Pull Request", "Stage"}
+    ]
+    commands.extend(
+        [
+            *common[:2],
             "+view-set-filter",
             *common[2:],
             "--view-id",
@@ -205,7 +232,7 @@ def issue_fix_view_configuration_commands(
             ),
         ]
         for view_id in (issue_grid_view, issue_kanban_view)
-    ]
+    )
     commands.append(
         [
             *common[:2],
