@@ -173,6 +173,7 @@ def _refresh_ledger_and_aggregate(
     from ..benchmark_ledger import (
         build_benchmark_run_ledger_entry,
         build_benchmark_run_ledger_current_aggregate,
+        benchmark_run_ledger_entry_signature,
         load_benchmark_run_ledger,
         update_benchmark_run_ledger_entries,
     )
@@ -255,6 +256,15 @@ def _refresh_ledger_and_aggregate(
             for run in (case.get("runs") or [])
             if isinstance(run, dict) and run.get("run_id")
         }
+        ledger_signatures = {
+            benchmark_run_ledger_entry_signature(run)
+            for benchmark in (ledger.get("benchmarks") or {}).values()
+            if isinstance(benchmark, dict)
+            for case in (benchmark.get("cases") or {}).values()
+            if isinstance(case, dict)
+            for run in (case.get("runs") or [])
+            if isinstance(run, dict)
+        }
         for compact_path, historical_run_group_id in catchup_paths:
             catchup_run_groups.add(historical_run_group_id)
             try:
@@ -272,12 +282,14 @@ def _refresh_ledger_and_aggregate(
                 cwd=repo_root,
             )
             run_id = str(entry.get("run_id") or "")
-            if run_id and run_id in ledger_run_ids:
+            signature = benchmark_run_ledger_entry_signature(entry)
+            if (run_id and run_id in ledger_run_ids) or signature in ledger_signatures:
                 catchup_already_present += 1
                 continue
             catchup_entries.append(entry)
             if run_id:
                 ledger_run_ids.add(run_id)
+            ledger_signatures.add(signature)
     catchup_update = update_benchmark_run_ledger_entries(
         ledger_path=Path(ledger_path).expanduser(),
         entries=catchup_entries,
