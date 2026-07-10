@@ -1,0 +1,61 @@
+docs/capabilities/issue-fix/README.md
+  s_e3f612788718c1::t_2fc0353b9bfad3 17,24,71,96-117,127,141-146,175
+docs/capabilities/issue-fix/openviking-pilot-handoff.md
+  s_e3f612788718c1::t_fd5c483fd57d65 1-162
+docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md
+  s_e3f612788718c1::t_2873edbacc50a6 29-35,40,46,51,56,60,63,72,128-131,156-158
+docs/reference/protocols/loopx-goal-command-v0.md
+  s_e3f612788718c1::t_b53ba6ba7a03c8 103,108-115,122
+examples/bootstrap-command-pack-smoke.py
+  s_e3f612788718c1::t_1804569bfec19a 147,154
+examples/canary/catalog-planner-smoke.py
+  s_e3f612788718c1::t_11393c33445b71 498,508
+examples/fixtures/openviking-issue-fix-repository-context.public.json
+  s_e3f612788718c1::t_3816762477dc93 1-80
+examples/issue-fix-repository-context-smoke.py
+  s_e3f612788718c1::t_223ca8a90ce594 1-246
+examples/issue-fix-workflow-contract-smoke.py
+  s_e3f612788718c1::t_8326810789afcb 94-95,102,127-129
+examples/issue-fix-workflow-plan-smoke.py
+  s_e3f612788718c1::t_fc31d5573fc43a 108-109
+loopx/bootstrap_command_pack.py
+  s_e3f612788718c1::t_967a0be951536e 310-311,316,363,561,570
+loopx/canary/planner.py
+  s_e3f612788718c1::t_38ddd2cc7760d2 835-839
+loopx/capabilities/catalog.py
+  s_e3f612788718c1::t_82bdb33e5285e1 34-35,39-40,90-94,123,132
+loopx/capabilities/issue_fix/cli.py
+  s_e3f612788718c1::t_bc9b6f3bd30110 134-141,198-205,445-446,460-464,478-482
+loopx/capabilities/issue_fix/feasibility.py
+  s_e3f612788718c1::t_f5972d0d6bab51 10,138-163,174,191-196,214-216,229,261,324-342,378-379,382-383
+loopx/capabilities/issue_fix/repository_context.py
+  s_9a5a2bd944fdcb::t_14e4d33b042bd0 1-410
+loopx/capabilities/issue_fix/workflow_plan.py
+  s_e3f612788718c1::t_b0f652ad0cd26b 8,135,147,218,249-257,273-275,280,357-367,386,454-468,500-504,620-635
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5e7ecfd0be61b8a1de3646b56ba17d6a36087445",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
