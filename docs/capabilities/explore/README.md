@@ -65,9 +65,9 @@ parent/`subtopic_of` topology tree, and Mermaid flowchart source.
 `loopx explore graph --graph-format mermaid|json [--out <file>]` exports the
 topology for a Feishu doc, whiteboard, or any Mermaid renderer.
 
-For an executive view, keep the append-only result log as the single source
-and export a focused graph instead of maintaining a second hand-written
-Mermaid file:
+Focused exports are bounded evidence views, not executive decision views by
+default. They preserve machine-oriented node identity, edge semantics, and
+ancestor context while reducing the amount of canonical topology rendered:
 
 ```bash
 loopx explore graph \
@@ -76,7 +76,7 @@ loopx explore graph \
   --status blocked \
   --tag executive \
   --graph-format mermaid \
-  --out explore-executive.mmd
+  --out explore-focused-evidence.mmd
 ```
 
 Repeated statuses match any requested status, repeated tags match any exact
@@ -85,6 +85,28 @@ nodes keep their ancestors by default so the focused graph retains explanatory
 context; pass `--no-include-ancestors` for a leaf-only view. Filtering changes
 only the graph export. It does not mutate the full result projection or the
 Lark node, edge, and finding tables.
+
+An owner-facing executive graph is a separate display projection over that
+canonical evidence, not a second evidence source. Do not sync a full or focused
+canonical export directly into an executive whiteboard merely because it is
+smaller. The projection should compress the evidence into the decision roles
+the operator needs to see:
+
+- decision contract and primary metric;
+- baseline and current incumbent;
+- decisive negative or retired evidence;
+- active work or capacity slots;
+- material risk and guardrails;
+- terminal decision gate;
+- next decision or evidence gap.
+
+Give the projection explicit node and edge budgets, stable references back to
+canonical node ids, and a fail-fast guard that rejects accidental identity with
+the canonical export. Before syncing, render it with the target renderer, run
+geometry checks for overlap and text overflow, and visually inspect the actual
+preview. After syncing, verify the remote source or digest matches the validated
+projection. The canonical JSON and Nodes/Edges/Findings tables remain complete
+and authoritative throughout this presentation step.
 
 ## Experimental Todo Branch Plan
 

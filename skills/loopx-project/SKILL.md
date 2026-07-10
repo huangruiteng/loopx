@@ -147,6 +147,33 @@ memory. Stop and write a project-local todo or blocker when the target project
 is ambiguous, the source cannot be represented as public-safe metadata, or the
 next step would require reading a gated source body.
 
+## Owner-Facing Explore Views
+
+Treat the canonical Explore topology and an owner-facing decision graph as two
+different read models over one evidence source:
+
+- canonical JSON, Mermaid, and Nodes/Edges/Findings tables preserve complete
+  public-safe node identity, evidence, and lineage;
+- focused status/tag exports are bounded evidence subsets, not executive views
+  by default;
+- an executive graph applies semantic compression for operator decisions. It
+  should show the decision contract, baseline/incumbent, decisive negative
+  evidence, active work or capacity, material risk, terminal gate, and next
+  decision.
+
+Never overwrite an executive whiteboard directly from a full or focused
+canonical export unless a declared presentation contract proves that the
+export already carries those semantic roles. For a recurring sync, keep a
+project-local display contract with node/edge budgets, required roles, stable
+canonical ids, and a non-identity guard. Render with the target renderer, run
+overlap/text-overflow checks, inspect the preview, then sync and verify the
+remote source or digest. If any check fails, keep the previous owner view and
+repair the projection; do not publish a structurally valid but unreadable graph.
+
+This separation does not transfer quota, todo, launch, stop, or promotion
+authority into the presentation layer. Record material experiment transitions
+in canonical Explore state first, then refresh the executive projection.
+
 ## Preflight
 
 From the target project shell:

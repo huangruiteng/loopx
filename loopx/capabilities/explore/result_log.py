@@ -683,8 +683,9 @@ def build_explore_graph_view(
 
     Status and tag filters are combined with AND semantics. Tag matching uses
     exact values and is OR within the requested tag set. Ancestors are included
-    by default so a focused executive graph keeps enough topology to explain
-    where each matched node belongs.
+    by default so a focused evidence graph keeps enough topology to explain
+    where each matched node belongs. Executive decision views require a
+    separate display projection with semantic compression and visual review.
     """
 
     requested_statuses = {
