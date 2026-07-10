@@ -1,0 +1,23 @@
+docs/capabilities/explore/README.md
+  s_32e2a9a204a8e4::t_55ec207af23d94 146-162
+examples/explore-todo-result-node-linkage-smoke.py
+  s_32e2a9a204a8e4::t_6ea294a34eb73e 1-290
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1cb270ae269d89838eac798c0e85b56c95af8f43",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
