@@ -63,6 +63,7 @@ from loopx.codex_cli_goal_tui import (
     codex_cli_tui_input_prompt_visible,
     codex_cli_tui_turn_active,
     prewarm_codex_cli_goal_thread,
+    resolve_codex_cli_binary,
     tmux_capture,
     tmux_kill_session,
     tmux_paste_file_and_submit,
@@ -984,6 +985,18 @@ class SkillsBenchLocalAcpRelay:
     ) -> str:
         """Run one ACP prompt through the real Codex CLI TUI /goal surface."""
 
+        resolved_codex_bin = resolve_codex_cli_binary(self._config.codex_bin)
+        if not resolved_codex_bin:
+            self._publish_codex_cli_goal_trace(
+                ok=False,
+                stage="codex_cli_unavailable",
+                goal_active_observed=False,
+                goal_terminal_observed=False,
+                first_action_observed=False,
+                bridge_summary_path=None,
+                goal_slash_command_submitted=False,
+            )
+            raise RuntimeError("codex cli goal worker requires Codex CLI")
         if shutil.which("tmux") is None:
             self._publish_codex_cli_goal_trace(
                 ok=False,
@@ -992,6 +1005,7 @@ class SkillsBenchLocalAcpRelay:
                 goal_terminal_observed=False,
                 first_action_observed=False,
                 bridge_summary_path=None,
+                goal_slash_command_submitted=False,
             )
             raise RuntimeError("codex cli goal worker requires tmux")
         with tempfile.TemporaryDirectory(prefix="gh-skillsbench-cli-goal-") as tmp:
@@ -1016,6 +1030,7 @@ class SkillsBenchLocalAcpRelay:
                         goal_terminal_observed=False,
                         first_action_observed=False,
                         bridge_summary_path=None,
+                        goal_slash_command_submitted=False,
                     )
                     raise RuntimeError("remote command/file bridge probe failed")
                 local_cwd = tmp_path / "local-codex-cli-goal-cwd"
@@ -1066,7 +1081,7 @@ class SkillsBenchLocalAcpRelay:
             )
             tmux_name = f"gh-sb-cli-goal-{uuid.uuid4().hex[:10]}"
             cmd = build_codex_cli_tui_command(
-                codex_bin=self._config.codex_bin,
+                codex_bin=resolved_codex_bin,
                 sandbox=self._config.sandbox,
                 approval_policy=self._config.approval_policy,
                 cwd=cwd,
@@ -1080,6 +1095,7 @@ class SkillsBenchLocalAcpRelay:
             goal_active_observed = False
             goal_terminal_observed = False
             goal_failed_observed = False
+            goal_slash_command_submitted = False
             post_bridge_terminal_stage = ""
             first_action_seen = False
             bridge_activity_seen = False
@@ -1121,6 +1137,7 @@ class SkillsBenchLocalAcpRelay:
                         bridge_summary_path=bridge_summary_path,
                         goal_prompt_file_used=goal_prompt_file_used,
                         goal_command_submission_method=goal_command_submission_method,
+                        goal_slash_command_submitted=False,
                     )
                     return _recoverable_codex_turn_failure_message(
                         "codex_exec_first_action_timeout"
@@ -1144,6 +1161,7 @@ class SkillsBenchLocalAcpRelay:
                             thread_prewarm_observed=False,
                             goal_prompt_file_used=goal_prompt_file_used,
                             goal_command_submission_method=goal_command_submission_method,
+                            goal_slash_command_submitted=False,
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_exec_first_action_timeout"
@@ -1159,6 +1177,7 @@ class SkillsBenchLocalAcpRelay:
                         prompt_path=prompt_path,
                         buffer_suffix="prompt",
                     )
+                goal_slash_command_submitted = True
                 deadline = time.monotonic() + self._config.timeout_sec
                 goal_active_deadline = 0.0
                 if (
@@ -1732,6 +1751,7 @@ class SkillsBenchLocalAcpRelay:
                     thread_prewarm_observed=False,
                     goal_prompt_file_used=goal_prompt_file_used,
                     goal_command_submission_method=goal_command_submission_method,
+                    goal_slash_command_submitted=goal_slash_command_submitted,
                 )
                 raise RuntimeError("codex cli goal worker failed before run") from exc
             finally:
@@ -1750,6 +1770,7 @@ class SkillsBenchLocalAcpRelay:
         thread_prewarm_observed: bool = False,
         goal_prompt_file_used: bool = False,
         goal_command_submission_method: str = "",
+        goal_slash_command_submitted: bool = True,
         post_bridge_recovery_attempt_count: int = 0,
         post_bridge_recovery_action: str = "",
         post_bridge_recovery_skip_reason: str = "",
@@ -1795,7 +1816,7 @@ class SkillsBenchLocalAcpRelay:
             "codex_cli_goal": {
                 "schema_version": "skillsbench_codex_cli_goal_tui_v0",
                 "stage": safe_stage,
-                "goal_slash_command_submitted": True,
+                "goal_slash_command_submitted": bool(goal_slash_command_submitted),
                 "goal_thread_prewarm_observed": bool(thread_prewarm_observed),
                 "goal_thread_prewarm_timeout_sec": CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC if self._config.codex_cli_goal_thread_prewarm else 0,
                 "goal_prompt_file_used": bool(goal_prompt_file_used),
