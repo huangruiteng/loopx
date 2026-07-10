@@ -454,6 +454,21 @@ repo-relative source ref。当前 checkout 证据保持最高权威；memory/exp
 [OpenViking pilot handoff](openviking-pilot-handoff.md) 展示真实 pilot 如何应用该证据
 顺序，同时不引入仓库特判控制路径。
 
+两者也接受 `--repository-memory-json <compact-search-read-result.json>`。这是
+host-provider hook，不是 LoopX 内置的 memory client：host 只在调用方批准的公开
+namespace 中显式执行 `search`，再对选中的命中执行 `read`，把蒸馏后的 public-safe
+摘要封装成 `issue_fix_repository_memory_read_result_v0`。LoopX 会 hash provider ref，
+始终把 memory source 保持为 advisory；只有已经在 pinned checkout revision 上验证的
+命中才允许影响 patch。紧凑 hook projection 仍写入现有 repository context，不建立
+第二套 ledger。Provider 不可用、空结果或缺少 revision 时，仓库工作流 fail-open；
+raw memory body、自动 transcript capture、memory writeback、私有 namespace 与凭据
+都会被拒绝。
+
+是否默认开启必须由真实证据决定，而不是安装即默认。项目应先在多个独立 issue/context
+run 和至少一次重启边界上 dogfood；只有当该 hook 能反复提供经 checkout 验证的新证据，
+且没有陈旧、误导或边界越界结果时，才作为打包默认能力。否则保留为显式可选能力，同时
+继续保持 fail-open。
+
 ## PR Lifecycle Monitor
 
 发布后，`loopx issue-fix pr-lifecycle` 与 `continuous_monitor` todo 持续跟踪 CI、
@@ -508,6 +523,7 @@ loopx issue-fix workflow-plan \
   --url https://github.com/owner/repo/issues/123 \
   --repo-path /path/to/approved/repo \
   --repository-context-json context.json \
+  --repository-memory-json compact-search-read-result.json \
   --validation-label "focused unit test" \
   --format json
 
@@ -519,6 +535,7 @@ loopx issue-fix feasibility \
   --scope-class bounded \
   --validation-label "focused unit test" \
   --repository-context-json context.json \
+  --repository-memory-json compact-search-read-result.json \
   --goal-id example-goal \
   --format json
 
@@ -572,6 +589,7 @@ python3 examples/issue-fix-reviewer-notification-sink-smoke.py
 python3 examples/issue-fix-workflow-plan-smoke.py
 python3 examples/issue-fix-workflow-contract-smoke.py
 python3 examples/issue-fix-repository-context-smoke.py
+python3 examples/issue-fix-repository-memory-smoke.py
 python3 examples/issue-fix-feasibility-smoke.py
 python3 examples/issue-fix-pr-lifecycle-smoke.py
 python3 examples/issue-fix-outcome-projection-smoke.py

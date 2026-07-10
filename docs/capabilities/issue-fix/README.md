@@ -512,6 +512,25 @@ until verified. The public
 pilot applies that evidence order without introducing a repository-specific
 control path.
 
+They also accept `--repository-memory-json
+<compact-search-read-result.json>`. This is a host-provider hook, not a memory
+client inside LoopX: the host explicitly searches a caller-approved public
+namespace, reads selected hits, distils public-safe summaries, and passes an
+`issue_fix_repository_memory_read_result_v0` packet. LoopX hashes provider
+references, keeps every memory source advisory, allows patch influence only
+for hits verified against the pinned checkout revision, and persists the
+compact hook projection in the existing repository context. Provider
+unavailability, empty retrieval, or a missing revision is fail-open for the
+repository workflow; raw memory bodies, automatic transcript capture, memory
+writeback, private namespaces, and credentials are rejected.
+
+Default enablement is an evidence decision rather than an installation side
+effect. A project should first dogfood the hook across several independent
+issue/context runs and a restart boundary. Make it a packaged default only
+when it repeatedly contributes novel checkout-verified evidence without stale,
+misleading, or boundary-unsafe retrieval; otherwise keep it explicit opt-in
+with the same fail-open behavior.
+
 ## PR Lifecycle Monitor
 
 After publication, `loopx issue-fix pr-lifecycle` and a `continuous_monitor`
@@ -576,6 +595,7 @@ loopx issue-fix workflow-plan \
   --url https://github.com/owner/repo/issues/123 \
   --repo-path /path/to/approved/repo \
   --repository-context-json context.json \
+  --repository-memory-json compact-search-read-result.json \
   --validation-label "focused unit test" \
   --format json
 
@@ -587,6 +607,7 @@ loopx issue-fix feasibility \
   --scope-class bounded \
   --validation-label "focused unit test" \
   --repository-context-json context.json \
+  --repository-memory-json compact-search-read-result.json \
   --goal-id example-goal \
   --format json
 
@@ -640,6 +661,7 @@ python3 examples/issue-fix-reviewer-notification-sink-smoke.py
 python3 examples/issue-fix-workflow-plan-smoke.py
 python3 examples/issue-fix-workflow-contract-smoke.py
 python3 examples/issue-fix-repository-context-smoke.py
+python3 examples/issue-fix-repository-memory-smoke.py
 python3 examples/issue-fix-feasibility-smoke.py
 python3 examples/issue-fix-pr-lifecycle-smoke.py
 python3 examples/issue-fix-outcome-projection-smoke.py
