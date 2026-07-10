@@ -228,6 +228,8 @@ supervisor_cmd=(
   --cleanup-stale-local-forward
   --remote-forward "127.0.0.1:${remote_proxy_port}:${local_proxy_host}:${local_proxy_port}"
   --run-timeout-sec "$run_timeout"
+  --remote-failure-cleanup-pattern "$job_name"
+  --remote-failure-cleanup-include-docker
   --remote-command "$remote_command"
   --remote-public-artifact-root "${SKILLSBENCH_REMOTE_ROOT}/.local/private-benchmark-jobs"
   --remote-public-artifact-glob "${job_name}*/runner_prerequisites.public.json"
