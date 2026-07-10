@@ -22,6 +22,7 @@ from ..todos import (
     supersede_goal_todo,
     update_goal_todo,
 )
+from .todo_argument_validation import unsupported_todo_options
 
 
 PrintPayload = Callable[
@@ -349,48 +350,10 @@ def handle_todo_command(
                 "--trigger are only supported by `todo suggest`"
             )
         if args.todo_command == "list":
-            unsupported = [
-                flag
-                for flag, value in (
-                    ("--text", args.text),
-                    ("--follow-up", args.followups),
-                    ("--note", args.note),
-                    ("--evidence", args.evidence),
-                    ("--reason", args.reason),
-                    ("--task-class", args.task_class),
-                    ("--action-kind", args.action_kind),
-                    ("--continuation-policy", args.continuation_policy),
-                    ("--required-write-scope", args.required_write_scopes),
-                    ("--required-capability", args.required_capabilities),
-                    ("--target-capability", args.target_capabilities),
-                    ("--decision-scope", args.decision_scope),
-                    ("--required-decision-scope", args.required_decision_scopes),
-                    ("--claimed-by", args.claimed_by),
-                    ("--blocks-agent", args.blocks_agent),
-                    ("--global-gate", args.global_gate),
-                    ("--unblocks-todo-id", args.unblocks_todo_id),
-                    ("--successor-todo-id", args.successor_todo_ids),
-                    ("--resume-when", args.resume_when),
-                    ("--monitor-target-key", args.monitor_target_key),
-                    ("--cadence", args.cadence),
-                    ("--next-due-at", args.next_due_at),
-                    ("--expires-at", args.expires_at),
-                    ("--clear-claim", args.clear_claim),
-                    ("--no-follow-up", args.no_follow_up),
-                    ("--next-agent-todo", args.next_agent_todo),
-                    ("--next-user-todo", args.next_user_todo),
-                    ("--next-claimed-by", args.next_claimed_by),
-                    ("--next-task-class", args.next_task_class),
-                    ("--next-action-kind", args.next_action_kind),
-                    ("--next-continuation-policy", args.next_continuation_policy),
-                    ("--side-agent-self-merged", args.side_agent_self_merged),
-                    ("--from", args.suggestion_sources),
-                    ("--limit", args.suggestion_limit),
-                    ("--trigger", args.suggestion_trigger),
-                    ("--execute", args.execute),
-                )
-                if value
-            ]
+            unsupported = unsupported_todo_options(
+                args,
+                allowed_fields={"role", "todo_id", "status", "agent_id", "state_file"},
+            )
             if unsupported:
                 raise ValueError(
                     "todo list only accepts --goal-id, optional --role, --status, --todo-id, "
@@ -716,49 +679,15 @@ def handle_todo_command(
                 dry_run=not bool(args.execute),
             )
         elif args.todo_command == "suggest":
-            unsupported = [
-                flag
-                for flag, value in (
-                    ("--role", args.role),
-                    ("--text", args.text),
-                    ("--todo-id", args.todo_id),
-                    ("--status", args.status),
-                    ("--note", args.note),
-                    ("--evidence", args.evidence),
-                    ("--reason", args.reason),
-                    ("--task-class", args.task_class),
-                    ("--action-kind", args.action_kind),
-                    ("--continuation-policy", args.continuation_policy),
-                    ("--required-write-scope", args.required_write_scopes),
-                    ("--required-capability", args.required_capabilities),
-                    ("--target-capability", args.target_capabilities),
-                    ("--decision-scope", args.decision_scope),
-                    ("--required-decision-scope", args.required_decision_scopes),
-                    ("--claimed-by", args.claimed_by),
-                    ("--blocks-agent", args.blocks_agent),
-                    ("--global-gate", args.global_gate),
-                    ("--unblocks-todo-id", args.unblocks_todo_id),
-                    ("--successor-todo-id", args.successor_todo_ids),
-                    ("--resume-when", args.resume_when),
-                    ("--monitor-target-key", args.monitor_target_key),
-                    ("--cadence", args.cadence),
-                    ("--next-due-at", args.next_due_at),
-                    ("--expires-at", args.expires_at),
-                    ("--no-follow-up", args.no_follow_up),
-                    ("--clear-claim", args.clear_claim),
-                    ("--next-agent-todo", args.next_agent_todo),
-                    ("--next-user-todo", args.next_user_todo),
-                    ("--next-claimed-by", args.next_claimed_by),
-                    ("--next-task-class", args.next_task_class),
-                    ("--next-action-kind", args.next_action_kind),
-                    ("--next-continuation-policy", args.next_continuation_policy),
-                    ("--side-agent-self-merged", args.side_agent_self_merged),
-                    ("--follow-up", args.followups),
-                    ("--state-file", args.state_file),
-                    ("--execute", args.execute),
-                )
-                if value
-            ]
+            unsupported = unsupported_todo_options(
+                args,
+                allowed_fields={
+                    "agent_id",
+                    "suggestion_sources",
+                    "suggestion_limit",
+                    "suggestion_trigger",
+                },
+            )
             if unsupported:
                 raise ValueError(
                     "todo suggest only accepts --goal-id, optional --project, --agent-id, "
@@ -779,40 +708,22 @@ def handle_todo_command(
                 raise ValueError("todo capture-followups always records agent todos; do not pass --role")
             if args.claimed_by:
                 raise ValueError("todo capture-followups writes unclaimed todos; do not pass --claimed-by")
-            unsupported = [
-                flag
-                for flag, value in (
-                    ("--todo-id", args.todo_id),
-                    ("--status", args.status),
-                    ("--note", args.note),
-                    ("--reason", args.reason),
-                    ("--decision-scope", args.decision_scope),
-                    ("--blocks-agent", args.blocks_agent),
-                    ("--global-gate", args.global_gate),
-                    ("--unblocks-todo-id", args.unblocks_todo_id),
-                    ("--successor-todo-id", args.successor_todo_ids),
-                    ("--resume-when", args.resume_when),
-                    ("--monitor-target-key", args.monitor_target_key),
-                    ("--cadence", args.cadence),
-                    ("--next-due-at", args.next_due_at),
-                    ("--expires-at", args.expires_at),
-                    ("--no-follow-up", args.no_follow_up),
-                    ("--clear-claim", args.clear_claim),
-                    ("--next-agent-todo", args.next_agent_todo),
-                    ("--next-user-todo", args.next_user_todo),
-                    ("--next-claimed-by", args.next_claimed_by),
-                    ("--next-task-class", args.next_task_class),
-                    ("--next-action-kind", args.next_action_kind),
-                    ("--next-continuation-policy", args.next_continuation_policy),
-                    ("--side-agent-self-merged", args.side_agent_self_merged),
-                    ("--agent-id", args.agent_id),
-                    ("--from", args.suggestion_sources),
-                    ("--limit", args.suggestion_limit),
-                    ("--trigger", args.suggestion_trigger),
-                    ("--execute", args.execute),
-                )
-                if value
-            ]
+            unsupported = unsupported_todo_options(
+                args,
+                allowed_fields={
+                    "text",
+                    "followups",
+                    "evidence",
+                    "task_class",
+                    "action_kind",
+                    "continuation_policy",
+                    "required_write_scopes",
+                    "required_capabilities",
+                    "target_capabilities",
+                    "required_decision_scopes",
+                    "state_file",
+                },
+            )
             if unsupported:
                 raise ValueError(
                     "todo capture-followups only accepts --goal-id, --follow-up, optional "
