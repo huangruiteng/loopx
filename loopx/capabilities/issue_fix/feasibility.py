@@ -23,6 +23,7 @@ RESOLUTION_ROUTES = {"fix_pr", "comment_only", "triage_only"}
 EXTERNAL_ACTION_AUTHORITY_SCOPE_ALIASES = {
     "external_pr_creation": {"external_pr_creation", "publish"},
     "external_issue_comment": {"external_issue_comment", "publish"},
+    "external_review_request": {"external_review_request", "publish"},
     "merge": {"merge"},
     "publish": {"publish"},
 }
@@ -108,7 +109,12 @@ def _project_transition(
                 "requires_execute_flag": True,
             },
             "external_write_gate": _project_external_write_gate(
-                required_before=["external_pr_creation", "merge", "publish"],
+                required_before=[
+                    "external_pr_creation",
+                    "external_review_request",
+                    "merge",
+                    "publish",
+                ],
                 boundary_authority_scopes=boundary_authority_scopes,
                 boundary_authority_resolved=boundary_authority_resolved,
             ),

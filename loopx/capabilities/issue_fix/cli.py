@@ -37,6 +37,10 @@ from .reviewer_recommendation import (
     build_issue_fix_reviewer_recommendation_packet,
     render_issue_fix_reviewer_recommendation_markdown,
 )
+from .reviewer_request import (
+    build_issue_fix_reviewer_request_packet,
+    render_issue_fix_reviewer_request_markdown,
+)
 from .workflow_plan import (
     build_issue_fix_workflow_plan_packet,
     render_issue_fix_workflow_plan_markdown,
@@ -479,6 +483,13 @@ def register_issue_fix_commands(
         ),
     )
     reviewer_parser.add_argument(
+        "--identity-map-json",
+        help=(
+            "Optional public-safe JSON object mapping verified git display names "
+            "to GitHub handles; raw mapping is not copied into output."
+        ),
+    )
+    reviewer_parser.add_argument(
         "--execute",
         action="store_true",
         help=(
@@ -490,6 +501,72 @@ def register_issue_fix_commands(
         "--generated-at",
         default="2026-07-10T00:00:00Z",
         help="Public-safe generated_at timestamp for the recommendation packet.",
+    )
+    reviewer_request_parser = issue_fix_sub.add_parser(
+        "reviewer-request",
+        help=(
+            "Select the top requestable non-author reviewer and, with explicit "
+            "external-write authority, request and verify GitHub review."
+        ),
+    )
+    add_subcommand_format(reviewer_request_parser)
+    reviewer_request_parser.add_argument(
+        "--url",
+        required=True,
+        help="Canonical public GitHub pull request URL.",
+    )
+    reviewer_request_parser.add_argument(
+        "--repo-path",
+        required=True,
+        help="Caller-approved local git repository; never copied into output.",
+    )
+    reviewer_request_parser.add_argument(
+        "--changed-file",
+        action="append",
+        default=[],
+        help="Repo-relative changed file; repeat or derive from --base-ref...HEAD.",
+    )
+    reviewer_request_parser.add_argument("--base-ref", default="origin/main")
+    reviewer_request_parser.add_argument("--history-limit", type=int, default=40)
+    reviewer_request_parser.add_argument("--max-candidates", type=int, default=5)
+    reviewer_request_parser.add_argument(
+        "--max-reviewers",
+        type=int,
+        default=1,
+        help="Bounded reviewer request count; default one, maximum three.",
+    )
+    reviewer_request_parser.add_argument(
+        "--exclude-reviewer", action="append", default=[]
+    )
+    reviewer_request_parser.add_argument(
+        "--exclude-author-name", action="append", default=[]
+    )
+    reviewer_request_parser.add_argument(
+        "--identity-map-json",
+        help=(
+            "Optional public-safe JSON object mapping human-verified git display "
+            "names to GitHub handles."
+        ),
+    )
+    reviewer_request_parser.add_argument(
+        "--metadata-json",
+        help=(
+            "Optional compact PR metadata JSON for a no-write preview. Live execute "
+            "mode fetches and verifies GitHub state instead."
+        ),
+    )
+    reviewer_request_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help=(
+            "Assert external-review-request authority, request review through GitHub, "
+            "and verify the result."
+        ),
+    )
+    reviewer_request_parser.add_argument(
+        "--generated-at",
+        default="2026-07-10T00:00:00Z",
+        help="Public-safe generated_at timestamp for the request packet.",
     )
     acceptance_parser = issue_fix_sub.add_parser(
         "acceptance-fixture",
@@ -814,10 +891,40 @@ def handle_issue_fix_command(
                 max_candidates=args.max_candidates,
                 exclude_reviewers=args.exclude_reviewer,
                 exclude_author_names=args.exclude_author_name,
+                resolved_identities=(
+                    _load_json_object(args.identity_map_json)
+                    if args.identity_map_json
+                    else None
+                ),
                 execute=args.execute,
                 generated_at=args.generated_at,
             )
             renderer = render_issue_fix_reviewer_recommendation_markdown
+        elif args.issue_fix_command == "reviewer-request":
+            payload = build_issue_fix_reviewer_request_packet(
+                repo_path=args.repo_path,
+                url=args.url,
+                changed_files=args.changed_file,
+                base_ref=args.base_ref,
+                history_limit=args.history_limit,
+                max_candidates=args.max_candidates,
+                max_reviewers=args.max_reviewers,
+                exclude_reviewers=args.exclude_reviewer,
+                exclude_author_names=args.exclude_author_name,
+                resolved_identities=(
+                    _load_json_object(args.identity_map_json)
+                    if args.identity_map_json
+                    else None
+                ),
+                provider_payload=(
+                    _load_json_object(args.metadata_json)
+                    if args.metadata_json
+                    else None
+                ),
+                execute=args.execute,
+                generated_at=args.generated_at,
+            )
+            renderer = render_issue_fix_reviewer_request_markdown
         elif args.issue_fix_command == "acceptance-fixture":
             payload = build_issue_fix_acceptance_fixture_packet(
                 repo=args.repo,
@@ -853,6 +960,7 @@ def handle_issue_fix_command(
             raise ValueError(
                 "issue-fix requires `workflow-plan`, `feasibility`, "
                 "`acceptance-fixture`, `pr-lifecycle`, `outcome`, `reviewer-plan`, "
+                "`reviewer-request`, "
                 "`repo-branch-fixture`, or `caller-repo-branch`"
             )
     except Exception as exc:
@@ -872,6 +980,8 @@ def handle_issue_fix_command(
             if getattr(args, "issue_fix_command", None) == "outcome"
             else render_issue_fix_reviewer_recommendation_markdown
             if getattr(args, "issue_fix_command", None) == "reviewer-plan"
+            else render_issue_fix_reviewer_request_markdown
+            if getattr(args, "issue_fix_command", None) == "reviewer-request"
             else render_issue_fix_acceptance_loop_markdown
         )
     print_payload(payload, output_format(args), renderer)

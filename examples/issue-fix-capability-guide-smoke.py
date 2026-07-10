@@ -17,6 +17,10 @@ REVIEWER_PROTOCOL = (
     ROOT
     / "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-recommendation-v0.md"
 )
+REVIEWER_REQUEST_PROTOCOL = (
+    ROOT
+    / "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-request-v0.md"
+)
 
 PRIVATE_PATTERNS = (
     re.compile(r"/Users/[A-Za-z0-9._-]+/"),
@@ -45,6 +49,7 @@ def main() -> int:
     english_readme = ENGLISH_README.read_text(encoding="utf-8")
     chinese_readme = CHINESE_README.read_text(encoding="utf-8")
     reviewer_protocol = REVIEWER_PROTOCOL.read_text(encoding="utf-8")
+    reviewer_request_protocol = REVIEWER_REQUEST_PROTOCOL.read_text(encoding="utf-8")
 
     assert english.startswith("# Issue-Fix Capability")
     assert chinese.startswith("# Issue-Fix 能力")
@@ -61,6 +66,7 @@ def main() -> int:
         "comment_only",
         "triage_only",
         "loopx issue-fix reviewer-plan",
+        "loopx issue-fix reviewer-request",
         "CODEOWNERS",
         "continuous_monitor",
         "runnable_successor",
@@ -68,6 +74,7 @@ def main() -> int:
         "https://github.com/volcengine/OpenViking/pull/3115",
         "https://github.com/huangruiteng/loopx/pull/1784",
         "python3 examples/issue-fix-reviewer-recommendation-smoke.py",
+        "python3 examples/issue-fix-reviewer-request-smoke.py",
     )
     assert_markers(english, shared_markers)
     assert_markers(chinese, shared_markers)
@@ -119,9 +126,21 @@ def main() -> int:
             "changed path",
             "nearest module directory",
             "recommendation is not assignment",
-            "automatic_review_request_allowed: false",
+            "automatic_review_request_allowed: true",
+            "request_top_requestable_when_authorized",
             "review_request_performed: false",
             "python3 examples/issue-fix-reviewer-recommendation-smoke.py",
+        ),
+    )
+    assert reviewer_request_protocol.startswith("# issue_fix_reviewer_request_v0")
+    assert_markers(
+        reviewer_request_protocol,
+        (
+            "request_top_requestable_when_authorized",
+            "exclude the PR author",
+            "external_review_request",
+            "post-write verification",
+            "python3 examples/issue-fix-reviewer-request-smoke.py",
         ),
     )
 
@@ -132,6 +151,7 @@ def main() -> int:
         english_readme,
         chinese_readme,
         reviewer_protocol,
+        reviewer_request_protocol,
     ):
         assert_public_safe(text)
 
