@@ -397,7 +397,8 @@ boundaries, capabilities, typed continuation, and repository policy determine
 authority. Repository-writing peers use isolated worktrees when the selected
 task requires it. Small AGENTS-eligible validated changes may self-merge with
 explicit evidence; broader or higher-risk work uses an explicit
-`review_handoff` to a different registered peer. A future version can add
+`independent_handoff` with `action_kind=review`, optionally excluding the author
+when executor separation is required. A future version can add
 claim files, stale-claim detection, overlap warnings, TTLs, and
 compare-and-swap conflict responses. That future pending contract should be per
 todo: a pending lease is keyed by `(goal_id, todo_id)`, so unrelated todos under

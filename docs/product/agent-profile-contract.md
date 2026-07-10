@@ -113,10 +113,11 @@ Completion is also task-scoped:
 
 - direct validated completion uses the repository's normal merge policy;
 - `independent_handoff` creates a non-blocking successor;
-- `same_agent_non_delivery` keeps a same-peer continuation;
-- `review_handoff` explicitly assigns blocking review to a different peer.
+- `same_agent_non_delivery` keeps a same-peer continuation.
 
-No profile supplies an implicit reviewer.
+Review is an `action_kind` over an ordinary independent handoff. No profile
+supplies an implicit reviewer; `excluded_agents` is available only when the
+task needs executor separation.
 
 ## Projection
 
@@ -131,7 +132,7 @@ No profile supplies an implicit reviewer.
   "profile_role_is_advisory": true,
   "scope_summary": "Product ergonomics, examples, documentation, and focused smokes.",
   "current_claims": ["todo_abc123"],
-  "review_handoff_status": "task_policy_selected"
+  "handoff_assignment_status": "task_policy_selected"
 }
 ```
 

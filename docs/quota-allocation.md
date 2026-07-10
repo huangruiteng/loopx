@@ -336,16 +336,12 @@ candidate remains in `runnable_candidates` with `capability_repair_mode=true`,
 `missing_target_capabilities`. This avoids a circular gate where a todo cannot
 develop `benchmark_runner` because it does not already have `benchmark_runner`.
 
-For multi-agent goals, explicit `review_handoff` todos can carry
-`blocks_agent=<completing-peer>` and `unblocks_todo_id=<todo_id>`. When the
-current peer owns that review todo, `agent_lane_next_action` ranks the explicit
-unblock ahead of ordinary
-same-priority backlog, even if the goal-level `Next Action` prose is stale.
-The same tie-breaker orders `capability_gate.runnable_candidates`, so the
-first visible runnable candidate matches the selected inter-agent unblock
-rather than burying it behind ordinary same-priority work.
-This is only a scheduling hint: capability gates, write-scope checks, user
-gates, and validation still apply.
+Multi-agent handoffs use the same ordering as all other agent todos. Review is
+an `action_kind`, not a scheduling rank. `excluded_agents` can prevent named
+peers from claiming or executing an otherwise ordinary handoff, while
+`unblocks_todo_id` records dependency lineage. Active-next alignment, claims,
+priority, capability gates, write scopes, user gates, and validation continue
+to determine the executable action.
 
 Deferred todo visibility is a separate gate-resume lane, not executable
 backlog and not part of the no-candidate quiet-wait semantics. Status/quota may

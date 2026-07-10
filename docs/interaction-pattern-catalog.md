@@ -892,7 +892,7 @@ needed.
 **Expected behavior**
 
 Deferred todos represent parked work behind a resume gate. The gate may be a
-user todo, primary-review handoff, prerequisite implementation todo, resource
+user todo, ordinary peer handoff for review, prerequisite implementation todo, resource
 decision, or another bounded control-plane condition. That makes this a
 Human Decision / gate-resume pattern, not a no-todo pattern.
 
@@ -1449,11 +1449,11 @@ loopx todo complete \
 
 Completion uses typed task policy. `independent_handoff` creates a non-blocking
 successor, `same_agent_non_delivery` keeps a continuation with the same peer,
-and only explicit `review_handoff` to a different registered peer creates
-`blocks_agent` / `unblocks_todo_id`. No profile or goal field supplies an
-implicit reviewer. `claimed_by` remains a soft owner and not a permission
-grant: quota, user gates, boundaries, capabilities, write scopes, and
-repository rules still apply.
+and review remains an ordinary action kind. `excluded_agents` expresses the
+rare executor-separation constraint; `unblocks_todo_id` expresses dependency
+lineage. No profile or goal field supplies an implicit reviewer. `claimed_by`
+remains a soft owner and not a permission grant: quota, user gates, boundaries,
+capabilities, write scopes, and repository rules still apply.
 
 Because prompt text alone is not a reliable guard, `quota should-run --agent-id
 <peer-agent-id>` projects `workspace_guard` when a repository-writing task is
@@ -1490,8 +1490,8 @@ flowchart TD
   I --> K{"same-scope continuation?"}
   K -->|"yes"| N["same_agent_non_delivery successor"]
   K -->|"no"| X["complete with no successor or no-follow-up rationale"]
-  V -->|"no"| R{"blocking independent review needed?"}
-  R -->|"yes"| P["review_handoff to a different peer"]
+  V -->|"no"| R{"independent review needed?"}
+  R -->|"yes"| P["independent_handoff with action_kind=review"]
   R -->|"no"| H["independent_handoff successor"]
 ```
 

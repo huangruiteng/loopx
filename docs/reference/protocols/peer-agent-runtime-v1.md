@@ -45,12 +45,12 @@ Continuation behavior is task policy:
 
 - `independent_handoff`: leave the successor unclaimed unless an explicit peer
   is selected;
-- `same_agent_non_delivery`: keep the successor with the completing peer;
-- `review_handoff`: leave the successor unclaimed or assign it to a different
-  registered peer. Self-review is invalid.
+- `same_agent_non_delivery`: keep the successor with the completing peer.
 
-`primary_review` is a v0.1 migration input alias. It is not a canonical peer
-continuation value.
+Review is an `action_kind`, not a continuation type. Use an ordinary
+`independent_handoff`; when the task must stay open for any eligible peer except
+the author, add that author to `excluded_agents`. An explicit `claimed_by` must
+never name an excluded peer.
 
 Repository merge permission remains governed by the repository's maintainer
 policy. Peer identity alone neither grants nor removes self-merge permission.

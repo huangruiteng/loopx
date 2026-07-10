@@ -204,7 +204,7 @@ boundary. A peer may:
 
 - inspect or claim an eligible todo;
 - advance one bounded implementation, validation, monitor, or repair slice;
-- create an independent successor or an explicit `review_handoff`;
+- create an ordinary independent successor, optionally with executor exclusions;
 - write back evidence for its own accepted task outcome.
 
 When bounded orchestration is enabled, LoopX deterministically selects a
