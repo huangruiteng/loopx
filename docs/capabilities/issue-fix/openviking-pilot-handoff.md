@@ -46,6 +46,28 @@ Use repository evidence first, memory second, and expert consultation third:
 An expert answer never supplies publication authority. External comments, PR
 creation, merge, and other writes retain their existing LoopX gates.
 
+## Existing Codex Memory Bridge
+
+OpenViking already ships an
+[OpenViking Memory plugin for Codex](https://github.com/volcengine/OpenViking/tree/main/examples/codex-memory-plugin).
+It provides two useful paths:
+
+- lifecycle hooks recall relevant memory on `UserPromptSubmit`, append new
+  turns on `Stop`, commit before `PreCompact`, and recover orphaned sessions on
+  later `SessionStart` events;
+- a local stdio MCP proxy exposes OpenViking `search`, `store`, `read`, `list`,
+  `grep`, `glob`, `forget`, `add_resource`, and `health` tools.
+
+This is the fastest bridge for a real Codex pilot, but it is not read-only by
+default. Its hooks may capture transcripts and compact tool-call/result text
+into the memory system. Do not enable it silently as part of LoopX startup.
+For the first issue, prefer explicit MCP `search` and `read` against a
+public-only repository namespace. Enable automatic capture only after the owner
+reviews the hooks and approves the memory boundary, workspace/peer isolation,
+and credential source. LoopX still stores only compact memory refs, trust,
+freshness, and verification results; OpenViking owns the memory body and
+credentials.
+
 ## Immediate Launch
 
 Start with one issue that has a bounded suspected surface and a focused test or
@@ -107,15 +129,17 @@ ledger or another workflow state.
 - Pin every context packet to the checkout revision.
 - Require grounded change-scope, reproduction, and validation evidence before
   treating repository context as strong confidence.
-- Use OpenViking retrieval read-only for prior issue and validation lessons.
+- Prefer explicit OpenViking MCP search/read for prior issue and validation
+  lessons; automatic Codex capture remains an owner-approved opt-in.
 - Consult VikingBot only for a specific unresolved aspect, then verify locally.
 - After a PR exists, keep the existing lifecycle monitor responsible for CI,
   review, stale branch, merge, and close transitions.
 
 ## Medium Term
 
-- Implement the live OpenViking adapter behind explicit retrieval capability
-  and authority checks; retain compact refs in LoopX, not memory bodies.
+- Project the existing Codex memory plugin's retrieval and write events through
+  explicit capability and authority checks; retain compact refs in LoopX, not
+  memory bodies.
 - Add controlled writeback after validated outcomes. Store distilled reusable
   facts with repository revision, provenance, freshness, and supersession.
 - Add a read-only expert connector for VikingBot with targeted questions,
