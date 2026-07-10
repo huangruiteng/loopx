@@ -1,0 +1,35 @@
+examples/issue-fix-capability-guide-smoke.py
+  s_76ee28abb3c3a4::t_4ceec32e15782a 169-172
+loopx/control_plane/quota/goal_boundary.py
+  s_32e2a9a204a8e4::t_7dac02d13f7dc7 108-131
+loopx/domain_packs/issue_fix.py
+  s_76ee28abb3c3a4::t_1fd336bf76f39d 3,13,23-26,42,136-137,142,145-155,162,166-195
+loopx/domain_state.py
+  s_76ee28abb3c3a4::t_8e11b756ebae95 59-62,92-100,104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "92912581c492e40ed3bcfa99f99df7ef35e82819",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
