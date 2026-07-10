@@ -11,7 +11,11 @@ from ...agent_registry import (
     require_registered_agent_id,
     side_agent_handoff_agent_id_from_registry,
 )
-from .contract import normalize_todo_blocks_agent, normalize_todo_claimed_by
+from .contract import (
+    TODO_TASK_CLASS_MONITOR,
+    normalize_todo_blocks_agent,
+    normalize_todo_claimed_by,
+)
 
 
 @dataclass(frozen=True)
@@ -120,6 +124,19 @@ def _allows_same_agent_review_continuation(
     return bool(blocked_agent and blocked_agent != completing_agent)
 
 
+def _allows_side_agent_monitor_no_followup(
+    *,
+    completion_todo: Mapping[str, Any] | None,
+    evidence: str | None,
+    no_followup: bool,
+) -> bool:
+    if not completion_todo or not no_followup or not str(evidence or "").strip():
+        return False
+    if str(completion_todo.get("task_class") or "").strip() != TODO_TASK_CLASS_MONITOR:
+        return False
+    return not bool(completion_todo.get("required_write_scopes"))
+
+
 def _goal_allows_role_workflow_successors(registry_path: Path, goal_id: str) -> bool:
     goal = load_goal_from_registry(registry_path, goal_id)
     if not isinstance(goal, dict):
@@ -170,6 +187,7 @@ def resolve_completion_policy(
     next_action_kind: str | None = None,
     side_agent_self_merged: bool = False,
     evidence: str | None = None,
+    no_followup: bool = False,
     linked_successors: Iterable[LinkedSuccessor] = (),
     completion_todo: Mapping[str, Any] | None = None,
 ) -> CompletionPolicy:
@@ -240,6 +258,15 @@ def resolve_completion_policy(
     same_agent_review_continuation = bool(
         same_agent_review_candidate and linked_handoff_successor_id
     )
+    side_agent_monitor_no_followup = bool(
+        side_agent_completion
+        and not next_agent_todo
+        and _allows_side_agent_monitor_no_followup(
+            completion_todo=completion_todo,
+            evidence=evidence,
+            no_followup=no_followup,
+        )
+    )
     if (
         side_agent_completion
         and not linked_handoff_successor_id
@@ -265,19 +292,25 @@ def resolve_completion_policy(
                 "--side-agent-self-merged requires --evidence with a public-safe "
                 "self-merge, commit, and validation summary"
             )
-        if not side_agent_self_merged and not next_agent_todo and not linked_handoff_successor_id:
+        if (
+            not side_agent_self_merged
+            and not next_agent_todo
+            and not linked_handoff_successor_id
+            and not side_agent_monitor_no_followup
+        ):
             raise ValueError(
                 f"side-agent completion by {effective_claimed_by!r} requires "
                 "--next-agent-todo for independent handoff, verification, and merge; "
                 "--successor-todo-id pointing at an open agent successor claimed by "
                 f"handoff_agent={handoff_agent!r} or an allowed role-workflow agent; "
-                "or --side-agent-self-merged "
-                "with --evidence for a small validated self-merge"
+                "--side-agent-self-merged with --evidence for a small validated self-merge; "
+                "or an evidence-backed non-delivery continuous_monitor with --no-follow-up"
             )
         if (
             not side_agent_self_merged
             and handoff_agent == effective_claimed_by
             and not same_agent_review_continuation
+            and not side_agent_monitor_no_followup
         ):
             raise ValueError(
                 "side-agent handoff todo cannot be claimed by the completing side agent; "

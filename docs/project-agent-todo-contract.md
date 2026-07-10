@@ -427,7 +427,7 @@ loopx todo complete \
 Without `--side-agent-self-merged`, a side-agent successor remains a primary
 review handoff and must stay claimed by the primary agent.
 
-Use `todo update` for lower-level status changes:
+Use `todo update` for lower-level, non-terminal status changes:
 
 ```bash
 loopx todo update \
@@ -437,6 +437,14 @@ loopx todo update \
   --reason "<public-safe blocker>" \
   --task-class blocker
 ```
+
+Agent Todo completion always goes through `todo complete`; `todo update
+--status done` is rejected so side-agent review, successor, and no-follow-up
+policy cannot be bypassed. An evidence-backed side-agent
+`continuous_monitor` with no required write scope may close with
+`todo complete --no-follow-up` when its bounded watch ends without a material
+transition. This closeout records `side_agent_self_merged=false` and does not
+create a review handoff for observation-only work.
 
 Use `--resume-when` when deferring a successor that should wake up after a
 machine-readable condition instead of living only in prose:

@@ -40,11 +40,128 @@ from todo_lifecycle_fixtures import (  # noqa: E402
 )
 
 
+def assert_side_agent_monitor_no_followup() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-side-monitor-no-followup-") as tmp:
+        registry_path, state_file = write_fixture(Path(tmp))
+        side_monitor_added = run_cli(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--text",
+            "Watch one public-safe signal until the bounded window closes.",
+            "--claimed-by",
+            "codex-side-bypass",
+            "--task-class",
+            "continuous_monitor",
+            "--action-kind",
+            "public_signal_monitor",
+            "--monitor-target-key",
+            "public-signal-window",
+            "--cadence",
+            "1d",
+            "--next-due-at",
+            "2026-07-11T00:00:00Z",
+        )
+        side_monitor_id = side_monitor_added["todo_id"]
+        monitor_update_bypass = run_cli_error(
+            registry_path,
+            "todo",
+            "update",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            side_monitor_id,
+            "--claimed-by",
+            "codex-side-bypass",
+            "--status",
+            "done",
+            "--no-follow-up",
+            "--evidence",
+            "bounded public watch ended without material change",
+        )
+        assert "agent todo completion must use" in monitor_update_bypass["error"], (
+            monitor_update_bypass
+        )
+
+        side_monitor_completed = run_cli(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            side_monitor_id,
+            "--claimed-by",
+            "codex-side-bypass",
+            "--evidence",
+            "bounded public watch ended without material change",
+            "--no-follow-up",
+        )
+        assert side_monitor_completed["changed"] is True, side_monitor_completed
+        assert side_monitor_completed["side_agent_self_merged"] is False, (
+            side_monitor_completed
+        )
+        assert side_monitor_completed["no_followup"] is True, side_monitor_completed
+        monitor_item = next(
+            item for item in parsed_items(state_file) if item["todo_id"] == side_monitor_id
+        )
+        assert monitor_item["status"] == "done", monitor_item
+        assert monitor_item["no_followup"] is True, monitor_item
+
+        write_monitor_added = run_cli(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--text",
+            "Watch a signal whose closeout includes repository delivery.",
+            "--claimed-by",
+            "codex-side-bypass",
+            "--task-class",
+            "continuous_monitor",
+            "--action-kind",
+            "delivery_monitor",
+            "--required-write-scope",
+            "loopx/**",
+            "--monitor-target-key",
+            "delivery-monitor-window",
+            "--cadence",
+            "1d",
+            "--next-due-at",
+            "2026-07-11T00:00:00Z",
+        )
+        write_monitor_rejected = run_cli_error(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            write_monitor_added["todo_id"],
+            "--claimed-by",
+            "codex-side-bypass",
+            "--evidence",
+            "monitor closeout included repository delivery",
+            "--no-follow-up",
+        )
+        assert "side-agent completion" in write_monitor_rejected["error"], (
+            write_monitor_rejected
+        )
+
+
 def main() -> int:
     assert_configured_side_agent_handoff()
     assert_no_followup_cli_metadata()
     assert_complete_links_existing_successor()
     assert_same_title_completion_creates_fresh_successor()
+    assert_side_agent_monitor_no_followup()
 
     with tempfile.TemporaryDirectory(prefix="loopx-todo-lifecycle-smoke-") as tmp:
         root = Path(tmp)

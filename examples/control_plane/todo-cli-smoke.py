@@ -724,15 +724,44 @@ def main() -> int:
             metadata_payload["todo_id"],
             "--text",
             UPDATED_AGENT_TODO,
-            "--status",
-            "done",
             "--evidence",
             "Validated compact evidence summary.",
         )
         assert update_payload["changed"] is True, update_payload
         assert update_payload["text_changed"] is True, update_payload
-        assert update_payload["status_changed"] is True, update_payload
+        assert update_payload["status_changed"] is False, update_payload
         assert update_payload["todo"] == UPDATED_AGENT_TODO, update_payload
+
+        terminal_update = run_cli_error(
+            registry_path,
+            "todo",
+            "update",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            metadata_payload["todo_id"],
+            "--status",
+            "done",
+            "--evidence",
+            "Validated compact evidence summary.",
+        )
+        assert "agent todo completion must use" in terminal_update["error"], terminal_update
+        assert "loopx todo complete" in terminal_update["error"], terminal_update
+
+        completed_payload = run_cli(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            metadata_payload["todo_id"],
+            "--evidence",
+            "Validated compact evidence summary.",
+            "--no-follow-up",
+        )
+        assert completed_payload["changed"] is True, completed_payload
+        assert completed_payload["status_changed"] is True, completed_payload
         after_update = state_file.read_text(encoding="utf-8")
         assert f"- [x] {UPDATED_AGENT_TODO}" in after_update, after_update
         assert "Summarize the read-only evidence after the user" not in after_update, after_update

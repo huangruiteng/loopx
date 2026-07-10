@@ -1301,6 +1301,12 @@ def update_goal_todo(
             if status
             else str(existing_block.get("status") or TODO_STATUS_OPEN)
         )
+        if status and target_role == "agent" and todo_done_for_status(target_status):
+            raise ValueError(
+                "agent todo completion must use complete_goal_todo "
+                "(CLI: `loopx todo complete`) so completion policy, successor, "
+                "and no-follow-up contracts are enforced"
+            )
         existing_blocks_agent = normalize_todo_blocks_agent(existing_block.get("blocks_agent"))
         existing_global_gate = normalize_todo_global_gate(existing_block.get("global_gate"))
         if global_gate and not (target_role == "user" and target_task_class == TODO_TASK_CLASS_USER_GATE):
@@ -1456,6 +1462,7 @@ def complete_goal_todo(
             next_action_kind=next_action_kind,
             side_agent_self_merged=side_agent_self_merged,
             evidence=evidence,
+            no_followup=no_followup,
             linked_successors=linked_successors,
             completion_todo=completion_todo,
         )
