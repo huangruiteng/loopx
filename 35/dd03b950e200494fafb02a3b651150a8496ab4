@@ -1,0 +1,29 @@
+docs/project-agent-todo-contract.md
+  s_32e2a9a204a8e4::t_96d07f80e99fb4 477-481
+examples/control_plane/todo-user-gate-scope-smoke.py
+  s_32e2a9a204a8e4::t_5d10630b87cb50 407-425
+loopx/cli_commands/todo.py
+  s_32e2a9a204a8e4::t_eeb251951ed62a 160-164,417-418,480,543,590,615,689,715
+loopx/cli_commands/todo_argument_validation.py
+  s_32e2a9a204a8e4::t_f7d1b6c3151234 26
+loopx/todos.py
+  s_32e2a9a204a8e4::t_0e069a835b16e3 1167,1242-1243,1329,1354-1355,1454,1515
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "35dd03b950e200494fafb02a3b651150a8496ab4",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
