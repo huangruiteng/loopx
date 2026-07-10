@@ -718,6 +718,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "exercises claim, completion, successor, and handoff lifecycle transitions by todo_id",
             },
             {
+                "command": "python3 examples/control_plane/todo-deferred-capacity-cli-smoke.py",
+                "tier": "default",
+                "reason": "guards deferred writes, fail-closed resume kinds, and runtime capacity resume routing",
+            },
+            {
                 "command": "python3 examples/control_plane/todo-list-event-projection-smoke.py",
                 "tier": "default",
                 "reason": "guards event-sourced todo list projection with Markdown fallback",

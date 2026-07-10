@@ -70,7 +70,7 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         help="For capture-followups, append one public-safe agent follow-up todo. Repeat up to the requested batch.",
     )
     todo_parser.add_argument("--todo-id", help="Structured todo id from status/quota, such as todo_ab12cd34ef56.")
-    todo_parser.add_argument("--status", choices=["open", "done", "blocked", "deferred"], help="For todo update, set the lifecycle status by todo_id.")
+    todo_parser.add_argument("--status", choices=["open", "done", "blocked", "deferred"], help="For todo add/update, set the lifecycle status.")
     todo_parser.add_argument("--note", help="Public-safe note to attach to a lifecycle transition.")
     todo_parser.add_argument("--evidence", help="Public-safe evidence pointer or short result for complete/update.")
     todo_parser.add_argument("--reason", help="Public-safe reason for blocked/deferred/supersede transitions.")
@@ -187,7 +187,9 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         "--resume-when",
         help=(
             "For deferred todo add/update, declare a machine-readable resume condition "
-            "such as todo_done:todo_ab12cd34ef56."
+            "such as todo_done:todo_ab12cd34ef56, pr_merged:#532, or "
+            "capacity_available:short_pool. Capacity keys are resolved from quota "
+            "--available-capability declarations."
         ),
     )
     todo_parser.add_argument(
@@ -394,6 +396,7 @@ def handle_todo_command(
                 goal_id=args.goal_id,
                 role=args.role,
                 text=args.text,
+                status=args.status,
                 task_class=args.task_class,
                 action_kind=args.action_kind,
                 continuation_policy=args.continuation_policy,
