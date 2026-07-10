@@ -7,7 +7,7 @@ import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import parse_qs, urlparse
 
 from ....control_plane.todos.contract import (
@@ -21,6 +21,7 @@ from ....control_plane.todos.contract import (
     normalize_explicit_todo_task_class,
     normalize_todo_status,
 )
+from . import issue_fix_surface
 from .projection_rows import (
     projection_lifecycle_parts as _projection_lifecycle_parts,
     projection_lifecycle_state as _projection_lifecycle_state,
@@ -136,6 +137,7 @@ def lark_kanban_field_definitions() -> list[dict[str, Any]]:
         {"name": "Action Kind", "type": "text", "style": {"type": "plain"}},
         {"name": "LoopX Goal ID", "type": "text", "style": {"type": "plain"}},
         {"name": "LoopX Todo ID", "type": "text", "style": {"type": "plain"}},
+        *issue_fix_surface.issue_fix_field_definitions(_select_options),
         {"name": "Scope", "type": "text", "style": {"type": "plain"}},
         {"name": "User Gate", "type": "text", "style": {"type": "plain"}},
         {"name": "Handoff", "type": "text", "style": {"type": "plain"}},
@@ -178,6 +180,7 @@ def lark_kanban_views() -> list[dict[str, str]]:
         {"name": DEFAULT_STATUS_QUEUE_VIEW, "type": "grid"},
         {"name": "User Gates", "type": "grid"},
         {"name": "Kanban", "type": "kanban"},
+        *issue_fix_surface.issue_fix_views(),
     ]
 
 
@@ -197,11 +200,14 @@ def lark_kanban_schema_payload(*, table_name: str = DEFAULT_TABLE_NAME) -> dict[
             "run_history": "Run History append-style compact text field",
             "quota": "omitted in v0 prototype; assume no quota limit",
             "scope": "Scope text field; advisory in v0 prototype",
+            "issue_fix_outcome": "First-class issue row with repository, issue, PR, route, stage, validation, and outcome dimensions.",
         },
         "fields": lark_kanban_field_definitions(),
         "views": lark_kanban_views(),
         "operator_view": {
             "kanban_card_fields": OPERATOR_CARD_FIELDS,
+            "issue_fix_card_fields": issue_fix_surface.ISSUE_FIX_CARD_FIELDS,
+            "issue_fix_views": [issue_fix_surface.DEFAULT_ISSUE_FIX_GRID_VIEW, issue_fix_surface.DEFAULT_ISSUE_FIX_KANBAN_VIEW],
             "reason": (
                 "Keep the human-facing Kanban card small; retain the full task "
                 "context in the record detail and All Tasks grid."
@@ -981,84 +987,7 @@ def build_create_board_plan(
                 ),
             ]
         )
-    commands.extend(
-        [
-            [
-                cli_bin,
-                "base",
-                "+view-set-filter",
-                "--as",
-                identity,
-                "--base-token",
-                token,
-                "--table-id",
-                table_ref,
-                "--view-id",
-                DEFAULT_STATUS_QUEUE_VIEW,
-                "--json",
-                json.dumps(
-                    {
-                        "logic": "and",
-                        "conditions": [
-                            ["Status", "intersects", [STATUS_TODO, STATUS_CLAIMED]]
-                        ],
-                    },
-                    ensure_ascii=False,
-                ),
-            ],
-            [
-                cli_bin,
-                "base",
-                "+view-set-filter",
-                "--as",
-                identity,
-                "--base-token",
-                token,
-                "--table-id",
-                table_ref,
-                "--view-id",
-                "User Gates",
-                "--json",
-                json.dumps(
-                    {
-                        "logic": "and",
-                        "conditions": [["Status", "intersects", [STATUS_USER_GATE]]],
-                    },
-                    ensure_ascii=False,
-                ),
-            ],
-            [
-                cli_bin,
-                "base",
-                "+view-set-group",
-                "--as",
-                identity,
-                "--base-token",
-                token,
-                "--table-id",
-                table_ref,
-                "--view-id",
-                "Kanban",
-                "--json",
-                json.dumps({"group_config": [{"field": "Status", "desc": False}]}, ensure_ascii=False),
-            ],
-            [
-                cli_bin,
-                "base",
-                "+view-set-visible-fields",
-                "--as",
-                identity,
-                "--base-token",
-                token,
-                "--table-id",
-                table_ref,
-                "--view-id",
-                "Kanban",
-                "--json",
-                json.dumps({"visible_fields": OPERATOR_CARD_FIELDS}, ensure_ascii=False),
-            ],
-        ]
-    )
+    commands.extend(_view_configuration_commands(cli_bin=cli_bin, identity=identity, base_token=token, table_id=table_ref, view_ids={view["name"]: view["name"] for view in lark_kanban_views()}))
     return commands
 
 
@@ -1162,80 +1091,7 @@ def create_lark_kanban_board(
         commands.append(grant)
         if grant.get("executed") and not grant.get("ok"):
             return _board_payload(False, commands, effective_base_token, table_id)
-    for command in (
-        [
-            cli_bin,
-            "base",
-            "+view-set-filter",
-            "--as",
-            identity,
-            "--base-token",
-            token,
-            "--table-id",
-            table_ref,
-            "--view-id",
-            DEFAULT_STATUS_QUEUE_VIEW,
-            "--json",
-            json.dumps(
-                {
-                    "logic": "and",
-                    "conditions": [["Status", "intersects", [STATUS_TODO, STATUS_CLAIMED]]],
-                },
-                ensure_ascii=False,
-            ),
-        ],
-        [
-            cli_bin,
-            "base",
-            "+view-set-filter",
-            "--as",
-            identity,
-            "--base-token",
-            token,
-            "--table-id",
-            table_ref,
-            "--view-id",
-            "User Gates",
-            "--json",
-            json.dumps(
-                {
-                    "logic": "and",
-                    "conditions": [["Status", "intersects", [STATUS_USER_GATE]]],
-                },
-                ensure_ascii=False,
-            ),
-        ],
-        [
-            cli_bin,
-            "base",
-            "+view-set-group",
-            "--as",
-            identity,
-            "--base-token",
-            token,
-            "--table-id",
-            table_ref,
-            "--view-id",
-            "Kanban",
-            "--json",
-            json.dumps({"group_config": [{"field": "Status", "desc": False}]}, ensure_ascii=False),
-        ],
-        [
-            cli_bin,
-            "base",
-            "+view-set-visible-fields",
-            "--as",
-            identity,
-            "--base-token",
-            token,
-            "--table-id",
-            table_ref,
-            "--view-id",
-            "Kanban",
-            "--json",
-            json.dumps({"visible_fields": OPERATOR_CARD_FIELDS}, ensure_ascii=False),
-        ],
-    ):
+    for command in _view_configuration_commands(cli_bin=cli_bin, identity=identity, base_token=token, table_id=table_ref, view_ids={view["name"]: view["name"] for view in lark_kanban_views()}):
         result = _run_command(command, execute=execute, runner=runner)
         commands.append(result)
         if result.get("executed") and not result.get("ok"):
@@ -1444,6 +1300,7 @@ def setup_lark_kanban_board(
 
     created_base = False
     created_table = False
+    created_field_names: list[str] = []
     config_payload: dict[str, Any] | None = None
 
     def save_usable_config() -> None:
@@ -1594,6 +1451,26 @@ def setup_lark_kanban_board(
 
     save_usable_config()
 
+    if execute and not created_base and not created_table:
+        field_list = _run_command(
+            [cli_bin, "base", "+field-list", "--as", identity, "--base-token", effective_base_token, "--table-id", effective_table_id, "--format", "json", "--limit", "200"],
+            execute=True,
+            runner=runner,
+        )
+        commands.append(field_list)
+        if not field_list.get("ok"):
+            return partial_enrichment_payload(field_list)
+        for definition in issue_fix_surface.missing_field_definitions(field_list.get("json"), lark_kanban_field_definitions()):
+            field_create = _run_command(
+                [cli_bin, "base", "+field-create", "--as", identity, "--base-token", effective_base_token, "--table-id", effective_table_id, "--json", json.dumps(definition, ensure_ascii=False)],
+                execute=True,
+                runner=runner,
+            )
+            commands.append(field_create)
+            if not field_create.get("ok"):
+                return partial_enrichment_payload(field_create)
+            created_field_names.append(str(definition.get("name") or ""))
+
     if execute:
         view_ids = _refresh_view_ids(
             cli_bin=cli_bin,
@@ -1670,6 +1547,7 @@ def setup_lark_kanban_board(
         "config_path": str(config_path),
         "created_base": created_base,
         "created_table": created_table,
+        "created_fields": created_field_names,
         "base_token": effective_base_token,
         "table_id": effective_table_id,
         "view_ids": view_ids,
@@ -1758,83 +1636,7 @@ def _view_configuration_commands(
     table_id: str,
     view_ids: dict[str, str],
 ) -> list[list[str]]:
-    worker_view = view_ids.get(DEFAULT_STATUS_QUEUE_VIEW) or DEFAULT_STATUS_QUEUE_VIEW
-    user_gate_view = view_ids.get("User Gates") or "User Gates"
-    kanban_view = view_ids.get("Kanban") or "Kanban"
-    return [
-        [
-            cli_bin,
-            "base",
-            "+view-set-filter",
-            "--as",
-            identity,
-            "--base-token",
-            base_token,
-            "--table-id",
-            table_id,
-            "--view-id",
-            worker_view,
-            "--json",
-            json.dumps(
-                {
-                    "logic": "and",
-                    "conditions": [["Status", "intersects", [STATUS_TODO, STATUS_CLAIMED]]],
-                },
-                ensure_ascii=False,
-            ),
-        ],
-        [
-            cli_bin,
-            "base",
-            "+view-set-filter",
-            "--as",
-            identity,
-            "--base-token",
-            base_token,
-            "--table-id",
-            table_id,
-            "--view-id",
-            user_gate_view,
-            "--json",
-            json.dumps(
-                {
-                    "logic": "and",
-                    "conditions": [["Status", "intersects", [STATUS_USER_GATE]]],
-                },
-                ensure_ascii=False,
-            ),
-        ],
-        [
-            cli_bin,
-            "base",
-            "+view-set-group",
-            "--as",
-            identity,
-            "--base-token",
-            base_token,
-            "--table-id",
-            table_id,
-            "--view-id",
-            kanban_view,
-            "--json",
-            json.dumps({"group_config": [{"field": "Status", "desc": False}]}, ensure_ascii=False),
-        ],
-        [
-            cli_bin,
-            "base",
-            "+view-set-visible-fields",
-            "--as",
-            identity,
-            "--base-token",
-            base_token,
-            "--table-id",
-            table_id,
-            "--view-id",
-            kanban_view,
-            "--json",
-            json.dumps({"visible_fields": OPERATOR_CARD_FIELDS}, ensure_ascii=False),
-        ],
-    ]
+    return issue_fix_surface.view_configuration_commands(cli_bin=cli_bin, identity=identity, base_token=base_token, table_id=table_id, view_ids=view_ids, worker_view_name=DEFAULT_STATUS_QUEUE_VIEW, todo_statuses=[STATUS_TODO, STATUS_CLAIMED], user_gate_status=STATUS_USER_GATE, operator_card_fields=OPERATOR_CARD_FIELDS)
 
 
 def lark_kanban_doctor(
@@ -2017,6 +1819,7 @@ def _lark_record_from_projection_block(
             ),
         }
     )
+    values.update(issue_fix_surface.issue_fix_record_values(block, compact_text=_compact_text))
     return _public_safe_lark_values(values) if public_safe else values
 
 
@@ -2310,6 +2113,7 @@ def _lark_record_from_todo_block(
         "Action Kind": str(block.get("action_kind") or "sync_loopx_todo"),
         "LoopX Goal ID": goal_id,
         "LoopX Todo ID": str(block.get("todo_id") or ""),
+        **issue_fix_surface.todo_record_values(),
         "Scope": scope_text,
         "User Gate": text if lark_status == STATUS_USER_GATE else "",
         "Handoff": f"Synced from LoopX active state: {state_file.name}",

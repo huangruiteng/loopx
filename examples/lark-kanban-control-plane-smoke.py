@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from loopx.presentation.sinks.lark import issue_fix_surface  # noqa: E402
 from loopx.presentation.sinks.lark.kanban import (  # noqa: E402
     CLAIM_UNCLAIMED,
     STATUS_CLAIMED,
@@ -37,6 +38,10 @@ from loopx.presentation.sinks.lark.kanban import (  # noqa: E402
     sync_loopx_todos_to_lark_kanban,
     use_lark_kanban_board,
 )
+
+
+existing_setup_calls: list[list[str]] = []
+existing_setup_view_list_count = 0
 
 
 def fixture_payload() -> dict[str, object]:
@@ -158,6 +163,26 @@ def partial_setup_runner(args: list[str], cwd: Path | None, timeout: float | Non
     return {"returncode": 0, "stdout": json.dumps({"ok": True}), "stderr": "", "timed_out": False}
 
 
+def existing_setup_runner(args: list[str], cwd: Path | None, timeout: float | None) -> dict[str, object]:
+    global existing_setup_view_list_count
+    existing_setup_calls.append(args)
+    if args == ["lark-cli", "--version"]:
+        return {"returncode": 0, "stdout": "lark-cli 1.0.56\n", "stderr": "", "timed_out": False}
+    if args == ["lark-cli", "auth", "status"]:
+        return {"returncode": 0, "stdout": json.dumps({"ok": True, "identities": {"user": {"available": True}}}), "stderr": "", "timed_out": False}
+    if args[-1:] == ["--help"]:
+        return {"returncode": 0, "stdout": "help\n", "stderr": "", "timed_out": False}
+    if "+field-list" in args:
+        return {"returncode": 0, "stdout": json.dumps({"ok": True, "data": {"fields": [{"name": "Task"}, {"name": "Status"}, {"name": "Claim"}, {"name": "Priority"}]}}), "stderr": "", "timed_out": False}
+    if "+view-list" in args:
+        existing_setup_view_list_count += 1
+        views = [{"name": "Worker Queue", "view_id": "vew_worker_existing"}, {"name": "User Gates", "view_id": "vew_user_existing"}, {"name": "Kanban", "view_id": "vew_kanban_existing"}]
+        if existing_setup_view_list_count > 1:
+            views += [{"name": issue_fix_surface.DEFAULT_ISSUE_FIX_GRID_VIEW, "view_id": "vew_issue_grid"}, {"name": issue_fix_surface.DEFAULT_ISSUE_FIX_KANBAN_VIEW, "view_id": "vew_issue_kanban"}]
+        return {"returncode": 0, "stdout": json.dumps({"ok": True, "data": views}), "stderr": "", "timed_out": False}
+    return {"returncode": 0, "stdout": json.dumps({"ok": True}), "stderr": "", "timed_out": False}
+
+
 def run_cli(*extra_args: str) -> dict[str, object]:
     result = subprocess.run(
         [sys.executable, "-m", "loopx.cli", "--format", "json", *extra_args],
@@ -170,6 +195,7 @@ def run_cli(*extra_args: str) -> dict[str, object]:
 
 
 def main() -> int:
+    global existing_setup_view_list_count
     schema = lark_kanban_schema_payload()
     assert schema["ok"] is True, schema
     assert schema["schema_version"] == "loopx_lark_kanban_control_plane_v0", schema
@@ -178,7 +204,7 @@ def main() -> int:
     assert schema["task_spawning_model"]["board_creates_tasks"] is False, schema
     assert "LoopX todo lifecycle" in schema["task_spawning_model"]["rule"], schema
     field_names = [field["name"] for field in schema["fields"]]
-    for expected in ["Task", "Status", "Claim", "Handoff", "Evidence", "Run History", "Worker Command"]:
+    for expected in ["Task", "Status", "Claim", "Handoff", "Evidence", "Run History", "Worker Command", "Work Item Type", "Repository", "Issue", "Pull Request", "Route", "Stage", "Validation", "Outcome"]:
         assert expected in field_names, field_names
     assert schema["heartbeat_model"]["fallback"].startswith("agent heartbeat"), schema
     assert schema["operator_view"]["kanban_card_fields"] == lark_kanban_operator_card_fields(), schema
@@ -190,6 +216,8 @@ def main() -> int:
         "Evidence",
         "Status",
     ]
+    assert schema["operator_view"]["issue_fix_card_fields"] == issue_fix_surface.ISSUE_FIX_CARD_FIELDS
+    assert {issue_fix_surface.DEFAULT_ISSUE_FIX_GRID_VIEW, issue_fix_surface.DEFAULT_ISSUE_FIX_KANBAN_VIEW} <= {view["name"] for view in schema["views"]}
 
     plan = build_create_board_plan(
         base_name="LoopX Lark Kanban Control Plane POC",
@@ -203,6 +231,8 @@ def main() -> int:
     assert any("+view-set-group" in command and "Kanban" in command for command in joined), joined
     assert any("group_config" in command for command in joined), joined
     assert any("+view-set-visible-fields" in command for command in joined), joined
+    assert sum("+view-set-filter" in command and "Work Item Type" in command for command in joined) == 2, joined
+    assert any("+view-set-group" in command and "Issue Fix Kanban" in command and "Stage" in command for command in joined), joined
 
     heartbeat = lark_kanban_heartbeat(
         LarkKanbanConfig(
@@ -305,6 +335,22 @@ def main() -> int:
         assert stored["board"]["table_id"] == "tbl_live_fixture", stored
         assert stored["board"]["view_ids"]["Kanban"] == "vew_kanban_fixture", stored
         assert setup_payload["config"]["board"]["table_id"] == "tbl_live_fixture", setup_payload
+
+    with tempfile.TemporaryDirectory(prefix="loopx-lark-kanban-existing-") as tmp:
+        existing_setup_calls.clear()
+        existing_setup_view_list_count = 0
+        config_path = Path(tmp) / ".loopx" / "lark-kanban.json"
+        use_lark_kanban_board(config_path=config_path, base_url="https://example.invalid/base/base_existing?table=tbl_existing", cli_bin="lark-cli", identity="user")
+        migrated = setup_lark_kanban_board(config_path=config_path, base_name="LoopX Existing Board Fixture", cli_bin="lark-cli", identity="user", execute=True, runner=existing_setup_runner)
+        assert migrated["ok"] is True, migrated
+        assert {"Work Item Type", "Repository", "Issue", "Pull Request", "Route", "Stage", "Validation", "Outcome"} <= set(migrated["created_fields"]), migrated
+        assert migrated["view_ids"][issue_fix_surface.DEFAULT_ISSUE_FIX_GRID_VIEW] == "vew_issue_grid", migrated
+        assert migrated["view_ids"][issue_fix_surface.DEFAULT_ISSUE_FIX_KANBAN_VIEW] == "vew_issue_kanban", migrated
+        created_views = next(args for args in existing_setup_calls if "+view-create" in args)
+        assert {item["name"] for item in json.loads(created_views[created_views.index("--json") + 1])} >= {issue_fix_surface.DEFAULT_ISSUE_FIX_GRID_VIEW, issue_fix_surface.DEFAULT_ISSUE_FIX_KANBAN_VIEW}
+        issue_group = next(args for args in existing_setup_calls if "+view-set-group" in args and "vew_issue_kanban" in args)
+        assert "Stage" in issue_group[issue_group.index("--json") + 1], issue_group
+        assert len([args for args in existing_setup_calls if "+view-set-visible-fields" in args and any(view in args for view in ("vew_issue_grid", "vew_issue_kanban"))]) == 2
 
     with tempfile.TemporaryDirectory(prefix="loopx-lark-kanban-sync-") as tmp:
         root = Path(tmp)

@@ -161,6 +161,14 @@ def main() -> None:
         "public-fixture-widgets:issues_42"
     ), row
     assert row["values"]["Action Kind"] == "issue_fix_outcome", row
+    assert row["values"]["Work Item Type"] == "Issue Fix", row
+    assert row["values"]["Repository"] == "public-fixture/widgets", row
+    assert row["values"]["Issue"] == "#42", row
+    assert row["values"]["Pull Request"] == "#77", row
+    assert row["values"]["Route"] == "fix_pr", row
+    assert row["values"]["Stage"] == "ci_pending", row
+    assert row["values"]["Validation"].startswith("passed:"), row
+    assert row["values"]["Outcome"] == "fix_pr_open", row
     assert "stage=ci_pending" in row["values"]["Evidence"], row
     assert "commit=fix-parser-abc1234" in row["values"]["Evidence"], row
     assert "risks=full integration suite" in row["values"]["Evidence"], row
