@@ -1,0 +1,85 @@
+loopx/canary/planner.py
+  s_32e2a9a204a8e4::t_80ad290d96aaa0 1226
+loopx/claude_goal_mode/mcp/loopx_mcp.py
+  s_32e2a9a204a8e4::t_b7709f965aa213 117-118
+loopx/cli_commands/status.py
+  s_32e2a9a204a8e4::t_cc305c93b76c5a 556
+loopx/cli_commands/todo.py
+  s_32e2a9a204a8e4::t_5e3b5715d42fb2 157,160-173,258-259,283-291,408-411,434,473-474,490,535-536,548,557-558,581-582,605-606,627-628,646,677-680,697,705-706
+loopx/cli_commands/todo_argument_validation.py
+  s_32e2a9a204a8e4::t_0ec1a886ecb165 26-27,44
+loopx/contract.py
+  s_32e2a9a204a8e4::t_ce9b20ee96218c 24-25,303,308-317,324-362
+loopx/control_plane/agents/agent_lane_recommendation.py
+  s_32e2a9a204a8e4::t_10e980c78df73b 349-352
+loopx/control_plane/agents/agent_scope.py
+  s_32e2a9a204a8e4::t_514f4041fba33b 24,33,114-117,134-135,250,831,1099,1107,1130-1131,1198,1201,1203,1206,1219,1221,1271
+loopx/control_plane/agents/capability_gate.py
+  s_32e2a9a204a8e4::t_252278b5aff7f9 18,144,170
+loopx/control_plane/agents/management_projection.py
+  s_32e2a9a204a8e4::t_4344ffdc9652d2 265
+loopx/control_plane/handoff/review_packet_context.py
+  s_32e2a9a204a8e4::t_e7f9417a837d9c 180-181
+loopx/control_plane/quota/selected_todo_projection.py
+  s_32e2a9a204a8e4::t_134fcdab93075b 19
+loopx/control_plane/todos/claim_visibility.py
+  s_32e2a9a204a8e4::t_76af00e9fa0c82 12,54,57,62,98-100,103
+loopx/control_plane/todos/completion_policy.py
+  s_32e2a9a204a8e4::t_69000efae6e8b1 13,35,78,106-117,133-137,140-141,147
+loopx/control_plane/todos/contract.py
+  s_32e2a9a204a8e4::t_53322cfeef326b 42-49,222,240-282,629-632,680,783-792
+loopx/control_plane/todos/deferred_resume.py
+  s_32e2a9a204a8e4::t_51227bf69738ca 119
+loopx/control_plane/todos/event_writeback.py
+  s_32e2a9a204a8e4::t_a5e55b1c05af76 30,149,183,188-194,246,270,308
+loopx/control_plane/todos/handoff_gate.py
+  s_32e2a9a204a8e4::t_4874c56347d384 13,23,139,182,190-191,261
+loopx/control_plane/todos/handoff_note.py
+  s_32e2a9a204a8e4::t_f602d3be3ca8ab 12,116-119,121,127,134,167-168
+loopx/control_plane/todos/markdown.py
+  s_32e2a9a204a8e4::t_adbc04ebc7953f 64,111
+loopx/control_plane/todos/projection.py
+  s_32e2a9a204a8e4::t_90564bba68a34e 22,228-231,236,244
+loopx/control_plane/todos/quota_summary.py
+  s_32e2a9a204a8e4::t_d46f9f7abe00b5 59
+loopx/control_plane/todos/route_continuation.py
+  s_32e2a9a204a8e4::t_facf9c19267033 10,66,177-178,199
+loopx/control_plane/todos/succession_warning.py
+  s_32e2a9a204a8e4::t_0ab6c660922538 40
+loopx/control_plane/todos/summary_item.py
+  s_32e2a9a204a8e4::t_5663d59db9274f 8,37,116-120
+loopx/control_plane/todos/todo_summary.py
+  s_32e2a9a204a8e4::t_911d328f921053 23,329-331,375,834
+loopx/control_plane/work_items/goal_route_hint.py
+  s_32e2a9a204a8e4::t_77e6afc9d6dbce 11,71-73,165,182-184
+loopx/control_plane/work_items/project_asset.py
+  s_32e2a9a204a8e4::t_357a88c65ee066 477
+loopx/event_sourced_state.py
+  s_32e2a9a204a8e4::t_c6e6bd0f90202c 27,272,283-284,568,594-595,631-633,772
+loopx/presentation/renderers/status_markdown.py
+  s_32e2a9a204a8e4::t_d65f60f300369c 1342
+loopx/presentation/sinks/lark/projection_rows.py
+  s_32e2a9a204a8e4::t_e91fbc723e2c17 15,32-33,46-47
+loopx/state_projection.py
+  s_32e2a9a204a8e4::t_c9379d1301d970 18,92,538-540
+loopx/todos.py
+  s_32e2a9a204a8e4::t_33a11e9b906dad 21,38,48,83-100,197-203,231,504-508,564-569,754,762-768,824,866-867,917-919,949,969-973,1028-1034,1069,1110,1167,1241-1242,1290-1292,1326-1327,1346-1349,1404-1432,1509,1564,1640,1650-1651,1653,1672,1719,1784,1809-1814,1817-1818,1839-1843,1846-1848,1874
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c71da3f1e48c2d244f00927d1ccd6a1187ed6937",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
