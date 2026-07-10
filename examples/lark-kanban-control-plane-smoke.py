@@ -173,7 +173,46 @@ def existing_setup_runner(args: list[str], cwd: Path | None, timeout: float | No
     if args[-1:] == ["--help"]:
         return {"returncode": 0, "stdout": "help\n", "stderr": "", "timed_out": False}
     if "+field-list" in args:
-        return {"returncode": 0, "stdout": json.dumps({"ok": True, "data": {"fields": [{"name": "Task"}, {"name": "Status"}, {"name": "Claim"}, {"name": "Priority"}]}}), "stderr": "", "timed_out": False}
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(
+                {
+                    "ok": True,
+                    "data": {
+                        "fields": [
+                            {"name": "Task"},
+                            {"name": "Status"},
+                            {"name": "Claim"},
+                            {"name": "Priority"},
+                            {
+                                "id": "fld_issue_existing",
+                                "name": "Issue",
+                                "type": "text",
+                                "style": {"type": "plain"},
+                            },
+                            {
+                                "id": "fld_pr_existing",
+                                "name": "Pull Request",
+                                "type": "text",
+                                "style": {"type": "plain"},
+                            },
+                            {
+                                "id": "fld_stage_existing",
+                                "name": "Stage",
+                                "type": "select",
+                                "multiple": False,
+                                "options": [
+                                    {"name": "reproduction_planned"},
+                                    {"name": "reproduction_blocked"},
+                                ],
+                            },
+                        ]
+                    },
+                }
+            ),
+            "stderr": "",
+            "timed_out": False,
+        }
     if "+view-list" in args:
         existing_setup_view_list_count += 1
         views = [{"name": "Worker Queue", "view_id": "vew_worker_existing"}, {"name": "User Gates", "view_id": "vew_user_existing"}, {"name": "Kanban", "view_id": "vew_kanban_existing"}]
@@ -228,6 +267,9 @@ def main() -> int:
         "ci_failed",
         "review_wait",
     ], issue_fix_surface.ISSUE_FIX_STAGE_OPTIONS
+    assert issue_fix_surface.field_definition_migrations(
+        {"data": {"fields": schema["fields"]}}, schema["fields"]
+    ) == []
     assert {issue_fix_surface.DEFAULT_ISSUE_FIX_GRID_VIEW, issue_fix_surface.DEFAULT_ISSUE_FIX_KANBAN_VIEW} <= {view["name"] for view in schema["views"]}
 
     plan = build_create_board_plan(
@@ -244,9 +286,7 @@ def main() -> int:
     assert any("+view-set-visible-fields" in command for command in joined), joined
     assert sum("+view-set-filter" in command and "Work Item Type" in command for command in joined) == 2, joined
     assert any("+view-set-group" in command and "Issue Fix Kanban" in command and "Stage" in command for command in joined), joined
-    assert sum("+field-update" in command and "--yes" in command for command in joined) == 3, joined
-    assert any("+field-update" in command and "--field-id Issue" in command and '\"type\": \"url\"' in command for command in joined), joined
-    assert any("+field-update" in command and "--field-id Stage" in command and "ci_pending" in command for command in joined), joined
+    assert not any("+field-update" in command for command in joined), joined
 
     heartbeat = lark_kanban_heartbeat(
         LarkKanbanConfig(
@@ -357,7 +397,20 @@ def main() -> int:
         use_lark_kanban_board(config_path=config_path, base_url="https://example.invalid/base/base_existing?table=tbl_existing", cli_bin="lark-cli", identity="user")
         migrated = setup_lark_kanban_board(config_path=config_path, base_name="LoopX Existing Board Fixture", cli_bin="lark-cli", identity="user", execute=True, runner=existing_setup_runner)
         assert migrated["ok"] is True, migrated
-        assert {"Work Item Type", "Repository", "Issue", "Pull Request", "Route", "Stage", "Validation", "Outcome"} <= set(migrated["created_fields"]), migrated
+        assert {"Work Item Type", "Repository", "Route", "Validation", "Outcome"} <= set(migrated["created_fields"]), migrated
+        assert set(migrated["updated_fields"]) == {"Issue", "Pull Request", "Stage"}, migrated
+        field_updates = [args for args in existing_setup_calls if "+field-update" in args]
+        assert len(field_updates) == 3, field_updates
+        assert [args[args.index("--field-id") + 1] for args in field_updates] == [
+            "fld_issue_existing",
+            "fld_pr_existing",
+            "fld_stage_existing",
+        ], field_updates
+        assert all("--yes" in args for args in field_updates), field_updates
+        assert "ci_pending" in field_updates[-1][field_updates[-1].index("--json") + 1], field_updates[-1]
+        first_view_write = next(index for index, args in enumerate(existing_setup_calls) if "+view-set-filter" in args)
+        last_field_update = max(index for index, args in enumerate(existing_setup_calls) if "+field-update" in args)
+        assert last_field_update < first_view_write, existing_setup_calls
         assert migrated["view_ids"][issue_fix_surface.DEFAULT_ISSUE_FIX_GRID_VIEW] == "vew_issue_grid", migrated
         assert migrated["view_ids"][issue_fix_surface.DEFAULT_ISSUE_FIX_KANBAN_VIEW] == "vew_issue_kanban", migrated
         created_views = next(args for args in existing_setup_calls if "+view-create" in args)

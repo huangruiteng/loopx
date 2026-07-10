@@ -1301,6 +1301,7 @@ def setup_lark_kanban_board(
     created_base = False
     created_table = False
     created_field_names: list[str] = []
+    updated_field_names: list[str] = []
     config_payload: dict[str, Any] | None = None
 
     def save_usable_config() -> None:
@@ -1470,6 +1471,33 @@ def setup_lark_kanban_board(
             if not field_create.get("ok"):
                 return partial_enrichment_payload(field_create)
             created_field_names.append(str(definition.get("name") or ""))
+        for migration in issue_fix_surface.field_definition_migrations(
+            field_list.get("json"), lark_kanban_field_definitions()
+        ):
+            field_update = _run_command(
+                [
+                    cli_bin,
+                    "base",
+                    "+field-update",
+                    "--as",
+                    identity,
+                    "--base-token",
+                    effective_base_token,
+                    "--table-id",
+                    effective_table_id,
+                    "--field-id",
+                    str(migration["field_id"]),
+                    "--json",
+                    json.dumps(migration["definition"], ensure_ascii=False),
+                    "--yes",
+                ],
+                execute=True,
+                runner=runner,
+            )
+            commands.append(field_update)
+            if not field_update.get("ok"):
+                return partial_enrichment_payload(field_update)
+            updated_field_names.append(str(migration["name"]))
 
     if execute:
         view_ids = _refresh_view_ids(
@@ -1548,6 +1576,7 @@ def setup_lark_kanban_board(
         "created_base": created_base,
         "created_table": created_table,
         "created_fields": created_field_names,
+        "updated_fields": updated_field_names,
         "base_token": effective_base_token,
         "table_id": effective_table_id,
         "view_ids": view_ids,

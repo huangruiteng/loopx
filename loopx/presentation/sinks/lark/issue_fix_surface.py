@@ -165,11 +165,67 @@ def extract_field_names(parsed: Any) -> set[str]:
     return set()
 
 
+def extract_fields(parsed: Any) -> dict[str, Mapping[str, Any]]:
+    if isinstance(parsed, dict):
+        fields = parsed.get("fields")
+        if isinstance(fields, list):
+            return {
+                str(item.get("name") or "").strip(): item
+                for item in fields
+                if isinstance(item, Mapping) and str(item.get("name") or "").strip()
+            }
+        for value in parsed.values():
+            extracted = extract_fields(value)
+            if extracted:
+                return extracted
+    if isinstance(parsed, list):
+        for value in parsed:
+            extracted = extract_fields(value)
+            if extracted:
+                return extracted
+    return {}
+
+
 def missing_field_definitions(
     parsed: Any, definitions: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
     existing = extract_field_names(parsed)
     return [item for item in definitions if str(item.get("name") or "").strip() not in existing]
+
+
+def field_definition_migrations(
+    parsed: Any, definitions: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    existing = extract_fields(parsed)
+    migrations: list[dict[str, Any]] = []
+    for definition in definitions:
+        name = str(definition.get("name") or "").strip()
+        if name not in {"Issue", "Pull Request", "Stage"} or name not in existing:
+            continue
+        current = existing[name]
+        matches = current.get("type") == definition.get("type")
+        if name in {"Issue", "Pull Request"}:
+            current_style = current.get("style") if isinstance(current.get("style"), Mapping) else {}
+            desired_style = definition.get("style") if isinstance(definition.get("style"), Mapping) else {}
+            matches = matches and current_style.get("type") == desired_style.get("type")
+        else:
+            current_options = current.get("options") if isinstance(current.get("options"), list) else []
+            desired_options = definition.get("options") if isinstance(definition.get("options"), list) else []
+            matches = (
+                matches
+                and current.get("multiple") is definition.get("multiple")
+                and [item.get("name") for item in current_options if isinstance(item, Mapping)]
+                == [item.get("name") for item in desired_options if isinstance(item, Mapping)]
+            )
+        if not matches:
+            migrations.append(
+                {
+                    "field_id": str(current.get("id") or name),
+                    "name": name,
+                    "definition": definition,
+                }
+            )
+    return migrations
 
 
 def issue_fix_view_configuration_commands(
@@ -199,25 +255,6 @@ def issue_fix_view_configuration_commands(
     commands = [
         [
             *common[:2],
-            "+field-update",
-            *common[2:],
-            "--field-id",
-            definition["name"],
-            "--json",
-            json.dumps(definition, ensure_ascii=False),
-            "--yes",
-        ]
-        for definition in issue_fix_field_definitions(
-            lambda options: [
-                {"name": option, "hue": "Blue", "lightness": "Light"}
-                for option in options
-            ]
-        )
-        if definition["name"] in {"Issue", "Pull Request", "Stage"}
-    ]
-    commands.extend(
-        [
-            *common[:2],
             "+view-set-filter",
             *common[2:],
             "--view-id",
@@ -232,7 +269,7 @@ def issue_fix_view_configuration_commands(
             ),
         ]
         for view_id in (issue_grid_view, issue_kanban_view)
-    )
+    ]
     commands.append(
         [
             *common[:2],
