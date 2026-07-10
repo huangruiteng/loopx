@@ -506,7 +506,8 @@ def register_issue_fix_commands(
         "reviewer-request",
         help=(
             "Select the top requestable non-author reviewer and, with explicit "
-            "external-write authority, request and verify GitHub review."
+            "external-write authority, verify a formal request or its "
+            "permission-only comment fallback."
         ),
     )
     add_subcommand_format(reviewer_request_parser)
@@ -559,7 +560,8 @@ def register_issue_fix_commands(
         "--execute",
         action="store_true",
         help=(
-            "Assert external-review-request authority, request review through GitHub, "
+            "Assert external-review-request authority, try formal GitHub review, "
+            "fall back to one reviewer-tagging comment only on permission denial, "
             "and verify the result."
         ),
     )

@@ -139,8 +139,9 @@ def test_goal_text_invocation_plans_ranked_todos_before_activation() -> None:
         assert "loopx issue-fix feasibility" in plan_prompt
         assert "loopx issue-fix pr-lifecycle" in plan_prompt
         assert "loopx issue-fix reviewer-request" in plan_prompt
-        assert "do not mark it complete until the request is visible" in plan_prompt
-        assert "external comments, PR creation, merge, publish" in plan_prompt
+        assert "only on confirmed permission denial" in plan_prompt
+        assert "request or fallback comment is visible" in plan_prompt
+        assert "arbitrary external comments, PR creation, merge" in plan_prompt
         assert "issue_fix_workflow_plan_template" in commands
         issue_fix_template = str(commands["issue_fix_workflow_plan_template"])
         assert "issue-fix workflow-plan" in issue_fix_template
@@ -181,6 +182,9 @@ def test_goal_text_invocation_plans_ranked_todos_before_activation() -> None:
         ]
         assert "pr-lifecycle" in domain_routes["issue_fix_workflow"]["post_pr_monitor_command"]
         assert "explicit gates" in domain_routes["issue_fix_workflow"]["writeback"]
+        assert "permission-only reviewer comment fallback" in domain_routes[
+            "issue_fix_workflow"
+        ]["writeback"]
         assert "domain-state" in domain_routes["issue_fix_workflow"]["writeback"]
         assert not (project / ".loopx").exists()
         assert not (project / ".codex").exists()

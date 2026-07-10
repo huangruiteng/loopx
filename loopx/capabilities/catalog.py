@@ -47,8 +47,8 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             },
             {
                 "command": "loopx issue-fix reviewer-request --url <github-pr-url> --repo-path <repo> --base-ref <base-ref> --execute --format json",
-                "purpose": "Under external-review-request authority, exclude the live PR author, request the top requestable reviewer, and verify the request.",
-                "write_boundary": "one bounded GitHub review request when --execute asserts authority; no comment, push, merge, or publish",
+                "purpose": "Under external-review-request authority, exclude the live PR author, notify the top requestable reviewer, and verify the result.",
+                "write_boundary": "one formal GitHub review request, or one reviewer-tagging comment only after confirmed permission denial; no arbitrary comment, push, merge, or publish",
             },
             {
                 "command": "loopx issue-fix pr-lifecycle --url <github-pr-url> --goal-id <goal-id> --format json",
@@ -173,7 +173,7 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
         "boundaries": [
             "GitHub issue body, comments, timeline, and raw provider payloads are gated and not copied.",
             "Caller repo mode reads and writes only the explicitly approved local git repo.",
-            "External comments, PR creation, merge, publish, and destructive git remain separately gated; reviewer-request performs only the explicitly authorized review request.",
+            "Arbitrary external comments, PR creation, merge, publish, and destructive git remain separately gated; reviewer-request may use one reviewer-tagging comment only as a verified permission-denial fallback under the same narrow authority.",
         ],
         "next_real_step": (
             "Exercise route selection and continuation on a public issue-fix pilot, "

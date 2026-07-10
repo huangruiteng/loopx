@@ -17,6 +17,17 @@ REVIEWER_BOT_HANDLE_PATTERN = re.compile(
     r"(?:^|[-_.])bot(?:$|[-_.])|\[bot\]$",
     re.IGNORECASE,
 )
+REVIEWER_COMMENT_MARKER_PATTERN = re.compile(
+    r"<!--\s*loopx:\s*issue-fix-reviewer-notification\s+"
+    r"reviewer=@?([A-Za-z0-9-]+(?:/[A-Za-z0-9_.-]+)?)\s*-->",
+    re.IGNORECASE,
+)
+GITHUB_REVIEW_REQUEST_PERMISSION_PATTERN = re.compile(
+    r"(?:HTTP\s+(?:403|404)|resource not accessible|"
+    r"must have (?:push|triage|write) access|not found|"
+    r"reviews? may only be requested from collaborators|not a collaborator)",
+    re.IGNORECASE,
+)
 
 CommandRunner = Callable[[Sequence[str]], Mapping[str, Any]]
 
@@ -53,6 +64,7 @@ def _metadata_identities(
     payload: Mapping[str, Any],
     *,
     repo: str,
+    number: int,
 ) -> dict[str, Any]:
     author = payload.get("author")
     author = author if isinstance(author, Mapping) else {}
@@ -78,10 +90,34 @@ def _metadata_identities(
         handle = _normalise_login(review_author.get("login"))
         if handle and handle not in reviewed:
             reviewed.append(handle)
+    comment_notified: list[str] = []
+    comment_urls: dict[str, str] = {}
+    for item in payload.get("comments") or []:
+        if not isinstance(item, Mapping):
+            continue
+        body = str(item.get("body") or "")
+        raw_url = public_safe_compact_text(item.get("url"), limit=300)
+        url = (
+            raw_url
+            if re.fullmatch(
+                rf"https://github\.com/{re.escape(repo)}/pull/{number}"
+                r"#issuecomment-\d+",
+                raw_url,
+            )
+            else ""
+        )
+        for login in REVIEWER_COMMENT_MARKER_PATTERN.findall(body):
+            handle = _normalise_login(login)
+            if handle and handle not in comment_notified:
+                comment_notified.append(handle)
+            if handle and url:
+                comment_urls[handle] = url
     return {
         "author_handle": author_handle,
         "requested_reviewers": requested,
         "reviewed_by": reviewed,
+        "comment_notified_reviewers": comment_notified,
+        "reviewer_comment_urls": comment_urls,
         "state": str(payload.get("state") or "UNKNOWN").upper(),
         "is_draft": payload.get("isDraft") is True or payload.get("is_draft") is True,
     }
@@ -103,7 +139,7 @@ def _fetch_pr_metadata(
                 "--repo",
                 repo,
                 "--json",
-                "author,isDraft,reviewRequests,reviews,state,url",
+                "author,comments,isDraft,reviewRequests,reviews,state,url",
             ]
         )
     except (OSError, subprocess.SubprocessError):
@@ -127,19 +163,79 @@ def _request_reviewers(
     number: int,
     reviewer_handles: Sequence[str],
     runner: CommandRunner,
-) -> str | None:
+) -> tuple[str | None, bool]:
     args = ["gh", "pr", "edit", str(number), "--repo", repo]
     for handle in reviewer_handles:
-        args.extend(["--add-reviewer", handle.lstrip("@")])
+        login = handle.lstrip("@")
+        if "/" in login:
+            args.extend(["--add-team-reviewer", login.partition("/")[2]])
+        else:
+            args.extend(["--add-reviewer", login])
     try:
         result = runner(args)
     except (OSError, subprocess.SubprocessError):
-        return "github_review_request_failed"
-    return (
-        None
-        if result.get("returncode") == 0
-        else "github_review_request_failed"
+        return "github_review_request_failed", False
+    if result.get("returncode") == 0:
+        return None, False
+    provider_error = " ".join(
+        str(result.get(key) or "") for key in ("stderr", "stdout")
     )
+    permission_denied = bool(
+        GITHUB_REVIEW_REQUEST_PERMISSION_PATTERN.search(provider_error)
+    )
+    return (
+        "github_review_request_permission_denied"
+        if permission_denied
+        else "github_review_request_failed",
+        permission_denied,
+    )
+
+
+def _reviewer_comment_body(reviewer_handles: Sequence[str]) -> str:
+    mentions = " ".join(
+        handle if handle.startswith("@") else f"@{handle}"
+        for handle in reviewer_handles
+    )
+    markers = "\n".join(
+        f"<!-- loopx: issue-fix-reviewer-notification reviewer={handle} -->"
+        for handle in reviewer_handles
+    )
+    return (
+        f"{mentions} could you please review this focused issue-fix PR? "
+        "You were selected from repository-native ownership and contribution "
+        f"evidence. Thank you!\n\n{markers}"
+    )
+
+
+def _comment_reviewer_notification(
+    *,
+    repo: str,
+    number: int,
+    reviewer_handles: Sequence[str],
+    runner: CommandRunner,
+) -> tuple[str | None, str | None, bool]:
+    try:
+        result = runner(
+            [
+                "gh",
+                "pr",
+                "comment",
+                str(number),
+                "--repo",
+                repo,
+                "--body",
+                _reviewer_comment_body(reviewer_handles),
+            ]
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None, "github_reviewer_comment_fallback_failed", False
+    if result.get("returncode") != 0:
+        return None, "github_reviewer_comment_fallback_failed", False
+    expected = re.compile(
+        rf"https://github\.com/{re.escape(repo)}/pull/{number}#issuecomment-\d+"
+    )
+    match = expected.search(str(result.get("stdout") or ""))
+    return (match.group(0) if match else None), None, True
 
 
 def _transition(
@@ -176,7 +272,7 @@ def build_issue_fix_reviewer_request_packet(
     generated_at: str | None = "2026-07-10T00:00:00Z",
     runner: CommandRunner = _default_runner,
 ) -> dict[str, Any]:
-    """Select and optionally request the top repository-native reviewer."""
+    """Select and optionally notify the top repository-native reviewer."""
 
     if execute and provider_payload is not None:
         raise ValueError(
@@ -207,12 +303,13 @@ def build_issue_fix_reviewer_request_packet(
         )
         external_reads = True
         metadata = fetched or {}
-    identities = _metadata_identities(metadata, repo=repo)
+    identities = _metadata_identities(metadata, repo=repo, number=number)
     excluded = list(exclude_reviewers)
     if identities["author_handle"]:
         excluded.append(str(identities["author_handle"]))
     excluded.extend(identities["requested_reviewers"])
     excluded.extend(identities["reviewed_by"])
+    excluded.extend(identities["comment_notified_reviewers"])
 
     recommendation = build_issue_fix_reviewer_recommendation_packet(
         repo_path=repo_path,
@@ -230,7 +327,11 @@ def build_issue_fix_reviewer_request_packet(
     candidates = recommendation.get("candidates")
     candidates = candidates if isinstance(candidates, list) else []
     existing_coverage = len(
-        set(identities["requested_reviewers"] + identities["reviewed_by"])
+        set(
+            identities["requested_reviewers"]
+            + identities["reviewed_by"]
+            + identities["comment_notified_reviewers"]
+        )
     )
     remaining_slots = max(0, max_reviewers - existing_coverage)
     selected = [
@@ -245,6 +346,29 @@ def build_issue_fix_reviewer_request_packet(
     pr_state_verified = identities["state"] in {"OPEN", "CLOSED", "MERGED"}
     if not author_exclusion_verified or not pr_state_verified:
         selected = []
+
+    existing_notified_reviewers = list(
+        dict.fromkeys(
+            identities["requested_reviewers"]
+            + identities["reviewed_by"]
+            + identities["comment_notified_reviewers"]
+        )
+    )
+    existing_comment_url = next(
+        iter(identities["reviewer_comment_urls"].values()),
+        None,
+    )
+    existing_notification_mode = (
+        "comment_fallback"
+        if identities["comment_notified_reviewers"]
+        else (
+            "formal_request"
+            if identities["requested_reviewers"]
+            else "existing_review"
+            if identities["reviewed_by"]
+            else "none"
+        )
+    )
 
     packet: dict[str, Any] = {
         "ok": metadata_error is None,
@@ -264,14 +388,27 @@ def build_issue_fix_reviewer_request_packet(
         "pr_state_verified": pr_state_verified,
         "existing_requested_reviewers": identities["requested_reviewers"],
         "existing_reviewed_by": identities["reviewed_by"],
+        "existing_comment_notified_reviewers": identities[
+            "comment_notified_reviewers"
+        ],
         "selected_reviewers": selected,
         "requested_reviewers": [],
+        "notified_reviewers": existing_notified_reviewers,
         "recommendation_status": recommendation.get("recommendation_status"),
         "recommendation_candidates": candidates,
         "external_reads_performed": external_reads,
         "external_writes_performed": False,
         "review_request_performed": False,
         "review_request_verified": False,
+        "reviewer_notification_mode": existing_notification_mode,
+        "reviewer_notification_verified": bool(
+            execute and existing_notified_reviewers
+        ),
+        "comment_fallback_performed": False,
+        "comment_fallback_verified": bool(
+            execute and identities["comment_notified_reviewers"]
+        ),
+        "reviewer_comment_url": existing_comment_url,
         "private_repo_state_read": True,
         "local_paths_captured": False,
         "raw_provider_payload_captured": False,
@@ -334,7 +471,9 @@ def build_issue_fix_reviewer_request_packet(
         )
     elif not selected:
         already_covered = bool(
-            identities["requested_reviewers"] or identities["reviewed_by"]
+            identities["requested_reviewers"]
+            or identities["reviewed_by"]
+            or identities["comment_notified_reviewers"]
         )
         packet["transition"] = _transition(
             decision="monitor_continuation"
@@ -346,7 +485,8 @@ def build_issue_fix_reviewer_request_packet(
                 else "issue_fix_reviewer_identity_resolution"
             ),
             reason=(
-                "A reviewer is already requested or has reviewed; keep lifecycle monitoring."
+                "A reviewer is already requested, has reviewed, or was notified "
+                "by a verified fallback comment; keep lifecycle monitoring."
                 if already_covered
                 else (
                     "No requestable non-author reviewer identity is available; "
@@ -366,22 +506,110 @@ def build_issue_fix_reviewer_request_packet(
             material_change=False,
         )
     else:
-        request_error = _request_reviewers(
+        request_error, permission_denied = _request_reviewers(
             repo=repo,
             number=number,
             reviewer_handles=selected,
             runner=runner,
         )
         packet["external_writes_performed"] = request_error is None
-        if request_error:
+        if request_error and permission_denied:
+            packet["formal_request_error"] = request_error
+            comment_url, comment_error, comment_performed = (
+                _comment_reviewer_notification(
+                    repo=repo,
+                    number=number,
+                    reviewer_handles=selected,
+                    runner=runner,
+                )
+            )
+            packet["reviewer_notification_mode"] = "comment_fallback"
+            packet["reviewer_comment_url"] = comment_url
+            packet["comment_fallback_performed"] = comment_performed
+            packet["external_writes_performed"] = comment_performed
+            if comment_error:
+                packet["ok"] = False
+                packet["blocker"] = comment_error
+                packet["transition"] = _transition(
+                    decision="blocker",
+                    action_kind="issue_fix_reviewer_comment_fallback_blocker",
+                    reason=(
+                        "GitHub denied the formal reviewer request and the "
+                        "fallback reviewer comment could not be published."
+                    ),
+                    material_change=True,
+                )
+            else:
+                verified_payload, verify_error = _fetch_pr_metadata(
+                    repo=repo,
+                    number=number,
+                    runner=runner,
+                )
+                packet["external_reads_performed"] = True
+                verified = _metadata_identities(
+                    verified_payload or {},
+                    repo=repo,
+                    number=number,
+                )
+                notified = [
+                    handle
+                    for handle in selected
+                    if handle in verified["comment_notified_reviewers"]
+                ]
+                verified_urls = [
+                    verified["reviewer_comment_urls"].get(handle)
+                    for handle in selected
+                    if verified["reviewer_comment_urls"].get(handle)
+                ]
+                readback_url = (
+                    verified_urls[0]
+                    if len(verified_urls) == len(selected)
+                    and len(set(verified_urls)) == 1
+                    else None
+                )
+                packet["reviewer_comment_url"] = readback_url or comment_url
+                packet["notified_reviewers"] = notified
+                packet["comment_fallback_verified"] = bool(
+                    not verify_error
+                    and readback_url
+                    and len(notified) == len(selected)
+                    and (not comment_url or readback_url == comment_url)
+                )
+                packet["reviewer_notification_verified"] = packet[
+                    "comment_fallback_verified"
+                ]
+                if not packet["comment_fallback_verified"]:
+                    packet["ok"] = False
+                    packet["blocker"] = "github_reviewer_comment_not_verified"
+                    packet["transition"] = _transition(
+                        decision="blocker",
+                        action_kind="issue_fix_reviewer_comment_verification_blocker",
+                        reason=(
+                            "Fallback comment command returned success but PR "
+                            "readback did not confirm the reviewer marker and URL."
+                        ),
+                        material_change=True,
+                    )
+                else:
+                    packet["transition"] = _transition(
+                        decision="monitor_continuation",
+                        action_kind="issue_fix_reviewer_comment_fallback_verified",
+                        reason=(
+                            "Formal reviewer request lacked permission; a verified "
+                            "public comment notified the selected reviewer."
+                        ),
+                        material_change=True,
+                    )
+        elif request_error:
             packet["ok"] = False
             packet["blocker"] = request_error
             packet["transition"] = _transition(
                 decision="blocker",
-                action_kind="issue_fix_reviewer_request_permission_or_network_blocker",
+                action_kind="issue_fix_reviewer_request_provider_blocker",
                 reason=(
-                    "GitHub rejected the reviewer request; preserve the selected "
-                    "candidate and retry after permission or network repair."
+                    "GitHub reviewer-request failure was not a confirmed permission "
+                    "denial; do not post a fallback comment until the provider or "
+                    "network error is classified."
                 ),
                 material_change=True,
             )
@@ -392,7 +620,11 @@ def build_issue_fix_reviewer_request_packet(
                 runner=runner,
             )
             packet["external_reads_performed"] = True
-            verified = _metadata_identities(verified_payload or {}, repo=repo)
+            verified = _metadata_identities(
+                verified_payload or {},
+                repo=repo,
+                number=number,
+            )
             requested = [
                 handle
                 for handle in selected
@@ -401,6 +633,11 @@ def build_issue_fix_reviewer_request_packet(
             packet["requested_reviewers"] = requested
             packet["review_request_performed"] = bool(requested)
             packet["review_request_verified"] = len(requested) == len(selected)
+            packet["notified_reviewers"] = requested
+            packet["reviewer_notification_mode"] = "formal_request"
+            packet["reviewer_notification_verified"] = packet[
+                "review_request_verified"
+            ]
             if verify_error or not packet["review_request_verified"]:
                 packet["ok"] = False
                 packet["blocker"] = "github_review_request_not_verified"
@@ -473,6 +710,44 @@ def validate_issue_fix_reviewer_request_packet(
         errors.append("the PR author must not be selected as reviewer")
     if verified and set(requested) != set(selected):
         errors.append("verified reviewer requests must match selected_reviewers")
+    fallback_performed = packet.get("comment_fallback_performed") is True
+    fallback_verified = packet.get("comment_fallback_verified") is True
+    comment_url = packet.get("reviewer_comment_url")
+    notified = packet.get("notified_reviewers")
+    if not isinstance(notified, list):
+        errors.append("notified_reviewers must be a list")
+        notified = []
+    if fallback_performed and packet.get("external_writes_performed") is not True:
+        errors.append("comment fallback requires external_writes_performed=true")
+    if fallback_verified and not comment_url:
+        errors.append("verified comment fallback requires reviewer_comment_url")
+    if fallback_verified and set(notified) != set(selected):
+        existing_comment_notified = packet.get(
+            "existing_comment_notified_reviewers"
+        )
+        existing_comment_notified = (
+            existing_comment_notified
+            if isinstance(existing_comment_notified, list)
+            else []
+        )
+        if set(notified) != set(existing_comment_notified):
+            errors.append(
+                "verified comment fallback must notify selected or existing reviewers"
+            )
+    notification_verified = packet.get("reviewer_notification_verified") is True
+    existing_notification_verified = bool(
+        packet.get("execute") is True
+        and (
+            packet.get("existing_requested_reviewers")
+            or packet.get("existing_reviewed_by")
+        )
+    )
+    if notification_verified != bool(
+        verified or fallback_verified or existing_notification_verified
+    ):
+        errors.append(
+            "reviewer_notification_verified must reflect formal or comment verification"
+        )
     return {
         "ok": not errors,
         "schema_version": "issue_fix_reviewer_request_validation_v0",
@@ -494,6 +769,10 @@ def render_issue_fix_reviewer_request_markdown(
             f"- requested_reviewers: {','.join(payload.get('requested_reviewers') or [])}",
             f"- review_request_performed: {payload.get('review_request_performed')}",
             f"- review_request_verified: {payload.get('review_request_verified')}",
+            f"- reviewer_notification_mode: {payload.get('reviewer_notification_mode')}",
+            "- reviewer_notification_verified: "
+            f"{payload.get('reviewer_notification_verified')}",
+            f"- reviewer_comment_url: {payload.get('reviewer_comment_url')}",
             f"- transition: {(payload.get('transition') or {}).get('decision')}",
             f"- next: {(payload.get('transition') or {}).get('reason')}",
         ]

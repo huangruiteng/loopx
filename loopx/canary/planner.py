@@ -889,7 +889,8 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "title": "Issue-fix reviewer routing and bilingual guide",
         "purpose": (
             "Check the bilingual issue-fix product entry and explainable local "
-            "reviewer recommendation plus authority-gated verified request contract."
+            "reviewer recommendation plus authority-gated verified notification "
+            "contract."
         ),
         "catalog_families": ["Human Decision", "Evidence Lifecycle", "State And Boundary"],
         "trigger_hints": (
@@ -920,7 +921,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             {
                 "command": "python3 examples/issue-fix-reviewer-request-smoke.py",
                 "tier": "default",
-                "reason": "guards author exclusion, default top-candidate request, idempotency, blockers, and post-write verification",
+                "reason": "guards author exclusion, formal-request-first notification, permission-only comment fallback, idempotency, blockers, and post-write verification",
             },
         ],
     },

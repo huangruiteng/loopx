@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test authority-gated, verified issue-fix reviewer requests."""
+"""Smoke-test authority-gated, verified issue-fix reviewer notification."""
 
 from __future__ import annotations
 
@@ -62,9 +62,30 @@ def commit(repo: Path, message: str, *, author: str) -> None:
     run_git(repo, "commit", "-m", message, author=author)
 
 
-def metadata(*, requested: list[str] | None = None) -> dict[str, Any]:
+def reviewer_comment(
+    login: str = "service-owner",
+    *,
+    url: str = "https://github.com/owner/repo/pull/42#issuecomment-1001",
+) -> dict[str, Any]:
     return {
         "author": {"login": "current-author"},
+        "body": (
+            f"@{login} could you please review?\n\n"
+            "<!-- loopx: issue-fix-reviewer-notification "
+            f"reviewer=@{login} -->"
+        ),
+        "url": url,
+    }
+
+
+def metadata(
+    *,
+    requested: list[str] | None = None,
+    comments: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    return {
+        "author": {"login": "current-author"},
+        "comments": comments or [],
         "isDraft": False,
         "reviewRequests": [{"login": login} for login in (requested or [])],
         "reviews": [],
@@ -80,25 +101,41 @@ class FakeGitHubRunner:
         before: dict[str, Any],
         after: dict[str, Any] | None = None,
         edit_returncode: int = 0,
+        edit_stderr: str = "",
+        comment_returncode: int = 0,
+        comment_stdout: str = "",
     ) -> None:
         self.before = before
         self.after = after if after is not None else before
         self.edit_returncode = edit_returncode
+        self.edit_stderr = edit_stderr
+        self.comment_returncode = comment_returncode
+        self.comment_stdout = comment_stdout
         self.calls: list[list[str]] = []
         self.edits = 0
+        self.comments = 0
 
     def __call__(self, args: list[str]) -> dict[str, Any]:
         command = list(args)
         self.calls.append(command)
         if command[:3] == ["gh", "pr", "view"]:
-            payload = self.after if self.edits else self.before
+            payload = self.after if self.edits or self.comments else self.before
             return {"returncode": 0, "stdout": json.dumps(payload), "stderr": ""}
         if command[:3] == ["gh", "pr", "edit"]:
             self.edits += 1
             return {
                 "returncode": self.edit_returncode,
                 "stdout": "",
-                "stderr": "provider failure" if self.edit_returncode else "",
+                "stderr": self.edit_stderr,
+            }
+        if command[:3] == ["gh", "pr", "comment"]:
+            self.comments += 1
+            return {
+                "returncode": self.comment_returncode,
+                "stdout": self.comment_stdout,
+                "stderr": (
+                    "comment provider failure" if self.comment_returncode else ""
+                ),
             }
         raise AssertionError(command)
 
@@ -152,6 +189,9 @@ def main() -> int:
         assert packet["requested_reviewers"] == ["@service-owner"], packet
         assert packet["review_request_performed"] is True
         assert packet["review_request_verified"] is True
+        assert packet["notified_reviewers"] == ["@service-owner"]
+        assert packet["reviewer_notification_mode"] == "formal_request"
+        assert packet["reviewer_notification_verified"] is True
         assert packet["external_writes_performed"] is True
         assert packet["transition"]["decision"] == "monitor_continuation"
         assert runner.edits == 1
@@ -170,14 +210,108 @@ def main() -> int:
         )
         assert already["ok"] is True, already
         assert already["selected_reviewers"] == []
+        assert already["notified_reviewers"] == ["@service-owner"]
+        assert already["reviewer_notification_mode"] == "formal_request"
+        assert already["reviewer_notification_verified"] is True
         assert already["external_writes_performed"] is False
         assert already["transition"]["action_kind"].endswith("already_covered")
         assert already_runner.edits == 0
         assert_public_safe(already)
 
+        fallback_url = "https://github.com/owner/repo/pull/42#issuecomment-1001"
+        permission_runner = FakeGitHubRunner(
+            before=metadata(),
+            after=metadata(comments=[reviewer_comment(url=fallback_url)]),
+            edit_returncode=1,
+            edit_stderr="HTTP 404: Not Found",
+        )
+        fallback = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            execute=True,
+            runner=permission_runner,
+        )
+        assert fallback["ok"] is True, fallback
+        assert fallback["selected_reviewers"] == ["@service-owner"]
+        assert fallback["requested_reviewers"] == []
+        assert fallback["notified_reviewers"] == ["@service-owner"]
+        assert fallback["review_request_performed"] is False
+        assert fallback["review_request_verified"] is False
+        assert fallback["reviewer_notification_mode"] == "comment_fallback"
+        assert fallback["reviewer_notification_verified"] is True
+        assert fallback["comment_fallback_performed"] is True
+        assert fallback["comment_fallback_verified"] is True
+        assert fallback["reviewer_comment_url"] == fallback_url
+        assert fallback["external_writes_performed"] is True
+        assert fallback["transition"]["action_kind"].endswith(
+            "comment_fallback_verified"
+        )
+        assert permission_runner.edits == 1
+        assert permission_runner.comments == 1
+        comment_call = permission_runner.calls[2]
+        comment_body = comment_call[comment_call.index("--body") + 1]
+        assert "@service-owner" in comment_body
+        assert "issue-fix-reviewer-notification" in comment_body
+        assert_public_safe(fallback)
+
+        fallback_retry_runner = FakeGitHubRunner(
+            before=metadata(comments=[reviewer_comment(url=fallback_url)])
+        )
+        fallback_retry = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            execute=True,
+            runner=fallback_retry_runner,
+        )
+        assert fallback_retry["ok"] is True, fallback_retry
+        assert fallback_retry["selected_reviewers"] == []
+        assert fallback_retry["existing_comment_notified_reviewers"] == [
+            "@service-owner"
+        ]
+        assert fallback_retry["notified_reviewers"] == ["@service-owner"]
+        assert fallback_retry["reviewer_notification_mode"] == "comment_fallback"
+        assert fallback_retry["reviewer_notification_verified"] is True
+        assert fallback_retry["comment_fallback_performed"] is False
+        assert fallback_retry["comment_fallback_verified"] is True
+        assert fallback_retry["reviewer_comment_url"] == fallback_url
+        assert fallback_retry["external_writes_performed"] is False
+        assert fallback_retry["transition"]["action_kind"].endswith(
+            "already_covered"
+        )
+        assert fallback_retry_runner.edits == 0
+        assert fallback_retry_runner.comments == 0
+        assert_public_safe(fallback_retry)
+
+        comment_blocked_runner = FakeGitHubRunner(
+            before=metadata(),
+            edit_returncode=1,
+            edit_stderr="HTTP 403: Resource not accessible by integration",
+            comment_returncode=1,
+        )
+        comment_blocked = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            execute=True,
+            runner=comment_blocked_runner,
+        )
+        assert comment_blocked["ok"] is False
+        assert (
+            comment_blocked["blocker"]
+            == "github_reviewer_comment_fallback_failed"
+        )
+        assert comment_blocked["comment_fallback_performed"] is False
+        assert comment_blocked["external_writes_performed"] is False
+        assert comment_blocked_runner.edits == 1
+        assert comment_blocked_runner.comments == 1
+        assert_public_safe(comment_blocked)
+
         failed_runner = FakeGitHubRunner(
             before=metadata(),
             edit_returncode=1,
+            edit_stderr="provider failure",
         )
         failed = build_issue_fix_reviewer_request_packet(
             repo_path=path,
@@ -191,6 +325,7 @@ def main() -> int:
         assert failed["selected_reviewers"] == ["@service-owner"]
         assert failed["external_writes_performed"] is False
         assert failed["transition"]["decision"] == "blocker"
+        assert failed_runner.comments == 0
         assert_public_safe(failed)
 
         preview = build_issue_fix_reviewer_request_packet(

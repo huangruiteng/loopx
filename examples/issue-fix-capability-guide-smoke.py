@@ -96,6 +96,8 @@ def main() -> int:
             "## Conversational `/loopx` Entry",
             "concrete blocker",
             "structured no-follow-up",
+            "permission-only comment fallback",
+            "avoid duplicates",
         ),
     )
     assert_markers(
@@ -116,6 +118,8 @@ def main() -> int:
             "## 对话式 `/loopx` 入口",
             "具体 blocker",
             "结构化 no-follow-up",
+            "权限不足 comment fallback",
+            "不会重复 comment",
         ),
     )
     assert reviewer_protocol.startswith("# issue_fix_reviewer_recommendation_v0")
@@ -140,6 +144,8 @@ def main() -> int:
             "exclude the PR author",
             "external_review_request",
             "post-write verification",
+            "permission-only comment fallback",
+            "issue_fix_reviewer_comment_fallback_verified",
             "python3 examples/issue-fix-reviewer-request-smoke.py",
         ),
     )
