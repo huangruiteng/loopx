@@ -219,24 +219,50 @@ WORKER_HARNESS_PROFILES: dict[str, dict[str, Any]] = {
 
 COMMON_TOPIC_TOKENS = {
     "add",
+    "after",
     "agent",
+    "against",
+    "and",
+    "audit",
+    "before",
+    "between",
     "branch",
     "build",
     "check",
     "codex",
     "continue",
+    "current",
+    "deliver",
+    "existing",
     "explore",
     "fix",
+    "from",
     "goal",
+    "inspect",
+    "into",
+    "latest",
     "loopx",
+    "new",
+    "next",
+    "one",
     "p0",
     "p1",
     "p2",
+    "recent",
+    "review",
     "run",
     "test",
+    "the",
+    "then",
+    "this",
+    "through",
     "todo",
     "update",
     "validate",
+    "when",
+    "while",
+    "with",
+    "without",
 }
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_:\-]{3,}")
 
@@ -287,8 +313,18 @@ def _resolve_todo_bundle_ceiling(
     return max(1, min(MAX_TODOS_PER_WORKER_BRANCH, default_ceiling)), False, "profile_default"
 
 
-def _tokenize(value: Any) -> set[str]:
-    return {match.group(0).lower() for match in TOKEN_PATTERN.finditer(str(value or ""))}
+def _ordered_topic_tokens(value: Any) -> list[str]:
+    """Return meaningful topic tokens in their original textual order."""
+
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for match in TOKEN_PATTERN.finditer(str(value or "")):
+        token = match.group(0).lower()
+        if token in COMMON_TOPIC_TOKENS or token in seen:
+            continue
+        seen.add(token)
+        tokens.append(token)
+    return tokens
 
 
 def _scope_family(scope: str) -> str:
@@ -315,7 +351,7 @@ def _affinity_key(candidate: Mapping[str, Any]) -> str:
     ]
     if capabilities:
         return f"capability:{str(capabilities[0]).strip()}"
-    tokens = sorted(_tokenize(candidate.get("text")) - COMMON_TOPIC_TOKENS)
+    tokens = _ordered_topic_tokens(candidate.get("text"))
     if tokens:
         return f"topic:{tokens[0]}"
     return "topic:general"
