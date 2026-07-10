@@ -1,0 +1,53 @@
+docs/capabilities/issue-fix/README.md
+  s_32e2a9a204a8e4::t_5d65f646a52a5b 7-8,183,219-226,241-244,627
+docs/capabilities/issue-fix/README.zh-CN.md
+  s_32e2a9a204a8e4::t_ede101c5452a93 7-8,166,195-200,210-212,561
+docs/capabilities/issue-fix/protocols/issue-fix-reviewer-notification-sinks-v0.md
+  s_9a5a2bd944fdcb::t_290019f9402274 1-131
+docs/capabilities/issue-fix/protocols/issue-fix-reviewer-request-v0.md
+  s_32e2a9a204a8e4::t_b28494036682f4 26-32,67,110-111
+examples/canary/catalog-planner-smoke.py
+  s_32e2a9a204a8e4::t_357985c58ec45e 524
+examples/issue-fix-capability-guide-smoke.py
+  s_32e2a9a204a8e4::t_4297403a4637b1 24-27,57-59,85-86,110,133,163-175,185
+examples/issue-fix-reviewer-notification-sink-smoke.py
+  s_9a5a2bd944fdcb::t_bb6faa5f8dc6ec 1-342
+examples/issue-fix-reviewer-request-smoke.py
+  s_9a5a2bd944fdcb::t_1f1953ed0c2029 37-39,151-210,269-310,540-548,572-573,585-588
+loopx/canary/planner.py
+  s_32e2a9a204a8e4::t_734d6397de59be 902-903,909,912,930-934
+loopx/capabilities/catalog.py
+  s_32e2a9a204a8e4::t_cc529beda17dc8 49-51,130-134,164,175,184
+loopx/capabilities/issue_fix/cli.py
+  s_9a5a2bd944fdcb::t_5e242817108d45 575-582,955-959
+loopx/capabilities/issue_fix/reviewer_notification.py
+  s_32e2a9a204a8e4::t_480f30d05ac2de 1-626
+loopx/capabilities/issue_fix/reviewer_request.py
+  s_32e2a9a204a8e4::t_64edf2f02ab08b 12-14,274,672-711,799-808,834-839
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3355f3d45b420d396b4b1ca87ad13d6d72366840",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
