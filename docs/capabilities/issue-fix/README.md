@@ -1,182 +1,513 @@
 # Issue-Fix Capability
 
-The issue-fix capability is the product path for open-source issue/PR solver
-work. It is intentionally narrower than a generic workflow engine: it starts
-from public GitHub metadata, prepares or claims a caller-approved local branch,
-runs caller-declared validation, and emits review evidence without creating
-external comments, PRs, merges, or publishes.
+[中文](README.zh-CN.md) · [Capability index](../README.md) ·
+[Workflow contract](protocols/issue-fix-workflow-contract-v0.md) ·
+[Acceptance loop](protocols/issue-fix-acceptance-loop-v0.md) ·
+[Reviewer recommendation](protocols/issue-fix-reviewer-recommendation-v0.md)
 
-## Implemented Surface
+Issue-fix is LoopX's product path for turning a public repository issue into a
+small, validated, reviewable pull request and then keeping that PR moving until
+its lifecycle has a clear outcome. The capability is designed for a
+long-running issue-to-PR employee, not for a one-shot code generator: LoopX
+keeps goal state, todos, authority, repository evidence, validation, reviewer
+routing, monitors, human gates, and terminal closeout outside any single chat
+turn.
 
-| Layer | Current path |
+The core product outcome is a focused fix PR when the issue is suitable. A
+public comment or justified triage remains useful for rejecting unsuitable
+candidates or recording a concrete blocker, but it is not a substitute for the
+fix-PR path when that path is feasible.
+
+## What LoopX Provides Underneath
+
+You do not need to know LoopX before using this capability. The shortest mental
+model is: a coding agent can inspect and change a repository, while LoopX is the
+local-first control plane that remembers what the agent is trying to achieve,
+decides what may run next, exposes progress to people, and keeps the work alive
+across chat turns and external waits.
+
+GitHub remains the source of truth for issues, code, checks, reviews, and merge
+state. LoopX adds the missing employee-control layer between a host agent and
+GitHub:
+
+| LoopX foundation | What it contributes to issue/PR fixing |
 | --- | --- |
-| Capability module | `loopx/capabilities/issue_fix/` |
-| CLI entry | `loopx issue-fix ...` |
-| Content-ops bridge | `loopx content-ops issue-fix-* ...` |
-| Protocol docs | `docs/capabilities/issue-fix/protocols/` |
-| Smoke | `examples/issue-fix-workflow-plan-smoke.py`, `examples/issue-fix-repository-context-smoke.py`, `examples/issue-fix-feasibility-smoke.py`, `examples/issue-fix-pr-lifecycle-smoke.py`, `examples/issue-fix-acceptance-loop-smoke.py` |
+| Durable goal state | Keeps the objective, acceptance target, current status, next action, and compact outcome evidence after one model turn ends. |
+| Todo ownership and routing | Separates agent work from concrete human decisions; records priority, `claimed_by`, blockers, successors, handoffs, and monitor work so two agents do not silently do the same task. |
+| Kanban/status projection | Projects the same todo truth into a human-visible board or dashboard without making the board a second state machine. People can see who owns the issue, what was produced, and what is waiting. |
+| Quota and scheduler policy | Uses `quota should-run` to decide whether a bounded work segment should run now, wait, repair state, or stay quiet. Unchanged polling backs off and does not count as delivery progress. |
+| Authority and interaction gates | Separates technical capability from permission. Private material, public comments, push, PR creation, review requests, merge, and production actions can each require explicit recorded authority. |
+| Evidence and repository context | Pins conclusions to a repository revision, source trust, freshness, repo-relative references, reproduction, and validation. Compact evidence survives; raw logs, credentials, and private bodies do not leak into public state. |
+| Replan and handoff contracts | Converts CI failure, reviewer correction, missing information, or a stale branch into a runnable successor, a concrete blocker, or a scoped human question instead of losing the correction in chat. |
+| Continuous monitors | Watches CI, review, mergeability, maintainer comments, stale branches, merged, and closed states; writes back only material transitions and terminates with an explicit outcome. |
+| Public/private boundary checks | Scans public artifacts and keeps local paths, credentials, runtime state, raw transcripts, tool logs, and private evidence out of commits and PRs. |
 
-## Protocols
+The issue-fix capability composes these generic foundations into domain packets
+and CLI commands. The host agent still reads code, edits the worktree, runs
+tests, and performs separately authorized GitHub actions. This division is what
+turns “generate a patch once” into a visible, resumable issue-to-PR employee:
 
-- [`issue_fix_workflow_contract_v0`](protocols/issue-fix-workflow-contract-v0.md)
-- [`issue_fix_acceptance_loop_v0`](protocols/issue-fix-acceptance-loop-v0.md)
-- `issue_fix_workflow_plan_packet_v0`
-- `issue_fix_repository_context_v0`
-- `issue_fix_feasibility_v0`
-- `issue_fix_pr_lifecycle_monitor_v0`
-- `github_issue_metadata_preview_v0`
-- `content_ops_issue_fix_metadata_preview_packet_v0`
-- `content_ops_issue_fix_intake_packet_v0`
-- `issue_fix_intake_v0`
-- `issue_fix_validated_fix_artifact_v0`
-- `issue_fix_caller_repo_branch_packet_v0`
+```text
+public issue
+  -> durable goal and claimed todo
+  -> revision-pinned evidence and reproduction
+  -> focused patch and validation
+  -> explainable reviewer route and authority gate
+  -> PR monitor and material-transition replan
+  -> merged/closed outcome, successor, or explicit no-follow-up
+```
 
-Metadata and intake packet details are currently shared with the content-ops
-surface because issue discovery and content/source intake use the same public
-metadata boundary.
+## Product Position
 
-## Safe Defaults
+LoopX is the control plane, not the coding model or GitHub itself.
 
-- Issue bodies, comments, timeline events, and raw provider payloads are gated
-  and are not copied into packets.
-- Caller repo mode reads and writes only the explicitly approved local git repo.
-- Validation stdout/stderr and local paths are summarized, not recorded.
-- External issue comments, PR creation, merge, publish, and destructive git are
-  out of scope for this capability.
+| Layer | Responsibility |
+| --- | --- |
+| Host agent/runtime | Read code, reproduce the bug, edit files, run tests, and perform explicitly authorized git/GitHub actions. |
+| Issue-fix capability | Build public-safe workflow, feasibility, repository-context, reviewer, validation, and PR-lifecycle packets. |
+| LoopX kernel | Persist goal/todo ownership, quota, authority, evidence, monitor, replan, and human-interaction state. |
+| Repository/GitHub | Remain authoritative for code, policy, CI, review, mergeability, and terminal PR state. |
+| Human maintainer | Own design judgment, repository policy, sensitive/private context, and any action outside recorded authority. |
+
+The issue-fix packet builders do not silently publish. A host agent may create
+or update a PR only when the current LoopX boundary records that authority and
+repository policy allows it. Merge remains a separate decision unless it is
+explicitly authorized.
+
+## End-To-End Design
+
+```mermaid
+flowchart LR
+  I["Public issue candidates"] --> S["Selection and feasibility"]
+  S --> C["Revision-pinned repository context"]
+  C --> R["Reproduction"]
+  R --> F["Focused patch and regression test"]
+  F --> V["Layered validation"]
+  V --> O["Reviewer recommendation"]
+  O --> P["Authority-gated PR publication"]
+  P --> M["CI/review/mergeability monitor"]
+  M --> T["Merged/closed terminal closeout"]
+  T --> N["Next issue or no-follow-up"]
+  H["Human judgment"] --> S
+  H --> O
+  H --> P
+  H --> M
+  LX["LoopX goal/todo/quota/evidence"] --> S
+  LX --> C
+  LX --> V
+  LX --> M
+  T --> LX
+```
+
+### 1. Candidate selection
+
+The first round should select one issue. Prefer public open issues with a
+traceback, failing test, minimal reproduction, bounded change scope, and a
+repository-native focused validation surface. Avoid issues that require
+private data, credentials, production systems, large design debates, or broad
+semantic changes.
+
+Every candidate should receive one explicit route:
+
+- `fix_pr`: reproduction and validation are credible and scope is bounded;
+- `comment_only`: a public clarification or diagnosis adds value, but a safe
+  patch is not ready;
+- `triage_only`: evidence is insufficient, scope is oversized, or following up
+  would not add value.
+
+The long-running employee's primary acceptance target is `fix_pr`; the other
+routes protect quality and maintainer attention.
+
+### 2. Repository-grounded understanding
+
+The authority order is:
+
+1. current checkout evidence;
+2. repository-scoped historical memory;
+3. external expert or bot advice.
+
+Read repository policy, architecture, nearby source and tests, validation
+commands, and recent related fixes at the pinned revision. Compact this into
+`issue_fix_repository_context_input_v0`, including revision, repo-relative
+source references, evidence aspect, source trust, and freshness. Memory and
+expert conclusions are advisory until verified in the current checkout.
+
+### 3. Reproduction before modification
+
+Separate four outcomes instead of flattening every failure into a product bug:
+
+- product bug reproduced;
+- test or fixture bug;
+- environment/dependency failure;
+- report remains under-specified or cannot currently be reproduced.
+
+When possible, make the existing focused test fail for the reported contract
+before changing production code. Preserve compact pass/fail and command-label
+evidence, not raw logs or local paths.
+
+### 4. Focused patch and regression proof
+
+Use a clean worktree and branch from the latest approved base revision. Keep
+the patch small, explainable, and consistent with nearby repository patterns.
+Add or adjust a focused test that would fail without the fix. Expand validation
+only in proportion to risk.
+
+### 5. Reviewer recommendation
+
+Reviewer selection is part of the control plane because a correct patch can
+still stall when the wrong person is asked to review it. LoopX now provides:
+
+```bash
+loopx issue-fix reviewer-plan \
+  --repo-path /path/to/approved/repo \
+  --repo owner/repo \
+  --base-ref origin/main \
+  --exclude-reviewer @pull-request-author \
+  --exclude-author-name "PR Author Git Name" \
+  --execute \
+  --format json
+```
+
+The current evidence order is deliberately conservative:
+
+1. repository `CODEOWNERS` matches for each changed path;
+2. commit history for the exact changed path;
+3. nearest module-directory history when a new file has no usable path
+   history.
+
+The packet ranks candidates with source kinds, reason codes, changed-path
+coverage, history counts, recency, confidence, and whether a GitHub handle is
+actually requestable. It never captures commit email addresses, never records
+the local repo path, and never sends a review request. The caller should
+exclude the PR author and any known unavailable reviewer. History is read at
+the base revision so feature-branch commits do not recommend the author;
+`--exclude-author-name` covers unresolved git-name aliases.
+
+`CODEOWNERS` remains the strongest repository-native signal. Commit volume is
+only evidence of familiarity; it is not proof of maintainership, availability,
+or review authority. See the [reviewer recommendation
+contract](protocols/issue-fix-reviewer-recommendation-v0.md) for scoring,
+identity, and future-signal details.
+
+### 6. PR publication and public-write boundary
+
+Before an external write, prepare a public-safe package containing:
+
+- problem and root cause;
+- bounded diff summary;
+- focused and expanded validation;
+- risk and omissions;
+- reviewer evidence;
+- PR body or comment draft.
+
+PR creation, public comments, push, merge, and publish are external writes.
+The host agent may perform only the actions covered by current boundary
+authority. Recommendation packets themselves remain read-only.
+
+### 7. Continuous PR lifecycle
+
+After a PR exists, create a `continuous_monitor` todo with a stable target and
+cadence. `loopx issue-fix pr-lifecycle` projects compact public PR metadata
+into one of four decisions:
+
+- `runnable_successor`: CI failed, review requested changes, or the branch
+  needs an actionable replan;
+- `monitor_continuation`: checks/review are still pending or nothing material
+  changed;
+- `user_gate`: an explicit human decision is required;
+- `no_followup`: the PR is merged or closed and the monitor can terminate.
+
+Identical polls should not create work, consume delivery quota, or spam the
+maintainer. Material transitions must produce a successor, concrete blocker,
+or structured no-follow-up; the agent must not stop silently in monitor-only
+state.
+
+### 8. Terminal closeout and repeatability
+
+At merged/closed state, persist compact lifecycle evidence, close the monitor,
+sync the management surface, record residual risk, and choose one of:
+
+- next issue selection;
+- a concrete rollout/follow-up todo;
+- a blocker or superseding route;
+- structured no-follow-up.
+
+One merged PR proves a delivery slice. Repeating the loop on independent issues
+tests whether the system is a durable employee rather than a scripted demo.
+
+## Implemented Surfaces
+
+| Surface | Command or path | Current responsibility |
+| --- | --- | --- |
+| Workflow plan | `loopx issue-fix workflow-plan` | Compose body-free metadata, intake, branch plan, validation label, ordered todo previews, gates, and PR-readiness blockers. |
+| Repository context | `--repository-context-json` | Pin policy, architecture, change-scope, reproduction, and validation evidence with trust and freshness. |
+| Feasibility | `loopx issue-fix feasibility` | Select exactly one `fix_pr`, `comment_only`, or `triage_only` route and optionally persist compact domain state. |
+| Reviewer plan | `loopx issue-fix reviewer-plan` | Rank explainable reviewer candidates from CODEOWNERS and changed-path/module history without requesting review. |
+| PR lifecycle | `loopx issue-fix pr-lifecycle` | Project CI, review, merge state, draft, merged, and closed signals into monitor transitions. |
+| Acceptance fixture | `loopx issue-fix acceptance-fixture` | Prove failure-before, minimal patch, and pass-after in a deterministic fixture. |
+| Git branch fixture | `loopx issue-fix repo-branch-fixture` | Exercise the same repair contract through a temporary git branch. |
+| Caller repo branch | `loopx issue-fix caller-repo-branch` | Inspect an approved local repo, create/claim an issue branch, and run caller-declared validation. |
+| Content bridge | `loopx content-ops issue-fix-*` | Reuse body-free public metadata/intake boundaries. |
+| Long-running control | `loopx todo`, `quota`, `refresh-state`, `lark-kanban` | Persist ownership, gates, compute decisions, progress, evidence, and visible Kanban state. |
+
+The capability module lives at `loopx/capabilities/issue_fix/`; domain-state
+rows live in the existing issue-fix domain pack rather than a parallel context
+ledger.
+
+## Truth And Evidence Model
+
+### Revision-pinned repository context
+
+Repository context should answer:
+
+| Question | Required evidence |
+| --- | --- |
+| What revision is authoritative? | Full base revision and branch relationship. |
+| What can change? | Repo-relative source/test references and nearby patterns. |
+| How is the issue reproduced? | Focused command or compact observed contract. |
+| How is the fix validated? | Repository-native focused validation and risk-based expansion. |
+| Which source is trusted? | Repository policy/current code first; memory/expert sources marked advisory. |
+| Is the evidence fresh? | Revision or timestamp tied to the current checkout. |
+
+### Public-safe evidence
+
+Packets preserve compact classifications and references. They do not preserve:
+
+- raw issue/comment bodies by default;
+- raw validation, git, provider, or expert output;
+- local absolute paths;
+- credentials or private material;
+- transcript/tool capture or automatic memory writeback without an approved
+  isolation boundary.
+
+### Environment vs product attribution
+
+An unavailable dependency, killed process, or missing service is environment
+evidence. It may block a validation surface without refuting the product bug.
+Conversely, a failing legacy test does not prove the new patch caused the
+failure; compare the pinned base and changed hunks before attribution.
+
+## Reviewer Routing Contract
+
+The reviewer recommendation layer separates three concepts:
+
+1. **ownership evidence**: CODEOWNERS and path/module contribution history;
+2. **review recommendation**: explainable ranked candidates;
+3. **review request**: an external write governed by repository policy and
+   boundary authority.
+
+Current scoring gives CODEOWNERS matches dominant weight, then uses recency-
+weighted commit history. A new file falls back to its nearest module directory
+only when no non-excluded exact-path history is usable. The packet exposes the
+reason instead of presenting a score as authority.
+
+Important safeguards:
+
+- exclude the PR author and explicitly unavailable reviewers;
+- do not expose commit email addresses;
+- do not treat bots, anonymous identities, or unresolved names as requestable;
+- cap candidates and show path coverage;
+- keep team handles distinct from individual handles;
+- respect required-review and branch-protection policy outside the ranking;
+- never infer merge authority from reviewer familiarity.
+
+Planned signals, added only with real call sites and public-safe evidence:
+
+- package/module maintainer metadata beyond CODEOWNERS;
+- recent review participation and accepted-review history;
+- reviewer load, stale request detection, and fallback routing;
+- bus-factor/risk hints when one person dominates a critical module;
+- GitHub identity resolution for public git authors without noreply handles;
+- explicit repository allow/deny lists and team membership verification.
+
+## Human Interaction Model
+
+Humans should be interrupted for decisions, not routine progress. Typical
+concrete user gates are:
+
+- private reproduction material or credentials are required;
+- architecture or behavior scope is genuinely ambiguous;
+- repository policy requires a specific reviewer or owner approval;
+- public write authority is missing;
+- maintainer feedback changes the intended behavior;
+- merge or production authority is not recorded.
+
+CI pending, unchanged monitor polls, routine reviewer evidence collection, and
+repository-native focused validation remain agent work. A visible Kanban can
+project todo ownership, status, evidence, blockers, and outputs without becoming
+a second source of truth.
+
+## Public Pilot Evidence
+
+The first public end-to-end pilot selected
+[OpenViking issue #3102](https://github.com/volcengine/OpenViking/issues/3102),
+published a focused fix, passed required CI and review, and reached
+[merged PR #3115](https://github.com/volcengine/OpenViking/pull/3115). The case
+validated the host-agent loop around revision-pinned context, reproduction,
+focused validation, authority-gated publication, continuous monitoring,
+terminal closeout, Kanban visibility, and successor planning.
+
+The pilot also produced generic LoopX control-plane feedback in
+[PR #1784](https://github.com/huangruiteng/loopx/pull/1784). Pilot evidence is
+advisory for product design until the corresponding generic changes are merged;
+the current repository revision remains authoritative.
+
+## Roadmap
+
+### Current stage
+
+- public metadata and route selection;
+- repository-context provenance;
+- deterministic and caller-repo repair artifacts;
+- focused validation evidence;
+- reviewer recommendation from repository-native ownership evidence;
+- PR lifecycle projection;
+- LoopX todo/quota/monitor/Kanban integration through the host agent.
+
+### Next stage
+
+- integrate reviewer recommendation into PR-ready and lifecycle packets;
+- resolve public GitHub identities and repository teams without leaking email;
+- make publication authority visible per external action;
+- make unchanged lifecycle observations physically idempotent everywhere;
+- project maintainer corrections into explicit patch/blocker successors;
+- add a reusable terminal acceptance report across repeated issues.
+
+### Longer-term stage
+
+- multi-repository issue portfolios with bounded concurrency;
+- maintainer preference learning from public accepted/rejected outcomes;
+- reviewer load balancing and bus-factor awareness;
+- richer repository memory with explicit workspace/peer isolation;
+- Open Knowledge Format interoperability after the repository-context contract
+  stabilizes;
+- project-level metrics for accepted fixes, cycle time, human attention,
+  regressions, and boundary incidents.
+
+## Success Metrics
+
+Track outcomes, not agent activity:
+
+- selected issues that reach a focused PR;
+- focused PRs accepted or merged;
+- failure-before/pass-after proof rate;
+- unrelated regression rate;
+- time from issue selection to review-ready and terminal state;
+- number and type of human interventions;
+- reviewer recommendation acceptance/override rate;
+- unchanged monitor polls skipped;
+- public/private boundary incidents;
+- LoopX generic gaps fixed or converted into concrete claimed todos.
 
 ## Conversational `/loopx` Entry
 
-When the user starts from a chat box or command palette, use the project-local
-goal command first:
+On a host with the LoopX slash entry, start the long-running goal directly:
 
 ```text
 /loopx Fix https://github.com/owner/repo/issues/123
 ```
 
-The host or skill fallback should run the command pack preview with the exact
-goal text:
+For a manually integrated host, inspect the command pack and then start the
+same exact goal text through the guided CLI transaction:
 
 ```bash
-loopx bootstrap-command-pack --project . \
+loopx bootstrap-command-pack --project .
+loopx start-goal --guided --project . \
   --goal-text "Fix https://github.com/owner/repo/issues/123"
 ```
 
-For a GitHub issue/PR fix goal, the command pack points to the issue-fix
-workflow planner before todo writeback:
-
-```bash
-loopx issue-fix workflow-plan \
-  --url https://github.com/owner/repo/issues/123 \
-  --repo-path <approved-repo> \
-  --repository-context-json repository-context.json \
-  --validation-label "<validation command>" \
-  --format json
-```
-
-The workflow-plan output is still preview-only. Initial writeback is deliberately
-small: public metadata classification followed by one feasibility checkpoint.
-The checkpoint selects exactly one `fix_pr`, `comment_only`, or `triage_only`
-route and projects only that route's successor or no-follow-up. Concrete owner
-actions remain explicit gates, including private repro material, issue
-body/comment reads, external issue comments, PR creation, merge, publish,
-destructive git, production actions, and repository-policy approvals.
-
-## Workflow Plan
-
-```bash
-loopx issue-fix workflow-plan --url https://github.com/owner/repo/issues/123
-```
-
-The workflow planner is preview-only. It composes public metadata preview,
-issue intake, branch dry-run planning, validation labels, ordered LoopX todo
-writeback previews, and PR review readiness blockers into one packet. It does
-not write LoopX todos, inspect the local repo in dry-run mode, create external
-comments or PRs, merge, or capture raw issue body/comment material.
-
-## Repository Context
-
-`--repository-context-json` accepts an
-`issue_fix_repository_context_input_v0` object with a pinned repository
-revision and up to 16 compact source records. Each record names only a source
-id, kind, public-safe reference, trust, freshness, supported decision aspects,
-and an optional compact summary. Raw source content, expert responses, logs,
-credentials, and local paths are rejected.
-
-The projection distinguishes `authoritative`, `verified`, and `advisory`
-evidence across architecture, ownership, change scope, reproduction, and
-validation. Only current repository evidence can ground a decision. External
-experts always remain advisory and cannot authorize comments, PRs, merges, or
-other external writes. The workflow plan uses missing coverage to name the
-next repository reads without adding another lifecycle state or todo chain.
-
-Memory systems such as OpenViking may supply compact `memory_retrieval` source
-refs. They do not become the source of truth: retrieved claims must be checked
-against the pinned repository revision. Knowledge bundles remain
-format-agnostic so an Open Knowledge Format bundle can be referenced without
-making the issue-fix state machine depend on that draft interchange format.
+The conversational entry does not bypass issue selection, authority, or
+validation. It creates the durable goal/todo/host-loop route from which the
+issue-fix commands below can be executed.
 
 ## Feasibility Decision
 
-```bash
-loopx issue-fix feasibility \
-  --url https://github.com/owner/repo/issues/123 \
-  --reproduction-status planned \
-  --reproduction-label "focused repro plan" \
-  --scope-class bounded \
-  --validation-label "focused unit test" \
-  --repository-context-json repository-context.json \
-  --goal-id example-goal \
-  --format json
-```
+`loopx issue-fix feasibility` selects exactly one of `fix_pr`, `comment_only`,
+or `triage_only`. A `fix_pr` decision requires bounded change scope plus a
+named reproduction and validation surface. The compact decision belongs in the
+existing issue-fix domain state before writing todos for the chosen route; it
+does not create a parallel workflow ledger.
 
-Feasibility consumes only compact agent observations. It never stores raw issue
-bodies, comment bodies, provider responses, logs, local paths, or credentials.
-`fix_pr` requires bounded scope plus named reproduction and validation surfaces;
-a planned repro first projects `issue_fix_confirm_reproduction`, not patch work.
-`comment_only` projects a comment-draft todo with an external-write gate, while
-`triage_only` projects structured no-follow-up.
+## Repository Context
 
-With `--goal-id` or `--ledger-path`, the decision is upserted by repo and issue
-reference into `.loopx/domain-state/<goal-id>/issue_fix/feasibility.jsonl`.
-The same row keeps the compact repository-context fingerprint, source refs,
-coverage, expert policy, and memory policy so the next agent turn does not lose
-its evidence basis. Use `--no-write-domain-state` for preview-only checks.
-
-For a concrete public pilot and staged adoption plan, see
-[`OpenViking issue-fix pilot handoff`](openviking-pilot-handoff.md).
+Both workflow planning and feasibility accept
+`--repository-context-json <compact-context.json>`. The input must pin the
+current revision and keep source references repo-relative. Current checkout
+evidence remains authoritative; memory and expert conclusions stay advisory
+until verified. The public
+[OpenViking pilot handoff](openviking-pilot-handoff.md) shows how the real
+pilot applies that evidence order without introducing a repository-specific
+control path.
 
 ## PR Lifecycle Monitor
 
+After publication, `loopx issue-fix pr-lifecycle` and a `continuous_monitor`
+todo keep CI, review, maintainer correction, mergeability, stale branch, and
+terminal status visible. Publication, review requests, merge, and access to
+private material remain explicit gates. Each material transition must yield a
+`runnable_successor`, concrete blocker, or structured no-follow-up; unchanged
+polls remain quiet and do not spend delivery quota.
+
+## Commands
+
 ```bash
+# Preview the complete issue-fix workflow.
+loopx issue-fix workflow-plan \
+  --url https://github.com/owner/repo/issues/123 \
+  --repo-path /path/to/approved/repo \
+  --repository-context-json context.json \
+  --validation-label "focused unit test" \
+  --format json
+
+# Select one route and persist compact goal-scoped feasibility state.
+loopx issue-fix feasibility \
+  --url https://github.com/owner/repo/issues/123 \
+  --reproduction-status confirmed \
+  --reproduction-label "focused contract repro" \
+  --scope-class bounded \
+  --validation-label "focused unit test" \
+  --repository-context-json context.json \
+  --goal-id example-goal \
+  --format json
+
+# Recommend reviewers without requesting external review.
+loopx issue-fix reviewer-plan \
+  --repo-path /path/to/approved/repo \
+  --repo owner/repo \
+  --base-ref origin/main \
+  --exclude-reviewer @pull-request-author \
+  --exclude-author-name "PR Author Git Name" \
+  --execute \
+  --format json
+
+# Project PR lifecycle into LoopX continuation state.
 loopx issue-fix pr-lifecycle \
-  --url https://github.com/owner/repo/pull/123 \
-  --metadata-json public-pr-state.json \
+  --url https://github.com/owner/repo/pull/456 \
+  --fetch-metadata \
   --goal-id example-goal \
   --format json
 ```
-
-The PR lifecycle projection turns compact public PR state into one of four
-transitions: `runnable_successor`, `monitor_continuation`, `user_gate`, or
-`no_followup`. Terminal PR states such as `MERGED` or `CLOSED` take precedence
-over stale review metadata; failed checks and requested changes create runnable
-successors; quiet states continue the monitor.
-
-When `--goal-id` or `--ledger-path` is provided, the command writes the compact
-observation into `.loopx/domain-state/<goal-id>/issue_fix/pr-lifecycle.jsonl` by
-default. Use `--no-write-domain-state` for preview-only tests. Domain state is
-project-local and gitignored; it records compact row keys, observations,
-transition decisions, and fingerprints, never issue bodies, comments, raw
-provider payloads, raw check logs, local paths, or credentials.
 
 ## Validation
 
 ```bash
+python3 examples/issue-fix-capability-guide-smoke.py
+python3 examples/issue-fix-reviewer-recommendation-smoke.py
 python3 examples/issue-fix-workflow-plan-smoke.py
+python3 examples/issue-fix-workflow-contract-smoke.py
 python3 examples/issue-fix-repository-context-smoke.py
 python3 examples/issue-fix-feasibility-smoke.py
 python3 examples/issue-fix-pr-lifecycle-smoke.py
-python3 examples/issue-fix-workflow-contract-smoke.py
-python3 examples/content-ops-issue-fix-metadata-preview-smoke.py
-python3 examples/content-ops-issue-fix-intake-smoke.py
 python3 examples/issue-fix-acceptance-loop-smoke.py
+loopx canary premerge --from-git-diff
 ```
+
+## Non-Goals
+
+- LoopX does not bypass repository review or branch protection.
+- Reviewer recommendation is not reviewer assignment or availability proof.
+- The capability does not default to automatic merge or production actions.
+- It does not store raw transcripts, tool logs, expert answers, credentials, or
+  private issue material in public state.
+- It does not add repository-specific branches such as `if repo == ...` to the
+  generic control plane.

@@ -27,6 +27,10 @@ from .pr_lifecycle import (
     build_issue_fix_pr_lifecycle_monitor_packet,
     render_issue_fix_pr_lifecycle_monitor_markdown,
 )
+from .reviewer_recommendation import (
+    build_issue_fix_reviewer_recommendation_packet,
+    render_issue_fix_reviewer_recommendation_markdown,
+)
 from .workflow_plan import (
     build_issue_fix_workflow_plan_packet,
     render_issue_fix_workflow_plan_markdown,
@@ -304,6 +308,84 @@ def register_issue_fix_commands(
             "--ledger-path is present."
         ),
     )
+    reviewer_parser = issue_fix_sub.add_parser(
+        "reviewer-plan",
+        help=(
+            "Recommend reviewers from caller-approved repository ownership "
+            "evidence without requesting external review."
+        ),
+    )
+    add_subcommand_format(reviewer_parser)
+    reviewer_parser.add_argument(
+        "--repo-path",
+        required=True,
+        help=(
+            "Caller-approved local git repository. The public packet never "
+            "records this path."
+        ),
+    )
+    reviewer_parser.add_argument(
+        "--repo",
+        default="approved_local_repo",
+        help="Public-safe repository label stored in the recommendation packet.",
+    )
+    reviewer_parser.add_argument(
+        "--changed-file",
+        action="append",
+        default=[],
+        help=(
+            "Repo-relative changed file. Repeat for multiple files. When omitted "
+            "with --execute, derive files from --base-ref...HEAD."
+        ),
+    )
+    reviewer_parser.add_argument(
+        "--base-ref",
+        default="origin/main",
+        help="Base git ref used to derive changed files when none are explicit.",
+    )
+    reviewer_parser.add_argument(
+        "--history-limit",
+        type=int,
+        default=40,
+        help="Maximum changed-path git history rows to inspect per file.",
+    )
+    reviewer_parser.add_argument(
+        "--max-candidates",
+        type=int,
+        default=5,
+        help="Maximum ranked reviewer candidates to return.",
+    )
+    reviewer_parser.add_argument(
+        "--exclude-reviewer",
+        action="append",
+        default=[],
+        help=(
+            "GitHub handle to exclude, normally the PR author or unavailable "
+            "reviewer. Repeat for multiple handles."
+        ),
+    )
+    reviewer_parser.add_argument(
+        "--exclude-author-name",
+        action="append",
+        default=[],
+        help=(
+            "Git author display-name alias to exclude when it cannot be resolved "
+            "to the PR author handle. Repeat for multiple aliases."
+        ),
+    )
+    reviewer_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help=(
+            "Inspect only the caller-approved local repository. This still "
+            "does not request review or perform any external write."
+        ),
+    )
+    reviewer_parser.add_argument(
+        "--generated-at",
+        default="2026-07-10T00:00:00Z",
+        help="Public-safe generated_at timestamp for the recommendation packet.",
+    )
     acceptance_parser = issue_fix_sub.add_parser(
         "acceptance-fixture",
         help=(
@@ -540,6 +622,20 @@ def handle_issue_fix_command(
                 if isinstance(domain_state, dict) and not args.no_write_domain_state:
                     domain_state["write_skipped_reason"] = "goal_id_or_ledger_path_missing"
             renderer = render_issue_fix_pr_lifecycle_monitor_markdown
+        elif args.issue_fix_command == "reviewer-plan":
+            payload = build_issue_fix_reviewer_recommendation_packet(
+                repo_path=args.repo_path,
+                repo=args.repo,
+                changed_files=args.changed_file,
+                base_ref=args.base_ref,
+                history_limit=args.history_limit,
+                max_candidates=args.max_candidates,
+                exclude_reviewers=args.exclude_reviewer,
+                exclude_author_names=args.exclude_author_name,
+                execute=args.execute,
+                generated_at=args.generated_at,
+            )
+            renderer = render_issue_fix_reviewer_recommendation_markdown
         elif args.issue_fix_command == "acceptance-fixture":
             payload = build_issue_fix_acceptance_fixture_packet(
                 repo=args.repo,
@@ -574,8 +670,8 @@ def handle_issue_fix_command(
         else:
             raise ValueError(
                 "issue-fix requires `workflow-plan`, `feasibility`, "
-                "`acceptance-fixture`, `pr-lifecycle`, `repo-branch-fixture`, "
-                "or `caller-repo-branch`"
+                "`acceptance-fixture`, `pr-lifecycle`, `reviewer-plan`, "
+                "`repo-branch-fixture`, or `caller-repo-branch`"
             )
     except Exception as exc:
         payload = {
@@ -590,6 +686,8 @@ def handle_issue_fix_command(
             if getattr(args, "issue_fix_command", None) == "feasibility"
             else render_issue_fix_pr_lifecycle_monitor_markdown
             if getattr(args, "issue_fix_command", None) == "pr-lifecycle"
+            else render_issue_fix_reviewer_recommendation_markdown
+            if getattr(args, "issue_fix_command", None) == "reviewer-plan"
             else render_issue_fix_acceptance_loop_markdown
         )
     print_payload(payload, output_format(args), renderer)

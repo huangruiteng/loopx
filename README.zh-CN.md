@@ -394,7 +394,7 @@ review 信号不会自动变成执行权限。更完整的设计见
 
 | 应用路径 | 精简命令入口 | 预期产物 | 用户可感知增量 |
 | --- | --- | --- | --- |
-| Issue / PR fix loop | `/loopx Fix <github-issue-or-pr-url>`<br>`loopx issue-fix workflow-plan` | 可复核的修复包：repro、smoke 结果、剩余 review owner 和 PR-ready evidence。 | issue 和 review comment 不再只是提醒人，而是驱动 agent 闭环的入口。 |
+| [Issue / PR fix loop](docs/capabilities/issue-fix/README.zh-CN.md) | `/loopx Fix <github-issue-or-pr-url>`<br>`loopx issue-fix workflow-plan` | 可复核的修复包：repro、smoke 结果、可解释 reviewer 推荐和 PR-lifecycle evidence。 | issue 和 review comment 不再只是提醒人，而是驱动 agent 持续监控到终局的闭环入口。 |
 | PR-sized refactor loop | `/loopx <refactor goal>`<br>`loopx canary plan` | 可 review 的 slice 列表、验证记录、后续 todo、merge 边界。 | 增加可合并 change，而不是第二天早上面对一个巨型 diff。 |
 | Research / experiment loop | `loopx auto-research start "<open question>" --execute`<br>`loopx ml-experiment preview --format json` | hypothesis、source/evidence packet、replay 或实验边界，以及下一步可验证问题。 | research 不只是一次性报告，而是可继续、可沉淀的 long-horizon loop。 |
 | Explore result / harness loop | `loopx explore node\|edge\|finding`<br>`loopx explore worker-branch-plan --goal-id <id>` | public-safe 探索图、blocked frontier、Mermaid/exportable projection，以及默认关闭的 worker branch plan。 | 长程探索从隐藏笔记变成可检查拓扑和 opt-in worker planning。 |

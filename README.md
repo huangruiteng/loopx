@@ -468,7 +468,7 @@ new control plane every time:
 
 | App path | Start with | Expected output | User-visible lift |
 | --- | --- | --- | --- |
-| Issue / PR fix loop | LoopX slash entry: `Fix <github-issue-or-pr-url>`<br>`loopx issue-fix workflow-plan` | Branch-ready fix packet with repro, smoke result, remaining review owner, and PR-review-ready evidence. | Review comments and issues become a closed loop instead of reminders humans must shepherd by hand. |
+| [Issue / PR fix loop](docs/capabilities/issue-fix/README.md) | LoopX slash entry: `Fix <github-issue-or-pr-url>`<br>`loopx issue-fix workflow-plan` | Branch-ready fix packet with repro, smoke result, explainable reviewer recommendation, and PR-lifecycle evidence. | Review comments and issues become a monitored closed loop instead of reminders humans must shepherd by hand. |
 | PR-sized refactor loop | LoopX slash entry: `<refactor task>`<br>`loopx canary plan` | Reviewable slice list, validation notes, successor todo, and merge boundary. | More merged changes without turning the next morning into a giant diff audit. |
 | Research or experiment loop | `loopx auto-research start "<open question>" --execute`<br>`loopx ml-experiment preview --format json` | Hypothesis, source/evidence packet, replay or experiment boundary, and next validated question. | Research becomes a resumable long-horizon loop, not just a one-off report. |
 | Explore result / harness loop | `loopx explore node\|edge\|finding`<br>`loopx explore worker-branch-plan --goal-id <id>` | Public-safe exploration graph, blocked frontier, Mermaid/exportable projection, and default-off worker branch plan. | Long-running exploration becomes inspectable topology and opt-in worker planning instead of hidden notes. |

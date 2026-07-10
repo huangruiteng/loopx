@@ -6,8 +6,9 @@ modules, CLI entrypoints, and smokes under the capability they serve.
 
 Current capability paths:
 
-- [issue-fix](issue-fix/README.md): turn public GitHub issue/PR signals into
-  caller-approved local issue branches and PR-review evidence.
+- [issue-fix](issue-fix/README.md) ([中文](issue-fix/README.zh-CN.md)): turn
+  public GitHub issue/PR signals into focused fixes, explainable reviewer
+  routes, authority-gated PRs, and monitored lifecycle outcomes.
 - [content-ops](content-ops/README.md): collect public/private content signals
   into reviewable source, angle, draft, feedback, and publish-gate packets.
 - [value-connectors](value-connectors/README.md): install and run public-safe

@@ -501,6 +501,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
         profile["id"]: profile for profile in product_entry_payload["domain_profiles"]
     }
     assert "product-entry-workflows" in product_entry_profiles, product_entry_payload
+    assert "issue-fix-reviewer-routing" in product_entry_profiles, product_entry_payload
     assert "install-update" not in product_entry_profiles, product_entry_payload
     product_entry_profile = product_entry_profiles["product-entry-workflows"]
     product_entry_commands = [check["command"] for check in product_entry_profile["checks"]]
@@ -514,6 +515,14 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert all(check["tier"] == "default" for check in product_entry_profile["checks"]), product_entry_profile
     assert product_entry_profile["deep_checks_available"] is True, product_entry_profile
     assert product_entry_profile["deep_checks_included"] is False, product_entry_profile
+    reviewer_profile = product_entry_profiles["issue-fix-reviewer-routing"]
+    reviewer_commands = [check["command"] for check in reviewer_profile["checks"]]
+    assert reviewer_commands == [
+        "python3 examples/issue-fix-capability-guide-smoke.py",
+        "python3 examples/issue-fix-reviewer-recommendation-smoke.py",
+    ], reviewer_profile
+    assert all(check["tier"] == "default" for check in reviewer_profile["checks"]), reviewer_profile
+    assert reviewer_profile["deep_checks_available"] is False, reviewer_profile
 
     cross_runtime_payload = build_catalog_canary_plan(
         changed_files=[

@@ -880,6 +880,37 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "issue-fix-reviewer-routing",
+        "title": "Issue-fix reviewer routing and bilingual guide",
+        "purpose": (
+            "Check the bilingual issue-fix product entry and explainable local "
+            "reviewer recommendation contract without external review requests."
+        ),
+        "catalog_families": ["Human Decision", "Evidence Lifecycle", "State And Boundary"],
+        "trigger_hints": (
+            "reviewer-plan",
+            "reviewer recommendation",
+            "issue_fix_reviewer_recommendation",
+            "docs/capabilities/issue-fix/README",
+            "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-recommendation",
+            "examples/issue-fix-capability-guide-smoke.py",
+            "examples/issue-fix-reviewer-recommendation-smoke.py",
+            "loopx/capabilities/issue_fix/reviewer_recommendation.py",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/issue-fix-capability-guide-smoke.py",
+                "tier": "default",
+                "reason": "guards the bilingual issue-fix product entry, README links, reviewer protocol, and public-safe roadmap surface",
+            },
+            {
+                "command": "python3 examples/issue-fix-reviewer-recommendation-smoke.py",
+                "tier": "default",
+                "reason": "guards explainable CODEOWNERS and base-revision changed-path/module-history reviewer recommendations without external review requests",
+            },
+        ],
+    },
+    {
         "id": "cross-runtime-impl-review-demo",
         "title": "Cross-runtime implementation/review demo",
         "purpose": (
