@@ -1,0 +1,25 @@
+examples/issue-fix-outcome-projection-smoke.py
+  s_32e2a9a204a8e4::t_a2c25c1996275f 166-167
+examples/lark-kanban-control-plane-smoke.py
+  s_32e2a9a204a8e4::t_5d4e1536d704bd 220-230,247-249
+loopx/presentation/sinks/lark/issue_fix_surface.py
+  s_32e2a9a204a8e4::t_1de4b3452473f5 33-37,60-61,105-106,112-123,200-218,235
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "633d8e79ec7c61586dd2bee35c307d4b8cdc89ef",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
