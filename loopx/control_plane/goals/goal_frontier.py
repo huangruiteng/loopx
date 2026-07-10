@@ -76,6 +76,25 @@ def autonomous_replan_ack_has_frontier_delta(ack: dict[str, Any] | None) -> bool
     return repair_delta_kinds_have_frontier_delta(delta_contract.get("delta_kinds"))
 
 
+def _autonomous_replan_ack_has_delta_kind(
+    ack: dict[str, Any] | None,
+    *,
+    delta_kind: str,
+) -> bool:
+    """Return whether a durable replan ACK records one exact delta kind."""
+
+    if not isinstance(ack, dict) or ack.get("recorded") is not True:
+        return False
+    delta_contract = ack.get("delta_contract")
+    if not isinstance(delta_contract, dict) or delta_contract.get("delta_present") is not True:
+        return False
+    return delta_kind in {
+        str(item or "").strip()
+        for item in (delta_contract.get("delta_kinds") or [])
+        if str(item or "").strip()
+    }
+
+
 def autonomous_replan_decision_allowed(
     *,
     replan_obligation: dict[str, Any] | None,
@@ -379,7 +398,11 @@ def acceptance_gaps_from_agent_vision(
     if goal_vision_state_is_closed(state):
         return []
     acceptance = _compact_projection_text(patch.get("acceptance_summary"), limit=420)
-    trigger = _compact_projection_text(patch.get("replan_trigger_summary"), limit=240)
+    explicit_trigger = _compact_projection_text(
+        patch.get("replan_trigger_summary"),
+        limit=240,
+    )
+    trigger = explicit_trigger
     if not trigger and acceptance:
         trigger = "active agent vision remains open with acceptance evidence still required"
     if not trigger:
@@ -390,6 +413,11 @@ def acceptance_gaps_from_agent_vision(
         "agent_id": agent_vision.get("agent_id"),
         "state": agent_vision.get("state"),
         "replan_trigger_summary": trigger,
+        "replan_trigger_source": (
+            "explicit_vision_trigger"
+            if explicit_trigger
+            else "implicit_open_acceptance"
+        ),
     }
     if acceptance:
         gap["acceptance_summary"] = acceptance
@@ -807,9 +835,17 @@ def _is_monitor_only_lane(
     work_lane_contract: dict[str, Any] | None,
 ) -> bool:
     return bool(
+        _is_continuous_monitor_lane(work_lane_contract)
+        and work_lane_contract.get("must_attempt_work") is False
+    )
+
+
+def _is_continuous_monitor_lane(
+    work_lane_contract: dict[str, Any] | None,
+) -> bool:
+    return bool(
         work_lane_contract
         and work_lane_contract.get("lane") == TODO_TASK_CLASS_MONITOR
-        and work_lane_contract.get("must_attempt_work") is False
     )
 
 
@@ -933,6 +969,21 @@ def derive_goal_frontier_replan_obligation_from_summaries(
     compact_acceptance_gaps = [
         item for item in (acceptance_gaps or []) if isinstance(item, dict)
     ]
+    explicit_acceptance_gaps = [
+        gap
+        for gap in compact_acceptance_gaps
+        if gap.get("replan_trigger_source") != "implicit_open_acceptance"
+    ]
+    implicit_acceptance_has_watch_lane_continuation = bool(
+        compact_acceptance_gaps
+        and not explicit_acceptance_gaps
+        and _is_continuous_monitor_lane(work_lane_contract)
+        and agent_counts.get("monitor", 0) > 0
+        and _autonomous_replan_ack_has_delta_kind(
+            latest_replan_ack,
+            delta_kind="watch_lane_continuation",
+        )
+    )
     if user_counts.get("open", 0) > 0:
         return None
     succession_gap_items = _succession_gap_items(
@@ -994,6 +1045,7 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         compact_acceptance_gaps
         and agent_counts.get("advancement", 0) == 0
         and total_frontier_advancement == 0
+        and not implicit_acceptance_has_watch_lane_continuation
     ):
         return build_autonomous_replan_obligation_payload(
             schema_version=AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
