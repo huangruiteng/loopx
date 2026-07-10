@@ -147,7 +147,7 @@ decision:
 
 Workspace hints are display-only:
 
-- `primary_checkout`;
+- `canonical_checkout`;
 - `worktree`;
 - `external`;
 - `unknown`.

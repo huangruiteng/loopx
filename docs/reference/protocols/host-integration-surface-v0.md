@@ -59,7 +59,7 @@ Host integrations should expose read methods that map directly to CLI reads:
 | --- | --- | --- |
 | Health and installation | `loopx doctor` | compact readiness plus missing pieces |
 | Registry and goal boundary | `loopx registry` and `quota should-run` | goal id, adapter status, write scope, registered agents, stop condition |
-| Status and attention queue | `loopx --format json status` | first-screen status, user todos, agent todos, gate state, freshness warnings, optional read-only projections such as `task_graph_projection_v0` and `local_agent_launch_plan_v0` |
+| Status and attention queue | `loopx --format json status` | first-screen status, user todos, agent todos, gate state, freshness warnings, optional read-only projections such as `task_graph_projection_v0` and `local_agent_launch_plan_v1` |
 | Quota decision | `loopx --format json quota should-run --goal-id <goal-id> --agent-id <agent-id>` | `interaction_contract`, execution obligation, workspace guard, spend policy |
 | Review packet | `loopx --format json review-packet --goal-id <goal-id>` | human/controller decision packet and agent handoff context |
 | Run history | `loopx history` or status projections | compact run ids, classification, outcome, validation, blocker pointers |
@@ -68,7 +68,7 @@ Read methods return compact control facts. They must not return raw session
 logs, raw benchmark task text, raw trajectories, private document bodies,
 credentials, local absolute paths, or host auth material.
 Optional projections such as `task_graph_projection_v0`,
-`local_agent_launch_plan_v0`, and `cadence_hint_v0` are read-only
+`local_agent_launch_plan_v1`, and `cadence_hint_v0` are read-only
 inputs to a host integration. They do not add graph write authority, launch
 workers, change quota gates, or create a new source of truth.
 
@@ -111,7 +111,7 @@ hooks, and MCP clients:
   "lifecycle_reads": ["doctor", "status", "quota_should_run", "review_packet"],
   "projection_inputs": [
     "task_graph_projection_v0",
-    "local_agent_launch_plan_v0",
+    "local_agent_launch_plan_v1",
     "cadence_hint_v0"
   ],
   "write_capabilities": ["todo_lifecycle", "gate_decision"],

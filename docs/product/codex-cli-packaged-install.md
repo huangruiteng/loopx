@@ -105,7 +105,7 @@ wrapper or release snapshot is broken enough that `loopx update` cannot run.
 
 ## Contributor Path
 
-For contributors and side agents working on LoopX itself, keep using a
+For contributors and registered peers working on LoopX itself, keep using a
 real checkout:
 
 ```bash

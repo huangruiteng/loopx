@@ -32,14 +32,14 @@ them directly.
 
 | Source state | Existing anchor | Purpose |
 | --- | --- | --- |
-| `goal_identity` | registry, active state, agent profile docs | Stable `goal_id`, repo, primary agent, side-agent scopes, and write boundary. |
+| `goal_identity` | registry, active state, agent profile docs | Stable `goal_id`, repo, registered peers, advisory profiles, and write boundary. |
 | `connection_state` | `loopx connect`, `bootstrap`, `doctor`, `sync-global` | Whether the repo is connected, read-only, bootstrapped, stale, or missing local state. |
 | `local_state_boundary` | `.gitignore`, `loopx check`, getting-started docs | Keep `.loopx/`, `.codex/goals/`, `.local/`, raw logs, credentials, and private paths out of public commits. |
 | `todo_item_v0` | `loopx todo`, active-state todo sections, `loopx/status.py` | Formal work unit with role, status, task class, action kind, claim, dependency, resume, and evidence metadata. |
 | `suggested_todo` | `loopx todo suggest`, `todo_suggestion_prompt_v0` | Candidate decision queue; not formal backlog until promoted by user/controller. |
 | `interaction_contract_v0` | `loopx quota should-run`, `docs/quota-allocation.md` | Splits user, agent, and CLI obligations before an automated turn spends compute. |
 | `agent_lane_next_action_v0` | `loopx quota should-run --agent-id ...`, `docs/project-agent-todo-contract.md` | Per-agent selected runnable todo without replacing the goal-level next action. |
-| `side_agent_workspace_guard_v0` | `loopx quota should-run`, side-agent registry scope | Blocks normal delivery until a side agent uses an independent worktree/branch. |
+| `agent_workspace_guard_v1` | `loopx quota should-run`, selected todo and repository policy | Blocks repository delivery until the current peer uses a compliant worktree/branch. |
 | `run_history` | `loopx/history.py`, `refresh-state`, `quota spend-slot` | Compact run classifications, delivery outcome, recommended action, evidence, and spend records. |
 | `loopx_rollout_event_v0` | `loopx/rollout_event_log.py` | Append-only public-safe event stream for todo, validation, PR, handoff, quota, repair, and failure events. |
 | `operator_gate` | `loopx operator-gate`, `loopx/review_packet.py`, `loopx/status.py` | User/controller decision point with decision, reason, follow-up, and optional handoff command. |
@@ -89,8 +89,8 @@ Projection truth contract:
 
 ## State Partitioning For Concurrent Agents
 
-Concurrent agents share one source-of-truth event stream per goal. LoopX should
-not fork truth just because a primary agent, side agent, benchmark case, or UI
+Concurrent peers share one source-of-truth event stream per goal. LoopX should
+not fork truth just because a peer, benchmark case, or UI
 view wants a narrower timeline.
 
 Canonical source:
@@ -140,7 +140,7 @@ the first safe decision is.
 Required source state:
 
 - stable `goal_id`;
-- primary agent and side-agent scope when registered;
+- registered peer identities and advisory scope when configured;
 - adapter status and project-local state path;
 - local-state ignore boundary;
 - optional suggested todo queue;
@@ -214,7 +214,7 @@ Evidence fields should be compact and public-safe:
 
 Gate fields must include:
 
-- gate owner class: `user`, `controller`, `primary_agent`, or external system;
+- gate owner class: `user`, `controller`, registered `agent`, or external system;
 - blocked todo or scope;
 - question or decision required;
 - approved/deferred/rejected status;

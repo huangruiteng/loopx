@@ -352,22 +352,21 @@ sub-agent scopes, boundary findings, and a short controller handoff packet. See
 
 ## Controller / Sub-Agent Coordination
 
-Some Codex goal runs should use multiple sub-agents. LoopX should keep
-that parallelism explicit:
+Some Codex goal runs should use multiple child workers. LoopX should keep that
+task-scoped parallelism explicit:
 
 - child runs declare `work_scope` before acting;
-- overlapping write scopes require parent arbitration;
+- overlapping write scopes require task-coordinator arbitration;
 - children default to read-only unless the registry grants a write scope;
-- only the controller can mark the main goal complete;
 - child final reports include changed files, validation, residual risk, and
   next handoff;
-- the controller performs final merge, public/private scan, and state writeback.
+- the temporary task coordinator aggregates accepted bundle evidence, while
+  merge and state writeback still follow explicit task/repository policy.
 
 Minimal registry fields for this pattern are:
 
 ```json
 {
-  "role": "controller",
   "parent_goal_id": null,
   "spawn_policy": {
     "mode": "multi_subagent",
@@ -376,8 +375,8 @@ Minimal registry fields for this pattern are:
     "allowed_domains": ["docs-map", "validation-map"]
   },
   "coordination": {
+    "agent_model": "peer_v1",
     "registered_agents": ["codex-main-control", "codex-side-bypass"],
-    "primary_agent": "codex-main-control",
     "write_scope": ["docs/**", "examples/**"],
     "claim_ttl_minutes": 30,
     "requires_parent_approval": ["write", "publish", "production-action"]
@@ -393,12 +392,12 @@ dispatchers instead of relying on prompt text.
 These fields are a public contract, not a runtime lock manager. The current
 lightweight runtime surface uses todo `claimed_by` as a soft owner written under
 the active-state CLI lock. Claim ids must be listed in
-`coordination.registered_agents`; exactly one `coordination.primary_agent`
-owns final review, verification, merge, and publication. Side agents keep their
-scope in the automation prompt or handoff and work in separate git worktrees.
-They may self-merge small AGENTS-eligible validated changes with explicit
-evidence; broader or higher-risk side-agent work should complete by adding a
-successor review todo claimed by the primary agent. A future version can add
+`coordination.registered_agents`; those identities are peers. Task claims,
+boundaries, capabilities, typed continuation, and repository policy determine
+authority. Repository-writing peers use isolated worktrees when the selected
+task requires it. Small AGENTS-eligible validated changes may self-merge with
+explicit evidence; broader or higher-risk work uses an explicit
+`review_handoff` to a different registered peer. A future version can add
 claim files, stale-claim detection, overlap warnings, TTLs, and
 compare-and-swap conflict responses. That future pending contract should be per
 todo: a pending lease is keyed by `(goal_id, todo_id)`, so unrelated todos under

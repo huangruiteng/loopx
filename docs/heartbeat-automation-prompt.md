@@ -99,7 +99,7 @@ loopx configure-goal \
   --goal-id <GOAL_ID> \
   --registered-agent codex-main-control \
   --registered-agent codex-side-bypass \
-  --primary-agent codex-main-control \
+  --agent-model peer_v1 \
   --execute
 ```
 
@@ -111,7 +111,7 @@ loopx heartbeat-prompt \
   --agent-scope "benchmark readiness, benchmark execution, and benchmark writeback"
 ```
 
-For a side/bypass agent, use a different id and a disjoint scope:
+For another peer, use a different id and a disjoint scope:
 
 ```bash
 loopx heartbeat-prompt \
@@ -126,13 +126,12 @@ The generated body tells the agent to claim only in-scope todos with
 `loopx todo claim --claimed-by <agent-id>`. `--agent-scope` requires
 `--agent-id`, and the CLI accepts that agent id only when it is registered for
 the goal. Scope stays in the automation prompt or handoff; todo metadata records
-only the soft `claimed_by` owner. The prompt also classifies the agent as
-`primary-agent` or `side-agent` from `coordination.primary_agent`. Side-agent
-prompts require repository edits to happen in an independent git worktree/branch
-and instruct the worker to use one of two finish paths. Generated scoped
-heartbeat commands pass the same `--agent-id` to both `quota should-run` and
-`quota spend-slot`, so workspace guards and quota accounting evaluate the same
-agent identity.
+only the soft `claimed_by` owner. Registered identities are peers. Functional
+profile roles are advisory, while workspace isolation and continuation behavior
+come from the selected task, goal policy, and typed continuation policy.
+Generated scoped heartbeat commands pass the same `--agent-id` to both
+`quota should-run` and `quota spend-slot`, so workspace guards and quota
+accounting evaluate the same identity.
 
 Host capabilities are declarations, not permission grants. When the selected
 Codex App, CLI, or external launcher already has a capability required by its
@@ -152,17 +151,16 @@ Do not declare credentials, production access, or another capability merely to
 bypass a gate; the launcher must actually provide it.
 
 - for small AGENTS-eligible validated changes, self-merge and complete the todo
-  with `--side-agent-self-merged --evidence "<commit and validation summary>"`;
-- for runtime, benchmark, permission, production, destructive git, publication,
-  unclear, or broad changes, create a successor handoff todo with
-  `--next-agent-todo`. By default it is claimed by `<primary-agent>`; if the
-  goal registry declares `coordination.side_agent_handoff_agent`, LoopX routes
-  the successor there instead. Same-agent broad handoff is rejected; use
-  `--side-agent-self-merged --evidence` for same-agent delivery.
-- when `coordination.side_agent_handoff_agent` is the current side-agent id,
-  the scoped prompt treats that as a no-broad-handoff lane: blocked or unclear
-  work should stay claimed by the side agent with a concrete blocker, not be
-  routed to another review owner.
+  with `--self-merged --evidence "<commit and validation summary>"`;
+- for an independent continuation, create `--next-agent-todo` and optionally
+  select a registered peer with `--next-claimed-by`;
+- when independent review is required, add
+  `--next-continuation-policy review_handoff`. The successor must be unclaimed
+  or assigned to a different registered peer and blocks the completing peer
+  until review closes;
+- when work is blocked without a valid successor, keep the todo with the current
+  peer and write a concrete blocker rather than inventing a hierarchy route.
+
 Once a goal has `coordination.registered_agents`, prompt generation without
 `--agent-id` fails closed. That is the lightweight migration signal for stale
 Codex App automations: the next refresh attempt surfaces a concrete
@@ -170,10 +168,12 @@ identity/scope upgrade command instead of returning a legacy unscoped prompt.
 `quota should-run` follows the same rule for executor safety: an unscoped call
 returns `automation_prompt_upgrade.required=true`,
 `blocks_should_run=true`, and `should_run=false` instead of allowing delivery.
-For an old goal registry that does not yet define
-`coordination.registered_agents`, or a scoped registry that has agents but no
-`coordination.primary_agent`, scoped prompt generation fails closed and prints
-the configuration command needed to register the agent identity and primary.
+For a hierarchy-era registry, `quota should-run` and `upgrade-plan` return one
+stable migration id, one heartbeat command per registered peer, and a completion
+command. The host update may be retried with that idempotency key; the completion
+command atomically records the migration once, and later quota checks do not
+project it again. A registry without `coordination.registered_agents` must first
+register the peer identity before a scoped prompt can be generated.
 
 If even the compact body is too heavy for an installed automation, generate the
 brief body:

@@ -74,13 +74,13 @@ is defined in
 consumers should ignore the field when absent.
 
 Rows may also include an optional `local_agent_launch_plan` object with
-`schema_version=local_agent_launch_plan_v0`. This is a dry-run preview over
+`schema_version=local_agent_launch_plan_v1`. This is a dry-run preview over
 configured agents, role assignments, non-executable launch preview rows,
 status projection, evidence projection, and future gates. It is read-only and
 must not start local workers, call external agent services, expose shell
 commands, write LoopX state, or grant host authority. The protocol is defined
 in
-[`docs/reference/protocols/local-agent-launch-plan-v0.md`](reference/protocols/local-agent-launch-plan-v0.md);
+[`docs/reference/protocols/local-agent-launch-plan-v1.md`](reference/protocols/local-agent-launch-plan-v1.md);
 consumers should ignore the field when absent.
 
 Loopback status exports include `status_contract.schema_version`. The dashboard
@@ -961,7 +961,7 @@ Item fields:
   into `current_agent_deferred_resume_candidates`,
   `unclaimed_deferred_resume_candidates`, and
   `other_agent_deferred_resume_candidates`, where only the first two can wake
-  the current side agent before an agent-scoped no-candidate wait is allowed.
+  the current peer before an agent-scoped no-candidate wait is allowed.
   Open todos may also carry `resume_when`; status should attach
   `resume_condition` / `resume_ready` but keep the item out of executable
   backlog until `resume_ready=true`. This lets agents see not-yet-unlocked
@@ -971,16 +971,16 @@ Item fields:
   todo surface.
 - Agent-scoped quota payloads may include
   `agent_todo_summary.claim_scope` with
-  `schema_version=side_agent_claim_scope_v0`. For a side agent, the quota guard
-  should select current-agent claimed todos before unclaimed todos, then expose
-  primary/other-agent claimed todos as lower-weight candidates. Compatibility
-  payloads may still include `blocked_claimed_items`, but new consumers should
-  prefer `other_agent_claimed_items` and `other_agent_claimed_open_count`. This
-  is claim-aware routing, not a hard lease: the primary agent still sees the
-  whole backlog, and a side agent still uses its automation/handoff scope to
-  decide whether an unclaimed or other-agent claimed todo is appropriate. A
-  current-agent claimed todo may be selected even when the active state's global
-  `Next Action` names the primary lane; that is not a state projection mismatch.
+  `schema_version=agent_claim_scope_v0`. The quota guard should select
+  current-agent claimed todos before unclaimed todos, then expose other-agent
+  claimed todos as lower-weight candidates. Compatibility payloads may still
+  include `blocked_claimed_items`, but new consumers should prefer
+  `other_agent_claimed_items` and `other_agent_claimed_open_count`. This is
+  claim-aware routing, not a hard lease: every peer can inspect the goal-wide
+  backlog, while claims, task policy, capabilities, and boundaries determine
+  what it may execute. A current-agent claimed todo may be selected even when
+  the active state's global `Next Action` names another peer's lane; that is not
+  a state projection mismatch.
 - `dependency_blockers`: optional compact summary of unfinished user todos from
   other current attention-queue goals. This lets dashboards and heartbeat
   dispatchers show sibling/project dependency gates separately from the current
@@ -1024,8 +1024,8 @@ run guidance from durable-state projection and last-resort compatibility
 fallback.
 `--recommended-action` describes the appended run record; it does not rewrite
 the active state's durable `## Next Action`. To intentionally change that
-durable route in a multi-agent goal, the primary agent must run
-`refresh-state --agent-id <primary-agent> --progress-scope goal --next-action
+durable route in a multi-agent goal, a registered peer must run
+`refresh-state --agent-id <registered-peer> --progress-scope goal --next-action
 <local control-plane action>`. Status projections may expose both
 `active_state_next_action` and
 `latest_run_recommended_action`; when they differ, `next_action_projection_warning`
@@ -1040,17 +1040,17 @@ scoped with `--agent-id` and no `--progress-scope`, the run records
 transition: status/quota keep selecting the latest non-agent-lane run for the
 goal-level `status` and `recommended_action`, while exposing the lane note as
 `agent_lane_recommendation` on the attention item and project asset. A
-goal-level refresh in a multi-agent goal must use the primary agent with
+goal-level refresh in a multi-agent goal must use a registered peer with
 `--progress-scope goal`.
-Use this for side agents that want to record their own lane recommendation
-without replacing the primary controller's next action.
+Use agent-lane scope for a peer-local recommendation that should not replace the
+durable goal route.
 
-If a side-agent self-merged slice materially advanced the public product or
-case path, the controller or side agent should also write a project-level
+If a peer self-merged slice materially advanced the public product or case
+path, that peer or another registered peer should also write a project-level
 refresh with the matching `delivery_outcome=outcome_progress` (or skip the
 extra project-level sync entirely). A later `surface_only` project-level sync
 will become the latest non-agent-lane run, so quota may correctly ask for
-follow-through even though the side-lane note recorded real progress.
+follow-through even though the peer-lane note recorded real progress.
 
 For registered `connected`, `connected-read-only`, and `pre-tick-runnable`
 adapters, custom compact progress classifications that are not blocker, gate,
@@ -1140,26 +1140,36 @@ should treat this as a prompt-upgrade action, not as delivery permission, a
 quiet no-op, or a new operator gate. `should_run`, `normal_delivery_allowed`,
 and `interaction_contract.agent_channel.delivery_allowed` must stay `false`
 until the automation reruns `quota should-run` with a registered `--agent-id`.
+When v0.1 hierarchy fields are still present, the same object also carries a
+stable `migration_id`, `host_update_idempotency_key`, and `completion_command`.
+The host may retry regeneration and automation update with that same id; the
+registry cutover happens only after the host update succeeds and the completion
+command acknowledges that exact id. Completion removes the hierarchy fields,
+records `coordination.completed_migrations.peer_agent_runtime_v1`, and is an
+idempotent no-op when repeated with the completed id. Once that marker exists,
+`quota should-run` must never project this registry migration again. This is a
+stable, retryable migration until acknowledgment, not a recurring notification
+and not permission to update an automation more than once under different keys.
 The selected identity is part of the turn envelope. Follow-up lifecycle
 commands that interpret or account for the same turn, including scoped
 `refresh-state` and `quota spend-slot`, should preserve the same `--agent-id`
 when the subcommand supports it. A spend preview that drops the identity may
 correctly show `automation_prompt_upgrade_required` for an unscoped automation,
 but that is an accounting/projection mismatch for the scoped turn, not evidence
-that the earlier side-agent guard was invalid.
+that the earlier peer guard was invalid.
 For registered agent-scoped turns, `quota should-run --agent-id` may include
 `agent_lane_next_action.schema_version=agent_lane_next_action_v0`. This is a
 read-only derived pointer to the current agent's selected advancement slice,
 chosen from runnable capability candidates first and then the agent-scoped
 executable todo summary. It may point to a current-agent claimed todo even when
-the active state's global `Next Action` is still owned by the primary route; the
+the active state's global `Next Action` is still owned by another route; the
 field must therefore carry `preserves_goal_next_action=true` and must not be
 treated as a project-level status overwrite. `status --agent-id` may reuse the
 same quota-derived object as item/project-asset observation data; consumers must
 render it as an agent-lane pointer, not as `recommended_action` replacement.
 Human markdown should label this pointer as the current agent's todo and mark
 co-displayed global agent todo rows as goal-wide, so `--agent-id` is not
-mistaken for a filter that replaces the primary/global queue.
+mistaken for a filter that replaces the goal-wide queue.
 The same scoped guard may include
 `goal_route_hint.schema_version=goal_route_hint_v0`. This is a goal-level
 read-path synthesis over the current `agent_lane_next_action`,
@@ -1173,15 +1183,15 @@ therefore stays visible as the suggested agent-lane slice even when an older
 ordinary runnable P0 todo appears earlier in the active state; otherwise a todo
 that exists to build the missing capability can be starved by work that depends
 on that capability becoming reliable.
-When the resolved `agent_identity.role` is `side-agent`, `quota should-run`
-also enforces the workspace boundary. If the guard is being run from the
-registered primary checkout, from a non-git directory, or from an unrelated git
-worktree, the payload should include
-`workspace_guard.schema_version=side_agent_workspace_guard_v0`,
+For any registered peer, `quota should-run` also enforces the workspace
+boundary when the selected task writes repository state. If the guard is being
+run from a non-git directory, from an unrelated git worktree, or from a checkout
+that does not satisfy the task/repository isolation policy, the payload should include
+`workspace_guard.schema_version=agent_workspace_guard_v1`,
 `workspace_guard.action=move_to_independent_worktree`,
 `workspace_repair_allowed=true`, `normal_delivery_allowed=false`, and
-`effective_action=side_agent_workspace_repair`. The interaction contract should
-use `mode=side_agent_workspace_repair`, require the agent to create or switch to
+`effective_action=agent_workspace_repair`. The interaction contract should
+use `mode=agent_workspace_repair`, require the peer to create or switch to
 an independent worktree/branch, and require rerunning `quota should-run` with
 the same `--agent-id` before repository edits. This preflight does not spend
 quota; `quota spend-slot` should fail closed until the guard is rerun from the
@@ -1190,12 +1200,12 @@ Dashboard and Review Packet consumers should project `workspace_guard` as an
 agent-channel workspace repair, not as an operator or user gate. The first
 screen can render the current workspace class, required workspace class, repair
 action, and whether normal delivery is allowed. It should not ask the user to
-approve the move, mark the primary todo as blocked by the user, or hide open
-same-scope work. If a side agent is also looking at a `claimed_by` primary-agent
-todo, the packet should explain both boundaries separately: the workspace guard
+approve the move, mark the selected todo as blocked by the user, or hide open
+same-scope work. If a peer is also looking at a todo claimed by another peer,
+the packet should explain both boundaries separately: the workspace guard
 requires moving to an independent worktree, while the claim boundary requires
-choosing an in-scope unclaimed/side-agent todo or creating a successor handoff
-todo.
+choosing an in-scope current-agent or unclaimed todo, transferring the claim, or
+creating an explicit successor.
 When the payload includes `notify_user_on_open_todo=true`, the open
 `user_todo_summary` is the current blocker-push surface even if there is no
 operator gate. This is intended for `focus_wait`, `waiting`,

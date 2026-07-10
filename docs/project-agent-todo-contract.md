@@ -146,66 +146,50 @@ Quota treats a gate as covering an agent todo when `decision_scope` matches or
 dominates one of that todo's `required_decision_scopes`; otherwise the todo is
 independent and can be selected as a safe fallback when the boundary permits it.
 
-Each goal should have one `coordination.primary_agent`: the primary agent owns
-final review, verification, merge, publication, and reassignment decisions. All
-other registered agents are side agents. Side agents should do repository edits
-only in an independent git worktree/branch, never in the primary checkout. Small
-AGENTS-eligible validated changes may be self-merged when the side agent records
-public-safe evidence; higher-risk or unclear work should create a successor
-handoff todo claimed by the primary agent by default. A project may route all
-side-agent handoffs through `coordination.side_agent_handoff_agent`, or route a
-specific side-agent through
-`coordination.agent_profiles.<agent_id>.review_policy.handoff_agent`. First
-register the agent ids and primary agent in the goal registry:
+Each shared goal declares `coordination.agent_model=peer_v1` and a
+`coordination.registered_agents` set. Registration grants identity, not rank.
+Work authority comes from `claimed_by`, task leases, the goal/write boundary,
+and typed continuation policy. Functional profile roles and scope summaries are
+advisory; they do not make one identity the default reviewer or leader.
 
-If `coordination.side_agent_handoff_agent` equals the current side-agent id,
-LoopX treats that as a no-broad-handoff lane for generated prompts. The side
-agent should keep blocked or unclear work claimed by itself with a concrete
-blocker instead of creating a successor review todo for another agent.
-
-`quota should-run --agent-id <side-agent-id>` enforces this as a preflight: when
-the side agent is running from the registered primary checkout, a non-git
-directory, or an unrelated git worktree, it returns `workspace_guard` and blocks
-normal delivery until the agent moves to an independent worktree and reruns the
-guard.
+`quota should-run --agent-id <agent-id>` is the preflight for every peer. When
+the selected task writes repository state and the peer is in a non-git,
+unrelated, or non-isolated workspace, it returns `workspace_guard` and blocks
+normal delivery until that peer moves to an independent worktree and reruns the
+guard. Read-only and monitor-only work does not require isolation merely because
+of agent identity.
 
 Contributor-facing example:
 
 ```bash
 loopx --format json quota should-run \
   --goal-id <goal-id> \
-  --agent-id codex-side-bypass
+  --agent-id codex-peer-b
 ```
 
 If the response includes
-`effective_action=side_agent_workspace_repair` and
-`workspace_guard.current_workspace=primary_checkout`, the side agent should not
-edit files yet. Create or switch to a separate worktree and rerun the same
-guard:
+`effective_action=agent_workspace_repair`, the peer should not edit files yet.
+Create or switch to a separate worktree and rerun the same guard:
 
 ```bash
-git worktree add /tmp/<goal-id>-side-agent -b codex/<side-agent-branch>
-cd /tmp/<goal-id>-side-agent
+git worktree add /tmp/<goal-id>-peer-b -b codex/<peer-branch>
+cd /tmp/<goal-id>-peer-b
 loopx --format json quota should-run \
   --goal-id <goal-id> \
-  --agent-id codex-side-bypass
+  --agent-id codex-peer-b
 ```
 
-Only after that rerun returns normal delivery should the side agent claim an
-in-scope todo and edit repository files. A primary-owned todo remains
-primary-owned even when the side-agent workspace guard passes; the side agent
-must pick a todo inside its scope or create a successor handoff todo.
-For agent-specific `quota should-run --agent-id <side-agent-id>` payloads, the
-todo summary is claim-aware: current-agent claimed todos are preferred, unclaimed
-todos remain selectable, and primary/other-agent claimed todos are projected as
-blocked-claim context rather than as the side agent's next action. This reduces
-accidental collisions without writing scope into todo metadata or turning
-`claimed_by` into a lease. When a runnable current-agent or unclaimed
+Only after that rerun returns normal delivery should the peer claim an in-scope
+todo and edit repository files. A todo claimed by another peer remains owned by
+that peer until explicit transfer. For agent-specific quota payloads, current
+agent claims are preferred, unclaimed todos remain selectable, and other-peer
+claims are diagnostic context rather than executable work. This reduces
+collisions without writing broad prompt scope into todo metadata or pretending
+that a soft claim is already a hard lease. When a runnable current-agent or unclaimed
 advancement todo exists, quota may also expose
 `agent_lane_next_action.schema_version=agent_lane_next_action_v0`. That field is
-the side agent's current slice for this turn; it does not overwrite the
-goal-level `Next Action` owned by the primary/global route. `loopx status
---agent-id <side-agent-id>` may attach the same derived field to matching status
+the peer's current slice for this turn; it does not overwrite the durable
+goal-level `Next Action`. `loopx status --agent-id <agent-id>` may attach the same derived field to matching status
 queue items for observation, while leaving the project-level route unchanged.
 When a candidate has `target_capabilities` and missing target bridge
 capabilities, quota may mark it `capability_repair_mode=true`; scoped
@@ -239,7 +223,6 @@ loopx register-agent \
   --goal-id <goal-id> \
   --agent-id codex-main-control \
   --agent-id codex-side-bypass \
-  --primary-agent codex-main-control \
   --execute
 ```
 
@@ -261,12 +244,12 @@ registration writes the source registry named by the global projection; if the
 shared global registry is not writable, it fails before changing that source so
 the control plane does not drift into a half-registered state.
 
-Use `--clear-claim` when the controller reassigns a todo or an agent releases
+Use `--clear-claim` when an operator or peer reassigns a todo or an agent releases
 work. `claimed_by` is visibility, not a runtime lease: it does not bypass quota,
 user gates, write-scope checks, or validation. `todo add/update/complete` also
 accept `--claimed-by`, but the value is checked against the same registered
-agent list. Claimed completion also requires `coordination.primary_agent`, so
-old projects fail closed before side-agent handoff semantics become ambiguous.
+agent list. Old projects without `coordination.registered_agents` fail closed
+before ownership metadata can be written.
 `todo claim` is non-destructive: if another registered agent already owns the
 todo, it fails closed instead of silently replacing `claimed_by`. Transfer
 ownership with an explicit `todo update --clear-claim` or
@@ -333,39 +316,29 @@ locked lifecycle write:
 loopx todo complete \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
-  --claimed-by codex-side-bypass \
+  --claimed-by codex-peer-a \
   --evidence "<public-safe artifact or result>" \
-  --next-agent-todo "Review, verify, and merge this side-agent work."
+  --next-agent-todo "Continue the next bounded task." \
+  --next-claimed-by codex-peer-b \
+  --next-continuation-policy independent_handoff
 ```
 
-If `--claimed-by` names a side agent, broad side-agent completion defaults to
-requiring a successor handoff todo. By default that successor is claimed by the
-goal's `primary_agent`. A goal may set
-`coordination.side_agent_handoff_agent` to another registered agent for the
-shared default route, and may override that default for a specific side agent
-with `coordination.agent_profiles.<agent_id>.review_policy.handoff_agent`.
-`--next-claimed-by` is allowed only when it matches the resolved handoff owner.
-An explicitly declared primary review successor is the narrow exception: when a
-side agent completes a todo with `--next-continuation-policy primary_review` and
-`--next-claimed-by <primary_agent>`, that successor remains a primary-agent
-review handoff even if the goal has a broader `side_agent_handoff_agent`
-default. Use this only for real review/merge/publication decisions; ordinary
-side-agent continuation should follow the resolved handoff route.
-Legacy `action_kind=primary_review*` state remains readable, but new writers
-should use the typed continuation policy instead of encoding handoff authority
-in an action-name prefix.
-Existing registry fields named for review are not aliases for this route. This
-keeps broad side-agent handoff visible to the shared control plane without
-hard-coding a single follow-up surface for every side-agent lane.
+LoopX does not infer continuation authority from agent identity. `action_kind`
+remains an open domain token describing the work. The closed
+`continuation_policy` enum describes only the relationship between the completed
+task and its successor:
 
-LoopX does not model "review" as a separate kernel object. `action_kind`
-remains an open domain token describing what work a todo performs. The closed
-`continuation_policy` field describes only who may continue after completion:
+- `independent_handoff` is the default. The successor stays unclaimed unless
+  `--next-claimed-by` selects a registered peer;
+- `same_agent_non_delivery` keeps an evidence-backed non-delivery continuation
+  with the completing peer;
+- `review_handoff` requires the successor to be unclaimed or assigned to a
+  different registered peer. It records `blocks_agent=<completing-peer>` and
+  may be used for real review, verification, merge, or publication gates.
 
-- `independent_handoff` is the safe default;
-- `same_agent_non_delivery` permits an evidence-backed non-delivery gate to
-  link an existing same-agent successor;
-- `primary_review` preserves a primary-agent review handoff.
+Legacy `primary_review` values and `action_kind=primary_review*` remain readable
+only as migration inputs. New writers use `review_handoff`; agent profiles may
+suggest review preferences but do not silently choose a review owner.
 
 `same_agent_non_delivery` is intentionally structural rather than
 review-specific. It covers readiness checks, audits, triage, verification, and
@@ -375,41 +348,32 @@ does not authorize repository delivery or bypass successor quota/capability
 checks. Legacy `*_review` and `*_verification` action kinds remain a read
 compatibility path and are materialized as the typed policy on the next write.
 
-The generated successor records
-`blocks_agent=<side-agent-id>` and
-`unblocks_todo_id=<completed-todo-id>`, while `claimed_by` names the agent that
-should handle the dependency. Quota and dashboards can prioritize this handoff
-without parsing prose. Same-agent broad delivery remains rejected; if the
-completing side agent is allowed to deliver without another agent, it must use
-the explicit `--side-agent-self-merged --evidence` path.
+Only `review_handoff` generates a blocking dependency. Ordinary independent
+successors do not block the completing peer and do not inherit an owner
+implicitly. Use `--next-claimed-by` when the next owner is already known; leave
+the successor unclaimed when the scheduler or a later claim should select it.
 
-For primary-agent completions and self-merged same-lane continuations, a
-successor created with `--next-agent-todo` inherits the completed todo's
-effective `claimed_by` unless `--next-claimed-by` explicitly names another
-registered agent. This prevents follow-up work from accidentally falling into
-the unclaimed pool.
-
-For small changes that satisfy the repository's self-merge rules, the side
-agent may self-merge and complete without a successor review todo by making the
+For small changes that satisfy the repository's self-merge rules, a peer may
+self-merge and complete without a successor review todo by making the
 exception explicit:
 
 ```bash
 loopx todo complete \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
-  --claimed-by codex-side-bypass \
-  --side-agent-self-merged \
+  --claimed-by codex-peer-a \
+  --self-merged \
   --evidence "<public-safe commit, validation, and self-merge summary>"
 ```
 
-`--side-agent-self-merged` requires `--evidence`. Do not use it for runtime,
+`--self-merged` requires `--evidence`. Do not use it for runtime,
 benchmark, permission, production, destructive git, publication, public
 evidence-policy, or broad coordination changes that need an independent
 handoff.
 After a validated self-merge, write back the real delivery outcome at the
 project level when the slice advanced the public product or case path. An
-agent-lane refresh with `--agent-id` is useful for side-lane notes, but it does
-not replace the goal-level latest run used by quota and dashboard routing. Do
+agent-lane refresh with `--agent-id` records peer-local notes; a goal-scope
+refresh records the durable goal route. Both require a registered peer. Do
 not append a follow-up goal-level `surface_only` sync after a validated
 `outcome_progress` slice; either skip the duplicate sync or mirror the product
 progress with:
@@ -420,29 +384,29 @@ loopx refresh-state \
   --classification <public-safe-progress-classification> \
   --delivery-batch-scale multi_surface \
   --delivery-outcome outcome_progress \
-  --agent-id <primary-agent> \
+  --agent-id <registered-agent> \
   --progress-scope goal
 ```
 
-This keeps validated side-agent product work from being misread as another
+This keeps validated peer product work from being misread as another
 surface-only heartbeat turn.
-When a self-merged side-agent slice has an obvious same-scope continuation, it
-may also atomically add that successor todo and claim it back to the same side
-agent:
+When a self-merged slice has an obvious same-scope continuation, it may also
+atomically add that successor todo and claim it back to the same peer:
 
 ```bash
 loopx todo complete \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
-  --claimed-by codex-side-bypass \
-  --side-agent-self-merged \
+  --claimed-by codex-peer-a \
+  --self-merged \
   --evidence "<public-safe commit, validation, and self-merge summary>" \
   --next-agent-todo "Continue the next small docs/productization slice." \
-  --next-claimed-by codex-side-bypass
+  --next-claimed-by codex-peer-a
 ```
 
-Without `--side-agent-self-merged`, a side-agent successor remains a primary
-review handoff and must stay claimed by the primary agent.
+Without `--self-merged`, no implicit review route is created. Declare
+`--next-continuation-policy review_handoff` explicitly when independent review
+is required.
 
 Use `todo update` for lower-level, non-terminal status changes:
 
@@ -456,11 +420,11 @@ loopx todo update \
 ```
 
 Agent Todo completion always goes through `todo complete`; `todo update
---status done` is rejected so side-agent review, successor, and no-follow-up
-policy cannot be bypassed. An evidence-backed side-agent
+--status done` is rejected so review, successor, and no-follow-up policy cannot
+be bypassed. An evidence-backed peer
 `continuous_monitor` with no required write scope may close with
 `todo complete --no-follow-up` when its bounded watch ends without a material
-transition. This closeout records `side_agent_self_merged=false` and does not
+transition. This closeout records `self_merged=false` and does not
 create a review handoff for observation-only work.
 
 Use `--resume-when` when deferring a successor that should wake up after a

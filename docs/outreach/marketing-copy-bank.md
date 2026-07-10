@@ -30,7 +30,7 @@ Short form:
 
 Product angle:
 
-> Let a user's primary and side agents keep a long-running goal moving across
+> Let a user's peer agents keep a long-running goal moving across
 > tools, turns, and off-hours, while the user sees what happened, what is
 > blocked, who owns which todo, and where judgment is needed.
 
@@ -209,8 +209,8 @@ Use these as modular building blocks.
   them first-class objects."
 - "It turns long-running agent work into a reviewable sequence of bounded
   decisions, actions, validations, and handoffs."
-- "It gives side agents a way to contribute without colliding with the primary
-  lane."
+- "It gives peer agents a way to contribute through explicit claims without
+  colliding."
 - "It helps maintainers turn good cases into reproducible demos, docs, and
   product improvements."
 
@@ -222,7 +222,7 @@ Safe claims:
 - It can make user gates, agent todos, claims, quota, run history, and evidence
   visible across turns.
 - It supports public-safe showcases and synthetic demos.
-- It can help side agents work in scoped lanes while a primary agent continues
+- It can help peers work in scoped claimed lanes while another peer continues
   high-risk or benchmark work.
 
 Claims that need evidence:

@@ -54,8 +54,7 @@ continuation value.
 
 Repository merge permission remains governed by the repository's maintainer
 policy. Peer identity alone neither grants nor removes self-merge permission.
-The canonical completion flag is `--self-merged`;
-`--side-agent-self-merged` is accepted only as a v0.1 migration alias.
+The canonical completion flag is `--self-merged`.
 
 ## Workspace Isolation
 
@@ -79,17 +78,22 @@ task bundle and selects one temporary coordinator. The resulting
 
 ## Migration
 
-Preview and apply the registry migration with:
+For an old registry, first let `quota should-run` or `upgrade-plan` project the
+stable migration id and per-peer heartbeat commands. Update each installed host
+automation idempotently with that migration id, then acknowledge the completed
+host update:
 
 ```bash
-loopx configure-goal --goal-id <goal-id> --agent-model peer_v1
-loopx configure-goal --goal-id <goal-id> --agent-model peer_v1 --execute
+loopx configure-goal \
+  --goal-id <goal-id> \
+  --ack-automation-prompt-migration <migration-id> \
+  --execute
 ```
 
-Apply mode creates a timestamped registry backup, atomically replaces the
-registry file, removes hierarchy authority fields, and returns identity-aware
-heartbeat regeneration commands for every registered peer. Repeating the
-command is a no-op.
+The acknowledgement validates the current migration id, creates a timestamped
+registry backup, atomically removes hierarchy authority fields, and records the
+completed migration. Repeating the same acknowledgement is a no-op, and future
+quota checks do not project the completed migration again.
 
 Rollback restores the returned `backup_path`, then regenerates installed host
 loops from that restored registry. Registry restoration and host-loop

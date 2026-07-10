@@ -29,7 +29,7 @@ domain logic becomes useful:
 | `todo_lifecycle_v0` | Turn the scenario into concrete user and agent todos with `todo_id`, owner, validation, and successor work. |
 | `capability_gate_v0` | State which tools or domain packs are needed before the agent can execute a todo. |
 | `validation_surface_map_v0` | Require each step to name how success is checked: tests, CI, review, source attribution, scoring, or blocker writeback. |
-| `review_handoff_v0` | Package the current state, evidence, risk, and next safe action for a human or primary agent. |
+| `review_handoff_v0` | Package current state, evidence, risk, and next safe action for a human or explicitly selected reviewing peer. |
 | `feedback_writeback_v0` | Convert user reward, corrections, style feedback, or review comments into durable state instead of chat-only memory. |
 | `publish_boundary_v0` | Stop public release, platform posting, leaderboard submission, or production action until an explicit gate allows it. |
 
@@ -75,9 +75,9 @@ repro, patch selection, validation, review, and safe publication.
 | Triage | agent todo + validation map | Classify bug, docs gap, feature request, flaky test, dependency break, or insufficient repro; name the first safe validation. |
 | Repro plan | result event + blocker lane | Record exact reproducibility status without storing raw logs or private traces. |
 | Patch planning | handoff packet | Separate candidate surfaces from raw diffs; keep patch ownership and write scope visible. |
-| Implementation | claimed todo + worktree guard | Require an independent worktree for side agents, disjoint write scope, and local validation before review. |
+| Implementation | claimed todo + worktree guard | Require task/repository workspace isolation for repository-writing peers, disjoint write scope, and local validation before review. |
 | Validation | validation surface map | Tie tests, lint, CI, fixture smoke, or manual repro to the todo before marking progress. |
-| Review handoff | successor handoff todo | Hand unclear or high-risk patch work to the configured handoff owner, primary agent by default, instead of self-merging. |
+| Review handoff | successor handoff todo | Use explicit `review_handoff` to a different registered peer for unclear or high-risk patch work; do not infer a default reviewer. |
 | Publication | publish boundary | Distinguish local commit/PR from package release, production deploy, or external submission. |
 | Feedback | feedback writeback | Convert review comments, failing CI, or maintainer corrections into successor todos and evidence updates. |
 
@@ -109,7 +109,7 @@ the visible UI, while LoopX owns the compact state projection.
 | `source_status` | Public/private/synthetic/needs-review label and freshness. |
 | `label_set` | GitHub tags or host tags used as the MVP display and routing layer. |
 | `related_code_hint` | Optional compact path/module/package hint; never a raw diff or private path. |
-| `owner_route` | Maintainer, Lark channel, or primary agent that should see the issue. |
+| `owner_route` | Maintainer, channel, or explicitly selected registered peer that should see the issue. |
 | `allowed_action` | Observe, ask owner, reproduce, draft plan, prepare patch, or hand off. |
 | `validation_surface` | Test, CI, reproducer, maintainer confirmation, or blocker evidence. |
 | `promotion_target` | Agent todo, user todo, review event, anchor candidate, or archive. |
@@ -351,7 +351,7 @@ A scenario capability map is useful when it lets a maintainer answer:
 - which external facts are compact handles versus raw material;
 - which work item is executable by the agent and which is a user gate;
 - what validation would prove progress;
-- where side-agent work must hand off to the primary agent;
+- where task policy requires explicit peer review before continuation;
 - what can continue safely while a gate waits;
 - what must never be published or treated as public evidence.
 

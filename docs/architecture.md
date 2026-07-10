@@ -165,20 +165,17 @@ Acceptance criteria for the first server-backed milestone:
 - all compact server responses pass the public/private boundary scan;
 - tests cover one concurrent writer conflict and one daemon-down fallback.
 
-Before the server-backed lease exists, v0.1 keeps a lighter shared-control-plane
+Before the server-backed lease exists, LoopX keeps a lighter shared-control-plane
 contract: todo metadata may include `claimed_by`, written by the todo CLI under
 the active-state file lock. That field is a soft owner for visibility only, and
 the CLI accepts it only when the id is registered in
-`coordination.registered_agents`. Each shared goal should also declare one
-`coordination.primary_agent`: the primary owns final review, verification,
-merge, publication, and reassignment. Side agents keep repository edits in
-independent git worktrees/branches. They may self-merge small AGENTS-eligible
-validated changes with explicit evidence, and otherwise create successor
-handoff todos claimed by the primary agent by default or by
-`coordination.side_agent_handoff_agent` when configured. Agent scope remains in
-heartbeat automation prompts or sub-agent handoffs; a future server lease should
-be per todo and add TTL, idempotency key, stale-claim detection, overlap
-warnings, and compare-and-swap style conflict responses.
+`coordination.registered_agents`. Registered identities are peers. Work authority
+comes from explicit claims, task leases, goal/write boundaries, and typed
+continuation policy rather than a durable leader role. Any peer doing repository
+work follows the same workspace-isolation rule when the selected task writes;
+repository maintainer policy determines whether it may self-merge. A future
+server lease should stay per todo and add TTL, idempotency keys, stale-claim
+detection, overlap warnings, and compare-and-swap conflict responses.
 
 ## State Interaction Model
 
@@ -199,23 +196,22 @@ of that write, and how the dashboard proves the transition happened.
 
 See [state-interaction-model.md](state-interaction-model.md).
 
-## Controller / Sub-Agent Model
+## Peer Task Coordination
 
-For Codex-style parallel work, LoopX treats the main goal run as a
-controller run. The controller owns:
+For parallel work, every registered LoopX agent has equal identity authority.
+Each peer owns only the work it has claimed or leased, within the current goal
+boundary. A peer may:
 
-- the objective and active goal state,
-- the decision to spawn sub-agents,
-- write-scope assignment,
-- merge or rejection of child results,
-- final validation, public/private scan, and state writeback.
+- inspect or claim an eligible todo;
+- advance one bounded implementation, validation, monitor, or repair slice;
+- create an independent successor or an explicit `review_handoff`;
+- write back evidence for its own accepted task outcome.
 
-Sub-agents own bounded child work:
-
-- read-only repo exploration,
-- one implementation slice with a disjoint write scope,
-- one validation or benchmark surface,
-- one risk or boundary check.
+When bounded orchestration is enabled, LoopX deterministically selects a
+temporary coordinator for one task bundle. That coordinator may activate or
+resume eligible peer lanes and aggregate accepted bundle evidence. It does not
+become a durable leader and gains no implicit review, merge, publication, or
+replan authority over other identities.
 
 LoopX does not replace the operating-system scheduler or Codex App
 executor. It should, however, own the simple compute quota that those executors
@@ -224,7 +220,7 @@ product source of truth for project priority.
 
 See [quota-allocation.md](quota-allocation.md).
 
-See [codex-subagent-orchestration.md](codex-subagent-orchestration.md).
+See [peer-agent-runtime-v1.md](reference/protocols/peer-agent-runtime-v1.md).
 
 ## Status / Attention Queue
 

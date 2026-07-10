@@ -26,9 +26,9 @@ In the observed session:
   asked LoopX to keep that TUI as the primary surface;
 - the agent first showed the current goal id, concrete user gate, top user todo,
   top agent todo, and next safe action before running longer work;
-- the registered-agent quota guard initially returned a side-agent workspace
+- the registered-agent quota guard initially returned a peer workspace
   repair, and that repair was handled visibly by switching shell work to an
-  independent side-agent worktree rather than using hidden headless execution;
+  independent peer worktree rather than using hidden headless execution;
 - the same registered-agent quota guard then returned `decision=run` and
   `effective_action=normal_run` from the independent worktree;
 - subsequent steering stayed in the same visible TUI session, with no switch to
@@ -79,7 +79,7 @@ loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" \
   quota should-run --goal-id loopx-meta --agent-id codex-side-bypass
 ```
 
-From the independent side-agent worktree this returned `decision=run` and
+From the independent peer worktree this returned `decision=run` and
 `effective_action=normal_run`.
 
 ```bash

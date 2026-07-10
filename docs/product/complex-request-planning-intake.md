@@ -55,8 +55,9 @@ later syncs back to the tracker.
    todos, usually three to seven. Each todo should have priority, role,
    `task_class`, `action_kind`, acceptance evidence, and a stop condition.
 4. **Claim narrowly.** The current agent may claim only the items that match
-   its explicit role and current scope. Primary-owned or cross-lane work should
-   stay unclaimed, be assigned to the primary agent, or become a review todo.
+   its advisory profile and current scope. Other-peer work stays with its
+   claimant; use explicit claim transfer or `review_handoff` when task policy
+   requires a different peer.
 5. **Keep private thinking local.** If raw strategy, names, screenshots, or
    sensitive context are needed, write a local/private management note and
    reference only a safe summary in public docs or active state.

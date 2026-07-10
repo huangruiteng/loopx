@@ -42,7 +42,7 @@ The first implementation should return JSON and may render Markdown later:
 {
   "schema_version": "agent_scoped_evidence_ledger_v0",
   "goal_id": "example-goal",
-  "agent_id": "codex-side-agent",
+  "agent_id": "codex-evidence-peer",
   "generated_at": "2026-07-05T00:00:00Z",
   "source": {
     "rollout_event_log": true,
@@ -65,7 +65,7 @@ The first implementation should return JSON and may render Markdown later:
       "recorded_at": "2026-07-05T00:00:00Z",
       "source": "rollout_event_log",
       "event_kind": "todo_update",
-      "agent_id": "codex-side-agent",
+      "agent_id": "codex-evidence-peer",
       "todo_id": "todo_123",
       "classification": "implementation_batch",
       "status": "open",
@@ -82,8 +82,8 @@ The first implementation should return JSON and may render Markdown later:
   "other_agent_frontier": [
     {
       "agent_id": "codex-main-control",
-      "vision_summary": "Owns main project route and merge order.",
-      "top_todo": "Review next control-plane PR batch.",
+      "vision_summary": "Owns the currently claimed runtime validation slice.",
+      "top_todo": "Validate the next control-plane PR batch.",
       "handoff_state": "no_handoff_required",
       "latest_material_at": "2026-07-05T00:00:00Z"
     }
@@ -91,7 +91,7 @@ The first implementation should return JSON and may render Markdown later:
   "reader_hints": {
     "required_before": ["autonomous_replan", "successor_replan", "handoff"],
     "next_required_reads": [
-      "loopx evidence-log --goal-id example-goal --agent-id codex-side-agent --thin --limit 30"
+      "loopx evidence-log --goal-id example-goal --agent-id codex-evidence-peer --thin --limit 30"
     ]
   }
 }
@@ -154,7 +154,7 @@ contract should include required reads:
   "required_reads": [
     {
       "kind": "agent_scoped_evidence_ledger",
-      "command": "loopx evidence-log --goal-id loopx-meta --agent-id codex-side-agent --thin --limit 30",
+      "command": "loopx evidence-log --goal-id loopx-meta --agent-id codex-evidence-peer --thin --limit 30",
       "reason": "Read this agent's own material chronology before writing a replan delta."
     }
   ]

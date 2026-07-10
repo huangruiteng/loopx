@@ -175,7 +175,7 @@ adapter. The important product responsibility is the same:
 - collect user judgment, taste, approval, rejection, deferral, or reward;
 - translate that input into gates, preferences, todo changes, or handoffs;
 - route executor loops toward the current state without embedding stale policy;
-- make side-agent ownership and review expectations visible.
+- make peer claims and explicit review handoffs visible.
 
 This is why the client is more than intent classification. It is a product
 surface for long-running work: it carries context, permission, feedback,
@@ -202,9 +202,8 @@ An executor loop should:
 - stop before sensitive material, destructive git, private material, production
   actions, or unapproved publication boundaries.
 
-The executor can be powerful without being the product authority. LoopX
-keeps the authority in the shared state that the user, primary agent, and side
-agents can all inspect.
+The executor can be powerful without being the product authority. LoopX keeps
+authority in shared state that the user and every registered peer can inspect.
 
 ## Interaction Loop
 
@@ -287,8 +286,9 @@ The first product slices should remain small and compatible with CLI-only mode.
    kernel state into Goal, Next step, Needs your judgment, Evidence, and Can
    continue. Clients should render this before exposing raw claim, scope,
    quota, run-history, or handoff details.
-3. **`agent_profile_v0`**: registered agent identity with role, primary/side
-   relationship, default scope, worktree policy, and review handoff policy.
+3. **`agent_profile_v1`**: registered peer identity with advisory functional
+   role, default scope, task classes, and action preferences. Task and
+   repository policy own workspace, review, and merge requirements.
 4. **`task_lease_v0`**: per-`(goal_id, todo_id)` ownership with TTL,
    idempotency key, write scope, renewal, transfer, and conflict behavior.
 5. **`planning_queue_v0`**: advisory planning, dreaming, and replanning
@@ -340,7 +340,7 @@ The near-term roadmap should therefore prefer:
 - contract-first status and write APIs over UI-only state;
 - mental-model projections before frontend-only remapping;
 - local concurrency correctness before broad server scheduling;
-- side-agent scope and worktree policy before autonomous multi-agent merging;
+- task-scoped peer claims and workspace policy before autonomous multi-agent merging;
 - planning proposals before background execution;
 - user feedback and performance-review modeling before personalization claims;
 - anchor selection before domain-specific solver UIs.

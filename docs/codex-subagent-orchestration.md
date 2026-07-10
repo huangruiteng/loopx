@@ -64,7 +64,7 @@ that part itself.
 
 ## Context Policy: Fresh, Fork, Resume
 
-The controller should choose the child context shape from the work type. LoopX
+The current task coordinator should choose the child context shape from the work type. LoopX
 can record the decision and provide hints, but the active agent loop still owns
 whether to launch a child, continue itself, or wait.
 
@@ -74,7 +74,7 @@ whether to launch a child, continue itself, or wait.
 | Independent review, adversarial check, public/private scan, validation map | Fresh child | The child should not inherit the parent's conclusion or local tunnel vision. | Candidate claim to review, exact evidence to inspect, validation command or acceptance rule, and merge rule. |
 | Same-branch bug follow-up, failed smoke repair, review-comment fix | Resume or fork child | The child needs recent debugging context, branch state, and failed-command history. | Branch/worktree, failing evidence, latest patch summary, and the next bounded fix target. |
 | Disjoint implementation slice after controller planning | Fresh child with a narrow handoff | The implementation should start from the shared control plane, not from the controller's whole chat history. | Claimed todo, allowed paths, write scope, validation, and parent review requirement. |
-| Long-running owned side lane | Resume existing side agent | Stable ownership is more valuable than a new agent for each tick. | Agent id, lane scope, due monitor or todo, and latest accepted evidence. |
+| Long-running owned peer lane | Resume the existing peer task | Stable ownership is more valuable than a new agent for each tick. | Agent id, lane scope, due monitor or todo, and latest accepted evidence. |
 | Emergency rollback or production action | No automatic child by default | Boundary risk is high and usually needs explicit operator control. | Operator approval, stop condition, and reversible command plan. |
 
 This policy is deliberately asymmetric: exploration and review default to fresh
@@ -145,7 +145,6 @@ loopx configure-goal \
   --goal-id <goal-id> \
   --registered-agent codex-main-control \
   --registered-agent codex-side-bypass \
-  --primary-agent codex-main-control \
   --execute
 
 loopx todo claim \
@@ -155,24 +154,22 @@ loopx todo claim \
 ```
 
 The claim is soft ownership for visibility and conflict avoidance. It does not
-replace disjoint write scopes, parent approval, quota, or user gates. The CLI
-rejects unregistered claim ids so child agents learn the shared-control-plane
-identity before writing. If the first executable todo is already claimed by
-another agent or is outside the child's scope, the child should pick another
-in-scope unclaimed todo or report that no in-scope work is available.
-The controller goal should declare exactly one primary agent. Side agents use
-independent git worktrees/branches for repository edits. They may self-merge
-small AGENTS-eligible validated changes with explicit LoopX evidence;
-otherwise they finish by adding a primary-agent review todo so the main
-controller can review, verify, and merge.
+replace disjoint write scopes, task-coordinator approval, quota, or user gates.
+The CLI rejects unregistered claim ids. If the first executable todo is already
+claimed by another peer or is outside the current task scope, the peer should
+pick another eligible unclaimed todo or project `reassignment_required`.
+Repository-writing peers and child runs use independent worktrees when the
+selected task or repository policy requires them. They may self-merge small
+AGENTS-eligible validated changes with explicit LoopX evidence; otherwise they
+use an explicit `review_handoff` to a different registered peer.
 When this becomes a server-backed pending/lease path, the contention unit should
 stay per todo: one pending lease for `(goal_id, todo_id)`, not a broad lock on
 the whole goal. In this context, `goal_id` is the shared control-plane lane and
 `todo_id` is the work item being claimed.
 
-The main controller owns the shared-control-plane handoff and the final
-writeback. A child may produce evidence, a validation result, or a blocker, but
-the controller decides whether to accept it and whether quota can be spent.
+The temporary task coordinator may aggregate child evidence, validation, or
+blockers for the current bundle. It does not own durable goal authority; normal
+quota, task, and repository policy determine acceptance and writeback.
 
 Example:
 
@@ -196,11 +193,10 @@ merge_rule: main controller turns this into a read-only map, not direct actions
 
 ## Registry Contract
 
-Controller/sub-agent fields should stay minimal in v0.1:
+Task-coordinator and child-run fields should stay minimal:
 
 ```json
 {
-  "role": "controller",
   "parent_goal_id": null,
   "spawn_policy": {
     "mode": "multi_subagent",
@@ -215,8 +211,8 @@ Controller/sub-agent fields should stay minimal in v0.1:
     "max_agent_turns": 12
   },
   "coordination": {
+    "agent_model": "peer_v1",
     "registered_agents": ["codex-main-control", "codex-docs-map", "codex-validation-map", "codex-implementation-slice"],
-    "primary_agent": "codex-main-control",
     "write_scope": ["docs/**", "examples/**"],
     "claim_ttl_minutes": 30,
     "requires_parent_approval": ["write", "publish", "production-action"]
@@ -224,10 +220,10 @@ Controller/sub-agent fields should stay minimal in v0.1:
 }
 ```
 
-`spawn_policy.mode` is the control-plane execution mode. `default` means the
-goal should run as a single ordinary Codex worker. `multi_subagent` means the
-controller may launch child workers within `max_children`, `allowed_domains`,
-and the coordination/write-scope rules. Status and quota derive the same
+`spawn_policy.mode` is the control-plane execution mode. `default` means one
+peer advances the selected task. `multi_subagent` means LoopX may select a
+temporary task coordinator that launches child workers within `max_children`,
+`allowed_domains`, and the coordination/write-scope rules. Status and quota derive the same
 compact `orchestration` projection from this policy so agents do not need to
 infer sub-agent permissions from chat history.
 
@@ -247,31 +243,30 @@ Use `--multi-subagent-feature off` to return the goal to single-agent mode.
 The older `--orchestration-mode` and `--spawn-allowed` flags remain as low-level
 compatibility knobs, but product surfaces should expose the feature wrapper.
 
-The controller goal should declare exactly one `coordination.primary_agent`.
-That main agent owns final review, verification, merge, publication, and
-reassignment. Child or bypass agents are side agents: they should use independent
-git worktrees/branches for repository edits, should not merge directly into the
-primary checkout, and should finish by adding a primary-agent review todo.
+The registered agents remain peers. A deterministic coordinator is selected for
+one task bundle only; it may activate child runs and aggregate accepted bundle
+evidence, but gains no durable review, merge, publication, or reassignment
+authority. Repository-writing peers and child runs follow task/repository
+workspace policy, and blocking review uses an explicit `review_handoff` to a
+different registered peer.
 
 For a child goal:
 
 ```json
 {
-  "role": "subagent",
   "parent_goal_id": "agent-harness-main-control",
   "coordination": {
+    "agent_model": "peer_v1",
     "registered_agents": ["codex-docs-map"],
-    "primary_agent": "codex-docs-map",
     "write_scope": [],
     "requires_parent_approval": ["write"]
   }
 }
 ```
 
-These fields describe permission and coordination expectations. They do not
-turn LoopX into a lock service. They do make compute quota explicit so
-the main controller and automations do not encode priority only through timer
-cadence.
+`parent_goal_id` describes a task-run relationship, not identity rank. These
+fields do not turn LoopX into a lock service. They make compute quota explicit
+so peers and automations do not encode priority only through timer cadence.
 
 ## Run Record Shape
 

@@ -96,7 +96,7 @@ packet with:
 - a dry-run A/B estimate comparing baseline serial execution with the
   DSpark-style selected prefix (`ab_result.estimated_speedup_vs_baseline`);
 - suggested `loopx todo claim` and `loopx task-lease acquire` commands for a
-  human/controller or side-agent runner to execute explicitly;
+  human operator or registered peer runner to execute explicitly;
 - the safety boundary that makes the packet experimental rather than a
   replacement for `quota should-run`.
 

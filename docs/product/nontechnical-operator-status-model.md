@@ -138,7 +138,7 @@ Suggested fields:
 - `Goal`: one sentence from the registry or active state.
 - `Mode`: delivery, safe side path, planning proposal, waiting on user, or
   paused.
-- `Owner`: primary agent, side agent, or user.
+- `Owner`: registered peer or user.
 - `Freshness`: latest meaningful update time and whether status is fresh.
 
 Plain-language examples:
@@ -211,9 +211,9 @@ Suggested fields:
   runtime contract, or showcase.
 - `Stop condition`: the condition that makes the agent stop and ask.
 
-For side agents, this card should also show whether work is in an independent
-worktree/branch and whether self-merge is allowed or a primary-agent review is
-expected.
+For repository-writing tasks, this card should also show the selected workspace
+policy, whether repository policy permits self-merge, and whether an explicit
+peer review handoff exists.
 
 ### Blocker Or Gate
 
@@ -338,7 +338,7 @@ before adding new UI state.
 | Since Last Check | run history, refresh-state delivery outcome, validation evidence |
 | Signal Inbox | connector events, user feedback, issue/PR metadata, doc changes |
 | Anchor Selection | planning queue proposals, promoted todos, future anchor packets |
-| Current Work | agent todos, `claimed_by`, future `agent_profile_v0`, future leases |
+| Current Work | agent todos, `claimed_by`, advisory `agent_profile_v1`, future leases |
 | Blocker Or Gate | user todos, operator gate, interaction contract, goal boundary |
 | Next Agent Move | quota decision, recommended action, next action, stop condition |
 | What I Need From You | user todo summary and concrete operator question |
@@ -347,8 +347,8 @@ before adding new UI state.
 
 Missing fields should degrade gracefully. For example, before hard leases exist,
 show `claimed_by` as soft ownership and avoid claiming exclusive execution.
-Before `agent_profile_v0`, show the registered agent id and role from the
-coordination registry.
+Without `agent_profile_v1`, show the registered peer id and current claims; do
+not infer rank or authority from the identity name.
 
 ## Creator-Operator Example
 
@@ -363,7 +363,7 @@ The agent found three synthetic trend clusters and drafted two angle options.
 Evidence is demo data only; no real platform scrape is included.
 
 Current Work
-Side agent is building the public-safe showcase storyboard.
+The selected peer is building the public-safe showcase storyboard.
 
 Blocker Or Gate
 Publishing remains blocked until the user approves tone and source policy.
@@ -391,7 +391,7 @@ The first implementation of this model is ready when:
 - signal inbox and anchor selection can represent at least one public-safe
   issue/PR pilot without requiring a custom issue-fix UI;
 - no-open-user-todo states render quietly without false urgency;
-- side-agent ownership and review handoff are visible without overriding quota
+- peer ownership and explicit review handoff are visible without overriding quota
   or gate decisions;
 - feedback buttons map to explicit control-plane effects;
 - performance-review notes stay evidence-backed and distinguish value,

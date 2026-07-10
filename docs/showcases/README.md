@@ -121,7 +121,7 @@ opt-in, and review signals stay separate from execution permission.
 | Case | Pattern | Status | Public Surface |
 | --- | --- | --- | --- |
 | [0617 blocked P0 with safe P1/P2 rotation](cases/0617-blocked-p0-safe-rotation.md) | Blocked priority fallback, concrete user gate, quota discipline | Reproducible synthetic demo | `python3 examples/showcase-0617-blocked-p0-safe-rotation-smoke.py` |
-| [0619 LoopX self-iteration loop](cases/0619-loopx-self-iteration.md) | Self-iteration, side-agent scope, evidence writeback | Public Git evidence case | Commit-backed narrative and workload signal |
+| [0619 LoopX self-iteration loop](cases/0619-loopx-self-iteration.md) | Self-iteration, peer claims, evidence writeback | Public Git evidence case | Commit-backed narrative and workload signal |
 | [0619 dynamic workflow for hardware-agent development](cases/0619-dynamic-workflow-hardware-agent.html) | Dynamic workflow, multi-agent convergence, shared control plane | Public-safe interactive case | Five hardware-agent cases plus companion notes |
 
 The catalog order above is the canonical frontstage order for the PoC. It keeps

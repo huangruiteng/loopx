@@ -371,8 +371,8 @@ mutate a session, or spend quota.
 1. Resolve repo, goal_id, registered agent_id, and current Codex session.
 2. Run `loopx quota should-run --goal-id <goal> --agent-id <agent>`.
 3. If user action is required, inject or display only the concrete user gate.
-4. If workspace_guard blocks delivery, move the side agent to an independent
-   worktree before editing.
+4. If `workspace_guard` blocks a repository-writing task, move the current peer
+   to a compliant worktree before editing.
 5. Choose among current-agent claimed advancement todos and runnable unclaimed
    candidates; monitor todos are context unless they produce a material event.
 6. Inject a visible steering prompt into the idle TUI session when proven, or
@@ -392,7 +392,7 @@ projects runnable candidates; it should not over-specify the model's local plan.
 - Do not inject automation into a session while the user is actively typing or
   while a previous turn is still running.
 - Do not answer a user gate on the user's behalf.
-- Do not let a side agent edit from the primary checkout; obey
+- Do not let a repository-writing peer edit from a workspace rejected by
   `workspace_guard`.
 - Prefer a visible TUI prompt over silent background mutation.
 - Treat session-attachment failure as a disabled-boundary decision, not as a

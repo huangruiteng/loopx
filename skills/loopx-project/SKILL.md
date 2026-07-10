@@ -631,7 +631,7 @@ loopx refresh-state --goal-id <STABLE_GOAL_ID> --agent-id <REGISTERED_AGENT_ID>
 
 For multi-agent goals, keep the same `--agent-id` envelope that passed
 `quota should-run`. This default is an agent-lane refresh. To update the
-goal-level route or durable `## Next Action`, the primary agent must add
+goal-level route or durable `## Next Action`, any registered peer may add
 `--progress-scope goal`.
 
 If that refresh records a validated progress artifact rather than a pure
@@ -645,7 +645,7 @@ loopx refresh-state \
   --classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION> \
   --delivery-batch-scale multi_surface \
   --delivery-outcome outcome_progress \
-  --agent-id <PRIMARY_AGENT_ID> \
+  --agent-id <REGISTERED_AGENT_ID> \
   --progress-scope goal
 ```
 

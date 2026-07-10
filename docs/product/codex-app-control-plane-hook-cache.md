@@ -58,7 +58,7 @@ schema_version: codex_app_control_plane_snapshot_v0
 enabled_by_default: false
 mode: advisory_hint
 goal_id: example-goal
-agent_id: codex-side-agent
+agent_id: codex-evidence-peer
 generated_at: "2026-01-01T00:00:00Z"
 source_fingerprint:
   registry_goal_updated_at: "2026-01-01T00:00:00Z"
@@ -74,7 +74,7 @@ summary:
   scheduler_action: run_now
 fallback:
   cold_path: quota_should_run
-  command: loopx --format json quota should-run --goal-id example-goal --agent-id codex-side-agent
+  command: loopx --format json quota should-run --goal-id example-goal --agent-id codex-evidence-peer
   required_when: stale_missing_mismatch_or_delivery_write
 privacy:
   contains_raw_state: false
@@ -158,7 +158,7 @@ Before level 2 or above:
 
 Before default candidate:
 
-- evidence must include multiple goals, at least one side-agent worktree guard,
+- evidence must include multiple goals, at least one peer task workspace guard,
   at least one user-gated goal, at least one monitor-only wait, and at least one
   active run-now goal;
 - the default must be reversible without migrating project state;

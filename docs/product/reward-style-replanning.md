@@ -136,7 +136,7 @@ evidence writeback before another summary-only note.
 1. **Read-only hint preview**: derive candidate hints from existing compact
    `human_reward` and todo evidence without writing them.
 2. **Projection smoke**: prove that hints can reorder two safe candidate todos
-   but cannot override a user gate, claim, capability gate, or side-agent
+   but cannot override a user gate, claim, capability gate, or peer
    workspace guard.
 3. **Status/dashboard projection**: show at most three active hints with source
    refs and expiration.
