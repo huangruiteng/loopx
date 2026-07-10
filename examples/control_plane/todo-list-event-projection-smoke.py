@@ -23,8 +23,12 @@ from loopx.event_sourced_state import (  # noqa: E402
 
 
 GOAL_ID = "todo-list-event-projection-fixture"
+PRIMARY_AGENT = "codex-main-control"
+SIDE_AGENT = "codex-side-bypass"
 GATE_TODO_ID = "todo_markdown_gate_done"
 DEPENDENT_TODO_ID = "todo_event_dependent"
+EVENT_GATE_TODO_ID = "todo_event_non_delivery_gate"
+EVENT_SUCCESSOR_TODO_ID = "todo_event_same_agent_successor"
 
 
 def write_fixture(root: Path) -> tuple[Path, Path, Path]:
@@ -67,6 +71,11 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
                         "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
                         "state_event_log": f".codex/goals/{GOAL_ID}/events.jsonl",
                         "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
+                        "coordination": {
+                            "registered_agents": [PRIMARY_AGENT, SIDE_AGENT],
+                            "primary_agent": PRIMARY_AGENT,
+                            "side_agent_handoff_agent": SIDE_AGENT,
+                        },
                         "authority_sources": [],
                     }
                 ],
@@ -126,6 +135,7 @@ def write_events(event_log: Path) -> None:
                 "planner_order": 1,
                 "task_class": "advancement_task",
                 "action_kind": "implement",
+                "continuation_policy": "independent_handoff",
             },
         )
     )
@@ -174,6 +184,10 @@ def main() -> int:
         )
         assert dependent["resume_ready"] is True, dependent
         assert dependent["resume_condition"]["target_status"] == "done", dependent
+        projected_open = next(
+            item for item in projected["todos"] if item["todo_id"] == "todo_event_open"
+        )
+        assert projected_open["continuation_policy"] == "independent_handoff", projected_open
         assert projected["projection_overlay"]["markdown_only_todo_ids"] == [
             GATE_TODO_ID,
             DEPENDENT_TODO_ID,
@@ -214,6 +228,60 @@ def main() -> int:
         assert done_only["source"] == "event_projection_with_markdown_overlay", done_only
         assert done_only["todo_count"] == 1, done_only
         assert done_only["todos"][0]["todo_id"] == "todo_event_done", done_only
+
+        store = AppendOnlyStateEventStore(event_log)
+        store.append(
+            event(
+                "evt-non-delivery-gate",
+                TODO_ADDED,
+                EVENT_GATE_TODO_ID,
+                {
+                    "role": "agent",
+                    "priority": "P1",
+                    "title": "Complete an event-projected readiness gate",
+                    "task_class": "advancement_task",
+                    "action_kind": "readiness_check",
+                    "continuation_policy": "same_agent_non_delivery",
+                    "claimed_by": SIDE_AGENT,
+                    "blocks_agent": PRIMARY_AGENT,
+                },
+            )
+        )
+        store.append(
+            event(
+                "evt-same-agent-successor",
+                TODO_ADDED,
+                EVENT_SUCCESSOR_TODO_ID,
+                {
+                    "role": "agent",
+                    "priority": "P1",
+                    "title": "Continue the event-projected lane",
+                    "task_class": "advancement_task",
+                    "action_kind": "continue_lane",
+                    "continuation_policy": "independent_handoff",
+                    "claimed_by": SIDE_AGENT,
+                },
+            )
+        )
+        completed = run_cli(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--todo-id",
+            EVENT_GATE_TODO_ID,
+            "--claimed-by",
+            SIDE_AGENT,
+            "--evidence",
+            "public-safe event-projected readiness evidence",
+            "--successor-todo-id",
+            EVENT_SUCCESSOR_TODO_ID,
+        )
+        assert completed["linked_handoff_successor_id"] == EVENT_SUCCESSOR_TODO_ID, completed
+        assert completed["side_agent_self_merged"] is False, completed
 
         event_log.unlink()
         fallback = run_cli(registry_path, "todo", "list", "--goal-id", GOAL_ID, "--role", "agent")

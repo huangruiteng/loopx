@@ -59,6 +59,9 @@ def test_store_projection_and_markdown() -> None:
                 "planner_order": 1,
                 "task_class": "advancement_task",
                 "action_kind": "implement",
+                "continuation_policy": "independent_handoff",
+                "required_write_scopes": ["loopx/**"],
+                "blocks_agent": "codex-main-control",
             },
         )
         todo_b = todo_event(
@@ -142,6 +145,17 @@ def test_store_projection_and_markdown() -> None:
             "todo_event_b",
         ], projection
         assert projection["agent_todos"]["items"][0]["status"] == "done", projection
+        assert (
+            projection["agent_todos"]["items"][0]["continuation_policy"]
+            == "independent_handoff"
+        ), projection
+        assert projection["agent_todos"]["items"][0]["required_write_scopes"] == [
+            "loopx/**"
+        ], projection
+        assert (
+            projection["agent_todos"]["items"][0]["blocks_agent"]
+            == "codex-main-control"
+        ), projection
         assert projection["agent_todos"]["items"][1]["status"] == "blocked", projection
         assert projection["user_todos"]["first_open_items"][0]["todo_id"] == "todo_user_gate", projection
 
@@ -151,6 +165,9 @@ def test_store_projection_and_markdown() -> None:
         assert "todo_id=todo_event_a" in markdown, markdown
         assert "todo_id=todo_user_gate" in markdown, markdown
         assert "claimed_by=codex-product-capability" in markdown, markdown
+        assert "continuation_policy=independent_handoff" in markdown, markdown
+        assert "required_write_scopes=loopx%2F%2A%2A" in markdown, markdown
+        assert "blocks_agent=codex-main-control" in markdown, markdown
         assert "## Progress Ledger" in markdown, markdown
 
         parsed = parse_active_state_todos(markdown)

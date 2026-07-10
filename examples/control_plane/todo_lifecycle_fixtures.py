@@ -210,6 +210,7 @@ def assert_configured_side_agent_handoff() -> None:
         review_successor = explicit_primary_review["next_todos"][0]
         assert review_successor["claimed_by"] == "codex-main-control", explicit_primary_review
         assert review_successor["action_kind"] == "primary_review_merge", explicit_primary_review
+        assert review_successor["continuation_policy"] == "primary_review", explicit_primary_review
         assert review_successor["blocks_agent"] == "codex-side-bypass", explicit_primary_review
         assert review_successor["unblocks_todo_id"] == review_source_added["todo_id"], explicit_primary_review
         review_successor_item = next(
@@ -217,6 +218,7 @@ def assert_configured_side_agent_handoff() -> None:
         )
         assert review_successor_item["claimed_by"] == "codex-main-control", review_successor_item
         assert review_successor_item["action_kind"] == "primary_review_merge", review_successor_item
+        assert review_successor_item["continuation_policy"] == "primary_review", review_successor_item
 
     with tempfile.TemporaryDirectory(prefix="loopx-side-agent-handoff-self-smoke-") as tmp:
         root = Path(tmp)

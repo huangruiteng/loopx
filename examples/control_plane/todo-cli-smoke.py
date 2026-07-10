@@ -302,6 +302,8 @@ def main() -> int:
             "advancement_task",
             "--action-kind",
             "run_eval",
+            "--continuation-policy",
+            "independent_handoff",
             "--required-capability",
             "shell",
             "--required-capability",
@@ -316,6 +318,9 @@ def main() -> int:
         assert metadata_payload["metadata_updated"] is True, metadata_payload
         assert metadata_payload["task_class"] == "advancement_task", metadata_payload
         assert metadata_payload["action_kind"] == "run_eval", metadata_payload
+        assert (
+            metadata_payload["continuation_policy"] == "independent_handoff"
+        ), metadata_payload
         assert metadata_payload["required_capabilities"] == ["shell", "benchmark_runner"], metadata_payload
         assert metadata_payload["target_capabilities"] == ["benchmark_runner"], metadata_payload
         assert metadata_payload["required_decision_scopes"] == [
@@ -332,6 +337,7 @@ def main() -> int:
         agent_metadata_start = after_metadata.index("<!-- loopx:todo", agent_block_start)
         assert after_metadata.index("checklist is done.", agent_block_start) < agent_metadata_start, after_metadata
         assert "status=open task_class=advancement_task action_kind=run_eval" in after_metadata
+        assert "continuation_policy=independent_handoff" in after_metadata
         assert "required_capabilities=shell%2Cbenchmark_runner" in after_metadata
         assert "target_capabilities=benchmark_runner" in after_metadata
         assert (
