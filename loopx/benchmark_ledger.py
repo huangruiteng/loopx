@@ -3398,7 +3398,11 @@ def archive_benchmark_run_ledger_runs(
     }
 
 
-def _ledger_entry_signature(entry: dict[str, Any]) -> tuple[str, ...]:
+def benchmark_run_ledger_entry_signature(
+    entry: dict[str, Any],
+) -> tuple[str, ...]:
+    """Return the stable logical identity used for ledger drift detection."""
+
     return (
         _compact_text(entry.get("benchmark_id"), limit=120),
         _compact_text(entry.get("case_id"), limit=160),
@@ -3499,7 +3503,10 @@ def merge_benchmark_run_ledgers(
             for run in _iter_ledger_runs(updated)
             if _compact_text(run.get("run_id"), limit=80)
         }
-        before_signatures = {_ledger_entry_signature(run) for run in _iter_ledger_runs(updated)}
+        before_signatures = {
+            benchmark_run_ledger_entry_signature(run)
+            for run in _iter_ledger_runs(updated)
+        }
         source_ledger_count = 0
         missing_source_count = 0
         source_run_count = 0
@@ -3547,7 +3554,9 @@ def merge_benchmark_run_ledgers(
             for run in after_runs
             if _compact_text(run.get("run_id"), limit=80)
         }
-        after_signatures = {_ledger_entry_signature(run) for run in after_runs}
+        after_signatures = {
+            benchmark_run_ledger_entry_signature(run) for run in after_runs
+        }
         summary = {
             "schema_version": "benchmark_run_ledger_merge_v0",
             "ok": True,
@@ -3625,7 +3634,9 @@ def check_benchmark_run_ledger_drift(
         for run in ledger_runs
         if _compact_text(run.get("run_id"), limit=80)
     }
-    ledger_signatures = {_ledger_entry_signature(run) for run in ledger_runs}
+    ledger_signatures = {
+        benchmark_run_ledger_entry_signature(run) for run in ledger_runs
+    }
 
     checked_history_run_count = 0
     terminal_history_run_count = 0
@@ -3654,7 +3665,7 @@ def check_benchmark_run_ledger_drift(
             continue
         terminal_history_run_count += 1
         run_id = _compact_text(entry.get("run_id"), limit=80)
-        signature = _ledger_entry_signature(entry)
+        signature = benchmark_run_ledger_entry_signature(entry)
         if run_id in ledger_run_ids or signature in ledger_signatures:
             matched_count += 1
             continue

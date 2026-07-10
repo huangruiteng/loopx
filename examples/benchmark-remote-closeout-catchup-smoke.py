@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.benchmark_core.remote_closeout import closeout_remote_benchmark_batch
+from loopx.benchmark_ledger import update_benchmark_run_ledger
 
 
 def _compact(case_id: str, score: float) -> dict[str, object]:
@@ -55,20 +56,28 @@ def test_closeout_catches_up_public_target_rows_once() -> None:
         root = Path(tmp)
         catchup_root = root / "public-runs"
         accepted = catchup_root / "target-old" / "benchmark_run.compact.json"
+        equivalent = catchup_root / "target-equivalent" / "benchmark_run.compact.json"
         ignored = catchup_root / "other-lane" / "benchmark_run.compact.json"
         private = catchup_root / "target-old" / "logs" / "benchmark_run.compact.json"
         malformed = catchup_root / "target-malformed" / "benchmark_run.compact.json"
         _write_compact(accepted, _compact("case-b", 1.0))
+        _write_compact(equivalent, _compact("case-d", 0.5))
         _write_compact(ignored, _compact("case-c", 1.0))
         _write_compact(private, _compact("private-case", 1.0))
         malformed.parent.mkdir(parents=True)
         malformed.write_text("{not-json\n", encoding="utf-8")
 
         canonical = root / "canonical.txt"
-        canonical.write_text("case-a\ncase-b\n", encoding="utf-8")
+        canonical.write_text("case-a\ncase-b\ncase-d\n", encoding="utf-8")
         ledger = root / "ledger.json"
         aggregate = root / "aggregate.json"
         collection = _collection(_compact("case-a", 0.0))
+        update_benchmark_run_ledger(
+            ledger_path=ledger,
+            benchmark_run=_compact("case-d", 0.5),
+            run_group_id="target-equivalent-seed",
+            dry_run=False,
+        )
 
         def run_closeout() -> dict[str, object]:
             return closeout_remote_benchmark_batch(
@@ -96,20 +105,22 @@ def test_closeout_catches_up_public_target_rows_once() -> None:
         update = first["local_ledger_update"]
         assert first["ok"] is True, first
         assert update["upserted_count"] == 2, update
-        assert update["catchup_compact_count"] == 2, update
+        assert update["catchup_compact_count"] == 3, update
         assert update["catchup_upserted_count"] == 1, update
+        assert update["catchup_already_present_count"] == 1, update
         assert update["catchup_skipped_count"] == 1, update
         assert update["catchup_blocked_count"] == 1, update
         cases = json.loads(ledger.read_text(encoding="utf-8"))["benchmarks"][
             "skillsbench@1.1"
         ]["cases"]
-        assert set(cases) == {"case-a", "case-b"}, cases
-        assert json.loads(aggregate.read_text(encoding="utf-8"))["canonical_total"] == 2
+        assert set(cases) == {"case-a", "case-b", "case-d"}, cases
+        assert len(cases["case-d"]["runs"]) == 1, cases["case-d"]
+        assert json.loads(aggregate.read_text(encoding="utf-8"))["canonical_total"] == 3
 
         second = run_closeout()
         retry = second["local_ledger_update"]
         assert retry["catchup_upserted_count"] == 0, retry
-        assert retry["catchup_already_present_count"] == 1, retry
+        assert retry["catchup_already_present_count"] == 2, retry
         cases = json.loads(ledger.read_text(encoding="utf-8"))["benchmarks"][
             "skillsbench@1.1"
         ]["cases"]
