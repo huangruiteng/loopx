@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import time
 
@@ -21,6 +22,17 @@ CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT = (
 CODEX_CLI_GOAL_TASK_PROMPT_FILENAME = "skillsbench-task-prompt.md"
 CODEX_CLI_TUI_READY_STARTUP_GRACE_SEC = 15.0
 CODEX_CLI_TUI_READY_STABLE_SEC = 2.0
+
+
+def resolve_codex_cli_binary(codex_bin: str) -> str | None:
+    """Resolve an executable Codex CLI without recording its path publicly."""
+
+    candidate = str(codex_bin or "codex").strip() or "codex"
+    resolved = shutil.which(candidate) if os.sep not in candidate else candidate
+    if not resolved:
+        return None
+    path = Path(resolved)
+    return str(path) if path.is_file() and os.access(path, os.X_OK) else None
 
 
 def build_codex_cli_goal_tui_input(objective: str) -> str:
