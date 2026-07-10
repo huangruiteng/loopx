@@ -1,0 +1,25 @@
+examples/benchmark-remote-closeout-catchup-smoke.py
+  s_9a5a2bd944fdcb::t_d8b724762f4c83 19,59,64,71,75-80,108,110,116-118,123
+loopx/benchmark_core/remote_closeout.py
+  s_9a5a2bd944fdcb::t_82edbf5dbe3ffc 176,259-267,285-286,292
+loopx/benchmark_ledger.py
+  s_9a5a2bd944fdcb::t_4a938a8ff786ff 3401-3405,3506-3509,3557-3559,3637-3639,3668
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "dfa59e621312962e9c0ef53d202bf123101a20c0",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
