@@ -229,10 +229,14 @@ def test_public_launcher_applies_ssh_options_to_remote_discovery() -> None:
         fake_ssh.write_text(
             "#!/usr/bin/env bash\n"
             "printf '%s\\n' \"$*\" >> \"$SKILLSBENCH_TEST_SSH_LOG\"\n"
-            "if [[ \"$*\" == *'ip -4 addr show docker0'* ]]; then\n"
-            "  printf 'docker-bridge.example.invalid\\n'\n"
-            "else\n"
+            "if [[ \"$*\" == *'/version'* ]]; then\n"
             "  printf '1.43\\n'\n"
+            "elif [[ \"$*\" == *'docker info'* ]]; then\n"
+            "  printf '[\"name=rootless\"]\\n'\n"
+            "elif [[ \"$*\" == *'hostname -I'* ]]; then\n"
+            "  printf 'runner-host.example.invalid\\n'\n"
+            "else\n"
+            "  exit 99\n"
             "fi\n",
             encoding="utf-8",
         )
@@ -269,9 +273,10 @@ def test_public_launcher_applies_ssh_options_to_remote_discovery() -> None:
         )
 
         discovery_calls = ssh_log.read_text(encoding="utf-8").splitlines()
-        assert len(discovery_calls) == 2, discovery_calls
+        assert len(discovery_calls) == 3, discovery_calls
         assert all("-o Port=2222" in call for call in discovery_calls), discovery_calls
-        assert "docker_proxy_host=docker-bridge.example.invalid" in proc.stdout, proc.stdout
+        assert "docker_proxy_host=runner-host.example.invalid" in proc.stdout, proc.stdout
+        assert "docker_proxy_endpoint_mode=rootless_host_interface" in proc.stdout
         assert "docker_api_version=1.43" in proc.stdout, proc.stdout
         assert "DOCKER_API_VERSION=1.43" in proc.stdout, proc.stdout
 

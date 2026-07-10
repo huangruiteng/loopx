@@ -121,17 +121,6 @@ fi
 batch_case_start_gap="${SKILLSBENCH_BATCH_CASE_START_GAP_SEC:-3}"
 local_proxy_host="${SKILLSBENCH_LOCAL_CODEX_PROXY_HOST:-127.0.0.1}"
 local_proxy_port="${SKILLSBENCH_LOCAL_CODEX_PROXY_PORT:-18180}"
-docker_proxy_host="${SKILLSBENCH_DOCKER_PROXY_HOST:-auto}"
-if [[ -z "$docker_proxy_host" || "$docker_proxy_host" == "auto" ]]; then
-  docker_proxy_host="$(
-    ssh "${ssh_command_options[@]}" "$SKILLSBENCH_SSH_DESTINATION" \
-      "ip -4 addr show docker0 2>/dev/null | awk '/inet /{print \$2}' | cut -d/ -f1 | head -n1"
-  )"
-  if [[ -z "$docker_proxy_host" ]]; then
-    echo "missing remote Docker bridge host; set SKILLSBENCH_DOCKER_PROXY_HOST" >&2
-    exit 2
-  fi
-fi
 docker_api_version="${SKILLSBENCH_DOCKER_API_VERSION:-auto}"
 if [[ -z "$docker_api_version" || "$docker_api_version" == "auto" ]]; then
   docker_api_probe_py='import json, sys; print(json.load(sys.stdin)["ApiVersion"])'
@@ -147,11 +136,42 @@ if [[ ! "$docker_api_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
   echo "invalid remote Docker API version; set SKILLSBENCH_DOCKER_API_VERSION" >&2
   exit 2
 fi
+docker_proxy_host="${SKILLSBENCH_DOCKER_PROXY_HOST:-auto}"
+docker_proxy_listen_host="$docker_proxy_host"
+docker_proxy_allowed_peer=""
+docker_proxy_endpoint_mode="explicit"
+if [[ -z "$docker_proxy_host" || "$docker_proxy_host" == "auto" ]]; then
+  docker_security_options="$(
+    ssh "${ssh_command_options[@]}" "$SKILLSBENCH_SSH_DESTINATION" \
+      "DOCKER_API_VERSION=${docker_api_version} docker info --format '{{json .SecurityOptions}}' 2>/dev/null"
+  )"
+  if [[ "$docker_security_options" == *'name=rootless'* ]]; then
+    docker_proxy_host="$(
+      ssh "${ssh_command_options[@]}" "$SKILLSBENCH_SSH_DESTINATION" \
+        'set -- $(hostname -I); printf "%s\n" "$1"'
+    )"
+    docker_proxy_listen_host="$docker_proxy_host"
+    docker_proxy_allowed_peer="$docker_proxy_host"
+    docker_proxy_endpoint_mode="rootless_host_interface"
+  else
+    docker_proxy_host="$(
+      ssh "${ssh_command_options[@]}" "$SKILLSBENCH_SSH_DESTINATION" \
+        "ip -4 addr show docker0 2>/dev/null | awk '/inet /{print \$2}' | cut -d/ -f1 | head -n1"
+    )"
+    docker_proxy_listen_host="$docker_proxy_host"
+    docker_proxy_endpoint_mode="docker_bridge"
+  fi
+  if [[ -z "$docker_proxy_host" ]]; then
+    echo "missing remote Docker proxy host; set SKILLSBENCH_DOCKER_PROXY_HOST" >&2
+    exit 2
+  fi
+fi
 bridge_proxy_url="http://${docker_proxy_host}:${remote_proxy_port}"
 loopback_proxy_url="http://127.0.0.1:${remote_proxy_port}"
 bridge_forwarder_py='import select, socket, sys, threading
 listen_host = sys.argv[1]
 listen_port = int(sys.argv[2])
+allowed_peer = sys.argv[3]
 target = ("127.0.0.1", listen_port)
 
 def pipe(a, b):
@@ -178,7 +198,10 @@ server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.bind((listen_host, listen_port))
 server.listen(64)
 while True:
-    client, _addr = server.accept()
+    client, addr = server.accept()
+    if allowed_peer and addr[0] != allowed_peer:
+        client.close()
+        continue
     upstream = socket.create_connection(target)
     threading.Thread(target=pipe, args=(client, upstream), daemon=True).start()
 '
@@ -211,8 +234,9 @@ mkdir -p "$public_dir" "$private_dir"
 remote_command=$(
   printf 'cd %q || exit 1; ' \
     "$SKILLSBENCH_REMOTE_ROOT"
-  printf 'python3 -c %q %q %q & ' \
-    "$bridge_forwarder_py" "$docker_proxy_host" "$remote_proxy_port"
+  printf 'python3 -c %q %q %q %q & ' \
+    "$bridge_forwarder_py" "$docker_proxy_listen_host" "$remote_proxy_port" \
+    "$docker_proxy_allowed_peer"
   printf 'loopx_benchmark_proxy_forwarder_pid=$!; '
   printf 'trap %q EXIT; ' 'kill "$loopx_benchmark_proxy_forwarder_pid" 2>/dev/null || true'
   printf 'sleep 0.5; '
@@ -290,6 +314,7 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'private_dir=%s\n' "$private_dir"
   printf 'remote_proxy_port=%s\n' "$remote_proxy_port"
   printf 'docker_proxy_host=%s\n' "$docker_proxy_host"
+  printf 'docker_proxy_endpoint_mode=%s\n' "$docker_proxy_endpoint_mode"
   printf 'docker_api_version=%s\n' "$docker_api_version"
   printf 'remote_command=%s\n' "$remote_command"
   printf 'supervisor_command='
@@ -330,5 +355,6 @@ public_output=${public_dir}/supervisor.public.json
 private_dir=${private_dir}
 remote_proxy_port=${remote_proxy_port}
 docker_proxy_host=${docker_proxy_host}
+docker_proxy_endpoint_mode=${docker_proxy_endpoint_mode}
 docker_api_version=${docker_api_version}
 EOF
