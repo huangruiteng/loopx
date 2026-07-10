@@ -1,0 +1,35 @@
+loopx/capabilities/issue_fix/cli.py
+  s_9a5a2bd944fdcb::t_d9519d561f5dce 212-220,285-292,762-771,791-795,800-804,825-829
+loopx/capabilities/issue_fix/feasibility.py
+  s_32e2a9a204a8e4::t_a00d133e4228d0 225,248
+loopx/capabilities/issue_fix/repository_memory.py
+  s_32e2a9a204a8e4::t_228b9556172b36 1-331
+loopx/capabilities/issue_fix/workflow_plan.py
+  s_32e2a9a204a8e4::t_df49079b30fe91 219,254
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1109f06134d84679d9d36caa6cc29fa4817c0d56",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
