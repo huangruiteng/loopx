@@ -406,6 +406,29 @@ review、maintainer correction、mergeability、stale branch 和 terminal status
 transition 必须生成 `runnable_successor`、具体 blocker 或结构化 no-follow-up；
 unchanged poll 保持安静且不消耗 delivery quota。
 
+## 状态与产出视图
+
+Todo 卡回答的是**agent 下一步要做什么**，但它本身不能完整回答**某个 issue 最后发生了
+什么**。`loopx issue-fix outcome` 补上这层 read model，同时不新增 ledger，也不新增
+生命周期状态机。它从现有 feasibility row、revision-pinned repository context、可选的
+紧凑 delivery evidence，以及可选的 PR lifecycle row，派生一张稳定的
+`issue_fix_outcome_projection_v0` case 卡。
+
+紧凑 delivery evidence 使用 `outcome_status=in_progress|completed|blocked` 与
+`validation_status=passed|failed|partial|not_run`。PR terminal state 仍保持最高优先级；
+但在非终态等待（例如 CI pending）中，显式 blocked delivery 不会被掩盖。
+
+Case 卡展示 route 与当前 stage、issue/PR 链接、repository revision 与 context
+fingerprint、reproduction 和 validation 状态、显式提供时的 repo-relative changed files
+与 commit ref、checks/review/mergeability/terminal result、剩余风险和下一动作。缺失的
+delivery evidence 会保持 `declared` 或 unknown；LoopX 不会因为 PR 已存在，就伪装
+focused validation 已通过。
+
+该 packet 可以直接交给 `loopx lark-kanban sync-projection`。执行 todo 继续作为独立
+卡片，稳定 outcome 卡则以 repository + issue 为 key。merged、closed 或 triaged 的
+终态卡默认保留可见，让看板能展示产出，而不只展示活跃工作。Shared sink 继续复用
+现有 local-path、private-link 与 private-reference redaction 边界。
+
 ## 命令
 
 ```bash
@@ -444,6 +467,17 @@ loopx issue-fix pr-lifecycle \
   --fetch-metadata \
   --goal-id example-goal \
   --format json
+
+# 从现有 domain state 派生一张 issue 状态/产出卡。
+loopx issue-fix outcome \
+  --goal-id example-goal \
+  --project /path/to/approved/repo \
+  --repo owner/repo \
+  --issue-ref issues_123 \
+  --pr-ref pull_456 \
+  --delivery-evidence-json delivery-evidence.json \
+  --agent-id codex-issue-fix \
+  --format json
 ```
 
 ## Validation
@@ -456,6 +490,7 @@ python3 examples/issue-fix-workflow-contract-smoke.py
 python3 examples/issue-fix-repository-context-smoke.py
 python3 examples/issue-fix-feasibility-smoke.py
 python3 examples/issue-fix-pr-lifecycle-smoke.py
+python3 examples/issue-fix-outcome-projection-smoke.py
 python3 examples/issue-fix-acceptance-loop-smoke.py
 loopx canary premerge --from-git-diff
 ```

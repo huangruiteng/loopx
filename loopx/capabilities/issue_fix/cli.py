@@ -25,6 +25,10 @@ from .feasibility import (
     build_issue_fix_feasibility_packet,
     render_issue_fix_feasibility_markdown,
 )
+from .outcome_projection import (
+    build_issue_fix_outcome_projection,
+    render_issue_fix_outcome_projection_markdown,
+)
 from .pr_lifecycle import (
     build_issue_fix_pr_lifecycle_monitor_packet,
     render_issue_fix_pr_lifecycle_monitor_markdown,
@@ -55,6 +59,38 @@ def _load_json_object(path_text: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"{path_text} must contain a JSON object")
     return payload
+
+
+def _load_jsonl_row(
+    path: Path,
+    *,
+    repo: str,
+    ref_field: str,
+    ref_value: str,
+) -> dict[str, Any]:
+    if not path.is_file():
+        raise ValueError(f"issue-fix domain-state source is missing: {path.name}")
+    match: dict[str, Any] | None = None
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{path.name}:{line_number} is not valid JSON") from exc
+        observation = row.get("observation") if isinstance(row, dict) else None
+        if not isinstance(observation, dict):
+            continue
+        if (
+            str(observation.get("repo") or "").strip() == repo
+            and str(observation.get(ref_field) or "").strip() == ref_value
+        ):
+            match = row
+    if match is None:
+        raise ValueError(
+            f"{path.name} has no row for repo={repo} {ref_field}={ref_value}"
+        )
+    return match
 
 
 def _goal_boundary_authority_projection(
@@ -333,6 +369,49 @@ def register_issue_fix_commands(
             "Keep the PR lifecycle command preview-only even when --goal-id or "
             "--ledger-path is present."
         ),
+    )
+    outcome_parser = issue_fix_sub.add_parser(
+        "outcome",
+        help=(
+            "Compose one public-safe issue-fix status/output projection from "
+            "existing feasibility and optional PR lifecycle state."
+        ),
+    )
+    add_subcommand_format(outcome_parser)
+    outcome_parser.add_argument("--goal-id", required=True)
+    outcome_parser.add_argument("--project", default=".")
+    outcome_parser.add_argument("--repo", required=True)
+    outcome_parser.add_argument("--issue-ref", required=True)
+    outcome_parser.add_argument(
+        "--pr-ref",
+        help="Optional PR ref linked to this issue, such as pull_456.",
+    )
+    outcome_parser.add_argument(
+        "--feasibility-json",
+        help="Optional issue_fix_feasibility_v0 JSON object; defaults to domain state.",
+    )
+    outcome_parser.add_argument(
+        "--pr-lifecycle-json",
+        help=(
+            "Optional issue_fix_pr_lifecycle_monitor_v0 JSON object; defaults "
+            "to domain state when --pr-ref is present."
+        ),
+    )
+    outcome_parser.add_argument(
+        "--delivery-evidence-json",
+        help=(
+            "Optional issue_fix_delivery_evidence_input_v0 JSON with explicit "
+            "validation status, repo-relative changed files, commit ref, outputs, and risks."
+        ),
+    )
+    outcome_parser.add_argument(
+        "--agent-id",
+        help="Optional registered agent id projected as the case owner.",
+    )
+    outcome_parser.add_argument(
+        "--generated-at",
+        default="2026-07-10T00:00:00Z",
+        help="Public-safe generated_at timestamp for the read model.",
     )
     reviewer_parser = issue_fix_sub.add_parser(
         "reviewer-plan",
@@ -657,6 +736,74 @@ def handle_issue_fix_command(
                 if isinstance(domain_state, dict) and not args.no_write_domain_state:
                     domain_state["write_skipped_reason"] = "goal_id_or_ledger_path_missing"
             renderer = render_issue_fix_pr_lifecycle_monitor_markdown
+        elif args.issue_fix_command == "outcome":
+            stdin_input_count = sum(
+                value == "-"
+                for value in (
+                    args.feasibility_json,
+                    args.pr_lifecycle_json,
+                    args.delivery_evidence_json,
+                )
+            )
+            if stdin_input_count > 1:
+                raise ValueError("only one outcome JSON input may read from stdin")
+            project = Path(args.project).expanduser()
+            feasibility_packet = (
+                _load_json_object(args.feasibility_json)
+                if args.feasibility_json
+                else _load_jsonl_row(
+                    default_issue_fix_feasibility_ledger_path(
+                        project=project,
+                        goal_id=args.goal_id,
+                    ),
+                    repo=args.repo,
+                    ref_field="issue_ref",
+                    ref_value=args.issue_ref,
+                )
+            )
+            feasibility_observation = feasibility_packet.get("observation")
+            if not isinstance(feasibility_observation, dict) or (
+                str(feasibility_observation.get("repo") or "").strip() != args.repo
+                or str(feasibility_observation.get("issue_ref") or "").strip()
+                != args.issue_ref
+            ):
+                raise ValueError(
+                    "--repo/--issue-ref must match the selected feasibility packet"
+                )
+            pr_lifecycle_packet = None
+            if args.pr_lifecycle_json:
+                pr_lifecycle_packet = _load_json_object(args.pr_lifecycle_json)
+            elif args.pr_ref:
+                pr_lifecycle_packet = _load_jsonl_row(
+                    default_issue_fix_domain_state_ledger_path(
+                        project=project,
+                        goal_id=args.goal_id,
+                    ),
+                    repo=args.repo,
+                    ref_field="pr_ref",
+                    ref_value=args.pr_ref,
+                )
+            if pr_lifecycle_packet is not None and args.pr_ref:
+                lifecycle_observation = pr_lifecycle_packet.get("observation")
+                if not isinstance(lifecycle_observation, dict) or str(
+                    lifecycle_observation.get("pr_ref") or ""
+                ).strip() != args.pr_ref:
+                    raise ValueError(
+                        "--pr-ref must match the selected PR lifecycle packet"
+                    )
+            payload = build_issue_fix_outcome_projection(
+                goal_id=args.goal_id,
+                feasibility_packet=feasibility_packet,
+                pr_lifecycle_packet=pr_lifecycle_packet,
+                delivery_evidence_input=(
+                    _load_json_object(args.delivery_evidence_json)
+                    if args.delivery_evidence_json
+                    else None
+                ),
+                agent_id=args.agent_id,
+                generated_at=args.generated_at,
+            )
+            renderer = render_issue_fix_outcome_projection_markdown
         elif args.issue_fix_command == "reviewer-plan":
             payload = build_issue_fix_reviewer_recommendation_packet(
                 repo_path=args.repo_path,
@@ -705,7 +852,7 @@ def handle_issue_fix_command(
         else:
             raise ValueError(
                 "issue-fix requires `workflow-plan`, `feasibility`, "
-                "`acceptance-fixture`, `pr-lifecycle`, `reviewer-plan`, "
+                "`acceptance-fixture`, `pr-lifecycle`, `outcome`, `reviewer-plan`, "
                 "`repo-branch-fixture`, or `caller-repo-branch`"
             )
     except Exception as exc:
@@ -721,6 +868,8 @@ def handle_issue_fix_command(
             if getattr(args, "issue_fix_command", None) == "feasibility"
             else render_issue_fix_pr_lifecycle_monitor_markdown
             if getattr(args, "issue_fix_command", None) == "pr-lifecycle"
+            else render_issue_fix_outcome_projection_markdown
+            if getattr(args, "issue_fix_command", None) == "outcome"
             else render_issue_fix_reviewer_recommendation_markdown
             if getattr(args, "issue_fix_command", None) == "reviewer-plan"
             else render_issue_fix_acceptance_loop_markdown

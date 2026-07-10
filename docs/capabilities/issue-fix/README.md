@@ -448,6 +448,34 @@ private material remain explicit gates. Each material transition must yield a
 `runnable_successor`, concrete blocker, or structured no-follow-up; unchanged
 polls remain quiet and do not spend delivery quota.
 
+## Status And Output View
+
+Todo cards answer **what the agent should do next**. They do not, by
+themselves, answer **what happened to one issue**. `loopx issue-fix outcome`
+fills that read-model gap without creating another ledger or lifecycle state
+machine. It derives one stable `issue_fix_outcome_projection_v0` case from the
+existing feasibility row, revision-pinned repository context, optional compact
+delivery evidence, and optional PR lifecycle row.
+
+Compact delivery evidence uses `outcome_status=in_progress|completed|blocked`
+and `validation_status=passed|failed|partial|not_run`. Terminal PR state still
+takes precedence, while an explicit blocked delivery remains visible over a
+non-terminal wait such as pending CI.
+
+The case card exposes the selected route and current stage; issue and PR links;
+repository revision and context fingerprint; reproduction and validation
+status; repo-relative changed files and commit ref when explicitly supplied;
+checks, review, mergeability, and terminal result; remaining risks; and the next
+action. Missing delivery evidence remains `declared` or unknown—PR existence is
+never treated as proof that focused validation passed.
+
+The packet is directly consumable by `loopx lark-kanban sync-projection`.
+Execution todos remain separate cards, while the stable outcome card is keyed
+by repository and issue. A merged, closed, or triaged terminal card remains
+visible by default so the board shows outputs instead of only active work.
+Shared sinks continue to apply the existing local-path, private-link, and
+private-reference redaction boundary.
+
 ## Commands
 
 ```bash
@@ -486,6 +514,17 @@ loopx issue-fix pr-lifecycle \
   --fetch-metadata \
   --goal-id example-goal \
   --format json
+
+# Derive one issue status/output projection from existing domain state.
+loopx issue-fix outcome \
+  --goal-id example-goal \
+  --project /path/to/approved/repo \
+  --repo owner/repo \
+  --issue-ref issues_123 \
+  --pr-ref pull_456 \
+  --delivery-evidence-json delivery-evidence.json \
+  --agent-id codex-issue-fix \
+  --format json
 ```
 
 ## Validation
@@ -498,6 +537,7 @@ python3 examples/issue-fix-workflow-contract-smoke.py
 python3 examples/issue-fix-repository-context-smoke.py
 python3 examples/issue-fix-feasibility-smoke.py
 python3 examples/issue-fix-pr-lifecycle-smoke.py
+python3 examples/issue-fix-outcome-projection-smoke.py
 python3 examples/issue-fix-acceptance-loop-smoke.py
 loopx canary premerge --from-git-diff
 ```

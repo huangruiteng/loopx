@@ -911,6 +911,30 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "issue-fix-outcome-visibility",
+        "title": "Issue-fix status and output visibility",
+        "purpose": (
+            "Check the derived issue case read model and generic Kanban projection "
+            "without adding a parallel issue-fix state machine."
+        ),
+        "catalog_families": ["Evidence Lifecycle", "State And Boundary", "Work Routing"],
+        "trigger_hints": (
+            "issue-fix outcome",
+            "issue_fix_outcome",
+            "outcome_projection",
+            "examples/issue-fix-outcome-projection-smoke.py",
+            "loopx/capabilities/issue_fix/outcome_projection.py",
+            "loopx/presentation/sinks/lark/projection_rows.py",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/issue-fix-outcome-projection-smoke.py",
+                "tier": "default",
+                "reason": "guards derived issue status/output cards, truthful delivery evidence, terminal visibility, and Lark projection reuse",
+            },
+        ],
+    },
+    {
         "id": "cross-runtime-impl-review-demo",
         "title": "Cross-runtime implementation/review demo",
         "purpose": (
