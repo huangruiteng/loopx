@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 from urllib.parse import quote
 
+from ...control_plane.runtime.public_safety import public_safe_compact_text
 from .metadata_preview import normalise_github_issue_reference
 
 
@@ -163,6 +164,7 @@ def _build_observation(
     *,
     repo: str,
     pr_ref: str,
+    issue_ref: str | None,
     reference: Mapping[str, Any],
     provider_payload: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -174,10 +176,14 @@ def _build_observation(
             state = "MERGED"
     review_decision = _upper_label(provider_payload.get("reviewDecision"))
     merge_state = _upper_label(provider_payload.get("mergeStateStatus"))
+    linked_issue_ref = public_safe_compact_text(issue_ref, limit=180)
+    if issue_ref and not linked_issue_ref:
+        raise ValueError("issue_ref must be a compact public-safe value")
     return {
         "schema_version": "issue_fix_pr_lifecycle_observation_v0",
         "repo": repo,
         "pr_ref": pr_ref,
+        "issue_ref": linked_issue_ref or None,
         "kind": "pull_request",
         "number": reference.get("number"),
         "state": state,
@@ -369,6 +375,7 @@ def build_issue_fix_pr_lifecycle_monitor_packet(
     *,
     repo: str = "public_repo_fixture",
     pr_ref: str = "pull_123_public_metadata_fixture",
+    issue_ref: str | None = None,
     url: str | None = None,
     provider_payload: Mapping[str, Any] | None = None,
     fetch_metadata: bool = False,
@@ -391,6 +398,7 @@ def build_issue_fix_pr_lifecycle_monitor_packet(
     observation = _build_observation(
         repo=str(reference["repo"]),
         pr_ref=str(reference["issue_ref"]),
+        issue_ref=issue_ref,
         reference=reference,
         provider_payload=payload,
     )

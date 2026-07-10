@@ -1955,6 +1955,9 @@ def sync_loopx_todos_to_lark_kanban(
     execute: bool = False,
     runner: CommandRunner = default_subprocess_runner,
 ) -> dict[str, Any]:
+    from ....capabilities.issue_fix.outcome_projection import (
+        build_issue_fix_outcome_collection_from_domain_state,
+    )
     from ....control_plane.todos.text import todo_priority_prefix
     from ....todos import resolve_todo_state_path, section_bounds, todo_blocks
 
@@ -1981,6 +1984,28 @@ def sync_loopx_todos_to_lark_kanban(
                 continue
             todos.append(candidate)
     todos = todos[:limit]
+
+    outcome_projection = build_issue_fix_outcome_collection_from_domain_state(
+        goal_id=goal_id,
+        project=resolved_project or project or Path("."),
+    )
+    outcome_source_id, outcome_namespace_warnings = _projection_namespace(
+        outcome_projection,
+        None,
+    )
+    _, outcome_rows, outcome_row_warnings = _projection_rows_from_payload(
+        outcome_projection,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        source_id=outcome_source_id,
+        include_done=True,
+        limit=limit,
+    )
+    outcome_warnings = [
+        *outcome_namespace_warnings,
+        *list(outcome_projection.get("warnings") or []),
+        *outcome_row_warnings,
+    ]
 
     commands: list[dict[str, Any]] = []
     local, record_map = _load_lark_todo_record_map(
@@ -2019,6 +2044,43 @@ def sync_loopx_todos_to_lark_kanban(
         if execute and not result.get("ok"):
             break
 
+    if ok:
+        for row in outcome_rows:
+            row_goal_id = str(row.get("goal_id") or goal_id)
+            todo_id = str(row.get("todo_id") or "").strip()
+            key = f"{row_goal_id}:{todo_id}"
+            values = _lark_record_from_projection_block(
+                row,
+                goal_id=row_goal_id,
+                source_id=outcome_source_id,
+            )
+            result = _run_command(
+                build_record_upsert_command(
+                    config,
+                    record_id=record_map.get(key),
+                    values=values,
+                ),
+                execute=execute,
+                runner=runner,
+            )
+            commands.append(result)
+            record_id = (
+                _extract_created_record_id(result.get("json")) or record_map.get(key)
+            )
+            if execute and result.get("ok") and record_id:
+                record_map[key] = record_id
+            results.append(
+                {
+                    "todo_id": todo_id,
+                    "record_id": record_id,
+                    "command": result,
+                    "values": values,
+                }
+            )
+            ok = ok and bool(result.get("ok"))
+            if execute and not result.get("ok"):
+                break
+
     if execute and ok:
         _persist_lark_todo_record_map(config, config_path=config_path, local=local, record_map=record_map)
 
@@ -2031,6 +2093,9 @@ def sync_loopx_todos_to_lark_kanban(
         "project": str(resolved_project) if resolved_project else None,
         "state_file": str(resolved_state_file),
         "todo_count": len(todos),
+        "issue_fix_outcome_count": len(outcome_rows),
+        "issue_fix_source_counts": outcome_projection.get("source_counts"),
+        "warnings": outcome_warnings,
         "records": results,
         "commands": commands,
         "config_path": str(config_path) if config_path else None,

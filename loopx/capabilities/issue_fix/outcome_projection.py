@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping, Sequence
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from ...control_plane.runtime.public_safety import public_safe_compact_text
@@ -10,6 +11,9 @@ from ...control_plane.runtime.public_safety import public_safe_compact_text
 
 ISSUE_FIX_OUTCOME_PROJECTION_SCHEMA_VERSION = "issue_fix_outcome_projection_v0"
 ISSUE_FIX_OUTCOME_CASE_SCHEMA_VERSION = "issue_fix_outcome_case_v0"
+ISSUE_FIX_OUTCOME_COLLECTION_PROJECTION_SCHEMA_VERSION = (
+    "issue_fix_outcome_collection_projection_v0"
+)
 ISSUE_FIX_DELIVERY_EVIDENCE_INPUT_SCHEMA_VERSION = (
     "issue_fix_delivery_evidence_input_v0"
 )
@@ -481,6 +485,193 @@ def build_issue_fix_outcome_projection(
     packet["validation"] = validate_issue_fix_outcome_projection(packet)
     packet["ok"] = packet["validation"]["ok"]
     return packet
+
+
+def _load_domain_packets(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
+    if not path.is_file():
+        return [], []
+    packets: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    for line_number, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        if not line.strip():
+            continue
+        try:
+            packet = json.loads(line)
+        except json.JSONDecodeError:
+            warnings.append(f"{path.name}:{line_number} is not valid JSON")
+            continue
+        if not isinstance(packet, dict):
+            warnings.append(f"{path.name}:{line_number} is not an object")
+            continue
+        packets.append(packet)
+    return packets, warnings
+
+
+def _lifecycle_recency(packet: Mapping[str, Any]) -> tuple[str, str]:
+    observation = _mapping(packet.get("observation"))
+    return (
+        str(
+            observation.get("updated_at")
+            or observation.get("merged_at")
+            or observation.get("closed_at")
+            or packet.get("generated_at")
+            or ""
+        ),
+        str(observation.get("pr_ref") or ""),
+    )
+
+
+def build_issue_fix_outcome_collection_from_domain_state(
+    *,
+    goal_id: str,
+    project: str | Path = ".",
+    agent_id: str | None = None,
+    generated_at: str | None = None,
+) -> dict[str, Any]:
+    """Derive all goal issue outcomes from existing compact domain state.
+
+    Feasibility rows are the issue inventory. A PR lifecycle row enriches an
+    issue only when its observation carries the same explicit ``issue_ref``;
+    branch names, titles, and issue numbers are never guessed. No source state
+    or parallel outcome ledger is written.
+    """
+
+    from ...domain_packs.issue_fix import (
+        default_issue_fix_domain_state_ledger_path,
+        default_issue_fix_feasibility_ledger_path,
+    )
+
+    project_path = Path(project).expanduser()
+    feasibility_packets, feasibility_warnings = _load_domain_packets(
+        default_issue_fix_feasibility_ledger_path(
+            project=project_path,
+            goal_id=goal_id,
+        )
+    )
+    lifecycle_packets, lifecycle_warnings = _load_domain_packets(
+        default_issue_fix_domain_state_ledger_path(
+            project=project_path,
+            goal_id=goal_id,
+        )
+    )
+    warnings = [*feasibility_warnings, *lifecycle_warnings]
+
+    lifecycle_by_issue: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    linked_lifecycle_ids: set[int] = set()
+    for packet in lifecycle_packets:
+        observation = _mapping(packet.get("observation"))
+        repo = str(observation.get("repo") or "").strip()
+        issue_ref = str(observation.get("issue_ref") or "").strip()
+        if repo and issue_ref:
+            lifecycle_by_issue.setdefault((repo, issue_ref), []).append(packet)
+
+    outcomes: list[dict[str, Any]] = []
+    for feasibility_packet in feasibility_packets:
+        observation = _mapping(feasibility_packet.get("observation"))
+        repo = str(observation.get("repo") or "").strip()
+        issue_ref = str(observation.get("issue_ref") or "").strip()
+        lifecycle_packet: dict[str, Any] | None = None
+        candidates = lifecycle_by_issue.get((repo, issue_ref), [])
+        if candidates:
+            lifecycle_packet = max(candidates, key=_lifecycle_recency)
+            linked_lifecycle_ids.update(id(item) for item in candidates)
+        try:
+            projection = build_issue_fix_outcome_projection(
+                goal_id=goal_id,
+                feasibility_packet=feasibility_packet,
+                pr_lifecycle_packet=lifecycle_packet,
+                agent_id=agent_id,
+                generated_at=generated_at,
+            )
+        except ValueError as exc:
+            safe_identity = public_safe_compact_text(
+                f"{repo}:{issue_ref}", limit=220
+            ) or "unknown issue"
+            safe_error = public_safe_compact_text(exc, limit=260) or "invalid row"
+            warnings.append(f"skipped {safe_identity}: {safe_error}")
+            continue
+        if projection.get("ok") is True:
+            outcomes.extend(list(projection.get("issue_fix_outcomes") or []))
+
+    unlinked_lifecycle_count = sum(
+        1 for packet in lifecycle_packets if id(packet) not in linked_lifecycle_ids
+    )
+    collection: dict[str, Any] = {
+        "ok": True,
+        "schema_version": ISSUE_FIX_OUTCOME_COLLECTION_PROJECTION_SCHEMA_VERSION,
+        "mode": "issue-fix-outcome-collection",
+        "source_id": "issue-fix-outcome",
+        "goal_id": goal_id,
+        "generated_at": generated_at,
+        "agent_identity": {"agent_id": agent_id} if agent_id else {},
+        "issue_fix_outcomes": outcomes,
+        "source_contract": {
+            "feasibility": "issue_fix_feasibility_v0",
+            "pr_lifecycle": "issue_fix_pr_lifecycle_monitor_v0",
+            "association": "explicit_repo_and_issue_ref_only",
+            "writes_source_state": False,
+            "creates_parallel_state_machine": False,
+        },
+        "source_counts": {
+            "feasibility": len(feasibility_packets),
+            "pr_lifecycle": len(lifecycle_packets),
+            "outcomes": len(outcomes),
+            "unlinked_pr_lifecycle": unlinked_lifecycle_count,
+        },
+        "warnings": warnings,
+        "external_reads_performed": False,
+        "external_writes_performed": False,
+        "raw_logs_captured": False,
+        "local_paths_captured": False,
+        "credentials_captured": False,
+    }
+    collection["validation"] = validate_issue_fix_outcome_collection_projection(
+        collection
+    )
+    collection["ok"] = bool(collection["validation"]["ok"])
+    return collection
+
+
+def validate_issue_fix_outcome_collection_projection(
+    packet: Mapping[str, Any],
+) -> dict[str, Any]:
+    errors: list[str] = []
+    if (
+        packet.get("schema_version")
+        != ISSUE_FIX_OUTCOME_COLLECTION_PROJECTION_SCHEMA_VERSION
+    ):
+        errors.append(
+            "schema_version must be issue_fix_outcome_collection_projection_v0"
+        )
+    outcomes = packet.get("issue_fix_outcomes")
+    if not isinstance(outcomes, list):
+        errors.append("issue_fix_outcomes must be a list")
+        outcomes = []
+    outcome_ids = [
+        str(item.get("outcome_id") or "")
+        for item in outcomes
+        if isinstance(item, Mapping)
+    ]
+    if any(not value for value in outcome_ids):
+        errors.append("every issue-fix outcome must have an outcome_id")
+    if len(set(outcome_ids)) != len(outcome_ids):
+        errors.append("issue-fix outcome ids must be unique")
+    for key in (
+        "external_reads_performed",
+        "external_writes_performed",
+        "raw_logs_captured",
+        "local_paths_captured",
+        "credentials_captured",
+    ):
+        if packet.get(key) is not False:
+            errors.append(f"{key} must be false")
+    return {
+        "schema_version": "issue_fix_outcome_collection_projection_validation_v0",
+        "ok": not errors,
+        "errors": errors,
+    }
 
 
 def validate_issue_fix_outcome_projection(packet: Mapping[str, Any]) -> dict[str, Any]:

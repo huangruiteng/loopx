@@ -120,7 +120,10 @@ def register_lark_kanban_commands(
 
     sync = sub.add_parser(
         "sync-loopx-todos",
-        help="Sync a goal's active LoopX todos into the configured board. Dry-run unless --execute.",
+        help=(
+            "Sync a goal's active LoopX todos and derived issue-fix outcomes into "
+            "the configured board. Dry-run unless --execute."
+        ),
     )
     add_subcommand_format(sync)
     _add_local_config_args(sync)

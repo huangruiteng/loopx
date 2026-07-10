@@ -320,6 +320,15 @@ def register_issue_fix_commands(
         help="Public-safe PR reference label.",
     )
     pr_lifecycle_parser.add_argument(
+        "--issue-ref",
+        default=None,
+        help=(
+            "Optional public-safe issue reference linked to this PR. Persisting "
+            "the explicit link lets default Kanban sync compose the issue outcome "
+            "without guessing from titles or branch names."
+        ),
+    )
+    pr_lifecycle_parser.add_argument(
         "--url",
         default=None,
         help="Optional https://github.com/owner/repo/pull/123 URL.",
@@ -810,6 +819,7 @@ def handle_issue_fix_command(
             payload = build_issue_fix_pr_lifecycle_monitor_packet(
                 repo=args.repo,
                 pr_ref=args.pr_ref,
+                issue_ref=args.issue_ref,
                 url=args.url,
                 provider_payload=_load_json_object(args.metadata_json)
                 if args.metadata_json
