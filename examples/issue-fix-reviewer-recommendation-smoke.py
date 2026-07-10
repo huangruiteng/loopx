@@ -23,6 +23,7 @@ if str(ROOT) not in sys.path:
 
 from loopx.capabilities.issue_fix.reviewer_recommendation import (  # noqa: E402
     ISSUE_FIX_REVIEWER_RECOMMENDATION_SCHEMA_VERSION,
+    ISSUE_FIX_REVIEWER_SOURCES_INPUT_SCHEMA_VERSION,
     build_issue_fix_reviewer_recommendation_packet,
 )
 
@@ -65,8 +66,7 @@ def run_git(
         env.update(
             {
                 "GIT_AUTHOR_NAME": author,
-                "GIT_AUTHOR_EMAIL": author_email
-                or f"{login}@users.noreply.github.com",
+                "GIT_AUTHOR_EMAIL": author_email or f"{login}@users.noreply.github.com",
                 "GIT_COMMITTER_NAME": author,
                 "GIT_COMMITTER_EMAIL": f"{login}@users.noreply.github.com",
             }
@@ -132,16 +132,54 @@ def run_cli(args: list[str]) -> dict[str, Any]:
 
 
 def main() -> int:
+    reviewer_sources = {
+        "schema_version": ISSUE_FIX_REVIEWER_SOURCES_INPUT_SCHEMA_VERSION,
+        "sources": [
+            {
+                "source_id": "repository-maintainer-map",
+                "source_kind": "maintainer_map",
+                "reference": "https://github.com/owner/repo/issues/10",
+                "trust": "verified",
+                "freshness": "current",
+                "observed_at": "2026-07-10T00:00:00Z",
+                "routes": [
+                    {
+                        "route_id": "src-general",
+                        "match_kind": "path_prefix",
+                        "pattern": "src",
+                        "primary_reviewers": ["@broad-owner"],
+                        "fallback_reviewers": ["@broad-backup"],
+                    },
+                    {
+                        "route_id": "service-specific",
+                        "match_kind": "path_prefix",
+                        "pattern": "src/service.py",
+                        "primary_reviewers": ["@declared-service-owner"],
+                        "fallback_reviewers": ["@declared-service-backup"],
+                    },
+                    {
+                        "route_id": "cross-module",
+                        "match_kind": "repository_fallback",
+                        "primary_reviewers": [],
+                        "fallback_reviewers": ["@cross-module-owner"],
+                    },
+                ],
+            }
+        ],
+    }
     dry = build_issue_fix_reviewer_recommendation_packet(
         repo_path="path-not-read-in-preview",
         repo="owner/repo",
         changed_files=["src/service.py"],
+        reviewer_sources_input=reviewer_sources,
     )
     assert dry["ok"] is True, dry
     assert dry["schema_version"] == ISSUE_FIX_REVIEWER_RECOMMENDATION_SCHEMA_VERSION
     assert dry["execute"] is False
     assert dry["private_repo_state_read"] is False
     assert dry["recommendation_status"] == "preview_only"
+    assert dry["reviewer_source_count"] == 1
+    assert dry["reviewer_source_refs"] == ["https://github.com/owner/repo/issues/10"]
     assert_public_safe(dry)
     try:
         build_issue_fix_reviewer_recommendation_packet(
@@ -164,6 +202,32 @@ def main() -> int:
         assert "base_ref" in str(exc), exc
     else:
         raise AssertionError("option-like base refs must be rejected")
+    unsafe_sources = json.loads(json.dumps(reviewer_sources))
+    unsafe_sources["sources"][0]["reference"] = "https://localhost/maintainers"
+    try:
+        build_issue_fix_reviewer_recommendation_packet(
+            repo_path="path-not-read-in-preview",
+            repo="owner/repo",
+            changed_files=["src/service.py"],
+            reviewer_sources_input=unsafe_sources,
+        )
+    except ValueError as exc:
+        assert "local host" in str(exc), exc
+    else:
+        raise AssertionError("local reviewer source URLs must be rejected")
+    naive_sources = json.loads(json.dumps(reviewer_sources))
+    naive_sources["sources"][0]["observed_at"] = "2026-07-10T00:00:00"
+    try:
+        build_issue_fix_reviewer_recommendation_packet(
+            repo_path="path-not-read-in-preview",
+            repo="owner/repo",
+            changed_files=["src/service.py"],
+            reviewer_sources_input=naive_sources,
+        )
+    except ValueError as exc:
+        assert "timezone-aware" in str(exc), exc
+    else:
+        raise AssertionError("naive reviewer source timestamps must be rejected")
 
     with temporary_git_repo() as repo:
         run_git(repo, "init", "-b", "main")
@@ -204,10 +268,11 @@ def main() -> int:
             repo="owner/repo",
             base_ref="main",
             history_limit=20,
-            max_candidates=10,
+            max_candidates=20,
             exclude_reviewers=["@current-author"],
             exclude_author_names=["Current Author"],
             resolved_identities={"Human Confirmed": "@human-confirmed"},
+            reviewer_sources_input=reviewer_sources,
             execute=True,
         )
         assert packet["ok"] is True, packet
@@ -239,16 +304,49 @@ def main() -> int:
         assert "@alice-maintainer" in by_handle, by_handle
         assert "@bob-contributor" in by_handle, by_handle
         assert "@human-confirmed" in by_handle, by_handle
-        assert "verified_identity_mapping" in by_handle["@human-confirmed"][
-            "source_kinds"
-        ]
-        assert "caller_verified_github_identity" in by_handle["@human-confirmed"][
-            "reason_codes"
-        ]
+        assert "@declared-service-owner" in by_handle, by_handle
+        assert "@declared-service-backup" in by_handle, by_handle
+        assert "@broad-owner" in by_handle, by_handle
+        assert "@broad-backup" in by_handle, by_handle
+        assert "@cross-module-owner" in by_handle, by_handle
+        assert (
+            "verified_identity_mapping" in by_handle["@human-confirmed"]["source_kinds"]
+        )
+        assert (
+            "caller_verified_github_identity"
+            in by_handle["@human-confirmed"]["reason_codes"]
+        )
         assert packet["resolved_identity_count"] == 1
         assert by_handle["@service-owner"]["confidence"] == "medium"
-        assert "repository_codeowners_match" in by_handle["@service-owner"]["reason_codes"]
-        assert "changed_module_commit_history" in by_handle["@alice-maintainer"]["reason_codes"]
+        assert (
+            "repository_codeowners_match" in by_handle["@service-owner"]["reason_codes"]
+        )
+        assert (
+            "changed_module_commit_history"
+            in by_handle["@alice-maintainer"]["reason_codes"]
+        )
+        declared = by_handle["@declared-service-owner"]
+        assert declared["confidence"] == "medium"
+        assert by_handle["@service-owner"]["score"] > declared["score"]
+        assert declared["score"] > by_handle["@bob-contributor"]["score"]
+        assert declared["matched_files"] == ["src/service.py"]
+        assert declared["source_refs"] == ["https://github.com/owner/repo/issues/10"]
+        assert "repository_declared_primary_contact" in declared["reason_codes"]
+        assert declared["reviewer_source_evidence"][0]["route_id"] == (
+            "service-specific"
+        )
+        assert declared["reviewer_source_evidence"][0]["pattern"] == ("src/service.py")
+        assert declared["reviewer_source_evidence"][0]["observed_at"] == (
+            "2026-07-10T00:00:00Z"
+        )
+        assert "src/service.py" not in by_handle["@broad-owner"]["matched_files"]
+        assert by_handle["@cross-module-owner"]["matched_files"] == ["docs/guide.md"]
+        assert (
+            "repository_declared_cross_module_fallback"
+            in by_handle["@cross-module-owner"]["reason_codes"]
+        )
+        assert packet["evidence_summary"]["raw_reviewer_source_input_captured"] is False
+        assert packet["raw_reviewer_source_input_captured"] is False
         assert packet["policy"]["automatic_review_request_allowed"] is True
         assert packet["policy"]["automatic_request_policy"] == (
             "request_top_requestable_when_authorized"
@@ -258,6 +356,8 @@ def main() -> int:
 
         identity_map = repo / "identity-map.json"
         write(identity_map, json.dumps({"Human Confirmed": "@human-confirmed"}))
+        reviewer_sources_path = repo / "reviewer-sources.json"
+        write(reviewer_sources_path, json.dumps(reviewer_sources))
         cli_packet = run_cli(
             [
                 "issue-fix",
@@ -274,11 +374,18 @@ def main() -> int:
                 "Current Author",
                 "--identity-map-json",
                 str(identity_map),
+                "--reviewer-sources-json",
+                str(reviewer_sources_path),
                 "--execute",
             ]
         )
         assert cli_packet["ok"] is True, cli_packet
         assert cli_packet["recommendation_status"] == "candidates_ready"
+        assert cli_packet["reviewer_source_count"] == 1
+        assert any(
+            item.get("reviewer_handle") == "@declared-service-owner"
+            for item in cli_packet["candidates"]
+        )
         assert cli_packet["review_request_performed"] is False
         assert_public_safe(cli_packet)
 

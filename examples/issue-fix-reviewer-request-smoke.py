@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import re
@@ -10,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +23,9 @@ if str(ROOT) not in sys.path:
 from loopx.capabilities.issue_fix.reviewer_request import (  # noqa: E402
     ISSUE_FIX_REVIEWER_REQUEST_SCHEMA_VERSION,
     build_issue_fix_reviewer_request_packet,
+)
+from loopx.capabilities.issue_fix.reviewer_recommendation import (  # noqa: E402
+    ISSUE_FIX_REVIEWER_SOURCES_INPUT_SCHEMA_VERSION,
 )
 
 
@@ -198,9 +203,7 @@ def main() -> int:
         assert ["--add-reviewer", "service-owner"] == runner.calls[1][-2:]
         assert_public_safe(packet)
 
-        already_runner = FakeGitHubRunner(
-            before=metadata(requested=["service-owner"])
-        )
+        already_runner = FakeGitHubRunner(before=metadata(requested=["service-owner"]))
         already = build_issue_fix_reviewer_request_packet(
             repo_path=path,
             url="https://github.com/owner/repo/pull/42",
@@ -277,9 +280,7 @@ def main() -> int:
         assert fallback_retry["comment_fallback_verified"] is True
         assert fallback_retry["reviewer_comment_url"] == fallback_url
         assert fallback_retry["external_writes_performed"] is False
-        assert fallback_retry["transition"]["action_kind"].endswith(
-            "already_covered"
-        )
+        assert fallback_retry["transition"]["action_kind"].endswith("already_covered")
         assert fallback_retry_runner.edits == 0
         assert fallback_retry_runner.comments == 0
         assert_public_safe(fallback_retry)
@@ -298,10 +299,7 @@ def main() -> int:
             runner=comment_blocked_runner,
         )
         assert comment_blocked["ok"] is False
-        assert (
-            comment_blocked["blocker"]
-            == "github_reviewer_comment_fallback_failed"
-        )
+        assert comment_blocked["blocker"] == "github_reviewer_comment_fallback_failed"
         assert comment_blocked["comment_fallback_performed"] is False
         assert comment_blocked["external_writes_performed"] is False
         assert comment_blocked_runner.edits == 1
@@ -340,6 +338,48 @@ def main() -> int:
         assert preview["external_writes_performed"] is False
         assert preview["transition"]["action_kind"] == "issue_fix_request_top_reviewer"
         assert_public_safe(preview)
+
+        reviewer_sources = {
+            "schema_version": ISSUE_FIX_REVIEWER_SOURCES_INPUT_SCHEMA_VERSION,
+            "sources": [
+                {
+                    "source_id": "public-maintainer-map",
+                    "source_kind": "maintainer_map",
+                    "reference": "https://github.com/owner/repo/issues/10",
+                    "trust": "verified",
+                    "freshness": "current",
+                    "observed_at": "2026-07-10T00:00:00Z",
+                    "routes": [
+                        {
+                            "route_id": "map-only-module",
+                            "match_kind": "path_prefix",
+                            "pattern": "src/map_only.py",
+                            "primary_reviewers": ["@map-owner"],
+                            "fallback_reviewers": ["@map-backup"],
+                        }
+                    ],
+                }
+            ],
+        }
+        source_preview = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            changed_files=["src/map_only.py"],
+            base_ref="main",
+            exclude_reviewers=["@fallback-owner"],
+            reviewer_sources_input=reviewer_sources,
+            provider_payload=metadata(),
+        )
+        assert source_preview["ok"] is True, source_preview
+        assert source_preview["selected_reviewers"] == ["@map-owner"]
+        assert source_preview["reviewer_source_count"] == 1
+        assert source_preview["reviewer_source_refs"] == [
+            "https://github.com/owner/repo/issues/10"
+        ]
+        source_candidate = source_preview["recommendation_candidates"][0]
+        assert source_candidate["reviewer_handle"] == "@map-owner"
+        assert "repository_declared_primary_contact" in source_candidate["reason_codes"]
+        assert_public_safe(source_preview)
 
         try:
             build_issue_fix_reviewer_request_packet(
@@ -390,6 +430,8 @@ def main() -> int:
 
         metadata_path = path / "pr-metadata.json"
         write(metadata_path, json.dumps(metadata()))
+        reviewer_sources_path = path / "reviewer-sources.json"
+        write(reviewer_sources_path, json.dumps(reviewer_sources))
         cli = subprocess.run(
             [
                 sys.executable,
@@ -405,6 +447,12 @@ def main() -> int:
                 str(path),
                 "--base-ref",
                 "main",
+                "--changed-file",
+                "src/map_only.py",
+                "--exclude-reviewer",
+                "@fallback-owner",
+                "--reviewer-sources-json",
+                str(reviewer_sources_path),
                 "--metadata-json",
                 str(metadata_path),
             ],
@@ -415,11 +463,21 @@ def main() -> int:
             check=True,
         )
         cli_packet = json.loads(cli.stdout)
-        assert cli_packet["selected_reviewers"] == ["@service-owner"]
+        assert cli_packet["selected_reviewers"] == ["@map-owner"]
+        assert cli_packet["reviewer_source_count"] == 1
         assert cli_packet["external_writes_performed"] is False
         assert_public_safe(cli_packet)
     finally:
-        shutil.rmtree(path)
+        for attempt in range(10):
+            try:
+                shutil.rmtree(path)
+                break
+            except FileNotFoundError:
+                break
+            except OSError as exc:
+                if exc.errno != errno.ENOTEMPTY or attempt == 9:
+                    raise
+                time.sleep(0.05)
 
     print("issue-fix-reviewer-request-smoke: ok")
     return 0

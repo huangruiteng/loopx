@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import fnmatch
 import hashlib
+import ipaddress
 import re
 import subprocess
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
+from urllib.parse import urlsplit
 
 from ...control_plane.runtime.public_safety import public_safe_compact_text
 
@@ -14,6 +17,7 @@ from ...control_plane.runtime.public_safety import public_safe_compact_text
 ISSUE_FIX_REVIEWER_RECOMMENDATION_SCHEMA_VERSION = (
     "issue_fix_reviewer_recommendation_v0"
 )
+ISSUE_FIX_REVIEWER_SOURCES_INPUT_SCHEMA_VERSION = "issue_fix_reviewer_sources_input_v0"
 CODEOWNERS_LOCATIONS = (
     ".github/CODEOWNERS",
     "CODEOWNERS",
@@ -31,6 +35,34 @@ AUTOMATED_HISTORY_IDENTITY_PATTERN = re.compile(
     r"(?:^|[-_.\s])bot(?:$|[-_.\s])|\[bot\]$",
     re.IGNORECASE,
 )
+REVIEWER_SOURCE_KINDS = {"maintainer_map"}
+REVIEWER_SOURCE_TRUST_LEVELS = {"authoritative", "verified", "advisory"}
+REVIEWER_SOURCE_FRESHNESS_STATES = {"current", "stale", "unknown"}
+REVIEWER_SOURCE_MATCH_KINDS = {
+    "path_prefix",
+    "path_glob",
+    "repository_fallback",
+}
+REVIEWER_SOURCE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}$")
+REVIEWER_SOURCE_INPUT_FIELDS = {"schema_version", "sources"}
+REVIEWER_SOURCE_FIELDS = {
+    "source_id",
+    "source_kind",
+    "reference",
+    "trust",
+    "freshness",
+    "observed_at",
+    "routes",
+}
+REVIEWER_SOURCE_ROUTE_FIELDS = {
+    "route_id",
+    "match_kind",
+    "pattern",
+    "primary_reviewers",
+    "fallback_reviewers",
+}
+MAX_REVIEWER_SOURCES = 12
+MAX_REVIEWER_SOURCE_ROUTES = 100
 
 
 def _run_git(repo_path: Path, args: Sequence[str]) -> str:
@@ -103,6 +135,231 @@ def _normalise_resolved_identities(
     if len(resolved) > 50:
         raise ValueError("at most 50 reviewer identities may be resolved per request")
     return resolved
+
+
+def _normalise_source_reference(value: Any, *, field: str) -> str:
+    reference = public_safe_compact_text(value, limit=300)
+    if not reference:
+        raise ValueError(f"{field} must be compact and public-safe")
+    if "://" in reference:
+        parsed = urlsplit(reference)
+        if (
+            parsed.scheme != "https"
+            or not parsed.netloc
+            or parsed.username
+            or parsed.password
+            or parsed.query
+        ):
+            raise ValueError(
+                f"{field} URL must be public https without user info or query"
+            )
+        hostname = (parsed.hostname or "").lower()
+        if hostname == "localhost" or hostname.endswith((".localhost", ".local")):
+            raise ValueError(f"{field} URL must not target a local host")
+        try:
+            address = ipaddress.ip_address(hostname)
+        except ValueError:
+            address = None
+        if address and (
+            address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_reserved
+        ):
+            raise ValueError(f"{field} URL must target a public host")
+        return reference
+    if reference.startswith(("/", "~")) or re.match(r"^[A-Za-z]:[\\/]", reference):
+        raise ValueError(f"{field} must not be an absolute or home-relative path")
+    path = PurePosixPath(reference.replace("\\", "/"))
+    if path.as_posix() == "." or ".." in path.parts:
+        raise ValueError(f"{field} must be a repo-relative public reference")
+    return path.as_posix()
+
+
+def _normalise_source_handle_list(value: Any, *, field: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise ValueError(f"{field} must be a list of GitHub handles")
+    handles: list[str] = []
+    for raw in value:
+        handle = _normalise_reviewer_handle(raw)
+        if not handle:
+            raise ValueError(f"{field} must contain normalized GitHub handles")
+        if handle not in handles:
+            handles.append(handle)
+    if len(handles) > 10:
+        raise ValueError(f"{field} accepts at most 10 reviewer handles")
+    return handles
+
+
+def _normalise_source_observed_at(value: Any, *, field: str) -> str:
+    observed_at = public_safe_compact_text(value, limit=50)
+    if not observed_at:
+        raise ValueError(f"{field} must be a timezone-aware ISO timestamp")
+    try:
+        parsed = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{field} must be a timezone-aware ISO timestamp") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{field} must be a timezone-aware ISO timestamp")
+    return observed_at
+
+
+def _normalise_source_route_pattern(value: Any, *, field: str) -> str:
+    pattern = public_safe_compact_text(value, limit=220).replace("\\", "/")
+    while pattern.startswith("./"):
+        pattern = pattern[2:]
+    if not pattern or pattern.startswith(("/", "~")):
+        raise ValueError(f"{field} must be a repo-relative path pattern")
+    path = PurePosixPath(pattern)
+    if ".." in path.parts:
+        raise ValueError(f"{field} must not traverse outside the repository")
+    return pattern.rstrip("/")
+
+
+def _normalise_reviewer_source_route(raw: Any, *, index: int) -> dict[str, Any]:
+    if not isinstance(raw, Mapping):
+        raise ValueError(f"reviewer source routes[{index}] must be an object")
+    unknown = sorted(set(raw) - REVIEWER_SOURCE_ROUTE_FIELDS)
+    if unknown:
+        raise ValueError(
+            f"reviewer source routes[{index}] has unsupported fields: {unknown}"
+        )
+    route_id = public_safe_compact_text(raw.get("route_id"), limit=120)
+    if not route_id or not REVIEWER_SOURCE_ID_PATTERN.fullmatch(route_id):
+        raise ValueError(f"reviewer source routes[{index}].route_id has invalid shape")
+    match_kind = str(raw.get("match_kind") or "").strip()
+    if match_kind not in REVIEWER_SOURCE_MATCH_KINDS:
+        raise ValueError(
+            f"reviewer source routes[{index}].match_kind must be one of "
+            f"{sorted(REVIEWER_SOURCE_MATCH_KINDS)}"
+        )
+    pattern = None
+    if match_kind != "repository_fallback":
+        pattern = _normalise_source_route_pattern(
+            raw.get("pattern"), field=f"reviewer source routes[{index}].pattern"
+        )
+    elif raw.get("pattern") not in {None, ""}:
+        raise ValueError("repository_fallback routes must not declare a pattern")
+    primary = _normalise_source_handle_list(
+        raw.get("primary_reviewers"),
+        field=f"reviewer source routes[{index}].primary_reviewers",
+    )
+    fallback = _normalise_source_handle_list(
+        raw.get("fallback_reviewers"),
+        field=f"reviewer source routes[{index}].fallback_reviewers",
+    )
+    if not primary and not fallback:
+        raise ValueError(
+            "reviewer source routes require a primary or fallback reviewer"
+        )
+    return {
+        "schema_version": "issue_fix_reviewer_source_route_v0",
+        "route_id": route_id,
+        "match_kind": match_kind,
+        "pattern": pattern,
+        "primary_reviewers": primary,
+        "fallback_reviewers": fallback,
+    }
+
+
+def _normalise_reviewer_sources(
+    value: Mapping[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, Mapping):
+        raise ValueError("reviewer sources input must be an object")
+    if value.get("schema_version") != ISSUE_FIX_REVIEWER_SOURCES_INPUT_SCHEMA_VERSION:
+        raise ValueError(
+            "reviewer sources schema_version must be "
+            "issue_fix_reviewer_sources_input_v0"
+        )
+    unknown = sorted(set(value) - REVIEWER_SOURCE_INPUT_FIELDS)
+    if unknown:
+        raise ValueError(f"reviewer sources input has unsupported fields: {unknown}")
+    raw_sources = value.get("sources") or []
+    if not isinstance(raw_sources, Sequence) or isinstance(raw_sources, (str, bytes)):
+        raise ValueError("reviewer sources must be a list")
+    if len(raw_sources) > MAX_REVIEWER_SOURCES:
+        raise ValueError(
+            f"reviewer sources accepts at most {MAX_REVIEWER_SOURCES} sources"
+        )
+
+    sources: list[dict[str, Any]] = []
+    total_routes = 0
+    for index, raw in enumerate(raw_sources):
+        if not isinstance(raw, Mapping):
+            raise ValueError(f"reviewer sources[{index}] must be an object")
+        unknown = sorted(set(raw) - REVIEWER_SOURCE_FIELDS)
+        if unknown:
+            raise ValueError(
+                f"reviewer sources[{index}] has unsupported fields: {unknown}"
+            )
+        source_id = public_safe_compact_text(raw.get("source_id"), limit=120)
+        if not source_id or not REVIEWER_SOURCE_ID_PATTERN.fullmatch(source_id):
+            raise ValueError(f"reviewer sources[{index}].source_id has invalid shape")
+        source_kind = str(raw.get("source_kind") or "").strip()
+        if source_kind not in REVIEWER_SOURCE_KINDS:
+            raise ValueError(
+                f"reviewer sources[{index}].source_kind must be one of "
+                f"{sorted(REVIEWER_SOURCE_KINDS)}"
+            )
+        trust = str(raw.get("trust") or "").strip()
+        if trust not in REVIEWER_SOURCE_TRUST_LEVELS:
+            raise ValueError(
+                f"reviewer sources[{index}].trust must be one of "
+                f"{sorted(REVIEWER_SOURCE_TRUST_LEVELS)}"
+            )
+        freshness = str(raw.get("freshness") or "unknown").strip()
+        if freshness not in REVIEWER_SOURCE_FRESHNESS_STATES:
+            raise ValueError(
+                f"reviewer sources[{index}].freshness must be one of "
+                f"{sorted(REVIEWER_SOURCE_FRESHNESS_STATES)}"
+            )
+        raw_routes = raw.get("routes") or []
+        if not isinstance(raw_routes, Sequence) or isinstance(raw_routes, (str, bytes)):
+            raise ValueError(f"reviewer sources[{index}].routes must be a list")
+        if not raw_routes:
+            raise ValueError(f"reviewer sources[{index}].routes must not be empty")
+        total_routes += len(raw_routes)
+        if total_routes > MAX_REVIEWER_SOURCE_ROUTES:
+            raise ValueError(
+                f"reviewer sources accepts at most {MAX_REVIEWER_SOURCE_ROUTES} routes"
+            )
+        routes = [
+            _normalise_reviewer_source_route(route, index=route_index)
+            for route_index, route in enumerate(raw_routes)
+        ]
+        route_ids = [route["route_id"] for route in routes]
+        if len(route_ids) != len(set(route_ids)):
+            raise ValueError(
+                f"reviewer sources[{index}] route_id values must be unique"
+            )
+        sources.append(
+            {
+                "schema_version": "issue_fix_reviewer_source_v0",
+                "source_id": source_id,
+                "source_kind": source_kind,
+                "reference": _normalise_source_reference(
+                    raw.get("reference"),
+                    field=f"reviewer sources[{index}].reference",
+                ),
+                "trust": trust,
+                "freshness": freshness,
+                "observed_at": _normalise_source_observed_at(
+                    raw.get("observed_at"),
+                    field=f"reviewer sources[{index}].observed_at",
+                ),
+                "routes": routes,
+                "raw_content_captured": False,
+            }
+        )
+    source_ids = [source["source_id"] for source in sources]
+    if len(source_ids) != len(set(source_ids)):
+        raise ValueError("reviewer source_id values must be unique")
+    return sources
 
 
 def _codeowners_tokens(line: str) -> tuple[str, list[str]] | None:
@@ -205,6 +462,8 @@ def _new_candidate(
         "reason_codes": [],
         "matched_files": [],
         "codeowners_patterns": [],
+        "source_refs": [],
+        "reviewer_source_evidence": [],
         "history_commit_count": 0,
         "most_recent_history_rank": None,
     }
@@ -214,6 +473,154 @@ def _append_unique(row: dict[str, Any], field: str, value: str, *, limit: int = 
     values = row[field]
     if value not in values and len(values) < limit:
         values.append(value)
+
+
+def _reviewer_source_route_matches(route: Mapping[str, Any], path: str) -> bool:
+    match_kind = route.get("match_kind")
+    pattern = str(route.get("pattern") or "")
+    if match_kind == "path_prefix":
+        return path == pattern or path.startswith(f"{pattern}/")
+    if match_kind == "path_glob":
+        return fnmatch.fnmatchcase(path, pattern) or PurePosixPath(path).match(pattern)
+    return False
+
+
+def _reviewer_source_route_specificity(route: Mapping[str, Any]) -> int:
+    pattern = str(route.get("pattern") or "")
+    return len(re.sub(r"[*?\[\]]", "", pattern))
+
+
+def _reviewer_source_routes_for_path(
+    source: Mapping[str, Any], path: str
+) -> list[Mapping[str, Any]]:
+    routes = source.get("routes")
+    routes = routes if isinstance(routes, list) else []
+    scoped = [
+        route
+        for route in routes
+        if isinstance(route, Mapping) and _reviewer_source_route_matches(route, path)
+    ]
+    if scoped:
+        max_specificity = max(
+            _reviewer_source_route_specificity(route) for route in scoped
+        )
+        return [
+            route
+            for route in scoped
+            if _reviewer_source_route_specificity(route) == max_specificity
+        ]
+    return [
+        route
+        for route in routes
+        if isinstance(route, Mapping)
+        and route.get("match_kind") == "repository_fallback"
+    ]
+
+
+def _reviewer_source_score(*, role: str, trust: str, freshness: str) -> int:
+    base = 950 if role == "primary" else 250
+    trust_factor = {
+        "authoritative": 1.0,
+        "verified": 0.9,
+        "advisory": 0.5,
+    }[trust]
+    freshness_factor = {"current": 1.0, "unknown": 0.75, "stale": 0.4}[freshness]
+    return max(1, int(base * trust_factor * freshness_factor))
+
+
+def _append_reviewer_source_evidence(
+    row: dict[str, Any], evidence: Mapping[str, Any]
+) -> None:
+    values = row["reviewer_source_evidence"]
+    identity = (
+        evidence.get("source_id"),
+        evidence.get("route_id"),
+        evidence.get("role"),
+        evidence.get("matched_file"),
+    )
+    if any(
+        (
+            item.get("source_id"),
+            item.get("route_id"),
+            item.get("role"),
+            item.get("matched_file"),
+        )
+        == identity
+        for item in values
+        if isinstance(item, Mapping)
+    ):
+        return
+    if len(values) < 30:
+        values.append(dict(evidence))
+
+
+def _apply_reviewer_sources_for_path(
+    *,
+    candidates: dict[str, dict[str, Any]],
+    sources: Sequence[Mapping[str, Any]],
+    changed_file: str,
+    excluded: set[str],
+) -> None:
+    for source in sources:
+        reference = str(source["reference"])
+        trust = str(source["trust"])
+        freshness = str(source["freshness"])
+        observed_at = str(source["observed_at"])
+        for route in _reviewer_source_routes_for_path(source, changed_file):
+            match_kind = str(route["match_kind"])
+            for role, field in (
+                ("primary", "primary_reviewers"),
+                ("fallback", "fallback_reviewers"),
+            ):
+                for handle in route.get(field) or []:
+                    if handle in excluded:
+                        continue
+                    key = _candidate_key(handle=handle, display_name=handle)
+                    row = candidates.setdefault(
+                        key,
+                        _new_candidate(key=key, handle=handle, display_name=handle),
+                    )
+                    row["score"] += _reviewer_source_score(
+                        role=role,
+                        trust=trust,
+                        freshness=freshness,
+                    )
+                    _append_unique(row, "source_kinds", "repository_maintainer_map")
+                    _append_unique(row, "source_refs", reference)
+                    _append_unique(row, "matched_files", changed_file)
+                    _append_unique(
+                        row,
+                        "reason_codes",
+                        (
+                            "repository_declared_primary_contact"
+                            if role == "primary"
+                            else "repository_declared_fallback_contact"
+                        ),
+                    )
+                    if match_kind == "repository_fallback":
+                        _append_unique(
+                            row,
+                            "reason_codes",
+                            "repository_declared_cross_module_fallback",
+                        )
+                    _append_reviewer_source_evidence(
+                        row,
+                        {
+                            "schema_version": "issue_fix_reviewer_source_evidence_v0",
+                            "source_id": source["source_id"],
+                            "source_kind": source["source_kind"],
+                            "reference": reference,
+                            "trust": trust,
+                            "freshness": freshness,
+                            "observed_at": observed_at,
+                            "route_id": route["route_id"],
+                            "match_kind": match_kind,
+                            "pattern": route.get("pattern"),
+                            "role": role,
+                            "matched_file": changed_file,
+                            "raw_content_captured": False,
+                        },
+                    )
 
 
 def _derive_changed_files(repo_path: Path, base_ref: str) -> list[str]:
@@ -253,9 +660,16 @@ def _collect_history(
 def _confidence(candidate: Mapping[str, Any]) -> str:
     sources = set(candidate.get("source_kinds") or [])
     coverage = len(candidate.get("matched_files") or [])
-    if "codeowners" in sources and "git_history" in sources:
+    if "git_history" in sources and sources.intersection(
+        {"codeowners", "repository_maintainer_map"}
+    ):
         return "high"
-    if "codeowners" in sources or coverage >= 2:
+    if (
+        "codeowners" in sources
+        or "repository_declared_primary_contact"
+        in set(candidate.get("reason_codes") or [])
+        or coverage >= 2
+    ):
         return "medium"
     return "low"
 
@@ -279,6 +693,7 @@ def build_issue_fix_reviewer_recommendation_packet(
     exclude_reviewers: Sequence[str] = (),
     exclude_author_names: Sequence[str] = (),
     resolved_identities: Mapping[str, Any] | None = None,
+    reviewer_sources_input: Mapping[str, Any] | None = None,
     execute: bool = False,
     generated_at: str | None = "2026-07-10T00:00:00Z",
 ) -> dict[str, Any]:
@@ -305,6 +720,10 @@ def build_issue_fix_reviewer_recommendation_packet(
     }
     excluded_author_names.update(handle.lstrip("@").lower() for handle in excluded)
     resolved = _normalise_resolved_identities(resolved_identities)
+    reviewer_sources = _normalise_reviewer_sources(reviewer_sources_input)
+    reviewer_source_refs = list(
+        dict.fromkeys(str(source["reference"]) for source in reviewer_sources)
+    )
 
     packet: dict[str, Any] = {
         "ok": True,
@@ -320,19 +739,26 @@ def build_issue_fix_reviewer_recommendation_packet(
         "excluded_reviewer_handles": sorted(excluded),
         "excluded_author_name_count": len(excluded_author_names),
         "resolved_identity_count": len(resolved),
+        "reviewer_source_count": len(reviewer_sources),
+        "reviewer_source_refs": reviewer_source_refs,
         "evidence_summary": {
             "schema_version": "issue_fix_reviewer_evidence_summary_v0",
             "authority_order": [
                 "repository_codeowners",
+                "repository_declared_primary_contact",
                 "changed_path_git_history",
                 "changed_module_git_history_fallback",
+                "repository_declared_fallback_contact",
             ],
             "codeowners_source": None,
             "codeowners_pattern_support": "common_subset",
             "history_limit_per_file": history_limit,
             "history_revision": safe_base_ref,
             "module_history_fallback": True,
+            "reviewer_source_count": len(reviewer_sources),
+            "reviewer_source_refs": reviewer_source_refs,
             "automated_history_identities_excluded": True,
+            "raw_reviewer_source_input_captured": False,
             "raw_codeowners_captured": False,
             "raw_git_output_captured": False,
             "commit_emails_captured": False,
@@ -360,6 +786,7 @@ def build_issue_fix_reviewer_recommendation_packet(
         "local_paths_captured": False,
         "raw_git_output_captured": False,
         "commit_emails_captured": False,
+        "raw_reviewer_source_input_captured": False,
     }
     if not execute:
         packet["next_safe_action"] = (
@@ -394,6 +821,13 @@ def build_issue_fix_reviewer_recommendation_packet(
             _append_unique(row, "matched_files", changed_file)
             if pattern:
                 _append_unique(row, "codeowners_patterns", pattern)
+
+        _apply_reviewer_sources_for_path(
+            candidates=candidates,
+            sources=reviewer_sources,
+            changed_file=changed_file,
+            excluded=excluded,
+        )
 
         history_rows = _collect_history(
             path,
@@ -509,6 +943,7 @@ def validate_issue_fix_reviewer_recommendation_packet(
         "local_paths_captured",
         "raw_git_output_captured",
         "commit_emails_captured",
+        "raw_reviewer_source_input_captured",
     ):
         if packet.get(key) is not False:
             errors.append(f"{key} must be false")
@@ -525,6 +960,18 @@ def validate_issue_fix_reviewer_recommendation_packet(
         except ValueError:
             errors.append("changed_files must contain only repo-relative paths")
             break
+    reviewer_source_refs = packet.get("reviewer_source_refs")
+    if not isinstance(reviewer_source_refs, list):
+        errors.append("reviewer_source_refs must be a list")
+        reviewer_source_refs = []
+    for reference in reviewer_source_refs:
+        try:
+            _normalise_source_reference(reference, field="reviewer_source_refs")
+        except ValueError:
+            errors.append("reviewer_source_refs must contain public-safe references")
+            break
+    if not isinstance(packet.get("reviewer_source_count"), int):
+        errors.append("reviewer_source_count must be an integer")
     candidates = packet.get("candidates")
     if not isinstance(candidates, list):
         errors.append("candidates must be a list")
@@ -538,6 +985,29 @@ def validate_issue_fix_reviewer_recommendation_packet(
             errors.append("reviewer_handle must be a normalized GitHub handle")
         if candidate.get("requestable") is not bool(handle):
             errors.append("requestable must reflect reviewer_handle availability")
+        source_refs = candidate.get("source_refs")
+        if not isinstance(source_refs, list):
+            errors.append("candidate source_refs must be a list")
+        evidence = candidate.get("reviewer_source_evidence")
+        if not isinstance(evidence, list):
+            errors.append("candidate reviewer_source_evidence must be a list")
+            evidence = []
+        for item in evidence:
+            if not isinstance(item, Mapping):
+                errors.append("reviewer source evidence must be an object")
+                continue
+            if item.get("raw_content_captured") is not False:
+                errors.append("reviewer source evidence must not capture raw content")
+            try:
+                _normalise_source_reference(
+                    item.get("reference"), field="reviewer source evidence reference"
+                )
+                _normalise_source_observed_at(
+                    item.get("observed_at"),
+                    field="reviewer source evidence observed_at",
+                )
+            except ValueError:
+                errors.append("reviewer source evidence must have safe provenance")
     policy = packet.get("policy")
     if not isinstance(policy, Mapping):
         errors.append("policy is required")
@@ -580,7 +1050,8 @@ def render_issue_fix_reviewer_recommendation_markdown(
             lines.append(
                 f"{candidate.get('rank')}. `{identity}` score=`{candidate.get('score')}` "
                 f"confidence=`{candidate.get('confidence')}` "
-                f"sources=`{','.join(candidate.get('source_kinds') or [])}`"
+                f"sources=`{','.join(candidate.get('source_kinds') or [])}` "
+                f"refs=`{','.join(candidate.get('source_refs') or [])}`"
             )
     lines.extend(["", f"Next: {payload.get('next_safe_action')}"])
     return "\n".join(lines)

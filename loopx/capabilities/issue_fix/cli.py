@@ -490,6 +490,14 @@ def register_issue_fix_commands(
         ),
     )
     reviewer_parser.add_argument(
+        "--reviewer-sources-json",
+        help=(
+            "Optional public-safe issue_fix_reviewer_sources_input_v0 JSON with "
+            "repository-declared path routes, primary/fallback handles, trust, "
+            "freshness, observation time, and source references."
+        ),
+    )
+    reviewer_parser.add_argument(
         "--execute",
         action="store_true",
         help=(
@@ -547,6 +555,14 @@ def register_issue_fix_commands(
         help=(
             "Optional public-safe JSON object mapping human-verified git display "
             "names to GitHub handles."
+        ),
+    )
+    reviewer_request_parser.add_argument(
+        "--reviewer-sources-json",
+        help=(
+            "Optional public-safe issue_fix_reviewer_sources_input_v0 JSON; "
+            "the selected candidate still requires live author exclusion and "
+            "external-write authority. Source freshness must include observation time."
         ),
     )
     reviewer_request_parser.add_argument(
@@ -898,6 +914,11 @@ def handle_issue_fix_command(
                     if args.identity_map_json
                     else None
                 ),
+                reviewer_sources_input=(
+                    _load_json_object(args.reviewer_sources_json)
+                    if args.reviewer_sources_json
+                    else None
+                ),
                 execute=args.execute,
                 generated_at=args.generated_at,
             )
@@ -916,6 +937,11 @@ def handle_issue_fix_command(
                 resolved_identities=(
                     _load_json_object(args.identity_map_json)
                     if args.identity_map_json
+                    else None
+                ),
+                reviewer_sources_input=(
+                    _load_json_object(args.reviewer_sources_json)
+                    if args.reviewer_sources_json
                     else None
                 ),
                 provider_payload=(
