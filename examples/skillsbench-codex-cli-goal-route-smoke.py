@@ -427,6 +427,11 @@ def _assert_cli_goal_tui_ready_wait_rejects_startup_artifacts() -> None:
     )
     assert goal_tui.codex_cli_tui_input_prompt_visible(active_turn)
     assert goal_tui.codex_cli_tui_turn_active(active_turn)
+    goal_status_only = (
+        "› Explain this codebase\n"
+        "gpt-5.5 xhigh · workspace… Pursuing goal (15m)\n"
+    )
+    assert goal_tui.codex_cli_tui_turn_active(goal_status_only)
     assert not goal_tui.codex_cli_tui_turn_active("› Explain this codebase\n")
 
 
