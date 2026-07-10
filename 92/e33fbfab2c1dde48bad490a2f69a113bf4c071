@@ -1,0 +1,23 @@
+loopx/benchmark_adapters/skillsbench_codex_runtime.py
+  s_9a5a2bd944fdcb::t_e88cb6811d4e04 3,22-23,29-31,174-178,187-195,226-260
+tests/test_skillsbench_remote_codex_preflight.py
+  s_9a5a2bd944fdcb::t_27d527eed6a10f 18-23,28,43-58,65,90-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "92e33fbfab2c1dde48bad490a2f69a113bf4c071",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
