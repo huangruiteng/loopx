@@ -9,6 +9,9 @@ from typing import Any
 
 from ...control_plane.runtime.public_safety import public_safe_compact_text
 from .metadata_preview import normalise_github_issue_reference
+from .reviewer_notification import (
+    build_issue_fix_reviewer_notification_sinks_result,
+)
 from .reviewer_recommendation import build_issue_fix_reviewer_recommendation_packet
 
 
@@ -268,6 +271,7 @@ def build_issue_fix_reviewer_request_packet(
     exclude_author_names: Sequence[str] = (),
     resolved_identities: Mapping[str, Any] | None = None,
     reviewer_sources_input: Mapping[str, Any] | None = None,
+    notification_sinks_input: Mapping[str, Any] | None = None,
     provider_payload: Mapping[str, Any] | None = None,
     execute: bool = False,
     generated_at: str | None = "2026-07-10T00:00:00Z",
@@ -665,6 +669,46 @@ def build_issue_fix_reviewer_request_packet(
                     material_change=True,
                 )
 
+    packet["secondary_notification_configured"] = bool(notification_sinks_input)
+    packet["secondary_notification_status"] = "not_configured"
+    packet["secondary_notification_verified"] = False
+    if notification_sinks_input:
+        notification_targets = (
+            list(packet.get("notified_reviewers") or [])
+            if execute
+            else list(packet.get("selected_reviewers") or [])
+        )
+        canonical_ready = bool(
+            not execute or packet.get("reviewer_notification_verified") is True
+        )
+        if canonical_ready and notification_targets:
+            secondary = build_issue_fix_reviewer_notification_sinks_result(
+                repo=repo,
+                pr_number=number,
+                pr_url=str(reference["permalink"]),
+                author_handle=identities["author_handle"],
+                reviewer_handles=notification_targets,
+                sinks_input=notification_sinks_input,
+                execute=execute,
+                runner=runner,
+            )
+            packet["secondary_notifications"] = secondary
+            packet["secondary_notification_status"] = secondary.get("status")
+            packet["secondary_notification_blocker"] = secondary.get("blocker")
+            packet["secondary_notification_verified"] = bool(
+                secondary.get("notification_verified")
+            )
+            packet["external_writes_performed"] = bool(
+                packet["external_writes_performed"]
+                or secondary.get("external_writes_performed")
+            )
+        else:
+            packet["secondary_notification_status"] = (
+                "skipped_canonical_notification_unverified"
+                if execute
+                else "skipped_reviewer_unavailable"
+            )
+
     validation = validate_issue_fix_reviewer_request_packet(packet)
     packet["ok"] = bool(packet["ok"] and validation["ok"])
     packet["validation"] = validation
@@ -752,6 +796,16 @@ def validate_issue_fix_reviewer_request_packet(
         errors.append(
             "reviewer_notification_verified must reflect formal or comment verification"
         )
+    secondary = packet.get("secondary_notifications")
+    if secondary is not None:
+        if not isinstance(secondary, Mapping):
+            errors.append("secondary_notifications must be an object")
+        else:
+            secondary_validation = secondary.get("validation")
+            if not isinstance(secondary_validation, Mapping) or (
+                secondary_validation.get("ok") is not True
+            ):
+                errors.append("secondary notification contract validation must pass")
     return {
         "ok": not errors,
         "schema_version": "issue_fix_reviewer_request_validation_v0",
@@ -777,6 +831,12 @@ def render_issue_fix_reviewer_request_markdown(
             "- reviewer_notification_verified: "
             f"{payload.get('reviewer_notification_verified')}",
             f"- reviewer_comment_url: {payload.get('reviewer_comment_url')}",
+            "- secondary_notification_status: "
+            f"{payload.get('secondary_notification_status')}",
+            "- secondary_notification_verified: "
+            f"{payload.get('secondary_notification_verified')}",
+            "- secondary_notification_blocker: "
+            f"{payload.get('secondary_notification_blocker')}",
             f"- transition: {(payload.get('transition') or {}).get('decision')}",
             f"- next: {(payload.get('transition') or {}).get('reason')}",
         ]

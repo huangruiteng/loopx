@@ -46,9 +46,9 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "write_boundary": "approved local repo read only; no external review request",
             },
             {
-                "command": "loopx issue-fix reviewer-request --url <github-pr-url> --repo-path <repo> --base-ref <base-ref> --execute --format json",
-                "purpose": "Under external-review-request authority, exclude the live PR author, notify the top requestable reviewer, and verify the result.",
-                "write_boundary": "one formal GitHub review request, or one reviewer-tagging comment only after confirmed permission denial; no arbitrary comment, push, merge, or publish",
+                "command": "loopx issue-fix reviewer-request --url <github-pr-url> --repo-path <repo> --base-ref <base-ref> [--notification-sinks-json <local-private.json>] --execute --format json",
+                "purpose": "Under reviewer-notification authority, exclude the live PR author, establish canonical GitHub coverage, and optionally deliver the same reviewer through verified project-dedicated sinks.",
+                "write_boundary": "one formal GitHub review request, or one reviewer-tagging comment only after confirmed permission denial; optional configured secondary sends consume local-private identity/destination data without copying it; no arbitrary comment, push, merge, or publish",
             },
             {
                 "command": "loopx issue-fix pr-lifecycle --url <github-pr-url> --goal-id <goal-id> --format json",
@@ -128,6 +128,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "doc": "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-request-v0.md",
             },
             {
+                "schema_version": "issue_fix_reviewer_notification_sinks_result_v0",
+                "module": "loopx.capabilities.issue_fix.reviewer_notification",
+                "doc": "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-notification-sinks-v0.md",
+            },
+            {
                 "schema_version": "issue_fix_outcome_projection_v0",
                 "module": "loopx.capabilities.issue_fix.outcome_projection",
                 "doc": "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
@@ -156,6 +161,7 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "python3 examples/issue-fix-outcome-projection-smoke.py",
             "python3 examples/issue-fix-reviewer-recommendation-smoke.py",
             "python3 examples/issue-fix-reviewer-request-smoke.py",
+            "python3 examples/issue-fix-reviewer-notification-sink-smoke.py",
             "python3 examples/content-ops-issue-fix-metadata-preview-smoke.py",
             "python3 examples/content-ops-issue-fix-intake-smoke.py",
             "python3 examples/issue-fix-acceptance-loop-smoke.py",
@@ -166,6 +172,7 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
             "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-recommendation-v0.md",
             "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-request-v0.md",
+            "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-notification-sinks-v0.md",
             "docs/capabilities/issue-fix/protocols/issue-fix-acceptance-loop-v0.md",
             "docs/reference/protocols/content-ops-surface-v0.md",
             "docs/reference/protocols/issue-fix-acceptance-loop-v0.md",
@@ -174,6 +181,7 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "GitHub issue body, comments, timeline, and raw provider payloads are gated and not copied.",
             "Caller repo mode reads and writes only the explicitly approved local git repo.",
             "Arbitrary external comments, PR creation, merge, publish, and destructive git remain separately gated; reviewer-request may use one reviewer-tagging comment only as a verified permission-denial fallback under the same narrow authority.",
+            "Secondary reviewer sinks require an explicit project-dedicated identity and local-private destination/member mapping; no credential, raw roster, provider response, or private identifier enters public state.",
         ],
         "next_real_step": (
             "Exercise route selection and continuation on a public issue-fix pilot, "

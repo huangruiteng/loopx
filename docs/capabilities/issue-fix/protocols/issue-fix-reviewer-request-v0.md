@@ -23,6 +23,13 @@ The default strategy is `request_top_requestable_when_authorized`:
    comment's reviewer marker and public URL to be visible;
 7. continue PR lifecycle monitoring only after that verification.
 
+An optional `--notification-sinks-json` may then deliver the same verified
+reviewer through project-dedicated secondary channels. Secondary delivery is
+separate evidence: it never replaces GitHub review state, never reranks the
+reviewer, and cannot erase a successful canonical request when its own setup is
+blocked. See
+[issue_fix_reviewer_notification_sinks_v0](issue-fix-reviewer-notification-sinks-v0.md).
+
 The default maximum is one reviewer. Existing requested or completed review
 coverage and a verified fallback notification count toward that maximum, so
 repeated execution is idempotent and does not keep adding people or duplicate
@@ -57,6 +64,7 @@ loopx issue-fix reviewer-request \
   --base-ref origin/main \
   --identity-map-json verified-identities.json \
   --reviewer-sources-json reviewer-sources.json \
+  --notification-sinks-json local-private-notification-sinks.json \
   --execute \
   --format json
 ```
@@ -99,6 +107,8 @@ The packet records:
 - the recommendation status, public-safe evidence candidates, and reviewer
   source references;
 - one structured transition.
+- optional secondary-sink status, verification, and hashed receipts without
+  private destination, member, or bot-profile fields.
 
 Successful verified requests emit `issue_fix_reviewer_request_verified` with
 `monitor_continuation`. Confirmed permission denial followed by a verified

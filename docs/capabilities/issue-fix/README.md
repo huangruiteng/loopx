@@ -4,7 +4,8 @@
 [Workflow contract](protocols/issue-fix-workflow-contract-v0.md) ·
 [Acceptance loop](protocols/issue-fix-acceptance-loop-v0.md) ·
 [Reviewer recommendation](protocols/issue-fix-reviewer-recommendation-v0.md) ·
-[Reviewer request](protocols/issue-fix-reviewer-request-v0.md)
+[Reviewer request](protocols/issue-fix-reviewer-request-v0.md) ·
+[Reviewer notification sinks](protocols/issue-fix-reviewer-notification-sinks-v0.md)
 
 Issue-fix is LoopX's product path for turning a public repository issue into a
 small, validated, reviewable pull request and then keeping that PR moving until
@@ -179,6 +180,7 @@ loopx issue-fix reviewer-request \
   --repo-path /path/to/approved/repo \
   --base-ref origin/main \
   --reviewer-sources-json reviewer-sources.json \
+  --notification-sinks-json local-private-notification-sinks.json \
   --execute \
   --format json
 ```
@@ -214,6 +216,14 @@ When a human confirms that an unresolved git display name belongs to a specific
 GitHub account, `--identity-map-json` records that compact mapping as verified
 identity evidence and reranks the same repository-native contribution evidence.
 
+`--notification-sinks-json` optionally adds a secondary notification after
+canonical GitHub coverage is verified. The first adapter uses an explicitly
+named, project-dedicated Lark/Feishu bot profile to mention the same reviewer in
+an approved group and read the message back. It rejects default/shared bot
+identities, never selects a different reviewer, and never copies the local bot
+profile, destination, member mapping, or raw provider response into public
+state. A stable hashed receipt prevents duplicate sends across retries.
+
 `--reviewer-sources-json` is the bridge for repository-specific public routing
 knowledge. The host reads an approved public source, such as a maintainer-map
 issue or repository document, and supplies only stable source id, public URL,
@@ -228,7 +238,10 @@ or review authority. See the [reviewer recommendation
 contract](protocols/issue-fix-reviewer-recommendation-v0.md) for scoring,
 identity, and future-signal details, and the [reviewer request
 contract](protocols/issue-fix-reviewer-request-v0.md) for the external-write,
-idempotency, and verification rules.
+idempotency, and verification rules. Secondary delivery, dedicated-bot
+isolation, local-private identity mapping, and readback are defined by the
+[reviewer notification sink
+contract](protocols/issue-fix-reviewer-notification-sinks-v0.md).
 
 ### 6. PR publication and public-write boundary
 
@@ -611,6 +624,7 @@ loopx issue-fix outcome \
 python3 examples/issue-fix-capability-guide-smoke.py
 python3 examples/issue-fix-reviewer-recommendation-smoke.py
 python3 examples/issue-fix-reviewer-request-smoke.py
+python3 examples/issue-fix-reviewer-notification-sink-smoke.py
 python3 examples/issue-fix-workflow-plan-smoke.py
 python3 examples/issue-fix-workflow-contract-smoke.py
 python3 examples/issue-fix-repository-context-smoke.py

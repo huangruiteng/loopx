@@ -573,6 +573,14 @@ def register_issue_fix_commands(
         ),
     )
     reviewer_request_parser.add_argument(
+        "--notification-sinks-json",
+        help=(
+            "Optional local-private issue_fix_reviewer_notification_sinks_input_v0 "
+            "JSON. Destination, bot profile, and member IDs are consumed locally "
+            "and never copied into the public result."
+        ),
+    )
+    reviewer_request_parser.add_argument(
         "--execute",
         action="store_true",
         help=(
@@ -942,6 +950,11 @@ def handle_issue_fix_command(
                 reviewer_sources_input=(
                     _load_json_object(args.reviewer_sources_json)
                     if args.reviewer_sources_json
+                    else None
+                ),
+                notification_sinks_input=(
+                    _load_json_object(args.notification_sinks_json)
+                    if args.notification_sinks_json
                     else None
                 ),
                 provider_payload=(

@@ -21,6 +21,10 @@ REVIEWER_REQUEST_PROTOCOL = (
     ROOT
     / "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-request-v0.md"
 )
+REVIEWER_NOTIFICATION_SINK_PROTOCOL = (
+    ROOT
+    / "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-notification-sinks-v0.md"
+)
 
 PRIVATE_PATTERNS = (
     re.compile(r"/Users/[A-Za-z0-9._-]+/"),
@@ -50,6 +54,9 @@ def main() -> int:
     chinese_readme = CHINESE_README.read_text(encoding="utf-8")
     reviewer_protocol = REVIEWER_PROTOCOL.read_text(encoding="utf-8")
     reviewer_request_protocol = REVIEWER_REQUEST_PROTOCOL.read_text(encoding="utf-8")
+    reviewer_notification_sink_protocol = REVIEWER_NOTIFICATION_SINK_PROTOCOL.read_text(
+        encoding="utf-8"
+    )
 
     assert english.startswith("# Issue-Fix Capability")
     assert chinese.startswith("# Issue-Fix 能力")
@@ -75,6 +82,8 @@ def main() -> int:
         "https://github.com/huangruiteng/loopx/pull/1784",
         "python3 examples/issue-fix-reviewer-recommendation-smoke.py",
         "python3 examples/issue-fix-reviewer-request-smoke.py",
+        "--notification-sinks-json",
+        "python3 examples/issue-fix-reviewer-notification-sink-smoke.py",
     )
     assert_markers(english, shared_markers)
     assert_markers(chinese, shared_markers)
@@ -98,6 +107,7 @@ def main() -> int:
             "structured no-follow-up",
             "permission-only comment fallback",
             "avoid duplicates",
+            "project-dedicated",
         ),
     )
     assert_markers(
@@ -120,6 +130,7 @@ def main() -> int:
             "结构化 no-follow-up",
             "权限不足 comment fallback",
             "不会重复 comment",
+            "项目专属",
         ),
     )
     assert reviewer_protocol.startswith("# issue_fix_reviewer_recommendation_v0")
@@ -149,6 +160,19 @@ def main() -> int:
             "python3 examples/issue-fix-reviewer-request-smoke.py",
         ),
     )
+    assert reviewer_notification_sink_protocol.startswith(
+        "# issue_fix_reviewer_notification_sinks_v0"
+    )
+    assert_markers(
+        reviewer_notification_sink_protocol,
+        (
+            "project-dedicated bot profile",
+            "local capability packet",
+            "lark_bot_group_access_required",
+            "private_destination_captured",
+            "python3 examples/issue-fix-reviewer-notification-sink-smoke.py",
+        ),
+    )
 
     for text in (
         english,
@@ -158,6 +182,7 @@ def main() -> int:
         chinese_readme,
         reviewer_protocol,
         reviewer_request_protocol,
+        reviewer_notification_sink_protocol,
     ):
         assert_public_safe(text)
 

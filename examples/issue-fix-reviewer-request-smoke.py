@@ -34,6 +34,9 @@ PRIVATE_PATTERNS = (
     re.compile(r"/private/"),
     re.compile(r"/tmp/"),
     re.compile(r"[A-Za-z]:\\\\Users\\\\"),
+    re.compile(r"oc_[A-Za-z0-9_-]+"),
+    re.compile(r"ou_[A-Za-z0-9_-]+"),
+    re.compile(r"private-lark-profile"),
 )
 
 
@@ -145,6 +148,66 @@ class FakeGitHubRunner:
         raise AssertionError(command)
 
 
+class FakeCombinedRunner:
+    def __init__(self, github: FakeGitHubRunner) -> None:
+        self.github = github
+        self.lark_calls: list[list[str]] = []
+
+    def __call__(self, args: list[str]) -> dict[str, Any]:
+        command = list(args)
+        if command[0] == "gh":
+            return self.github(command)
+        if command[-4:] == ["auth", "status", "--verify", "--json"]:
+            self.lark_calls.append(command)
+            return {
+                "returncode": 0,
+                "stdout": json.dumps(
+                    {
+                        "identities": {
+                            "bot": {
+                                "available": True,
+                                "verified": True,
+                                "appName": "Project Review Bot",
+                            }
+                        }
+                    }
+                ),
+                "stderr": "",
+            }
+        if "+messages-send" in command:
+            self.lark_calls.append(command)
+            return {
+                "returncode": 0,
+                "stdout": json.dumps({"data": {"message_id": "om_fixture"}}),
+                "stderr": "",
+            }
+        if "+messages-mget" in command:
+            self.lark_calls.append(command)
+            send_call = next(
+                call for call in self.lark_calls if "+messages-send" in call
+            )
+            content = send_call[send_call.index("--content") + 1]
+            marker = re.search(
+                r"loopx-reviewer-notification:[a-f0-9]{16}", content
+            )
+            assert marker, content
+            return {
+                "returncode": 0,
+                "stdout": json.dumps(
+                    {
+                        "items": [
+                            {
+                                "message_id": "om_fixture",
+                                "body": {"content": marker.group(0)},
+                            }
+                        ]
+                    }
+                ),
+                "stderr": "",
+            }
+        raise AssertionError(command)
+
+
 def assert_public_safe(packet: dict[str, Any]) -> None:
     text = json.dumps(packet, ensure_ascii=False, sort_keys=True)
     for pattern in PRIVATE_PATTERNS:
@@ -202,6 +265,48 @@ def main() -> int:
         assert runner.edits == 1
         assert ["--add-reviewer", "service-owner"] == runner.calls[1][-2:]
         assert_public_safe(packet)
+
+        sinks_input = {
+            "schema_version": "issue_fix_reviewer_notification_sinks_input_v0",
+            "receipts": [],
+            "sinks": [
+                {
+                    "sink_kind": "lark_chat",
+                    "sink_instance_key": "fixture-review-lane",
+                    "identity_scope": "project_dedicated",
+                    "bot_profile": "private-lark-profile",
+                    "bot_display_name": "Project Review Bot",
+                    "destination_id": "oc_private_destination",
+                    "reviewer_identities": {
+                        "@service-owner": {
+                            "member_id": "ou_private_member",
+                            "display_name": "Service Owner",
+                        }
+                    },
+                }
+            ],
+        }
+        combined = FakeCombinedRunner(
+            FakeGitHubRunner(
+                before=metadata(),
+                after=metadata(requested=["service-owner"]),
+            )
+        )
+        with_secondary = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            notification_sinks_input=sinks_input,
+            execute=True,
+            runner=combined,
+        )
+        assert with_secondary["ok"] is True, with_secondary
+        assert with_secondary["reviewer_notification_verified"] is True
+        assert with_secondary["secondary_notification_status"] == "sent_verified"
+        assert with_secondary["secondary_notification_verified"] is True
+        assert with_secondary["secondary_notifications"]["receipts"]
+        assert len(combined.lark_calls) == 3
+        assert_public_safe(with_secondary)
 
         already_runner = FakeGitHubRunner(before=metadata(requested=["service-owner"]))
         already = build_issue_fix_reviewer_request_packet(
@@ -432,6 +537,15 @@ def main() -> int:
         write(metadata_path, json.dumps(metadata()))
         reviewer_sources_path = path / "reviewer-sources.json"
         write(reviewer_sources_path, json.dumps(reviewer_sources))
+        cli_sinks_input = json.loads(json.dumps(sinks_input))
+        cli_sinks_input["sinks"][0]["reviewer_identities"] = {
+            "@map-owner": {
+                "member_id": "ou_private_member",
+                "display_name": "Map Owner",
+            }
+        }
+        notification_sinks_path = path / "notification-sinks.json"
+        write(notification_sinks_path, json.dumps(cli_sinks_input))
         cli = subprocess.run(
             [
                 sys.executable,
@@ -455,6 +569,8 @@ def main() -> int:
                 str(reviewer_sources_path),
                 "--metadata-json",
                 str(metadata_path),
+                "--notification-sinks-json",
+                str(notification_sinks_path),
             ],
             cwd=ROOT,
             text=True,
@@ -466,6 +582,10 @@ def main() -> int:
         assert cli_packet["selected_reviewers"] == ["@map-owner"]
         assert cli_packet["reviewer_source_count"] == 1
         assert cli_packet["external_writes_performed"] is False
+        assert cli_packet["secondary_notification_status"] == "preview_ready"
+        assert cli_packet["secondary_notifications"]["results"][0][
+            "private_destination_captured"
+        ] is False
         assert_public_safe(cli_packet)
     finally:
         for attempt in range(10):
