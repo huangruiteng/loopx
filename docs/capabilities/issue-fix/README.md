@@ -619,6 +619,15 @@ even before a PR exists; a PR enriches that row only when its lifecycle
 observation carries the matching `repo` and explicit `issue_ref`. This automatic
 closeout projection adds no outcome ledger or second state machine.
 
+Supplying `--delivery-evidence-json` alone is a read-only preview. Add
+`--write-delivery-evidence` after focused validation to store its validated,
+public-safe compact form inside the existing feasibility row. Later default
+outcome and Kanban syncs then retain the validation, changed files, commit, output
+links, and risks instead of falling back to the feasibility declaration. The
+write flag rejects an ad hoc `--feasibility-json` source so the destination is
+always the stable goal-scoped row.
+Repeating the same compact evidence is an unchanged, no-write operation.
+
 The Lark adapter renders this as a first-class issue dimension rather than
 only flattening the packet into `Evidence`. Outcome rows set
 `Work Item Type=Issue Fix` and populate `Repository`, `Issue`, `Pull Request`,
@@ -698,6 +707,7 @@ loopx issue-fix outcome \
   --issue-ref issues_123 \
   --pr-ref pull_456 \
   --delivery-evidence-json delivery-evidence.json \
+  --write-delivery-evidence \
   --agent-id codex-issue-fix \
   --format json
 ```

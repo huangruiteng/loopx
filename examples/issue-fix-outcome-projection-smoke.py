@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -228,7 +229,111 @@ def assert_default_goal_sync_composes_outcomes() -> None:
         }
         assert collection_by_issue["issues_42"]["pull_request"]["number"] == 77
         assert collection_by_issue["issues_43"]["pull_request"] is None
+        assert collection_by_issue["issues_42"]["validation"]["status"] == "declared"
         assert collection["source_contract"]["creates_parallel_state_machine"] is False
+
+        delivery_path = project / "delivery-evidence.json"
+        delivery_path.write_text(
+            json.dumps(delivery_evidence(), ensure_ascii=False),
+            encoding="utf-8",
+        )
+        outcome_command = [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--registry",
+            str(registry),
+            "--format",
+            "json",
+            "issue-fix",
+            "outcome",
+            "--goal-id",
+            goal_id,
+            "--project",
+            str(project),
+            "--repo",
+            "public-fixture/widgets",
+            "--issue-ref",
+            "issues_42",
+            "--pr-ref",
+            "pull_77",
+            "--delivery-evidence-json",
+            str(delivery_path),
+        ]
+        ledger_before_preview = feasibility_ledger.read_text(encoding="utf-8")
+        preview = subprocess.run(
+            outcome_command,
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        preview_packet = json.loads(preview.stdout)
+        assert preview_packet["issue_fix_outcomes"][0]["validation"]["status"] == "passed"
+        assert preview_packet["source_contract"]["writes_source_state"] is False
+        assert feasibility_ledger.read_text(encoding="utf-8") == ledger_before_preview
+
+        persisted = subprocess.run(
+            [*outcome_command, "--write-delivery-evidence"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        persisted_packet = json.loads(persisted.stdout)
+        assert persisted_packet["source_contract"]["writes_source_state"] is True
+        assert persisted_packet["domain_state_write"]["write_performed"] is True
+        feasibility_rows = [
+            json.loads(line)
+            for line in feasibility_ledger.read_text(encoding="utf-8").splitlines()
+        ]
+        assert len(feasibility_rows) == 2, feasibility_rows
+        stored = next(
+            row
+            for row in feasibility_rows
+            if row["observation"]["issue_ref"] == "issues_42"
+        )
+        assert stored["delivery_evidence"]["validation_status"] == "passed"
+        assert set(stored["delivery_evidence"]) == {
+            "schema_version",
+            "outcome_status",
+            "validation_status",
+            "validation_label",
+            "changed_files",
+            "commit_ref",
+            "outputs",
+            "risks",
+            "recorded_at",
+        }
+        assert not list(feasibility_ledger.parent.glob("*outcome*"))
+
+        ledger_after_write = feasibility_ledger.read_text(encoding="utf-8")
+        repeated = subprocess.run(
+            [*outcome_command, "--write-delivery-evidence"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        repeated_packet = json.loads(repeated.stdout)
+        assert repeated_packet["domain_state_write"]["status"] == "unchanged"
+        assert repeated_packet["domain_state_write"]["write_performed"] is False
+        assert feasibility_ledger.read_text(encoding="utf-8") == ledger_after_write
+
+        retained = build_issue_fix_outcome_collection_from_domain_state(
+            goal_id=goal_id,
+            project=project,
+            agent_id="codex-public-fixture",
+        )
+        retained_by_issue = {
+            item["issue_ref"]: item for item in retained["issue_fix_outcomes"]
+        }
+        assert retained_by_issue["issues_42"]["validation"]["status"] == "passed"
+        assert retained_by_issue["issues_42"]["delivery"]["evidence_provided"] is True
+        assert retained_by_issue["issues_43"]["validation"]["status"] == "declared"
 
         sync = sync_loopx_todos_to_lark_kanban(
             LarkKanbanConfig(
@@ -255,6 +360,7 @@ def assert_default_goal_sync_composes_outcomes() -> None:
             if item["values"]["Issue"].endswith("/issues/42")
         )
         assert linked_record["values"]["Pull Request"].endswith("/pull/77")
+        assert linked_record["values"]["Validation"].startswith("passed:")
         unlinked_record = next(
             item
             for item in outcome_records

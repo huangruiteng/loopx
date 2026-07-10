@@ -129,6 +129,33 @@ def _delivery_evidence(value: Mapping[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def compact_issue_fix_delivery_evidence(
+    value: Mapping[str, Any],
+    *,
+    recorded_at: str | None = None,
+) -> dict[str, Any]:
+    """Validate and compact delivery evidence before domain-state writeback."""
+
+    delivery = _delivery_evidence(value)
+    compact: dict[str, Any] = {
+        "schema_version": ISSUE_FIX_DELIVERY_EVIDENCE_INPUT_SCHEMA_VERSION,
+        "outcome_status": delivery["outcome_status"],
+        "validation_status": delivery["validation_status"],
+        "validation_label": delivery.get("validation_label") or "",
+        "changed_files": list(delivery.get("changed_files") or []),
+        "commit_ref": delivery.get("commit_ref"),
+        "outputs": list(delivery.get("outputs") or []),
+        "risks": list(delivery.get("risks") or []),
+    }
+    if recorded_at:
+        compact["recorded_at"] = _safe_text(
+            recorded_at,
+            field="delivery evidence recorded_at",
+            limit=80,
+        )
+    return compact
+
+
 def _stage_and_card_status(
     *,
     route: str,
@@ -582,6 +609,13 @@ def build_issue_fix_outcome_collection_from_domain_state(
                 goal_id=goal_id,
                 feasibility_packet=feasibility_packet,
                 pr_lifecycle_packet=lifecycle_packet,
+                delivery_evidence_input=(
+                    feasibility_packet.get("delivery_evidence")
+                    if isinstance(
+                        feasibility_packet.get("delivery_evidence"), Mapping
+                    )
+                    else None
+                ),
                 agent_id=agent_id,
                 generated_at=generated_at,
             )
@@ -610,6 +644,7 @@ def build_issue_fix_outcome_collection_from_domain_state(
         "source_contract": {
             "feasibility": "issue_fix_feasibility_v0",
             "pr_lifecycle": "issue_fix_pr_lifecycle_monitor_v0",
+            "delivery_evidence": "embedded_in_feasibility_row",
             "association": "explicit_repo_and_issue_ref_only",
             "writes_source_state": False,
             "creates_parallel_state_machine": False,

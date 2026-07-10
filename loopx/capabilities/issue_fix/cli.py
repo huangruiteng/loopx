@@ -28,6 +28,7 @@ from .feasibility import (
 )
 from .outcome_projection import (
     build_issue_fix_outcome_projection,
+    compact_issue_fix_delivery_evidence,
     render_issue_fix_outcome_projection_markdown,
 )
 from .pr_lifecycle import (
@@ -567,6 +568,14 @@ def register_issue_fix_commands(
         ),
     )
     outcome_parser.add_argument(
+        "--write-delivery-evidence",
+        action="store_true",
+        help=(
+            "Validate and write compact delivery evidence into the selected "
+            "existing feasibility row so default outcome and Kanban sync retain it."
+        ),
+    )
+    outcome_parser.add_argument(
         "--agent-id",
         help="Optional registered agent id projected as the case owner.",
     )
@@ -1058,6 +1067,15 @@ def handle_issue_fix_command(
                     domain_state["write_skipped_reason"] = "goal_id_or_ledger_path_missing"
             renderer = render_issue_fix_pr_lifecycle_monitor_markdown
         elif args.issue_fix_command == "outcome":
+            if args.write_delivery_evidence and not args.delivery_evidence_json:
+                raise ValueError(
+                    "--write-delivery-evidence requires --delivery-evidence-json"
+                )
+            if args.write_delivery_evidence and args.feasibility_json:
+                raise ValueError(
+                    "--write-delivery-evidence uses the default feasibility domain-state row; "
+                    "do not combine it with --feasibility-json"
+                )
             stdin_input_count = sum(
                 value == "-"
                 for value in (
@@ -1112,18 +1130,71 @@ def handle_issue_fix_command(
                     raise ValueError(
                         "--pr-ref must match the selected PR lifecycle packet"
                     )
+            explicit_delivery_evidence = (
+                _load_json_object(args.delivery_evidence_json)
+                if args.delivery_evidence_json
+                else None
+            )
+            delivery_evidence = (
+                compact_issue_fix_delivery_evidence(
+                    explicit_delivery_evidence,
+                )
+                if explicit_delivery_evidence is not None
+                else (
+                    feasibility_packet.get("delivery_evidence")
+                    if isinstance(feasibility_packet.get("delivery_evidence"), dict)
+                    else None
+                )
+            )
+            domain_state_write: dict[str, Any] | None = None
+            if args.write_delivery_evidence:
+                existing_delivery = feasibility_packet.get("delivery_evidence")
+                existing_compact = (
+                    compact_issue_fix_delivery_evidence(existing_delivery)
+                    if isinstance(existing_delivery, dict)
+                    else None
+                )
+                if existing_compact == delivery_evidence:
+                    delivery_evidence = existing_delivery
+                    write_result = {
+                        "write_performed": False,
+                        "status": "unchanged",
+                        "row_count": None,
+                    }
+                else:
+                    delivery_evidence = {
+                        **delivery_evidence,
+                        "recorded_at": generated_at,
+                    }
+                    feasibility_packet["delivery_evidence"] = delivery_evidence
+                    write_result = upsert_issue_fix_feasibility_ledger_jsonl(
+                        default_issue_fix_feasibility_ledger_path(
+                            project=project,
+                            goal_id=args.goal_id,
+                        ),
+                        feasibility_packet,
+                    )
+                domain_state_write = {
+                    "schema_version": "issue_fix_delivery_evidence_writeback_v0",
+                    "domain_pack": "issue_fix",
+                    "stream": "feasibility",
+                    "key": {"repo": args.repo, "issue_ref": args.issue_ref},
+                    "write_performed": write_result.get("write_performed") is True,
+                    "status": write_result.get("status"),
+                    "row_count": write_result.get("row_count"),
+                    "path_recorded": False,
+                }
             payload = build_issue_fix_outcome_projection(
                 goal_id=args.goal_id,
                 feasibility_packet=feasibility_packet,
                 pr_lifecycle_packet=pr_lifecycle_packet,
-                delivery_evidence_input=(
-                    _load_json_object(args.delivery_evidence_json)
-                    if args.delivery_evidence_json
-                    else None
-                ),
+                delivery_evidence_input=delivery_evidence,
                 agent_id=args.agent_id,
                 generated_at=generated_at,
             )
+            if domain_state_write is not None:
+                payload["domain_state_write"] = domain_state_write
+                payload["source_contract"]["writes_source_state"] = True
             renderer = render_issue_fix_outcome_projection_markdown
         elif args.issue_fix_command == "reviewer-plan":
             payload = build_issue_fix_reviewer_recommendation_packet(

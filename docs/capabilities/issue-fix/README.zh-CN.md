@@ -543,6 +543,13 @@ lifecycle domain state 推导全部 issue outcome，并与 todo 行一起 upsert
 带有相同 `repo` 和显式 `issue_ref` 时，PR 才会补充到该行。这个自动 closeout projection
 不会新增 outcome ledger，也不会建立第二套状态机。
 
+只传 `--delivery-evidence-json` 仍是只读预览。focused validation 完成后，加上
+`--write-delivery-evidence`，LoopX 会把经过校验、public-safe 的紧凑证据写回现有
+feasibility row。之后默认 outcome 与看板同步会继续保留 validation、changed files、
+commit、output links 与 risks，而不会降回 feasibility 阶段的声明值。写入模式拒绝
+`--feasibility-json` 临时来源，确保目标始终是稳定的 goal-scoped row。
+相同的紧凑证据重复执行时会返回 unchanged，不重复写盘。
+
 Lark adapter 会把它渲染成一等 issue 维度，而不只是把 packet 压平写进 `Evidence`。
 Outcome 行设置 `Work Item Type=Issue Fix`，并填写 `Repository`、`Issue`、
 `Pull Request`、`Route`、`Stage`、`Validation` 和 `Outcome`。`Issue Fix Outcomes`
@@ -620,6 +627,7 @@ loopx issue-fix outcome \
   --issue-ref issues_123 \
   --pr-ref pull_456 \
   --delivery-evidence-json delivery-evidence.json \
+  --write-delivery-evidence \
   --agent-id codex-issue-fix \
   --format json
 ```
