@@ -1,0 +1,37 @@
+docs/project-agent-todo-contract.md
+  s_9a5a2bd944fdcb::t_4f44f694664910 479-497
+examples/control_plane/todo-claim-visibility-lanes-smoke.py
+  s_9a5a2bd944fdcb::t_d71813cef3af70 19,21,37,49,222-335,395-396
+loopx/contract.py
+  s_9a5a2bd944fdcb::t_2a16d0501f93a2 26,323-325
+loopx/control_plane/todos/claim_visibility.py
+  s_9a5a2bd944fdcb::t_ae3ec5828ef27c 13,60-64,69,111-116
+loopx/control_plane/todos/contract.py
+  s_9a5a2bd944fdcb::t_a5f770fccf8925 133-136,224-230,647-650
+loopx/control_plane/todos/projection.py
+  s_9a5a2bd944fdcb::t_835d4bbaff6eaa 23,226-227,239-246
+loopx/control_plane/todos/summary_item.py
+  s_9a5a2bd944fdcb::t_ca8de3d7cb6552 10,31,123-129
+loopx/control_plane/todos/todo_summary.py
+  s_9a5a2bd944fdcb::t_39c686769c4173 29,308-312,380
+loopx/todos.py
+  s_9a5a2bd944fdcb::t_1eda88ee4d6e3c 44,1065-1084
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d6eee772e7313d525582b254c9c75f2572ef86a6",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
