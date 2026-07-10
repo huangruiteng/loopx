@@ -1,0 +1,141 @@
+CONTRIBUTOR_TASKS.md
+  s_32e2a9a204a8e4::t_d1701d07550e2c 59,75,78
+docs/README.md
+  s_32e2a9a204a8e4::t_6cffe2e4d899bd 106
+docs/architecture.md
+  s_32e2a9a204a8e4::t_4d16509040e301 168,172-178,199,201-203,205-208,210-214,223
+docs/benchmark-developer-workflow.md
+  s_32e2a9a204a8e4::t_3b3505080cfce8 601
+docs/capabilities/explore/README.md
+  s_32e2a9a204a8e4::t_2e9f46d779b4d3 99
+docs/codex-subagent-orchestration.md
+  s_32e2a9a204a8e4::t_0e6d91ab721845 67,77,157-164,170-172,196,214,223-226,246-251,259,267-269
+docs/frontstage-channel-lease-roadmap.md
+  s_32e2a9a204a8e4::t_1f26b3ef20b256 167,169,171-174,176,180,182-184,186,188,192-195,206-210
+docs/guides/getting-started.md
+  s_32e2a9a204a8e4::t_66e82f320b9de1 718-723,733-739
+docs/heartbeat-automation-prompt.md
+  s_32e2a9a204a8e4::t_fab3e85c24deb8 102,114,129-134,154-163,171-176
+docs/integration.md
+  s_32e2a9a204a8e4::t_7cbfa56ec0edf1 355-356,359,363-364,378,395-400
+docs/interaction-pattern-catalog.md
+  s_32e2a9a204a8e4::t_6a922e879a1149 336,598,656,945,1413,1417-1420,1424-1426,1432,1435-1439,1445-1446,1450-1456,1459-1464,1467,1473,1481-1487,1491,1493-1495,1500-1503,1506,1519,1624-1625,1707,1728-1729,1765-1766,1780,1814,1828-1830
+docs/outreach/frontstage-demo-script.md
+  s_32e2a9a204a8e4::t_ff51d16367cea1 22
+docs/outreach/marketing-copy-bank.md
+  s_32e2a9a204a8e4::t_2c5a91ae7e466b 33,212-213,225
+docs/outreach/public-launch-narrative-draft.md
+  s_32e2a9a204a8e4::t_89527808f6e2d9 30
+docs/outreach/showcase-animation-skill-spike.md
+  s_32e2a9a204a8e4::t_73035133205c41 40,42
+docs/product/README.md
+  s_32e2a9a204a8e4::t_44c175b7925dd2 105-107
+docs/product/agent-management-observability-mvp.md
+  s_32e2a9a204a8e4::t_fa9485ff8d9af4 150
+docs/product/agent-profile-contract.md
+  s_32e2a9a204a8e4::t_5977034dfe5646 3-5,7-10,14,18-21,23-25,32-33,35-39,41-42,44-48,50-51,58-59,61,63-66,68-72,74,79,82-85,87-89,93-119,123,127-132,134,138-141,143-145,147-152,154-155
+docs/product/codex-app-control-plane-hook-cache.md
+  s_32e2a9a204a8e4::t_576d1212155091 61,77,161
+docs/product/codex-cli-automation-driver.md
+  s_32e2a9a204a8e4::t_a40eb0d3c484fe 47
+docs/product/codex-cli-packaged-install.md
+  s_32e2a9a204a8e4::t_602fd9a083dafa 108
+docs/product/codex-cli-same-open-tui-continuation-observation.md
+  s_32e2a9a204a8e4::t_65085132458ea0 29,31,82
+docs/product/codex-cli-tui-continuation-priority.md
+  s_32e2a9a204a8e4::t_519873203ada07 5
+docs/product/codex-cli-tui-loop.md
+  s_32e2a9a204a8e4::t_9172625f7b1bd2 374-375,395
+docs/product/complex-request-planning-intake.md
+  s_32e2a9a204a8e4::t_6266549ee83ea5 58-60
+docs/product/core-control-plane/interaction-catalog.md
+  s_32e2a9a204a8e4::t_62d50fe54712d5 51
+docs/product/core-control-plane/rule-seam-map.md
+  s_32e2a9a204a8e4::t_265b67134144a6 69,91
+docs/product/intelligent-management-surface.md
+  s_32e2a9a204a8e4::t_6ec72fa0af16cf 52,103,105-108,111-113,276
+docs/product/issue-pr-solver-maintainer-intake.md
+  s_32e2a9a204a8e4::t_43d9fd5bfff2ca 54
+docs/product/nontechnical-operator-status-model.md
+  s_32e2a9a204a8e4::t_eea73b1420a95c 141,214-216,341,350-351,366,394
+docs/product/reward-style-replanning.md
+  s_32e2a9a204a8e4::t_859fadae01adfa 139
+docs/product/scenario-capability-gap-map.md
+  s_32e2a9a204a8e4::t_b909798302f923 32,78,80,112,354
+docs/product/server-client-product-shape.md
+  s_32e2a9a204a8e4::t_990179d239a884 178,205-206,289-291,343
+docs/product/vision.md
+  s_32e2a9a204a8e4::t_4215e5727f84ab 56
+docs/project-agent-todo-contract.md
+  s_32e2a9a204a8e4::t_899d451a68a1ae 149-160,167,171-172,175-176,179,182-188,191-192,247,251-252,319,321-323,326-341,351-357,364-365,369,375-376,387,391,393-394,400-401,404,407-409,423-424,427
+docs/quota-allocation.md
+  s_32e2a9a204a8e4::t_f3b35a0894648f 339-342,354,356,727
+docs/reference/protocols/README.md
+  s_32e2a9a204a8e4::t_6a57cb98ad0856 38
+docs/reference/protocols/agent-management-projection-v0.md
+  s_32e2a9a204a8e4::t_c8363fe453e711 89,102-103,207
+docs/reference/protocols/agent-scoped-evidence-ledger-v0.md
+  s_32e2a9a204a8e4::t_35a2599a43161b 45,68,85-86,94,157
+docs/reference/protocols/global-manager-command-v0.md
+  s_32e2a9a204a8e4::t_24ba5f6e85d73f 147-149,165,169,173
+docs/reference/protocols/host-integration-surface-v0.md
+  s_32e2a9a204a8e4::t_9071432f4d766d 62,71,114
+docs/reference/protocols/local-agent-launch-plan-v1.md
+  s_32e2a9a204a8e4::t_865561a3639039 1,3-5,7-9,15,17-18,20-21,28,31-32,34,50,55-58,61-62,64-68,70-71,73,75,77-78,81-82,84-85,89-90,94-95,98,109-111,115-117,119-121,125,127-130,132-133,139-146
+docs/reference/protocols/long-horizon-agent-state-protocol-v0.md
+  s_32e2a9a204a8e4::t_25fec42af7312b 35,42,92-93,143,217
+docs/reference/protocols/multi-agent-visible-launcher-v0.md
+  s_32e2a9a204a8e4::t_a7565113807b93 12,339
+docs/reference/protocols/peer-agent-runtime-v1.md
+  s_32e2a9a204a8e4::t_e7f95067b1e53e 57,81-84,87-90,93-96
+docs/showcases/README.md
+  s_32e2a9a204a8e4::t_37f8ee22230acf 124
+docs/showcases/cases/0619-loopx-self-iteration.en.html
+  s_32e2a9a204a8e4::t_c1463911f36835 93-95,134
+docs/showcases/cases/0619-loopx-self-iteration.html
+  s_32e2a9a204a8e4::t_6a63d7b435e58d 94-95,134
+docs/showcases/cases/0619-loopx-self-iteration.md
+  s_32e2a9a204a8e4::t_1712ad90fa956b 16,18-19,75,132-135,150,156-157,162-163,179-181,184-185,205-207
+docs/showcases/cases/0623-agent-to-agent-pr-comments.en.html
+  s_32e2a9a204a8e4::t_9703f1695d854f 131,140
+docs/showcases/cases/0623-agent-to-agent-pr-comments.html
+  s_32e2a9a204a8e4::t_e5b43698957846 131,140
+docs/showcases/cases/0623-overnight-project-refactor.en.html
+  s_32e2a9a204a8e4::t_bc32259fd3a00e 131
+docs/showcases/cases/0623-overnight-project-refactor.html
+  s_32e2a9a204a8e4::t_820de7ca1be7fe 131
+docs/showcases/index.en.html
+  s_32e2a9a204a8e4::t_52ee6e7294f8da 174,177,180
+docs/showcases/index.html
+  s_32e2a9a204a8e4::t_71dc7be116b0c9 174,180
+docs/showcases/showcase-animation-prototype.html
+  s_32e2a9a204a8e4::t_2648015fd8b4b3 526,556-557
+docs/showcases/showcase-animation-storyboard.json
+  s_32e2a9a204a8e4::t_79c5c004330ce2 67
+docs/showcases/showcase-catalog.json
+  s_32e2a9a204a8e4::t_7fae7651301db7 495,502-503,506-507,509,512,571,577,582,588-589
+docs/status-data-contract.md
+  s_32e2a9a204a8e4::t_d573a140113aea 77,83,964,974-983,1027-1028,1043,1045-1046,1048-1049,1053,1143-1152,1159,1165,1172,1186-1190,1193-1194,1203-1205,1207-1208
+skills/loopx-project/SKILL.md
+  s_32e2a9a204a8e4::t_54c9245d31109f 634,648
+skills/loopx-self-repair/references/repair-patterns.md
+  s_32e2a9a204a8e4::t_9ecabf37a2e704 15-17,20-23,26-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9de87b8b29caf25baad2bc520ba8d663cc7f66b1",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
