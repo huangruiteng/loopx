@@ -1,0 +1,29 @@
+examples/skillsbench-codex-cli-goal-route-smoke.py
+  s_9a5a2bd944fdcb::t_b0010309b39df6 1401,1406-1410
+examples/skillsbench-goal-start-product-mode-route-smoke.py
+  s_9a5a2bd944fdcb::t_ddcba8a6ce1987 334-336,340-344,350
+examples/skillsbench-host-local-launch-plan-smoke.py
+  s_9a5a2bd944fdcb::t_9866b2bfa3a23a 136
+loopx/benchmark_adapters/skillsbench_acp_relay.py
+  s_9a5a2bd944fdcb::t_41d9fa8b505cb6 119-126,366-367,374,2259,2261-2264
+skills/loopx-self-repair/references/repair-patterns.md
+  s_9a5a2bd944fdcb::t_593b4e1f3b0d39 46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d52d49225fb1f3f9ecc1f60dae1927acd8384d80",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
