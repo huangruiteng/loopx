@@ -40,3 +40,4 @@ Current contracts:
 - [multi_agent_visible_launcher_v0](multi-agent-visible-launcher-v0.md)
 - [goal_vision_replan_contract_v0](goal-vision-replan-contract-v0.md)
 - [agent_scoped_evidence_ledger_v0](agent-scoped-evidence-ledger-v0.md)
+- [peer_agent_runtime_v1](peer-agent-runtime-v1.md)
