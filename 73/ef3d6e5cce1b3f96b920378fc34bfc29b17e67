@@ -1,0 +1,55 @@
+docs/capabilities/issue-fix/README.md
+  s_32e2a9a204a8e4::t_d0d08b5a5a05fe 6-7,156,172-183,194-198,200-202,208-210,225-228,269,320-321,328-331,334-335,393,399,541-548,573
+docs/capabilities/issue-fix/README.zh-CN.md
+  s_32e2a9a204a8e4::t_1529b5ce6c7735 6-7,139,155-166,175-182,187-188,202-204,241,289,295-297,300,354,360,490-497,522
+docs/capabilities/issue-fix/protocols/issue-fix-reviewer-recommendation-v0.md
+  s_32e2a9a204a8e4::t_2ddbb0aaea61a8 6-8,15-16,57,90-92,111-113,121-125,151-153,170-174
+docs/capabilities/issue-fix/protocols/issue-fix-reviewer-request-v0.md
+  s_32e2a9a204a8e4::t_da0b3d5d665a52 1-120
+examples/bootstrap-command-pack-smoke.py
+  s_32e2a9a204a8e4::t_0e715c4b533956 141-142,164-169,174,179-181
+examples/issue-fix-capability-guide-smoke.py
+  s_32e2a9a204a8e4::t_5ce23b4cef4ffc 20-23,52,69,77,129-130,135-145,154
+examples/issue-fix-feasibility-smoke.py
+  s_32e2a9a204a8e4::t_0aa93fd0958849 68,187
+examples/issue-fix-reviewer-recommendation-smoke.py
+  s_32e2a9a204a8e4::t_a33f9b44b4c9ba 56-61,68-69,90-96,98-105,187-193,199,210,218,241-248,252-256,259-260,275-276
+loopx/bootstrap_command_pack.py
+  s_32e2a9a204a8e4::t_93c6c08f9855d8 319-323,333-336,370,587-593,888-893
+loopx/canary/planner.py
+  s_32e2a9a204a8e4::t_eded37d8074bb7 887,894-895,900,902,913-918
+loopx/capabilities/catalog.py
+  s_32e2a9a204a8e4::t_e816a06406d04d 43-52,120-129,157-158,167-168,176
+loopx/capabilities/issue_fix/cli.py
+  s_9a5a2bd944fdcb::t_391d3c1ec31c86 40-43,485-491,505-570,894-898,903-927,963,983-984
+loopx/capabilities/issue_fix/feasibility.py
+  s_32e2a9a204a8e4::t_18c6f11f1e9a80 26,112-117
+loopx/capabilities/issue_fix/reviewer_recommendation.py
+  s_32e2a9a204a8e4::t_fe1d22a30f036c 90-107,281,307,322,343-346,348,351-353,408-413,417-420,434-435,456-458,487-488,544-547
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "73ef3d6e5cce1b3f96b920378fc34bfc29b17e67",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangruiteng <huangruiteng@bytedance.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangruiteng <huangruiteng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
