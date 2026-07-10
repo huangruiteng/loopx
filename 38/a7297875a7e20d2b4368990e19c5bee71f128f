@@ -1,0 +1,31 @@
+scripts/skillsbench_automation_loop.py
+  s_9a5a2bd944fdcb::t_85a3ddbf3a4b84 6014-6015,6090,6174-6177,8142-8153,8209-8210,8276,8278,8338,8370,8450-8452,8518,8545-8551
+tests/test_skillsbench_docker_command_file_bridge.py
+  s_32e2a9a204a8e4::t_2b510f2d4bfadf 82,92-93,107-137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "38a7297875a7e20d2b4368990e19c5bee71f128f",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
