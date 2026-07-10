@@ -22,6 +22,7 @@ from .status import (
 )
 from .control_plane.todos.contract import (
     TODO_MONITOR_METADATA_FIELDS,
+    TODO_CONTINUATION_POLICY_VALUES,
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_USER_GATE,
@@ -33,6 +34,7 @@ from .control_plane.todos.contract import (
     normalize_target_capabilities,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_continuation_policy,
     normalize_todo_decision_scope,
     normalize_todo_global_gate,
     normalize_todo_id,
@@ -76,6 +78,7 @@ TODO_METADATA_FIELDS = (
     "status",
     "task_class",
     "action_kind",
+    "continuation_policy",
     "required_write_scopes",
     "required_capabilities",
     "target_capabilities",
@@ -247,6 +250,7 @@ def todo_item_relations(item: dict[str, Any]) -> dict[str, Any]:
         "target_capabilities",
         "task_class",
         "action_kind",
+        "continuation_policy",
         "target_key",
         "cadence",
         "next_due_at",
@@ -504,6 +508,11 @@ def block_metadata(block: dict[str, Any]) -> dict[str, Any]:
             if capabilities:
                 metadata[key] = capabilities
             continue
+        if key == "continuation_policy":
+            continuation_policy = normalize_todo_continuation_policy(value)
+            if continuation_policy:
+                metadata[key] = continuation_policy
+            continue
         if key == "decision_scope":
             decision_scope = normalize_todo_decision_scope(value)
             if decision_scope:
@@ -552,6 +561,17 @@ def metadata_line_for_block(block: dict[str, Any], updates: dict[str, Any]) -> s
             capabilities = normalize_target_capabilities(value)
             if capabilities:
                 metadata[key] = capabilities
+            else:
+                metadata.pop(key, None)
+        elif key == "continuation_policy":
+            continuation_policy = normalize_todo_continuation_policy(value)
+            if continuation_policy:
+                metadata[key] = continuation_policy
+            elif value:
+                raise ValueError(
+                    "todo continuation_policy must be one of: "
+                    + ", ".join(sorted(TODO_CONTINUATION_POLICY_VALUES))
+                )
             else:
                 metadata.pop(key, None)
         elif key == "decision_scope":
@@ -718,6 +738,7 @@ def add_todo_to_lines(
     text: str,
     task_class: str | None = None,
     action_kind: str | None = None,
+    continuation_policy: str | None = None,
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
     target_capabilities: list[str] | None = None,
@@ -774,6 +795,7 @@ def add_todo_to_lines(
             status=TODO_STATUS_OPEN,
             task_class=task_class,
             action_kind=action_kind,
+            continuation_policy=continuation_policy,
             required_write_scopes=required_write_scopes,
             required_capabilities=required_capabilities,
             target_capabilities=target_capabilities,
@@ -803,6 +825,8 @@ def add_todo_to_lines(
             updates["task_class"] = task_class
         if action_kind:
             updates["action_kind"] = action_kind
+        if continuation_policy:
+            updates["continuation_policy"] = continuation_policy
         if required_write_scopes is not None:
             updates["required_write_scopes"] = required_write_scopes
         if required_capabilities is not None:
@@ -843,6 +867,9 @@ def add_todo_to_lines(
         "todo_id": todo_id,
         "task_class": effective_metadata.get("task_class") or task_class,
         "action_kind": effective_metadata.get("action_kind") or action_kind,
+        "continuation_policy": normalize_todo_continuation_policy(
+            effective_metadata.get("continuation_policy") or continuation_policy
+        ),
         "required_write_scopes": normalize_required_write_scopes(
             effective_metadata.get("required_write_scopes") or required_write_scopes
         ),
@@ -880,6 +907,7 @@ def add_goal_todo(
     text: str,
     task_class: str | None = None,
     action_kind: str | None = None,
+    continuation_policy: str | None = None,
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
     target_capabilities: list[str] | None = None,
@@ -980,6 +1008,7 @@ def add_goal_todo(
             text=todo_text,
             task_class=task_class,
             action_kind=action_kind,
+            continuation_policy=continuation_policy,
             required_write_scopes=required_write_scopes,
             required_capabilities=required_capabilities,
             target_capabilities=target_capabilities,
@@ -1015,6 +1044,7 @@ def add_goal_todo(
         "todo_id": add_result.get("todo_id"),
         "task_class": add_result.get("task_class"),
         "action_kind": add_result.get("action_kind"),
+        "continuation_policy": add_result.get("continuation_policy"),
         "required_write_scopes": add_result.get("required_write_scopes"),
         "required_capabilities": add_result.get("required_capabilities"),
         "target_capabilities": add_result.get("target_capabilities"),
@@ -1071,6 +1101,7 @@ def apply_todo_update_to_lines(
     reason: str | None = None,
     task_class: str | None = None,
     action_kind: str | None = None,
+    continuation_policy: str | None = None,
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
     target_capabilities: list[str] | None = None,
@@ -1126,6 +1157,8 @@ def apply_todo_update_to_lines(
         updates["task_class"] = task_class
     if action_kind:
         updates["action_kind"] = action_kind
+    if continuation_policy:
+        updates["continuation_policy"] = continuation_policy
     if required_write_scopes is not None:
         updates["required_write_scopes"] = required_write_scopes
     if required_capabilities is not None:
@@ -1181,6 +1214,9 @@ def apply_todo_update_to_lines(
         "claimed_by": normalize_todo_claimed_by(effective_metadata.get("claimed_by")),
         "task_class": effective_metadata.get("task_class"),
         "action_kind": effective_metadata.get("action_kind"),
+        "continuation_policy": normalize_todo_continuation_policy(
+            effective_metadata.get("continuation_policy")
+        ),
         "required_capabilities": normalize_required_capabilities(
             effective_metadata.get("required_capabilities")
         ),
@@ -1217,6 +1253,7 @@ def update_goal_todo(
     reason: str | None = None,
     task_class: str | None = None,
     action_kind: str | None = None,
+    continuation_policy: str | None = None,
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
     target_capabilities: list[str] | None = None,
@@ -1361,6 +1398,7 @@ def update_goal_todo(
             reason=reason,
             task_class=task_class,
             action_kind=action_kind,
+            continuation_policy=continuation_policy,
             required_write_scopes=required_write_scopes,
             required_capabilities=required_capabilities,
             target_capabilities=target_capabilities,
@@ -1421,6 +1459,7 @@ def complete_goal_todo(
     next_claimed_by: str | None = None,
     next_task_class: str | None = None,
     next_action_kind: str | None = None,
+    next_continuation_policy: str | None = None,
     side_agent_self_merged: bool = False,
     project: Path | None = None,
     state_file: Path | None = None,
@@ -1438,10 +1477,24 @@ def complete_goal_todo(
         updated_at = now_local()
         completion_match = find_todo_block(lines, todo_id=todo_id, role=role)
         completion_todo = None
+        event_context = None
         if completion_match:
             completion_role, _section, _start, _end, completion_block = completion_match
             completion_todo = dict(completion_block)
             completion_todo["role"] = completion_role
+        else:
+            event_context = event_projection_todo_context(
+                registry_path=registry_path,
+                goal_id=goal_id,
+                state_path=resolved_state_file,
+                todo_id=todo_id,
+                role=role,
+            )
+            if event_context:
+                event_context["state_file"] = resolved_state_file
+                event_context["project"] = resolved_project
+                completion_todo = dict(event_context["item"])
+                completion_todo["role"] = event_context["role"]
         normalized_successor_todo_ids = normalize_todo_id_list(successor_todo_ids)
         if successor_todo_ids and not normalized_successor_todo_ids:
             raise ValueError("successor_todo_ids must contain public todo_<letters-digits-underscore-hyphen> tokens")
@@ -1453,6 +1506,27 @@ def complete_goal_todo(
                 successor_item = dict(successor_block)
                 successor_item["role"] = successor_role
                 linked_successors.append(linked_successor_from_todo(successor_item))
+                continue
+            if event_context:
+                for successor_role in ("user", "agent"):
+                    summary = event_context["fields"].get(f"{successor_role}_todos")
+                    items = summary.get("items") if isinstance(summary, dict) else []
+                    successor_item = next(
+                        (
+                            dict(item)
+                            for item in items or []
+                            if isinstance(item, dict)
+                            and normalize_todo_id(item.get("todo_id"))
+                            == successor_todo_id
+                        ),
+                        None,
+                    )
+                    if successor_item:
+                        successor_item["role"] = successor_role
+                        linked_successors.append(
+                            linked_successor_from_todo(successor_item)
+                        )
+                        break
         completion_policy = resolve_completion_policy(
             registry_path=registry_path,
             goal_id=goal_id,
@@ -1460,6 +1534,7 @@ def complete_goal_todo(
             next_claimed_by=next_claimed_by,
             next_agent_todo=next_agent_todo,
             next_action_kind=next_action_kind,
+            next_continuation_policy=next_continuation_policy,
             side_agent_self_merged=side_agent_self_merged,
             evidence=evidence,
             no_followup=no_followup,
@@ -1473,17 +1548,8 @@ def complete_goal_todo(
         side_agent_completion = completion_policy.side_agent_completion
         effective_side_agent_self_merged = completion_policy.side_agent_self_merged
         if not completion_match:
-            event_context = event_projection_todo_context(
-                registry_path=registry_path,
-                goal_id=goal_id,
-                state_path=resolved_state_file,
-                todo_id=todo_id,
-                role=role,
-            )
             if event_context:
-                event_context["state_file"] = resolved_state_file
-                event_context["project"] = resolved_project
-                return complete_event_projected_goal_todo(
+                event_result = complete_event_projected_goal_todo(
                     goal_id=goal_id,
                     context=event_context,
                     evidence=evidence,
@@ -1497,6 +1563,7 @@ def complete_goal_todo(
                     next_claimed_by=effective_next_claimed_by,
                     next_task_class=next_task_class,
                     next_action_kind=next_action_kind,
+                    next_continuation_policy=next_continuation_policy,
                     side_agent_completion=side_agent_completion,
                     side_agent_self_merged=effective_side_agent_self_merged,
                     registered_agents=registered_agents,
@@ -1504,6 +1571,10 @@ def complete_goal_todo(
                     updated_at=updated_at,
                     dry_run=dry_run,
                 )
+                event_result["linked_handoff_successor_id"] = (
+                    completion_policy.linked_handoff_successor_id
+                )
+                return event_result
         update_result = apply_todo_update_to_lines(
             lines,
             todo_id=todo_id,
@@ -1547,6 +1618,7 @@ def complete_goal_todo(
                     ),
                     task_class=next_task_class or "advancement_task",
                     action_kind=next_action_kind,
+                    continuation_policy=next_continuation_policy,
                     claimed_by=effective_next_claimed_by,
                     blocks_agent=next_blocks_agent,
                     unblocks_todo_id=next_unblocks_todo_id,
@@ -1611,6 +1683,7 @@ def supersede_goal_todo(
     next_claimed_by: str | None = None,
     next_task_class: str | None = None,
     next_action_kind: str | None = None,
+    next_continuation_policy: str | None = None,
     project: Path | None = None,
     state_file: Path | None = None,
     dry_run: bool = False,
@@ -1677,6 +1750,7 @@ def supersede_goal_todo(
                     ),
                     task_class=next_task_class or "advancement_task",
                     action_kind=next_action_kind,
+                    continuation_policy=next_continuation_policy,
                     claimed_by=effective_next_claimed_by,
                     blocks_agent=next_blocks_agent,
                     unblocks_todo_id=next_unblocks_todo_id,

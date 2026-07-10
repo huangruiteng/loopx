@@ -58,7 +58,7 @@ current active-state Markdown and does not grant write permission.
 Todo items use the existing `todo_item_v0` fields where possible:
 
 - `todo_id`, `todo_id_source`, `role`, `status`, `done`;
-- `priority`, `title`, `task_class`, `action_kind`;
+- `priority`, `title`, `task_class`, `action_kind`, `continuation_policy`;
 - `claimed_by`, `blocks_agent`, `global_gate`, `unblocks_todo_id`;
 - `resume_when`, `no_followup`;
 - monitor metadata such as `target_key`, `cadence`, `next_due_at`, and

@@ -29,6 +29,7 @@ def _compact_succession_warning_item(item: dict[str, Any]) -> dict[str, Any]:
         "source_section",
         "task_class",
         "action_kind",
+        "continuation_policy",
         "required_write_scopes",
         "required_capabilities",
         "target_capabilities",

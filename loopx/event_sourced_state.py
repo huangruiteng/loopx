@@ -19,8 +19,11 @@ from .control_plane.todos.contract import (
     build_todo_id,
     format_todo_metadata_line,
     normalize_explicit_todo_task_class,
+    normalize_required_write_scopes,
     normalize_todo_action_kind,
+    normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_continuation_policy,
     normalize_todo_id,
     normalize_todo_id_list,
     normalize_todo_status,
@@ -258,10 +261,23 @@ def backfill_todo_events_from_markdown(
         }
         task_class = normalize_explicit_todo_task_class(record.get("task_class"))
         action_kind = normalize_todo_action_kind(record.get("action_kind"))
+        continuation_policy = normalize_todo_continuation_policy(
+            record.get("continuation_policy")
+        )
+        required_write_scopes = normalize_required_write_scopes(
+            record.get("required_write_scopes")
+        )
+        blocks_agent = normalize_todo_blocks_agent(record.get("blocks_agent"))
         if task_class:
             payload["task_class"] = task_class
         if action_kind:
             payload["action_kind"] = action_kind
+        if continuation_policy:
+            payload["continuation_policy"] = continuation_policy
+        if required_write_scopes:
+            payload["required_write_scopes"] = required_write_scopes
+        if blocks_agent:
+            payload["blocks_agent"] = blocks_agent
         events.append(
             make_state_event(
                 event_id=_backfill_event_id(goal_id=normalized_goal_id, todo_id=todo_id, suffix="add"),
@@ -538,6 +554,13 @@ def _todo_from_added_event(event: dict[str, Any]) -> dict[str, Any]:
     )
     task_class = normalize_explicit_todo_task_class(payload.get("task_class"))
     action_kind = normalize_todo_action_kind(payload.get("action_kind"))
+    continuation_policy = normalize_todo_continuation_policy(
+        payload.get("continuation_policy")
+    )
+    required_write_scopes = normalize_required_write_scopes(
+        payload.get("required_write_scopes")
+    )
+    blocks_agent = normalize_todo_blocks_agent(payload.get("blocks_agent"))
     claimed_by = normalize_todo_claimed_by(payload.get("claimed_by"))
     todo: dict[str, Any] = {
         "schema_version": "todo_item_v0",
@@ -557,6 +580,12 @@ def _todo_from_added_event(event: dict[str, Any]) -> dict[str, Any]:
         todo["task_class"] = task_class
     if action_kind:
         todo["action_kind"] = action_kind
+    if continuation_policy:
+        todo["continuation_policy"] = continuation_policy
+    if required_write_scopes:
+        todo["required_write_scopes"] = required_write_scopes
+    if blocks_agent:
+        todo["blocks_agent"] = blocks_agent
     unblocks_todo_id = normalize_todo_id(payload.get("unblocks_todo_id"))
     if unblocks_todo_id:
         todo["unblocks_todo_id"] = unblocks_todo_id
@@ -579,6 +608,19 @@ def _update_todo_from_event(todo: dict[str, Any], event: dict[str, Any]) -> None
         for key in ("priority", "role", "title", "task_class", "action_kind"):
             if payload.get(key):
                 todo[key] = compact_text(payload[key])
+        continuation_policy = normalize_todo_continuation_policy(
+            payload.get("continuation_policy")
+        )
+        if continuation_policy:
+            todo["continuation_policy"] = continuation_policy
+        required_write_scopes = normalize_required_write_scopes(
+            payload.get("required_write_scopes")
+        )
+        if required_write_scopes:
+            todo["required_write_scopes"] = required_write_scopes
+        blocks_agent = normalize_todo_blocks_agent(payload.get("blocks_agent"))
+        if blocks_agent:
+            todo["blocks_agent"] = blocks_agent
         for key in TODO_MONITOR_METADATA_FIELDS:
             if payload.get(key):
                 todo[key] = compact_text(payload[key])
@@ -713,7 +755,10 @@ def render_todo_markdown(item: dict[str, Any]) -> list[str]:
         status=status,
         task_class=item.get("task_class"),
         action_kind=item.get("action_kind"),
+        continuation_policy=item.get("continuation_policy"),
+        required_write_scopes=item.get("required_write_scopes"),
         claimed_by=item.get("claimed_by"),
+        blocks_agent=item.get("blocks_agent"),
         unblocks_todo_id=item.get("unblocks_todo_id"),
         successor_todo_ids=item.get("successor_todo_ids"),
         no_followup=True if item.get("no_followup") == "true" else None,

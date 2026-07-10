@@ -346,25 +346,42 @@ shared default route, and may override that default for a specific side agent
 with `coordination.agent_profiles.<agent_id>.review_policy.handoff_agent`.
 `--next-claimed-by` is allowed only when it matches the resolved handoff owner.
 An explicitly declared primary review successor is the narrow exception: when a
-side agent completes a todo with `--next-action-kind primary_review*` and
+side agent completes a todo with `--next-continuation-policy primary_review` and
 `--next-claimed-by <primary_agent>`, that successor remains a primary-agent
 review handoff even if the goal has a broader `side_agent_handoff_agent`
 default. Use this only for real review/merge/publication decisions; ordinary
 side-agent continuation should follow the resolved handoff route.
+Legacy `action_kind=primary_review*` state remains readable, but new writers
+should use the typed continuation policy instead of encoding handoff authority
+in an action-name prefix.
 Existing registry fields named for review are not aliases for this route. This
 keeps broad side-agent handoff visible to the shared control plane without
 hard-coding a single follow-up surface for every side-agent lane.
 
-LoopX does not model "review" as a separate kernel object. Review, verification,
-or continuation are product-level names for a successor todo. The machine
-contract is generic: the generated successor records
+LoopX does not model "review" as a separate kernel object. `action_kind`
+remains an open domain token describing what work a todo performs. The closed
+`continuation_policy` field describes only who may continue after completion:
+
+- `independent_handoff` is the safe default;
+- `same_agent_non_delivery` permits an evidence-backed non-delivery gate to
+  link an existing same-agent successor;
+- `primary_review` preserves a primary-agent review handoff.
+
+`same_agent_non_delivery` is intentionally structural rather than
+review-specific. It covers readiness checks, audits, triage, verification, and
+other non-delivery gates only when the source has evidence, no required write
+scope, a distinct `blocks_agent`, and an explicitly linked open successor. It
+does not authorize repository delivery or bypass successor quota/capability
+checks. Legacy `*_review` and `*_verification` action kinds remain a read
+compatibility path and are materialized as the typed policy on the next write.
+
+The generated successor records
 `blocks_agent=<side-agent-id>` and
 `unblocks_todo_id=<completed-todo-id>`, while `claimed_by` names the agent that
 should handle the dependency. Quota and dashboards can prioritize this handoff
-without parsing prose or adding a review-specific action kind. Same-agent broad
-handoff is rejected; if the completing side agent is allowed to deliver without
-another agent, it must use the explicit `--side-agent-self-merged --evidence`
-path.
+without parsing prose. Same-agent broad delivery remains rejected; if the
+completing side agent is allowed to deliver without another agent, it must use
+the explicit `--side-agent-self-merged --evidence` path.
 
 For primary-agent completions and self-merged same-lane continuations, a
 successor created with `--next-agent-todo` inherits the completed todo's
@@ -488,7 +505,9 @@ carry `schema_version=todo_summary_v0`; individual items carry
 `schema_version=todo_item_v0`, `todo_id`, `role`, `status`, `priority`,
 `title`, `archive_state`, `source_section`, `index`, `text`, `task_class`, and
 optional `action_kind`, `claimed_by`, `required_capabilities`, and
-`target_capabilities`. Primary review handoffs may also carry
+`target_capabilities`. `action_kind` is extensible; optional
+`continuation_policy` is limited to `independent_handoff`,
+`same_agent_non_delivery`, or `primary_review`. Primary review handoffs may also carry
 `blocks_agent`, `unblocks_todo_id`, and `no_followup=true` to show which
 agent/todo they release and whether a completed handoff intentionally has no
 successor.

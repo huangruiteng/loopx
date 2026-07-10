@@ -4,9 +4,11 @@ from typing import Any
 
 from ..todos.contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
+    TodoContinuationPolicy,
     normalize_required_capabilities,
     normalize_target_capabilities,
     normalize_todo_claimed_by,
+    resolve_todo_continuation_policy,
 )
 from ..todos.projection import (
     todo_index_rank,
@@ -155,12 +157,15 @@ def _unblock_handoff_rank(
 
 def _primary_review_rank(raw_item: dict[str, Any], *, agent_id: str | None) -> int:
     claimed_by = agent_scope_item_claimed_by(raw_item)
-    action_kind = str(raw_item.get("action_kind") or "").strip()
+    continuation_policy = resolve_todo_continuation_policy(
+        raw_item.get("continuation_policy"),
+        action_kind=raw_item.get("action_kind"),
+    )
     return (
         0
         if agent_id
         and claimed_by == agent_id
-        and (action_kind == "primary_review" or action_kind.startswith("primary_review_"))
+        and continuation_policy == TodoContinuationPolicy.PRIMARY_REVIEW
         else 1
     )
 

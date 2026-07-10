@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from enum import Enum
 from typing import Any
 from urllib.parse import quote, unquote
 
@@ -103,6 +104,17 @@ TODO_ACTION_KIND_MONITOR_VALUES = {
     "watch",
 }
 
+
+class TodoContinuationPolicy(str, Enum):
+    INDEPENDENT_HANDOFF = "independent_handoff"
+    SAME_AGENT_NON_DELIVERY = "same_agent_non_delivery"
+    PRIMARY_REVIEW = "primary_review"
+
+
+TODO_CONTINUATION_POLICY_VALUES = {
+    policy.value for policy in TodoContinuationPolicy
+}
+
 TODO_HARD_MONITOR_PATTERNS = (
     re.compile(r"(?i)\bdo not\b.*\b(?:launch|run|execute|start)\b.*\buntil\b"),
     re.compile(r"(?i)\b(?:only|just)\b.*\b(?:after|when|once)\b.*\b(?:owner|user|credential|approval|prerequisite|evidence)\b"),
@@ -180,6 +192,40 @@ def normalize_todo_action_kind(value: Any) -> str | None:
     if TODO_ACTION_KIND_PATTERN.match(candidate):
         return candidate
     return None
+
+
+def normalize_todo_continuation_policy(value: Any) -> str | None:
+    candidate = str(value or "").strip().lower()
+    if candidate in TODO_CONTINUATION_POLICY_VALUES:
+        return candidate
+    return None
+
+
+def legacy_todo_continuation_policy_for_action_kind(value: Any) -> str | None:
+    action_kind = normalize_todo_action_kind(value)
+    if not action_kind:
+        return None
+    if action_kind == "primary_review" or action_kind.startswith("primary_review_"):
+        return TodoContinuationPolicy.PRIMARY_REVIEW.value
+    if action_kind in {"review", "verification"} or action_kind.endswith(
+        ("_review", "_verification")
+    ):
+        return TodoContinuationPolicy.SAME_AGENT_NON_DELIVERY.value
+    return None
+
+
+def resolve_todo_continuation_policy(
+    value: Any,
+    *,
+    action_kind: Any = None,
+) -> TodoContinuationPolicy:
+    explicit = normalize_todo_continuation_policy(value)
+    if explicit:
+        return TodoContinuationPolicy(explicit)
+    legacy = legacy_todo_continuation_policy_for_action_kind(action_kind)
+    if legacy:
+        return TodoContinuationPolicy(legacy)
+    return TodoContinuationPolicy.INDEPENDENT_HANDOFF
 
 
 def normalize_todo_claimed_by(value: Any) -> str | None:
@@ -480,6 +526,10 @@ def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
             action_kind = normalize_todo_action_kind(value)
             if action_kind:
                 metadata["action_kind"] = action_kind
+        elif key == "continuation_policy":
+            continuation_policy = normalize_todo_continuation_policy(value)
+            if continuation_policy:
+                metadata["continuation_policy"] = continuation_policy
         elif key in {"required_write_scope", "required_write_scopes"}:
             scopes = normalize_required_write_scopes(value)
             if scopes:
@@ -547,6 +597,7 @@ def format_todo_metadata_line(
     status: str | None = None,
     task_class: str | None = None,
     action_kind: str | None = None,
+    continuation_policy: str | None = None,
     required_write_scopes: Any = None,
     required_capabilities: Any = None,
     target_capabilities: Any = None,
@@ -596,6 +647,23 @@ def format_todo_metadata_line(
         raise ValueError("todo action_kind must be a public-safe token: lowercase letters, digits, '_' or '-'")
     if normalized_action_kind:
         fields.append(f"action_kind={encode_metadata_value(normalized_action_kind)}")
+    normalized_continuation_policy = normalize_todo_continuation_policy(
+        continuation_policy
+    )
+    if continuation_policy and not normalized_continuation_policy:
+        raise ValueError(
+            "todo continuation_policy must be one of: "
+            + ", ".join(sorted(TODO_CONTINUATION_POLICY_VALUES))
+        )
+    if not normalized_continuation_policy:
+        normalized_continuation_policy = legacy_todo_continuation_policy_for_action_kind(
+            normalized_action_kind
+        )
+    if normalized_continuation_policy:
+        fields.append(
+            "continuation_policy="
+            f"{encode_metadata_value(normalized_continuation_policy)}"
+        )
     normalized_write_scopes = normalize_required_write_scopes(required_write_scopes)
     if required_write_scopes and not normalized_write_scopes:
         raise ValueError("required_write_scopes must contain public-safe relative scope tokens")

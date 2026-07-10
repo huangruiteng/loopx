@@ -31,6 +31,7 @@ def todo(
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
     action_kind: str | None = None,
+    continuation_policy: str | None = None,
     required_capabilities: list[str] | None = None,
     target_capabilities: list[str] | None = None,
 ) -> dict:
@@ -52,6 +53,8 @@ def todo(
         item["blocks_agent"] = blocks_agent
     if action_kind:
         item["action_kind"] = action_kind
+    if continuation_policy:
+        item["continuation_policy"] = continuation_policy
     if required_capabilities:
         item["required_capabilities"] = required_capabilities
     if target_capabilities:
@@ -101,7 +104,14 @@ def assert_current_agent_candidate_order_contract() -> None:
             blocks_agent="codex-value-explorer",
         ),
         todo("todo_other_p0", 4, "P0", claimed_by=PRIMARY_AGENT),
-        todo("todo_primary_review", 5, "P2", claimed_by=AGENT_ID, action_kind="primary_review"),
+        todo(
+            "todo_primary_review",
+            5,
+            "P2",
+            claimed_by=AGENT_ID,
+            action_kind="merge_gate",
+            continuation_policy="primary_review",
+        ),
     ]
     ordered, policy = _sort_capability_runnable_candidates(
         runnable,

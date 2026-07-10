@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Iterable, Mapping
 
 from ...agent_registry import (
     load_goal_from_registry,
@@ -13,8 +13,11 @@ from ...agent_registry import (
 )
 from .contract import (
     TODO_TASK_CLASS_MONITOR,
+    TodoContinuationPolicy,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_continuation_policy,
+    resolve_todo_continuation_policy,
 )
 
 
@@ -25,6 +28,7 @@ class LinkedSuccessor:
     status: str | None = None
     task_class: str | None = None
     action_kind: str | None = None
+    continuation_policy: str | None = None
     claimed_by: str | None = None
 
 
@@ -40,20 +44,6 @@ class CompletionPolicy:
     linked_handoff_successor_id: str | None = None
 
 
-def is_primary_review_action_kind(value: Any) -> bool:
-    action_kind = str(value or "").strip()
-    return action_kind == "primary_review" or action_kind.startswith("primary_review_")
-
-
-def is_review_only_action_kind(value: Any) -> bool:
-    action_kind = str(value or "").strip()
-    if not action_kind or is_primary_review_action_kind(action_kind):
-        return False
-    return action_kind in {"review", "verification"} or action_kind.endswith(
-        ("_review", "_verification")
-    )
-
-
 def linked_successor_from_todo(todo: Mapping[str, Any]) -> LinkedSuccessor:
     return LinkedSuccessor(
         todo_id=str(todo.get("todo_id") or ""),
@@ -61,6 +51,9 @@ def linked_successor_from_todo(todo: Mapping[str, Any]) -> LinkedSuccessor:
         status=str(todo.get("status") or "").strip() or None,
         task_class=str(todo.get("task_class") or "").strip() or None,
         action_kind=str(todo.get("action_kind") or "").strip() or None,
+        continuation_policy=normalize_todo_continuation_policy(
+            todo.get("continuation_policy")
+        ),
         claimed_by=normalize_todo_claimed_by(todo.get("claimed_by")),
     )
 
@@ -87,7 +80,7 @@ def _linked_handoff_successor_id(
     return None
 
 
-def _linked_same_agent_review_successor_id(
+def _linked_same_agent_non_delivery_successor_id(
     *,
     successors: Iterable[LinkedSuccessor],
     completing_agent: str | None,
@@ -101,14 +94,17 @@ def _linked_same_agent_review_successor_id(
             continue
         if successor.claimed_by != completing_agent:
             continue
-        if is_primary_review_action_kind(successor.action_kind):
+        if resolve_todo_continuation_policy(
+            successor.continuation_policy,
+            action_kind=successor.action_kind,
+        ) == TodoContinuationPolicy.PRIMARY_REVIEW:
             continue
         if successor.todo_id:
             return successor.todo_id
     return None
 
 
-def _allows_same_agent_review_continuation(
+def _allows_same_agent_non_delivery_continuation(
     *,
     completion_todo: Mapping[str, Any] | None,
     completing_agent: str | None,
@@ -116,7 +112,10 @@ def _allows_same_agent_review_continuation(
 ) -> bool:
     if not completion_todo or not completing_agent or not str(evidence or "").strip():
         return False
-    if not is_review_only_action_kind(completion_todo.get("action_kind")):
+    if resolve_todo_continuation_policy(
+        completion_todo.get("continuation_policy"),
+        action_kind=completion_todo.get("action_kind"),
+    ) != TodoContinuationPolicy.SAME_AGENT_NON_DELIVERY:
         return False
     if completion_todo.get("required_write_scopes"):
         return False
@@ -171,7 +170,10 @@ def _linked_role_workflow_successor_id(
             continue
         if successor.claimed_by not in registered_agent_set:
             continue
-        if is_primary_review_action_kind(successor.action_kind):
+        if resolve_todo_continuation_policy(
+            successor.continuation_policy,
+            action_kind=successor.action_kind,
+        ) == TodoContinuationPolicy.PRIMARY_REVIEW:
             continue
         return successor.todo_id
     return None
@@ -185,6 +187,7 @@ def resolve_completion_policy(
     next_claimed_by: str | None = None,
     next_agent_todo: str | None = None,
     next_action_kind: str | None = None,
+    next_continuation_policy: str | None = None,
     side_agent_self_merged: bool = False,
     evidence: str | None = None,
     no_followup: bool = False,
@@ -240,23 +243,23 @@ def resolve_completion_policy(
         handoff_agent=handoff_agent,
         completing_agent=effective_claimed_by,
     )
-    same_agent_review_candidate = bool(
+    same_agent_non_delivery_candidate = bool(
         side_agent_completion
         and handoff_agent == effective_claimed_by
         and not next_agent_todo
-        and _allows_same_agent_review_continuation(
+        and _allows_same_agent_non_delivery_continuation(
             completion_todo=completion_todo,
             completing_agent=effective_claimed_by,
             evidence=evidence,
         )
     )
-    if same_agent_review_candidate and not linked_handoff_successor_id:
-        linked_handoff_successor_id = _linked_same_agent_review_successor_id(
+    if same_agent_non_delivery_candidate and not linked_handoff_successor_id:
+        linked_handoff_successor_id = _linked_same_agent_non_delivery_successor_id(
             successors=linked_successor_items,
             completing_agent=effective_claimed_by,
         )
-    same_agent_review_continuation = bool(
-        same_agent_review_candidate and linked_handoff_successor_id
+    same_agent_non_delivery_continuation = bool(
+        same_agent_non_delivery_candidate and linked_handoff_successor_id
     )
     side_agent_monitor_no_followup = bool(
         side_agent_completion
@@ -283,7 +286,10 @@ def resolve_completion_policy(
         and not side_agent_self_merged
         and primary_agent
         and effective_next_claimed_by == primary_agent
-        and is_primary_review_action_kind(next_action_kind)
+        and resolve_todo_continuation_policy(
+            next_continuation_policy,
+            action_kind=next_action_kind,
+        ) == TodoContinuationPolicy.PRIMARY_REVIEW
     )
 
     if side_agent_completion:
@@ -309,14 +315,16 @@ def resolve_completion_policy(
         if (
             not side_agent_self_merged
             and handoff_agent == effective_claimed_by
-            and not same_agent_review_continuation
+            and not same_agent_non_delivery_continuation
             and not side_agent_monitor_no_followup
+            and not explicit_primary_review_handoff
         ):
             raise ValueError(
                 "side-agent handoff todo cannot be claimed by the completing side agent; "
                 "use --side-agent-self-merged with --evidence for same-agent delivery, "
                 "configure side_agent_handoff_agent to another registered agent, or close "
-                "an evidence-backed review-only gate with --successor-todo-id pointing "
+                "an evidence-backed same-agent non-delivery gate with "
+                "continuation_policy=same_agent_non_delivery and --successor-todo-id pointing "
                 "at an existing same-agent successor"
             )
         if (
