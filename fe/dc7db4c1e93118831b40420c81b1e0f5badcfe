@@ -1,0 +1,35 @@
+docs/product/domain-capability-packs.md
+  s_32e2a9a204a8e4::t_1f6c4e21a57a1e 278-315
+loopx/cli_commands/ml_experiment.py
+  s_9a5a2bd944fdcb::t_eb385009744225 13,17,123-131,191-199,305-312
+loopx/ml_experiment.py
+  s_32e2a9a204a8e4::t_e75c5b96a6cbfe 4,6,8-9,12-16,26,452-569,834-845,896-907
+tests/test_ml_experiment_volc_packet.py
+  s_32e2a9a204a8e4::t_7476d8ce957198 3-5,11,14,128-206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fedc7db4c1e93118831b40420c81b1e0f5badcfe",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

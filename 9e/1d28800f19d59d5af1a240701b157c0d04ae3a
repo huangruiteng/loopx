@@ -1,0 +1,34 @@
+loopx/control_plane/quota/scheduler_ack.py
+  s_9a5a2bd944fdcb::t_24215b9feaecba 62-63,74-75,142-143
+examples/control_plane/quota-scheduler-state-ack-smoke.py
+  s_e3f612788718c1::t_02de2b968b54a2 7,20,22,36,102-122,174-191,486-585,884
+loopx/control_plane/scheduler/scheduler_hint.py
+  s_9a5a2bd944fdcb::t_77bbadbf21a494 32,48-163,270,311-319,322,324,327-328,330-335,532-533,541,549-560,582,587,589-602,611
+  s_e3f612788718c1::t_d77e6d1769d524 847-854
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9e1d28800f19d59d5af1a240701b157c0d04ae3a",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

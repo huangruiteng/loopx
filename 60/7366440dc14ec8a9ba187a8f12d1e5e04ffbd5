@@ -1,0 +1,23 @@
+examples/skillsbench-current-ledger-aggregate-smoke.py
+  s_9a5a2bd944fdcb::t_8b2d5be85fb79a 424-492,675
+loopx/benchmark_ledger_current.py
+  s_9a5a2bd944fdcb::t_6c5cb9fb33494a 105-183,187-196,214-217,235-236,252-253,401-406,573-577
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "607366440dc14ec8a9ba187a8f12d1e5e04ffbd5",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

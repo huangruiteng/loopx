@@ -1,0 +1,35 @@
+docs/product/core-control-plane/rule-seam-map.md
+  s_32e2a9a204a8e4::t_0d15f6a1585cc2 111
+examples/control_plane/attention-queue-readmodel-smoke.py
+  s_e3f612788718c1::t_28c19547613943 18-64,251-319,323
+loopx/control_plane/work_items/attention_queue.py
+  s_e3f612788718c1::t_b48f09fd711163 3-4,12-46,121-325
+loopx/status.py
+  s_e3f612788718c1::t_09e7b67b2489cc 113-114,6736-6774
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "e629f19fdb2a28657511e64b72427b8ef03ab3d3",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

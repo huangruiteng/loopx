@@ -1,0 +1,47 @@
+docs/capabilities/issue-fix/README.md
+  s_9a5a2bd944fdcb::t_da4d10ec080ca8 451-473,512-522,535
+docs/capabilities/issue-fix/README.zh-CN.md
+  s_9a5a2bd944fdcb::t_d872d456d849b5 409-427,466-476,489
+docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md
+  s_9a5a2bd944fdcb::t_a69b6fedaae304 75-80,172-174
+examples/issue-fix-outcome-projection-smoke.py
+  s_32e2a9a204a8e4::t_4f318d0dc80428 1-239
+loopx/canary/planner.py
+  s_32e2a9a204a8e4::t_ab6c646c15af41 913-936
+loopx/capabilities/catalog.py
+  s_9a5a2bd944fdcb::t_99ce05ebf80728 48-52,110-114,136
+loopx/capabilities/issue_fix/cli.py
+  s_32e2a9a204a8e4::t_c1aac9b2abd25f 28-31,64-95,373-415,739-800,849,865-866
+loopx/capabilities/issue_fix/outcome_projection.py
+  s_32e2a9a204a8e4::t_d260c2c1830177 1-522
+loopx/presentation/sinks/lark/kanban.py
+  s_9a5a2bd944fdcb::t_d458cc00e67e8a 1995,2007
+loopx/presentation/sinks/lark/projection_rows.py
+  s_32e2a9a204a8e4::t_0b8bbd043f0322 362-383
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b2cc81b06a65f5c8f1050eb3424c2174862fc36d",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

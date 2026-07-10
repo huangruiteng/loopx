@@ -1,0 +1,37 @@
+examples/control_plane/agent-identity-readmodel-smoke.py
+  s_32e2a9a204a8e4::t_3b210cf1532659 17-22,48-53,103-153,175-186,191-192
+examples/control_plane/agent-onboard-host-loop-activation-smoke.py
+  s_32e2a9a204a8e4::t_c6a021a8ed4906 67-78
+examples/control_plane/peer-agent-migration-smoke.py
+  s_32e2a9a204a8e4::t_2c38d1e2a93940 1-138
+examples/control_plane/peer-agent-runtime-v1-smoke.py
+  s_32e2a9a204a8e4::t_0ea64a307fe5fb 1-35
+examples/control_plane/primary-controller-subagent-orchestration-smoke.py
+  s_32e2a9a204a8e4::t_4b5e199a3596a9 134-147,180-221
+examples/control_plane/quota-replan-decision-plane-smoke.py
+  s_32e2a9a204a8e4::t_3d95a29c4ce2ee 247-264,1066-1121,1349
+examples/control_plane/side-agent-workspace-guard-smoke.py
+  s_32e2a9a204a8e4::t_4f6a59da80ee20 141-168,235-290
+examples/control_plane/todo-continuation-policy-smoke.py
+  s_32e2a9a204a8e4::t_86a81f295e8aa5 6,27,59-80,221-315,318-319,323-325,327
+loopx/canary/planner.py
+  s_32e2a9a204a8e4::t_6fbe1e3fa931db 1164-1229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "699df43bd9e29dfec1f7979f59ce64bc0f2211f3",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

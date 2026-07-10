@@ -1,0 +1,33 @@
+examples/skillsbench-cli-goal-first-action-timeout-smoke.py
+  s_32e2a9a204a8e4::t_ee48a55849dbe7 16,50,59
+examples/skillsbench-codex-cli-goal-route-smoke.py
+  s_32e2a9a204a8e4::t_77f382eb89a106 85,150,425-472,666,710-723,1226,1394
+loopx/benchmark_adapters/skillsbench_acp_relay.py
+  s_32e2a9a204a8e4::t_8c294d738b0c09 46,1215,1233,1462-1464,1741,1763-1764
+loopx/benchmark_adapters/skillsbench_codex_goal_recovery.py
+  s_32e2a9a204a8e4::t_fb908863ba821f 120-138
+loopx/codex_cli_goal_tui.py
+  s_32e2a9a204a8e4::t_9b3f3ee0eea497 335,348-352
+scripts/skillsbench_automation_loop.py
+  s_32e2a9a204a8e4::t_81dd229e9d70df 1210,16126-16128
+scripts/skillsbench_runner_constants.py
+  s_32e2a9a204a8e4::t_ca00d960affdf3 49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "1583b6e9d4ef274d923fe19d838a4a9a571aa730",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

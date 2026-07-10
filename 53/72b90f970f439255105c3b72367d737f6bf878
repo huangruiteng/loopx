@@ -1,0 +1,34 @@
+examples/skillsbench-benchmark-egress-policy-smoke.py
+  s_9a5a2bd944fdcb::t_2e948f302231da 1-196
+scripts/skillsbench_automation_loop.py
+  s_9a5a2bd944fdcb::t_8f98d9954dc9f1 7944,7946,7948-7950,7953
+  s_9a5a2bd944fdcb::t_9a1b3b28ff6ea1 1390-1391,1396-1412
+  s_9a5a2bd944fdcb::t_75afa0f7ba127a 139,2744,2788,2890-2909,8882-8896,8902-8903,9067-9071
+scripts/skillsbench-launch-goal-xhigh.sh
+  s_9a5a2bd944fdcb::t_e5880d36c60925 21-22,31-32,83-135,145,147-155,165-166,171-174,207,245
+examples/skillsbench-benchmark-run-smoke.py
+  s_9a5a2bd944fdcb::t_7584445d58b50e 467-468,516-517
+  s_9a5a2bd944fdcb::t_6088dd3a9848aa 6676-6691,6717-6721,6828-6843,6898-6913
+docs/benchmark-developer-workflow.md
+  s_9a5a2bd944fdcb::t_3f19fd1213ce5b 1391-1393
+  s_9a5a2bd944fdcb::t_62d7b560fade49 1384-1390
+  s_9a5a2bd944fdcb::t_ce3e3ee788f269 1394-1401
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5372b90f970f439255105c3b72367d737f6bf878",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

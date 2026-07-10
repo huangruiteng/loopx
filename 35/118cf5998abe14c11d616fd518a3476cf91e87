@@ -1,0 +1,23 @@
+examples/control_plane/todo-first-open-summary-smoke.py
+  s_e3f612788718c1::t_1fb4651cf68257 349-353,683-707,765-774,779
+loopx/control_plane/work_items/project_asset.py
+  s_e3f612788718c1::t_e27aa28bfe87c9 458-526,578,590,595,617-619,632
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "35118cf5998abe14c11d616fd518a3476cf91e87",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

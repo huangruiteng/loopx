@@ -1,0 +1,83 @@
+loopx/agent_onboarding.py
+  s_32e2a9a204a8e4::t_9cd32581ec2c76 7,11,107-109,117
+loopx/bootstrap_command_pack.py
+  s_32e2a9a204a8e4::t_3e11b9c99a0a9a 8,12,393-395,416
+loopx/cli_commands/registry_admin.py
+  s_32e2a9a204a8e4::t_f5c62d634909b9 353-360,614
+loopx/cli_commands/status.py
+  s_32e2a9a204a8e4::t_94a87565fa2c01 563,572,574,580-581,584-593
+loopx/cli_commands/support_control.py
+  s_32e2a9a204a8e4::t_c7a425eb2b259d 9,15,389,405-406,437,467
+loopx/cli_commands/todo.py
+  s_32e2a9a204a8e4::t_2728f82d5e5b52 243-247,251,253,256-257,388,461,526,625,666
+loopx/configure_goal.py
+  s_32e2a9a204a8e4::t_3ccbd173ea097b 4,6-7,29-32,44,113-114,125,127-129,151-158,170-173,183,192-195,197-210,212-213,215,223-241,262,292-297,451,462-471,480-481,488-499,529-530,534-540,550
+loopx/control_plane/agents/agent_lane_recommendation.py
+  s_32e2a9a204a8e4::t_8f8cb39996a637 22,245-248,385-388
+loopx/control_plane/agents/agent_scope.py
+  s_32e2a9a204a8e4::t_4bd274d29a18c2 13,86-105,516,521,536,542-543,949,954-955,1005,1016,1041,1050,1081,1092,1126,1136,1168,1179,1242,1258,1269,1274
+loopx/control_plane/agents/agent_scope_frontier.py
+  s_32e2a9a204a8e4::t_48a8ec6219a017 57-58
+loopx/control_plane/agents/capability_gate.py
+  s_32e2a9a204a8e4::t_8c8692f86ca44d 12,159,165-168,192
+loopx/control_plane/agents/identity.py
+  s_32e2a9a204a8e4::t_c98c769b4e4dcf 11-15,47-55,83-110
+loopx/control_plane/agents/management_projection.py
+  s_32e2a9a204a8e4::t_863527aecb8f6d 145-149,155,157,160-163,482,491-492
+loopx/control_plane/agents/runtime_model.py
+  s_32e2a9a204a8e4::t_03377bd6b5e7e3 1-81
+loopx/control_plane/agents/workspace_guard.py
+  s_32e2a9a204a8e4::t_06855c2084a7fc 7-8,11-18,74-107,111,114-118,125-133,158-163,171-174,178-181,185-202
+loopx/control_plane/goals/goal_frontier.py
+  s_32e2a9a204a8e4::t_8d8182a0d66ace 11-15,92-93,101-102,154-155,164-167,172,182-191,198,204,207-211,1237-1238,1252-1253,1298-1299
+loopx/control_plane/quota/markdown.py
+  s_32e2a9a204a8e4::t_47b14963ca570f 160-172,295-304,332-337
+loopx/control_plane/quota/slot_accounting.py
+  s_32e2a9a204a8e4::t_38d33c17c70eb4 154-155,169
+loopx/control_plane/quota/subagent_orchestration.py
+  s_32e2a9a204a8e4::t_3ef91262d1af17 5-9,66,72,93-98,113-118,127-130,133-141,151-156,214,219,221-223,237-242,246,248-249,257-259,270,272-310,329-346
+loopx/control_plane/todos/claim_visibility.py
+  s_32e2a9a204a8e4::t_15f27f206189b4 5,68,85-89
+loopx/control_plane/todos/completion_policy.py
+  s_32e2a9a204a8e4::t_b57ae6ccb624e6 14,22,39,47-52,105,108,181,184,215-221,223-285,412,420-421
+loopx/control_plane/todos/contract.py
+  s_32e2a9a204a8e4::t_5c5ac6b0c9b0c0 111,232-245
+loopx/control_plane/todos/event_writeback.py
+  s_32e2a9a204a8e4::t_afea7731efbd82 263,266-267,283,291,308,366,391-397
+loopx/control_plane/work_items/execution_obligation.py
+  s_32e2a9a204a8e4::t_8726e7cf73ab44 27-31,34-36,40-42,44,50-53
+loopx/control_plane/work_items/goal_route_hint.py
+  s_32e2a9a204a8e4::t_97e0058558eabc 6,270,289-293
+loopx/control_plane/work_items/interaction_contract.py
+  s_32e2a9a204a8e4::t_d4786e3cfa3c1e 281-282,292-293,402,483-484,583
+loopx/control_plane/work_items/primary_action.py
+  s_32e2a9a204a8e4::t_5457087d7c4c4c 227-241,248
+loopx/heartbeat_prompt.py
+  s_32e2a9a204a8e4::t_82385577ba8f02 19,143,149-159,186,202-236,416,440-451,471,483-486,488-491,511-513,535,597,619-623,636-641,658,688-693,722-729,1154-1194
+loopx/host_loop_activation.py
+  s_32e2a9a204a8e4::t_04986465483847 252,257-260,262-263,265-278,281-289,291-305,307-313,315-317,436,444,487-497,521
+loopx/quota.py
+  s_32e2a9a204a8e4::t_c6fe18ab46fcf1 23,1356-1360,1390-1396,1412-1421,1433-1434,1517-1518,1526-1527,1592-1596
+loopx/status_server.py
+  s_32e2a9a204a8e4::t_eb9f2646f887b0 59,367,403
+loopx/todos.py
+  s_32e2a9a204a8e4::t_a4225ffd5ca2d7 47,1551-1569,1587,1590-1591,1597-1601,1616-1620,1628,1635,1687,1695,1700-1705
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d8f57a5c3788569bfd97f54050d8fc6cd1776ece",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

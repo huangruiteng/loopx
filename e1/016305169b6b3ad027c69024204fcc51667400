@@ -1,0 +1,31 @@
+examples/skillsbench-benchmark-run-smoke.py
+  s_9a5a2bd944fdcb::t_900a17309fa401 5896,5898,5903,5991,6047
+scripts/skillsbench_automation_loop.py
+  s_32e2a9a204a8e4::t_1ee90faccef7ff 6994-6997,7041,7178-7179,7346
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e1016305169b6b3ad027c69024204fcc51667400",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

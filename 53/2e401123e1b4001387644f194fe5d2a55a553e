@@ -1,0 +1,35 @@
+examples/control_plane/todo-readmodel-boundary-smoke.py
+  s_e3f612788718c1::t_9edb16782df935 16-18,121-123
+loopx/boundary_authority.py
+  s_32e2a9a204a8e4::t_872b5dfb446c62 7
+loopx/interface_budget.py
+  s_32e2a9a204a8e4::t_7d8ef90415f168 6-7
+loopx/quota.py
+  s_32e2a9a204a8e4::t_3a7e3aa42c673d 112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "532e401123e1b4001387644f194fe5d2a55a553e",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,23 @@
+examples/control_plane/review-packet-cli-smoke.py
+  s_e3f612788718c1::t_7b348d5b8cd8d3 14-16,22-36
+examples/control_plane/review_packet_cli_fixtures.py
+  s_e3f612788718c1::t_d38934dc8f7c03 1-271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "08a1e2e1cb4ae4a67bdeb473acc5a5130a0caf37",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

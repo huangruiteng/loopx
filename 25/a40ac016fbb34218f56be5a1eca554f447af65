@@ -1,0 +1,35 @@
+docs/product/core-control-plane/rule-seam-map.md
+  s_e3f612788718c1::t_4dea03b9b7cb96 114
+examples/control_plane/status-overview-markdown-smoke.py
+  s_e3f612788718c1::t_f07edcc28db2cc 16,122-127
+loopx/presentation/renderers/status_markdown.py
+  s_32e2a9a204a8e4::t_dbd179b5750468 917-1006
+loopx/status.py
+  s_32e2a9a204a8e4::t_39c42707a3e0f3 318,7163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "25a40ac016fbb34218f56be5a1eca554f447af65",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

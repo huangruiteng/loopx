@@ -1,0 +1,59 @@
+examples/issue-fix-reviewer-recommendation-smoke.py
+  s_32e2a9a204a8e4::t_703d612c8b96f9 1-245
+docs/capabilities/README.md
+  s_32e2a9a204a8e4::t_0dec073770dcb7 9-11
+examples/issue-fix-capability-guide-smoke.py
+  s_9a5a2bd944fdcb::t_98f105160e9b3e 1-133
+loopx/canary/planner.py
+  s_32e2a9a204a8e4::t_1e5372b48e0bb3 830-839
+docs/capabilities/issue-fix/protocols/issue-fix-reviewer-recommendation-v0.md
+  s_32e2a9a204a8e4::t_0907107d72ef17 1-183
+README.zh-CN.md
+  s_32e2a9a204a8e4::t_81b6945173b805 397
+examples/canary/catalog-planner-smoke.py
+  s_32e2a9a204a8e4::t_2979004470abce 498,507-508
+loopx/capabilities/issue_fix/cli.py
+  s_9a5a2bd944fdcb::t_7dce9eee8009ae 30-33,311-388,625-638,673-674,689-690
+README.md
+  s_32e2a9a204a8e4::t_6512ff6da0c1f4 471
+docs/capabilities/issue-fix/README.md
+  s_e3f612788718c1::t_edb99c8441dd2f 3-6,8-14,16-19,21,23,25-60,63,65-109,111-119,122-128,132-199,201-372,375-377,380-390,394-401,403-412,415-423,426-427,430,434-442,444,446-447,455-456,458,463,465-474
+loopx/capabilities/issue_fix/reviewer_recommendation.py
+  s_32e2a9a204a8e4::t_befccc6a231a87 1-547
+docs/capabilities/issue-fix/README.zh-CN.md
+  s_e3f612788718c1::t_db7dcb39dc6915 1-434
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "80b0b8a8df7438929682a789890c3c3b18c0a96f",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

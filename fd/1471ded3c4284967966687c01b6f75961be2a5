@@ -1,0 +1,25 @@
+examples/control_plane/quota-replan-decision-plane-smoke.py
+  s_9a5a2bd944fdcb::t_2e7efb1e820fa2 106-116,321-333,602,632-673,1241-1242
+loopx/control_plane/work_items/autonomous_replan_ack.py
+  s_9a5a2bd944fdcb::t_00e7c904717aa5 6-8,66,68,82-84
+loopx/status.py
+  s_9a5a2bd944fdcb::t_ad968c7df8cb3f 135,599
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fd1471ded3c4284967966687c01b6f75961be2a5",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

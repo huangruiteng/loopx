@@ -1,0 +1,23 @@
+loopx/cli_commands/todo.py
+  s_32e2a9a204a8e4::t_7661c07d766076 25,353-356,682-690,711-726
+loopx/cli_commands/todo_argument_validation.py
+  s_32e2a9a204a8e4::t_53202cb0074105 1-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "19449b87601d7a2f8242c91b3dd462fb311713dc",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

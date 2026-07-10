@@ -1,0 +1,29 @@
+examples/control_plane/todo-readmodel-boundary-smoke.py
+  s_32e2a9a204a8e4::t_cb64dec5f4b509 4,22,87-88,315-333,336
+loopx/control_plane/goals/path_resolution.py
+  s_32e2a9a204a8e4::t_74e9510d738adf 1-20
+loopx/control_plane/testing/quota_fixtures.py
+  s_32e2a9a204a8e4::t_58c5295ee9c43a 5
+loopx/control_plane/todos/event_writeback.py
+  s_32e2a9a204a8e4::t_f2a16350522519 16-21,67-68,96-104
+loopx/status.py
+  s_32e2a9a204a8e4::t_b660714472b60f 219
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "61b71c654f62fbe6bdf125e82b628869626b6007",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

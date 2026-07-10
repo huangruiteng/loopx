@@ -1,0 +1,33 @@
+docs/frontstage-channel-lease-roadmap.md
+  s_e3f612788718c1::t_c76131781bfefa 158-159
+examples/goal-channel-frontstage-fixture.py
+  s_e3f612788718c1::t_1c1bb4e5a5df5a 19-21
+loopx/presentation/renderers/goal_channel_html.py
+  s_9a5a2bd944fdcb::t_16899006fc3185 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "c07ab38ad5a79dae71f7639ff0002b69e03e729b",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

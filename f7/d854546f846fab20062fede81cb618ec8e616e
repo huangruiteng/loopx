@@ -1,0 +1,27 @@
+examples/benchmark-run-v0-status-projection-smoke.py
+  s_32e2a9a204a8e4::t_97781a615628cc 20-22,262-315,355
+examples/control_plane/repo-python-line-budget-smoke.py
+  s_32e2a9a204a8e4::t_078f9382de54bc 68
+loopx/control_plane/runtime/benchmark_projection.py
+  s_32e2a9a204a8e4::t_3da58d1ee3b19b 1-227
+loopx/status.py
+  s_32e2a9a204a8e4::t_d659e191ff82f3 185-188,3824-3827,3831-3837
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f7d854546f846fab20062fede81cb618ec8e616e",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

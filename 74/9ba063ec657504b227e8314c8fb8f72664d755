@@ -1,0 +1,23 @@
+examples/canary/catalog-planner-smoke.py
+  s_32e2a9a204a8e4::t_5678813056be28 613-630
+loopx/canary/planner.py
+  s_32e2a9a204a8e4::t_b828638f911a62 1091-1132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "749ba063ec657504b227e8314c8fb8f72664d755",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

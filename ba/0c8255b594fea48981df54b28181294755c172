@@ -1,0 +1,39 @@
+examples/control_plane/agent-scope-projection-characterization-smoke.py
+  s_9a5a2bd944fdcb::t_09f186e522f3dd 22-25,236-262,391
+loopx/control_plane/agents/agent_scope.py
+  s_e3f612788718c1::t_15940e3ece2360 6-12,989-998,1003-1006,1023-1032,1037-1038,1065-1074,1081-1084,1109-1117,1122-1127,1152-1161,1166-1169,1253-1261,1269-1277
+loopx/control_plane/agents/agent_scope_frontier.py
+  s_e3f612788718c1::t_f5a2473d8a86fa 1-62
+loopx/control_plane/quota/subagent_orchestration.py
+  s_9a5a2bd944fdcb::t_8042947db7f3a6 5
+loopx/control_plane/scheduler/automation_liveness.py
+  s_e3f612788718c1::t_90fdc7dab54660 5-8
+loopx/control_plane/work_items/interaction_contract.py
+  s_9a5a2bd944fdcb::t_e246f5b19e7ef5 6-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ba0c8255b594fea48981df54b28181294755c172",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

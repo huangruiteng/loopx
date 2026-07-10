@@ -1,0 +1,23 @@
+examples/agent-diagnose-packet-smoke.py
+  s_e3f612788718c1::t_eeb8cb5d8f7f2a 256-257,280-281,295-296
+loopx/diagnose.py
+  s_e3f612788718c1::t_3b2086e1161bc0 138-150,159,238-239,527-528
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f051ff2da8b82f5df91d190752bdbf6c13278ae1",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

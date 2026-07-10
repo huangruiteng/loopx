@@ -1,0 +1,29 @@
+examples/control_plane/todo-projection-shared-helper-smoke.py
+  s_e3f612788718c1::t_d0e8980b4bf8a3 25-31,217,224-344,481
+loopx/control_plane/agents/agent_lane_recommendation.py
+  s_e3f612788718c1::t_ee1400c2b5accf 17-19,222,227-230,318-321,335,354
+loopx/control_plane/agents/agent_scope.py
+  s_e3f612788718c1::t_df70c0d5d2e5c5 109-173,237,250,273,280,340,483,726-729,806-811,821,824-826,828-830,840,842,851-864,868-875,881,1119,1208,1214,1221,1227
+loopx/control_plane/agents/capability_gate.py
+  s_e3f612788718c1::t_bb4a45b47f086f 18,88-89,101,123
+loopx/control_plane/goals/goal_frontier.py
+  s_e3f612788718c1::t_644f7eee4e5ca6 5-11,537,715,765,793
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "5a7b9fd356a5075a14426c4a5cc4cc384afe7c02",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,25 @@
+loopx/capabilities/content_ops/connector_packets.py
+  s_e3f612788718c1::t_2292663f147c24 1-164
+loopx/capabilities/content_ops/schemas.py
+  s_e3f612788718c1::t_4323f354f0d82e 1-40
+loopx/capabilities/content_ops/surface.py
+  s_e3f612788718c1::t_4a0c38bf2834b3 12-15,25-46,1590-1592,1594-1595,1598-1600,1602-1603
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7408061e491ce9b251361cddf141a7ff656339a0",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

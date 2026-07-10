@@ -1,0 +1,25 @@
+docs/capabilities/value-connectors/README.md
+  s_d1f00c3a3dcf44::t_fbe4be5f046b11 81,164-165,186-207,247-250
+docs/capabilities/value-connectors/finance-market-snapshot-probe.md
+  s_d1f00c3a3dcf44::t_889c2693d0ffbc 81-87,98-103
+docs/reference/protocols/value-connector-plan-v0.md
+  s_d1f00c3a3dcf44::t_cedf9be3413fc7 43-50,89,128-130,157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "b3c8e742cb55bd34c6ee9c4719d26e3b4b57abb3",
+  "prompts": {},
+  "sessions": {
+    "s_d1f00c3a3dcf44": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3fb7-2987-7e60-b0dc-f18fa86281b9",
+        "model": "unknown"
+      },
+      "human_author": "lusendong.6789 <lusendong.6789@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

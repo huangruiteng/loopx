@@ -1,0 +1,21 @@
+examples/skillsbench-task-source-preflight-smoke.py
+  s_9a5a2bd944fdcb::t_ac994b921ff9d0 46-56,163-164,260-261,422-423,428,430
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d57e0adc9c474872b0338007a3b256adccb066b4",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

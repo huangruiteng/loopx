@@ -1,0 +1,23 @@
+loopx/domain_packs/issue_fix.py
+  s_32e2a9a204a8e4::t_8361c31f70e51c 20,35,40-42,117-134,140
+loopx/domain_state.py
+  s_32e2a9a204a8e4::t_98eb4eda5dc58b 58,73-74,88-92,97,99-113,115,120-121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "17b93fc51eb40b01ac4f493425078fc171350d1d",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

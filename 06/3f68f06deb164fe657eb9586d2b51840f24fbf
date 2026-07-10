@@ -1,0 +1,37 @@
+docs/quota-allocation.md
+  s_e3f612788718c1::t_8019fac55e9f5c 251-255
+docs/reference/protocols/goal-vision-replan-contract-v0.md
+  s_e3f612788718c1::t_dc7d8441579f37 128-135
+examples/control_plane/quota-replan-decision-plane-smoke.py
+  s_9a5a2bd944fdcb::t_515e3d391e8615 304-323,885-921,990
+loopx/control_plane/work_items/autonomous_replan_ack.py
+  s_e3f612788718c1::t_c48370343af2d4 32,38-55
+loopx/quota.py
+  s_e3f612788718c1::t_d9cce7ad44579c 51-53,1504-1516,1710-1716
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "063f68f06deb164fe657eb9586d2b51840f24fbf",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,47 @@
+loopx/bootstrap_command_pack.py
+  s_e3f612788718c1::t_79fb20eefd148d 309-313,319-320,358,511-518,757-763
+loopx/capabilities/catalog.py
+  s_9a5a2bd944fdcb::t_cedc9f4290aae2 35,38-42,90-94,118,137-138
+loopx/capabilities/issue_fix/cli.py
+  s_e3f612788718c1::t_92062b653e4158 12-13,22-25,139-217,445-483,556-558,569-570
+loopx/capabilities/issue_fix/feasibility.py
+  s_e3f612788718c1::t_fbcd4f1463e980 1-324
+loopx/capabilities/issue_fix/workflow_plan.py
+  s_e3f612788718c1::t_36060318f90d50 127-149,249,272,274-276,281,283,285,341-343,365,452-464,600-614
+loopx/domain_packs/issue_fix.py
+  s_32e2a9a204a8e4::t_405f5f3a15d479 10-49,104-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7b657d7afce6a6f2eac20fe2808e151937a5033b",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

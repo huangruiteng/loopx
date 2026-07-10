@@ -1,0 +1,163 @@
+.github/workflows/frontstage-pages.yml
+  s_32e2a9a204a8e4::t_2e733ef0455e9e 8,20,50,56,63,67-68
+.gitignore
+  s_32e2a9a204a8e4::t_1f58688c81b745 5
+CONTRIBUTING.md
+  s_32e2a9a204a8e4::t_d41e0f638b1c8e 76
+CONTRIBUTOR_TASKS.md
+  s_32e2a9a204a8e4::t_4d2f6c2fad1e57 131,133
+README.md
+  s_32e2a9a204a8e4::t_ab2e58e5bf3015 45,470,583,600
+README.zh-CN.md
+  s_32e2a9a204a8e4::t_094e31ed8c4058 314
+apps/presentation/README.md
+  s_32e2a9a204a8e4::t_5b9eb295c8c9b4 1-9
+docs/dashboard-frontend-selection.md
+  s_9a5a2bd944fdcb::t_79b5fc2e5a83f6 56,166,180
+docs/guides/getting-started.md
+  s_9a5a2bd944fdcb::t_c3ae186e154266 747,772,821
+docs/integration.md
+  s_32e2a9a204a8e4::t_0f92ec68fa0234 68-71
+docs/product/README.md
+  s_32e2a9a204a8e4::t_5d0a94936148ba 117-119
+docs/product/agent-management-observability-mvp.md
+  s_9a5a2bd944fdcb::t_03eb5885feca00 220
+docs/product/core-control-plane/rule-seam-map.md
+  s_9a5a2bd944fdcb::t_79dea6e9e92875 114
+docs/product/intelligent-management-surface.md
+  s_32e2a9a204a8e4::t_f9753d7ea6003d 228-233
+docs/product/presentation-surface-layout.md
+  s_32e2a9a204a8e4::t_044e7a29a49f10 1-54
+docs/product/release-readiness.md
+  s_9a5a2bd944fdcb::t_efd639cd9f508d 188
+docs/reference/protocols/agent-management-projection-v0.md
+  s_9a5a2bd944fdcb::t_1e418ace1064a9 207
+docs/reference/protocols/long-horizon-agent-state-protocol-v0.md
+  s_9a5a2bd944fdcb::t_63370b8a4740f3 63
+docs/showcases/README.md
+  s_9a5a2bd944fdcb::t_a1a2f938652e15 40
+examples/canary/canary-promotion-readiness-boundary-smoke.py
+  s_32e2a9a204a8e4::t_766c821825310e 30-31,37
+examples/canary/canary-promotion-readiness-smoke.py
+  s_32e2a9a204a8e4::t_84ade56c222ffe 23,38,59,175
+examples/control_plane/agent-management-live-status-smoke.py
+  s_76ee28abb3c3a4::t_591e0026dc597b 145,209
+examples/control_plane/repo-python-line-budget-smoke.py
+  s_32e2a9a204a8e4::t_c7f690d1aedb91 68
+examples/control_plane/review-packet-smoke.py
+  s_32e2a9a204a8e4::t_be69caac7496b2 16-17
+examples/control_plane/todo-first-open-summary-smoke.py
+  s_32e2a9a204a8e4::t_1d13644051c7e1 54
+examples/dashboard-demo-readiness-smoke.py
+  s_32e2a9a204a8e4::t_d67f9998de963e 15,64,71
+examples/dashboard-frontstage-browser-smoke.mjs
+  s_32e2a9a204a8e4::t_b0c6eecb52e67c 14,828-829,831
+examples/dashboard-frontstage-design-baseline-smoke.mjs
+  s_32e2a9a204a8e4::t_8139df7fddcd36 27-29,31
+examples/dashboard-home-browser-smoke.mjs
+  s_32e2a9a204a8e4::t_76605783a93e5d 14
+examples/dashboard-local-status-gitignore-smoke.py
+  s_32e2a9a204a8e4::t_c8311ee85fd48e 12-14,34
+examples/dashboard-operator-gate-browser-smoke.mjs
+  s_32e2a9a204a8e4::t_a82dbb29f80d0d 12
+examples/dashboard-ops-decision-freshness-smoke.mjs
+  s_32e2a9a204a8e4::t_0aa71bcde4f53b 14
+examples/dashboard-promotion-readiness-browser-smoke.mjs
+  s_32e2a9a204a8e4::t_6b22ad06d5eda3 14
+examples/dashboard-quota-default-browser-smoke.mjs
+  s_32e2a9a204a8e4::t_13205a7e339b93 12
+examples/dashboard-reward-append-browser-smoke.mjs
+  s_32e2a9a204a8e4::t_211da352c62f64 302
+examples/dashboard-throttled-browser-smoke.mjs
+  s_32e2a9a204a8e4::t_4910a232e56cff 12
+examples/dashboard-tracked-fixtures-smoke.py
+  s_32e2a9a204a8e4::t_4eae37a2efdb72 13
+examples/export-frontstage-share-bundle.mjs
+  s_32e2a9a204a8e4::t_a1b2f9f0a12b52 11,48,318
+examples/fixtures/pr-review.public.json
+  s_32e2a9a204a8e4::t_af65ef72c176fe 53,80
+examples/frontstage-share-bundle-smoke.mjs
+  s_32e2a9a204a8e4::t_c8a8718faaac8a 92
+examples/frontstage-two-surface-strategy-smoke.py
+  s_32e2a9a204a8e4::t_a5e0eb83b040c4 28
+examples/install-local-smoke.py
+  s_32e2a9a204a8e4::t_26156b0b939cd6 210-212
+examples/lark-capability-layout-smoke.py
+  s_32e2a9a204a8e4::t_3cb4a529ef2eb0 2,14-16,22-23
+examples/lark-kanban-control-plane-smoke.py
+  s_9a5a2bd944fdcb::t_82d89789205c12 17
+examples/lark-message-card-smoke.py
+  s_9a5a2bd944fdcb::t_bc310a5f2802df 15
+examples/project/project-asset-next-eye-smoke.py
+  s_9a5a2bd944fdcb::t_dc577ad2e4ff19 238
+loopx/capabilities/lark/__init__.py
+  s_32e2a9a204a8e4::t_c570e2940fd471 1-5
+loopx/capabilities/lark/kanban.py
+  s_32e2a9a204a8e4::t_4c5597e8299d97 1,3
+loopx/capabilities/lark/message_card.py
+  s_32e2a9a204a8e4::t_9a6295b4eaa3d5 1,3
+loopx/cli_commands/lark_kanban.py
+  s_e3f612788718c1::t_2cc9d4f4041033 8
+loopx/demo.py
+  s_76ee28abb3c3a4::t_697bef6631de3e 165
+loopx/pr_review.py
+  s_76ee28abb3c3a4::t_eafddaef81611d 76
+loopx/presentation/README.md
+  s_32e2a9a204a8e4::t_50cbb8c4498443 1-31
+loopx/presentation/__init__.py
+  s_32e2a9a204a8e4::t_f9b612ad61a6bc 1
+loopx/presentation/sinks/__init__.py
+  s_32e2a9a204a8e4::t_3e91d91abe7d7e 1
+loopx/presentation/sinks/lark/__init__.py
+  s_32e2a9a204a8e4::t_08448099e5617b 1
+loopx/presentation/sinks/lark/kanban.py
+  s_32e2a9a204a8e4::t_a5e9b1d6004043 1-3034
+loopx/presentation/sinks/lark/message_card.py
+  s_76ee28abb3c3a4::t_2adac7376e35b4 1-112
+loopx/status.py
+  s_76ee28abb3c3a4::t_8382a9ca70dcdc 318
+scripts/macos-dashboard-launchagent.sh
+  s_32e2a9a204a8e4::t_bf5e8ccf8af803 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "279894c03a26b3f21563633bf2d3221db663a225",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

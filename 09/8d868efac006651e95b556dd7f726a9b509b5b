@@ -1,0 +1,61 @@
+README.md
+  s_32e2a9a204a8e4::t_764c3d19e20162 555-564
+README.zh-CN.md
+  s_32e2a9a204a8e4::t_292ce8c0df3374 57-63
+docs/guides/getting-started.md
+  s_32e2a9a204a8e4::t_b3d20084e30410 714-716
+docs/heartbeat-automation-prompt.md
+  s_32e2a9a204a8e4::t_cab73f8b82d8c2 456-458,464-465,595-596
+docs/quota-allocation.md
+  s_32e2a9a204a8e4::t_95c3de0cfc0a9a 736-739,764-766
+docs/reference/protocols/host-integration-plugin-plan-v0.md
+  s_32e2a9a204a8e4::t_c5dbb4afbdd80f 41
+docs/status-data-contract.md
+  s_32e2a9a204a8e4::t_6adfed34507c94 1314-1315
+examples/control_plane/heartbeat-prompt-smoke.py
+  s_32e2a9a204a8e4::t_03b4720fc40ec5 364,672,730
+examples/control_plane/quota-scheduler-hint-compaction-smoke.py
+  s_32e2a9a204a8e4::t_56befb8f19d10d 27,101,103,114
+examples/control_plane/quota-scheduler-state-ack-smoke.py
+  s_32e2a9a204a8e4::t_7cee1ac72bbaad 40,345,348,360,668-695,736-739,868
+examples/host-integration-plugin-plan-smoke.py
+  s_32e2a9a204a8e4::t_2753d14b9d5333 51
+examples/project/configure-goal-smoke.py
+  s_32e2a9a204a8e4::t_150f5347aee1ae 145-155,195,232
+loopx/cli_commands/quota.py
+  s_32e2a9a204a8e4::t_2d0201186bd21a 53,58,60,105-113,163,237,239,241,243,256,293,318,356,405
+loopx/configure_goal.py
+  s_32e2a9a204a8e4::t_e6de73c2f8c96f 4,120-173,383-387,411-419
+loopx/control_plane/quota/scheduler_ack.py
+  s_32e2a9a204a8e4::t_78bf917397bc72 56-98,139,142-149,169-172,174,190-193,218-221,245,276-279
+loopx/control_plane/scheduler/scheduler_hint.py
+  s_32e2a9a204a8e4::t_e371548e08bacd 215,248,252
+loopx/heartbeat_prompt.py
+  s_32e2a9a204a8e4::t_087fa10b618199 36
+loopx/quota.py
+  s_32e2a9a204a8e4::t_49a251e8354781 2528,2555
+loopx/status_server.py
+  s_32e2a9a204a8e4::t_c224c731d44f16 409
+skills/loopx-project/SKILL.md
+  s_32e2a9a204a8e4::t_7af26b4ba4533d 444-446
+skills/loopx-self-repair/references/repair-patterns.md
+  s_32e2a9a204a8e4::t_7137409e1ed857 32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "098d868efac006651e95b556dd7f726a9b509b5b",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,23 @@
+loopx/__init__.py
+  s_e3f612788718c1::t_387e3b02a64464 5
+pyproject.toml
+  s_e3f612788718c1::t_76b0e457a759c9 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "db8a8f763154c6c1d2daba2c3aa09919d5020878",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

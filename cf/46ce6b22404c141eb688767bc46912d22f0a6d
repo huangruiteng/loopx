@@ -1,0 +1,27 @@
+examples/install-local-smoke.py
+  s_32e2a9a204a8e4::t_15acc910e89948 346-358
+examples/self-repair-upstream-issue-escalation-smoke.py
+  s_32e2a9a204a8e4::t_c2bdfa2b91e6fb 1-71
+skills/loopx-self-repair/SKILL.md
+  s_32e2a9a204a8e4::t_e24a670877ccc3 64-87,142-143
+skills/loopx-self-repair/references/upstream-issue-escalation.md
+  s_32e2a9a204a8e4::t_45b754e8244f72 1-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cf46ce6b22404c141eb688767bc46912d22f0a6d",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

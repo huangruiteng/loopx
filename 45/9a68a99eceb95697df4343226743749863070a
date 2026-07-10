@@ -1,0 +1,25 @@
+examples/control_plane/side-agent-self-iteration-state-machine-smoke.py
+  s_32e2a9a204a8e4::t_382e8c19f9e3cd 6,132-136,144-152,167,170,180-186,486-487,509-597,652
+loopx/control_plane/todos/completion_policy.py
+  s_32e2a9a204a8e4::t_4ea26bd7f65516 14,44-52,86-122,174,176,221,225-242,249,277-281,285-287
+loopx/todos.py
+  s_32e2a9a204a8e4::t_ae7447a91785db 1416-1421,1443,1451
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "459a68a99eceb95697df4343226743749863070a",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

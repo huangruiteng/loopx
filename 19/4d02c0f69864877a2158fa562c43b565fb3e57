@@ -1,0 +1,27 @@
+docs/quota-allocation.md
+  s_32e2a9a204a8e4::t_4afd2bda068138 841-844
+examples/control_plane/heartbeat-quota-flow-smoke.py
+  s_32e2a9a204a8e4::t_f61435df222f8f 806-807,988-1071
+examples/control_plane/interaction-contract-state-machine-smoke.py
+  s_32e2a9a204a8e4::t_567679518ac64e 455-456
+loopx/control_plane/work_items/interaction_contract.py
+  s_32e2a9a204a8e4::t_1422e4dcfbf13d 657-662,716-720
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "194d02c0f69864877a2158fa562c43b565fb3e57",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

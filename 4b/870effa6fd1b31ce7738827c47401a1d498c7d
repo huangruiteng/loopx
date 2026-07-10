@@ -1,0 +1,25 @@
+docs/reference/protocols/goal-vision-replan-contract-v0.md
+  s_76ee28abb3c3a4::t_dbbc5c8cda78a3 122-124
+examples/control_plane/quota-replan-decision-plane-smoke.py
+  s_76ee28abb3c3a4::t_b018dfb6de52bb 272-299,571-594,800
+loopx/control_plane/goals/goal_frontier.py
+  s_76ee28abb3c3a4::t_489eb4f19d7c22 18-22,261-266,271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "4b870effa6fd1b31ce7738827c47401a1d498c7d",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

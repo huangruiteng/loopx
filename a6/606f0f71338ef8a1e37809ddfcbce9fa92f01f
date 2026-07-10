@@ -1,0 +1,29 @@
+docs/research/long-horizon-agent-benchmarks/benchmark-core-adapter-contract-v0.md
+  s_9a5a2bd944fdcb::t_11141140a67d50 90-92
+examples/skillsbench-benchmark-egress-policy-smoke.py
+  s_9a5a2bd944fdcb::t_a3fca5c0ab4fd0 203
+examples/skillsbench-reverse-tunnel-supervisor-smoke.py
+  s_9a5a2bd944fdcb::t_519853228bac16 226-227
+loopx/benchmark_core/remote_closeout.py
+  s_9a5a2bd944fdcb::t_80854d79afdbca 95-98
+scripts/skillsbench-launch-goal-xhigh.sh
+  s_9a5a2bd944fdcb::t_14763f708d3b8b 207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a6606f0f71338ef8a1e37809ddfcbce9fa92f01f",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

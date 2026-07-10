@@ -1,0 +1,25 @@
+examples/skillsbench-reverse-tunnel-supervisor-smoke.py
+  s_9a5a2bd944fdcb::t_92ea72fcdce370 165,170,197-200,238-241
+examples/benchmark-remote-closeout-catchup-smoke.py
+  s_9a5a2bd944fdcb::t_9d0ecbba9ee4db 1-147
+examples/skillsbench-benchmark-egress-policy-smoke.py
+  s_9a5a2bd944fdcb::t_77eff3e22235a9 206-210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9d93bcd75d6e8e51cba487b5b6ca7f2b44018c7a",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

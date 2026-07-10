@@ -1,0 +1,27 @@
+docs/reference/protocols/goal-vision-replan-contract-v0.md
+  s_32e2a9a204a8e4::t_9e2848b90da696 123-129
+examples/control_plane/heartbeat-quota-flow-smoke.py
+  s_32e2a9a204a8e4::t_e3cf5cefa12c4a 804-807,813-814
+examples/control_plane/quota-replan-decision-plane-smoke.py
+  s_32e2a9a204a8e4::t_68571acb17f568 661-695,724
+loopx/control_plane/goals/goal_frontier.py
+  s_32e2a9a204a8e4::t_b09c6144d040f7 732-733
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "da3b6ca3e0526efce90131cb2133abf3b1299ac8",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

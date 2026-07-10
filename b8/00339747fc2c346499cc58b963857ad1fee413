@@ -1,0 +1,25 @@
+examples/canary/smoke-suite-runner-smoke.py
+  s_32e2a9a204a8e4::t_f7e4ee389ef1ee 456-466
+examples/skillsbench-app-server-goal-worker-smoke.py
+  s_32e2a9a204a8e4::t_678c735ff6980d 1599,1601
+loopx/canary/runner.py
+  s_32e2a9a204a8e4::t_1b0d3ff4b0c094 40-43,48-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b800339747fc2c346499cc58b963857ad1fee413",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

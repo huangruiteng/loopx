@@ -1,0 +1,23 @@
+examples/release/codex-cli-no-clone-release-verification-smoke.py
+  s_32e2a9a204a8e4::t_b3cffb7f02166e 8-9,33-43,113-124,233,240-250,275,289
+scripts/install-local.sh
+  s_32e2a9a204a8e4::t_d98a6c4c48bde9 143-150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "352a7a46a252646e8a838a12cae63c0feeb6d41e",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

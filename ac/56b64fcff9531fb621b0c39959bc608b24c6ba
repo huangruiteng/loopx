@@ -1,0 +1,25 @@
+examples/cli-control-plane-command-modularization-smoke.py
+  s_e3f612788718c1::t_cc7d3bac9af87d 94-112,117
+loopx/control_plane/todos/markdown.py
+  s_e3f612788718c1::t_67688399894142 1-142
+loopx/todos.py
+  s_e3f612788718c1::t_65dce1480af0ff 64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ac56b64fcff9531fb621b0c39959bc608b24c6ba",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

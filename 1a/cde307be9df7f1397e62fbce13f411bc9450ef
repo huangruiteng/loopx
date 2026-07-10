@@ -1,0 +1,23 @@
+loopx/presentation/renderers/status_markdown.py
+  s_e3f612788718c1::t_c50d5f7ae4f613 107-190
+loopx/status.py
+  s_e3f612788718c1::t_2a74f2c9c04c7d 326,7311
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "1acde307be9df7f1397e62fbce13f411bc9450ef",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

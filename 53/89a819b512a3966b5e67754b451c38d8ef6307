@@ -1,0 +1,27 @@
+docs/interface-budget-contract.md
+  s_e3f612788718c1::t_7ecb0315b7bd9f 69-72,76-77
+docs/status-data-contract.md
+  s_e3f612788718c1::t_6c713741235d20 491-493
+examples/control_plane/hot-path-interface-budget-smoke.py
+  s_e3f612788718c1::t_613a74d2ab1f04 263-264,320-339
+loopx/interface_budget.py
+  s_e3f612788718c1::t_b6d9485121d565 96-97,100,133-134,136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5389a819b512a3966b5e67754b451c38d8ef6307",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

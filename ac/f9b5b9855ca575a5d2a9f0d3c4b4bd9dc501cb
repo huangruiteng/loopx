@@ -1,0 +1,23 @@
+examples/visible-multi-agent-launcher-smoke.py
+  s_32e2a9a204a8e4::t_43ffb439d6afe7 719-758
+loopx/visible_multi_agent_launcher.py
+  s_32e2a9a204a8e4::t_03fa53ea9229d8 42-49,68-69,87-93,115-126,146,384-392,395-396,437,1106,1112-1116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "acf9b5b9855ca575a5d2a9f0d3c4b4bd9dc501cb",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

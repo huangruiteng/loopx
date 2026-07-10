@@ -1,0 +1,27 @@
+examples/control_plane/quota-scheduler-state-ack-smoke.py
+  s_e3f612788718c1::t_fa5790ddde3765 770-772
+examples/control_plane/quota-spend-agent-identity-smoke.py
+  s_e3f612788718c1::t_28346063092a1a 16,211-214
+loopx/control_plane/quota/scheduler_ack.py
+  s_e3f612788718c1::t_099fe78cdc3b35 180,193-194,270
+loopx/control_plane/quota/slot_accounting.py
+  s_e3f612788718c1::t_1cd1147fc62a14 638-640,709-711,724-725
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ac159f5d51c5bdd612414cbf173238dfa854d850",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

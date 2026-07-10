@@ -1,0 +1,25 @@
+examples/decentralized-auto-research-frontier-smoke.py
+  s_e3f612788718c1::t_7cf0663906f7e4 188-232
+loopx/capabilities/auto_research/demo_e2e.py
+  s_e3f612788718c1::t_4d421c855c48d1 361-508,1438-1444,1451-1460
+loopx/capabilities/auto_research/research_state.py
+  s_e3f612788718c1::t_23da39e7e1221d 121-184,758
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1beea7a6e6b3ab4ddcaf1e01f144ef291c331db5",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

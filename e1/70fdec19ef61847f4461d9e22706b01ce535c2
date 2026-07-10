@@ -1,0 +1,29 @@
+loopx/bootstrap.py
+  s_e3f612788718c1::t_bea1a1f2520659 602,668,670-672,674,680,683-696,763,833,912-925
+loopx/cli_commands/bootstrap_connect.py
+  s_e3f612788718c1::t_2af7b3843c0dd0 146-150,215
+loopx/cli_commands/registry_admin.py
+  s_e3f612788718c1::t_3b6d7766f943b7 341-359,670-672
+loopx/configure_goal.py
+  s_e3f612788718c1::t_6889523ac5eb85 78-89,103,137-139,160-165,188,256-257,278-285
+loopx/status_server.py
+  s_e3f612788718c1::t_936fea7264bb1f 60-62,330-332,349-351,383-385
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e170fdec19ef61847f4461d9e22706b01ce535c2",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,25 @@
+docs/status-data-contract.md
+  s_e3f612788718c1::t_3ac6e11aebf324 193-197,229-234
+examples/control_plane/agent-scope-work-lane-consistency-smoke.py
+  s_e3f612788718c1::t_1bcb640eefa029 1-150
+loopx/quota.py
+  s_e3f612788718c1::t_c3cf832a227589 117,296-375,2052-2056
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c4e19ba403d1d78aa4eaf930251ce8d5531b86ad",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

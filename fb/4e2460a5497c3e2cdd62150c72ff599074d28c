@@ -1,0 +1,25 @@
+docs/product/release-readiness.md
+  s_32e2a9a204a8e4::t_ddaf460c38dc7e 167-182
+loopx/__init__.py
+  s_32e2a9a204a8e4::t_aab69662940a2e 5
+pyproject.toml
+  s_32e2a9a204a8e4::t_f173b59b6b5e6a 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fb4e2460a5497c3e2cdd62150c72ff599074d28c",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

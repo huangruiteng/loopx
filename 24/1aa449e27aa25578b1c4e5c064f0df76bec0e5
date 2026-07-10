@@ -1,0 +1,23 @@
+loopx/presentation/sinks/lark/kanban.py
+  s_e3f612788718c1::t_c209229f882db1 2053-2055,2090-2091,2153-2155,2189-2190,2207-2266
+examples/lark-kanban-control-plane-smoke.py
+  s_e3f612788718c1::t_56da1990e9e452 395-456
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "241aa449e27aa25578b1c4e5c064f0df76bec0e5",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

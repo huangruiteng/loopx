@@ -1,0 +1,25 @@
+examples/control_plane/todo-archive-completed-smoke.py
+  s_e3f612788718c1::t_770d5e6f4cc374 117-121,134-137
+loopx/control_plane/quota/markdown.py
+  s_e3f612788718c1::t_77a29276d9358e 539
+loopx/control_plane/todos/completed_archive.py
+  s_e3f612788718c1::t_1148a496286214 15-18,38-41,49-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "07f8c65d5eb2c6043900d92b77c2a28656a367fe",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

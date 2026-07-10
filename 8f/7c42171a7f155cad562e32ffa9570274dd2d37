@@ -1,0 +1,51 @@
+loopx/cli_commands/todo.py
+  s_32e2a9a204a8e4::t_8360d532e895d6 7,93-100,264-268,362,385,421-422,436,475,496,533,552,559-560,575,619-626,643,666-673,691,731,754,806
+loopx/control_plane/agents/capability_gate.py
+  s_32e2a9a204a8e4::t_602c8b65f10c7b 7,11,160-163,168
+loopx/control_plane/todos/completion_policy.py
+  s_32e2a9a204a8e4::t_dce43c3b37652b 5,16,19-20,31,54-56,83,97-100,107,115-118,173-176,190,246,250,256-257,261-262,289-292,318,320,326-327
+loopx/control_plane/todos/contract.py
+  s_32e2a9a204a8e4::t_d974c4661b6d29 5,107-117,197-230,529-532,600,650-666
+loopx/control_plane/todos/deferred_resume.py
+  s_32e2a9a204a8e4::t_5ca665b9ebcf81 65
+loopx/control_plane/todos/event_writeback.py
+  s_32e2a9a204a8e4::t_61d70c3064fa59 23,27,30,145,174-187,238,262,303,321,380
+loopx/control_plane/todos/handoff_gate.py
+  s_32e2a9a204a8e4::t_92ab13cbe699f7 147
+loopx/control_plane/todos/markdown.py
+  s_32e2a9a204a8e4::t_9c0abd363eabb2 62
+loopx/control_plane/todos/quota_summary.py
+  s_32e2a9a204a8e4::t_30fb8cb07e3a04 55
+loopx/control_plane/todos/route_continuation.py
+  s_32e2a9a204a8e4::t_4bc725e06589e2 58
+loopx/control_plane/todos/succession_warning.py
+  s_32e2a9a204a8e4::t_d076b7f17f32c7 32
+loopx/control_plane/todos/summary_item.py
+  s_32e2a9a204a8e4::t_1f4bda65acfada 28
+loopx/control_plane/todos/todo_summary.py
+  s_32e2a9a204a8e4::t_513c92bacfd4c7 20,299-303,362,808
+loopx/event_sourced_state.py
+  s_32e2a9a204a8e4::t_fa7f735172db8f 22,24,26,264-270,275-280,557-563,583-588,611-623,758-759,761
+loopx/state_projection.py
+  s_32e2a9a204a8e4::t_b0363c02ccce6d 17,83,507-511
+loopx/todos.py
+  s_32e2a9a204a8e4::t_c4044801b14314 25,37,81,253,511-515,566-576,741,798,828-829,870-872,910,1011,1047,1104,1160-1161,1217-1219,1256,1401,1462,1480,1485-1497,1509-1529,1537,1552,1566,1574-1577,1621,1686,1753
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8f7c42171a7f155cad562e32ffa9570274dd2d37",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

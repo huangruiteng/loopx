@@ -1,0 +1,23 @@
+examples/canary/smoke-suite-runner-smoke.py
+  s_e3f612788718c1::t_a117b5ddac17c7 381-395,721
+examples/run-smokes.py
+  s_e3f612788718c1::t_1c5b3731780f78 29,48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "af069df4f366bff695b92e1c4e1f98aee2c54f5e",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

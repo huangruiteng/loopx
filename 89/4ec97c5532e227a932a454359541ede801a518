@@ -1,0 +1,23 @@
+examples/control_plane/todo-list-event-projection-smoke.py
+  s_32e2a9a204a8e4::t_e2ea886ed2fbfb 26-27,43-45,48-51,165,169,172-176,178-180,188-202,221-238
+loopx/todos.py
+  s_32e2a9a204a8e4::t_cb6868d245bfe1 188,224,274-275,323-329,331-332,334,403-406,420
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "894ec97c5532e227a932a454359541ede801a518",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

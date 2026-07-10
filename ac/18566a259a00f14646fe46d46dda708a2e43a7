@@ -1,0 +1,27 @@
+examples/explore-configure-goal-smoke.py
+  s_32e2a9a204a8e4::t_72556f18f3d484 1-240
+loopx/cli_commands/registry_admin.py
+  s_32e2a9a204a8e4::t_a72c8f26e0f7ae 14,319-337,601-603
+loopx/configure_goal.py
+  s_32e2a9a204a8e4::t_cd574e098a3789 18,208-210,232-235,271-277,335-337,365-384,471-474,509-514
+loopx/orchestration.py
+  s_32e2a9a204a8e4::t_6e389c3e7a309e 12-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ac18566a259a00f14646fe46d46dda708a2e43a7",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

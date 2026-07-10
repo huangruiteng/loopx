@@ -1,0 +1,33 @@
+examples/control_plane/control-plane-integrated-canary-smoke.py
+  s_e3f612788718c1::t_5b69c7d86d7e43 581-585,591-594,596
+examples/control_plane/control-plane-risk-characterization-smoke.py
+  s_76ee28abb3c3a4::t_86f669c99c991f 265,279-281,287-291,294,297-299,301,304-305,431
+examples/control_plane/work-lane-contract-smoke.py
+  s_e3f612788718c1::t_60ffdd0a9d63f0 2265
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "aa2573dac7ba034fcb3b7f20513728758a66ddfa",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

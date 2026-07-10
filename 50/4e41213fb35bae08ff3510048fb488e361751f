@@ -1,0 +1,31 @@
+docs/integration.md
+  s_32e2a9a204a8e4::t_8fdea70e5dff70 102-114
+docs/new-project-codex-prompt.md
+  s_32e2a9a204a8e4::t_9937bc43fede86 102-112
+examples/control_plane/control-plane-configure-api-smoke.py
+  s_32e2a9a204a8e4::t_5ab6ddde1b368f 204-206,239,305,340
+examples/project/bootstrap-force-preserve-todos-smoke.py
+  s_32e2a9a204a8e4::t_7ef633bd4952db 1-108
+examples/project/configure-goal-smoke.py
+  s_32e2a9a204a8e4::t_6f65d44bf94353 18-23,119-122,139,141,169-170,195,202-225,279-291,304-314
+skills/loopx-project/SKILL.md
+  s_32e2a9a204a8e4::t_124ed76f306f20 64-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "504e41213fb35bae08ff3510048fb488e361751f",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

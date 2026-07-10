@@ -1,0 +1,35 @@
+docs/integration.md
+  s_32e2a9a204a8e4::t_cf03fe7bee58af 448-451,465-468
+docs/reference/protocols/goal-vision-replan-contract-v0.md
+  s_32e2a9a204a8e4::t_1b4652921ef4ca 48-50
+examples/delivery-batch-scale-enum-smoke.py
+  s_32e2a9a204a8e4::t_450c329826dc9f 18,20,24,86-94,96-98,127-140,183-207
+examples/project/goal-vision-refresh-state-budget-smoke.py
+  s_32e2a9a204a8e4::t_1355a458cbdc96 75,107-108,313-346,366
+loopx/cli_commands/project_lifecycle.py
+  s_32e2a9a204a8e4::t_ae18a1086097eb 8-10,123-128
+loopx/control_plane/goals/goal_vision.py
+  s_32e2a9a204a8e4::t_6f5fdb37c56c28 30-37,41-55,62-67
+loopx/control_plane/work_items/delivery_batch_scale.py
+  s_32e2a9a204a8e4::t_b9c3fec7765944 17-24,40-42,52-60
+loopx/feedback.py
+  s_32e2a9a204a8e4::t_33c668949349a2 62-84,98-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "eee26b90e12a3dd13b7ed88c7888a5f7dcf1c94b",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

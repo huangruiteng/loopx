@@ -1,0 +1,31 @@
+examples/bootstrap-command-pack-smoke.py
+  s_e3f612788718c1::t_11b7f0fe893cd9 139,147-152,156,160,162
+examples/canary/catalog-planner-smoke.py
+  s_e3f612788718c1::t_bef553fa93bc0e 498,508
+examples/issue-fix-pr-lifecycle-smoke.py
+  s_e3f612788718c1::t_6ae12cb0dca568 1-224
+examples/issue-fix-workflow-contract-smoke.py
+  s_e3f612788718c1::t_25ece0f568bb49 90,93-95,112,126-128
+examples/issue-fix-workflow-e2e-smoke.py
+  s_e3f612788718c1::t_3c7ec45c2b6124 130,144-159
+examples/issue-fix-workflow-plan-smoke.py
+  s_e3f612788718c1::t_2ccf0829e51c77 95,100-108,201-202,204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d9f332b8445b780ba02f48dd3da8fcfc60c70200",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

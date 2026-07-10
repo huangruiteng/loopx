@@ -1,0 +1,25 @@
+examples/benchmark-ledger-countability-smoke.py
+  s_9a5a2bd944fdcb::t_9d66b82cfb0c6b 1-118
+loopx/benchmark_ledger.py
+  s_9a5a2bd944fdcb::t_27dec29ebfc563 18,466
+loopx/benchmark_ledger_countability.py
+  s_9a5a2bd944fdcb::t_e1238652d4efb6 1-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0f9a389ada05b953357a74b2fc43fffd13d15fe4",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

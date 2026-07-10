@@ -1,0 +1,35 @@
+examples/control_plane/active-state-todo-attention-fallback-smoke.py
+  s_e3f612788718c1::t_b7a51cb9ec354c 116
+examples/control_plane/monitor-poll-writeback-smoke.py
+  s_e3f612788718c1::t_6474b872656ee5 278-280,282,284,291-297
+loopx/control_plane/todos/todo_summary.py
+  s_e3f612788718c1::t_9aaf32accee5c2 11,119,121,140-166
+loopx/status.py
+  s_9a5a2bd944fdcb::t_032b489226cf72 196-197,204-205,485-527
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ae1e959622246494d05c19633be319a8da59f46a",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

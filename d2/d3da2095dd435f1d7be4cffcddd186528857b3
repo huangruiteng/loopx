@@ -1,0 +1,27 @@
+examples/control_plane/monitor-scheduler-contract-smoke.py
+  s_e3f612788718c1::t_e424bcb34e7d3e 13-15,147-156,502
+loopx/control_plane/scheduler/monitor_todo.py
+  s_e3f612788718c1::t_5c3dc931599183 14,23
+loopx/control_plane/scheduler/scheduler_hint.py
+  s_e3f612788718c1::t_7f06f514a32a59 18,191
+loopx/control_plane/scheduler/time.py
+  s_e3f612788718c1::t_f698d4876247bd 1-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "d2d3da2095dd435f1d7be4cffcddd186528857b3",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

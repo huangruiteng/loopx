@@ -1,0 +1,31 @@
+examples/control_plane/interaction-contract-state-machine-smoke.py
+  s_e3f612788718c1::t_8ed9a83d8bb4c8 486-511,520
+loopx/control_plane/work_items/interaction_contract.py
+  s_9a5a2bd944fdcb::t_73f376f5aba3a9 732-758,767-787,800-803,831-845,847-914,920-931,933-947,949-952,959-1023
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e0acfb52bb6cae9fcb9903c8908e09f82cfe07fc",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

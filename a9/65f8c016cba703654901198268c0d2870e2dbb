@@ -1,0 +1,101 @@
+README.md
+  s_e3f612788718c1::t_12cbdb25d5a02f 178,243
+docs/guides/getting-started.md
+  s_e3f612788718c1::t_6a6390571273a1 32-33,166
+examples/benchmark-case-active-state-contract-smoke.py
+  s_9a5a2bd944fdcb::t_4b7755964975fb 416-419
+examples/benchmark-program-current-state-handoff-smoke.py
+  s_e3f612788718c1::t_5d08ea3c13c207 15
+examples/benchmark-restart-actionability-projection-decision-smoke.py
+  s_e3f612788718c1::t_df0a5eb8663793 16
+examples/blocker-push-runtime-smoke.py
+  s_9a5a2bd944fdcb::t_ed2d2d44de6670 49,155,160,182-184
+examples/cli-benchmark-run-ledger-ownership-command-modularization-smoke.py
+  s_9a5a2bd944fdcb::t_318cd949b76f7c 43-54,109,113-119,122-128
+examples/cli-command-module-size-ownership-command-modularization-smoke.py
+  s_9a5a2bd944fdcb::t_3036ec8b4ef0cd 15-16,18,20-21,24,28-29
+examples/control_plane/event-ledger-readmodel-smoke.py
+  s_e3f612788718c1::t_f007cf27a86234 9,106-114
+examples/control_plane/promotion-readiness-readmodel-smoke.py
+  s_9a5a2bd944fdcb::t_47ea6e24193d67 83-112,183
+examples/control_plane/quota-todo-summary-readmodel-smoke.py
+  s_32e2a9a204a8e4::t_92a6e024ca4889 275-276
+examples/control_plane/todo-durability-fixture-smoke.py
+  s_e3f612788718c1::t_2918d0eabde76a 135,147-150,162-169,243
+examples/control_plane/todo-index-rollout-status-smoke.py
+  s_9a5a2bd944fdcb::t_ea6d7a9ee7414c 52,54,56-59,77,79,81-84,90
+examples/frontstage-pages-workflow-smoke.py
+  s_e3f612788718c1::t_006d8cdb16c609 41
+examples/harbor-host-codex-goal-agent-smoke.py
+  s_e3f612788718c1::t_d575b1692a1fd8 677-680
+examples/loopx-project-skill-goal-text-precedence-smoke.py
+  s_e3f612788718c1::t_407d493a3346a0 20,25
+examples/multi-agent-product-recipe-smoke.py
+  s_e3f612788718c1::t_a12197242b4a25 104-108
+examples/multi-agent-visible-launcher-protocol-smoke.py
+  s_e3f612788718c1::t_1d3cc6e31db63a 189
+examples/skillsbench-benchmark-run-smoke.py
+  s_e3f612788718c1::t_b8f4da6ee673ce 56,11584,14521-14522,14535,14537-14538,14605-14606
+examples/skillsbench-host-local-launch-plan-smoke.py
+  s_e3f612788718c1::t_c44b5c49fa96f8 1832,1921,2038,2076
+examples/skillsbench-task-source-preflight-smoke.py
+  s_e3f612788718c1::t_3e1575f407ec63 420,424
+examples/terminal-bench-private-runner-env-guard-smoke.py
+  s_e3f612788718c1::t_964acbce9101eb 114,139,426,495-496,702,771,773,780,797,1034-1045,1047,1119-1120,1416
+loopx/benchmark_ledger.py
+  s_9a5a2bd944fdcb::t_8f204cd1e79539 18-22,934-935,1725-1727
+loopx/benchmark_ledger_countability.py
+  s_e3f612788718c1::t_8e364ab62398cd 20-24,28-40,56-263
+loopx/capabilities/auto_research/preset.py
+  s_e3f612788718c1::t_71328de58fe5e0 7-20,121
+loopx/capabilities/auto_research/role_profiles.py
+  s_e3f612788718c1::t_b07cdfdc838127 1-339
+loopx/cli_commands/__init__.py
+  s_9a5a2bd944fdcb::t_3706587cd88109 69-70
+loopx/cli_commands/benchmark_run_ledger.py
+  s_9a5a2bd944fdcb::t_eec886334b79db 54,58-59,395,757
+loopx/cli_commands/benchmark_run_ledger_classification.py
+  s_e3f612788718c1::t_2e9692d91dbfcb 1-45
+loopx/cli_commands/benchmark_run_ledger_maintenance.py
+  s_9a5a2bd944fdcb::t_efdf1aa27b9165 25-31
+loopx/cli_commands/benchmark_run_ledger_maintenance_registration.py
+  s_9a5a2bd944fdcb::t_0935b2e582c5ee 1-329
+loopx/cli_commands/benchmark_run_ledger_maintenance_rendering.py
+  s_9a5a2bd944fdcb::t_f99084c7e156bb 1-219
+loopx/control_plane/todos/quota_summary.py
+  s_e3f612788718c1::t_b9f9ebc6f28d4d 46,80,317
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a965f8c016cba703654901198268c0d2870e2dbb",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

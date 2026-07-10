@@ -1,0 +1,25 @@
+docs/reference/protocols/todo-suggestion-prompt-v0.md
+  s_e3f612788718c1::t_e826f399f15243 24-26
+examples/control_plane/todo-suggestion-prompt-smoke.py
+  s_e3f612788718c1::t_0245b2588e9715 127-155
+loopx/todo_suggestion_prompt.py
+  s_e3f612788718c1::t_3322bdb253b5a5 33,90-96,115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3cbc60c9536b6d9d8bc382ea06845f380a9c9605",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

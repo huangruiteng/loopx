@@ -1,0 +1,33 @@
+docs/product/beginner-loop-presets.md
+  s_32e2a9a204a8e4::t_4aa13bed973c04 19-36
+examples/beginner-preset-picker-smoke.py
+  s_32e2a9a204a8e4::t_d2cc51a4e68ac3 1-96
+loopx/cli.py
+  s_32e2a9a204a8e4::t_6b893c21ff2ec3 40,66,171,318-325
+loopx/cli_commands/__init__.py
+  s_32e2a9a204a8e4::t_1cf3d0bd57e3a3 92,216,266
+loopx/cli_commands/preset.py
+  s_32e2a9a204a8e4::t_2fa41650b24e0a 1-96
+loopx/help_surface.py
+  s_32e2a9a204a8e4::t_bb8b0ec8f06c6a 31-34,183
+loopx/presets.py
+  s_32e2a9a204a8e4::t_def24d5ebabab6 1-276
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6b7101dd9f3423585e738afe0b8903fbb990fedc",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

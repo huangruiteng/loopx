@@ -1,0 +1,35 @@
+docs/reference/protocols/auto-research-role-profile-v0.md
+  s_32e2a9a204a8e4::t_55496a0aabdddc 75-82,98,104-106,202-203
+docs/reference/protocols/auto-research-role-state-machine-v0.md
+  s_32e2a9a204a8e4::t_1792c86fa021ef 150-152
+examples/auto-research-knn-preset-start-smoke.py
+  s_32e2a9a204a8e4::t_0dacb7eedc5b82 85-92
+examples/auto-research-skill-contract-smoke.py
+  s_32e2a9a204a8e4::t_41b126f840143a 85-86,108-109,112
+examples/visible-multi-agent-launcher-smoke.py
+  s_32e2a9a204a8e4::t_900f35e1d92440 121-122
+loopx/capabilities/auto_research/preset.py
+  s_32e2a9a204a8e4::t_2f57f71d655431 16,52-57,61-66,70-83,378
+loopx/capabilities/auto_research/worker_skill/SKILL.md
+  s_32e2a9a204a8e4::t_70b30bae9040d7 53-58,222-223
+loopx/capabilities/multi_agent/runtime_scripts.py
+  s_32e2a9a204a8e4::t_c1c01615c168b2 163-173,211-215,228,246
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "9b1f78e28ecd1c41796e4c71aceb4a05825adf62",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

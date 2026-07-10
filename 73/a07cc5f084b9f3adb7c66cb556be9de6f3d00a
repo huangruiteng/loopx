@@ -1,0 +1,33 @@
+examples/cli-command-module-size-ownership-command-modularization-smoke.py
+  s_32e2a9a204a8e4::t_da76a61118c335 29-30,39-42
+examples/cli-starter-bootstrap-family-command-modularization-smoke.py
+  s_32e2a9a204a8e4::t_996fa09ce32e34 13,51,87-98
+examples/control_plane/capability-gate-projection-smoke.py
+  s_32e2a9a204a8e4::t_0fe3a07be3095c 198-207,210-212
+examples/control_plane/heartbeat-prompt-smoke.py
+  s_32e2a9a204a8e4::t_e6a9faeeae769d 239
+loopx/cli_commands/__init__.py
+  s_32e2a9a204a8e4::t_7b3c33b3b1cbad 117
+loopx/cli_commands/starter.py
+  s_32e2a9a204a8e4::t_8b1c7b68932a95 25-26
+loopx/cli_commands/starter_bootstrap_registration.py
+  s_32e2a9a204a8e4::t_5fd353b999d671 1-212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "73a07cc5f084b9f3adb7c66cb556be9de6f3d00a",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

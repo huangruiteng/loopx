@@ -1,0 +1,35 @@
+docs/heartbeat-automation-prompt.md
+  s_e3f612788718c1::t_6c8263fccfd1e6 300-301
+docs/product/core-control-plane/state-machine.md
+  s_e3f612788718c1::t_3418a37052ce35 434-436
+docs/quota-allocation.md
+  s_e3f612788718c1::t_21b1d10f2c2545 248-253
+docs/reference/protocols/goal-vision-replan-contract-v0.md
+  s_32e2a9a204a8e4::t_55ce64f05a5571 127-134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "579eceb9ef49fa725f88b6ba07596605c268f6b2",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

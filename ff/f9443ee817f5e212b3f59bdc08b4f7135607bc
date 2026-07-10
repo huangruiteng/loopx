@@ -1,0 +1,23 @@
+examples/control_plane/agent-management-live-status-smoke.py
+  s_32e2a9a204a8e4::t_624a3f4c93c218 216-329,438
+loopx/control_plane/agents/management_projection.py
+  s_32e2a9a204a8e4::t_278057a6a5ba97 8,20-30,94-136,164-192,199-209,211-215,217-221,387,391-396,399,455-464,478
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fff9443ee817f5e212b3f59bdc08b4f7135607bc",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

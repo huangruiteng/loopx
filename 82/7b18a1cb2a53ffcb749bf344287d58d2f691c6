@@ -1,0 +1,27 @@
+examples/auto-research-knn-preset-start-smoke.py
+  s_32e2a9a204a8e4::t_6bb2746fbbd9a4 117
+examples/capability-gate-smoke.py
+  s_32e2a9a204a8e4::t_cfb046e28f2fac 49-53,85-87,101-103,228-244
+loopx/capabilities/auto_research/demo_e2e.py
+  s_32e2a9a204a8e4::t_9dd3e4ed7faffb 51,194-204
+loopx/quota.py
+  s_32e2a9a204a8e4::t_f4f5d5f8b96161 147,854-856,903-946,1720-1724,1727
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "827b18a1cb2a53ffcb749bf344287d58d2f691c6",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

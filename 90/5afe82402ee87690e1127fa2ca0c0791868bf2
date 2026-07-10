@@ -1,0 +1,21 @@
+loopx/host_loop_activation.py
+  s_e3f612788718c1::t_e5ef5cb5937103 5-6,15,241-296,413-414,417,419-432,445-478,483-488
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "905afe82402ee87690e1127fa2ca0c0791868bf2",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

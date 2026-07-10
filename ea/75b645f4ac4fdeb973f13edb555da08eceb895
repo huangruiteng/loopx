@@ -1,0 +1,41 @@
+examples/canary/premerge-validation-gate-smoke.py
+  s_9a5a2bd944fdcb::t_cfd5a47324607b 19,76-93,186,189,325
+examples/control_plane/check-public-boundary-smoke.py
+  s_e3f612788718c1::t_2600d7c13448c5 48-58
+loopx/canary/premerge.py
+  s_76ee28abb3c3a4::t_fc48cf6080dbaf 9,80-222,731-775,821-822
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ea75b645f4ac4fdeb973f13edb555da08eceb895",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

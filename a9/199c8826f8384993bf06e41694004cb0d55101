@@ -1,0 +1,35 @@
+docs/project-agent-todo-contract.md
+  s_32e2a9a204a8e4::t_ab6f5698e5306b 349,354-356,361-378,382-384,508-510
+docs/reference/protocols/active-state-structured-projection-v0.md
+  s_32e2a9a204a8e4::t_05fb96c54cd415 61
+examples/control_plane/capability-gate-projection-smoke.py
+  s_32e2a9a204a8e4::t_4be2f4b2accc06 34,56-57,107-114
+examples/control_plane/event-sourced-state-api-smoke.py
+  s_32e2a9a204a8e4::t_77e547ee48bf4a 62-64,148-158,168-170
+examples/control_plane/todo-cli-smoke.py
+  s_32e2a9a204a8e4::t_066ab73f44f97d 305-306,321-323,340
+examples/control_plane/todo-continuation-policy-smoke.py
+  s_32e2a9a204a8e4::t_633594c50f6c81 1-209
+examples/control_plane/todo-list-event-projection-smoke.py
+  s_32e2a9a204a8e4::t_04ec9f3ed710c2 26-27,30-31,74-78,138,187-190,232-285
+examples/control_plane/todo_lifecycle_fixtures.py
+  s_32e2a9a204a8e4::t_308556acf9d5fb 213,221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a9199c8826f8384993bf06e41694004cb0d55101",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

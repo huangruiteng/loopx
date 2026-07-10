@@ -1,0 +1,33 @@
+examples/skillsbench-batch-case-start-gap-smoke.py
+  s_32e2a9a204a8e4::t_193e6df179b760 1-114
+loopx/benchmark_adapters/skillsbench_batch.py
+  s_9a5a2bd944fdcb::t_987049c70a008a 1-124
+scripts/skillsbench_automation_loop.py
+  s_9a5a2bd944fdcb::t_ce9555389c6f20 104-111,15807-15817,16490-16491,16857-16858,16869-16870,16873-16876,16879,16887,16899
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "b64a2a00f96101a2e377c890e03f5fe233e67ddb",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

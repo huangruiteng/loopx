@@ -1,0 +1,23 @@
+examples/control_plane/todo-readmodel-boundary-smoke.py
+  s_e3f612788718c1::t_3ada7ad99782a9 15-16,19,21-27,80-109,301
+loopx/status.py
+  s_e3f612788718c1::t_27b54c0f3eadd4 76-77,93-94,103-104,107,124-125,135-136,168-171,185-186,197,209-210,214,235,265,271-273,276,278,282,303,305-307,352
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "1894640f3f7efc1b73c88d7a2aa37c25f83f2120",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

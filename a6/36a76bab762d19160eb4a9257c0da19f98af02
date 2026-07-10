@@ -1,0 +1,43 @@
+examples/benchmark-baseline-failure-gate-smoke.py
+  s_32e2a9a204a8e4::t_c64c9da11e7282 13-14,204-218,321
+examples/cli-benchmark-dispatch-command-modularization-smoke.py
+  s_32e2a9a204a8e4::t_a04513dd9ae21c 9-10,101-104,121-124
+examples/cli-benchmark-run-ledger-command-modularization-smoke.py
+  s_32e2a9a204a8e4::t_6440b0893c8eb4 10-11,45-48,63-66,90-93
+examples/cli-help-manpage-smoke.py
+  s_32e2a9a204a8e4::t_c60e35b4cab9c9 144,146-147
+examples/fixture_support.py
+  s_32e2a9a204a8e4::t_d6347efd357bd4 1-124
+examples/terminal-bench-active-user-assisted-treatment-preflight-smoke.py
+  s_32e2a9a204a8e4::t_5dbd8e5267586d 15-16,179-183
+examples/terminal-bench-cli-dry-run-fake-worker-smoke.py
+  s_32e2a9a204a8e4::t_47603d32db635f 13-14,158-162
+examples/terminal-bench-codex-loopx-active-cli-bridge-smoke.py
+  s_32e2a9a204a8e4::t_d42eff6681f653 16-17,1711
+examples/terminal-bench-codex-loopx-fake-worker-smoke.py
+  s_32e2a9a204a8e4::t_6bfd448057d06e 13-14,160-164
+examples/terminal-bench-codex-loopx-preflight-guard-smoke.py
+  s_32e2a9a204a8e4::t_95d37e47b7ea07 15-16,178-182
+examples/terminal-bench-managed-real-run-preflight-guard-smoke.py
+  s_32e2a9a204a8e4::t_7e1ebb87581625 16-17,182-186
+examples/terminal-bench-private-runner-env-guard-smoke.py
+  s_32e2a9a204a8e4::t_73498f068c55f9 13-14,80-84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a636a76bab762d19160eb4a9257c0da19f98af02",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

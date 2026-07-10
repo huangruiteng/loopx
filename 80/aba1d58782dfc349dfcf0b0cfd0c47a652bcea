@@ -1,0 +1,27 @@
+docs/heartbeat-automation-prompt.md
+  s_32e2a9a204a8e4::t_5203a5f3975a4f 145-148
+docs/project-agent-todo-contract.md
+  s_32e2a9a204a8e4::t_b3b157155f9435 161-165
+examples/control_plane/heartbeat-prompt-smoke.py
+  s_32e2a9a204a8e4::t_703107da07cc68 1177-1239
+loopx/heartbeat_prompt.py
+  s_32e2a9a204a8e4::t_7c9c086c48b3b4 184-189,192-198,221-227,246-260,280-300
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "80aba1d58782dfc349dfcf0b0cfd0c47a652bcea",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

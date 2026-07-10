@@ -1,0 +1,25 @@
+examples/canary/premerge-validation-gate-smoke.py
+  s_9a5a2bd944fdcb::t_e048d33e1a0793 197-198,229-230
+examples/cli-help-manpage-smoke.py
+  s_9a5a2bd944fdcb::t_140a2366929f69 6,145-150,152-155
+examples/skillsbench-app-server-goal-worker-smoke.py
+  s_9a5a2bd944fdcb::t_0874cfbb333abb 475-478
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "dd87cb103f5ed8e16e1ed71829f92cd6b8c95648",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,27 @@
+examples/control_plane/repo-python-line-budget-smoke.py
+  s_e3f612788718c1::t_262ae66596a7f5 66
+loopx/cli_commands/starter_scheduler.py
+  s_e3f612788718c1::t_c0a357b1015972 17-20
+loopx/codex_cli_probe.py
+  s_e3f612788718c1::t_9045668fbc2348 1312,1328,1330,1337,1340,1354,1356-1363,1386-1388
+loopx/codex_cli_scheduler.py
+  s_e3f612788718c1::t_26749a26ff1690 1-533
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "62f48afb332a083ca3773af3890a1ce4153b78a1",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

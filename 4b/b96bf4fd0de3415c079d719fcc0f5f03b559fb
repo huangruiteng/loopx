@@ -1,0 +1,21 @@
+loopx/control_plane/work_items/task_graph.py
+  s_e3f612788718c1::t_2f44a7f1fb7c6d 252-263,265,271,276,280-282,286,297-301,303,315-341,355,385,403,433,456,474,491,508,515,525,533,543,556,573,590,627-628
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4bb96bf4fd0de3415c079d719fcc0f5f03b559fb",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

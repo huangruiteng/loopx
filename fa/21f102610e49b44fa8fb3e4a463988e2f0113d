@@ -1,0 +1,23 @@
+docs/reference/protocols/loopx-goal-command-v0.md
+  s_e3f612788718c1::t_4eda8d0b101941 44-50
+examples/control_plane/agent-onboard-host-loop-activation-smoke.py
+  s_e3f612788718c1::t_623e5686a9ea7e 7-8,19-23,57-76,116-227
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fa21f102610e49b44fa8fb3e4a463988e2f0113d",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

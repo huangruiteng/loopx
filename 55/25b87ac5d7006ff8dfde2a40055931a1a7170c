@@ -1,0 +1,37 @@
+examples/control_plane/public-safety-readmodel-smoke.py
+  s_e3f612788718c1::t_614a7d9932296e 14-16,19-28,34,36,42,44,52,56-111,113,116
+loopx/control_plane/runtime/public_safety.py
+  s_9a5a2bd944fdcb::t_9b75e9a45d0905 3,9-24,31-33,35-36,47-48,53,55
+loopx/control_plane/runtime/session_runtime.py
+  s_e3f612788718c1::t_c44ab35f7485d2 6-9,195-196,245-246
+loopx/control_plane/work_items/project_asset.py
+  s_e3f612788718c1::t_fa9a072055a27a 5-11,28
+loopx/status.py
+  s_e3f612788718c1::t_97c0eec5d25313 173-174,232-233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "5525b87ac5d7006ff8dfde2a40055931a1a7170c",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

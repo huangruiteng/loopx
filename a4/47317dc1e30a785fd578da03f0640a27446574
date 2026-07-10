@@ -1,0 +1,25 @@
+examples/control_plane/agent-scoped-evidence-log-smoke.py
+  s_e3f612788718c1::t_47995082842fd3 188,207,219-221,229-234
+loopx/cli_commands/evidence_log.py
+  s_e3f612788718c1::t_d54d9b6033d579 94-96
+loopx/control_plane/runtime/agent_scoped_evidence_log.py
+  s_e3f612788718c1::t_54bd95f8511a77 289-290,302-304
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a447317dc1e30a785fd578da03f0640a27446574",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

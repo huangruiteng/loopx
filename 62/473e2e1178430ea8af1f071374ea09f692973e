@@ -1,0 +1,39 @@
+examples/control_plane/agent-scoped-evidence-log-smoke.py
+  s_76ee28abb3c3a4::t_632941bc55c6a6 1-186
+loopx/cli.py
+  s_32e2a9a204a8e4::t_678a417780116e 35,60,184,440-449
+loopx/cli_commands/__init__.py
+  s_76ee28abb3c3a4::t_d815d7587ad311 83,209,257
+loopx/cli_commands/evidence_log.py
+  s_76ee28abb3c3a4::t_1326f28c47404c 1-176
+loopx/control_plane/runtime/agent_scoped_evidence_log.py
+  s_76ee28abb3c3a4::t_df62b846fea25b 1-265
+loopx/help_surface.py
+  s_76ee28abb3c3a4::t_0cfaa676df2019 53-56,182-183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "62473e2e1178430ea8af1f071374ea09f692973e",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

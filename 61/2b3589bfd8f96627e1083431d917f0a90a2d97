@@ -1,0 +1,44 @@
+examples/skillsbench-benchmark-egress-policy-smoke.py
+  s_9a5a2bd944fdcb::t_2e948f302231da 1-196
+scripts/skillsbench-launch-goal-xhigh.sh
+  s_9a5a2bd944fdcb::t_e5880d36c60925 21-22,31-32,83-135,145,147-155,165-166,171-174,207,245
+docs/benchmark-developer-workflow.md
+  s_9a5a2bd944fdcb::t_62d7b560fade49 1384-1390
+  s_9a5a2bd944fdcb::t_ce3e3ee788f269 1394-1401
+  s_9a5a2bd944fdcb::t_3f19fd1213ce5b 1391-1393
+examples/skillsbench-benchmark-run-smoke.py
+  s_9a5a2bd944fdcb::t_7584445d58b50e 467-468,516-517
+scripts/skillsbench_automation_loop.py
+  s_9a5a2bd944fdcb::t_8f98d9954dc9f1 7919,7921,7923-7925,7928
+  s_9a5a2bd944fdcb::t_75afa0f7ba127a 139,2888-2892,8857-8860,8866,9030
+  s_9a5a2bd944fdcb::t_9a1b3b28ff6ea1 1391-1392,1397-1413
+  s_9a5a2bd944fdcb::t_cf7cdc7b8a46d4 140
+loopx/benchmark_core/__init__.py
+  s_32e2a9a204a8e4::t_f1b91066f8e447 37,190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "612b3589bfd8f96627e1083431d917f0a90a2d97",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,25 @@
+examples/control_plane/todo-archive-completed-smoke.py
+  s_e3f612788718c1::t_d02aae18d365aa 118-132
+loopx/cli_commands/todo.py
+  s_e3f612788718c1::t_e9342c8f455dd0 15,258-262
+loopx/todos.py
+  s_e3f612788718c1::t_7df27cab12f128 107-108,1654
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "999da117a2c623f6e4ccfa0869b64c5756fccb7c",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

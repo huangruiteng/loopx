@@ -1,0 +1,23 @@
+loopx/control_plane/agents/subagent_activity.py
+  s_e3f612788718c1::t_b36eba32d984b7 5-9,20,51-52,106-107
+loopx/status.py
+  s_e3f612788718c1::t_5f051ce550d4a9 241-242
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "bf1a7fbb80b8799689d54518bd14422d05b68b59",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

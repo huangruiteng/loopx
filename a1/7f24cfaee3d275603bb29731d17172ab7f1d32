@@ -1,0 +1,23 @@
+docs/reference/protocols/README.md
+  s_32e2a9a204a8e4::t_adb4f7bf3a6f01 43
+docs/reference/protocols/peer-agent-runtime-v1.md
+  s_32e2a9a204a8e4::t_1b5a3c92e2ec42 1-107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a17f24cfaee3d275603bb29731d17172ab7f1d32",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

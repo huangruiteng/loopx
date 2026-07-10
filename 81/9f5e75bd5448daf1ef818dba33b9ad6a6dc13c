@@ -1,0 +1,23 @@
+examples/control_plane/work-lane-contract-smoke.py
+  s_e3f612788718c1::t_9bd6a9fdda60ac 10-11,22-27
+examples/control_plane/work_lane_contract_fixtures.py
+  s_e3f612788718c1::t_1334b8a9238363 1-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "819f5e75bd5448daf1ef818dba33b9ad6a6dc13c",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,23 @@
+examples/control_plane/agent-scoped-evidence-log-smoke.py
+  s_76ee28abb3c3a4::t_82dd57a483387a 95,98-116,147-178,225,230,232-239,241
+examples/control_plane/quota-replan-decision-plane-smoke.py
+  s_76ee28abb3c3a4::t_959f01ec94e270 198-199,240-247,267-269
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "46f0baaa3b1867d54d310d15618f49cd3f04be3d",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

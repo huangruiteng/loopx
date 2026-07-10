@@ -1,0 +1,55 @@
+docs/capabilities/issue-fix/README.md
+  s_e3f612788718c1::t_34e42fc884fe05 17,24,74-80,94-117,145
+docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md
+  s_e3f612788718c1::t_8d338030bf6da5 34-45,50,54,57,66,112-113,116,120-125,147-150
+docs/reference/protocols/loopx-goal-command-v0.md
+  s_e3f612788718c1::t_7dd4a80035c909 101-118
+examples/bootstrap-command-pack-smoke.py
+  s_e3f612788718c1::t_2d37869d764922 139,148-153,167
+examples/canary/catalog-planner-smoke.py
+  s_32e2a9a204a8e4::t_8094248b69ebf7 498,508
+examples/issue-fix-feasibility-smoke.py
+  s_e3f612788718c1::t_d30612ca400266 1-184
+examples/issue-fix-workflow-contract-smoke.py
+  s_e3f612788718c1::t_1fd58e4a848fa2 90,92-93,97,102,109,124-127
+examples/issue-fix-workflow-e2e-smoke.py
+  s_9a5a2bd944fdcb::t_241d751a24a960 24-26,132,137-141,147-149,155-167,175
+examples/issue-fix-workflow-plan-smoke.py
+  s_e3f612788718c1::t_0be9b8ad773de9 85,89,91,93-96,104-108,206,209
+loopx/canary/planner.py
+  s_9a5a2bd944fdcb::t_55e3225998abd2 835-839
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3540c5e4f6acbf0c85f51ac4516ba5b7b9fa70fb",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

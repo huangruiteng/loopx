@@ -1,0 +1,25 @@
+examples/control_plane/run-history-readmodel-smoke.py
+  s_e3f612788718c1::t_3d0f830bc7bd7b 15-18,42-51,88-110,208-222
+loopx/boundary_authority.py
+  s_e3f612788718c1::t_4df0f5415dfeec 152-172,176-181,183
+loopx/control_plane/runtime/run_history.py
+  s_e3f612788718c1::t_0c63c68ab6ade1 5-6,37-52,89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ed4a9cebde38f70e161d9bcc293dbf1f95b4a0a3",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,23 @@
+docs/product/release-readiness.md
+  s_e3f612788718c1::t_b73a24247abf8a 270-274
+examples/release/release-readiness-doc-smoke.py
+  s_e3f612788718c1::t_acc28d417fe17e 79-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "8964c4c63ec73764125a7bd9b47554b1137b4bb6",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

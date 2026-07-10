@@ -1,0 +1,25 @@
+examples/cli-registry-admin-command-modularization-smoke.py
+  s_e3f612788718c1::t_804db8c05cdd81 15,138-139,181-193
+loopx/cli_commands/registry_admin.py
+  s_e3f612788718c1::t_e7326e7cbe6147 28-32,47,553,773-777
+loopx/cli_commands/registry_authority.py
+  s_e3f612788718c1::t_7f3cf67d34aafa 1-218
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "de2711791655e16372de3485e09fbd98615cdee4",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

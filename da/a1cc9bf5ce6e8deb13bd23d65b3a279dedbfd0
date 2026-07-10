@@ -1,0 +1,41 @@
+docs/integration.md
+  s_32e2a9a204a8e4::t_4d500885121cd3 331,336-341
+docs/reference/protocols/agent-management-projection-v0.md
+  s_32e2a9a204a8e4::t_c6339dc6fe7e42 93-95
+docs/status-data-contract.md
+  s_32e2a9a204a8e4::t_53161e992f75f1 1096-1098
+examples/project/goal-vision-refresh-state-budget-smoke.py
+  s_32e2a9a204a8e4::t_3a97eddb72b1b9 335-357,360-365,368-372
+examples/project/project-map-smoke.py
+  s_32e2a9a204a8e4::t_de3cf21ac30d9d 140-177,209-235
+loopx/cli_commands/project_lifecycle.py
+  s_32e2a9a204a8e4::t_76b2033129bce3 111-114,255-259,356-359
+loopx/dreaming.py
+  s_32e2a9a204a8e4::t_845c948a2ad078 8,492
+loopx/feedback.py
+  s_32e2a9a204a8e4::t_2ec3ac8149ad09 38-49,78-79,129-130
+loopx/operator_gate.py
+  s_32e2a9a204a8e4::t_4c026f6bf94989 7,130,160,330
+loopx/project_map.py
+  s_32e2a9a204a8e4::t_7d34e68d341296 8,502
+loopx/state_refresh.py
+  s_32e2a9a204a8e4::t_6842936abbf576 124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "daa1cc9bf5ce6e8deb13bd23d65b3a279dedbfd0",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

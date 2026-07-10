@@ -1,0 +1,23 @@
+examples/reward-append-api-smoke.py
+  s_e3f612788718c1::t_0697b9fedc9629 244-247
+loopx/status_server.py
+  s_e3f612788718c1::t_53aebd17997622 199-210,215,225,244-245,258,290-295,329
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3d4d45c95dc29ecdea6e572112449d9fa28a4470",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

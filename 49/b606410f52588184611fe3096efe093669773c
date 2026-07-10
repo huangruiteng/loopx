@@ -1,0 +1,27 @@
+loopx/benchmark_core/__init__.py
+  s_9a5a2bd944fdcb::t_a5447aeb9c5c14 30,178
+loopx/benchmark_core/artifacts.py
+  s_9a5a2bd944fdcb::t_82b3b38663923a 3-4,21,36,158,165,254-336
+loopx/benchmark_ledger_current.py
+  s_9a5a2bd944fdcb::t_b60286bb530240 612-619,628-631,669-672
+scripts/skillsbench-launch-goal-xhigh.sh
+  s_9a5a2bd944fdcb::t_29162d592e0196 7,9-10,29-30,36-43,57-58,62-69,93-95,103-107,160-169,231-239,244-259,262-263,301-302
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "49b606410f52588184611fe3096efe093669773c",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,27 @@
+examples/issue-fix-feasibility-smoke.py
+  s_32e2a9a204a8e4::t_8cb5f92212bd89 157-160,181-185
+examples/issue-fix-pr-lifecycle-smoke.py
+  s_32e2a9a204a8e4::t_bcb54e5f1c96cb 217-223
+loopx/capabilities/issue_fix/cli.py
+  s_32e2a9a204a8e4::t_c774a1fd4ef423 469,506
+loopx/domain_packs/issue_fix.py
+  s_32e2a9a204a8e4::t_39d2e9769bf922 3,14-41,73,112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "911eaccf7930b2f871c880bd5ef103bbe5a780b5",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

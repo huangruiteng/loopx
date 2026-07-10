@@ -1,0 +1,23 @@
+docs/archive/incidents/README.md
+  s_32e2a9a204a8e4::t_145f88a1a6f6a1 14
+docs/archive/incidents/auto-research-replan-multiround-badcase-20260705.md
+  s_32e2a9a204a8e4::t_333893b26b9c3a 1-200
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "ca3c0cecec8da3c179bdd874baa44b4930198bf7",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

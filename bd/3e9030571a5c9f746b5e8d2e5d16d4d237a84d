@@ -1,0 +1,34 @@
+examples/cli-help-manpage-smoke.py
+  s_9a5a2bd944fdcb::t_140a2366929f69 6,145-150,152-155
+examples/skillsbench-app-server-goal-worker-smoke.py
+  s_9a5a2bd944fdcb::t_0874cfbb333abb 475
+  s_32e2a9a204a8e4::t_70b3519c4a440c 1608,1612-1613
+examples/canary/premerge-validation-gate-smoke.py
+  s_9a5a2bd944fdcb::t_e048d33e1a0793 197-198,229-230
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "bd3e9030571a5c9f746b5e8d2e5d16d4d237a84d",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

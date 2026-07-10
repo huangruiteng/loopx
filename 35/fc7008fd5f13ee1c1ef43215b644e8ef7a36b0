@@ -1,0 +1,29 @@
+docs/interface-budget-contract.md
+  s_e3f612788718c1::t_3b2ce60e92be0d 13,36-40
+examples/control_plane/hot-path-interface-budget-smoke.py
+  s_e3f612788718c1::t_2ef98e3202924e 55-56
+examples/control_plane/quota-agent-scoped-user-gate-smoke.py
+  s_e3f612788718c1::t_2c940195337c00 229,233,252,280,284,296,299
+loopx/control_plane/work_items/interaction_contract.py
+  s_e3f612788718c1::t_ea094896fe08b9 13,103-107
+loopx/quota.py
+  s_e3f612788718c1::t_d6313932e6d352 40,2130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "35fc7008fd5f13ee1c1ef43215b644e8ef7a36b0",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

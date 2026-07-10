@@ -1,0 +1,27 @@
+docs/guides/getting-started.md
+  s_32e2a9a204a8e4::t_643aaa2d5347b0 327-334
+docs/product/codex-cli-packaged-install.md
+  s_32e2a9a204a8e4::t_62f2fbe05fe0e1 93-98
+examples/loopx-update-smoke.py
+  s_32e2a9a204a8e4::t_8dda66f8d30a28 12,189-249,362-363
+loopx/self_update.py
+  s_32e2a9a204a8e4::t_f17060889369cf 5,9-10,19-22,70-140,303-320,323-341,359,363,537-541,552-556
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8da18a8735599ca6633af06a01f373670f1e4b54",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

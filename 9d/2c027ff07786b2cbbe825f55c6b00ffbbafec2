@@ -1,0 +1,31 @@
+docs/status-data-contract.md
+  s_e3f612788718c1::t_cb12b8ebab3c76 1248-1251
+examples/backlog-hygiene-smoke.py
+  s_e3f612788718c1::t_089ba9fe90921f 170-173
+examples/control_plane/todo-archive-completed-smoke.py
+  s_e3f612788718c1::t_99e25d0fea6a40 120
+loopx/control_plane/quota/markdown.py
+  s_e3f612788718c1::t_d353e28f21fc91 540-541
+loopx/control_plane/todos/completed_archive.py
+  s_e3f612788718c1::t_dd63c5fa766772 17-18,22-25,55
+loopx/presentation/renderers/status_markdown.py
+  s_e3f612788718c1::t_d3ec9586f96a1e 589-591
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9d2c027ff07786b2cbbe825f55c6b00ffbbafec2",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

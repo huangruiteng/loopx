@@ -1,0 +1,77 @@
+examples/control_plane/monitor-scheduler-contract-smoke.py
+  s_e3f612788718c1::t_6447affc9f9a38 16,149
+examples/control_plane/todo-readmodel-boundary-smoke.py
+  s_e3f612788718c1::t_35f892db7ca6ab 33,118
+loopx/authority.py
+  s_e3f612788718c1::t_4e4777133dc9e6 12-13,53
+loopx/bootstrap.py
+  s_e3f612788718c1::t_1cd267c29d9cb1 9,69
+loopx/control_plane/agents/management_projection.py
+  s_e3f612788718c1::t_f42936067b1e5c 6,32,256
+loopx/control_plane/quota/monitor_poll.py
+  s_e3f612788718c1::t_0e372d4af3b00f 11,27
+loopx/control_plane/quota/scheduler_ack.py
+  s_e3f612788718c1::t_046eed49cff30a 7,25
+loopx/control_plane/quota/slot_accounting.py
+  s_e3f612788718c1::t_244b9aab09535a 11,28
+loopx/control_plane/quota/usage_summary.py
+  s_e3f612788718c1::t_3ea42a0b573400 3,6,63
+loopx/control_plane/runtime/decision_freshness.py
+  s_e3f612788718c1::t_78c010eabe2b28 3,6,73
+loopx/control_plane/runtime/event_ledger.py
+  s_e3f612788718c1::t_fc2f7fb7e6aff8 3,6,117
+loopx/control_plane/runtime/status_projection_cache.py
+  s_e3f612788718c1::t_f8c4134fa89822 7,13-14,22,26
+loopx/control_plane/runtime/time.py
+  s_e3f612788718c1::t_efa54ddf1c27e3 20-39
+loopx/control_plane/scheduler/monitor_todo.py
+  s_e3f612788718c1::t_4f796cb9adcf67 4,7,68,111,130
+loopx/control_plane/scheduler/scheduler_hint.py
+  s_e3f612788718c1::t_026f611fe505fc 8,11,233,242
+loopx/control_plane/scheduler/time.py
+  s_9a5a2bd944fdcb::t_2807b5ecd953bf 5-6,9
+loopx/control_plane/work_items/task_graph.py
+  s_e3f612788718c1::t_f8af167a11617c 7,110
+loopx/control_plane/work_items/task_lease.py
+  s_e3f612788718c1::t_6f6cd17f6948f3 5,12-13,35,39
+loopx/event_sourced_state.py
+  s_e3f612788718c1::t_1af8b6edcdeb09 10,96
+loopx/global_registry.py
+  s_e3f612788718c1::t_0727ecf4ed8bb5 11,30
+loopx/history.py
+  s_e3f612788718c1::t_ede0dc52635223 11,60
+loopx/pr_review.py
+  s_e3f612788718c1::t_6b6da336f49cf3 10,84
+loopx/project_uninstall.py
+  s_e3f612788718c1::t_180a5248267452 9,17,21
+loopx/state_refresh.py
+  s_e3f612788718c1::t_ebbafe546bc260 9,71
+loopx/summary_all.py
+  s_e3f612788718c1::t_e842e4bafffc5c 7,47,52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "ffad3bfb3b6cb97d4e5eb96153bce4f97a94f699",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

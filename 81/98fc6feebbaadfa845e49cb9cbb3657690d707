@@ -1,0 +1,35 @@
+docs/frontstage-channel-lease-roadmap.md
+  s_e3f612788718c1::t_4aeb4ba43c5291 151-155,158-159
+docs/reference/protocols/long-horizon-agent-state-protocol-v0.md
+  s_e3f612788718c1::t_f0b8d486a9959d 58
+examples/control_plane/goal-channel-readmodel-smoke.py
+  s_e3f612788718c1::t_e59404ea7190ef 18-20,33
+examples/goal-channel-frontstage-fixture.py
+  s_e3f612788718c1::t_fef5ed997fef17 16,19
+examples/project/goal-channel-projection-smoke.py
+  s_e3f612788718c1::t_31a5ecfe3199e5 15
+loopx/control_plane/goals/goal_channel_projection.py
+  s_e3f612788718c1::t_df67ddcb904abc 1-439
+loopx/frontstage.py
+  s_e3f612788718c1::t_72bef064e45438 6-8,23
+loopx/status.py
+  s_e3f612788718c1::t_cf58890426317d 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "8198fc6feebbaadfa845e49cb9cbb3657690d707",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

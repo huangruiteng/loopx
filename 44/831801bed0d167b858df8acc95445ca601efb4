@@ -1,0 +1,31 @@
+docs/project-agent-todo-contract.md
+  s_e3f612788718c1::t_9da5d5ca193292 430,441-448
+examples/control_plane/todo-cli-smoke.py
+  s_e3f612788718c1::t_50b8eb187426a7 732,734-764
+examples/control_plane/todo-lifecycle-cli-smoke.py
+  s_e3f612788718c1::t_f6abb44cc41ffb 43-158,164
+examples/control_plane/todo_lifecycle_fixtures.py
+  s_e3f612788718c1::t_c8e4bb0c316322 408,413-414
+loopx/control_plane/todos/completion_policy.py
+  s_e3f612788718c1::t_bd5a9bf35c0db7 14-18,127-139,190,261-269,295-300,306-307,313
+loopx/todos.py
+  s_e3f612788718c1::t_89f91e9cefe599 1304-1309,1465
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "44831801bed0d167b858df8acc95445ca601efb4",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

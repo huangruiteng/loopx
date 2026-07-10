@@ -1,0 +1,25 @@
+examples/control_plane/status-overview-markdown-smoke.py
+  s_e3f612788718c1::t_bea9baab25369b 1-112
+loopx/presentation/renderers/status_markdown.py
+  s_e3f612788718c1::t_e1425f671740d0 50-113
+loopx/status.py
+  s_e3f612788718c1::t_03be61b163eb71 329,7178-7179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "ec6c70601d0cdbcfd4b86758a13810b29383c02a",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,33 @@
+docs/reference/protocols/goal-vision-replan-contract-v0.md
+  s_e3f612788718c1::t_00c306432cfd6f 80-87,224-228
+examples/control_plane/quota-replan-decision-plane-smoke.py
+  s_e3f612788718c1::t_bd220adff98058 270,274,756-784,789,794-795,1266
+examples/project/goal-vision-refresh-state-budget-smoke.py
+  s_e3f612788718c1::t_b94b6e5425166a 276-309
+loopx/cli_commands/project_lifecycle.py
+  s_e3f612788718c1::t_d8ef799bd0497d 166-171
+loopx/control_plane/goals/goal_frontier.py
+  s_e3f612788718c1::t_d7c84405f48084 19,378-379
+loopx/control_plane/goals/goal_vision.py
+  s_e3f612788718c1::t_5fc8690b5e0e6d 6-9,165-170
+loopx/control_plane/goals/goal_vision_state.py
+  s_e3f612788718c1::t_66063930995054 1-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2da04204c79f6c7b566e1843d3633a36168aa7f1",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

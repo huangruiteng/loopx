@@ -1,0 +1,21 @@
+docs/capabilities/issue-fix/openviking-pilot-handoff.md
+  s_e3f612788718c1::t_f945d65d6ae187 49-70,132-133,140-142
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "70a0e1845def986bb7cda12fe0b12db8a0c86336",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

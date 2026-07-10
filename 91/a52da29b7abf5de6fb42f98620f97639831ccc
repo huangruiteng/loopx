@@ -1,0 +1,33 @@
+examples/control_plane/primary-action-resolution-parity-smoke.py
+  s_32e2a9a204a8e4::t_f7ee397d6d3443 1-179
+loopx/control_plane/agents/agent_lane_recommendation.py
+  s_32e2a9a204a8e4::t_645b1eef6354ee 12
+loopx/control_plane/quota/projection_repair.py
+  s_32e2a9a204a8e4::t_48f289555d40e7 15
+loopx/control_plane/quota/selected_todo_projection.py
+  s_32e2a9a204a8e4::t_6600f3b9cafa93 6
+loopx/control_plane/work_items/interaction_contract.py
+  s_32e2a9a204a8e4::t_025b65fee6cf5d 10-11,13-19,630
+loopx/control_plane/work_items/primary_action.py
+  s_32e2a9a204a8e4::t_e414053d700def 1-263
+loopx/quota.py
+  s_32e2a9a204a8e4::t_3428ba063d8de5 45-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "91a52da29b7abf5de6fb42f98620f97639831ccc",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

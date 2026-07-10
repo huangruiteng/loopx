@@ -1,0 +1,23 @@
+examples/control_plane/external-evidence-observation-smoke.py
+  s_9a5a2bd944fdcb::t_71cf89db54106a 200-249,323
+loopx/control_plane/quota/recent_runs.py
+  s_9a5a2bd944fdcb::t_4171c84b337de9 49-52,54-55,60-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0546f07ffae4d78c5483caaf3873fe2ce065adfe",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

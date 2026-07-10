@@ -1,0 +1,33 @@
+docs/reference/README.md
+  s_76ee28abb3c3a4::t_1c6a5fa023ab80 9-13
+docs/status-data-contract.md
+  s_76ee28abb3c3a4::t_e15c365bbf13ba 185-191
+examples/cli-help-manpage-smoke.py
+  s_76ee28abb3c3a4::t_14ad042553564e 33,56-57,120,125-126
+examples/control_plane/review-packet-cli-smoke.py
+  s_76ee28abb3c3a4::t_e595b847decb23 644
+loopx/cli_commands/status.py
+  s_76ee28abb3c3a4::t_3a42da23a6b423 138-141,211
+loopx/help_surface.py
+  s_76ee28abb3c3a4::t_93c1241ed152ab 51,55,183,194
+man/loopx.1
+  s_76ee28abb3c3a4::t_905831f3b0c661 46-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "0f15d648a25aeef055c285c5c1c319374d170932",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

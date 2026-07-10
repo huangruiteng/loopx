@@ -1,0 +1,25 @@
+examples/control_plane/heartbeat-quota-flow-smoke.py
+  s_e3f612788718c1::t_ecbf367ac45423 769-771,773-783,786-791,793,798-799,802-805
+examples/control_plane/quota-replan-decision-plane-smoke.py
+  s_e3f612788718c1::t_0022de76ff2202 249-291,674-727,1080-1081
+loopx/control_plane/goals/goal_frontier.py
+  s_e3f612788718c1::t_2e80f83843c1b5 30-38,214-246,258-259,339-342,344-345
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3a9b47a8ee80cdbd30ed7aaa9feb69a09c4fea9e",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

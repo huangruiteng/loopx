@@ -1,0 +1,23 @@
+examples/control_plane/control-plane-integrated-canary-smoke.py
+  s_e3f612788718c1::t_a1e58a3ae88bf3 249
+loopx/control_plane/todos/quota_summary.py
+  s_e3f612788718c1::t_b32da5db82ac83 48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "47ae4c3c96efd23b9fbc04334a1dd449ae2d535a",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,35 @@
+examples/skillsbench-current-ledger-aggregate-smoke.py
+  s_9a5a2bd944fdcb::t_c74d50fca821fd 214-233,259,317-322,364-380,400-402
+examples/skillsbench-task-source-preflight-smoke.py
+  s_9a5a2bd944fdcb::t_9233ce3401ffe8 40-45,157,165-174,197-200,202-207,211-213,230,232,234-235,237-238,241-249,548
+loopx/benchmark_adapters/skillsbench.py
+  s_9a5a2bd944fdcb::t_1cb794bd534573 1536-1542
+loopx/benchmark_adapters/skillsbench_task_source.py
+  s_9a5a2bd944fdcb::t_ed01abe0ee021a 1-141
+loopx/benchmark_ledger.py
+  s_9a5a2bd944fdcb::t_f63d29f4a4d518 255-257,279-281,447-448,1023,1089-1117,1532-1554,2625-2626
+loopx/benchmark_ledger_current.py
+  s_9a5a2bd944fdcb::t_58d13eaf97e31a 222,228,232-236,243-254,258-265,299,310
+loopx/status.py
+  s_9a5a2bd944fdcb::t_5eec0a58531058 2529-2531,2553-2555
+scripts/skillsbench_automation_loop.py
+  s_9a5a2bd944fdcb::t_324dc483113a17 116-118,6377-6379,6401-6403,7602-7607,16672-16676,16688-16695
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "27651cd3f6f1ab171396d044175d4b9a8dca5a69",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

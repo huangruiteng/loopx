@@ -1,0 +1,23 @@
+examples/project/goal-vision-refresh-state-budget-smoke.py
+  s_e3f612788718c1::t_c82d52ed1b1731 72,89,292-326
+loopx/state_refresh.py
+  s_e3f612788718c1::t_7981e9833e3308 660-665
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8a0d82cf179e2e71c6047644a8c58dce07b25b81",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

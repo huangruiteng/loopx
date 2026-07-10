@@ -1,0 +1,27 @@
+examples/bootstrap-command-pack-smoke.py
+  s_32e2a9a204a8e4::t_775782cc7eb585 157-216,438
+loopx/bootstrap_command_pack.py
+  s_32e2a9a204a8e4::t_38c093de4cbc60 25,516-681
+loopx/cli.py
+  s_32e2a9a204a8e4::t_f9913984dd7616 217
+loopx/cli_commands/starter_bootstrap.py
+  s_32e2a9a204a8e4::t_e136d8047ec062 16,18,110-141,297-321,375
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "10cd059086e1017a6125c4c9e194a3b027077edf",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,25 @@
+examples/control_plane/autonomous-replan-obligation-readmodel-smoke.py
+  s_e3f612788718c1::t_e4d7aa4ed4564e 17,75-125,139-140
+loopx/control_plane/goals/goal_frontier.py
+  s_e3f612788718c1::t_33f7d8bacc8c18 15-17,969-976,981,993,997,1001,1007-1013,1024,1030,1041,1045,1050,1060-1066,1077,1084,1096,1100,1105,1116-1120,1134,1140,1152,1156,1161
+loopx/control_plane/work_items/autonomous_replan_obligation.py
+  s_e3f612788718c1::t_39b1f4b34fd7ad 313-315,320-322,327-328,332-333,350-381
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "724812e61cab33d74c7a8fb1cc2998b8beffd872",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

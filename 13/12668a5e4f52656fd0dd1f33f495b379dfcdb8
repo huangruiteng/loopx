@@ -1,0 +1,33 @@
+examples/control_plane/repo-python-line-budget-smoke.py
+  s_e3f612788718c1::t_c2f5c4904c75db 68
+loopx/control_plane/quota/goal_boundary.py
+  s_32e2a9a204a8e4::t_a8dee9a44690a8 1-188
+loopx/quota.py
+  s_32e2a9a204a8e4::t_837e9fa4ac678c 67-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1312668a5e4f52656fd0dd1f33f495b379dfcdb8",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

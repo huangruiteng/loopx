@@ -1,0 +1,23 @@
+scripts/skillsbench-launch-goal-xhigh.sh
+  s_9a5a2bd944fdcb::t_e52fa675ad3ee9 178-179,241-242
+scripts/skillsbench_reverse_tunnel_supervisor.py
+  s_9a5a2bd944fdcb::t_1d0527ae12d86e 533,560-563,1136-1153,1211-1212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "dc4829a52bc33698cd277051968331b34ce08412",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

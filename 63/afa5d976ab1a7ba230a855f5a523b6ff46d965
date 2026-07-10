@@ -1,0 +1,23 @@
+loopx/capabilities/value_connectors/cli.py
+  s_d1f00c3a3dcf44::t_38031ce8250c93 17-23,187-225,312-337,359-360,424-438
+loopx/capabilities/value_connectors/finance_market.py
+  s_d1f00c3a3dcf44::t_0d06fcf1ebf9e2 1-335
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "63afa5d976ab1a7ba230a855f5a523b6ff46d965",
+  "prompts": {},
+  "sessions": {
+    "s_d1f00c3a3dcf44": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3fb7-2987-7e60-b0dc-f18fa86281b9",
+        "model": "unknown"
+      },
+      "human_author": "lusendong.6789 <lusendong.6789@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

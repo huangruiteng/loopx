@@ -1,0 +1,43 @@
+examples/skillsbench-benchmark-run-smoke.py
+  s_9a5a2bd944fdcb::t_9fd59d517d0fd5 78,4558-4593
+examples/skillsbench-task-source-preflight-smoke.py
+  s_9a5a2bd944fdcb::t_94a3ed4bd99eec 66,104-106,136-138,151-211,245,509
+examples/skillsbench_fixtures.py
+  s_9a5a2bd944fdcb::t_a142f97f8f29b2 57-94
+loopx/benchmark_adapters/skillsbench.py
+  s_9a5a2bd944fdcb::t_db492250bc5d1b 463-477,3525-3527,3574,3577-3578,4793-4798
+loopx/benchmark_ledger.py
+  s_76ee28abb3c3a4::t_fc1c33c032677f 254
+loopx/status.py
+  s_76ee28abb3c3a4::t_9e969032c00513 2481
+scripts/skillsbench-launch-goal-xhigh.sh
+  s_9a5a2bd944fdcb::t_99feed1f093d4d 1-175
+scripts/skillsbench_automation_loop.py
+  s_9a5a2bd944fdcb::t_8b4f5ef44f6cd6 55,6351,7338-7394,7566-7571,7577,7580-7582
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5c295de5d5e9a32201f5acd64ff1c029c1711470",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
