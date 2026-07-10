@@ -1,0 +1,51 @@
+docs/architecture.md
+  s_32e2a9a204a8e4::t_a79567a49aa0e0 207
+docs/codex-subagent-orchestration.md
+  s_32e2a9a204a8e4::t_7b1b94e06ae863 111-115
+docs/frontstage-channel-lease-roadmap.md
+  s_32e2a9a204a8e4::t_c7f3a904641b78 188,210
+docs/guides/getting-started.md
+  s_32e2a9a204a8e4::t_f70707f74620b0 752-753
+docs/heartbeat-automation-prompt.md
+  s_32e2a9a204a8e4::t_6434e37b00bc67 157-159
+docs/integration.md
+  s_32e2a9a204a8e4::t_1626d59ef315a8 400-401
+docs/interaction-pattern-catalog.md
+  s_32e2a9a204a8e4::t_428cdc1e0da1c2 895,1452-1456,1493-1494
+docs/product/agent-profile-contract.md
+  s_32e2a9a204a8e4::t_1f12d95bcd35d1 116,118-120,135
+docs/product/complex-request-planning-intake.md
+  s_32e2a9a204a8e4::t_1593c4ad329fc5 59-60,125
+docs/product/scenario-capability-gap-map.md
+  s_32e2a9a204a8e4::t_be0df379781980 32,80
+docs/project-agent-todo-contract.md
+  s_32e2a9a204a8e4::t_bf0182c30059d8 334,336-340,343-352,405-408,427,473-476
+docs/quota-allocation.md
+  s_32e2a9a204a8e4::t_e0617c7445cfaf 339-344
+docs/reference/protocols/global-manager-command-v0.md
+  s_32e2a9a204a8e4::t_9c3c805ae8c39d 147,165
+docs/reference/protocols/local-agent-launch-plan-v1.md
+  s_32e2a9a204a8e4::t_5557199cece84c 78-79,82-83,144
+docs/reference/protocols/peer-agent-runtime-v1.md
+  s_32e2a9a204a8e4::t_7742c9e480d362 48,50-53
+docs/showcases/cases/0619-loopx-self-iteration.md
+  s_32e2a9a204a8e4::t_ceb38068c705ba 135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a6f9acb017a4790acd520c978d1f293153466683",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
