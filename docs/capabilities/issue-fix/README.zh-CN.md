@@ -429,6 +429,12 @@ focused validation 已通过。
 终态卡默认保留可见，让看板能展示产出，而不只展示活跃工作。Shared sink 继续复用
 现有 local-path、private-link 与 private-reference redaction 边界。
 
+Lark adapter 会把它渲染成一等 issue 维度，而不只是把 packet 压平写进 `Evidence`。
+Outcome 行设置 `Work Item Type=Issue Fix`，并填写 `Repository`、`Issue`、
+`Pull Request`、`Route`、`Stage`、`Validation` 和 `Outcome`。`Issue Fix Outcomes`
+提供表格视图，`Issue Fix Kanban` 按 `Stage` 分组展示同一批行。已有看板通过幂等的
+`lark-kanban setup --execute` schema reconciliation 自动补齐缺失字段和视图。
+
 ## 命令
 
 ```bash

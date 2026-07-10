@@ -476,6 +476,14 @@ visible by default so the board shows outputs instead of only active work.
 Shared sinks continue to apply the existing local-path, private-link, and
 private-reference redaction boundary.
 
+The Lark adapter renders this as a first-class issue dimension rather than
+only flattening the packet into `Evidence`. Outcome rows set
+`Work Item Type=Issue Fix` and populate `Repository`, `Issue`, `Pull Request`,
+`Route`, `Stage`, `Validation`, and `Outcome`. `Issue Fix Outcomes` provides the
+table view; `Issue Fix Kanban` groups the same rows by `Stage`. Existing boards
+gain the missing fields and views through idempotent `lark-kanban setup
+--execute` schema reconciliation.
+
 ## Commands
 
 ```bash
