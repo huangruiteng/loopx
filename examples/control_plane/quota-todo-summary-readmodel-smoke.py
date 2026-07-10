@@ -201,6 +201,54 @@ def assert_project_asset_summary_reuses_canonical_shape() -> None:
     assert summary["other_agent_scoped_open_count"] == 1, summary
 
 
+def assert_agent_due_monitor_survives_claimed_lane_compaction() -> None:
+    other_agent_monitors = [
+        {
+            "index": index,
+            "todo_id": f"todo_other_monitor_{index:02d}",
+            "text": f"[P2] Observe other agent monitor {index}.",
+            "status": "open",
+            "task_class": "continuous_monitor",
+            "claimed_by": "codex-main-control",
+            "target_key": f"other-monitor-{index}",
+            "next_due_at": "2999-01-01T00:00:00+00:00",
+        }
+        for index in range(16)
+    ]
+    side_agent_due = {
+        "index": 17,
+        "todo_id": "todo_side_monitor_due_after_compaction",
+        "text": "[P1] Observe the due side-agent monitor.",
+        "status": "open",
+        "task_class": "continuous_monitor",
+        "claimed_by": "codex-side-bypass",
+        "target_key": "side-monitor-due-after-compaction",
+        "next_due_at": "2000-01-01T00:00:00+00:00",
+    }
+    canonical = {
+        "schema_version": "todo_summary_v0",
+        "source_section": "Agent Todo",
+        "total_count": 17,
+        "open_count": 17,
+        "done_count": 0,
+        "monitor_writeback": {"supported": True, "source": "active_state"},
+        "claimed_monitor_open_items": other_agent_monitors,
+        "monitor_open_items": [*other_agent_monitors, side_agent_due],
+    }
+
+    selected = select_quota_todo_summary(
+        canonical,
+        None,
+        agent_identity={"agent_id": "codex-side-bypass"},
+    )
+    assert selected is not None
+    assert selected["open_count"] == 1, selected
+    assert selected["monitor_due_count"] == 1, selected
+    assert (
+        selected["monitor_due_items"][0]["todo_id"] == side_agent_due["todo_id"]
+    ), selected
+
+
 def assert_user_gate_hint_detection_is_preserved() -> None:
     assert is_user_gate_todo_item(
         {
@@ -288,6 +336,7 @@ def main() -> None:
     assert_agent_scoped_user_gate_and_monitor_state()
     assert_project_asset_fallback_and_canonical_precedence()
     assert_project_asset_summary_reuses_canonical_shape()
+    assert_agent_due_monitor_survives_claimed_lane_compaction()
     assert_user_gate_hint_detection_is_preserved()
     assert_quota_payload_summary_compacts_hot_path_lanes()
     print("quota todo summary read model smoke passed")

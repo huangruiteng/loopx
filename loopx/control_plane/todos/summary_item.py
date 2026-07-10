@@ -67,6 +67,7 @@ TODO_SUMMARY_SOURCE_KEYS = (
     "claimed_open_items",
     "claimed_advancement_open_items",
     "claimed_monitor_open_items",
+    "monitor_open_items",
     "current_agent_claimed_open_items",
     "current_agent_claimed_advancement_items",
     "current_agent_claimed_monitor_items",
