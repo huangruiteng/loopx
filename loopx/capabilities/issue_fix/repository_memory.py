@@ -38,6 +38,12 @@ _INPUT_FIELDS = {
     "read_performed",
     "results",
     "reason_code",
+    "provider_version",
+    "latency_ms",
+    "requested_limit",
+    "configured_resource_count",
+    "stale_or_unmapped_count",
+    "verification_mode",
     "writeback_performed",
     "automatic_capture_performed",
 }
@@ -82,6 +88,23 @@ def _memory_ref_id(*, provider: str, namespace: str, memory_ref: str) -> str:
         f"{provider}\n{namespace}\n{memory_ref}".encode("utf-8")
     ).hexdigest()[:20]
     return f"memory-{digest}"
+
+
+def _optional_bounded_int(
+    value: Any,
+    *,
+    field: str,
+    minimum: int,
+    maximum: int,
+) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"{field} must be an integer")
+    parsed = int(value)
+    if parsed < minimum or parsed > maximum:
+        raise ValueError(f"{field} must be between {minimum} and {maximum}")
+    return parsed
 
 
 def _empty_projection(
@@ -166,6 +189,54 @@ def build_issue_fix_repository_memory_hook(
     observed_at = _safe_text(
         memory_input.get("observed_at"), field="observed_at", limit=80
     )
+    provider_version = (
+        _safe_text(
+            memory_input.get("provider_version"), field="provider_version", limit=80
+        )
+        if memory_input.get("provider_version") is not None
+        else None
+    )
+    latency_ms = _optional_bounded_int(
+        memory_input.get("latency_ms"),
+        field="latency_ms",
+        minimum=0,
+        maximum=600_000,
+    )
+    requested_limit = _optional_bounded_int(
+        memory_input.get("requested_limit"),
+        field="requested_limit",
+        minimum=1,
+        maximum=MAX_MEMORY_RESULTS,
+    )
+    configured_resource_count = _optional_bounded_int(
+        memory_input.get("configured_resource_count"),
+        field="configured_resource_count",
+        minimum=0,
+        maximum=24,
+    )
+    stale_or_unmapped_count = _optional_bounded_int(
+        memory_input.get("stale_or_unmapped_count"),
+        field="stale_or_unmapped_count",
+        minimum=0,
+        maximum=MAX_MEMORY_RESULTS,
+    )
+    verification_mode = (
+        _safe_label(memory_input.get("verification_mode"), field="verification_mode")
+        if memory_input.get("verification_mode") is not None
+        else None
+    )
+    compact_telemetry = {
+        key: value
+        for key, value in {
+            "provider_version": provider_version,
+            "latency_ms": latency_ms,
+            "requested_limit": requested_limit,
+            "configured_resource_count": configured_resource_count,
+            "stale_or_unmapped_count": stale_or_unmapped_count,
+            "verification_mode": verification_mode,
+        }.items()
+        if value is not None
+    }
     search_performed = memory_input.get("search_performed") is True
     read_performed = memory_input.get("read_performed") is True
     raw_results = memory_input.get("results") or []
@@ -193,6 +264,7 @@ def build_issue_fix_repository_memory_hook(
             | {
                 "query_summary": query_summary,
                 "observed_at": observed_at,
+                **compact_telemetry,
             },
         }
 
@@ -215,6 +287,7 @@ def build_issue_fix_repository_memory_hook(
                 "query_summary": query_summary,
                 "observed_at": observed_at,
                 "discarded_result_count": len(raw_results),
+                **compact_telemetry,
             },
         }
 
@@ -332,6 +405,7 @@ def build_issue_fix_repository_memory_hook(
             "patch_influence_allowed_count": counts["confirmed"],
             "source_refs": [source["source_id"] for source in sources],
             "verification_refs": sorted(set(verification_refs)),
+            **compact_telemetry,
         }
     )
     return {"sources": sources, "projection": projection}
