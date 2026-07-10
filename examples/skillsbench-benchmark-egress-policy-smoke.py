@@ -238,7 +238,7 @@ def test_verifier_proxy_patch_is_required_only_for_existing_verifier() -> None:
 def test_proxy_runtime_prewarms_external_base_images_without_public_refs() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-base-image-prewarm-") as tmp:
         dockerfile = Path(tmp) / "Dockerfile"
-        image = "gcr.io/oss-fuzz-base/base-builder-python:latest"
+        image = "gcr.io/oss-fuzz-base/base-builder-python"
         dockerfile.write_text(
             f"FROM {image} AS builder\n"
             "FROM builder AS final\n",
@@ -279,7 +279,10 @@ def test_proxy_runtime_prewarms_external_base_images_without_public_refs() -> No
         assert image not in json.dumps(public_prerequisites, sort_keys=True)
         skopeo_calls = [call for call in calls if call[0] == "/usr/bin/skopeo"]
         assert len(skopeo_calls) == 1, calls
-        assert skopeo_calls[0][-2:] == [f"docker://{image}", f"docker-daemon:{image}"]
+        assert skopeo_calls[0][-2:] == [
+            f"docker://{image}",
+            f"docker-daemon:{image}:latest",
+        ]
 
 
 if __name__ == "__main__":

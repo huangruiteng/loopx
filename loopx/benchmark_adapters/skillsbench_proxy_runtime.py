@@ -172,6 +172,13 @@ def _image_cached(docker_bin: str, image: str) -> bool:
     return result.returncode == 0
 
 
+def _docker_daemon_destination_reference(image: str) -> str:
+    if "@" in image:
+        return image
+    final_segment = image.rsplit("/", 1)[-1]
+    return image if ":" in final_segment else f"{image}:latest"
+
+
 def prewarm_dockerfile_base_images(
     dockerfile: Path,
     *,
@@ -232,7 +239,7 @@ def prewarm_dockerfile_base_images(
                         "--retry-times",
                         "3",
                         f"docker://{image}",
-                        f"docker-daemon:{image}",
+                        f"docker-daemon:{_docker_daemon_destination_reference(image)}",
                     ],
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
