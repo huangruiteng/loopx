@@ -28,6 +28,7 @@ from loopx.capabilities.issue_fix.repository_memory_provider import (  # noqa: E
 from loopx.capabilities.context_providers.base import (  # noqa: E402
     ContextProviderItem,
     ContextProviderRetrieval,
+    ContextProviderSync,
 )
 from loopx.capabilities.context_providers.openviking import (  # noqa: E402
     OpenVikingContextProvider,
@@ -102,6 +103,68 @@ class OpenVikingContractRunner:
         else:
             raise AssertionError(command)
         return subprocess.CompletedProcess(command, 0, stdout=stdout)
+
+
+class UncertainWriteRunner:
+    def __init__(
+        self,
+        *,
+        target: str,
+        source_content: str,
+        post_write_state: str = "pending",
+    ) -> None:
+        self.target = target
+        self.source_content = source_content
+        self.post_write_state = post_write_state
+        self.calls: list[list[str]] = []
+        self.write_attempted = False
+
+    def __call__(
+        self, command: list[str], **_kwargs: Any
+    ) -> subprocess.CompletedProcess[str]:
+        self.calls.append(command)
+        args = command[1:]
+        if args == ["--version"]:
+            return subprocess.CompletedProcess(
+                command, 0, stdout="openviking 0.4.9.dev40\n"
+            )
+        if args[:2] == ["status", "-o"]:
+            return subprocess.CompletedProcess(
+                command, 0, stdout=json.dumps({"status": "healthy"})
+            )
+        if args[0] == "add-resource":
+            self.write_attempted = True
+            return subprocess.CompletedProcess(command, 1, stdout="Connection Error")
+        if args[0] == "read":
+            if self.write_attempted and self.post_write_state == "verified":
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout=json.dumps({"result": self.source_content}),
+                )
+            return subprocess.CompletedProcess(command, 1, stdout="not found")
+        if args[0] == "tree":
+            rows = (
+                [{"uri": self.target}]
+                if self.write_attempted and self.post_write_state == "pending"
+                else []
+            )
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps({"result": {"resources": rows}}),
+            )
+        if args[0] == "ls":
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps({"result": {"resources": []}}),
+            )
+        if args[0] == "mkdir":
+            return subprocess.CompletedProcess(
+                command, 0, stdout=json.dumps({"ok": True})
+            )
+        raise AssertionError(command)
 
 
 def repository_context() -> dict[str, object]:
@@ -302,6 +365,101 @@ def main() -> int:
         assert sync_plan["ok"] is True, sync_plan
         assert sync_plan["external_writes_performed"] is False, sync_plan
         assert_boundary(sync_plan)
+
+        target = f"viking://resources/public-repo/{REVISION}/src/worker.py"
+        uncertain_runner = UncertainWriteRunner(
+            target=target,
+            source_content=source.read_text(encoding="utf-8"),
+        )
+        uncertain_provider = OpenVikingContextProvider(
+            executable="ov-contract",
+            runner=uncertain_runner,
+        )
+        uncertain = uncertain_provider.sync(
+            namespace="public-repository",
+            resources=[(str(source), target)],
+            timeout_seconds=5,
+            observed_at="2026-07-11T03:30:00+08:00",
+            execute=True,
+        ).public_packet()
+        assert uncertain["status"] == "committed_pending", uncertain
+        assert uncertain["ok"] is True, uncertain
+        assert uncertain["completed_count"] == 0, uncertain
+        assert uncertain["pending_count"] == 1, uncertain
+        assert uncertain["write_count"] == 1, uncertain
+        assert uncertain["reconciliation_performed"] is True, uncertain
+        assert uncertain["retry_disposition"] == "wait_and_reconcile", uncertain
+        assert uncertain["external_writes_performed"] is True, uncertain
+        assert_boundary(uncertain)
+
+        verified_runner = UncertainWriteRunner(
+            target=target,
+            source_content=source.read_text(encoding="utf-8"),
+            post_write_state="verified",
+        )
+        verified = (
+            OpenVikingContextProvider(
+                executable="ov-contract",
+                runner=verified_runner,
+            )
+            .sync(
+                namespace="public-repository",
+                resources=[(str(source), target)],
+                timeout_seconds=5,
+                observed_at="2026-07-11T03:30:00+08:00",
+                execute=True,
+            )
+            .public_packet()
+        )
+        assert verified["status"] == "completed", verified
+        assert verified["completed_count"] == 1, verified
+        assert verified["pending_count"] == 0, verified
+        assert verified["write_count"] == 1, verified
+        assert verified["reconciliation_performed"] is True, verified
+        assert verified["retry_disposition"] == "no_retry", verified
+
+        absent_runner = UncertainWriteRunner(
+            target=target,
+            source_content=source.read_text(encoding="utf-8"),
+            post_write_state="absent",
+        )
+        absent = (
+            OpenVikingContextProvider(
+                executable="ov-contract",
+                runner=absent_runner,
+            )
+            .sync(
+                namespace="public-repository",
+                resources=[(str(source), target)],
+                timeout_seconds=5,
+                observed_at="2026-07-11T03:30:00+08:00",
+                execute=True,
+            )
+            .public_packet()
+        )
+        assert absent["status"] == "partial", absent
+        assert absent["completed_count"] == 0, absent
+        assert absent["pending_count"] == 0, absent
+        assert absent["write_count"] == 0, absent
+        assert absent["reconciliation_performed"] is True, absent
+        assert absent["retry_disposition"] == "safe_to_retry", absent
+        assert absent["reason_code"] == "provider_sync_write_failed_absent", absent
+
+        generic_pending = ContextProviderSync(
+            provider="fake-provider",
+            namespace="public-repository",
+            status="committed_pending",
+            observed_at="2026-07-11T03:30:00+08:00",
+            requested_count=1,
+            completed_count=0,
+            write_count=1,
+            pending_count=1,
+            reconciliation_performed=True,
+            retry_disposition="wait_and_reconcile",
+        ).public_packet()
+        assert generic_pending["ok"] is True, generic_pending
+        assert generic_pending["retry_disposition"] == "wait_and_reconcile"
+        assert_boundary(generic_pending)
         provider_result = retrieve_issue_fix_repository_memory(
             config={
                 "schema_version": "issue_fix_repository_memory_provider_config_v0",
