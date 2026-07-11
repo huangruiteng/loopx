@@ -36,7 +36,7 @@ def legacy_agent_hierarchy_present(goal: Mapping[str, Any] | None) -> bool:
         isinstance(profile, Mapping)
         and (
             profile.get("schema_version") == LEGACY_AGENT_PROFILE_SCHEMA_VERSION
-            or profile.get("role") in LEGACY_HIERARCHY_ROLES
+            or "role" in profile
             or profile.get("primary_agent")
             or (
                 isinstance(profile.get("review_policy"), Mapping)
