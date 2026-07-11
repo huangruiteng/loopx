@@ -743,6 +743,14 @@ def main() -> int:
             },
         )
         upsert_issue_fix_pr_lifecycle_ledger_jsonl(lifecycle_path, lifecycle)
+        legacy_lifecycle = json.loads(
+            lifecycle_path.read_text(encoding="utf-8").splitlines()[0]
+        )
+        legacy_lifecycle.pop("maintainer_correction_body_captured")
+        lifecycle_path.write_text(
+            json.dumps(legacy_lifecycle, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
         goal_execute_runner = FakeCombinedRunner(
             FakeGitHubRunner(
                 before=metadata(),
@@ -765,7 +773,7 @@ def main() -> int:
         receipt = goal_execute["secondary_notifications"]["receipts"][0]
         receipt_write = persist_issue_fix_reviewer_notification_receipts(
             lifecycle_path,
-            lifecycle,
+            legacy_lifecycle,
             [receipt],
         )
         assert receipt_write["write_performed"] is True, receipt_write
@@ -773,6 +781,19 @@ def main() -> int:
             lifecycle_path.read_text(encoding="utf-8").splitlines()[0]
         )
         assert stored_lifecycle["reviewer_notification_receipts"] == [receipt]
+        assert stored_lifecycle["maintainer_correction_body_captured"] is False
+        unsafe_lifecycle = json.loads(json.dumps(stored_lifecycle))
+        unsafe_lifecycle["maintainer_correction_body_captured"] = True
+        try:
+            persist_issue_fix_reviewer_notification_receipts(
+                lifecycle_path,
+                unsafe_lifecycle,
+                ["sha256:" + "f" * 64],
+            )
+        except ValueError as exc:
+            assert "maintainer_correction_body_captured=false" in str(exc)
+        else:
+            raise AssertionError("truthy legacy capture flag must remain blocked")
         later_monitor = build_issue_fix_pr_lifecycle_monitor_packet(
             url="https://github.com/owner/repo/pull/42",
             issue_ref="issues_40",

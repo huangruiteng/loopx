@@ -171,6 +171,19 @@ def persist_issue_fix_reviewer_notification_receipts(
 ) -> dict[str, Any]:
     """Persist only verified hashed reviewer-notification receipts in PR state."""
 
+    # Rows written before a capture-boundary field was introduced may omit it.
+    # Receipt persistence is a metadata-only migration, so make that historical
+    # absence explicit without weakening the guard for any truthy value.
+    for key in (
+        "issue_body_captured",
+        "comment_bodies_captured",
+        "maintainer_correction_body_captured",
+        "response_payloads_captured",
+        "raw_check_logs_captured",
+        "local_paths_captured",
+    ):
+        payload.setdefault(key, False)
+
     existing = payload.get("reviewer_notification_receipts")
     merged = [
         str(value)
