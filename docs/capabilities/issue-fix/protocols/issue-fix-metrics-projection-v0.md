@@ -88,6 +88,7 @@ loopx --format json issue-fix metrics-supplement \
   --repo public-org/public-repo \
   --period-start 2026-07-01T00:00:00Z \
   --period-end 2026-08-01T00:00:00Z \
+  --human-intervention-coverage-start 2026-07-01T00:00:00Z \
   --event-json /path/to/public-safe-events.json \
   --repository-memory-json /path/to/explicit-memory-read-result.json
 ```
@@ -101,6 +102,16 @@ writes, and capability-gap `found` / `fixed` / `real_callsite_verified`
 transitions. Events outside the reporting period are ignored, duplicate event
 identities are rejected, and a capability gap is counted once per gap identity.
 
+Without an explicit event batch, the composer reads the existing compact LoopX
+run index and counts only route-changing `operator_gate_*` decisions and
+run-bound `human_reward` entries carrying a `human_reward_lesson_v0` correction.
+Passive chat, acknowledgements, and ordinary positive feedback are not counted.
+The count is published only when `--human-intervention-coverage-start` proves
+that this audited source covers the whole reporting period. A later or absent
+coverage start exposes the observed count only under
+`coverage.human_intervention` and keeps the metric unavailable, so older
+unprojected conversations are never reconstructed or silently treated as zero.
+
 PR lifecycle collection also captures first-push CI evidence without another
 ledger when public metadata proves that the PR still has exactly one commit and
 its check rollup is terminal (`PASSING` or `FAILING`). The compact evidence is
@@ -112,7 +123,8 @@ surfaces its observed/eligible coverage instead of reporting a biased rate.
 The composer performs no provider call and does not infer absent events. When no
 explicit memory result is supplied, it may use a compact feasibility memory hook
 only when that hook records `read_performed=true`; otherwise memory fields remain
-absent. With no event batch, event-backed fields also remain absent. In both
+absent. With no event batch, event-backed fields other than the coverage-gated
+human-intervention count remain absent. In both
 cases `loopx issue-fix metrics` reports unavailable evidence rather than
 coercing it to zero.
 

@@ -30,6 +30,53 @@ def main() -> int:
     repo = "public-fixture/widgets"
     with tempfile.TemporaryDirectory(prefix="loopx-issue-fix-supplement-") as tmp:
         root = Path(tmp)
+        runtime = root / "runtime"
+        registry = root / "registry.json"
+        _write_json(
+            registry,
+            {
+                "schema_version": "loopx_registry_v0",
+                "common_runtime_root": str(runtime),
+                "goals": [{"id": "fixture-goal", "repo": str(root)}],
+            },
+        )
+        _write_jsonl(
+            runtime / "goals" / "fixture-goal" / "runs" / "index.jsonl",
+            [
+                {
+                    "generated_at": "2026-07-02T00:00:00Z",
+                    "classification": "operator_gate_approved",
+                    "operator_gate": {
+                        "recorded_at": "2026-07-02T00:00:00Z",
+                        "gate": "publish_fix_pr",
+                        "decision": "approve",
+                    },
+                },
+                {
+                    "generated_at": "2026-07-11T00:00:00Z",
+                    "classification": "state_refreshed",
+                    "human_reward": {
+                        "recorded_at": "2026-07-11T00:01:00Z",
+                        "decision": "correct_route",
+                        "reward": "negative",
+                        "lesson": {
+                            "schema_version": "human_reward_lesson_v0",
+                            "kind": "route",
+                            "summary": "Keep delivery on the selected issue.",
+                        },
+                    },
+                },
+                {
+                    "generated_at": "2026-07-12T00:00:00Z",
+                    "classification": "state_refreshed",
+                    "human_reward": {
+                        "recorded_at": "2026-07-12T00:01:00Z",
+                        "decision": "continue",
+                        "reward": "positive",
+                    },
+                },
+            ],
+        )
         domain = root / ".loopx" / "domain-state" / "fixture-goal" / "issue_fix"
         _write_jsonl(
             domain / "feasibility.jsonl",
@@ -171,6 +218,8 @@ def main() -> int:
             sys.executable,
             "-m",
             "loopx.cli",
+            "--registry",
+            str(registry),
             "--format",
             "json",
             "issue-fix",
@@ -249,6 +298,34 @@ def main() -> int:
         }, incomplete
         assert "first_push_ci_total" in incomplete["missing_fields"], incomplete
         assert "first_push_ci_passed" in incomplete["missing_fields"], incomplete
+        assert "human_interventions" in incomplete["missing_fields"], incomplete
+        assert incomplete["supplement"]["coverage"]["human_intervention"] == {
+            "source": "loopx_compact_run_index",
+            "observed_events": 2,
+            "complete": False,
+        }, incomplete
+
+        history_command = incomplete_command + [
+            "--human-intervention-coverage-start",
+            "2026-07-01T00:00:00Z",
+        ]
+        history_result = subprocess.run(
+            history_command,
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        history = json.loads(history_result.stdout)
+        assert history["supplement"]["counts"]["human_interventions"] == 2, history
+        assert history["supplement"]["coverage"]["human_intervention"] == {
+            "source": "loopx_compact_run_index",
+            "observed_events": 2,
+            "complete": True,
+            "complete_from": "2026-07-01T00:00:00Z",
+        }, history
+        assert history["source_summary"]["run_history_rows"] == 3, history
 
     print("issue-fix metrics supplement smoke: ok")
     return 0
