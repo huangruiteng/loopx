@@ -1,0 +1,25 @@
+examples/control_plane/quota-agent-scoped-user-gate-smoke.py
+  s_9a5a2bd944fdcb::t_bff0d3b054e738 426-464,628-658,804
+loopx/control_plane/agents/agent_lane_recommendation.py
+  s_9a5a2bd944fdcb::t_d91d7eff0a0e2a 248-254,258,272-280,282-290
+loopx/control_plane/agents/agent_scope.py
+  s_9a5a2bd944fdcb::t_c5d21202cb5252 314-321
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "eb74bae1c179c6f006b740b839910444f86fed9d",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
