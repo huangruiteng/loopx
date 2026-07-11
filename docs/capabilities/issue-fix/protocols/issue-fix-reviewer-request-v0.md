@@ -18,9 +18,10 @@ The default strategy is `request_top_requestable_when_authorized`:
    nearest-module history;
 4. request the highest-ranked candidate with a resolvable GitHub handle;
 5. if and only if GitHub confirms that the formal request lacks permission,
-   post one concise PR comment mentioning the same reviewer;
+   post one concise PR comment that mentions the same reviewer, linked issue,
+   and compact PR-title change summary;
 6. read the PR again and require either the formal request or the fallback
-   comment's reviewer marker and public URL to be visible;
+   comment's semantic review request and public URL to be visible;
 7. continue PR lifecycle monitoring only after that verification.
 
 An optional `--notification-sinks-json`, or a goal-default local-private config
@@ -169,10 +170,12 @@ Every packet keeps these fields false:
 It stores no credential, local path, raw provider response, raw git log, issue
 body, comment body, transcript, or runtime state. Public source URLs and matched
 route metadata may be retained; the linked maintainer-map body is not captured.
-The fallback comment contains
-only the public reviewer handle, a generic review request, and hidden
-idempotency markers. Repository history is read only from the explicitly
-approved checkout and affects the compact ranking evidence.
+The fallback comment contains only public PR context: the reviewer handle,
+linked issue reference, compact PR-title change summary, and a pointer to the
+PR description for motivation, validation, and risk. New comments rely on
+semantic deduplication instead of publishing an idempotency marker; legacy
+markers remain read-compatible. Repository history is read only from the
+explicitly approved checkout and affects the compact ranking evidence.
 
 ## Validation
 
@@ -184,7 +187,7 @@ python3 examples/issue-fix-reviewer-request-smoke.py
 
 The generic fixture verifies live-author exclusion, top-candidate selection,
 successful request and readback, permission-only comment fallback, fallback
-URL/marker verification, idempotent retry without duplicate comments,
+URL/semantic verification, human-readable issue/change context, idempotent retry without duplicate comments,
 semantic dedupe for an older explicit review-request comment, rejection of
 ordinary reviewer discussion, unclassified-provider blockers, public-safety
 boundaries, and no-write CLI preview. It also proves that a public

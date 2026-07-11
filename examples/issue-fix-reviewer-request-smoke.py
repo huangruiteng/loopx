@@ -411,7 +411,19 @@ def main() -> int:
         fallback_url = "https://github.com/owner/repo/pull/42#issuecomment-1001"
         permission_runner = FakeGitHubRunner(
             before=metadata(),
-            after=metadata(comments=[reviewer_comment(url=fallback_url)]),
+            after=metadata(
+                comments=[
+                    semantic_reviewer_comment(
+                        url=fallback_url,
+                        body=(
+                            "@service-owner 请协助 review：本 PR 修复 "
+                            "#40「Consistency check accepts unsupported file URIs」，"
+                            "改动是「fix: reject file URI for consistency check」。"
+                            "必要性、验证与风险已写在 PR 描述中，谢谢！"
+                        ),
+                    )
+                ]
+            ),
             edit_returncode=1,
             edit_stderr="HTTP 404: Not Found",
         )
@@ -442,11 +454,15 @@ def main() -> int:
         comment_call = permission_runner.calls[2]
         comment_body = comment_call[comment_call.index("--body") + 1]
         assert "@service-owner" in comment_body
-        assert "issue-fix-reviewer-notification" in comment_body
+        assert "#40" in comment_body
+        assert "Consistency check accepts unsupported file URIs" in comment_body
+        assert "fix: reject file URI for consistency check" in comment_body
+        assert "必要性、验证与风险已写在 PR 描述中" in comment_body
+        assert "issue-fix-reviewer-notification" not in comment_body
         assert_public_safe(fallback)
 
         fallback_retry_runner = FakeGitHubRunner(
-            before=metadata(comments=[reviewer_comment(url=fallback_url)])
+            before=permission_runner.after
         )
         fallback_retry = build_issue_fix_reviewer_request_packet(
             repo_path=path,
@@ -461,10 +477,13 @@ def main() -> int:
             "@service-owner"
         ]
         assert fallback_retry["notified_reviewers"] == ["@service-owner"]
-        assert fallback_retry["reviewer_notification_mode"] == "comment_fallback"
+        assert fallback_retry["reviewer_notification_mode"] == (
+            "existing_review_comment"
+        )
         assert fallback_retry["reviewer_notification_verified"] is True
         assert fallback_retry["comment_fallback_performed"] is False
-        assert fallback_retry["comment_fallback_verified"] is True
+        assert fallback_retry["comment_fallback_verified"] is False
+        assert fallback_retry["existing_comment_notification_verified"] is True
         assert fallback_retry["reviewer_comment_url"] == fallback_url
         assert fallback_retry["external_writes_performed"] is False
         assert fallback_retry["transition"]["action_kind"].endswith("already_covered")

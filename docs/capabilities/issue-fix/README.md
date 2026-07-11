@@ -208,13 +208,22 @@ automatically; and asks the top remaining requestable candidate. It first uses
 a formal GitHub review request. Only when GitHub confirms that this action lacks
 permission does it fall back to one concise PR comment mentioning the same
 reviewer. The command reads the PR again and verifies either provider state or
-the fallback comment marker plus public URL before claiming success. A retry
-recognizes either the marker or a bounded explicit review-request comment and
+the fallback comment's semantic review intent plus public URL before claiming
+success. A retry recognizes either a legacy marker or a bounded explicit review-request comment and
 sends no duplicate comment; ordinary mentions and discussion do not suppress a
 request. Network and unknown provider errors remain blockers rather than
 triggering comments. History is
 read at the base revision so feature-branch commits do not recommend the
 author; `--exclude-author-name` covers unresolved git-name aliases.
+The permission fallback is reviewer-facing product copy, not an internal
+receipt. It names the linked issue and compact PR-title change summary, points
+to the PR description for motivation, validation, and risk, and does not expose
+an idempotency marker.
+The workflow plan also projects an `issue_fix_pr_description_contract_v0`
+template adapted from the PR-review five-block structure: motivation, approach,
+concrete changes, validation, and main-branch risk/uncovered scope. The
+reviewer's verdict section remains review-only and is not authored into the PR
+description.
 When a human confirms that an unresolved git display name belongs to a specific
 GitHub account, `--identity-map-json` records that compact mapping as verified
 identity evidence and reranks the same repository-native contribution evidence.

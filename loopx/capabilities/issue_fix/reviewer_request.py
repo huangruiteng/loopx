@@ -119,6 +119,7 @@ def _metadata_identities(
     author_handle = _normalise_login(author.get("login"))
     pr_title = public_safe_compact_text(payload.get("title"), limit=180)
     linked_issue_refs: list[str] = []
+    linked_issue_summaries: list[str] = []
     raw_issue_refs = payload.get("closingIssuesReferences") or payload.get(
         "closing_issues_references"
     )
@@ -128,6 +129,15 @@ def _metadata_identities(
             issue_ref = f"#{issue_number}"
             if issue_ref not in linked_issue_refs:
                 linked_issue_refs.append(issue_ref)
+            issue_title = public_safe_compact_text(
+                item.get("title") if isinstance(item, Mapping) else None,
+                limit=140,
+            )
+            issue_summary = (
+                f"{issue_ref}「{issue_title}」" if issue_title else issue_ref
+            )
+            if issue_summary not in linked_issue_summaries:
+                linked_issue_summaries.append(issue_summary)
 
     requested: list[str] = []
     for item in payload.get("reviewRequests") or payload.get("review_requests") or []:
@@ -191,6 +201,7 @@ def _metadata_identities(
         "author_handle": author_handle,
         "pr_title": pr_title,
         "linked_issue_refs": linked_issue_refs[:3],
+        "linked_issue_summaries": linked_issue_summaries[:3],
         "requested_reviewers": requested,
         "reviewed_by": reviewed,
         "comment_notified_reviewers": comment_notified,
@@ -271,19 +282,22 @@ def _request_reviewers(
     )
 
 
-def _reviewer_comment_body(reviewer_handles: Sequence[str]) -> str:
-    mentions = " ".join(
-        handle if handle.startswith("@") else f"@{handle}"
+def _reviewer_comment_body(
+    reviewer_handles: Sequence[str],
+    *,
+    pr_title: str | None,
+    linked_issue_summaries: Sequence[str],
+) -> str:
+    review_requests = "；".join(
+        f"{handle if handle.startswith('@') else f'@{handle}'} 请协助 review"
         for handle in reviewer_handles
     )
-    markers = "\n".join(
-        f"<!-- loopx: issue-fix-reviewer-notification reviewer={handle} -->"
-        for handle in reviewer_handles
-    )
+    issue_context = "、".join(linked_issue_summaries) or "关联 issue"
+    change_context = public_safe_compact_text(pr_title, limit=180)
+    change_summary = f"，改动是「{change_context}」" if change_context else ""
     return (
-        f"{mentions} could you please review this focused issue-fix PR? "
-        "You were selected from repository-native ownership and contribution "
-        f"evidence. Thank you!\n\n{markers}"
+        f"{review_requests}：本 PR 修复 {issue_context}{change_summary}。"
+        "必要性、验证与风险已写在 PR 描述中，谢谢！"
     )
 
 
@@ -292,6 +306,8 @@ def _comment_reviewer_notification(
     repo: str,
     number: int,
     reviewer_handles: Sequence[str],
+    pr_title: str | None,
+    linked_issue_summaries: Sequence[str],
     runner: CommandRunner,
 ) -> tuple[str | None, str | None, bool]:
     try:
@@ -304,7 +320,11 @@ def _comment_reviewer_notification(
                 "--repo",
                 repo,
                 "--body",
-                _reviewer_comment_body(reviewer_handles),
+                _reviewer_comment_body(
+                    reviewer_handles,
+                    pr_title=pr_title,
+                    linked_issue_summaries=linked_issue_summaries,
+                ),
             ]
         )
     except (OSError, subprocess.SubprocessError):
@@ -471,6 +491,7 @@ def build_issue_fix_reviewer_request_packet(
         "author_handle": identities["author_handle"],
         "pr_title": identities["pr_title"],
         "linked_issue_refs": identities["linked_issue_refs"],
+        "linked_issue_summaries": identities["linked_issue_summaries"],
         "author_exclusion_verified": author_exclusion_verified,
         "pr_state_verified": pr_state_verified,
         "existing_requested_reviewers": identities["requested_reviewers"],
@@ -619,6 +640,8 @@ def build_issue_fix_reviewer_request_packet(
                     repo=repo,
                     number=number,
                     reviewer_handles=selected,
+                    pr_title=identities["pr_title"],
+                    linked_issue_summaries=identities["linked_issue_summaries"],
                     runner=runner,
                 )
             )
@@ -685,7 +708,8 @@ def build_issue_fix_reviewer_request_packet(
                         action_kind="issue_fix_reviewer_comment_verification_blocker",
                         reason=(
                             "Fallback comment command returned success but PR "
-                            "readback did not confirm the reviewer marker and URL."
+                            "readback did not confirm the semantic review request "
+                            "and URL."
                         ),
                         material_change=True,
                     )

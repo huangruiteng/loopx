@@ -120,6 +120,18 @@ def assert_workflow_shape(payload: dict[str, Any]) -> None:
     assert review["external_pr_created"] is False, review
     assert review["merge_performed"] is False, review
     assert "validation_not_run" in review["readiness_blockers"], review
+    description = review["pr_description_contract"]
+    assert description["schema_version"] == "issue_fix_pr_description_contract_v0"
+    assert description["source_contract"] == "pr_review_five_block_template_v0"
+    assert [section["label"] for section in description["sections"]] == [
+        "动机",
+        "改动思路",
+        "具体改动",
+        "验证",
+        "对主干的风险与未覆盖",
+    ]
+    assert description["review_only_section_excluded"] == "我的整体评价"
+    assert description["requires_current_diff_evidence"] is True
 
     validation = payload["validation"]
     assert validation["ok"] is True, validation

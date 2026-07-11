@@ -345,6 +345,34 @@ def build_issue_fix_workflow_plan_packet(
         "readiness_blockers": readiness_blockers,
         "files_changed": [],
         "validation_commands": [validation_label],
+        "pr_description_contract": {
+            "schema_version": "issue_fix_pr_description_contract_v0",
+            "source_contract": "pr_review_five_block_template_v0",
+            "sections": [
+                {
+                    "label": "动机",
+                    "purpose": "Explain the reproduced user or maintainer problem and why the fix is necessary.",
+                },
+                {
+                    "label": "改动思路",
+                    "purpose": "Explain the chosen fix route and the main design tradeoff.",
+                },
+                {
+                    "label": "具体改动",
+                    "purpose": "Name the reviewer-relevant modules, behavior, and focused regression coverage.",
+                },
+                {
+                    "label": "验证",
+                    "purpose": "List repository-native commands and honest pass, fail, or skipped results.",
+                },
+                {
+                    "label": "对主干的风险与未覆盖",
+                    "purpose": "State compatibility risk, residual gaps, and checks not run.",
+                },
+            ],
+            "review_only_section_excluded": "我的整体评价",
+            "requires_current_diff_evidence": True,
+        },
         "external_issue_comment_performed": False,
         "external_pr_created": False,
         "merge_performed": False,
@@ -559,6 +587,34 @@ def validate_issue_fix_workflow_plan_packet(packet: Mapping[str, Any]) -> dict[s
         errors.append("review packet preview has wrong schema")
     if review.get("ready") is not False:
         errors.append("workflow plan preview must not mark PR review ready")
+    description = review.get("pr_description_contract")
+    if not isinstance(description, Mapping):
+        errors.append("review preview must include PR description contract")
+    else:
+        if description.get("schema_version") != (
+            "issue_fix_pr_description_contract_v0"
+        ):
+            errors.append("PR description contract has wrong schema")
+        sections = description.get("sections")
+        labels = (
+            [
+                section.get("label")
+                for section in sections
+                if isinstance(section, Mapping)
+            ]
+            if isinstance(sections, list)
+            else []
+        )
+        if labels != [
+            "动机",
+            "改动思路",
+            "具体改动",
+            "验证",
+            "对主干的风险与未覆盖",
+        ]:
+            errors.append("PR description contract sections are incomplete")
+        if description.get("review_only_section_excluded") != "我的整体评价":
+            errors.append("PR description contract must exclude reviewer verdict")
     if review.get("external_issue_comment_performed") is not False:
         errors.append("review preview must not perform external issue comments")
     if review.get("external_pr_created") is not False:
