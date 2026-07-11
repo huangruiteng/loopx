@@ -54,13 +54,19 @@ from loopx.benchmark_adapters.skillsbench_codex_goal_recovery import (
     write_private_codex_cli_goal_tui_tail,
 )
 from loopx.codex_cli_goal_tui import (
+    CODEX_CLI_GOAL_KICKOFF_PROMPT,
     CODEX_CLI_GOAL_TASK_PROMPT_FILENAME,
     build_codex_cli_goal_file_objective,
     build_codex_cli_goal_tui_input,
     build_codex_cli_tui_command,
+    codex_cli_goal_watchdog_expired,
+    codex_cli_goal_reset_pre_bridge_deadlines,
+    codex_cli_goal_should_ignore_stale_terminal,
+    codex_cli_goal_should_submit_kickoff,
     codex_cli_tui_environment,
     codex_cli_tui_shell_command,
     codex_cli_tui_input_prompt_visible,
+    codex_cli_tui_retryable_startup_blocker_stage,
     codex_cli_tui_turn_active,
     prewarm_codex_cli_goal_thread,
     resolve_codex_cli_binary,
@@ -154,17 +160,6 @@ def _prompt_requires_bridge_first_action(prompt: str) -> bool:
         "selected runnable p0",
     )
     return any(marker in lowered for marker in required_markers)
-
-
-def _codex_cli_goal_watchdog_expired(
-    *,
-    deadline: float,
-    now: float,
-    turn_active: bool,
-) -> bool:
-    """Keep bounded watchdogs from interrupting an active Codex turn."""
-
-    return bool(deadline and now >= deadline and not turn_active)
 
 
 def _is_bridge_action_preflight_prompt(prompt: str) -> bool:
@@ -394,24 +389,6 @@ def _recoverable_codex_turn_failure_message(category: str) -> str:
         f"{category}. Continue with the next scheduled product-mode round; "
         "raw task text, logs, and trajectory material were not recorded."
     )
-
-
-def _codex_cli_tui_retryable_startup_blocker_stage(capture: str) -> str:
-    """Classify public-safe Codex CLI TUI startup blockers from screen text."""
-
-    lowered = str(capture or "").lower()
-    if any(
-        marker in lowered
-        for marker in (
-            "rate limit",
-            "rate_limit",
-            "too many requests",
-            "status 429",
-            "error 429",
-        )
-    ):
-        return "rate_limit_before_goal_active"
-    return ""
 
 
 def _write_process_stdin_async(
@@ -1102,6 +1079,7 @@ class SkillsBenchLocalAcpRelay:
             goal_terminal_observed = False
             goal_failed_observed = False
             goal_slash_command_submitted = False
+            goal_kickoff_prompt_submitted = False
             post_bridge_terminal_stage = ""
             first_action_seen = False
             bridge_activity_seen = False
@@ -1278,14 +1256,51 @@ class SkillsBenchLocalAcpRelay:
                                     bridge_summary_path
                                 )
                             )
+                    if codex_cli_goal_should_submit_kickoff(
+                        bridge_enabled=bridge_summary_path is not None,
+                        goal_active_observed=goal_active_observed,
+                        kickoff_submitted=goal_kickoff_prompt_submitted,
+                        turn_active=turn_active,
+                        first_action_seen=first_action_seen,
+                        capture=capture,
+                    ):
+                        goal_kickoff_prompt_submitted = True
+                        tmux_type_text_and_submit(
+                            tmux_name=tmux_name,
+                            text=CODEX_CLI_GOAL_KICKOFF_PROMPT,
+                        )
+                        (
+                            goal_active_deadline,
+                            first_action_deadline,
+                            meaningful_progress_deadline,
+                        ) = codex_cli_goal_reset_pre_bridge_deadlines(
+                            now=now,
+                            first_action_timeout_sec=self._config.first_action_timeout_sec,
+                            goal_active_deadline=goal_active_deadline,
+                            goal_active_timeout_sec=self._config.goal_active_timeout_sec,
+                            first_action_deadline=first_action_deadline,
+                            meaningful_progress_deadline=meaningful_progress_deadline,
+                        )
+                        next_heartbeat = now + max(
+                            1.0,
+                            self._config.stream_heartbeat_interval_sec,
+                        )
+                        continue
+                    if codex_cli_goal_should_ignore_stale_terminal(
+                        goal_failed_now=goal_failed_now,
+                        kickoff_submitted=goal_kickoff_prompt_submitted,
+                        first_action_seen=first_action_seen,
+                        turn_active=turn_active,
+                        first_action_deadline=first_action_deadline,
+                        now=now,
+                    ):
+                        goal_failed_now = False
                     if "Goal achieved" in capture:
                         goal_terminal_observed = True
                         break
                     retryable_startup_blocker_stage = ""
                     if not goal_active_observed and not first_action_seen:
-                        retryable_startup_blocker_stage = (
-                            _codex_cli_tui_retryable_startup_blocker_stage(capture)
-                        )
+                        retryable_startup_blocker_stage = codex_cli_tui_retryable_startup_blocker_stage(capture)
                     if retryable_startup_blocker_stage:
                         tmux_kill_session(tmux_name)
                         if bridge_summary_path is not None:
@@ -1301,9 +1316,8 @@ class SkillsBenchLocalAcpRelay:
                             bridge_summary_path=bridge_summary_path,
                             thread_prewarm_observed=thread_prewarm_observed,
                             goal_prompt_file_used=goal_prompt_file_used,
-                            goal_command_submission_method=(
-                                goal_command_submission_method
-                            ),
+                            goal_command_submission_method=goal_command_submission_method,
+                            goal_kickoff_prompt_submitted=goal_kickoff_prompt_submitted,
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_cli_goal_" + retryable_startup_blocker_stage
@@ -1452,7 +1466,7 @@ class SkillsBenchLocalAcpRelay:
                         )
                     if (
                         not first_action_seen
-                        and _codex_cli_goal_watchdog_expired(
+                        and codex_cli_goal_watchdog_expired(
                             deadline=first_action_deadline,
                             now=now,
                             turn_active=turn_active,
@@ -1475,6 +1489,9 @@ class SkillsBenchLocalAcpRelay:
                             goal_command_submission_method=(
                                 goal_command_submission_method
                             ),
+                            goal_kickoff_prompt_submitted=(
+                                goal_kickoff_prompt_submitted
+                            ),
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_exec_first_action_timeout"
@@ -1482,7 +1499,7 @@ class SkillsBenchLocalAcpRelay:
                     if (
                         meaningful_progress_required
                         and not meaningful_progress_seen
-                        and _codex_cli_goal_watchdog_expired(
+                        and codex_cli_goal_watchdog_expired(
                             deadline=meaningful_progress_deadline,
                             now=now,
                             turn_active=turn_active,
@@ -1717,6 +1734,7 @@ class SkillsBenchLocalAcpRelay:
                     thread_prewarm_observed=thread_prewarm_observed,
                     goal_prompt_file_used=goal_prompt_file_used,
                     goal_command_submission_method=goal_command_submission_method,
+                    goal_kickoff_prompt_submitted=goal_kickoff_prompt_submitted,
                     post_bridge_recovery_attempt_count=(
                         pre_bridge_recovery_attempt_count
                         + post_bridge_recovery_attempt_count
@@ -1777,6 +1795,7 @@ class SkillsBenchLocalAcpRelay:
         goal_prompt_file_used: bool = False,
         goal_command_submission_method: str = "",
         goal_slash_command_submitted: bool = True,
+        goal_kickoff_prompt_submitted: bool = False,
         post_bridge_recovery_attempt_count: int = 0,
         post_bridge_recovery_action: str = "",
         post_bridge_recovery_skip_reason: str = "",
@@ -1832,6 +1851,10 @@ class SkillsBenchLocalAcpRelay:
                 )[:40],
                 "goal_active_observed": bool(goal_active_observed),
                 "goal_terminal_observed": bool(goal_terminal_observed),
+                "goal_kickoff_prompt_submitted": bool(
+                    goal_kickoff_prompt_submitted
+                ),
+                "goal_kickoff_prompt_raw_text_recorded": False,
                 "first_action_observed": bool(first_action_observed),
                 "bridge_request_count": bridge_request_count,
                 "task_facing_success_count": task_facing_success_count,

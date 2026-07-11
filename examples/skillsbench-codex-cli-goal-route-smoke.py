@@ -604,20 +604,20 @@ def _assert_cli_goal_rate_limit_is_public_safe_retryable_stage() -> None:
     from loopx.benchmark_adapters.skillsbench_acp_relay import (
         CodexExecConfig,
         SkillsBenchLocalAcpRelay,
-        _codex_cli_tui_retryable_startup_blocker_stage,
     )
+    from loopx.codex_cli_goal_tui import codex_cli_tui_retryable_startup_blocker_stage
     from scripts.skillsbench_automation_loop import (
         _merge_host_local_acp_relay_trace_summary,
         _public_runner_prerequisites,
     )
 
     assert (
-        _codex_cli_tui_retryable_startup_blocker_stage(
+        codex_cli_tui_retryable_startup_blocker_stage(
             "Codex CLI\nrate limit reached\n› "
         )
         == "rate_limit_before_goal_active"
     )
-    assert _codex_cli_tui_retryable_startup_blocker_stage("Goal active") == ""
+    assert codex_cli_tui_retryable_startup_blocker_stage("Goal active") == ""
 
     with tempfile.TemporaryDirectory() as temp:
         trace_dir = Path(temp) / "trace"
@@ -1376,12 +1376,13 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
         CODEX_CLI_GOAL_THREAD_PREWARM_MARKER,
         CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT,
         build_codex_cli_goal_file_objective,
+        build_codex_cli_tui_command,
         build_codex_cli_goal_tui_input,
+        codex_cli_goal_watchdog_expired,
     )
     from loopx.benchmark_adapters.skillsbench_acp_relay import (
         CodexExecConfig,
         SkillsBenchLocalAcpRelay,
-        _codex_cli_goal_watchdog_expired,
         _prompt_requires_bridge_first_action,
         _prompt_requires_meaningful_bridge_progress,
     )
@@ -1395,6 +1396,17 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert CODEX_CLI_GOAL_TASK_PROMPT_FILENAME in objective, objective
     assert len(objective) < CODEX_CLI_GOAL_OBJECTIVE_MAX_CHARS
     assert build_codex_cli_goal_tui_input(objective).startswith("/goal "), objective
+    cmd = build_codex_cli_tui_command(
+        codex_bin="codex",
+        sandbox="workspace-write",
+        approval_policy="never",
+        cwd="/tmp/loopx-skillsbench-cwd",
+        reasoning_effort="xhigh",
+        model="gpt-5.5",
+    )
+    assert cmd[:3] == ["codex", "--no-alt-screen", "--disable"], cmd
+    assert cmd[3] == "apps", cmd
+    assert cmd.count("--disable") == 1, cmd
     packet = SkillsBenchLocalAcpRelay(
         CodexExecConfig(remote_command_file_bridge_command="/tmp/private-bridge")
     )._prompt_with_remote_bridge_packet(
@@ -1417,7 +1429,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
         is True
     )
     assert (
-        _codex_cli_goal_watchdog_expired(
+        codex_cli_goal_watchdog_expired(
             deadline=100.0,
             now=101.0,
             turn_active=True,
@@ -1425,7 +1437,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
         is False
     )
     assert (
-        _codex_cli_goal_watchdog_expired(
+        codex_cli_goal_watchdog_expired(
             deadline=100.0,
             now=101.0,
             turn_active=False,
@@ -1433,7 +1445,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
         is True
     )
     assert (
-        _codex_cli_goal_watchdog_expired(
+        codex_cli_goal_watchdog_expired(
             deadline=0.0,
             now=101.0,
             turn_active=False,
@@ -1477,7 +1489,12 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "task_output_quiet_timeout_sec = max(" in source
     assert "_bridge_summary_has_successful_task_operation(" in source
     assert "turn_active = codex_cli_tui_turn_active(capture)" in source
-    assert source.count("_codex_cli_goal_watchdog_expired(") == 3
+    assert "goal_kickoff_prompt_submitted = False" in source
+    assert "kickoff_submitted=goal_kickoff_prompt_submitted" in source
+    assert "text=CODEX_CLI_GOAL_KICKOFF_PROMPT" in source
+    assert "goal_failed_now = False" in source
+    assert "goal_kickoff_prompt_raw_text_recorded" in source
+    assert source.count("codex_cli_goal_watchdog_expired(") == 2
     assert "and not turn_active" in source
     assert "now - last_task_output_activity_at" in source
     assert "stage=\"task_output_quiet_timeout\"" in source
@@ -1513,6 +1530,12 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     tui_source = (REPO_ROOT / "loopx/codex_cli_goal_tui.py").read_text(
         encoding="utf-8"
     )
+    assert '"--disable",\n        "apps",' in tui_source
+    assert "CODEX_CLI_GOAL_KICKOFF_PROMPT = (" in tui_source
+    assert "Start working on the active SkillsBench goal now" in tui_source
+    assert "def codex_cli_goal_watchdog_expired(" in tui_source
+    assert "not kickoff_submitted" in tui_source
+    assert "def codex_cli_goal_reset_pre_bridge_deadlines(" in tui_source
     assert "goal-thread-prewarm.txt" in tui_source
     assert CODEX_CLI_GOAL_TASK_PROMPT_FILENAME in tui_source
     assert "tmux_send_plain_enter" in tui_source
@@ -1540,6 +1563,8 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
         assert trace["goal_prompt_file_used"] is True, trace
         assert trace["goal_prompt_file_raw_path_recorded"] is False, trace
         assert trace["goal_command_submission_method"] == "typed", trace
+        assert trace["goal_kickoff_prompt_submitted"] is False, trace
+        assert trace["goal_kickoff_prompt_raw_text_recorded"] is False, trace
         assert trace["private_tui_tail_recorded"] is False, trace
 
     with tempfile.TemporaryDirectory() as temp:
@@ -1561,12 +1586,15 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
             bridge_summary_path=None,
             goal_prompt_file_used=True,
             goal_command_submission_method="typed",
+            goal_kickoff_prompt_submitted=True,
         )
         traces = list(trace_dir.glob("*.compact.json"))
         assert len(traces) == 1, traces
         payload = json.loads(traces[0].read_text(encoding="utf-8"))
         trace = payload["codex_cli_goal"]
         assert trace["private_tui_tail_recorded"] is True, trace
+        assert trace["goal_kickoff_prompt_submitted"] is True, trace
+        assert trace["goal_kickoff_prompt_raw_text_recorded"] is False, trace
         assert trace["private_tui_tail_ref"].startswith("private/"), trace
         assert trace["private_tui_tail_line_count"] == 23, trace
         assert trace["raw_tui_capture_recorded"] is False, trace

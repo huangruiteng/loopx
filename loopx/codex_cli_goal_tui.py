@@ -20,6 +20,11 @@ CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT = (
     "joining LOOPX, GOAL, THREAD, and READY with underscores. Do not use tools."
 )
 CODEX_CLI_GOAL_TASK_PROMPT_FILENAME = "skillsbench-task-prompt.md"
+CODEX_CLI_GOAL_KICKOFF_PROMPT = (
+    "Start working on the active SkillsBench goal now. Read the referenced "
+    "task prompt file first, follow it exactly, and perform at least one "
+    "task-facing bridge action before reporting status."
+)
 CODEX_CLI_TUI_READY_STARTUP_GRACE_SEC = 15.0
 CODEX_CLI_TUI_READY_STABLE_SEC = 2.0
 
@@ -71,6 +76,8 @@ def build_codex_cli_tui_command(
     cmd = [
         codex_bin,
         "--no-alt-screen",
+        "--disable",
+        "apps",
         "-s",
         sandbox,
         "-a",
@@ -351,6 +358,92 @@ def codex_cli_tui_turn_active(capture: str) -> bool:
         if "queued follow-up inputs" in line:
             return True
     return False
+
+
+def codex_cli_goal_watchdog_expired(
+    *,
+    deadline: float,
+    now: float,
+    turn_active: bool,
+) -> bool:
+    """Keep bounded watchdogs from interrupting an active Codex turn."""
+
+    return bool(deadline and now >= deadline and not turn_active)
+
+
+def codex_cli_tui_retryable_startup_blocker_stage(capture: str) -> str:
+    """Classify public-safe Codex CLI TUI startup blockers from screen text."""
+
+    lowered = str(capture or "").lower()
+    if any(
+        marker in lowered
+        for marker in (
+            "rate limit",
+            "rate_limit",
+            "too many requests",
+            "status 429",
+            "error 429",
+        )
+    ):
+        return "rate_limit_before_goal_active"
+    return ""
+
+
+def codex_cli_goal_should_submit_kickoff(
+    *,
+    bridge_enabled: bool,
+    goal_active_observed: bool,
+    kickoff_submitted: bool,
+    turn_active: bool,
+    first_action_seen: bool,
+    capture: str,
+) -> bool:
+    return (
+        bridge_enabled
+        and goal_active_observed
+        and not kickoff_submitted
+        and not turn_active
+        and not first_action_seen
+        and codex_cli_tui_input_prompt_visible(capture)
+    )
+
+
+def codex_cli_goal_should_ignore_stale_terminal(
+    *,
+    goal_failed_now: bool,
+    kickoff_submitted: bool,
+    first_action_seen: bool,
+    turn_active: bool,
+    first_action_deadline: float,
+    now: float,
+) -> bool:
+    return (
+        goal_failed_now
+        and kickoff_submitted
+        and not first_action_seen
+        and (turn_active or (first_action_deadline and now < first_action_deadline))
+    )
+
+
+def codex_cli_goal_reset_pre_bridge_deadlines(
+    *,
+    now: float,
+    first_action_timeout_sec: float,
+    goal_active_deadline: float,
+    goal_active_timeout_sec: float,
+    first_action_deadline: float,
+    meaningful_progress_deadline: float,
+) -> tuple[float, float, float]:
+    timeout = max(1.0, float(first_action_timeout_sec or 0.0))
+    return (
+        now + max(1.0, float(goal_active_timeout_sec or 0.0))
+        if goal_active_deadline
+        else goal_active_deadline,
+        now + timeout if first_action_deadline else first_action_deadline,
+        now + max(1.0, timeout)
+        if meaningful_progress_deadline
+        else meaningful_progress_deadline,
+    )
 
 
 def wait_for_codex_cli_tui_ready(
