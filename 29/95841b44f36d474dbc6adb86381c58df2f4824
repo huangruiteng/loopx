@@ -1,0 +1,25 @@
+examples/lark-kanban-control-plane-smoke.py
+  s_9a5a2bd944fdcb::t_be38b69a1c126c 36,531-577
+loopx/cli_commands/lark_kanban.py
+  s_9a5a2bd944fdcb::t_d34be2520816aa 15,138-145,373,375,386-389
+loopx/presentation/sinks/lark/sync_receipt.py
+  s_9a5a2bd944fdcb::t_72227b2d521f13 1-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2995841b44f36d474dbc6adb86381c58df2f4824",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
