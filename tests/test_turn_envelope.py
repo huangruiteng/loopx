@@ -8,10 +8,11 @@ from loopx.control_plane.quota.turn_envelope import (
     quota_action_signature_document,
     turn_envelope_action_signature_document,
 )
+from loopx.control_plane.work_items.interaction_contract import build_protocol_action_packet
 
 
 def _full_decision() -> dict[str, object]:
-    return {
+    source: dict[str, object] = {
         "ok": True,
         "goal_id": "fixture-goal",
         "decision": "run",
@@ -46,7 +47,7 @@ def _full_decision() -> dict[str, object]:
                 "must_attempt": True,
                 "delivery_allowed": True,
                 "quiet_noop_allowed": False,
-                "primary_action": "todo_fixture0001: implement the fixture",
+                "primary_action": "advance one product-path slice",
             },
             "cli_channel": {
                 "next_cli_actions": [
@@ -142,14 +143,12 @@ def _full_decision() -> dict[str, object]:
             "post_handoff_run_seen": True,
             "post_handoff_recent_runs": ["diagnostic-only"],
         },
-        "protocol_action_packet": {
-            "schema_version": "protocol_action_packet_v0",
-            "summary": "actor=agent agent_action_required=true",
-        },
         "agent_todo_summary": {"large_diagnostic_lane": ["x" * 4_000]},
         "goal_frontier_projection": {"large_diagnostic_lane": ["y" * 4_000]},
         "plan_summary": {"large_diagnostic_lane": ["z" * 4_000]},
     }
+    source["protocol_action_packet"] = build_protocol_action_packet(source)
+    return source
 
 
 def test_turn_envelope_preserves_action_boundary_and_writeback() -> None:
@@ -189,9 +188,10 @@ def test_turn_envelope_preserves_action_boundary_and_writeback() -> None:
     assert envelope["contract_capsule"]["protocol_action_packet"] == {
         "schema_version": "protocol_action_packet_v0",
         "present": True,
-        "summary": "actor=agent agent_action_required=true",
         "summary_hash": envelope["contract_capsule"]["protocol_action_packet"]["summary_hash"],
-        "derivation_status": "unproven_retain_summary",
+        "derivation_status": "verified",
+        "reconstruction_verified": True,
+        "llm_policy": "no_api",
         "candidate_derivation_inputs": [
             "action",
             "user",
@@ -250,6 +250,64 @@ def test_action_signature_detects_semantic_drift() -> None:
     envelope["execution_policy"]["safe_bypass_allowed"] = True
 
     assert quota_action_signature_document(source) != turn_envelope_action_signature_document(envelope)
+
+
+def test_protocol_packet_derivation_keeps_only_real_residue() -> None:
+    source = _full_decision()
+    source["interaction_contract"]["agent_channel"]["primary_action"] = (
+        "a newer canonical action projection"
+    )
+
+    envelope = build_turn_envelope(source)
+    packet = envelope["contract_capsule"]["protocol_action_packet"]
+
+    assert packet["derivation_status"] == "verified_with_residue"
+    assert packet["reconstruction_verified"] is True
+    assert packet["residue"] == {"agent_action": "advance one product-path slice"}
+    assert "summary" not in packet
+    assert envelope["action_signature"]["matches"] is True
+
+
+def test_protocol_packet_derivation_retains_unverified_summary() -> None:
+    source = _full_decision()
+    source["protocol_action_packet"]["summary"] = "legacy opaque packet"
+
+    envelope = build_turn_envelope(source)
+    packet = envelope["contract_capsule"]["protocol_action_packet"]
+
+    assert packet["derivation_status"] == "unverified_retain_summary"
+    assert packet["reconstruction_verified"] is False
+    assert packet["summary"] == "legacy opaque packet"
+
+
+def test_protocol_packet_monitor_action_derives_without_residue() -> None:
+    source = _full_decision()
+    source["execution_obligation"]["must_attempt_work"] = False
+    source["interaction_contract"]["mode"] = "monitor_quiet_skip"
+    source["interaction_contract"]["agent_channel"].update(
+        {
+            "must_attempt": False,
+            "delivery_allowed": False,
+            "quiet_noop_allowed": True,
+            "primary_action": "record at most one monitor poll, then stay quiet",
+        }
+    )
+    source["work_lane_contract"].update(
+        {
+            "lane": "continuous_monitor",
+            "obligation": "quiet_until_material_monitor_transition",
+            "must_attempt_work": False,
+        }
+    )
+    source["protocol_action_packet"] = build_protocol_action_packet(source)
+
+    envelope = build_turn_envelope(source)
+    packet = envelope["contract_capsule"]["protocol_action_packet"]
+
+    assert packet["derivation_status"] == "verified"
+    assert packet["reconstruction_verified"] is True
+    assert "residue" not in packet
+    assert "summary" not in packet
 
 
 def test_contract_capsule_stays_bounded_with_replan_and_vision_contracts() -> None:

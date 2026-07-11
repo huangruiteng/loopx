@@ -5,6 +5,11 @@ from collections.abc import Mapping
 from hashlib import sha256
 from typing import Any
 
+from ..work_items.interaction_contract import (
+    PROTOCOL_ACTION_PACKET_LLM_POLICY,
+    protocol_action_packet_fields,
+    render_protocol_action_packet_summary,
+)
 from ..work_items.primary_action import protocol_action_text
 
 
@@ -328,7 +333,74 @@ def _execution_policy(payload: Mapping[str, Any]) -> dict[str, Any]:
     return {field: payload[field] for field in fields if payload.get(field) is not None}
 
 
-def _contract_capsule(payload: Mapping[str, Any]) -> dict[str, Any]:
+def _derived_protocol_action_packet_fields(
+    *,
+    action: Mapping[str, Any],
+    user: Mapping[str, Any],
+    capsule: Mapping[str, Any],
+    scheduler: Mapping[str, Any],
+) -> dict[str, Any]:
+    interaction = _mapping(capsule.get("interaction_contract"))
+    work_lane = _mapping(capsule.get("work_lane_contract"))
+    automation = _mapping(capsule.get("automation_liveness"))
+    mode = str(interaction.get("mode") or "")
+    user_required = bool(user.get("action_required"))
+    agent_required = bool(action.get("must_attempt"))
+    actor = (
+        "agent_with_user_gate"
+        if user_required
+        and mode in {"scoped_user_gate_fallback", "bounded_delivery_with_user_notice"}
+        else "user"
+        if user_required
+        else "agent"
+    )
+    fields: dict[str, Any] = {
+        "actor": actor,
+        "user_action_required": user_required,
+        "agent_action_required": agent_required,
+        "quiet_noop_allowed": bool(action.get("quiet_noop_allowed")),
+    }
+    if work_lane.get("lane"):
+        fields["lane"] = work_lane.get("lane")
+    if automation.get("automation_action"):
+        fields["automation"] = automation.get("automation_action")
+    if scheduler.get("action"):
+        fields["scheduler"] = scheduler.get("action")
+    if automation.get("pause_allowed") is False:
+        fields["pause_allowed"] = False
+    fields["llm"] = PROTOCOL_ACTION_PACKET_LLM_POLICY
+
+    user_actions = user.get("actions") if isinstance(user.get("actions"), list) else []
+    action_key = "agent_action" if agent_required or not user_required else "user_action"
+    if user_actions and (not user_required or action_key != "user_action"):
+        fields["user_action_pending"] = True
+        user_action = _text(user_actions[0], limit=80)
+        if user_action:
+            fields["user_action"] = user_action
+
+    if agent_required:
+        action_value = action.get("primary_action")
+    elif user_required and user_actions:
+        action_value = user_actions[0]
+    elif work_lane.get("obligation") == "quiet_until_material_monitor_transition":
+        action_value = (
+            "quiet until a material monitor transition, regression, or concrete blocker appears"
+        )
+    else:
+        action_value = action.get("primary_action") or "quiet no-op; no material transition"
+    text = _text(action_value, limit=80)
+    if text:
+        fields[action_key] = text
+    return fields
+
+
+def _contract_capsule(
+    payload: Mapping[str, Any],
+    *,
+    action: Mapping[str, Any],
+    user: Mapping[str, Any],
+    scheduler: Mapping[str, Any],
+) -> dict[str, Any]:
     capsule: dict[str, Any] = {
         "schema_version": CONTRACT_CAPSULE_SCHEMA_VERSION,
         "source": "full_quota_decision",
@@ -361,12 +433,34 @@ def _contract_capsule(payload: Mapping[str, Any]) -> dict[str, Any]:
     packet = _mapping(payload.get("protocol_action_packet"))
     if packet:
         summary = _text(packet.get("summary"), limit=2_000)
-        capsule["protocol_action_packet"] = {
+        source_fields = protocol_action_packet_fields(dict(payload))
+        derived_fields = _derived_protocol_action_packet_fields(
+            action=action,
+            user=user,
+            capsule=capsule,
+            scheduler=scheduler,
+        )
+        residue = {
+            key: value
+            for key, value in source_fields.items()
+            if derived_fields.get(key) != value
+        }
+        reconstructed_fields = {
+            key: residue.get(key, derived_fields.get(key)) for key in source_fields
+        }
+        reconstructed_summary = render_protocol_action_packet_summary(reconstructed_fields)
+        reconstruction_verified = bool(summary) and reconstructed_summary == summary
+        packet_projection: dict[str, Any] = {
             "schema_version": packet.get("schema_version"),
             "present": True,
-            "summary": summary,
             "summary_hash": _canonical_hash(summary or ""),
-            "derivation_status": "unproven_retain_summary",
+            "derivation_status": (
+                "verified_with_residue" if residue else "verified"
+            )
+            if reconstruction_verified
+            else "unverified_retain_summary",
+            "reconstruction_verified": reconstruction_verified,
+            "llm_policy": PROTOCOL_ACTION_PACKET_LLM_POLICY,
             "candidate_derivation_inputs": [
                 "action",
                 "user",
@@ -375,6 +469,11 @@ def _contract_capsule(payload: Mapping[str, Any]) -> dict[str, Any]:
                 "scheduler",
             ],
         }
+        if residue:
+            packet_projection["residue"] = residue
+        if not reconstruction_verified:
+            packet_projection["summary"] = summary
+        capsule["protocol_action_packet"] = packet_projection
 
     warnings = [field for field in ACTIONABLE_WARNING_FIELDS if payload.get(field)]
     if warnings:
@@ -386,20 +485,23 @@ def _action_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
     interaction = _mapping(payload.get("interaction_contract"))
     agent_channel = _mapping(interaction.get("agent_channel"))
     cli_channel = _mapping(interaction.get("cli_channel"))
+    action = {
+        "recommended_action": _text(payload.get("recommended_action"), limit=480),
+        "primary_action": _text(agent_channel.get("primary_action"), limit=480),
+        "must_attempt": bool(agent_channel.get("must_attempt")),
+        "delivery_allowed": bool(agent_channel.get("delivery_allowed")),
+        "quiet_noop_allowed": bool(agent_channel.get("quiet_noop_allowed")),
+        "selected_todo": _selected_todo(payload),
+    }
+    user = _user_channel(interaction, payload)
+    scheduler = _scheduler(payload)
     return {
         "decision": payload.get("decision"),
         "should_run": bool(payload.get("should_run")),
         "effective_action": payload.get("effective_action"),
         "state": payload.get("state"),
-        "action": {
-            "recommended_action": _text(payload.get("recommended_action"), limit=480),
-            "primary_action": _text(agent_channel.get("primary_action"), limit=480),
-            "must_attempt": bool(agent_channel.get("must_attempt")),
-            "delivery_allowed": bool(agent_channel.get("delivery_allowed")),
-            "quiet_noop_allowed": bool(agent_channel.get("quiet_noop_allowed")),
-            "selected_todo": _selected_todo(payload),
-        },
-        "user": _user_channel(interaction, payload),
+        "action": action,
+        "user": user,
         "required_reads": _required_reads(interaction, payload),
         "boundary": _boundary(payload),
         "execution_policy": _execution_policy(payload),
@@ -413,8 +515,13 @@ def _action_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
             "spend_after_validation": bool(cli_channel.get("spend_after_validation")),
             "spend_policy": _text(cli_channel.get("spend_policy"), limit=280),
         },
-        "scheduler": _scheduler(payload),
-        "contract_capsule": _contract_capsule(payload),
+        "scheduler": scheduler,
+        "contract_capsule": _contract_capsule(
+            payload,
+            action=action,
+            user=user,
+            scheduler=scheduler,
+        ),
     }
 
 

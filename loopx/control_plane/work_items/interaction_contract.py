@@ -21,6 +21,7 @@ from .primary_action import (
 
 INTERACTION_CONTRACT_SCHEMA_VERSION = "loopx_interaction_contract_v0"
 PROTOCOL_ACTION_PACKET_SCHEMA_VERSION = "protocol_action_packet_v0"
+PROTOCOL_ACTION_PACKET_LLM_POLICY = "no_api"
 
 
 def _user_todo_item_is_explicitly_non_gating(item: dict[str, Any]) -> bool:
@@ -98,7 +99,9 @@ def attach_user_action_compat_fields(payload: dict[str, Any]) -> None:
     payload["open_count"] = open_todo_count(payload.get("user_todo_summary"))
 
 
-def build_protocol_action_packet(payload: dict[str, Any]) -> dict[str, Any]:
+def protocol_action_packet_fields(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return the ordered semantic fields rendered by protocol_action_packet_v0."""
+
     execution_obligation = (
         payload.get("execution_obligation")
         if isinstance(payload.get("execution_obligation"), dict)
@@ -197,32 +200,48 @@ def build_protocol_action_packet(payload: dict[str, Any]) -> dict[str, Any]:
         if requires_user_action and user_actions
         else agent_action
     )
-    summary_parts = [
-        f"actor={primary_actor}",
-        f"user_action_required={str(requires_user_action).lower()}",
-        f"agent_action_required={str(agent_action_required).lower()}",
-        f"quiet_noop_allowed={str(quiet_noop_allowed).lower()}",
-    ]
+    fields: dict[str, Any] = {
+        "actor": primary_actor,
+        "user_action_required": requires_user_action,
+        "agent_action_required": agent_action_required,
+        "quiet_noop_allowed": quiet_noop_allowed,
+    }
     if work_lane.get("lane"):
-        summary_parts.append(f"lane={work_lane.get('lane')}")
+        fields["lane"] = work_lane.get("lane")
     if automation_liveness.get("automation_action"):
-        summary_parts.append(f"automation={automation_liveness.get('automation_action')}")
+        fields["automation"] = automation_liveness.get("automation_action")
     if scheduler_hint.get("action"):
-        summary_parts.append(f"scheduler={scheduler_hint.get('action')}")
+        fields["scheduler"] = scheduler_hint.get("action")
     if automation_liveness.get("pause_allowed") is False:
-        summary_parts.append("pause_allowed=false")
-    summary_parts.append("llm=no_api")
+        fields["pause_allowed"] = False
+    fields["llm"] = PROTOCOL_ACTION_PACKET_LLM_POLICY
     if user_actions and (not requires_user_action or action_key != "user_action"):
-        summary_parts.append("user_action_pending=true")
+        fields["user_action_pending"] = True
         text = protocol_action_text(user_actions[0], limit=80)
         if text:
-            summary_parts.append(f"user_action={text}")
+            fields["user_action"] = text
     text = protocol_action_text(action_value, limit=80)
     if text:
-        summary_parts.append(f"{action_key}={text}")
+        fields[action_key] = text
+    return fields
+
+
+def render_protocol_action_packet_summary(fields: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key, value in fields.items():
+        if isinstance(value, bool):
+            rendered = str(value).lower()
+        else:
+            rendered = str(value)
+        parts.append(f"{key}={rendered}")
+    return " ".join(parts)
+
+
+def build_protocol_action_packet(payload: dict[str, Any]) -> dict[str, Any]:
+    fields = protocol_action_packet_fields(payload)
     return {
         "schema_version": PROTOCOL_ACTION_PACKET_SCHEMA_VERSION,
-        "summary": " ".join(summary_parts),
+        "summary": render_protocol_action_packet_summary(fields),
     }
 
 
