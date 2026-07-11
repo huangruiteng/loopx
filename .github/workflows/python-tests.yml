@@ -57,4 +57,4 @@ jobs:
           python -m pytest -q -n 2
           --cov=loopx
           --cov-report=term
-          --cov-fail-under=19
+          --cov-fail-under=19.5
