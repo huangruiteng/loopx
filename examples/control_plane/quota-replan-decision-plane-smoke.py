@@ -436,6 +436,34 @@ def projected_autonomous_replan_ack(
     return ack
 
 
+def assert_frontier_delta_ack_clears_existing_replan_obligation() -> None:
+    payload = status_payload(
+        [side_agent_claimed_advancement()],
+        replan_obligation=SIDE_AGENT_REPLAN_OBLIGATION,
+        latest_runs=[
+            {
+                "classification": "autonomous_replan_recorded",
+                "agent_id": SIDE_AGENT,
+                "progress_scope": "goal",
+                "delivery_outcome": "outcome_progress",
+                "autonomous_replan_ack": projected_autonomous_replan_ack(
+                    ["runnable_todo_set", "successor_or_supersede"],
+                    agent_id=SIDE_AGENT,
+                ),
+            }
+        ],
+    )
+    guard = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["effective_action"] == "normal_run", guard
+    assert guard["normal_delivery_allowed"] is True, guard
+    assert guard.get("autonomous_replan_obligation") is None, guard
+    assert guard["goal_frontier_projection"]["replan_required"] is False, guard
+
+
 def assert_replan_beats_monitor_quiet_skip() -> None:
     payload = status_payload([monitor_item()], replan_obligation=SIDE_AGENT_REPLAN_OBLIGATION)
     guard = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=SIDE_AGENT)
@@ -1394,6 +1422,7 @@ def assert_blocking_handoff_gate_beats_derived_monitor_replan() -> None:
 
 def main() -> None:
     assert_replan_beats_monitor_quiet_skip()
+    assert_frontier_delta_ack_clears_existing_replan_obligation()
     assert_future_scheduled_monitor_requires_replan_without_frontier_delta()
     assert_ready_deferred_successor_beats_monitor_quiet_skip()
     assert_completed_advancement_without_successor_beats_monitor_quiet_skip()

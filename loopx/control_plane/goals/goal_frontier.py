@@ -1342,13 +1342,25 @@ def build_goal_frontier_projection_context_from_status(
         project_asset,
         agent_id=agent_id,
     )
+    effective_replan_ack = latest_agent_replan_ack or projected_replan_ack
+    if (
+        autonomous_replan_is_required(replan_obligation)
+        and autonomous_replan_ack_has_frontier_delta(effective_replan_ack)
+        and not acceptance_gaps
+    ):
+        replan_obligation = None
+        replan_scope = autonomous_replan_scope_decision(
+            replan_obligation,
+            agent_id=agent_id,
+            registered_agent_ids=registered_agent_ids,
+        )
     frontier_replan_obligation = derive_goal_frontier_replan_obligation_from_summaries(
         user_todo_summary=user_todo_summary,
         agent_todo_summary=agent_todo_summary,
         work_lane_contract=work_lane_contract,
         agent_id=agent_id,
         existing_replan_obligation=replan_obligation,
-        latest_replan_ack=latest_agent_replan_ack or projected_replan_ack,
+        latest_replan_ack=effective_replan_ack,
         acceptance_gaps=acceptance_gaps,
     )
     if frontier_replan_obligation:
