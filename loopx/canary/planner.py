@@ -947,7 +947,9 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "issue_fix_outcome",
             "outcome_projection",
             "examples/issue-fix-outcome-projection-smoke.py",
+            "examples/issue-fix-validated-memory-writeback-smoke.py",
             "loopx/capabilities/issue_fix/outcome_projection.py",
+            "loopx/capabilities/issue_fix/repository_memory_provider.py",
             "loopx/presentation/sinks/lark/projection_rows.py",
         ),
         "checks": [
@@ -955,6 +957,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "command": "python3 examples/issue-fix-outcome-projection-smoke.py",
                 "tier": "default",
                 "reason": "guards derived issue status/output cards, truthful delivery evidence, terminal visibility, and Lark projection reuse",
+            },
+            {
+                "command": "python3 examples/issue-fix-validated-memory-writeback-smoke.py",
+                "tier": "default",
+                "reason": "guards explicit owner gating, validated distilled facts, idempotent provider writes, and unsafe-capture rejection",
             },
         ],
     },

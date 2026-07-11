@@ -526,6 +526,24 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert all(check["tier"] == "default" for check in reviewer_profile["checks"]), reviewer_profile
     assert reviewer_profile["deep_checks_available"] is False, reviewer_profile
 
+    outcome_payload = build_catalog_canary_plan(
+        changed_files=[
+            "loopx/capabilities/issue_fix/repository_memory_provider.py",
+            "examples/issue-fix-validated-memory-writeback-smoke.py",
+        ],
+        surfaces=["issue-fix outcome validated memory writeback"],
+    )
+    outcome_profiles = {
+        profile["id"]: profile for profile in outcome_payload["domain_profiles"]
+    }
+    outcome_profile = outcome_profiles["issue-fix-outcome-visibility"]
+    outcome_commands = [check["command"] for check in outcome_profile["checks"]]
+    assert "python3 examples/issue-fix-outcome-projection-smoke.py" in outcome_commands
+    assert (
+        "python3 examples/issue-fix-validated-memory-writeback-smoke.py"
+        in outcome_commands
+    )
+
     cross_runtime_payload = build_catalog_canary_plan(
         changed_files=[
             "loopx/capabilities/cross_runtime/impl_review.py",

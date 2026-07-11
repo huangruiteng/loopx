@@ -138,6 +138,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "doc": "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
             },
             {
+                "schema_version": "issue_fix_validated_outcome_memory_writeback_v0",
+                "module": "loopx.capabilities.issue_fix.repository_memory_provider",
+                "doc": "docs/capabilities/issue-fix/README.md",
+            },
+            {
                 "schema_version": "issue_fix_acceptance_loop_v0",
                 "module": "loopx.capabilities.issue_fix.acceptance_loop",
                 "doc": "docs/capabilities/issue-fix/protocols/issue-fix-acceptance-loop-v0.md",
@@ -159,6 +164,7 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "python3 examples/issue-fix-feasibility-smoke.py",
             "python3 examples/issue-fix-pr-lifecycle-smoke.py",
             "python3 examples/issue-fix-outcome-projection-smoke.py",
+            "python3 examples/issue-fix-validated-memory-writeback-smoke.py",
             "python3 examples/issue-fix-reviewer-recommendation-smoke.py",
             "python3 examples/issue-fix-reviewer-request-smoke.py",
             "python3 examples/issue-fix-reviewer-notification-sink-smoke.py",
