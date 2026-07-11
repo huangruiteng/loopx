@@ -1637,7 +1637,8 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "def codex_cli_goal_reset_pre_bridge_deadlines(" in tui_source
     assert '"goal_submission_generation"' in tui_source
     assert 'fields[f"goal_{name}_marker_delta"]' in tui_source
-    assert "goal-thread-prewarm.txt" in tui_source
+    assert "goal-thread-prewarm.txt" not in tui_source
+    assert "text=CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT" in tui_source
     assert CODEX_CLI_GOAL_TASK_PROMPT_FILENAME in tui_source
     assert "tmux_send_plain_enter" in tui_source
     assert "tmux_type_text_and_submit" in tui_source
