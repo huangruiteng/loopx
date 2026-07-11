@@ -1,0 +1,51 @@
+examples/codex-cli-long-run-benchmark-smoke.py
+  s_e3f612788718c1::t_fc5ed31b50896a 956-957,960-962,974-976
+examples/control_plane/quota-replan-decision-plane-smoke.py
+  s_9a5a2bd944fdcb::t_389f2e0ac59349 175,177-178
+examples/control_plane/todo-projection-shared-helper-smoke.py
+  s_9a5a2bd944fdcb::t_3074aecfeb27e2 248-249,252,255-256,258-259,262,265-266,277,279,281,283,309-310,318-319,327-328
+examples/control_plane/todo-route-continuation-lanes-smoke.py
+  s_9a5a2bd944fdcb::t_55e5313cdc6d4d 73-74
+examples/control_plane/todo-summary-item-source-smoke.py
+  s_9a5a2bd944fdcb::t_1fc69bb0ef4c55 84-86
+examples/protocol/protocol-action-packet-smoke.py
+  s_e3f612788718c1::t_b9312db4d2d640 388
+loopx/canary/runner.py
+  s_e3f612788718c1::t_f3f46638ff9e95 31-34
+loopx/cli_commands/registry_admin.py
+  s_9a5a2bd944fdcb::t_eee61de0f87205 31-34
+loopx/cli_commands/registry_admin_peer.py
+  s_9a5a2bd944fdcb::t_738e4f61a2655f 6-39
+loopx/cli_commands/todo.py
+  s_e3f612788718c1::t_9afa7725c93d54 25-26,368,841-847
+loopx/cli_commands/todo_argument_validation.py
+  s_e3f612788718c1::t_35fcb45aedd086 69-96
+loopx/cli_commands/todo_event.py
+  s_e3f612788718c1::t_0f9ccbb5ef458c 1-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c8e9ed78989a4dc7ddeb71fe48698063ca21b2bd",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
