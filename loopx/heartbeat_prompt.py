@@ -45,7 +45,7 @@ SCHEDULER_HINT_THIN_RULE = (
     "RRULE then run `ack_hint.cli_args`; CLI/Claude final-check; no spend."
 )
 RUNTIME_CAPABILITY_PROJECTION_THIN_RULE = (
-    "Runtime capabilities -> `--available-capability`, never user gates."
+    "Observed runtime capabilities -> `--available-capability`, never user gates."
 )
 INTERFACE_BUDGET_CHARS = {
     "full": 12_000,

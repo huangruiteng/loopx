@@ -135,7 +135,7 @@ def main() -> int:
     assert_no_project_specific_prompt_leaks("brief", str(brief_payload["task_body"]))
     assert_no_project_specific_prompt_leaks("thin", str(thin_payload["task_body"]))
     thin_task = str(thin_payload["task_body"])
-    assert "Runtime capabilities -> `--available-capability`, never user gates." in thin_task, thin_task
+    assert "Observed runtime capabilities -> `--available-capability`, never user gates." in thin_task, thin_task
     assert payload["quota_guard_command"] == (
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" '
         "quota should-run --goal-id public-heartbeat-goal"
