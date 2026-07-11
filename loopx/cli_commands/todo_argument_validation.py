@@ -19,6 +19,7 @@ TODO_OPTION_FIELDS = (
     ("--required-write-scope", "required_write_scopes"),
     ("--required-capability", "required_capabilities"),
     ("--target-capability", "target_capabilities"),
+    ("--capability-gap-status", "capability_gap_status"),
     ("--explore-result-node-ref", "explore_result_node_refs"),
     ("--clear-explore-result-node-refs", "clear_explore_result_node_refs"),
     ("--decision-scope", "decision_scope"),

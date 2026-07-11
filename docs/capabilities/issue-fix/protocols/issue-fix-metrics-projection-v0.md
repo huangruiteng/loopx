@@ -89,6 +89,7 @@ loopx --format json issue-fix metrics-supplement \
   --period-start 2026-07-01T00:00:00Z \
   --period-end 2026-08-01T00:00:00Z \
   --human-intervention-coverage-start 2026-07-01T00:00:00Z \
+  --capability-gap-coverage-start 2026-07-01T00:00:00Z \
   --event-json /path/to/public-safe-events.json \
   --repository-memory-json /path/to/explicit-memory-read-result.json
 ```
@@ -112,6 +113,30 @@ coverage start exposes the observed count only under
 `coverage.human_intervention` and keeps the metric unavailable, so older
 unprojected conversations are never reconstructed or silently treated as zero.
 
+Capability gaps can use the same no-guessing path without a hand-authored event
+batch. An agent marks an existing agent todo explicitly:
+
+```bash
+loopx todo update \
+  --goal-id public-issue-fix-goal \
+  --todo-id todo_gap_id \
+  --role agent \
+  --target-capability issue_fix_monthly_metrics \
+  --capability-gap-status real_callsite_verified \
+  --evidence 'PR merged and the original pilot callsite passed'
+```
+
+LoopX appends a typed `capability_gap` rollout event; the todo id is the stable
+gap identity and the existing target-capability metadata remains the human
+work surface. The composer folds `found`, `fixed`, and
+`real_callsite_verified` transitions once per todo. It publishes the three
+counts only when `--capability-gap-coverage-start` covers the reporting period;
+otherwise `coverage.capability_gap` exposes partial observation and the counts
+stay unavailable. Backdating that coverage is valid only after auditing and
+backfilling every in-period gap todo. `fixed` and `real_callsite_verified`
+markers require public-safe evidence; `found` may be recorded before a fix
+artifact exists.
+
 PR lifecycle collection also captures first-push CI evidence without another
 ledger when public metadata proves that the PR still has exactly one commit and
 its check rollup is terminal (`PASSING` or `FAILING`). The compact evidence is
@@ -123,10 +148,11 @@ surfaces its observed/eligible coverage instead of reporting a biased rate.
 The composer performs no provider call and does not infer absent events. When no
 explicit memory result is supplied, it may use a compact feasibility memory hook
 only when that hook records `read_performed=true`; otherwise memory fields remain
-absent. With no event batch, event-backed fields other than the coverage-gated
-human-intervention count remain absent. In both
-cases `loopx issue-fix metrics` reports unavailable evidence rather than
-coercing it to zero.
+absent. With no event batch, useful-comment, duplicate-write, and other
+event-backed fields remain absent; only coverage-gated human-intervention and
+typed capability-gap rollout evidence can be composed from existing LoopX
+sources. In both cases `loopx issue-fix metrics` reports unavailable evidence
+rather than coercing it to zero.
 
 ## Attribution contract
 
@@ -215,4 +241,5 @@ through the normal schema-reconciliation path.
 python3 examples/issue-fix-metrics-projection-smoke.py
 python3 examples/issue-fix-repository-snapshot-smoke.py
 python3 examples/issue-fix-metrics-supplement-smoke.py
+python3 examples/issue-fix-capability-gap-metrics-smoke.py
 ```

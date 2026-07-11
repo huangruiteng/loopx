@@ -242,6 +242,56 @@ def _history_human_interventions(
     return sorted(event_ids)
 
 
+def _rollout_capability_gap_states(
+    rollout_event_rows: list[dict[str, Any]],
+    *,
+    period_start: datetime,
+    period_end: datetime,
+) -> dict[str, set[str]]:
+    states: dict[str, set[str]] = {}
+    for index, event in enumerate(rollout_event_rows):
+        if not isinstance(event, dict) or event.get("event_kind") != "capability_gap":
+            continue
+        occurred_at = _timestamp(
+            event.get("recorded_at"),
+            field=f"rollout_event_rows[{index}].recorded_at",
+        )
+        if not period_start <= occurred_at <= period_end:
+            continue
+        gap_id = str(event.get("todo_id") or "").strip()
+        status = str(event.get("status") or "").strip().lower()
+        details = event.get("details")
+        target_capabilities = (
+            details.get("target_capabilities")
+            if isinstance(details, dict)
+            else None
+        )
+        if (
+            not gap_id
+            or status not in {"found", "fixed", "real_callsite_verified"}
+            or not str(target_capabilities or "").strip()
+        ):
+            raise ValueError(
+                "capability_gap rollout events require todo_id, a known status, "
+                "and non-empty details.target_capabilities"
+            )
+        states.setdefault(gap_id, set()).add(status)
+    return states
+
+
+def _capability_gap_counts(gap_states: dict[str, set[str]]) -> dict[str, int]:
+    return {
+        "loopx_capability_gaps_found": len(gap_states),
+        "loopx_capability_gaps_fixed": sum(
+            bool(states & {"fixed", "real_callsite_verified"})
+            for states in gap_states.values()
+        ),
+        "loopx_capability_gaps_real_callsite_verified": sum(
+            "real_callsite_verified" in states for states in gap_states.values()
+        ),
+    }
+
+
 def build_issue_fix_metrics_supplement(
     *,
     repo: str,
@@ -252,6 +302,8 @@ def build_issue_fix_metrics_supplement(
     event_batch: dict[str, Any] | None,
     run_history_rows: list[dict[str, Any]],
     human_intervention_coverage_start: str | None,
+    rollout_event_rows: list[dict[str, Any]],
+    capability_gap_coverage_start: str | None,
     repository_memory_results: list[dict[str, Any]],
     generated_at: str,
 ) -> dict[str, Any]:
@@ -271,6 +323,15 @@ def build_issue_fix_metrics_supplement(
         run_history_rows,
         period_start=start,
         period_end=end,
+    )
+    rollout_gap_states = (
+        _rollout_capability_gap_states(
+            rollout_event_rows,
+            period_start=start,
+            period_end=end,
+        )
+        if event_batch is None
+        else {}
     )
     first_push_eligible, first_push_statuses = _lifecycle_first_push_ci(
         lifecycles,
@@ -335,14 +396,12 @@ def build_issue_fix_metrics_supplement(
                     "capability_gap events require gap_id and a known status"
                 )
             gap_states.setdefault(gap_id, set()).add(status)
-        counts["loopx_capability_gaps_found"] = len(gap_states)
-        counts["loopx_capability_gaps_fixed"] = sum(
-            bool(states & {"fixed", "real_callsite_verified"})
-            for states in gap_states.values()
-        )
-        counts["loopx_capability_gaps_real_callsite_verified"] = sum(
-            "real_callsite_verified" in states for states in gap_states.values()
-        )
+        counts.update(_capability_gap_counts(gap_states))
+        capability_gap_coverage: dict[str, Any] = {
+            "source": EVENT_BATCH_SCHEMA_VERSION,
+            "observed_gaps": len(gap_states),
+            "complete": True,
+        }
     else:
         capture_start = (
             _timestamp(
@@ -364,6 +423,26 @@ def build_issue_fix_metrics_supplement(
             )
         if complete:
             counts["human_interventions"] = len(history_intervention_ids)
+        gap_capture_start = (
+            _timestamp(
+                capability_gap_coverage_start,
+                field="capability_gap_coverage_start",
+            )
+            if capability_gap_coverage_start
+            else None
+        )
+        gap_complete = gap_capture_start is not None and gap_capture_start <= start
+        capability_gap_coverage = {
+            "source": "loopx_rollout_event_log",
+            "observed_gaps": len(rollout_gap_states),
+            "complete": gap_complete,
+        }
+        if gap_capture_start is not None:
+            capability_gap_coverage["complete_from"] = (
+                capability_gap_coverage_start
+            )
+        if gap_complete:
+            counts.update(_capability_gap_counts(rollout_gap_states))
 
     first_push_complete = bool(first_push_eligible) and len(first_push_statuses) == len(
         first_push_eligible
@@ -384,6 +463,7 @@ def build_issue_fix_metrics_supplement(
         "counts": counts,
         "coverage": {
             "human_intervention": human_intervention_coverage,
+            "capability_gap": capability_gap_coverage,
             "first_push_ci": {
                 "eligible_prs": len(first_push_eligible),
                 "observed_prs": len(first_push_statuses),
@@ -404,6 +484,7 @@ def build_issue_fix_metrics_supplement(
             "pr_lifecycle_rows": len(lifecycles),
             "event_rows": len(events),
             "run_history_rows": len(run_history_rows),
+            "rollout_event_rows": len(rollout_event_rows),
             "repository_memory_inputs": len(repository_memory_results),
         },
         "generated_at": generated_at,

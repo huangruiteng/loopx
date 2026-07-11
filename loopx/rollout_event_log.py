@@ -16,6 +16,7 @@ ROLLOUT_EVENT_KINDS = {
     "benchmark_launch",
     "benchmark_status",
     "codex_session_observed",
+    "capability_gap",
     "compact_blocker",
     "compact_case_result",
     "failure_attribution",

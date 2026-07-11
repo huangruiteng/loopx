@@ -11,6 +11,7 @@ from ...domain_packs.issue_fix import (
 )
 from ...history import load_index, load_registry
 from ...paths import resolve_runtime_root
+from ...rollout_event_log import load_rollout_events, rollout_event_log_path
 from .metrics_supplement import build_issue_fix_metrics_supplement
 
 
@@ -48,6 +49,15 @@ def register_issue_fix_metrics_supplement_command(
         ),
     )
     parser.add_argument(
+        "--capability-gap-coverage-start",
+        default=None,
+        help=(
+            "Earliest ISO-8601 time from which capability-gap todo lifecycle "
+            "events have been audited or captured completely. Without it, observed "
+            "events are reported as partial and counts remain unavailable."
+        ),
+    )
+    parser.add_argument(
         "--repository-memory-json",
         action="append",
         default=[],
@@ -77,11 +87,15 @@ def build_issue_fix_metrics_supplement_from_args(
         raise ValueError("only one metrics supplement input may read from stdin")
 
     run_history_rows: list[dict[str, Any]] = []
+    rollout_event_rows: list[dict[str, Any]] = []
     if registry_path is not None:
         registry = load_registry(registry_path)
         runtime_root = resolve_runtime_root(registry, runtime_root_arg)
         run_history_rows, _ = load_index(
             runtime_root / "goals" / args.goal_id / "runs" / "index.jsonl"
+        )
+        rollout_event_rows = load_rollout_events(
+            rollout_event_log_path(runtime_root, args.goal_id)
         )
     project = Path(args.project).expanduser()
     return build_issue_fix_metrics_supplement(
@@ -101,6 +115,8 @@ def build_issue_fix_metrics_supplement_from_args(
         event_batch=load_json_object(args.event_json) if args.event_json else None,
         run_history_rows=run_history_rows,
         human_intervention_coverage_start=args.human_intervention_coverage_start,
+        rollout_event_rows=rollout_event_rows,
+        capability_gap_coverage_start=args.capability_gap_coverage_start,
         repository_memory_results=[
             load_json_object(value) for value in args.repository_memory_json
         ],
