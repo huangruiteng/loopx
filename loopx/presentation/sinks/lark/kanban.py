@@ -31,7 +31,10 @@ from .projection_rows import (
     projection_text_list as _as_text_list,
     todo_matches_agent_scope,
 )
-from .sync_receipt import compact_lark_kanban_sync_receipt, render_lark_kanban_markdown
+from .sync_receipt import (
+    compact_lark_kanban_sync_receipt as compact_lark_kanban_sync_receipt,
+    render_lark_kanban_markdown as render_lark_kanban_markdown,
+)
 
 LARK_KANBAN_SCHEMA_VERSION = "loopx_lark_kanban_control_plane_v0"
 LARK_KANBAN_HEARTBEAT_VERSION = "loopx_lark_kanban_heartbeat_v0"

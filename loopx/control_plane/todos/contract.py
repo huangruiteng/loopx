@@ -799,7 +799,7 @@ def format_todo_metadata_line(
     if removed_continuation_policy and not normalized_removed_continuation_policy:
         raise ValueError(
             "removed_continuation_policy must be one of: "
-            + ", ".join(sorted(REMOVED_TODO_CONTINUATION_POLICY_VALUES))
+            + ", ".join(sorted(TODO_REMOVED_REVIEW_CONTINUATION_POLICY_VALUES))
         )
     if normalized_continuation_policy and normalized_removed_continuation_policy:
         raise ValueError(
