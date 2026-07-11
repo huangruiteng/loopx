@@ -22,6 +22,7 @@ CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT = (
 )
 CODEX_CLI_GOAL_THREAD_PREWARM_HARD_CAP_MULTIPLIER = 2.0
 CODEX_CLI_GOAL_TASK_PROMPT_FILENAME = "skillsbench-task-prompt.md"
+CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME = "loopx-task-bridge-first-action"
 CODEX_CLI_GOAL_KICKOFF_PROMPT = (
     "Start working on the active SkillsBench goal now. Read the referenced "
     "task prompt file first, follow it exactly, and perform at least one "
@@ -112,14 +113,44 @@ def build_codex_cli_goal_file_objective(prompt_filename: str) -> str:
     if not prompt_ref or ".." in Path(prompt_ref).parts:
         prompt_ref = CODEX_CLI_GOAL_TASK_PROMPT_FILENAME
     objective = (
-        "Complete the SkillsBench task using the private task and bridge "
-        f"instructions in ./{prompt_ref}. Read that file first, follow it "
+        f"First run ./{CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME} and require "
+        "it to succeed. Then complete the SkillsBench task using the private "
+        f"task and bridge instructions in ./{prompt_ref}. Read that file, follow it "
         "exactly, and perform at least one task-facing bridge action before "
         "reporting status."
     )
     if len(objective) > CODEX_CLI_GOAL_OBJECTIVE_MAX_CHARS:
         raise ValueError("codex cli goal file objective exceeds objective cap")
     return objective
+
+
+def write_codex_cli_goal_bridge_first_action_helper(
+    *,
+    cwd: str | Path,
+    bridge_executable: str,
+) -> Path:
+    """Write the goal's first task-facing bridge action into its workspace."""
+
+    request = json.dumps(
+        {
+            "operation": "exec",
+            "cwd": "/app",
+            "command": "pwd && ls -la",
+            "timeout_sec": 10,
+        },
+        separators=(",", ":"),
+    )
+    helper_path = Path(cwd) / CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME
+    command = (
+        f"printf '%s\\n' {shlex.quote(request)} | "
+        f"{shlex.quote(str(bridge_executable))}"
+    )
+    helper_path.write_text(
+        "#!/bin/sh\nset -eu\n" + command + "\n",
+        encoding="utf-8",
+    )
+    helper_path.chmod(0o700)
+    return helper_path
 
 
 def build_codex_cli_tui_command(

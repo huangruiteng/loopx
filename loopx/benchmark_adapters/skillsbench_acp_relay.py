@@ -76,6 +76,7 @@ from loopx.codex_cli_goal_tui import (
     tmux_paste_file_and_submit,
     tmux_submit_enter,
     tmux_type_text_and_submit,
+    write_codex_cli_goal_bridge_first_action_helper,
 )
 
 SAFE_LOOPX_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{6,80}$")
@@ -1037,6 +1038,7 @@ class SkillsBenchLocalAcpRelay:
                     summary_path=bridge_summary_path,
                     bridge_command=agent_bridge_command,
                 )
+                write_codex_cli_goal_bridge_first_action_helper(cwd=local_cwd, bridge_executable=str(instrumented_bridge))
                 prompt_for_codex = self._prompt_with_remote_bridge_packet(
                     prompt_text,
                     bridge_probe=bridge_probe,
@@ -1842,6 +1844,8 @@ class SkillsBenchLocalAcpRelay:
                 "goal_thread_prewarm_timeout_sec": CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC if self._config.codex_cli_goal_thread_prewarm else 0,
                 "goal_prompt_file_used": bool(goal_prompt_file_used),
                 "goal_prompt_file_raw_path_recorded": False,
+                "goal_bridge_first_action_helper_used": bool(goal_prompt_file_used),
+                "goal_bridge_first_action_helper_raw_path_recorded": False,
                 "goal_command_submission_method": str(
                     goal_command_submission_method or ""
                 )[:40],
