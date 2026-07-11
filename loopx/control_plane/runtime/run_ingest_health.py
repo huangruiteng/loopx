@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from .public_safety import public_safe_compact_text
+from .public_safety import public_safe_compact_list, public_safe_compact_text
 
 WORKER_BRIDGE_INGEST_HEALTH_SCHEMA_VERSION = "worker_bridge_ingest_health_note_v0"
 _BENCHMARK_RUN_SCHEMA_VERSION = "benchmark_run_v0"
+_MAX_LIST_ITEMS = 5
 
 
 def compact_environment_setup_failure_context(value: Any) -> dict[str, Any]:
@@ -176,3 +177,160 @@ def worker_bridge_ingest_health_note(
     if env_context:
         note["environment_setup_failure_context"] = env_context
     return note
+
+
+def compact_worker_bridge_outcome(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+
+    compact: dict[str, Any] = {}
+    for field in (
+        "schema_version",
+        "bridge_surface",
+        "runner_return_status",
+        "official_score_status",
+        "trace_publicness",
+        "next_action",
+        "score_failure_attribution",
+        "worker_submit_eligible_mismatch_reason",
+        "worker_bridge_writeback_loss_reason",
+        "worker_bridge_materialization_status",
+        "worker_bridge_materialization_blocker",
+        "worker_bridge_failure_attribution",
+        "prompt_driven_first_blocker",
+        "controller_last_decision",
+        "repeat_blocked_by",
+        "pre_worker_startup_blocker",
+    ):
+        text = public_safe_compact_text(value.get(field), limit=160)
+        if text:
+            compact[field] = text
+    for field in (
+        "worker_bridge_verified",
+        "prompt_driven_loopx_trace_observed",
+        "prompt_driven_loopx_lifecycle_observed",
+        "counter_trace_present",
+        "runner_return_completed",
+        "official_score_completed",
+        "side_effect_audit_passed",
+        "raw_paths_recorded",
+        "raw_trace_recorded",
+        "credential_values_recorded",
+        "runner_side_writeback_guaranteed",
+        "worker_submit_eligible_mismatch_observed",
+        "worker_bridge_writeback_loss_observed",
+        "loopx_controller_trace_present",
+        "loopx_controller_trace_public_safe",
+        "controller_turn_completed_observed",
+    ):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    for field in (
+        "worker_loopx_cli_call_total",
+        "loopx_prompt_driven_case_cli_call_count",
+        "required_worker_loopx_cli_call_total_min",
+        "worker_self_validation_official_score_mismatch_count",
+        "worker_validation_scope_ambiguous_official_score_failure_count",
+        "worker_bridge_connected_official_score_failure_count",
+        "worker_startup_blocker_count",
+        "worker_setup_diagnostic_file_count",
+        "worker_setup_diagnostic_schema_ok_count",
+        "worker_submit_eligible_mismatch_count",
+        "worker_bridge_writeback_loss_count",
+        "environment_setup_failure_before_worker_count",
+        "pre_worker_agent_setup_failure_count",
+        "worker_runtime_exception_before_checkpoint_count",
+        "verifier_failure_attribution_count",
+        "verifier_dependency_failure_count",
+        "controller_max_round_observed",
+        "controller_max_rounds_budget",
+        "controller_followup_prompt_count",
+    ):
+        if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    round_timeout = value.get("controller_round_timeout_sec")
+    if isinstance(round_timeout, (int, float)) and not isinstance(round_timeout, bool):
+        compact["controller_round_timeout_sec"] = round_timeout
+    score = value.get("official_score_value")
+    if isinstance(score, (int, float)) and not isinstance(score, bool):
+        compact["official_score_value"] = score
+
+    policy = (
+        value.get("wall_time_policy")
+        if isinstance(value.get("wall_time_policy"), dict)
+        else {}
+    )
+    if policy:
+        compact_policy: dict[str, Any] = {}
+        for field in ("schema_version", "kind", "timeout_tier", "interrupt_reason"):
+            text = public_safe_compact_text(policy.get(field), limit=140)
+            if text:
+                compact_policy[field] = text
+        for field in (
+            "interrupted",
+            "changes_official_benchmark_timeout",
+            "changes_official_task_resources",
+            "official_timeout_comparable",
+            "leaderboard_claim_allowed",
+            "observed_true_long_task_bar_met",
+            "expected_true_long_task_bar_met",
+            "true_long_task_bar_met",
+            "expected_hours_scale_bar_met",
+        ):
+            if isinstance(policy.get(field), bool):
+                compact_policy[field] = policy[field]
+        for field in (
+            "wall_time_seconds",
+            "wall_time_limit_seconds",
+            "true_long_task_bar_seconds",
+            "preferred_hours_scale_bar_seconds",
+        ):
+            number = policy.get(field)
+            if isinstance(number, (int, float)) and not isinstance(number, bool):
+                compact_policy[field] = number
+        if compact_policy:
+            compact["wall_time_policy"] = compact_policy
+
+    labels = public_safe_compact_list(
+        value.get("failure_attribution_labels"),
+        limit=_MAX_LIST_ITEMS,
+    )
+    if labels:
+        compact["failure_attribution_labels"] = labels
+
+    boundary = (
+        value.get("claim_boundary")
+        if isinstance(value.get("claim_boundary"), dict)
+        else {}
+    )
+    if boundary:
+        compact_boundary: dict[str, Any] = {}
+        allowed = public_safe_compact_text(
+            boundary.get("public_claim_allowed"), limit=180
+        )
+        if allowed:
+            compact_boundary["public_claim_allowed"] = allowed
+        for field in (
+            "bridge_connectivity_claim_allowed",
+            "case_success_claim_allowed",
+            "official_score_claim_allowed",
+            "leaderboard_claim_allowed",
+        ):
+            if isinstance(boundary.get(field), bool):
+                compact_boundary[field] = boundary[field]
+        forbidden = public_safe_compact_list(
+            boundary.get("forbidden_claims"),
+            limit=_MAX_LIST_ITEMS,
+        )
+        if forbidden:
+            compact_boundary["forbidden_claims"] = forbidden
+        if compact_boundary:
+            compact["claim_boundary"] = compact_boundary
+
+    env_context = compact_environment_setup_failure_context(
+        value.get("environment_setup_failure_context")
+    )
+    if env_context:
+        compact["environment_setup_failure_context"] = env_context
+
+    return compact
