@@ -22,6 +22,7 @@ from ..capabilities.explore.result_log import (
     load_explore_result_events,
 )
 from ..capabilities.explore.harness_gate import GATE_STATE_DISABLED
+from ..capabilities.explore.resource_portfolio import parse_resource_counts
 from ..capabilities.explore.todo_branch_plan import (
     build_explore_todo_branch_plan,
     resolve_todo_branch_plan_gate,
@@ -551,6 +552,14 @@ def handle_explore_command(
                     )
                 payload["out"] = str(out_path)
         elif args.explore_command == "todo-branch-plan":
+            resource_capacities = parse_resource_counts(
+                args.resource_capacity,
+                flag_name="--resource-capacity",
+            )
+            resource_usage = parse_resource_counts(
+                args.resource_usage,
+                flag_name="--resource-usage",
+            )
             orchestration = _goal_orchestration_boundary(registry, goal_id=args.goal_id)
             gate = resolve_todo_branch_plan_gate(orchestration, requested_width=args.width)
             if gate["state"] == GATE_STATE_DISABLED:
@@ -563,6 +572,8 @@ def handle_explore_command(
                     agent_id=args.agent_id,
                     orchestration=orchestration,
                     width=args.width,
+                    resource_capacities=resource_capacities,
+                    resource_usage=resource_usage,
                 )
             else:
                 projection = _projection_for(args, runtime_root=runtime_root)
@@ -587,6 +598,8 @@ def handle_explore_command(
                     allow_unscoped_parallel=bool(args.allow_unscoped_parallel),
                     scheduler_strategy=args.scheduler_strategy,
                     scheduler_load=args.scheduler_load,
+                    resource_capacities=resource_capacities,
+                    resource_usage=resource_usage,
                 )
                 payload["todo_source"] = {
                     "source": todo_payload.get("source"),
@@ -594,6 +607,14 @@ def handle_explore_command(
                     "todo_count": todo_payload.get("todo_count"),
                 }
         elif args.explore_command == "worker-branch-plan":
+            resource_capacities = parse_resource_counts(
+                args.resource_capacity,
+                flag_name="--resource-capacity",
+            )
+            resource_usage = parse_resource_counts(
+                args.resource_usage,
+                flag_name="--resource-usage",
+            )
             orchestration = _goal_orchestration_boundary(registry, goal_id=args.goal_id)
             gate = resolve_explore_harness_gate(
                 orchestration, requested_width=args.worker_width
@@ -608,6 +629,8 @@ def handle_explore_command(
                     agent_id=args.agent_id,
                     orchestration=orchestration,
                     worker_width=args.worker_width,
+                    resource_capacities=resource_capacities,
+                    resource_usage=resource_usage,
                 )
             else:
                 projection = _projection_for(args, runtime_root=runtime_root)
@@ -647,6 +670,8 @@ def handle_explore_command(
                     marginal_score_floor=args.marginal_score_floor,
                     router_state=router_state,
                     load_profile=load_profile,
+                    resource_capacities=resource_capacities,
+                    resource_usage=resource_usage,
                 )
                 payload["todo_source"] = {
                     "source": todo_payload.get("source"),

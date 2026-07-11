@@ -31,6 +31,12 @@ from .speculative_scheduler import (
     partition_invalidated_successors,
     schedule_confidence_prefix,
 )
+from .resource_portfolio import (
+    resource_assignment,
+    resource_lane_from_capabilities,
+    resource_portfolio_with_selection,
+    resolve_resource_portfolio,
+)
 from .todo_evidence import build_todo_typed_evidence_audit
 
 
@@ -318,6 +324,8 @@ def build_explore_todo_branch_plan(
     allow_unscoped_parallel: bool = True,
     scheduler_strategy: str = "dspark",
     scheduler_load: float = 0.2,
+    resource_capacities: Mapping[str, int] | None = None,
+    resource_usage: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
     """Rank open agent todos as CPU-like predicted execution branches.
 
@@ -333,6 +341,7 @@ def build_explore_todo_branch_plan(
     """
 
     normalized_agent = normalize_todo_claimed_by(agent_id)
+    resource_portfolio = resolve_resource_portfolio(resource_capacities, resource_usage)
     requested_width = max(1, int(width or DEFAULT_BRANCH_WIDTH))
     gate = resolve_todo_branch_plan_gate(orchestration, requested_width=requested_width)
     if gate["state"] == GATE_STATE_DISABLED:
@@ -352,6 +361,7 @@ def build_explore_todo_branch_plan(
         )
         required_write_scopes = _required_write_scopes(item)
         task_class = todo_item_task_class(dict(item))
+        required_capabilities = _required_capabilities(item)
         candidate = {
             "todo_id": todo_id,
             "text": _compact_text(item.get("text") or item.get("title")),
@@ -359,8 +369,15 @@ def build_explore_todo_branch_plan(
             "task_class": task_class,
             "claimed_by": normalize_todo_claimed_by(item.get("claimed_by")) or "",
             "required_write_scopes": required_write_scopes,
-            "required_capabilities": _required_capabilities(item),
+            "required_capabilities": required_capabilities,
             "shared_dependency_capabilities": _shared_dependency_capabilities(item),
+            "resource_lane": resource_lane_from_capabilities(required_capabilities),
+            "depends_on": (
+                item.get("depends_on")
+                or item.get("dependency_todo_ids")
+                or item.get("blocked_by_todo_ids")
+                or []
+            ),
             "score": round(score, 2),
             "confidence": _branch_confidence(score, hazards=hazards),
             "expected_evidence_units": _branch_expected_evidence_units(
@@ -413,78 +430,138 @@ def build_explore_todo_branch_plan(
     )
     verification_budget = max(1, int(scheduler.get("selected_prefix_length") or 1))
 
-    selected: list[dict[str, Any]] = []
-    rejected: list[dict[str, Any]] = list(monitor_lanes)
-    selected_scopes: list[tuple[str, list[str]]] = []
-    for candidate in exploration_candidates:
-        hazards = list(candidate.get("hazards") or [])
-        scopes = _required_write_scopes(candidate)
-        conflict_with = ""
-        if scopes:
-            for selected_todo_id, existing_scopes in selected_scopes:
-                if _scopes_overlap(scopes, existing_scopes):
-                    conflict_with = selected_todo_id
-                    hazards.append(f"write_scope_conflict:{selected_todo_id}")
-                    break
-        elif not allow_unscoped_parallel and selected:
-            conflict_with = selected[0]["todo_id"]
-            hazards.append("unscoped_parallel_disabled")
+    selection_budget = normalized_width if resource_portfolio["enabled"] else verification_budget
+    ordered_candidates = list(exploration_candidates)
+    if resource_portfolio["enabled"]:
+        ordered_candidates.sort(key=lambda item: 0 if item.get("resource_lane") else 1)
 
-        if candidate.get("claimed_by") and candidate.get("claimed_by") != normalized_agent:
-            candidate = {**candidate, "selection_status": "blocked_claimed_by_other"}
-            rejected.append(candidate)
-            continue
-        if conflict_with:
-            candidate = {
-                **candidate,
-                "selection_status": "rejected_hazard",
-                "conflict_with": conflict_with,
-                "hazards": hazards,
-            }
-            rejected.append(candidate)
-            continue
-        if len(selected) >= verification_budget:
-            rejected.append({**candidate, "selection_status": "outside_verification_budget"})
-            continue
+    invalidated_ids: set[str] = set()
+    dependency_rejections: list[dict[str, Any]] = []
+    dependency_events: list[dict[str, Any]] = []
+    while True:
+        selected = []
+        selection_rejections: list[dict[str, Any]] = []
+        selected_scopes: list[tuple[str, list[str]]] = []
+        selected_by_resource_lane: dict[str, int] = {}
+        for candidate in ordered_candidates:
+            todo_id = str(candidate.get("todo_id") or "")
+            if todo_id in invalidated_ids:
+                continue
+            hazards = list(candidate.get("hazards") or [])
+            scopes = _required_write_scopes(candidate)
+            resource_lane = str(candidate.get("resource_lane") or "")
+            conflict_with = ""
+            if scopes:
+                for selected_todo_id, existing_scopes in selected_scopes:
+                    if _scopes_overlap(scopes, existing_scopes):
+                        conflict_with = selected_todo_id
+                        hazards.append(f"write_scope_conflict:{selected_todo_id}")
+                        break
+            elif not allow_unscoped_parallel and selected:
+                conflict_with = selected[0]["todo_id"]
+                hazards.append("unscoped_parallel_disabled")
 
-        branch_index = len(selected)
-        todo_id = str(candidate["todo_id"])
-        role = "primary" if branch_index == 0 else "speculative"
-        selected_candidate = {
-            **candidate,
-            "selection_status": "selected",
-            "branch_role": role,
-            "branch_index": branch_index,
-            "lane_id": _lane_id(todo_id, index=branch_index),
-            "commit_policy": (
-                "verify and write back before keeping this branch; discard or convert "
-                "to successor todo if evidence does not advance the exploration"
-            ),
-            "suggested_commands": [
-                command
-                for command in (
-                    _claim_command(goal_id=goal_id, todo_id=todo_id, agent_id=normalized_agent),
-                    _lease_command(
-                        goal_id=goal_id,
-                        todo_id=todo_id,
-                        agent_id=normalized_agent,
-                        write_scopes=scopes,
-                    ),
+            if candidate.get("claimed_by") and candidate.get("claimed_by") != normalized_agent:
+                selection_rejections.append(
+                    {**candidate, "selection_status": "blocked_claimed_by_other"}
                 )
-                if command
-            ],
-        }
-        selected.append(selected_candidate)
-        selected_scopes.append((todo_id, scopes))
+                continue
+            if conflict_with:
+                selection_rejections.append(
+                    {
+                        **candidate,
+                        "selection_status": "rejected_hazard",
+                        "conflict_with": conflict_with,
+                        "hazards": hazards,
+                    }
+                )
+                continue
+            if resource_portfolio["enabled"] and resource_lane:
+                lane = resource_portfolio["lanes"].get(resource_lane)
+                if lane is None:
+                    selection_rejections.append(
+                        {
+                            **candidate,
+                            "selection_status": "rejected_resource_lane",
+                            "hazards": [*hazards, f"resource_capacity_undeclared:{resource_lane}"],
+                        }
+                    )
+                    continue
+                if selected_by_resource_lane.get(resource_lane, 0) >= int(
+                    lane.get("available_slots") or 0
+                ):
+                    selection_rejections.append(
+                        {
+                            **candidate,
+                            "selection_status": "resource_lane_capacity_exhausted",
+                            "hazards": [*hazards, f"resource_capacity_exhausted:{resource_lane}"],
+                        }
+                    )
+                    continue
+            if len(selected) >= selection_budget:
+                selection_rejections.append(
+                    {**candidate, "selection_status": "outside_verification_budget"}
+                )
+                continue
 
-    dependency_valid_selected, dependency_invalidated, dependency_events = partition_invalidated_successors(
-        selected,
-        selected_ids=[str(item.get("todo_id") or "") for item in selected],
-        lane="todo_branch_plan",
-    )
-    if dependency_invalidated:
-        rejected.extend(dependency_invalidated)
-        selected = dependency_valid_selected
+            branch_index = len(selected)
+            role = "primary" if branch_index == 0 else "speculative"
+            selected_in_lane = selected_by_resource_lane.get(resource_lane, 0) + 1
+            selected_candidate = {
+                **candidate,
+                "selection_status": "selected",
+                "branch_role": role,
+                "branch_index": branch_index,
+                "lane_id": _lane_id(todo_id, index=branch_index),
+                "commit_policy": (
+                    "verify and write back before keeping this branch; discard or convert "
+                    "to successor todo if evidence does not advance the exploration"
+                ),
+                "suggested_commands": [
+                    command
+                    for command in (
+                        _claim_command(goal_id=goal_id, todo_id=todo_id, agent_id=normalized_agent),
+                        _lease_command(
+                            goal_id=goal_id,
+                            todo_id=todo_id,
+                            agent_id=normalized_agent,
+                            write_scopes=scopes,
+                        ),
+                    )
+                    if command
+                ],
+            }
+            assignment = resource_assignment(
+                resource_portfolio,
+                resource_lane=resource_lane,
+                selected_count=selected_in_lane,
+            )
+            if assignment is not None:
+                selected_candidate["resource_assignment"] = assignment
+            selected.append(selected_candidate)
+            selected_scopes.append((todo_id, scopes))
+            if resource_lane:
+                selected_by_resource_lane[resource_lane] = selected_in_lane
+
+        valid_selected, invalidated, events = partition_invalidated_successors(
+            selected,
+            selected_ids=[str(item.get("todo_id") or "") for item in selected],
+            lane="todo_branch_plan",
+        )
+        if not invalidated:
+            rejected = [*monitor_lanes, *dependency_rejections, *selection_rejections]
+            selected = valid_selected
+            break
+        new_invalidated_ids = {
+            str(item.get("todo_id") or "") for item in invalidated
+        } - invalidated_ids
+        dependency_rejections.extend(invalidated)
+        dependency_events.extend(events)
+        invalidated_ids.update(new_invalidated_ids)
+        if not new_invalidated_ids:
+            rejected = [*monitor_lanes, *dependency_rejections, *selection_rejections]
+            selected = valid_selected
+            break
 
     if gate["state"] == GATE_STATE_ANALYSIS_ONLY:
         # Analysis stays available (ranking, hazards, A/B estimate), but the
@@ -508,6 +585,7 @@ def build_explore_todo_branch_plan(
         "issue_width": normalized_width,
         "requested_issue_width": requested_width,
         "verification_budget": verification_budget,
+        "selection_budget": selection_budget,
         "scheduler": scheduler,
         "accept_reject_trace": dependency_events,
         "ab_result": build_branch_plan_ab_result(
@@ -522,6 +600,7 @@ def build_explore_todo_branch_plan(
         "selected_count": len(selected),
         "selected_branches": selected,
         "rejected_candidates": rejected[: max(0, normalized_width * 3)],
+        "resource_portfolio": resource_portfolio_with_selection(resource_portfolio, selected),
         "hazard_model": {
             "write_scope_conflicts": "skip speculative branch when declared write scopes overlap",
             "shared_dependencies": (
@@ -541,6 +620,10 @@ def build_explore_todo_branch_plan(
             "typed_evidence": (
                 "explicit Explore result-node links add bounded diagnostic-only "
                 "dead-end/refutation warnings; they do not change score or authority"
+            ),
+            "resource_lanes": (
+                "resource_lane:<key> capabilities consume only explicitly declared empty slots; "
+                "rejected candidates release their predicted slot for same-call backfill"
             ),
         },
         "boundary": {

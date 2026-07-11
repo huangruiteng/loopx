@@ -824,9 +824,9 @@ def check_cli_surface() -> None:
             "# Explore CLI Fixture\n\n"
             "## Agent Todo\n\n"
             "- [ ] [P0] Continue CLI topology experiment.\n"
-            "  <!-- loopx:todo todo_id=todo_cli_primary status=open task_class=advancement_task claimed_by=codex-main-control required_write_scopes=loopx/capabilities/explore/** -->\n"
+            "  <!-- loopx:todo todo_id=todo_cli_primary status=open task_class=advancement_task claimed_by=codex-main-control required_write_scopes=loopx/capabilities/explore/** required_capabilities=resource_lane:long_pool -->\n"
             "- [ ] [P1] Add CLI branch prediction smoke.\n"
-            "  <!-- loopx:todo todo_id=todo_cli_parallel status=open task_class=advancement_task required_write_scopes=examples/** -->\n",
+            "  <!-- loopx:todo todo_id=todo_cli_parallel status=open task_class=advancement_task required_write_scopes=examples/** required_capabilities=resource_lane:short_pool -->\n",
             encoding="utf-8",
         )
         registry.parent.mkdir(parents=True, exist_ok=True)
@@ -955,6 +955,26 @@ def check_cli_surface() -> None:
         assert branch_plan["selected_branches"][0]["todo_id"] == "todo_cli_primary", branch_plan
         assert set(branch_plan["scheduler"]["ab_comparison"]) == {"baseline_serial", "dspark_selected"}, branch_plan
         assert branch_plan["ab_result"]["estimated_speedup_vs_baseline"] > 0, branch_plan
+        resource_branch_plan = run_cli(
+            "explore",
+            "todo-branch-plan",
+            "--goal-id",
+            goal_id,
+            "--agent-id",
+            "codex-main-control",
+            "--width",
+            "2",
+            "--resource-capacity",
+            "long_pool=2",
+            "--resource-usage",
+            "long_pool=1",
+            "--resource-capacity",
+            "short_pool=3",
+            "--resource-usage",
+            "short_pool=2",
+        )
+        assert resource_branch_plan["resource_portfolio"]["selected_slot_count"] == 2, resource_branch_plan
+        assert resource_branch_plan["resource_portfolio"]["remaining_slot_count"] == 0, resource_branch_plan
         worker_branch_plan = run_cli(
             "explore",
             "worker-branch-plan",

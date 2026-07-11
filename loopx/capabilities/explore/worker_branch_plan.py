@@ -16,6 +16,12 @@ from .harness_gate import (
     resolve_explore_harness_gate as _resolve_explore_harness_gate,
 )
 from .router_state import family_routing_terms, is_router_state
+from .resource_portfolio import (
+    resource_assignment,
+    resource_lane_from_capabilities,
+    resource_portfolio_with_selection,
+    resolve_resource_portfolio,
+)
 from .speculative_scheduler import (
     build_accept_reject_event,
     calibrate_load_factor,
@@ -388,6 +394,7 @@ def _todo_candidate(
         frontier=frontier,
     )
     task_class = todo_item_task_class(dict(item))
+    required_capabilities = _required_capabilities(item)
     candidate = {
         "todo_id": todo_id,
         "text": _compact_text(item.get("text") or item.get("title")),
@@ -395,8 +402,9 @@ def _todo_candidate(
         "task_class": task_class,
         "claimed_by": normalize_todo_claimed_by(item.get("claimed_by")) or "",
         "required_write_scopes": _required_write_scopes(item),
-        "required_capabilities": _required_capabilities(item),
+        "required_capabilities": required_capabilities,
         "shared_dependency_capabilities": _shared_dependency_capabilities(item),
+        "resource_lane": resource_lane_from_capabilities(required_capabilities),
         "depends_on": item.get("depends_on") or item.get("dependency_todo_ids") or item.get("blocked_by_todo_ids") or [],
         "score": round(score, 2),
         "confidence": _branch_confidence(score, hazards=hazards),
@@ -469,6 +477,11 @@ def _branch_candidate(
         hazard for item in todo_bundle for hazard in item.get("hazards") or []
     )
     branch_id = _branch_id(affinity_key, index=index)
+    resource_lanes = _dedupe_preserve_order(
+        item.get("resource_lane") for item in todo_bundle if item.get("resource_lane")
+    )
+    if len(resource_lanes) > 1:
+        raise ValueError("a worker branch cannot bundle todos from multiple resource lanes")
     expected_evidence = round(
         sum(float(item.get("expected_evidence_units") or 0.0) for item in todo_bundle),
         3,
@@ -501,6 +514,7 @@ def _branch_candidate(
         "required_write_scopes": write_scopes,
         "required_capabilities": capabilities,
         "shared_dependency_capabilities": shared_dependency_capabilities,
+        "resource_lane": resource_lanes[0] if resource_lanes else "",
         "depends_on": dependencies,
         "score": score,
         "confidence": aggregate_confidence,
@@ -644,15 +658,20 @@ def _build_worker_branch_candidates(
         if not (candidate.get("claimed_by") and candidate.get("claimed_by") != normalized_agent)
     ]
 
-    buckets: dict[str, list[dict[str, Any]]] = {}
+    buckets: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for candidate in eligible:
-        buckets.setdefault(str(candidate.get("affinity_key") or "topic:general"), []).append(candidate)
+        bucket_key = (
+            str(candidate.get("resource_lane") or ""),
+            str(candidate.get("affinity_key") or "topic:general"),
+        )
+        buckets.setdefault(bucket_key, []).append(candidate)
 
     router_enabled = is_router_state(router_state)
-    terms_by_family: dict[str, dict[str, Any]] = {}
+    terms_by_family: dict[tuple[str, str], dict[str, Any]] = {}
     if router_enabled:
         terms_by_family = {
-            family: family_routing_terms(router_state, family) for family in buckets
+            bucket_key: family_routing_terms(router_state, bucket_key[1])
+            for bucket_key in buckets
         }
     known_durations = sorted(
         terms.get("duration_minutes")
@@ -663,22 +682,24 @@ def _build_worker_branch_candidates(
         float(known_durations[len(known_durations) // 2]) if known_durations else None
     )
 
-    def _bucket_sort_key(item: tuple[str, list[dict[str, Any]]]) -> tuple:
-        affinity_key, bucket = item
+    def _bucket_sort_key(item: tuple[tuple[str, str], list[dict[str, Any]]]) -> tuple:
+        bucket_key, bucket = item
+        resource_lane, affinity_key = bucket_key
         total_score = sum(float(todo.get("score") or 0.0) for todo in bucket)
         if router_enabled:
             routing_value = float(
-                (terms_by_family.get(affinity_key) or {}).get("routing_value") or 0.0
+                (terms_by_family.get(bucket_key) or {}).get("routing_value") or 0.0
             )
-            return (-routing_value, -total_score, affinity_key)
-        return (-total_score, affinity_key)
+            return (-routing_value, -total_score, resource_lane, affinity_key)
+        return (-total_score, resource_lane, affinity_key)
 
     branch_candidates: list[dict[str, Any]] = []
     branch_index = 0
     chunk_size = max(1, min(MAX_TODOS_PER_WORKER_BRANCH, int(max_todos_per_branch or 1)))
     score_floor = max(0.0, min(1.0, float(marginal_score_floor)))
-    for affinity_key, bucket in sorted(buckets.items(), key=_bucket_sort_key):
-        router_terms = terms_by_family.get(affinity_key)
+    for bucket_key, bucket in sorted(buckets.items(), key=_bucket_sort_key):
+        _, affinity_key = bucket_key
+        router_terms = terms_by_family.get(bucket_key)
         bundles: list[list[dict[str, Any]]] = []
         if branch_fill_policy == "confident-prefix":
             bundles = _confident_prefix_bundles(
@@ -822,6 +843,8 @@ def build_explore_worker_branch_plan(
     marginal_score_floor: float | None = None,
     router_state: Mapping[str, Any] | None = None,
     load_profile: Mapping[str, Any] | None = None,
+    resource_capacities: Mapping[str, int] | None = None,
+    resource_usage: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
     """Plan worker-lane branches on top of the existing LoopX harness.
 
@@ -843,6 +866,7 @@ def build_explore_worker_branch_plan(
     """
 
     normalized_agent = normalize_todo_claimed_by(agent_id)
+    resource_portfolio = resolve_resource_portfolio(resource_capacities, resource_usage)
     requested_width = max(1, int(worker_width or DEFAULT_BRANCH_WIDTH))
     gate = resolve_explore_harness_gate(orchestration, requested_width=requested_width)
     if gate["state"] == GATE_STATE_DISABLED:
@@ -954,63 +978,132 @@ def build_explore_worker_branch_plan(
     profile["scheduler_load"] = scheduler.get("load_factor")
     profile["scheduler_model"] = scheduler.get("strategy")
 
-    selected: list[dict[str, Any]] = []
-    rejected: list[dict[str, Any]] = list(blocked_todos)
-    selected_scopes: list[tuple[str, list[str]]] = []
-    for branch in branch_candidates:
-        branch_scopes = list(branch.get("required_write_scopes") or [])
-        conflict_with = ""
-        if branch_scopes:
-            for selected_branch_id, selected_branch_scopes in selected_scopes:
-                if _scopes_overlap(branch_scopes, selected_branch_scopes):
-                    conflict_with = selected_branch_id
-                    break
-        elif not allow_unscoped_parallel and selected:
-            conflict_with = str(selected[0].get("branch_id") or "")
+    selection_budget = normalized_width if resource_portfolio["enabled"] else verification_budget
+    ordered_branches = list(branch_candidates)
+    if resource_portfolio["enabled"]:
+        ordered_branches.sort(key=lambda item: 0 if item.get("resource_lane") else 1)
 
-        if conflict_with:
-            rejected.append(
-                {
-                    **branch,
-                    "selection_status": "rejected_hazard",
-                    "conflict_with": conflict_with,
-                    "hazards": [*list(branch.get("hazards") or []), f"worker_branch_conflict:{conflict_with}"],
-                }
+    invalidated_branch_ids: set[str] = set()
+    dependency_rejections: list[dict[str, Any]] = []
+    invalidation_events: list[dict[str, Any]] = []
+    while True:
+        selected = []
+        selection_rejections: list[dict[str, Any]] = []
+        selected_scopes: list[tuple[str, list[str]]] = []
+        selected_by_resource_lane: dict[str, int] = {}
+        for branch in ordered_branches:
+            branch_id = str(branch.get("branch_id") or "")
+            if branch_id in invalidated_branch_ids:
+                continue
+            branch_scopes = list(branch.get("required_write_scopes") or [])
+            resource_lane = str(branch.get("resource_lane") or "")
+            conflict_with = ""
+            if branch_scopes:
+                for selected_branch_id, selected_branch_scopes in selected_scopes:
+                    if _scopes_overlap(branch_scopes, selected_branch_scopes):
+                        conflict_with = selected_branch_id
+                        break
+            elif not allow_unscoped_parallel and selected:
+                conflict_with = str(selected[0].get("branch_id") or "")
+
+            if conflict_with:
+                selection_rejections.append(
+                    {
+                        **branch,
+                        "selection_status": "rejected_hazard",
+                        "conflict_with": conflict_with,
+                        "hazards": [
+                            *list(branch.get("hazards") or []),
+                            f"worker_branch_conflict:{conflict_with}",
+                        ],
+                    }
+                )
+                continue
+            if resource_portfolio["enabled"] and resource_lane:
+                lane = resource_portfolio["lanes"].get(resource_lane)
+                if lane is None:
+                    selection_rejections.append(
+                        {
+                            **branch,
+                            "selection_status": "rejected_resource_lane",
+                            "hazards": [
+                                *list(branch.get("hazards") or []),
+                                f"resource_capacity_undeclared:{resource_lane}",
+                            ],
+                        }
+                    )
+                    continue
+                if selected_by_resource_lane.get(resource_lane, 0) >= int(
+                    lane.get("available_slots") or 0
+                ):
+                    selection_rejections.append(
+                        {
+                            **branch,
+                            "selection_status": "resource_lane_capacity_exhausted",
+                            "hazards": [
+                                *list(branch.get("hazards") or []),
+                                f"resource_capacity_exhausted:{resource_lane}",
+                            ],
+                        }
+                    )
+                    continue
+            if len(selected) >= selection_budget:
+                selection_rejections.append(
+                    {**branch, "selection_status": "outside_verification_budget"}
+                )
+                continue
+
+            role = "primary" if not selected else "speculative_worker"
+            selected_in_lane = selected_by_resource_lane.get(resource_lane, 0) + 1
+            selected_branch = {
+                **branch,
+                "selection_status": "selected",
+                "branch_role": role,
+                "branch_index": len(selected),
+                "worker_hint": f"worker-{len(selected) + 1}",
+                "execution_contract": {
+                    "must_enter_loopx_harness": True,
+                    "requires_quota_should_run": True,
+                    "requires_todo_claim": True,
+                    "requires_task_lease_for_write_scopes": bool(branch_scopes),
+                    "writeback_surfaces": ["explore_result_log", "refresh_state", "quota_spend_slot"],
+                },
+            }
+            assignment = resource_assignment(
+                resource_portfolio,
+                resource_lane=resource_lane,
+                selected_count=selected_in_lane,
             )
-            continue
-        if len(selected) >= verification_budget:
-            rejected.append({**branch, "selection_status": "outside_verification_budget"})
-            continue
-        role = "primary" if not selected else "speculative_worker"
-        selected_branch = {
-            **branch,
-            "selection_status": "selected",
-            "branch_role": role,
-            "branch_index": len(selected),
-            "worker_hint": f"worker-{len(selected) + 1}",
-            "execution_contract": {
-                "must_enter_loopx_harness": True,
-                "requires_quota_should_run": True,
-                "requires_todo_claim": True,
-                "requires_task_lease_for_write_scopes": bool(branch_scopes),
-                "writeback_surfaces": ["explore_result_log", "refresh_state", "quota_spend_slot"],
-            },
-        }
-        selected.append(selected_branch)
-        selected_scopes.append((str(branch.get("branch_id")), branch_scopes))
+            if assignment is not None:
+                selected_branch["resource_assignment"] = assignment
+            selected.append(selected_branch)
+            selected_scopes.append((branch_id, branch_scopes))
+            if resource_lane:
+                selected_by_resource_lane[resource_lane] = selected_in_lane
 
-    valid_selected, invalidated, invalidation_events = partition_invalidated_successors(
-        selected,
-        selected_ids=[
-            todo_id
-            for branch in selected
-            for todo_id in branch.get("todo_ids") or []
-        ],
-        lane="worker_branch_plan",
-    )
-    if invalidated:
-        rejected.extend(invalidated)
-        selected = valid_selected
+        valid_selected, invalidated, events = partition_invalidated_successors(
+            selected,
+            selected_ids=[
+                todo_id
+                for selected_branch in selected
+                for todo_id in selected_branch.get("todo_ids") or []
+            ],
+            lane="worker_branch_plan",
+        )
+        if not invalidated:
+            rejected = [*blocked_todos, *dependency_rejections, *selection_rejections]
+            selected = valid_selected
+            break
+        new_invalidated_ids = {
+            str(item.get("branch_id") or "") for item in invalidated
+        } - invalidated_branch_ids
+        dependency_rejections.extend(invalidated)
+        invalidation_events.extend(events)
+        invalidated_branch_ids.update(new_invalidated_ids)
+        if not new_invalidated_ids:
+            rejected = [*blocked_todos, *dependency_rejections, *selection_rejections]
+            selected = valid_selected
+            break
 
     baseline = _baseline_worker_lanes(branch_candidates, width=normalized_width)
     treatment_expected = round(
@@ -1071,6 +1164,7 @@ def build_explore_worker_branch_plan(
         "max_todos_per_branch_source": max_todos_source,
         "branch_fill_policy": normalized_fill_policy,
         "verification_budget": verification_budget,
+        "selection_budget": selection_budget,
         "scheduler": scheduler,
         "harness_compatibility": {
             "uses_loopx_todo_projection": True,
@@ -1117,6 +1211,7 @@ def build_explore_worker_branch_plan(
         "selected_worker_branch_count": len(selected),
         "selected_worker_branches": selected,
         "rejected_worker_branches": rejected[: max(0, normalized_width * 3)],
+        "resource_portfolio": resource_portfolio_with_selection(resource_portfolio, selected),
         "accept_reject_trace": [*predicted_events, *invalidation_events],
         "execution_model": {
             "planner_layer": "experimental worker-branch planner",
@@ -1130,6 +1225,10 @@ def build_explore_worker_branch_plan(
                 "only required_write_scopes create lane mutexes; shared_artifact:* and "
                 "shared_implementation:* capabilities describe immutable shared inputs, while "
                 "mutable shared builds remain required write scopes"
+            ),
+            "resource_lane_semantics": (
+                "resource_lane:<key> capabilities consume only explicitly declared empty slots; "
+                "continuous monitors consume none, and rejected lanes are backfilled in the same call"
             ),
             "branch_fill_semantics": (
                 "max_todos_per_branch is a safety ceiling; adaptive profiles decide "

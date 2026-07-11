@@ -213,6 +213,44 @@ advancement todos or charges them against `worker_width`. A monitor transition
 may create or unblock a successor advancement todo through the normal todo
 lifecycle; that successor can participate in the next read-only planning call.
 
+### Resource-Aware Portfolio Planning
+
+Both branch planners can apply independent capacity ceilings to advancement
+todos that declare one `resource_lane:<key>` capability. Capacities and current
+occupancy are request inputs, not persisted control-plane state:
+
+```bash
+loopx explore worker-branch-plan --goal-id <id> --worker-width 5 \
+  --resource-capacity long_pool=2 --resource-usage long_pool=1 \
+  --resource-capacity short_pool=3 --resource-usage short_pool=1
+```
+
+The same repeatable flags work with `todo-branch-plan`; `--width` or
+`--worker-width` remains the overall plan ceiling. In this example the packet
+may assign one new `long_pool` slot and two new `short_pool` slots. Each selected
+branch carries `resource_lane` plus a `resource_assignment`, and the top-level
+`resource_portfolio` reports capacity, current usage, available, selected, and
+remaining slots per lane.
+
+When a higher-ranked candidate is rejected because its dependency is not in the
+selected wave, its write scope conflicts with an already selected branch, or it
+has another planner hazard, selection keeps scanning. A later safe candidate in
+the same resource lane can backfill the released predicted slot in the same
+call. `continuous_monitor` todos stay diagnostic-only and never consume a
+resource slot, even if they carry a resource-lane capability.
+
+Resource inputs are optional. With no `--resource-capacity`, unlaned and legacy
+todos retain the existing width/scheduler behavior. In resource-aware mode,
+untagged todos retain their previous unconstrained behavior, while a tagged lane
+must have a matching declared capacity. Usage without a matching capacity fails
+closed to catch misspelled lane keys.
+
+This remains analysis-only evidence: `resource_portfolio.score_delta=0`, typed
+evidence keeps `score_delta=0`, and the planner is read-only. Capacity and usage
+do not claim todos, acquire leases, launch workers, write state, or grant quota
+authority. They only constrain the predicted portfolio; execution still enters
+the normal LoopX lifecycle described below.
+
 This command is read-only and opt-in per goal. It is designed to sit on top of
 the existing LoopX harness, not beside it and not instead of it:
 

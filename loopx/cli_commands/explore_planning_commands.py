@@ -9,6 +9,29 @@ from ..capabilities.explore.worker_branch_plan import (
 )
 
 
+def _add_resource_portfolio_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--resource-capacity",
+        action="append",
+        default=[],
+        metavar="KEY=N",
+        help=(
+            "Declare a resource-lane capacity for resource_lane:<key> todos. "
+            "Repeat for multiple lanes."
+        ),
+    )
+    parser.add_argument(
+        "--resource-usage",
+        action="append",
+        default=[],
+        metavar="KEY=N",
+        help=(
+            "Declare current occupancy for a resource lane. Requires a matching "
+            "--resource-capacity and may be repeated."
+        ),
+    )
+
+
 def register_explore_planning_commands(
     subparsers: argparse._SubParsersAction,
     add_subcommand_format: Callable[[argparse.ArgumentParser], None],
@@ -26,6 +49,7 @@ def register_explore_planning_commands(
     add_projection_limit_args(branch_plan)
     branch_plan.add_argument("--agent-id", help="Prefer this agent's claimed todos, then unclaimed todos.")
     branch_plan.add_argument("--width", type=int, default=3, help="Maximum predicted branch issue width.")
+    _add_resource_portfolio_args(branch_plan)
     branch_plan.add_argument(
         "--scheduler-strategy",
         choices=["dspark"],
@@ -77,6 +101,7 @@ def register_explore_planning_commands(
         default=3,
         help="Maximum predicted worker lanes; the planner may select fewer.",
     )
+    _add_resource_portfolio_args(worker_branch_plan)
     worker_branch_plan.add_argument(
         "--max-todos-per-branch",
         type=int,
