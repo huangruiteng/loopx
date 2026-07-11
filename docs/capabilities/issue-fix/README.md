@@ -460,7 +460,8 @@ the current repository revision remains authoritative.
 - multi-repository issue portfolios with bounded concurrency;
 - maintainer preference learning from public accepted/rejected outcomes;
 - reviewer load balancing and bus-factor awareness;
-- richer repository memory with explicit workspace/peer isolation;
+- evaluate validated-outcome memory utility across repeated issues before any
+  default enablement or session-memory expansion;
 - Open Knowledge Format interoperability after the repository-context contract
   stabilizes;
 - project-level metrics for accepted fixes, cycle time, human attention,
@@ -543,8 +544,8 @@ endings and one terminal newline are normalised), and
 persists only the compact hook projection in the existing repository context.
 Unverified hits contribute counts only; their summaries are not persisted.
 Provider unavailability, empty retrieval, or a missing checkout is fail-open;
-raw memory bodies, automatic transcript capture, memory writeback, private
-namespaces, credentials, and provider config paths are never retained.
+raw memory bodies, automatic transcript capture, private namespaces,
+credentials, and provider config paths are never retained.
 
 Minimal local provider config (the revision must also appear in `scope_ref`):
 
@@ -560,7 +561,11 @@ Minimal local provider config (the revision must also appear in `scope_ref`):
   "max_results": 3,
   "timeout_seconds": 15,
   "sync_timeout_seconds": 180,
-  "resource_references": ["src/module.py", "tests/test_module.py"]
+  "resource_references": ["src/module.py", "tests/test_module.py"],
+  "writeback_enabled": false,
+  "writeback_scope_ref": "viking://resources/public-repository/<git-revision>",
+  "workspace_scope": "owner-repo",
+  "peer_scope": "issue-fix-agent"
 }
 ```
 
@@ -572,6 +577,27 @@ idempotent when stored content still matches and stops on a conflict instead
 of replacing or auto-renaming it. Retrieval and resource sync use separate
 bounded timeouts because semantic indexing can legitimately take longer than
 read-only search.
+
+Validated-outcome writeback is a separate, default-off hook. It runs only when
+the caller explicitly adds `--write-repository-memory`, the local provider
+config independently sets `writeback_enabled: true`, delivery evidence says
+`completed`, validation says `passed`, the delivery evidence has a stable
+`recorded_at`, and the outcome revision matches the configured public resource
+scope. LoopX writes one distilled fact containing
+revision, provenance, freshness, public outputs, risks, a stable supersession
+key, and explicit workspace/peer scopes. A content hash selects the immutable
+target, so an identical retry reads and accepts the existing fact without a
+second write; conflicting content stops instead of overwriting. Raw
+transcripts, tool logs/results, expert answers, credentials, private material,
+and captured local paths are rejected. The provider packet retains only opaque
+refs and compact receipts.
+
+The OpenViking adapter deliberately uses deterministic `viking://resources/`
+writeback for this first contract. It does not call experimental `ov
+add-memory`, because that command creates a fresh session and currently accepts
+no idempotency key. Conversation/session capture therefore remains out of
+scope and requires a separate owner decision even when validated-outcome
+writeback is enabled.
 
 Default enablement is an evidence decision rather than an installation side
 effect. A project should first dogfood the hook across several independent
@@ -722,6 +748,8 @@ loopx issue-fix outcome \
   --pr-ref pull_456 \
   --delivery-evidence-json delivery-evidence.json \
   --write-delivery-evidence \
+  --repository-memory-provider-json provider.json \
+  --write-repository-memory \
   --agent-id codex-issue-fix \
   --format json
 ```
@@ -737,6 +765,7 @@ python3 examples/issue-fix-workflow-plan-smoke.py
 python3 examples/issue-fix-workflow-contract-smoke.py
 python3 examples/issue-fix-repository-context-smoke.py
 python3 examples/issue-fix-repository-memory-smoke.py
+python3 examples/issue-fix-validated-memory-writeback-smoke.py
 python3 examples/issue-fix-feasibility-smoke.py
 python3 examples/issue-fix-pr-lifecycle-smoke.py
 python3 examples/issue-fix-outcome-projection-smoke.py
