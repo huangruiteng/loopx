@@ -34,6 +34,26 @@ The core repository intentionally avoids domain logic. A data experiment goal,
 a note-maintenance goal, and a harness self-improvement goal should share the
 same runtime and contract, but use different adapters.
 
+## Current Dependency Budget
+
+Dependency direction is enforced incrementally while large compatibility
+facades are split. `loopx.control_plane` may not gain dependencies on
+presentation, CLI, capability, or benchmark-adapter layers; the architecture
+test keeps one explicit quota-Markdown migration edge as debt.
+
+The legacy `loopx.status` facade currently has exactly three additional outward
+edges: two SkillsBench signal enrichers and the status Markdown renderer. These
+are migration debt, not extension points. The architecture test records their
+exact module targets so the set can only shrink: a new outward edge fails, and
+removing an edge requires deleting its stale allowlist entry in the same change.
+
+Each edge should move only after characterization parity exists. Adapter-specific
+enrichment belongs behind application/plugin composition rather than in the
+status core. Presentation callers should migrate to the renderer module before
+the public `loopx.status.render_status_markdown` compatibility entry point is
+retired. Hiding either dependency inside a function or dynamic import does not
+count as architectural separation.
+
 LoopX should still absorb field-tested project-control mechanisms such
 as authority registries, current-belief TODOs, managed external-source
 manifests, experiment boards, validation surface maps, and gated handoff
