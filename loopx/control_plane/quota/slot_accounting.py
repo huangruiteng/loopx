@@ -105,9 +105,15 @@ def _load_goal_run_index_records(runtime_root: Path, goal_id: str) -> list[dict[
     return records
 
 
-def _latest_unspent_accountable_delivery_run(runtime_root: Path, goal_id: str) -> dict[str, Any] | None:
+def _latest_unspent_accountable_delivery_run(
+    runtime_root: Path,
+    goal_id: str,
+    *,
+    agent_id: str | None = None,
+) -> dict[str, Any] | None:
     """Return the latest run only when it is a delivery that still needs accounting."""
 
+    safe_agent_id = normalize_todo_claimed_by(agent_id)
     for run in reversed(_load_goal_run_index_records(runtime_root, goal_id)):
         classification = str(run.get("classification") or "").strip()
         if classification == QUOTA_SLOT_VOIDED_CLASSIFICATION:
@@ -121,6 +127,9 @@ def _latest_unspent_accountable_delivery_run(runtime_root: Path, goal_id: str) -
             return None
         delivery_outcome = normalize_delivery_outcome(run.get("delivery_outcome"))
         if delivery_outcome in ACCOUNTABLE_DELIVERY_OUTCOMES:
+            run_agent_id = normalize_todo_claimed_by(run.get("agent_id"))
+            if safe_agent_id and run_agent_id and safe_agent_id != run_agent_id:
+                return None
             return run
         return None
     return None
@@ -176,7 +185,11 @@ def build_quota_slot_preview_for_decision(
         }
     raw_runtime_root = status_payload.get("runtime_root")
     delivery_completion_run = (
-        _latest_unspent_accountable_delivery_run(Path(str(raw_runtime_root)).expanduser(), safe_goal_id)
+        _latest_unspent_accountable_delivery_run(
+            Path(str(raw_runtime_root)).expanduser(),
+            safe_goal_id,
+            agent_id=safe_requested_agent_id,
+        )
         if raw_runtime_root
         else None
     )
@@ -280,6 +293,9 @@ def build_quota_slot_preview_for_decision(
         if delivery_completion_run
         else None,
         "delivery_run_classification": delivery_completion_run.get("classification")
+        if delivery_completion_run
+        else None,
+        "delivery_run_agent_id": normalize_todo_claimed_by(delivery_completion_run.get("agent_id"))
         if delivery_completion_run
         else None,
         "delivery_run_recommended_action": delivery_completion_run.get("recommended_action")
@@ -408,6 +424,7 @@ def build_quota_slot_spend_event(
             ),
             "delivery_run_generated_at": preview.get("delivery_run_generated_at"),
             "delivery_run_classification": preview.get("delivery_run_classification"),
+            "delivery_run_agent_id": preview.get("delivery_run_agent_id"),
             "delivery_run_recommended_action": delivery_run_action or None,
             "before": before_compact,
             "after": after_compact,

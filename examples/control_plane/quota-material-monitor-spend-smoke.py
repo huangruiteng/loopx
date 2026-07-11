@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.control_plane.quota.slot_accounting import (  # noqa: E402
     build_quota_slot_preview_for_decision,
+    build_quota_slot_spend_event,
 )
 
 
@@ -31,7 +32,7 @@ def write_run_index(runtime: Path, records: list[dict[str, Any]]) -> None:
     )
 
 
-def preview(runtime: Path) -> dict[str, Any]:
+def preview(runtime: Path, *, agent_id: str | None = None) -> dict[str, Any]:
     quota = {
         "compute": 1.0,
         "window_hours": 24,
@@ -58,9 +59,13 @@ def preview(runtime: Path) -> dict[str, Any]:
         status,
         goal_id=GOAL_ID,
         before=before,
-        after_decision=lambda _: {"state": "eligible", "should_run": False},
+        after_decision=lambda _: {
+            **before,
+            "quota": {**quota, "spent_slots": 1},
+        },
         quota_status_builder=lambda goal, **_: goal["quota"],
         self_repair_spend_actions=frozenset(),
+        agent_id=agent_id,
     )
 
 
@@ -78,6 +83,7 @@ def main() -> int:
         "classification": "quota_monitor_poll",
         "delivery_outcome": "outcome_progress",
         "material_change": True,
+        "agent_id": "codex-monitor-a",
     }
     spent = {
         "generated_at": "2026-01-01T00:02:00+00:00",
@@ -93,14 +99,34 @@ def main() -> int:
         assert unchanged_preview["ok"] is False, unchanged_preview
 
         write_run_index(runtime, [unchanged_poll, material_poll])
-        material_preview = preview(runtime)
+        material_preview = preview(runtime, agent_id="codex-monitor-a")
         assert material_preview["ok"] is True, material_preview
         assert material_preview["delivery_completion_spend"] is True, material_preview
         assert material_preview["delivery_run_classification"] == "quota_monitor_poll", material_preview
         assert material_preview["delivery_run_generated_at"] == material_poll["generated_at"], material_preview
+        assert material_preview["delivery_run_agent_id"] == "codex-monitor-a", material_preview
+        spend_event = build_quota_slot_spend_event(
+            material_preview,
+            self_repair_spend_actions=frozenset(),
+        )
+        assert spend_event["agent_id"] == "codex-monitor-a", spend_event
+        assert spend_event["quota_event"]["delivery_run_agent_id"] == "codex-monitor-a", spend_event
+
+        cross_agent_preview = preview(runtime, agent_id="codex-monitor-b")
+        assert cross_agent_preview["ok"] is False, cross_agent_preview
+
+        unscoped_call_preview = preview(runtime)
+        assert unscoped_call_preview["ok"] is True, unscoped_call_preview
+        assert unscoped_call_preview["delivery_run_agent_id"] == "codex-monitor-a", unscoped_call_preview
+
+        unscoped_material_poll = {key: value for key, value in material_poll.items() if key != "agent_id"}
+        write_run_index(runtime, [unchanged_poll, unscoped_material_poll])
+        legacy_run_preview = preview(runtime, agent_id="codex-monitor-a")
+        assert legacy_run_preview["ok"] is True, legacy_run_preview
+        assert legacy_run_preview["delivery_run_agent_id"] is None, legacy_run_preview
 
         write_run_index(runtime, [unchanged_poll, material_poll, spent])
-        duplicate_preview = preview(runtime)
+        duplicate_preview = preview(runtime, agent_id="codex-monitor-a")
         assert duplicate_preview["ok"] is False, duplicate_preview
 
     print("quota-material-monitor-spend-smoke ok")
