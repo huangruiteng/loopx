@@ -214,6 +214,12 @@ delivery, quality, autonomy, capability, and memory. Every row keeps its
 baseline, current value, delta, numerator/denominator when applicable, public
 source URL, freshness timestamp, and missing-data reason.
 
+Capability delta is represented by three separate rows: gaps found, gaps
+fixed, and gaps verified on a real callsite. This keeps discovery volume,
+delivery, and product-path proof distinguishable instead of collapsing all
+three into a single success count. Each row remains `not_available` until its
+own evidence-backed count is present.
+
 The generic Lark sink renders those rows into the `Monthly Impact` view without
 storing another metrics ledger:
 

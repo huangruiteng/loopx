@@ -108,6 +108,8 @@ def main() -> int:
                     "first_push_ci_passed": 1,
                     "first_push_ci_total": 2,
                     "loopx_capability_gaps_found": 2,
+                    "loopx_capability_gaps_fixed": 1,
+                    "loopx_capability_gaps_real_callsite_verified": 1,
                     "memory_retrievals": 3,
                 },
             },
@@ -232,12 +234,16 @@ def main() -> int:
             packet["ratios"]["pilot_share_of_repository_prs_opened"]["value"] == 0.5
         ), packet
         assert len(packet["output_inventory"]["pull_requests"]) == 2, packet
-        assert len(packet["impact_rows"]) == 17, packet
+        assert len(packet["impact_rows"]) == 19, packet
         impact_by_id = {row["metric_id"]: row for row in packet["impact_rows"]}
         assert impact_by_id["agent_pull_requests"]["current"] == 2, packet
         assert impact_by_id["repository_open_issues"]["delta"] == 2, packet
         assert impact_by_id["quality_first_push_ci_pass_rate"]["current"] == 0.5
-        assert impact_by_id["capability_gaps_fixed"]["status"] == "not_available"
+        assert impact_by_id["capability_gaps_found"]["current"] == 2, packet
+        assert impact_by_id["capability_gaps_fixed"]["current"] == 1, packet
+        assert (
+            impact_by_id["capability_gaps_real_callsite_verified"]["current"] == 1
+        ), packet
 
         schema = lark_kanban_schema_payload()
         assert any(view["name"] == "Monthly Impact" for view in schema["views"]), schema
@@ -256,7 +262,7 @@ def main() -> int:
                 execute=False,
             )
         assert sync["ok"] is True, sync
-        assert sync["row_count"] == 17, sync
+        assert sync["row_count"] == 19, sync
         metric_records = {
             record["values"]["Metric"]: record for record in sync["records"]
         }
@@ -337,7 +343,7 @@ def main() -> int:
             check=True,
         )
         cli_sync_packet = json.loads(cli_sync.stdout)
-        assert cli_sync_packet["row_count"] == 17, cli_sync_packet
+        assert cli_sync_packet["row_count"] == 19, cli_sync_packet
         serialized = json.dumps(packet, sort_keys=True)
         assert str(root) not in serialized, serialized
         assert packet["external_writes_performed"] is False, packet

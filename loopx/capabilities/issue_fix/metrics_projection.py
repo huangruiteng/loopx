@@ -786,10 +786,22 @@ def build_issue_fix_metrics_projection(
         )
     for metric_id, metric_group, metric, supplement_field in (
         (
+            "capability_gaps_found",
+            "Capability",
+            "LoopX capability gaps found",
+            "loopx_capability_gaps_found",
+        ),
+        (
             "capability_gaps_fixed",
             "Capability",
             "LoopX capability gaps fixed",
             "loopx_capability_gaps_fixed",
+        ),
+        (
+            "capability_gaps_real_callsite_verified",
+            "Capability",
+            "LoopX capability gaps real-callsite verified",
+            "loopx_capability_gaps_real_callsite_verified",
         ),
         (
             "memory_verified_patch_influence",

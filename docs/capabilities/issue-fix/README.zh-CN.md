@@ -522,7 +522,8 @@ revision 仍是事实源。
 原生进入这些行的公开计数。证据缺失时输出 `not_available` 和原因码，绝不偷填 0。
 同一 packet 还提供稳定的 `impact_rows`；通用 Lark sink 会把它们投影到
 `Monthly Impact` 视图，保留 baseline、current、delta、比例分子分母、公开来源、
-更新时间和缺失数据原因。
+更新时间和缺失数据原因。能力增量会把 found、fixed 和
+real-callsite-verified 分成三行，避免把发现量、交付量和真实产品路径证明混为一谈。
 
 ## 对话式 `/loopx` 入口
 

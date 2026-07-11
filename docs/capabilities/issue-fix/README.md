@@ -523,7 +523,9 @@ human interventions, first-push CI, capability deltas, and memory leverage.
 Absent evidence is emitted as `not_available` plus a reason code, never as zero.
 The same packet exposes stable `impact_rows`; the generic Lark sink maps them to
 the `Monthly Impact` view with baseline, current, delta, ratio lineage, source,
-freshness, and missing-data columns.
+freshness, and missing-data columns. Capability impact keeps found, fixed, and
+real-callsite-verified gaps as separate rows so delivery volume is not confused
+with product-path proof.
 
 ## Conversational `/loopx` Entry
 
