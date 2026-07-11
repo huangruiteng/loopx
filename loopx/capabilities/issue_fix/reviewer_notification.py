@@ -169,6 +169,27 @@ def _normalise_handle(value: Any) -> str | None:
     return f"@{text}" if text else None
 
 
+def _humanize_pr_title(value: Any) -> str:
+    title = public_safe_compact_text(value, limit=180) or ""
+    title = re.sub(
+        r"^(?:fix|bugfix)(?:\([^)]*\))?!?\s*:\s*",
+        "",
+        title,
+        flags=re.IGNORECASE,
+    )
+    return title.rstrip(".。")
+
+
+def _normalise_issue_refs(values: Sequence[Any]) -> list[str]:
+    return list(
+        dict.fromkeys(
+            str(value).strip()
+            for value in values
+            if re.fullmatch(r"#\d+", str(value).strip())
+        )
+    )[:3]
+
+
 def _idempotency_key(
     *,
     repo: str,
@@ -284,6 +305,8 @@ def _lark_result(
     repo: str,
     pr_number: int,
     pr_url: str,
+    pr_title: str,
+    linked_issue_refs: Sequence[str],
     reviewer_handles: Sequence[str],
     sink: Mapping[str, Any],
     receipts: set[str],
@@ -592,20 +615,17 @@ def _lark_result(
                 blocker="reviewer_notification_identity_unresolved",
             )
 
-    marker = f"loopx-reviewer-notification:{key.partition(':')[2][:16]}"
     provider_idempotency_key = f"loopx-{key.partition(':')[2][:32]}"
     mentions = " ".join(
         f'<at user_id="{member_id}">{html.escape(display_name)}</at>'
         for _, member_id, display_name in resolved
     )
+    issue_clause = (
+        f"（修复 {', '.join(linked_issue_refs)}）" if linked_issue_refs else ""
+    )
+    summary = f"：{pr_title}" if pr_title else ""
     content = json.dumps(
-        {
-            "text": (
-                f"{mentions} please review this focused issue-fix PR / "
-                f"请协助 review：{pr_url}\n\n"
-                f"[{marker}]"
-            )
-        },
+        {"text": f"{mentions} 请帮忙 review PR #{pr_number}{issue_clause}{summary}。{pr_url}"},
         ensure_ascii=False,
         separators=(",", ":"),
     )
@@ -705,7 +725,7 @@ def _lark_result(
     verified = bool(
         readback.get("returncode") == 0
         and message_id in readback_text
-        and marker in readback_text
+        and pr_url in readback_text
     )
     return _public_result(
         sink_kind=sink_kind,
@@ -798,6 +818,8 @@ def build_issue_fix_reviewer_notification_sinks_result(
     repo: str,
     pr_number: int,
     pr_url: str,
+    pr_title: str | None = None,
+    linked_issue_refs: Sequence[str] = (),
     author_handle: str | None,
     reviewer_handles: Sequence[str],
     sinks_input: Mapping[str, Any],
@@ -808,6 +830,8 @@ def build_issue_fix_reviewer_notification_sinks_result(
     """Preview or execute private-configured secondary reviewer notifications."""
 
     author = _normalise_handle(author_handle)
+    title = _humanize_pr_title(pr_title)
+    issue_refs = _normalise_issue_refs(linked_issue_refs)
     reviewers = list(
         dict.fromkeys(
             handle
@@ -822,6 +846,8 @@ def build_issue_fix_reviewer_notification_sinks_result(
         "repo": public_safe_compact_text(repo, limit=200),
         "pr_ref": f"#{int(pr_number)}",
         "permalink": public_safe_compact_text(pr_url, limit=300),
+        "pr_title": title,
+        "linked_issue_refs": issue_refs,
         "reviewer_handles": reviewers,
         "status": "gate_required",
         "results": [],
@@ -877,6 +903,8 @@ def build_issue_fix_reviewer_notification_sinks_result(
                 repo=repo,
                 pr_number=int(pr_number),
                 pr_url=pr_url,
+                pr_title=title,
+                linked_issue_refs=issue_refs,
                 reviewer_handles=reviewers,
                 sink=sink,
                 receipts=receipts,

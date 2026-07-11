@@ -72,6 +72,17 @@ def _metadata_identities(
     author = payload.get("author")
     author = author if isinstance(author, Mapping) else {}
     author_handle = _normalise_login(author.get("login"))
+    pr_title = public_safe_compact_text(payload.get("title"), limit=180)
+    linked_issue_refs: list[str] = []
+    raw_issue_refs = payload.get("closingIssuesReferences") or payload.get(
+        "closing_issues_references"
+    )
+    for item in raw_issue_refs or []:
+        issue_number = item.get("number") if isinstance(item, Mapping) else None
+        if isinstance(issue_number, int):
+            issue_ref = f"#{issue_number}"
+            if issue_ref not in linked_issue_refs:
+                linked_issue_refs.append(issue_ref)
 
     requested: list[str] = []
     for item in payload.get("reviewRequests") or payload.get("review_requests") or []:
@@ -117,6 +128,8 @@ def _metadata_identities(
                 comment_urls[handle] = url
     return {
         "author_handle": author_handle,
+        "pr_title": pr_title,
+        "linked_issue_refs": linked_issue_refs[:3],
         "requested_reviewers": requested,
         "reviewed_by": reviewed,
         "comment_notified_reviewers": comment_notified,
@@ -142,7 +155,8 @@ def _fetch_pr_metadata(
                 "--repo",
                 repo,
                 "--json",
-                "author,comments,isDraft,reviewRequests,reviews,state,url",
+                "author,closingIssuesReferences,comments,isDraft,reviewRequests,"
+                "reviews,state,title,url",
             ]
         )
     except (OSError, subprocess.SubprocessError):
@@ -390,6 +404,8 @@ def build_issue_fix_reviewer_request_packet(
         "selection_policy": "request_top_requestable_when_authorized",
         "max_reviewers": max_reviewers,
         "author_handle": identities["author_handle"],
+        "pr_title": identities["pr_title"],
+        "linked_issue_refs": identities["linked_issue_refs"],
         "author_exclusion_verified": author_exclusion_verified,
         "pr_state_verified": pr_state_verified,
         "existing_requested_reviewers": identities["requested_reviewers"],
@@ -693,6 +709,8 @@ def build_issue_fix_reviewer_request_packet(
                 repo=repo,
                 pr_number=number,
                 pr_url=str(reference["permalink"]),
+                pr_title=identities["pr_title"],
+                linked_issue_refs=identities["linked_issue_refs"],
                 author_handle=identities["author_handle"],
                 reviewer_handles=notification_targets,
                 sinks_input=notification_sinks_input,

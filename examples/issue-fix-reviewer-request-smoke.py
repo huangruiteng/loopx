@@ -106,6 +106,12 @@ def metadata(
 ) -> dict[str, Any]:
     return {
         "author": {"login": "current-author"},
+        "closingIssuesReferences": [
+            {
+                "number": 40,
+                "title": "Consistency check accepts unsupported file URIs",
+            }
+        ],
         "comments": comments or [],
         "isDraft": False,
         "reviewRequests": [{"login": login} for login in (requested or [])],
@@ -113,6 +119,7 @@ def metadata(
             {"author": {"login": login}} for login in (reviewed or [])
         ],
         "state": "OPEN",
+        "title": "fix: reject file URI for consistency check",
         "url": "https://github.com/owner/repo/pull/42",
     }
 
@@ -223,10 +230,9 @@ class FakeCombinedRunner:
                 call for call in self.lark_calls if "+messages-send" in call
             )
             content = send_call[send_call.index("--content") + 1]
-            marker = re.search(
-                r"loopx-reviewer-notification:[a-f0-9]{16}", content
-            )
-            assert marker, content
+            assert "请帮忙 review PR #42（修复 #40）" in content, content
+            assert "reject file URI for consistency check" in content, content
+            assert "loopx-reviewer-notification" not in content, content
             return {
                 "returncode": 0,
                 "stdout": json.dumps(
@@ -234,7 +240,7 @@ class FakeCombinedRunner:
                         "items": [
                             {
                                 "message_id": "om_fixture",
-                                "body": {"content": marker.group(0)},
+                                "body": {"content": content},
                             }
                         ]
                     }
@@ -727,6 +733,55 @@ def main() -> int:
         assert goal_default_packet["secondary_notification_source"] == "goal_default"
         assert goal_default_packet["secondary_notification_status"] == "preview_ready"
         assert_public_safe(goal_default_packet)
+
+        unrelated_cwd = path / "unrelated-control-plane"
+        write(
+            unrelated_cwd / ".loopx/registry.json",
+            json.dumps({"schema_version": 1, "goals": []}),
+        )
+        project_registry_cli = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--format",
+                "json",
+                "issue-fix",
+                "reviewer-request",
+                "--url",
+                "https://github.com/owner/repo/pull/42",
+                "--repo-path",
+                str(path),
+                "--base-ref",
+                "main",
+                "--changed-file",
+                "src/map_only.py",
+                "--exclude-reviewer",
+                "@fallback-owner",
+                "--reviewer-sources-json",
+                str(reviewer_sources_path),
+                "--metadata-json",
+                str(metadata_path),
+                "--goal-id",
+                goal_id,
+                "--project",
+                str(path),
+            ],
+            cwd=unrelated_cwd,
+            env={**os.environ, "PYTHONPATH": str(ROOT)},
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        assert project_registry_cli.returncode == 0, project_registry_cli.stdout
+        project_registry_packet = json.loads(project_registry_cli.stdout)
+        assert (
+            project_registry_packet["secondary_notification_source"] == "goal_default"
+        )
+        assert (
+            project_registry_packet["secondary_notification_status"] == "preview_ready"
+        )
+        assert_public_safe(project_registry_packet)
 
         lifecycle_path = default_issue_fix_domain_state_ledger_path(
             project=path,

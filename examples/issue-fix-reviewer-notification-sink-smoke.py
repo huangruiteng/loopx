@@ -36,7 +36,7 @@ class FakeSinkRunner:
         *,
         send_returncode: int = 0,
         verify_returncode: int = 0,
-        include_marker: bool = True,
+        include_message_content: bool = True,
         bot_name: str = "Project Review Bot",
         reader_verified: bool = True,
         include_member: bool = True,
@@ -44,7 +44,7 @@ class FakeSinkRunner:
     ) -> None:
         self.send_returncode = send_returncode
         self.verify_returncode = verify_returncode
-        self.include_marker = include_marker
+        self.include_message_content = include_message_content
         self.bot_name = bot_name
         self.reader_verified = reader_verified
         self.include_member = include_member
@@ -117,8 +117,7 @@ class FakeSinkRunner:
         if "+messages-mget" in command:
             send_call = next(call for call in self.calls if "+messages-send" in call)
             content = send_call[send_call.index("--content") + 1]
-            marker = re.search(r"loopx-reviewer-notification:[a-f0-9]{16}", content)
-            text = marker.group(0) if marker and self.include_marker else "missing"
+            text = content if self.include_message_content else "missing"
             return {
                 "returncode": self.verify_returncode,
                 "stdout": json.dumps(
@@ -252,6 +251,8 @@ def main() -> int:
         repo="owner/repo",
         pr_number=42,
         pr_url="https://github.com/owner/repo/pull/42",
+        pr_title="fix: reject file URI for consistency check",
+        linked_issue_refs=["#40"],
         author_handle="@current-author",
         reviewer_handles=["@service-owner"],
         sinks_input=fixture(),
@@ -270,10 +271,14 @@ def main() -> int:
     provider_key = send[send.index("--idempotency-key") + 1]
     assert provider_key.startswith("loopx-")
     assert len(provider_key) <= 50
-    assert "ou_private_member" in send[send.index("--content") + 1]
+    content = send[send.index("--content") + 1]
+    assert "ou_private_member" in content
     assert (
-        "https://github.com/owner/repo/pull/42" in (send[send.index("--content") + 1])
+        "https://github.com/owner/repo/pull/42" in content
     )
+    assert "请帮忙 review PR #42（修复 #40）" in content
+    assert "reject file URI for consistency check" in content
+    assert "loopx-reviewer-notification" not in content
     receipt = sent["receipts"][0]
     assert re.fullmatch(r"sha256:[a-f0-9]{64}", receipt)
     assert provider_key != receipt
@@ -457,7 +462,7 @@ def main() -> int:
         reviewer_handles=["@service-owner"],
         sinks_input=fixture(),
         execute=True,
-        runner=FakeSinkRunner(include_marker=False),
+        runner=FakeSinkRunner(include_message_content=False),
     )
     assert not_verified["ok"] is False
     assert not_verified["blocker"] == "lark_notification_not_verified"
