@@ -5,9 +5,6 @@ from pathlib import Path
 import re
 from typing import Any
 
-from .benchmark_adapters.skillsbench_signals import (
-    build_skillsbench_solution_quality_signals,
-)
 from .benchmark_adapters.skillsbench_verifier_bootstrap import (
     apply_skillsbench_verifier_bootstrap_missing_score_attribution,
 )
@@ -185,6 +182,7 @@ from .control_plane.runtime.run_compaction import (
 )
 from .control_plane.runtime.benchmark_projection import (
     benchmark_run_source as _benchmark_run_source_read_model,
+    build_benchmark_solution_quality_signals,
     compact_benchmark_run_core as _compact_benchmark_run_core_read_model,
 )
 from .control_plane.runtime.public_safety import (
@@ -1099,7 +1097,7 @@ def build_skillsbench_post_run_debug_gate(
         run.get("failure_attribution_labels"),
         limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
     )
-    solution_quality = build_skillsbench_solution_quality_signals(run)
+    solution_quality = build_benchmark_solution_quality_signals(run)
     gate: dict[str, Any] = {
         "schema_version": "skillsbench_post_run_debug_gate_v0",
         "source": "compact_public_signals",
@@ -4428,7 +4426,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         setup_preflight=compact.get("task_setup_preflight"),
     )
 
-    solution_quality = build_skillsbench_solution_quality_signals(compact)
+    solution_quality = build_benchmark_solution_quality_signals(compact)
     if solution_quality:
         compact["solution_quality_signals"] = solution_quality
 

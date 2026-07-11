@@ -28,10 +28,6 @@ STATUS_FORBIDDEN_DEPENDENCY_PREFIXES = (
 STATUS_OUTWARD_DEPENDENCY_DEBT = {
     (
         "loopx.status",
-        "loopx.benchmark_adapters.skillsbench_signals",
-    ),
-    (
-        "loopx.status",
         "loopx.benchmark_adapters.skillsbench_verifier_bootstrap",
     ),
 }

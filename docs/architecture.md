@@ -41,18 +41,21 @@ facades are split. `loopx.control_plane` may not gain dependencies on
 presentation, CLI, capability, or benchmark-adapter layers; the architecture
 test keeps one explicit quota-Markdown migration edge as debt.
 
-The legacy `loopx.status` facade currently has exactly two additional outward
-edges, both SkillsBench signal enrichers. These are migration debt, not
-extension points. The architecture test records their exact module targets so
-the set can only shrink: a new outward edge fails, and removing an edge requires
-deleting its stale allowlist entry in the same change.
+The legacy `loopx.status` facade currently has one additional outward edge, the
+SkillsBench verifier-bootstrap attribution helper. This is migration debt, not
+an extension point. The architecture test records its exact module target so a
+new outward edge fails, and removing the edge requires deleting its stale
+allowlist entry in the same change.
 
 Each edge should move only after characterization parity exists. Adapter-specific
 enrichment belongs behind application/plugin composition rather than in the
 status core. Status Markdown callers now use the presentation renderer directly;
 the former `loopx.status.render_status_markdown` wrapper was retired after parity
-fixtures and repository callers migrated. Hiding an adapter dependency inside a
-function or dynamic import does not count as architectural separation.
+fixtures and repository callers migrated. The formerly SkillsBench-named solution
+quality helper moved inward after characterization showed that it projects only
+generic compact benchmark fields; its shipped schema remains compatible. Hiding
+an adapter dependency inside a function or dynamic import does not count as
+architectural separation.
 
 LoopX should still absorb field-tested project-control mechanisms such
 as authority registries, current-belief TODOs, managed external-source
