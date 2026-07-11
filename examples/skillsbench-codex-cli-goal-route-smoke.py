@@ -767,6 +767,14 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
     )
     assert (
         codex_cli_tui_pre_bridge_blocker_stage(
+            "Goal active\nGoal failed\n› ",
+            prompt_visible=True,
+            terminal_observed=False,
+        )
+        == ""
+    )
+    assert (
+        codex_cli_tui_pre_bridge_blocker_stage(
             stale_goal_failed_scrollback,
             prompt_visible=True,
             terminal_observed=True,
@@ -799,6 +807,7 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         codex_cli_tui_pre_bridge_blocker_stage(
             "Goal active\nGoal failed\n› ",
             prompt_visible=True,
+            terminal_observed=True,
         )
         == "pre_bridge_tui_error_prompt"
     )
@@ -1420,9 +1429,11 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
         CODEX_CLI_GOAL_TASK_PROMPT_FILENAME,
         CODEX_CLI_GOAL_THREAD_PREWARM_MARKER,
         CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT,
+        CodexCliGoalLifecycleGeneration,
         build_codex_cli_goal_file_objective,
         build_codex_cli_tui_command,
         build_codex_cli_goal_tui_input,
+        codex_cli_goal_lifecycle_marker_counts,
         codex_cli_goal_watchdog_expired,
     )
     from loopx.benchmark_adapters.skillsbench_acp_relay import (
@@ -1481,6 +1492,32 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
         )
         is False
     )
+    lifecycle_baseline = codex_cli_goal_lifecycle_marker_counts(
+        "Goal active\nGoal failed\n› "
+    )
+    lifecycle_unchanged = codex_cli_goal_lifecycle_marker_counts(
+        "Goal active\nGoal failed\nold scrollback\n› "
+    )
+    assert lifecycle_unchanged == lifecycle_baseline
+    lifecycle_current = codex_cli_goal_lifecycle_marker_counts(
+        "Goal active\nGoal failed\nGoal active\nGoal achieved\nGoal blocked\n› "
+    )
+    assert lifecycle_current.active - lifecycle_baseline.active == 1
+    assert lifecycle_current.achieved - lifecycle_baseline.achieved == 1
+    assert lifecycle_current.failed - lifecycle_baseline.failed == 1
+    lifecycle = CodexCliGoalLifecycleGeneration()
+    lifecycle.begin("Goal active\nGoal failed\n› ")
+    lifecycle.observe("Goal active\nGoal failed\nold scrollback\n› ")
+    assert lifecycle.active_advanced is False
+    assert lifecycle.failed_advanced is False
+    lifecycle.begin("Goal active\nGoal failed\nold scrollback\n› ")
+    lifecycle.observe(
+        "Goal active\nGoal failed\nold scrollback\nGoal active\nGoal achieved\n› "
+    )
+    assert lifecycle.generation == 2
+    assert lifecycle.active_advanced is True
+    assert lifecycle.achieved_advanced is True
+    assert lifecycle.trace_fields()["goal_failed_marker_delta"] == 0
     assert (
         codex_cli_goal_watchdog_expired(
             deadline=100.0,
@@ -1538,6 +1575,10 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "kickoff_submitted=goal_kickoff_prompt_submitted" in source
     assert "text=CODEX_CLI_GOAL_KICKOFF_PROMPT" in source
     assert "goal_failed_now = False" in source
+    assert "goal_lifecycle.failed_advanced" in source
+    assert "goal_lifecycle.active_advanced" in source
+    assert "goal_lifecycle.achieved_advanced" in source
+    assert source.count("goal_lifecycle.begin(") == 2
     assert source.count("goal_kickoff_prompt_submitted = False") >= 2
     assert "terminal_observed=goal_failed_now" in source
     assert "goal_kickoff_prompt_raw_text_recorded" in source
@@ -1583,6 +1624,8 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "def codex_cli_goal_watchdog_expired(" in tui_source
     assert "not kickoff_submitted" in tui_source
     assert "def codex_cli_goal_reset_pre_bridge_deadlines(" in tui_source
+    assert '"goal_submission_generation"' in tui_source
+    assert 'fields[f"goal_{name}_marker_delta"]' in tui_source
     assert "goal-thread-prewarm.txt" in tui_source
     assert CODEX_CLI_GOAL_TASK_PROMPT_FILENAME in tui_source
     assert "tmux_send_plain_enter" in tui_source
