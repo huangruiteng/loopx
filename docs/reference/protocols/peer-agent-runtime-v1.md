@@ -100,6 +100,11 @@ writer later reintroduces a hierarchy field, peer runtime ignores that field
 and does not wake the user with the same automation migration again. Upgrade
 diagnostics may still expose the stale input for cleanup.
 
+Implementation boundary: legacy field names, detection, profile conversion,
+and completion bookkeeping live in the isolated `legacy_migration` module.
+`runtime_model` contains only the live `peer_v1` model and does not branch on
+primary/side identity concepts.
+
 Rollback restores the returned `backup_path`, then regenerates installed host
 loops from that restored registry. Registry restoration and host-loop
 regeneration are one operational rollback.
@@ -114,3 +119,6 @@ migration can be validated against v0.1 state. v0.2 is not releasable until:
   longer execute hierarchy branches;
 - old hierarchy fields are accepted only by migration/history readers;
 - the peer-agent canary profile and full smoke suite pass.
+
+An optional supervisor is an overlay on this peer model, not a replacement for
+it. See [Peer Supervisor v0](peer-supervisor-v0.md).

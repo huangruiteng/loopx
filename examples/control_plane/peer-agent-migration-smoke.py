@@ -18,7 +18,7 @@ from loopx.control_plane.agents.identity import (  # noqa: E402
     build_identity_aware_prompt_upgrade,
     build_quota_agent_identity,
 )
-from loopx.control_plane.agents.runtime_model import (  # noqa: E402
+from loopx.control_plane.agents.legacy_migration import (  # noqa: E402
     PEER_AGENT_RUNTIME_MIGRATION,
 )
 from loopx.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
