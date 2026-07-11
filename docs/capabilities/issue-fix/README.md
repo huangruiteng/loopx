@@ -202,14 +202,17 @@ matched-route evidence, and whether a GitHub handle is actually requestable.
 It never captures the maintainer-map body or commit email addresses, never
 records the local repo path, and `reviewer-plan` never sends a review request.
 `reviewer-request` fetches the live PR author, existing review requests,
-completed reviews, and LoopX-marked reviewer comments; excludes them
+completed reviews, LoopX-marked reviewer comments, and live comments that
+explicitly mention a reviewer and ask for review; excludes them
 automatically; and asks the top remaining requestable candidate. It first uses
 a formal GitHub review request. Only when GitHub confirms that this action lacks
 permission does it fall back to one concise PR comment mentioning the same
 reviewer. The command reads the PR again and verifies either provider state or
 the fallback comment marker plus public URL before claiming success. A retry
-recognizes the marker and sends no duplicate comment. Network and unknown
-provider errors remain blockers rather than triggering comments. History is
+recognizes either the marker or a bounded explicit review-request comment and
+sends no duplicate comment; ordinary mentions and discussion do not suppress a
+request. Network and unknown provider errors remain blockers rather than
+triggering comments. History is
 read at the base revision so feature-branch commits do not recommend the
 author; `--exclude-author-name` covers unresolved git-name aliases.
 When a human confirms that an unresolved git display name belongs to a specific

@@ -234,13 +234,16 @@ Packet 输出候选的 source kind、reason code、改动路径覆盖、history 
 confidence、公开 `source_refs`、紧凑的命中 route，以及是否真的有可请求的 GitHub
 handle。它不保存 maintainer map 原文或 commit email，不记录本地 repo path，且
 `reviewer-plan` 本身不会发送 review request。
-`reviewer-request` 会读取 live PR author、已有 review request、已完成 review 和带
-LoopX marker 的 reviewer comment，自动排除已有覆盖，再通知剩余候选中排名最高且
+`reviewer-request` 会读取 live PR author、已有 review request、已完成 review、带
+LoopX marker 的 reviewer comment，以及明确 `@reviewer` 并请求 review 的已有公开
+comment，自动排除已有覆盖，再通知剩余候选中排名最高且
 可请求的人。它先发送正式 GitHub review request；只有 GitHub 明确返回权限不足时，
 才降级为一条简短 PR comment 并 `@` 同一 reviewer。命令会再次读取 PR，验证正式
 request，或 fallback comment 的 marker 与公开 URL 后才报告成功。重试会识别 marker，
-不会重复 comment；网络错误和无法分类的 provider 错误仍然是 blocker，不会触发
-comment。History 固定读取 base revision，避免 feature branch 自己的提交把作者推荐回来；
+也会在 reviewer mention 附近存在明确 review 请求句式时识别旧 comment；普通提及和
+讨论不会抑制 request，因此不会重复 comment，也不会因弱语义误判。网络错误和无法
+分类的 provider 错误仍然是 blocker，不会触发 comment。History 固定读取 base
+revision，避免 feature branch 自己的提交把作者推荐回来；
 `--exclude-author-name` 用于排除无法解析成 GitHub handle 的 git-name alias。
 当人确认某个 unresolved git display name 对应具体 GitHub 账号时，
 `--identity-map-json` 会把这条紧凑映射作为 verified identity evidence，并基于原有

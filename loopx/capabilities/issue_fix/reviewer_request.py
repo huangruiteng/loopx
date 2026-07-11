@@ -25,6 +25,26 @@ REVIEWER_COMMENT_MARKER_PATTERN = re.compile(
     r"reviewer=@?([A-Za-z0-9-]+(?:/[A-Za-z0-9_.-]+)?)\s*-->",
     re.IGNORECASE,
 )
+REVIEWER_COMMENT_MENTION_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_])@([A-Za-z0-9-]+(?:/[A-Za-z0-9_.-]+)?)",
+    re.IGNORECASE,
+)
+REVIEWER_COMMENT_INTENT_PATTERNS = (
+    re.compile(
+        r"\b(?:could|can|would)\s+you(?:\s+please)?\s+"
+        r"(?:review|take\s+a\s+look|look\s+over)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bplease\s+(?:review|take\s+a\s+look|look\s+over)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:请|麻烦|辛苦|帮忙|协助)[^\n]{0,32}"
+        r"(?:review|code\s*review|\bcr\b|看一下|看下|审阅|评审)",
+        re.IGNORECASE,
+    ),
+)
 GITHUB_REVIEW_REQUEST_PERMISSION_PATTERN = re.compile(
     r"(?:HTTP\s+(?:403|404)|resource not accessible|"
     r"must have (?:push|triage|write) access|not found|"
@@ -61,6 +81,31 @@ def _normalise_login(value: Any) -> str | None:
 def _is_automated_reviewer_handle(value: Any) -> bool:
     handle = _normalise_login(value)
     return bool(handle and REVIEWER_BOT_HANDLE_PATTERN.search(handle.lstrip("@")))
+
+
+def _semantic_review_request_mentions(body: str) -> list[str]:
+    visible_body = re.sub(r"<!--.*?-->", " ", body, flags=re.DOTALL)
+    visible_body = re.sub(r"```.*?```", " ", visible_body, flags=re.DOTALL)
+    visible_body = "\n".join(
+        line for line in visible_body.splitlines() if not line.lstrip().startswith(">")
+    )
+    handles: list[str] = []
+    mentions = list(REVIEWER_COMMENT_MENTION_PATTERN.finditer(visible_body))
+    for index, mention in enumerate(mentions):
+        next_mention_start = (
+            mentions[index + 1].start()
+            if index + 1 < len(mentions)
+            else len(visible_body)
+        )
+        window = visible_body[
+            mention.end() : min(next_mention_start, mention.end() + 160)
+        ]
+        if not any(pattern.search(window) for pattern in REVIEWER_COMMENT_INTENT_PATTERNS):
+            continue
+        handle = _normalise_login(mention.group(1))
+        if handle and handle not in handles:
+            handles.append(handle)
+    return handles
 
 
 def _metadata_identities(
@@ -105,6 +150,8 @@ def _metadata_identities(
         if handle and handle not in reviewed:
             reviewed.append(handle)
     comment_notified: list[str] = []
+    marker_comment_notified: list[str] = []
+    semantic_comment_notified: list[str] = []
     comment_urls: dict[str, str] = {}
     for item in payload.get("comments") or []:
         if not isinstance(item, Mapping):
@@ -120,11 +167,25 @@ def _metadata_identities(
             )
             else ""
         )
+        marker_handles: list[str] = []
         for login in REVIEWER_COMMENT_MARKER_PATTERN.findall(body):
             handle = _normalise_login(login)
+            if handle and handle not in marker_handles:
+                marker_handles.append(handle)
+            if handle and handle not in marker_comment_notified:
+                marker_comment_notified.append(handle)
             if handle and handle not in comment_notified:
                 comment_notified.append(handle)
             if handle and url:
+                comment_urls[handle] = url
+        for handle in _semantic_review_request_mentions(body):
+            if handle in marker_handles:
+                continue
+            if handle not in semantic_comment_notified:
+                semantic_comment_notified.append(handle)
+            if handle not in comment_notified:
+                comment_notified.append(handle)
+            if url:
                 comment_urls[handle] = url
     return {
         "author_handle": author_handle,
@@ -133,6 +194,8 @@ def _metadata_identities(
         "requested_reviewers": requested,
         "reviewed_by": reviewed,
         "comment_notified_reviewers": comment_notified,
+        "marker_comment_notified_reviewers": marker_comment_notified,
+        "semantic_comment_notified_reviewers": semantic_comment_notified,
         "reviewer_comment_urls": comment_urls,
         "state": str(payload.get("state") or "UNKNOWN").upper(),
         "is_draft": payload.get("isDraft") is True or payload.get("is_draft") is True,
@@ -380,7 +443,9 @@ def build_issue_fix_reviewer_request_packet(
     )
     existing_notification_mode = (
         "comment_fallback"
-        if identities["comment_notified_reviewers"]
+        if identities["marker_comment_notified_reviewers"]
+        else "existing_review_comment"
+        if identities["semantic_comment_notified_reviewers"]
         else (
             "formal_request"
             if identities["requested_reviewers"]
@@ -413,6 +478,12 @@ def build_issue_fix_reviewer_request_packet(
         "existing_comment_notified_reviewers": identities[
             "comment_notified_reviewers"
         ],
+        "existing_marker_comment_notified_reviewers": identities[
+            "marker_comment_notified_reviewers"
+        ],
+        "existing_semantic_comment_notified_reviewers": identities[
+            "semantic_comment_notified_reviewers"
+        ],
         "selected_reviewers": selected,
         "requested_reviewers": [],
         "notified_reviewers": existing_notified_reviewers,
@@ -430,7 +501,10 @@ def build_issue_fix_reviewer_request_packet(
         ),
         "comment_fallback_performed": False,
         "comment_fallback_verified": bool(
-            execute and identities["comment_notified_reviewers"]
+            execute and identities["marker_comment_notified_reviewers"]
+        ),
+        "existing_comment_notification_verified": bool(
+            execute and identities["semantic_comment_notified_reviewers"]
         ),
         "reviewer_comment_url": existing_comment_url,
         "private_repo_state_read": True,
@@ -509,8 +583,9 @@ def build_issue_fix_reviewer_request_packet(
                 else "issue_fix_reviewer_identity_resolution"
             ),
             reason=(
-                "A reviewer is already requested, has reviewed, or was notified "
-                "by a verified fallback comment; keep lifecycle monitoring."
+                "A reviewer is already requested, has reviewed, or is covered "
+                "by an existing explicit review-request comment; keep lifecycle "
+                "monitoring."
                 if already_covered
                 else (
                     "No requestable non-author reviewer identity is available; "
@@ -810,11 +885,29 @@ def validate_issue_fix_reviewer_request_packet(
                 "verified comment fallback must notify selected or existing reviewers"
             )
     notification_verified = packet.get("reviewer_notification_verified") is True
+    existing_comment_verified = (
+        packet.get("existing_comment_notification_verified") is True
+    )
+    existing_semantic_comment_notified = packet.get(
+        "existing_semantic_comment_notified_reviewers"
+    )
+    existing_semantic_comment_notified = (
+        existing_semantic_comment_notified
+        if isinstance(existing_semantic_comment_notified, list)
+        else []
+    )
+    if existing_comment_verified and not existing_semantic_comment_notified:
+        errors.append(
+            "existing comment verification requires semantic notified reviewers"
+        )
+    if existing_comment_verified and not comment_url:
+        errors.append("existing comment verification requires reviewer_comment_url")
     existing_notification_verified = bool(
         packet.get("execute") is True
         and (
             packet.get("existing_requested_reviewers")
             or packet.get("existing_reviewed_by")
+            or existing_comment_verified
         )
     )
     if notification_verified != bool(

@@ -101,6 +101,23 @@ def reviewer_comment(
     }
 
 
+def semantic_reviewer_comment(
+    login: str = "Service-Owner",
+    *,
+    body: str | None = None,
+    url: str = "https://github.com/owner/repo/pull/42#issuecomment-1002",
+) -> dict[str, Any]:
+    return {
+        "author": {"login": "current-author"},
+        "body": body
+        or (
+            f"@{login} could you please take a look when convenient? Thanks! "
+            "@fallback-owner FYI."
+        ),
+        "url": url,
+    }
+
+
 def metadata(
     *,
     requested: list[str] | None = None,
@@ -454,6 +471,76 @@ def main() -> int:
         assert fallback_retry_runner.edits == 0
         assert fallback_retry_runner.comments == 0
         assert_public_safe(fallback_retry)
+
+        semantic_url = "https://github.com/owner/repo/pull/42#issuecomment-1002"
+        semantic_retry_runner = FakeGitHubRunner(
+            before=metadata(
+                comments=[semantic_reviewer_comment(url=semantic_url)]
+            )
+        )
+        semantic_retry = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            execute=True,
+            runner=semantic_retry_runner,
+        )
+        assert semantic_retry["ok"] is True, semantic_retry
+        assert semantic_retry["selected_reviewers"] == []
+        assert semantic_retry["existing_marker_comment_notified_reviewers"] == []
+        assert semantic_retry["existing_semantic_comment_notified_reviewers"] == [
+            "@service-owner"
+        ]
+        assert semantic_retry["existing_comment_notified_reviewers"] == [
+            "@service-owner"
+        ]
+        assert semantic_retry["notified_reviewers"] == ["@service-owner"]
+        assert semantic_retry["reviewer_notification_mode"] == (
+            "existing_review_comment"
+        )
+        assert semantic_retry["reviewer_notification_verified"] is True
+        assert semantic_retry["existing_comment_notification_verified"] is True
+        assert semantic_retry["comment_fallback_performed"] is False
+        assert semantic_retry["comment_fallback_verified"] is False
+        assert semantic_retry["reviewer_comment_url"] == semantic_url
+        assert semantic_retry["external_writes_performed"] is False
+        assert semantic_retry["transition"]["action_kind"].endswith(
+            "already_covered"
+        )
+        assert "existing explicit review-request comment" in semantic_retry[
+            "transition"
+        ]["reason"]
+        assert semantic_retry_runner.edits == 0
+        assert semantic_retry_runner.comments == 0
+        assert_public_safe(semantic_retry)
+
+        discussion_comment = semantic_reviewer_comment(
+            login="service-owner",
+            body=(
+                "@service-owner thanks for the context. The release owner will "
+                "decide who should review this later."
+            ),
+        )
+        discussion_runner = FakeGitHubRunner(
+            before=metadata(comments=[discussion_comment]),
+            after=metadata(
+                requested=["service-owner"], comments=[discussion_comment]
+            ),
+        )
+        discussion = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            execute=True,
+            runner=discussion_runner,
+        )
+        assert discussion["ok"] is True, discussion
+        assert discussion["existing_semantic_comment_notified_reviewers"] == []
+        assert discussion["selected_reviewers"] == ["@service-owner"]
+        assert discussion["review_request_verified"] is True
+        assert discussion_runner.edits == 1
+        assert discussion_runner.comments == 0
+        assert_public_safe(discussion)
 
         comment_blocked_runner = FakeGitHubRunner(
             before=metadata(),

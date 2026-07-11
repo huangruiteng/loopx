@@ -143,10 +143,14 @@ The packet records:
 Successful verified requests emit `issue_fix_reviewer_request_verified` with
 `monitor_continuation`. Confirmed permission denial followed by a verified
 comment emits `issue_fix_reviewer_comment_fallback_verified`. If review is
-already covered by a request, completed review, or marked fallback comment,
+already covered by a request, completed review, marked fallback comment, or a
+live comment that explicitly mentions the reviewer and asks for review,
 execution is a quiet, no-write monitor continuation and returns the existing
-comment URL. Missing requestable identity produces a runnable
-identity-resolution successor. Closed PRs produce structured no-follow-up.
+comment URL. Semantic comment matching normalizes handle case, requires a
+bounded review-request phrase near the mention, and ignores quoted text, code
+blocks, ordinary discussion, and marker-only metadata. Missing requestable
+identity produces a runnable identity-resolution successor. Closed PRs produce
+structured no-follow-up.
 
 Permission failure of both notification paths, network/unknown provider errors,
 or post-write verification failures produce a concrete blocker while
@@ -181,7 +185,9 @@ python3 examples/issue-fix-reviewer-request-smoke.py
 The generic fixture verifies live-author exclusion, top-candidate selection,
 successful request and readback, permission-only comment fallback, fallback
 URL/marker verification, idempotent retry without duplicate comments,
-unclassified-provider blockers, public-safety boundaries, and no-write CLI
-preview. It also proves that a public maintainer-map candidate reaches the
+semantic dedupe for an older explicit review-request comment, rejection of
+ordinary reviewer discussion, unclassified-provider blockers, public-safety
+boundaries, and no-write CLI preview. It also proves that a public
+maintainer-map candidate reaches the
 request packet without weakening the external-write gate. It contains no
 OpenViking-specific branch or candidate.
