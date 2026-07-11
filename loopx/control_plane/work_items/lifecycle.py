@@ -12,7 +12,12 @@ def ordered_lifecycle_flags(
     lifecycle_priority: tuple[str, ...],
 ) -> list[str]:
     seen: set[str] = set()
-    deduped = [flag for flag in flags if flag and not (flag in seen or seen.add(flag))]
+    deduped: list[str] = []
+    for flag in flags:
+        if not flag or flag in seen:
+            continue
+        seen.add(flag)
+        deduped.append(flag)
     priority = {phase: index for index, phase in enumerate(lifecycle_priority)}
     return sorted(deduped, key=lambda phase: priority.get(phase, len(priority)))
 
