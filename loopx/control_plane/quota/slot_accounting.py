@@ -115,6 +115,9 @@ def _latest_unspent_accountable_delivery_run(
 
     safe_agent_id = normalize_todo_claimed_by(agent_id)
     for run in reversed(_load_goal_run_index_records(runtime_root, goal_id)):
+        run_agent_id = normalize_todo_claimed_by(run.get("agent_id"))
+        if safe_agent_id and run_agent_id and safe_agent_id != run_agent_id:
+            continue
         classification = str(run.get("classification") or "").strip()
         if classification == QUOTA_SLOT_VOIDED_CLASSIFICATION:
             continue
@@ -127,9 +130,6 @@ def _latest_unspent_accountable_delivery_run(
             return None
         delivery_outcome = normalize_delivery_outcome(run.get("delivery_outcome"))
         if delivery_outcome in ACCOUNTABLE_DELIVERY_OUTCOMES:
-            run_agent_id = normalize_todo_claimed_by(run.get("agent_id"))
-            if safe_agent_id and run_agent_id and safe_agent_id != run_agent_id:
-                return None
             return run
         return None
     return None
