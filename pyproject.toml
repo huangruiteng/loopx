@@ -44,4 +44,6 @@ files = [
   "loopx/control_plane/work_items/delivery_batch_scale.py",
   "loopx/control_plane/work_items/delivery_outcome.py",
   "loopx/control_plane/work_items/lifecycle.py",
+  "loopx/presentation/renderers/trajectory_hygiene_markdown.py",
+  "loopx/presentation/renderers/turn_envelope_markdown.py",
 ]

@@ -319,13 +319,13 @@ python3 -m pytest tests/test_smoke_suite.py \
 
 The required Python test workflow keeps `tests/**`, `canary/**`,
 `control_plane/**`, `domain_packs/**`, and `presentation/**` Ruff-clean. It also
-enforces an initial 19.5% package coverage floor.
-The floor is intentionally a regression guard, not a claim that 19.5% is
+enforces an initial 19.6% package coverage floor.
+The floor is intentionally a regression guard, not a claim that 19.6% is
 sufficient; raise it as durable behavior moves from subprocess smokes into
 focused tests. An architecture test also prevents new control-plane dependencies
 on presentation, CLI, capability, or benchmark-adapter layers while preserving
 one explicit quota-Markdown migration debt edge. Existing source-wide lint debt
-is characterized separately. Strict mypy checking covers ten characterized
+is characterized separately. Strict mypy checking covers twelve characterized
 kernel and runtime contracts and should expand only as each next boundary
 becomes clean;
 expand the protected namespace list only after a bounded cleanup, rather than

@@ -4,11 +4,16 @@ from typing import Any
 
 
 def render_turn_envelope_markdown(payload: dict[str, Any]) -> str:
-    action = payload.get("action") if isinstance(payload.get("action"), dict) else {}
-    user = payload.get("user") if isinstance(payload.get("user"), dict) else {}
-    writeback = payload.get("writeback") if isinstance(payload.get("writeback"), dict) else {}
-    scheduler = payload.get("scheduler") if isinstance(payload.get("scheduler"), dict) else {}
-    compaction = payload.get("compaction") if isinstance(payload.get("compaction"), dict) else {}
+    action_value = payload.get("action")
+    user_value = payload.get("user")
+    writeback_value = payload.get("writeback")
+    scheduler_value = payload.get("scheduler")
+    compaction_value = payload.get("compaction")
+    action = action_value if isinstance(action_value, dict) else {}
+    user = user_value if isinstance(user_value, dict) else {}
+    writeback = writeback_value if isinstance(writeback_value, dict) else {}
+    scheduler = scheduler_value if isinstance(scheduler_value, dict) else {}
+    compaction = compaction_value if isinstance(compaction_value, dict) else {}
     lines = [
         "# LoopX Turn Envelope",
         "",
