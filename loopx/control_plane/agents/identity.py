@@ -4,13 +4,12 @@ from typing import Any
 
 from ...agent_registry import registered_agent_ids_for_goal
 from ..todos.contract import normalize_todo_claimed_by
-from .runtime_model import (
-    PEER_AGENT_IDENTITY_SCHEMA_VERSION,
-    agent_runtime_model_for_goal,
+from .legacy_migration import (
     legacy_agent_hierarchy_present,
     peer_agent_runtime_migration_completed,
     peer_agent_runtime_migration_id,
 )
+from .runtime_model import PEER_AGENT_IDENTITY_SCHEMA_VERSION, agent_runtime_model_for_goal
 
 
 def quota_registered_agents(goal: dict[str, Any]) -> list[str]:

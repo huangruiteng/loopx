@@ -314,6 +314,28 @@ def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> 
     )
     register_peer_runtime_arguments(configure_goal_parser)
     configure_goal_parser.add_argument(
+        "--supervisor-agent",
+        help=(
+            "Opt in one registered peer as a proposal-only supervisor. The peer keeps "
+            "equal identity authority and gains no implicit session-control rights."
+        ),
+    )
+    configure_goal_parser.add_argument(
+        "--supervised-agent",
+        dest="supervised_agents",
+        action="append",
+        default=None,
+        help=(
+            "Registered peer observed by the supervisor. Repeatable; defaults to every "
+            "registered peer except the supervisor."
+        ),
+    )
+    configure_goal_parser.add_argument(
+        "--clear-supervisor",
+        action="store_true",
+        help="Remove the optional coordination.supervisor configuration.",
+    )
+    configure_goal_parser.add_argument(
         "--write-scope",
         action="append",
         default=None,
@@ -564,6 +586,9 @@ def handle_registry_admin_command(
                 clear_registered_agents=bool(args.clear_registered_agents),
                 agent_model=args.agent_model,
                 automation_prompt_migration_ack=args.ack_automation_prompt_migration,
+                supervisor_agent=args.supervisor_agent,
+                supervised_agents=args.supervised_agents,
+                clear_supervisor=bool(args.clear_supervisor),
                 write_scope=args.write_scope,
                 replace_write_scope=bool(args.replace_write_scope),
                 clear_write_scope=bool(args.clear_write_scope),

@@ -57,6 +57,9 @@ CONFIGURE_GOAL_REQUEST_FIELDS = {
     "registered_agents",
     "clear_registered_agents",
     "agent_model",
+    "supervisor_agent",
+    "supervised_agents",
+    "clear_supervisor",
     "write_scope",
     "replace_write_scope",
     "clear_write_scope",
@@ -341,6 +344,9 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
         registered_agents = body.get("registered_agents")
         if registered_agents is not None and not isinstance(registered_agents, list):
             raise ValueError("registered_agents must be a list of strings")
+        supervised_agents = body.get("supervised_agents")
+        if supervised_agents is not None and not isinstance(supervised_agents, list):
+            raise ValueError("supervised_agents must be a list of strings")
         boundary_authority_scopes = body.get("boundary_authority_scopes")
         if boundary_authority_scopes is not None and not isinstance(boundary_authority_scopes, list):
             raise ValueError("boundary_authority_scopes must be a list of strings")
@@ -363,6 +369,13 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             "registered_agents": [str(item) for item in registered_agents] if registered_agents is not None else None,
             "clear_registered_agents": bool(body.get("clear_registered_agents", False)),
             "agent_model": body.get("agent_model"),
+            "supervisor_agent": body.get("supervisor_agent"),
+            "supervised_agents": (
+                [str(item) for item in supervised_agents]
+                if supervised_agents is not None
+                else None
+            ),
+            "clear_supervisor": bool(body.get("clear_supervisor", False)),
             "write_scope": [str(item) for item in write_scope] if write_scope is not None else None,
             "replace_write_scope": bool(body.get("replace_write_scope", False)),
             "clear_write_scope": bool(body.get("clear_write_scope", False)),
@@ -397,6 +410,9 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             registered_agents=values["registered_agents"],
             clear_registered_agents=values["clear_registered_agents"],
             agent_model=values["agent_model"],
+            supervisor_agent=values["supervisor_agent"],
+            supervised_agents=values["supervised_agents"],
+            clear_supervisor=values["clear_supervisor"],
             write_scope=values["write_scope"],
             replace_write_scope=values["replace_write_scope"],
             clear_write_scope=values["clear_write_scope"],
@@ -425,6 +441,7 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             "orchestration_summary": payload.get("orchestration_summary"),
             "feature_summary": payload.get("feature_summary"),
             "heartbeat_prompt_migration": payload.get("heartbeat_prompt_migration"),
+            "supervisor_prompt": payload.get("supervisor_prompt"),
         }
 
     def _handle_configure_goal_dry_run(self) -> None:

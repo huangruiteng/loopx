@@ -121,6 +121,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
                 "purpose": "Check public-safe visible Codex CLI attach evidence.",
             },
             {"command": "loopx heartbeat-prompt", "purpose": "Generate a guarded heartbeat automation body."},
+            {
+                "command": "loopx supervisor-prompt",
+                "purpose": "Generate the dedicated task body for an opt-in proposal-only peer supervisor.",
+            },
             {"command": "loopx upgrade-plan", "purpose": "Plan default heartbeat upgrade propagation."},
             {"command": "loopx update", "purpose": "Check, dry-run, or execute the no-clone update path."},
         ],

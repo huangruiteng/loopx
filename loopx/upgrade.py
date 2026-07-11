@@ -15,7 +15,7 @@ from .heartbeat_prompt import build_heartbeat_prompt
 from .history import load_registry
 from .paths import DEFAULT_RUNTIME_ROOT, global_registry_path, resolve_runtime_root
 from .registry import registry_goals, resolve_state_file
-from .control_plane.agents.runtime_model import (
+from .control_plane.agents.legacy_migration import (
     completed_peer_agent_runtime_migration,
     legacy_agent_hierarchy_present,
     peer_agent_runtime_migration_completed,

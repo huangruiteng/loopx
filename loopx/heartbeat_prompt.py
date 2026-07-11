@@ -18,7 +18,6 @@ from .control_plane.todos.contract import (
 )
 from .control_plane.agents.runtime_model import (
     AgentRuntimeModel,
-    LEGACY_HIERARCHY_ROLES,
     PEER_AGENT_PROFILE_SCHEMA_VERSION,
 )
 
@@ -122,9 +121,6 @@ def agent_profile_prompt_projection(profile: dict[str, Any] | None) -> dict[str,
         "avoid_action_kinds",
     }
     projection = {key: value for key, value in profile.items() if key in public_keys}
-    legacy_role = str(profile.get("role") or "").strip()
-    if legacy_role and legacy_role not in LEGACY_HIERARCHY_ROLES:
-        projection.setdefault("profile_role", legacy_role)
     projection["schema_version"] = PEER_AGENT_PROFILE_SCHEMA_VERSION
     return projection or None
 

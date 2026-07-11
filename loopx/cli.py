@@ -226,6 +226,7 @@ def main(argv: list[str] | None = None) -> int:
             "start-goal",
             "slash-commands",
             "heartbeat-prompt",
+            "supervisor-prompt",
             "sync-global",
             "uninstall-project",
             "version",

@@ -26,17 +26,18 @@ from .orchestration import (
 from .quota import goal_quota_config
 from .registry import read_json, registry_goals
 from .control_plane.todos.contract import normalize_todo_claimed_by
-from .control_plane.agents.runtime_model import (
-    AgentRuntimeModel,
-    PEER_AGENT_RUNTIME_MIGRATION,
-    agent_runtime_model_for_goal,
+from .control_plane.agents.legacy_migration import (
     completed_peer_agent_runtime_migration,
     legacy_agent_hierarchy_present,
-    migrate_agent_profiles_to_peer_v1,
-    normalized_peer_agent_ids,
+    migrate_coordination_to_peer_v1,
     peer_agent_runtime_migration_completed,
     peer_agent_runtime_migration_id,
 )
+from .control_plane.agents.runtime_model import (
+    AgentRuntimeModel,
+    agent_runtime_model_for_goal,
+)
+from .control_plane.agents.supervisor import normalize_peer_supervisor
 
 
 WAITING_ON_CHOICES = (
@@ -180,6 +181,14 @@ def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
         "peer_runtime_migration": deepcopy(
             completed_peer_agent_runtime_migration(goal)
         ),
+        "supervisor": deepcopy(
+            normalize_peer_supervisor(
+                coordination.get("supervisor"),
+                registered_agents=normalize_registered_agents(
+                    coordination.get("registered_agents")
+                ),
+            )
+        ),
     }
     return summary
 
@@ -278,6 +287,34 @@ def _build_heartbeat_prompt_migration(
     return payload
 
 
+def _build_supervisor_prompt_setup(
+    *,
+    goal_id: str,
+    changed_fields: list[str],
+    after: dict[str, Any],
+) -> dict[str, Any] | None:
+    if "supervisor" not in changed_fields:
+        return None
+    supervisor = after.get("supervisor")
+    if not isinstance(supervisor, dict):
+        return {
+            "schema_version": "supervisor_prompt_setup_v0",
+            "status": "disabled",
+            "command": None,
+        }
+    agent_id = str(supervisor.get("agent_id") or "")
+    return {
+        "schema_version": "supervisor_prompt_setup_v0",
+        "status": "ready",
+        "agent_id": agent_id,
+        "command": (
+            "loopx supervisor-prompt "
+            f"--goal-id {shlex.quote(goal_id)} "
+            f"--agent-id {shlex.quote(agent_id)}"
+        ),
+    }
+
+
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(
@@ -319,6 +356,9 @@ def configure_goal(
     clear_registered_agents: bool = False,
     agent_model: str | None = None,
     automation_prompt_migration_ack: str | None = None,
+    supervisor_agent: str | None = None,
+    supervised_agents: list[str] | None = None,
+    clear_supervisor: bool = False,
     write_scope: list[str] | None = None,
     replace_write_scope: bool = False,
     clear_write_scope: bool = False,
@@ -359,6 +399,13 @@ def configure_goal(
                 "--ack-automation-prompt-migration cannot change registered agents; "
                 "complete the runtime cutover first, then update the peer set separately"
             )
+    if clear_supervisor and (supervisor_agent or supervised_agents):
+        raise ValueError(
+            "--clear-supervisor cannot be combined with --supervisor-agent or "
+            "--supervised-agent"
+        )
+    if supervised_agents and not supervisor_agent:
+        raise ValueError("--supervised-agent requires --supervisor-agent")
     if clear_write_scope and write_scope:
         raise ValueError("--clear-write-scope cannot be combined with --write-scope")
     if replace_write_scope and not write_scope:
@@ -414,6 +461,7 @@ def configure_goal(
         if allowed_domains:
             raise ValueError("--multi-subagent-feature off cannot be combined with --allowed-domain")
     registered_agents = _clean_registered_agents(registered_agents)
+    supervised_agents = _clean_registered_agents(supervised_agents)
     write_scope = _clean_write_scope(write_scope)
     issue_fix_reviewer_notification_config = _local_private_config_path(
         issue_fix_reviewer_notification_config
@@ -582,6 +630,9 @@ def configure_goal(
         or registered_agents is not None
         or agent_model is not None
         or automation_prompt_migration_ack is not None
+        or supervisor_agent is not None
+        or supervised_agents is not None
+        or clear_supervisor
         or write_scope is not None
         or clear_write_scope
         or clear_boundary_authority
@@ -592,34 +643,32 @@ def configure_goal(
         if clear_registered_agents:
             coordination.pop("registered_agents", None)
             coordination.pop("agent_model", None)
+            coordination.pop("supervisor", None)
         elif registered_agents is not None:
             coordination["registered_agents"] = registered_agents
         if not clear_registered_agents:
             coordination["agent_model"] = effective_agent_model
         if automation_prompt_migration_ack is not None and not migration_already_completed:
-            coordination.pop("primary_agent", None)
-            coordination.pop("side_agent_handoff_agent", None)
-            coordination["registered_agents"] = normalized_peer_agent_ids(
-                coordination.get("registered_agents") or []
+            coordination = migrate_coordination_to_peer_v1(
+                coordination,
+                migration_id=automation_prompt_migration_ack,
+                completed_at=_now_iso() if execute else None,
             )
-            migrated_profiles = migrate_agent_profiles_to_peer_v1(
-                coordination.get("agent_profiles")
+        if clear_supervisor:
+            coordination.pop("supervisor", None)
+        elif supervisor_agent is not None:
+            normalized_supervisor_agent = normalize_todo_claimed_by(supervisor_agent)
+            if not normalized_supervisor_agent:
+                raise ValueError("--supervisor-agent must be a registered agent id")
+            coordination["supervisor"] = normalize_peer_supervisor(
+                {
+                    "agent_id": normalized_supervisor_agent,
+                    "supervised_agents": supervised_agents,
+                },
+                registered_agents=normalize_registered_agents(
+                    coordination.get("registered_agents")
+                ),
             )
-            if migrated_profiles:
-                coordination["agent_profiles"] = migrated_profiles
-            else:
-                coordination.pop("agent_profiles", None)
-            completed_migrations = (
-                coordination.get("completed_migrations")
-                if isinstance(coordination.get("completed_migrations"), dict)
-                else {}
-            )
-            completed_migrations[PEER_AGENT_RUNTIME_MIGRATION] = {
-                "migration_id": automation_prompt_migration_ack,
-                "status": "completed",
-                "completed_at": _now_iso() if execute else None,
-            }
-            coordination["completed_migrations"] = completed_migrations
         if clear_write_scope:
             coordination["write_scope"] = []
         elif write_scope is not None:
@@ -699,6 +748,7 @@ def configure_goal(
                 (after.get("orchestration") or {}).get("explore_harness")
                 or {"enabled": False}
             ),
+            "peer_supervisor": deepcopy(after.get("supervisor") or {"enabled": False}),
             "default": "off",
             "configuration_entry": "multi_subagent_feature",
         },
@@ -714,6 +764,11 @@ def configure_goal(
                 else None
             ),
             migration_acknowledged=automation_prompt_migration_ack is not None,
+        ),
+        "supervisor_prompt": _build_supervisor_prompt_setup(
+            goal_id=goal_id,
+            changed_fields=changed_fields,
+            after=after,
         ),
     }
 
@@ -747,6 +802,12 @@ def render_configure_goal_markdown(payload: dict[str, Any]) -> str:
             if harness.get("profile"):
                 harness_state += f"({harness.get('profile')})"
             lines.append(f"- feature_explore_harness: `{harness_state}`")
+        supervisor = feature_summary.get("peer_supervisor")
+        if isinstance(supervisor, dict):
+            supervisor_state = "on" if supervisor.get("enabled") else "off"
+            if supervisor.get("agent_id"):
+                supervisor_state += f"({supervisor.get('agent_id')})"
+            lines.append(f"- feature_peer_supervisor: `{supervisor_state}`")
     migration = payload.get("heartbeat_prompt_migration")
     if isinstance(migration, dict):
         lines.append(f"- heartbeat_prompt_migration: {migration.get('action')}")
@@ -756,6 +817,11 @@ def render_configure_goal_markdown(payload: dict[str, Any]) -> str:
             lines.append(
                 f"  - {command.get('agent_id')}: `{command.get('command')}`"
             )
+    supervisor_prompt = payload.get("supervisor_prompt")
+    if isinstance(supervisor_prompt, dict):
+        lines.append(f"- supervisor_prompt_status: `{supervisor_prompt.get('status')}`")
+        if supervisor_prompt.get("command"):
+            lines.append(f"- supervisor_prompt: `{supervisor_prompt.get('command')}`")
     activation = payload.get("host_loop_activation")
     if isinstance(activation, dict):
         lines.append(
