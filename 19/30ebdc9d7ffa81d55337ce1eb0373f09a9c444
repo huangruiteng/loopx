@@ -1,0 +1,21 @@
+loopx/cli_commands/lark_kanban.py
+  s_9a5a2bd944fdcb::t_9ccde8dfd3ca9e 15,138-145,373,375,386-389
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1930ebdc9d7ffa81d55337ce1eb0373f09a9c444",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
