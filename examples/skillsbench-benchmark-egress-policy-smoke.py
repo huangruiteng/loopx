@@ -140,6 +140,8 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
             "SKILLSBENCH_REMOTE_CODEX_BIN": "/remote/bin/codex",
             "SKILLSBENCH_LOCAL_CODEX_SANDBOX": "danger-full-access",
             "SKILLSBENCH_RUN_STAMP": "20260709T000000CST",
+            "SKILLSBENCH_TUNNEL_PROBE_TIMEOUT_SEC": "19",
+            "SKILLSBENCH_TUNNEL_READY_TIMEOUT_SEC": "71",
         }
     )
     env.pop("SKILLSBENCH_APPEND_HISTORY", None)
@@ -171,6 +173,8 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
     assert "--local-codex-sandbox danger-full-access" in output, output
     assert "local_codex_sandbox=danger-full-access" in output, output
     assert "remote_codex_bin_mode=explicit" in output, output
+    assert "--probe-timeout-sec 19" in output, output
+    assert "--tunnel-ready-timeout-sec 71" in output, output
     assert (
         "--local-ledger-catchup-run-group-contains "
         "skillsbench-codex-cli-goal-xhigh-citation-check-egress-smoke-"
@@ -216,6 +220,8 @@ def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
     ), output
     assert "--parallel-cases 3" in output, output
     assert "--remote-public-artifact-root" in output, output
+    assert "--probe-timeout-sec 20" in output, output
+    assert "--tunnel-ready-timeout-sec 60" in output, output
     assert "benchmark_run.compact.json" in output, output
     assert "--local-run-ledger-path" in output, output
     assert "--local-ledger-catchup-root" in output, output

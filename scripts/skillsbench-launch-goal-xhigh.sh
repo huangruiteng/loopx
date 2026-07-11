@@ -32,6 +32,10 @@ Optional env:
   SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC  Setup stall timeout, default 3600;
                                        0 disables cap
   SKILLSBENCH_RUN_TIMEOUT_SEC          Supervisor timeout, default 28800
+  SKILLSBENCH_TUNNEL_PROBE_TIMEOUT_SEC Reverse-tunnel CONNECT probe timeout,
+                                       default 20
+  SKILLSBENCH_TUNNEL_READY_TIMEOUT_SEC Reverse-tunnel readiness budget,
+                                       default 60
   SKILLSBENCH_PARALLEL_CASES           Batch concurrency, default 3
   SKILLSBENCH_BATCH_CASE_START_GAP_SEC Delay between case starts, default 3
   SKILLSBENCH_GOAL_ID                  Local evidence goal id, default loopx-meta
@@ -152,6 +156,8 @@ model="${SKILLSBENCH_MODEL:-gpt-5.5}"
 reasoning_effort="${SKILLSBENCH_REASONING_EFFORT:-xhigh}"
 build_stall_timeout="${SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC:-3600}"
 run_timeout="${SKILLSBENCH_RUN_TIMEOUT_SEC:-28800}"
+tunnel_probe_timeout="${SKILLSBENCH_TUNNEL_PROBE_TIMEOUT_SEC:-20}"
+tunnel_ready_timeout="${SKILLSBENCH_TUNNEL_READY_TIMEOUT_SEC:-60}"
 parallel_cases="${SKILLSBENCH_PARALLEL_CASES:-3}"
 if ((parallel_cases > task_count)); then
   parallel_cases="$task_count"
@@ -318,6 +324,8 @@ supervisor_cmd=(
   "${ssh_options[@]}"
   --cleanup-stale-local-forward
   --remote-forward "127.0.0.1:${remote_proxy_port}:${local_proxy_host}:${local_proxy_port}"
+  --probe-timeout-sec "$tunnel_probe_timeout"
+  --tunnel-ready-timeout-sec "$tunnel_ready_timeout"
   --run-timeout-sec "$run_timeout"
   --remote-failure-cleanup-pattern "$job_name"
   --remote-failure-cleanup-include-docker
