@@ -90,6 +90,17 @@ def main() -> int:
         "goal_id": GOAL_ID,
         "classification": "quota_slot_spent",
     }
+    other_agent_material_poll = {
+        **material_poll,
+        "generated_at": "2026-01-01T00:02:00+00:00",
+        "agent_id": "codex-monitor-b",
+    }
+    other_agent_spent = {
+        "generated_at": "2026-01-01T00:03:00+00:00",
+        "goal_id": GOAL_ID,
+        "classification": "quota_slot_spent",
+        "agent_id": "codex-monitor-b",
+    }
 
     with tempfile.TemporaryDirectory(prefix="loopx-material-monitor-spend-") as tmp:
         runtime = Path(tmp) / "runtime"
@@ -119,13 +130,27 @@ def main() -> int:
         assert unscoped_call_preview["ok"] is True, unscoped_call_preview
         assert unscoped_call_preview["delivery_run_agent_id"] == "codex-monitor-a", unscoped_call_preview
 
+        write_run_index(
+            runtime,
+            [material_poll, other_agent_material_poll, other_agent_spent],
+        )
+        interleaved_preview = preview(runtime, agent_id="codex-monitor-a")
+        assert interleaved_preview["ok"] is True, interleaved_preview
+        assert interleaved_preview["delivery_completion_spend"] is True, interleaved_preview
+        assert interleaved_preview["delivery_run_generated_at"] == material_poll["generated_at"], (
+            interleaved_preview
+        )
+        assert interleaved_preview["delivery_run_agent_id"] == "codex-monitor-a", interleaved_preview
+        assert preview(runtime, agent_id="codex-monitor-b")["ok"] is False
+        assert preview(runtime)["ok"] is False
+
         unscoped_material_poll = {key: value for key, value in material_poll.items() if key != "agent_id"}
         write_run_index(runtime, [unchanged_poll, unscoped_material_poll])
         legacy_run_preview = preview(runtime, agent_id="codex-monitor-a")
         assert legacy_run_preview["ok"] is True, legacy_run_preview
         assert legacy_run_preview["delivery_run_agent_id"] is None, legacy_run_preview
 
-        write_run_index(runtime, [unchanged_poll, material_poll, spent])
+        write_run_index(runtime, [unchanged_poll, material_poll, {**spent, "agent_id": "codex-monitor-a"}])
         duplicate_preview = preview(runtime, agent_id="codex-monitor-a")
         assert duplicate_preview["ok"] is False, duplicate_preview
 
