@@ -1,0 +1,35 @@
+docs/capabilities/issue-fix/README.md
+  s_9a5a2bd944fdcb::t_4a69628a43deff 233-236
+docs/capabilities/issue-fix/README.zh-CN.md
+  s_9a5a2bd944fdcb::t_5f84740fddd9fb 206-207
+docs/capabilities/issue-fix/protocols/issue-fix-reviewer-notification-sinks-v0.md
+  s_9a5a2bd944fdcb::t_31b19ea89ff4db 104-111
+docs/capabilities/issue-fix/protocols/issue-fix-reviewer-request-v0.md
+  s_9a5a2bd944fdcb::t_a1375b964420ac 93-98
+examples/issue-fix-capability-guide-smoke.py
+  s_9a5a2bd944fdcb::t_ecb25e3f05919e 172
+examples/issue-fix-reviewer-request-smoke.py
+  s_9a5a2bd944fdcb::t_ee9fbed7a28fcb 27-29,740-777,827-836,838-841,848,851-853
+loopx/capabilities/issue_fix/cli.py
+  s_9a5a2bd944fdcb::t_9d4410c6038847 277-296,1505-1509,1520,1557-1572,1609-1611
+loopx/capabilities/issue_fix/pr_lifecycle.py
+  s_9a5a2bd944fdcb::t_ea01b68216b485 568,622-633
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "be79cf3cb5376e55fcc055eb40858b1cc3d4e91c",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
