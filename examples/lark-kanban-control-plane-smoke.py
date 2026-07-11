@@ -285,7 +285,7 @@ def main() -> int:
     assert schema["task_spawning_model"]["board_creates_tasks"] is False, schema
     assert "LoopX todo lifecycle" in schema["task_spawning_model"]["rule"], schema
     field_names = [field["name"] for field in schema["fields"]]
-    for expected in ["Task", "Status", "Claim", "Handoff", "Evidence", "Run History", "Worker Command", "Work Item Type", "Repository", "Issue", "Pull Request", "Route", "Stage", "Validation", "Outcome"]:
+    for expected in ["Task", "Status", "Claim", "Handoff", "Evidence", "Run History", "Worker Command", "Work Item Type", "Repository", "Issue", "Pull Request", "Route", "Stage", "Validation", "Outcome", "Metric Group", "Metric", "Baseline", "Current", "Delta", "Numerator", "Denominator", "Metric Source", "Metric Updated At", "Missing Data"]:
         assert expected in field_names, field_names
     assert schema["heartbeat_model"]["fallback"].startswith("agent heartbeat"), schema
     assert schema["operator_view"]["kanban_card_fields"] == lark_kanban_operator_card_fields(), schema
@@ -312,7 +312,7 @@ def main() -> int:
     assert issue_fix_surface.field_definition_migrations(
         {"data": {"fields": schema["fields"]}}, schema["fields"]
     ) == []
-    assert {issue_fix_surface.DEFAULT_ISSUE_FIX_GRID_VIEW, issue_fix_surface.DEFAULT_ISSUE_FIX_KANBAN_VIEW} <= {view["name"] for view in schema["views"]}
+    assert {issue_fix_surface.DEFAULT_ISSUE_FIX_GRID_VIEW, issue_fix_surface.DEFAULT_ISSUE_FIX_KANBAN_VIEW, issue_fix_surface.DEFAULT_ISSUE_FIX_METRICS_VIEW} <= {view["name"] for view in schema["views"]}
 
     plan = build_create_board_plan(
         base_name="LoopX Lark Kanban Control Plane POC",
@@ -326,7 +326,8 @@ def main() -> int:
     assert any("+view-set-group" in command and "Kanban" in command for command in joined), joined
     assert any("group_config" in command for command in joined), joined
     assert any("+view-set-visible-fields" in command for command in joined), joined
-    assert sum("+view-set-filter" in command and "Work Item Type" in command for command in joined) == 2, joined
+    assert sum("+view-set-filter" in command and "Work Item Type" in command for command in joined) == 3, joined
+    assert any("+view-set-visible-fields" in command and "Monthly Impact" in command and "Metric Source" in command for command in joined), joined
     assert any("+view-set-group" in command and "Issue Fix Kanban" in command and "Stage" in command for command in joined), joined
     assert not any("+field-update" in command for command in joined), joined
 

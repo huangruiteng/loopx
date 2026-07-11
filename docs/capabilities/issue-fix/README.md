@@ -519,6 +519,9 @@ may refresh current PR/issue state without rewriting lifecycle history. Optional
 supplement counts cover evidence that is not yet native to those rows, such as
 human interventions, first-push CI, capability deltas, and memory leverage.
 Absent evidence is emitted as `not_available` plus a reason code, never as zero.
+The same packet exposes stable `impact_rows`; the generic Lark sink maps them to
+the `Monthly Impact` view with baseline, current, delta, ratio lineage, source,
+freshness, and missing-data columns.
 
 ## Conversational `/loopx` Entry
 

@@ -217,6 +217,7 @@ def lark_kanban_schema_payload(*, table_name: str = DEFAULT_TABLE_NAME) -> dict[
             "quota": "omitted in v0 prototype; assume no quota limit",
             "scope": "Scope text field; advisory in v0 prototype",
             "issue_fix_outcome": "First-class issue row with repository, issue, PR, route, stage, validation, and outcome dimensions.",
+            "issue_fix_metric": "Monthly Impact row with repository baseline, current value, delta, ratio lineage, source link, freshness, and explicit missing data.",
         },
         "fields": lark_kanban_field_definitions(),
         "views": lark_kanban_views(),
@@ -224,6 +225,8 @@ def lark_kanban_schema_payload(*, table_name: str = DEFAULT_TABLE_NAME) -> dict[
             "kanban_card_fields": OPERATOR_CARD_FIELDS,
             "issue_fix_card_fields": issue_fix_surface.ISSUE_FIX_CARD_FIELDS,
             "issue_fix_views": [issue_fix_surface.DEFAULT_ISSUE_FIX_GRID_VIEW, issue_fix_surface.DEFAULT_ISSUE_FIX_KANBAN_VIEW],
+            "issue_fix_metrics_view": issue_fix_surface.DEFAULT_ISSUE_FIX_METRICS_VIEW,
+            "issue_fix_metric_fields": issue_fix_surface.ISSUE_FIX_METRIC_FIELDS,
             "reason": (
                 "Keep the human-facing Kanban card small; retain the full task "
                 "context in the record detail and All Tasks grid."

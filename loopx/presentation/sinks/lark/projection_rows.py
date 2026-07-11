@@ -35,12 +35,16 @@ def todo_matches_agent_scope(block: dict[str, Any], agent_id: str | None) -> boo
         value = block.get(key)
         if isinstance(value, str) and value.strip() == agent_id:
             return True
-        if isinstance(value, list) and agent_id in {str(item).strip() for item in value}:
+        if isinstance(value, list) and agent_id in {
+            str(item).strip() for item in value
+        }:
             return True
     return False
 
 
-def _projection_matches_agent_scope(block: dict[str, Any], agent_id: str | None) -> bool:
+def _projection_matches_agent_scope(
+    block: dict[str, Any], agent_id: str | None
+) -> bool:
     if not agent_id:
         return True
     if agent_id in normalize_todo_excluded_agents(block.get("excluded_agents")):
@@ -50,12 +54,16 @@ def _projection_matches_agent_scope(block: dict[str, Any], agent_id: str | None)
     claimed_by = block.get("claimed_by")
     if isinstance(claimed_by, str) and claimed_by.strip():
         return False
-    if isinstance(claimed_by, list) and [item for item in claimed_by if str(item).strip()]:
+    if isinstance(claimed_by, list) and [
+        item for item in claimed_by if str(item).strip()
+    ]:
         return False
     blocks_agent = block.get("blocks_agent")
     if isinstance(blocks_agent, str) and blocks_agent.strip():
         return False
-    if isinstance(blocks_agent, list) and [item for item in blocks_agent if str(item).strip()]:
+    if isinstance(blocks_agent, list) and [
+        item for item in blocks_agent if str(item).strip()
+    ]:
         return False
     if block.get("projection_agent_id") == agent_id:
         return True
@@ -79,13 +87,21 @@ def _stable_projection_segment(value: Any, *, fallback: str) -> str:
     return (text or fallback)[:160]
 
 
-def projection_namespace(projection: dict[str, Any], source_id: str | None) -> tuple[str, list[str]]:
+def projection_namespace(
+    projection: dict[str, Any], source_id: str | None
+) -> tuple[str, list[str]]:
     warnings: list[str] = []
     payload_source = str(projection.get("source_id") or "").strip()
     requested = str(source_id or "").strip()
     if requested and payload_source and requested != payload_source:
-        warnings.append(f"projection source_id {payload_source!r} does not match requested source_id {requested!r}")
-    raw = requested or payload_source or str(projection.get("schema_version") or "projection")
+        warnings.append(
+            f"projection source_id {payload_source!r} does not match requested source_id {requested!r}"
+        )
+    raw = (
+        requested
+        or payload_source
+        or str(projection.get("schema_version") or "projection")
+    )
     return _stable_projection_segment(raw, fallback="projection"), warnings
 
 
@@ -120,12 +136,16 @@ def _projection_lifecycle_payload(item: dict[str, Any]) -> dict[str, Any]:
 
 def projection_lifecycle_state(item: dict[str, Any]) -> str:
     lifecycle = _projection_lifecycle_payload(item)
-    return str(
-        lifecycle.get("state")
-        or lifecycle.get("status")
-        or item.get("row_lifecycle_state")
-        or ""
-    ).strip().lower()
+    return (
+        str(
+            lifecycle.get("state")
+            or lifecycle.get("status")
+            or item.get("row_lifecycle_state")
+            or ""
+        )
+        .strip()
+        .lower()
+    )
 
 
 def _projection_item_status(item: dict[str, Any]) -> str:
@@ -134,11 +154,23 @@ def _projection_item_status(item: dict[str, Any]) -> str:
     if (
         item.get("done") is True
         or normalize_todo_status(raw) == TODO_STATUS_DONE
-        or raw.lower() in {"closed", "complete", "completed", "resolved", "superseded", "migrated", "retired"}
+        or raw.lower()
+        in {
+            "closed",
+            "complete",
+            "completed",
+            "resolved",
+            "superseded",
+            "migrated",
+            "retired",
+        }
         or lifecycle_state in {"superseded", "migrated", "retired"}
     ):
         return TODO_STATUS_DONE
-    if normalize_todo_status(raw) == TODO_STATUS_BLOCKED or raw.lower() in {"error", "failed"}:
+    if normalize_todo_status(raw) == TODO_STATUS_BLOCKED or raw.lower() in {
+        "error",
+        "failed",
+    }:
         return TODO_STATUS_BLOCKED
     if normalize_todo_status(raw) == TODO_STATUS_DEFERRED:
         return TODO_STATUS_DEFERRED
@@ -149,7 +181,11 @@ def projection_text_list(value: Any) -> list[str]:
     if value is None:
         return []
     if isinstance(value, list):
-        return [_compact_text(item, limit=220) for item in value if _compact_text(item, limit=220)]
+        return [
+            _compact_text(item, limit=220)
+            for item in value
+            if _compact_text(item, limit=220)
+        ]
     text = _compact_text(value, limit=220)
     return [text] if text else []
 
@@ -182,8 +218,16 @@ def projection_lifecycle_parts(item: dict[str, Any], *, source_id: str) -> list[
 
 def _projection_lifecycle_default_text(item: dict[str, Any], *, index: int) -> str:
     state = projection_lifecycle_state(item) or "updated"
-    supersedes = ", ".join(projection_text_list(projection_lifecycle_value(item, "supersedes"))) or "previous row"
-    superseded_by = ", ".join(projection_text_list(projection_lifecycle_value(item, "superseded_by"))) or "current projection"
+    supersedes = (
+        ", ".join(projection_text_list(projection_lifecycle_value(item, "supersedes")))
+        or "previous row"
+    )
+    superseded_by = (
+        ", ".join(
+            projection_text_list(projection_lifecycle_value(item, "superseded_by"))
+        )
+        or "current projection"
+    )
     return f"[P2] Projection row lifecycle {index}: {state} {supersedes} -> {superseded_by}"
 
 
@@ -232,7 +276,13 @@ def _projection_todo_candidates(summary: Any) -> list[dict[str, Any]]:
     seen: set[str] = set()
     for group in source_groups:
         for item in _as_mapping_list(group):
-            identity = str(item.get("todo_id") or item.get("gate_id") or item.get("title") or item.get("text") or "")
+            identity = str(
+                item.get("todo_id")
+                or item.get("gate_id")
+                or item.get("title")
+                or item.get("text")
+                or ""
+            )
             if not identity:
                 identity = json.dumps(item, ensure_ascii=False, sort_keys=True)
             if identity in seen:
@@ -242,7 +292,9 @@ def _projection_todo_candidates(summary: Any) -> list[dict[str, Any]]:
     return items
 
 
-def _projection_project_asset(projection: dict[str, Any], goal_id: str | None) -> dict[str, Any]:
+def _projection_project_asset(
+    projection: dict[str, Any], goal_id: str | None
+) -> dict[str, Any]:
     project_asset = _as_mapping(projection.get("project_asset"))
     if project_asset:
         return project_asset
@@ -307,16 +359,24 @@ def projection_rows_from_payload(
     resolved_goal_id = str(goal_id or payload_goal_id or "loopx-projection").strip()
     warnings: list[str] = []
     if goal_id and payload_goal_id and goal_id != payload_goal_id:
-        warnings.append(f"payload goal_id {payload_goal_id!r} does not match requested goal_id {goal_id!r}")
+        warnings.append(
+            f"payload goal_id {payload_goal_id!r} does not match requested goal_id {goal_id!r}"
+        )
         return resolved_goal_id, [], warnings
 
-    payload_agent_id = str(_as_mapping(projection.get("agent_identity")).get("agent_id") or "").strip()
+    payload_agent_id = str(
+        _as_mapping(projection.get("agent_identity")).get("agent_id") or ""
+    ).strip()
     rows: list[dict[str, Any]] = []
 
     def add_row(row: dict[str, Any]) -> None:
         if len(rows) >= limit:
             return
-        if row.get("status") == TODO_STATUS_DONE and not include_done and not row.get("_include_done_by_default"):
+        if (
+            row.get("status") == TODO_STATUS_DONE
+            and not include_done
+            and not row.get("_include_done_by_default")
+        ):
             return
         if agent_id and not _projection_matches_agent_scope(row, agent_id):
             return
@@ -328,7 +388,9 @@ def projection_rows_from_payload(
         if group is None and project_asset:
             group = project_asset.get(f"{role}_todos")
         for index, item in enumerate(_projection_todo_candidates(group), start=1):
-            identity = item.get("todo_id") or item.get("title") or item.get("text") or index
+            identity = (
+                item.get("todo_id") or item.get("title") or item.get("text") or index
+            )
             add_row(
                 _projection_row(
                     source_id=source_id,
@@ -341,9 +403,16 @@ def projection_rows_from_payload(
                 )
             )
 
-    for index, gate in enumerate(_as_mapping_list(projection.get("open_gates")), start=1):
+    for index, gate in enumerate(
+        _as_mapping_list(projection.get("open_gates")), start=1
+    ):
         identity = gate.get("gate_id") or gate.get("id") or index
-        gate_text = gate.get("title") or gate.get("text") or gate.get("kind") or "Open user gate"
+        gate_text = (
+            gate.get("title")
+            or gate.get("text")
+            or gate.get("kind")
+            or "Open user gate"
+        )
         add_row(
             _projection_row(
                 source_id=source_id,
@@ -386,6 +455,40 @@ def projection_rows_from_payload(
             )
         )
 
+    for index, metric in enumerate(
+        _as_mapping_list(projection.get("impact_rows")), start=1
+    ):
+        identity = metric.get("metric_id") or index
+        current = metric.get("current")
+        delta = metric.get("delta")
+        current_text = "unavailable" if current is None else str(current)
+        delta_text = (
+            f" ({delta:+g})"
+            if isinstance(delta, (int, float)) and not isinstance(delta, bool)
+            else ""
+        )
+        add_row(
+            _projection_row(
+                source_id=source_id,
+                goal_id=resolved_goal_id,
+                kind="issue_fix_metric",
+                identity=identity,
+                role="agent",
+                item={
+                    **metric,
+                    "title": f"{metric.get('metric') or identity}: {current_text}{delta_text}",
+                    "action_kind": "issue_fix_metric",
+                    "task_class": "continuous_monitor",
+                    "priority": "P2",
+                    "status": "open",
+                    "evidence": metric.get("missing_reason")
+                    or metric.get("source_url"),
+                },
+                fallback_text=f"Issue-fix impact metric {index}",
+                projection_agent_id=payload_agent_id or agent_id,
+            )
+        )
+
     next_action = _as_mapping(projection.get("agent_lane_next_action"))
     if not next_action and projection.get("next_action"):
         next_action = {
@@ -409,7 +512,9 @@ def projection_rows_from_payload(
         )
 
     capability_gate = _as_mapping(projection.get("capability_gate"))
-    for index, item in enumerate(_as_mapping_list(capability_gate.get("runnable_candidates")), start=1):
+    for index, item in enumerate(
+        _as_mapping_list(capability_gate.get("runnable_candidates")), start=1
+    ):
         identity = item.get("todo_id") or item.get("title") or item.get("text") or index
         add_row(
             _projection_row(
@@ -420,7 +525,8 @@ def projection_rows_from_payload(
                 role="agent",
                 item={
                     **item,
-                    "action_kind": item.get("action_kind") or "projection_runnable_candidate",
+                    "action_kind": item.get("action_kind")
+                    or "projection_runnable_candidate",
                     "task_class": item.get("task_class") or TODO_TASK_CLASS_ADVANCEMENT,
                 },
                 fallback_text=f"Runnable candidate {index}",
@@ -445,14 +551,22 @@ def projection_rows_from_payload(
                 role=str(event.get("role") or "agent"),
                 item={
                     **event,
-                    "title": event.get("title") or event.get("text") or _projection_lifecycle_default_text(event, index=index),
-                    "action_kind": event.get("action_kind") or "projection_row_lifecycle",
+                    "title": event.get("title")
+                    or event.get("text")
+                    or _projection_lifecycle_default_text(event, index=index),
+                    "action_kind": event.get("action_kind")
+                    or "projection_row_lifecycle",
                     "task_class": event.get("task_class") or "continuous_monitor",
-                    "claimed_by": event.get("claimed_by") or event.get("agent_id") or payload_agent_id,
+                    "claimed_by": event.get("claimed_by")
+                    or event.get("agent_id")
+                    or payload_agent_id,
                     "_include_done_by_default": True,
                 },
                 fallback_text=_projection_lifecycle_default_text(event, index=index),
-                projection_agent_id=str(event.get("agent_id") or payload_agent_id or agent_id or "").strip() or None,
+                projection_agent_id=str(
+                    event.get("agent_id") or payload_agent_id or agent_id or ""
+                ).strip()
+                or None,
             )
         )
 
@@ -467,12 +581,14 @@ def projection_rows_from_payload(
                 identity="user_channel",
                 role="user",
                 item={
-                    "title": user_channel.get("reason") or "User channel action required",
+                    "title": user_channel.get("reason")
+                    or "User channel action required",
                     "status": TODO_STATUS_OPEN,
                     "task_class": TODO_TASK_CLASS_USER_GATE,
                     "action_kind": "projection_interaction_gate",
                     "blocks_agent": agent_id or payload_agent_id,
-                    "evidence": user_channel.get("payload") or user_channel.get("reason"),
+                    "evidence": user_channel.get("payload")
+                    or user_channel.get("reason"),
                 },
                 fallback_text="User channel action required",
             )

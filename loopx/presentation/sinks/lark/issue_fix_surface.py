@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping
+from datetime import datetime
 from typing import Any
 
 
 DEFAULT_ISSUE_FIX_GRID_VIEW = "Issue Fix Outcomes"
 DEFAULT_ISSUE_FIX_KANBAN_VIEW = "Issue Fix Kanban"
+DEFAULT_ISSUE_FIX_METRICS_VIEW = "Monthly Impact"
 
 ISSUE_FIX_CARD_FIELDS = [
     "Task",
@@ -20,6 +22,20 @@ ISSUE_FIX_CARD_FIELDS = [
     "Validation",
     "Outcome",
     "Status",
+]
+
+ISSUE_FIX_METRIC_FIELDS = [
+    "Task",
+    "Metric Group",
+    "Metric",
+    "Baseline",
+    "Current",
+    "Delta",
+    "Numerator",
+    "Denominator",
+    "Metric Source",
+    "Metric Updated At",
+    "Missing Data",
 ]
 
 ISSUE_FIX_STAGE_OPTIONS = [
@@ -54,7 +70,7 @@ def issue_fix_field_definitions(
             "name": "Work Item Type",
             "type": "select",
             "multiple": False,
-            "options": select_options(["Todo", "Issue Fix"]),
+            "options": select_options(["Todo", "Issue Fix", "Issue Fix Metric"]),
         },
         {"name": "Repository", "type": "text", "style": {"type": "plain"}},
         {"name": "Issue", "type": "text", "style": {"type": "url"}},
@@ -73,6 +89,42 @@ def issue_fix_field_definitions(
         },
         {"name": "Validation", "type": "text", "style": {"type": "plain"}},
         {"name": "Outcome", "type": "text", "style": {"type": "plain"}},
+        {
+            "name": "Metric Group",
+            "type": "select",
+            "multiple": False,
+            "options": select_options(
+                [
+                    "Repository",
+                    "Delivery",
+                    "Quality",
+                    "Autonomy",
+                    "Capability",
+                    "Memory",
+                ]
+            ),
+        },
+        {"name": "Metric", "type": "text", "style": {"type": "plain"}},
+        *[
+            {
+                "name": name,
+                "type": "number",
+                "style": {
+                    "type": "plain",
+                    "precision": 4,
+                    "percentage": False,
+                    "thousands_separator": False,
+                },
+            }
+            for name in ("Baseline", "Current", "Delta", "Numerator", "Denominator")
+        ],
+        {"name": "Metric Source", "type": "text", "style": {"type": "url"}},
+        {
+            "name": "Metric Updated At",
+            "type": "datetime",
+            "style": {"format": "yyyy-MM-dd HH:mm"},
+        },
+        {"name": "Missing Data", "type": "text", "style": {"type": "plain"}},
     ]
 
 
@@ -80,7 +132,27 @@ def issue_fix_views() -> list[dict[str, str]]:
     return [
         {"name": DEFAULT_ISSUE_FIX_GRID_VIEW, "type": "grid"},
         {"name": DEFAULT_ISSUE_FIX_KANBAN_VIEW, "type": "kanban"},
+        {"name": DEFAULT_ISSUE_FIX_METRICS_VIEW, "type": "grid"},
     ]
+
+
+def _number_or_none(value: Any) -> int | float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value
+
+
+def _datetime_millis(value: Any) -> int | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.utcoffset() is None:
+        return None
+    return int(parsed.timestamp() * 1000)
 
 
 def issue_fix_record_values(
@@ -88,7 +160,29 @@ def issue_fix_record_values(
     *,
     compact_text: Callable[..., str],
 ) -> dict[str, Any]:
-    if str(block.get("action_kind") or "") != "issue_fix_outcome":
+    action_kind = str(block.get("action_kind") or "")
+    if action_kind == "issue_fix_metric":
+        return {
+            "Work Item Type": "Issue Fix Metric",
+            "Repository": compact_text(block.get("repo"), limit=160),
+            "Issue": "",
+            "Pull Request": "",
+            "Route": "",
+            "Stage": "",
+            "Validation": "",
+            "Outcome": "",
+            "Metric Group": compact_text(block.get("metric_group"), limit=80),
+            "Metric": compact_text(block.get("metric"), limit=180),
+            "Baseline": _number_or_none(block.get("baseline")),
+            "Current": _number_or_none(block.get("current")),
+            "Delta": _number_or_none(block.get("delta")),
+            "Numerator": _number_or_none(block.get("numerator")),
+            "Denominator": _number_or_none(block.get("denominator")),
+            "Metric Source": compact_text(block.get("source_url"), limit=320),
+            "Metric Updated At": _datetime_millis(block.get("updated_at")),
+            "Missing Data": compact_text(block.get("missing_reason"), limit=300),
+        }
+    if action_kind != "issue_fix_outcome":
         return {}
     issue = block.get("issue") if isinstance(block.get("issue"), Mapping) else {}
     pull_request = (
@@ -128,6 +222,16 @@ def issue_fix_record_values(
             limit=300,
         ),
         "Outcome": compact_text(result.get("kind"), limit=120),
+        "Metric Group": "",
+        "Metric": "",
+        "Baseline": None,
+        "Current": None,
+        "Delta": None,
+        "Numerator": None,
+        "Denominator": None,
+        "Metric Source": "",
+        "Metric Updated At": None,
+        "Missing Data": "",
     }
 
 
@@ -141,6 +245,16 @@ def todo_record_values() -> dict[str, str]:
         "Stage": "",
         "Validation": "",
         "Outcome": "",
+        "Metric Group": "",
+        "Metric": "",
+        "Baseline": None,
+        "Current": None,
+        "Delta": None,
+        "Numerator": None,
+        "Denominator": None,
+        "Metric Source": "",
+        "Metric Updated At": None,
+        "Missing Data": "",
     }
 
 
@@ -190,7 +304,11 @@ def missing_field_definitions(
     parsed: Any, definitions: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
     existing = extract_field_names(parsed)
-    return [item for item in definitions if str(item.get("name") or "").strip() not in existing]
+    return [
+        item
+        for item in definitions
+        if str(item.get("name") or "").strip() not in existing
+    ]
 
 
 def field_definition_migrations(
@@ -200,22 +318,49 @@ def field_definition_migrations(
     migrations: list[dict[str, Any]] = []
     for definition in definitions:
         name = str(definition.get("name") or "").strip()
-        if name not in {"Issue", "Pull Request", "Stage"} or name not in existing:
+        if (
+            name not in {"Work Item Type", "Issue", "Pull Request", "Stage"}
+            or name not in existing
+        ):
             continue
         current = existing[name]
         matches = current.get("type") == definition.get("type")
         if name in {"Issue", "Pull Request"}:
-            current_style = current.get("style") if isinstance(current.get("style"), Mapping) else {}
-            desired_style = definition.get("style") if isinstance(definition.get("style"), Mapping) else {}
+            current_style = (
+                current.get("style")
+                if isinstance(current.get("style"), Mapping)
+                else {}
+            )
+            desired_style = (
+                definition.get("style")
+                if isinstance(definition.get("style"), Mapping)
+                else {}
+            )
             matches = matches and current_style.get("type") == desired_style.get("type")
         else:
-            current_options = current.get("options") if isinstance(current.get("options"), list) else []
-            desired_options = definition.get("options") if isinstance(definition.get("options"), list) else []
+            current_options = (
+                current.get("options")
+                if isinstance(current.get("options"), list)
+                else []
+            )
+            desired_options = (
+                definition.get("options")
+                if isinstance(definition.get("options"), list)
+                else []
+            )
             matches = (
                 matches
                 and current.get("multiple") is definition.get("multiple")
-                and [item.get("name") for item in current_options if isinstance(item, Mapping)]
-                == [item.get("name") for item in desired_options if isinstance(item, Mapping)]
+                and [
+                    item.get("name")
+                    for item in current_options
+                    if isinstance(item, Mapping)
+                ]
+                == [
+                    item.get("name")
+                    for item in desired_options
+                    if isinstance(item, Mapping)
+                ]
             )
         if not matches:
             migrations.append(
@@ -241,6 +386,9 @@ def issue_fix_view_configuration_commands(
     )
     issue_kanban_view = (
         view_ids.get(DEFAULT_ISSUE_FIX_KANBAN_VIEW) or DEFAULT_ISSUE_FIX_KANBAN_VIEW
+    )
+    metrics_view = (
+        view_ids.get(DEFAULT_ISSUE_FIX_METRICS_VIEW) or DEFAULT_ISSUE_FIX_METRICS_VIEW
     )
     common = [
         cli_bin,
@@ -273,6 +421,25 @@ def issue_fix_view_configuration_commands(
     commands.append(
         [
             *common[:2],
+            "+view-set-filter",
+            *common[2:],
+            "--view-id",
+            metrics_view,
+            "--json",
+            json.dumps(
+                {
+                    "logic": "and",
+                    "conditions": [
+                        ["Work Item Type", "intersects", ["Issue Fix Metric"]]
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+        ]
+    )
+    commands.append(
+        [
+            *common[:2],
             "+view-set-group",
             *common[2:],
             "--view-id",
@@ -295,6 +462,17 @@ def issue_fix_view_configuration_commands(
             json.dumps({"visible_fields": ISSUE_FIX_CARD_FIELDS}, ensure_ascii=False),
         ]
         for view_id in (issue_grid_view, issue_kanban_view)
+    )
+    commands.append(
+        [
+            *common[:2],
+            "+view-set-visible-fields",
+            *common[2:],
+            "--view-id",
+            metrics_view,
+            "--json",
+            json.dumps({"visible_fields": ISSUE_FIX_METRIC_FIELDS}, ensure_ascii=False),
+        ]
     )
     return commands
 

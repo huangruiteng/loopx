@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Callable
 
@@ -152,7 +153,11 @@ def register_lark_kanban_commands(
     add_subcommand_format(projection)
     _add_local_config_args(projection)
     _add_lark_target_args(projection)
-    projection.add_argument("--projection-file", required=True)
+    projection.add_argument(
+        "--projection-file",
+        required=True,
+        help="Projection JSON file, inline object, or '-' for stdin.",
+    )
     projection.add_argument("--goal-id", help="Only sync this goal id; defaults from the projection payload.")
     projection.add_argument("--agent-id", help="Only sync rows claimed by, blocking, or projected for this agent id.")
     projection.add_argument("--source-id", help="Stable source namespace used in synthetic row ids.")
@@ -426,7 +431,15 @@ def handle_lark_kanban_command(
 
 
 def _load_fixture(path: str) -> dict[str, object]:
-    raw = Path(path).expanduser().read_text(encoding="utf-8")
+    stripped = path.lstrip()
+    if path == "-":
+        raw = sys.stdin.read()
+    elif stripped.startswith("{"):
+        raw = path
+    else:
+        raw = Path(path).expanduser().read_text(encoding="utf-8")
+    if len(raw) > 1_048_576:
+        raise ValueError("fixture JSON exceeds the 1 MiB limit")
     payload = json.loads(raw)
     if not isinstance(payload, dict):
         raise ValueError("fixture must be a JSON object")

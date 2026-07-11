@@ -22,6 +22,7 @@ Both period-start and current inputs use
   "schema_version": "issue_fix_repository_reporting_snapshot_v0",
   "repo": "owner/repo",
   "captured_at": "2026-08-01T00:00:00Z",
+  "source_url": "https://github.com/owner/repo",
   "open_issues": 42,
   "open_pull_requests": 17
 }
@@ -84,6 +85,14 @@ coerced to zero.
 - Feasibility rows provide selected issues and route counts.
 - PR lifecycle rows provide the attributable PR inventory, links, receipts, and
   last persisted state.
+- Reporting-window attribution uses the newest verified lifecycle event time
+  (`created_at` from the current public snapshot when present; otherwise
+  `merged_at`, `closed_at`, or `updated_at`) together with the row observation
+  time. A linked feasibility decision follows its attributable PR into the
+  window, so an old or replayed observation timestamp cannot erase real output.
+- Unlinked feasibility or lifecycle rows whose available event times all
+  predate the baseline are excluded from the period instead of forcing the
+  caller to rewrite history.
 - A newer current public snapshot may refresh state but cannot add an
   unattributed PR to the inventory.
 - Repository shares use explicit numerators and denominators, so a ratio is
@@ -98,6 +107,34 @@ raw issue bodies, comments, provider responses, transcripts, and tool logs.
 
 Daily public snapshot collection and Kanban/dashboard rendering are separate
 adapters over this packet. They must not become a second source of truth.
+
+## Monthly Impact projection
+
+The metrics packet includes stable `impact_rows` for repository health,
+delivery, quality, autonomy, capability, and memory. Every row keeps its
+baseline, current value, delta, numerator/denominator when applicable, public
+source URL, freshness timestamp, and missing-data reason.
+
+The generic Lark sink renders those rows into the `Monthly Impact` view without
+storing another metrics ledger:
+
+```bash
+loopx --format json issue-fix metrics \
+  --goal-id public-issue-fix-goal \
+  --project /path/to/connected/project \
+  --repo owner/repo \
+  --repository-baseline-json baseline.json \
+  --repository-current-json current.json \
+| loopx --format json lark-kanban sync-projection \
+  --projection-file - \
+  --goal-id public-issue-fix-goal \
+  --sink-visibility shared \
+  --execute
+```
+
+`sync-projection` accepts a file, a bounded inline object, or stdin. Setup is
+idempotent: existing boards gain the metric fields and `Monthly Impact` view
+through the normal schema-reconciliation path.
 
 ## Validation
 
