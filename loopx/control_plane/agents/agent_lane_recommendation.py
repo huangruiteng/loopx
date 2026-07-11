@@ -245,13 +245,17 @@ def build_agent_lane_next_action(
                 return payload
 
     candidate_sources: list[tuple[str, list[Any]]] = []
-    if isinstance(capability_gate, dict) and capability_gate.get("action") == "run":
+    # An empty projected list is authoritative; falling back would bypass the gate.
+    capability_candidates = (
+        capability_gate.get("runnable_candidates")
+        if isinstance(capability_gate, dict)
+        else None
+    )
+    if isinstance(capability_candidates, list):
         candidate_sources.append(
             (
                 "capability_gate.runnable_candidates",
-                capability_gate.get("runnable_candidates")
-                if isinstance(capability_gate.get("runnable_candidates"), list)
-                else [],
+                capability_candidates,
             )
         )
     else:
@@ -265,22 +269,26 @@ def build_agent_lane_next_action(
                 else [],
             )
         )
-    candidate_sources.append(
-        (
-            "agent_todo_summary.first_executable_items",
-            agent_todo_summary.get("first_executable_items")
-            if isinstance(agent_todo_summary.get("first_executable_items"), list)
-            else [],
+        candidate_sources.append(
+            (
+                "agent_todo_summary.first_executable_items",
+                agent_todo_summary.get("first_executable_items")
+                if isinstance(
+                    agent_todo_summary.get("first_executable_items"), list
+                )
+                else [],
+            )
         )
-    )
-    candidate_sources.append(
-        (
-            "agent_todo_summary.executable_backlog_items",
-            agent_todo_summary.get("executable_backlog_items")
-            if isinstance(agent_todo_summary.get("executable_backlog_items"), list)
-            else [],
+        candidate_sources.append(
+            (
+                "agent_todo_summary.executable_backlog_items",
+                agent_todo_summary.get("executable_backlog_items")
+                if isinstance(
+                    agent_todo_summary.get("executable_backlog_items"), list
+                )
+                else [],
+            )
         )
-    )
 
     preferred_todo_ids = _todo_ids_from_action(active_next_action)
     active_next_action_items = (

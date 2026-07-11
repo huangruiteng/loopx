@@ -423,6 +423,45 @@ def exact_todo_gate_status_payload(*, include_fallback: bool = True) -> dict:
     )
 
 
+def capability_ineligible_only_fallback_status_payload() -> dict:
+    credential_gate = todo_item(
+        todo_id="todo_restore_credentials",
+        text="Restore credentials before the benchmark replay.",
+        role="user",
+        task_class="user_gate",
+        action_kind="restore_credentials",
+        blocks_agent="codex-main-control",
+    )
+    private_read_fallback = todo_item(
+        todo_id="todo_private_read_fallback",
+        text="[P2] Read a private project source while the benchmark waits.",
+        claimed_by="codex-main-control",
+        action_kind="private_project_intake",
+    )
+    private_read_fallback["required_capabilities"] = ["private_read"]
+    return status_fixture_payload(
+        status="active_state_user_todo",
+        waiting_on="controller",
+        severity="action",
+        recommended_action="Restore credentials.",
+        quota_state="operator_gate",
+        quota_extra={
+            "blocked_action_scope": "gated_delivery",
+            "safe_bypass_allowed": True,
+            "safe_bypass_policy": (
+                "Only capability-runnable non-gated work may continue."
+            ),
+            "reason": "operator gate blocks gated delivery",
+        },
+        user_todos=todo_summary(credential_gate, source_section="User Todo"),
+        agent_todos=todo_summary_items(
+            [private_read_fallback],
+            source_section="Agent Todo",
+        ),
+        coordination_payload=coordination(),
+    )
+
+
 def exact_todo_gate_with_decision_scope_migration_payload() -> dict:
     benchmark_gate = todo_item(
         todo_id="todo_benchmark_owner_gate",
@@ -586,6 +625,37 @@ def assert_exact_todo_gate_only_blocks_target_todo() -> None:
     assert "todo_x_launch_monitor" in blocked_monitor_ids, blocked_payload["agent_todo_summary"]
 
 
+def assert_scoped_gate_rejects_capability_ineligible_only_fallback() -> None:
+    payload = build_quota_should_run(
+        capability_ineligible_only_fallback_status_payload(),
+        goal_id=GOAL_ID,
+        agent_id="codex-main-control",
+    )
+    capability_gate = payload["capability_gate"]
+    assert capability_gate["action"] == "skip", capability_gate
+    assert capability_gate["runnable_candidates"] == [], capability_gate
+    assert capability_gate["missing"] == ["private_read"], capability_gate
+    assert "scoped_user_gate_fallback" not in payload, payload
+    assert payload.get("agent_lane_next_action") is None, payload
+    contract = payload["interaction_contract"]
+    assert contract["user_channel"]["action_required"] is True, contract
+    assert contract["user_channel"]["actions"] == [
+        "Restore credentials before the benchmark replay."
+    ], contract
+    assert contract["agent_channel"]["must_attempt"] is False, contract
+    assert contract["agent_channel"]["delivery_allowed"] is False, contract
+    assert contract["cli_channel"]["spend_allowed_now"] is False, contract
+    scheduler = payload["scheduler_hint"]
+    assert scheduler["action"] == "backoff_waiting_for_user", scheduler
+    assert scheduler["cadence_class"] == "human_gate", scheduler
+    assert scheduler["codex_app"]["example_progression_minutes"] == [
+        30,
+        60,
+        120,
+    ], scheduler
+    assert scheduler["codex_app"]["recommended_interval_minutes"] == 30, scheduler
+
+
 def assert_exact_todo_gate_survives_decision_scope_migration() -> None:
     payload = build_quota_should_run(
         exact_todo_gate_with_decision_scope_migration_payload(),
@@ -731,6 +801,7 @@ def main() -> int:
     assert_unscoped_user_gate_remains_global()
     assert_unrelated_user_gate_allows_feishu_fallback()
     assert_exact_todo_gate_only_blocks_target_todo()
+    assert_scoped_gate_rejects_capability_ineligible_only_fallback()
     assert_exact_todo_gate_survives_decision_scope_migration()
     assert_conflicting_exact_and_decision_scope_requires_projection_repair()
     assert_decision_scope_overrides_shared_action_kind_tokens()

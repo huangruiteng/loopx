@@ -311,12 +311,14 @@ def _scoped_user_gate_fallback(
     if not gates or not isinstance(agent_todo_summary, dict):
         return None
 
-    if isinstance(capability_gate, dict) and capability_gate.get("action") == "run":
-        executable_items = (
-            capability_gate.get("runnable_candidates")
-            if isinstance(capability_gate.get("runnable_candidates"), list)
-            else []
-        )
+    # An empty projected list is authoritative; falling back would bypass the gate.
+    capability_candidates = (
+        capability_gate.get("runnable_candidates")
+        if isinstance(capability_gate, dict)
+        else None
+    )
+    if isinstance(capability_candidates, list):
+        executable_items = capability_candidates
     else:
         executable_items = (
             agent_todo_summary.get("executable_backlog_items")
