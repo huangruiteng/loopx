@@ -13,8 +13,13 @@ from ..runtime.run_artifacts import run_file_stem, unique_run_artifact_paths
 from ..scheduler.monitor_poll_policy import (
     allows_due_monitor_poll,
     allows_no_spend_external_monitor_poll,
+    work_lane_reason_codes,
 )
-from ..scheduler.monitor_poll_writeback import write_monitor_poll_todo_state
+from ..scheduler.monitor_todo import monitor_todo_is_due
+from ..scheduler.monitor_poll_writeback import (
+    resolve_monitor_todo_item,
+    write_monitor_poll_todo_state,
+)
 from ..scheduler.monitor_target import build_quota_monitor_target
 from ..todos.contract import normalize_todo_claimed_by, normalize_todo_id
 from ..work_items.delivery_outcome import DeliveryOutcome
@@ -37,15 +42,20 @@ def build_quota_monitor_poll_event(
     target_key: str | None = None,
     result_hash: str | None = None,
     material_change: bool = False,
+    authorized_due_monitor_poll: bool | None = None,
 ) -> dict[str, Any]:
     safe_source = str(source or DEFAULT_SLOT_SPEND_SOURCE).strip()
     if safe_source not in VALID_SLOT_SPEND_SOURCES:
         raise ValueError(f"quota monitor-poll source must be one of: {', '.join(sorted(VALID_SLOT_SPEND_SOURCES))}")
     external_monitor_poll = allows_no_spend_external_monitor_poll(before)
-    due_monitor_poll = allows_due_monitor_poll(
-        before,
-        todo_id=todo_id,
-        target_key=target_key,
+    due_monitor_poll = (
+        allows_due_monitor_poll(
+            before,
+            todo_id=todo_id,
+            target_key=target_key,
+        )
+        if authorized_due_monitor_poll is None
+        else authorized_due_monitor_poll
     )
     if before.get("effective_action") != "monitor_quiet_skip" and not external_monitor_poll and not due_monitor_poll:
         raise ValueError(
@@ -128,6 +138,45 @@ def build_quota_monitor_poll_event(
         record["agent_id"] = safe_agent_id
         record["monitor_event"]["agent_id"] = safe_agent_id
     return record
+
+
+def _allows_registry_due_monitor_poll(
+    before: dict[str, Any],
+    *,
+    registry_path: Path | None,
+    goal_id: str,
+    todo_id: str | None,
+    target_key: str | None,
+) -> bool:
+    """Authorize an auxiliary due monitor omitted from the compact quota packet."""
+
+    if registry_path is None or not (todo_id or target_key):
+        return False
+    contract = (
+        before.get("work_lane_contract")
+        if isinstance(before.get("work_lane_contract"), dict)
+        else {}
+    )
+    if contract.get("must_attempt_work") is not True:
+        return False
+    if contract.get("obligation") == "attempt_due_monitor":
+        return False
+    if "due_monitor_context" not in work_lane_reason_codes(contract):
+        return False
+    try:
+        item = resolve_monitor_todo_item(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            todo_id=todo_id,
+            target_key=target_key,
+        )
+    except ValueError:
+        return False
+    if not monitor_todo_is_due(item):
+        return False
+    decision_agent_id = quota_decision_agent_id(before)
+    claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+    return bool(decision_agent_id and claimed_by == decision_agent_id)
 
 
 def _monitor_poll_failure(
@@ -213,6 +262,12 @@ def record_quota_monitor_poll_for_decision(
         before,
         todo_id=normalized_todo_id,
         target_key=safe_target_key,
+    ) or _allows_registry_due_monitor_poll(
+        before,
+        registry_path=registry_path,
+        goal_id=goal_id,
+        todo_id=normalized_todo_id,
+        target_key=safe_target_key,
     )
     if (
         before.get("effective_action") != "monitor_quiet_skip"
@@ -255,6 +310,7 @@ def record_quota_monitor_poll_for_decision(
         target_key=(todo_writeback or {}).get("target_key") or safe_target_key,
         result_hash=(todo_writeback or {}).get("result_hash") or result_hash,
         material_change=material_change,
+        authorized_due_monitor_poll=due_monitor_poll,
     )
     if todo_writeback:
         record["monitor_event"]["todo_writeback"] = {

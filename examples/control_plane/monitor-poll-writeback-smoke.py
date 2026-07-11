@@ -64,6 +64,8 @@ def write_fixture(
     selected_target_key: str | None = TARGET_KEY,
     include_other_monitor: bool = False,
     include_user_gate: bool = False,
+    include_advancement: bool = False,
+    primary_monitor_priority: str = "P0",
 ) -> tuple[Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
@@ -105,6 +107,17 @@ def write_fixture(
         if include_user_gate
         else ""
     )
+    advancement = (
+        "- [ ] [P0] Advance the independent delivery task.\n"
+        "  <!-- loopx:todo "
+        "todo_id=todo_monitorpolladvance "
+        "status=open "
+        "task_class=advancement_task "
+        f"claimed_by={AGENT_ID} "
+        "-->\n"
+        if include_advancement
+        else ""
+    )
     user_gate = (
         "\n## User Todo\n\n"
         "- [ ] [P0-user] Review the unrelated publication gate.\n"
@@ -128,7 +141,7 @@ def write_fixture(
         "## Objective\n\n"
         "Exercise due monitor poll writeback.\n\n"
         "## Agent Todo\n\n"
-        "- [ ] [P0] Poll the update-note draft PR for material changes.\n"
+        f"- [ ] [{primary_monitor_priority}] Poll the update-note draft PR for material changes.\n"
         "  <!-- loopx:todo "
         f"todo_id={TODO_ID} "
         "status=open "
@@ -144,6 +157,7 @@ def write_fixture(
         "-->\n"
         f"{other_monitor}"
         f"{gated_advancement}"
+        f"{advancement}"
         f"{user_gate}",
         encoding="utf-8",
     )
@@ -449,6 +463,52 @@ def assert_target_key_cannot_hijack_selected_due_monitor() -> None:
         assert monitor_poll_records(registry_path) == [], run_index_records(registry_path)
 
 
+def assert_compacted_auxiliary_due_monitor_can_write_back() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-monitor-poll-compacted-due-") as tmp:
+        registry_path, state_file = write_fixture(
+            Path(tmp),
+            include_other_monitor=True,
+            include_advancement=True,
+            primary_monitor_priority="P1",
+        )
+        quota = run_cli(
+            registry_path,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+        )
+        assert quota["work_lane_contract"]["obligation"] == "advance_one_bounded_segment", quota
+        assert quota["agent_todo_summary"]["monitor_due_count"] == 2, quota
+        assert len(quota["agent_todo_summary"]["monitor_due_items"]) == 1, quota
+        projected_due_id = quota["agent_todo_summary"]["monitor_due_items"][0]["todo_id"]
+        assert projected_due_id != "todo_monitorpoll111", quota
+
+        payload = run_cli(
+            registry_path,
+            "quota",
+            "monitor-poll",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+            "--todo-id",
+            "todo_monitorpoll111",
+            "--target-key",
+            OTHER_TARGET_KEY,
+            "--result-hash",
+            "old",
+            "--execute",
+        )
+        assert payload["ok"] is True, payload
+        assert payload["todo_writeback"]["todo_id"] == "todo_monitorpoll111", payload
+        other = find_todo(state_file, "todo_monitorpoll111")
+        assert other["consecutive_no_change"] == "2", other
+        assert other["next_due_at"] != "2026-01-01T00:00:00+00:00", other
+
+
 def assert_writeback_helper_preview_contract() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-monitor-poll-helper-parity-") as tmp:
         registry_path, _state_file = write_fixture(Path(tmp))
@@ -555,6 +615,7 @@ def main() -> int:
     assert_material_transition_followup()
     assert_due_monitor_poll_allowed_with_open_user_gate()
     assert_target_key_cannot_hijack_selected_due_monitor()
+    assert_compacted_auxiliary_due_monitor_can_write_back()
     return 0
 
 
