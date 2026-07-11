@@ -84,10 +84,11 @@ write assertion; preview never calls the provider.
 
 Each logical `(repository, PR, sink instance, reviewer set)` produces a stable
 `sha256:` idempotency key. The Lark adapter derives a provider-bounded key from
-that digest and embeds a compact marker in the message. The full verified key
-is returned as a receipt. Callers store only that compact receipt in existing issue-fix state
-and pass it back on retry; a matching receipt returns `already_notified`
-without a provider call.
+that digest without exposing it in the human-visible message. The message uses
+public PR metadata to name the PR, linked issue when available, and a compact
+summary of the fix. The full verified key is returned as a receipt. Callers
+store only that compact receipt in existing issue-fix state and pass it back on
+retry; a matching receipt returns `already_notified` without a provider call.
 
 For connected goals, register only the repo-relative local-private pointer:
 
@@ -109,7 +110,7 @@ pointer value or profiles (`config_pointer_registered=true`).
 
 A zero exit status is insufficient. The adapter requires a message id from the
 send response, fetches that message with the same dedicated bot profile, and
-verifies both the id and marker. Results distinguish `preview_ready`,
+verifies both the id and PR URL. Results distinguish `preview_ready`,
 `sent_verified`, `already_notified`, `sent_unverified`, and `gate_required`.
 Permission or group-membership errors become the concrete
 `lark_bot_group_access_required` gate.

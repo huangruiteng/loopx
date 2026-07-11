@@ -106,6 +106,12 @@ def metadata(
 ) -> dict[str, Any]:
     return {
         "author": {"login": "current-author"},
+        "closingIssuesReferences": [
+            {
+                "number": 40,
+                "title": "Consistency check accepts unsupported file URIs",
+            }
+        ],
         "comments": comments or [],
         "isDraft": False,
         "reviewRequests": [{"login": login} for login in (requested or [])],
@@ -113,6 +119,7 @@ def metadata(
             {"author": {"login": login}} for login in (reviewed or [])
         ],
         "state": "OPEN",
+        "title": "fix: reject file URI for consistency check",
         "url": "https://github.com/owner/repo/pull/42",
     }
 
@@ -223,10 +230,9 @@ class FakeCombinedRunner:
                 call for call in self.lark_calls if "+messages-send" in call
             )
             content = send_call[send_call.index("--content") + 1]
-            marker = re.search(
-                r"loopx-reviewer-notification:[a-f0-9]{16}", content
-            )
-            assert marker, content
+            assert "请帮忙 review PR #42（修复 #40）" in content, content
+            assert "reject file URI for consistency check" in content, content
+            assert "loopx-reviewer-notification" not in content, content
             return {
                 "returncode": 0,
                 "stdout": json.dumps(
@@ -234,7 +240,7 @@ class FakeCombinedRunner:
                         "items": [
                             {
                                 "message_id": "om_fixture",
-                                "body": {"content": marker.group(0)},
+                                "body": {"content": content},
                             }
                         ]
                     }
