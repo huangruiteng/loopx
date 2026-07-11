@@ -341,6 +341,7 @@ tests whether the system is a durable employee rather than a scripted demo.
 | Reviewer notification | `loopx issue-fix reviewer-request` | Under standing authority, exclude the live PR author and existing coverage, request the top candidate, fall back to one verified `@reviewer` comment only on permission denial, and avoid duplicates. |
 | PR lifecycle | `loopx issue-fix pr-lifecycle` | Project CI, review, merge state, draft, merged, and closed signals into monitor transitions. |
 | Maintainer correction | `loopx issue-fix pr-lifecycle --maintainer-correction-json ... --execute-transition` | Turn bounded public review feedback into one claimed patch successor, a concrete user gate, or a quiet unchanged poll. |
+| Metrics projection | [`loopx issue-fix metrics`](protocols/issue-fix-metrics-projection-v0.md) | Keep repository baseline separate from attributable agent output, combine existing feasibility/PR lifecycle rows with caller-supplied public snapshots, and report deltas, ratios, inventory, and missing data without another ledger. |
 | Acceptance fixture | `loopx issue-fix acceptance-fixture` | Prove failure-before, minimal patch, and pass-after in a deterministic fixture. |
 | Git branch fixture | `loopx issue-fix repo-branch-fixture` | Exercise the same repair contract through a temporary git branch. |
 | Caller repo branch | `loopx issue-fix caller-repo-branch` | Inspect an approved local repo, create/claim an issue branch, and run caller-declared validation. |
@@ -492,8 +493,8 @@ the current repository revision remains authoritative.
   default enablement or session-memory expansion;
 - Open Knowledge Format interoperability after the repository-context contract
   stabilizes;
-- project-level metrics for accepted fixes, cycle time, human attention,
-  regressions, and boundary incidents.
+- automated daily public snapshot collection and monthly Kanban/dashboard rollup
+  for the implemented provider-neutral metrics projection.
 
 ## Success Metrics
 
@@ -509,6 +510,15 @@ Track outcomes, not agent activity:
 - unchanged monitor polls skipped;
 - public/private boundary incidents;
 - LoopX generic gaps fixed or converted into concrete claimed todos.
+
+`loopx issue-fix metrics` is the read-only reporting seam for these measures.
+The period-start repository snapshot describes repository stock only; agent
+output starts at zero and is attributed from the goal's existing feasibility
+and PR lifecycle rows. The current public snapshot supplies repository flow and
+may refresh current PR/issue state without rewriting lifecycle history. Optional
+supplement counts cover evidence that is not yet native to those rows, such as
+human interventions, first-push CI, capability deltas, and memory leverage.
+Absent evidence is emitted as `not_available` plus a reason code, never as zero.
 
 ## Conversational `/loopx` Entry
 
@@ -762,6 +772,16 @@ loopx issue-fix feasibility \
   --goal-id example-goal \
   --format json
 
+# Project repository impact and attributed outputs without writing state.
+loopx issue-fix metrics \
+  --goal-id public-issue-fix-goal \
+  --project /path/to/connected/project \
+  --repo owner/repo \
+  --repository-baseline-json baseline.json \
+  --repository-current-json current.json \
+  --supplement-json optional-public-counts.json \
+  --format json
+
 # Recommend reviewers without requesting external review.
 loopx issue-fix reviewer-plan \
   --repo-path /path/to/approved/repo \
@@ -822,6 +842,7 @@ python3 examples/issue-fix-repository-memory-smoke.py
 python3 examples/issue-fix-validated-memory-writeback-smoke.py
 python3 examples/issue-fix-feasibility-smoke.py
 python3 examples/issue-fix-pr-lifecycle-smoke.py
+python3 examples/issue-fix-metrics-projection-smoke.py
 python3 examples/issue-fix-maintainer-correction-smoke.py
 python3 examples/issue-fix-outcome-projection-smoke.py
 python3 examples/issue-fix-acceptance-loop-smoke.py

@@ -34,6 +34,10 @@ from .outcome_projection import (
     render_issue_fix_outcome_projection_markdown,
 )
 from .metadata_preview import normalise_github_issue_reference
+from .metrics_projection import (
+    build_issue_fix_metrics_projection,
+    render_issue_fix_metrics_projection_markdown,
+)
 from .pr_lifecycle import (
     build_issue_fix_pr_lifecycle_monitor_packet,
     render_issue_fix_pr_lifecycle_monitor_markdown,
@@ -227,6 +231,25 @@ def _load_jsonl_row(
             f"{path.name} has no row for repo={repo} {ref_field}={ref_value}"
         )
     return match
+
+
+def _load_jsonl_rows(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file():
+        raise ValueError(f"issue-fix domain-state source is missing: {path.name}")
+    rows: list[dict[str, Any]] = []
+    for line_number, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{path.name}:{line_number} is not valid JSON") from exc
+        if not isinstance(row, dict):
+            raise ValueError(f"{path.name}:{line_number} must contain an object")
+        rows.append(row)
+    return rows
 
 
 def _goal_boundary_authority_projection(
@@ -720,6 +743,49 @@ def register_issue_fix_commands(
         help="Optional registered agent id projected as the case owner.",
     )
     _add_generated_at_arg(outcome_parser, artifact="the read model")
+    metrics_parser = issue_fix_sub.add_parser(
+        "metrics",
+        help=(
+            "Compose a read-only baseline, attributable output inventory, repository "
+            "delta, and missing-data projection from existing issue-fix domain state."
+        ),
+    )
+    add_subcommand_format(metrics_parser)
+    metrics_parser.add_argument("--goal-id", required=True)
+    metrics_parser.add_argument("--project", default=".")
+    metrics_parser.add_argument("--repo", required=True)
+    metrics_parser.add_argument(
+        "--repository-baseline-json",
+        required=True,
+        help="Public-safe issue_fix_repository_reporting_snapshot_v0 at period start.",
+    )
+    metrics_parser.add_argument(
+        "--repository-current-json",
+        required=True,
+        help=(
+            "Public-safe issue_fix_repository_reporting_snapshot_v0 at current time, "
+            "including flow_since_baseline."
+        ),
+    )
+    metrics_parser.add_argument(
+        "--supplement-json",
+        default=None,
+        help=(
+            "Optional public-safe issue_fix_metrics_supplement_v0 for autonomy, "
+            "first-push CI, memory, and capability-delta counts."
+        ),
+    )
+    metrics_parser.add_argument(
+        "--feasibility-ledger",
+        default=None,
+        help="Optional feasibility JSONL override; defaults to goal domain state.",
+    )
+    metrics_parser.add_argument(
+        "--pr-lifecycle-ledger",
+        default=None,
+        help="Optional PR lifecycle JSONL override; defaults to goal domain state.",
+    )
+    _add_generated_at_arg(metrics_parser, artifact="the metrics projection")
     reviewer_parser = issue_fix_sub.add_parser(
         "reviewer-plan",
         help=(
@@ -1496,6 +1562,49 @@ def handle_issue_fix_command(
                 payload["domain_state_write"] = domain_state_write
                 payload["source_contract"]["writes_source_state"] = True
             renderer = render_issue_fix_outcome_projection_markdown
+        elif args.issue_fix_command == "metrics":
+            stdin_input_count = sum(
+                value == "-"
+                for value in (
+                    args.repository_baseline_json,
+                    args.repository_current_json,
+                    args.supplement_json,
+                )
+            )
+            if stdin_input_count > 1:
+                raise ValueError("only one metrics JSON input may read from stdin")
+            project = Path(args.project).expanduser()
+            feasibility_path = (
+                Path(args.feasibility_ledger).expanduser()
+                if args.feasibility_ledger
+                else default_issue_fix_feasibility_ledger_path(
+                    project=project,
+                    goal_id=args.goal_id,
+                )
+            )
+            lifecycle_path = (
+                Path(args.pr_lifecycle_ledger).expanduser()
+                if args.pr_lifecycle_ledger
+                else default_issue_fix_domain_state_ledger_path(
+                    project=project,
+                    goal_id=args.goal_id,
+                )
+            )
+            payload = build_issue_fix_metrics_projection(
+                goal_id=args.goal_id,
+                repo=args.repo,
+                baseline_snapshot=_load_json_object(args.repository_baseline_json),
+                current_snapshot=_load_json_object(args.repository_current_json),
+                feasibility_rows=_load_jsonl_rows(feasibility_path),
+                pr_lifecycle_rows=_load_jsonl_rows(lifecycle_path),
+                supplement_input=(
+                    _load_json_object(args.supplement_json)
+                    if args.supplement_json
+                    else None
+                ),
+                generated_at=generated_at,
+            )
+            renderer = render_issue_fix_metrics_projection_markdown
         elif args.issue_fix_command == "reviewer-plan":
             payload = build_issue_fix_reviewer_recommendation_packet(
                 repo_path=args.repo_path,
@@ -1706,7 +1815,7 @@ def handle_issue_fix_command(
         else:
             raise ValueError(
                 "issue-fix requires `repository-memory-sync`, `workflow-plan`, `feasibility`, "
-                "`acceptance-fixture`, `pr-lifecycle`, `outcome`, `reviewer-plan`, "
+                "`acceptance-fixture`, `pr-lifecycle`, `outcome`, `metrics`, `reviewer-plan`, "
                 "`reviewer-request`, "
                 "`repo-branch-fixture`, or `caller-repo-branch`"
             )
@@ -1727,6 +1836,8 @@ def handle_issue_fix_command(
             if getattr(args, "issue_fix_command", None) == "pr-lifecycle"
             else render_issue_fix_outcome_projection_markdown
             if getattr(args, "issue_fix_command", None) == "outcome"
+            else render_issue_fix_metrics_projection_markdown
+            if getattr(args, "issue_fix_command", None) == "metrics"
             else render_issue_fix_reviewer_recommendation_markdown
             if getattr(args, "issue_fix_command", None) == "reviewer-plan"
             else render_issue_fix_reviewer_request_markdown

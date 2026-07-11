@@ -353,6 +353,7 @@ state 仍优先于迟到反馈。
 | Reviewer notification | `loopx issue-fix reviewer-request` | 在持续 authority 下排除 live PR author 与已有覆盖，优先正式邀请；仅在权限不足时降级为一条经回读验证的 `@reviewer` comment，并保证重试不重复。 |
 | PR lifecycle | `loopx issue-fix pr-lifecycle` | 把 CI、review、merge state、draft、merged、closed 信号投影为 monitor transition。 |
 | Maintainer correction | `loopx issue-fix pr-lifecycle --maintainer-correction-json ... --execute-transition` | 把有限公开反馈转成一个已认领 patch successor、具体 user gate，或安静的 unchanged poll。 |
+| 指标投影 | [`loopx issue-fix metrics`](protocols/issue-fix-metrics-projection-v0.md) | 严格区分仓库存量基线与 agent 可归因产出；组合现有 feasibility/PR lifecycle 行和调用方提供的公开快照，输出 delta、比例、产出清单与缺失数据，不新增 ledger。 |
 | Acceptance fixture | `loopx issue-fix acceptance-fixture` | 在 deterministic fixture 中证明 failure-before、minimal patch、pass-after。 |
 | Git branch fixture | `loopx issue-fix repo-branch-fixture` | 在临时 git branch 中运行同一修复 contract。 |
 | Caller repo branch | `loopx issue-fix caller-repo-branch` | 检查获批本地 repo、创建/认领 issue branch、运行 caller-declared validation。 |
@@ -491,7 +492,8 @@ revision 仍是事实源。
 - 跨多个重复 issue 评估 validated-outcome memory 的实际价值，再决定是否默认开启或扩展到
   session memory；
 - repository-context contract 稳定后的 Open Knowledge Format 互操作；
-- accepted fix、cycle time、human attention、regression、boundary incident 等项目级指标。
+- 在已实现的 provider-neutral 指标投影之上，自动采集每日公开快照并生成月度
+  Kanban/dashboard rollup。
 
 ## 成功指标
 
@@ -510,6 +512,12 @@ revision 仍是事实源。
 - 跳过的 unchanged monitor poll；
 - public/private boundary incident；
 - pilot 暴露的通用 LoopX gap 是否修复或转成具体 claimed todo。
+
+`loopx issue-fix metrics` 是这些指标的只读汇总边界。期初仓库快照只描述仓库
+存量；agent 产出从 0 开始，由当前 goal 已有的 feasibility 和 PR lifecycle 行归因。
+当前公开快照提供仓库流量，也可以刷新 PR/issue 的当前状态，但不会改写 lifecycle
+历史。可选 supplement 补充人工介入、首次 push CI、能力增量、memory 利用等尚未
+原生进入这些行的公开计数。证据缺失时输出 `not_available` 和原因码，绝不偷填 0。
 
 ## 对话式 `/loopx` 入口
 
@@ -730,6 +738,16 @@ loopx issue-fix feasibility \
   --goal-id example-goal \
   --format json
 
+# 只读投影仓库影响与可归因产出，不写入新状态。
+loopx issue-fix metrics \
+  --goal-id public-issue-fix-goal \
+  --project /path/to/connected/project \
+  --repo owner/repo \
+  --repository-baseline-json baseline.json \
+  --repository-current-json current.json \
+  --supplement-json optional-public-counts.json \
+  --format json
+
 # 推荐 reviewer，但不发送外部 review request。
 loopx issue-fix reviewer-plan \
   --repo-path /path/to/approved/repo \
@@ -790,6 +808,7 @@ python3 examples/issue-fix-repository-memory-smoke.py
 python3 examples/issue-fix-validated-memory-writeback-smoke.py
 python3 examples/issue-fix-feasibility-smoke.py
 python3 examples/issue-fix-pr-lifecycle-smoke.py
+python3 examples/issue-fix-metrics-projection-smoke.py
 python3 examples/issue-fix-maintainer-correction-smoke.py
 python3 examples/issue-fix-outcome-projection-smoke.py
 python3 examples/issue-fix-acceptance-loop-smoke.py
