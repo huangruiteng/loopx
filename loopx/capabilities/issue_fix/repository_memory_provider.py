@@ -11,12 +11,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import unquote
 
-from ..context_providers import (
-    RepositoryContextRevisionPlan,
-    activate_repository_context_revision,
-    build_context_provider,
-    canonical_context_matches,
-)
+from ..context_providers import build_context_provider, canonical_context_matches
 from ..context_providers.base import ContextProvider, opaque_provider_ref
 from ...control_plane.runtime.public_safety import public_safe_compact_text
 from .repository_memory import (
@@ -44,10 +39,7 @@ _CONFIG_FIELDS = {
     "visibility",
     "scope_ref",
     "revision_policy",
-    "repository_scope_root",
     "repository_revision",
-    "active_repository_revision",
-    "active_scope_ref",
     "max_results",
     "timeout_seconds",
     "sync_timeout_seconds",
@@ -56,6 +48,11 @@ _CONFIG_FIELDS = {
     "writeback_scope_ref",
     "workspace_scope",
     "peer_scope",
+}
+_REMOVED_REVISION_LIFECYCLE_FIELDS = {
+    "repository_scope_root",
+    "active_repository_revision",
+    "active_scope_ref",
 }
 _LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}$")
 _FORBIDDEN_WRITEBACK_FIELDS = {
@@ -156,6 +153,13 @@ def _normalise_config(
             "repository memory provider config schema_version must be "
             "issue_fix_repository_memory_provider_config_v0"
         )
+    removed_fields = sorted(set(config) & _REMOVED_REVISION_LIFECYCLE_FIELDS)
+    if removed_fields:
+        raise ValueError(
+            "per-checkout repository activation fields were removed; configure one "
+            "stable scope_ref for a provider-managed rolling default-branch index: "
+            f"{removed_fields}"
+        )
     unknown = sorted(set(config) - _CONFIG_FIELDS)
     if unknown:
         raise ValueError(
@@ -167,10 +171,20 @@ def _normalise_config(
         raise ValueError("repository memory provider visibility must be public")
     if not re.fullmatch(r"[0-9a-fA-F]{12,64}", repository_revision):
         raise ValueError("current repository revision must be a git object id")
-    revision_policy = str(config.get("revision_policy") or "pinned").strip()
-    if revision_policy not in {"pinned", "checkout_head"}:
-        raise ValueError("revision_policy must be pinned or checkout_head")
     configured_revision = str(config.get("repository_revision") or "").strip()
+    revision_policy = str(
+        config.get("revision_policy")
+        or ("pinned" if configured_revision else "rolling_default_branch")
+    ).strip()
+    if revision_policy == "checkout_head":
+        raise ValueError(
+            "checkout_head revision scopes were removed; use "
+            "revision_policy=rolling_default_branch with one stable scope_ref"
+        )
+    if revision_policy not in {"pinned", "rolling_default_branch"}:
+        raise ValueError(
+            "revision_policy must be pinned or rolling_default_branch"
+        )
     if revision_policy == "pinned":
         configured_revision = _compact(
             configured_revision,
@@ -188,50 +202,20 @@ def _normalise_config(
         scope_ref = _compact(
             config.get("scope_ref"), field="scope_ref", limit=500
         ).rstrip("/")
-        repository_scope_root = ""
     else:
-        if configured_revision and configured_revision != repository_revision:
+        if configured_revision:
             raise ValueError(
-                "checkout_head repository_revision, when supplied, must match current checkout"
+                "rolling_default_branch does not accept repository_revision; "
+                "the current checkout revision is supplied by the issue-fix caller"
             )
         configured_revision = repository_revision
-        repository_scope_root = _compact(
-            config.get("repository_scope_root"),
-            field="repository_scope_root",
-            limit=500,
+        scope_ref = _compact(
+            config.get("scope_ref"), field="scope_ref", limit=500
         ).rstrip("/")
-        if not repository_scope_root.startswith("viking://resources/"):
-            raise ValueError(
-                "checkout_head repository_scope_root must use viking://resources/"
-            )
-        scope_ref = (
-            f"{repository_scope_root}/{repository_revision[:12]}/repository-context"
-        )
     if not scope_ref.startswith("viking://"):
         raise ValueError("repository memory provider scope_ref must use viking://")
-    if repository_revision[:12] not in scope_ref:
+    if revision_policy == "pinned" and repository_revision[:12] not in scope_ref:
         raise ValueError("repository memory provider scope_ref must be revision-scoped")
-    active_repository_revision = str(
-        config.get("active_repository_revision") or ""
-    ).strip()
-    if active_repository_revision and not re.fullmatch(
-        r"[0-9a-fA-F]{12,64}", active_repository_revision
-    ):
-        raise ValueError("active_repository_revision must be a git object id")
-    active_scope_ref = str(config.get("active_scope_ref") or "").strip().rstrip("/")
-    if active_scope_ref and not active_scope_ref.startswith("viking://"):
-        raise ValueError("active_scope_ref must use viking://")
-    if revision_policy == "checkout_head" and active_repository_revision:
-        if not active_scope_ref:
-            active_scope_ref = (
-                f"{repository_scope_root}/{active_repository_revision[:12]}/"
-                "repository-context"
-            )
-        if active_repository_revision[:12] not in active_scope_ref:
-            raise ValueError("active_scope_ref must match active_repository_revision")
-    elif revision_policy == "pinned":
-        active_repository_revision = repository_revision
-        active_scope_ref = scope_ref
     max_results = min(
         max(1, int(config.get("max_results") or 3)),
         MAX_MEMORY_RESULTS,
@@ -289,10 +273,7 @@ def _normalise_config(
         "namespace": namespace,
         "scope_ref": scope_ref,
         "revision_policy": revision_policy,
-        "repository_scope_root": repository_scope_root,
         "repository_revision": configured_revision,
-        "active_repository_revision": active_repository_revision,
-        "active_scope_ref": active_scope_ref,
         "max_results": max_results,
         "timeout_seconds": timeout_seconds,
         "sync_timeout_seconds": sync_timeout_seconds,
@@ -305,26 +286,32 @@ def _normalise_config(
     }
 
 
-def _repository_context_revision_plan(
+def _repository_context_advisory_packet(
     normalised: Mapping[str, Any],
-) -> RepositoryContextRevisionPlan:
-    return RepositoryContextRevisionPlan(
-        provider=str(normalised["provider"]),
-        namespace=str(normalised["namespace"]),
-        revision_policy=str(normalised["revision_policy"]),
-        repository_revision=str(normalised["repository_revision"]),
-        current_scope_ref=str(normalised["scope_ref"]),
-        active_repository_revision=(
-            str(normalised["active_repository_revision"])
-            if normalised.get("active_repository_revision")
-            else None
+    *,
+    repository_revision: str,
+) -> dict[str, Any]:
+    """Project a stable provider scope without turning it into patch authority."""
+
+    return {
+        "schema_version": "repository_context_advisory_v0",
+        "ok": True,
+        "provider": str(normalised["provider"]),
+        "namespace": str(normalised["namespace"]),
+        "visibility": "public",
+        "source_policy": str(normalised["revision_policy"]),
+        "scope_ref": opaque_provider_ref(
+            provider=str(normalised["provider"]),
+            namespace=str(normalised["namespace"]),
+            resource_ref=str(normalised["scope_ref"]),
         ),
-        active_scope_ref=(
-            str(normalised["active_scope_ref"])
-            if normalised.get("active_scope_ref")
-            else None
-        ),
-    )
+        "current_checkout_revision": repository_revision,
+        "retrieval_allowed": True,
+        "verification_required": True,
+        "patch_authority": False,
+        "provider_refresh_ownership": "external",
+        "raw_provider_refs_captured": False,
+    }
 
 
 def _validated_outcome_fact(
@@ -750,7 +737,10 @@ def retrieve_issue_fix_repository_memory(
         raise ValueError(f"supports must use {sorted(SUPPORT_ASPECTS)}")
     provider_id = str(normalised["provider"])
     namespace = str(normalised["namespace"])
-    revision_plan = _repository_context_revision_plan(normalised)
+    repository_context = _repository_context_advisory_packet(
+        normalised,
+        repository_revision=repository_revision,
+    )
     if not normalised["enabled"]:
         memory_input = _disabled_memory_input(
             provider=provider_id,
@@ -767,26 +757,6 @@ def retrieve_issue_fix_repository_memory(
             },
         }
 
-    if revision_plan.sync_required:
-        memory_input = _unavailable_memory_input(
-            provider=provider_id,
-            namespace=namespace,
-            query_summary=query_summary,
-            observed_at=observed_at,
-            search_performed=False,
-            read_performed=False,
-            reason_code="current_revision_not_activated",
-        )
-        return {
-            "memory_input": memory_input,
-            "provider_projection": {
-                "status": "sync_required",
-                "fail_open": True,
-                "result_count": 0,
-                "repository_context_lifecycle": revision_plan.public_packet(),
-            },
-        }
-
     provider = provider or build_context_provider(normalised)
     retrieval = provider.retrieve(
         namespace=namespace,
@@ -798,7 +768,7 @@ def retrieve_issue_fix_repository_memory(
         observed_at=observed_at,
     )
     provider_projection = retrieval.public_packet()
-    provider_projection["repository_context_lifecycle"] = revision_plan.public_packet()
+    provider_projection["repository_context"] = repository_context
     if retrieval.status != "completed":
         memory_input = _unavailable_memory_input(
             provider=provider_id,
@@ -907,10 +877,13 @@ def sync_issue_fix_repository_memory(
     execute: bool,
     provider: ContextProvider | None = None,
 ) -> dict[str, Any]:
-    """Bound an explicit provider resource refresh to one revision checkout."""
+    """Bound an explicit provider resource refresh to approved checkout files."""
 
     normalised = _normalise_config(config, repository_revision=repository_revision)
-    revision_plan = _repository_context_revision_plan(normalised)
+    repository_context = _repository_context_advisory_packet(
+        normalised,
+        repository_revision=repository_revision,
+    )
     if not normalised["enabled"]:
         return {
             "schema_version": "issue_fix_repository_memory_sync_v0",
@@ -922,7 +895,7 @@ def sync_issue_fix_repository_memory(
             "requested_reference_count": 0,
             "external_writes_performed": False,
             "fail_open": True,
-            "repository_context_lifecycle": revision_plan.public_packet(),
+            "repository_context": repository_context,
         }
     scope_ref = str(normalised["scope_ref"])
     if not scope_ref.startswith("viking://resources/"):
@@ -965,18 +938,16 @@ def sync_issue_fix_repository_memory(
         observed_at=observed_at,
         execute=execute,
     )
-    activation = activate_repository_context_revision(revision_plan, sync)
     packet = sync.public_packet()
     packet.update(
         {
             "schema_version": "issue_fix_repository_memory_sync_v0",
             "repository_revision": repository_revision,
             "requested_reference_count": len(resources),
-            "revision_scoped": True,
+            "revision_scoped": normalised["revision_policy"] == "pinned",
             "automatic_capture_performed": False,
             "memory_writeback_performed": False,
-            "repository_context_lifecycle": revision_plan.public_packet(),
-            "repository_context_activation": activation.public_packet(),
+            "repository_context": repository_context,
         }
     )
     return packet
