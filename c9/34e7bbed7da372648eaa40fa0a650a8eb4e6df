@@ -1,0 +1,25 @@
+docs/capabilities/explore/README.md
+  s_32e2a9a204a8e4::t_9a7d731263d2c5 139-140,170-178,187-200
+loopx/capabilities/explore/todo_branch_plan.py
+  s_32e2a9a204a8e4::t_6362950b0b19de 41-44,82-89,211-220,288,363,390-395,398-402,417,419,521,527-531,533-536
+tests/test_explore_monitor_lane_budget.py
+  s_32e2a9a204a8e4::t_aed4f80c922c80 1-170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c934e7bbed7da372648eaa40fa0a650a8eb4e6df",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
