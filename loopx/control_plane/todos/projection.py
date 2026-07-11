@@ -18,11 +18,11 @@ from .contract import (
     TODO_STATUS_DEFERRED,
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
-    normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_excluded_agents,
+    normalize_removed_todo_continuation_policy,
     normalize_todo_id,
     normalize_todo_status,
-    todo_continuation_requires_review,
 )
 
 
@@ -223,21 +223,28 @@ def todo_item_claimed_by_agent_or_unclaimed(
     *,
     agent_id: str | None,
 ) -> bool:
+    if todo_item_has_removed_continuation_policy(item):
+        return False
     normalized_agent_id = normalize_todo_claimed_by(agent_id)
     if not normalized_agent_id:
         return True
+    if normalized_agent_id in normalize_todo_excluded_agents(
+        item.get("excluded_agents")
+    ):
+        return False
     claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
     return not claimed_by or claimed_by == normalized_agent_id
 
 
-def todo_item_is_review_handoff(item: dict[str, Any]) -> bool:
-    return todo_continuation_requires_review(
-        item.get("continuation_policy"),
-        action_kind=item.get("action_kind"),
+def todo_item_has_removed_continuation_policy(item: dict[str, Any]) -> bool:
+    return bool(
+        normalize_removed_todo_continuation_policy(
+            item.get("removed_continuation_policy")
+        )
     )
 
 
-def todo_item_review_handoff_blocks_agent(
+def todo_item_excludes_agent(
     item: dict[str, Any],
     *,
     agent_id: str | None,
@@ -245,9 +252,7 @@ def todo_item_review_handoff_blocks_agent(
     normalized_agent_id = normalize_todo_claimed_by(agent_id)
     return bool(
         normalized_agent_id
-        and todo_item_is_review_handoff(item)
-        and normalize_todo_blocks_agent(item.get("blocks_agent"))
-        == normalized_agent_id
+        and normalized_agent_id in normalize_todo_excluded_agents(item.get("excluded_agents"))
     )
 
 

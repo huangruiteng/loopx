@@ -85,7 +85,7 @@
       "action_id": "act_peer_review",
       "kind": "review",
       "requires_user_approval": false,
-      "requires_review_handoff": true,
+      "requires_executor_separation": true,
       "target_agent_id": "codex-reviewer",
       "preview": "Assign the public-safe protocol PR to the selected reviewing peer."
     },
@@ -93,7 +93,7 @@
       "action_id": "act_promote_candidate",
       "kind": "promote_todo",
       "requires_user_approval": true,
-      "requires_review_handoff": false,
+      "requires_executor_separation": false,
       "preview": "Promote a suggested todo only after the user or controller accepts it."
     }
   ],

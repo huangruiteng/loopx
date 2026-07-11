@@ -32,7 +32,7 @@ def todo_item(
     claimed_by: str | None = None,
     status: str = "open",
     action_kind: str | None = None,
-    blocks_agent: str | None = None,
+    excluded_agents: list[str] | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
     superseded_by: str | None = None,
@@ -51,8 +51,8 @@ def todo_item(
         item["claimed_by"] = claimed_by
     if action_kind:
         item["action_kind"] = action_kind
-    if blocks_agent:
-        item["blocks_agent"] = blocks_agent
+    if excluded_agents:
+        item["excluded_agents"] = excluded_agents
     if unblocks_todo_id:
         item["unblocks_todo_id"] = unblocks_todo_id
     if resume_when:
@@ -95,7 +95,8 @@ def assert_handoff_gate_lanes_and_ready_successors_are_todo_context_helpers() ->
         text="[P0] Review the completed launch slice.",
         claimed_by=PRIMARY_AGENT,
         status="done",
-        blocks_agent=BLOCKED_AGENT,
+        excluded_agents=[BLOCKED_AGENT],
+        unblocks_todo_id="todo_launch_slice",
     )
     successor = todo_item(
         todo_id="todo_followup_slice",
@@ -109,7 +110,8 @@ def assert_handoff_gate_lanes_and_ready_successors_are_todo_context_helpers() ->
         text="[P0] Still blocking the value explorer.",
         claimed_by=PRIMARY_AGENT,
         status="done",
-        blocks_agent=BLOCKED_AGENT,
+        excluded_agents=[BLOCKED_AGENT],
+        unblocks_todo_id="todo_unresolved_slice",
     )
     summary = agent_todo_summary([review_gate, successor, blocked_gate])
 
@@ -197,7 +199,7 @@ def handoff_review(*, status: str = "open", superseded_by: str | None = None) ->
         text="[P0-review] Review value explorer handoff and decide next work.",
         claimed_by=PRIMARY_AGENT,
         status=status,
-        blocks_agent=BLOCKED_AGENT,
+        excluded_agents=[BLOCKED_AGENT],
         unblocks_todo_id="todo_value_explorer_slice",
         superseded_by=superseded_by,
     )
@@ -209,7 +211,7 @@ def no_followup_handoff_review() -> dict:
         text="[P0-review] Review value explorer handoff and decide next work.",
         claimed_by=PRIMARY_AGENT,
         status="done",
-        blocks_agent=BLOCKED_AGENT,
+        excluded_agents=[BLOCKED_AGENT],
         unblocks_todo_id="todo_value_explorer_slice",
         no_followup=True,
     )
@@ -248,8 +250,8 @@ def stale_handoff_closeout() -> dict:
             "blocked slice is complete."
         ),
         claimed_by=PRIMARY_AGENT,
-        action_kind="stale_pr_review_handoff_closeout",
-        blocks_agent=BLOCKED_AGENT,
+        action_kind="stale_pr_review_closeout",
+        excluded_agents=[BLOCKED_AGENT],
         unblocks_todo_id="todo_value_explorer_slice",
     )
 
@@ -259,7 +261,7 @@ def followup_review_gate() -> dict:
         todo_id="todo_followup_review_gate",
         text="[P0-review] Review the follow-up value connector PR.",
         claimed_by=PRIMARY_AGENT,
-        blocks_agent=BLOCKED_AGENT,
+        excluded_agents=[BLOCKED_AGENT],
         unblocks_todo_id="todo_value_successor",
     )
 
@@ -276,7 +278,7 @@ def assert_open_blocker_waits_on_owner() -> None:
     assert payload["decision"] == "agent_scope_wait", payload
     frontier = payload["agent_scope_frontier"]
     assert frontier["action"] == "agent_scope_wait", frontier
-    assert frontier["blocking_review_claimants"] == [PRIMARY_AGENT], frontier
+    assert frontier["blocking_handoff_claimants"] == [PRIMARY_AGENT], frontier
     assert frontier["blocking_handoff_gates"][0]["gate_state"] == "blocking", frontier
 
 
@@ -334,7 +336,7 @@ def assert_cleared_blocker_requires_successor_replan() -> None:
     assert scheduler["codex_app"]["no_spend_for_cadence_change"] is True, scheduler
 
 
-def assert_stale_handoff_closeout_requires_route_continuation_replan() -> None:
+def assert_stale_handoff_closeout_stays_with_its_executor() -> None:
     payload = build_quota_should_run(
         status_payload(
             [primary_owned_todo(), stale_handoff_closeout()],
@@ -343,19 +345,19 @@ def assert_stale_handoff_closeout_requires_route_continuation_replan() -> None:
         goal_id=GOAL_ID,
         agent_id=BLOCKED_AGENT,
     )
-    assert payload["decision"] == "successor_replan_required", payload
-    assert payload["should_run"] is True, payload
-    assert payload["effective_action"] == "successor_replan_required", payload
+    assert payload["decision"] == "agent_scope_wait", payload
+    assert payload["should_run"] is False, payload
+    assert payload["effective_action"] == "agent_scope_wait", payload
     frontier = payload["agent_scope_frontier"]
-    assert frontier["action"] == "successor_replan_required", frontier
-    assert "blocking_handoff_gates" not in frontier, frontier
-    gate = frontier["route_continuation_replan_candidates"][0]
+    assert frontier["action"] == "agent_scope_wait", frontier
+    gate = frontier["blocking_handoff_gates"][0]
     assert gate["todo_id"] == "todo_stale_review_closeout", frontier
     assert gate["status"] == "open", frontier
     assert gate["unblocks_todo_id"] == "todo_value_explorer_slice", frontier
     assert gate["route_continuation_replan_required"] is True, frontier
     assert "stale handoff closeout" in gate["route_continuation_reason"], frontier
-    assert payload["agent_todo_summary"]["current_agent_route_continuation_replan_count"] == 1, payload
+    assert payload["agent_todo_summary"]["current_agent_route_continuation_replan_count"] == 0, payload
+    assert payload["agent_todo_summary"]["other_agent_route_continuation_replan_count"] == 1, payload
 
 
 def assert_status_summary_projects_handoff_gate_state() -> None:
@@ -366,9 +368,9 @@ def assert_status_summary_projects_handoff_gate_state() -> None:
     )
     assert summary is not None
     gate = summary["handoff_gates"][0]
-    assert gate["schema_version"] == "todo_handoff_gate_v0", gate
+    assert gate["schema_version"] == "todo_handoff_gate_v1", gate
     assert gate["gate_state"] == "cleared_without_successor", gate
-    assert gate["blocks_agent"] == BLOCKED_AGENT, gate
+    assert gate["excluded_agents"] == [BLOCKED_AGENT], gate
 
 
 def assert_archived_completed_blocker_does_not_wake_agent() -> None:
@@ -489,7 +491,7 @@ def main() -> int:
     assert_handoff_gate_lanes_and_ready_successors_are_todo_context_helpers()
     assert_open_blocker_waits_on_owner()
     assert_cleared_blocker_requires_successor_replan()
-    assert_stale_handoff_closeout_requires_route_continuation_replan()
+    assert_stale_handoff_closeout_stays_with_its_executor()
     assert_status_summary_projects_handoff_gate_state()
     assert_archived_completed_blocker_does_not_wake_agent()
     assert_existing_successor_runs_normally()

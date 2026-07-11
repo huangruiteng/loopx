@@ -14,7 +14,6 @@ from ..work_items.work_lane import work_lane_contract_is_due_monitor_attempt
 from .agent_scope import (
     _todo_item_is_actionable_open,
     _todo_task_class,
-    agent_scope_item_blocks_agent,
     agent_scope_item_claimed_by,
     agent_scope_item_claimed_by_agent_or_unclaimed,
 )
@@ -346,12 +345,11 @@ def build_agent_lane_next_action(
                 and normalize_todo_id(todo_id) in active_next_action_todo_ids
             ):
                 lineage_source = "agent_todo_summary.active_next_action_executable_items"
-            blocks_agent = agent_scope_item_blocks_agent(raw_item)
             unblocks_todo_id = normalize_todo_id(raw_item.get("unblocks_todo_id"))
-            if blocks_agent:
-                payload["unblock_handoff"] = {"blocks_agent": blocks_agent}
-                if unblocks_todo_id:
-                    payload["unblock_handoff"]["unblocks_todo_id"] = unblocks_todo_id
+            if unblocks_todo_id:
+                payload["dependency_handoff"] = {
+                    "unblocks_todo_id": unblocks_todo_id,
+                }
             for key in (
                 "missing_capabilities",
                 "missing_target_capabilities",

@@ -16,7 +16,11 @@ from loopx.event_sourced_state import (  # noqa: E402
     AppendOnlyStateEventStore,
     TODO_ADDED,
     TODO_CLAIMED,
+    TODO_UPDATED,
     make_state_event,
+)
+from loopx.control_plane.todos.claim_visibility import (  # noqa: E402
+    build_agent_claim_scoped_open_items,
 )
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
 from loopx.review_packet import build_review_packet  # noqa: E402
@@ -30,6 +34,10 @@ EVENT_MONITOR_ID = "todo_event_monitor_readonly"
 EVENT_MONITOR = "Poll event-projected monitor metadata without writeback"
 MARKDOWN_TODO_ID = "todo_markdown_fallback"
 MARKDOWN_TODO = "Fallback Markdown todo for corrupted event logs"
+LEGACY_REVIEW_ID = "todo_event_legacy_review"
+LEGACY_FALLBACK_ID = "todo_event_legacy_fallback"
+AUTHOR_AGENT = "codex-main-control"
+REVIEWER_AGENT = "codex-product-capability"
 
 
 def write_active_state(state_path: Path) -> None:
@@ -109,6 +117,85 @@ def append_event_todo_and_due_monitor(event_log: Path) -> None:
             },
             producer="event-sourced-downstream-read-path-smoke",
             recorded_at="2026-06-27T02:00:03Z",
+        )
+    )
+
+
+def append_legacy_review_events(event_log: Path, *, policy: str) -> None:
+    store = AppendOnlyStateEventStore(event_log)
+    added_payload = {
+        "role": "agent",
+        "priority": "P0",
+        "title": f"Legacy {policy} event must remain blocked",
+        "planner_order": 1,
+        "task_class": "advancement_task",
+        "action_kind": "review",
+    }
+    if policy == "review_handoff":
+        added_payload["continuation_policy"] = policy
+    else:
+        added_payload["continuation_policy"] = "independent_handoff"
+    store.append(
+        make_state_event(
+            event_id=f"evt-add-legacy-{policy}",
+            goal_id=GOAL_ID,
+            event_type=TODO_ADDED,
+            refs={"todo_id": LEGACY_REVIEW_ID},
+            payload=added_payload,
+            producer="event-sourced-downstream-read-path-smoke",
+            recorded_at="2026-07-11T00:00:01Z",
+        )
+    )
+    if policy == "primary_review":
+        store.append(
+            make_state_event(
+                event_id=f"evt-update-legacy-{policy}",
+                goal_id=GOAL_ID,
+                event_type=TODO_UPDATED,
+                refs={"todo_id": LEGACY_REVIEW_ID},
+                payload={"continuation_policy": policy},
+                producer="event-sourced-downstream-read-path-smoke",
+                recorded_at="2026-07-11T00:00:02Z",
+            )
+        )
+    store.append(
+        make_state_event(
+            event_id=f"evt-update-incidental-{policy}",
+            goal_id=GOAL_ID,
+            event_type=TODO_UPDATED,
+            refs={"todo_id": LEGACY_REVIEW_ID},
+            payload={"title": f"Legacy {policy} survives incidental update"},
+            producer="event-sourced-downstream-read-path-smoke",
+            recorded_at="2026-07-11T00:00:03Z",
+        )
+    )
+    store.append(
+        make_state_event(
+            event_id=f"evt-add-fallback-{policy}",
+            goal_id=GOAL_ID,
+            event_type=TODO_ADDED,
+            refs={"todo_id": LEGACY_FALLBACK_ID},
+            payload={
+                "role": "agent",
+                "priority": "P1",
+                "title": "Repair the legacy event projection",
+                "planner_order": 2,
+                "task_class": "advancement_task",
+                "action_kind": "repair",
+            },
+            producer="event-sourced-downstream-read-path-smoke",
+            recorded_at="2026-07-11T00:00:04Z",
+        )
+    )
+    store.append(
+        make_state_event(
+            event_id=f"evt-claim-fallback-{policy}",
+            goal_id=GOAL_ID,
+            event_type=TODO_CLAIMED,
+            refs={"todo_id": LEGACY_FALLBACK_ID},
+            payload={"claimed_by": AUTHOR_AGENT},
+            producer="event-sourced-downstream-read-path-smoke",
+            recorded_at="2026-07-11T00:00:05Z",
         )
     )
 
@@ -296,10 +383,77 @@ def test_corrupted_event_log_falls_back_to_markdown() -> None:
         assert MARKDOWN_TODO in packet["project_agent_handoff"], packet
 
 
+def test_legacy_event_review_handoffs_fail_closed_until_explicit_repair() -> None:
+    for policy in ("review_handoff", "primary_review"):
+        with tempfile.TemporaryDirectory(prefix=f"loopx-event-legacy-{policy}-") as tmp:
+            project = Path(tmp)
+            state_path = project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
+            write_active_state(state_path)
+            event_log = state_path.with_name("events.jsonl")
+            append_legacy_review_events(event_log, policy=policy)
+            goal = {
+                "id": GOAL_ID,
+                "repo": str(project),
+                "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
+            }
+
+            fields = active_state_todo_fields(goal)
+            legacy = agent_todo_by_id(fields, LEGACY_REVIEW_ID)
+            assert legacy["removed_continuation_policy"] == policy, fields
+            assert legacy.get("continuation_policy") is None, fields
+            items = fields["agent_todos"]["items"]
+            author_selectable, author_scope = build_agent_claim_scoped_open_items(
+                items,
+                agent_identity={"agent_id": AUTHOR_AGENT, "agent_model": "peer_v1"},
+                diagnostic_item_limit=3,
+            )
+            assert [item["todo_id"] for item in author_selectable] == [LEGACY_FALLBACK_ID]
+            assert author_scope["removed_continuation_blocked_count"] == 1, author_scope
+            reviewer_selectable, reviewer_scope = build_agent_claim_scoped_open_items(
+                items,
+                agent_identity={"agent_id": REVIEWER_AGENT, "agent_model": "peer_v1"},
+                diagnostic_item_limit=3,
+            )
+            assert reviewer_selectable == [], reviewer_selectable
+            assert reviewer_scope["removed_continuation_blocked_count"] == 1, reviewer_scope
+
+            status = status_payload_from_fields(project, fields)
+            author_guard = build_quota_should_run(status, goal_id=GOAL_ID, agent_id=AUTHOR_AGENT)
+            assert author_guard["agent_lane_next_action"]["todo_id"] == LEGACY_FALLBACK_ID, author_guard
+            assert LEGACY_REVIEW_ID not in author_guard["recommended_action"], author_guard
+
+            AppendOnlyStateEventStore(event_log).append(
+                make_state_event(
+                    event_id=f"evt-repair-legacy-{policy}",
+                    goal_id=GOAL_ID,
+                    event_type=TODO_UPDATED,
+                    refs={"todo_id": LEGACY_REVIEW_ID},
+                    payload={
+                        "continuation_policy": "independent_handoff",
+                        "excluded_agents": [AUTHOR_AGENT],
+                    },
+                    producer="event-sourced-downstream-read-path-smoke",
+                    recorded_at="2026-07-11T00:00:06Z",
+                )
+            )
+            repaired_fields = active_state_todo_fields(goal)
+            repaired = agent_todo_by_id(repaired_fields, LEGACY_REVIEW_ID)
+            assert repaired.get("removed_continuation_policy") is None, repaired
+            assert repaired["continuation_policy"] == "independent_handoff", repaired
+            assert repaired["excluded_agents"] == [AUTHOR_AGENT], repaired
+            reviewer_guard = build_quota_should_run(
+                status_payload_from_fields(project, repaired_fields),
+                goal_id=GOAL_ID,
+                agent_id=REVIEWER_AGENT,
+            )
+            assert reviewer_guard["agent_lane_next_action"]["todo_id"] == LEGACY_REVIEW_ID, reviewer_guard
+
+
 def main() -> int:
     test_event_projection_feeds_quota_and_review_packet()
     test_event_projected_due_monitor_is_read_only_for_writeback()
     test_corrupted_event_log_falls_back_to_markdown()
+    test_legacy_event_review_handoffs_fail_closed_until_explicit_repair()
     print("event-sourced-downstream-read-path-smoke ok")
     return 0
 

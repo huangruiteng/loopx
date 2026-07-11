@@ -24,10 +24,10 @@ from .contract import (
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
     build_todo_id,
-    legacy_todo_continuation_policy_for_action_kind,
     merge_todo_id_lists,
     normalize_todo_claimed_by,
     normalize_todo_continuation_policy,
+    normalize_todo_excluded_agents,
     normalize_todo_id,
     todo_done_for_status,
 )
@@ -146,6 +146,7 @@ def _append_event_projected_successor(
     claimed_by: str | None,
     dry_run: bool,
     blocks_agent: str | None = None,
+    excluded_agents: list[str] | None = None,
     unblocks_todo_id: str | None = None,
 ) -> dict[str, Any]:
     section = TODO_SECTION_HEADINGS[role]
@@ -179,14 +180,18 @@ def _append_event_projected_successor(
             "todo continuation_policy must be one of: "
             + ", ".join(sorted(TODO_CONTINUATION_POLICY_VALUES))
         )
-    effective_continuation_policy = (
-        normalized_continuation_policy
-        or legacy_todo_continuation_policy_for_action_kind(action_kind)
-    )
+    effective_continuation_policy = normalized_continuation_policy
     if effective_continuation_policy:
         payload["continuation_policy"] = effective_continuation_policy
     if blocks_agent:
         payload["blocks_agent"] = blocks_agent
+    normalized_excluded_agents = normalize_todo_excluded_agents(excluded_agents)
+    if claimed_by in normalized_excluded_agents:
+        raise ValueError(
+            f"claimed_by={claimed_by!r} cannot also appear in excluded_agents"
+        )
+    if normalized_excluded_agents:
+        payload["excluded_agents"] = normalized_excluded_agents
     if unblocks_todo_id:
         payload["unblocks_todo_id"] = unblocks_todo_id
     added_event = make_state_event(
@@ -238,6 +243,7 @@ def _append_event_projected_successor(
         "continuation_policy": effective_continuation_policy,
         "claimed_by": claimed_by,
         "blocks_agent": blocks_agent,
+        "excluded_agents": normalized_excluded_agents,
         "unblocks_todo_id": unblocks_todo_id,
         "updated_at": updated_at,
         "source": "event_log",
@@ -261,7 +267,7 @@ def complete_event_projected_goal_todo(
     next_action_kind: str | None,
     next_continuation_policy: str | None,
     self_merged: bool,
-    next_blocks_agent: str | None,
+    next_excluded_agents: list[str],
     registered_agents: list[str],
     updated_at: str,
     dry_run: bool,
@@ -299,7 +305,7 @@ def complete_event_projected_goal_todo(
                 action_kind=next_action_kind,
                 continuation_policy=next_continuation_policy,
                 claimed_by=next_claimed_by,
-                blocks_agent=next_blocks_agent,
+                excluded_agents=next_excluded_agents,
                 unblocks_todo_id=next_unblocks_todo_id,
                 dry_run=dry_run,
             )

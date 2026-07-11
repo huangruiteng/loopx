@@ -9,6 +9,7 @@ from .contract import (
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
     normalize_todo_decision_scope,
+    normalize_todo_excluded_agents,
     normalize_todo_id,
     normalize_todo_id_list,
     normalize_todo_required_decision_scopes,
@@ -112,27 +113,25 @@ def build_todo_handoff_note(
         return None
     handoff = _raw_handoff(item)
     todo_id = normalize_todo_id(item.get("todo_id"))
-    from_agent = (
-        normalize_todo_claimed_by(handoff.get("from_agent"))
-        or normalize_todo_claimed_by(item.get("claimed_by"))
-        or normalize_todo_claimed_by(item.get("agent_id"))
+    claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+    excluded_agents = normalize_todo_excluded_agents(item.get("excluded_agents"))
+    from_agent = normalize_todo_claimed_by(
+        handoff.get("from_agent") or item.get("agent_id")
     )
-    to_agent = (
-        normalize_todo_blocks_agent(handoff.get("to_agent"))
-        or normalize_todo_blocks_agent(item.get("blocks_agent"))
-    )
+    explicit_to_agent = normalize_todo_blocks_agent(handoff.get("to_agent"))
     successor_todo_ids = normalize_todo_id_list(item.get("successor_todo_ids"))
     unblocks_todo_id = normalize_todo_id(item.get("unblocks_todo_id"))
     superseded_by = normalize_todo_id(item.get("superseded_by"))
     has_handoff_signal = bool(
         handoff
-        or to_agent
+        or excluded_agents
         or successor_todo_ids
         or unblocks_todo_id
         or superseded_by
     )
     if not has_handoff_signal:
         return None
+    to_agent = explicit_to_agent or claimed_by
 
     intent = (
         _first_text(item, "intent", limit=80)
@@ -165,6 +164,8 @@ def build_todo_handoff_note(
         payload["successor_todo_ids"] = successor_todo_ids
     if unblocks_todo_id:
         payload["unblocks_todo_id"] = unblocks_todo_id
+    if excluded_agents:
+        payload["excluded_agents"] = excluded_agents
     return {
         key: value
         for key, value in payload.items()

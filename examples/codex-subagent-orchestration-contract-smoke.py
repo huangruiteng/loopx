@@ -29,7 +29,7 @@ REQUIRED_PHRASES = (
     "`todo_id` is the work item being claimed",
     '"agent_model": "peer_v1"',
     "independent worktrees",
-    "explicit `review_handoff`",
+    "Review remains `action_kind=review`",
     "Dormant registered agents and closed, blocked, or deferred todos are not coordinator candidates.",
 )
 

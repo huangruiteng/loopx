@@ -5,7 +5,9 @@ from typing import Any
 from .contract import (
     normalize_required_write_scopes,
     normalize_todo_decision_scope,
+    normalize_todo_excluded_agents,
     normalize_todo_id,
+    normalize_removed_todo_continuation_policy,
     normalize_todo_required_decision_scopes,
     normalize_todo_resume_when,
 )
@@ -26,6 +28,7 @@ TODO_SUMMARY_COMPACT_FIELDS = (
     "task_class",
     "action_kind",
     "continuation_policy",
+    "removed_continuation_policy",
     "required_write_scopes",
     "required_capabilities",
     "target_capabilities",
@@ -33,6 +36,7 @@ TODO_SUMMARY_COMPACT_FIELDS = (
     "required_decision_scopes",
     "claimed_by",
     "blocks_agent",
+    "excluded_agents",
     "global_gate",
     "unblocks_todo_id",
     "resume_when",
@@ -111,6 +115,18 @@ def compact_todo_summary_item(
         compact["required_decision_scopes"] = required_decision_scopes
     else:
         compact.pop("required_decision_scopes", None)
+    excluded_agents = normalize_todo_excluded_agents(compact.get("excluded_agents"))
+    if excluded_agents:
+        compact["excluded_agents"] = excluded_agents
+    else:
+        compact.pop("excluded_agents", None)
+    removed_continuation_policy = normalize_removed_todo_continuation_policy(
+        compact.get("removed_continuation_policy")
+    )
+    if removed_continuation_policy:
+        compact["removed_continuation_policy"] = removed_continuation_policy
+    else:
+        compact.pop("removed_continuation_policy", None)
     compact["task_class"] = todo_item_task_class(compact)
     attach_todo_handoff_note(compact)
     return compact

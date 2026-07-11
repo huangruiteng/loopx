@@ -53,7 +53,7 @@
         "registered agents are equal peers",
         "open task participants determine the temporary coordinator",
         "repository-writing peers use independent worktrees",
-        "review_handoff requires a different peer or an unclaimed successor",
+        "executor exclusions cannot name the claimed peer",
         "task coordination cannot widen write or production authority"
       ]
     }

@@ -172,7 +172,7 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert member["current_claims"] == ["todo_side_tui"], member
     assert member["lease_projection"]["source"] == "todo.claimed_by+task_lease", member
     assert member["lease_projection"]["hard_lease_available"] is True, member
-    assert member["review_handoff_status"] == "task_policy_selected", member
+    assert member["handoff_assignment_status"] == "task_policy_selected", member
     assert "handoff_agent" not in member, member
     assert item["project_asset"]["agent_member"] == member, item
     interaction = item["agent_interaction_summary"]

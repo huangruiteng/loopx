@@ -749,7 +749,8 @@ uses an independent worktree when task or goal policy requires it, and
 `workspace_guard` fails closed when that isolation is missing. Small
 AGENTS-eligible validated changes may be self-merged with explicit LoopX
 evidence. Higher-risk work should create an independent successor or an
-explicit `review_handoff` assigned to a different registered peer.
+ordinary `independent_handoff` with `action_kind=review`; use
+`excluded_agents` only when executor separation must be enforced.
 
 See [heartbeat automation prompt](../heartbeat-automation-prompt.md) and
 [project agent todo contract](../project-agent-todo-contract.md).

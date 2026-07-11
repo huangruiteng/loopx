@@ -1339,7 +1339,7 @@ def append_attention_queue_project_asset_markdown(
         member_fields.extend(
             [
                 f"claims={markdown_scalar(current_claims)}",
-                f"review_handoff={markdown_scalar(agent_member.get('review_handoff_status') or '')}",
+                f"handoff_assignment={markdown_scalar(agent_member.get('handoff_assignment_status') or '')}",
                 f"source={markdown_scalar(agent_member.get('profile_source') or '')}",
                 "authority=advisory_projection",
             ]

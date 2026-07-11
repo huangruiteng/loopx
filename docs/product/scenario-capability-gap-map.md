@@ -29,7 +29,7 @@ domain logic becomes useful:
 | `todo_lifecycle_v0` | Turn the scenario into concrete user and agent todos with `todo_id`, owner, validation, and successor work. |
 | `capability_gate_v0` | State which tools or domain packs are needed before the agent can execute a todo. |
 | `validation_surface_map_v0` | Require each step to name how success is checked: tests, CI, review, source attribution, scoring, or blocker writeback. |
-| `review_handoff_v0` | Package current state, evidence, risk, and next safe action for a human or explicitly selected reviewing peer. |
+| `handoff_packet_v0` | Package current state, evidence, risk, and next safe action for a human or another eligible peer. |
 | `feedback_writeback_v0` | Convert user reward, corrections, style feedback, or review comments into durable state instead of chat-only memory. |
 | `publish_boundary_v0` | Stop public release, platform posting, leaderboard submission, or production action until an explicit gate allows it. |
 
@@ -77,7 +77,7 @@ repro, patch selection, validation, review, and safe publication.
 | Patch planning | handoff packet | Separate candidate surfaces from raw diffs; keep patch ownership and write scope visible. |
 | Implementation | claimed todo + worktree guard | Require task/repository workspace isolation for repository-writing peers, disjoint write scope, and local validation before review. |
 | Validation | validation surface map | Tie tests, lint, CI, fixture smoke, or manual repro to the todo before marking progress. |
-| Review handoff | successor handoff todo | Use explicit `review_handoff` to a different registered peer for unclear or high-risk patch work; do not infer a default reviewer. |
+| Independent review | successor handoff todo | Use `action_kind=review` over an ordinary independent handoff; add executor exclusions only when the author must not reclaim it. |
 | Publication | publish boundary | Distinguish local commit/PR from package release, production deploy, or external submission. |
 | Feedback | feedback writeback | Convert review comments, failing CI, or maintainer corrections into successor todos and evidence updates. |
 

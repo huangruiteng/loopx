@@ -154,10 +154,9 @@ bypass a gate; the launcher must actually provide it.
   with `--self-merged --evidence "<commit and validation summary>"`;
 - for an independent continuation, create `--next-agent-todo` and optionally
   select a registered peer with `--next-claimed-by`;
-- when independent review is required, add
-  `--next-continuation-policy review_handoff`. The successor must be unclaimed
-  or assigned to a different registered peer and blocks the completing peer
-  until review closes;
+- when independent review is required, use `--next-action-kind review` with an
+  ordinary `independent_handoff`; add `--next-excluded-agent <author>` only when
+  the author must not reclaim the unclaimed successor;
 - when work is blocked without a valid successor, keep the todo with the current
   peer and write a concrete blocker rather than inventing a hierarchy route.
 

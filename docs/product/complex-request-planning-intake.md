@@ -56,8 +56,8 @@ later syncs back to the tracker.
    `task_class`, `action_kind`, acceptance evidence, and a stop condition.
 4. **Claim narrowly.** The current agent may claim only the items that match
    its advisory profile and current scope. Other-peer work stays with its
-   claimant; use explicit claim transfer or `review_handoff` when task policy
-   requires a different peer.
+   claimant; use an explicit claim transfer or ordinary independent handoff
+   when task policy requires a different peer.
 5. **Keep private thinking local.** If raw strategy, names, screenshots, or
    sensitive context are needed, write a local/private management note and
    reference only a safe summary in public docs or active state.
@@ -122,7 +122,7 @@ card:
 
 - themes extracted from the request;
 - proposed todo batch with priority, role, and claim status;
-- current-agent claim decisions versus explicit review handoffs;
+- current-agent claim decisions versus ordinary peer handoffs with review actions;
 - evidence expected for the first proof slice;
 - unresolved user gates, if any;
 - a link to any local-only management note without exposing its contents.

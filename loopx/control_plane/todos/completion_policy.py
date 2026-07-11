@@ -10,8 +10,8 @@ from .contract import (
     TodoContinuationPolicy,
     normalize_todo_claimed_by,
     normalize_todo_continuation_policy,
+    require_todo_excluded_agents,
     resolve_todo_continuation_policy,
-    todo_continuation_requires_review,
 )
 
 
@@ -32,6 +32,7 @@ class CompletionPolicy:
     effective_claimed_by: str | None
     registered_agents: list[str]
     effective_next_claimed_by: str | None
+    effective_next_excluded_agents: list[str]
     self_merged: bool
     linked_successor_id: str | None = None
 
@@ -74,6 +75,7 @@ def resolve_completion_policy(
     next_agent_todo: str | None = None,
     next_action_kind: str | None = None,
     next_continuation_policy: str | None = None,
+    next_excluded_agents: Iterable[str] = (),
     self_merged: bool = False,
     evidence: str | None = None,
     no_followup: bool = False,
@@ -101,6 +103,18 @@ def resolve_completion_policy(
         if next_claimed_by
         else None
     )
+    effective_next_excluded_agents = sorted(
+        require_registered_agent_id(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            agent_id=agent_id,
+            field="next_excluded_agents",
+        )
+        for agent_id in require_todo_excluded_agents(
+            next_excluded_agents,
+            field="next_excluded_agents",
+        )
+    )
     if self_merged and not str(evidence or "").strip():
         raise ValueError(
             "--self-merged requires --evidence with the merge, commit, and "
@@ -112,30 +126,25 @@ def resolve_completion_policy(
     )
     if (
         next_agent_todo
-        and todo_continuation_requires_review(
-            next_continuation_policy,
-            action_kind=next_action_kind,
-        )
-        and effective_next_claimed_by
-        and effective_next_claimed_by == effective_claimed_by
-    ):
-        raise ValueError(
-            "review_handoff successor must be unclaimed or claimed by a different "
-            "registered peer"
-        )
-    if (
-        next_agent_todo
         and not effective_next_claimed_by
         and next_policy == TodoContinuationPolicy.SAME_AGENT_NON_DELIVERY
     ):
         effective_next_claimed_by = effective_claimed_by
+    if effective_next_claimed_by in effective_next_excluded_agents:
+        raise ValueError(
+            f"next_claimed_by={effective_next_claimed_by!r} cannot also appear in "
+            "next_excluded_agents"
+        )
     if effective_next_claimed_by and not next_agent_todo:
         raise ValueError("--next-claimed-by requires --next-agent-todo")
+    if effective_next_excluded_agents and not next_agent_todo:
+        raise ValueError("--next-excluded-agent requires --next-agent-todo")
     return CompletionPolicy(
         agent_model=AgentRuntimeModel.PEER_V1.value,
         effective_claimed_by=effective_claimed_by,
         registered_agents=registered_agents,
         effective_next_claimed_by=effective_next_claimed_by,
+        effective_next_excluded_agents=effective_next_excluded_agents,
         self_merged=bool(self_merged),
         linked_successor_id=_first_open_agent_successor(linked_successors),
     )

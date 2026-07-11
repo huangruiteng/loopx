@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -18,7 +19,7 @@ TODO_B = "todo_taskleaseb"
 TODO_C = "todo_taskleasec"
 
 
-def write_fixture(root: Path) -> Path:
+def write_fixture(root: Path) -> tuple[Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     registry_path = project / ".loopx" / "registry.json"
@@ -67,7 +68,21 @@ def write_fixture(root: Path) -> Path:
         + "\n",
         encoding="utf-8",
     )
-    return registry_path
+    return registry_path, state_file
+
+
+def set_excluded_agents(state_file: Path, *, todo_id: str, agents: list[str]) -> None:
+    lines = state_file.read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        if f"todo_id={todo_id}" not in line:
+            continue
+        line = re.sub(r"\s+excluded_agents=[^\s<>]+", "", line)
+        if agents:
+            line = line.replace(" -->", f" excluded_agents={','.join(agents)} -->")
+        lines[index] = line
+        state_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return
+    raise AssertionError(f"todo metadata not found: {todo_id}")
 
 
 def cli(registry_path: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -94,9 +109,35 @@ def payload(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
     return json.loads(result.stdout)
 
 
+def quota_should_run(registry_path: Path, *, agent_id: str) -> dict[str, Any]:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--registry",
+            str(registry_path),
+            "--format",
+            "json",
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            agent_id,
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.stdout, result.stderr
+    return json.loads(result.stdout)
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="loopx-task-lease-smoke-") as tmp:
-        registry_path = write_fixture(Path(tmp))
+        registry_path, state_file = write_fixture(Path(tmp))
 
         first = payload(
             cli(
@@ -141,6 +182,30 @@ def main() -> int:
         assert idempotent["ok"] is True and idempotent["idempotent"] is True, idempotent
         assert idempotent["lease"]["version"] == 1, idempotent
 
+        set_excluded_agents(
+            state_file,
+            todo_id=TODO_B,
+            agents=["codex-side-bypass"],
+        )
+        blocked_acquire = cli(
+            registry_path,
+            "acquire",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            TODO_B,
+            "--owner",
+            "codex-side-bypass",
+            "--idempotency-key",
+            "side-blocked",
+            check=False,
+        )
+        assert blocked_acquire.returncode == 1, blocked_acquire.stdout
+        assert payload(blocked_acquire)["error_code"] == "owner_excluded_from_todo", (
+            blocked_acquire.stdout
+        )
+
+        set_excluded_agents(state_file, todo_id=TODO_B, agents=[])
         same_goal_different_scope = payload(
             cli(
                 registry_path,
@@ -219,6 +284,36 @@ def main() -> int:
         )
         assert renewed["ok"] is True and renewed["lease"]["version"] == 2, renewed
 
+        set_excluded_agents(
+            state_file,
+            todo_id=TODO_A,
+            agents=["codex-side-bypass"],
+        )
+        blocked_transfer = cli(
+            registry_path,
+            "transfer",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            TODO_A,
+            "--owner",
+            "codex-main-control",
+            "--idempotency-key",
+            "turn-1",
+            "--new-owner",
+            "codex-side-bypass",
+            "--new-idempotency-key",
+            "side-transfer",
+            "--expected-version",
+            "2",
+            check=False,
+        )
+        assert blocked_transfer.returncode == 1, blocked_transfer.stdout
+        assert payload(blocked_transfer)["error_code"] == "owner_excluded_from_todo", (
+            blocked_transfer.stdout
+        )
+
+        set_excluded_agents(state_file, todo_id=TODO_A, agents=[])
         transferred = payload(
             cli(
                 registry_path,
@@ -242,8 +337,59 @@ def main() -> int:
         assert transferred["lease"]["owner"] == "codex-side-bypass", transferred
         assert transferred["lease"]["version"] == 3, transferred
 
+        set_excluded_agents(
+            state_file,
+            todo_id=TODO_A,
+            agents=["codex-side-bypass"],
+        )
         inspected = payload(cli(registry_path, "inspect", "--goal-id", GOAL_ID, "--todo-id", TODO_A))
-        assert inspected["active"] is True and inspected["lease"]["version"] == 3, inspected
+        assert inspected["active"] is False and inspected["lease"]["version"] == 3, inspected
+        assert inspected["executor_constraint"]["reason"] == "owner_excluded_from_todo", inspected
+
+        blocked_renew = cli(
+            registry_path,
+            "renew",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            TODO_A,
+            "--owner",
+            "codex-side-bypass",
+            "--idempotency-key",
+            "side-transfer",
+            "--expected-version",
+            "3",
+            check=False,
+        )
+        assert blocked_renew.returncode == 1, blocked_renew.stdout
+        assert payload(blocked_renew)["error_code"] == "owner_excluded_from_todo", (
+            blocked_renew.stdout
+        )
+
+        quota = quota_should_run(registry_path, agent_id="codex-side-bypass")
+        assert (quota.get("selected_todo") or {}).get("todo_id") != TODO_A, quota
+
+        reacquired = payload(
+            cli(
+                registry_path,
+                "acquire",
+                "--goal-id",
+                GOAL_ID,
+                "--todo-id",
+                TODO_A,
+                "--owner",
+                "codex-main-control",
+                "--idempotency-key",
+                "main-takeover",
+                "--expected-version",
+                "3",
+                "--write-scope",
+                "loopx/**",
+            )
+        )
+        assert reacquired["acquired"] is True, reacquired
+        assert reacquired["lease"]["owner"] == "codex-main-control", reacquired
+        assert reacquired["lease"]["version"] == 4, reacquired
 
         released = payload(
             cli(
@@ -254,11 +400,11 @@ def main() -> int:
                 "--todo-id",
                 TODO_A,
                 "--owner",
-                "codex-side-bypass",
+                "codex-main-control",
                 "--idempotency-key",
-                "side-transfer",
+                "main-takeover",
                 "--expected-version",
-                "3",
+                "4",
             )
         )
         assert released["released"] is True, released

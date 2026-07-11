@@ -600,6 +600,15 @@ def main() -> int:
                     "claimed_by": "codex-product-capability",
                 },
                 {
+                    "todo_id": "todo_projection_excluded",
+                    "title": "[P1] Independent handoff for another peer",
+                    "status": "open",
+                    "task_class": "advancement_task",
+                    "action_kind": "review",
+                    "continuation_policy": "independent_handoff",
+                    "excluded_agents": ["codex-main-control"],
+                },
+                {
                     "todo_id": "todo_projection_done",
                     "title": "[P2] Completed projection item",
                     "status": "done",
@@ -632,6 +641,7 @@ def main() -> int:
         assert projection_sync["row_count"] == 3, projection_sync
         assert "projection:frontstage-smoke:user_todo:todo_projection_gate" in projection_todo_ids, projection_sync
         assert "projection:frontstage-smoke:agent_todo:todo_projection_sync" in projection_todo_ids, projection_sync
+        assert "projection:frontstage-smoke:agent_todo:todo_projection_excluded" not in projection_todo_ids
         assert "projection:frontstage-smoke:agent_todo:todo_projection_done" not in projection_todo_ids
         assert all(item["command"]["executed"] is False for item in projection_sync["records"]), projection_sync
         next_action_record = next(

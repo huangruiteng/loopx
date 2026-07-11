@@ -9,8 +9,8 @@ from .contract import (
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
-    normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_excluded_agents,
     normalize_todo_id,
     normalize_todo_no_followup,
     normalize_todo_resume_when,
@@ -20,7 +20,7 @@ from .contract import (
 )
 
 
-TODO_HANDOFF_GATE_SCHEMA_VERSION = "todo_handoff_gate_v0"
+TODO_HANDOFF_GATE_SCHEMA_VERSION = "todo_handoff_gate_v1"
 TODO_ARCHIVE_STATE_ACTIVE = "active"
 
 
@@ -136,7 +136,7 @@ def _compact_handoff_gate(
         "done": _todo_done(gate),
         "status": _todo_status(gate),
         "text": _todo_text(gate),
-        "blocks_agent": normalize_todo_blocks_agent(gate.get("blocks_agent")),
+        "excluded_agents": normalize_todo_excluded_agents(gate.get("excluded_agents")),
         "successor_count": len(successor_ids),
     }
     for key in (
@@ -179,7 +179,7 @@ def _compact_handoff_gate(
 
 
 def build_todo_handoff_gate_states(items: Iterable[Any]) -> list[dict[str, Any]]:
-    """Project blocks_agent todos into a small gate state machine."""
+    """Project dependency-linked executor exclusions into a handoff state machine."""
 
     todo_items = [item for item in items if isinstance(item, dict)]
     gates: list[dict[str, Any]] = []
@@ -187,8 +187,8 @@ def build_todo_handoff_gate_states(items: Iterable[Any]) -> list[dict[str, Any]]
     for item in todo_items:
         if _todo_archive_state(item) != TODO_ARCHIVE_STATE_ACTIVE:
             continue
-        blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
-        if not blocks_agent:
+        excluded_agents = normalize_todo_excluded_agents(item.get("excluded_agents"))
+        if not excluded_agents or not normalize_todo_id(item.get("unblocks_todo_id")):
             continue
         identity = (str(item.get("todo_id") or ""), _todo_text(item))
         if identity in seen:
@@ -258,7 +258,7 @@ def build_todo_handoff_gate_lanes(
         current_agent_items = [
             item
             for item in handoff_gates
-            if normalize_todo_blocks_agent(item.get("blocks_agent")) == agent_id
+            if agent_id in normalize_todo_excluded_agents(item.get("excluded_agents"))
         ]
         cleared_without_successor = [
             item

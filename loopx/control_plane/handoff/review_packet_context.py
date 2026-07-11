@@ -177,8 +177,8 @@ def agent_member_summary(item: dict[str, Any] | None) -> str | None:
         parts.append(f"worktree_policy={member.get('worktree_policy')}")
     if claims:
         parts.append(f"claims={','.join(claims[:5])}")
-    if member.get("review_handoff_status"):
-        parts.append(f"review_handoff={member.get('review_handoff_status')}")
+    if member.get("handoff_assignment_status"):
+        parts.append(f"handoff_assignment={member.get('handoff_assignment_status')}")
     return compact_packet_text(" ".join(str(part) for part in parts if part))
 
 

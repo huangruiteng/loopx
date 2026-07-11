@@ -262,6 +262,7 @@ def _todo_row(todo: dict[str, Any]) -> dict[str, Any]:
         "required_write_scopes",
         "target_capabilities",
         "blocks_agent",
+        "excluded_agents",
         "unblocks_todo_id",
         "successor_todo_ids",
         "resume_when",

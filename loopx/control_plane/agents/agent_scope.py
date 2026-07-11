@@ -21,6 +21,7 @@ from ..todos.contract import (
     TODO_TASK_CLASS_MONITOR,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_excluded_agents,
     normalize_todo_global_gate,
     normalize_todo_id,
     normalize_todo_status,
@@ -29,10 +30,9 @@ from ..todos.contract import (
 from ..todos.handoff_gate import HandoffGateState
 from ..todos.projection import (
     todo_item_claimed_by_agent_or_unclaimed,
-    todo_item_is_review_handoff,
+    todo_item_excludes_agent,
     todo_item_is_actionable_open,
     todo_item_is_deferred,
-    todo_item_review_handoff_blocks_agent,
     todo_item_task_class,
     todo_projection_sort_key,
 )
@@ -111,6 +111,10 @@ def agent_scope_item_blocks_agent(item: dict[str, Any]) -> str | None:
     return normalize_todo_blocks_agent(item.get("blocks_agent"))
 
 
+def agent_scope_item_excluded_agents(item: dict[str, Any]) -> list[str]:
+    return normalize_todo_excluded_agents(item.get("excluded_agents"))
+
+
 def agent_scope_item_claimed_by_agent_or_unclaimed(
     item: dict[str, Any],
     *,
@@ -127,9 +131,8 @@ def agent_scope_item_matches_agent_or_unclaimed(
     normalized_agent_id = normalize_todo_claimed_by(agent_id)
     if not normalized_agent_id:
         return True
-    blocks_agent = agent_scope_item_blocks_agent(item)
-    if blocks_agent:
-        return blocks_agent == normalized_agent_id
+    if todo_item_excludes_agent(item, agent_id=normalized_agent_id):
+        return False
     return agent_scope_item_claimed_by_agent_or_unclaimed(
         item,
         agent_id=normalized_agent_id,
@@ -244,12 +247,7 @@ def _agent_scope_selectable_todo_item(
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
     if not agent_id:
         return True
-    if todo_item_is_review_handoff(item):
-        if todo_item_review_handoff_blocks_agent(item, agent_id=agent_id):
-            return False
-        return _todo_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
-    blocks_agent = agent_scope_item_blocks_agent(item)
-    if blocks_agent and blocks_agent != agent_id:
+    if todo_item_excludes_agent(item, agent_id=agent_id):
         return False
     return _todo_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
 
@@ -830,7 +828,7 @@ def _agent_scope_handoff_gates_by_state(
     for item in gates:
         if not isinstance(item, dict):
             continue
-        if agent_scope_item_blocks_agent(item) != agent_id:
+        if agent_id not in agent_scope_item_excluded_agents(item):
             continue
         if item.get("gate_state") != gate_state:
             continue
@@ -1098,7 +1096,7 @@ def _agent_scope_no_candidate_frontier(
         agent_id=agent_id,
     )
     if blocking_handoff_gates:
-        blocking_review_claimants = sorted(
+        blocking_handoff_claimants = sorted(
             {
                 claimed_by
                 for item in blocking_handoff_gates
@@ -1106,7 +1104,7 @@ def _agent_scope_no_candidate_frontier(
                 if claimed_by
             }
         )
-        owner = ", ".join(blocking_review_claimants) or "the owning agent"
+        owner = ", ".join(blocking_handoff_claimants) or "the owning agent"
         reason = (
             f"current {agent_label} {agent_id} has no current/unclaimed advancement "
             f"candidate; blocking handoff work is claimed by {owner}"
@@ -1129,8 +1127,8 @@ def _agent_scope_no_candidate_frontier(
                 "blocking_handoff_gate_count": len(blocking_handoff_gates),
             },
             extra_fields={
-                "other_claimants": blocking_review_claimants,
-                "blocking_review_claimants": blocking_review_claimants,
+                "other_claimants": blocking_handoff_claimants,
+                "blocking_handoff_claimants": blocking_handoff_claimants,
                 "blocking_handoff_gates": blocking_handoff_gates[:3],
             },
         )
@@ -1197,15 +1195,15 @@ def _agent_scope_no_candidate_frontier(
             if claimed_by
         }
     )
-    blocking_review_items = [
+    blocking_handoff_items = [
         item
         for item in other_advancement_items
-        if agent_scope_item_blocks_agent(item) == agent_id
+        if agent_id in agent_scope_item_excluded_agents(item)
     ]
-    blocking_review_claimants = sorted(
+    blocking_handoff_claimants = sorted(
         {
             claimed_by
-            for item in blocking_review_items
+            for item in blocking_handoff_items
             for claimed_by in [agent_scope_item_claimed_by(item)]
             if claimed_by
         }
@@ -1218,9 +1216,9 @@ def _agent_scope_no_candidate_frontier(
     if not has_advancement_contract and not other_advancement_items:
         return None
     if other_advancement_items:
-        if blocking_review_claimants:
+        if blocking_handoff_claimants:
             action = AgentScopeFrontierAction.AGENT_SCOPE_WAIT
-            owner = ", ".join(blocking_review_claimants)
+            owner = ", ".join(blocking_handoff_claimants)
             reason = (
                 f"current {agent_label} {agent_id} has no current/unclaimed advancement "
                 f"candidate; blocking handoff work is claimed by {owner}"
@@ -1270,7 +1268,7 @@ def _agent_scope_no_candidate_frontier(
         },
         extra_fields={
             "other_claimants": other_claimants,
-            "blocking_review_claimants": blocking_review_claimants,
+            "blocking_handoff_claimants": blocking_handoff_claimants,
             "other_agent_claimed_items": [
                 compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
                 for item in other_advancement_items[:3]

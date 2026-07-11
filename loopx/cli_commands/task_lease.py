@@ -120,6 +120,7 @@ def handle_task_lease_command(
         runtime_root = runtime_root_from_registry(registry_path, runtime_root_arg)
         if args.task_lease_command == "acquire":
             payload = acquire_task_lease(
+                registry_path=registry_path,
                 runtime_root=runtime_root,
                 goal_id=args.goal_id,
                 todo_id=args.todo_id,
@@ -133,6 +134,7 @@ def handle_task_lease_command(
             if args.write_scopes:
                 raise ValueError("task-lease renew does not accept --write-scope")
             payload = renew_task_lease(
+                registry_path=registry_path,
                 runtime_root=runtime_root,
                 goal_id=args.goal_id,
                 todo_id=args.todo_id,
@@ -147,6 +149,7 @@ def handle_task_lease_command(
             if not args.new_owner or not args.new_idempotency_key:
                 raise ValueError("task-lease transfer requires --new-owner and --new-idempotency-key")
             payload = transfer_task_lease(
+                registry_path=registry_path,
                 runtime_root=runtime_root,
                 goal_id=args.goal_id,
                 todo_id=args.todo_id,
@@ -187,6 +190,7 @@ def handle_task_lease_command(
             if unsupported:
                 raise ValueError("task-lease inspect only accepts --goal-id and --todo-id; unsupported: " + ", ".join(unsupported))
             payload = inspect_task_lease(
+                registry_path=registry_path,
                 runtime_root=runtime_root,
                 goal_id=args.goal_id,
                 todo_id=args.todo_id,

@@ -41,6 +41,15 @@ TODO_MONITOR_METADATA_FIELDS = (
     "material_change",
     "max_no_change_before_replan",
 )
+TODO_METADATA_FIELDS = (
+    "todo_id", "status", "task_class", "action_kind", "continuation_policy",
+    "required_write_scopes", "required_capabilities", "target_capabilities",
+    "explore_result_node_refs",
+    "decision_scope", "required_decision_scopes", "claimed_by", "blocks_agent",
+    "excluded_agents", "global_gate", "unblocks_todo_id", "successor_todo_ids",
+    "resume_when", "no_followup", *TODO_MONITOR_METADATA_FIELDS, "note", "evidence",
+    "reason", "completed_at", "updated_at", "superseded_by",
+)
 
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
 TODO_TASK_CLASS_MONITOR = "continuous_monitor"
@@ -116,11 +125,14 @@ TODO_ACTION_KIND_MONITOR_VALUES = {
 class TodoContinuationPolicy(str, Enum):
     INDEPENDENT_HANDOFF = "independent_handoff"
     SAME_AGENT_NON_DELIVERY = "same_agent_non_delivery"
-    REVIEW_HANDOFF = "review_handoff"
 
 
 TODO_CONTINUATION_POLICY_VALUES = {
     policy.value for policy in TodoContinuationPolicy
+}
+TODO_REMOVED_REVIEW_CONTINUATION_POLICY_VALUES = {
+    "primary_review",
+    "review_handoff",
 }
 
 TODO_HARD_MONITOR_PATTERNS = (
@@ -204,23 +216,15 @@ def normalize_todo_action_kind(value: Any) -> str | None:
 
 def normalize_todo_continuation_policy(value: Any) -> str | None:
     candidate = str(value or "").strip().lower()
-    if candidate == "primary_review":
-        return TodoContinuationPolicy.REVIEW_HANDOFF.value
     if candidate in TODO_CONTINUATION_POLICY_VALUES:
         return candidate
     return None
 
 
-def legacy_todo_continuation_policy_for_action_kind(value: Any) -> str | None:
-    action_kind = normalize_todo_action_kind(value)
-    if not action_kind:
-        return None
-    if action_kind == "primary_review" or action_kind.startswith("primary_review_"):
-        return TodoContinuationPolicy.REVIEW_HANDOFF.value
-    if action_kind in {"review", "verification"} or action_kind.endswith(
-        ("_review", "_verification")
-    ):
-        return TodoContinuationPolicy.SAME_AGENT_NON_DELIVERY.value
+def normalize_removed_todo_continuation_policy(value: Any) -> str | None:
+    candidate = str(value or "").strip().lower()
+    if candidate in TODO_REMOVED_REVIEW_CONTINUATION_POLICY_VALUES:
+        return candidate
     return None
 
 
@@ -229,24 +233,11 @@ def resolve_todo_continuation_policy(
     *,
     action_kind: Any = None,
 ) -> TodoContinuationPolicy:
+    del action_kind
     explicit = normalize_todo_continuation_policy(value)
     if explicit:
         return TodoContinuationPolicy(explicit)
-    legacy = legacy_todo_continuation_policy_for_action_kind(action_kind)
-    if legacy:
-        return TodoContinuationPolicy(legacy)
     return TodoContinuationPolicy.INDEPENDENT_HANDOFF
-
-
-def todo_continuation_requires_review(
-    value: Any,
-    *,
-    action_kind: Any = None,
-) -> bool:
-    return (
-        resolve_todo_continuation_policy(value, action_kind=action_kind)
-        == TodoContinuationPolicy.REVIEW_HANDOFF
-    )
 
 
 def normalize_todo_claimed_by(value: Any) -> str | None:
@@ -258,6 +249,49 @@ def normalize_todo_claimed_by(value: Any) -> str | None:
 
 def normalize_todo_blocks_agent(value: Any) -> str | None:
     return normalize_todo_claimed_by(value)
+
+
+def normalize_todo_excluded_agents(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        candidates = value.split(",")
+    elif isinstance(value, (list, tuple, set)):
+        candidates = list(value)
+    else:
+        candidates = [value]
+    return sorted(
+        {
+            agent_id
+            for candidate in candidates
+            for agent_id in [normalize_todo_claimed_by(candidate)]
+            if agent_id
+        }
+    )
+
+
+def require_todo_excluded_agents(
+    value: Any,
+    *,
+    field: str = "excluded_agents",
+) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        candidates = value.split(",")
+    elif isinstance(value, (list, tuple, set)):
+        candidates = list(value)
+    else:
+        candidates = [value]
+    normalized: set[str] = set()
+    for candidate in candidates:
+        agent_id = normalize_todo_claimed_by(candidate)
+        if not agent_id:
+            raise ValueError(
+                f"{field} must contain public-safe agent tokens such as codex-side-bypass"
+            )
+        normalized.add(agent_id)
+    return sorted(normalized)
 
 
 def normalize_todo_resume_when(value: Any) -> str | None:
@@ -571,14 +605,25 @@ def decode_metadata_value(value: Any) -> str:
     return compact_todo_text(unquote(str(value or "")))
 
 
-def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
+def parse_todo_metadata_tokens(line: str) -> list[tuple[str, str]] | None:
     match = TODO_METADATA_PATTERN.match(line)
     if not match:
         return None
+    return [
+        (
+            token.group("key").replace("-", "_"),
+            decode_metadata_value(token.group("value")),
+        )
+        for token in TODO_METADATA_TOKEN_PATTERN.finditer(match.group("body"))
+    ]
+
+
+def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
+    tokens = parse_todo_metadata_tokens(line)
+    if tokens is None:
+        return None
     metadata: dict[str, Any] = {}
-    for token in TODO_METADATA_TOKEN_PATTERN.finditer(match.group("body")):
-        key = token.group("key").replace("-", "_")
-        value = decode_metadata_value(token.group("value"))
+    for key, value in tokens:
         if key == "todo_id":
             todo_id = normalize_todo_id(value)
             if todo_id:
@@ -599,6 +644,14 @@ def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
             continuation_policy = normalize_todo_continuation_policy(value)
             if continuation_policy:
                 metadata["continuation_policy"] = continuation_policy
+            else:
+                removed_policy = normalize_removed_todo_continuation_policy(value)
+                if removed_policy:
+                    metadata["removed_continuation_policy"] = removed_policy
+        elif key == "removed_continuation_policy":
+            removed_policy = normalize_removed_todo_continuation_policy(value)
+            if removed_policy:
+                metadata["removed_continuation_policy"] = removed_policy
         elif key in {"required_write_scope", "required_write_scopes"}:
             scopes = normalize_required_write_scopes(value)
             if scopes:
@@ -631,6 +684,10 @@ def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
             blocks_agent = normalize_todo_blocks_agent(value)
             if blocks_agent:
                 metadata["blocks_agent"] = blocks_agent
+        elif key in {"excluded_agent", "excluded_agents"}:
+            excluded_agents = normalize_todo_excluded_agents(value)
+            if excluded_agents:
+                metadata["excluded_agents"] = excluded_agents
         elif key == "global_gate":
             global_gate = normalize_todo_global_gate(value)
             if global_gate is not None:
@@ -671,6 +728,7 @@ def format_todo_metadata_line(
     task_class: str | None = None,
     action_kind: str | None = None,
     continuation_policy: str | None = None,
+    removed_continuation_policy: str | None = None,
     required_write_scopes: Any = None,
     required_capabilities: Any = None,
     target_capabilities: Any = None,
@@ -679,6 +737,7 @@ def format_todo_metadata_line(
     required_decision_scopes: Any = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
+    excluded_agents: Any = None,
     global_gate: bool | None = None,
     unblocks_todo_id: str | None = None,
     successor_todo_ids: Any = None,
@@ -729,14 +788,27 @@ def format_todo_metadata_line(
             "todo continuation_policy must be one of: "
             + ", ".join(sorted(TODO_CONTINUATION_POLICY_VALUES))
         )
-    if not normalized_continuation_policy:
-        normalized_continuation_policy = legacy_todo_continuation_policy_for_action_kind(
-            normalized_action_kind
-        )
     if normalized_continuation_policy:
         fields.append(
             "continuation_policy="
             f"{encode_metadata_value(normalized_continuation_policy)}"
+        )
+    normalized_removed_continuation_policy = (
+        normalize_removed_todo_continuation_policy(removed_continuation_policy)
+    )
+    if removed_continuation_policy and not normalized_removed_continuation_policy:
+        raise ValueError(
+            "removed_continuation_policy must be one of: "
+            + ", ".join(sorted(REMOVED_TODO_CONTINUATION_POLICY_VALUES))
+        )
+    if normalized_continuation_policy and normalized_removed_continuation_policy:
+        raise ValueError(
+            "continuation_policy and removed_continuation_policy are mutually exclusive"
+        )
+    if normalized_removed_continuation_policy:
+        fields.append(
+            "removed_continuation_policy="
+            f"{encode_metadata_value(normalized_removed_continuation_policy)}"
         )
     normalized_write_scopes = normalize_required_write_scopes(required_write_scopes)
     if required_write_scopes and not normalized_write_scopes:
@@ -797,6 +869,16 @@ def format_todo_metadata_line(
         raise ValueError("blocks_agent must be a public-safe agent token such as codex-side-bypass")
     if normalized_blocks_agent:
         fields.append(f"blocks_agent={encode_metadata_value(normalized_blocks_agent)}")
+    normalized_excluded_agents = require_todo_excluded_agents(excluded_agents)
+    if normalized_claimed_by and normalized_claimed_by in normalized_excluded_agents:
+        raise ValueError(
+            f"claimed_by={normalized_claimed_by!r} cannot also appear in excluded_agents"
+        )
+    if normalized_excluded_agents:
+        fields.append(
+            "excluded_agents="
+            f"{encode_metadata_value(','.join(normalized_excluded_agents))}"
+        )
     if global_gate is not None:
         fields.append(f"global_gate={encode_metadata_value('true' if global_gate else 'false')}")
     normalized_unblocks_todo_id = normalize_todo_id(unblocks_todo_id)
@@ -849,6 +931,129 @@ def format_todo_metadata_line(
     if not fields:
         return None
     return f"  <!-- loopx:todo {' '.join(fields)} -->"
+
+
+def todo_block_metadata(block: dict[str, Any]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    for key in TODO_METADATA_FIELDS:
+        value = block.get(key)
+        if value is None:
+            continue
+        if key == "required_write_scopes":
+            normalized = normalize_required_write_scopes(value)
+        elif key == "required_capabilities":
+            normalized = normalize_required_capabilities(value)
+        elif key == "target_capabilities":
+            normalized = normalize_target_capabilities(value)
+        elif key == "excluded_agents":
+            normalized = normalize_todo_excluded_agents(value)
+        elif key == "explore_result_node_refs":
+            normalized = normalize_explore_result_node_refs(value)
+        elif key == "continuation_policy":
+            normalized = normalize_todo_continuation_policy(value)
+        elif key == "decision_scope":
+            normalized = normalize_todo_decision_scope(value)
+        elif key == "required_decision_scopes":
+            normalized = normalize_todo_required_decision_scopes(value)
+        elif key == "no_followup":
+            normalized = normalize_todo_no_followup(value)
+        elif key == "global_gate":
+            normalized = normalize_todo_global_gate(value)
+        else:
+            normalized = str(value).strip()
+        if normalized is not None and normalized != [] and normalized != "":
+            metadata[key] = normalized
+    return metadata
+
+
+def metadata_line_for_todo_block(
+    block: dict[str, Any],
+    updates: dict[str, Any],
+) -> str | None:
+    metadata = todo_block_metadata(block)
+    for key, value in updates.items():
+        if key not in TODO_METADATA_FIELDS:
+            continue
+        if value is None:
+            metadata.pop(key, None)
+        elif key == "required_write_scopes":
+            normalized = normalize_required_write_scopes(value)
+            if normalized:
+                metadata[key] = normalized
+            else:
+                metadata.pop(key, None)
+        elif key == "required_capabilities":
+            normalized = normalize_required_capabilities(value)
+            if normalized:
+                metadata[key] = normalized
+            else:
+                metadata.pop(key, None)
+        elif key == "target_capabilities":
+            normalized = normalize_target_capabilities(value)
+            if normalized:
+                metadata[key] = normalized
+            else:
+                metadata.pop(key, None)
+        elif key == "excluded_agents":
+            normalized = normalize_todo_excluded_agents(value)
+            if normalized:
+                metadata[key] = normalized
+            else:
+                metadata.pop(key, None)
+        elif key == "explore_result_node_refs":
+            normalized = normalize_explore_result_node_refs(value)
+            if normalized:
+                metadata[key] = normalized
+            else:
+                metadata.pop(key, None)
+        elif key == "continuation_policy":
+            normalized = normalize_todo_continuation_policy(value)
+            if normalized:
+                metadata[key] = normalized
+            elif value:
+                raise ValueError(
+                    "todo continuation_policy must be one of: "
+                    + ", ".join(sorted(TODO_CONTINUATION_POLICY_VALUES))
+                )
+            else:
+                metadata.pop(key, None)
+        elif key == "decision_scope":
+            normalized = normalize_todo_decision_scope(value)
+            if normalized:
+                metadata[key] = normalized
+            else:
+                metadata.pop(key, None)
+        elif key == "required_decision_scopes":
+            normalized = normalize_todo_required_decision_scopes(value)
+            if normalized:
+                metadata[key] = normalized
+            else:
+                metadata.pop(key, None)
+        elif key == "no_followup":
+            normalized = normalize_todo_no_followup(value)
+            if normalized is not None:
+                metadata[key] = normalized
+            else:
+                metadata.pop(key, None)
+        elif key == "successor_todo_ids":
+            normalized = normalize_todo_id_list(value)
+            if normalized:
+                metadata[key] = normalized
+            else:
+                metadata.pop(key, None)
+        elif key == "global_gate":
+            normalized = normalize_todo_global_gate(value)
+            if normalized is not None:
+                metadata[key] = normalized
+            else:
+                metadata.pop(key, None)
+        elif str(value).strip():
+            metadata[key] = str(value).strip()
+    if "todo_id" not in metadata and block.get("todo_id"):
+        metadata["todo_id"] = str(block["todo_id"])
+    if "status" not in metadata:
+        metadata["status"] = TODO_STATUS_DONE if block.get("done") else TODO_STATUS_OPEN
+    return format_todo_metadata_line(**metadata)
 
 
 def todo_task_class_for_text(text: str) -> str:

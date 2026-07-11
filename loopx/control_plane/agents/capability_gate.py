@@ -4,12 +4,9 @@ from typing import Any
 
 from ..todos.contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
-    TodoContinuationPolicy,
     normalize_required_capabilities,
     normalize_target_capabilities,
     normalize_todo_claimed_by,
-    resolve_todo_continuation_policy,
-    todo_continuation_requires_review,
 )
 from ..todos.projection import (
     todo_index_rank,
@@ -18,7 +15,7 @@ from ..todos.projection import (
     todo_priority_rank,
 )
 from ..todos.summary_item import compact_todo_summary_item
-from .agent_scope import agent_scope_item_blocks_agent, agent_scope_item_claimed_by
+from .agent_scope import agent_scope_item_claimed_by
 
 
 CAPABILITY_GATE_SCHEMA_VERSION = "capability_gate_v0"
@@ -139,43 +136,12 @@ def _capability_candidate_item(
     return payload
 
 
-def _unblock_handoff_rank(
-    raw_item: dict[str, Any],
-    *,
-    agent_id: str | None,
-) -> int:
-    claimed_by = agent_scope_item_claimed_by(raw_item)
-    blocks_agent = agent_scope_item_blocks_agent(raw_item)
-    return (
-        0
-        if agent_id
-        and claimed_by == agent_id
-        and blocks_agent
-        and blocks_agent != agent_id
-        else 1
-    )
-
-
-def _review_handoff_rank(raw_item: dict[str, Any], *, agent_id: str | None) -> int:
-    claimed_by = agent_scope_item_claimed_by(raw_item)
-    return (
-        0
-        if agent_id
-        and claimed_by == agent_id
-        and todo_continuation_requires_review(
-            raw_item.get("continuation_policy"),
-            action_kind=raw_item.get("action_kind"),
-        )
-        else 1
-    )
-
-
 def _agent_lane_candidate_sort_key(
     raw_item: dict[str, Any],
     *,
     agent_id: str | None,
     preferred_todo_ids: set[str] | None = None,
-) -> tuple[int, int, int, int, int, int, int]:
+) -> tuple[int, int, int, int, int]:
     preferred_todo_ids = preferred_todo_ids or set()
     todo_id = str(raw_item.get("todo_id") or "").strip()
     active_next_rank = 0 if todo_id and todo_id in preferred_todo_ids else 1
@@ -185,9 +151,7 @@ def _agent_lane_candidate_sort_key(
     return (
         active_next_rank,
         claim_rank,
-        _unblock_handoff_rank(raw_item, agent_id=agent_id),
         todo_priority_rank(raw_item),
-        _review_handoff_rank(raw_item, agent_id=agent_id),
         repair_rank,
         todo_index_rank(raw_item),
     )
@@ -203,7 +167,7 @@ def _sort_capability_runnable_candidates(
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
     if not agent_id:
         return runnable, None
-    policy = "active_next_then_claim_then_unblock_handoff_then_priority_then_repair"
+    policy = "active_next_then_claim_then_priority_then_repair"
     return (
         sorted(
             runnable,

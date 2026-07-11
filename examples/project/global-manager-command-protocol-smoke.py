@@ -122,7 +122,10 @@ def main() -> int:
     actions = payload["actions"]
     assert actions, actions
     assert any(action["kind"] == "promote_todo" and action["requires_user_approval"] for action in actions)
-    assert any(action["kind"] == "review" and action["requires_review_handoff"] for action in actions)
+    assert any(
+        action["kind"] == "review" and action["requires_executor_separation"]
+        for action in actions
+    )
 
     boundary = payload["boundary"]
     for key in REQUIRED_BOUNDARY_FALSE:

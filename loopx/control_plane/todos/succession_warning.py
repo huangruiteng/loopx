@@ -37,6 +37,7 @@ def _compact_succession_warning_item(item: dict[str, Any]) -> dict[str, Any]:
         "required_decision_scopes",
         "claimed_by",
         "blocks_agent",
+        "excluded_agents",
         "unblocks_todo_id",
         "resume_when",
         "resume_condition",

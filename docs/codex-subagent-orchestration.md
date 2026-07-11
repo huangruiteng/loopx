@@ -108,9 +108,11 @@ is resolved through task boundaries and repository policy, not through a
 permanent controller. Completion uses typed continuation:
 
 - `independent_handoff`: leave the successor available to peers;
-- `same_agent_non_delivery`: keep a non-delivery follow-up with the same peer;
-- explicit `review_handoff`: route review to a different peer or leave it
-  unclaimed; self-review is invalid.
+- `same_agent_non_delivery`: keep a non-delivery follow-up with the same peer.
+
+Review remains `action_kind=review` over `independent_handoff`. Add the author
+to `excluded_agents` only when the successor should stay open for eligible peers
+but must not be reclaimed by that author.
 
 ## Enabling Bounded Orchestration
 

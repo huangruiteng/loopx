@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise peer continuation and review handoff without identity rank."""
+"""Exercise peer continuation and generic executor separation."""
 
 from __future__ import annotations
 
@@ -44,8 +44,9 @@ def write_fixture(root: Path, *, include_review: bool = False) -> tuple[Path, Pa
     review = (
         f"- [ ] [P1] Review the completed peer delivery.\n"
         f"  <!-- loopx:todo todo_id={REVIEW_TODO_ID} status=open "
-        f"task_class=advancement_task action_kind=review_handoff "
-        f"continuation_policy=review_handoff claimed_by={PEER_BETA} -->\n"
+        f"task_class=advancement_task action_kind=review "
+        f"continuation_policy=independent_handoff claimed_by={PEER_BETA} "
+        f"excluded_agents={PEER_ALPHA} unblocks_todo_id={START_TODO_ID} -->\n"
         if include_review
         else ""
     )
@@ -141,7 +142,7 @@ def assert_same_peer_continuation() -> None:
         assert second["agent_lane_next_action"]["todo_id"] == successor["todo_id"], second
 
 
-def assert_review_handoff_is_task_policy() -> None:
+def assert_review_is_action_semantics_over_generic_handoff() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-peer-review-handoff-") as tmp:
         project, runtime, registry_path = write_fixture(Path(tmp), include_review=True)
         completed = run_cli(
@@ -170,14 +171,16 @@ def assert_review_handoff_is_task_policy() -> None:
         assert beta["decision"] == "run", beta
         assert beta["agent_lane_next_action"]["todo_id"] == REVIEW_TODO_ID, beta
         assert beta["agent_lane_next_action"]["continuation_policy"] == (
-            "review_handoff"
+            "independent_handoff"
         ), beta
+        assert beta["agent_lane_next_action"]["action_kind"] == "review", beta
+        assert beta["agent_lane_next_action"]["excluded_agents"] == [PEER_ALPHA], beta
         assert "primary_agent" not in beta, beta
 
 
 def main() -> int:
     assert_same_peer_continuation()
-    assert_review_handoff_is_task_policy()
+    assert_review_is_action_semantics_over_generic_handoff()
     print("peer-agent-continuation-state-machine-smoke ok")
     return 0
 

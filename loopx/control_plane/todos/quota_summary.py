@@ -56,6 +56,7 @@ QUOTA_PAYLOAD_ITEM_FIELDS = (
     "continuation_policy",
     "claimed_by",
     "blocks_agent",
+    "excluded_agents",
     "global_gate",
     "unblocks_todo_id",
     "resume_when",

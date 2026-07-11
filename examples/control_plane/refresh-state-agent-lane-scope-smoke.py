@@ -223,7 +223,7 @@ def main() -> None:
                 goal_id=GOAL_ID,
                 project=project,
                 state_file=None,
-                classification="side_lane_review_handoff",
+                classification="side_lane_independent_review",
                 recommended_action=SIDE_HANDOFF_ACTION,
                 delivery_batch_scale="single_surface",
                 delivery_outcome="outcome_progress",
@@ -244,7 +244,7 @@ def main() -> None:
             )
             goal = history["goals"][0]
             latest_run = goal["latest_runs"][0]
-            assert latest_run["classification"] == "side_lane_review_handoff", goal
+            assert latest_run["classification"] == "side_lane_independent_review", goal
             assert latest_run["progress_scope"] == "agent_lane", latest_run
             assert latest_run["agent_id"] == "codex-side-bypass", latest_run
             assert latest_run["agent_lane"] == "codex-side-bypass", latest_run

@@ -8,6 +8,7 @@ from ..todos.contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_excluded_agents,
     normalize_todo_id,
     normalize_todo_status,
     normalize_todo_task_class,
@@ -67,6 +68,9 @@ def _compact_todo(item: dict[str, Any]) -> dict[str, Any] | None:
         normalized = normalizer(item.get(key))
         if normalized:
             payload[key] = normalized
+    excluded_agents = normalize_todo_excluded_agents(item.get("excluded_agents"))
+    if excluded_agents:
+        payload["excluded_agents"] = excluded_agents
     for key in ("priority", "action_kind"):
         if item.get(key) is not None:
             payload[key] = item.get(key)
@@ -158,7 +162,7 @@ def _blocking_handoff_gates(agent_todo_summary: dict[str, Any], *, agent_id: str
     for item in gates:
         if not isinstance(item, dict):
             continue
-        if normalize_todo_blocks_agent(item.get("blocks_agent")) != agent_id:
+        if agent_id not in normalize_todo_excluded_agents(item.get("excluded_agents")):
             continue
         if item.get("gate_state") != HandoffGateState.BLOCKING.value:
             continue
@@ -170,12 +174,14 @@ def _blocking_handoff_gates(agent_todo_summary: dict[str, Any], *, agent_id: str
         for key, normalizer in (
             ("todo_id", normalize_todo_id),
             ("claimed_by", normalize_todo_claimed_by),
-            ("blocks_agent", normalize_todo_blocks_agent),
             ("unblocks_todo_id", normalize_todo_id),
         ):
             normalized = normalizer(item.get(key))
             if normalized:
                 compact[key] = normalized
+        excluded_agents = normalize_todo_excluded_agents(item.get("excluded_agents"))
+        if excluded_agents:
+            compact["excluded_agents"] = excluded_agents
         if item.get("gate_state") is not None:
             compact["gate_state"] = item.get("gate_state")
         selected.append(compact)

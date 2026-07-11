@@ -77,7 +77,7 @@ def state_text() -> str:
         f"- [-] {PR_DEFERRED_TODO}\n"
         "  <!-- loopx:todo todo_id=todo_pr_deferred status=deferred task_class=advancement_task claimed_by=codex-side-bypass resume_when=pr_merged:#532 -->\n"
         f"- [ ] {SECOND_OPEN_TODO}\n"
-        "  <!-- loopx:todo todo_id=todo_handoff_review status=open task_class=advancement_task action_kind=review_pr claimed_by=codex-builder blocks_agent=codex-reviewer evidence=smoke_handoff_note -->\n\n"
+        "  <!-- loopx:todo todo_id=todo_handoff_review status=open task_class=advancement_task action_kind=review_pr continuation_policy=independent_handoff claimed_by=codex-reviewer excluded_agents=codex-builder evidence=smoke_handoff_note -->\n\n"
         "## Completed Work Archive\n\n"
         f"{archived_lines}"
     )
@@ -163,8 +163,8 @@ def assert_parseable_agent_todos(agent_todos: dict, *, hot_path: bool = False) -
         handoff_note = second_open["handoff_note"]
         assert handoff_note["schema_version"] == "handoff_note_v0", handoff_note
         assert handoff_note["todo_id"] == "todo_handoff_review", handoff_note
-        assert handoff_note["from_agent"] == "codex-builder", handoff_note
         assert handoff_note["to_agent"] == "codex-reviewer", handoff_note
+        assert handoff_note["excluded_agents"] == ["codex-builder"], handoff_note
         assert handoff_note["intent"] == "review_pr", handoff_note
         assert handoff_note["evidence_refs"] == ["todo:todo_handoff_review:evidence"], handoff_note
 

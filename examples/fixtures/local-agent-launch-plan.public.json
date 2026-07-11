@@ -52,10 +52,13 @@
             {
               "agent_id": "codex-main-control",
               "todo_id": "todo_review_local_agent_launch_plan",
-              "assignment_kind": "review_handoff",
+              "assignment_kind": "claimed",
+              "action_kind": "review",
               "responsibility": "Review this protocol slice when repository policy requires independent review.",
-              "claim_policy": "explicit_review_handoff_only",
-              "blocks_agent": "codex-side-bypass",
+              "claim_policy": "explicit_claim_or_unclaimed_independent_handoff",
+              "excluded_agents": [
+                "codex-side-bypass"
+              ],
               "unblocks_todo_id": "todo_a7ebeabb3c0c"
             },
             {
@@ -89,7 +92,7 @@
               }
             },
             {
-              "preview_id": "preview_peer_review_handoff",
+              "preview_id": "preview_peer_independent_review",
               "agent_id": "codex-main-control",
               "todo_id": "todo_review_local_agent_launch_plan",
               "next_step_label": "Review the protocol slice if it is not eligible for small self-merge.",

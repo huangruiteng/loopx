@@ -201,21 +201,25 @@ def assert_configured_peer_handoff() -> None:
             "--next-action-kind",
             "review_merge",
             "--next-continuation-policy",
-            "review_handoff",
+            "independent_handoff",
+            "--next-excluded-agent",
+            "codex-side-bypass",
         )
         assert explicit_primary_review["changed"] is True, explicit_primary_review
         review_successor = explicit_primary_review["next_todos"][0]
         assert review_successor["claimed_by"] == "codex-main-control", explicit_primary_review
         assert review_successor["action_kind"] == "review_merge", explicit_primary_review
-        assert review_successor["continuation_policy"] == "review_handoff", explicit_primary_review
-        assert review_successor["blocks_agent"] == "codex-side-bypass", explicit_primary_review
+        assert review_successor["continuation_policy"] == "independent_handoff", explicit_primary_review
+        assert review_successor["excluded_agents"] == ["codex-side-bypass"], explicit_primary_review
+        assert review_successor["blocks_agent"] is None, explicit_primary_review
         assert review_successor["unblocks_todo_id"] == review_source_added["todo_id"], explicit_primary_review
         review_successor_item = next(
             item for item in parsed_items(state_file) if item["todo_id"] == review_successor["todo_id"]
         )
         assert review_successor_item["claimed_by"] == "codex-main-control", review_successor_item
         assert review_successor_item["action_kind"] == "review_merge", review_successor_item
-        assert review_successor_item["continuation_policy"] == "review_handoff", review_successor_item
+        assert review_successor_item["continuation_policy"] == "independent_handoff", review_successor_item
+        assert review_successor_item["excluded_agents"] == ["codex-side-bypass"], review_successor_item
 
     with tempfile.TemporaryDirectory(prefix="loopx-review-handoff-self-smoke-") as tmp:
         root = Path(tmp)
@@ -254,9 +258,11 @@ def assert_configured_peer_handoff() -> None:
             "--next-claimed-by",
             "codex-side-bypass",
             "--next-continuation-policy",
-            "review_handoff",
+            "independent_handoff",
+            "--next-excluded-agent",
+            "codex-side-bypass",
         )
-        assert "review_handoff successor must be unclaimed or claimed by a different registered peer" in (
+        assert "cannot also appear in next_excluded_agents" in (
             same_agent_handoff["error"]
         ), same_agent_handoff
 

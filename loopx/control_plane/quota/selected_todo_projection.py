@@ -16,6 +16,7 @@ SELECTED_TODO_COMPACT_FIELDS = (
     "action_kind",
     "claimed_by",
     "blocks_agent",
+    "excluded_agents",
     "unblocks_todo_id",
     "next_due_at",
     "expires_at",

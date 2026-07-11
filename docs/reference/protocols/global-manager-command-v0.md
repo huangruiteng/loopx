@@ -144,7 +144,7 @@ payloads, credentials, local absolute paths, or private source bodies.
       "action_id": "act_review_pr",
       "kind": "review",
       "requires_user_approval": false,
-      "requires_review_handoff": true,
+      "requires_executor_separation": true,
       "target_agent_id": "codex-reviewer",
       "preview": "Assign protocol review to the selected registered peer."
     }
@@ -162,7 +162,7 @@ Responses may include actions, but each action must declare its authority:
 | Action kind | Default authority |
 | --- | --- |
 | `read_more` | Agent may run another read-only compact command. |
-| `review` | An explicit `review_handoff` selects the registered reviewing peer. |
+| `review` | Use an ordinary claim or independent handoff; declare executor separation only when required. |
 | `promote_todo` | Requires user/controller approval before `loopx todo add`. |
 | `ask_user` | User-facing question; no delivery on blocked path until answered. |
 | `pause_or_resume` | Requires explicit operator approval. |

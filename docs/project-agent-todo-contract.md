@@ -331,27 +331,25 @@ task and its successor:
 - `independent_handoff` is the default. The successor stays unclaimed unless
   `--next-claimed-by` selects a registered peer;
 - `same_agent_non_delivery` keeps an evidence-backed non-delivery continuation
-  with the completing peer;
-- `review_handoff` requires the successor to be unclaimed or assigned to a
-  different registered peer. It records `blocks_agent=<completing-peer>` and
-  may be used for real review, verification, merge, or publication gates.
+  with the completing peer.
 
-Legacy `primary_review` values and `action_kind=primary_review*` remain readable
-only as migration inputs. New writers use `review_handoff`; agent profiles may
-suggest review preferences but do not silently choose a review owner.
+Review, verification, merge, and publication remain ordinary `action_kind`
+values. They do not alter scheduler ordering. Use `independent_handoff` for a
+successor that another peer may claim, and add one or more `excluded_agents`
+only when executor separation is required. `claimed_by` may not name an
+excluded peer.
 
 `same_agent_non_delivery` is intentionally structural rather than
-review-specific. It covers readiness checks, audits, triage, verification, and
-other non-delivery gates only when the source has evidence, no required write
-scope, a distinct `blocks_agent`, and an explicitly linked open successor. It
-does not authorize repository delivery or bypass successor quota/capability
-checks. Legacy `*_review` and `*_verification` action kinds remain a read
-compatibility path and are materialized as the typed policy on the next write.
+review-specific. It covers readiness checks, audits, triage, and other
+non-delivery continuations when explicitly selected. LoopX does not infer it
+from `action_kind`, and it does not authorize repository delivery or bypass
+successor quota/capability checks.
 
-Only `review_handoff` generates a blocking dependency. Ordinary independent
-successors do not block the completing peer and do not inherit an owner
-implicitly. Use `--next-claimed-by` when the next owner is already known; leave
-the successor unclaimed when the scheduler or a later claim should select it.
+A handoff becomes a blocking dependency only when it carries both
+`unblocks_todo_id` and executor exclusions. Ordinary independent successors do
+not inherit an owner implicitly. Use `--next-claimed-by` when the next owner is
+already known; leave the successor unclaimed when a later claim should select
+it.
 
 For small changes that satisfy the repository's self-merge rules, a peer may
 self-merge and complete without a successor review todo by making the
@@ -404,9 +402,10 @@ loopx todo complete \
   --next-claimed-by codex-peer-a
 ```
 
-Without `--self-merged`, no implicit review route is created. Declare
-`--next-continuation-policy review_handoff` explicitly when independent review
-is required.
+Without `--self-merged`, no implicit review route is created. For independent
+review, use `--next-action-kind review --next-continuation-policy
+independent_handoff`; add `--next-excluded-agent <author>` only when the review
+must remain open to multiple peers while excluding the author.
 
 Use `todo update` for lower-level, non-terminal status changes:
 
@@ -425,7 +424,7 @@ be bypassed. An evidence-backed peer
 `continuous_monitor` with no required write scope may close with
 `todo complete --no-follow-up` when its bounded watch ends without a material
 transition. This closeout records `self_merged=false` and does not
-create a review handoff for observation-only work.
+create a successor review todo for observation-only work.
 
 Use `--resume-when` when deferring a successor that should wake up after a
 machine-readable condition instead of living only in prose:
@@ -471,10 +470,31 @@ carry `schema_version=todo_summary_v0`; individual items carry
 optional `action_kind`, `claimed_by`, `required_capabilities`, and
 `target_capabilities`. `action_kind` is extensible; optional
 `continuation_policy` is limited to `independent_handoff`,
-`same_agent_non_delivery`, or `review_handoff`. Review handoffs may also carry
-`blocks_agent`, `unblocks_todo_id`, and `no_followup=true` to show which
-agent/todo they release and whether a completed handoff intentionally has no
-successor.
+or `same_agent_non_delivery`. Agent todos may also carry `excluded_agents`,
+`unblocks_todo_id`, and `no_followup=true` to express executor separation,
+dependency lineage, and intentional closeout. `blocks_agent` is reserved for
+scoping user gates.
+
+After a hard-cut upgrade, `loopx check` reports agent todos that still carry
+removed gate-routing fields. New readers also preserve a read-only
+`removed_continuation_policy` diagnostic for legacy `review_handoff` and
+`primary_review` records and exclude those records from claim/quota execution.
+This fail-closed compatibility marker is not a supported continuation type and
+is never written back. Repair legacy review records explicitly:
+
+```bash
+loopx todo update \
+  --goal-id <goal-id> \
+  --todo-id <todo-id> \
+  --role agent \
+  --continuation-policy independent_handoff \
+  --excluded-agent <author>
+```
+
+For removed `blocks_agent` routing, use `loopx todo update --todo-id <todo_id>
+--role agent --clear-blocks-agent`. LoopX does not infer the excluded author or
+rewrite either form automatically.
+
 Deferred successors may carry `resume_when`, `resume_condition`, and
 `resume_ready`; `resume_ready=true` means the deferred item should be considered
 for a successor replan before any agent-scoped no-candidate wait, not that

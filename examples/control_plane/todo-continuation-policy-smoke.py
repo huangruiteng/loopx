@@ -22,6 +22,7 @@ from loopx.control_plane.todos.contract import (  # noqa: E402
     normalize_todo_continuation_policy,
     resolve_todo_continuation_policy,
 )
+from loopx.todos import add_todo_to_lines  # noqa: E402
 
 
 GOAL_ID = "continuation-policy-fixture"
@@ -64,16 +65,18 @@ def main() -> int:
         assert same_peer.agent_model == "peer_v1", same_peer
         assert same_peer.effective_next_claimed_by == PEER_ALPHA, same_peer
 
-        review = resolve_completion_policy(
+        independent_validation = resolve_completion_policy(
             registry_path=registry_path,
             goal_id=GOAL_ID,
             claimed_by=PEER_ALPHA,
             next_claimed_by=PEER_BETA,
             next_agent_todo="Independently review the delivery.",
-            next_continuation_policy="review_handoff",
+            next_continuation_policy="independent_handoff",
+            next_excluded_agents=[PEER_ALPHA],
         )
-        assert review.effective_next_claimed_by == PEER_BETA, review
-        assert not hasattr(review, "primary_agent"), review
+        assert independent_validation.effective_next_claimed_by == PEER_BETA
+        assert independent_validation.effective_next_excluded_agents == [PEER_ALPHA]
+        assert not hasattr(independent_validation, "primary_agent")
 
         try:
             resolve_completion_policy(
@@ -82,12 +85,27 @@ def main() -> int:
                 claimed_by=PEER_ALPHA,
                 next_claimed_by=PEER_ALPHA,
                 next_agent_todo="Review your own delivery.",
-                next_continuation_policy="review_handoff",
+                next_continuation_policy="independent_handoff",
+                next_excluded_agents=[PEER_ALPHA],
             )
         except ValueError as exc:
-            assert "different registered peer" in str(exc), exc
+            assert "cannot also appear in next_excluded_agents" in str(exc), exc
         else:
-            raise AssertionError("review handoff must not self-claim")
+            raise AssertionError("an excluded peer must not receive the successor claim")
+
+        try:
+            resolve_completion_policy(
+                registry_path=registry_path,
+                goal_id=GOAL_ID,
+                claimed_by=PEER_ALPHA,
+                next_agent_todo="Continue a same-peer audit.",
+                next_continuation_policy="same_agent_non_delivery",
+                next_excluded_agents=[PEER_ALPHA],
+            )
+        except ValueError as exc:
+            assert "cannot also appear in next_excluded_agents" in str(exc), exc
+        else:
+            raise AssertionError("inherited same-peer ownership must respect exclusions")
 
         try:
             resolve_completion_policy(
@@ -119,13 +137,49 @@ def main() -> int:
         assert merged.self_merged is True, merged
         assert merged.linked_successor_id == "todo_peer_successor", merged
 
-        assert normalize_todo_continuation_policy("primary_review") == (
-            TodoContinuationPolicy.REVIEW_HANDOFF.value
-        )
+        assert normalize_todo_continuation_policy("review_handoff") is None
+        assert normalize_todo_continuation_policy("primary_review") is None
         assert resolve_todo_continuation_policy(
             None,
             action_kind="primary_review_merge",
-        ) == TodoContinuationPolicy.REVIEW_HANDOFF
+        ) == TodoContinuationPolicy.INDEPENDENT_HANDOFF
+
+        try:
+            add_todo_to_lines(
+                ["# Fixture"],
+                role="agent",
+                text="Use the deprecated agent gate field.",
+                blocks_agent=PEER_ALPHA,
+            )
+        except ValueError as exc:
+            assert "blocks_agent is only valid for user gates" in str(exc), exc
+        else:
+            raise AssertionError("agent todos must use executor exclusions")
+
+        try:
+            add_todo_to_lines(
+                ["# Fixture"],
+                role="agent",
+                text="Create an impossible executor assignment.",
+                claimed_by=PEER_ALPHA,
+                excluded_agents=[PEER_ALPHA],
+            )
+        except ValueError as exc:
+            assert "cannot also appear in excluded_agents" in str(exc), exc
+        else:
+            raise AssertionError("claimed_by must not conflict with excluded_agents")
+
+        try:
+            add_todo_to_lines(
+                ["# Fixture"],
+                role="user",
+                text="Misapply an executor exclusion to a user todo.",
+                excluded_agents=[PEER_ALPHA],
+            )
+        except ValueError as exc:
+            assert "excluded_agents is only valid for agent todos" in str(exc), exc
+        else:
+            raise AssertionError("user todos must not accept executor exclusions")
 
     print("todo-continuation-policy-smoke ok")
     return 0

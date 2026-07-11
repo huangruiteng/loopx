@@ -75,11 +75,12 @@ connector payloads into the preview.
 `task_assignments[]` maps current todos to peers for display. Required fields:
 
 - `agent_id` and `todo_id`;
-- `assignment_kind`: `claimed`, `unclaimed_candidate`, `review_handoff`,
-  `monitor_only`, or `blocked`;
+- `assignment_kind`: `claimed`, `unclaimed_candidate`, `monitor_only`, or
+  `blocked`;
 - `responsibility`: one compact public-safe sentence;
 - `claim_policy`: how the todo must be claimed or transferred;
-- optional `blocks_agent` / `unblocks_todo_id` for explicit review dependency.
+- optional `action_kind`, `excluded_agents`, and `unblocks_todo_id` for task
+  semantics, executor separation, and dependency lineage.
 
 Assignments are advisory preview rows. A real claim or transfer still uses the
 todo lifecycle. A profile cannot supply an implicit reviewer.
@@ -140,7 +141,7 @@ A fixture or implementation is acceptable when:
    `mode=dry_run`;
 2. configured agents are unique peers with no leader/parent role;
 3. every task assignment references a configured peer and existing todo;
-4. review ownership exists only through explicit `review_handoff` assignment;
+4. review remains `action_kind=review`; any executor exclusion is explicit;
 5. every preview keeps all host execution booleans false and command null;
 6. status and evidence projections remain compact and public-safe;
 7. all real launch, credential, and preview-write capabilities remain gated.

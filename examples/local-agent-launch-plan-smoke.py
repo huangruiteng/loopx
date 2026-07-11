@@ -19,7 +19,6 @@ HOST_SURFACE_PATH = REPO_ROOT / "docs" / "reference" / "protocols" / "host-integ
 ALLOWED_ASSIGNMENT_KINDS = {
     "claimed",
     "unclaimed_candidate",
-    "review_handoff",
     "monitor_only",
     "blocked",
 }

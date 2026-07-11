@@ -168,9 +168,27 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
     todo_parser.add_argument(
         "--blocks-agent",
         help=(
-            "For todo add/update, mark that this todo unblocks a registered agent, "
-            "for example codex-side-bypass."
+            "For user_gate add/update, scope the gate to one registered agent."
         ),
+    )
+    todo_parser.add_argument(
+        "--clear-blocks-agent",
+        action="store_true",
+        help="For todo update, remove the existing blocks_agent field.",
+    )
+    todo_parser.add_argument(
+        "--excluded-agent",
+        dest="excluded_agents",
+        action="append",
+        help=(
+            "For agent todo add/update, exclude one registered peer from claiming or "
+            "executing the todo. Repeat for multiple peers."
+        ),
+    )
+    todo_parser.add_argument(
+        "--clear-excluded-agents",
+        action="store_true",
+        help="For todo update, remove all executor exclusions from the todo.",
     )
     todo_parser.add_argument(
         "--global-gate",
@@ -256,8 +274,8 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         "--next-claimed-by",
         help=(
             "For complete/supersede with --next-agent-todo, soft-claim the successor "
-            "todo for a registered agent. In peer_v1, independent and review handoffs "
-            "remain unclaimed unless explicitly assigned, while same-agent non-delivery "
+            "todo for a registered agent. Independent handoffs remain unclaimed unless "
+            "explicitly assigned, while same-agent non-delivery "
             "continuations keep the current owner. Use --self-merged with --evidence "
             "for an eligible same-agent delivery."
         ),
@@ -280,6 +298,15 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         "--next-continuation-policy",
         choices=sorted(TODO_CONTINUATION_POLICY_VALUES),
         help="Continuation policy for --next-agent-todo.",
+    )
+    todo_parser.add_argument(
+        "--next-excluded-agent",
+        dest="next_excluded_agents",
+        action="append",
+        help=(
+            "For complete/supersede with --next-agent-todo, exclude one registered "
+            "peer from claiming or executing the successor. Repeat for multiple peers."
+        ),
     )
     todo_parser.add_argument(
         "--max-active-done",
@@ -401,6 +428,12 @@ def handle_todo_command(
                 raise ValueError("todo add does not support --next-claimed-by")
             if args.next_continuation_policy:
                 raise ValueError("todo add does not support --next-continuation-policy")
+            if args.next_excluded_agents:
+                raise ValueError("todo add does not support --next-excluded-agent")
+            if args.clear_excluded_agents:
+                raise ValueError("todo add does not support --clear-excluded-agents")
+            if args.clear_blocks_agent:
+                raise ValueError("todo add does not support --clear-blocks-agent")
             if args.self_merged:
                 raise ValueError("todo add does not support --self-merged")
             if args.no_follow_up:
@@ -424,6 +457,7 @@ def handle_todo_command(
                 required_decision_scopes=args.required_decision_scopes,
                 claimed_by=args.claimed_by,
                 blocks_agent=args.blocks_agent,
+                excluded_agents=args.excluded_agents,
                 global_gate=bool(args.global_gate),
                 agent_id=args.agent_id,
                 unblocks_todo_id=args.unblocks_todo_id,
@@ -464,6 +498,9 @@ def handle_todo_command(
                     ("--decision-scope", args.decision_scope),
                     ("--required-decision-scope", args.required_decision_scopes),
                     ("--blocks-agent", args.blocks_agent),
+                    ("--clear-blocks-agent", args.clear_blocks_agent),
+                    ("--excluded-agent", args.excluded_agents),
+                    ("--clear-excluded-agents", args.clear_excluded_agents),
                     ("--global-gate", args.global_gate),
                     ("--unblocks-todo-id", args.unblocks_todo_id),
                     ("--successor-todo-id", args.successor_todo_ids),
@@ -479,6 +516,7 @@ def handle_todo_command(
                     ("--next-task-class", args.next_task_class),
                     ("--next-action-kind", args.next_action_kind),
                     ("--next-continuation-policy", args.next_continuation_policy),
+                    ("--next-excluded-agent", args.next_excluded_agents),
                     ("--self-merged", args.self_merged),
                     ("--follow-up", args.followups),
                 )
@@ -530,6 +568,9 @@ def handle_todo_command(
                 args.required_decision_scopes,
                 args.claimed_by,
                 args.blocks_agent,
+                args.clear_blocks_agent,
+                args.excluded_agents,
+                args.clear_excluded_agents,
                 args.global_gate,
                 args.unblocks_todo_id,
                 args.successor_todo_ids,
@@ -541,7 +582,7 @@ def handle_todo_command(
                 args.expires_at,
                 args.clear_claim,
             ]):
-                raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --continuation-policy, --required-write-scope, --required-capability, --target-capability, --explore-result-node-ref, --clear-explore-result-node-refs, --decision-scope, --required-decision-scope, --claimed-by, --blocks-agent, --global-gate, --unblocks-todo-id, --successor-todo-id, --resume-when, --monitor-target-key, --cadence, --next-due-at, --expires-at, --no-follow-up, or --clear-claim")
+                raise ValueError("todo update requires at least one mutable todo field")
             if args.no_follow_up and not (args.note or args.reason or args.evidence):
                 raise ValueError("--no-follow-up requires --note, --reason, or --evidence")
             if args.followups:
@@ -550,6 +591,8 @@ def handle_todo_command(
                 raise ValueError("todo update does not support --next-claimed-by")
             if args.next_continuation_policy:
                 raise ValueError("todo update does not support --next-continuation-policy")
+            if args.next_excluded_agents:
+                raise ValueError("todo update does not support --next-excluded-agent")
             if args.self_merged:
                 raise ValueError("todo update does not support --self-merged")
             payload = update_goal_todo(
@@ -577,6 +620,9 @@ def handle_todo_command(
                 required_decision_scopes=args.required_decision_scopes,
                 claimed_by=args.claimed_by,
                 blocks_agent=args.blocks_agent,
+                clear_blocks_agent=bool(args.clear_blocks_agent),
+                excluded_agents=args.excluded_agents,
+                clear_excluded_agents=bool(args.clear_excluded_agents),
                 global_gate=bool(args.global_gate),
                 agent_id=args.agent_id,
                 unblocks_todo_id=args.unblocks_todo_id,
@@ -603,8 +649,8 @@ def handle_todo_command(
                 )
             if args.claimed_by and args.clear_claim:
                 raise ValueError("todo complete accepts either --claimed-by or --clear-claim, not both")
-            if args.blocks_agent or args.global_gate or args.unblocks_todo_id or args.resume_when:
-                raise ValueError("todo complete does not support --blocks-agent, --global-gate, --unblocks-todo-id, or --resume-when; use todo update before completion or peer successor metadata")
+            if args.blocks_agent or args.clear_blocks_agent or args.excluded_agents or args.clear_excluded_agents or args.global_gate or args.unblocks_todo_id or args.resume_when:
+                raise ValueError("todo complete does not update current todo routing metadata; use todo update first")
             if args.monitor_target_key or args.cadence or args.next_due_at or args.expires_at:
                 raise ValueError("todo complete does not support monitor schedule metadata; use todo update before completion")
             if args.no_follow_up and (args.next_agent_todo or args.next_user_todo):
@@ -625,6 +671,8 @@ def handle_todo_command(
                 raise ValueError(
                     "--next-continuation-policy requires --next-agent-todo"
                 )
+            if args.next_excluded_agents and not args.next_agent_todo:
+                raise ValueError("--next-excluded-agent requires --next-agent-todo")
             payload = complete_goal_todo(
                 registry_path=registry_path,
                 goal_id=args.goal_id,
@@ -642,6 +690,7 @@ def handle_todo_command(
                 next_task_class=args.next_task_class,
                 next_action_kind=args.next_action_kind,
                 next_continuation_policy=args.next_continuation_policy,
+                next_excluded_agents=args.next_excluded_agents,
                 self_merged=bool(args.self_merged),
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
@@ -676,8 +725,10 @@ def handle_todo_command(
                 raise ValueError(
                     "--next-continuation-policy requires --next-agent-todo"
                 )
-            if args.blocks_agent or args.global_gate or args.unblocks_todo_id or args.resume_when:
-                raise ValueError("todo supersede does not support --blocks-agent, --global-gate, --unblocks-todo-id, or --resume-when; update the source todo first so the successor can inherit dependency metadata")
+            if args.next_excluded_agents and not args.next_agent_todo:
+                raise ValueError("--next-excluded-agent requires --next-agent-todo")
+            if args.blocks_agent or args.clear_blocks_agent or args.excluded_agents or args.clear_excluded_agents or args.global_gate or args.unblocks_todo_id or args.resume_when:
+                raise ValueError("todo supersede does not update current todo routing metadata; use todo update first")
             if args.successor_todo_ids:
                 raise ValueError("todo supersede does not support --successor-todo-id; use --next-agent-todo or update the source todo before supersede")
             if args.monitor_target_key or args.cadence or args.next_due_at or args.expires_at:
@@ -694,6 +745,7 @@ def handle_todo_command(
                 next_task_class=args.next_task_class,
                 next_action_kind=args.next_action_kind,
                 next_continuation_policy=args.next_continuation_policy,
+                next_excluded_agents=args.next_excluded_agents,
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
                 dry_run=bool(args.dry_run),
@@ -701,6 +753,8 @@ def handle_todo_command(
         elif args.todo_command == "archive-completed":
             if args.claimed_by or args.clear_claim:
                 raise ValueError("todo archive-completed does not support --claimed-by or --clear-claim")
+            if args.clear_blocks_agent or args.excluded_agents or args.clear_excluded_agents or args.next_excluded_agents:
+                raise ValueError("todo archive-completed does not support executor exclusions")
             if args.next_claimed_by:
                 raise ValueError("todo archive-completed does not support --next-claimed-by")
             if args.self_merged:

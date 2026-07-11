@@ -474,6 +474,7 @@ PROJECT_ASSET_TODO_DISPLAY_FIELDS = (
     "required_decision_scopes",
     "claimed_by",
     "blocks_agent",
+    "excluded_agents",
     "global_gate",
     "unblocks_todo_id",
     "resume_when",

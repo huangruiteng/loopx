@@ -1230,7 +1230,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "peer-agent",
             "peer_v1",
             "agent_model",
-            "review_handoff",
+            "excluded_agents",
             "task_orchestration_contract",
             "agent_workspace_guard",
             "loopx/control_plane/agents",

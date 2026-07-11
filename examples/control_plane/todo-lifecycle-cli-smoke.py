@@ -385,9 +385,11 @@ def main() -> int:
             "--next-claimed-by",
             "codex-side-bypass",
             "--next-continuation-policy",
-            "review_handoff",
+            "independent_handoff",
+            "--next-excluded-agent",
+            "codex-side-bypass",
         )
-        assert "review_handoff successor must be unclaimed or claimed by a different registered peer" in (
+        assert "cannot also appear in next_excluded_agents" in (
             side_review_claim_error["error"]
         ), side_review_claim_error
 
@@ -408,12 +410,17 @@ def main() -> int:
             "--next-claimed-by",
             "codex-main-control",
             "--next-continuation-policy",
-            "review_handoff",
+            "independent_handoff",
+            "--next-excluded-agent",
+            "codex-side-bypass",
+            "--next-action-kind",
+            "review",
         )
         assert side_completed["changed"] is True, side_completed
         review_todo_id = side_completed["next_todos"][0]["todo_id"]
         assert side_completed["next_todos"][0]["claimed_by"] == "codex-main-control", side_completed
-        assert side_completed["next_todos"][0]["blocks_agent"] == "codex-side-bypass", side_completed
+        assert side_completed["next_todos"][0]["blocks_agent"] is None, side_completed
+        assert side_completed["next_todos"][0]["excluded_agents"] == ["codex-side-bypass"], side_completed
         assert side_completed["next_todos"][0]["unblocks_todo_id"] == side_review_todo_id, side_completed
         assert side_completed["successor_todo_ids"] == [review_todo_id], side_completed
         items = parsed_items(state_file)
@@ -426,8 +433,9 @@ def main() -> int:
         )
         assert side_review_item["successor_todo_ids"] == [review_todo_id], side_review_item
         assert review_item["done"] is False and review_item["claimed_by"] == "codex-main-control", review_item
-        assert not review_item.get("action_kind"), review_item
-        assert review_item["blocks_agent"] == "codex-side-bypass", review_item
+        assert review_item["action_kind"] == "review", review_item
+        assert review_item.get("blocks_agent") is None, review_item
+        assert review_item["excluded_agents"] == ["codex-side-bypass"], review_item
         assert review_item["unblocks_todo_id"] == side_review_todo_id, review_item
         assert review_item.get("updated_at"), review_item
         assert side_completed["next_todos"][0].get("updated_at") == review_item["updated_at"], side_completed

@@ -55,7 +55,7 @@ def main() -> int:
             "not one active lease per goal or project",
             "repository-writing peers use isolated worktrees",
             "self-merge with\nevidence",
-            "`review_handoff` assigned to a different peer",
+            "review action over an independent handoff",
         ],
         source=ROADMAP,
     )

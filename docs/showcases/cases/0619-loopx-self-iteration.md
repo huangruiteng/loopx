@@ -132,7 +132,7 @@ only a todo/claim feature:
    advisory peer scope, and task-scoped worktree policy.
 6. **Peer completion discipline**: small validated peer work can be
    completed with `--self-merged --evidence`, while broad, risky, or
-   unclear work uses an explicit `review_handoff` when independent review is required.
+   unclear work uses an ordinary independent handoff with `action_kind=review`.
 7. **Evidence and public-boundary discipline**: public smokes, regression
    wrappers, docs governance, showcase catalog checks, and public/private
    boundary scans keep the case reproducible without exposing private chats,

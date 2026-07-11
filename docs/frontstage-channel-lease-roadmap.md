@@ -185,7 +185,7 @@ This is an identity and activity projection for an actor participating in a goal
   "goal_id": "loopx-meta",
   "current_claims": ["todo_abc123"],
   "last_action": "refresh_state",
-  "review_handoff_status": "task_policy_selected"
+  "handoff_assignment_status": "task_policy_selected"
 }
 ```
 
@@ -207,7 +207,7 @@ The peer control plane keeps assignment explicit: `claimed_by` or a task lease
 owns one todo, and repository-writing peers use isolated worktrees when task or
 goal policy requires it. A small AGENTS-eligible change may self-merge with
 evidence; otherwise completion creates an independent successor or an explicit
-`review_handoff` assigned to a different peer.
+review action over an independent handoff, optionally excluding the author.
 
 ```json
 {

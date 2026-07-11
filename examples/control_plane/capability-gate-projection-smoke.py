@@ -30,6 +30,7 @@ def todo(
     *,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
+    unblocks_todo_id: str | None = None,
     action_kind: str | None = None,
     continuation_policy: str | None = None,
     required_capabilities: list[str] | None = None,
@@ -51,6 +52,8 @@ def todo(
         item["claimed_by"] = claimed_by
     if blocks_agent:
         item["blocks_agent"] = blocks_agent
+    if unblocks_todo_id:
+        item["unblocks_todo_id"] = unblocks_todo_id
     if action_kind:
         item["action_kind"] = action_kind
     if continuation_policy:
@@ -101,7 +104,7 @@ def assert_current_agent_candidate_order_contract() -> None:
             3,
             "P2",
             claimed_by=AGENT_ID,
-            blocks_agent="codex-value-explorer",
+            unblocks_todo_id="todo_value_explorer_delivery",
         ),
         todo("todo_other_p0", 4, "P0", claimed_by=PRIMARY_AGENT),
         todo(
@@ -110,7 +113,7 @@ def assert_current_agent_candidate_order_contract() -> None:
             "P2",
             claimed_by=AGENT_ID,
             action_kind="merge_gate",
-            continuation_policy="primary_review",
+            continuation_policy="independent_handoff",
         ),
     ]
     ordered, policy = _sort_capability_runnable_candidates(
@@ -120,11 +123,11 @@ def assert_current_agent_candidate_order_contract() -> None:
             "agent_model": "peer_v1",
         },
     )
-    assert policy == "active_next_then_claim_then_unblock_handoff_then_priority_then_repair"
+    assert policy == "active_next_then_claim_then_priority_then_repair"
     assert [item["todo_id"] for item in ordered] == [
+        "todo_current_p2",
         "todo_current_unblock_p2",
         "todo_primary_review",
-        "todo_current_p2",
         "todo_unclaimed_p0",
         "todo_other_p0",
     ], ordered

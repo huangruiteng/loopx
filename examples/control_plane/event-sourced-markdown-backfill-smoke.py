@@ -120,10 +120,36 @@ def test_append_many_is_idempotent_for_backfilled_events() -> None:
         assert projection["last_append_sequence"] == len(events), projection
 
 
+def test_backfill_preserves_removed_continuation_diagnostic() -> None:
+    for policy in ("review_handoff", "primary_review"):
+        events = backfill_todo_events_from_markdown(
+            "\n".join(
+                [
+                    "## Agent Todo",
+                    "",
+                    "- [ ] [P0] Legacy review handoff must remain blocked",
+                    "  <!-- loopx:todo todo_id=todo_legacy_review status=open "
+                    "task_class=advancement_task action_kind=review "
+                    f"continuation_policy={policy} -->",
+                ]
+            ),
+            goal_id=GOAL_ID,
+            source_ref="ACTIVE_GOAL_STATE.md",
+            recorded_at="2026-07-11T00:00:00Z",
+            privacy=PUBLIC_PRIVACY,
+        )
+        assert events[0]["payload"]["removed_continuation_policy"] == policy, events
+        projection = build_state_projection(events, goal_id=GOAL_ID)
+        item = projection["agent_todos"]["items"][0]
+        assert item["removed_continuation_policy"] == policy, projection
+        assert item.get("continuation_policy") is None, projection
+
+
 def main() -> int:
     test_public_backfill_redacts_private_state()
     test_local_private_backfill_preserves_private_workbench_text()
     test_append_many_is_idempotent_for_backfilled_events()
+    test_backfill_preserves_removed_continuation_diagnostic()
     print("event-sourced-markdown-backfill-smoke ok")
     return 0
 

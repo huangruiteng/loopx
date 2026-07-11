@@ -12,6 +12,7 @@ from ....control_plane.todos.contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_USER_GATE,
     normalize_explicit_todo_task_class,
+    normalize_todo_excluded_agents,
     normalize_todo_status,
 )
 
@@ -28,6 +29,8 @@ def _compact_text(value: Any, *, limit: int = TEXT_LIMIT) -> str:
 def todo_matches_agent_scope(block: dict[str, Any], agent_id: str | None) -> bool:
     if not agent_id:
         return True
+    if agent_id in normalize_todo_excluded_agents(block.get("excluded_agents")):
+        return False
     for key in ("claimed_by", "blocks_agent"):
         value = block.get(key)
         if isinstance(value, str) and value.strip() == agent_id:
@@ -40,6 +43,8 @@ def todo_matches_agent_scope(block: dict[str, Any], agent_id: str | None) -> boo
 def _projection_matches_agent_scope(block: dict[str, Any], agent_id: str | None) -> bool:
     if not agent_id:
         return True
+    if agent_id in normalize_todo_excluded_agents(block.get("excluded_agents")):
+        return False
     if todo_matches_agent_scope(block, agent_id):
         return True
     claimed_by = block.get("claimed_by")

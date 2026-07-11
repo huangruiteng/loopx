@@ -5,9 +5,9 @@ from typing import Any
 from .contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
     normalize_required_write_scopes,
-    normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
     normalize_todo_decision_scope,
+    normalize_todo_excluded_agents,
     normalize_todo_required_decision_scopes,
     normalize_todo_task_class,
 )
@@ -63,6 +63,7 @@ def _compact_route_continuation_item(
         "required_decision_scopes",
         "claimed_by",
         "blocks_agent",
+        "excluded_agents",
         "unblocks_todo_id",
         "resume_when",
         "resume_condition",
@@ -173,9 +174,8 @@ def route_continuation_candidate_matches_agent(
     *,
     agent_id: str,
 ) -> bool:
-    blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
-    if blocks_agent:
-        return blocks_agent == agent_id
+    if agent_id in normalize_todo_excluded_agents(item.get("excluded_agents")):
+        return False
     claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
     return not claimed_by or claimed_by == agent_id
 
@@ -188,7 +188,6 @@ def _agent_filtered_route_continuation_items(
 ) -> list[dict[str, Any]]:
     selected: list[dict[str, Any]] = []
     for item in items:
-        blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
         claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
         if claim == "current":
             if not agent_id or not route_continuation_candidate_matches_agent(
@@ -197,7 +196,7 @@ def _agent_filtered_route_continuation_items(
             ):
                 continue
         elif claim == "unclaimed":
-            if blocks_agent or claimed_by:
+            if claimed_by:
                 continue
         elif claim == "other":
             if not agent_id:
