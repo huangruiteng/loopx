@@ -60,6 +60,17 @@ def main() -> int:
                 "command": "pwd && ls -la",
                 "timeout_sec": 10,
             }
+            task_prompt = Path(temp) / goal_tui.CODEX_CLI_GOAL_TASK_PROMPT_FILENAME
+            goal_tui.release_codex_cli_goal_task_prompt(
+                task_prompt,
+                "public task prompt",
+            )
+            assert task_prompt.read_text(encoding="utf-8") == "public task prompt"
+            goal_tui.release_codex_cli_goal_task_prompt(
+                task_prompt,
+                "replacement must not overwrite",
+            )
+            assert task_prompt.read_text(encoding="utf-8") == "public task prompt"
 
         goal_tui.subprocess.run = fake_run  # type: ignore[assignment]
         goal_tui.tmux_kill_session = fake_kill  # type: ignore[assignment]

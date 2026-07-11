@@ -1431,7 +1431,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
         CODEX_CLI_GOAL_THREAD_PREWARM_MARKER,
         CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT,
         CodexCliGoalLifecycleGeneration,
-        build_codex_cli_goal_file_objective,
+        build_codex_cli_goal_bridge_first_action_objective,
         build_codex_cli_tui_command,
         build_codex_cli_goal_tui_input,
         codex_cli_goal_lifecycle_marker_counts,
@@ -1447,10 +1447,8 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert CODEX_CLI_GOAL_THREAD_PREWARM_MARKER not in (
         CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT
     )
-    objective = build_codex_cli_goal_file_objective(
-        CODEX_CLI_GOAL_TASK_PROMPT_FILENAME
-    )
-    assert CODEX_CLI_GOAL_TASK_PROMPT_FILENAME in objective, objective
+    objective = build_codex_cli_goal_bridge_first_action_objective()
+    assert CODEX_CLI_GOAL_TASK_PROMPT_FILENAME not in objective, objective
     assert CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME in objective, objective
     assert len(objective) < CODEX_CLI_GOAL_OBJECTIVE_MAX_CHARS
     assert build_codex_cli_goal_tui_input(objective).startswith("/goal "), objective
@@ -1557,8 +1555,11 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "start_codex_cli_goal_tui_session(" in source
     assert "CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC = 120" in source
     assert "CODEX_CLI_GOAL_TASK_PROMPT_FILENAME" in source
-    assert "prompt_instruction_path.write_text(" in source
-    assert "build_codex_cli_goal_file_objective(" in source
+    assert "release_codex_cli_goal_task_prompt(" in source
+    assert "build_codex_cli_goal_bridge_first_action_objective(" in source
+    assert source.index("release_codex_cli_goal_task_prompt(") < source.index(
+        "text=CODEX_CLI_GOAL_KICKOFF_PROMPT"
+    )
     assert "tmux_type_text_and_submit(" in source
     assert "build_codex_cli_goal_tui_input(prompt_for_codex)" not in source
     assert "codex_cli_goal_thread_prewarm: bool = False" in source
@@ -1591,7 +1592,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "goal_lifecycle.active_observed" in source
     assert "goal_lifecycle.achieved_advanced" in source
     assert "goal_lifecycle.observe(capture, turn_active=turn_active)" in source
-    assert source.count("goal_lifecycle.begin(") == 2
+    assert source.count("goal_lifecycle.begin(") == 3
     assert source.count("goal_kickoff_prompt_submitted = False") >= 2
     assert "terminal_observed=goal_failed_now" in source
     assert "goal_kickoff_prompt_raw_text_recorded" in source

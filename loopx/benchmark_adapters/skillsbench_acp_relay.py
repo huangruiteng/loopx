@@ -56,7 +56,7 @@ from loopx.benchmark_adapters.skillsbench_codex_goal_recovery import (
 from loopx.codex_cli_goal_tui import (
     CODEX_CLI_GOAL_KICKOFF_PROMPT,
     CODEX_CLI_GOAL_TASK_PROMPT_FILENAME,
-    build_codex_cli_goal_file_objective,
+    build_codex_cli_goal_bridge_first_action_objective,
     build_codex_cli_goal_tui_input,
     build_codex_cli_tui_command,
     CodexCliGoalLifecycleGeneration,
@@ -70,6 +70,7 @@ from loopx.codex_cli_goal_tui import (
     codex_cli_tui_retryable_startup_blocker_stage,
     codex_cli_tui_turn_active,
     resolve_codex_cli_binary,
+    release_codex_cli_goal_task_prompt,
     start_codex_cli_goal_tui_session,
     tmux_capture,
     tmux_kill_session,
@@ -1044,16 +1045,8 @@ class SkillsBenchLocalAcpRelay:
                     bridge_probe=bridge_probe,
                     bridge_command_for_agent=str(instrumented_bridge),
                 )
-                prompt_instruction_path = (
-                    Path(cwd) / CODEX_CLI_GOAL_TASK_PROMPT_FILENAME
-                )
-                prompt_instruction_path.write_text(
-                    prompt_for_codex,
-                    encoding="utf-8",
-                )
-                prompt_for_goal = build_codex_cli_goal_file_objective(
-                    CODEX_CLI_GOAL_TASK_PROMPT_FILENAME
-                )
+                prompt_instruction_path = Path(cwd) / CODEX_CLI_GOAL_TASK_PROMPT_FILENAME
+                prompt_for_goal = build_codex_cli_goal_bridge_first_action_objective()
                 goal_prompt_file_used = True
                 goal_command_submission_method = "typed"
             else:
@@ -1084,6 +1077,7 @@ class SkillsBenchLocalAcpRelay:
             goal_kickoff_prompt_submitted = False
             post_bridge_terminal_stage = ""
             first_action_seen = False
+            task_prompt_released = False
             bridge_activity_seen = False
             last_bridge_summary_size = 0
             last_bridge_activity_at = time.monotonic()
@@ -1207,11 +1201,10 @@ class SkillsBenchLocalAcpRelay:
                             last_bridge_activity_at = now
                             last_task_output_activity_at = now
                             bridge_activity_seen = True
-                            first_action_seen = True
-                        elif (
-                            not first_action_seen
-                            and current_bridge_summary_size > 0
-                        ):
+                            if not task_prompt_released:
+                                release_codex_cli_goal_task_prompt(prompt_instruction_path, prompt_for_codex)
+                                task_prompt_released = True
+                        if current_bridge_summary_size > 0 and goal_kickoff_prompt_submitted:
                             first_action_seen = True
                         if not meaningful_progress_seen:
                             meaningful_progress_seen = (
@@ -1238,6 +1231,8 @@ class SkillsBenchLocalAcpRelay:
                         capture=capture,
                     ):
                         goal_kickoff_prompt_submitted = True
+                        goal_lifecycle.begin(capture)
+                        goal_active_observed = False
                         tmux_type_text_and_submit(
                             tmux_name=tmux_name,
                             text=CODEX_CLI_GOAL_KICKOFF_PROMPT,

@@ -105,23 +105,25 @@ def build_codex_cli_goal_tui_input(objective: str) -> str:
     return f"{CODEX_CLI_GOAL_COMMAND_PREFIX}{objective}"
 
 
-def build_codex_cli_goal_file_objective(prompt_filename: str) -> str:
-    """Return a short goal objective that points Codex at private task details."""
+def build_codex_cli_goal_bridge_first_action_objective() -> str:
+    """Return the bridge-only goal used before private task disclosure."""
 
-    prompt_ref = (prompt_filename or CODEX_CLI_GOAL_TASK_PROMPT_FILENAME).strip()
-    prompt_ref = prompt_ref.replace("\\", "/").lstrip("/")
-    if not prompt_ref or ".." in Path(prompt_ref).parts:
-        prompt_ref = CODEX_CLI_GOAL_TASK_PROMPT_FILENAME
     objective = (
         f"First run ./{CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME} and require "
-        "it to succeed. Then complete the SkillsBench task using the private "
-        f"task and bridge instructions in ./{prompt_ref}. Read that file, follow it "
-        "exactly, and perform at least one task-facing bridge action before "
-        "reporting status."
+        "it to succeed. Keep this goal active and wait for the task instructions "
+        "that will be provided next; do not finish or fail after the helper."
     )
     if len(objective) > CODEX_CLI_GOAL_OBJECTIVE_MAX_CHARS:
         raise ValueError("codex cli goal file objective exceeds objective cap")
     return objective
+
+
+def release_codex_cli_goal_task_prompt(prompt_path: Path, prompt_text: str) -> None:
+    """Materialize the unchanged task prompt after bridge-first succeeds."""
+
+    if prompt_path.exists():
+        return
+    prompt_path.write_text(prompt_text, encoding="utf-8")
 
 
 def write_codex_cli_goal_bridge_first_action_helper(
