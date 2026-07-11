@@ -56,6 +56,7 @@ from .repository_memory_provider import (
     render_issue_fix_repository_memory_sync_markdown,
     retrieve_issue_fix_repository_memory,
     sync_issue_fix_repository_memory,
+    write_issue_fix_validated_outcome_memory,
 )
 from .workflow_plan import (
     build_issue_fix_workflow_plan_packet,
@@ -584,6 +585,24 @@ def register_issue_fix_commands(
         ),
     )
     outcome_parser.add_argument(
+        "--repository-memory-provider-json",
+        default=None,
+        help=(
+            "Local-private issue_fix_repository_memory_provider_config_v0 used "
+            "only when --write-repository-memory is explicit. Defaults to "
+            "LOOPX_ISSUE_FIX_REPOSITORY_MEMORY_PROVIDER_CONFIG."
+        ),
+    )
+    outcome_parser.add_argument(
+        "--write-repository-memory",
+        action="store_true",
+        help=(
+            "After passed validation and completed delivery, write one distilled "
+            "public outcome through an owner-enabled, revision-scoped provider. "
+            "No transcript or tool-result capture is performed."
+        ),
+    )
+    outcome_parser.add_argument(
         "--agent-id",
         help="Optional registered agent id projected as the case owner.",
     )
@@ -1096,6 +1115,16 @@ def handle_issue_fix_command(
                     "--write-delivery-evidence uses the default feasibility domain-state row; "
                     "do not combine it with --feasibility-json"
                 )
+            provider_path = args.repository_memory_provider_json or (
+                default_repository_memory_provider_config_path()
+                if args.write_repository_memory
+                else None
+            )
+            if args.write_repository_memory and not provider_path:
+                raise ValueError(
+                    "--write-repository-memory requires an explicit provider config "
+                    "or LOOPX_ISSUE_FIX_REPOSITORY_MEMORY_PROVIDER_CONFIG"
+                )
             stdin_input_count = sum(
                 value == "-"
                 for value in (
@@ -1174,7 +1203,25 @@ def handle_issue_fix_command(
                     if isinstance(existing_delivery, dict)
                     else None
                 )
-                if existing_compact == delivery_evidence:
+                comparable_existing = (
+                    {
+                        key: value
+                        for key, value in existing_compact.items()
+                        if key != "recorded_at"
+                    }
+                    if existing_compact is not None
+                    else None
+                )
+                comparable_delivery = (
+                    {
+                        key: value
+                        for key, value in delivery_evidence.items()
+                        if key != "recorded_at"
+                    }
+                    if delivery_evidence is not None
+                    else None
+                )
+                if comparable_existing == comparable_delivery:
                     delivery_evidence = existing_delivery
                     write_result = {
                         "write_performed": False,
@@ -1212,6 +1259,34 @@ def handle_issue_fix_command(
                 agent_id=args.agent_id,
                 generated_at=generated_at,
             )
+            if args.write_repository_memory:
+                outcome_case = (payload.get("issue_fix_outcomes") or [{}])[0]
+                repository_context = (
+                    outcome_case.get("repository_context")
+                    if isinstance(outcome_case, dict)
+                    else None
+                )
+                revision = (
+                    str(repository_context.get("revision") or "").strip()
+                    if isinstance(repository_context, dict)
+                    else ""
+                )
+                if not revision:
+                    raise ValueError(
+                        "--write-repository-memory requires a revision-pinned outcome"
+                    )
+                writeback = write_issue_fix_validated_outcome_memory(
+                    config=_load_json_object(str(provider_path)),
+                    outcome_packet=payload,
+                    repository_revision=revision,
+                    observed_at=generated_at,
+                    execute=True,
+                )
+                payload["repository_memory_writeback"] = writeback
+                payload["external_writes_performed"] = bool(
+                    writeback.get("external_writes_performed")
+                )
+                payload["ok"] = writeback.get("ok") is True
             if domain_state_write is not None:
                 payload["domain_state_write"] = domain_state_write
                 payload["source_contract"]["writes_source_state"] = True

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
+import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -39,8 +42,25 @@ _CONFIG_FIELDS = {
     "timeout_seconds",
     "sync_timeout_seconds",
     "resource_references",
+    "writeback_enabled",
+    "writeback_scope_ref",
+    "workspace_scope",
+    "peer_scope",
 }
 _LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}$")
+_FORBIDDEN_WRITEBACK_FIELDS = {
+    "credential",
+    "credentials",
+    "expert_answer",
+    "private_material",
+    "raw_expert_answer",
+    "raw_tool_logs",
+    "raw_tool_results",
+    "raw_transcript",
+    "tool_logs",
+    "tool_results",
+    "transcript",
+}
 
 
 def default_repository_memory_provider_config_path() -> str | None:
@@ -182,6 +202,26 @@ def _normalise_config(
         normalised_reference = reference.as_posix()
         if normalised_reference not in resource_references:
             resource_references.append(normalised_reference)
+    writeback_enabled = config.get("writeback_enabled") is True
+    writeback_scope_ref = str(config.get("writeback_scope_ref") or "").strip()
+    workspace_scope = str(config.get("workspace_scope") or "").strip()
+    peer_scope = str(config.get("peer_scope") or "").strip()
+    if writeback_enabled:
+        writeback_scope_ref = _compact(
+            writeback_scope_ref,
+            field="writeback_scope_ref",
+            limit=500,
+        ).rstrip("/")
+        if not writeback_scope_ref.startswith("viking://resources/"):
+            raise ValueError(
+                "repository memory writeback_scope_ref must use viking://resources/"
+            )
+        if repository_revision[:12] not in writeback_scope_ref:
+            raise ValueError(
+                "repository memory writeback_scope_ref must be revision-scoped"
+            )
+        workspace_scope = _label(workspace_scope, field="workspace_scope")
+        peer_scope = _label(peer_scope, field="peer_scope")
     return {
         **dict(config),
         "provider": provider,
@@ -193,7 +233,237 @@ def _normalise_config(
         "sync_timeout_seconds": sync_timeout_seconds,
         "resource_references": resource_references,
         "enabled": config.get("enabled") is not False,
+        "writeback_enabled": writeback_enabled,
+        "writeback_scope_ref": writeback_scope_ref,
+        "workspace_scope": workspace_scope,
+        "peer_scope": peer_scope,
     }
+
+
+def _validated_outcome_fact(
+    outcome_packet: Mapping[str, Any],
+    *,
+    repository_revision: str,
+    workspace_scope: str,
+    peer_scope: str,
+) -> tuple[str, str]:
+    def reject_unsafe_fields(value: Any) -> None:
+        if isinstance(value, Mapping):
+            for raw_key, nested in value.items():
+                key = str(raw_key).strip().lower().replace("-", "_")
+                if key in _FORBIDDEN_WRITEBACK_FIELDS and nested:
+                    raise ValueError(
+                        f"repository memory writeback rejects unsafe field: {key}"
+                    )
+                if key in {
+                    "credentials_captured",
+                    "local_paths_captured",
+                    "raw_content_captured",
+                    "raw_logs_captured",
+                } and nested is True:
+                    raise ValueError(
+                        f"repository memory writeback rejects unsafe capture flag: {key}"
+                    )
+                reject_unsafe_fields(nested)
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            for nested in value:
+                reject_unsafe_fields(nested)
+
+    reject_unsafe_fields(outcome_packet)
+    if outcome_packet.get("schema_version") != "issue_fix_outcome_projection_v0":
+        raise ValueError(
+            "repository memory writeback requires issue_fix_outcome_projection_v0"
+        )
+    outcomes = outcome_packet.get("issue_fix_outcomes")
+    if not isinstance(outcomes, Sequence) or isinstance(outcomes, (str, bytes)):
+        raise ValueError("repository memory writeback requires one outcome case")
+    cases = [item for item in outcomes if isinstance(item, Mapping)]
+    if len(cases) != 1:
+        raise ValueError("repository memory writeback requires exactly one outcome case")
+    case = cases[0]
+    repository_context = case.get("repository_context")
+    delivery = case.get("delivery")
+    validation = case.get("validation")
+    result = case.get("result")
+    issue = case.get("issue")
+    if not all(
+        isinstance(value, Mapping)
+        for value in (repository_context, delivery, validation, result, issue)
+    ):
+        raise ValueError("repository memory writeback outcome case is incomplete")
+    if str(repository_context.get("revision") or "") != repository_revision:
+        raise ValueError(
+            "repository memory writeback revision must match the outcome checkout"
+        )
+    if delivery.get("evidence_provided") is not True:
+        raise ValueError("repository memory writeback requires explicit delivery evidence")
+    if delivery.get("outcome_status") != "completed":
+        raise ValueError("repository memory writeback requires completed delivery")
+    if validation.get("status") != "passed":
+        raise ValueError("repository memory writeback requires passed validation")
+    recorded_at = _compact(
+        delivery.get("recorded_at"), field="delivery recorded_at", limit=80
+    )
+    if not recorded_at:
+        raise ValueError(
+            "repository memory writeback requires stable delivery recorded_at"
+        )
+
+    public_outputs: list[dict[str, str]] = []
+    for index, item in enumerate(result.get("public_outputs") or []):
+        if not isinstance(item, Mapping):
+            raise ValueError(f"public_outputs[{index}] must be an object")
+        kind = _compact(item.get("kind") or "artifact", field="output kind", limit=60)
+        url = _compact(item.get("url"), field="output url", limit=320)
+        if url and not url.startswith("https://"):
+            raise ValueError("repository memory output URLs must use https")
+        if url:
+            public_outputs.append({"kind": kind, "url": url})
+
+    changed_files: list[str] = []
+    for index, raw_path in enumerate(delivery.get("changed_files") or []):
+        path = PurePosixPath(
+            _compact(raw_path, field=f"changed_files[{index}]", limit=260)
+        )
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError("repository memory changed files must be repo-relative")
+        changed_files.append(path.as_posix())
+
+    repo = _compact(case.get("repo"), field="repo", limit=180)
+    issue_ref = _compact(case.get("issue_ref"), field="issue_ref", limit=180)
+    supersession_key = "sha256:" + hashlib.sha256(
+        f"{workspace_scope}\n{peer_scope}\n{repo}\n{issue_ref}".encode("utf-8")
+    ).hexdigest()
+    fact = {
+        "schema_version": "issue_fix_validated_outcome_memory_v0",
+        "fact_type": "validated_issue_fix_outcome",
+        "workspace_scope": workspace_scope,
+        "peer_scope": peer_scope,
+        "repository": repo,
+        "issue_ref": issue_ref,
+        "issue_url": _compact(issue.get("url"), field="issue URL", limit=320),
+        "route": _label(case.get("route"), field="route"),
+        "stage": _label(case.get("stage"), field="stage"),
+        "repository_revision": repository_revision,
+        "context_fingerprint": _compact(
+            repository_context.get("fingerprint"),
+            field="context fingerprint",
+            limit=80,
+        ),
+        "validation_status": "passed",
+        "validation_label": _compact(
+            validation.get("label"), field="validation label", limit=260
+        ),
+        "commit_ref": _compact(
+            delivery.get("commit_ref"), field="commit ref", limit=80
+        ),
+        "changed_files": changed_files,
+        "public_outputs": public_outputs,
+        "risks": [
+            _compact(item, field=f"risks[{index}]", limit=260)
+            for index, item in enumerate(case.get("risks") or [])
+        ],
+        "freshness": "revision_pinned",
+        "observed_at": recorded_at,
+        "provenance": "issue_fix_outcome_projection_v0",
+        "supersession_key": supersession_key,
+    }
+    canonical = json.dumps(
+        fact,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    idempotency_key = "sha256:" + hashlib.sha256(
+        canonical.encode("utf-8")
+    ).hexdigest()
+    body = (
+        "# Validated issue-fix outcome\n\n```json\n"
+        + json.dumps(
+            {**fact, "idempotency_key": idempotency_key},
+            ensure_ascii=False,
+            sort_keys=True,
+            indent=2,
+        )
+        + "\n```\n"
+    )
+    return idempotency_key, body
+
+
+def write_issue_fix_validated_outcome_memory(
+    *,
+    config: Mapping[str, Any],
+    outcome_packet: Mapping[str, Any],
+    repository_revision: str,
+    observed_at: str,
+    execute: bool,
+    provider: ContextProvider | None = None,
+) -> dict[str, Any]:
+    """Write one distilled, revision-pinned outcome through an explicit provider gate."""
+
+    normalised = _normalise_config(config, repository_revision=repository_revision)
+    base = {
+        "schema_version": "issue_fix_validated_outcome_memory_writeback_v0",
+        "provider": normalised["provider"],
+        "namespace": normalised["namespace"],
+        "visibility": "public",
+        "repository_revision": repository_revision,
+        "writeback_enabled": normalised["writeback_enabled"],
+        "automatic_capture_performed": False,
+        "raw_content_captured": False,
+        "credentials_captured": False,
+    }
+    if not normalised["enabled"]:
+        return {
+            **base,
+            "ok": False,
+            "status": "disabled",
+            "reason_code": "provider_disabled",
+            "external_writes_performed": False,
+        }
+    if not normalised["writeback_enabled"]:
+        return {
+            **base,
+            "ok": False,
+            "status": "disabled",
+            "reason_code": "writeback_not_owner_enabled",
+            "external_writes_performed": False,
+        }
+    idempotency_key, body = _validated_outcome_fact(
+        outcome_packet,
+        repository_revision=repository_revision,
+        workspace_scope=str(normalised["workspace_scope"]),
+        peer_scope=str(normalised["peer_scope"]),
+    )
+    digest = idempotency_key.removeprefix("sha256:")
+    target = (
+        f"{normalised['writeback_scope_ref']}/validated-outcomes/"
+        f"{normalised['workspace_scope']}/{normalised['peer_scope']}/{digest}.md"
+    )
+    configured_provider = provider or build_context_provider(normalised)
+    with tempfile.TemporaryDirectory(prefix="loopx-validated-outcome-") as tmpdir:
+        source = Path(tmpdir) / f"{digest}.md"
+        source.write_text(body, encoding="utf-8")
+        sync = configured_provider.sync(
+            namespace=str(normalised["namespace"]),
+            resources=[(str(source), target)],
+            timeout_seconds=float(normalised["sync_timeout_seconds"]),
+            observed_at=observed_at,
+            execute=execute,
+        )
+    packet = sync.public_packet()
+    packet.update(
+        {
+            **base,
+            "ok": sync.status in {"completed", "planned"},
+            "status": sync.status,
+            "reason_code": sync.reason_code,
+            "idempotency_key": idempotency_key,
+            "supersession_key_recorded": True,
+            "revision_scoped": True,
+        }
+    )
+    return packet
 
 
 def _repo_relative_ref(

@@ -407,7 +407,8 @@ revision 仍是事实源。
 - 多仓库 issue portfolio 与有界并发；
 - 从公开 accepted/rejected outcome 学习 maintainer preference；
 - reviewer load balancing 与 bus-factor awareness；
-- 带显式 workspace/peer 隔离的 richer repository memory；
+- 跨多个重复 issue 评估 validated-outcome memory 的实际价值，再决定是否默认开启或扩展到
+  session memory；
 - repository-context contract 稳定后的 Open Knowledge Format 互操作；
 - accepted fix、cycle time、human attention、regression、boundary incident 等项目级指标。
 
@@ -479,8 +480,7 @@ source 保持为 advisory；只有与 pinned checkout 文件做 canonical-text e
 末尾换行）。
 未验证命中只进入计数，其摘要不会持久化。紧凑 hook projection 仍写入现有 repository
 context，不建立第二套 ledger。Provider 不可用、空结果或 checkout 缺失时 fail-open；raw
-memory body、自动 transcript capture、memory writeback、私有 namespace、凭据和 provider
-配置路径都不会被保留。
+memory body、自动 transcript capture、私有 namespace、凭据和 provider 配置路径都不会被保留。
 
 最小本地 provider 配置如下；`scope_ref` 也必须包含当前 revision：
 
@@ -496,7 +496,11 @@ memory body、自动 transcript capture、memory writeback、私有 namespace、
   "max_results": 3,
   "timeout_seconds": 15,
   "sync_timeout_seconds": 180,
-  "resource_references": ["src/module.py", "tests/test_module.py"]
+  "resource_references": ["src/module.py", "tests/test_module.py"],
+  "writeback_enabled": false,
+  "writeback_scope_ref": "viking://resources/public-repository/<git-revision>",
+  "workspace_scope": "owner-repo",
+  "peer_scope": "issue-fix-agent"
 }
 ```
 
@@ -505,6 +509,20 @@ Resource indexing 与 retrieval 刻意分离。先用
 provider resource write 已获授权时才加 `--execute`。同一个 immutable revision scope
 重复执行时，内容一致会幂等通过；出现冲突则停止，不会覆盖或自动改名。只读 retrieval
 与 resource sync 使用独立且有上限的 timeout，因为语义索引通常比 search/read 更慢。
+
+Validated-outcome writeback 是另一条默认关闭的 hook。只有调用方显式增加
+`--write-repository-memory`、本地 provider config 另行设置
+`writeback_enabled: true`、delivery evidence 为 `completed`、validation 为 `passed`，且
+delivery evidence 带有稳定 `recorded_at`、outcome revision 与公开 resource scope 一致时才会
+执行。LoopX 只写入一条 distilled fact：
+revision、provenance、freshness、公开产出、风险、稳定 supersession key，以及显式的
+workspace/peer scope。内容 hash 决定 immutable target，因此相同重试会读取并接受已有 fact，
+不会二次写入；内容冲突则停止，不覆盖旧事实。Raw transcript、tool log/result、expert answer、
+凭据、私有材料和已捕获本地路径都会被拒绝；provider packet 只保留 opaque ref 与紧凑收据。
+
+OpenViking adapter 的第一版刻意使用可确定定位的 `viking://resources/` 写回，不调用实验性的
+`ov add-memory`。后者会新建 session，当前没有 idempotency key；因此即使 validated-outcome
+writeback 已开启，conversation/session 自动捕获仍不在本能力边界内，必须另行获得 owner 决策。
 
 是否默认开启必须由真实证据决定，而不是安装即默认。项目应先在多个独立 issue/context
 run 和至少一次重启边界上 dogfood；只有当该 hook 能反复提供经 checkout 验证的新证据，
@@ -640,6 +658,8 @@ loopx issue-fix outcome \
   --pr-ref pull_456 \
   --delivery-evidence-json delivery-evidence.json \
   --write-delivery-evidence \
+  --repository-memory-provider-json provider.json \
+  --write-repository-memory \
   --agent-id codex-issue-fix \
   --format json
 ```
@@ -655,6 +675,7 @@ python3 examples/issue-fix-workflow-plan-smoke.py
 python3 examples/issue-fix-workflow-contract-smoke.py
 python3 examples/issue-fix-repository-context-smoke.py
 python3 examples/issue-fix-repository-memory-smoke.py
+python3 examples/issue-fix-validated-memory-writeback-smoke.py
 python3 examples/issue-fix-feasibility-smoke.py
 python3 examples/issue-fix-pr-lifecycle-smoke.py
 python3 examples/issue-fix-outcome-projection-smoke.py

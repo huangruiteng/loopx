@@ -127,6 +127,10 @@ def _delivery_evidence(value: Mapping[str, Any] | None) -> dict[str, Any]:
         "risks": _safe_text_list(
             value.get("risks") or [], field="risks", limit=260, count_limit=10
         ),
+        "recorded_at": _safe_text(
+            value.get("recorded_at"), field="recorded_at", limit=80
+        )
+        or None,
     }
 
 
@@ -148,9 +152,10 @@ def compact_issue_fix_delivery_evidence(
         "outputs": list(delivery.get("outputs") or []),
         "risks": list(delivery.get("risks") or []),
     }
-    if recorded_at:
+    effective_recorded_at = recorded_at or delivery.get("recorded_at")
+    if effective_recorded_at:
         compact["recorded_at"] = _safe_text(
-            recorded_at,
+            effective_recorded_at,
             field="delivery evidence recorded_at",
             limit=80,
         )
@@ -449,6 +454,7 @@ def build_issue_fix_outcome_projection(
             "outcome_status": delivery.get("outcome_status"),
             "commit_ref": delivery.get("commit_ref"),
             "changed_files": list(delivery.get("changed_files") or []),
+            "recorded_at": delivery.get("recorded_at"),
         },
         "pull_request": (
             {
@@ -758,4 +764,12 @@ def render_issue_fix_outcome_projection_markdown(payload: dict[str, Any]) -> str
         f"- evidence: {outcome.get('evidence')}",
         f"- next action: {outcome.get('next_action') or 'none'}",
     ]
+    writeback = _mapping(payload.get("repository_memory_writeback"))
+    if writeback:
+        lines.extend(
+            [
+                f"- repository memory writeback: `{writeback.get('status')}`",
+                f"- provider writes: `{writeback.get('write_count', 0)}`",
+            ]
+        )
     return "\n".join(lines)
