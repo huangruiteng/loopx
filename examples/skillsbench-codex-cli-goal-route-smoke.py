@@ -1510,6 +1510,13 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     lifecycle.observe("Goal active\nGoal failed\nold scrollback\n› ")
     assert lifecycle.active_advanced is False
     assert lifecycle.failed_advanced is False
+    lifecycle.observe(
+        "Goal active\nold scrollback\n› ",
+        turn_active=True,
+    )
+    assert lifecycle.active_advanced is False
+    assert lifecycle.active_observed is True
+    assert lifecycle.trace_fields()["goal_turn_active_observed"] is True
     lifecycle.begin("Goal active\nGoal failed\nold scrollback\n› ")
     lifecycle.observe(
         "Goal active\nGoal failed\nold scrollback\nGoal active\nGoal achieved\n› "
@@ -1576,8 +1583,9 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "text=CODEX_CLI_GOAL_KICKOFF_PROMPT" in source
     assert "goal_failed_now = False" in source
     assert "goal_lifecycle.failed_advanced" in source
-    assert "goal_lifecycle.active_advanced" in source
+    assert "goal_lifecycle.active_observed" in source
     assert "goal_lifecycle.achieved_advanced" in source
+    assert "goal_lifecycle.observe(capture, turn_active=turn_active)" in source
     assert source.count("goal_lifecycle.begin(") == 2
     assert source.count("goal_kickoff_prompt_submitted = False") >= 2
     assert "terminal_observed=goal_failed_now" in source

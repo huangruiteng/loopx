@@ -1222,10 +1222,10 @@ class SkillsBenchLocalAcpRelay:
                     now = time.monotonic()
                     capture = self._last_codex_cli_goal_tui_capture = tmux_capture(tmux_name)
                     turn_active = codex_cli_tui_turn_active(capture)
-                    goal_lifecycle.observe(capture)
+                    goal_lifecycle.observe(capture, turn_active=turn_active)
                     if turn_active:
                         last_task_output_activity_at = now
-                    if goal_lifecycle.active_advanced:
+                    if goal_lifecycle.active_observed:
                         goal_active_observed = True
                     goal_failed_now = goal_lifecycle.failed_advanced
                     if bridge_summary_path is not None:

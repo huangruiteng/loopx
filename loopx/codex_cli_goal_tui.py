@@ -44,18 +44,25 @@ class CodexCliGoalLifecycleGeneration:
         CodexCliGoalLifecycleMarkerCounts()
     )
     current: CodexCliGoalLifecycleMarkerCounts = CodexCliGoalLifecycleMarkerCounts()
+    turn_active_observed: bool = False
 
     def begin(self, capture: str) -> None:
         self.generation += 1
         self.baseline = codex_cli_goal_lifecycle_marker_counts(capture)
         self.current = self.baseline
+        self.turn_active_observed = False
 
-    def observe(self, capture: str) -> None:
+    def observe(self, capture: str, *, turn_active: bool = False) -> None:
         self.current = codex_cli_goal_lifecycle_marker_counts(capture)
+        self.turn_active_observed = self.turn_active_observed or bool(turn_active)
 
     @property
     def active_advanced(self) -> bool:
         return self.current.active > self.baseline.active
+
+    @property
+    def active_observed(self) -> bool:
+        return self.active_advanced or self.turn_active_observed
 
     @property
     def achieved_advanced(self) -> bool:
@@ -65,8 +72,11 @@ class CodexCliGoalLifecycleGeneration:
     def failed_advanced(self) -> bool:
         return self.current.failed > self.baseline.failed
 
-    def trace_fields(self) -> dict[str, int]:
-        fields = {"goal_submission_generation": max(0, self.generation)}
+    def trace_fields(self) -> dict[str, int | bool]:
+        fields: dict[str, int | bool] = {
+            "goal_submission_generation": max(0, self.generation),
+            "goal_turn_active_observed": self.turn_active_observed,
+        }
         for name in ("active", "achieved", "failed"):
             baseline = getattr(self.baseline, name)
             current = getattr(self.current, name)
