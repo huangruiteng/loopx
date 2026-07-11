@@ -385,7 +385,7 @@ def assert_explicit_non_gating_user_todo_stays_quiet() -> None:
     assert "user_action_required=false" in packet["summary"], packet
     assert "agent_action_required=true" in packet["summary"], packet
     assert "quiet_noop_allowed=false" in packet["summary"], packet
-    assert "user_action_pending=true" in packet["summary"], packet
+    assert "user_action_pending=true" not in packet["summary"], packet
     assert "agent_action=repair the selected continuous_monitor todo" in packet["summary"], packet
     assert contract["mode"] == "bounded_delivery", contract
     assert contract["user_channel"]["action_required"] is False, contract

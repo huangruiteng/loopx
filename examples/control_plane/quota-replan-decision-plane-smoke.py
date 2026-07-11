@@ -172,8 +172,10 @@ def blocking_handoff_review() -> dict:
         "priority": "P1",
         "task_class": "advancement_task",
         "action_kind": "review_merge",
+        "continuation_policy": "independent_handoff",
         "claimed_by": PRIMARY_AGENT,
-        "blocks_agent": SIDE_AGENT,
+        "excluded_agents": [SIDE_AGENT],
+        "unblocks_todo_id": "todo_monitor_wait",
     }
 
 

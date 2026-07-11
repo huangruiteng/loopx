@@ -22,14 +22,14 @@ from ..todos import (
     supersede_goal_todo,
     update_goal_todo,
 )
-from .todo_argument_validation import unsupported_todo_options
+from .todo_argument_validation import unsupported_todo_options, validate_shared_todo_options
+from .todo_event import RolloutEventAppender, append_todo_rollout_event
 
 
 PrintPayload = Callable[
     [dict[str, object], str, Callable[[dict[str, object]], str]],
     None,
 ]
-RolloutEventAppender = Callable[..., dict[str, object]]
 
 
 def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
@@ -365,31 +365,7 @@ def handle_todo_command(
         else render_todo_markdown
     )
     try:
-        agent_id_allowed_for_gate_authoring = (
-            args.todo_command in {"add", "update"}
-            and args.role == "user"
-            and args.task_class == "user_gate"
-        )
-        agent_id_allowed_for_read = args.todo_command == "list"
-        global_gate_allowed = args.todo_command in {"add", "update"}
-        if args.todo_command not in {"suggest", "capture-followups"} and (
-            (
-                args.agent_id
-                and not agent_id_allowed_for_gate_authoring
-                and not agent_id_allowed_for_read
-            )
-            or (args.global_gate and not global_gate_allowed)
-            or args.suggestion_sources
-            or args.suggestion_limit is not None
-            or args.suggestion_trigger
-        ):
-            raise ValueError(
-                "todo --agent-id is supported by `todo list`, `todo suggest`, and "
-                "by `todo add/update --role user --task-class user_gate` for "
-                "agent-scoped user gates; --global-gate is supported by "
-                "`todo add/update --role user --task-class user_gate`; --from, --limit, and "
-                "--trigger are only supported by `todo suggest`"
-            )
+        validate_shared_todo_options(args)
         if args.todo_command == "list":
             unsupported = unsupported_todo_options(
                 args,
@@ -862,36 +838,12 @@ def handle_todo_command(
             "todo": args.text or "",
             "error": str(exc),
         }
-    todo_event_kinds = {
-        "add": "todo_add",
-        "claim": "todo_claim",
-        "update": "todo_update",
-        "complete": "todo_complete",
-        "supersede": "todo_supersede",
-        "archive-completed": "todo_archive_completed",
-        "capture-followups": "todo_capture_followups",
-    }
-    if payload.get("ok") and not payload.get("dry_run"):
-        append_cli_rollout_event(
-            payload,
-            registry_path=registry_path,
-            runtime_root_arg=runtime_root_arg,
-            event_kind=todo_event_kinds.get(args.todo_command, "todo_update"),
-            agent_id=args.agent_id or args.claimed_by,
-            todo_id=args.todo_id or str(payload.get("todo_id") or "").strip() or None,
-            status=str(payload.get("status") or args.todo_command or "").strip(),
-            summary=(
-                f"todo {args.todo_command} recorded for "
-                f"{payload.get('todo_id') or args.todo_id or 'unstructured todo'}"
-            ),
-            details={
-                "command": "todo",
-                "todo_command": args.todo_command,
-                "role": payload.get("role") or args.role or "",
-                "changed": bool(payload.get("changed")),
-                "added": bool(payload.get("added")),
-                "already_exists": bool(payload.get("already_exists")),
-            },
-        )
+    append_todo_rollout_event(
+        payload,
+        args=args,
+        registry_path=registry_path,
+        runtime_root_arg=runtime_root_arg,
+        append_cli_rollout_event=append_cli_rollout_event,
+    )
     print_payload(payload, args.format, renderer)
     return 0 if payload.get("ok") else 1

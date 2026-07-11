@@ -66,3 +66,31 @@ def unsupported_todo_options(
         for flag, field in TODO_OPTION_FIELDS
         if field not in allowed and getattr(args, field, None)
     ]
+
+
+def validate_shared_todo_options(args: argparse.Namespace) -> None:
+    agent_id_allowed_for_gate_authoring = (
+        args.todo_command in {"add", "update"}
+        and args.role == "user"
+        and args.task_class == "user_gate"
+    )
+    agent_id_allowed_for_read = args.todo_command == "list"
+    global_gate_allowed = args.todo_command in {"add", "update"}
+    if args.todo_command not in {"suggest", "capture-followups"} and (
+        (
+            args.agent_id
+            and not agent_id_allowed_for_gate_authoring
+            and not agent_id_allowed_for_read
+        )
+        or (args.global_gate and not global_gate_allowed)
+        or args.suggestion_sources
+        or args.suggestion_limit is not None
+        or args.suggestion_trigger
+    ):
+        raise ValueError(
+            "todo --agent-id is supported by `todo list`, `todo suggest`, and "
+            "by `todo add/update --role user --task-class user_gate` for "
+            "agent-scoped user gates; --global-gate is supported by "
+            "`todo add/update --role user --task-class user_gate`; --from, --limit, and "
+            "--trigger are only supported by `todo suggest`"
+        )

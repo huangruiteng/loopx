@@ -28,6 +28,10 @@ GIT_REQUIRED_SCRIPTS = {
     "repo-python-line-budget-smoke.py": "requires git ls-files over tracked Python files",
 }
 SERIAL_SMOKE_SCRIPTS = {
+    "issue-fix-acceptance-loop-smoke.py": (
+        "creates temporary git repositories and can race host git cleanup when "
+        "run beside other git-heavy smokes"
+    ),
     "issue-fix-workflow-e2e-smoke.py": (
         "creates a temporary git repository and can race host git cleanup when "
         "run beside other git-heavy smokes"

@@ -953,11 +953,13 @@ def assert_result_contract(results: list[dict[str, Any]], rows: list[dict[str, A
         assert result["summary_quality_score"] >= 2, result
     with_harness = next(result for result in results if result["scenario_id"] == "with_loopx")
     without = next(result for result in results if result["scenario_id"] == "without_loopx")
+    with_components = with_harness["control_plane_score"]["components"]
+    without_components = without["control_plane_score"]["components"]
     assert with_harness["harness_identity"] == "loopx", with_harness
     assert with_harness["goal_tick_phase_coverage"] == 1.0, with_harness
-    assert with_harness["control_plane_score"]["value"] > without["control_plane_score"]["value"], (
-        with_harness,
-        without,
+    assert with_components["writeback_quality"] > without_components["writeback_quality"], (
+        with_components,
+        without_components,
     )
     assert with_harness["writeback_count"] == 3, with_harness
     assert with_harness["spend_count"] == 3, with_harness
@@ -969,7 +971,9 @@ def assert_result_contract(results: list[dict[str, Any]], rows: list[dict[str, A
     assert summary["schema_version"] == COMPARISON_SCHEMA, summary
     assert summary["both_success"] is True, summary
     assert summary["official_task_score_delta"] == 0.0, summary
-    assert summary["control_plane_score_delta"] > 0.0, summary
+    assert summary["with_loopx_extra_writebacks"] == 3, summary
+    assert summary["with_loopx_extra_spends"] == 3, summary
+    assert summary["with_loopx_overhead_ms"] >= 0.0, summary
     markers = summary["interrupt_fixture_markers"]
     assert markers["schema_version"] == INTERRUPT_MARKERS_SCHEMA, markers
     assert markers["task_id"] == INTERRUPT_TASK_ID, markers

@@ -245,23 +245,25 @@ def assert_agent_scope_frontier_routing_parity() -> None:
         "text": "[P1] Unclaimed shared lane work.",
         "task_class": TODO_TASK_CLASS_ADVANCEMENT,
     }
-    blocked_for_current = {
-        "todo_id": "todo_blocks_current",
+    excluded_for_current = {
+        "todo_id": "todo_excludes_current",
         "index": 4,
         "priority": "P1",
-        "text": "[P1] Handoff work blocking the current agent.",
+        "text": "[P1] Handoff work excluding the current agent.",
         "task_class": TODO_TASK_CLASS_ADVANCEMENT,
         "claimed_by": "agent-b",
-        "blocks_agent": "agent-a",
+        "excluded_agents": ["agent-a"],
+        "unblocks_todo_id": "todo_current_spaced_claim",
     }
-    blocked_for_other = {
-        "todo_id": "todo_blocks_other",
+    excluded_for_other = {
+        "todo_id": "todo_excludes_other",
         "index": 5,
         "priority": "P1",
-        "text": "[P1] Handoff work blocking a different agent.",
+        "text": "[P1] Handoff work excluding a different agent.",
         "task_class": TODO_TASK_CLASS_ADVANCEMENT,
         "claimed_by": "agent-a",
-        "blocks_agent": "agent-b",
+        "excluded_agents": ["agent-b"],
+        "unblocks_todo_id": "todo_other",
     }
     assert agent_scope_count_advancement_items(
         [current, other, unclaimed],
@@ -272,13 +274,13 @@ def assert_agent_scope_frontier_routing_parity() -> None:
         claimed_by="__unclaimed__",
     ) == 1
     assert agent_scope_item_matches_agent_or_unclaimed(
-        blocked_for_current,
-        agent_id="agent-a",
-    ) is True
-    assert agent_scope_item_matches_agent_or_unclaimed(
-        blocked_for_other,
+        excluded_for_current,
         agent_id="agent-a",
     ) is False
+    assert agent_scope_item_matches_agent_or_unclaimed(
+        excluded_for_other,
+        agent_id="agent-a",
+    ) is True
 
     agent_summary = {
         "executable_backlog_items": [current, other, unclaimed],
@@ -304,7 +306,8 @@ def assert_agent_scope_frontier_routing_parity() -> None:
                 "index": 6,
                 "text": "[P1] Current agent blocking handoff.",
                 "task_class": TODO_TASK_CLASS_ADVANCEMENT,
-                "blocks_agent": " agent-a ",
+                "excluded_agents": [" agent-a "],
+                "unblocks_todo_id": "todo_deferred_current",
                 "gate_state": "blocking",
             },
             {
@@ -312,7 +315,8 @@ def assert_agent_scope_frontier_routing_parity() -> None:
                 "index": 7,
                 "text": "[P1] Other agent blocking handoff.",
                 "task_class": TODO_TASK_CLASS_ADVANCEMENT,
-                "blocks_agent": "agent-b",
+                "excluded_agents": ["agent-b"],
+                "unblocks_todo_id": "todo_deferred_other",
                 "gate_state": "blocking",
             },
             {
@@ -320,7 +324,8 @@ def assert_agent_scope_frontier_routing_parity() -> None:
                 "index": 8,
                 "text": "[P1] Current agent cleared handoff.",
                 "task_class": TODO_TASK_CLASS_ADVANCEMENT,
-                "blocks_agent": "agent-a",
+                "excluded_agents": ["agent-a"],
+                "unblocks_todo_id": "todo_deferred_current",
                 "gate_state": "cleared_without_successor",
             },
         ],

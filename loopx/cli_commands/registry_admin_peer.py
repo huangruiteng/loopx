@@ -3,6 +3,40 @@ from __future__ import annotations
 import argparse
 
 
+def render_register_agent_markdown(payload: dict[str, object]) -> str:
+    lines = [
+        "# LoopX Agent Registration",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- dry_run: `{payload.get('dry_run')}`",
+        f"- goal_id: `{payload.get('goal_id')}`",
+        f"- global_registry: `{payload.get('global_registry')}`",
+        f"- source_registry: `{payload.get('source_registry')}`",
+        f"- changed: `{payload.get('changed')}`",
+        f"- written: `{payload.get('written')}`",
+    ]
+    if payload.get("error"):
+        lines.append(f"- error: {payload.get('error')}")
+    lines.append(f"- existing_agents: `{', '.join(payload.get('existing_agents') or [])}`")
+    lines.append(f"- registered_agents: `{', '.join(payload.get('registered_agents') or [])}`")
+    sync_payload = payload.get("global_sync")
+    if isinstance(sync_payload, dict):
+        lines.append(f"- global_sync_wrote: `{sync_payload.get('wrote')}`")
+        if sync_payload.get("write_denied"):
+            lines.append(f"- global_sync_error_kind: `{sync_payload.get('error_kind')}`")
+    if payload.get("recommended_action"):
+        lines.append(f"- recommended_action: {payload.get('recommended_action')}")
+    activation = payload.get("host_loop_activation")
+    if isinstance(activation, dict):
+        lines.append(
+            f"- host_loop_activation: `{activation.get('host_surface')}` "
+            f"status=`{activation.get('status')}` activated=`{activation.get('activated')}`"
+        )
+        if activation.get("activated") is not True:
+            lines.append(f"- host_loop_action: {activation.get('recommended_action')}")
+    return "\n".join(lines)
+
+
 def register_peer_runtime_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--agent-model",
