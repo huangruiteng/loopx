@@ -41,6 +41,21 @@ DEFAULT_AGENT_ID = "codex-kanban-worker"
 DEFAULT_CLI_BIN = "lark-cli"
 DEFAULT_STATUS_QUEUE_VIEW = "Worker Queue"
 OPERATOR_CARD_FIELDS = ["Task", "Claim", "Priority", "User Gate", "Evidence", "Status"]
+_LARK_CREDENTIAL_ARGUMENTS = frozenset(
+    {
+        "--access-key",
+        "--access-token",
+        "--ak",
+        "--app-secret",
+        "--authorization",
+        "--bearer-token",
+        "--client-secret",
+        "--secret-key",
+        "--sk",
+        "--tenant-access-token",
+        "--user-access-token",
+    }
+)
 
 STATUS_TODO = "Todo"
 STATUS_CLAIMED = "Claimed"
@@ -449,6 +464,19 @@ def _run_command(
     cwd: Path | None = None,
     timeout_seconds: float | None = None,
 ) -> dict[str, Any]:
+    credential_argument = next(
+        (
+            argument.split("=", 1)[0].lower()
+            for argument in args
+            if argument.split("=", 1)[0].lower() in _LARK_CREDENTIAL_ARGUMENTS
+        ),
+        None,
+    )
+    if credential_argument:
+        raise ValueError(
+            f"{credential_argument} must remain in lark-cli auth; "
+            "the Kanban adapter never accepts inline credentials"
+        )
     command = shlex.join(args)
     if not execute:
         return {

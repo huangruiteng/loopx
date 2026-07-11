@@ -23,6 +23,7 @@ from loopx.presentation.sinks.lark.kanban import (  # noqa: E402
     STATUS_REVIEW,
     STATUS_TODO,
     LarkKanbanConfig,
+    _run_command,
     _lark_record_from_todo_block,
     build_create_board_plan,
     default_lark_kanban_config_path,
@@ -42,6 +43,45 @@ from loopx.presentation.sinks.lark.kanban import (  # noqa: E402
 
 existing_setup_calls: list[list[str]] = []
 existing_setup_view_list_count = 0
+
+
+def credential_boundary_smoke() -> None:
+    runner_called = False
+
+    def forbidden_runner(
+        args: list[str], cwd: Path | None, timeout: float | None
+    ) -> dict[str, object]:
+        nonlocal runner_called
+        runner_called = True
+        raise AssertionError("credential-bearing command reached the runner")
+
+    for argument in ("--ak", "--sk", "--app-secret", "--access-token"):
+        try:
+            _run_command(
+                ["lark-cli", "base", "+record-list", argument, "fixture-secret"],
+                execute=True,
+                runner=forbidden_runner,
+            )
+        except ValueError as error:
+            assert "must remain in lark-cli auth" in str(error), error
+        else:
+            raise AssertionError(f"credential argument was accepted: {argument}")
+    assert runner_called is False
+
+    dry_run = _run_command(
+        [
+            "lark-cli",
+            "base",
+            "+record-list",
+            "--base-token",
+            "base_public_fixture",
+            "--table-id",
+            "tbl_public_fixture",
+        ],
+        execute=False,
+    )
+    assert "base_public_fixture" in dry_run["command"], dry_run
+    assert "tbl_public_fixture" in dry_run["command"], dry_run
 
 
 def fixture_payload() -> dict[str, object]:
@@ -234,6 +274,7 @@ def run_cli(*extra_args: str) -> dict[str, object]:
 
 
 def main() -> int:
+    credential_boundary_smoke()
     global existing_setup_view_list_count
     schema = lark_kanban_schema_payload()
     assert schema["ok"] is True, schema
