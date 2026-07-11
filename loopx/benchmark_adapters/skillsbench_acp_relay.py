@@ -54,29 +54,28 @@ from loopx.benchmark_adapters.skillsbench_codex_goal_recovery import (
     write_private_codex_cli_goal_tui_tail,
 )
 from loopx.codex_cli_goal_tui import (
+    CODEX_CLI_GOAL_KICKOFF_PROMPT,
     CODEX_CLI_GOAL_TASK_PROMPT_FILENAME,
-    build_codex_cli_goal_bridge_first_action_objective,
+    build_codex_cli_goal_file_objective,
     build_codex_cli_goal_tui_input,
     build_codex_cli_tui_command,
     CodexCliGoalLifecycleGeneration,
     codex_cli_goal_watchdog_expired,
     codex_cli_goal_reset_pre_bridge_deadlines,
     codex_cli_goal_should_ignore_stale_terminal,
-    codex_cli_goal_followup_prompt,
+    codex_cli_goal_should_submit_kickoff,
     codex_cli_tui_environment,
     codex_cli_tui_shell_command,
     codex_cli_tui_input_prompt_visible,
     codex_cli_tui_retryable_startup_blocker_stage,
     codex_cli_tui_turn_active,
     resolve_codex_cli_binary,
-    release_codex_cli_goal_task_prompt,
     start_codex_cli_goal_tui_session,
     tmux_capture,
     tmux_kill_session,
     tmux_paste_file_and_submit,
     tmux_submit_enter,
     tmux_type_text_and_submit,
-    write_codex_cli_goal_bridge_first_action_helper,
 )
 
 SAFE_LOOPX_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{6,80}$")
@@ -1038,14 +1037,21 @@ class SkillsBenchLocalAcpRelay:
                     summary_path=bridge_summary_path,
                     bridge_command=agent_bridge_command,
                 )
-                write_codex_cli_goal_bridge_first_action_helper(cwd=local_cwd, bridge_executable=str(instrumented_bridge))
                 prompt_for_codex = self._prompt_with_remote_bridge_packet(
                     prompt_text,
                     bridge_probe=bridge_probe,
                     bridge_command_for_agent=str(instrumented_bridge),
                 )
-                prompt_instruction_path = Path(cwd) / CODEX_CLI_GOAL_TASK_PROMPT_FILENAME
-                prompt_for_goal = build_codex_cli_goal_bridge_first_action_objective()
+                prompt_instruction_path = (
+                    Path(cwd) / CODEX_CLI_GOAL_TASK_PROMPT_FILENAME
+                )
+                prompt_instruction_path.write_text(
+                    prompt_for_codex,
+                    encoding="utf-8",
+                )
+                prompt_for_goal = build_codex_cli_goal_file_objective(
+                    CODEX_CLI_GOAL_TASK_PROMPT_FILENAME
+                )
                 goal_prompt_file_used = True
                 goal_command_submission_method = "typed"
             else:
@@ -1073,11 +1079,9 @@ class SkillsBenchLocalAcpRelay:
             goal_terminal_observed = False
             goal_failed_observed = False
             goal_slash_command_submitted = False
-            goal_bridge_first_action_kickoff_submitted = False
             goal_kickoff_prompt_submitted = False
             post_bridge_terminal_stage = ""
             first_action_seen = False
-            task_prompt_released = False
             bridge_activity_seen = False
             last_bridge_summary_size = 0
             last_bridge_activity_at = time.monotonic()
@@ -1201,10 +1205,11 @@ class SkillsBenchLocalAcpRelay:
                             last_bridge_activity_at = now
                             last_task_output_activity_at = now
                             bridge_activity_seen = True
-                            if not task_prompt_released:
-                                release_codex_cli_goal_task_prompt(prompt_instruction_path, prompt_for_codex)
-                                task_prompt_released = True
-                        if current_bridge_summary_size > 0 and goal_kickoff_prompt_submitted:
+                            first_action_seen = True
+                        elif (
+                            not first_action_seen
+                            and current_bridge_summary_size > 0
+                        ):
                             first_action_seen = True
                         if not meaningful_progress_seen:
                             meaningful_progress_seen = (
@@ -1222,26 +1227,18 @@ class SkillsBenchLocalAcpRelay:
                                     bridge_summary_path
                                 )
                             )
-                    followup_prompt = codex_cli_goal_followup_prompt(
+                    if codex_cli_goal_should_submit_kickoff(
                         bridge_enabled=bridge_summary_path is not None,
                         goal_active_observed=goal_active_observed,
-                        task_prompt_released=task_prompt_released,
-                        bridge_first_action_kickoff_submitted=goal_bridge_first_action_kickoff_submitted,
-                        task_kickoff_submitted=goal_kickoff_prompt_submitted,
+                        kickoff_submitted=goal_kickoff_prompt_submitted,
                         turn_active=turn_active,
                         first_action_seen=first_action_seen,
                         capture=capture,
-                    )
-                    if followup_prompt:
-                        if task_prompt_released:
-                            goal_kickoff_prompt_submitted = True
-                        else:
-                            goal_bridge_first_action_kickoff_submitted = True
-                        goal_lifecycle.begin(capture)
-                        goal_active_observed = False
+                    ):
+                        goal_kickoff_prompt_submitted = True
                         tmux_type_text_and_submit(
                             tmux_name=tmux_name,
-                            text=followup_prompt,
+                            text=CODEX_CLI_GOAL_KICKOFF_PROMPT,
                         )
                         (
                             goal_active_deadline,
@@ -1255,11 +1252,14 @@ class SkillsBenchLocalAcpRelay:
                             first_action_deadline=first_action_deadline,
                             meaningful_progress_deadline=meaningful_progress_deadline,
                         )
-                        next_heartbeat = now + max(1.0, self._config.stream_heartbeat_interval_sec)
+                        next_heartbeat = now + max(
+                            1.0,
+                            self._config.stream_heartbeat_interval_sec,
+                        )
                         continue
                     if codex_cli_goal_should_ignore_stale_terminal(
                         goal_failed_now=goal_failed_now,
-                        kickoff_submitted=(goal_bridge_first_action_kickoff_submitted or goal_kickoff_prompt_submitted),
+                        kickoff_submitted=goal_kickoff_prompt_submitted,
                         first_action_seen=first_action_seen,
                         turn_active=turn_active,
                         first_action_deadline=first_action_deadline,
@@ -1342,7 +1342,6 @@ class SkillsBenchLocalAcpRelay:
                                 if not restart_stage:
                                     goal_lifecycle.begin(capture)
                                     goal_active_observed = False
-                                    goal_bridge_first_action_kickoff_submitted = False
                                     goal_kickoff_prompt_submitted = False
                                     tmux_type_text_and_submit(
                                         tmux_name=tmux_name,
@@ -1843,8 +1842,6 @@ class SkillsBenchLocalAcpRelay:
                 "goal_thread_prewarm_timeout_sec": CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC if self._config.codex_cli_goal_thread_prewarm else 0,
                 "goal_prompt_file_used": bool(goal_prompt_file_used),
                 "goal_prompt_file_raw_path_recorded": False,
-                "goal_bridge_first_action_helper_used": bool(goal_prompt_file_used),
-                "goal_bridge_first_action_helper_raw_path_recorded": False,
                 "goal_command_submission_method": str(
                     goal_command_submission_method or ""
                 )[:40],

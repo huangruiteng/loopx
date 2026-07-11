@@ -3,11 +3,8 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-import subprocess
 import sys
-import tempfile
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -38,40 +35,6 @@ def main() -> int:
     original_monotonic = goal_tui.time.monotonic
     original_sleep = goal_tui.time.sleep
     try:
-        with tempfile.TemporaryDirectory() as temp:
-            request_path = Path(temp) / "bridge-request.json"
-            bridge = Path(temp) / "public-bridge"
-            bridge.write_text(
-                "#!/bin/sh\ncat > " + str(request_path) + "\n",
-                encoding="utf-8",
-            )
-            bridge.chmod(0o700)
-            helper = goal_tui.write_codex_cli_goal_bridge_first_action_helper(
-                cwd=temp,
-                bridge_executable=str(bridge),
-            )
-            assert helper.name == goal_tui.CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME
-            assert helper.stat().st_mode & 0o100
-            subprocess.run([str(helper)], check=True)
-            request = json.loads(request_path.read_text(encoding="utf-8"))
-            assert request == {
-                "operation": "exec",
-                "cwd": "/app",
-                "command": "pwd && ls -la",
-                "timeout_sec": 10,
-            }
-            task_prompt = Path(temp) / goal_tui.CODEX_CLI_GOAL_TASK_PROMPT_FILENAME
-            goal_tui.release_codex_cli_goal_task_prompt(
-                task_prompt,
-                "public task prompt",
-            )
-            assert task_prompt.read_text(encoding="utf-8") == "public task prompt"
-            goal_tui.release_codex_cli_goal_task_prompt(
-                task_prompt,
-                "replacement must not overwrite",
-            )
-            assert task_prompt.read_text(encoding="utf-8") == "public task prompt"
-
         goal_tui.subprocess.run = fake_run  # type: ignore[assignment]
         goal_tui.tmux_kill_session = fake_kill  # type: ignore[assignment]
         goal_tui.wait_for_codex_cli_tui_ready = (  # type: ignore[assignment]
@@ -123,6 +86,7 @@ def main() -> int:
         goal_tui.prewarm_codex_cli_goal_thread = (  # type: ignore[assignment]
             lambda **_kwargs: False
         )
+        goal_tui.tmux_capture = lambda _tmux_name: ""  # type: ignore[assignment]
         stage, prewarmed = goal_tui.start_codex_cli_goal_tui_session(
             tmux_name="prewarm-failed",
             cwd="/tmp/public-workspace",
@@ -132,6 +96,23 @@ def main() -> int:
         )
         assert (stage, prewarmed) == ("thread_prewarm_timeout", False)
         assert calls[-1] == ("kill", "prewarm-failed")
+
+        calls.clear()
+        goal_tui.tmux_capture = (  # type: ignore[assignment]
+            lambda _tmux_name: (
+                "Your access token could not be refreshed because your refresh "
+                "token was revoked. Please sign in again."
+            )
+        )
+        stage, prewarmed = goal_tui.start_codex_cli_goal_tui_session(
+            tmux_name="prewarm-auth-revoked",
+            cwd="/tmp/public-workspace",
+            shell_command="codex",
+            thread_prewarm=True,
+            thread_prewarm_timeout_sec=120,
+        )
+        assert (stage, prewarmed) == ("auth_refresh_token_revoked", False)
+        assert calls[-1] == ("kill", "prewarm-auth-revoked")
 
         calls.clear()
         goal_tui.prewarm_codex_cli_goal_thread = original_prewarm
@@ -165,6 +146,16 @@ def main() -> int:
         goal_tui.time.sleep = lambda _seconds: None  # type: ignore[assignment]
         assert goal_tui.prewarm_codex_cli_goal_thread(
             tmux_name="active-then-ready",
+            timeout_sec=1,
+        )
+
+        goal_tui.tmux_capture = (  # type: ignore[assignment]
+            lambda _tmux_name: "error: token_invalidated\n› "
+        )
+        clock = iter([0.0, 0.0])
+        goal_tui.time.monotonic = lambda: next(clock)  # type: ignore[assignment]
+        assert not goal_tui.prewarm_codex_cli_goal_thread(
+            tmux_name="revoked-auth",
             timeout_sec=1,
         )
 

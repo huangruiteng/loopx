@@ -22,11 +22,6 @@ CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT = (
 )
 CODEX_CLI_GOAL_THREAD_PREWARM_HARD_CAP_MULTIPLIER = 2.0
 CODEX_CLI_GOAL_TASK_PROMPT_FILENAME = "skillsbench-task-prompt.md"
-CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME = "loopx-task-bridge-first-action"
-CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_KICKOFF_PROMPT = (
-    f"Run ./{CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME} now and require it "
-    "to succeed. Wait for more instructions before starting the task."
-)
 CODEX_CLI_GOAL_KICKOFF_PROMPT = (
     "Start working on the active SkillsBench goal now. Read the referenced "
     "task prompt file first, follow it exactly, and perform at least one "
@@ -109,54 +104,22 @@ def build_codex_cli_goal_tui_input(objective: str) -> str:
     return f"{CODEX_CLI_GOAL_COMMAND_PREFIX}{objective}"
 
 
-def build_codex_cli_goal_bridge_first_action_objective() -> str:
-    """Return the bridge-only goal used before private task disclosure."""
+def build_codex_cli_goal_file_objective(prompt_filename: str) -> str:
+    """Return a short goal objective that points Codex at private task details."""
 
+    prompt_ref = (prompt_filename or CODEX_CLI_GOAL_TASK_PROMPT_FILENAME).strip()
+    prompt_ref = prompt_ref.replace("\\", "/").lstrip("/")
+    if not prompt_ref or ".." in Path(prompt_ref).parts:
+        prompt_ref = CODEX_CLI_GOAL_TASK_PROMPT_FILENAME
     objective = (
-        f"First run ./{CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME} and require "
-        "it to succeed. Keep this goal active and wait for the task instructions "
-        "that will be provided next; do not finish or fail after the helper."
+        "Complete the SkillsBench task using the private task and bridge "
+        f"instructions in ./{prompt_ref}. Read that file first, follow it "
+        "exactly, and perform at least one task-facing bridge action before "
+        "reporting status."
     )
     if len(objective) > CODEX_CLI_GOAL_OBJECTIVE_MAX_CHARS:
         raise ValueError("codex cli goal file objective exceeds objective cap")
     return objective
-
-
-def release_codex_cli_goal_task_prompt(prompt_path: Path, prompt_text: str) -> None:
-    """Materialize the unchanged task prompt after bridge-first succeeds."""
-
-    if prompt_path.exists():
-        return
-    prompt_path.write_text(prompt_text, encoding="utf-8")
-
-
-def write_codex_cli_goal_bridge_first_action_helper(
-    *,
-    cwd: str | Path,
-    bridge_executable: str,
-) -> Path:
-    """Write the goal's first task-facing bridge action into its workspace."""
-
-    request = json.dumps(
-        {
-            "operation": "exec",
-            "cwd": "/app",
-            "command": "pwd && ls -la",
-            "timeout_sec": 10,
-        },
-        separators=(",", ":"),
-    )
-    helper_path = Path(cwd) / CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME
-    command = (
-        f"printf '%s\\n' {shlex.quote(request)} | "
-        f"{shlex.quote(str(bridge_executable))}"
-    )
-    helper_path.write_text(
-        "#!/bin/sh\nset -eu\n" + command + "\n",
-        encoding="utf-8",
-    )
-    helper_path.chmod(0o700)
-    return helper_path
 
 
 def build_codex_cli_tui_command(
@@ -480,8 +443,11 @@ def codex_cli_goal_lifecycle_marker_counts(
 
 
 def codex_cli_tui_retryable_startup_blocker_stage(capture: str) -> str:
-    """Classify public-safe Codex CLI TUI startup blockers from screen text."""
+    """Classify public-safe Codex CLI TUI pre-action blockers."""
 
+    auth_stage = codex_cli_tui_auth_blocker_stage(capture)
+    if auth_stage:
+        return auth_stage
     lowered = str(capture or "").lower()
     if any(
         marker in lowered
@@ -497,33 +463,41 @@ def codex_cli_tui_retryable_startup_blocker_stage(capture: str) -> str:
     return ""
 
 
-def codex_cli_goal_followup_prompt(
+def codex_cli_tui_auth_blocker_stage(capture: str) -> str:
+    """Return a public-safe terminal auth stage from recent TUI text."""
+
+    recent = "\n".join(str(capture or "").splitlines()[-40:]).lower()
+    refresh_revoked = any(
+        marker in recent
+        for marker in (
+            "refresh token was revoked",
+            "refresh token has been revoked",
+            "token_invalidated",
+        )
+    ) or (
+        "access token could not be refreshed" in recent
+        and "sign in again" in recent
+    )
+    return "auth_refresh_token_revoked" if refresh_revoked else ""
+
+
+def codex_cli_goal_should_submit_kickoff(
     *,
     bridge_enabled: bool,
     goal_active_observed: bool,
-    task_prompt_released: bool,
-    bridge_first_action_kickoff_submitted: bool,
-    task_kickoff_submitted: bool,
+    kickoff_submitted: bool,
     turn_active: bool,
     first_action_seen: bool,
     capture: str,
-) -> str:
-    ready = (
+) -> bool:
+    return (
         bridge_enabled
         and goal_active_observed
+        and not kickoff_submitted
         and not turn_active
         and not first_action_seen
         and codex_cli_tui_input_prompt_visible(capture)
     )
-    if not ready:
-        return ""
-    if not task_prompt_released:
-        return (
-            ""
-            if bridge_first_action_kickoff_submitted
-            else CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_KICKOFF_PROMPT
-        )
-    return "" if task_kickoff_submitted else CODEX_CLI_GOAL_KICKOFF_PROMPT
 
 
 def codex_cli_goal_should_ignore_stale_terminal(
@@ -654,8 +628,9 @@ def start_codex_cli_goal_tui_session(
         timeout_sec=thread_prewarm_timeout_sec,
     )
     if not thread_prewarm_observed:
+        stage = codex_cli_tui_auth_blocker_stage(tmux_capture(tmux_name))
         tmux_kill_session(tmux_name)
-        return "thread_prewarm_timeout", False
+        return stage or "thread_prewarm_timeout", False
     return "", True
 
 
@@ -679,6 +654,8 @@ def prewarm_codex_cli_goal_thread(
     turn_active_observed = False
     while time.monotonic() < hard_deadline:
         capture = tmux_capture(tmux_name)
+        if codex_cli_tui_auth_blocker_stage(capture):
+            return False
         if CODEX_CLI_GOAL_THREAD_PREWARM_MARKER in capture:
             return True
         turn_active = codex_cli_tui_turn_active(capture)
