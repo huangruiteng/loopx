@@ -941,9 +941,58 @@ def _agent_scope_no_candidate_frontier(
     if not agent_id or not isinstance(agent_todo_summary, dict):
         return None
     agent_label = "agent"
-    if isinstance(agent_lane_next_action, dict):
-        return None
     if work_lane_contract_is_due_monitor_attempt(work_lane_contract):
+        return None
+    if isinstance(agent_lane_next_action, dict):
+        deferred_resume_candidates = _agent_scope_deferred_resume_candidates(
+            agent_todo_summary,
+            agent_id=agent_id,
+        )
+        if deferred_resume_candidates:
+            first_candidate = deferred_resume_candidates[0]
+            if _todo_projection_sort_key(first_candidate)[0] < _todo_projection_sort_key(
+                agent_lane_next_action
+            )[0]:
+                candidate_todo_id = (
+                    str(first_candidate.get("todo_id") or "").strip() or "<todo_id>"
+                )
+                selected_todo_id = (
+                    str(agent_lane_next_action.get("todo_id") or "").strip()
+                    or "<open_todo_id>"
+                )
+                return build_agent_scope_frontier_payload(
+                    agent_id=agent_id,
+                    action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
+                    quiet_noop_allowed=False,
+                    spend_policy=(
+                        "spend once after validated priority successor replan/todo writeback"
+                    ),
+                    reason=(
+                        f"ready deferred successor {candidate_todo_id} has higher priority "
+                        f"than selected open advancement {selected_todo_id}; its lifecycle "
+                        "must be resolved before lower-priority delivery"
+                    ),
+                    recommended_action=(
+                        "Run a bounded successor replan before lower-priority delivery: "
+                        f"reopen, supersede, or record a no-follow-up rationale for "
+                        f"{candidate_todo_id}."
+                    ),
+                    requires_replan=True,
+                    candidate_counts={
+                        "deferred_resume_candidate_count": len(
+                            deferred_resume_candidates
+                        ),
+                        "preempted_open_candidate_count": 1,
+                    },
+                    extra_fields={
+                        "deferred_resume_candidates": deferred_resume_candidates[:3],
+                        "preempted_open_candidate": compact_todo_summary_item(
+                            agent_lane_next_action,
+                            text=str(agent_lane_next_action.get("text") or "").strip(),
+                        ),
+                        "priority_preemption": True,
+                    },
+                )
         return None
     if work_lane_contract_requires_current_agent_attempt(work_lane_contract):
         return None
