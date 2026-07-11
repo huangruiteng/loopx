@@ -23,6 +23,7 @@ _SUPPLEMENT_FIELDS = (
     "loopx_capability_gaps_fixed",
     "loopx_capability_gaps_real_callsite_verified",
     "memory_retrievals",
+    "memory_verified_decision_influence",
     "memory_verified_patch_influence",
     "memory_stale_results",
     "useful_public_comments",
@@ -155,6 +156,11 @@ def _memory_counts(
     if results:
         return {
             "memory_retrievals": len(results),
+            "memory_verified_decision_influence": sum(
+                str(item.get("verification_status") or "").lower() == "confirmed"
+                and bool(item.get("decision_influence"))
+                for item in results
+            ),
             "memory_verified_patch_influence": sum(
                 str(item.get("verification_status") or "").lower() == "confirmed"
                 and item.get("patch_influence_allowed") is True
@@ -178,6 +184,10 @@ def _memory_counts(
         return None
     return {
         "memory_retrievals": sum(int(item.get("result_count") or 0) for item in hooks),
+        "memory_verified_decision_influence": sum(
+            int(item.get("verified_decision_influence_count") or 0)
+            for item in hooks
+        ),
         "memory_verified_patch_influence": sum(
             int(item.get("patch_influence_allowed_count") or 0) for item in hooks
         ),

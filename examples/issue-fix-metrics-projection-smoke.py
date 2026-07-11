@@ -111,6 +111,7 @@ def main() -> int:
                     "loopx_capability_gaps_fixed": 1,
                     "loopx_capability_gaps_real_callsite_verified": 1,
                     "memory_retrievals": 3,
+                    "memory_verified_decision_influence": 2,
                     "memory_verified_patch_influence": 1,
                     "memory_stale_results": 1,
                 },
@@ -236,7 +237,7 @@ def main() -> int:
             packet["ratios"]["pilot_share_of_repository_prs_opened"]["value"] == 0.5
         ), packet
         assert len(packet["output_inventory"]["pull_requests"]) == 2, packet
-        assert len(packet["impact_rows"]) == 21, packet
+        assert len(packet["impact_rows"]) == 22, packet
         impact_by_id = {row["metric_id"]: row for row in packet["impact_rows"]}
         assert impact_by_id["agent_pull_requests"]["current"] == 2, packet
         assert impact_by_id["repository_open_issues"]["delta"] == 2, packet
@@ -247,6 +248,7 @@ def main() -> int:
             impact_by_id["capability_gaps_real_callsite_verified"]["current"] == 1
         ), packet
         assert impact_by_id["memory_retrievals"]["current"] == 3, packet
+        assert impact_by_id["memory_verified_decision_influence"]["current"] == 2, packet
         assert impact_by_id["memory_verified_patch_influence"]["current"] == 1, packet
         assert impact_by_id["memory_stale_results"]["current"] == 1, packet
 
@@ -267,7 +269,7 @@ def main() -> int:
                 execute=False,
             )
         assert sync["ok"] is True, sync
-        assert sync["row_count"] == 21, sync
+        assert sync["row_count"] == 22, sync
         metric_records = {
             record["values"]["Metric"]: record for record in sync["records"]
         }
@@ -318,6 +320,9 @@ def main() -> int:
             "complete": False,
         }, partial_packet
         assert partial_rows["memory_retrievals"]["status"] == "not_available"
+        assert partial_rows["memory_verified_decision_influence"]["status"] == (
+            "not_available"
+        )
         assert partial_rows["memory_stale_results"]["status"] == "not_available"
 
         cli_sync = subprocess.run(
@@ -350,7 +355,7 @@ def main() -> int:
             check=True,
         )
         cli_sync_packet = json.loads(cli_sync.stdout)
-        assert cli_sync_packet["row_count"] == 21, cli_sync_packet
+        assert cli_sync_packet["row_count"] == 22, cli_sync_packet
         serialized = json.dumps(packet, sort_keys=True)
         assert str(root) not in serialized, serialized
         assert packet["external_writes_performed"] is False, packet

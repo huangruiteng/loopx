@@ -23,6 +23,7 @@ _SUPPLEMENT_FIELDS = (
     "loopx_capability_gaps_fixed",
     "loopx_capability_gaps_real_callsite_verified",
     "memory_retrievals",
+    "memory_verified_decision_influence",
     "memory_verified_patch_influence",
     "memory_stale_results",
     "useful_public_comments",
@@ -808,6 +809,12 @@ def build_issue_fix_metrics_projection(
             "Memory",
             "Repository-memory results retrieved",
             "memory_retrievals",
+        ),
+        (
+            "memory_verified_decision_influence",
+            "Memory",
+            "Memory retrievals verified to influence an issue-fix decision",
+            "memory_verified_decision_influence",
         ),
         (
             "memory_verified_patch_influence",

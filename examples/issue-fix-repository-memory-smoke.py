@@ -152,6 +152,7 @@ def completed_memory() -> dict[str, object]:
                 "verification_status": "confirmed",
                 "verification_reference": "openviking/server/api/v1/vlm.py",
                 "verification_revision": REVISION,
+                "decision_influence": ["change_scope", "patch"],
             },
             {
                 "memory_ref": "provider-private-record-2",
@@ -211,6 +212,7 @@ def main() -> int:
     assert hook["result_count"] == 2, hook
     assert hook["confirmed_count"] == 1, hook
     assert hook["unverified_count"] == 1, hook
+    assert hook["verified_decision_influence_count"] == 1, hook
     assert hook["patch_influence_allowed_count"] == 1, hook
     assert hook["writeback_performed"] is False, hook
     assert hook["automatic_capture_performed"] is False, hook
@@ -337,7 +339,8 @@ def main() -> int:
             "revision": REVISION,
             "confirmed_count": 1,
             "stale_or_unmapped_count": 0,
-            "patch_influence_allowed_count": 1,
+            "verified_decision_influence_count": 0,
+            "patch_influence_allowed_count": 0,
             "configured_resource_count": 0,
             "verification_mode": "canonical_text_or_parser_chunk",
         }
@@ -356,6 +359,20 @@ def main() -> int:
         assert "automatic capture" in str(exc), exc
     else:
         raise AssertionError("automatic memory capture must be rejected")
+
+    invalid_influence = json.loads(json.dumps(memory_input))
+    invalid_influence["results"][1]["decision_influence"] = ["patch"]
+    try:
+        build_issue_fix_repository_context_packet(
+            repo="owner/repo",
+            issue_ref="issue_1",
+            context_input=context_input,
+            memory_retrieval_input=invalid_influence,
+        )
+    except ValueError as exc:
+        assert "must be confirmed before recording decision influence" in str(exc), exc
+    else:
+        raise AssertionError("unverified memory must not claim decision influence")
 
     with tempfile.TemporaryDirectory(prefix="loopx-memory-hook-") as tmpdir:
         tmp = Path(tmpdir)

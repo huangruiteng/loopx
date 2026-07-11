@@ -247,7 +247,7 @@ def _validated_outcome_fact(
     repository_revision: str,
     workspace_scope: str,
     peer_scope: str,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     def reject_unsafe_fields(value: Any) -> None:
         if isinstance(value, Mapping):
             for raw_key, nested in value.items():
@@ -332,12 +332,24 @@ def _validated_outcome_fact(
 
     repo = _compact(case.get("repo"), field="repo", limit=180)
     issue_ref = _compact(case.get("issue_ref"), field="issue_ref", limit=180)
+    reusable_knowledge = case.get("reusable_knowledge")
+    if reusable_knowledge is not None and not isinstance(reusable_knowledge, Mapping):
+        raise ValueError("repository memory reusable_knowledge must be an object")
     supersession_key = "sha256:" + hashlib.sha256(
         f"{workspace_scope}\n{peer_scope}\n{repo}\n{issue_ref}".encode("utf-8")
     ).hexdigest()
+    knowledge_eligible = bool(reusable_knowledge)
     fact = {
-        "schema_version": "issue_fix_validated_outcome_memory_v0",
-        "fact_type": "validated_issue_fix_outcome",
+        "schema_version": (
+            "issue_fix_reusable_knowledge_memory_v0"
+            if knowledge_eligible
+            else "issue_fix_validated_outcome_memory_v0"
+        ),
+        "fact_type": (
+            "reusable_issue_fix_knowledge"
+            if knowledge_eligible
+            else "validated_issue_fix_outcome"
+        ),
         "workspace_scope": workspace_scope,
         "peer_scope": peer_scope,
         "repository": repo,
@@ -369,6 +381,8 @@ def _validated_outcome_fact(
         "provenance": "issue_fix_outcome_projection_v0",
         "supersession_key": supersession_key,
     }
+    if knowledge_eligible:
+        fact["knowledge"] = dict(reusable_knowledge)
     canonical = json.dumps(
         fact,
         ensure_ascii=False,
@@ -379,7 +393,11 @@ def _validated_outcome_fact(
         canonical.encode("utf-8")
     ).hexdigest()
     body = (
-        "# Validated issue-fix outcome\n\n```json\n"
+        (
+            "# Reusable issue-fix knowledge\n\n```json\n"
+            if knowledge_eligible
+            else "# Validated issue-fix outcome\n\n```json\n"
+        )
         + json.dumps(
             {**fact, "idempotency_key": idempotency_key},
             ensure_ascii=False,
@@ -388,7 +406,7 @@ def _validated_outcome_fact(
         )
         + "\n```\n"
     )
-    return idempotency_key, body
+    return idempotency_key, body, str(fact["fact_type"])
 
 
 def write_issue_fix_validated_outcome_memory(
@@ -512,15 +530,45 @@ def write_issue_fix_validated_outcome_memory(
             "checkout_verification": verification,
             "external_writes_performed": False,
         }
-    idempotency_key, body = _validated_outcome_fact(
+    reusable_knowledge = (
+        case.get("reusable_knowledge")
+        if isinstance(case, Mapping)
+        else None
+    )
+    if isinstance(reusable_knowledge, Mapping):
+        missing_references = [
+            str(reference)
+            for reference in reusable_knowledge.get("verification_references") or []
+            if not git_ok(
+                "cat-file",
+                "-e",
+                f"{repository_revision}:{reference}",
+            )
+        ]
+        if missing_references:
+            return {
+                **base,
+                "ok": False,
+                "status": "blocked",
+                "reason_code": "knowledge_verification_reference_not_in_revision",
+                "missing_reference_count": len(missing_references),
+                "checkout_verification": verification,
+                "external_writes_performed": False,
+            }
+    idempotency_key, body, fact_type = _validated_outcome_fact(
         outcome_packet,
         repository_revision=repository_revision,
         workspace_scope=str(normalised["workspace_scope"]),
         peer_scope=str(normalised["peer_scope"]),
     )
     digest = idempotency_key.removeprefix("sha256:")
+    collection = (
+        "reusable-knowledge"
+        if fact_type == "reusable_issue_fix_knowledge"
+        else "validated-outcomes"
+    )
     target = (
-        f"{normalised['writeback_scope_ref']}/validated-outcomes/"
+        f"{normalised['writeback_scope_ref']}/{collection}/"
         f"{normalised['workspace_scope']}/{normalised['peer_scope']}/{digest}.md"
     )
     configured_provider = provider or build_context_provider(normalised)
@@ -542,6 +590,8 @@ def write_issue_fix_validated_outcome_memory(
             "status": sync.status,
             "reason_code": sync.reason_code,
             "idempotency_key": idempotency_key,
+            "fact_type": fact_type,
+            "knowledge_eligible": fact_type == "reusable_issue_fix_knowledge",
             "supersession_key_recorded": True,
             "revision_scoped": True,
             "checkout_verification": verification,
@@ -728,7 +778,8 @@ def retrieve_issue_fix_repository_memory(
         "revision": repository_revision,
         "confirmed_count": confirmed_count,
         "stale_or_unmapped_count": stale_or_unmapped_count,
-        "patch_influence_allowed_count": confirmed_count,
+        "verified_decision_influence_count": 0,
+        "patch_influence_allowed_count": 0,
         "configured_resource_count": len(normalised["resource_references"]),
         "verification_mode": "canonical_text_or_parser_chunk",
     }

@@ -205,6 +205,7 @@ def main() -> int:
                 "results": [
                     {
                         "verification_status": "confirmed",
+                        "decision_influence": ["patch"],
                         "patch_influence_allowed": True,
                     },
                     {
@@ -266,6 +267,7 @@ def main() -> int:
         assert counts["loopx_capability_gaps_fixed"] == 1, packet
         assert counts["loopx_capability_gaps_real_callsite_verified"] == 1, packet
         assert counts["memory_retrievals"] == 2, packet
+        assert counts["memory_verified_decision_influence"] == 1, packet
         assert counts["memory_verified_patch_influence"] == 1, packet
         assert counts["memory_stale_results"] == 0, packet
         assert counts["useful_public_comments"] == 1, packet
