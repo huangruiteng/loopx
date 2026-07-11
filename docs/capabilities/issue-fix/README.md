@@ -362,7 +362,7 @@ tests whether the system is a durable employee rather than a scripted demo.
 | --- | --- | --- |
 | AgentLoop host entry | `/loopx Fix <issue-url>`, guided start/command pack | Hand the same objective to Codex, Claude Code, or another host agent; LoopX constrains the delivery protocol without binding one model. |
 | State kernel | `loopx todo`, `quota`, `refresh-state`, scheduler/monitor | Persist ownership, authority, bounded compute, replan, wait/resume, and terminal closeout. |
-| OpenViking memory hook | `--repository-memory-*`, `repository-memory-sync` | Retrieve bounded revision-scoped advisory evidence; allow decision influence only after current-checkout verification, and authorize resource sync and reusable-knowledge writeback separately. |
+| OpenViking memory hook | `--repository-memory-*`, `repository-memory-sync` | Retrieve bounded advisory evidence from a stable rolling default-branch index; allow decision influence only after current-checkout verification, and authorize manual resource sync and reusable-knowledge writeback separately. |
 | Issue-fix domain state | `loopx/domain_packs/issue_fix.py`, `issue-fix outcome` | Retain feasibility, PR lifecycle, compact delivery evidence, and stable outcomes inside the existing goal rather than a parallel workflow ledger. |
 | Workflow plan | `loopx issue-fix workflow-plan` | Compose body-free metadata, intake, branch plan, validation label, ordered todo previews, gates, and PR-readiness blockers. |
 | Repository context | `--repository-context-json` | Pin policy, architecture, change-scope, reproduction, and validation evidence with trust and freshness. |
@@ -531,7 +531,7 @@ revision and focused smokes, not the pilot narrative, remain authoritative.
 - idempotent `pr_merge` event projection and todo `resume_when` recovery;
 - issue/outcome Kanban projection, repository snapshots, attributable impact
   metrics, and `Monthly Impact` rows;
-- revision-scoped OpenViking retrieval plus explicit reusable-knowledge
+- rolling-default-branch OpenViking retrieval plus explicit reusable-knowledge
   writeback with honest decision-influence accounting;
 - LoopX todo/quota/monitor/Kanban integration through the host agent.
 
@@ -637,7 +637,7 @@ They also accept either `--repository-memory-json
 provider path is deliberately layered: the reusable LoopX context-provider
 module owns OpenViking CLI/version/service preflight, bounded explicit
 `search -> read`, time/result caps, fail-open errors, and authority-gated
-resource sync. Issue-fix owns the domain query, revision-scoped namespace,
+resource sync. Issue-fix owns the domain query, stable repository scope,
 mapping retrieved resources back to repo-relative files, and exact current
 checkout verification. There is no repository-name special case.
 
@@ -649,7 +649,7 @@ scope, current revision, and caller-approved checkout are available,
 `--repository-memory-json` still overrides the environment default. LoopX
 hashes provider references, keeps every memory source advisory, allows patch
 influence only for canonical-text exact matches or parser chunks whose
-non-empty lines match the pinned checkout at least 98% (transport line
+non-empty lines match the current checkout at least 98% (transport line
 endings and one terminal newline are normalised), and
 persists only the compact hook projection in the existing repository context.
 Unverified hits contribute counts only; their summaries are not persisted.
@@ -657,7 +657,9 @@ Provider unavailability, empty retrieval, or a missing checkout is fail-open;
 raw memory bodies, automatic transcript capture, private namespaces,
 credentials, and provider config paths are never retained.
 
-Minimal local provider config (the revision must also appear in `scope_ref`):
+The default long-running setup uses one stable provider-managed index for the
+public default branch. The current checkout revision is supplied by the
+issue-fix caller for verification; it is not encoded into the provider scope:
 
 ```json
 {
@@ -666,21 +668,31 @@ Minimal local provider config (the revision must also appear in `scope_ref`):
   "provider": "openviking",
   "namespace": "public-repository",
   "visibility": "public",
-  "scope_ref": "viking://resources/public-repository/<git-revision>",
-  "repository_revision": "<full-git-revision>",
+  "revision_policy": "rolling_default_branch",
+  "scope_ref": "viking://resources/public-repository/owner-repo/main",
   "max_results": 3,
   "timeout_seconds": 15,
   "sync_timeout_seconds": 180,
   "resource_references": ["src/module.py", "tests/test_module.py"],
   "writeback_enabled": false,
-  "writeback_scope_ref": "viking://resources/public-repository/<git-revision>",
+  "writeback_scope_ref": "viking://resources/public-repository/owner-repo/outcomes/<git-revision>",
   "workspace_scope": "owner-repo",
   "peer_scope": "issue-fix-agent"
 }
 ```
 
-For a long-running repository, use the provider-neutral `checkout_head`
-revision policy instead of rewriting the whole config after every pull:
+The provider owns refresh cadence. For OpenViking this can be a low-frequency
+native full-repository watch on public `main`: the first import builds the
+index, and later runs reconcile the same stable target. LoopX does not derive a
+new resource scope per checkout, persist an active revision, or block retrieval
+on an activation receipt. A hit from the rolling index remains advisory: LoopX
+maps it to a repo-relative file and verifies it against the current checkout
+before it can influence reproduction, change scope, patch, or validation.
+Unverified or stale hits remain counts only.
+
+`pinned` remains available for an intentionally immutable corpus. In that
+compatibility mode, `repository_revision` must match the caller checkout and
+the revision must appear in `scope_ref`:
 
 ```json
 {
@@ -689,35 +701,21 @@ revision policy instead of rewriting the whole config after every pull:
   "provider": "openviking",
   "namespace": "public-repository",
   "visibility": "public",
-  "revision_policy": "checkout_head",
-  "repository_scope_root": "viking://resources/public-repository/owner-repo",
-  "active_repository_revision": "<last-activated-full-revision>",
+  "revision_policy": "pinned",
+  "scope_ref": "viking://resources/public-repository/owner-repo/<git-revision>",
+  "repository_revision": "<full-git-revision>",
   "resource_references": ["src/module.py", "tests/test_module.py"]
 }
 ```
 
-On the next issue-fix run after a pull, LoopX derives the current immutable
-scope from the checkout revision. It does not install a mutating git hook. If
-the checkout has advanced, retrieval returns `current_revision_not_activated`
-without searching the previous revision. `repository-memory-sync` indexes the
-new scope and returns a compact activation receipt; the caller projects the
-activated revision into the existing issue-fix domain state for the next run.
-Old scopes are kept
-for audit but excluded from patch guidance. A provider write that is visible
-but still processing remains `activation_pending`, so it is polled rather than
-activated or blindly retried. This is the missing lifecycle around VikingBot's
-explicit add/search/read tools; VikingBot itself does not watch local
-`git pull` events.
-
 Resource indexing is intentionally separate from retrieval. Use
 `loopx issue-fix repository-memory-sync` to preview a bounded set of
-repo-relative public files; add `--execute` only after the provider-resource
-write is authorized. Re-running the same immutable revision scope is
-idempotent when stored content still matches and stops on a conflict instead
-of replacing or auto-renaming it. Transport failure after a provider commit is
-reconciled by bounded target readback before any retry. Retrieval and resource sync use separate
-bounded timeouts because semantic indexing can legitimately take longer than
-read-only search.
+repo-relative public files only for an explicit manual sync; add `--execute`
+only after the provider-resource write is authorized. The rolling default path
+normally relies on the provider watch instead. A transport failure after an
+explicit provider commit is reconciled by bounded target readback before any
+retry. Retrieval and resource sync use separate bounded timeouts because
+semantic indexing can legitimately take longer than read-only search.
 
 Validated-outcome writeback is a separate, default-off hook. It runs only when
 the caller explicitly adds `--write-repository-memory`, the local provider
@@ -765,7 +763,7 @@ and current documentation remain authoritative throughout.
 Do not write whole source files, raw issue or PR discussions, transcripts,
 tool output, unverified hypotheses, reviewer identity mappings, or LoopX
 control-plane state as reusable repository knowledge. Current source belongs
-in the revision-scoped resource index; reviewer routing comes from live
+in the rolling repository resource index; reviewer routing comes from live
 repository ownership signals; LoopX operating lessons remain in LoopX state.
 
 The OpenViking adapter deliberately uses deterministic `viking://resources/`

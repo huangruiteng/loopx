@@ -365,8 +365,8 @@ def register_issue_fix_commands(
     memory_sync_parser = issue_fix_sub.add_parser(
         "repository-memory-sync",
         help=(
-            "Plan or explicitly execute a bounded revision-scoped public resource "
-            "sync through the reusable context-provider module."
+            "Plan or explicitly execute a bounded public resource sync through "
+            "the reusable context-provider module."
         ),
     )
     add_subcommand_format(memory_sync_parser)

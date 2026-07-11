@@ -36,7 +36,6 @@ from loopx.capabilities.context_providers.openviking import (  # noqa: E402
 )
 
 REVISION = "9cf42405a8bb0a8a17a66d4f953515f5a2c82620"
-PREVIOUS_REVISION = "3aa42405a8bb0a8a17a66d4f953515f5a2c82111"
 ISSUE_URL = "https://github.com/volcengine/OpenViking/issues/3124"
 
 
@@ -71,7 +70,7 @@ class ContractProvider:
         raise AssertionError(kwargs)
 
 
-class LifecycleProvider(ContractProvider):
+class RollingProvider(ContractProvider):
     def __init__(
         self,
         *,
@@ -541,76 +540,75 @@ def main() -> int:
         }
         assert_boundary(provider_result)
 
-        lifecycle_root = "viking://resources/public-repository/example-repo"
-        lifecycle_scope = f"{lifecycle_root}/{REVISION[:12]}/repository-context"
-        lifecycle_provider = LifecycleProvider(
-            resource_ref=f"{lifecycle_scope}/src/worker.py",
+        rolling_scope = "viking://resources/public-repository/example-repo/main"
+        rolling_provider = RollingProvider(
+            resource_ref=f"{rolling_scope}/src/worker.py",
             content=source.read_text(encoding="utf-8"),
         )
-        lifecycle_config = {
+        rolling_config = {
             "schema_version": "issue_fix_repository_memory_provider_config_v0",
             "enabled": True,
             "provider": "contract_provider",
             "namespace": "public-repository",
             "visibility": "public",
-            "revision_policy": "checkout_head",
-            "repository_scope_root": lifecycle_root,
-            "active_repository_revision": PREVIOUS_REVISION,
+            "revision_policy": "rolling_default_branch",
+            "scope_ref": rolling_scope,
             "resource_references": ["src/worker.py"],
             "max_results": 3,
             "timeout_seconds": 5,
             "sync_timeout_seconds": 5,
         }
-        stale_retrieval = retrieve_issue_fix_repository_memory(
-            config=lifecycle_config,
+        rolling_retrieval = retrieve_issue_fix_repository_memory(
+            config=rolling_config,
             repo_path=checkout,
             repository_revision=REVISION,
             query="current worker contract validation",
             query_summary="Current worker contract evidence.",
             supports=["change_scope", "validation"],
             observed_at="2026-07-11T03:30:00+08:00",
-            provider=lifecycle_provider,
+            provider=rolling_provider,
         )
-        assert stale_retrieval["memory_input"]["status"] == "unavailable"
-        assert (
-            stale_retrieval["memory_input"]["reason_code"]
-            == "current_revision_not_activated"
-        )
-        lifecycle_plan = stale_retrieval["provider_projection"][
-            "repository_context_lifecycle"
+        assert rolling_retrieval["memory_input"]["status"] == "completed"
+        advisory_context = rolling_retrieval["provider_projection"][
+            "repository_context"
         ]
-        assert lifecycle_plan["revision_changed"] is True, lifecycle_plan
-        assert lifecycle_plan["sync_required"] is True, lifecycle_plan
-        assert lifecycle_plan["retrieval_allowed"] is False, lifecycle_plan
-        assert lifecycle_provider.retrieve_count == 0
-        assert lifecycle_root not in json.dumps(stale_retrieval)
-        assert_boundary(stale_retrieval)
+        assert advisory_context["source_policy"] == "rolling_default_branch"
+        assert advisory_context["current_checkout_revision"] == REVISION
+        assert advisory_context["retrieval_allowed"] is True
+        assert advisory_context["verification_required"] is True
+        assert advisory_context["patch_authority"] is False
+        assert advisory_context["provider_refresh_ownership"] == "external"
+        assert rolling_provider.retrieve_count == 1
+        assert rolling_scope not in json.dumps(rolling_retrieval)
+        assert (
+            rolling_retrieval["memory_input"]["results"][0]["verification_status"]
+            == "confirmed"
+        )
+        assert_boundary(rolling_retrieval)
 
-        lifecycle_sync = sync_issue_fix_repository_memory(
-            config=lifecycle_config,
+        rolling_sync = sync_issue_fix_repository_memory(
+            config=rolling_config,
             repo_path=checkout,
             repository_revision=REVISION,
             references=["src/worker.py"],
             observed_at="2026-07-11T03:31:00+08:00",
             execute=True,
-            provider=lifecycle_provider,
+            provider=rolling_provider,
         )
-        activation = lifecycle_sync["repository_context_activation"]
-        assert activation["status"] == "activated", activation
-        assert activation["active_repository_revision"] == REVISION, activation
-        assert activation["previous_repository_revision"] == PREVIOUS_REVISION
-        assert activation["retrieval_allowed"] is True, activation
-        assert lifecycle_provider.sync_count == 1
-        assert lifecycle_root not in json.dumps(lifecycle_sync)
-        assert_boundary(lifecycle_sync)
+        assert rolling_sync["status"] == "completed", rolling_sync
+        assert rolling_sync["revision_scoped"] is False
+        assert "repository_context_activation" not in rolling_sync
+        assert rolling_provider.sync_count == 1
+        assert rolling_scope not in json.dumps(rolling_sync)
+        assert_boundary(rolling_sync)
 
-        pending_provider = LifecycleProvider(
-            resource_ref=f"{lifecycle_scope}/src/worker.py",
+        pending_provider = RollingProvider(
+            resource_ref=f"{rolling_scope}/src/worker.py",
             content=source.read_text(encoding="utf-8"),
             sync_status="committed_pending",
         )
         pending_sync = sync_issue_fix_repository_memory(
-            config=lifecycle_config,
+            config=rolling_config,
             repo_path=checkout,
             repository_revision=REVISION,
             references=["src/worker.py"],
@@ -618,37 +616,33 @@ def main() -> int:
             execute=True,
             provider=pending_provider,
         )
-        pending_activation = pending_sync["repository_context_activation"]
-        assert pending_activation["status"] == "activation_pending"
-        assert pending_activation["active_repository_revision"] is None
-        assert pending_activation["retrieval_allowed"] is False
+        assert pending_sync["status"] == "committed_pending"
+        assert pending_sync["pending_count"] == 1
+        assert pending_sync["repository_context"]["retrieval_allowed"] is True
+        assert "repository_context_activation" not in pending_sync
         assert_boundary(pending_sync)
 
-        activated_config = {
-            **lifecycle_config,
-            "active_repository_revision": REVISION,
-        }
-        activated_retrieval = retrieve_issue_fix_repository_memory(
-            config=activated_config,
-            repo_path=checkout,
-            repository_revision=REVISION,
-            query="current worker contract validation",
-            query_summary="Current worker contract evidence.",
-            supports=["change_scope", "validation"],
-            observed_at="2026-07-11T03:32:00+08:00",
-            provider=lifecycle_provider,
-        )
-        active_plan = activated_retrieval["provider_projection"][
-            "repository_context_lifecycle"
-        ]
-        assert active_plan["sync_required"] is False, active_plan
-        assert active_plan["retrieval_allowed"] is True, active_plan
-        assert lifecycle_provider.retrieve_count == 1
-        assert (
-            activated_retrieval["memory_input"]["results"][0]["verification_status"]
-            == "confirmed"
-        )
-        assert_boundary(activated_retrieval)
+        try:
+            retrieve_issue_fix_repository_memory(
+                config={
+                    **rolling_config,
+                    "revision_policy": "checkout_head",
+                    "repository_scope_root": (
+                        "viking://resources/public-repository/example-repo"
+                    ),
+                },
+                repo_path=checkout,
+                repository_revision=REVISION,
+                query="current worker contract validation",
+                query_summary="Current worker contract evidence.",
+                supports=["change_scope", "validation"],
+                observed_at="2026-07-11T03:32:00+08:00",
+                provider=rolling_provider,
+            )
+        except ValueError as exc:
+            assert "per-checkout repository activation fields were removed" in str(exc)
+        else:
+            raise AssertionError("removed checkout activation config must fail closed")
 
     invalid_capture = dict(memory_input)
     invalid_capture["automatic_capture_performed"] = True
