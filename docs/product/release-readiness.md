@@ -319,8 +319,8 @@ python3 -m pytest tests/test_smoke_suite.py \
 
 The required Python test workflow keeps `tests/**`, `canary/**`,
 `control_plane/**`, `domain_packs/**`, and `presentation/**` Ruff-clean. It also
-enforces an initial 19% package coverage floor.
-The floor is intentionally a regression guard, not a claim that 19% is
+enforces an initial 19.5% package coverage floor.
+The floor is intentionally a regression guard, not a claim that 19.5% is
 sufficient; raise it as durable behavior moves from subprocess smokes into
 focused tests. An architecture test also prevents new control-plane dependencies
 on presentation, CLI, capability, or benchmark-adapter layers while preserving
