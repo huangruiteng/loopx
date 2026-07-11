@@ -34,6 +34,7 @@ include = ["loopx*"]
 python_version = "3.11"
 strict = true
 files = [
+  "loopx/claude_goal_baseline.py",
   "loopx/control_plane/__init__.py",
   "loopx/control_plane/quota/states.py",
   "loopx/control_plane/runtime/event_store_migration_bridge.py",
