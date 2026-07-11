@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 import re
 import shlex
@@ -27,6 +28,52 @@ CODEX_CLI_GOAL_KICKOFF_PROMPT = (
 )
 CODEX_CLI_TUI_READY_STARTUP_GRACE_SEC = 15.0
 CODEX_CLI_TUI_READY_STABLE_SEC = 2.0
+
+
+@dataclass(frozen=True)
+class CodexCliGoalLifecycleMarkerCounts:
+    active: int = 0
+    achieved: int = 0
+    failed: int = 0
+
+
+@dataclass
+class CodexCliGoalLifecycleGeneration:
+    generation: int = 0
+    baseline: CodexCliGoalLifecycleMarkerCounts = (
+        CodexCliGoalLifecycleMarkerCounts()
+    )
+    current: CodexCliGoalLifecycleMarkerCounts = CodexCliGoalLifecycleMarkerCounts()
+
+    def begin(self, capture: str) -> None:
+        self.generation += 1
+        self.baseline = codex_cli_goal_lifecycle_marker_counts(capture)
+        self.current = self.baseline
+
+    def observe(self, capture: str) -> None:
+        self.current = codex_cli_goal_lifecycle_marker_counts(capture)
+
+    @property
+    def active_advanced(self) -> bool:
+        return self.current.active > self.baseline.active
+
+    @property
+    def achieved_advanced(self) -> bool:
+        return self.current.achieved > self.baseline.achieved
+
+    @property
+    def failed_advanced(self) -> bool:
+        return self.current.failed > self.baseline.failed
+
+    def trace_fields(self) -> dict[str, int]:
+        fields = {"goal_submission_generation": max(0, self.generation)}
+        for name in ("active", "achieved", "failed"):
+            baseline = getattr(self.baseline, name)
+            current = getattr(self.current, name)
+            fields[f"goal_{name}_marker_baseline"] = baseline
+            fields[f"goal_{name}_marker_current"] = current
+            fields[f"goal_{name}_marker_delta"] = max(0, current - baseline)
+        return fields
 
 
 def resolve_codex_cli_binary(codex_bin: str) -> str | None:
@@ -369,6 +416,19 @@ def codex_cli_goal_watchdog_expired(
     """Keep bounded watchdogs from interrupting an active Codex turn."""
 
     return bool(deadline and now >= deadline and not turn_active)
+
+
+def codex_cli_goal_lifecycle_marker_counts(
+    capture: str,
+) -> CodexCliGoalLifecycleMarkerCounts:
+    """Count public lifecycle markers in a TUI scrollback capture."""
+
+    text = str(capture or "")
+    return CodexCliGoalLifecycleMarkerCounts(
+        active=text.count("Goal active") + text.count("Pursuing goal"),
+        achieved=text.count("Goal achieved"),
+        failed=text.count("Goal failed") + text.count("Goal blocked"),
+    )
 
 
 def codex_cli_tui_retryable_startup_blocker_stage(capture: str) -> str:

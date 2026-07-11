@@ -86,8 +86,14 @@ def _capture_has_model_timeout(capture: str) -> bool:
     )
 
 
-def _capture_has_error_marker(capture: str) -> bool:
+def _capture_has_error_marker(
+    capture: str,
+    *,
+    include_goal_terminal_markers: bool = True,
+) -> bool:
     lowered = _recent_capture_region(capture).lower()
+    if not include_goal_terminal_markers:
+        lowered = lowered.replace("goal failed", "").replace("goal blocked", "")
     return any(
         marker in lowered
         for marker in ("error", "failed", "timed out", "timeout")
@@ -113,7 +119,10 @@ def codex_cli_tui_pre_bridge_blocker_stage(
         return "pre_bridge_tui_rate_limit"
     if _capture_has_model_timeout(capture):
         return "pre_bridge_tui_model_timeout"
-    if _capture_has_error_marker(capture):
+    if _capture_has_error_marker(
+        capture,
+        include_goal_terminal_markers=terminal_observed,
+    ):
         return "pre_bridge_tui_error_prompt"
     if terminal_observed and ("Goal failed" in capture or "Goal blocked" in capture):
         return "pre_bridge_tui_stale_terminal"

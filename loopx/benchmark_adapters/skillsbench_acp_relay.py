@@ -59,6 +59,7 @@ from loopx.codex_cli_goal_tui import (
     build_codex_cli_goal_file_objective,
     build_codex_cli_goal_tui_input,
     build_codex_cli_tui_command,
+    CodexCliGoalLifecycleGeneration,
     codex_cli_goal_watchdog_expired,
     codex_cli_goal_reset_pre_bridge_deadlines,
     codex_cli_goal_should_ignore_stale_terminal,
@@ -1093,6 +1094,7 @@ class SkillsBenchLocalAcpRelay:
             post_bridge_recovery_action = ""
             post_bridge_recovery_skip_reason = ""
             pre_bridge_terminal_stage = ""
+            self._last_codex_cli_goal_lifecycle = goal_lifecycle = CodexCliGoalLifecycleGeneration()
             try:
                 subprocess.run(
                     [
@@ -1150,6 +1152,7 @@ class SkillsBenchLocalAcpRelay:
                         return _recoverable_codex_turn_failure_message(
                             "codex_exec_first_action_timeout"
                         )
+                goal_lifecycle.begin(tmux_capture(tmux_name))
                 if goal_prompt_file_used:
                     tmux_type_text_and_submit(
                         tmux_name=tmux_name,
@@ -1219,11 +1222,12 @@ class SkillsBenchLocalAcpRelay:
                     now = time.monotonic()
                     capture = self._last_codex_cli_goal_tui_capture = tmux_capture(tmux_name)
                     turn_active = codex_cli_tui_turn_active(capture)
+                    goal_lifecycle.observe(capture)
                     if turn_active:
                         last_task_output_activity_at = now
-                    if "Goal active" in capture or "Pursuing goal" in capture:
+                    if goal_lifecycle.active_advanced:
                         goal_active_observed = True
-                    goal_failed_now = "Goal failed" in capture or "Goal blocked" in capture
+                    goal_failed_now = goal_lifecycle.failed_advanced
                     if bridge_summary_path is not None:
                         try:
                             current_bridge_summary_size = bridge_summary_path.stat().st_size
@@ -1295,7 +1299,7 @@ class SkillsBenchLocalAcpRelay:
                         now=now,
                     ):
                         goal_failed_now = False
-                    if "Goal achieved" in capture:
+                    if goal_lifecycle.achieved_advanced:
                         goal_terminal_observed = True
                         break
                     retryable_startup_blocker_stage = ""
@@ -1350,27 +1354,22 @@ class SkillsBenchLocalAcpRelay:
                             if recovery_action == "press_enter":
                                 tmux_submit_enter(tmux_name)
                             else:
+                                goal_lifecycle.begin(capture)
+                                goal_active_observed = False
                                 goal_kickoff_prompt_submitted = False
                                 tmux_type_text_and_submit(
                                     tmux_name=tmux_name,
                                     text=goal_command_text,
                                 )
-                            first_action_timeout_sec = max(
-                                1.0,
-                                float(self._config.first_action_timeout_sec or 0.0),
+                            deadlines = codex_cli_goal_reset_pre_bridge_deadlines(
+                                now=now,
+                                first_action_timeout_sec=self._config.first_action_timeout_sec,
+                                goal_active_deadline=goal_active_deadline,
+                                goal_active_timeout_sec=self._config.goal_active_timeout_sec,
+                                first_action_deadline=first_action_deadline,
+                                meaningful_progress_deadline=meaningful_progress_deadline,
                             )
-                            if goal_active_deadline:
-                                goal_active_deadline = now + max(
-                                    1.0,
-                                    float(self._config.goal_active_timeout_sec or 0.0),
-                                )
-                            if first_action_deadline:
-                                first_action_deadline = now + first_action_timeout_sec
-                            if meaningful_progress_deadline:
-                                meaningful_progress_deadline = now + max(
-                                    1.0,
-                                    first_action_timeout_sec,
-                                )
+                            goal_active_deadline, first_action_deadline, meaningful_progress_deadline = deadlines
                             if recovery_action == "typed_goal_resubmit":
                                 next_heartbeat = now + max(
                                     1.0,
@@ -1409,6 +1408,7 @@ class SkillsBenchLocalAcpRelay:
                             goal_command_submission_method=(
                                 goal_command_submission_method
                             ),
+                            goal_kickoff_prompt_submitted=goal_kickoff_prompt_submitted,
                             post_bridge_recovery_attempt_count=pre_bridge_recovery_attempt_count,
                             post_bridge_recovery_action=pre_bridge_recovery_action,
                             post_bridge_recovery_skip_reason=pre_bridge_recovery_skip_reason,
@@ -1854,6 +1854,7 @@ class SkillsBenchLocalAcpRelay:
                     goal_kickoff_prompt_submitted
                 ),
                 "goal_kickoff_prompt_raw_text_recorded": False,
+                **getattr(self, "_last_codex_cli_goal_lifecycle", CodexCliGoalLifecycleGeneration()).trace_fields(),
                 "first_action_observed": bool(first_action_observed),
                 "bridge_request_count": bridge_request_count,
                 "task_facing_success_count": task_facing_success_count,
