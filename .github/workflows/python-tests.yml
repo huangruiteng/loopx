@@ -40,5 +40,12 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --disable-pip-version-check -e ".[test]"
 
+      - name: Lint test suite
+        run: python -m ruff check tests
+
       - name: Run fast tests
-        run: python -m pytest -q -n 2
+        run: >-
+          python -m pytest -q -n 2
+          --cov=loopx
+          --cov-report=term
+          --cov-fail-under=19
