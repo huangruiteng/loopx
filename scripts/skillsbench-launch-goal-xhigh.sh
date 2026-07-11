@@ -29,6 +29,8 @@ Optional env:
                                        default codex from remote PATH
   SKILLSBENCH_LOCAL_CODEX_SANDBOX      Host Codex sandbox mode; default
                                        workspace-write
+  SKILLSBENCH_CLI_GOAL_THREAD_PREWARM  Set to 1 to prewarm the persisted Codex
+                                       TUI thread before submitting /goal
   SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC  Setup stall timeout, default 3600;
                                        0 disables cap
   SKILLSBENCH_RUN_TIMEOUT_SEC          Supervisor timeout, default 28800
@@ -120,6 +122,11 @@ fi
 
 remote_codex_bin="${SKILLSBENCH_REMOTE_CODEX_BIN:-codex}"
 local_codex_sandbox="${SKILLSBENCH_LOCAL_CODEX_SANDBOX:-workspace-write}"
+codex_cli_goal_thread_prewarm="${SKILLSBENCH_CLI_GOAL_THREAD_PREWARM:-0}"
+if [[ "$codex_cli_goal_thread_prewarm" != "0" && "$codex_cli_goal_thread_prewarm" != "1" ]]; then
+  echo "SKILLSBENCH_CLI_GOAL_THREAD_PREWARM must be 0 or 1" >&2
+  exit 2
+fi
 remote_codex_bin_mode="path_lookup"
 if [[ -n "${SKILLSBENCH_REMOTE_CODEX_BIN:-}" ]]; then
   remote_codex_bin_mode="explicit"
@@ -250,6 +257,9 @@ while True:
     threading.Thread(target=pipe, args=(client, upstream), daemon=True).start()
 '
 extra_runner_args=()
+if [[ "$codex_cli_goal_thread_prewarm" == "1" ]]; then
+  extra_runner_args+=(--codex-cli-goal-thread-prewarm)
+fi
 if [[ -n "${SKILLSBENCH_REGISTRY:-}" ]]; then
   extra_runner_args+=(--registry "$SKILLSBENCH_REGISTRY")
 fi
@@ -372,6 +382,7 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'docker_api_version=%s\n' "$docker_api_version"
   printf 'remote_codex_bin_mode=%s\n' "$remote_codex_bin_mode"
   printf 'local_codex_sandbox=%s\n' "$local_codex_sandbox"
+  printf 'codex_cli_goal_thread_prewarm=%s\n' "$codex_cli_goal_thread_prewarm"
   printf 'local_run_ledger=%s\n' "$local_run_ledger"
   if [[ -n "${standard_aggregate:-}" ]]; then
     printf 'standard_aggregate=%s\n' "$standard_aggregate"
@@ -419,4 +430,5 @@ docker_proxy_endpoint_mode=${docker_proxy_endpoint_mode}
 docker_api_version=${docker_api_version}
 remote_codex_bin_mode=${remote_codex_bin_mode}
 local_codex_sandbox=${local_codex_sandbox}
+codex_cli_goal_thread_prewarm=${codex_cli_goal_thread_prewarm}
 EOF
