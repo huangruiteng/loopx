@@ -12,6 +12,7 @@ man_root="${LOOPX_MAN_ROOT:-$HOME/.local/share/man}"
 man_dir="${LOOPX_MAN_DIR:-$man_root/man1}"
 install_skill="${LOOPX_INSTALL_SKILL:-1}"
 install_canary="${LOOPX_INSTALL_CANARY:-1}"
+promote_default_request="${LOOPX_PROMOTE_DEFAULT:-auto}"
 releases_dir="${LOOPX_RELEASES_DIR:-$HOME/.local/share/loopx/releases}"
 release_id="${LOOPX_RELEASE_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 release_dir="$releases_dir/$release_id"
@@ -102,6 +103,46 @@ install_symlink() {
   mv -f "$tmp" "$link"
 }
 
+resolve_default_promotion() {
+  case "$promote_default_request" in
+    1|true|yes)
+      promotion_mode="${LOOPX_PROMOTION_MODE:-explicit_override}"
+      return 0
+      ;;
+    0|false|no)
+      promotion_mode="canary_only_explicit"
+      return 1
+      ;;
+    auto)
+      ;;
+    *)
+      echo "loopx installer error: LOOPX_PROMOTE_DEFAULT must be auto, 1, or 0" >&2
+      exit 2
+      ;;
+  esac
+
+  if ! git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    promotion_mode="canary_only_unverified_source"
+    return 1
+  fi
+
+  local source_commit approved_commit source_status approved_ref
+  source_commit="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
+  source_status="$(git -C "$repo_root" status --porcelain 2>/dev/null || true)"
+  approved_ref="${LOOPX_APPROVED_DEFAULT_REF:-refs/remotes/origin/main}"
+  approved_commit="$(git -C "$repo_root" rev-parse "$approved_ref" 2>/dev/null || true)"
+  if [[ -z "$approved_commit" ]]; then
+    approved_commit="$(git -C "$repo_root" rev-parse refs/heads/main 2>/dev/null || true)"
+  fi
+  if [[ -n "$source_commit" && "$source_commit" == "$approved_commit" && -z "$source_status" ]]; then
+    promotion_mode="trusted_main_auto"
+    return 0
+  fi
+
+  promotion_mode="canary_only_untrusted_checkout"
+  return 1
+}
+
 if [[ -z "$shell_profile" ]]; then
   case "${SHELL:-}" in
     */zsh) shell_profile="$HOME/.zshrc" ;;
@@ -109,6 +150,38 @@ if [[ -z "$shell_profile" ]]; then
     *) shell_profile="$HOME/.profile" ;;
   esac
 fi
+
+promote_default=0
+if resolve_default_promotion; then
+  promote_default=1
+fi
+
+if [[ "$promote_default" == "0" ]]; then
+  if [[ "$install_canary" == "0" ]]; then
+    echo "loopx installer error: default promotion is guarded and LOOPX_INSTALL_CANARY=0 leaves no install target" >&2
+    echo "Set LOOPX_PROMOTE_DEFAULT=1 only after explicitly approving this checkout." >&2
+    exit 2
+  fi
+  mkdir -p "$bin_dir"
+  chmod +x "$repo_root/scripts/loopx"
+  install_symlink "$repo_root/scripts/loopx" "$bin_dir/loopx-canary"
+  export PATH="$bin_dir:$PATH"
+  "$bin_dir/loopx-canary" doctor >/dev/null
+  cat <<EOF
+loopx checkout installed as canary only
+- default executable: unchanged
+- canary executable: $bin_dir/loopx-canary
+- promotion mode: $promotion_mode
+- promote explicitly: LOOPX_PROMOTE_DEFAULT=1 $repo_root/scripts/install-local.sh
+
+Current shell can use the canary with:
+  export PATH="$bin_dir:\$PATH"
+  loopx-canary doctor
+EOF
+  exit 0
+fi
+
+export LOOPX_PROMOTION_MODE="$promotion_mode"
 
 warn_stale_promotion_readiness
 
@@ -298,6 +371,7 @@ cat <<EOF
 loopx installed locally
 - executable: $bin_dir/loopx
 - release: $release_dir
+- promotion mode: $promotion_mode
 - manual root: $man_root
 $man_line
 $canary_line

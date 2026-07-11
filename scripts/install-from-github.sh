@@ -55,5 +55,7 @@ fi
 # The downloaded checkout is temporary. Install a stable release snapshot and
 # skip the live canary symlink unless the caller explicitly overrides it.
 export LOOPX_INSTALL_CANARY="${LOOPX_INSTALL_CANARY:-0}"
+export LOOPX_PROMOTE_DEFAULT="${LOOPX_PROMOTE_DEFAULT:-1}"
+export LOOPX_PROMOTION_MODE="${LOOPX_PROMOTION_MODE:-trusted_github_archive}"
 
 "$repo_root/scripts/install-local.sh"

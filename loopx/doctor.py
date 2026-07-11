@@ -501,6 +501,17 @@ def collect_doctor() -> dict[str, Any]:
     default_release = command_root_summary(command_path, command_realpath)
     default_release["release_manifest_available"] = release_manifest.get("available")
     default_release["release_manifest_path"] = release_manifest.get("path")
+    release_manifest_body = (
+        release_manifest.get("manifest")
+        if isinstance(release_manifest.get("manifest"), dict)
+        else {}
+    )
+    release_manifest_source = (
+        release_manifest_body.get("source")
+        if isinstance(release_manifest_body.get("source"), dict)
+        else {}
+    )
+    default_release["promotion_mode"] = release_manifest_source.get("promotion_mode")
     release_provenance = {
         "runtime_root": str(DEFAULT_RUNTIME_ROOT),
         "default_release": default_release,
@@ -675,6 +686,8 @@ def collect_doctor() -> dict[str, Any]:
 
 
 def render_doctor_markdown(payload: dict[str, Any]) -> str:
+    release_provenance = payload.get("release_provenance") or {}
+    default_release = release_provenance.get("default_release") or {}
     lines = [
         "# LoopX Doctor",
         "",
@@ -685,6 +698,7 @@ def render_doctor_markdown(payload: dict[str, Any]) -> str:
         f"- loopx_canary_realpath: `{(payload.get('path') or {}).get('loopx_canary_realpath')}`",
         f"- release_root: `{(payload.get('package') or {}).get('release_root')}`",
         f"- canary_root: `{(payload.get('package') or {}).get('canary_root')}`",
+        f"- default_promotion_mode: `{default_release.get('promotion_mode')}`",
         f"- installed_skill: `{(payload.get('skill') or {}).get('path')}`",
         f"- installed_skill_delivery_hints: `{(payload.get('skill') or {}).get('delivery_hints')}`",
         f"- installed_required_skills: `{','.join(sorted((payload.get('skills') or {}).keys()))}`",

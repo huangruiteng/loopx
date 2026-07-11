@@ -257,9 +257,13 @@ If the default `loopx` payload contradicts the just-merged source checkout or a
 `PYTHONPATH=<checkout> python3 -m loopx.cli ...` cross-check, pause delivery and
 run `loopx doctor` before trusting quota. The installed command is normally a
 release snapshot wrapper, so a self-merged fix may require refreshing the local
-install from the latest trusted checkout with `scripts/install-local.sh`; rerun
-the default `loopx` command after the refresh and only spend quota after the
-runtime payload matches the repaired source behavior.
+install from latest trusted `origin/main` with `loopx update --execute --ref main`
+or a clean main checkout's `scripts/install-local.sh`; rerun the default `loopx`
+command after the refresh and only spend quota after the runtime payload matches
+the repaired source behavior. A dirty or non-main checkout is canary-only by
+default. Use `LOOPX_PROMOTE_DEFAULT=1 scripts/install-local.sh` only after the
+checkout has passed its promotion validation and the default replacement is an
+intentional write.
 
 If the response has `state=operator_gate`, treat it as a user/controller
 interaction, not a silent skip. Read `gate_prompt`, `operator_question`,

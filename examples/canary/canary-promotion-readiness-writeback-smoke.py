@@ -137,6 +137,7 @@ def main() -> int:
             "CODEX_HOME": str(home / ".codex"),
             "LOOPX_BIN_DIR": str(home / ".local" / "bin"),
             "LOOPX_INSTALL_SKILL": "0",
+            "LOOPX_PROMOTE_DEFAULT": "1",
             "LOOPX_RELEASES_DIR": str(root / "releases"),
             "LOOPX_SHELL_PROFILE": str(home / ".zshrc"),
             "LOOPX_REGISTRY": str(registry_path),

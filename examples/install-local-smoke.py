@@ -173,6 +173,7 @@ def main() -> int:
             "LOOPX_BIN_DIR": str(bin_dir),
             "LOOPX_SHELL_PROFILE": str(profile),
             "LOOPX_INSTALL_SKILL": "1",
+            "LOOPX_PROMOTE_DEFAULT": "1",
             "PATH": os.environ.get("PATH", ""),
             "SHELL": "/bin/zsh",
         }
@@ -232,6 +233,7 @@ def main() -> int:
         assert release_manifest["package"]["version_tag"] == release_version_tag(), release_manifest
         assert release_manifest["package"]["version_source"] == "loopx.__version__", release_manifest
         assert release_manifest["source"]["kind"] == "local_checkout", release_manifest
+        assert release_manifest["source"]["promotion_mode"] == "explicit_override", release_manifest
         assert release_manifest["source"]["git_commit"] == source_commit, release_manifest
         assert isinstance(release_manifest["source"]["git_dirty"], bool), release_manifest
         assert release_manifest["skills"]["digest"], release_manifest
@@ -438,6 +440,7 @@ def main() -> int:
         assert provenance["default_release"]["is_release_snapshot"] is True, provenance
         assert provenance["default_release"]["release_manifest_available"] is True, provenance
         assert provenance["default_release"]["release_manifest_path"] == str(release_manifest_path), provenance
+        assert provenance["default_release"]["promotion_mode"] == "explicit_override", provenance
         assert provenance["live_canary"]["root"] == str(REPO_ROOT), provenance
         assert provenance["live_canary"]["separate_from_default"] is True, provenance
         assert provenance["current_invocation"]["source"] == "release_snapshot", provenance
@@ -488,6 +491,7 @@ def main() -> int:
         assert f"manifest_package_version_tag: `{release_version_tag()}`" in doctor_markdown, doctor_markdown
         assert "manifest_package_version_matches_runtime: `True`" in doctor_markdown, doctor_markdown
         assert "release_manifest_available: `True`" in doctor_markdown, doctor_markdown
+        assert "default_promotion_mode: `explicit_override`" in doctor_markdown, doctor_markdown
         assert f"manifest_source_git_commit: `{source_commit[:12]}`" in doctor_markdown, doctor_markdown
         assert "manifest_source: `local_checkout` @ `n/a`" not in doctor_markdown, doctor_markdown
         assert "manifest_skills_digest:" in doctor_markdown, doctor_markdown

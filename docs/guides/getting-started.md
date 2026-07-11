@@ -393,7 +393,7 @@ loopx update --execute
 ```
 
 For a contributor checkout, re-run the installer to update both surfaces from
-the current checkout:
+the current clean `origin/main` checkout:
 
 ```bash
 cd ~/loopx
@@ -401,6 +401,18 @@ git pull --ff-only
 ./scripts/install-local.sh
 loopx doctor
 ```
+
+The installer treats default promotion as a release boundary. A clean checkout
+at `origin/main` promotes automatically. A dirty checkout or another branch
+updates only `loopx-canary` and leaves the default CLI, installed skills, and
+manual untouched. After validating that checkout, promote it explicitly:
+
+```bash
+LOOPX_PROMOTE_DEFAULT=1 ./scripts/install-local.sh
+```
+
+The release manifest and `loopx doctor` record whether promotion came from the
+trusted-main path, a trusted GitHub archive, or an explicit override.
 
 Use `loopx-canary` when you want to test the live checkout before making
 it the default release snapshot. `loopx doctor` reports whether the
@@ -410,7 +422,8 @@ at the live checkout, and whether the required skills are installed.
 If an agent says it cannot find LoopX, repair in this order:
 
 1. Ensure `~/.local/bin` is on `PATH`.
-2. Re-run `~/loopx/scripts/install-local.sh`.
+2. On a clean `origin/main`, re-run `~/loopx/scripts/install-local.sh`; from any
+   other checkout, use `loopx-canary` until explicitly promoting it.
 3. Run `loopx doctor`.
 4. If a recurring automation is stale, regenerate it with
    `loopx heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"`.

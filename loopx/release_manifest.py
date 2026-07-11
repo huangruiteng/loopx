@@ -125,6 +125,7 @@ def _manifest_source_metadata(source_root: Path | None) -> dict[str, Any]:
             "ref": None,
             "archive_url": None,
             "archive_sha256": None,
+            "promotion_mode": None,
         }
     manifest_path = source_root.expanduser() / RELEASE_MANIFEST_FILENAME
     try:
@@ -139,6 +140,7 @@ def _manifest_source_metadata(source_root: Path | None) -> dict[str, Any]:
             "ref": None,
             "archive_url": None,
             "archive_sha256": None,
+            "promotion_mode": None,
         }
     source = manifest.get("source") if isinstance(manifest, dict) else None
     if not isinstance(source, dict):
@@ -151,6 +153,7 @@ def _manifest_source_metadata(source_root: Path | None) -> dict[str, Any]:
             "ref": None,
             "archive_url": None,
             "archive_sha256": None,
+            "promotion_mode": None,
         }
     return {
         "git_commit": source.get("git_commit"),
@@ -161,6 +164,7 @@ def _manifest_source_metadata(source_root: Path | None) -> dict[str, Any]:
         "ref": source.get("ref"),
         "archive_url": source.get("archive_url"),
         "archive_sha256": source.get("archive_sha256"),
+        "promotion_mode": source.get("promotion_mode"),
     }
 
 
@@ -174,6 +178,7 @@ def _source_metadata(source_root: Path | None) -> dict[str, Any]:
             "ref": None,
             "archive_url": None,
             "archive_sha256": None,
+            "promotion_mode": None,
         }
     return _manifest_source_metadata(source_root)
 
@@ -193,6 +198,7 @@ def build_release_manifest(
     repo = source_env.get("LOOPX_REPO") or source_metadata.get("repo")
     ref = source_env.get("LOOPX_REF") or source_metadata.get("ref")
     source_kind = "github_archive" if archive_url else (source_metadata.get("kind") or "local_checkout")
+    promotion_mode = source_env.get("LOOPX_PROMOTION_MODE") or source_metadata.get("promotion_mode")
     skills_root = release_root / "skills"
     skills: dict[str, Any] = {}
     if skills_root.exists():
@@ -208,6 +214,7 @@ def build_release_manifest(
         "package": package_release_metadata(),
         "source": {
             "kind": source_kind,
+            "promotion_mode": promotion_mode,
             "repo": repo,
             "ref": ref,
             "git_commit": source_metadata["git_commit"],

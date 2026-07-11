@@ -49,6 +49,7 @@ def main() -> int:
             "LOOPX_SHELL_PROFILE": str(home / ".zshrc"),
             "LOOPX_INSTALL_CANARY": "0",
             "LOOPX_INSTALL_SKILL": "0",
+            "LOOPX_PROMOTE_DEFAULT": "1",
             "PATH": os.environ.get("PATH", ""),
             "SHELL": "/bin/zsh",
         }

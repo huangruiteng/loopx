@@ -88,6 +88,7 @@ def main() -> None:
         manifest_path = release_root / "release.json"
         assert manifest_path.is_file(), manifest_path
         manifest = doctor_payload["release_manifest"]["manifest"]
+        assert manifest["source"]["promotion_mode"] == "trusted_github_archive", manifest
         assert manifest["schema_version"] == "loopx_release_manifest_v0", manifest
         assert manifest["source"]["kind"] == "github_archive", manifest
         assert manifest["source"]["repo"] == "huangruiteng/loopx", manifest

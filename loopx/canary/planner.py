@@ -272,6 +272,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "guards the local installer wrapper, skill installation, and install freshness reporting",
             },
             {
+                "command": "python3 examples/release/local-install-promotion-boundary-smoke.py",
+                "tier": "deep",
+                "reason": "guards explicit default promotion while keeping dirty or non-main checkouts canary-only",
+            },
+            {
                 "command": "python3 examples/codex-cli-packaged-install-smoke.py",
                 "tier": "default",
                 "reason": "checks packaged GitHub/archive install behavior in a temporary home",

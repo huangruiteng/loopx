@@ -159,6 +159,21 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert all(check["tier"] == "default" for check in install_profile["checks"]), install_profile
     assert install_profile["deep_checks_available"] is True, install_profile
 
+    deep_install_payload = build_catalog_canary_plan(
+        changed_files=["scripts/install-local.sh"],
+        surfaces=["install promotion boundary"],
+        include_deep_checks=True,
+    )
+    deep_install_profile = next(
+        profile
+        for profile in deep_install_payload["domain_profiles"]
+        if profile["id"] == "install-update"
+    )
+    deep_install_commands = [check["command"] for check in deep_install_profile["checks"]]
+    assert "python3 examples/release/local-install-promotion-boundary-smoke.py" in deep_install_commands, (
+        deep_install_profile
+    )
+
     refactor_payload = build_catalog_canary_plan(
         changed_files=["loopx/quota.py", "loopx/status.py"],
         surfaces=["control-plane refactor scheduler hint"],

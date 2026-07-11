@@ -68,6 +68,7 @@ def main() -> int:
             "LOOPX_SHELL_PROFILE": str(profile),
             "LOOPX_INSTALL_SKILL": "1",
             "LOOPX_INSTALL_CANARY": "1",
+            "LOOPX_PROMOTE_DEFAULT": "1",
             "LOOPX_RELEASE_ID": "fresh-clone-smoke-release",
             "PATH": os.environ.get("PATH", ""),
             "SHELL": "/bin/zsh",

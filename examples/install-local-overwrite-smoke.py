@@ -27,6 +27,7 @@ def install_env(root: Path, bin_dir: Path, profile: Path) -> dict[str, str]:
         "LOOPX_SHELL_PROFILE": str(profile),
         "LOOPX_INSTALL_CANARY": "0",
         "LOOPX_INSTALL_SKILL": "0",
+        "LOOPX_PROMOTE_DEFAULT": "1",
         "LOOPX_PYTHON": sys.executable,
         "PATH": os.environ.get("PATH", ""),
         "SHELL": "/bin/zsh",

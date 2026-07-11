@@ -88,6 +88,7 @@ def assert_installer_manpage_surface() -> None:
             "LOOPX_SHELL_PROFILE": str(profile),
             "LOOPX_INSTALL_SKILL": "0",
             "LOOPX_INSTALL_CANARY": "0",
+            "LOOPX_PROMOTE_DEFAULT": "1",
             "LOOPX_RELEASE_ID": "help-manpage-smoke-release",
             "PATH": os.environ.get("PATH", ""),
             "SHELL": "/bin/zsh",
