@@ -41,7 +41,16 @@ jobs:
         run: python -m pip install --disable-pip-version-check -e ".[test]"
 
       - name: Lint test suite
-        run: python -m ruff check tests
+        run: >-
+          python -m ruff check
+          tests
+          loopx/canary
+          loopx/control_plane/agents
+          loopx/control_plane/goals
+          loopx/control_plane/handoff
+          loopx/control_plane/quota
+          loopx/control_plane/work_items
+          loopx/domain_packs
 
       - name: Run fast tests
         run: >-
