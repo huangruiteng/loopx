@@ -187,6 +187,61 @@ def _memory_counts(
     }
 
 
+def _history_human_interventions(
+    history_rows: list[dict[str, Any]],
+    *,
+    period_start: datetime,
+    period_end: datetime,
+) -> list[str]:
+    """Return stable ids for explicit route-changing human decisions.
+
+    The compact run index is already LoopX's audit source for operator gates and
+    run-bound rewards. Ordinary chat, passive acknowledgements, and rewards
+    without an explicit correction lesson are intentionally out of scope.
+    """
+
+    event_ids: set[str] = set()
+    for row in history_rows:
+        if not isinstance(row, dict):
+            continue
+        generated_at = str(row.get("generated_at") or "").strip()
+        classification = str(row.get("classification") or "").strip()
+        operator_gate = row.get("operator_gate")
+        if classification in {
+            "operator_gate_approved",
+            "operator_gate_rejected",
+            "operator_gate_deferred",
+        } and isinstance(operator_gate, dict):
+            occurred_at = _timestamp(
+                operator_gate.get("recorded_at") or generated_at,
+                field="run_history.operator_gate.recorded_at",
+            )
+            if period_start <= occurred_at <= period_end:
+                gate = str(operator_gate.get("gate") or "unknown").strip()
+                decision = str(operator_gate.get("decision") or "unknown").strip()
+                event_ids.add(f"operator_gate:{generated_at}:{gate}:{decision}")
+
+        human_reward = row.get("human_reward")
+        lesson = (
+            human_reward.get("lesson")
+            if isinstance(human_reward, dict)
+            else None
+        )
+        if not (
+            isinstance(lesson, dict)
+            and lesson.get("schema_version") == "human_reward_lesson_v0"
+        ):
+            continue
+        occurred_at = _timestamp(
+            human_reward.get("recorded_at"),
+            field="run_history.human_reward.recorded_at",
+        )
+        if period_start <= occurred_at <= period_end:
+            decision = str(human_reward.get("decision") or "unknown").strip()
+            event_ids.add(f"human_correction:{generated_at}:{decision}")
+    return sorted(event_ids)
+
+
 def build_issue_fix_metrics_supplement(
     *,
     repo: str,
@@ -195,6 +250,8 @@ def build_issue_fix_metrics_supplement(
     feasibility_rows: list[dict[str, Any]],
     pr_lifecycle_rows: list[dict[str, Any]],
     event_batch: dict[str, Any] | None,
+    run_history_rows: list[dict[str, Any]],
+    human_intervention_coverage_start: str | None,
     repository_memory_results: list[dict[str, Any]],
     generated_at: str,
 ) -> dict[str, Any]:
@@ -210,6 +267,11 @@ def build_issue_fix_metrics_supplement(
     feasibility = _latest_rows(feasibility_rows, repo=repo, ref_field="issue_ref")
     lifecycles = _latest_rows(pr_lifecycle_rows, repo=repo, ref_field="pr_ref")
     events = _events_in_period(event_batch, period_start=start, period_end=end)
+    history_intervention_ids = _history_human_interventions(
+        run_history_rows,
+        period_start=start,
+        period_end=end,
+    )
     first_push_eligible, first_push_statuses = _lifecycle_first_push_ci(
         lifecycles,
         period_start=start,
@@ -229,10 +291,16 @@ def build_issue_fix_metrics_supplement(
         ),
     }
 
+    human_intervention_coverage: dict[str, Any]
     if event_batch is not None:
         counts["human_interventions"] = sum(
             item.get("event_type") == "human_intervention" for item in events
         )
+        human_intervention_coverage = {
+            "source": EVENT_BATCH_SCHEMA_VERSION,
+            "observed_events": counts["human_interventions"],
+            "complete": True,
+        }
         counts["duplicate_external_writes"] = sum(
             item.get("event_type") == "duplicate_external_write" for item in events
         )
@@ -275,6 +343,27 @@ def build_issue_fix_metrics_supplement(
         counts["loopx_capability_gaps_real_callsite_verified"] = sum(
             "real_callsite_verified" in states for states in gap_states.values()
         )
+    else:
+        capture_start = (
+            _timestamp(
+                human_intervention_coverage_start,
+                field="human_intervention_coverage_start",
+            )
+            if human_intervention_coverage_start
+            else None
+        )
+        complete = capture_start is not None and capture_start <= start
+        human_intervention_coverage = {
+            "source": "loopx_compact_run_index",
+            "observed_events": len(history_intervention_ids),
+            "complete": complete,
+        }
+        if capture_start is not None:
+            human_intervention_coverage["complete_from"] = (
+                human_intervention_coverage_start
+            )
+        if complete:
+            counts["human_interventions"] = len(history_intervention_ids)
 
     first_push_complete = bool(first_push_eligible) and len(first_push_statuses) == len(
         first_push_eligible
@@ -294,6 +383,7 @@ def build_issue_fix_metrics_supplement(
         "schema_version": SUPPLEMENT_SCHEMA_VERSION,
         "counts": counts,
         "coverage": {
+            "human_intervention": human_intervention_coverage,
             "first_push_ci": {
                 "eligible_prs": len(first_push_eligible),
                 "observed_prs": len(first_push_statuses),
@@ -313,6 +403,7 @@ def build_issue_fix_metrics_supplement(
             "feasibility_rows": len(feasibility),
             "pr_lifecycle_rows": len(lifecycles),
             "event_rows": len(events),
+            "run_history_rows": len(run_history_rows),
             "repository_memory_inputs": len(repository_memory_results),
         },
         "generated_at": generated_at,

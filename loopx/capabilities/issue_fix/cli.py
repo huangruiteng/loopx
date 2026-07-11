@@ -41,8 +41,11 @@ from .metrics_projection import (
     render_issue_fix_metrics_projection_markdown,
 )
 from .metrics_supplement import (
-    build_issue_fix_metrics_supplement,
     render_issue_fix_metrics_supplement_markdown,
+)
+from .metrics_supplement_cli import (
+    build_issue_fix_metrics_supplement_from_args,
+    register_issue_fix_metrics_supplement_command,
 )
 from .pr_lifecycle import (
     build_issue_fix_pr_lifecycle_monitor_packet,
@@ -797,34 +800,11 @@ def register_issue_fix_commands(
         help="Optional PR lifecycle JSONL override; defaults to goal domain state.",
     )
     _add_generated_at_arg(metrics_parser, artifact="the metrics projection")
-    supplement_parser = issue_fix_sub.add_parser(
-        "metrics-supplement",
-        help=(
-            "Compose public-safe supplemental counts from existing issue-fix "
-            "domain state and explicit bounded event or memory evidence."
-        ),
+    register_issue_fix_metrics_supplement_command(
+        issue_fix_sub,
+        add_subcommand_format=add_subcommand_format,
+        add_generated_at_arg=_add_generated_at_arg,
     )
-    add_subcommand_format(supplement_parser)
-    supplement_parser.add_argument("--goal-id", required=True)
-    supplement_parser.add_argument("--project", default=".")
-    supplement_parser.add_argument("--repo", required=True)
-    supplement_parser.add_argument("--period-start", required=True)
-    supplement_parser.add_argument("--period-end", required=True)
-    supplement_parser.add_argument(
-        "--event-json",
-        default=None,
-        help="Optional issue_fix_metrics_event_batch_v0 file, inline object, or stdin.",
-    )
-    supplement_parser.add_argument(
-        "--repository-memory-json",
-        action="append",
-        default=[],
-        help=(
-            "Optional issue_fix_repository_memory_read_result_v0 file or inline "
-            "object. Repeat for multiple issue-scoped reads."
-        ),
-    )
-    _add_generated_at_arg(supplement_parser, artifact="the metrics supplement")
     snapshot_parser = issue_fix_sub.add_parser(
         "repository-snapshot",
         help=(
@@ -1156,6 +1136,7 @@ def handle_issue_fix_command(
     args: argparse.Namespace,
     *,
     registry_path: Path | None = None,
+    runtime_root_arg: str | None = None,
     output_format: FormatSelector,
     print_payload: PrintPayload,
 ) -> int:
@@ -1674,36 +1655,13 @@ def handle_issue_fix_command(
             )
             renderer = render_issue_fix_metrics_projection_markdown
         elif args.issue_fix_command == "metrics-supplement":
-            stdin_input_count = sum(
-                value == "-"
-                for value in [args.event_json, *args.repository_memory_json]
-                if value is not None
-            )
-            if stdin_input_count > 1:
-                raise ValueError("only one metrics supplement input may read from stdin")
-            project = Path(args.project).expanduser()
-            payload = build_issue_fix_metrics_supplement(
-                repo=args.repo,
-                period_start=args.period_start,
-                period_end=args.period_end,
-                feasibility_rows=_load_jsonl_rows(
-                    default_issue_fix_feasibility_ledger_path(
-                        project=project, goal_id=args.goal_id
-                    )
-                ),
-                pr_lifecycle_rows=_load_jsonl_rows(
-                    default_issue_fix_domain_state_ledger_path(
-                        project=project, goal_id=args.goal_id
-                    )
-                ),
-                event_batch=(
-                    _load_json_object(args.event_json) if args.event_json else None
-                ),
-                repository_memory_results=[
-                    _load_json_object(value)
-                    for value in args.repository_memory_json
-                ],
+            payload = build_issue_fix_metrics_supplement_from_args(
+                args,
+                registry_path=registry_path,
+                runtime_root_arg=runtime_root_arg,
                 generated_at=generated_at,
+                load_json_object=_load_json_object,
+                load_jsonl_rows=_load_jsonl_rows,
             )
             renderer = render_issue_fix_metrics_supplement_markdown
         elif args.issue_fix_command == "repository-snapshot":
