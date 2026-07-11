@@ -322,7 +322,10 @@ The required Python test workflow keeps `tests/**`, `canary/**`,
 enforces an initial 19% package coverage floor.
 The floor is intentionally a regression guard, not a claim that 19% is
 sufficient; raise it as durable behavior moves from subprocess smokes into
-focused tests. Existing source-wide lint debt is characterized separately;
+focused tests. An architecture test also prevents new control-plane dependencies
+on presentation, CLI, capability, or benchmark-adapter layers while preserving
+one explicit quota-Markdown migration debt edge. Existing source-wide lint debt
+is characterized separately;
 expand the protected namespace list only after a bounded cleanup, rather than
 mass-fixing unrelated code merely to make a broad gate green.
 
