@@ -115,6 +115,7 @@ def upsert_issue_fix_pr_lifecycle_ledger_jsonl(
     for key in (
         "issue_body_captured",
         "comment_bodies_captured",
+        "maintainer_correction_body_captured",
         "response_payloads_captured",
         "raw_check_logs_captured",
         "local_paths_captured",
@@ -127,18 +128,18 @@ def upsert_issue_fix_pr_lifecycle_ledger_jsonl(
     ) -> bool:
         existing_fingerprint = str(existing.get("observation_fingerprint") or "")
         incoming_fingerprint = str(incoming.get("observation_fingerprint") or "")
-        transition = incoming.get("transition")
-        material_change = (
-            transition.get("material_change")
-            if isinstance(transition, dict)
-            else None
+        existing_correction_fingerprint = str(
+            existing.get("maintainer_correction_fingerprint") or ""
+        )
+        incoming_correction_fingerprint = str(
+            incoming.get("maintainer_correction_fingerprint") or ""
         )
         existing_receipts = existing.get("reviewer_notification_receipts")
         incoming_receipts = incoming.get("reviewer_notification_receipts")
         return bool(
             existing_fingerprint
             and existing_fingerprint == incoming_fingerprint
-            and material_change is False
+            and existing_correction_fingerprint == incoming_correction_fingerprint
             and existing_receipts == incoming_receipts
         )
 

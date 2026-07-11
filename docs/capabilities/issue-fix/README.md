@@ -289,6 +289,20 @@ maintainer. Material transitions must produce a successor, concrete blocker,
 or structured no-follow-up; the agent must not stop silently in monitor-only
 state.
 
+When a review or public maintainer comment contains a concrete correction, the
+host compacts it into `issue_fix_maintainer_correction_input_v0` and passes it
+to `pr-lifecycle`. The compact input keeps only the correction kind, a public
+source reference, a bounded summary, and one of: verification plus PR update
+path, a concrete ambiguity question, or missing authority scopes. It never
+copies the raw review/comment body.
+
+With `--execute-transition`, an `actionable_patch` creates exactly one
+`issue_fix_maintainer_correction_patch` todo claimed by the registered agent.
+`semantic_ambiguity` and `missing_authority` create a concrete user gate that
+blocks that same agent. `unchanged` creates no todo. The normalized correction
+fingerprint and deterministic todo text make retries idempotent, while terminal
+merged/closed state still takes precedence over late feedback.
+
 ### 8. Terminal closeout and repeatability
 
 At merged/closed state, persist compact lifecycle evidence, close the monitor,
@@ -312,6 +326,7 @@ tests whether the system is a durable employee rather than a scripted demo.
 | Reviewer plan | `loopx issue-fix reviewer-plan` | Rank explainable reviewer candidates from CODEOWNERS, caller-verified public maintainer maps, and changed-path/module history without requesting review. |
 | Reviewer notification | `loopx issue-fix reviewer-request` | Under standing authority, exclude the live PR author and existing coverage, request the top candidate, fall back to one verified `@reviewer` comment only on permission denial, and avoid duplicates. |
 | PR lifecycle | `loopx issue-fix pr-lifecycle` | Project CI, review, merge state, draft, merged, and closed signals into monitor transitions. |
+| Maintainer correction | `loopx issue-fix pr-lifecycle --maintainer-correction-json ... --execute-transition` | Turn bounded public review feedback into one claimed patch successor, a concrete user gate, or a quiet unchanged poll. |
 | Acceptance fixture | `loopx issue-fix acceptance-fixture` | Prove failure-before, minimal patch, and pass-after in a deterministic fixture. |
 | Git branch fixture | `loopx issue-fix repo-branch-fixture` | Exercise the same repair contract through a temporary git branch. |
 | Caller repo branch | `loopx issue-fix caller-repo-branch` | Inspect an approved local repo, create/claim an issue branch, and run caller-declared validation. |
@@ -443,7 +458,7 @@ the current repository revision remains authoritative.
   sources, and repository-native contribution evidence;
 - authority-gated, idempotent reviewer notification with formal-request-first,
   permission-only comment fallback, and PR readback;
-- PR lifecycle projection;
+- PR lifecycle projection and provider-neutral maintainer-correction succession;
 - LoopX todo/quota/monitor/Kanban integration through the host agent.
 
 ### Next stage
@@ -452,7 +467,6 @@ the current repository revision remains authoritative.
 - resolve public GitHub identities and repository teams without leaking email;
 - make publication authority visible per external action;
 - make unchanged lifecycle observations physically idempotent everywhere;
-- project maintainer corrections into explicit patch/blocker successors;
 - add a reusable terminal acceptance report across repeated issues.
 
 ### Longer-term stage
@@ -619,6 +633,27 @@ Pass `--issue-ref` when persisting PR lifecycle state. This explicit public-safe
 link lets the outcome read model join the PR to its issue without guessing from
 branch names, titles, or text.
 
+To convert bounded feedback into durable work, supply a compact correction and
+explicitly execute the transition:
+
+```bash
+loopx issue-fix pr-lifecycle \
+  --url https://github.com/owner/repo/pull/123 \
+  --issue-ref issues_100 \
+  --metadata-json pr-metadata.json \
+  --maintainer-correction-json correction.json \
+  --goal-id issue-fix-goal \
+  --project /path/to/approved/repo \
+  --claimed-by issue-fix-agent \
+  --execute-transition \
+  --format json
+```
+
+The correction source is provider-neutral: any public HTTPS or repo-relative
+reference may be used, while the current PR monitor remains the authoritative
+lifecycle source. Exact retries neither add another successor nor rewrite the
+same lifecycle row.
+
 ## Status And Output View
 
 Todo cards answer **what the agent should do next**. They do not, by
@@ -768,6 +803,7 @@ python3 examples/issue-fix-repository-memory-smoke.py
 python3 examples/issue-fix-validated-memory-writeback-smoke.py
 python3 examples/issue-fix-feasibility-smoke.py
 python3 examples/issue-fix-pr-lifecycle-smoke.py
+python3 examples/issue-fix-maintainer-correction-smoke.py
 python3 examples/issue-fix-outcome-projection-smoke.py
 python3 examples/issue-fix-acceptance-loop-smoke.py
 loopx canary premerge --from-git-diff

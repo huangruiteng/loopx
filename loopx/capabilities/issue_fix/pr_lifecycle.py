@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
+import re
 import subprocess
 from collections.abc import Mapping, Sequence
+from pathlib import PurePosixPath
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
+
+from ...control_plane.runtime.public_safety import public_safe_compact_text
 
 from .metadata_preview import (
     normalise_github_issue_link_reference,
@@ -16,6 +21,28 @@ from .metadata_preview import (
 ISSUE_FIX_PR_LIFECYCLE_MONITOR_SCHEMA_VERSION = (
     "issue_fix_pr_lifecycle_monitor_v0"
 )
+ISSUE_FIX_MAINTAINER_CORRECTION_INPUT_SCHEMA_VERSION = (
+    "issue_fix_maintainer_correction_input_v0"
+)
+MAINTAINER_CORRECTION_KINDS = {
+    "actionable_patch",
+    "semantic_ambiguity",
+    "missing_authority",
+    "unchanged",
+}
+MAINTAINER_CORRECTION_SOURCE_KINDS = {"review", "maintainer_comment"}
+WRITE_SCOPES = {"write", "publish", "external_review_request"}
+MAINTAINER_CORRECTION_INPUT_FIELDS = {
+    "schema_version",
+    "correction_kind",
+    "source_kind",
+    "source_ref",
+    "summary",
+    "verification_plan",
+    "pr_update_path",
+    "user_question",
+    "missing_authority_scopes",
+}
 
 TERMINAL_PR_STATES = {"MERGED", "CLOSED"}
 FAILING_CHECK_STATES = {
@@ -63,6 +90,199 @@ def _safe_count(value: Any) -> int | None:
     except (TypeError, ValueError):
         return None
     return number if number >= 0 else None
+
+
+def _compact_public_text(value: Any, *, field: str, limit: int) -> str:
+    raw = " ".join(str(value or "").strip().split())
+    if len(raw) > limit:
+        raise ValueError(f"maintainer correction {field} exceeds the compact limit")
+    if "<!--" in raw or "-->" in raw or "\x00" in raw:
+        raise ValueError(
+            f"maintainer correction {field} must not contain control-plane markup"
+        )
+    text = public_safe_compact_text(value, limit=limit)
+    if not text:
+        raise ValueError(f"maintainer correction {field} must be compact and public-safe")
+    return " ".join(text.split())
+
+
+def _public_source_reference(value: Any) -> str:
+    reference = _compact_public_text(value, field="source_ref", limit=300)
+    if "://" in reference:
+        parsed = urlsplit(reference)
+        if (
+            parsed.scheme != "https"
+            or not parsed.netloc
+            or parsed.username
+            or parsed.password
+            or parsed.query
+        ):
+            raise ValueError(
+                "maintainer correction source_ref URL must be public https without user info or query"
+            )
+        hostname = (parsed.hostname or "").lower()
+        if hostname == "localhost" or hostname.endswith((".localhost", ".local")):
+            raise ValueError("maintainer correction source_ref must not target a local host")
+        try:
+            address = ipaddress.ip_address(hostname)
+        except ValueError:
+            address = None
+        if address and (
+            address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_reserved
+        ):
+            raise ValueError("maintainer correction source_ref must target a public host")
+        return reference
+    if reference.startswith(("/", "~")) or re.match(r"^[A-Za-z]:[\\/]", reference):
+        raise ValueError("maintainer correction source_ref must not be a local path")
+    path = PurePosixPath(reference.replace("\\", "/"))
+    if path.as_posix() == "." or ".." in path.parts:
+        raise ValueError("maintainer correction source_ref must be repo-relative")
+    return path.as_posix()
+
+
+def normalise_issue_fix_maintainer_correction_input(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    unknown_fields = set(value) - MAINTAINER_CORRECTION_INPUT_FIELDS
+    if unknown_fields:
+        raise ValueError(
+            "maintainer correction input contains unsupported fields: "
+            + ", ".join(sorted(str(field) for field in unknown_fields))
+        )
+    if value.get("schema_version") != ISSUE_FIX_MAINTAINER_CORRECTION_INPUT_SCHEMA_VERSION:
+        raise ValueError(
+            "maintainer correction schema_version must be issue_fix_maintainer_correction_input_v0"
+        )
+    correction_kind = str(value.get("correction_kind") or "").strip()
+    if correction_kind not in MAINTAINER_CORRECTION_KINDS:
+        raise ValueError(
+            "maintainer correction correction_kind must be actionable_patch, semantic_ambiguity, missing_authority, or unchanged"
+        )
+    source_kind = str(value.get("source_kind") or "").strip()
+    if source_kind not in MAINTAINER_CORRECTION_SOURCE_KINDS:
+        raise ValueError(
+            "maintainer correction source_kind must be review or maintainer_comment"
+        )
+    source_ref = _public_source_reference(value.get("source_ref"))
+    summary = _compact_public_text(value.get("summary"), field="summary", limit=400)
+    verification_plan = ""
+    pr_update_path = ""
+    user_question = ""
+    missing_authority_scopes: list[str] = []
+    if correction_kind == "actionable_patch":
+        verification_plan = _compact_public_text(
+            value.get("verification_plan"), field="verification_plan", limit=300
+        )
+        pr_update_path = _compact_public_text(
+            value.get("pr_update_path"), field="pr_update_path", limit=240
+        )
+    elif correction_kind == "semantic_ambiguity":
+        user_question = _compact_public_text(
+            value.get("user_question"), field="user_question", limit=300
+        )
+    elif correction_kind == "missing_authority":
+        raw_scopes = value.get("missing_authority_scopes")
+        if not isinstance(raw_scopes, Sequence) or isinstance(raw_scopes, (str, bytes)):
+            raise ValueError("missing_authority requires missing_authority_scopes")
+        for raw_scope in raw_scopes:
+            scope = str(raw_scope or "").strip()
+            if scope not in WRITE_SCOPES:
+                raise ValueError("maintainer correction authority scope is unsupported")
+            if scope not in missing_authority_scopes:
+                missing_authority_scopes.append(scope)
+        if not missing_authority_scopes:
+            raise ValueError("missing_authority requires at least one authority scope")
+    normalized = {
+        "schema_version": ISSUE_FIX_MAINTAINER_CORRECTION_INPUT_SCHEMA_VERSION,
+        "correction_kind": correction_kind,
+        "source_kind": source_kind,
+        "source_ref": source_ref,
+        "summary": summary,
+        "verification_plan": verification_plan or None,
+        "pr_update_path": pr_update_path or None,
+        "user_question": user_question or None,
+        "missing_authority_scopes": missing_authority_scopes,
+        "raw_body_captured": False,
+        "raw_comment_captured": False,
+        "raw_provider_payload_captured": False,
+        "local_paths_captured": False,
+    }
+    normalized["correction_fingerprint"] = hashlib.sha256(
+        json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()[:16]
+    return normalized
+
+
+def _maintainer_correction_transition(
+    correction: Mapping[str, Any],
+    *,
+    pr_permalink: str,
+) -> dict[str, Any]:
+    correction_kind = str(correction.get("correction_kind"))
+    source_ref = str(correction.get("source_ref"))
+    summary = str(correction.get("summary"))
+    if correction_kind == "actionable_patch":
+        verification_plan = str(correction.get("verification_plan"))
+        pr_update_path = str(correction.get("pr_update_path"))
+        return _transition_preview(
+            decision="runnable_successor",
+            action_kind="issue_fix_maintainer_correction_patch",
+            priority="P0",
+            task_class="advancement_task",
+            reason="Maintainer correction is bounded and actionable; create one claimed patch successor.",
+            depends_on=["issue_fix_pr_lifecycle_monitor"],
+            text=(
+                f"[P0] Apply maintainer correction for {pr_permalink} from {source_ref}: "
+                f"{summary} Verify: {verification_plan} Update PR via: {pr_update_path}"
+            ),
+        ) | {
+            "terminal_state_precedence": False,
+            "material_change": True,
+            "required_write_scopes": ["write", "publish"],
+        }
+    if correction_kind == "semantic_ambiguity":
+        return _transition_preview(
+            decision="user_gate",
+            action_kind="clarify_issue_fix_maintainer_correction",
+            priority="P0",
+            role="user",
+            task_class="user_gate",
+            reason="Maintainer correction changes or leaves the intended behavior ambiguous.",
+            depends_on=["issue_fix_pr_lifecycle_monitor"],
+            text=(
+                f"[P0] Clarify maintainer correction for {pr_permalink} from {source_ref}: "
+                f"{correction.get('user_question')} Context: {summary}"
+            ),
+        ) | {"terminal_state_precedence": False, "material_change": True}
+    if correction_kind == "missing_authority":
+        scopes = ", ".join(str(value) for value in correction.get("missing_authority_scopes") or [])
+        return _transition_preview(
+            decision="user_gate",
+            action_kind="grant_issue_fix_maintainer_correction_authority",
+            priority="P0",
+            role="user",
+            task_class="user_gate",
+            reason="The correction is understood but the required write authority is not active.",
+            depends_on=["issue_fix_pr_lifecycle_monitor"],
+            text=(
+                f"[P0] Grant or decline [{scopes}] authority for maintainer correction "
+                f"{source_ref} on {pr_permalink}: {summary}"
+            ),
+        ) | {
+            "terminal_state_precedence": False,
+            "material_change": True,
+            "missing_authority_scopes": list(correction.get("missing_authority_scopes") or []),
+        }
+    return _transition_preview(
+        decision="monitor_continuation",
+        action_kind="issue_fix_maintainer_correction_unchanged_monitor",
+        priority="P2",
+        reason="Maintainer correction is unchanged; keep the monitor quiet and create no successor.",
+        depends_on=["issue_fix_pr_lifecycle_monitor"],
+    ) | {"terminal_state_precedence": False, "material_change": False}
 
 
 def _normalise_check_item(item: Mapping[str, Any]) -> str:
@@ -382,6 +602,7 @@ def build_issue_fix_pr_lifecycle_monitor_packet(
     provider_payload: Mapping[str, Any] | None = None,
     fetch_metadata: bool = False,
     fetch_timeout_seconds: int = 10,
+    maintainer_correction_input: Mapping[str, Any] | None = None,
     generated_at: str | None = "2026-06-23T00:00:00Z",
 ) -> dict[str, Any]:
     reference = normalise_github_issue_reference(repo=repo, issue_ref=pr_ref, url=url)
@@ -405,6 +626,16 @@ def build_issue_fix_pr_lifecycle_monitor_packet(
         provider_payload=payload,
     )
     transition = _decide_transition(observation)
+    maintainer_correction = (
+        normalise_issue_fix_maintainer_correction_input(maintainer_correction_input)
+        if maintainer_correction_input is not None
+        else None
+    )
+    if maintainer_correction is not None and observation["state"] not in TERMINAL_PR_STATES:
+        transition = _maintainer_correction_transition(
+            maintainer_correction,
+            pr_permalink=str(observation.get("permalink") or reference.get("permalink") or observation["pr_ref"]),
+        )
     packet: dict[str, Any] = {
         "ok": True,
         "schema_version": ISSUE_FIX_PR_LIFECYCLE_MONITOR_SCHEMA_VERSION,
@@ -412,6 +643,12 @@ def build_issue_fix_pr_lifecycle_monitor_packet(
         "generated_at": generated_at,
         "observation": observation,
         "observation_fingerprint": _observation_fingerprint(observation),
+        "maintainer_correction": maintainer_correction,
+        "maintainer_correction_fingerprint": (
+            maintainer_correction.get("correction_fingerprint")
+            if maintainer_correction is not None
+            else None
+        ),
         "transition": transition,
         "first_screen": {
             "waiting_on": transition["role"],
@@ -449,6 +686,7 @@ def build_issue_fix_pr_lifecycle_monitor_packet(
         "external_writes_performed": False,
         "issue_body_captured": False,
         "comment_bodies_captured": False,
+        "maintainer_correction_body_captured": False,
         "response_payloads_captured": False,
         "raw_check_logs_captured": False,
         "local_paths_captured": False,
@@ -472,11 +710,11 @@ def validate_issue_fix_pr_lifecycle_monitor_packet(
         "external_writes_performed",
         "issue_body_captured",
         "comment_bodies_captured",
+        "maintainer_correction_body_captured",
         "response_payloads_captured",
         "raw_check_logs_captured",
         "local_paths_captured",
         "private_repo_state_read",
-        "todo_write_performed",
         "destructive_git_used",
     ):
         if packet.get(key) is not False:
@@ -528,11 +766,39 @@ def validate_issue_fix_pr_lifecycle_monitor_packet(
         errors.append("terminal PR state must record terminal_state_precedence")
     if transition.get("material_change") is True and decision == "monitor_continuation":
         errors.append("material PR change must not choose monitor_continuation")
+    correction = packet.get("maintainer_correction")
+    if correction is not None:
+        if not isinstance(correction, Mapping):
+            errors.append("maintainer_correction must be an object")
+        else:
+            for key in (
+                "raw_body_captured",
+                "raw_comment_captured",
+                "raw_provider_payload_captured",
+                "local_paths_captured",
+            ):
+                if correction.get(key) is not False:
+                    errors.append(f"maintainer_correction {key} must be false")
+            if packet.get("maintainer_correction_fingerprint") != correction.get(
+                "correction_fingerprint"
+            ):
+                errors.append("maintainer correction fingerprint must match normalized input")
+            if state in TERMINAL_PR_STATES and decision != "no_followup":
+                errors.append("terminal PR state must supersede maintainer correction")
     contract = packet.get("writeback_contract")
     if not isinstance(contract, Mapping):
         errors.append("writeback_contract is required")
-    elif contract.get("todo_write_performed") is not False:
-        errors.append("writeback_contract todo_write_performed must be false")
+    elif contract.get("todo_write_performed") is not packet.get("todo_write_performed"):
+        errors.append("writeback_contract todo_write_performed must match packet")
+    todo_write_performed = packet.get("todo_write_performed")
+    if not isinstance(todo_write_performed, bool):
+        errors.append("todo_write_performed must be boolean")
+    todo_write = packet.get("todo_write")
+    if todo_write_performed is True:
+        if not isinstance(todo_write, Mapping) or todo_write.get("write_performed") is not True:
+            errors.append("performed todo write requires a compact todo_write receipt")
+        elif todo_write.get("path_recorded") is not False:
+            errors.append("todo_write path_recorded must be false")
     domain_state = packet.get("domain_state_projection")
     if not isinstance(domain_state, Mapping):
         errors.append("domain_state_projection is required")
@@ -589,6 +855,19 @@ def render_issue_fix_pr_lifecycle_monitor_markdown(payload: dict[str, Any]) -> s
                 f"- material_change: `{transition.get('material_change')}`",
                 f"- terminal_state_precedence: `{transition.get('terminal_state_precedence')}`",
                 f"- reason: {transition.get('reason')}",
+            ]
+        )
+    correction = payload.get("maintainer_correction")
+    if isinstance(correction, Mapping):
+        lines.extend(
+            [
+                "",
+                "## Maintainer Correction",
+                "",
+                f"- correction_kind: `{correction.get('correction_kind')}`",
+                f"- source_kind: `{correction.get('source_kind')}`",
+                f"- source_ref: `{correction.get('source_ref')}`",
+                f"- correction_fingerprint: `{correction.get('correction_fingerprint')}`",
             ]
         )
     domain_state = payload.get("domain_state_projection")

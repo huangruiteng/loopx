@@ -17,6 +17,7 @@ from ...domain_packs.issue_fix import (
     upsert_issue_fix_feasibility_ledger_jsonl,
     upsert_issue_fix_pr_lifecycle_ledger_jsonl,
 )
+from ...todos import add_goal_todo
 from .acceptance_loop import (
     build_issue_fix_acceptance_fixture_packet,
     build_issue_fix_caller_repo_branch_packet,
@@ -36,6 +37,7 @@ from .metadata_preview import normalise_github_issue_reference
 from .pr_lifecycle import (
     build_issue_fix_pr_lifecycle_monitor_packet,
     render_issue_fix_pr_lifecycle_monitor_markdown,
+    validate_issue_fix_pr_lifecycle_monitor_packet,
 )
 from .reviewer_recommendation import (
     build_issue_fix_reviewer_recommendation_packet,
@@ -505,6 +507,15 @@ def register_issue_fix_commands(
         ),
     )
     pr_lifecycle_parser.add_argument(
+        "--maintainer-correction-json",
+        default=None,
+        help=(
+            "Optional issue_fix_maintainer_correction_input_v0 JSON object. "
+            "It contains only a compact public correction, source reference, "
+            "verification plan/update path, ambiguity question, or missing scopes."
+        ),
+    )
+    pr_lifecycle_parser.add_argument(
         "--fetch-metadata",
         action="store_true",
         help=(
@@ -540,6 +551,22 @@ def register_issue_fix_commands(
         help=(
             "Keep the PR lifecycle command preview-only even when --goal-id or "
             "--ledger-path is present."
+        ),
+    )
+    pr_lifecycle_parser.add_argument(
+        "--execute-transition",
+        action="store_true",
+        help=(
+            "Write the correction transition into the existing LoopX todo state. "
+            "Requires --goal-id, --claimed-by, --maintainer-correction-json, and a registry."
+        ),
+    )
+    pr_lifecycle_parser.add_argument(
+        "--claimed-by",
+        default=None,
+        help=(
+            "Registered agent that claims an actionable patch successor or is blocked "
+            "by the generated concrete user gate."
         ),
     )
     outcome_parser = issue_fix_sub.add_parser(
@@ -1072,6 +1099,10 @@ def handle_issue_fix_command(
         elif args.issue_fix_command == "pr-lifecycle":
             if args.fetch_metadata and args.metadata_json:
                 raise ValueError("--fetch-metadata cannot be combined with --metadata-json")
+            if args.execute_transition and not args.maintainer_correction_json:
+                raise ValueError(
+                    "--execute-transition requires --maintainer-correction-json"
+                )
             payload = build_issue_fix_pr_lifecycle_monitor_packet(
                 repo=args.repo,
                 pr_ref=args.pr_ref,
@@ -1082,6 +1113,11 @@ def handle_issue_fix_command(
                 else None,
                 fetch_metadata=args.fetch_metadata,
                 fetch_timeout_seconds=args.fetch_timeout_seconds,
+                maintainer_correction_input=(
+                    _load_json_object(args.maintainer_correction_json)
+                    if args.maintainer_correction_json
+                    else None
+                ),
                 generated_at=generated_at,
             )
             should_write_domain_state = bool(
@@ -1104,6 +1140,71 @@ def handle_issue_fix_command(
                 domain_state = payload.get("domain_state_projection")
                 if isinstance(domain_state, dict) and not args.no_write_domain_state:
                     domain_state["write_skipped_reason"] = "goal_id_or_ledger_path_missing"
+            transition = payload.get("transition")
+            if args.execute_transition:
+                if registry_path is None:
+                    raise ValueError("--execute-transition requires a LoopX registry")
+                if not args.goal_id:
+                    raise ValueError("--execute-transition requires --goal-id")
+                if not args.claimed_by:
+                    raise ValueError("--execute-transition requires --claimed-by")
+                if not isinstance(transition, dict):
+                    raise ValueError("PR lifecycle transition is missing")
+                decision = str(transition.get("decision") or "")
+                if decision in {"runnable_successor", "user_gate"}:
+                    role = str(transition.get("role") or "agent")
+                    todo_write = add_goal_todo(
+                        registry_path=registry_path,
+                        goal_id=args.goal_id,
+                        role=role,
+                        text=str(transition.get("text") or ""),
+                        task_class=str(transition.get("task_class") or "advancement_task"),
+                        action_kind=str(transition.get("action_kind") or ""),
+                        required_write_scopes=(
+                            list(transition.get("required_write_scopes") or [])
+                            if role == "agent"
+                            else None
+                        ),
+                        claimed_by=args.claimed_by if role == "agent" else None,
+                        agent_id=args.claimed_by if role == "user" else None,
+                        project=Path(args.project).expanduser(),
+                    )
+                    todo_changed = bool(
+                        todo_write.get("added")
+                        or todo_write.get("metadata_updated")
+                        or todo_write.get("status_changed")
+                    )
+                    payload["todo_write"] = {
+                        "schema_version": "issue_fix_maintainer_correction_todo_write_v0",
+                        "write_performed": todo_changed,
+                        "already_exists": bool(todo_write.get("already_exists")),
+                        "todo_id": todo_write.get("todo_id"),
+                        "role": todo_write.get("role"),
+                        "claimed_by": todo_write.get("claimed_by"),
+                        "blocks_agent": todo_write.get("blocks_agent"),
+                        "path_recorded": False,
+                    }
+                    payload["todo_write_performed"] = todo_changed
+                    writeback_contract = payload.get("writeback_contract")
+                    if isinstance(writeback_contract, dict):
+                        writeback_contract["todo_write_performed"] = bool(
+                            todo_changed
+                        )
+                else:
+                    payload["todo_write"] = {
+                        "schema_version": "issue_fix_maintainer_correction_todo_write_v0",
+                        "write_performed": False,
+                        "already_exists": False,
+                        "skip_reason": (
+                            "unchanged_monitor_quiet"
+                            if decision == "monitor_continuation"
+                            else "terminal_or_no_followup"
+                        ),
+                        "path_recorded": False,
+                    }
+                validation = validate_issue_fix_pr_lifecycle_monitor_packet(payload)
+                payload["validation"] = validation
+                payload["ok"] = bool(validation["ok"])
             renderer = render_issue_fix_pr_lifecycle_monitor_markdown
         elif args.issue_fix_command == "outcome":
             if args.write_delivery_evidence and not args.delivery_evidence_json:
