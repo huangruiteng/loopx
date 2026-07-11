@@ -793,13 +793,13 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
             stale_goal_failed_scrollback,
             stage="pre_bridge_tui_stale_terminal",
         )
-        == "typed_goal_resubmit"
+        == "restart_tui_goal"
     )
     assert (
         codex_cli_tui_pre_bridge_recovery_skip_reason(
             stale_goal_failed_scrollback,
             stage="pre_bridge_tui_stale_terminal",
-            recovery_action="typed_goal_resubmit",
+            recovery_action="restart_tui_goal",
         )
         == ""
     )
@@ -1552,7 +1552,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     source = (
         REPO_ROOT / "loopx/benchmark_adapters/skillsbench_acp_relay.py"
     ).read_text(encoding="utf-8")
-    assert "auto_accept_trust_prompt=True" in source
+    assert "start_codex_cli_goal_tui_session(" in source
     assert "CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC = 120" in source
     assert "CODEX_CLI_GOAL_TASK_PROMPT_FILENAME" in source
     assert "prompt_instruction_path.write_text(" in source
@@ -1560,10 +1560,13 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "tmux_type_text_and_submit(" in source
     assert "build_codex_cli_goal_tui_input(prompt_for_codex)" not in source
     assert "codex_cli_goal_thread_prewarm: bool = False" in source
-    assert "if self._config.codex_cli_goal_thread_prewarm:" in source
-    assert "prewarm_codex_cli_goal_thread(" in source
+    assert source.count("start_codex_cli_goal_tui_session(") == 2
+    assert 'recovery_action == "restart_tui_goal"' in source
+    assert source.index('restart_stage = ""') < source.index(
+        'if recovery_action == "press_enter"'
+    )
     assert "thread_prewarm_timeout" in source
-    assert "timeout_sec=CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC" in source
+    assert "thread_prewarm_timeout_sec=CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC" in source
     assert (
         "max(90.0, float(self._config.first_action_timeout_sec or 0.0))"
         not in source
