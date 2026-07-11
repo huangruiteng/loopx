@@ -15,6 +15,20 @@ and newly discovered tasks should be created with `loopx todo add`,
 `loopx todo complete --next-*`, `loopx todo supersede`, or a typed planning
 intake, then projected back to Lark with `sync-loopx-todos`.
 
+## Authentication Boundary
+
+The adapter passes Lark resource identifiers such as `base_token`, `table_id`,
+`view_id`, and `record_id` to `lark-cli`. These identifiers remain visible in
+command evidence because they are useful for operating and auditing the board;
+the adapter does not treat them as AK/SK secrets.
+
+Authentication stays inside the selected `lark-cli` identity and its local auth
+store. Adapter-generated commands must never contain application auth material
+such as AK/SK or app-secret arguments. The command runner rejects those inline
+secret-bearing options before a subprocess starts. Use `lark-cli auth
+login/status` to manage authentication instead of extending the Kanban config
+or command payload with auth material.
+
 ## Mapping
 
 | LoopX concept | Lark Base field |
