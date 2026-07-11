@@ -82,6 +82,7 @@ agent 与 GitHub 之间缺失的“数字员工控制层”：
 | Evidence 与 repository context | 把结论固定到 repository revision、source trust、freshness、repo-relative reference、reproduction 和 validation；保留紧凑证据，不把 raw log、凭据或私有正文带进公开状态。 |
 | Replan 与 handoff contract | 把 CI failure、reviewer correction、信息缺失或 stale branch 转成 runnable successor、具体 blocker 或有范围的人类问题，而不是让修正消失在聊天里。 |
 | Continuous monitor | 跟踪 CI、review、mergeability、maintainer comment、stale branch、merged 和 closed；只写回 material transition，并以明确 outcome 终止。 |
+| 事件驱动的 wait/resume | 把 PR merged 等权威外部变化转换成幂等、public-safe 的 rollout event。等待 `resume_when=pr_merged:#123` 的 todo 通过正常 status/quota 投影恢复为 runnable，而不是依赖聊天记忆或让 webhook 直接执行任意代码。 |
 | Public/private boundary check | 扫描公开 artifact，阻止本地路径、credentials、runtime state、raw transcript、tool log 和私有 evidence 进入 commit/PR。 |
 
 Issue-Fix capability 把 State Kernel、Memory hook、Domain State 和 AgentLoop 组合成领域
@@ -96,7 +97,8 @@ issue→PR 数字员工：
   -> focused patch 与 validation
   -> 可解释 reviewer route 与 authority gate
   -> PR monitor 与 material-transition replan
-  -> merged/closed outcome、successor 或明确 no-follow-up
+  -> merged/closed evidence 与幂等 rollout event
+  -> 恢复 successor、下一个 issue 或明确 no-follow-up
 ```
 
 ## 产品定位
@@ -130,7 +132,8 @@ flowchart LR
   O --> P["Authority-gated PR 发布"]
   P --> M["CI/review/mergeability monitor"]
   M --> T["Merged/closed 终局收口"]
-  T --> N["下一个 issue 或 no-follow-up"]
+  T --> E["幂等 rollout event"]
+  E --> N["恢复 successor、下一个 issue 或 no-follow-up"]
   H["人类判断"] --> S
   H --> O
   H --> P
@@ -141,8 +144,8 @@ flowchart LR
   SK["LoopX State Kernel"] --> S
   SK --> V
   SK --> M
-  T --> DK
-  T --> SK
+  E --> DK
+  E --> SK
 ```
 
 ### 1. 候选筛选
@@ -325,6 +328,26 @@ monitor-only。
 标准化 correction fingerprint 与确定性 todo 文本保证重试幂等，merged/closed terminal
 state 仍优先于迟到反馈。
 
+当 connected lifecycle writeback 观察到 `MERGED`，LoopX 还会追加一条带 repository
+scope、public-safe 且幂等的 `pr_merge` rollout event。Todo resume 投影消费这条事件：例如
+`resume_when=pr_merged:#123` 会变成 `resume_ready=true`，后续一次
+`status` / `quota should-run` 就能把它当作普通 runnable work 选中。相同 merged
+observation 重放时复用稳定 event id，不会制造第二次 transition。
+
+这是一条事件驱动链，而不是 webhook 与业务代码硬耦合：
+
+```text
+GitHub 报告 MERGED
+  -> issue-fix lifecycle 持久化 terminal evidence
+  -> LoopX 发出幂等 pr_merge rollout event
+  -> resume_when 投影变为 ready
+  -> quota 在后续有界 turn 选择 successor
+```
+
+Merged PR 不会直接执行任意 callback，rollout event 也不会授予新的 write authority。
+[LoopX PR #1883](https://github.com/huangruiteng/loopx/pull/1883) 是该 contract 的实现与
+回归证据。
+
 ### 8. Terminal closeout 与可重复性
 
 到 merged/closed 状态后，持久化紧凑 lifecycle evidence、关闭 monitor、同步管理面、
@@ -352,6 +375,7 @@ state 仍优先于迟到反馈。
 | Reviewer plan | `loopx issue-fix reviewer-plan` | 从 CODEOWNERS、经验证的公开 maintainer map 与改动 path/module history 生成可解释候选，但不请求 review。 |
 | Reviewer notification | `loopx issue-fix reviewer-request` | 在持续 authority 下排除 live PR author 与已有覆盖，优先正式邀请；仅在权限不足时降级为一条经回读验证的 `@reviewer` comment，并保证重试不重复。 |
 | PR lifecycle | `loopx issue-fix pr-lifecycle` | 把 CI、review、merge state、draft、merged、closed 信号投影为 monitor transition。 |
+| Merge 后自动恢复 | `pr_merge` rollout event + todo `resume_when` | 把 connected terminal merge evidence 转成一条幂等事件，使 blocked/deferred successor 通过 status/quota 恢复为 runnable。 |
 | Maintainer correction | `loopx issue-fix pr-lifecycle --maintainer-correction-json ... --execute-transition` | 把有限公开反馈转成一个已认领 patch successor、具体 user gate，或安静的 unchanged poll。 |
 | 指标投影 | [`loopx issue-fix metrics`](protocols/issue-fix-metrics-projection-v0.md) | 严格区分仓库存量基线与 agent 可归因产出；组合现有 feasibility/PR lifecycle 行和调用方提供的公开快照，输出 delta、比例、产出清单与缺失数据，不新增 ledger。 |
 | 仓库快照 | `loopx issue-fix repository-snapshot` | 显式采集有界的公开 GitHub stock/flow 与已知 issue/PR 状态；可选地只把物质日变化写入现有 issue-fix domain state。 |
@@ -360,7 +384,7 @@ state 仍优先于迟到反馈。
 | Git branch fixture | `loopx issue-fix repo-branch-fixture` | 在临时 git branch 中运行同一修复 contract。 |
 | Caller repo branch | `loopx issue-fix caller-repo-branch` | 检查获批本地 repo、创建/认领 issue branch、运行 caller-declared validation。 |
 | Content bridge | `loopx content-ops issue-fix-*` | 复用 body-free public metadata/intake 边界。 |
-| 可见投影 | `status`、`lark-kanban`、dashboard | 从同一 kernel/domain state 派生人可读状态和 outcome，不建立第二套事实源。 |
+| 可见投影 | `status`、`lark-kanban`、dashboard | 从同一 kernel/domain state 派生人可读 issue、outcome、gate 与 `Monthly Impact`，不建立第二套事实源。 |
 
 Capability module 位于 `loopx/capabilities/issue_fix/`。Domain state 复用现有
 issue-fix domain pack，不额外创建平行 context ledger。OpenViking adapter 位于通用
@@ -450,18 +474,34 @@ CI pending、相同 monitor poll、例行 reviewer 证据收集和 repository-na
 validation 都属于 agent 工作。可见 Kanban 可以投影 todo ownership、status、evidence、
 blocker 和 output，但不能成为第二个事实源。
 
-## 公开 Pilot 证据
+## OpenViking 的公开用法与 Pilot 证据
 
-第一个公开端到端 pilot 选择了
-[OpenViking issue #3102](https://github.com/volcengine/OpenViking/issues/3102)，
-发布 focused fix，通过必需 CI 和 review，最终进入
-[merged PR #3115](https://github.com/volcengine/OpenViking/pull/3115)。该案例验证了
-host-agent 周边的 revision-pinned context、复现、focused validation、authority-gated
-发布、持续监控、terminal closeout、Kanban 可见性和 successor planning。
+OpenViking 同时承担两个公开角色：它是首个持续 issue-fix pilot 的目标仓库，也是 LoopX
+通用 context-provider 边界后的可选 repository-memory provider。接入 Memory 不会让
+OpenViking 取代当前 checkout；影响 patch 的权威仍是当前源码与测试。
 
-Pilot 还在 [PR #1784](https://github.com/huangruiteng/loopx/pull/1784) 中形成了通用
-LoopX 控制面反馈。在对应通用改动合并前，pilot 证据只作为产品设计建议；当前仓库
-revision 仍是事实源。
+目前有代表性的公开 issue/PR 已覆盖多个独立模块：
+
+| 公开案例 | Focused outcome | 能力证据 |
+| --- | --- | --- |
+| [issue #3102](https://github.com/volcengine/OpenViking/issues/3102) → [merged PR #3115](https://github.com/volcengine/OpenViking/pull/3115) | 为 OpenClaw session message 发送 `peer_id`。 | 第一条端到端 fix、focused validation、发布、review、merge monitor、terminal closeout 和 Kanban outcome。 |
+| [issue #3090](https://github.com/volcengine/OpenViking/issues/3090) → [merged PR #3121](https://github.com/volcengine/OpenViking/pull/3121) | 接受 sparse indexed rerank result。 | 第二个独立模块、repository-native reviewer routing、review notification fallback 与重复 lifecycle。 |
+| [issue #3124](https://github.com/volcengine/OpenViking/issues/3124) → [merged PR #3148](https://github.com/volcengine/OpenViking/pull/3148) | 在 usage telemetry 产生前仍显示已配置 VLM。 | 从 validated outcome 提炼 reusable knowledge，并用未来式症状 query 找回，但不虚报 decision influence。 |
+
+具体的 OpenViking memory 运行使用 revision-scoped 的公开
+`viking://resources/.../<git-revision>` namespace。#3148 的 delivery commit 被证明是 pinned
+revision 的 ancestor 后，LoopX 写入一条 `issue_fix_reusable_knowledge_input_v0`：包含
+症状、复现、root cause、violated invariant、repair pattern、focused validation 与适用边界。
+等价于“usage telemetry 为空时 configured model 从 status 消失”的 query 找回了该知识的
+overview 和正文；exact read 读回 causal 与 boundary 字段。这证明可发现性，不证明它已帮助
+未来 patch，因此只有不同的新 issue 真正使用后才记录 decision influence。
+
+Pilot 也推动了通用 LoopX 修复：[PR
+#1784](https://github.com/huangruiteng/loopx/pull/1784) 建立早期控制面基础，[PR
+#1883](https://github.com/huangruiteng/loopx/pull/1883) 让 merged PR evidence 恢复依赖 todo，
+[PR #1887](https://github.com/huangruiteng/loopx/pull/1887) 则把 reusable repository
+knowledge 与 audit-only delivery outcome 分开。权威依据是已合并的 LoopX revision 与 focused
+smoke，而不是 pilot 叙事本身。
 
 ## Roadmap
 
@@ -476,6 +516,10 @@ revision 仍是事实源。
 - 带 authority、幂等、正式 request 优先、权限不足 comment fallback 和 PR 回读验证的
   reviewer 自动通知；
 - PR lifecycle projection 与 provider-neutral maintainer-correction succession；
+- 幂等 `pr_merge` event 投影与 todo `resume_when` 恢复；
+- issue/outcome Kanban、repository snapshot、可归因 impact metric 与 `Monthly Impact`；
+- revision-scoped OpenViking retrieval、显式 reusable-knowledge writeback 与诚实的
+  decision-influence 计数；
 - host agent 驱动的 LoopX todo/quota/monitor/Kanban 集成。
 
 ### 下一阶段
@@ -484,6 +528,9 @@ revision 仍是事实源。
 - 在不泄露 email 的前提下解析公开 GitHub identity 与 repository team；
 - 按外部动作显示 publication authority；
 - 让相同 lifecycle observation 在所有路径上物理幂等；
+- 在新的真实 issue 上 dogfood 两阶段 repository-memory retrieval，记录
+  confirmed/refuted/stale 以及对 reproduction、scope、patch 或 validation 的具体影响；
+- 为 reusable knowledge 增加 revision lineage supersession 与 stale quarantine；
 - 跨重复 issue 生成统一 terminal acceptance report。
 
 ### 更长期
@@ -491,11 +538,11 @@ revision 仍是事实源。
 - 多仓库 issue portfolio 与有界并发；
 - 从公开 accepted/rejected outcome 学习 maintainer preference；
 - reviewer load balancing 与 bus-factor awareness；
-- 跨多个重复 issue 评估 validated-outcome memory 的实际价值，再决定是否默认开启或扩展到
-  session memory；
+- 只有在多个 fresh issue 上产生正向 decision influence、且没有有害 stale guidance 后，
+  才决定是否作为 packaged default；
 - repository-context contract 稳定后的 Open Knowledge Format 互操作；
-- 在已实现的 provider-neutral 指标投影之上，自动采集每日公开快照并生成月度
-  Kanban/dashboard rollup。
+- 在已实现的每日 snapshot 与 Monthly Impact 投影之上，构建有界的多仓库 reporting 与
+  portfolio rollup。
 
 ## 成功指标
 
@@ -520,6 +567,9 @@ revision 仍是事实源。
 当前公开快照提供仓库流量，也可以刷新 PR/issue 的当前状态，但不会改写 lifecycle
 历史。可选 supplement 补充人工介入、首次 push CI、能力增量、memory 利用等尚未
 原生进入这些行的公开计数。证据缺失时输出 `not_available` 和原因码，绝不偷填 0。
+Memory impact 会明确区分 `memory_retrievals`、
+`memory_verified_decision_influence`、`memory_verified_patch_influence` 与
+`memory_stale_results`；读到或确认一个结果，本身不证明它改变了 issue-fix 决策。
 同一 packet 还提供稳定的 `impact_rows`；通用 Lark sink 会把它们投影到
 `Monthly Impact` 视图，保留 baseline、current、delta、比例分子分母、公开来源、
 更新时间和缺失数据原因。能力增量会把 found、fixed 和

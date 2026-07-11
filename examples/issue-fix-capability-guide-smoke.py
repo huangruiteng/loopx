@@ -79,7 +79,15 @@ def main() -> int:
         "runnable_successor",
         "https://github.com/volcengine/OpenViking/issues/3102",
         "https://github.com/volcengine/OpenViking/pull/3115",
+        "https://github.com/volcengine/OpenViking/pull/3121",
+        "https://github.com/volcengine/OpenViking/pull/3148",
         "https://github.com/huangruiteng/loopx/pull/1784",
+        "https://github.com/huangruiteng/loopx/pull/1883",
+        "https://github.com/huangruiteng/loopx/pull/1887",
+        "resume_when=pr_merged:#123",
+        "pr_merge",
+        "issue_fix_reusable_knowledge_input_v0",
+        "memory_verified_decision_influence",
         "python3 examples/issue-fix-reviewer-recommendation-smoke.py",
         "python3 examples/issue-fix-reviewer-request-smoke.py",
         "--notification-sinks-json",
@@ -108,6 +116,9 @@ def main() -> int:
             "permission-only comment fallback",
             "avoid duplicates",
             "project-dedicated",
+            "## Public OpenViking Usage And Evidence",
+            "Event-backed wait and resume",
+            "Merge-triggered resume",
         ),
     )
     assert_markers(
@@ -131,6 +142,9 @@ def main() -> int:
             "权限不足 comment fallback",
             "不会重复 comment",
             "项目专属",
+            "## OpenViking 的公开用法与 Pilot 证据",
+            "事件驱动的 wait/resume",
+            "Merge 后自动恢复",
         ),
     )
     assert reviewer_protocol.startswith("# issue_fix_reviewer_recommendation_v0")

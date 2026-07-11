@@ -42,6 +42,7 @@ GitHub:
 | Evidence and repository context | Pins conclusions to a repository revision, source trust, freshness, repo-relative references, reproduction, and validation. Compact evidence survives; raw logs, credentials, and private bodies do not leak into public state. |
 | Replan and handoff contracts | Converts CI failure, reviewer correction, missing information, or a stale branch into a runnable successor, a concrete blocker, or a scoped human question instead of losing the correction in chat. |
 | Continuous monitors | Watches CI, review, mergeability, maintainer comments, stale branches, merged, and closed states; writes back only material transitions and terminates with an explicit outcome. |
+| Event-backed wait and resume | Converts authoritative external transitions such as a merged PR into idempotent public-safe rollout events. Todos waiting on `resume_when=pr_merged:#123` become runnable through normal status/quota projection instead of relying on chat memory or directly executing code from a webhook. |
 | Public/private boundary checks | Scans public artifacts and keeps local paths, credentials, runtime state, raw transcripts, tool logs, and private evidence out of commits and PRs. |
 
 The issue-fix capability composes these generic foundations into domain packets
@@ -56,7 +57,8 @@ public issue
   -> focused patch and validation
   -> explainable reviewer route and authority gate
   -> PR monitor and material-transition replan
-  -> merged/closed outcome, successor, or explicit no-follow-up
+  -> merged/closed evidence and idempotent rollout event
+  -> resumed successor, next issue, or explicit no-follow-up
 ```
 
 ## Product Position
@@ -89,7 +91,8 @@ flowchart LR
   O --> P["Authority-gated PR publication"]
   P --> M["CI/review/mergeability monitor"]
   M --> T["Merged/closed terminal closeout"]
-  T --> N["Next issue or no-follow-up"]
+  T --> E["Idempotent rollout event"]
+  E --> N["Resume successor, next issue, or no-follow-up"]
   H["Human judgment"] --> S
   H --> O
   H --> P
@@ -98,7 +101,7 @@ flowchart LR
   LX --> C
   LX --> V
   LX --> M
-  T --> LX
+  E --> LX
 ```
 
 ### 1. Candidate selection
@@ -317,6 +320,29 @@ blocks that same agent. `unchanged` creates no todo. The normalized correction
 fingerprint and deterministic todo text make retries idempotent, while terminal
 merged/closed state still takes precedence over late feedback.
 
+When a connected lifecycle writeback observes `MERGED`, LoopX also appends one
+repository-qualified, public-safe, idempotent `pr_merge` rollout event. This is
+the event consumed by todo resume projection. A dependent todo such as
+`resume_when=pr_merged:#123` then becomes `resume_ready=true`; the next
+`status` / `quota should-run` pass can select it as ordinary runnable work.
+Replaying the same merged observation reuses the stable event id and creates no
+second transition.
+
+This is deliberately event-backed rather than webhook-code coupling:
+
+```text
+GitHub reports MERGED
+  -> issue-fix lifecycle persists terminal evidence
+  -> LoopX emits idempotent pr_merge rollout event
+  -> resume_when projection becomes ready
+  -> quota selects the successor on a later bounded turn
+```
+
+The merged PR does not directly execute an arbitrary callback, and the rollout
+event does not grant new write authority. [LoopX PR
+#1883](https://github.com/huangruiteng/loopx/pull/1883) is the implementation
+and regression evidence for this contract.
+
 ### 8. Terminal closeout and repeatability
 
 At merged/closed state, persist compact lifecycle evidence, close the monitor,
@@ -334,12 +360,17 @@ tests whether the system is a durable employee rather than a scripted demo.
 
 | Surface | Command or path | Current responsibility |
 | --- | --- | --- |
+| AgentLoop host entry | `/loopx Fix <issue-url>`, guided start/command pack | Hand the same objective to Codex, Claude Code, or another host agent; LoopX constrains the delivery protocol without binding one model. |
+| State kernel | `loopx todo`, `quota`, `refresh-state`, scheduler/monitor | Persist ownership, authority, bounded compute, replan, wait/resume, and terminal closeout. |
+| OpenViking memory hook | `--repository-memory-*`, `repository-memory-sync` | Retrieve bounded revision-scoped advisory evidence; allow decision influence only after current-checkout verification, and authorize resource sync and reusable-knowledge writeback separately. |
+| Issue-fix domain state | `loopx/domain_packs/issue_fix.py`, `issue-fix outcome` | Retain feasibility, PR lifecycle, compact delivery evidence, and stable outcomes inside the existing goal rather than a parallel workflow ledger. |
 | Workflow plan | `loopx issue-fix workflow-plan` | Compose body-free metadata, intake, branch plan, validation label, ordered todo previews, gates, and PR-readiness blockers. |
 | Repository context | `--repository-context-json` | Pin policy, architecture, change-scope, reproduction, and validation evidence with trust and freshness. |
 | Feasibility | `loopx issue-fix feasibility` | Select exactly one `fix_pr`, `comment_only`, or `triage_only` route and optionally persist compact domain state. |
 | Reviewer plan | `loopx issue-fix reviewer-plan` | Rank explainable reviewer candidates from CODEOWNERS, caller-verified public maintainer maps, and changed-path/module history without requesting review. |
 | Reviewer notification | `loopx issue-fix reviewer-request` | Under standing authority, exclude the live PR author and existing coverage, request the top candidate, fall back to one verified `@reviewer` comment only on permission denial, and avoid duplicates. |
 | PR lifecycle | `loopx issue-fix pr-lifecycle` | Project CI, review, merge state, draft, merged, and closed signals into monitor transitions. |
+| Merge-triggered resume | `pr_merge` rollout event + todo `resume_when` | Turn connected terminal merge evidence into one idempotent event so blocked/deferred successors become runnable through status/quota. |
 | Maintainer correction | `loopx issue-fix pr-lifecycle --maintainer-correction-json ... --execute-transition` | Turn bounded public review feedback into one claimed patch successor, a concrete user gate, or a quiet unchanged poll. |
 | Metrics projection | [`loopx issue-fix metrics`](protocols/issue-fix-metrics-projection-v0.md) | Keep repository baseline separate from attributable agent output, combine existing feasibility/PR lifecycle rows with caller-supplied public snapshots, and report deltas, ratios, inventory, and missing data without another ledger. |
 | Repository snapshot | `loopx issue-fix repository-snapshot` | Explicitly collect bounded public GitHub stock/flow and known issue/PR state; optionally retain only material daily changes in the existing issue-fix domain state. |
@@ -348,7 +379,7 @@ tests whether the system is a durable employee rather than a scripted demo.
 | Git branch fixture | `loopx issue-fix repo-branch-fixture` | Exercise the same repair contract through a temporary git branch. |
 | Caller repo branch | `loopx issue-fix caller-repo-branch` | Inspect an approved local repo, create/claim an issue branch, and run caller-declared validation. |
 | Content bridge | `loopx content-ops issue-fix-*` | Reuse body-free public metadata/intake boundaries. |
-| Long-running control | `loopx todo`, `quota`, `refresh-state`, `lark-kanban` | Persist ownership, gates, compute decisions, progress, evidence, and visible Kanban state. |
+| Visible projection | `status`, `lark-kanban`, dashboard | Derive human-visible issue work, outcomes, gates, and Monthly Impact from the same kernel/domain state without becoming a second source of truth. |
 
 The capability module lives at `loopx/capabilities/issue_fix/`; domain-state
 rows live in the existing issue-fix domain pack rather than a parallel context
@@ -448,20 +479,41 @@ repository-native focused validation remain agent work. A visible Kanban can
 project todo ownership, status, evidence, blockers, and outputs without becoming
 a second source of truth.
 
-## Public Pilot Evidence
+## Public OpenViking Usage And Evidence
 
-The first public end-to-end pilot selected
-[OpenViking issue #3102](https://github.com/volcengine/OpenViking/issues/3102),
-published a focused fix, passed required CI and review, and reached
-[merged PR #3115](https://github.com/volcengine/OpenViking/pull/3115). The case
-validated the host-agent loop around revision-pinned context, reproduction,
-focused validation, authority-gated publication, continuous monitoring,
-terminal closeout, Kanban visibility, and successor planning.
+OpenViking is both the public repository used for the first sustained issue-fix
+pilot and an optional repository-memory provider behind the generic LoopX
+context-provider boundary. The integration does not make OpenViking the source
+of truth for a patch: current checkout source and tests still outrank retrieved
+knowledge.
 
-The pilot also produced generic LoopX control-plane feedback in
-[PR #1784](https://github.com/huangruiteng/loopx/pull/1784). Pilot evidence is
-advisory for product design until the corresponding generic changes are merged;
-the current repository revision remains authoritative.
+Representative public issue/PR cases now cover independent code paths:
+
+| Public case | Focused outcome | Capability evidence |
+| --- | --- | --- |
+| [issue #3102](https://github.com/volcengine/OpenViking/issues/3102) → [merged PR #3115](https://github.com/volcengine/OpenViking/pull/3115) | Send `peer_id` for OpenClaw session messages. | First end-to-end fix, focused validation, publication, review, merge monitor, terminal closeout, and Kanban outcome. |
+| [issue #3090](https://github.com/volcengine/OpenViking/issues/3090) → [merged PR #3121](https://github.com/volcengine/OpenViking/pull/3121) | Accept sparse indexed rerank results. | A second independent module, repository-native reviewer routing, review notification fallback, and repeated lifecycle handling. |
+| [issue #3124](https://github.com/volcengine/OpenViking/issues/3124) → [merged PR #3148](https://github.com/volcengine/OpenViking/pull/3148) | Show configured VLM identity before usage telemetry exists. | Reusable knowledge distilled from a validated outcome and recovered by a future-style symptom query without falsely claiming decision influence. |
+
+The concrete OpenViking memory run used a revision-scoped public
+`viking://resources/.../<git-revision>` namespace. After the #3148 delivery
+commit was proven to be an ancestor of the pinned revision, LoopX wrote one
+`issue_fix_reusable_knowledge_input_v0` fact containing symptom, reproduction,
+root cause, violated invariant, repair pattern, focused validation, and
+applicability boundaries. A query equivalent to “configured model missing from
+status when usage telemetry is empty” returned the knowledge overview and body;
+an exact read recovered the causal and boundary fields. That proves
+discoverability, not future patch value, so decision influence remains zero
+until a different issue actually uses the result.
+
+The pilot has also produced generic LoopX fixes: [PR
+#1784](https://github.com/huangruiteng/loopx/pull/1784) established early
+control-plane groundwork, [PR
+#1883](https://github.com/huangruiteng/loopx/pull/1883) made merged PR evidence
+resume dependent todos, and [PR
+#1887](https://github.com/huangruiteng/loopx/pull/1887) separated reusable
+repository knowledge from audit-only delivery outcomes. The merged LoopX
+revision and focused smokes, not the pilot narrative, remain authoritative.
 
 ## Roadmap
 
@@ -476,6 +528,11 @@ the current repository revision remains authoritative.
 - authority-gated, idempotent reviewer notification with formal-request-first,
   permission-only comment fallback, and PR readback;
 - PR lifecycle projection and provider-neutral maintainer-correction succession;
+- idempotent `pr_merge` event projection and todo `resume_when` recovery;
+- issue/outcome Kanban projection, repository snapshots, attributable impact
+  metrics, and `Monthly Impact` rows;
+- revision-scoped OpenViking retrieval plus explicit reusable-knowledge
+  writeback with honest decision-influence accounting;
 - LoopX todo/quota/monitor/Kanban integration through the host agent.
 
 ### Next stage
@@ -484,6 +541,10 @@ the current repository revision remains authoritative.
 - resolve public GitHub identities and repository teams without leaking email;
 - make publication authority visible per external action;
 - make unchanged lifecycle observations physically idempotent everywhere;
+- dogfood two-stage repository-memory retrieval on fresh issues and record
+  confirmed/refuted/stale results plus concrete reproduction, scope, patch, or
+  validation influence;
+- add revision-lineage supersession and stale quarantine for reusable knowledge;
 - add a reusable terminal acceptance report across repeated issues.
 
 ### Longer-term stage
@@ -491,12 +552,12 @@ the current repository revision remains authoritative.
 - multi-repository issue portfolios with bounded concurrency;
 - maintainer preference learning from public accepted/rejected outcomes;
 - reviewer load balancing and bus-factor awareness;
-- evaluate validated-outcome memory utility across repeated issues before any
-  default enablement or session-memory expansion;
+- decide packaged-default memory behavior only after repeated fresh-issue
+  decision influence with no harmful stale guidance;
 - Open Knowledge Format interoperability after the repository-context contract
   stabilizes;
-- automated daily public snapshot collection and monthly Kanban/dashboard rollup
-  for the implemented provider-neutral metrics projection.
+- bounded multi-repository reporting and portfolio rollups over the implemented
+  daily snapshot and Monthly Impact projection.
 
 ## Success Metrics
 
@@ -521,6 +582,10 @@ may refresh current PR/issue state without rewriting lifecycle history. Optional
 supplement counts cover evidence that is not yet native to those rows, such as
 human interventions, first-push CI, capability deltas, and memory leverage.
 Absent evidence is emitted as `not_available` plus a reason code, never as zero.
+Memory impact deliberately separates `memory_retrievals`,
+`memory_verified_decision_influence`, `memory_verified_patch_influence`, and
+`memory_stale_results`; retrieving or confirming a result does not by itself
+prove that it changed an issue-fix decision.
 The same packet exposes stable `impact_rows`; the generic Lark sink maps them to
 the `Monthly Impact` view with baseline, current, delta, ratio lineage, source,
 freshness, and missing-data columns. Capability impact keeps found, fixed, and
