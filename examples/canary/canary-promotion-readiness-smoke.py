@@ -30,6 +30,7 @@ READINESS_GOAL_ID = "loopx-meta"
 DEFAULT_READINESS_AGENT_ID = "codex-product-capability"
 DEFAULT_READINESS_AGENT_LANE = "product_capability_catalog_canary"
 READINESS_CLASSIFICATION = "canary_promotion_readiness_smoke_group"
+READINESS_DELIVERY_OUTCOME = "surface_only"
 READINESS_RECOMMENDED_ACTION = (
     "Canary promotion-readiness smoke passed; promotion may proceed after doctor/status reports fresh evidence."
 )
@@ -136,7 +137,7 @@ def write_readiness_evidence(
         "--delivery-batch-scale",
         "multi_surface",
         "--delivery-outcome",
-        "primary_goal_outcome",
+        READINESS_DELIVERY_OUTCOME,
     ]
     if resolved_agent_id:
         command.extend(["--agent-id", resolved_agent_id])
