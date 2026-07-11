@@ -55,3 +55,28 @@ def register_peer_runtime_arguments(parser: argparse.ArgumentParser) -> None:
             "same completed id is a no-op."
         ),
     )
+
+
+def register_peer_supervisor_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--supervisor-agent",
+        help=(
+            "Opt in one registered peer as a proposal-only supervisor. The peer keeps "
+            "equal identity authority and gains no implicit session-control rights."
+        ),
+    )
+    parser.add_argument(
+        "--supervised-agent",
+        dest="supervised_agents",
+        action="append",
+        default=None,
+        help=(
+            "Registered peer observed by the supervisor. Repeatable; defaults to every "
+            "registered peer except the supervisor."
+        ),
+    )
+    parser.add_argument(
+        "--clear-supervisor",
+        action="store_true",
+        help="Remove the optional coordination.supervisor configuration.",
+    )

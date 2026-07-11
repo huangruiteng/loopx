@@ -22,7 +22,7 @@ from ..todos import (
     supersede_goal_todo,
     update_goal_todo,
 )
-from .todo_argument_validation import unsupported_todo_options, validate_shared_todo_options
+from .todo_argument_validation import unsupported_todo_options, validate_capability_gap_options, validate_shared_todo_options
 from .todo_event import RolloutEventAppender, append_todo_rollout_event
 
 
@@ -374,27 +374,7 @@ def handle_todo_command(
     )
     try:
         validate_shared_todo_options(args)
-        if args.capability_gap_status:
-            if args.todo_command not in {"add", "update"}:
-                raise ValueError(
-                    "--capability-gap-status is supported only by todo add/update"
-                )
-            if args.role != "agent":
-                raise ValueError(
-                    "--capability-gap-status requires --role agent"
-                )
-            if not args.target_capabilities:
-                raise ValueError(
-                    "--capability-gap-status requires at least one --target-capability"
-                )
-            if (
-                args.capability_gap_status in {"fixed", "real_callsite_verified"}
-                and not args.evidence
-            ):
-                raise ValueError(
-                    "fixed and real_callsite_verified capability gaps require "
-                    "public-safe --evidence"
-                )
+        validate_capability_gap_options(args)
         if args.todo_command == "list":
             unsupported = unsupported_todo_options(
                 args,
