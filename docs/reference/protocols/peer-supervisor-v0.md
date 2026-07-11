@@ -106,9 +106,9 @@ authority even after an executor exists.
   user gate merely to resolve a proposal.
 - Review and handoff remain ordinary task policies; the supervisor does not
   become a hidden review owner.
-- Legacy `primary_agent` fields remain confined to the existing exactly-once
-  migration reader. They are not a live configuration model and are not used by
-  this protocol.
+- Pre-peer hierarchy fields remain confined to the existing exactly-once
+  migration reader. They are not a live configuration model and are not used
+  by this protocol.
 
 This separation lets LoopX test whether richer synthesis improves delivery
 without coupling the State Kernel to a particular session runtime or bringing

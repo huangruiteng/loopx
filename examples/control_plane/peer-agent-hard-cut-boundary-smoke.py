@@ -29,8 +29,7 @@ SCAN_FILES = (
     REPO_ROOT / "examples" / "dashboard-home-browser-smoke.mjs",
 )
 ALLOWED_LEGACY_PATHS = {
-    REPO_ROOT / "loopx" / "configure_goal.py",
-    REPO_ROOT / "loopx" / "control_plane" / "agents" / "runtime_model.py",
+    REPO_ROOT / "loopx" / "control_plane" / "agents" / "legacy_migration.py",
     REPO_ROOT / "loopx" / "control_plane" / "todos" / "contract.py",
     REPO_ROOT / "docs" / "reference" / "protocols" / "peer-agent-runtime-v1.md",
     REPO_ROOT / "docs" / "project-agent-todo-contract.md",
