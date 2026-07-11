@@ -567,6 +567,52 @@ def wait_for_codex_cli_tui_ready(
     return False
 
 
+def start_codex_cli_goal_tui_session(
+    *,
+    tmux_name: str,
+    cwd: str,
+    shell_command: str,
+    tmp_path: Path,
+    thread_prewarm: bool,
+    thread_prewarm_timeout_sec: float,
+) -> tuple[str, bool]:
+    """Start one fresh Codex TUI session and return its public-safe stage."""
+
+    subprocess.run(
+        [
+            "tmux",
+            "new-session",
+            "-d",
+            "-s",
+            tmux_name,
+            "-c",
+            cwd,
+            shell_command,
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if not wait_for_codex_cli_tui_ready(
+        tmux_name,
+        auto_accept_trust_prompt=True,
+    ):
+        tmux_kill_session(tmux_name)
+        return "tui_ready_timeout", False
+    if not thread_prewarm:
+        return "", False
+    thread_prewarm_observed = prewarm_codex_cli_goal_thread(
+        tmux_name=tmux_name,
+        tmp_path=tmp_path,
+        timeout_sec=thread_prewarm_timeout_sec,
+    )
+    if not thread_prewarm_observed:
+        tmux_kill_session(tmux_name)
+        return "thread_prewarm_timeout", False
+    return "", True
+
+
 def prewarm_codex_cli_goal_thread(
     *,
     tmux_name: str,
