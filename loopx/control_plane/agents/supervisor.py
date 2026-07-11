@@ -12,6 +12,7 @@ from ..todos.contract import normalize_todo_claimed_by
 PEER_SUPERVISOR_SCHEMA_VERSION = "peer_supervisor_v0"
 SUPERVISOR_CONTRACT_SCHEMA_VERSION = "peer_supervisor_contract_v0"
 SUPERVISOR_DECISION_SCHEMA_VERSION = "supervisor_decision_v0"
+SUPERVISOR_OBSERVATION_SCHEMA_VERSION = "supervisor_observation_v0"
 
 
 class SupervisorDecisionKind(str, Enum):
@@ -176,6 +177,163 @@ def build_peer_supervisor_contract(
     }
 
 
+def _goal_attention_item(status_payload: Mapping[str, Any], goal_id: str) -> dict[str, Any]:
+    attention = status_payload.get("attention_queue")
+    items = attention.get("items") if isinstance(attention, Mapping) else None
+    if not isinstance(items, list):
+        return {}
+    return next(
+        (
+            dict(item)
+            for item in items
+            if isinstance(item, Mapping) and str(item.get("goal_id") or "") == goal_id
+        ),
+        {},
+    )
+
+
+def _agent_management_items(status_payload: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    projection = status_payload.get("agent_management_projection")
+    items = projection.get("agents") if isinstance(projection, Mapping) else None
+    if not isinstance(items, list):
+        return {}
+    return {
+        agent_id: dict(item)
+        for item in items
+        if isinstance(item, Mapping)
+        for agent_id in [normalize_todo_claimed_by(item.get("agent_id"))]
+        if agent_id
+    }
+
+
+def _evidence_refs(
+    member: Mapping[str, Any],
+    evidence_log: Mapping[str, Any],
+) -> list[str]:
+    refs = [
+        str(value)
+        for value in member.get("evidence_refs") or []
+        if isinstance(value, str) and value.strip()
+    ]
+    ledger = evidence_log.get("ledger")
+    for row in ledger if isinstance(ledger, list) else []:
+        if not isinstance(row, Mapping):
+            continue
+        candidates = (
+            ("rollout_event", row.get("event_id")),
+            ("runtime_run", row.get("run_id")),
+            ("run_history", row.get("run_ref")),
+        )
+        for kind, raw_value in candidates:
+            value = " ".join(str(raw_value or "").split())
+            ref = f"{kind}:{value}" if value else ""
+            if ref and ref not in refs:
+                refs.append(ref)
+    return refs[:8]
+
+
+def build_supervisor_observation_packet(
+    *,
+    goal_id: str,
+    supervisor: Mapping[str, Any],
+    status_payload: Mapping[str, Any],
+    evidence_logs: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Build one read-only public-safe supervisor input over existing projections."""
+
+    contract = build_peer_supervisor_contract(goal_id=goal_id, supervisor=supervisor)
+    attention = _goal_attention_item(status_payload, goal_id)
+    members = _agent_management_items(status_payload)
+    warnings = []
+    if status_payload.get("ok") is not True:
+        warnings.append("status_projection_degraded")
+    if not attention:
+        warnings.append(f"missing_goal_status:{goal_id}")
+    peer_rows = []
+    for agent_id in contract["supervised_agents"]:
+        member = members.get(agent_id, {})
+        evidence = evidence_logs.get(agent_id, {})
+        ledger = evidence.get("ledger") if isinstance(evidence.get("ledger"), list) else []
+        if not member:
+            warnings.append(f"missing_agent_status:{agent_id}")
+        if evidence.get("ok") is not True:
+            warnings.append(f"missing_evidence_log:{agent_id}")
+        current_todo = member.get("current_todo")
+        peer_rows.append(
+            {
+                "agent_id": agent_id,
+                "state": member.get("state") or "unknown",
+                "current_todo": dict(current_todo) if isinstance(current_todo, Mapping) else None,
+                "next_action": member.get("next_action"),
+                "last_activity_at": member.get("last_activity_at"),
+                "workspace_ref": member.get("workspace_ref"),
+                "handoff_refs": list(member.get("handoff_refs") or [])[:4],
+                "stale_claim_hint": member.get("stale_claim_hint"),
+                "evidence": {
+                    "ledger_count": int(evidence.get("ledger_count") or 0),
+                    "matched_count": int(evidence.get("matched_count") or 0),
+                    "truncated": evidence.get("truncated") is True,
+                    "latest_recorded_at": ledger[0].get("recorded_at") if ledger else None,
+                    "latest_rows": [dict(row) for row in ledger[:3] if isinstance(row, Mapping)],
+                    "effect_refs": _evidence_refs(member, evidence),
+                },
+            }
+        )
+    project_asset = attention.get("project_asset")
+    raw_user_todos = (
+        project_asset.get("user_todos")
+        if isinstance(project_asset, Mapping)
+        else None
+    )
+    if not isinstance(raw_user_todos, Mapping):
+        raw_user_todos = attention.get("user_todos")
+    user_todos = raw_user_todos if isinstance(raw_user_todos, Mapping) else {}
+    generated_at = None
+    management = status_payload.get("agent_management_projection")
+    if isinstance(management, Mapping):
+        generated_at = management.get("generated_at")
+    return {
+        "ok": True,
+        "schema_version": SUPERVISOR_OBSERVATION_SCHEMA_VERSION,
+        "mode": "read_only",
+        "goal_id": goal_id,
+        "supervisor_agent_id": contract["supervisor_agent_id"],
+        "observed_at": generated_at,
+        "status_health": {
+            "ok": status_payload.get("ok") is True,
+            "contract_error_count": int(
+                status_payload.get("contract_errors_total_count")
+                or len(status_payload.get("contract_errors") or [])
+            ),
+            "contract_warning_count": int(
+                status_payload.get("contract_warnings_total_count")
+                or len(status_payload.get("contract_warnings") or [])
+            ),
+        },
+        "goal": {
+            "status": attention.get("status"),
+            "waiting_on": attention.get("waiting_on"),
+            "severity": attention.get("severity"),
+            "recommended_action": attention.get("recommended_action"),
+            "user_open_count": int(
+                user_todos.get("open") or user_todos.get("open_count") or 0
+            ),
+        },
+        "peers": peer_rows,
+        "warnings": warnings,
+        "decision_input_complete": not warnings,
+        "decision_contract": contract["decision_contract"],
+        "execution_policy": contract["execution_policy"],
+        "boundary": {
+            "source": "LoopX public-safe status and agent evidence projections",
+            "raw_logs_included": False,
+            "raw_trajectories_included": False,
+            "raw_transcripts_included": False,
+            "write_authority": "none",
+        },
+    }
+
+
 def normalize_supervisor_decision(
     raw: Mapping[str, Any],
     *,
@@ -237,21 +395,10 @@ def build_supervisor_prompt(
         supervisor=supervisor,
     )
     agent_id = str(contract["supervisor_agent_id"])
-    supervised_agents = list(contract["supervised_agents"])
-    status_commands = [
-        (
-            f"{cli_bin} --format json status --goal-id "
-            f"{shlex.quote(goal_id)} --agent-id {shlex.quote(peer)}"
-        )
-        for peer in supervised_agents
-    ]
-    evidence_commands = [
-        (
-            f"{cli_bin} --format json evidence-log --goal-id "
-            f"{shlex.quote(goal_id)} --agent-id {shlex.quote(peer)} --thin"
-        )
-        for peer in supervised_agents
-    ]
+    observe_command = (
+        f"{cli_bin} --format json supervisor-observe --goal-id "
+        f"{shlex.quote(goal_id)} --agent-id {shlex.quote(agent_id)}"
+    )
     decision_template = {
         "schema_version": SUPERVISOR_DECISION_SCHEMA_VERSION,
         "decision_id": "<stable_public_safe_id>",
@@ -275,15 +422,13 @@ The user may use this task as the preferred synthesis channel while several
 peers run, but may still talk to any peer. Keep all user decisions and gates in
 LoopX state so every peer sees the same authority.
 
-Run your own quota guard. Then read each supervised peer through its read-only
-agent status projection and thin evidence log. Do not impersonate another
-peer's quota guard. Prefer compact runtime effect references over raw
-transcripts or private logs:
+Run your own quota guard. Then read one supervisor observation packet assembled
+from read-only agent status and thin evidence projections. Do not impersonate
+another peer's quota guard or reconstruct this packet from raw transcripts:
 
 ```bash
 {cli_bin} --format json quota should-run --goal-id {shlex.quote(goal_id)} --agent-id {shlex.quote(agent_id)}
-{chr(10).join(status_commands)}
-{chr(10).join(evidence_commands)}
+{observe_command}
 ```
 
 Compare the peers' claimed work, evidence freshness, blockers, workspace state,
@@ -313,8 +458,48 @@ resolved.
         "active_state": active_state,
         "agent_id": agent_id,
         "supervisor_contract": contract,
+        "observe_command": observe_command,
         "task_body": task_body,
     }
+
+
+def render_supervisor_observation_markdown(payload: dict[str, Any]) -> str:
+    if not payload.get("ok"):
+        return "\n".join(
+            [
+                "# LoopX Supervisor Observation",
+                "",
+                "- ok: `False`",
+                f"- error: {payload.get('error') or 'unknown error'}",
+            ]
+        )
+    lines = [
+        "# LoopX Supervisor Observation",
+        "",
+        f"- goal_id: `{payload.get('goal_id')}`",
+        f"- supervisor_agent_id: `{payload.get('supervisor_agent_id')}`",
+        f"- observed_at: `{payload.get('observed_at') or ''}`",
+        f"- decision_input_complete: `{payload.get('decision_input_complete')}`",
+        f"- warning_count: `{len(payload.get('warnings') or [])}`",
+        "",
+        "## Peers",
+        "",
+    ]
+    for peer in payload.get("peers") or []:
+        if not isinstance(peer, dict):
+            continue
+        current_todo = peer.get("current_todo") or {}
+        evidence = peer.get("evidence") or {}
+        lines.append(
+            f"- `{peer.get('agent_id')}` state=`{peer.get('state')}` "
+            f"todo=`{current_todo.get('todo_id') or ''}` "
+            f"evidence=`{evidence.get('ledger_count') or 0}`"
+        )
+    warnings = payload.get("warnings") or []
+    if warnings:
+        lines.extend(["", "## Warnings", ""])
+        lines.extend(f"- `{warning}`" for warning in warnings)
+    return "\n".join(lines)
 
 
 def render_supervisor_prompt_markdown(payload: dict[str, Any]) -> str:

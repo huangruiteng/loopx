@@ -3,9 +3,11 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
-from ..control_plane.runtime.agent_scoped_evidence_log import build_agent_scoped_evidence_log
+from ..control_plane.runtime.agent_scoped_evidence_log import (
+    build_agent_scoped_evidence_log,
+    goal_history_runs,
+)
 from ..history import collect_history, load_registry
 from ..paths import resolve_runtime_root
 from ..rollout_event_log import load_rollout_events, rollout_event_log_path
@@ -59,16 +61,6 @@ def register_evidence_log_command(
         action="store_true",
         help="Return the thin public-safe shape. This is the only current mode and is accepted for clarity.",
     )
-
-
-def _goal_runs(history_payload: dict[str, Any], goal_id: str) -> list[dict[str, Any]]:
-    goals = history_payload.get("goals") if isinstance(history_payload.get("goals"), list) else []
-    for goal in goals:
-        if isinstance(goal, dict) and str(goal.get("id") or "") == goal_id:
-            latest_runs = goal.get("latest_runs")
-            return [dict(item) for item in latest_runs if isinstance(item, dict)] if isinstance(latest_runs, list) else []
-    runs = history_payload.get("runs") if isinstance(history_payload.get("runs"), list) else []
-    return [dict(item) for item in runs if isinstance(item, dict) and str(item.get("goal_id") or "") == goal_id]
 
 
 def render_evidence_log_markdown(payload: dict[str, object]) -> str:
@@ -164,7 +156,7 @@ def handle_evidence_log_command(
             event_kinds=args.event_kind,
             limit=max(0, int(args.limit)),
             rollout_events=rollout_events,
-            history_runs=_goal_runs(history_payload, args.goal_id),
+            history_runs=goal_history_runs(history_payload, args.goal_id),
         )
     except Exception as exc:
         payload = {

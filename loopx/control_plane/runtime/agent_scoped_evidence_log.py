@@ -139,6 +139,28 @@ def _sort_key(row: Mapping[str, Any]) -> tuple[str, str]:
     return (str(row.get("recorded_at") or ""), str(row.get("source") or ""))
 
 
+def goal_history_runs(
+    history_payload: Mapping[str, Any],
+    goal_id: str,
+) -> list[dict[str, Any]]:
+    """Select compact history rows for one goal from either supported history shape."""
+
+    goals = history_payload.get("goals")
+    for goal in goals if isinstance(goals, list) else []:
+        if not isinstance(goal, Mapping) or str(goal.get("id") or "") != goal_id:
+            continue
+        latest_runs = goal.get("latest_runs")
+        if not isinstance(latest_runs, list):
+            return []
+        return [dict(row) for row in latest_runs if isinstance(row, Mapping)]
+    runs = history_payload.get("runs")
+    return [
+        dict(row)
+        for row in (runs if isinstance(runs, list) else [])
+        if isinstance(row, Mapping) and str(row.get("goal_id") or "") == goal_id
+    ]
+
+
 def build_agent_scoped_evidence_log_command(
     *,
     goal_id: str,

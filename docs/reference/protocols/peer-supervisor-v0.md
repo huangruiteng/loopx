@@ -60,6 +60,25 @@ loopx supervisor-prompt \
   --agent-id <supervisor-agent-id>
 ```
 
+The prompt runs the supervisor's own quota guard, then consumes one read-only
+observation packet:
+
+```bash
+loopx supervisor-observe \
+  --goal-id <goal-id> \
+  --agent-id <supervisor-agent-id>
+```
+
+`supervisor_observation_v0` selects from existing public-safe projections. For
+each supervised peer it includes current claim, state, next action, last
+activity, workspace/handoff references, recent thin evidence rows, and compact
+effect references. It does not run another peer's quota guard, include raw
+history or transcripts, or introduce write authority. Missing peer status or
+evidence is projected as a warning and makes `decision_input_complete=false`.
+Degraded status contracts behave the same way: the packet preserves the usable
+read-only projection, reports compact health counts, and does not claim that
+the decision input is complete.
+
 ## Decision Contract
 
 `supervisor_decision_v0` uses an enum-like closed set:

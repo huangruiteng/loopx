@@ -20,6 +20,7 @@ from loopx.configure_goal import configure_goal  # noqa: E402
 from loopx.control_plane.agents.supervisor import (  # noqa: E402
     HOST_CAPABILITIES_BY_DECISION,
     SupervisorDecisionKind,
+    build_supervisor_observation_packet,
     build_supervisor_prompt,
     normalize_supervisor_decision,
     peer_supervisor_for_goal,
@@ -34,11 +35,86 @@ def read_goal(registry_path: Path) -> dict:
     return json.loads(registry_path.read_text(encoding="utf-8"))["goals"][0]
 
 
+def observation_status() -> dict:
+    return {
+        "ok": True,
+        "attention_queue": {
+            "items": [
+                {
+                    "goal_id": GOAL_ID,
+                    "status": "active",
+                    "severity": "info",
+                    "recommended_action": "Compare peer effects before proposing a branch.",
+                    "project_asset": {"user_todos": {"open": 0}},
+                }
+            ]
+        },
+        "agent_management_projection": {
+            "schema_version": "agent_management_projection_v0",
+            "generated_at": "2026-07-12T08:00:00Z",
+            "agents": [
+                {
+                    "agent_id": AGENTS[2],
+                    "state": "active",
+                    "current_todo": {
+                        "todo_id": "todo-gamma",
+                        "text": "Validate the bounded peer branch.",
+                    },
+                    "next_action": "Run the focused smoke.",
+                    "last_activity_at": "2026-07-12T07:59:00Z",
+                    "workspace_ref": {
+                        "kind": "worktree",
+                        "branch": "codex/gamma",
+                        "path_safe": False,
+                    },
+                    "handoff_refs": ["handoff-gamma"],
+                    "evidence_refs": ["todo:todo-gamma:evidence"],
+                }
+            ],
+        },
+    }
+
+
+def observation_evidence() -> dict:
+    return {
+        "ok": True,
+        "schema_version": "agent_scoped_evidence_log_v0",
+        "ledger_count": 2,
+        "matched_count": 2,
+        "truncated": False,
+        "ledger": [
+            {
+                "source": "rollout_event_log",
+                "recorded_at": "2026-07-12T07:59:30Z",
+                "event_id": "event-gamma-2",
+                "event_kind": "refresh_state",
+                "summary": "Focused smoke passed.",
+            },
+            {
+                "source": "run_history",
+                "recorded_at": "2026-07-12T07:58:00Z",
+                "run_ref": "2026-07-12T07:58:00Z",
+                "delivery_outcome": "implementation_progress",
+            },
+        ],
+    }
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="loopx-peer-supervisor-") as tmp:
         root = Path(tmp)
         state_file = root / "ACTIVE_GOAL_STATE.md"
-        state_file.write_text("# Active Goal State\n", encoding="utf-8")
+        state_file.write_text(
+            "---\n"
+            "status: active\n"
+            "---\n\n"
+            "# Active Goal State\n\n"
+            "## Objective\n\n"
+            "Exercise the opt-in peer supervisor contract.\n\n"
+            "## Next Action\n\n"
+            "- Observe peer projections before proposing an action.\n",
+            encoding="utf-8",
+        )
         registry_path = root / "registry.json"
         registry_path.write_text(
             json.dumps(
@@ -46,8 +122,13 @@ def main() -> int:
                     "goals": [
                         {
                             "id": GOAL_ID,
+                            "domain": "peer-supervisor-smoke",
                             "repo": str(root),
                             "state_file": state_file.name,
+                            "adapter": {
+                                "kind": "generic_project_goal_v0",
+                                "status": "connected",
+                            },
                             "coordination": {
                                 "agent_model": "peer_v1",
                                 "registered_agents": AGENTS,
@@ -113,9 +194,59 @@ def main() -> int:
         task_body = prompt["task_body"]
         assert "not a durable leader" in task_body, task_body
         assert "proposal-only" in task_body, task_body
-        assert "evidence-log" in task_body and "quota should-run" in task_body, task_body
-        assert f"status --goal-id {GOAL_ID} --agent-id {AGENTS[2]}" in task_body
+        assert "supervisor-observe" in task_body and "quota should-run" in task_body
+        assert "evidence-log" not in task_body, task_body
+        assert f"status --goal-id {GOAL_ID} --agent-id {AGENTS[2]}" not in task_body
         assert f"quota should-run --goal-id {GOAL_ID} --agent-id {AGENTS[2]}" not in task_body
+
+        observation = build_supervisor_observation_packet(
+            goal_id=GOAL_ID,
+            supervisor=configured,
+            status_payload=observation_status(),
+            evidence_logs={AGENTS[2]: observation_evidence()},
+        )
+        assert observation["schema_version"] == "supervisor_observation_v0", observation
+        assert observation["mode"] == "read_only", observation
+        assert observation["decision_input_complete"] is True, observation
+        assert observation["warnings"] == [], observation
+        assert observation["goal"]["user_open_count"] == 0, observation
+        peer = observation["peers"][0]
+        assert peer["agent_id"] == AGENTS[2], peer
+        assert peer["current_todo"]["todo_id"] == "todo-gamma", peer
+        assert peer["evidence"]["latest_recorded_at"] == "2026-07-12T07:59:30Z", peer
+        assert peer["evidence"]["effect_refs"] == [
+            "todo:todo-gamma:evidence",
+            "rollout_event:event-gamma-2",
+            "run_history:2026-07-12T07:58:00Z",
+        ], peer
+        assert observation["boundary"]["raw_transcripts_included"] is False
+        assert observation["boundary"]["write_authority"] == "none"
+
+        incomplete = build_supervisor_observation_packet(
+            goal_id=GOAL_ID,
+            supervisor={**configured, "supervised_agents": AGENTS[1:]},
+            status_payload=observation_status(),
+            evidence_logs={AGENTS[2]: observation_evidence()},
+        )
+        assert incomplete["decision_input_complete"] is False, incomplete
+        assert incomplete["warnings"] == [
+            f"missing_agent_status:{AGENTS[1]}",
+            f"missing_evidence_log:{AGENTS[1]}",
+        ], incomplete
+
+        degraded_status = observation_status()
+        degraded_status["ok"] = False
+        degraded_status["contract_errors"] = ["fixture contract error"]
+        degraded = build_supervisor_observation_packet(
+            goal_id=GOAL_ID,
+            supervisor=configured,
+            status_payload=degraded_status,
+            evidence_logs={AGENTS[2]: observation_evidence()},
+        )
+        assert degraded["ok"] is True, degraded
+        assert degraded["decision_input_complete"] is False, degraded
+        assert degraded["warnings"] == ["status_projection_degraded"], degraded
+        assert degraded["status_health"]["contract_error_count"] == 1, degraded
 
         decision = normalize_supervisor_decision(
             {
@@ -156,6 +287,28 @@ def main() -> int:
         assert cli_payload["supervisor_contract"]["supervised_agents"] == [
             AGENTS[2]
         ], cli_payload
+
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            exit_code = cli_main(
+                [
+                    "--registry",
+                    str(registry_path),
+                    "--runtime-root",
+                    str(root / "runtime"),
+                    "supervisor-observe",
+                    "--format",
+                    "json",
+                    "--goal-id",
+                    GOAL_ID,
+                    "--agent-id",
+                    AGENTS[0],
+                ]
+            )
+        assert exit_code == 0, stdout.getvalue()
+        cli_observation = json.loads(stdout.getvalue())
+        assert cli_observation["schema_version"] == "supervisor_observation_v0"
+        assert [peer["agent_id"] for peer in cli_observation["peers"]] == [AGENTS[2]]
 
         try:
             configure_goal(

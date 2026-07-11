@@ -125,6 +125,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
                 "command": "loopx supervisor-prompt",
                 "purpose": "Generate the dedicated task body for an opt-in proposal-only peer supervisor.",
             },
+            {
+                "command": "loopx supervisor-observe",
+                "purpose": "Read one public-safe supervisor packet over peer status and evidence.",
+            },
             {"command": "loopx upgrade-plan", "purpose": "Plan default heartbeat upgrade propagation."},
             {"command": "loopx update", "purpose": "Check, dry-run, or execute the no-clone update path."},
         ],
