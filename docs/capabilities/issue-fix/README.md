@@ -641,6 +641,37 @@ transcripts, tool logs/results, expert answers, credentials, private material,
 and captured local paths are rejected. The provider packet retains only opaque
 refs and compact receipts.
 
+An outcome without `reusable_knowledge` remains an audit fact: it proves what
+was delivered, but it is not promoted as patch guidance. Reusable knowledge is
+written to a separate collection only when delivery evidence supplies the
+complete `issue_fix_reusable_knowledge_input_v0` contract:
+
+- a searchable symptom signature and a focused reproduction contract;
+- the checkout-verified root cause and violated invariant;
+- the repair pattern, focused validation contract, and repository-relative
+  verification references;
+- explicit applicability and non-applicability boundaries.
+
+This distinction prevents PR titles, changed-file lists, and passing-test
+labels from being mistaken for reusable diagnosis. Confirmation against the
+current checkout also does not by itself prove value. A retrieval records
+decision influence only when it names the concrete decision it changed
+(`reproduction`, `change_scope`, `patch`, or `validation`); provider retrieval
+alone records zero influence.
+
+Use retrieval at three bounded points. Before diagnosis, search by symptom and
+module to discover candidate incidents. After reproducing locally, search by
+the observed causal path or invariant and confirm or refute each hit in the
+current checkout. Before closeout, search the changed module and invariant for
+prior validation surfaces and negative boundaries. Repository source, tests,
+and current documentation remain authoritative throughout.
+
+Do not write whole source files, raw issue or PR discussions, transcripts,
+tool output, unverified hypotheses, reviewer identity mappings, or LoopX
+control-plane state as reusable repository knowledge. Current source belongs
+in the revision-scoped resource index; reviewer routing comes from live
+repository ownership signals; LoopX operating lessons remain in LoopX state.
+
 The OpenViking adapter deliberately uses deterministic `viking://resources/`
 writeback for this first contract. It does not call experimental `ov
 add-memory`, because that command creates a fresh session and currently accepts
@@ -651,9 +682,10 @@ writeback is enabled.
 Default enablement is an evidence decision rather than an installation side
 effect. A project should first dogfood the hook across several independent
 issue/context runs and a restart boundary. Make it a packaged default only
-when it repeatedly contributes novel checkout-verified evidence without stale,
-misleading, or boundary-unsafe retrieval; otherwise keep it explicit opt-in
-with the same fail-open behavior.
+when it repeatedly changes a concrete issue-fix decision with novel,
+checkout-verified evidence and without stale, misleading, or boundary-unsafe
+retrieval. Retrieval count alone is not success; otherwise keep it explicit
+opt-in with the same fail-open behavior.
 
 ## PR Lifecycle Monitor
 
