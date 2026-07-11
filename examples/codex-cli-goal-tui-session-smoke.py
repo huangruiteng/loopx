@@ -32,6 +32,8 @@ def main() -> int:
     original_kill = goal_tui.tmux_kill_session
     original_capture = goal_tui.tmux_capture
     original_type_text_and_submit = goal_tui.tmux_type_text_and_submit
+    original_monotonic = goal_tui.time.monotonic
+    original_sleep = goal_tui.time.sleep
     try:
         goal_tui.subprocess.run = fake_run  # type: ignore[assignment]
         goal_tui.tmux_kill_session = fake_kill  # type: ignore[assignment]
@@ -113,6 +115,39 @@ def main() -> int:
                 ),
             )
         ]
+
+        captures = iter(
+            [
+                "Working (10s • esc to interrupt)",
+                "persisted thread ready\n› ",
+            ]
+        )
+        clock = iter([0.0, 0.0, 0.5, 1.5, 1.5])
+        goal_tui.tmux_capture = lambda _tmux_name: next(captures)  # type: ignore[assignment]
+        goal_tui.time.monotonic = lambda: next(clock)  # type: ignore[assignment]
+        goal_tui.time.sleep = lambda _seconds: None  # type: ignore[assignment]
+        assert goal_tui.prewarm_codex_cli_goal_thread(
+            tmux_name="active-then-ready",
+            timeout_sec=1,
+        )
+
+        clock = iter([0.0, 0.0, 1.0, 1.0])
+        goal_tui.tmux_capture = lambda _tmux_name: "waiting"  # type: ignore[assignment]
+        goal_tui.time.monotonic = lambda: next(clock)  # type: ignore[assignment]
+        assert not goal_tui.prewarm_codex_cli_goal_thread(
+            tmux_name="nominal-timeout",
+            timeout_sec=1,
+        )
+
+        clock = iter([0.0, 0.0, 0.5, 1.0, 1.5, 2.0])
+        goal_tui.tmux_capture = (  # type: ignore[assignment]
+            lambda _tmux_name: "Working (10s • esc to interrupt)"
+        )
+        goal_tui.time.monotonic = lambda: next(clock)  # type: ignore[assignment]
+        assert not goal_tui.prewarm_codex_cli_goal_thread(
+            tmux_name="hard-timeout",
+            timeout_sec=1,
+        )
     finally:
         goal_tui.subprocess.run = original_run  # type: ignore[assignment]
         goal_tui.wait_for_codex_cli_tui_ready = original_wait  # type: ignore[assignment]
@@ -120,6 +155,8 @@ def main() -> int:
         goal_tui.tmux_kill_session = original_kill  # type: ignore[assignment]
         goal_tui.tmux_capture = original_capture  # type: ignore[assignment]
         goal_tui.tmux_type_text_and_submit = original_type_text_and_submit  # type: ignore[assignment]
+        goal_tui.time.monotonic = original_monotonic  # type: ignore[assignment]
+        goal_tui.time.sleep = original_sleep  # type: ignore[assignment]
 
     print("codex-cli-goal-tui-session-smoke ok")
     return 0
