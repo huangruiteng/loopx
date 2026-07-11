@@ -325,8 +325,9 @@ sufficient; raise it as durable behavior moves from subprocess smokes into
 focused tests. An architecture test also prevents new control-plane dependencies
 on presentation, CLI, capability, or benchmark-adapter layers while preserving
 one explicit quota-Markdown migration debt edge. Existing source-wide lint debt
-is characterized separately. Strict mypy checking starts with seven leaf kernel
-contracts and should expand only as each next boundary becomes clean;
+is characterized separately. Strict mypy checking covers nine characterized
+kernel and runtime contracts and should expand only as each next boundary
+becomes clean;
 expand the protected namespace list only after a bounded cleanup, rather than
 mass-fixing unrelated code merely to make a broad gate green.
 
