@@ -1225,6 +1225,7 @@ class SkillsBenchLocalAcpRelay:
                     if codex_cli_goal_should_submit_kickoff(
                         bridge_enabled=bridge_summary_path is not None,
                         goal_active_observed=goal_active_observed,
+                        task_prompt_released=task_prompt_released,
                         kickoff_submitted=goal_kickoff_prompt_submitted,
                         turn_active=turn_active,
                         first_action_seen=first_action_seen,

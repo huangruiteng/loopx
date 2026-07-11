@@ -1435,6 +1435,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
         build_codex_cli_tui_command,
         build_codex_cli_goal_tui_input,
         codex_cli_goal_lifecycle_marker_counts,
+        codex_cli_goal_should_submit_kickoff,
         codex_cli_goal_watchdog_expired,
     )
     from loopx.benchmark_adapters.skillsbench_acp_relay import (
@@ -1452,6 +1453,22 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME in objective, objective
     assert len(objective) < CODEX_CLI_GOAL_OBJECTIVE_MAX_CHARS
     assert build_codex_cli_goal_tui_input(objective).startswith("/goal "), objective
+    kickoff_state = {
+        "bridge_enabled": True,
+        "goal_active_observed": True,
+        "kickoff_submitted": False,
+        "turn_active": False,
+        "first_action_seen": False,
+        "capture": "Goal active\n› ",
+    }
+    assert not codex_cli_goal_should_submit_kickoff(
+        task_prompt_released=False,
+        **kickoff_state,
+    )
+    assert codex_cli_goal_should_submit_kickoff(
+        task_prompt_released=True,
+        **kickoff_state,
+    )
     cmd = build_codex_cli_tui_command(
         codex_bin="codex",
         sandbox="workspace-write",
@@ -1586,6 +1603,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "turn_active = codex_cli_tui_turn_active(capture)" in source
     assert "goal_kickoff_prompt_submitted = False" in source
     assert "kickoff_submitted=goal_kickoff_prompt_submitted" in source
+    assert "task_prompt_released=task_prompt_released" in source
     assert "text=CODEX_CLI_GOAL_KICKOFF_PROMPT" in source
     assert "goal_failed_now = False" in source
     assert "goal_lifecycle.failed_advanced" in source

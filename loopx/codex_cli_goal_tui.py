@@ -497,6 +497,7 @@ def codex_cli_goal_should_submit_kickoff(
     *,
     bridge_enabled: bool,
     goal_active_observed: bool,
+    task_prompt_released: bool,
     kickoff_submitted: bool,
     turn_active: bool,
     first_action_seen: bool,
@@ -505,6 +506,7 @@ def codex_cli_goal_should_submit_kickoff(
     return (
         bridge_enabled
         and goal_active_observed
+        and task_prompt_released
         and not kickoff_submitted
         and not turn_active
         and not first_action_seen
