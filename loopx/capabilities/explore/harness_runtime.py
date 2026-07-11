@@ -7,6 +7,16 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+from .episode_runtime import (
+    RECORD_KIND_STANDALONE,
+    build_episode_execution_units,
+    build_router_probes,
+    combine_execution_metrics,
+    execute_episode_group,
+    item_concurrency_keys,
+    recoverable_episode_mode,
+    summarize_execution_records,
+)
 from .harness_checkpoint import (
     HARNESS_CHECKPOINT_SCHEMA_VERSION,
     build_arm_checkpoint,
@@ -65,6 +75,22 @@ implementation):
 - ``item_failure_policy`` may be set to ``"fatal"`` on the adapter to make
   execution exceptions propagate; the default ``"record"`` policy emits a
   zero-value structured observation and keeps independent lanes running.
+- Adapters that can checkpoint an expensive shared execution prefix may
+  optionally implement all three recoverable-episode methods:
+  ``prepare_episode_group(seed_item, episode_items, **context)`` returns
+  ``{handle, prefix_record, checkpoint_ref?}``, ``execute_episode(handle,
+  item, **context)`` returns a suffix-only observation, and
+  ``release_episode_group(handle, **context)`` releases adapter-owned state.
+  Returning ``None`` from prepare is an explicit, side-effect-free fallback
+  to legacy ``execute`` for that group (the only case where an episode
+  adapter needs ``execute`` at all). The adapter owns all restore mechanics.
+  Distinct groups run concurrently on separate workers, so the three methods
+  must be thread-safe across groups; concurrently active handles must not alias
+  mutable state, while safe sequential or immutable reuse remains valid.
+  Malformed grouping inputs (empty or duplicate seed/variant ids, id
+  collisions, or variants naming an unknown seed) degrade through the item
+  failure policy like any execution error: structured records under ``record``,
+  or a pre-dispatch raised error under ``fatal``.
 """
 
 
@@ -123,13 +149,16 @@ def _adapter_error_record(
     duration_minutes: float,
 ) -> dict[str, Any]:
     message = " ".join(str(error).split())
+    spec = item.get("variant_spec")
     return {
         "item_id": item.get("item_id"),
         "family": item.get("family"),
         "is_variant": bool(item.get("is_variant")),
+        # The error factory must never raise itself: a malformed variant_spec
+        # would otherwise escalate one recordable failure into a lost lane.
         "variant_spec_id": (
-            (item.get("variant_spec") or {}).get("spec_id")
-            if item.get("is_variant")
+            spec.get("spec_id")
+            if item.get("is_variant") and isinstance(spec, Mapping)
             else None
         ),
         "execution_status": "adapter_error",
@@ -188,7 +217,7 @@ class NoveltyLedger:
 def run_queue_epoch(
     items: Sequence[Mapping[str, Any]],
     *,
-    execute: Callable[..., dict[str, Any]],
+    execute: Callable[..., dict[str, Any] | Sequence[dict[str, Any]]],
     worker_count: int,
     run_root: Path,
     arm: str,
@@ -198,10 +227,10 @@ def run_queue_epoch(
 ) -> list[dict[str, Any]]:
     """Drain one epoch's work items through a shared pull queue.
 
-    Items whose ``concurrency_key`` matches an in-flight item wait until the
-    key frees up (the generic form of "same write scope must serialize");
-    items with distinct keys run concurrently up to ``worker_count`` pullers.
-    Returns per-worker lane records.
+    Items may declare one ``concurrency_key`` or several ``concurrency_keys``.
+    Any overlap with an in-flight item waits until all keys free up (the generic
+    form of "same write scope must serialize"); disjoint items run concurrently
+    up to ``worker_count`` pullers. Returns per-worker lane records.
     """
 
     failure_policy = _normalize_item_failure_policy(item_failure_policy)
@@ -212,12 +241,11 @@ def run_queue_epoch(
     def pull_next() -> dict[str, Any] | None:
         with lock:
             for index, item in enumerate(pending):
-                key = str(item.get("concurrency_key") or item.get("family") or "")
-                if key and key in in_flight:
+                keys = item_concurrency_keys(item)
+                if any(key in in_flight for key in keys):
                     continue
                 pending.pop(index)
-                if key:
-                    in_flight.add(key)
+                in_flight.update(keys)
                 return item
             return None
 
@@ -235,32 +263,54 @@ def run_queue_epoch(
                         break
                 time.sleep(0.5)
                 continue
-            key = str(item.get("concurrency_key") or item.get("family") or "")
+            keys = item_concurrency_keys(item)
             item_started = time.perf_counter()
             try:
-                record = execute(
+                outcome = execute(
                     item, run_root=run_root, arm=arm, epoch=epoch, branch_id=branch_id
                 )
-                if not isinstance(record, dict):
-                    raise TypeError("adapter execute must return a dict observation record")
-                record.setdefault("item_id", item.get("item_id"))
-                record.setdefault("family", item.get("family"))
-                record.setdefault("is_variant", bool(item.get("is_variant")))
-                if item.get("is_variant"):
-                    record.setdefault("variant_spec_id", (item.get("variant_spec") or {}).get("spec_id"))
+                if isinstance(outcome, Mapping):
+                    batch = [dict(outcome)]
+                elif isinstance(outcome, Sequence) and not isinstance(
+                    outcome, (str, bytes)
+                ):
+                    batch = []
+                    for candidate in outcome:
+                        if not isinstance(candidate, Mapping):
+                            raise TypeError(
+                                "queue execute sequences must contain dict observation records"
+                            )
+                        batch.append(dict(candidate))
+                else:
+                    raise TypeError(
+                        "queue execute must return a dict or sequence of dict observations"
+                    )
+                if not batch:
+                    raise TypeError("queue execute must return at least one observation")
+                for record in batch:
+                    record.setdefault("item_id", item.get("item_id"))
+                    record.setdefault("family", item.get("family"))
+                    record.setdefault("is_variant", bool(item.get("is_variant")))
+                    if item.get("is_variant"):
+                        record.setdefault(
+                            "variant_spec_id",
+                            (item.get("variant_spec") or {}).get("spec_id"),
+                        )
             except Exception as error:
                 if failure_policy == ITEM_FAILURE_POLICY_FATAL:
                     raise
-                record = _adapter_error_record(
-                    item,
-                    error,
-                    duration_minutes=_now_perf_minutes(item_started),
-                )
+                batch = [
+                    _adapter_error_record(
+                        item,
+                        error,
+                        duration_minutes=_now_perf_minutes(item_started),
+                    )
+                ]
             finally:
-                if key:
+                if keys:
                     with lock:
-                        in_flight.discard(key)
-            results.append(record)
+                        in_flight.difference_update(keys)
+            results.extend(batch)
         return {
             "branch_id": branch_id,
             "launch_index": worker_index,
@@ -409,6 +459,7 @@ def select_frontier_work(
         item.setdefault("is_variant", True)
         item.setdefault("variant_spec", spec)
         item.setdefault("family", family)
+        item.setdefault("seed_item_id", seed.get("item_id"))
         item.setdefault(
             "concurrency_key", f"{family}:variant:{spec.get('spec_id')}"
         )
@@ -511,18 +562,25 @@ def plan_router_no_prune(
     pruning: an executable seed never loses its slot to low confidence.
     """
 
+    by_id: dict[str, dict[str, Any]] = {}
+    duplicate_items: list[dict[str, Any]] = []
+    for item in seed_items:
+        item_id = str(item.get("item_id"))
+        if item_id in by_id:
+            duplicate_items.append(dict(item))
+        else:
+            by_id[item_id] = dict(item)
     todos = [
         {
-            "todo_id": str(item.get("item_id")),
+            "todo_id": item_id,
             "text": str(item.get("text") or item.get("item_id")),
             "status": "open",
             "task_class": "advancement_task",
             "required_write_scopes": [f"artifacts/{item.get('family')}/**"],
             "index": index,
         }
-        for index, item in enumerate(seed_items)
+        for index, (item_id, item) in enumerate(by_id.items())
     ]
-    by_id = {str(item.get("item_id")): dict(item) for item in seed_items}
     plan = build_explore_worker_branch_plan(
         goal_id=goal_id,
         todos=todos,
@@ -555,6 +613,10 @@ def plan_router_no_prune(
         if item_id not in used:
             ordered.append(item)
             used.add(item_id)
+    # Preserve malformed duplicates for the episode grouping boundary. The
+    # planner still reasons over unique ids, but no-prune means it must not
+    # silently erase an input that record/fatal policy needs to classify.
+    ordered.extend(duplicate_items)
     return ordered
 
 
@@ -569,9 +631,10 @@ def _arm_runtime_signature(
     goal_id: str,
     agent_id: str,
     item_failure_policy: str,
+    episode_mode: str | None,
 ) -> dict[str, Any]:
     adapter_type = f"{type(adapter).__module__}.{type(adapter).__qualname__}"
-    return {
+    signature = {
         "arm_key": str(arm_key),
         "adapter_type": adapter_type,
         "worker_count": max(1, int(worker_count)),
@@ -582,6 +645,10 @@ def _arm_runtime_signature(
         "agent_id": str(agent_id),
         "item_failure_policy": item_failure_policy,
     }
+    # Missing keys in legacy manifests read as None, so old standalone arms
+    # remain compatible while a recoverable arm cannot resume as standalone.
+    signature["episode_mode"] = episode_mode
+    return signature
 
 
 def run_budget_arm(
@@ -621,6 +688,7 @@ def run_budget_arm(
         if item_failure_policy is not None
         else getattr(adapter, "item_failure_policy", None)
     )
+    episode_mode = recoverable_episode_mode(adapter)
     checkpoint_enabled = bool(resumable or resume or checkpoint_path is not None)
     checkpoint_file = (
         Path(checkpoint_path)
@@ -637,6 +705,7 @@ def run_budget_arm(
         goal_id=goal_id,
         agent_id=agent_id,
         item_failure_policy=failure_policy,
+        episode_mode=episode_mode,
     )
     ledger = NoveltyLedger()
     router_state = initial_router_state() if use_router else None
@@ -692,6 +761,36 @@ def run_budget_arm(
         catalog.restore_consumed([])
     if not resume:
         checkpoint_file.unlink(missing_ok=True)
+    execution_metric_fields = set(combine_execution_metrics([]))
+    historical_execution_metrics: list[dict[str, Any]] = []
+    for completed_epoch in epochs:
+        stored_metrics = completed_epoch.get("execution_metrics")
+        if (
+            isinstance(stored_metrics, Mapping)
+            and execution_metric_fields.issubset(stored_metrics)
+        ):
+            historical_execution_metrics.append(dict(stored_metrics))
+            continue
+        historical_records = [
+            record
+            for lane in completed_epoch.get("lanes") or []
+            for record in lane.get("results") or []
+        ]
+        if episode_mode is None:
+            historical_records = [
+                {
+                    **record,
+                    "execution_group_id": None,
+                    "record_kind": RECORD_KIND_STANDALONE,
+                }
+                for record in historical_records
+            ]
+        historical_execution_metrics.append(
+            summarize_execution_records(historical_records)
+        )
+    execution_metrics_cum = combine_execution_metrics(
+        historical_execution_metrics
+    )
     stop_reason = "max_epochs"
     started = time.perf_counter()
     for epoch in range(next_epoch, int(max_epochs) + 1):
@@ -712,6 +811,16 @@ def run_budget_arm(
         if not seed_items:
             stop_reason = "seed_queue_empty"
             break
+        if episode_mode is not None and failure_policy == ITEM_FAILURE_POLICY_FATAL:
+            # Router planning keys by item_id and variant compilation calls
+            # adapter code, so fatal structural validation must see the raw
+            # seeds before either operation can collapse ids or cause effects.
+            build_episode_execution_units(
+                seed_items,
+                arm=arm_key,
+                epoch=epoch,
+                fatal_preflight=True,
+            )
         if use_router:
             queue_items = plan_router_no_prune(
                 seed_items,
@@ -744,9 +853,33 @@ def run_budget_arm(
                 router_state=router_state,
             )
         epoch_start = time.perf_counter()
+        execution_items = queue_items
+        if episode_mode is not None:
+            execution_items = build_episode_execution_units(
+                queue_items,
+                arm=arm_key,
+                epoch=epoch,
+                fatal_preflight=failure_policy == ITEM_FAILURE_POLICY_FATAL,
+            )
+
+            def execute_epoch(item: Mapping[str, Any], **context: Any) -> list[dict[str, Any]]:
+                return execute_episode_group(
+                    item,
+                    adapter=adapter,
+                    failure_policy=failure_policy,
+                    fatal_failure_policy=ITEM_FAILURE_POLICY_FATAL,
+                    error_record_factory=_adapter_error_record,
+                    **context,
+                )
+
+        else:
+            # Accessed lazily so an episode-only adapter (no legacy execute)
+            # is valid as long as prepare_episode_group never returns None.
+            execute_epoch: Callable[..., Any] = adapter.execute
+
         lanes = run_queue_epoch(
-            queue_items,
-            execute=adapter.execute,
+            execution_items,
+            execute=execute_epoch,
             worker_count=worker_count,
             run_root=run_root,
             arm=arm_key,
@@ -770,23 +903,42 @@ def run_budget_arm(
                 records.append(record)
         raw_cum += epoch_raw
         novel_cum += epoch_novel
+        metric_records = records
+        if episode_mode is None:
+            metric_records = [
+                {
+                    **record,
+                    "execution_group_id": None,
+                    "record_kind": RECORD_KIND_STANDALONE,
+                }
+                for record in records
+            ]
+        epoch_execution_metrics = summarize_execution_records(metric_records)
+        execution_metrics_cum = combine_execution_metrics(
+            [execution_metrics_cum, epoch_execution_metrics]
+        )
         elapsed_after = elapsed_offset + _now_perf_minutes(started)
         for record in records:
             family = str(record.get("family") or "")
             if family:
                 coverage_first_seen.setdefault(family, round(elapsed_after, 3))
         if use_router:
-            probes = [
-                {
-                    "family": str(record.get("family") or "general"),
-                    "duration_minutes": record.get("duration_minutes"),
-                    "observation_keys": record.get("observation_keys") or [],
-                    "weighted_flags": record.get("weighted_flags") or {},
-                    "accepted": bool(record.get("accepted")),
-                    "retryable_infra_error": bool(record.get("retryable_infra_error")),
-                }
-                for record in records
-            ]
+            if episode_mode is not None:
+                probes = build_router_probes(records)
+            else:
+                probes = [
+                    {
+                        "family": str(record.get("family") or "general"),
+                        "duration_minutes": record.get("duration_minutes"),
+                        "observation_keys": record.get("observation_keys") or [],
+                        "weighted_flags": record.get("weighted_flags") or {},
+                        "accepted": bool(record.get("accepted")),
+                        "retryable_infra_error": bool(
+                            record.get("retryable_infra_error")
+                        ),
+                    }
+                    for record in records
+                ]
             router_state = observe_epoch(router_state, epoch=epoch, probes=probes)
             router_state = advance_epoch(
                 router_state,
@@ -814,6 +966,7 @@ def run_budget_arm(
                 "coverage_count_cum": len(coverage_first_seen),
                 "variant_records_cum": variant_records_cum,
                 "requested_worker_minutes_cum": round(elapsed_after * worker_count, 3),
+                "execution_metrics_cum": dict(execution_metrics_cum),
             }
         )
         epochs.append(
@@ -822,6 +975,8 @@ def run_budget_arm(
                 "epoch": epoch,
                 "epoch_wall_minutes": round(epoch_wall, 3),
                 "queue_size": len(queue_items),
+                "execution_unit_count": len(execution_items),
+                "execution_metrics": epoch_execution_metrics,
                 "frontier": frontier_audit,
                 "lanes": lanes,
             }
@@ -860,6 +1015,7 @@ def run_budget_arm(
         "raw_value_total": round(raw_cum, 3),
         "novel_value_total": round(novel_cum, 3),
         "variant_records_total": variant_records_cum,
+        "execution_metrics": execution_metrics_cum,
         "coverage_count": len(coverage_first_seen),
         "coverage_first_seen_minutes": coverage_first_seen,
         "checkpoints": checkpoints,
@@ -876,6 +1032,10 @@ def run_budget_arm(
             "schema_version": HARNESS_RUNTIME_POLICY_SCHEMA_VERSION,
             "item_failure_policy": failure_policy,
             "item_exception_isolation": failure_policy == ITEM_FAILURE_POLICY_RECORD,
+            "episode_execution": {
+                "mode": episode_mode or "standalone",
+                "adapter_owned_restore": episode_mode is not None,
+            },
             "planner_guidance": {
                 "retry_backoff": {
                     "enforced": False,
@@ -925,6 +1085,14 @@ def aggregate_arms(
     }
     for arm_key, arm in arms.items():
         checkpoints = arm.get("checkpoints") or []
+        execution_metrics = (
+            dict(arm.get("execution_metrics") or {})
+            if isinstance(arm.get("execution_metrics"), Mapping)
+            else {}
+        )
+        effective_compute = float(
+            execution_metrics.get("effective_compute_minutes") or 0.0
+        )
         summary["arms"][arm_key] = {
             "novel_value_endpoint": arm.get("novel_value_total"),
             "novel_value_auc": step_auc(
@@ -936,10 +1104,20 @@ def aggregate_arms(
             "epoch_count": arm.get("epoch_count"),
             "elapsed_minutes": arm.get("elapsed_minutes"),
             "stop_reason": arm.get("stop_reason"),
+            "execution_metrics": execution_metrics,
             "novel_value_per_requested_worker_minute": round(
                 float(arm.get("novel_value_total") or 0.0)
                 / max(0.001, float(budget_minutes) * worker_count),
                 4,
+            ),
+            "novel_value_per_effective_compute_minute": (
+                round(
+                    float(arm.get("novel_value_total") or 0.0)
+                    / effective_compute,
+                    4,
+                )
+                if effective_compute > 0
+                else None
             ),
             "anytime_curve": checkpoints,
         }

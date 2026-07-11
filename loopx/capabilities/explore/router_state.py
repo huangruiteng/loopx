@@ -117,8 +117,12 @@ def observe_epoch(
     Each probe mapping carries: ``family`` (canonical family id), ``duration_minutes``,
     ``observation_keys`` (list), ``accepted`` (bool), ``retryable_infra_error``
     (bool), and ``weighted_flags``: ``{flag_name: weight}`` for value-bearing
-    flags that are TRUE. The adapter owns both flag names and weights; this
-    module never hardcodes domain vocabulary.
+    flags that are TRUE. A probe that folds several sibling executions (an
+    episode group) may additionally carry ``accepted_count`` and
+    ``attempt_count`` so acceptance is weighted by the number of suffix
+    attempts. Invalid or absent counts fall back to the legacy ``accepted``
+    boolean. The adapter owns both flag names and weights; this module never
+    hardcodes domain vocabulary.
 
     Value-rate EMAs use RAW value per minute (not novelty-discounted) so the
     estimator measures the environment, not the router's own rerun policy;
@@ -164,12 +168,44 @@ def observe_epoch(
 
         samples = per_family_samples.setdefault(
             family,
-            {"value_rate": [], "duration": [], "novelty": [], "accept": [], "infra": []},
+            {
+                "value_rate": [],
+                "duration": [],
+                "novelty": [],
+                "accept": [],
+                "accept_weight": [],
+                "infra": [],
+            },
         )
         samples["value_rate"].append(raw_value / duration)
         samples["duration"].append(duration)
         samples["novelty"].append(novel_value / raw_value if raw_value > 0 else 0.0)
-        samples["accept"].append(1.0 if probe.get("accepted") else 0.0)
+        accept_sample = 1.0 if probe.get("accepted") else 0.0
+        accept_weight = 1.0
+        accepted_count = probe.get("accepted_count")
+        attempt_count = probe.get("attempt_count")
+        if accepted_count is not None or attempt_count is not None:
+            try:
+                accepted_total = float(accepted_count)
+                attempt_total = float(attempt_count)
+            except (OverflowError, TypeError, ValueError):
+                pass
+            else:
+                counts_are_valid = (
+                    not isinstance(accepted_count, bool)
+                    and not isinstance(attempt_count, bool)
+                    and math.isfinite(accepted_total)
+                    and math.isfinite(attempt_total)
+                    and accepted_total.is_integer()
+                    and attempt_total.is_integer()
+                    and attempt_total > 0
+                    and 0 <= accepted_total <= attempt_total
+                )
+                if counts_are_valid:
+                    accept_sample = accepted_total / attempt_total
+                    accept_weight = attempt_total
+        samples["accept"].append(accept_sample)
+        samples["accept_weight"].append(accept_weight)
         samples["infra"].append(1.0 if probe.get("retryable_infra_error") else 0.0)
 
         minutes_by_family[family] = minutes_by_family.get(family, 0.0) + duration
@@ -185,8 +221,13 @@ def observe_epoch(
         record["duration_ema"] = round(
             _ema(record.get("duration_ema"), mean(samples["duration"]), config["duration_alpha"]), 4
         )
+        accept_weight_total = sum(samples["accept_weight"])
+        accept_mean = sum(
+            value * weight
+            for value, weight in zip(samples["accept"], samples["accept_weight"])
+        ) / max(1.0, accept_weight_total)
         record["accept_rate_ema"] = round(
-            _ema(record.get("accept_rate_ema"), mean(samples["accept"]), config["accept_rate_alpha"]), 4
+            _ema(record.get("accept_rate_ema"), accept_mean, config["accept_rate_alpha"]), 4
         )
         record["infra_ema"] = round(
             _ema(record.get("infra_ema") or 0.0, mean(samples["infra"]), config["infra_alpha"]), 4

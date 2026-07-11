@@ -440,6 +440,118 @@ Without `--router-state` the profile still plans (router disabled, cold
 static scoring); passing state to a non-router profile is ignored, which
 keeps `adaptive-resilient` clean as the B-min ablation arm.
 
+### Recoverable Execution Episodes
+
+The budget-arm runtime has an optional, software-agnostic execution seam for
+experiments that share an expensive setup prefix. A seed and its scheduled
+variants become one **episode group**: the adapter prepares the base state
+once, then executes each baseline or variant suffix from that same state.
+LoopX owns grouping, observation accounting, and router feedback; the adapter
+owns every application-specific fact, including how to restore isolation.
+
+An adapter opts in only by implementing all three methods:
+
+- `prepare_episode_group(seed_item, episode_items, **context)` returns a dict
+  with an in-memory `handle`, one suffix-free `prefix_record`, and optionally
+  an opaque, public-safe `checkpoint_ref`;
+- `execute_episode(handle, item, **context)` restores or clones the prepared
+  state as needed and returns observations produced only by that item suffix;
+- `release_episode_group(handle, **context)` releases the adapter-owned state
+  and is called on every path where a handle crossed the boundary, including
+  suffix failure. (If prepare returns a malformed dict without a `handle`,
+  the adapter kept ownership and no release call is possible.)
+
+The legacy `execute` method stays optional for episode adapters: the runtime
+only consults it when `prepare_episode_group` returns `None` for a group.
+
+Suffix calls are currently sequential *within* a group, but distinct groups
+with disjoint concurrency keys run concurrently on separate workers against
+the same adapter instance. The three episode methods must therefore be
+thread-safe across groups, and concurrently active groups must never alias
+mutable execution state. Sequential handle reuse, immutable shared handles,
+and adapter-managed shared resources remain valid when their isolation and
+lifecycle are safe. Before every suffix call, including the baseline suffix,
+the adapter must restore or clone the same prepared state; changes made by one
+suffix must never leak into the next. Because a group serializes its suffixes
+into one worker lane, an epoch's parallelism is bounded by its group count: an
+adapter whose prepare is cheap for a given group (for example a single-item
+group with no variants) should return `None` there to keep the legacy path and
+avoid paying prepare/release for nothing.
+
+The core has no VM, GUI, browser, process, or industrial-software type. For a
+black-box desktop application, an adapter might implement the handle with a VM
+snapshot, an application restart plus deterministic action replay, or an
+isolated profile copy. A different exploration domain can use an API sandbox,
+filesystem snapshot, simulator state, or any other recoverable mechanism
+without changing the harness runtime.
+
+`prepare_episode_group` may return `None` before making side effects to request
+legacy, fresh `execute` calls for that group. Those fallback calls remain
+sequential inside the already-admitted group. A prepare exception never falls
+back silently because the environment may already be partially changed; it is
+handled by the configured item failure policy. A partial three-method
+implementation also fails closed. If prepare itself raises after making side
+effects, cleanup remains the adapter's responsibility because no valid handle
+has crossed the boundary; LoopX guarantees only that it will not silently run
+fresh items in that uncertain state.
+
+Grouping validates seed identities before fatal-mode planning and validates
+the compiled epoch before any episode lifecycle call. Seed and variant ids
+must be non-empty and globally unambiguous, and every variant's `seed_item_id`
+must name a valid seed in that epoch. `list_seed_items` and, for variant checks,
+`compile_variant` necessarily run before the corresponding validation. Under
+the `fatal` policy, structural preflight raises `ValueError` before any
+prepare, suffix execute, or release call. Under the default `record` policy,
+each malformed item becomes one structured error record with
+`episode_stage="group_validation"`, while every well-formed group still runs.
+Because record mode completes the epoch, its checkpoint records catalog
+consumption and resume does not re-pick the same malformed spec into a crash
+loop.
+
+Failure records stay truthful about which stage failed. A cleanup failure
+after a successful group does not rewrite history: the prefix record keeps its
+own `execution_status` and `accepted` flag, and the release failure travels in
+`episode_release_error` plus `episode_stage="release"` (with
+`retryable_infra_error` propagated). Under the fatal policy, when a suffix
+error and a release error occur together, the suffix error propagates with the
+cleanup failure chained as its `__cause__` — neither failure is swallowed.
+
+Records carry generic execution lineage only:
+`execution_group_id`, `record_kind=shared_prefix|episode_suffix|standalone`,
+`seed_item_id`, `prefix_reused`, and optional `checkpoint_ref`. The novelty
+ledger sees the shared prefix once and each suffix separately. Router feedback
+folds one group's prefix and suffixes into one probe, so sibling branches do
+not masquerade as independent family runs. The folded probe carries integer
+`accepted_count` and `attempt_count`; the router sums those counts across
+same-family groups, so its acceptance sample is suffix-count-weighted instead
+of giving a small group and a large group equal weight.
+
+Runtime results report shared-prefix, suffix, and standalone compute with two
+explicit reuse views. `avoided_recompute_minutes = prefix_minutes *
+(attempted_episode_count - 1)` measures structural prefix reuse, including an
+attempted suffix that later failed. `successful_avoided_recompute_minutes =
+prefix_minutes * (successful_episode_count - 1)` is the conservative result
+view and excludes `adapter_error` suffixes; those remain visible through
+`episode_error_count`.
+
+Two metric caveats when comparing an episode arm against a standalone arm:
+`novel_value` totals and AUC stay comparable (the first-seen ledger dedupes
+identically in both modes), but `raw_value_total` does not — a standalone arm
+re-reports base-state observations inside every item record while an episode
+arm reports them once per group. And because groups serialize suffixes,
+`requested_worker_minutes` charges workers the scheduler structurally cannot
+engage when groups are fewer than workers; `execution_unit_count` per epoch
+records the real dispatch width. `effective_compute_minutes` sums the reported
+prefix, suffix, and standalone durations but excludes release/cleanup; use
+`epoch_wall_minutes` and arm `elapsed_minutes` for end-to-end timing that also
+includes lifecycle and scheduler overhead. The standard `aggregate_arms`
+comparison exposes each arm's `execution_metrics` alongside its value metrics.
+
+This adapter checkpoint is deliberately distinct from the harness restart
+manifest below. The adapter handle is live execution state and is never
+serialized by LoopX; the epoch-boundary manifest restores scheduler and
+accounting state after a process restart.
+
 ### Runtime Restart And Item Failures
 
 `run_budget_arm` can write an atomic epoch-boundary checkpoint manifest.
@@ -519,6 +631,9 @@ operator permits the write.
 ```bash
 python3 examples/explore-result-layer-smoke.py
 python3 examples/explore-harness-runtime-resume-smoke.py
+python3 -m pytest -q \
+  tests/test_explore_episode_runtime.py \
+  tests/test_explore_router_acceptance.py
 ```
 
 The smoke proves the projection contract (folding, blocked reasons, tree,
@@ -534,3 +649,11 @@ bookkeeping, confident-prefix bundles truncate at the calibrated threshold
 and collapse for reject-heavy families, the router-state novelty ledger
 dedupes across epochs while coverage debt accrues bias, and observed load
 profiles calibrate admission through the CLI flags.
+
+The runtime smoke and focused pytest modules also cover recoverable prefix
+reuse, prefix/suffix novelty and dual reuse accounting, suffix-count-weighted
+router acceptance, explicit legacy fallback, restart compatibility, cleanup on
+recorded and fatal failures, concurrent groups without mutable-state aliasing,
+fatal structural preflight, record-mode malformed-item isolation with resume
+continuity, aggregate metric projection, and episode-only adapters without a
+legacy `execute` method.
