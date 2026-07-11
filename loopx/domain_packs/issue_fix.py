@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable
 from pathlib import Path
@@ -10,6 +11,7 @@ from ..domain_state import default_domain_state_file_path, upsert_domain_state_j
 
 ISSUE_FIX_DOMAIN_STATE_LEDGER_FILENAME = "pr-lifecycle.jsonl"
 ISSUE_FIX_FEASIBILITY_LEDGER_FILENAME = "feasibility.jsonl"
+ISSUE_FIX_REPOSITORY_SNAPSHOT_LEDGER_FILENAME = "repository-snapshots.jsonl"
 REVIEWER_NOTIFICATION_RECEIPT_PATTERN = re.compile(r"sha256:[a-f0-9]{64}")
 
 
@@ -234,4 +236,51 @@ def default_issue_fix_feasibility_ledger_path(
         goal_id=goal_id,
         domain_pack="issue_fix",
         filename=ISSUE_FIX_FEASIBILITY_LEDGER_FILENAME,
+    )
+
+
+def default_issue_fix_repository_snapshot_ledger_path(
+    *, project: str | Path = ".", goal_id: str
+) -> Path:
+    return default_domain_state_file_path(
+        project=project,
+        goal_id=goal_id,
+        domain_pack="issue_fix",
+        filename=ISSUE_FIX_REPOSITORY_SNAPSHOT_LEDGER_FILENAME,
+    )
+
+
+def retain_issue_fix_repository_snapshot_jsonl(
+    ledger_path: str | Path, record: dict[str, Any]
+) -> dict[str, Any]:
+    path = Path(ledger_path)
+    existing_rows: list[dict[str, Any]] = []
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                value = json.loads(line)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(value, dict):
+                existing_rows.append(value)
+    repo = str(record.get("repo") or "")
+    fingerprint = str(record.get("material_fingerprint") or "")
+    latest = next(
+        (row for row in reversed(existing_rows) if row.get("repo") == repo), None
+    )
+    if latest and latest.get("material_fingerprint") == fingerprint:
+        return {
+            "status": "unchanged",
+            "write_performed": False,
+            "row_count": len(existing_rows),
+            "path_recorded": False,
+        }
+    return upsert_domain_state_jsonl(
+        path,
+        record,
+        key={"repo": repo, "snapshot_date": record.get("snapshot_date")},
+        existing_key_fn=lambda row: {
+            "repo": row.get("repo"),
+            "snapshot_date": row.get("snapshot_date"),
+        },
     )

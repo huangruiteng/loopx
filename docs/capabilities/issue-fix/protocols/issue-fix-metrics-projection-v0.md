@@ -108,6 +108,29 @@ raw issue bodies, comments, provider responses, transcripts, and tool logs.
 Daily public snapshot collection and Kanban/dashboard rendering are separate
 adapters over this packet. They must not become a second source of truth.
 
+`loopx issue-fix repository-snapshot` is the bounded public GitHub collector.
+It reads repository stock/flow plus the current state of issue/PR references
+already present in the goal's issue-fix domain state. The command never retains
+raw provider payloads. With `--retain-material-snapshot`, it writes at most one
+row per day to the existing `issue_fix/repository-snapshots.jsonl` stream and
+skips the write when stock, flow, issue state, PR state, CI, and review are
+unchanged:
+
+```bash
+loopx --format json issue-fix repository-snapshot \
+  --goal-id public-issue-fix-goal \
+  --project /path/to/connected/project \
+  --repo owner/repo \
+  --repository-baseline-json baseline.json \
+  --fetch-public-github \
+  --retain-material-snapshot
+```
+
+The returned `snapshot` object can be passed directly as
+`--repository-current-json` to `loopx issue-fix metrics`. Scheduling remains a
+normal LoopX `continuous_monitor` todo; the collector does not install a second
+scheduler or invent another workflow state machine.
+
 ## Monthly Impact projection
 
 The metrics packet includes stable `impact_rows` for repository health,
@@ -140,4 +163,5 @@ through the normal schema-reconciliation path.
 
 ```bash
 python3 examples/issue-fix-metrics-projection-smoke.py
+python3 examples/issue-fix-repository-snapshot-smoke.py
 ```

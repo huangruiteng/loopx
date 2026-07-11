@@ -354,6 +354,7 @@ state 仍优先于迟到反馈。
 | PR lifecycle | `loopx issue-fix pr-lifecycle` | 把 CI、review、merge state、draft、merged、closed 信号投影为 monitor transition。 |
 | Maintainer correction | `loopx issue-fix pr-lifecycle --maintainer-correction-json ... --execute-transition` | 把有限公开反馈转成一个已认领 patch successor、具体 user gate，或安静的 unchanged poll。 |
 | 指标投影 | [`loopx issue-fix metrics`](protocols/issue-fix-metrics-projection-v0.md) | 严格区分仓库存量基线与 agent 可归因产出；组合现有 feasibility/PR lifecycle 行和调用方提供的公开快照，输出 delta、比例、产出清单与缺失数据，不新增 ledger。 |
+| 仓库快照 | `loopx issue-fix repository-snapshot` | 显式采集有界的公开 GitHub stock/flow 与已知 issue/PR 状态；可选地只把物质日变化写入现有 issue-fix domain state。 |
 | Acceptance fixture | `loopx issue-fix acceptance-fixture` | 在 deterministic fixture 中证明 failure-before、minimal patch、pass-after。 |
 | Git branch fixture | `loopx issue-fix repo-branch-fixture` | 在临时 git branch 中运行同一修复 contract。 |
 | Caller repo branch | `loopx issue-fix caller-repo-branch` | 检查获批本地 repo、创建/认领 issue branch、运行 caller-declared validation。 |
@@ -812,6 +813,7 @@ python3 examples/issue-fix-validated-memory-writeback-smoke.py
 python3 examples/issue-fix-feasibility-smoke.py
 python3 examples/issue-fix-pr-lifecycle-smoke.py
 python3 examples/issue-fix-metrics-projection-smoke.py
+python3 examples/issue-fix-repository-snapshot-smoke.py
 python3 examples/issue-fix-maintainer-correction-smoke.py
 python3 examples/issue-fix-outcome-projection-smoke.py
 python3 examples/issue-fix-acceptance-loop-smoke.py

@@ -13,7 +13,9 @@ from ...control_plane.runtime.time import now_utc_iso
 from ...domain_packs.issue_fix import (
     default_issue_fix_domain_state_ledger_path,
     default_issue_fix_feasibility_ledger_path,
+    default_issue_fix_repository_snapshot_ledger_path,
     persist_issue_fix_reviewer_notification_receipts,
+    retain_issue_fix_repository_snapshot_jsonl,
     upsert_issue_fix_feasibility_ledger_jsonl,
     upsert_issue_fix_pr_lifecycle_ledger_jsonl,
 )
@@ -63,6 +65,11 @@ from .repository_memory_provider import (
     retrieve_issue_fix_repository_memory,
     sync_issue_fix_repository_memory,
     write_issue_fix_validated_outcome_memory,
+)
+from .repository_snapshot import (
+    collect_public_github_repository_snapshot,
+    render_repository_snapshot_markdown,
+    repository_snapshot_record,
 )
 from .workflow_plan import (
     build_issue_fix_workflow_plan_packet,
@@ -786,6 +793,35 @@ def register_issue_fix_commands(
         help="Optional PR lifecycle JSONL override; defaults to goal domain state.",
     )
     _add_generated_at_arg(metrics_parser, artifact="the metrics projection")
+    snapshot_parser = issue_fix_sub.add_parser(
+        "repository-snapshot",
+        help=(
+            "Collect a compact public GitHub repository snapshot for issue-fix "
+            "metrics and optionally retain one material snapshot per day."
+        ),
+    )
+    add_subcommand_format(snapshot_parser)
+    snapshot_parser.add_argument("--goal-id", required=True)
+    snapshot_parser.add_argument("--project", default=".")
+    snapshot_parser.add_argument("--repo", required=True)
+    snapshot_parser.add_argument("--repository-baseline-json", required=True)
+    snapshot_parser.add_argument(
+        "--fetch-public-github",
+        action="store_true",
+        help="Explicitly read bounded public repository metadata through gh.",
+    )
+    snapshot_parser.add_argument(
+        "--retain-material-snapshot",
+        action="store_true",
+        help=(
+            "Write only a material daily change into the existing issue_fix "
+            "domain-state stream."
+        ),
+    )
+    snapshot_parser.add_argument(
+        "--fetch-timeout-seconds", type=int, default=30
+    )
+    _add_generated_at_arg(snapshot_parser, artifact="the repository snapshot")
     reviewer_parser = issue_fix_sub.add_parser(
         "reviewer-plan",
         help=(
@@ -1605,6 +1641,46 @@ def handle_issue_fix_command(
                 generated_at=generated_at,
             )
             renderer = render_issue_fix_metrics_projection_markdown
+        elif args.issue_fix_command == "repository-snapshot":
+            if not args.fetch_public_github:
+                raise ValueError("repository-snapshot requires --fetch-public-github")
+            project = Path(args.project).expanduser()
+            payload = collect_public_github_repository_snapshot(
+                repo=args.repo,
+                baseline_snapshot=_load_json_object(
+                    args.repository_baseline_json
+                ),
+                feasibility_rows=_load_jsonl_rows(
+                    default_issue_fix_feasibility_ledger_path(
+                        project=project, goal_id=args.goal_id
+                    )
+                ),
+                pr_lifecycle_rows=_load_jsonl_rows(
+                    default_issue_fix_domain_state_ledger_path(
+                        project=project, goal_id=args.goal_id
+                    )
+                ),
+                generated_at=generated_at,
+                timeout_seconds=args.fetch_timeout_seconds,
+            )
+            if args.retain_material_snapshot:
+                write_result = retain_issue_fix_repository_snapshot_jsonl(
+                    default_issue_fix_repository_snapshot_ledger_path(
+                        project=project, goal_id=args.goal_id
+                    ),
+                    repository_snapshot_record(payload["snapshot"]),
+                )
+                payload["retention"] = {
+                    "schema_version": "issue_fix_repository_snapshot_retention_v0",
+                    "domain_pack": "issue_fix",
+                    "stream": "repository_snapshots",
+                    "write_performed": write_result.get("write_performed") is True,
+                    "status": write_result.get("status"),
+                    "row_count": write_result.get("row_count"),
+                    "path_recorded": False,
+                }
+                payload["source_contract"]["writes_source_state"] = True
+            renderer = render_repository_snapshot_markdown
         elif args.issue_fix_command == "reviewer-plan":
             payload = build_issue_fix_reviewer_recommendation_packet(
                 repo_path=args.repo_path,
@@ -1815,7 +1891,8 @@ def handle_issue_fix_command(
         else:
             raise ValueError(
                 "issue-fix requires `repository-memory-sync`, `workflow-plan`, `feasibility`, "
-                "`acceptance-fixture`, `pr-lifecycle`, `outcome`, `metrics`, `reviewer-plan`, "
+                "`acceptance-fixture`, `pr-lifecycle`, `outcome`, `metrics`, "
+                "`repository-snapshot`, `reviewer-plan`, "
                 "`reviewer-request`, "
                 "`repo-branch-fixture`, or `caller-repo-branch`"
             )
@@ -1838,6 +1915,8 @@ def handle_issue_fix_command(
             if getattr(args, "issue_fix_command", None) == "outcome"
             else render_issue_fix_metrics_projection_markdown
             if getattr(args, "issue_fix_command", None) == "metrics"
+            else render_repository_snapshot_markdown
+            if getattr(args, "issue_fix_command", None) == "repository-snapshot"
             else render_issue_fix_reviewer_recommendation_markdown
             if getattr(args, "issue_fix_command", None) == "reviewer-plan"
             else render_issue_fix_reviewer_request_markdown
