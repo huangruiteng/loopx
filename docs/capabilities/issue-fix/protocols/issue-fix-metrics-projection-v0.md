@@ -78,6 +78,36 @@ This is an allowlisted compact input, not a raw provider payload. Missing counts
 remain `null` and produce a `missing_data` reason code. A missing measure is never
 coerced to zero.
 
+`loopx issue-fix metrics-supplement` composes that input from evidence already
+owned by the issue-fix domain state and from optional explicit event evidence:
+
+```bash
+loopx --format json issue-fix metrics-supplement \
+  --goal-id public-issue-fix-goal \
+  --project /path/to/project \
+  --repo public-org/public-repo \
+  --period-start 2026-07-01T00:00:00Z \
+  --period-end 2026-08-01T00:00:00Z \
+  --event-json /path/to/public-safe-events.json \
+  --repository-memory-json /path/to/explicit-memory-read-result.json
+```
+
+Feasibility and lifecycle rows supply screened issues, triage outcomes, and
+automatic terminal closeouts. Explicit repository-memory read results supply
+retrieval, verified patch-influence, and stale-result counts. An optional
+`issue_fix_metrics_event_batch_v0` supplies stable event identities for
+first-push CI, human interventions, useful public comments, duplicate external
+writes, and capability-gap `found` / `fixed` / `real_callsite_verified`
+transitions. Events outside the reporting period are ignored, duplicate event
+identities are rejected, and a capability gap is counted once per gap identity.
+
+The composer performs no provider call and does not infer absent events. When no
+explicit memory result is supplied, it may use a compact feasibility memory hook
+only when that hook records `read_performed=true`; otherwise memory fields remain
+absent. With no event batch, event-backed fields also remain absent. In both
+cases `loopx issue-fix metrics` reports unavailable evidence rather than
+coercing it to zero.
+
 ## Attribution contract
 
 - The repository baseline contains repository stock only.
@@ -164,4 +194,5 @@ through the normal schema-reconciliation path.
 ```bash
 python3 examples/issue-fix-metrics-projection-smoke.py
 python3 examples/issue-fix-repository-snapshot-smoke.py
+python3 examples/issue-fix-metrics-supplement-smoke.py
 ```

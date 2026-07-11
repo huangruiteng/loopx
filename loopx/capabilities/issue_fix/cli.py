@@ -40,6 +40,10 @@ from .metrics_projection import (
     build_issue_fix_metrics_projection,
     render_issue_fix_metrics_projection_markdown,
 )
+from .metrics_supplement import (
+    build_issue_fix_metrics_supplement,
+    render_issue_fix_metrics_supplement_markdown,
+)
 from .pr_lifecycle import (
     build_issue_fix_pr_lifecycle_monitor_packet,
     render_issue_fix_pr_lifecycle_monitor_markdown,
@@ -793,6 +797,34 @@ def register_issue_fix_commands(
         help="Optional PR lifecycle JSONL override; defaults to goal domain state.",
     )
     _add_generated_at_arg(metrics_parser, artifact="the metrics projection")
+    supplement_parser = issue_fix_sub.add_parser(
+        "metrics-supplement",
+        help=(
+            "Compose public-safe supplemental counts from existing issue-fix "
+            "domain state and explicit bounded event or memory evidence."
+        ),
+    )
+    add_subcommand_format(supplement_parser)
+    supplement_parser.add_argument("--goal-id", required=True)
+    supplement_parser.add_argument("--project", default=".")
+    supplement_parser.add_argument("--repo", required=True)
+    supplement_parser.add_argument("--period-start", required=True)
+    supplement_parser.add_argument("--period-end", required=True)
+    supplement_parser.add_argument(
+        "--event-json",
+        default=None,
+        help="Optional issue_fix_metrics_event_batch_v0 file, inline object, or stdin.",
+    )
+    supplement_parser.add_argument(
+        "--repository-memory-json",
+        action="append",
+        default=[],
+        help=(
+            "Optional issue_fix_repository_memory_read_result_v0 file or inline "
+            "object. Repeat for multiple issue-scoped reads."
+        ),
+    )
+    _add_generated_at_arg(supplement_parser, artifact="the metrics supplement")
     snapshot_parser = issue_fix_sub.add_parser(
         "repository-snapshot",
         help=(
@@ -1641,6 +1673,39 @@ def handle_issue_fix_command(
                 generated_at=generated_at,
             )
             renderer = render_issue_fix_metrics_projection_markdown
+        elif args.issue_fix_command == "metrics-supplement":
+            stdin_input_count = sum(
+                value == "-"
+                for value in [args.event_json, *args.repository_memory_json]
+                if value is not None
+            )
+            if stdin_input_count > 1:
+                raise ValueError("only one metrics supplement input may read from stdin")
+            project = Path(args.project).expanduser()
+            payload = build_issue_fix_metrics_supplement(
+                repo=args.repo,
+                period_start=args.period_start,
+                period_end=args.period_end,
+                feasibility_rows=_load_jsonl_rows(
+                    default_issue_fix_feasibility_ledger_path(
+                        project=project, goal_id=args.goal_id
+                    )
+                ),
+                pr_lifecycle_rows=_load_jsonl_rows(
+                    default_issue_fix_domain_state_ledger_path(
+                        project=project, goal_id=args.goal_id
+                    )
+                ),
+                event_batch=(
+                    _load_json_object(args.event_json) if args.event_json else None
+                ),
+                repository_memory_results=[
+                    _load_json_object(value)
+                    for value in args.repository_memory_json
+                ],
+                generated_at=generated_at,
+            )
+            renderer = render_issue_fix_metrics_supplement_markdown
         elif args.issue_fix_command == "repository-snapshot":
             if not args.fetch_public_github:
                 raise ValueError("repository-snapshot requires --fetch-public-github")
@@ -1892,6 +1957,7 @@ def handle_issue_fix_command(
             raise ValueError(
                 "issue-fix requires `repository-memory-sync`, `workflow-plan`, `feasibility`, "
                 "`acceptance-fixture`, `pr-lifecycle`, `outcome`, `metrics`, "
+                "`metrics-supplement`, "
                 "`repository-snapshot`, `reviewer-plan`, "
                 "`reviewer-request`, "
                 "`repo-branch-fixture`, or `caller-repo-branch`"
@@ -1915,6 +1981,8 @@ def handle_issue_fix_command(
             if getattr(args, "issue_fix_command", None) == "outcome"
             else render_issue_fix_metrics_projection_markdown
             if getattr(args, "issue_fix_command", None) == "metrics"
+            else render_issue_fix_metrics_supplement_markdown
+            if getattr(args, "issue_fix_command", None) == "metrics-supplement"
             else render_repository_snapshot_markdown
             if getattr(args, "issue_fix_command", None) == "repository-snapshot"
             else render_issue_fix_reviewer_recommendation_markdown
