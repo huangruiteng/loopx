@@ -23,6 +23,10 @@ CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT = (
 CODEX_CLI_GOAL_THREAD_PREWARM_HARD_CAP_MULTIPLIER = 2.0
 CODEX_CLI_GOAL_TASK_PROMPT_FILENAME = "skillsbench-task-prompt.md"
 CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME = "loopx-task-bridge-first-action"
+CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_KICKOFF_PROMPT = (
+    f"Run ./{CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME} now and require it "
+    "to succeed. Wait for more instructions before starting the task."
+)
 CODEX_CLI_GOAL_KICKOFF_PROMPT = (
     "Start working on the active SkillsBench goal now. Read the referenced "
     "task prompt file first, follow it exactly, and perform at least one "
@@ -493,25 +497,33 @@ def codex_cli_tui_retryable_startup_blocker_stage(capture: str) -> str:
     return ""
 
 
-def codex_cli_goal_should_submit_kickoff(
+def codex_cli_goal_followup_prompt(
     *,
     bridge_enabled: bool,
     goal_active_observed: bool,
     task_prompt_released: bool,
-    kickoff_submitted: bool,
+    bridge_first_action_kickoff_submitted: bool,
+    task_kickoff_submitted: bool,
     turn_active: bool,
     first_action_seen: bool,
     capture: str,
-) -> bool:
-    return (
+) -> str:
+    ready = (
         bridge_enabled
         and goal_active_observed
-        and task_prompt_released
-        and not kickoff_submitted
         and not turn_active
         and not first_action_seen
         and codex_cli_tui_input_prompt_visible(capture)
     )
+    if not ready:
+        return ""
+    if not task_prompt_released:
+        return (
+            ""
+            if bridge_first_action_kickoff_submitted
+            else CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_KICKOFF_PROMPT
+        )
+    return "" if task_kickoff_submitted else CODEX_CLI_GOAL_KICKOFF_PROMPT
 
 
 def codex_cli_goal_should_ignore_stale_terminal(

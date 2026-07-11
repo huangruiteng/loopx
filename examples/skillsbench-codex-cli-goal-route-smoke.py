@@ -1426,6 +1426,8 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     sys.path.insert(0, str(REPO_ROOT))
     from loopx.codex_cli_goal_tui import (
         CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME,
+        CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_KICKOFF_PROMPT,
+        CODEX_CLI_GOAL_KICKOFF_PROMPT,
         CODEX_CLI_GOAL_OBJECTIVE_MAX_CHARS,
         CODEX_CLI_GOAL_TASK_PROMPT_FILENAME,
         CODEX_CLI_GOAL_THREAD_PREWARM_MARKER,
@@ -1435,7 +1437,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
         build_codex_cli_tui_command,
         build_codex_cli_goal_tui_input,
         codex_cli_goal_lifecycle_marker_counts,
-        codex_cli_goal_should_submit_kickoff,
+        codex_cli_goal_followup_prompt,
         codex_cli_goal_watchdog_expired,
     )
     from loopx.benchmark_adapters.skillsbench_acp_relay import (
@@ -1453,21 +1455,36 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME in objective, objective
     assert len(objective) < CODEX_CLI_GOAL_OBJECTIVE_MAX_CHARS
     assert build_codex_cli_goal_tui_input(objective).startswith("/goal "), objective
-    kickoff_state = {
+    followup_state = {
         "bridge_enabled": True,
         "goal_active_observed": True,
-        "kickoff_submitted": False,
         "turn_active": False,
         "first_action_seen": False,
         "capture": "Goal active\n› ",
     }
-    assert not codex_cli_goal_should_submit_kickoff(
+    assert codex_cli_goal_followup_prompt(
         task_prompt_released=False,
-        **kickoff_state,
+        bridge_first_action_kickoff_submitted=False,
+        task_kickoff_submitted=False,
+        **followup_state,
+    ) == CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_KICKOFF_PROMPT
+    assert not codex_cli_goal_followup_prompt(
+        task_prompt_released=False,
+        bridge_first_action_kickoff_submitted=True,
+        task_kickoff_submitted=False,
+        **followup_state,
     )
-    assert codex_cli_goal_should_submit_kickoff(
+    assert codex_cli_goal_followup_prompt(
         task_prompt_released=True,
-        **kickoff_state,
+        bridge_first_action_kickoff_submitted=True,
+        task_kickoff_submitted=False,
+        **followup_state,
+    ) == CODEX_CLI_GOAL_KICKOFF_PROMPT
+    assert not codex_cli_goal_followup_prompt(
+        task_prompt_released=True,
+        bridge_first_action_kickoff_submitted=True,
+        task_kickoff_submitted=True,
+        **followup_state,
     )
     cmd = build_codex_cli_tui_command(
         codex_bin="codex",
@@ -1575,7 +1592,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "release_codex_cli_goal_task_prompt(" in source
     assert "build_codex_cli_goal_bridge_first_action_objective(" in source
     assert source.index("release_codex_cli_goal_task_prompt(") < source.index(
-        "text=CODEX_CLI_GOAL_KICKOFF_PROMPT"
+        "text=followup_prompt"
     )
     assert "tmux_type_text_and_submit(" in source
     assert "build_codex_cli_goal_tui_input(prompt_for_codex)" not in source
@@ -1602,9 +1619,9 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "_bridge_summary_has_successful_task_operation(" in source
     assert "turn_active = codex_cli_tui_turn_active(capture)" in source
     assert "goal_kickoff_prompt_submitted = False" in source
-    assert "kickoff_submitted=goal_kickoff_prompt_submitted" in source
+    assert "followup_prompt = codex_cli_goal_followup_prompt(" in source
     assert "task_prompt_released=task_prompt_released" in source
-    assert "text=CODEX_CLI_GOAL_KICKOFF_PROMPT" in source
+    assert "text=followup_prompt" in source
     assert "goal_failed_now = False" in source
     assert "goal_lifecycle.failed_advanced" in source
     assert "goal_lifecycle.active_observed" in source
@@ -1652,9 +1669,11 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     )
     assert '"--disable",\n        "apps",' in tui_source
     assert "CODEX_CLI_GOAL_KICKOFF_PROMPT = (" in tui_source
+    assert "CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_KICKOFF_PROMPT = (" in tui_source
     assert "Start working on the active SkillsBench goal now" in tui_source
     assert "def codex_cli_goal_watchdog_expired(" in tui_source
-    assert "not kickoff_submitted" in tui_source
+    assert "bridge_first_action_kickoff_submitted" in tui_source
+    assert "task_kickoff_submitted" in tui_source
     assert "def codex_cli_goal_reset_pre_bridge_deadlines(" in tui_source
     assert '"goal_submission_generation"' in tui_source
     assert 'fields[f"goal_{name}_marker_delta"]' in tui_source

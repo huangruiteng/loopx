@@ -54,7 +54,6 @@ from loopx.benchmark_adapters.skillsbench_codex_goal_recovery import (
     write_private_codex_cli_goal_tui_tail,
 )
 from loopx.codex_cli_goal_tui import (
-    CODEX_CLI_GOAL_KICKOFF_PROMPT,
     CODEX_CLI_GOAL_TASK_PROMPT_FILENAME,
     build_codex_cli_goal_bridge_first_action_objective,
     build_codex_cli_goal_tui_input,
@@ -63,7 +62,7 @@ from loopx.codex_cli_goal_tui import (
     codex_cli_goal_watchdog_expired,
     codex_cli_goal_reset_pre_bridge_deadlines,
     codex_cli_goal_should_ignore_stale_terminal,
-    codex_cli_goal_should_submit_kickoff,
+    codex_cli_goal_followup_prompt,
     codex_cli_tui_environment,
     codex_cli_tui_shell_command,
     codex_cli_tui_input_prompt_visible,
@@ -1074,6 +1073,7 @@ class SkillsBenchLocalAcpRelay:
             goal_terminal_observed = False
             goal_failed_observed = False
             goal_slash_command_submitted = False
+            goal_bridge_first_action_kickoff_submitted = False
             goal_kickoff_prompt_submitted = False
             post_bridge_terminal_stage = ""
             first_action_seen = False
@@ -1222,21 +1222,26 @@ class SkillsBenchLocalAcpRelay:
                                     bridge_summary_path
                                 )
                             )
-                    if codex_cli_goal_should_submit_kickoff(
+                    followup_prompt = codex_cli_goal_followup_prompt(
                         bridge_enabled=bridge_summary_path is not None,
                         goal_active_observed=goal_active_observed,
                         task_prompt_released=task_prompt_released,
-                        kickoff_submitted=goal_kickoff_prompt_submitted,
+                        bridge_first_action_kickoff_submitted=goal_bridge_first_action_kickoff_submitted,
+                        task_kickoff_submitted=goal_kickoff_prompt_submitted,
                         turn_active=turn_active,
                         first_action_seen=first_action_seen,
                         capture=capture,
-                    ):
-                        goal_kickoff_prompt_submitted = True
+                    )
+                    if followup_prompt:
+                        if task_prompt_released:
+                            goal_kickoff_prompt_submitted = True
+                        else:
+                            goal_bridge_first_action_kickoff_submitted = True
                         goal_lifecycle.begin(capture)
                         goal_active_observed = False
                         tmux_type_text_and_submit(
                             tmux_name=tmux_name,
-                            text=CODEX_CLI_GOAL_KICKOFF_PROMPT,
+                            text=followup_prompt,
                         )
                         (
                             goal_active_deadline,
@@ -1250,14 +1255,11 @@ class SkillsBenchLocalAcpRelay:
                             first_action_deadline=first_action_deadline,
                             meaningful_progress_deadline=meaningful_progress_deadline,
                         )
-                        next_heartbeat = now + max(
-                            1.0,
-                            self._config.stream_heartbeat_interval_sec,
-                        )
+                        next_heartbeat = now + max(1.0, self._config.stream_heartbeat_interval_sec)
                         continue
                     if codex_cli_goal_should_ignore_stale_terminal(
                         goal_failed_now=goal_failed_now,
-                        kickoff_submitted=goal_kickoff_prompt_submitted,
+                        kickoff_submitted=(goal_bridge_first_action_kickoff_submitted or goal_kickoff_prompt_submitted),
                         first_action_seen=first_action_seen,
                         turn_active=turn_active,
                         first_action_deadline=first_action_deadline,
@@ -1340,6 +1342,7 @@ class SkillsBenchLocalAcpRelay:
                                 if not restart_stage:
                                     goal_lifecycle.begin(capture)
                                     goal_active_observed = False
+                                    goal_bridge_first_action_kickoff_submitted = False
                                     goal_kickoff_prompt_submitted = False
                                     tmux_type_text_and_submit(
                                         tmux_name=tmux_name,
