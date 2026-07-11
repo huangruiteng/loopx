@@ -996,6 +996,52 @@ def main() -> int:
         )
         assert stored_lifecycle["reviewer_notification_receipts"] == [receipt]
         assert stored_lifecycle["maintainer_correction_body_captured"] is False
+        explicit_scoped_cli = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--registry",
+                str(registry),
+                "--format",
+                "json",
+                "issue-fix",
+                "reviewer-request",
+                "--url",
+                "https://github.com/owner/repo/pull/42",
+                "--repo-path",
+                str(path),
+                "--base-ref",
+                "main",
+                "--changed-file",
+                "src/map_only.py",
+                "--exclude-reviewer",
+                "@fallback-owner",
+                "--reviewer-sources-json",
+                str(reviewer_sources_path),
+                "--metadata-json",
+                str(metadata_path),
+                "--notification-sinks-json",
+                str(goal_config_path),
+                "--goal-id",
+                goal_id,
+                "--project",
+                str(path),
+            ],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        explicit_scoped_packet = json.loads(explicit_scoped_cli.stdout)
+        assert explicit_scoped_packet["secondary_notification_source"] == "explicit"
+        assert (
+            explicit_scoped_packet["secondary_notification_status"]
+            == "already_notified"
+        )
+        assert explicit_scoped_packet["external_writes_performed"] is False
+        assert_public_safe(explicit_scoped_packet)
         unsafe_lifecycle = json.loads(json.dumps(stored_lifecycle))
         unsafe_lifecycle["maintainer_correction_body_captured"] = True
         try:

@@ -274,7 +274,7 @@ def _load_goal_for_project(
         goal_repo = str(goal.get("repo") or "").strip()
         if not goal_repo:
             raise ValueError(
-                "connected goal repository is required for goal-default "
+                "connected goal repository is required for goal-scoped "
                 "reviewer notification"
             )
         if Path(goal_repo).expanduser().resolve() == requested_project:
@@ -284,10 +284,10 @@ def _load_goal_for_project(
     if mismatched_goal:
         raise ValueError(
             "--project must match the connected goal repository for "
-            "goal-default reviewer notification"
+            "goal-scoped reviewer notification"
         )
     raise ValueError(
-        "goal-default reviewer notification goal was not found in the active "
+        "goal-scoped reviewer notification goal was not found in the active "
         "or project-local registry"
     )
 
@@ -1537,18 +1537,22 @@ def handle_issue_fix_command(
             notification_lifecycle_packet: dict[str, Any] | None = None
             notification_lifecycle_path: Path | None = None
             notification_lifecycle_materialized = False
-            if notification_sinks_input is None and args.goal_id:
+            if args.goal_id:
                 goal, requested_project = _load_goal_for_project(
                     registry_path=registry_path,
                     goal_id=args.goal_id,
                     project=args.project,
                 )
-                notification_sinks_input = load_goal_reviewer_notification_sinks_input(
-                    goal=goal,
-                    project=requested_project,
-                )
+                if notification_sinks_input is None:
+                    notification_sinks_input = (
+                        load_goal_reviewer_notification_sinks_input(
+                            goal=goal,
+                            project=requested_project,
+                        )
+                    )
                 if notification_sinks_input is not None:
-                    notification_sinks_source = "goal_default"
+                    if notification_sinks_source == "not_configured":
+                        notification_sinks_source = "goal_default"
                     reference = normalise_github_issue_reference(
                         repo="public_repo_fixture",
                         issue_ref="pull_request_fixture",
@@ -1556,11 +1560,11 @@ def handle_issue_fix_command(
                     )
                     if reference.get("kind") != "pull_request":
                         raise ValueError(
-                            "goal-default reviewer notification requires a GitHub PR"
+                            "goal-scoped reviewer notification requires a GitHub PR"
                         )
                     notification_lifecycle_path = (
                         default_issue_fix_domain_state_ledger_path(
-                            project=args.project,
+                            project=requested_project,
                             goal_id=args.goal_id,
                         )
                     )
@@ -1584,7 +1588,7 @@ def handle_issue_fix_command(
                                 )
                             except (OSError, RuntimeError, ValueError):
                                 raise ValueError(
-                                    "goal-default reviewer notification could not "
+                                    "goal-scoped reviewer notification could not "
                                     "materialize a verified PR lifecycle row before "
                                     "external send"
                                 ) from None
@@ -1638,7 +1642,6 @@ def handle_issue_fix_command(
             )
             if (
                 args.execute
-                and notification_sinks_source == "goal_default"
                 and notification_lifecycle_packet is not None
                 and notification_lifecycle_path is not None
                 and new_receipts
