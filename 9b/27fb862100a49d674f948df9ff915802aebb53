@@ -1,0 +1,25 @@
+docs/capabilities/issue-fix/README.md
+  s_76ee28abb3c3a4::t_53fc87a92d1336 463-464,547-548,564-568,581-601,751-752,768
+docs/capabilities/issue-fix/README.zh-CN.md
+  s_76ee28abb3c3a4::t_71e1e75d124a5f 410-411,483,499-503,513-526,661-662,678
+examples/issue-fix-validated-memory-writeback-smoke.py
+  s_76ee28abb3c3a4::t_25f4a506121e97 1-291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9b27fb862100a49d674f948df9ff915802aebb53",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
