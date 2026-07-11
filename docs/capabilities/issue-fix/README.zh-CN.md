@@ -7,26 +7,72 @@
 [Reviewer 邀请协议](protocols/issue-fix-reviewer-request-v0.md) ·
 [Reviewer 通知 Sink](protocols/issue-fix-reviewer-notification-sinks-v0.md)
 
-Issue-Fix 是 LoopX 把公开仓库 issue 持续推进成小而聚焦、验证充分、可审阅 PR，
-并继续跟进到明确 PR 生命周期终局的产品能力。它面向的是一个长程 issue→PR
-数字员工，而不是一次性的代码生成器：goal 状态、todo、authority、仓库证据、
-validation、reviewer 路由、monitor、人类 gate 和 terminal closeout 都保存在单次
-聊天之外。
+**把一条公开 issue 持续推进成小而聚焦、验证充分、可审阅的 PR，并跟进到
+merged、closed 或明确 no-follow-up。** 这是 Issue-Fix 的核心产品承诺。
+
+```text
+/loopx Fix https://github.com/owner/repo/issues/123
+```
+
+它不是“一次 prompt 生成一个 patch”，而是一个可跨模型 turn、聊天线程、CI 等待和
+review 往返持续工作的 issue→PR loop agent。它把四类互补能力组合在同一条交付链路中：
+
+- **LoopX State Kernel** 提供长程持续交付所需的 goal、todo、quota、authority、
+  scheduler、monitor、replan 和 terminal closeout；
+- **OpenViking Memory** 提供可选的垂域仓库记忆，让 agent 找回历史实现、失败模式和
+  已验证经验，但影响 patch 的命中仍必须回到当前 checkout 验证；
+- **LoopX Domain State（Issue-Fix 垂域状态）** 在通用 kernel 之上保存 issue 领域的
+  feasibility、repository context、delivery evidence、reviewer route、PR lifecycle
+  和 outcome；
+- **高能力 AgentLoop** 提供理解、推理、工具调用和代码执行能力，可以是 Codex、
+  Claude Code 或其他 host agent runtime，LoopX 不绑定某个模型或 agent loop。
+
+四层组合的目标不是把模型包装成“像人”的口号，而是补齐成熟工程交付真正依赖的
+连续性、记忆、领域状态和执行智力，让 loop agent 能以接近资深工程师的方式持续推进
+复杂任务，而不是每轮重新开始。
 
 当 issue 适合修复时，核心产出是 focused fix PR。公开 comment 或有理有据的 triage
 仍可用于拒绝不合适候选、澄清信息或记录具体 blocker，但不能在 `fix_pr` 可行时
 替代 PR 主路径。
 
+## 四层能力组合
+
+| 能力层 | 它解决什么 | 在 Issue-Fix 中的真实边界 |
+| --- | --- | --- |
+| **LoopX State Kernel：持续交付** | 让目标、ownership、compute 决策、等待、恢复和收口跨 turn 持续存在。 | 它是 local-first 控制面，不负责替 agent 写代码，也不替 GitHub 决定 checks、review 或 merge state。 |
+| **OpenViking Memory：垂域记忆** | 从 revision-scoped 的仓库知识中找回相关实现、历史修复和 validated outcome，减少重复探索。 | 当前是显式配置、advisory、fail-open 的可选能力；命中只有通过当前 checkout 的 exact-content 或高置信 parser-chunk 验证后才能影响 patch，validated-outcome writeback 默认关闭。 |
+| **LoopX Domain State：Issue-Fix 垂域状态扩展** | 保存 `fix_pr` / `comment_only` / `triage_only` 决策、仓库上下文、交付证据、reviewer、PR lifecycle 和 outcome。 | 复用现有 goal-scoped domain pack；它不是第二套 todo、quota 或 workflow engine，也不保存 raw issue/comment/log。 |
+| **AgentLoop：执行智力** | 阅读 issue 和代码、复现、推理、编辑 worktree、运行测试、处理 review correction。 | AgentLoop 可替换且必须遵守 LoopX authority、仓库政策和验证合同；“模型更强”不等于拥有发布、merge 或 production authority。 |
+
+四层缺一不可，但职责不能混在一起：**智力不等于连续性，记忆不等于当前状态，领域
+状态不等于执行，控制面也不等于事实源。** Repository/GitHub 始终是 issue、代码、CI、
+review、mergeability 和 PR 终局的权威来源；人类 maintainer 仍负责设计判断、敏感上下文
+和超出已记录 authority 的动作。
+
+```mermaid
+flowchart TB
+  U["公开 issue / maintainer correction"] --> K["LoopX State Kernel<br/>goal · todo · quota · authority · monitor · replan"]
+  K --> D["LoopX Domain State / Issue-Fix<br/>feasibility · context · delivery · PR lifecycle · outcome"]
+  D --> A["高能力 AgentLoop<br/>理解 · 推理 · 工具调用 · coding · validation"]
+  M["OpenViking Memory<br/>revision-scoped advisory memory"] --> A
+  A --> C["当前 checkout 与 focused validation"]
+  C --> G["Repository / GitHub<br/>code · checks · review · merge state"]
+  G --> D
+  D --> K
+  H["Human maintainer<br/>judgment · private context · authority"] --> K
+  H --> G
+```
+
 ## LoopX 底座提供什么
 
-使用这项能力不要求先了解 LoopX。最短的心智模型是：coding agent 负责理解仓库和修改
-代码；LoopX 是 local-first 控制面，负责记住 agent 要达成什么、决定下一步能否运行、
-把进度展示给人，并让任务跨聊天轮次和外部等待持续存在。
+使用这项能力不要求先理解全部协议。最短的心智模型是：AgentLoop 负责理解仓库和修改
+代码；OpenViking Memory 提供经过当前 checkout 复核的历史线索；LoopX Domain State
+保存垂域进度；LoopX State Kernel 决定下一步能否运行、是否需要人、何时等待或恢复。
 
 GitHub 仍然是 issue、代码、checks、review 和 merge state 的事实源。LoopX 补上 host
 agent 与 GitHub 之间缺失的“数字员工控制层”：
 
-| LoopX 底座能力 | 在 issue/PR fix 场景中的作用 |
+| LoopX State Kernel 能力 | 在 issue/PR fix 场景中的作用 |
 | --- | --- |
 | 持久化 goal state | 在一次模型 turn 结束后继续保存 objective、acceptance target、current status、next action 和紧凑 outcome evidence。 |
 | Todo ownership 与 routing | 区分 agent 工作和具体人类决策；记录 priority、`claimed_by`、blocker、successor、handoff 和 monitor，避免多个 agent 无声重复做同一任务。 |
@@ -38,9 +84,10 @@ agent 与 GitHub 之间缺失的“数字员工控制层”：
 | Continuous monitor | 跟踪 CI、review、mergeability、maintainer comment、stale branch、merged 和 closed；只写回 material transition，并以明确 outcome 终止。 |
 | Public/private boundary check | 扫描公开 artifact，阻止本地路径、credentials、runtime state、raw transcript、tool log 和私有 evidence 进入 commit/PR。 |
 
-Issue-Fix capability 把这些通用底座组合成领域 packet 和 CLI。Host agent 仍负责读代码、
-修改 worktree、跑测试，以及执行另行授权的 GitHub 动作。正是这种分工，把“一次性生成
-patch”变成可见、可恢复、可持续的 issue→PR 数字员工：
+Issue-Fix capability 把 State Kernel、Memory hook、Domain State 和 AgentLoop 组合成领域
+packet 与 CLI。Host agent 仍负责读代码、修改 worktree、跑测试，以及执行另行授权的
+GitHub 动作。正是这种分工，把“一次性生成 patch”变成可见、可恢复、可持续的
+issue→PR 数字员工：
 
 ```text
 公开 issue
@@ -54,13 +101,14 @@ patch”变成可见、可恢复、可持续的 issue→PR 数字员工：
 
 ## 产品定位
 
-LoopX 是控制面，不是 coding model，也不是 GitHub 本身。
+LoopX 是 agent-agnostic 控制面，不是 coding model，也不是 GitHub 本身。
 
 | 层次 | 职责 |
 | --- | --- |
-| Host agent/runtime | 读代码、复现、修改文件、运行测试，并执行已明确授权的 git/GitHub 动作。 |
-| Issue-Fix capability | 生成 public-safe 的 workflow、feasibility、repository-context、reviewer、validation 和 PR-lifecycle packet。 |
-| LoopX kernel | 持久化 goal/todo ownership、quota、authority、evidence、monitor、replan 和人机交互状态。 |
+| AgentLoop / host runtime | 提供执行智力：读代码、复现、修改文件、运行测试，并执行已明确授权的 git/GitHub 动作。 |
+| OpenViking Memory | 提供可选的 revision-scoped 垂域记忆；命中在当前 checkout 验证前只作 advisory。 |
+| LoopX Domain State / Issue-Fix | 生成并保存 public-safe 的 feasibility、repository-context、delivery、reviewer、PR-lifecycle 和 outcome packet。 |
+| LoopX State Kernel | 持久化 goal/todo ownership、quota、authority、evidence、monitor、replan 和人机交互状态。 |
 | Repository/GitHub | 继续作为代码、仓库政策、CI、review、mergeability 和 PR 终局的事实源。 |
 | Human maintainer | 负责设计判断、仓库政策、敏感/私有上下文，以及超出已记录 authority 的动作。 |
 
@@ -73,7 +121,9 @@ Issue-Fix packet builder 不会偷偷发布。只有当前 LoopX boundary 已记
 flowchart LR
   I["公开 issue 候选"] --> S["选题与可行性"]
   S --> C["Revision-pinned 仓库上下文"]
+  OM["OpenViking Memory<br/>advisory retrieval"] --> C
   C --> R["复现"]
+  AL["高能力 AgentLoop"] --> R
   R --> F["Focused patch 与回归测试"]
   F --> V["分层验证"]
   V --> O["Reviewer 推荐"]
@@ -85,11 +135,14 @@ flowchart LR
   H --> O
   H --> P
   H --> M
-  LX["LoopX goal/todo/quota/evidence"] --> S
-  LX --> C
-  LX --> V
-  LX --> M
-  T --> LX
+  DK["LoopX Domain State / Issue-Fix"] --> S
+  DK --> C
+  DK --> M
+  SK["LoopX State Kernel"] --> S
+  SK --> V
+  SK --> M
+  T --> DK
+  T --> SK
 ```
 
 ### 1. 候选筛选
@@ -108,16 +161,17 @@ flowchart LR
 
 ### 2. 以当前仓库为准的理解
 
-Authority 优先级严格为：
+证据优先级严格为：
 
 1. 当前 checkout 的证据；
-2. 仓库范围内的历史 memory；
-3. 外部 expert/bot 建议。
+2. 能映射回当前 revision、并通过 checkout 内容验证的 OpenViking Memory 命中；
+3. 尚未验证的 memory、外部 expert 或 bot 建议。
 
 在 pinned revision 阅读仓库政策、架构、附近源码和测试、验证命令以及近期相关修复，
 再压缩成 `issue_fix_repository_context_input_v0`：包含 revision、repo-relative
-source ref、证据类别、source trust 与 freshness。Memory/expert 只作 advisory，
-影响 patch 的结论必须在当前 checkout 验证。
+source ref、证据类别、source trust 与 freshness。第二层的权威性来自 checkout 验证，
+不是来自“被记住”本身；第三层始终只作 advisory。任何影响 patch 的结论都必须在当前
+checkout 验证。
 
 ### 3. 先复现，再修改
 
@@ -279,6 +333,10 @@ state 仍优先于迟到反馈。
 
 | 能力面 | 命令或路径 | 当前职责 |
 | --- | --- | --- |
+| AgentLoop host entry | `/loopx Fix <issue-url>`、guided start/command pack | 把同一目标交给 Codex、Claude Code 或其他 host agent；LoopX 只约束交付协议，不绑定模型。 |
+| State Kernel | `loopx todo`、`quota`、`refresh-state`、scheduler/monitor | 保存 ownership、authority、compute、replan、wait/resume 和 terminal closeout。 |
+| OpenViking Memory hook | `--repository-memory-*`、`repository-memory-sync` | 有界读取 revision-scoped advisory memory；当前 checkout 验证后才影响 patch，resource sync 与 validated-outcome writeback 分别授权。 |
+| LoopX Domain State / Issue-Fix | `loopx/domain_packs/issue_fix.py`、`issue-fix outcome` | 在现有 goal 内保存 feasibility、PR lifecycle 与紧凑 delivery evidence，并派生稳定 outcome；不建立平行 workflow ledger。 |
 | Workflow plan | `loopx issue-fix workflow-plan` | 组合 body-free metadata、intake、branch plan、validation label、todo preview、gate 和 PR-readiness blocker。 |
 | Repository context | `--repository-context-json` | 用 trust/freshness 固定 policy、architecture、change-scope、reproduction 和 validation 证据。 |
 | Feasibility | `loopx issue-fix feasibility` | 在 `fix_pr`、`comment_only`、`triage_only` 中只选一条，并可写入紧凑 domain state。 |
@@ -290,10 +348,12 @@ state 仍优先于迟到反馈。
 | Git branch fixture | `loopx issue-fix repo-branch-fixture` | 在临时 git branch 中运行同一修复 contract。 |
 | Caller repo branch | `loopx issue-fix caller-repo-branch` | 检查获批本地 repo、创建/认领 issue branch、运行 caller-declared validation。 |
 | Content bridge | `loopx content-ops issue-fix-*` | 复用 body-free public metadata/intake 边界。 |
-| 长程控制 | `loopx todo`、`quota`、`refresh-state`、`lark-kanban` | 保存 ownership、gate、compute 决策、进度、evidence 和可见 Kanban。 |
+| 可见投影 | `status`、`lark-kanban`、dashboard | 从同一 kernel/domain state 派生人可读状态和 outcome，不建立第二套事实源。 |
 
 Capability module 位于 `loopx/capabilities/issue_fix/`。Domain state 复用现有
-issue-fix domain pack，不额外创建平行 context ledger。
+issue-fix domain pack，不额外创建平行 context ledger。OpenViking adapter 位于通用
+context-provider 边界，Issue-Fix 只提供领域 query、revision scope、repo-relative 映射与
+checkout 验证；AgentLoop 继续拥有实际工具执行。
 
 ## Truth 与 Evidence 模型
 
@@ -433,8 +493,11 @@ revision 仍是事实源。
 - failure-before/pass-after 证明率；
 - 无关 regression 率；
 - issue selection 到 review-ready/terminal 的时间；
+- 跨 turn、重启和外部等待后的可恢复率；
 - 人工介入次数和类型；
 - reviewer recommendation 接受/覆盖率；
+- 经 checkout 验证后真正影响决策的 memory 命中率，以及 stale/misleading 命中率；
+- feasibility、delivery、PR lifecycle 和 terminal outcome 投影的完整率；
 - 跳过的 unchanged monitor poll；
 - public/private boundary incident；
 - pilot 暴露的通用 LoopX gap 是否修复或转成具体 claimed todo。
@@ -446,6 +509,11 @@ Host 已提供 LoopX slash entry 时，直接启动长程目标：
 ```text
 /loopx Fix https://github.com/owner/repo/issues/123
 ```
+
+这一条入口启动的是同一个四层 loop：State Kernel 创建可恢复的 goal/todo 与 heartbeat，
+LoopX Domain State 固定当前 Issue-Fix 领域阶段，配置存在时 OpenViking Memory 提供
+历史线索，当前 AgentLoop 再执行复现、patch、validation 和后续 PR lifecycle。没有配置
+Memory 时流程仍可 fail-open 继续，不会阻塞基础 issue fix。
 
 手工集成的 host 先查看 command pack，再用完全相同的目标文本启动 guided CLI
 transaction：
