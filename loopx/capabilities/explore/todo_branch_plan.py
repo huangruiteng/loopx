@@ -38,6 +38,10 @@ TODO_BRANCH_PLAN_SCHEMA_VERSION = "loopx_explore_todo_branch_plan_v0"
 DEFAULT_BRANCH_WIDTH = 3
 MAX_BRANCH_WIDTH = 8
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_:\-]{3,}")
+SHARED_DEPENDENCY_CAPABILITY_PREFIXES = (
+    "shared_artifact:",
+    "shared_implementation:",
+)
 
 
 def _tokenize(value: Any) -> set[str]:
@@ -73,6 +77,14 @@ def _required_write_scopes(item: Mapping[str, Any]) -> list[str]:
 
 def _required_capabilities(item: Mapping[str, Any]) -> list[str]:
     return normalize_required_capabilities(item.get("required_capabilities"))
+
+
+def _shared_dependency_capabilities(item: Mapping[str, Any]) -> list[str]:
+    return [
+        capability
+        for capability in _required_capabilities(item)
+        if capability.startswith(SHARED_DEPENDENCY_CAPABILITY_PREFIXES)
+    ]
 
 
 def _scopes_overlap(left: Sequence[str], right: Sequence[str]) -> bool:
@@ -196,6 +208,16 @@ def _claim_bucket(item: Mapping[str, Any], *, agent_id: str | None) -> int:
     return 2
 
 
+def _monitor_lane_exclusion(candidate: Mapping[str, Any]) -> dict[str, Any] | None:
+    if candidate.get("task_class") != TODO_TASK_CLASS_MONITOR:
+        return None
+    return {
+        **candidate,
+        "selection_status": "excluded_non_exploration_lane",
+        "exclusion_reason": "continuous_monitor_does_not_consume_exploration_budget",
+    }
+
+
 def _lane_id(todo_id: str, *, index: int) -> str:
     return f"branch_{index}_{todo_id.removeprefix('todo_')}"
 
@@ -263,6 +285,7 @@ def _disabled_todo_branch_plan(
         "required_contract": explore_harness_required_contract(default_profile="generic"),
         "issue_width": 0,
         "candidate_count": 0,
+        "exploration_candidate_count": 0,
         "selected_count": 0,
         "selected_branches": [],
         "rejected_candidates": [],
@@ -337,6 +360,7 @@ def build_explore_todo_branch_plan(
             "claimed_by": normalize_todo_claimed_by(item.get("claimed_by")) or "",
             "required_write_scopes": required_write_scopes,
             "required_capabilities": _required_capabilities(item),
+            "shared_dependency_capabilities": _shared_dependency_capabilities(item),
             "score": round(score, 2),
             "confidence": _branch_confidence(score, hazards=hazards),
             "expected_evidence_units": _branch_expected_evidence_units(
@@ -363,9 +387,19 @@ def build_explore_todo_branch_plan(
         )
     )
 
-    schedulable = [
+    monitor_lanes = [
+        exclusion
+        for candidate in candidates
+        if (exclusion := _monitor_lane_exclusion(candidate)) is not None
+    ]
+    exploration_candidates = [
         candidate
         for candidate in candidates
+        if candidate.get("task_class") != TODO_TASK_CLASS_MONITOR
+    ]
+    schedulable = [
+        candidate
+        for candidate in exploration_candidates
         if not (
             candidate.get("claimed_by")
             and candidate.get("claimed_by") != normalized_agent
@@ -380,9 +414,9 @@ def build_explore_todo_branch_plan(
     verification_budget = max(1, int(scheduler.get("selected_prefix_length") or 1))
 
     selected: list[dict[str, Any]] = []
-    rejected: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = list(monitor_lanes)
     selected_scopes: list[tuple[str, list[str]]] = []
-    for candidate in candidates:
+    for candidate in exploration_candidates:
         hazards = list(candidate.get("hazards") or [])
         scopes = _required_write_scopes(candidate)
         conflict_with = ""
@@ -484,12 +518,22 @@ def build_explore_todo_branch_plan(
         "allow_unscoped_parallel": bool(allow_unscoped_parallel),
         "source_todo_count": len(todos),
         "candidate_count": len(candidates),
+        "exploration_candidate_count": len(exploration_candidates),
         "selected_count": len(selected),
         "selected_branches": selected,
         "rejected_candidates": rejected[: max(0, normalized_width * 3)],
         "hazard_model": {
             "write_scope_conflicts": "skip speculative branch when declared write scopes overlap",
+            "shared_dependencies": (
+                "shared_artifact:* and shared_implementation:* capabilities are read-only "
+                "dependency labels, not write mutexes; mutable shared builds must remain in "
+                "required_write_scopes"
+            ),
             "claimed_by_other": "other-agent ownership is visible but not selected",
+            "monitor_lanes": (
+                "continuous_monitor todos stay visible as excluded diagnostics but never "
+                "enter the exploration scheduler or consume branch width"
+            ),
             "unscoped": (
                 "treated as speculative read-or-coordination work by default; disable with "
                 "--no-allow-unscoped-parallel"

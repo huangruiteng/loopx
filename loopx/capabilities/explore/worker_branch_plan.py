@@ -4,7 +4,11 @@ from copy import deepcopy
 import re
 from typing import Any, Mapping, Sequence
 
-from ...control_plane.todos.contract import normalize_todo_claimed_by, normalize_todo_id
+from ...control_plane.todos.contract import (
+    TODO_TASK_CLASS_MONITOR,
+    normalize_todo_claimed_by,
+    normalize_todo_id,
+)
 from .harness_gate import (
     GATE_STATE_ANALYSIS_ONLY,
     GATE_STATE_DISABLED,
@@ -30,8 +34,10 @@ from .todo_branch_plan import (
     _compact_text,
     _frontier_tokens,
     _lease_command,
+    _monitor_lane_exclusion,
     _required_capabilities,
     _required_write_scopes,
+    _shared_dependency_capabilities,
     _scopes_overlap,
 )
 from ...control_plane.todos.projection import todo_item_task_class, todo_projection_sort_key
@@ -390,6 +396,7 @@ def _todo_candidate(
         "claimed_by": normalize_todo_claimed_by(item.get("claimed_by")) or "",
         "required_write_scopes": _required_write_scopes(item),
         "required_capabilities": _required_capabilities(item),
+        "shared_dependency_capabilities": _shared_dependency_capabilities(item),
         "depends_on": item.get("depends_on") or item.get("dependency_todo_ids") or item.get("blocked_by_todo_ids") or [],
         "score": round(score, 2),
         "confidence": _branch_confidence(score, hazards=hazards),
@@ -450,6 +457,11 @@ def _branch_candidate(
     capabilities = _dedupe_preserve_order(
         capability for item in todo_bundle for capability in item.get("required_capabilities") or []
     )
+    shared_dependency_capabilities = _dedupe_preserve_order(
+        capability
+        for item in todo_bundle
+        for capability in item.get("shared_dependency_capabilities") or []
+    )
     dependencies = _dedupe_preserve_order(
         dep for item in todo_bundle for dep in item.get("depends_on") or []
     )
@@ -488,6 +500,7 @@ def _branch_candidate(
         "todo_bundle": todo_bundle,
         "required_write_scopes": write_scopes,
         "required_capabilities": capabilities,
+        "shared_dependency_capabilities": shared_dependency_capabilities,
         "depends_on": dependencies,
         "score": score,
         "confidence": aggregate_confidence,
@@ -613,14 +626,21 @@ def _build_worker_branch_candidates(
         )
     )
 
+    monitor_lanes = [
+        exclusion
+        for candidate in todo_candidates
+        if (exclusion := _monitor_lane_exclusion(candidate)) is not None
+    ]
     blocked = [
         {**candidate, "selection_status": "blocked_claimed_by_other"}
         for candidate in todo_candidates
+        if candidate.get("task_class") != TODO_TASK_CLASS_MONITOR
         if candidate.get("claimed_by") and candidate.get("claimed_by") != normalized_agent
     ]
     eligible = [
         candidate
         for candidate in todo_candidates
+        if candidate.get("task_class") != TODO_TASK_CLASS_MONITOR
         if not (candidate.get("claimed_by") and candidate.get("claimed_by") != normalized_agent)
     ]
 
@@ -708,7 +728,7 @@ def _build_worker_branch_candidates(
         )
 
     branch_candidates.sort(key=_branch_sort_key)
-    return branch_candidates, blocked
+    return branch_candidates, [*monitor_lanes, *blocked]
 
 
 def _baseline_worker_lanes(branch_candidates: Sequence[Mapping[str, Any]], *, width: int) -> dict[str, Any]:
@@ -764,6 +784,7 @@ def _disabled_worker_branch_plan(
         "worker_width": 0,
         "max_worker_lanes": MAX_WORKER_LANES,
         "branch_candidate_count": 0,
+        "excluded_monitor_todo_count": 0,
         "selected_worker_branch_count": 0,
         "selected_worker_branches": [],
         "rejected_worker_branches": [],
@@ -868,6 +889,10 @@ def build_explore_worker_branch_plan(
         bundle_confidence_threshold=float(profile.get("bundle_confidence_threshold") or 0.0),
         bundle_straggler_factor=float(profile.get("bundle_straggler_factor") or 0.0),
         router_state=router_state if router_used else None,
+    )
+    excluded_monitor_todo_count = sum(
+        item.get("selection_status") == "excluded_non_exploration_lane"
+        for item in blocked_todos
     )
     if gate["state"] == GATE_STATE_ANALYSIS_ONLY:
         # Analysis stays available (ranking, bundles, A/B estimate), but the
@@ -1088,6 +1113,7 @@ def build_explore_worker_branch_plan(
             ),
         },
         "branch_candidate_count": len(branch_candidates),
+        "excluded_monitor_todo_count": excluded_monitor_todo_count,
         "selected_worker_branch_count": len(selected),
         "selected_worker_branches": selected,
         "rejected_worker_branches": rejected[: max(0, normalized_width * 3)],
@@ -1096,6 +1122,15 @@ def build_explore_worker_branch_plan(
             "planner_layer": "experimental worker-branch planner",
             "execution_layer": "existing LoopX harness",
             "worker_branch_semantics": "one branch is a worker lane containing a bundle of LoopX todos",
+            "monitor_lane_semantics": (
+                "continuous_monitor todos remain visible as excluded diagnostics and do not "
+                "consume worker width or enter todo bundles"
+            ),
+            "scope_conflict_semantics": (
+                "only required_write_scopes create lane mutexes; shared_artifact:* and "
+                "shared_implementation:* capabilities describe immutable shared inputs, while "
+                "mutable shared builds remain required write scopes"
+            ),
             "branch_fill_semantics": (
                 "max_todos_per_branch is a safety ceiling; adaptive profiles decide "
                 "bundle size from marginal value and do not pad lanes to fill requested width"

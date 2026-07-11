@@ -136,6 +136,8 @@ spend quota, or change the active state. Instead it emits a prediction
 packet with:
 
 - selected branches, confidence, hazards, and reason codes;
+- excluded `continuous_monitor` diagnostics, which remain visible but never
+  enter the exploration scheduler or consume branch width;
 - a dry-run A/B estimate comparing baseline serial execution with the
   DSpark-style selected prefix (`ab_result.estimated_speedup_vs_baseline`);
 - suggested `loopx todo claim` and `loopx task-lease acquire` commands for a
@@ -165,6 +167,15 @@ coordination work by default, because many exploration tasks are read-only.
 Use `--no-allow-unscoped-parallel` when the controller wants unknown scopes to
 collapse back to single-branch execution.
 
+Scope conflicts are based only on mutable `required_write_scopes`. Do not put a
+shared base checkout or an already-built immutable input in that field merely
+because multiple experiments read it. Represent reusable inputs with existing
+public-safe capability labels such as `shared_implementation:<name>` or
+`shared_artifact:<name>`, then give each experiment its own variant or launch
+output scope. Those lanes may run in parallel. If the shared build itself is
+still mutable, keep its path in `required_write_scopes`; the planner will
+correctly serialize lanes that could write the same artifact.
+
 ## Experimental Worker Branch Plan
 
 `loopx explore worker-branch-plan` is the worker-lane version of the same
@@ -172,6 +183,20 @@ experiment. It does not treat a branch as one todo. A worker branch is a
 predicted lane containing a small bundle of LoopX todos, an objective slice,
 required capabilities, write scopes, dependency hints, expected evidence,
 confidence, and suggested claim/lease commands.
+
+Sharing `shared_implementation:*` or `shared_artifact:*` capabilities does not
+make worker lanes mutually exclusive. This supports one shared implementation
+or artifact-build stage followed by independent long/short-style experiment
+lanes that write separate variant or launch directories. The shared inputs must
+be immutable for that execution wave; an in-progress shared build remains a
+write scope and therefore remains a real conflict.
+
+`continuous_monitor` todos are observation/control-plane lanes, not exploration
+work. The planner keeps them in `rejected_worker_branches` with
+`selection_status=excluded_non_exploration_lane`, but never bundles them with
+advancement todos or charges them against `worker_width`. A monitor transition
+may create or unblock a successor advancement todo through the normal todo
+lifecycle; that successor can participate in the next read-only planning call.
 
 This command is read-only and opt-in per goal. It is designed to sit on top of
 the existing LoopX harness, not beside it and not instead of it:
