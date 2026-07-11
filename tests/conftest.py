@@ -8,7 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.canary.runner import SMOKE_SUITE_CHOICES
+from loopx.canary.runner import SMOKE_SUITE_CHOICES  # noqa: E402
 
 
 def pytest_addoption(parser) -> None:
@@ -18,8 +18,11 @@ def pytest_addoption(parser) -> None:
         "--smoke-suite",
         dest="loopx_smoke_suite",
         choices=sorted(SMOKE_SUITE_CHOICES),
-        default="default-public",
-        help="Canary smoke-suite selector passed through to the LoopX runner.",
+        default=None,
+        help=(
+            "Opt in to the canary smoke-suite facade and pass this selector "
+            "through to the LoopX runner."
+        ),
     )
     group.addoption(
         "--loopx-smoke-module",

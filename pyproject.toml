@@ -13,7 +13,7 @@ authors = [{ name = "LoopX contributors" }]
 dependencies = []
 
 [project.optional-dependencies]
-test = ["pytest>=8,<9"]
+test = ["pytest>=8,<9", "pytest-xdist>=3,<4"]
 
 [project.scripts]
 loopx = "loopx.cli:main"

@@ -1,0 +1,44 @@
+name: Python Tests
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/python-tests.yml"
+      - "loopx/**"
+      - "tests/**"
+      - "pyproject.toml"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/python-tests.yml"
+      - "loopx/**"
+      - "tests/**"
+      - "pyproject.toml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check -e ".[test]"
+
+      - name: Run fast tests
+        run: python -m pytest -q -n 2
