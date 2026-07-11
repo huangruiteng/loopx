@@ -26,6 +26,11 @@ from loopx.domain_packs.issue_fix import (  # noqa: E402
     issue_fix_pr_lifecycle_ledger_key,
     upsert_issue_fix_pr_lifecycle_ledger_jsonl,
 )
+from loopx.rollout_event_log import (  # noqa: E402
+    load_rollout_events,
+    rollout_event_log_path,
+)
+from loopx.status import parse_active_state_todos  # noqa: E402
 
 
 PRIVATE_PATTERNS = [
@@ -60,9 +65,27 @@ def assert_public_safe(payload: dict[str, Any] | str) -> None:
     assert not leaked, leaked
 
 
-def run_cli(args: list[str]) -> subprocess.CompletedProcess[str]:
+def run_cli(
+    args: list[str],
+    *,
+    registry_path: Path | None = None,
+    runtime_root: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    control_plane_args: list[str] = []
+    if registry_path is not None:
+        control_plane_args.extend(["--registry", str(registry_path)])
+    if runtime_root is not None:
+        control_plane_args.extend(["--runtime-root", str(runtime_root)])
     return subprocess.run(
-        [sys.executable, "-m", "loopx.cli", "--format", "json", *args],
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            *control_plane_args,
+            "--format",
+            "json",
+            *args,
+        ],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -218,6 +241,31 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="loopx-issue-fix-pr-lifecycle-") as tmpdir:
         project = Path(tmpdir)
+        runtime_root = project / "runtime"
+        registry_path = project / ".loopx" / "registry.json"
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        registry_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "0.1",
+                    "common_runtime_root": str(runtime_root),
+                    "goals": [
+                        {
+                            "id": "example-goal",
+                            "status": "active",
+                            "repo": str(project),
+                            "state_file": ".codex/goals/example-goal/ACTIVE_GOAL_STATE.md",
+                            "adapter": {
+                                "kind": "read_only_project_map_v0",
+                                "status": "connected-read-only",
+                            },
+                        }
+                    ],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         ledger = default_issue_fix_domain_state_ledger_path(
             project=project,
             goal_id="example-goal",
@@ -313,6 +361,68 @@ def main() -> int:
         )
         explicit_packet = json.loads(explicit_result.stdout)
         assert explicit_packet["generated_at"] == explicit_time, explicit_packet
+
+        merged_metadata_path = project / "merged-pr.json"
+        merged_metadata_path.write_text(
+            json.dumps(
+                {
+                    "state": "MERGED",
+                    "mergedAt": "2026-06-24T00:00:00Z",
+                    "reviewDecision": "APPROVED",
+                    "statusCheckRollup": [
+                        {"name": "lint", "conclusion": "SUCCESS"}
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        merged_args = [
+            "issue-fix",
+            "pr-lifecycle",
+            "--url",
+            "https://github.com/huangruiteng/loopx/pull/1715",
+            "--metadata-json",
+            str(merged_metadata_path),
+            "--goal-id",
+            "example-goal",
+            "--project",
+            str(project),
+        ]
+        first_merged = json.loads(
+            run_cli(
+                merged_args,
+                registry_path=registry_path,
+                runtime_root=runtime_root,
+            ).stdout
+        )
+        assert first_merged["rollout_event"]["recorded"] is True, first_merged
+        assert first_merged["rollout_event"]["appended"] is True, first_merged
+        second_merged = json.loads(
+            run_cli(
+                merged_args,
+                registry_path=registry_path,
+                runtime_root=runtime_root,
+            ).stdout
+        )
+        assert second_merged["rollout_event"]["already_recorded"] is True, second_merged
+        assert second_merged["rollout_event"]["appended"] is False, second_merged
+        assert second_merged["rollout_event"]["event_id"] == (
+            first_merged["rollout_event"]["event_id"]
+        )
+        rollout_events = load_rollout_events(
+            rollout_event_log_path(runtime_root, "example-goal")
+        )
+        assert len(rollout_events) == 1, rollout_events
+        parsed = parse_active_state_todos(
+            "## Agent Todo\n\n"
+            "- [ ] Resume after merge.\n"
+            "  <!-- loopx:todo todo_id=todo_resume status=open "
+            "task_class=advancement_task resume_when=pr_merged:#1715 -->\n",
+            rollout_events=rollout_events,
+        )
+        resume_item = parsed["agent_todos"]["items"][0]
+        assert resume_item["resume_ready"] is True, resume_item
+        assert resume_item["resume_condition"]["matched_pr_ref"] == "huangruiteng/loopx#1715"
 
         material_result = upsert_issue_fix_pr_lifecycle_ledger_jsonl(ledger, failing)
         assert material_result["status"] == "updated", material_result

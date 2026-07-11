@@ -52,6 +52,7 @@ from .pr_lifecycle import (
     render_issue_fix_pr_lifecycle_monitor_markdown,
     validate_issue_fix_pr_lifecycle_monitor_packet,
 )
+from .pr_lifecycle_rollout import append_pr_merge_rollout_event
 from .reviewer_recommendation import (
     build_issue_fix_reviewer_recommendation_packet,
     render_issue_fix_reviewer_recommendation_markdown,
@@ -1338,6 +1339,18 @@ def handle_issue_fix_command(
                     ledger_path,
                     payload,
                 )
+                observation = payload.get("observation")
+                if (
+                    args.goal_id
+                    and isinstance(observation, dict)
+                    and str(observation.get("state") or "").upper() == "MERGED"
+                ):
+                    payload["rollout_event"] = append_pr_merge_rollout_event(
+                        payload=payload,
+                        goal_id=args.goal_id,
+                        registry_path=registry_path,
+                        runtime_root_arg=runtime_root_arg,
+                    )
             else:
                 domain_state = payload.get("domain_state_projection")
                 if isinstance(domain_state, dict) and not args.no_write_domain_state:
