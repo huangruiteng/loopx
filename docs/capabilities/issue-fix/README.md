@@ -679,12 +679,43 @@ Minimal local provider config (the revision must also appear in `scope_ref`):
 }
 ```
 
+For a long-running repository, use the provider-neutral `checkout_head`
+revision policy instead of rewriting the whole config after every pull:
+
+```json
+{
+  "schema_version": "issue_fix_repository_memory_provider_config_v0",
+  "enabled": true,
+  "provider": "openviking",
+  "namespace": "public-repository",
+  "visibility": "public",
+  "revision_policy": "checkout_head",
+  "repository_scope_root": "viking://resources/public-repository/owner-repo",
+  "active_repository_revision": "<last-activated-full-revision>",
+  "resource_references": ["src/module.py", "tests/test_module.py"]
+}
+```
+
+On the next issue-fix run after a pull, LoopX derives the current immutable
+scope from the checkout revision. It does not install a mutating git hook. If
+the checkout has advanced, retrieval returns `current_revision_not_activated`
+without searching the previous revision. `repository-memory-sync` indexes the
+new scope and returns a compact activation receipt; the caller projects the
+activated revision into the existing issue-fix domain state for the next run.
+Old scopes are kept
+for audit but excluded from patch guidance. A provider write that is visible
+but still processing remains `activation_pending`, so it is polled rather than
+activated or blindly retried. This is the missing lifecycle around VikingBot's
+explicit add/search/read tools; VikingBot itself does not watch local
+`git pull` events.
+
 Resource indexing is intentionally separate from retrieval. Use
 `loopx issue-fix repository-memory-sync` to preview a bounded set of
 repo-relative public files; add `--execute` only after the provider-resource
 write is authorized. Re-running the same immutable revision scope is
 idempotent when stored content still matches and stops on a conflict instead
-of replacing or auto-renaming it. Retrieval and resource sync use separate
+of replacing or auto-renaming it. Transport failure after a provider commit is
+reconciled by bounded target readback before any retry. Retrieval and resource sync use separate
 bounded timeouts because semantic indexing can legitimately take longer than
 read-only search.
 

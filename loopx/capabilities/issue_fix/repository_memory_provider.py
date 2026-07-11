@@ -11,7 +11,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import unquote
 
-from ..context_providers import build_context_provider, canonical_context_matches
+from ..context_providers import (
+    RepositoryContextRevisionPlan,
+    activate_repository_context_revision,
+    build_context_provider,
+    canonical_context_matches,
+)
 from ..context_providers.base import ContextProvider, opaque_provider_ref
 from ...control_plane.runtime.public_safety import public_safe_compact_text
 from .repository_memory import (
@@ -38,7 +43,11 @@ _CONFIG_FIELDS = {
     "namespace",
     "visibility",
     "scope_ref",
+    "revision_policy",
+    "repository_scope_root",
     "repository_revision",
+    "active_repository_revision",
+    "active_scope_ref",
     "max_results",
     "timeout_seconds",
     "sync_timeout_seconds",
@@ -156,22 +165,73 @@ def _normalise_config(
     namespace = _label(config.get("namespace"), field="namespace")
     if config.get("visibility") != "public":
         raise ValueError("repository memory provider visibility must be public")
-    configured_revision = _compact(
-        config.get("repository_revision"),
-        field="repository_revision",
-        limit=120,
-    )
-    if not re.fullmatch(r"[0-9a-fA-F]{12,64}", configured_revision):
-        raise ValueError("repository memory provider revision must be a git object id")
-    if configured_revision != repository_revision:
-        raise ValueError(
-            "repository memory provider revision must match current checkout"
+    if not re.fullmatch(r"[0-9a-fA-F]{12,64}", repository_revision):
+        raise ValueError("current repository revision must be a git object id")
+    revision_policy = str(config.get("revision_policy") or "pinned").strip()
+    if revision_policy not in {"pinned", "checkout_head"}:
+        raise ValueError("revision_policy must be pinned or checkout_head")
+    configured_revision = str(config.get("repository_revision") or "").strip()
+    if revision_policy == "pinned":
+        configured_revision = _compact(
+            configured_revision,
+            field="repository_revision",
+            limit=120,
         )
-    scope_ref = _compact(config.get("scope_ref"), field="scope_ref", limit=500)
+        if not re.fullmatch(r"[0-9a-fA-F]{12,64}", configured_revision):
+            raise ValueError(
+                "repository memory provider revision must be a git object id"
+            )
+        if configured_revision != repository_revision:
+            raise ValueError(
+                "repository memory provider revision must match current checkout"
+            )
+        scope_ref = _compact(
+            config.get("scope_ref"), field="scope_ref", limit=500
+        ).rstrip("/")
+        repository_scope_root = ""
+    else:
+        if configured_revision and configured_revision != repository_revision:
+            raise ValueError(
+                "checkout_head repository_revision, when supplied, must match current checkout"
+            )
+        configured_revision = repository_revision
+        repository_scope_root = _compact(
+            config.get("repository_scope_root"),
+            field="repository_scope_root",
+            limit=500,
+        ).rstrip("/")
+        if not repository_scope_root.startswith("viking://resources/"):
+            raise ValueError(
+                "checkout_head repository_scope_root must use viking://resources/"
+            )
+        scope_ref = (
+            f"{repository_scope_root}/{repository_revision[:12]}/repository-context"
+        )
     if not scope_ref.startswith("viking://"):
         raise ValueError("repository memory provider scope_ref must use viking://")
     if repository_revision[:12] not in scope_ref:
         raise ValueError("repository memory provider scope_ref must be revision-scoped")
+    active_repository_revision = str(
+        config.get("active_repository_revision") or ""
+    ).strip()
+    if active_repository_revision and not re.fullmatch(
+        r"[0-9a-fA-F]{12,64}", active_repository_revision
+    ):
+        raise ValueError("active_repository_revision must be a git object id")
+    active_scope_ref = str(config.get("active_scope_ref") or "").strip().rstrip("/")
+    if active_scope_ref and not active_scope_ref.startswith("viking://"):
+        raise ValueError("active_scope_ref must use viking://")
+    if revision_policy == "checkout_head" and active_repository_revision:
+        if not active_scope_ref:
+            active_scope_ref = (
+                f"{repository_scope_root}/{active_repository_revision[:12]}/"
+                "repository-context"
+            )
+        if active_repository_revision[:12] not in active_scope_ref:
+            raise ValueError("active_scope_ref must match active_repository_revision")
+    elif revision_policy == "pinned":
+        active_repository_revision = repository_revision
+        active_scope_ref = scope_ref
     max_results = min(
         max(1, int(config.get("max_results") or 3)),
         MAX_MEMORY_RESULTS,
@@ -227,8 +287,12 @@ def _normalise_config(
         **dict(config),
         "provider": provider,
         "namespace": namespace,
-        "scope_ref": scope_ref.rstrip("/"),
+        "scope_ref": scope_ref,
+        "revision_policy": revision_policy,
+        "repository_scope_root": repository_scope_root,
         "repository_revision": configured_revision,
+        "active_repository_revision": active_repository_revision,
+        "active_scope_ref": active_scope_ref,
         "max_results": max_results,
         "timeout_seconds": timeout_seconds,
         "sync_timeout_seconds": sync_timeout_seconds,
@@ -239,6 +303,28 @@ def _normalise_config(
         "workspace_scope": workspace_scope,
         "peer_scope": peer_scope,
     }
+
+
+def _repository_context_revision_plan(
+    normalised: Mapping[str, Any],
+) -> RepositoryContextRevisionPlan:
+    return RepositoryContextRevisionPlan(
+        provider=str(normalised["provider"]),
+        namespace=str(normalised["namespace"]),
+        revision_policy=str(normalised["revision_policy"]),
+        repository_revision=str(normalised["repository_revision"]),
+        current_scope_ref=str(normalised["scope_ref"]),
+        active_repository_revision=(
+            str(normalised["active_repository_revision"])
+            if normalised.get("active_repository_revision")
+            else None
+        ),
+        active_scope_ref=(
+            str(normalised["active_scope_ref"])
+            if normalised.get("active_scope_ref")
+            else None
+        ),
+    )
 
 
 def _validated_outcome_fact(
@@ -664,6 +750,7 @@ def retrieve_issue_fix_repository_memory(
         raise ValueError(f"supports must use {sorted(SUPPORT_ASPECTS)}")
     provider_id = str(normalised["provider"])
     namespace = str(normalised["namespace"])
+    revision_plan = _repository_context_revision_plan(normalised)
     if not normalised["enabled"]:
         memory_input = _disabled_memory_input(
             provider=provider_id,
@@ -680,6 +767,26 @@ def retrieve_issue_fix_repository_memory(
             },
         }
 
+    if revision_plan.sync_required:
+        memory_input = _unavailable_memory_input(
+            provider=provider_id,
+            namespace=namespace,
+            query_summary=query_summary,
+            observed_at=observed_at,
+            search_performed=False,
+            read_performed=False,
+            reason_code="current_revision_not_activated",
+        )
+        return {
+            "memory_input": memory_input,
+            "provider_projection": {
+                "status": "sync_required",
+                "fail_open": True,
+                "result_count": 0,
+                "repository_context_lifecycle": revision_plan.public_packet(),
+            },
+        }
+
     provider = provider or build_context_provider(normalised)
     retrieval = provider.retrieve(
         namespace=namespace,
@@ -691,6 +798,7 @@ def retrieve_issue_fix_repository_memory(
         observed_at=observed_at,
     )
     provider_projection = retrieval.public_packet()
+    provider_projection["repository_context_lifecycle"] = revision_plan.public_packet()
     if retrieval.status != "completed":
         memory_input = _unavailable_memory_input(
             provider=provider_id,
@@ -802,6 +910,7 @@ def sync_issue_fix_repository_memory(
     """Bound an explicit provider resource refresh to one revision checkout."""
 
     normalised = _normalise_config(config, repository_revision=repository_revision)
+    revision_plan = _repository_context_revision_plan(normalised)
     if not normalised["enabled"]:
         return {
             "schema_version": "issue_fix_repository_memory_sync_v0",
@@ -813,6 +922,7 @@ def sync_issue_fix_repository_memory(
             "requested_reference_count": 0,
             "external_writes_performed": False,
             "fail_open": True,
+            "repository_context_lifecycle": revision_plan.public_packet(),
         }
     scope_ref = str(normalised["scope_ref"])
     if not scope_ref.startswith("viking://resources/"):
@@ -855,6 +965,7 @@ def sync_issue_fix_repository_memory(
         observed_at=observed_at,
         execute=execute,
     )
+    activation = activate_repository_context_revision(revision_plan, sync)
     packet = sync.public_packet()
     packet.update(
         {
@@ -864,6 +975,8 @@ def sync_issue_fix_repository_memory(
             "revision_scoped": True,
             "automatic_capture_performed": False,
             "memory_writeback_performed": False,
+            "repository_context_lifecycle": revision_plan.public_packet(),
+            "repository_context_activation": activation.public_packet(),
         }
     )
     return packet

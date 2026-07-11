@@ -657,10 +657,37 @@ memory body、自动 transcript capture、私有 namespace、凭据和 provider 
 }
 ```
 
+长程运行的仓库可以使用通用的 `checkout_head` revision policy，不必每次 pull 后手工重写
+整份配置：
+
+```json
+{
+  "schema_version": "issue_fix_repository_memory_provider_config_v0",
+  "enabled": true,
+  "provider": "openviking",
+  "namespace": "public-repository",
+  "visibility": "public",
+  "revision_policy": "checkout_head",
+  "repository_scope_root": "viking://resources/public-repository/owner-repo",
+  "active_repository_revision": "<last-activated-full-revision>",
+  "resource_references": ["src/module.py", "tests/test_module.py"]
+}
+```
+
+仓库 pull 后的下一次 issue-fix 运行会根据当前 checkout revision 派生新的 immutable
+scope；LoopX 不安装会改写仓库的 git hook。发现 checkout 已前进时，
+retrieval 会返回 `current_revision_not_activated`，不会搜索旧 revision；
+`repository-memory-sync` 为新 scope 建索引并返回紧凑 activation receipt，调用方把已激活
+revision 投影回现有 issue-fix domain state 供下一轮使用。旧 scope 保留作审计，但禁止影响
+新 patch。Provider 已写入但仍在处理时保持 `activation_pending`，只继续确认，不提前激活
+也不盲目重试。这补上了 VikingBot 显式 add/search/read 工具外缺失的生命周期；VikingBot
+本身不会监听本地 `git pull`。
+
 Resource indexing 与 retrieval 刻意分离。先用
 `loopx issue-fix repository-memory-sync` 预览有限数量的 repo-relative 公开文件；只有
 provider resource write 已获授权时才加 `--execute`。同一个 immutable revision scope
-重复执行时，内容一致会幂等通过；出现冲突则停止，不会覆盖或自动改名。只读 retrieval
+重复执行时，内容一致会幂等通过；出现冲突则停止，不会覆盖或自动改名。Provider 提交后
+发生 transport failure 时，会先有界读回目标再决定是否重试。只读 retrieval
 与 resource sync 使用独立且有上限的 timeout，因为语义索引通常比 search/read 更慢。
 
 Validated-outcome writeback 是另一条默认关闭的 hook。只有调用方显式增加

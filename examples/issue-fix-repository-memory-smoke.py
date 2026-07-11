@@ -24,6 +24,7 @@ from loopx.capabilities.issue_fix.repository_context import (  # noqa: E402
 )
 from loopx.capabilities.issue_fix.repository_memory_provider import (  # noqa: E402
     retrieve_issue_fix_repository_memory,
+    sync_issue_fix_repository_memory,
 )
 from loopx.capabilities.context_providers.base import (  # noqa: E402
     ContextProviderItem,
@@ -35,6 +36,7 @@ from loopx.capabilities.context_providers.openviking import (  # noqa: E402
 )
 
 REVISION = "9cf42405a8bb0a8a17a66d4f953515f5a2c82620"
+PREVIOUS_REVISION = "3aa42405a8bb0a8a17a66d4f953515f5a2c82111"
 ISSUE_URL = "https://github.com/volcengine/OpenViking/issues/3124"
 
 
@@ -67,6 +69,41 @@ class ContractProvider:
 
     def sync(self, **kwargs: Any) -> Any:  # pragma: no cover - retrieval contract only.
         raise AssertionError(kwargs)
+
+
+class LifecycleProvider(ContractProvider):
+    def __init__(
+        self,
+        *,
+        resource_ref: str,
+        content: str,
+        sync_status: str = "completed",
+    ) -> None:
+        super().__init__(resource_ref=resource_ref, content=content)
+        self.sync_status = sync_status
+        self.retrieve_count = 0
+        self.sync_count = 0
+
+    def retrieve(self, **kwargs: Any) -> ContextProviderRetrieval:
+        self.retrieve_count += 1
+        return super().retrieve(**kwargs)
+
+    def sync(self, **kwargs: Any) -> ContextProviderSync:
+        self.sync_count += 1
+        resources = list(kwargs["resources"])
+        return ContextProviderSync(
+            provider="contract_provider",
+            namespace=str(kwargs["namespace"]),
+            status=self.sync_status,
+            observed_at=str(kwargs["observed_at"]),
+            requested_count=len(resources),
+            completed_count=len(resources) if self.sync_status == "completed" else 0,
+            write_count=len(resources) if kwargs["execute"] else 0,
+            result_refs=tuple(target for _source, target in resources),
+            pending_count=(
+                len(resources) if self.sync_status == "committed_pending" else 0
+            ),
+        )
 
 
 class OpenVikingContractRunner:
@@ -503,6 +540,113 @@ def main() -> int:
             "verification_mode": "canonical_text_or_parser_chunk",
         }
         assert_boundary(provider_result)
+
+        lifecycle_root = "viking://resources/public-repository/example-repo"
+        lifecycle_scope = f"{lifecycle_root}/{REVISION[:12]}/repository-context"
+        lifecycle_provider = LifecycleProvider(
+            resource_ref=f"{lifecycle_scope}/src/worker.py",
+            content=source.read_text(encoding="utf-8"),
+        )
+        lifecycle_config = {
+            "schema_version": "issue_fix_repository_memory_provider_config_v0",
+            "enabled": True,
+            "provider": "contract_provider",
+            "namespace": "public-repository",
+            "visibility": "public",
+            "revision_policy": "checkout_head",
+            "repository_scope_root": lifecycle_root,
+            "active_repository_revision": PREVIOUS_REVISION,
+            "resource_references": ["src/worker.py"],
+            "max_results": 3,
+            "timeout_seconds": 5,
+            "sync_timeout_seconds": 5,
+        }
+        stale_retrieval = retrieve_issue_fix_repository_memory(
+            config=lifecycle_config,
+            repo_path=checkout,
+            repository_revision=REVISION,
+            query="current worker contract validation",
+            query_summary="Current worker contract evidence.",
+            supports=["change_scope", "validation"],
+            observed_at="2026-07-11T03:30:00+08:00",
+            provider=lifecycle_provider,
+        )
+        assert stale_retrieval["memory_input"]["status"] == "unavailable"
+        assert (
+            stale_retrieval["memory_input"]["reason_code"]
+            == "current_revision_not_activated"
+        )
+        lifecycle_plan = stale_retrieval["provider_projection"][
+            "repository_context_lifecycle"
+        ]
+        assert lifecycle_plan["revision_changed"] is True, lifecycle_plan
+        assert lifecycle_plan["sync_required"] is True, lifecycle_plan
+        assert lifecycle_plan["retrieval_allowed"] is False, lifecycle_plan
+        assert lifecycle_provider.retrieve_count == 0
+        assert_boundary(stale_retrieval)
+
+        lifecycle_sync = sync_issue_fix_repository_memory(
+            config=lifecycle_config,
+            repo_path=checkout,
+            repository_revision=REVISION,
+            references=["src/worker.py"],
+            observed_at="2026-07-11T03:31:00+08:00",
+            execute=True,
+            provider=lifecycle_provider,
+        )
+        activation = lifecycle_sync["repository_context_activation"]
+        assert activation["status"] == "activated", activation
+        assert activation["active_repository_revision"] == REVISION, activation
+        assert activation["previous_repository_revision"] == PREVIOUS_REVISION
+        assert activation["retrieval_allowed"] is True, activation
+        assert lifecycle_provider.sync_count == 1
+        assert_boundary(lifecycle_sync)
+
+        pending_provider = LifecycleProvider(
+            resource_ref=f"{lifecycle_scope}/src/worker.py",
+            content=source.read_text(encoding="utf-8"),
+            sync_status="committed_pending",
+        )
+        pending_sync = sync_issue_fix_repository_memory(
+            config=lifecycle_config,
+            repo_path=checkout,
+            repository_revision=REVISION,
+            references=["src/worker.py"],
+            observed_at="2026-07-11T03:31:30+08:00",
+            execute=True,
+            provider=pending_provider,
+        )
+        pending_activation = pending_sync["repository_context_activation"]
+        assert pending_activation["status"] == "activation_pending"
+        assert pending_activation["active_repository_revision"] is None
+        assert pending_activation["retrieval_allowed"] is False
+        assert_boundary(pending_sync)
+
+        activated_config = {
+            **lifecycle_config,
+            "active_repository_revision": REVISION,
+        }
+        activated_retrieval = retrieve_issue_fix_repository_memory(
+            config=activated_config,
+            repo_path=checkout,
+            repository_revision=REVISION,
+            query="current worker contract validation",
+            query_summary="Current worker contract evidence.",
+            supports=["change_scope", "validation"],
+            observed_at="2026-07-11T03:32:00+08:00",
+            provider=lifecycle_provider,
+        )
+        active_plan = activated_retrieval["provider_projection"][
+            "repository_context_lifecycle"
+        ]
+        assert active_plan["sync_required"] is False, active_plan
+        assert active_plan["retrieval_allowed"] is True, active_plan
+        assert lifecycle_provider.retrieve_count == 1
+        assert (
+            activated_retrieval["memory_input"]["results"][0]["verification_status"]
+            == "confirmed"
+        )
+        assert_boundary(activated_retrieval)
 
     invalid_capture = dict(memory_input)
     invalid_capture["automatic_capture_performed"] = True
