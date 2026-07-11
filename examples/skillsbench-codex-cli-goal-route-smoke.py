@@ -1425,6 +1425,7 @@ def _assert_cli_goal_active_timeout_is_public_countability_stage() -> None:
 def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> None:
     sys.path.insert(0, str(REPO_ROOT))
     from loopx.codex_cli_goal_tui import (
+        CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME,
         CODEX_CLI_GOAL_OBJECTIVE_MAX_CHARS,
         CODEX_CLI_GOAL_TASK_PROMPT_FILENAME,
         CODEX_CLI_GOAL_THREAD_PREWARM_MARKER,
@@ -1450,6 +1451,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
         CODEX_CLI_GOAL_TASK_PROMPT_FILENAME
     )
     assert CODEX_CLI_GOAL_TASK_PROMPT_FILENAME in objective, objective
+    assert CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME in objective, objective
     assert len(objective) < CODEX_CLI_GOAL_OBJECTIVE_MAX_CHARS
     assert build_codex_cli_goal_tui_input(objective).startswith("/goal "), objective
     cmd = build_codex_cli_tui_command(
@@ -1664,6 +1666,10 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
         trace = payload["codex_cli_goal"]
         assert trace["goal_prompt_file_used"] is True, trace
         assert trace["goal_prompt_file_raw_path_recorded"] is False, trace
+        assert trace["goal_bridge_first_action_helper_used"] is True, trace
+        assert (
+            trace["goal_bridge_first_action_helper_raw_path_recorded"] is False
+        ), trace
         assert trace["goal_command_submission_method"] == "typed", trace
         assert trace["goal_kickoff_prompt_submitted"] is False, trace
         assert trace["goal_kickoff_prompt_raw_text_recorded"] is False, trace

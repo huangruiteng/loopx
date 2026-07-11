@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+import subprocess
 import sys
+import tempfile
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +38,29 @@ def main() -> int:
     original_monotonic = goal_tui.time.monotonic
     original_sleep = goal_tui.time.sleep
     try:
+        with tempfile.TemporaryDirectory() as temp:
+            request_path = Path(temp) / "bridge-request.json"
+            bridge = Path(temp) / "public-bridge"
+            bridge.write_text(
+                "#!/bin/sh\ncat > " + str(request_path) + "\n",
+                encoding="utf-8",
+            )
+            bridge.chmod(0o700)
+            helper = goal_tui.write_codex_cli_goal_bridge_first_action_helper(
+                cwd=temp,
+                bridge_executable=str(bridge),
+            )
+            assert helper.name == goal_tui.CODEX_CLI_GOAL_BRIDGE_FIRST_ACTION_FILENAME
+            assert helper.stat().st_mode & 0o100
+            subprocess.run([str(helper)], check=True)
+            request = json.loads(request_path.read_text(encoding="utf-8"))
+            assert request == {
+                "operation": "exec",
+                "cwd": "/app",
+                "command": "pwd && ls -la",
+                "timeout_sec": 10,
+            }
+
         goal_tui.subprocess.run = fake_run  # type: ignore[assignment]
         goal_tui.tmux_kill_session = fake_kill  # type: ignore[assignment]
         goal_tui.wait_for_codex_cli_tui_ready = (  # type: ignore[assignment]
