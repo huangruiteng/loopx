@@ -18,11 +18,13 @@ from ..quota import (
     void_quota_slot,
 )
 from ..status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, collect_status
+from ..control_plane.quota.turn_envelope import build_turn_envelope
 from ..control_plane.runtime.status_projection_cache import (
     load_status_projection_cache,
     resolve_status_projection_cache_runtime_root,
     write_status_projection_cache,
 )
+from ..presentation.renderers.turn_envelope_markdown import render_turn_envelope_markdown
 
 
 PrintPayload = Callable[
@@ -82,6 +84,14 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         help=(
             "Include cold-path scheduler detail for local scheduler, Codex CLI, "
             "and Claude loop runtimes in `quota should-run` JSON."
+        ),
+    )
+    quota_parser.add_argument(
+        "--turn-envelope",
+        action="store_true",
+        help=(
+            "For `quota should-run`, return the additive bounded TurnEnvelope view. "
+            "The default full decision remains unchanged."
         ),
     )
     quota_parser.add_argument("--slots", type=int, default=1, help="Slots to account for `quota spend-slot`.")
@@ -156,6 +166,8 @@ def handle_quota_command(
     append_cli_rollout_event: RolloutEventAppender,
 ) -> int:
     try:
+        if bool(getattr(args, "turn_envelope", False)) and args.quota_command != "should-run":
+            raise ValueError("--turn-envelope is only valid with `quota should-run`")
         scan_roots = [Path(item).expanduser() for item in args.scan_path]
         if not scan_roots:
             scan_roots = [Path(args.scan_root).expanduser()]
@@ -396,8 +408,12 @@ def handle_quota_command(
             },
             allow_failed=args.quota_command == "should-run",
         )
+    if bool(getattr(args, "turn_envelope", False)):
+        payload = build_turn_envelope(payload)
     renderer = (
-        render_quota_should_run_markdown
+        render_turn_envelope_markdown
+        if bool(getattr(args, "turn_envelope", False))
+        else render_quota_should_run_markdown
         if args.quota_command == "should-run"
         else render_quota_monitor_poll_markdown
         if args.quota_command == "monitor-poll"
