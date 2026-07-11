@@ -45,12 +45,9 @@ jobs:
           python -m ruff check
           tests
           loopx/canary
-          loopx/control_plane/agents
-          loopx/control_plane/goals
-          loopx/control_plane/handoff
-          loopx/control_plane/quota
-          loopx/control_plane/work_items
+          loopx/control_plane
           loopx/domain_packs
+          loopx/presentation
 
       - name: Run fast tests
         run: >-
