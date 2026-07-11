@@ -565,6 +565,7 @@ def fetch_github_pr_lifecycle_payload(
             ",".join(
                 [
                     "baseRefName",
+                    "closingIssuesReferences",
                     "closedAt",
                     "headRefName",
                     "isDraft",
@@ -618,6 +619,18 @@ def build_issue_fix_pr_lifecycle_monitor_packet(
             reference,
             timeout_seconds=fetch_timeout_seconds,
         )
+    if not issue_ref:
+        raw_linked_issues = payload.get("closingIssuesReferences") or payload.get(
+            "closing_issues_references"
+        )
+        if isinstance(raw_linked_issues, Sequence) and not isinstance(
+            raw_linked_issues, (str, bytes)
+        ):
+            for item in raw_linked_issues:
+                number = item.get("number") if isinstance(item, Mapping) else None
+                if isinstance(number, int):
+                    issue_ref = f"issues_{number}"
+                    break
     observation = _build_observation(
         repo=str(reference["repo"]),
         pr_ref=str(reference["issue_ref"]),

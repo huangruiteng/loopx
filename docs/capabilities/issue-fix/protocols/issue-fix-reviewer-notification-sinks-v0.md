@@ -101,12 +101,14 @@ loopx configure-goal \
 ```
 
 Then `reviewer-request --goal-id example-goal --project ...` discovers the
-config automatically. Execute mode requires the PR's existing lifecycle row,
-merges its verified hashed receipts into the private input, and writes only new
-receipts back to that same row. A restart or retry therefore remains
-idempotent without a second ledger. Goal boundary/status projections expose
-only that the capability and pointer are configured; they never expose the
-pointer value or profiles (`config_pointer_registered=true`).
+config automatically. Execute mode loads the PR's existing lifecycle row or
+auto-materializes it from a fresh compact GitHub lifecycle read before any
+external notification, merges verified hashed receipts into the private
+input, and writes only new receipts back to that same row. A restart or retry
+therefore remains idempotent without a second ledger. Goal boundary/status
+projections expose only that the capability and pointer are configured; they
+never expose the pointer value or profiles
+(`config_pointer_registered=true`).
 
 A zero exit status is insufficient. The adapter requires a message id from the
 send response, fetches that message with the same dedicated bot profile, and

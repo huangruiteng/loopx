@@ -274,6 +274,26 @@ def _load_goal_for_project(
     )
 
 
+def _materialize_goal_reviewer_notification_lifecycle(
+    *,
+    ledger_path: str | Path,
+    url: str,
+    generated_at: str | None = None,
+    provider_payload: dict[str, Any] | None = None,
+    fetch_metadata: bool = False,
+) -> dict[str, Any]:
+    """Create the compact PR lifecycle row required for receipt persistence."""
+
+    packet = build_issue_fix_pr_lifecycle_monitor_packet(
+        url=url,
+        provider_payload=provider_payload,
+        fetch_metadata=fetch_metadata,
+        generated_at=generated_at,
+    )
+    upsert_issue_fix_pr_lifecycle_ledger_jsonl(ledger_path, packet)
+    return packet
+
+
 def register_issue_fix_commands(
     subparsers: argparse._SubParsersAction,
     add_subcommand_format: AddFormat,
@@ -1482,6 +1502,11 @@ def handle_issue_fix_command(
             )
             renderer = render_issue_fix_reviewer_recommendation_markdown
         elif args.issue_fix_command == "reviewer-request":
+            if args.execute and args.metadata_json:
+                raise ValueError(
+                    "reviewer-request execute mode must fetch live PR metadata; "
+                    "--metadata-json is preview-only"
+                )
             notification_sinks_input = (
                 _load_json_object(args.notification_sinks_json)
                 if args.notification_sinks_json
@@ -1492,6 +1517,7 @@ def handle_issue_fix_command(
             )
             notification_lifecycle_packet: dict[str, Any] | None = None
             notification_lifecycle_path: Path | None = None
+            notification_lifecycle_materialized = False
             if notification_sinks_input is None and args.goal_id:
                 goal, requested_project = _load_goal_for_project(
                     registry_path=registry_path,
@@ -1528,10 +1554,22 @@ def handle_issue_fix_command(
                         )
                     except ValueError:
                         if args.execute:
-                            raise ValueError(
-                                "goal-default reviewer notification requires an "
-                                "existing PR lifecycle row before external send"
-                            ) from None
+                            try:
+                                notification_lifecycle_packet = (
+                                    _materialize_goal_reviewer_notification_lifecycle(
+                                        ledger_path=notification_lifecycle_path,
+                                        url=args.url,
+                                        generated_at=generated_at,
+                                        fetch_metadata=True,
+                                    )
+                                )
+                            except (OSError, RuntimeError, ValueError):
+                                raise ValueError(
+                                    "goal-default reviewer notification could not "
+                                    "materialize a verified PR lifecycle row before "
+                                    "external send"
+                                ) from None
+                            notification_lifecycle_materialized = True
                     notification_sinks_input = with_reviewer_notification_receipts(
                         notification_sinks_input,
                         reviewer_notification_receipts_from_state(
@@ -1568,6 +1606,9 @@ def handle_issue_fix_command(
                 generated_at=generated_at,
             )
             payload["secondary_notification_source"] = notification_sinks_source
+            payload["secondary_notification_lifecycle_materialized"] = (
+                notification_lifecycle_materialized
+            )
             payload["secondary_notification_receipts_persisted"] = False
             secondary = payload.get("secondary_notifications")
             new_receipts = (

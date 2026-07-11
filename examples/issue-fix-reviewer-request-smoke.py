@@ -24,6 +24,9 @@ from loopx.capabilities.issue_fix.reviewer_request import (  # noqa: E402
     ISSUE_FIX_REVIEWER_REQUEST_SCHEMA_VERSION,
     build_issue_fix_reviewer_request_packet,
 )
+from loopx.capabilities.issue_fix.cli import (  # noqa: E402
+    _materialize_goal_reviewer_notification_lifecycle,
+)
 from loopx.capabilities.issue_fix.reviewer_notification import (  # noqa: E402
     reviewer_notification_receipts_from_state,
     with_reviewer_notification_receipts,
@@ -734,6 +737,44 @@ def main() -> int:
         assert goal_default_packet["secondary_notification_status"] == "preview_ready"
         assert_public_safe(goal_default_packet)
 
+        lifecycle_path = default_issue_fix_domain_state_ledger_path(
+            project=path,
+            goal_id=goal_id,
+        )
+        invalid_execute_cli = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--registry",
+                str(registry),
+                "--format",
+                "json",
+                "issue-fix",
+                "reviewer-request",
+                "--url",
+                "https://github.com/owner/repo/pull/42",
+                "--repo-path",
+                str(path),
+                "--changed-file",
+                "src/map_only.py",
+                "--metadata-json",
+                str(metadata_path),
+                "--goal-id",
+                goal_id,
+                "--project",
+                str(path),
+                "--execute",
+            ],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        assert invalid_execute_cli.returncode != 0
+        assert "preview-only" in invalid_execute_cli.stdout
+        assert not lifecycle_path.exists()
+
         unrelated_cwd = path / "unrelated-control-plane"
         write(
             unrelated_cwd / ".loopx/registry.json",
@@ -783,21 +824,33 @@ def main() -> int:
         )
         assert_public_safe(project_registry_packet)
 
-        lifecycle_path = default_issue_fix_domain_state_ledger_path(
-            project=path,
-            goal_id=goal_id,
-        )
-        lifecycle = build_issue_fix_pr_lifecycle_monitor_packet(
+        lifecycle = _materialize_goal_reviewer_notification_lifecycle(
+            ledger_path=lifecycle_path,
             url="https://github.com/owner/repo/pull/42",
-            issue_ref="issues_40",
             provider_payload={
                 "state": "OPEN",
                 "reviewDecision": "REVIEW_REQUIRED",
                 "mergeStateStatus": "CLEAN",
                 "statusCheckRollup": [],
+                "closingIssuesReferences": [{"number": 40}],
             },
         )
-        upsert_issue_fix_pr_lifecycle_ledger_jsonl(lifecycle_path, lifecycle)
+        assert lifecycle["observation"]["issue_ref"] == "issues_40"
+        assert lifecycle["domain_state_projection"]["write_performed"] is True
+        repeated_materialize = _materialize_goal_reviewer_notification_lifecycle(
+            ledger_path=lifecycle_path,
+            url="https://github.com/owner/repo/pull/42",
+            provider_payload={
+                "state": "OPEN",
+                "reviewDecision": "REVIEW_REQUIRED",
+                "mergeStateStatus": "CLEAN",
+                "statusCheckRollup": [],
+                "closingIssuesReferences": [{"number": 40}],
+            },
+        )
+        assert repeated_materialize["domain_state_projection"][
+            "write_performed"
+        ] is False
         legacy_lifecycle = json.loads(
             lifecycle_path.read_text(encoding="utf-8").splitlines()[0]
         )
