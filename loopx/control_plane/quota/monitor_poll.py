@@ -415,6 +415,24 @@ def record_quota_monitor_poll_for_decision(
 
 
 def render_quota_monitor_poll_markdown(payload: dict[str, Any]) -> str:
+    if payload.get("ok") is False:
+        return "\n".join(
+            [
+                "# LoopX Quota Monitor Poll",
+                "",
+                "- ok: `False`",
+                f"- mode: `{payload.get('mode') or 'monitor-poll'}`",
+                f"- goal_id: `{payload.get('goal_id') or ''}`",
+                f"- appended: `{bool(payload.get('appended'))}`",
+                f"- registry_mutated: `{bool(payload.get('registry_mutated'))}`",
+                f"- agent_id: `{payload.get('agent_id') or ''}`",
+                f"- source: `{payload.get('source') or ''}`",
+                f"- todo_id: `{payload.get('todo_id') or ''}`",
+                f"- target_key: `{payload.get('target_key') or ''}`",
+                f"- material_change: `{bool(payload.get('material_change'))}`",
+                f"- reason: {payload.get('reason') or 'monitor-poll rejected'}",
+            ]
+        )
     event = payload.get("monitor_event") if isinstance(payload.get("monitor_event"), dict) else {}
     before = event.get("before") if isinstance(event.get("before"), dict) else {}
     todo_writeback = event.get("todo_writeback") if isinstance(event.get("todo_writeback"), dict) else {}

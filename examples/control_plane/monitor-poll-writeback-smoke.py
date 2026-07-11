@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -197,6 +198,31 @@ def run_cli_expect_error(registry_path: Path, *args: str) -> dict:
     )
     assert returncode != 0, payload
     return payload
+
+
+def run_cli_markdown_expect_error(registry_path: Path, *args: str) -> str:
+    command = [
+        sys.executable,
+        "-m",
+        "loopx.cli",
+        "--registry",
+        str(registry_path),
+        "--runtime-root",
+        str(runtime_root_from_registry(registry_path)),
+        *args,
+        "--scan-path",
+        str(Path(__file__).resolve()),
+    ]
+    result = subprocess.run(
+        command,
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode != 0, result.stdout
+    assert result.stdout.strip(), result.stderr
+    return result.stdout
 
 
 def agent_todos(state_file: Path) -> list[dict]:
@@ -456,6 +482,30 @@ def assert_target_key_cannot_hijack_selected_due_monitor() -> None:
         )
         assert payload["ok"] is False, payload
         assert "monitor-poll requires" in payload["reason"], payload
+        markdown = run_cli_markdown_expect_error(
+            registry_path,
+            "quota",
+            "monitor-poll",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+            "--target-key",
+            OTHER_TARGET_KEY,
+            "--result-hash",
+            "new",
+            "--material-change",
+            "--execute",
+        )
+        assert "- ok: `False`" in markdown, markdown
+        assert "- mode: `monitor-poll`" in markdown, markdown
+        assert f"- todo_id: ``" in markdown, markdown
+        assert f"- target_key: `{OTHER_TARGET_KEY}`" in markdown, markdown
+        assert "- material_change: `True`" in markdown, markdown
+        assert "- appended: `False`" in markdown, markdown
+        assert "- registry_mutated: `False`" in markdown, markdown
+        assert "- reason: monitor-poll requires" in markdown, markdown
+        assert "`None`" not in markdown, markdown
         selected = find_todo(state_file, TODO_ID)
         other = find_todo(state_file, "todo_monitorpoll111")
         assert selected["result_hash"] == "old", selected
