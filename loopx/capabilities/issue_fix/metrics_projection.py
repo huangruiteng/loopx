@@ -804,10 +804,22 @@ def build_issue_fix_metrics_projection(
             "loopx_capability_gaps_real_callsite_verified",
         ),
         (
+            "memory_retrievals",
+            "Memory",
+            "Repository-memory results retrieved",
+            "memory_retrievals",
+        ),
+        (
             "memory_verified_patch_influence",
             "Memory",
             "Memory retrievals verified to influence a patch",
             "memory_verified_patch_influence",
+        ),
+        (
+            "memory_stale_results",
+            "Memory",
+            "Repository-memory results verified stale",
+            "memory_stale_results",
         ),
     ):
         value = supplement[supplement_field]

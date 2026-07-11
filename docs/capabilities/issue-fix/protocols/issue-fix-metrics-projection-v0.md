@@ -69,7 +69,8 @@ native to feasibility or PR lifecycle rows:
     "loopx_capability_gaps_found": 3,
     "loopx_capability_gaps_fixed": 2,
     "memory_retrievals": 4,
-    "memory_verified_patch_influence": 1
+    "memory_verified_patch_influence": 1,
+    "memory_stale_results": 1
   }
 }
 ```
@@ -219,6 +220,12 @@ fixed, and gaps verified on a real callsite. This keeps discovery volume,
 delivery, and product-path proof distinguishable instead of collapsing all
 three into a single success count. Each row remains `not_available` until its
 own evidence-backed count is present.
+
+Repository-memory impact is likewise represented by three separate rows:
+retrieved results, results verified to influence a patch, and results verified
+stale. This separates usage volume from demonstrated engineering leverage and
+retrieval quality; zero is retained as evidence, while missing counts remain
+`not_available`.
 
 The generic Lark sink renders those rows into the `Monthly Impact` view without
 storing another metrics ledger:
