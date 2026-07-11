@@ -572,7 +572,6 @@ def start_codex_cli_goal_tui_session(
     tmux_name: str,
     cwd: str,
     shell_command: str,
-    tmp_path: Path,
     thread_prewarm: bool,
     thread_prewarm_timeout_sec: float,
 ) -> tuple[str, bool]:
@@ -604,7 +603,6 @@ def start_codex_cli_goal_tui_session(
         return "", False
     thread_prewarm_observed = prewarm_codex_cli_goal_thread(
         tmux_name=tmux_name,
-        tmp_path=tmp_path,
         timeout_sec=thread_prewarm_timeout_sec,
     )
     if not thread_prewarm_observed:
@@ -616,17 +614,13 @@ def start_codex_cli_goal_tui_session(
 def prewarm_codex_cli_goal_thread(
     *,
     tmux_name: str,
-    tmp_path: Path,
     timeout_sec: float = 90.0,
 ) -> bool:
     """Create the persisted TUI thread before submitting ``/goal``."""
 
-    prompt_path = tmp_path / "goal-thread-prewarm.txt"
-    prompt_path.write_text(CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT, encoding="utf-8")
-    tmux_paste_file_and_submit(
+    tmux_type_text_and_submit(
         tmux_name=tmux_name,
-        prompt_path=prompt_path,
-        buffer_suffix="prewarm",
+        text=CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT,
     )
     deadline = time.monotonic() + max(1.0, float(timeout_sec or 0.0))
     while time.monotonic() < deadline:

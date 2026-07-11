@@ -1100,7 +1100,6 @@ class SkillsBenchLocalAcpRelay:
                     tmux_name=tmux_name,
                     cwd=cwd,
                     shell_command=shell_command,
-                    tmp_path=tmp_path,
                     thread_prewarm=thread_prewarm,
                     thread_prewarm_timeout_sec=CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC,
                 )
@@ -1333,7 +1332,6 @@ class SkillsBenchLocalAcpRelay:
                                         tmux_name=tmux_name,
                                         cwd=cwd,
                                         shell_command=shell_command,
-                                        tmp_path=tmp_path,
                                         thread_prewarm=thread_prewarm,
                                         thread_prewarm_timeout_sec=CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC,
                                     )
