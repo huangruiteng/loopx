@@ -1,0 +1,23 @@
+examples/install-local-smoke.py
+  s_9a5a2bd944fdcb::t_9bd814eef84923 176,236,443,494
+loopx/doctor.py
+  s_9a5a2bd944fdcb::t_c4c3043243dab2 504-514,689-690,701
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b776282750ec02b8ca1fef56ec3cc5444c9ff914",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
