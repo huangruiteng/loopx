@@ -302,9 +302,12 @@ python3 examples/run-smokes.py --profile public-entry-install-release --no-execu
 Use `--offset` with `--limit` to sweep large profiles in stable windows without
 rerunning the same prefix batch on every heartbeat.
 
-CI may wrap the same runner selection in pytest when JUnit reporting is useful.
-The pytest facade still executes each `examples/**/*-smoke.py` through a
-subprocess; it is not a migration of legacy smokes into pytest unit tests:
+Default `pytest` is the fast unit and contract lane. The smoke-suite facade is
+explicitly opt-in so a normal PR test run does not silently expand into the
+canary matrix. CI may wrap an explicit runner selection in pytest when JUnit
+reporting is useful. The facade still executes each selected
+`examples/**/*-smoke.py` through a subprocess; it is not a migration of legacy
+smokes into pytest unit tests:
 
 ```bash
 python3 -m pytest tests/test_smoke_suite.py \
