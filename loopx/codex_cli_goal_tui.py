@@ -20,6 +20,7 @@ CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT = (
     "Start this persisted Codex thread. Reply with exactly the token formed by "
     "joining LOOPX, GOAL, THREAD, and READY with underscores. Do not use tools."
 )
+CODEX_CLI_GOAL_THREAD_PREWARM_HARD_CAP_MULTIPLIER = 2.0
 CODEX_CLI_GOAL_TASK_PROMPT_FILENAME = "skillsbench-task-prompt.md"
 CODEX_CLI_GOAL_KICKOFF_PROMPT = (
     "Start working on the active SkillsBench goal now. Read the referenced "
@@ -622,10 +623,26 @@ def prewarm_codex_cli_goal_thread(
         tmux_name=tmux_name,
         text=CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT,
     )
-    deadline = time.monotonic() + max(1.0, float(timeout_sec or 0.0))
-    while time.monotonic() < deadline:
+    timeout = max(1.0, float(timeout_sec or 0.0))
+    started_at = time.monotonic()
+    nominal_deadline = started_at + timeout
+    hard_deadline = started_at + (
+        timeout * CODEX_CLI_GOAL_THREAD_PREWARM_HARD_CAP_MULTIPLIER
+    )
+    turn_active_observed = False
+    while time.monotonic() < hard_deadline:
         capture = tmux_capture(tmux_name)
         if CODEX_CLI_GOAL_THREAD_PREWARM_MARKER in capture:
             return True
+        turn_active = codex_cli_tui_turn_active(capture)
+        turn_active_observed = turn_active_observed or turn_active
+        if (
+            turn_active_observed
+            and not turn_active
+            and codex_cli_tui_input_prompt_visible(capture)
+        ):
+            return True
+        if time.monotonic() >= nominal_deadline and not turn_active:
+            return False
         time.sleep(0.5)
     return False
