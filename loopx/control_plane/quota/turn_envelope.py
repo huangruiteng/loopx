@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from hashlib import sha256
 from typing import Any
 
 from ..work_items.primary_action import protocol_action_text
@@ -9,6 +10,112 @@ from ..work_items.primary_action import protocol_action_text
 
 TURN_ENVELOPE_SCHEMA_VERSION = "loopx_turn_envelope_v0"
 TURN_ENVELOPE_BUDGET_BYTES = 8_192
+CONTRACT_CAPSULE_SCHEMA_VERSION = "loopx_contract_capsule_v0"
+ACTION_SIGNATURE_SCHEMA_VERSION = "loopx_action_signature_v0"
+ACTION_SIGNATURE_COVERAGE = "turn_envelope_action_dimensions_v0"
+ACTIONABLE_WARNING_FIELDS = (
+    "state_projection_gap",
+    "boundary_projection_gap",
+    "state_action_projection_warning",
+    "next_action_projection_warning",
+    "stale_latest_run_warning",
+    "decision_freshness_warning",
+)
+CONTRACT_CAPSULE_FIELDS = {
+    "interaction_contract": (
+        "schema_version",
+        "mode",
+    ),
+    "work_lane_contract": (
+        "schema_version",
+        "lane",
+        "monitor_kind",
+        "next_lane",
+        "obligation",
+        "must_attempt_work",
+        "reason_codes",
+        "monitor_policy",
+        "selected_todo_id",
+        "selected_next_due_at",
+        "material_transition",
+        "action",
+    ),
+    "execution_profile": (
+        "cadence",
+        "minimum_scale",
+        "spend_rule",
+        "must_include",
+    ),
+    "execution_obligation": (
+        "kind",
+        "contract",
+        "contract_obligation",
+        "must_attempt_work",
+        "notify_is_execution_gate",
+        "delivery_allowed",
+        "reason",
+    ),
+    "goal_route_hint": (
+        "schema_version",
+        "kind",
+        "route_decision",
+        "preserves_goal_next_action",
+        "goal_next_action_mutation",
+    ),
+    "autonomous_replan_scope": (
+        "schema_version",
+        "required",
+        "applies",
+        "scope",
+        "owner_agent_ids",
+        "selected_peer_agent",
+    ),
+    "agent_scope_frontier": (
+        "schema_version",
+        "action",
+        "effective_action",
+        "blocks_delivery",
+        "quiet_noop_allowed",
+        "requires_replan",
+        "recommended_action",
+        "spend_policy",
+    ),
+    "automation_liveness": (
+        "schema_version",
+        "keep_active",
+        "pause_allowed",
+        "pause_policy",
+        "automation_action",
+    ),
+    "vision_continuation_audit": (
+        "schema_version",
+        "required",
+        "decision",
+        "selected_todo_is_goal_completion",
+        "closeout_allowed_without_evidence",
+        "required_before_closeout",
+        "recommended_action",
+    ),
+    "handoff_readiness": (
+        "ready",
+        "codex_ready",
+        "handoff_status",
+        "post_handoff_run_seen",
+    ),
+    "capability_monitor_fallback": (
+        "schema_version",
+        "capability_gate_action",
+        "blocked_advancement_count",
+        "mode",
+    ),
+}
+CONTRACT_CAPSULE_TEXT_LIMITS = {
+    "work_lane_contract": {"action": 300, "material_transition": 240},
+    "execution_obligation": {"reason": 240},
+    "agent_scope_frontier": {"recommended_action": 320, "spend_policy": 220},
+    "automation_liveness": {"pause_policy": 260},
+    "vision_continuation_audit": {"recommended_action": 320},
+}
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -31,6 +138,42 @@ def _text_list(value: Any, *, limit: int, item_limit: int = 240) -> list[str]:
         if len(result) >= limit:
             break
     return result
+
+
+def _canonical_hash(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "sha256:" + sha256(encoded).hexdigest()
+
+
+def _compact_fields(
+    value: Any,
+    fields: tuple[str, ...],
+    *,
+    text_limits: Mapping[str, int] | None = None,
+) -> dict[str, Any]:
+    source = _mapping(value)
+    compact: dict[str, Any] = {}
+    limits = dict(text_limits or {})
+    for field in fields:
+        raw = source.get(field)
+        if raw is None:
+            continue
+        if field in limits:
+            text = _text(raw, limit=limits[field])
+            if text:
+                compact[field] = text
+        elif isinstance(raw, list):
+            values = _text_list(raw, limit=6, item_limit=140)
+            if values:
+                compact[field] = values
+        else:
+            compact[field] = raw
+    return compact
 
 
 def _selected_todo(payload: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -171,6 +314,136 @@ def _scheduler(payload: Mapping[str, Any]) -> dict[str, Any]:
     return scheduler
 
 
+def _execution_policy(payload: Mapping[str, Any]) -> dict[str, Any]:
+    fields = (
+        "normal_delivery_allowed",
+        "recovery_delivery_allowed",
+        "self_repair_allowed",
+        "capability_repair_allowed",
+        "workspace_repair_allowed",
+        "safe_bypass_allowed",
+        "safe_bypass_kind",
+        "blocked_action_scope",
+    )
+    return {field: payload[field] for field in fields if payload.get(field) is not None}
+
+
+def _contract_capsule(payload: Mapping[str, Any]) -> dict[str, Any]:
+    capsule: dict[str, Any] = {
+        "schema_version": CONTRACT_CAPSULE_SCHEMA_VERSION,
+        "source": "full_quota_decision",
+    }
+    for source_key, fields in CONTRACT_CAPSULE_FIELDS.items():
+        compact = _compact_fields(
+            payload.get(source_key),
+            fields,
+            text_limits=CONTRACT_CAPSULE_TEXT_LIMITS.get(source_key),
+        )
+        if compact:
+            capsule[source_key] = compact
+
+    work_lane = _mapping(payload.get("work_lane_contract"))
+    work_lane_compact = _mapping(capsule.get("work_lane_contract"))
+    outcome_followthrough = _mapping(work_lane.get("outcome_followthrough"))
+    if outcome_followthrough:
+        work_lane_compact["outcome_followthrough"] = _compact_fields(
+            outcome_followthrough,
+            (
+                "required",
+                "obligation",
+                "accepted_resolution_kinds",
+                "spend_policy",
+            ),
+            text_limits={"spend_policy": 220},
+        )
+        capsule["work_lane_contract"] = work_lane_compact
+
+    packet = _mapping(payload.get("protocol_action_packet"))
+    if packet:
+        summary = _text(packet.get("summary"), limit=2_000)
+        capsule["protocol_action_packet"] = {
+            "schema_version": packet.get("schema_version"),
+            "present": True,
+            "summary": summary,
+            "summary_hash": _canonical_hash(summary or ""),
+            "derivation_status": "unproven_retain_summary",
+            "candidate_derivation_inputs": [
+                "action",
+                "user",
+                "work_lane_contract",
+                "automation_liveness",
+                "scheduler",
+            ],
+        }
+
+    warnings = [field for field in ACTIONABLE_WARNING_FIELDS if payload.get(field)]
+    if warnings:
+        capsule["actionable_warning_refs"] = warnings
+    return capsule
+
+
+def _action_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
+    interaction = _mapping(payload.get("interaction_contract"))
+    agent_channel = _mapping(interaction.get("agent_channel"))
+    cli_channel = _mapping(interaction.get("cli_channel"))
+    return {
+        "decision": payload.get("decision"),
+        "should_run": bool(payload.get("should_run")),
+        "effective_action": payload.get("effective_action"),
+        "state": payload.get("state"),
+        "action": {
+            "recommended_action": _text(payload.get("recommended_action"), limit=480),
+            "primary_action": _text(agent_channel.get("primary_action"), limit=480),
+            "must_attempt": bool(agent_channel.get("must_attempt")),
+            "delivery_allowed": bool(agent_channel.get("delivery_allowed")),
+            "quiet_noop_allowed": bool(agent_channel.get("quiet_noop_allowed")),
+            "selected_todo": _selected_todo(payload),
+        },
+        "user": _user_channel(interaction, payload),
+        "required_reads": _required_reads(interaction, payload),
+        "boundary": _boundary(payload),
+        "execution_policy": _execution_policy(payload),
+        "writeback": {
+            "next_cli_actions": _text_list(
+                cli_channel.get("next_cli_actions"),
+                limit=5,
+                item_limit=420,
+            ),
+            "spend_allowed_now": bool(cli_channel.get("spend_allowed_now")),
+            "spend_after_validation": bool(cli_channel.get("spend_after_validation")),
+            "spend_policy": _text(cli_channel.get("spend_policy"), limit=280),
+        },
+        "scheduler": _scheduler(payload),
+        "contract_capsule": _contract_capsule(payload),
+    }
+
+
+def turn_envelope_action_signature_document(envelope: Mapping[str, Any]) -> dict[str, Any]:
+    fields = (
+        "decision",
+        "should_run",
+        "effective_action",
+        "state",
+        "action",
+        "user",
+        "required_reads",
+        "boundary",
+        "execution_policy",
+        "writeback",
+        "scheduler",
+        "contract_capsule",
+    )
+    return {
+        "schema_version": ACTION_SIGNATURE_SCHEMA_VERSION,
+        "coverage": ACTION_SIGNATURE_COVERAGE,
+        **{field: envelope.get(field) for field in fields},
+    }
+
+
+def quota_action_signature_document(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return turn_envelope_action_signature_document(_action_projection(payload))
+
+
 def _cold_path(payload: Mapping[str, Any], agent_id: str | None) -> dict[str, Any]:
     goal_id = str(payload.get("goal_id") or "<goal-id>")
     agent_arg = f" --agent-id {agent_id}" if agent_id else ""
@@ -194,9 +467,6 @@ def _cold_path(payload: Mapping[str, Any], agent_id: str | None) -> dict[str, An
 def build_turn_envelope(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Project a full quota decision into an additive, model-facing hot-path view."""
 
-    interaction = _mapping(payload.get("interaction_contract"))
-    agent_channel = _mapping(interaction.get("agent_channel"))
-    cli_channel = _mapping(interaction.get("cli_channel"))
     agent_identity = _mapping(payload.get("agent_identity"))
     agent_id = str(agent_identity.get("agent_id") or "").strip() or None
 
@@ -207,36 +477,22 @@ def build_turn_envelope(payload: Mapping[str, Any]) -> dict[str, Any]:
         "view": "turn_envelope",
         "goal_id": payload.get("goal_id"),
         "agent_id": agent_id,
-        "decision": payload.get("decision"),
-        "should_run": bool(payload.get("should_run")),
-        "effective_action": payload.get("effective_action"),
-        "state": payload.get("state"),
         "reason": _text(payload.get("reason"), limit=360),
         "action_required": bool(payload.get("action_required")),
         "open_count": int(payload.get("open_count") or 0),
-        "action": {
-            "recommended_action": _text(payload.get("recommended_action"), limit=480),
-            "primary_action": _text(agent_channel.get("primary_action"), limit=480),
-            "must_attempt": bool(agent_channel.get("must_attempt")),
-            "delivery_allowed": bool(agent_channel.get("delivery_allowed")),
-            "quiet_noop_allowed": bool(agent_channel.get("quiet_noop_allowed")),
-            "selected_todo": _selected_todo(payload),
-        },
-        "user": _user_channel(interaction, payload),
-        "required_reads": _required_reads(interaction, payload),
-        "boundary": _boundary(payload),
-        "writeback": {
-            "next_cli_actions": _text_list(
-                cli_channel.get("next_cli_actions"),
-                limit=5,
-                item_limit=420,
-            ),
-            "spend_allowed_now": bool(cli_channel.get("spend_allowed_now")),
-            "spend_after_validation": bool(cli_channel.get("spend_after_validation")),
-            "spend_policy": _text(cli_channel.get("spend_policy"), limit=280),
-        },
-        "scheduler": _scheduler(payload),
+        **_action_projection(payload),
         "detail_ref": _cold_path(payload, agent_id),
+    }
+
+    source_signature = quota_action_signature_document(payload)
+    envelope_signature = turn_envelope_action_signature_document(envelope)
+    envelope["action_signature"] = {
+        "schema_version": ACTION_SIGNATURE_SCHEMA_VERSION,
+        "coverage": ACTION_SIGNATURE_COVERAGE,
+        "source_hash": _canonical_hash(source_signature),
+        "envelope_hash": _canonical_hash(envelope_signature),
+        "matches": source_signature == envelope_signature,
+        "source_decision_hash": _canonical_hash(dict(payload)),
     }
 
     source_bytes = len(json.dumps(dict(payload), ensure_ascii=False, separators=(",", ":")))
