@@ -90,6 +90,11 @@ def executed_receipt(receipt_id: str = "receipt-inject-1") -> dict:
         "adapter_id": "fixture-host",
         "outcome": "executed",
         "authority_ref": "owner-gate:inject-1",
+        "rollback_boundary": {
+            "mode": "compensating_action",
+            "ref": "policy:fixture-inject-compensation",
+            "automatic": False,
+        },
         "evidence_refs": ["host-effect:inject-1"],
         "reason_codes": ["adapter-success"],
     }
@@ -159,6 +164,21 @@ def main() -> int:
             assert "missing required host capabilities" in str(exc), exc
         else:
             raise AssertionError("executed receipt must prove required capabilities")
+
+        receipt_without_rollback = executed_receipt("receipt-missing-rollback")
+        receipt_without_rollback.pop("rollback_boundary")
+        try:
+            record_supervisor_receipt(
+                log_path=event_log,
+                goal_id=GOAL_ID,
+                receipt=receipt_without_rollback,
+                host_capabilities=["session_message_injection"],
+                execute=True,
+            )
+        except ValueError as exc:
+            assert "requires rollback_boundary" in str(exc), exc
+        else:
+            raise AssertionError("executed receipt must declare a rollback boundary")
 
         receipt = record_supervisor_receipt(
             log_path=event_log,

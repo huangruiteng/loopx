@@ -106,12 +106,14 @@ loopx supervisor-event receipt \
 
 An `executed` receipt is stricter: it can only be appended through the host
 adapter API, which supplies verified capabilities outside the editable receipt
-JSON. It also requires an opaque authority reference and compact evidence
-references. Missing capability, authority, or evidence fails closed. A normal
-CLI caller therefore cannot promote a proposal to executed merely by naming a
-capability. `rejected` and `failed` receipts remain durable attempt evidence
-without projecting success. Reusing the same record id is idempotent when the
-payload matches and a conflict when it differs.
+JSON. It also requires an opaque authority reference, compact evidence
+references, and an explicit rollback boundary. Rollback mode is closed to
+`compensating_action` or `not_reversible`; neither mode authorizes automatic
+rollback. Missing capability, authority, evidence, or rollback boundary fails
+closed. A normal CLI caller therefore cannot promote a proposal to executed
+merely by naming a capability. `rejected` and `failed` receipts remain durable
+attempt evidence without projecting success. Reusing the same record id is
+idempotent when the payload matches and a conflict when it differs.
 
 Read the compact projection with:
 
@@ -143,6 +145,23 @@ The v0 CLI does not execute these actions. Missing host capabilities leave the
 proposal unexecuted; a model response is never accepted as proof that a session
 was injected, forked, or terminated. Destructive actions require explicit host
 authority even after an executor exists.
+
+## Opt-In Inject Adapter Canary
+
+`loopx.control_plane.agents.supervisor_inject` exposes one narrow Python host
+seam for `inject`. LoopX ships no default adapter and no CLI switch that enables
+it. A host must explicitly supply an adapter with
+`session_message_injection`, a rollback mode and opaque rollback policy ref,
+plus an authority ref for the individual execution. Dry-run validates the
+entire request without calling the host.
+
+On execution, the adapter receives a stable `SupervisorInjectRequest` and must
+return a typed `SupervisorInjectResult`. LoopX then appends the capability-
+matched receipt. A prior executed receipt suppresses a second host call, so a
+repeated control-plane request is idempotent. The rollback field records the
+boundary; it does not retract a message or grant authority to send a
+compensating message. `handoff` and `discard` remain proposal-only until their
+own host contracts and safety evidence exist.
 
 ## Authority Boundaries
 
