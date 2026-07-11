@@ -173,6 +173,9 @@ def build_peer_supervisor_contract(
             "required_host_capabilities_by_kind": HOST_CAPABILITIES_BY_DECISION,
             "missing_capability_behavior": "leave proposal unexecuted",
             "destructive_actions_require_explicit_host_authority": True,
+            "durable_proposal_required": True,
+            "host_receipt_required_for_executed_status": True,
+            "proposal_is_execution_evidence": False,
         },
     }
 
@@ -446,11 +449,20 @@ Return the decision in this shape:
 {json.dumps(decision_template, ensure_ascii=True, indent=2)}
 ```
 
+Persist the exact decision before reporting it. Preview first, then append it
+only after validation; the local JSON path is not stored:
+
+```bash
+{cli_bin} --format json supervisor-event propose --goal-id {shlex.quote(goal_id)} --agent-id {shlex.quote(agent_id)} --decision-json <decision.json>
+{cli_bin} --format json supervisor-event propose --goal-id {shlex.quote(goal_id)} --agent-id {shlex.quote(agent_id)} --decision-json <decision.json> --execute
+```
+
 This prototype is proposal-only. Never claim an injection, handoff, discard, or
 session termination happened unless a host adapter exposes every required
-capability and returns execution evidence. Missing capabilities leave the
-proposal unexecuted. Do not mutate peer claims merely to make the proposal look
-resolved.
+capability and appends a capability-matched `supervisor_host_receipt_v0` with
+authority and evidence references. A proposal record is never execution
+evidence. Missing capabilities leave the proposal unexecuted. Do not mutate
+peer claims merely to make the proposal look resolved.
 """
     return {
         "ok": True,

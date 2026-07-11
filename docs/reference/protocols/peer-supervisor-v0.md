@@ -79,6 +79,51 @@ Degraded status contracts behave the same way: the packet preserves the usable
 read-only projection, reports compact health counts, and does not claim that
 the decision input is complete.
 
+## Durable Proposals And Host Receipts
+
+The supervisor records its exact normalized decision before reporting it:
+
+```bash
+loopx supervisor-event propose \
+  --goal-id <goal-id> \
+  --agent-id <supervisor-agent-id> \
+  --decision-json <decision.json> \
+  --execute
+```
+
+This appends a goal-local `supervisor_proposed` event. It remains
+`proposal_only`; the proposal is never proof that a host changed a session.
+
+The CLI can validate or append a `rejected` or `failed` attempt receipt:
+
+```bash
+loopx supervisor-event receipt \
+  --goal-id <goal-id> \
+  --agent-id <supervisor-agent-id> \
+  --receipt-json <receipt.json> \
+  --execute
+```
+
+An `executed` receipt is stricter: it can only be appended through the host
+adapter API, which supplies verified capabilities outside the editable receipt
+JSON. It also requires an opaque authority reference and compact evidence
+references. Missing capability, authority, or evidence fails closed. A normal
+CLI caller therefore cannot promote a proposal to executed merely by naming a
+capability. `rejected` and `failed` receipts remain durable attempt evidence
+without projecting success. Reusing the same record id is idempotent when the
+payload matches and a conflict when it differs.
+
+Read the compact projection with:
+
+```bash
+loopx supervisor-event list \
+  --goal-id <goal-id> \
+  --agent-id <supervisor-agent-id>
+```
+
+The ledger is local-private goal runtime state. JSON input paths are never
+recorded, and inline credential-shaped values are rejected.
+
 ## Decision Contract
 
 `supervisor_decision_v0` uses an enum-like closed set:

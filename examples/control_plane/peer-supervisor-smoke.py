@@ -195,6 +195,7 @@ def main() -> int:
         assert "not a durable leader" in task_body, task_body
         assert "proposal-only" in task_body, task_body
         assert "supervisor-observe" in task_body and "quota should-run" in task_body
+        assert "supervisor-event propose" in task_body, task_body
         assert "evidence-log" not in task_body, task_body
         assert f"status --goal-id {GOAL_ID} --agent-id {AGENTS[2]}" not in task_body
         assert f"quota should-run --goal-id {GOAL_ID} --agent-id {AGENTS[2]}" not in task_body

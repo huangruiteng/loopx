@@ -129,6 +129,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
                 "command": "loopx supervisor-observe",
                 "purpose": "Read one public-safe supervisor packet over peer status and evidence.",
             },
+            {
+                "command": "loopx supervisor-event",
+                "purpose": "Preview, append, or read supervisor proposals and host execution receipts.",
+            },
             {"command": "loopx upgrade-plan", "purpose": "Plan default heartbeat upgrade propagation."},
             {"command": "loopx update", "purpose": "Check, dry-run, or execute the no-clone update path."},
         ],

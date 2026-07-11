@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -16,6 +17,13 @@ from ..control_plane.agents.supervisor import (
     peer_supervisor_for_goal,
     render_supervisor_observation_markdown,
     render_supervisor_prompt_markdown,
+)
+from ..control_plane.agents.supervisor_events import (
+    load_supervisor_event_projection,
+    record_supervisor_proposal,
+    record_supervisor_receipt,
+    render_supervisor_event_markdown,
+    supervisor_event_log_path,
 )
 from ..control_plane.runtime.agent_scoped_evidence_log import (
     build_agent_scoped_evidence_log,
@@ -76,6 +84,7 @@ SUPPORT_CONTROL_COMMANDS = {
     "registry",
     "registry-boundary",
     "serve-status",
+    "supervisor-event",
     "supervisor-observe",
     "supervisor-prompt",
 }
@@ -281,6 +290,35 @@ def register_support_control_commands(
         "--agent-id",
         required=True,
         help="Registered peer configured as coordination.supervisor.agent_id.",
+    )
+
+    supervisor_event_parser = subparsers.add_parser(
+        "supervisor-event",
+        help="Preview, append, or read durable supervisor proposals and host receipts.",
+    )
+    add_subcommand_format(supervisor_event_parser)
+    supervisor_event_parser.add_argument(
+        "supervisor_event_action",
+        choices=("propose", "receipt", "list"),
+    )
+    supervisor_event_parser.add_argument("--goal-id", required=True)
+    supervisor_event_parser.add_argument(
+        "--agent-id",
+        required=True,
+        help="Registered peer configured as coordination.supervisor.agent_id.",
+    )
+    supervisor_event_parser.add_argument(
+        "--decision-json",
+        help="Local JSON object for `propose`; its path is never recorded.",
+    )
+    supervisor_event_parser.add_argument(
+        "--receipt-json",
+        help="Local JSON object for `receipt`; its path is never recorded.",
+    )
+    supervisor_event_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Append the validated event. Omit for a no-write preview.",
     )
 
     promotion_gate_parser = subparsers.add_parser(
@@ -633,6 +671,64 @@ def handle_support_control_command(
                 "error": str(exc),
             }
         print_payload(payload, output_format(args), render_supervisor_observation_markdown)
+        return 0 if payload.get("ok") else 1
+
+    if args.command == "supervisor-event":
+        try:
+            agent_registry_path = fallback_global_registry(registry_path, args.runtime_root)
+            agent_id = require_registered_agent_id(
+                registry_path=agent_registry_path,
+                goal_id=args.goal_id,
+                agent_id=args.agent_id,
+                field="agent_id",
+            )
+            goal = load_goal_from_registry(agent_registry_path, args.goal_id)
+            supervisor = peer_supervisor_for_goal(goal)
+            if supervisor is None:
+                raise ValueError("peer supervisor is disabled for this goal")
+            if supervisor.get("agent_id") != agent_id:
+                raise ValueError(
+                    f"agent_id={agent_id!r} is not the configured supervisor; "
+                    f"supervisor_agent={supervisor.get('agent_id')!r}"
+                )
+            registry = load_registry(agent_registry_path)
+            runtime_root = resolve_runtime_root(registry, args.runtime_root)
+            log_path = supervisor_event_log_path(runtime_root, args.goal_id)
+            if args.supervisor_event_action == "list":
+                if args.execute or args.decision_json or args.receipt_json:
+                    raise ValueError("list does not accept event JSON or --execute")
+                payload = load_supervisor_event_projection(log_path, goal_id=args.goal_id)
+            elif args.supervisor_event_action == "propose":
+                if not args.decision_json or args.receipt_json:
+                    raise ValueError("propose requires only --decision-json")
+                decision = json.loads(Path(args.decision_json).read_text(encoding="utf-8"))
+                payload = record_supervisor_proposal(
+                    log_path=log_path,
+                    goal_id=args.goal_id,
+                    supervisor=supervisor,
+                    decision=decision,
+                    execute=bool(args.execute),
+                )
+            else:
+                if not args.receipt_json or args.decision_json:
+                    raise ValueError("receipt requires only --receipt-json")
+                receipt = json.loads(Path(args.receipt_json).read_text(encoding="utf-8"))
+                payload = record_supervisor_receipt(
+                    log_path=log_path,
+                    goal_id=args.goal_id,
+                    receipt=receipt,
+                    execute=bool(args.execute),
+                )
+            payload.setdefault("goal_id", args.goal_id)
+            payload.setdefault("supervisor_agent_id", agent_id)
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "goal_id": args.goal_id,
+                "supervisor_agent_id": args.agent_id,
+                "error": str(exc),
+            }
+        print_payload(payload, output_format(args), render_supervisor_event_markdown)
         return 0 if payload.get("ok") else 1
 
     if args.command == "promotion-gate":
