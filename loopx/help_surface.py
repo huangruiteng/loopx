@@ -73,6 +73,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
             },
             {"command": "loopx quota should-run", "purpose": "Decide whether the next agent turn should run."},
             {"command": "loopx history --goal-id <goal-id>", "purpose": "Read compact run history."},
+            {
+                "command": "loopx history trajectory-hygiene --goal-id <goal-id> --limit 100",
+                "purpose": "Measure controller density and attribution gaps from compact history without reading raw sessions.",
+            },
         ],
     },
     {

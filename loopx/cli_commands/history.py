@@ -11,6 +11,7 @@ from ..benchmark_adapters.agents_last_exam import (
 )
 from ..control_plane.work_items.delivery_batch_scale import DELIVERY_BATCH_SCALE_CHOICES
 from ..control_plane.work_items.delivery_outcome import DELIVERY_OUTCOME_CHOICES
+from ..control_plane.runtime.trajectory_hygiene import build_trajectory_hygiene_summary
 from ..global_registry import sync_project_registry_to_global
 from ..history import (
     append_active_user_assisted_pilot,
@@ -34,6 +35,9 @@ from ..history import (
     render_index_duplicate_repair_markdown,
 )
 from ..paths import resolve_runtime_root
+from ..presentation.renderers.trajectory_hygiene_markdown import (
+    render_trajectory_hygiene_markdown,
+)
 from ..status import (
     compact_active_user_assisted_pilot,
     compact_benchmark_comparison,
@@ -69,12 +73,13 @@ def register_history_command(subparsers: argparse._SubParsersAction) -> None:
             "append-active-user-assisted-pilot",
             "inspect-index-duplicates",
             "repair-index-duplicates",
+            "trajectory-hygiene",
         ],
         help=(
             "Append a compact benchmark_run_v0, benchmark_result_v0, benchmark_comparison_v0, "
             "benchmark_learning_ledger_v0, benchmark_experiment_report_v0, ALE compact result report, or "
             "active_user_assisted_pilot_v0 event; inspect duplicate run-index identities; "
-            "or repair safe duplicate index rows."
+            "repair safe duplicate index rows; or audit compact-history trajectory hygiene."
         ),
     )
     history_parser.add_argument("--goal-id", help="Only show one goal.")
@@ -157,6 +162,32 @@ def handle_history_command(
     append_benchmark_run_rollout_event: BenchmarkRolloutEventAppender,
     append_benchmark_result_rollout_event: BenchmarkRolloutEventAppender,
 ) -> int:
+    if args.history_action == "trajectory-hygiene":
+        try:
+            if not args.goal_id:
+                raise ValueError("history trajectory-hygiene requires --goal-id")
+            registry = load_registry(registry_path)
+            runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+            history = collect_history(
+                registry_path=registry_path,
+                runtime_root=runtime_root,
+                goal_id=args.goal_id,
+                limit=max(0, args.limit),
+            )
+            payload = build_trajectory_hygiene_summary(history)
+            payload["registry"] = str(registry_path)
+            payload["runtime_root"] = str(runtime_root)
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "registry": str(registry_path),
+                "runtime_root": runtime_root_arg,
+                "goal_filter": args.goal_id,
+                "error": str(exc),
+            }
+        print_payload(payload, args.format, render_trajectory_hygiene_markdown)
+        return 0 if payload.get("ok") else 1
+
     if args.history_action == "inspect-index-duplicates":
         try:
             payload = inspect_index_duplicates(
