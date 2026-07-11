@@ -1323,16 +1323,14 @@ class SkillsBenchLocalAcpRelay:
                             "codex_cli_goal_" + retryable_startup_blocker_stage
                         )
                     pre_bridge_blocker_stage = ""
-                    if (
-                        bridge_summary_path is not None
-                        and not first_action_seen
-                    ):
+                    if bridge_summary_path is not None and not first_action_seen:
                         pre_bridge_blocker_stage = (
                             codex_cli_tui_pre_bridge_blocker_stage(
                                 capture,
                                 prompt_visible=(
                                     codex_cli_tui_input_prompt_visible(capture)
                                 ),
+                                terminal_observed=goal_failed_now,
                             )
                         )
                     if pre_bridge_blocker_stage:
@@ -1352,6 +1350,7 @@ class SkillsBenchLocalAcpRelay:
                             if recovery_action == "press_enter":
                                 tmux_submit_enter(tmux_name)
                             else:
+                                goal_kickoff_prompt_submitted = False
                                 tmux_type_text_and_submit(
                                     tmux_name=tmux_name,
                                     text=goal_command_text,

@@ -750,6 +750,51 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         )
         == "pre_bridge_tui_error_prompt"
     )
+    stale_goal_failed_scrollback = "\n".join(
+        [
+            "Goal active",
+            "Goal failed",
+            *[f"historical tui line {index}" for index in range(50)],
+            "› ",
+        ]
+    )
+    assert (
+        codex_cli_tui_pre_bridge_blocker_stage(
+            stale_goal_failed_scrollback,
+            prompt_visible=True,
+        )
+        == ""
+    )
+    assert (
+        codex_cli_tui_pre_bridge_blocker_stage(
+            stale_goal_failed_scrollback,
+            prompt_visible=True,
+            terminal_observed=True,
+        )
+        == "pre_bridge_tui_stale_terminal"
+    )
+    assert (
+        codex_cli_tui_pre_bridge_terminal_stage(
+            stale_goal_failed_scrollback,
+            prompt_visible=True,
+        )
+        == "pre_bridge_tui_stale_terminal"
+    )
+    assert (
+        codex_cli_tui_pre_bridge_recovery_action(
+            stale_goal_failed_scrollback,
+            stage="pre_bridge_tui_stale_terminal",
+        )
+        == "typed_goal_resubmit"
+    )
+    assert (
+        codex_cli_tui_pre_bridge_recovery_skip_reason(
+            stale_goal_failed_scrollback,
+            stage="pre_bridge_tui_stale_terminal",
+            recovery_action="typed_goal_resubmit",
+        )
+        == ""
+    )
     assert (
         codex_cli_tui_pre_bridge_blocker_stage(
             "Goal active\nGoal failed\n› ",
@@ -1493,6 +1538,8 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "kickoff_submitted=goal_kickoff_prompt_submitted" in source
     assert "text=CODEX_CLI_GOAL_KICKOFF_PROMPT" in source
     assert "goal_failed_now = False" in source
+    assert source.count("goal_kickoff_prompt_submitted = False") >= 2
+    assert "terminal_observed=goal_failed_now" in source
     assert "goal_kickoff_prompt_raw_text_recorded" in source
     assert source.count("codex_cli_goal_watchdog_expired(") == 2
     assert "and not turn_active" in source

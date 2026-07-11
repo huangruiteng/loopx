@@ -103,6 +103,7 @@ def codex_cli_tui_pre_bridge_blocker_stage(
     capture: str,
     *,
     prompt_visible: bool,
+    terminal_observed: bool = False,
 ) -> str:
     """Classify public-safe Codex CLI TUI blockers before bridge activity."""
 
@@ -114,6 +115,8 @@ def codex_cli_tui_pre_bridge_blocker_stage(
         return "pre_bridge_tui_model_timeout"
     if _capture_has_error_marker(capture):
         return "pre_bridge_tui_error_prompt"
+    if terminal_observed and ("Goal failed" in capture or "Goal blocked" in capture):
+        return "pre_bridge_tui_stale_terminal"
     return ""
 
 
@@ -123,6 +126,7 @@ def codex_cli_tui_pre_bridge_recovery_action(capture: str, *, stage: str) -> str
     if stage not in {
         "pre_bridge_tui_model_timeout",
         "pre_bridge_tui_error_prompt",
+        "pre_bridge_tui_stale_terminal",
     }:
         return ""
     if stage == "pre_bridge_tui_error_prompt" and codex_cli_tui_input_prompt_visible(
@@ -151,6 +155,7 @@ def codex_cli_tui_pre_bridge_recovery_skip_reason(
     if stage not in {
         "pre_bridge_tui_model_timeout",
         "pre_bridge_tui_error_prompt",
+        "pre_bridge_tui_stale_terminal",
     }:
         return ""
     if not _capture_has_retry_affordance(capture) and not codex_cli_tui_input_prompt_visible(
@@ -175,6 +180,8 @@ def codex_cli_tui_pre_bridge_terminal_stage(
         return "pre_bridge_tui_model_timeout"
     if _capture_has_error_marker(capture):
         return "pre_bridge_tui_error_prompt"
+    if "Goal failed" in capture or "Goal blocked" in capture:
+        return "pre_bridge_tui_stale_terminal"
     return ""
 
 
