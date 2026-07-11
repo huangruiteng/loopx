@@ -232,6 +232,14 @@ branch carries `resource_lane` plus a `resource_assignment`, and the top-level
 `resource_portfolio` reports capacity, current usage, available, selected, and
 remaining slots per lane.
 
+Declaring resource capacities is an explicit portfolio-fill mode: the requested
+overall width becomes the selection ceiling instead of the legacy confidence
+prefix, while existing scores, hazards, and typed evidence remain unchanged.
+An available slot therefore makes a ranked candidate eligible for the analysis
+packet; it is not evidence that the candidate is valuable enough to execute.
+The agent must still apply the goal's evidence, serving-cost, quota, claim, and
+lease gates before launch.
+
 When a higher-ranked candidate is rejected because its dependency is not in the
 selected wave, its write scope conflicts with an already selected branch, or it
 has another planner hazard, selection keeps scanning. A later safe candidate in
