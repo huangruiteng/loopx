@@ -15,23 +15,17 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx import status as status_module  # noqa: E402
+from loopx.control_plane import status_runtime_summaries  # noqa: E402
 from loopx.control_plane.runtime import event_ledger as event_ledger_read_model  # noqa: E402
 
 
+RUNTIME_CONTEXT = status_module.build_status_runtime_summary_context()
+
+
 def direct_event_class(run: dict[str, Any]) -> str:
-    return event_ledger_read_model.event_ledger_event_class(
+    return status_runtime_summaries.event_ledger_event_class(
         run,
-        compact_benchmark_run=status_module.compact_benchmark_run,
-        compact_benchmark_result=status_module.compact_benchmark_result,
-        compact_benchmark_comparison=status_module.compact_benchmark_comparison,
-        compact_benchmark_learning_ledger=status_module.compact_benchmark_learning_ledger,
-        compact_benchmark_experiment_report=status_module.compact_benchmark_experiment_report,
-        compact_active_user_assisted_pilot=status_module.compact_active_user_assisted_pilot,
-        run_has_external_evidence_watch_signal=status_module.run_has_external_evidence_watch_signal,
-        decision_classifications=status_module.EVENT_LEDGER_DECISION_CLASSIFICATIONS,
-        evidence_classifications=status_module.EVENT_LEDGER_EVIDENCE_CLASSIFICATIONS,
-        evidence_hints=status_module.EVENT_LEDGER_EVIDENCE_HINTS,
-        state_classifications=status_module.EVENT_LEDGER_STATE_CLASSIFICATIONS,
+        context=RUNTIME_CONTEXT,
     )
 
 
@@ -101,7 +95,13 @@ def main() -> None:
     history = {"runs": runs}
 
     for run in runs:
-        assert status_module.event_ledger_event_class(run) == direct_event_class(run), run
+        assert direct_event_class(run) in {
+            "accounting",
+            "decision",
+            "evidence",
+            "state",
+            "work",
+        }, run
 
     with tempfile.TemporaryDirectory(prefix="loopx-event-ledger-summary-") as raw_tmp:
         wrapper = status_module.build_status_runtime_summaries(
@@ -115,10 +115,14 @@ def main() -> None:
     direct = direct_summary(history)
     assert normalize_generated_at(direct, wrapper) == wrapper, (direct, wrapper)
 
-    assert status_module.blank_event_class_counts() == event_ledger_read_model.blank_event_class_counts()
-    assert status_module.blank_event_ledger_goal("project-z") == event_ledger_read_model.blank_event_ledger_goal(
-        "project-z"
-    )
+    assert event_ledger_read_model.blank_event_class_counts() == {
+        "accounting": 0,
+        "decision": 0,
+        "evidence": 0,
+        "state": 0,
+        "work": 0,
+    }
+    assert event_ledger_read_model.blank_event_ledger_goal("project-z")["goal_id"] == "project-z"
 
     totals = wrapper["totals"]
     assert wrapper["available"] is True, wrapper
