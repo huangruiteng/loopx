@@ -583,6 +583,7 @@ def main() -> int:
         assert lifecycle_plan["sync_required"] is True, lifecycle_plan
         assert lifecycle_plan["retrieval_allowed"] is False, lifecycle_plan
         assert lifecycle_provider.retrieve_count == 0
+        assert lifecycle_root not in json.dumps(stale_retrieval)
         assert_boundary(stale_retrieval)
 
         lifecycle_sync = sync_issue_fix_repository_memory(
@@ -600,6 +601,7 @@ def main() -> int:
         assert activation["previous_repository_revision"] == PREVIOUS_REVISION
         assert activation["retrieval_allowed"] is True, activation
         assert lifecycle_provider.sync_count == 1
+        assert lifecycle_root not in json.dumps(lifecycle_sync)
         assert_boundary(lifecycle_sync)
 
         pending_provider = LifecycleProvider(
