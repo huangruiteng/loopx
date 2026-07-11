@@ -198,7 +198,6 @@ from .control_plane.runtime.run_history import (
     latest_run as _latest_run_read_model,
 )
 from .control_plane.runtime.event_ledger import (
-    EVENT_LEDGER_CLASSES,
     blank_event_class_counts,
     blank_event_ledger_goal,
     event_ledger_event_class as _event_ledger_event_class_read_model,
@@ -321,9 +320,6 @@ from .control_plane.quota.usage_summary import (
 from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
-from .presentation.renderers.status_markdown import (
-    render_status_markdown as _render_status_markdown,
-)
 from .rollout_event_log import load_rollout_events, rollout_event_log_path
 from .state_projection import (
     active_state_next_action_entries,
@@ -6730,7 +6726,3 @@ def collect_status(
         goal_id=goal_id,
         context=build_status_collection_context(),
     )
-
-
-def render_status_markdown(payload: dict[str, Any]) -> str:
-    return _render_status_markdown(payload, event_classes=EVENT_LEDGER_CLASSES)

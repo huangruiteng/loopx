@@ -16,7 +16,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.review_packet import build_review_packet  # noqa: E402
-from loopx.status import collect_status, compact_benchmark_run, render_status_markdown  # noqa: E402
+from loopx.presentation.renderers.status_markdown import render_status_markdown  # noqa: E402
+from loopx.status import collect_status, compact_benchmark_run  # noqa: E402
 from loopx.control_plane.runtime.benchmark_projection import (  # noqa: E402
     compact_benchmark_run_core,
 )

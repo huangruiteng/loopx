@@ -180,7 +180,10 @@ def review_material_url(base_url: str, *, path: str) -> str:
 def main() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(repo_root))
-    from loopx.status import collect_status, render_status_markdown  # noqa: PLC0415
+    from loopx.presentation.renderers.status_markdown import (  # noqa: PLC0415
+        render_status_markdown,
+    )
+    from loopx.status import collect_status  # noqa: PLC0415
 
     with tempfile.TemporaryDirectory() as raw_tmp:
         root = Path(raw_tmp)

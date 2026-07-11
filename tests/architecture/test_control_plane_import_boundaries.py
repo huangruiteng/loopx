@@ -34,10 +34,6 @@ STATUS_OUTWARD_DEPENDENCY_DEBT = {
         "loopx.status",
         "loopx.benchmark_adapters.skillsbench_verifier_bootstrap",
     ),
-    (
-        "loopx.status",
-        "loopx.presentation.renderers.status_markdown",
-    ),
 }
 
 

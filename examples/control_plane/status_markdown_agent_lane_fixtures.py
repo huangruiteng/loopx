@@ -9,7 +9,8 @@ from loopx.cli_commands.status import (
     attach_agent_lane_next_actions,
 )
 from loopx.review_packet import build_review_packet
-from loopx.status import project_asset_todo_summary, render_status_markdown
+from loopx.presentation.renderers.status_markdown import render_status_markdown
+from loopx.status import project_asset_todo_summary
 
 
 def assert_status_agent_lane_next_action_projection() -> None:

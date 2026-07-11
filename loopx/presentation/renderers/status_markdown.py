@@ -4,6 +4,7 @@ from collections.abc import Collection
 from typing import Any
 
 from ...control_plane import control_plane_policy_summary
+from ...control_plane.runtime.event_ledger import EVENT_LEDGER_CLASSES
 from ...execution_profile import execution_profile_summary
 from ...long_task_cadence import long_task_cadence_hint_summary
 from ...orchestration import orchestration_policy_summary
@@ -920,7 +921,7 @@ def append_attention_queue_summary_markdown(
 def render_status_markdown(
     payload: dict[str, Any],
     *,
-    event_classes: Collection[str],
+    event_classes: Collection[str] = EVENT_LEDGER_CLASSES,
 ) -> str:
     lines: list[str] = []
     append_status_overview_markdown(lines, payload)

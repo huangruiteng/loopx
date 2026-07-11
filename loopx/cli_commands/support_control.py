@@ -16,6 +16,7 @@ from ..heartbeat_prompt import (
 )
 from ..history import load_registry
 from ..paths import resolve_runtime_root
+from ..presentation.renderers.status_markdown import render_status_markdown
 from ..promotion_gate import build_promotion_gate, render_promotion_gate_markdown
 from ..registry import (
     inspect_registry,
@@ -35,7 +36,6 @@ from ..state_backup import (
     execute_state_backup_plan,
     render_state_backup_markdown,
 )
-from ..status import render_status_markdown
 from ..status_server import (
     DEFAULT_STATUS_HOST,
     DEFAULT_STATUS_PATH,

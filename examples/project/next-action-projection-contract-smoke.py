@@ -12,13 +12,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import loopx.state_refresh as state_refresh
+from loopx.presentation.renderers.status_markdown import render_status_markdown
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
 from loopx.state_projection import (
     actions_are_projection_aligned,
     next_action_resolution_trace,
     state_action_projection_warning,
 )
-from loopx.status import collect_status, render_status_markdown
+from loopx.status import collect_status
 
 
 GOAL_ID = "next-action-projection-goal"

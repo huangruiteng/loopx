@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from loopx.status import render_status_markdown
+from loopx.presentation.renderers.status_markdown import render_status_markdown
 
 
 OLD_PLANNED_ACTION = "先审阅 LoopX operator gate；同意后再发送项目 agent 命令"

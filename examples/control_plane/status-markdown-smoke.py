@@ -25,8 +25,8 @@ from loopx.status import (  # noqa: E402
     delivery_batch_scale_for_run,
     delivery_outcome_for_run,
     project_asset_summary_is_public_safe,
-    render_status_markdown,
 )
+from loopx.presentation.renderers.status_markdown import render_status_markdown  # noqa: E402
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
 from loopx.review_packet import build_review_packet  # noqa: E402
 from loopx.handoff_budget import PROJECT_AGENT_HANDOFF_BUDGET  # noqa: E402
