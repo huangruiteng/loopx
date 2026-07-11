@@ -235,6 +235,45 @@ def _goal_boundary_authority_projection(
     return [str(scope) for scope in scopes], True
 
 
+def _load_goal_for_project(
+    *,
+    registry_path: Path | None,
+    goal_id: str,
+    project: str | Path,
+) -> tuple[dict[str, Any], Path]:
+    """Resolve a connected goal from the active or explicit project registry."""
+
+    requested_project = Path(project).expanduser().resolve()
+    project_registry = requested_project / ".loopx" / "registry.json"
+    candidates = [
+        path for path in (registry_path, project_registry) if path is not None
+    ]
+    mismatched_goal = False
+    for candidate in dict.fromkeys(candidates):
+        goal = load_goal_from_registry(candidate, goal_id)
+        if not isinstance(goal, dict):
+            continue
+        goal_repo = str(goal.get("repo") or "").strip()
+        if not goal_repo:
+            raise ValueError(
+                "connected goal repository is required for goal-default "
+                "reviewer notification"
+            )
+        if Path(goal_repo).expanduser().resolve() == requested_project:
+            return goal, requested_project
+        mismatched_goal = True
+
+    if mismatched_goal:
+        raise ValueError(
+            "--project must match the connected goal repository for "
+            "goal-default reviewer notification"
+        )
+    raise ValueError(
+        "goal-default reviewer notification goal was not found in the active "
+        "or project-local registry"
+    )
+
+
 def register_issue_fix_commands(
     subparsers: argparse._SubParsersAction,
     add_subcommand_format: AddFormat,
@@ -1454,29 +1493,14 @@ def handle_issue_fix_command(
             notification_lifecycle_packet: dict[str, Any] | None = None
             notification_lifecycle_path: Path | None = None
             if notification_sinks_input is None and args.goal_id:
-                if registry_path is None:
-                    raise ValueError(
-                        "goal-default reviewer notification requires a registry"
-                    )
-                goal = load_goal_from_registry(registry_path, args.goal_id)
-                goal_repo = str(goal.get("repo") or "").strip()
-                if not goal_repo:
-                    raise ValueError(
-                        "connected goal repository is required for goal-default "
-                        "reviewer notification"
-                    )
-                goal_project = Path(goal_repo).expanduser().resolve()
-                requested_project = Path(args.project).expanduser().resolve()
-                if goal_project != requested_project:
-                    raise ValueError(
-                        "--project must match the connected goal repository for "
-                        "goal-default reviewer notification"
-                    )
-                notification_sinks_input = (
-                    load_goal_reviewer_notification_sinks_input(
-                        goal=goal,
-                        project=args.project,
-                    )
+                goal, requested_project = _load_goal_for_project(
+                    registry_path=registry_path,
+                    goal_id=args.goal_id,
+                    project=args.project,
+                )
+                notification_sinks_input = load_goal_reviewer_notification_sinks_input(
+                    goal=goal,
+                    project=requested_project,
                 )
                 if notification_sinks_input is not None:
                     notification_sinks_source = "goal_default"

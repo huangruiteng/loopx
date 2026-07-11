@@ -728,6 +728,55 @@ def main() -> int:
         assert goal_default_packet["secondary_notification_status"] == "preview_ready"
         assert_public_safe(goal_default_packet)
 
+        unrelated_cwd = path / "unrelated-control-plane"
+        write(
+            unrelated_cwd / ".loopx/registry.json",
+            json.dumps({"schema_version": 1, "goals": []}),
+        )
+        project_registry_cli = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--format",
+                "json",
+                "issue-fix",
+                "reviewer-request",
+                "--url",
+                "https://github.com/owner/repo/pull/42",
+                "--repo-path",
+                str(path),
+                "--base-ref",
+                "main",
+                "--changed-file",
+                "src/map_only.py",
+                "--exclude-reviewer",
+                "@fallback-owner",
+                "--reviewer-sources-json",
+                str(reviewer_sources_path),
+                "--metadata-json",
+                str(metadata_path),
+                "--goal-id",
+                goal_id,
+                "--project",
+                str(path),
+            ],
+            cwd=unrelated_cwd,
+            env={**os.environ, "PYTHONPATH": str(ROOT)},
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        assert project_registry_cli.returncode == 0, project_registry_cli.stdout
+        project_registry_packet = json.loads(project_registry_cli.stdout)
+        assert (
+            project_registry_packet["secondary_notification_source"] == "goal_default"
+        )
+        assert (
+            project_registry_packet["secondary_notification_status"] == "preview_ready"
+        )
+        assert_public_safe(project_registry_packet)
+
         lifecycle_path = default_issue_fix_domain_state_ledger_path(
             project=path,
             goal_id=goal_id,
