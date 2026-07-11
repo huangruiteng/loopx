@@ -31,6 +31,7 @@ from .projection_rows import (
     projection_text_list as _as_text_list,
     todo_matches_agent_scope,
 )
+from .sync_receipt import compact_lark_kanban_sync_receipt, render_lark_kanban_markdown
 
 LARK_KANBAN_SCHEMA_VERSION = "loopx_lark_kanban_control_plane_v0"
 LARK_KANBAN_HEARTBEAT_VERSION = "loopx_lark_kanban_heartbeat_v0"
@@ -2118,6 +2119,9 @@ def sync_loopx_todos_to_lark_kanban(
         "execute": execute,
         "goal_id": goal_id,
         "agent_id": agent_id,
+        "base_token": config.base_token,
+        "table_id": config.table_id,
+        "view_id": config.view_id,
         "project": str(resolved_project) if resolved_project else None,
         "state_file": str(resolved_state_file),
         "todo_count": len(todos),
@@ -2508,30 +2512,3 @@ def _heartbeat_payload(
         "writeback": writeback,
         "commands": commands,
     }
-
-
-def render_lark_kanban_markdown(payload: dict[str, Any]) -> str:
-    lines = [
-        "# LoopX Lark Kanban",
-        "",
-        f"- ok: `{payload.get('ok')}`",
-        f"- schema_version: `{payload.get('schema_version')}`",
-    ]
-    for key in ("base_token", "table_id", "agent_id", "decision", "selected_record_id", "final_status"):
-        if payload.get(key) is not None:
-            lines.append(f"- {key}: `{payload.get(key)}`")
-    if payload.get("error"):
-        lines.append(f"- error: {payload.get('error')}")
-    if isinstance(payload.get("commands"), list):
-        lines.append("")
-        lines.append("## Commands")
-        for item in payload["commands"]:
-            if isinstance(item, dict):
-                marker = "ran" if item.get("executed") else "dry-run"
-                lines.append(f"- `{marker}` `{item.get('command')}`")
-    if isinstance(payload.get("writeback"), dict):
-        lines.append("")
-        lines.append("## Writeback")
-        for key, value in payload["writeback"].items():
-            lines.append(f"- {key}: `{_compact_text(value, limit=220)}`")
-    return "\n".join(lines)

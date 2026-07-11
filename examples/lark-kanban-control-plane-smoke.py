@@ -33,6 +33,7 @@ from loopx.presentation.sinks.lark.kanban import (  # noqa: E402
     lark_kanban_schema_payload,
     lark_kanban_ux_task,
     read_lark_kanban_local_config,
+    render_lark_kanban_markdown,
     seed_lark_kanban_records,
     setup_lark_kanban_board,
     sync_loopx_projection_to_lark_kanban,
@@ -527,6 +528,53 @@ def main() -> int:
         assert all(item["values"]["Workdir"] == "" for item in sync_payload["records"]), sync_payload
         assert str(root) not in json.dumps(sync_payload["records"], ensure_ascii=False), sync_payload
         assert all(item["command"]["executed"] is False for item in sync_payload["records"]), sync_payload
+        compact_cli = run_cli(
+            "--registry",
+            str(registry),
+            "lark-kanban",
+            "sync-loopx-todos",
+            "--base-token",
+            "base_public_fixture",
+            "--table-id",
+            "tbl_public_fixture",
+            "--goal-id",
+            "goal_lark_sync_fixture",
+        )
+        assert compact_cli["detail_level"] == "compact", compact_cli
+        assert compact_cli["record_count"] == 4, compact_cli
+        assert compact_cli["record_success_count"] == 4, compact_cli
+        assert compact_cli["record_failure_count"] == 0, compact_cli
+        assert compact_cli["base_token"] == "base_public_fixture", compact_cli
+        assert compact_cli["table_id"] == "tbl_public_fixture", compact_cli
+        assert "commands" not in compact_cli, compact_cli
+        assert all("command" not in item for item in compact_cli["records"]), compact_cli
+        assert all("values" not in item for item in compact_cli["records"]), compact_cli
+        compact_markdown = render_lark_kanban_markdown(compact_cli)
+        assert "- detail_level: `compact`" in compact_markdown, compact_markdown
+        assert "- record_success_count: `4`" in compact_markdown, compact_markdown
+        assert "## Records" in compact_markdown, compact_markdown
+        assert "## Commands" not in compact_markdown, compact_markdown
+
+        detailed_cli = run_cli(
+            "--registry",
+            str(registry),
+            "lark-kanban",
+            "sync-loopx-todos",
+            "--base-token",
+            "base_public_fixture",
+            "--table-id",
+            "tbl_public_fixture",
+            "--goal-id",
+            "goal_lark_sync_fixture",
+            "--include-command-details",
+        )
+        assert detailed_cli["detail_level"] == "full", detailed_cli
+        assert len(detailed_cli["commands"]) == 4, detailed_cli
+        assert all("command" in item for item in detailed_cli["records"]), detailed_cli
+        assert all("values" in item for item in detailed_cli["records"]), detailed_cli
+        compact_size = len(json.dumps(compact_cli, ensure_ascii=False))
+        detailed_size = len(json.dumps(detailed_cli, ensure_ascii=False))
+        assert compact_size * 3 < detailed_size, (compact_size, detailed_size)
         scoped_payload = sync_loopx_todos_to_lark_kanban(
             LarkKanbanConfig(
                 **{"base_" + "token": "base_public_fixture"},

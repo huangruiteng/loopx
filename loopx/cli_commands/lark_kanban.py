@@ -12,6 +12,7 @@ from ..presentation.sinks.lark.kanban import (
     DEFAULT_TABLE_NAME,
     LarkKanbanConfig,
     build_create_board_plan,
+    compact_lark_kanban_sync_receipt,
     create_lark_kanban_board,
     default_lark_kanban_config_path,
     lark_kanban_doctor,
@@ -134,6 +135,14 @@ def register_lark_kanban_commands(
     sync.add_argument("--state-file")
     sync.add_argument("--include-done", action="store_true")
     sync.add_argument("--limit", type=int, default=50)
+    sync.add_argument(
+        "--include-command-details",
+        action="store_true",
+        help=(
+            "Include full generated commands, provider stdout/stderr, parsed JSON, "
+            "and record values. The default returns a compact operator receipt."
+        ),
+    )
     sync.add_argument("--execute", action="store_true", help="Actually upsert records and remember record ids.")
 
     projection = sub.add_parser(
@@ -361,8 +370,9 @@ def handle_lark_kanban_command(
             payload["execute"] = bool(args.execute)
             payload["operator_card_fields"] = lark_kanban_operator_card_fields()
         elif args.lark_kanban_command == "sync-loopx-todos":
+            target_config = _target_config(args, config_path=config_path)
             payload = sync_loopx_todos_to_lark_kanban(
-                _target_config(args, config_path=config_path),
+                target_config,
                 registry_path=registry_path,
                 goal_id=args.goal_id,
                 agent_id=args.agent_id,
@@ -372,6 +382,10 @@ def handle_lark_kanban_command(
                 include_done=bool(args.include_done),
                 limit=args.limit,
                 execute=bool(args.execute),
+            )
+            payload = compact_lark_kanban_sync_receipt(
+                payload,
+                include_command_details=bool(args.include_command_details),
             )
         elif args.lark_kanban_command == "sync-projection":
             payload = sync_loopx_projection_to_lark_kanban(
