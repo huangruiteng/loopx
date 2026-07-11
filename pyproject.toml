@@ -18,6 +18,7 @@ test = [
   "pytest-cov>=5,<7",
   "pytest-xdist>=3,<4",
   "ruff>=0.12,<1",
+  "mypy>=1.18,<2",
 ]
 
 [project.scripts]
@@ -28,3 +29,16 @@ include = ["loopx*"]
 
 [tool.setuptools.package-data]
 "loopx.capabilities.auto_research" = ["worker_skill/SKILL.md"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = [
+  "loopx/control_plane/__init__.py",
+  "loopx/control_plane/quota/states.py",
+  "loopx/control_plane/runtime/time.py",
+  "loopx/control_plane/scheduler/time.py",
+  "loopx/control_plane/work_items/delivery_batch_scale.py",
+  "loopx/control_plane/work_items/delivery_outcome.py",
+  "loopx/control_plane/work_items/lifecycle.py",
+]

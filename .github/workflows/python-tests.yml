@@ -49,6 +49,9 @@ jobs:
           loopx/domain_packs
           loopx/presentation
 
+      - name: Type-check kernel contracts
+        run: python -m mypy
+
       - name: Run fast tests
         run: >-
           python -m pytest -q -n 2
