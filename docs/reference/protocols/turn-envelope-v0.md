@@ -29,13 +29,15 @@ envelope; matching hashes prove the covered action dimensions agree for that
 projection. They do not prove that every possible quota state has test
 coverage.
 
-`protocol_action_packet` remains in the full ledger/cold path. Because its
-reconstructability is not yet proven, the capsule conservatively keeps its
-current compact summary plus schema and summary hash with
-`derivation_status=unproven_retain_summary`. LoopX may remove that repeated
-summary from the hot path only after proving that the envelope preserves every
-action-bearing residue; it must not stop persisting the source packet as part
-of this projection change.
+`protocol_action_packet` remains in the full decision/cold path. The envelope
+reconstructs its ordered semantic fields from `action`, `user`, work-lane,
+automation, and scheduler contracts, while carrying the explicit
+`llm_policy=no_api` invariant. When the reconstruction matches exactly, the
+capsule keeps only the source summary hash and derivation status. If a compact
+action differs, it keeps only that field-level `residue`; if an older or opaque
+packet cannot be reconstructed, it retains the original summary. This removes
+repetition only after parity and does not change source packet persistence or
+the default quota output.
 
 Large todo summaries, frontier diagnostics, readiness history, compatibility
 fields, and warning collections stay on the referenced full-decision/status
