@@ -317,12 +317,14 @@ python3 -m pytest tests/test_smoke_suite.py \
   --junitxml smoke-suite.xml
 ```
 
-The required Python test workflow also keeps `tests/**` Ruff-clean and enforces
-an initial 19% package coverage floor. The floor is intentionally a
-regression guard, not a claim that 19% is sufficient; raise it as durable
-behavior moves from subprocess smokes into focused tests. Existing source-wide
-lint debt is characterized separately and must not be mass-fixed merely to
-make the first gate green.
+The required Python test workflow keeps `tests/**` and the currently clean
+`canary`, `domain_packs`, `control_plane/{agents,goals,handoff,quota,work_items}`
+namespaces Ruff-clean. It also enforces an initial 19% package coverage floor.
+The floor is intentionally a regression guard, not a claim that 19% is
+sufficient; raise it as durable behavior moves from subprocess smokes into
+focused tests. Existing source-wide lint debt is characterized separately;
+expand the protected namespace list only after a bounded cleanup, rather than
+mass-fixing unrelated code merely to make a broad gate green.
 
 If the source checkout has optional frontend dependencies installed, dashboard
 readiness can be included in the same canary. If a release snapshot omits the
