@@ -11,6 +11,9 @@ WORK_LANE_CURRENT_AGENT_MONITOR_REPAIR_OBLIGATIONS = {
     "repair_monitor_schedule_metadata",
     "repair_resume_gate_or_close_standing_monitor",
 }
+WORK_LANE_EXTERNAL_EVIDENCE_OBSERVATION_OBLIGATION = (
+    "observe_external_evidence_or_blocker"
+)
 WORK_LANE_TODO_MONITOR_DUE_KIND = "todo_monitor_due"
 WORK_LANE_TODO_ITEM_FIELDS = (
     "index",
@@ -85,7 +88,13 @@ def work_lane_contract_requires_current_agent_attempt(
     if contract.get("must_attempt_work") is not True:
         return False
     obligation = str(contract.get("obligation") or "")
-    return obligation in WORK_LANE_CURRENT_AGENT_MONITOR_REPAIR_OBLIGATIONS
+    if obligation in WORK_LANE_CURRENT_AGENT_MONITOR_REPAIR_OBLIGATIONS:
+        return True
+    return bool(
+        obligation == WORK_LANE_EXTERNAL_EVIDENCE_OBSERVATION_OBLIGATION
+        and contract.get("selected_todo_id")
+        and int(contract.get("monitor_due_count") or 0) > 0
+    )
 
 
 def work_lane_contract_is_due_monitor_attempt(
@@ -221,7 +230,7 @@ def build_work_lane_contract(
                 contract["outcome_followthrough"] = outcome_followthrough
             return contract
         if external_poll_signal:
-            return {
+            contract = {
                 "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
                 "lane": "continuous_monitor",
                 "monitor_kind": "external_evidence",
@@ -235,6 +244,19 @@ def build_work_lane_contract(
                     "write a compact blocker instead of rerunning launched work"
                 ),
             }
+            if first_due_monitor:
+                contract.update(
+                    {
+                        "monitor_due_count": max(0, int(monitor_due_count)),
+                        "monitor_due_items": _compact_work_lane_todo_items(
+                            due_monitor_items,
+                            limit=monitor_due_item_limit,
+                        ),
+                        "selected_todo_id": first_due_monitor.get("todo_id"),
+                        "selected_next_due_at": first_due_monitor.get("next_due_at"),
+                    }
+                )
+            return contract
         if resume_blocked_by_monitor_count > 0 and not first_due_monitor:
             selected = blocked_by_monitor_items[0] if blocked_by_monitor_items else {}
             reason_codes = ["resume_blocked_by_open_monitor"]

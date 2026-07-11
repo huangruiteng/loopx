@@ -11,12 +11,14 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
 from loopx.status import compact_todo_group
+from loopx.control_plane.testing.quota_fixtures import quota_status_payload
 
 
 GOAL_ID = "agent-scope-work-lane-consistency-fixture"
 PRIMARY_AGENT = "codex-main-control"
 SIDE_AGENT = "codex-product-capability"
 FUTURE_DUE_AT = "2999-01-01T00:00:00+00:00"
+PAST_DUE_AT = "2000-01-01T00:00:00+00:00"
 
 
 def _status_payload() -> dict:
@@ -143,6 +145,68 @@ def main() -> None:
     assert (
         "work_lane_contract: lane=reassignment_required next=advancement_task" in markdown
     ), markdown
+
+    due_monitor_text = (
+        "[P2] Monitor the todo succession contract and reschedule after checking."
+    )
+    external_action = (
+        "Monitor public run_group compact artifacts until the batch closes."
+    )
+    due_guard = build_quota_should_run(
+        quota_status_payload(
+            goal_id=GOAL_ID,
+            status="side_agent_due_monitor_with_other_claimed_frontier",
+            recommended_action=external_action,
+            next_action=external_action,
+            claim_scope_agent_id=SIDE_AGENT,
+            coordination={
+                "agent_model": "peer_v1",
+                "registered_agents": [PRIMARY_AGENT, SIDE_AGENT],
+            },
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": due_monitor_text,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P2",
+                    "task_class": "continuous_monitor",
+                    "action_kind": "todo_succession_contract_monitor",
+                    "claimed_by": SIDE_AGENT,
+                    "todo_id": "todo_side_due_monitor",
+                    "target_key": "todo-succession-contract",
+                    "cadence": "1d",
+                    "next_due_at": PAST_DUE_AT,
+                },
+                {
+                    "index": 2,
+                    "text": external_action,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P0",
+                    "task_class": "advancement_task",
+                    "claimed_by": PRIMARY_AGENT,
+                    "todo_id": "todo_primary_external_run",
+                },
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert due_guard["decision"] == "observe", due_guard
+    assert due_guard["should_run"] is True, due_guard
+    assert due_guard["effective_action"] == "external_evidence_observe", due_guard
+    assert "agent_scope_frontier" not in due_guard, due_guard
+    due_lane = due_guard["work_lane_contract"]
+    assert due_lane["lane"] == "continuous_monitor", due_lane
+    assert due_lane["monitor_kind"] == "external_evidence", due_lane
+    assert due_lane["obligation"] == "observe_external_evidence_or_blocker", due_lane
+    assert due_lane["selected_todo_id"] == "todo_side_due_monitor", due_lane
+    assert due_guard["selected_todo"]["todo_id"] == "todo_side_due_monitor", due_guard
+    assert (
+        "Monitor the todo succession contract"
+        in due_guard["interaction_contract"]["agent_channel"]["primary_action"]
+    ), due_guard
     print("agent-scope-work-lane-consistency-smoke ok")
 
 
