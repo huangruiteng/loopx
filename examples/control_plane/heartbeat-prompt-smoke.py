@@ -134,6 +134,8 @@ def main() -> int:
     assert_no_project_specific_prompt_leaks("compact", str(compact_payload["task_body"]))
     assert_no_project_specific_prompt_leaks("brief", str(brief_payload["task_body"]))
     assert_no_project_specific_prompt_leaks("thin", str(thin_payload["task_body"]))
+    thin_task = str(thin_payload["task_body"])
+    assert "Runtime capabilities -> `--available-capability`, never user gates." in thin_task, thin_task
     assert payload["quota_guard_command"] == (
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" '
         "quota should-run --goal-id public-heartbeat-goal"
@@ -359,6 +361,8 @@ def main() -> int:
         'install_script="$HOME/loopx/scripts/install-local.sh"',
         "loopx doctor >/dev/null",
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <GOAL_ID>',
+        "project non-basic capabilities that are actually present",
+        "without guessing capabilities the host does not have",
         "If that preflight still fails",
         "should_run=false",
         "state=operator_gate",

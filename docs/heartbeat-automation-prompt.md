@@ -150,6 +150,13 @@ The generated quota guard and spend command preserve the same declarations.
 Do not declare credentials, production access, or another capability merely to
 bypass a gate; the launcher must actually provide it.
 
+When a thin prompt is generated without explicit declarations, it still tells
+the runtime worker to project non-basic capabilities that are actually present
+with `--available-capability`. This prevents an observed network or polling
+capability from becoming a false user gate without guessing capabilities the
+host does not have. Explicit generator arguments remain preferred for hosts
+whose capabilities are known when the automation is installed.
+
 - for small AGENTS-eligible validated changes, self-merge and complete the todo
   with `--self-merged --evidence "<commit and validation summary>"`;
 - for an independent continuation, create `--next-agent-todo` and optionally

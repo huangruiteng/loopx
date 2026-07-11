@@ -44,11 +44,14 @@ SCHEDULER_HINT_THIN_RULE = (
     "Apply `scheduler_hint`: if App `stateful_backoff.apply_needed`, "
     "RRULE then run `ack_hint.cli_args`; CLI/Claude final-check; no spend."
 )
+RUNTIME_CAPABILITY_PROJECTION_THIN_RULE = (
+    "Runtime capabilities -> `--available-capability`, never user gates."
+)
 INTERFACE_BUDGET_CHARS = {
     "full": 12_000,
     "compact": 6_000,
     "brief": 3_500,
-    "thin": 1_500,
+    "thin": 1_570,
 }
 
 
@@ -914,6 +917,7 @@ Inspect registry/global quota, active state, status/history, repo; run
 {quota_guard_instruction}; follow `interaction_contract`. If action_required/open_count:
 Chinese concrete todos/questions; never only "owner gate"; missing ->
 "具体 user todo 未投影，需修复 LoopX 状态投影". If false/0: quiet/no-user-todo.
+{RUNTIME_CAPABILITY_PROJECTION_THIN_RULE}
 {SCHEDULER_HINT_THIN_RULE}
 Bounded batch/quiet no-op; spend after writeback.
 Plans/done -> LoopX todo/rationale; 2 no-progress -> self-repair.
