@@ -373,6 +373,7 @@ def check_lark_sync_contract() -> None:
         assert len(stored["result_records"]) == 4, stored
 
         # Second executed sync discovers all pages and performs no unchanged writes.
+        stored_before_second = config_path.read_text(encoding="utf-8")
         upsert_calls.clear()
         second = explore_results.sync_explore_results_to_lark(
             config,
@@ -384,6 +385,7 @@ def check_lark_sync_contract() -> None:
         assert second["ok"] is True, second
         assert not upsert_calls, upsert_calls
         assert second["written_rows"] == 0 and second["skipped_rows"] == 4, second
+        assert config_path.read_text(encoding="utf-8") == stored_before_second
         edge_record = next(item for item in second["records"] if item["table"] == "edges")
         assert edge_record["values"]["From Node Link"] == [{"id": "rec_new_2"}], edge_record
         assert edge_record["values"]["To Node Link"] == [{"id": "rec_new_1"}], edge_record

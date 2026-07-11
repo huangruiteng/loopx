@@ -413,6 +413,13 @@ def _persist_lark_explore_record_map(
 ) -> None:
     if not config_path:
         return
+    existing_records = (
+        dict(local.get("result_records") or {})
+        if isinstance(local.get("result_records"), dict)
+        else {}
+    )
+    if existing_records == dict(record_map) and bool(local.get("exists")):
+        return
     board = local.get("board") if isinstance(local.get("board"), dict) else {}
     if not board:
         board = {
@@ -867,14 +874,6 @@ def sync_explore_results_to_lark(
                 _with_edge_link_values(values, record_map=record_map, goal_id=goal_id)
                 for values in rows_by_table[TABLE_EDGES]
             ]
-
-    if execute and ok:
-        _persist_lark_explore_record_map(
-            config,
-            config_path=config_path,
-            local=local,
-            record_map=record_map,
-        )
 
     return {
         "ok": ok,
