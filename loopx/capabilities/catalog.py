@@ -173,6 +173,7 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "python3 examples/issue-fix-validated-memory-writeback-smoke.py",
             "python3 examples/issue-fix-reviewer-recommendation-smoke.py",
             "python3 examples/issue-fix-reviewer-request-smoke.py",
+            "python3 examples/issue-fix-json-input-boundary-smoke.py",
             "python3 examples/issue-fix-reviewer-notification-sink-smoke.py",
             "python3 examples/content-ops-issue-fix-metadata-preview-smoke.py",
             "python3 examples/content-ops-issue-fix-intake-smoke.py",

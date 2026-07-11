@@ -74,13 +74,31 @@ FormatSelector = Callable[..., str]
 AddFormat = Callable[[argparse.ArgumentParser], None]
 
 
-def _load_json_object(path_text: str) -> dict[str, Any]:
-    if path_text == "-":
-        payload = json.loads(sys.stdin.read())
+_MAX_INLINE_JSON_CHARS = 1_048_576
+
+
+def _load_json_object(input_text: str) -> dict[str, Any]:
+    stripped = input_text.lstrip()
+    if input_text == "-":
+        source = "stdin"
+        raw = sys.stdin.read()
+    elif stripped.startswith(("{", "[")):
+        source = "inline"
+        raw = input_text
     else:
-        payload = json.loads(Path(path_text).expanduser().read_text(encoding="utf-8"))
+        source = "file"
+        try:
+            raw = Path(input_text).expanduser().read_text(encoding="utf-8")
+        except (OSError, RuntimeError):
+            raise ValueError("could not read JSON input file") from None
+    if source == "inline" and len(raw) > _MAX_INLINE_JSON_CHARS:
+        raise ValueError("inline JSON input exceeds the 1 MiB limit")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        raise ValueError("JSON input is invalid") from None
     if not isinstance(payload, dict):
-        raise ValueError(f"{path_text} must contain a JSON object")
+        raise ValueError("JSON input must contain an object")
     return payload
 
 
@@ -849,8 +867,9 @@ def register_issue_fix_commands(
     reviewer_request_parser.add_argument(
         "--metadata-json",
         help=(
-            "Optional compact PR metadata JSON for a no-write preview. Live execute "
-            "mode fetches and verifies GitHub state instead."
+            "Optional compact PR metadata as an inline JSON object, file path, or "
+            "'-' for stdin in a no-write preview. Live execute mode fetches and "
+            "verifies GitHub state instead."
         ),
     )
     reviewer_request_parser.add_argument(

@@ -911,12 +911,19 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "examples/issue-fix-capability-guide-smoke.py",
             "examples/issue-fix-reviewer-recommendation-smoke.py",
             "examples/issue-fix-reviewer-request-smoke.py",
+            "examples/issue-fix-json-input-boundary-smoke.py",
             "examples/issue-fix-reviewer-notification-sink-smoke.py",
+            "loopx/capabilities/issue_fix/cli.py",
             "loopx/capabilities/issue_fix/reviewer_recommendation.py",
             "loopx/capabilities/issue_fix/reviewer_request.py",
             "loopx/capabilities/issue_fix/reviewer_notification.py",
         ),
         "checks": [
+            {
+                "command": "python3 examples/issue-fix-json-input-boundary-smoke.py",
+                "tier": "default",
+                "reason": "guards bounded inline issue-fix JSON inputs and compact errors that never echo raw payloads",
+            },
             {
                 "command": "python3 examples/issue-fix-capability-guide-smoke.py",
                 "tier": "default",

@@ -533,6 +533,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     reviewer_profile = product_entry_profiles["issue-fix-reviewer-routing"]
     reviewer_commands = [check["command"] for check in reviewer_profile["checks"]]
     assert reviewer_commands == [
+        "python3 examples/issue-fix-json-input-boundary-smoke.py",
         "python3 examples/issue-fix-capability-guide-smoke.py",
         "python3 examples/issue-fix-reviewer-recommendation-smoke.py",
         "python3 examples/issue-fix-reviewer-request-smoke.py",
