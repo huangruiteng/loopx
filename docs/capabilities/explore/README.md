@@ -471,8 +471,11 @@ cooldown guidance.
 
 Record identity follows the Lark Kanban adapter contract: rows are matched by
 the `LoopX Goal ID` + `LoopX Result ID` columns, remembered in the local
-config as `result_records`, and the map is rebuilt from the remote table
-before executed upserts.
+config as `result_records`, and the map is rebuilt from all goal-filtered
+remote pages before executed upserts. Executed sync compares canonical values
+with the remote row and skips unchanged records. Newly created record ids are
+persisted immediately, so an interrupted large-graph sync can resume without
+recreating rows that were already delivered.
 
 The text `From Node` / `To Node` columns remain stable public ids for
 automation and review, while the linked-record columns are the Feishu-native
@@ -522,8 +525,9 @@ python3 examples/explore-harness-runtime-resume-smoke.py
 ```
 
 The smoke proves the projection contract (folding, blocked reasons, tree,
-Mermaid), record-time path rejection, dry-run default, idempotent second sync
-by remembered record id, shared-visibility redaction, transport-free card
+Mermaid), record-time path rejection, dry-run default, paginated discovery,
+zero-write idempotent resync, single-row drift repair, nested create-receipt
+handling, shared-visibility redaction, transport-free card
 content, the experimental todo branch-plan packet, the adaptive resilient
 worker harness profile, and the CLI surface against a temp registry, without
 live Lark credentials. It additionally proves the worker-lane router

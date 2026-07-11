@@ -329,7 +329,13 @@ def _build_upsert_command(
     return args
 
 
-def _build_record_list_command(config: LarkExploreConfig, *, table_id: str) -> list[str]:
+def _build_record_list_command(
+    config: LarkExploreConfig,
+    *,
+    table_id: str,
+    goal_id: str,
+    offset: int = 0,
+) -> list[str]:
     return [
         config.cli_bin,
         "base",
@@ -340,13 +346,90 @@ def _build_record_list_command(config: LarkExploreConfig, *, table_id: str) -> l
         config.base_token,
         "--table-id",
         table_id,
+        "--filter-json",
+        _record_json_args(
+            {
+                "logic": "and",
+                "conditions": [[_GOAL_ID_FIELD, "==", goal_id]],
+            }
+        ),
         "--format",
         "json",
         "--offset",
-        "0",
+        str(offset),
         "--limit",
         "200",
     ]
+
+
+def _record_list_has_more(payload: Mapping[str, Any]) -> bool:
+    data = payload.get("data") if isinstance(payload.get("data"), Mapping) else payload
+    return bool(data.get("has_more")) if isinstance(data, Mapping) else False
+
+
+def _normalize_lark_value(value: Any) -> Any:
+    if value is None or value == "":
+        return ""
+    if isinstance(value, Mapping):
+        return {
+            str(key): _normalize_lark_value(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, list):
+        normalized = [_normalize_lark_value(item) for item in value]
+        if len(normalized) == 1 and isinstance(normalized[0], str):
+            return normalized[0]
+        return normalized
+    return value
+
+
+def _lark_values_match(values: Mapping[str, Any], record: Mapping[str, Any]) -> bool:
+    return all(
+        _normalize_lark_value(record.get(field_name)) == _normalize_lark_value(expected)
+        for field_name, expected in values.items()
+    )
+
+
+def _skipped_sync_command() -> dict[str, Any]:
+    return {
+        "command": "",
+        "executed": False,
+        "ok": True,
+        "returncode": None,
+        "stdout": "",
+        "stderr": "",
+        "json": None,
+        "skipped": True,
+        "reason": "unchanged",
+    }
+
+
+def _persist_lark_explore_record_map(
+    config: LarkExploreConfig,
+    *,
+    config_path: Path | None,
+    local: Mapping[str, Any],
+    record_map: Mapping[str, str],
+) -> None:
+    if not config_path:
+        return
+    board = local.get("board") if isinstance(local.get("board"), dict) else {}
+    if not board:
+        board = {
+            "base_token": config.base_token,
+            "tables": dict(config.table_ids),
+            "cli_bin": config.cli_bin,
+            "identity": config.identity,
+        }
+    write_lark_explore_local_config(
+        config_path,
+        {
+            "schema_version": LARK_EXPLORE_LOCAL_CONFIG_VERSION,
+            "board": board,
+            "result_records": dict(record_map),
+            "card": local.get("card") if isinstance(local.get("card"), dict) else {},
+        },
+    )
 
 
 def setup_lark_explore_board(
@@ -655,50 +738,115 @@ def sync_explore_results_to_lark(
     )
     commands: list[dict[str, Any]] = []
     warnings: list[str] = []
+    remote_records: dict[str, dict[str, Any]] = {}
+    duplicate_remote_rows = 0
+    expected_keys = {
+        f"{goal_id}:{table_key}:{str(values.get(_RESULT_ID_FIELD) or '').strip()}"
+        for table_key in EXPLORE_TABLE_KEYS
+        for values in rows_by_table[table_key]
+    }
 
     if execute:
         for table_key in EXPLORE_TABLE_KEYS:
             if not rows_by_table[table_key]:
                 continue
-            list_result = _run_command(
-                _build_record_list_command(config, table_id=config.table_id(table_key)),
-                execute=True,
-                runner=runner,
-            )
-            commands.append(list_result)
-            if not list_result.get("ok"):
-                warnings.append(
-                    f"record-list for {table_key} failed; continuing with cached record ids"
+            offset = 0
+            while True:
+                list_result = _run_command(
+                    _build_record_list_command(
+                        config,
+                        table_id=config.table_id(table_key),
+                        goal_id=goal_id,
+                        offset=offset,
+                    ),
+                    execute=True,
+                    runner=runner,
                 )
-                continue
-            payload = list_result.get("json") if isinstance(list_result.get("json"), dict) else {}
-            for record in lark_record_rows(payload):
-                result_id = str(record.get(_RESULT_ID_FIELD) or "").strip()
-                row_goal_id = str(record.get(_GOAL_ID_FIELD) or "").strip()
-                record_id = str(record.get("_record_id") or "").strip()
-                if result_id and row_goal_id and record_id:
-                    record_map[f"{row_goal_id}:{table_key}:{result_id}"] = record_id
+                commands.append(list_result)
+                if not list_result.get("ok"):
+                    warnings.append(
+                        f"record-list for {table_key} failed; continuing with cached record ids"
+                    )
+                    break
+                payload = (
+                    list_result.get("json")
+                    if isinstance(list_result.get("json"), dict)
+                    else {}
+                )
+                page_records = lark_record_rows(payload)
+                for record in page_records:
+                    result_id = str(record.get(_RESULT_ID_FIELD) or "").strip()
+                    row_goal_id = str(record.get(_GOAL_ID_FIELD) or "").strip()
+                    record_id = str(record.get("_record_id") or "").strip()
+                    if not (result_id and row_goal_id and record_id):
+                        continue
+                    key = f"{row_goal_id}:{table_key}:{result_id}"
+                    if key not in expected_keys:
+                        continue
+                    if key in remote_records:
+                        duplicate_remote_rows += 1
+                        continue
+                    remote_records[key] = record
+                    record_map[key] = record_id
+                if not _record_list_has_more(payload):
+                    break
+                if not page_records:
+                    warnings.append(
+                        f"record-list for {table_key} reported more rows but returned an empty page"
+                    )
+                    break
+                offset += len(page_records)
+
+        if duplicate_remote_rows:
+            warnings.append(
+                f"found {duplicate_remote_rows} duplicate remote result rows; reused the first row"
+            )
+        _persist_lark_explore_record_map(
+            config,
+            config_path=config_path,
+            local=local,
+            record_map=record_map,
+        )
 
     results: list[dict[str, Any]] = []
     ok = True
+    skipped_rows = 0
+    written_rows = 0
     for table_key in EXPLORE_TABLE_KEYS:
         for values in rows_by_table[table_key]:
             result_id = str(values.get(_RESULT_ID_FIELD) or "").strip()
             key = f"{goal_id}:{table_key}:{result_id}"
-            result = _run_command(
-                _build_upsert_command(
-                    config,
-                    table_id=config.table_id(table_key),
-                    record_id=record_map.get(key),
-                    values=values,
-                ),
-                execute=execute,
-                runner=runner,
-            )
-            commands.append(result)
+            remote_record = remote_records.get(key)
+            if execute and record_map.get(key) and remote_record and _lark_values_match(
+                values, remote_record
+            ):
+                result = _skipped_sync_command()
+                skipped_rows += 1
+            else:
+                result = _run_command(
+                    _build_upsert_command(
+                        config,
+                        table_id=config.table_id(table_key),
+                        record_id=record_map.get(key),
+                        values=values,
+                    ),
+                    execute=execute,
+                    runner=runner,
+                )
+                commands.append(result)
+                if execute and result.get("ok"):
+                    written_rows += 1
             record_id = _extract_created_record_id(result.get("json")) or record_map.get(key)
             if execute and result.get("ok") and record_id:
                 record_map[key] = record_id
+                if not result.get("skipped"):
+                    remote_records[key] = {**values, "_record_id": record_id}
+                    _persist_lark_explore_record_map(
+                        config,
+                        config_path=config_path,
+                        local=local,
+                        record_map=record_map,
+                    )
             results.append(
                 {
                     "table": table_key,
@@ -720,23 +868,12 @@ def sync_explore_results_to_lark(
                 for values in rows_by_table[TABLE_EDGES]
             ]
 
-    if execute and config_path and ok:
-        board = local.get("board") if isinstance(local.get("board"), dict) else {}
-        if not board:
-            board = {
-                "base_token": config.base_token,
-                "tables": dict(config.table_ids),
-                "cli_bin": config.cli_bin,
-                "identity": config.identity,
-            }
-        write_lark_explore_local_config(
-            config_path,
-            {
-                "schema_version": LARK_EXPLORE_LOCAL_CONFIG_VERSION,
-                "board": board,
-                "result_records": record_map,
-                "card": local.get("card") if isinstance(local.get("card"), dict) else {},
-            },
+    if execute and ok:
+        _persist_lark_explore_record_map(
+            config,
+            config_path=config_path,
+            local=local,
+            record_map=record_map,
         )
 
     return {
@@ -749,6 +886,9 @@ def sync_explore_results_to_lark(
         "public_safe_redaction": public_safe,
         "projection_schema_version": projection.get("schema_version"),
         "row_counts": {table_key: len(rows_by_table[table_key]) for table_key in EXPLORE_TABLE_KEYS},
+        "written_rows": written_rows,
+        "skipped_rows": skipped_rows,
+        "duplicate_remote_rows": duplicate_remote_rows,
         "records": results,
         "commands": commands,
         "warnings": warnings,

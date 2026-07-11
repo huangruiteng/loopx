@@ -230,6 +230,21 @@ def lark_list_fixture(records: list[tuple[str, str, str]]) -> dict[str, object]:
     }
 
 
+def lark_value_list_fixture(
+    records: list[tuple[str, dict[str, object]]], *, has_more: bool = False
+) -> dict[str, object]:
+    fields = sorted({field for _, values in records for field in values})
+    return {
+        "ok": True,
+        "data": {
+            "fields": fields,
+            "data": [[values.get(field) for field in fields] for _, values in records],
+            "record_id_list": [record_id for record_id, _ in records],
+            "has_more": has_more,
+        },
+    }
+
+
 def check_lark_sync_contract() -> None:
     goal_id = "explore-smoke-goal"
     events = build_sample_events(goal_id)
@@ -259,27 +274,89 @@ def check_lark_sync_contract() -> None:
 
         # Executed sync creates records and remembers record ids.
         upsert_calls: list[list[str]] = []
+        upsert_attempts = 0
+        created_records = 0
+        fail_on_upsert_attempt = 2
+        remote_records: dict[str, dict[str, dict[str, object]]] = {
+            "tblN": {},
+            "tblE": {},
+            "tblF": {},
+        }
+        for index in range(205):
+            remote_records["tblN"][f"rec_filler_{index}"] = {
+                "LoopX Goal ID": goal_id,
+                "LoopX Result ID": f"filler-{index}",
+                "Title": f"filler {index}",
+            }
+
+        def arg_value(args: list[str], flag: str) -> str:
+            return args[args.index(flag) + 1]
 
         def fake_runner(args: list[str], cwd: Path | None, timeout: float | None) -> dict[str, object]:
+            nonlocal upsert_attempts, created_records
             if "+record-list" in args:
+                table_id = arg_value(args, "--table-id")
+                offset = int(arg_value(args, "--offset"))
+                limit = int(arg_value(args, "--limit"))
+                records = list(remote_records[table_id].items())
+                page = records[offset : offset + limit]
                 return {
                     "returncode": 0,
-                    "stdout": json.dumps(lark_list_fixture([])),
+                    "stdout": json.dumps(
+                        lark_value_list_fixture(page, has_more=offset + len(page) < len(records))
+                    ),
                     "stderr": "",
                     "timed_out": False,
                 }
             if "+record-upsert" in args:
+                upsert_attempts += 1
                 upsert_calls.append(list(args))
+                if upsert_attempts == fail_on_upsert_attempt:
+                    return {
+                        "returncode": 1,
+                        "stdout": json.dumps({"ok": False, "error": "simulated interruption"}),
+                        "stderr": "",
+                        "timed_out": False,
+                    }
+                table_id = arg_value(args, "--table-id")
+                values = json.loads(arg_value(args, "--json"))
+                if "--record-id" in args:
+                    record_id = arg_value(args, "--record-id")
+                else:
+                    created_records += 1
+                    record_id = f"rec_new_{created_records}"
+                remote_records[table_id][record_id] = values
                 return {
                     "returncode": 0,
                     "stdout": json.dumps(
-                        {"ok": True, "data": {"record_id_list": [f"rec_new_{len(upsert_calls)}"]}}
+                        {
+                            "ok": True,
+                            "data": {
+                                "created": 1,
+                                "record": {"record_id_list": [record_id]},
+                            },
+                        }
                     ),
                     "stderr": "",
                     "timed_out": False,
                 }
             raise AssertionError(args)
 
+        interrupted = explore_results.sync_explore_results_to_lark(
+            config,
+            projection=projection,
+            config_path=config_path,
+            execute=True,
+            runner=fake_runner,
+        )
+        assert interrupted["ok"] is False, interrupted
+        assert len(upsert_calls) == 2, upsert_calls
+        stored = json.loads(config_path.read_text(encoding="utf-8"))
+        assert len(stored["result_records"]) == 1, stored
+
+        # Resume skips the delivered row and fills only the missing records.
+        upsert_calls.clear()
+        fail_on_upsert_attempt = -1
         first = explore_results.sync_explore_results_to_lark(
             config,
             projection=projection,
@@ -288,12 +365,14 @@ def check_lark_sync_contract() -> None:
             runner=fake_runner,
         )
         assert first["ok"] is True, first
-        assert len(upsert_calls) == 4, upsert_calls
+        assert len(upsert_calls) == 3, upsert_calls
         assert all("--record-id" not in call for call in upsert_calls), upsert_calls
+        assert first["written_rows"] == 3 and first["skipped_rows"] == 1, first
+        assert len([item for item in first["commands"] if "+record-list" in item["command"]]) == 4
         stored = json.loads(config_path.read_text(encoding="utf-8"))
         assert len(stored["result_records"]) == 4, stored
 
-        # Second executed sync updates the same rows by remembered record id.
+        # Second executed sync discovers all pages and performs no unchanged writes.
         upsert_calls.clear()
         second = explore_results.sync_explore_results_to_lark(
             config,
@@ -303,11 +382,25 @@ def check_lark_sync_contract() -> None:
             runner=fake_runner,
         )
         assert second["ok"] is True, second
-        assert len(upsert_calls) == 4, upsert_calls
-        assert all("--record-id" in call for call in upsert_calls), upsert_calls
+        assert not upsert_calls, upsert_calls
+        assert second["written_rows"] == 0 and second["skipped_rows"] == 4, second
         edge_record = next(item for item in second["records"] if item["table"] == "edges")
         assert edge_record["values"]["From Node Link"] == [{"id": "rec_new_2"}], edge_record
         assert edge_record["values"]["To Node Link"] == [{"id": "rec_new_1"}], edge_record
+
+        # A remote single-row drift is repaired without rewriting the full graph.
+        remote_records["tblN"]["rec_new_1"]["Title"] = "manually drifted title"
+        third = explore_results.sync_explore_results_to_lark(
+            config,
+            projection=projection,
+            config_path=config_path,
+            execute=True,
+            runner=fake_runner,
+        )
+        assert third["ok"] is True, third
+        assert len(upsert_calls) == 1, upsert_calls
+        assert "--record-id" in upsert_calls[0], upsert_calls
+        assert third["written_rows"] == 1 and third["skipped_rows"] == 3, third
 
         # Shared visibility redacts private links in row values.
         shared = explore_results.sync_explore_results_to_lark(
