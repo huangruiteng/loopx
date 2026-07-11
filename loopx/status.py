@@ -188,6 +188,9 @@ from .control_plane.runtime.benchmark_projection import (
 from .control_plane.runtime.benchmark_event_timeline import (
     compact_benchmark_case_event_timeline,
 )
+from .control_plane.runtime.goal_start_control_score import (
+    compact_goal_start_product_mode_control_score,
+)
 from .control_plane.runtime.public_safety import (
     compact_loopx_command_records as _compact_loopx_command_records,
     compact_numeric_map as _compact_numeric_map,
@@ -575,132 +578,6 @@ AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS = {
 AUTONOMOUS_RUN_HISTORY_STALL_PATTERN = re.compile(
     r"(?i)(?:monitor|observe|observation|poll|watch|quiet|no[-_ ]?op|no[-_ ]?progress|stalled?|unchanged|dependency|停转|无进展|重复|反复|观察|轮询)"
 )
-
-
-def _compact_goal_start_todo_snapshot(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-    compact: dict[str, Any] = {}
-    schema = public_safe_compact_text(value.get("schema_version"), limit=100)
-    if schema:
-        compact["schema_version"] = schema
-    for field in ("raw_material_recorded",):
-        if isinstance(value.get(field), bool):
-            compact[field] = value[field]
-    for field in (
-        "completed_todo_id_count",
-        "selected_todo_complete_count",
-        "selected_todo_duplicate_complete_count",
-        "non_selected_todo_complete_count",
-        "todo_complete_without_todo_id_count",
-    ):
-        raw = value.get(field)
-        if isinstance(raw, int) and not isinstance(raw, bool):
-            compact[field] = max(0, raw)
-    for field in ("selected_p0_todo_id", "todo_identity_attribution"):
-        text = public_safe_compact_text(value.get(field), limit=140)
-        if text:
-            compact[field] = text
-    planned_ids = public_safe_compact_list(value.get("planned_todo_ids"), limit=8)
-    if planned_ids:
-        compact["planned_todo_ids"] = planned_ids
-    completed_ids = public_safe_compact_list(value.get("completed_todo_ids"), limit=8)
-    if completed_ids:
-        compact["completed_todo_ids"] = completed_ids
-    planned_texts = public_safe_compact_list(
-        value.get("planned_todo_texts_public_safe"),
-        limit=8,
-    )
-    if planned_texts:
-        compact["planned_todo_texts_public_safe"] = planned_texts
-    planned_todos: list[dict[str, Any]] = []
-    source_todos = value.get("planned_todos")
-    if isinstance(source_todos, list):
-        for item in source_todos[:8]:
-            if not isinstance(item, dict):
-                continue
-            todo: dict[str, Any] = {}
-            for field in ("todo_id", "role", "status", "text_public_safe"):
-                text = public_safe_compact_text(item.get(field), limit=180)
-                if text:
-                    todo[field] = text
-            for field in ("claim_count", "update_count", "complete_count"):
-                raw = item.get(field)
-                if isinstance(raw, int) and not isinstance(raw, bool):
-                    todo[field] = max(0, raw)
-            if todo:
-                planned_todos.append(todo)
-    if planned_todos:
-        compact["planned_todos"] = planned_todos
-    return compact
-
-
-def _compact_goal_start_product_mode_control_score(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-    compact: dict[str, Any] = {}
-    schema = public_safe_compact_text(value.get("schema_version"), limit=100)
-    if schema:
-        compact["schema_version"] = schema
-    for field in (
-        "required",
-        "satisfied",
-        "raw_material_recorded",
-        "goal_start_plan_observed",
-        "planner_before_todo_write",
-        "same_priority_order_preserved",
-        "selected_todo_claimed",
-        "selected_todo_updated_before_solver",
-        "selected_todo_completed_before_spend",
-        "selected_todo_completed_observed",
-        "selected_todo_spend_observed",
-        "non_selected_todos_preserved_open_or_deferred",
-        "quota_spend_missing_after_repeated_complete",
-    ):
-        if isinstance(value.get(field), bool):
-            compact[field] = value[field]
-    for field in (
-        "component_count",
-        "satisfied_component_count",
-        "planned_todo_count",
-        "planned_todo_count_expected",
-        "planned_p0_count",
-        "premature_done_signal_count",
-        "agent_todo_claim_count",
-        "agent_todo_update_count",
-        "agent_todo_complete_count",
-        "agent_todo_complete_unique_todo_count",
-        "selected_todo_complete_count",
-        "selected_todo_duplicate_complete_count",
-        "non_selected_todo_complete_count",
-        "todo_complete_without_todo_id_count",
-        "agent_quota_spend_slot_count",
-        "driver_todo_claim_count",
-        "driver_todo_update_count",
-    ):
-        raw = value.get(field)
-        if isinstance(raw, int) and not isinstance(raw, bool):
-            compact[field] = max(0, raw)
-    score = value.get("score")
-    if isinstance(score, (int, float)) and not isinstance(score, bool):
-        compact["score"] = float(score)
-    for field in ("selected_p0_todo_id", "premature_done_stop_reason"):
-        text = public_safe_compact_text(value.get(field), limit=140)
-        if text:
-            compact[field] = text
-    planned_ids = public_safe_compact_list(value.get("planned_todo_ids"), limit=8)
-    if planned_ids:
-        compact["planned_todo_ids"] = planned_ids
-    planned_texts = public_safe_compact_list(
-        value.get("planned_todo_texts_public_safe"),
-        limit=8,
-    )
-    if planned_texts:
-        compact["planned_todo_texts_public_safe"] = planned_texts
-    snapshot = _compact_goal_start_todo_snapshot(value.get("goal_start_todo_snapshot"))
-    if snapshot:
-        compact["goal_start_todo_snapshot"] = snapshot
-    return compact
 
 
 def _benchmark_case_timeline_events_by_name(
@@ -3835,7 +3712,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     if interaction_counters:
         compact["interaction_counters"] = interaction_counters
 
-    goal_start_control_score = _compact_goal_start_product_mode_control_score(
+    goal_start_control_score = compact_goal_start_product_mode_control_score(
         source.get("goal_start_product_mode_control_score")
     )
     if goal_start_control_score:
