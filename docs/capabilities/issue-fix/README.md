@@ -230,8 +230,10 @@ Long-running goals can register the local-private sink pointer once with
 use explicit reader/user and sender/bot profiles without changing the machine
 default, verify mapped reviewer `open_id` values with the sender app before
 sending, and persist only new
-`sha256:` receipts in the existing PR lifecycle row. Restart/retry returns
-`already_notified`; no notification ledger or public config path is added.
+`sha256:` receipts in the PR lifecycle row. If that row is missing, execute
+mode auto-materializes it from a fresh compact GitHub lifecycle read before
+the external notification. Restart/retry returns `already_notified`; no
+notification ledger or public config path is added.
 
 `--reviewer-sources-json` is the bridge for repository-specific public routing
 knowledge. The host reads an approved public source, such as a maintainer-map

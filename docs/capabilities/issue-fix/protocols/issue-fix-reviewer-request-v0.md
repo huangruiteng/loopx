@@ -90,11 +90,12 @@ loopx issue-fix reviewer-request \
   --format json
 ```
 
-Goal-default execute mode requires the existing PR lifecycle row and persists
-only verified `sha256:` secondary receipts into that row. The local config,
-profiles, destination, and member mapping are not copied. Repeating the call
-after restart returns `already_notified` without another secondary provider
-write.
+Goal-default execute mode loads the existing PR lifecycle row or
+auto-materializes one from a fresh compact GitHub lifecycle read before any
+external notification. It then persists only verified `sha256:` secondary
+receipts into that row. The local config, profiles, destination, and member
+mapping are not copied. Repeating the call after restart returns
+`already_notified` without another secondary provider write.
 
 Preview without an external write by supplying compact, caller-approved PR
 metadata containing `author`, `comments`, `reviewRequests`, `reviews`, and
