@@ -18,9 +18,7 @@ from .metadata_preview import (
 )
 
 
-ISSUE_FIX_PR_LIFECYCLE_MONITOR_SCHEMA_VERSION = (
-    "issue_fix_pr_lifecycle_monitor_v0"
-)
+ISSUE_FIX_PR_LIFECYCLE_MONITOR_SCHEMA_VERSION = "issue_fix_pr_lifecycle_monitor_v0"
 ISSUE_FIX_MAINTAINER_CORRECTION_INPUT_SCHEMA_VERSION = (
     "issue_fix_maintainer_correction_input_v0"
 )
@@ -102,7 +100,9 @@ def _compact_public_text(value: Any, *, field: str, limit: int) -> str:
         )
     text = public_safe_compact_text(value, limit=limit)
     if not text:
-        raise ValueError(f"maintainer correction {field} must be compact and public-safe")
+        raise ValueError(
+            f"maintainer correction {field} must be compact and public-safe"
+        )
     return " ".join(text.split())
 
 
@@ -122,7 +122,9 @@ def _public_source_reference(value: Any) -> str:
             )
         hostname = (parsed.hostname or "").lower()
         if hostname == "localhost" or hostname.endswith((".localhost", ".local")):
-            raise ValueError("maintainer correction source_ref must not target a local host")
+            raise ValueError(
+                "maintainer correction source_ref must not target a local host"
+            )
         try:
             address = ipaddress.ip_address(hostname)
         except ValueError:
@@ -133,7 +135,9 @@ def _public_source_reference(value: Any) -> str:
             or address.is_link_local
             or address.is_reserved
         ):
-            raise ValueError("maintainer correction source_ref must target a public host")
+            raise ValueError(
+                "maintainer correction source_ref must target a public host"
+            )
         return reference
     if reference.startswith(("/", "~")) or re.match(r"^[A-Za-z]:[\\/]", reference):
         raise ValueError("maintainer correction source_ref must not be a local path")
@@ -152,7 +156,10 @@ def normalise_issue_fix_maintainer_correction_input(
             "maintainer correction input contains unsupported fields: "
             + ", ".join(sorted(str(field) for field in unknown_fields))
         )
-    if value.get("schema_version") != ISSUE_FIX_MAINTAINER_CORRECTION_INPUT_SCHEMA_VERSION:
+    if (
+        value.get("schema_version")
+        != ISSUE_FIX_MAINTAINER_CORRECTION_INPUT_SCHEMA_VERSION
+    ):
         raise ValueError(
             "maintainer correction schema_version must be issue_fix_maintainer_correction_input_v0"
         )
@@ -258,7 +265,9 @@ def _maintainer_correction_transition(
             ),
         ) | {"terminal_state_precedence": False, "material_change": True}
     if correction_kind == "missing_authority":
-        scopes = ", ".join(str(value) for value in correction.get("missing_authority_scopes") or [])
+        scopes = ", ".join(
+            str(value) for value in correction.get("missing_authority_scopes") or []
+        )
         return _transition_preview(
             decision="user_gate",
             action_kind="grant_issue_fix_maintainer_correction_authority",
@@ -274,7 +283,9 @@ def _maintainer_correction_transition(
         ) | {
             "terminal_state_precedence": False,
             "material_change": True,
-            "missing_authority_scopes": list(correction.get("missing_authority_scopes") or []),
+            "missing_authority_scopes": list(
+                correction.get("missing_authority_scopes") or []
+            ),
         }
     return _transition_preview(
         decision="monitor_continuation",
@@ -392,7 +403,9 @@ def _build_observation(
 ) -> dict[str, Any]:
     state = _upper_label(provider_payload.get("state"), "OPEN")
     if state == "OPEN":
-        merged_at = provider_payload.get("mergedAt") or provider_payload.get("merged_at")
+        merged_at = provider_payload.get("mergedAt") or provider_payload.get(
+            "merged_at"
+        )
         merged = provider_payload.get("merged")
         if merged_at or merged is True:
             state = "MERGED"
@@ -401,6 +414,14 @@ def _build_observation(
     linked_issue_ref = (
         normalise_github_issue_link_reference(issue_ref) if issue_ref else ""
     )
+    raw_commits = provider_payload.get("commits")
+    commit_count = _safe_count(provider_payload.get("commitCount"))
+    if (
+        commit_count is None
+        and isinstance(raw_commits, Sequence)
+        and not isinstance(raw_commits, (str, bytes))
+    ):
+        commit_count = len(raw_commits)
     return {
         "schema_version": "issue_fix_pr_lifecycle_observation_v0",
         "repo": repo,
@@ -412,6 +433,8 @@ def _build_observation(
         "review_decision": review_decision,
         "merge_state_status": merge_state,
         "is_draft": _safe_bool(provider_payload.get("isDraft")),
+        "created_at": provider_payload.get("createdAt")
+        or provider_payload.get("created_at"),
         "updated_at": provider_payload.get("updatedAt")
         or provider_payload.get("updated_at"),
         "merged_at": provider_payload.get("mergedAt")
@@ -419,6 +442,9 @@ def _build_observation(
         "closed_at": provider_payload.get("closedAt")
         or provider_payload.get("closed_at"),
         "permalink": reference.get("permalink") or provider_payload.get("url"),
+        "head_commit_ref": provider_payload.get("headRefOid")
+        or provider_payload.get("head_commit_ref"),
+        "commit_count": commit_count,
         "checks": _check_rollup(provider_payload),
         "body_captured": False,
         "comment_bodies_captured": False,
@@ -426,6 +452,32 @@ def _build_observation(
         "log_output_captured": False,
         "response_payload_captured": False,
     }
+
+
+def _first_push_ci_evidence(
+    observation: Mapping[str, Any], *, observed_at: str | None
+) -> dict[str, Any] | None:
+    checks = observation.get("checks")
+    rollup = checks if isinstance(checks, Mapping) else {}
+    aggregate = str(rollup.get("aggregate") or "").upper()
+    if observation.get("commit_count") != 1 or aggregate not in {
+        "PASSING",
+        "FAILING",
+    }:
+        return None
+    evidence = {
+        "schema_version": "issue_fix_first_push_ci_evidence_v0",
+        "pr_ref": observation.get("pr_ref"),
+        "status": aggregate,
+        "observed_at": observed_at,
+        "source": "single_commit_terminal_check_rollup",
+        "raw_check_status_captured": False,
+        "check_logs_captured": False,
+    }
+    head_commit_ref = str(observation.get("head_commit_ref") or "").strip()
+    if head_commit_ref:
+        evidence["head_commit_ref"] = head_commit_ref
+    return evidence
 
 
 def _observation_fingerprint(observation: Mapping[str, Any]) -> str:
@@ -567,7 +619,10 @@ def fetch_github_pr_lifecycle_payload(
                     "baseRefName",
                     "closingIssuesReferences",
                     "closedAt",
+                    "commits",
+                    "createdAt",
                     "headRefName",
+                    "headRefOid",
                     "isDraft",
                     "mergeStateStatus",
                     "mergedAt",
@@ -644,10 +699,17 @@ def build_issue_fix_pr_lifecycle_monitor_packet(
         if maintainer_correction_input is not None
         else None
     )
-    if maintainer_correction is not None and observation["state"] not in TERMINAL_PR_STATES:
+    if (
+        maintainer_correction is not None
+        and observation["state"] not in TERMINAL_PR_STATES
+    ):
         transition = _maintainer_correction_transition(
             maintainer_correction,
-            pr_permalink=str(observation.get("permalink") or reference.get("permalink") or observation["pr_ref"]),
+            pr_permalink=str(
+                observation.get("permalink")
+                or reference.get("permalink")
+                or observation["pr_ref"]
+            ),
         )
     packet: dict[str, Any] = {
         "ok": True,
@@ -707,6 +769,9 @@ def build_issue_fix_pr_lifecycle_monitor_packet(
         "todo_write_performed": False,
         "destructive_git_used": False,
     }
+    first_push_ci = _first_push_ci_evidence(observation, observed_at=generated_at)
+    if first_push_ci is not None:
+        packet["first_push_ci"] = first_push_ci
     validation = validate_issue_fix_pr_lifecycle_monitor_packet(packet)
     packet["ok"] = bool(validation["ok"])
     packet["validation"] = validation
@@ -775,7 +840,10 @@ def validate_issue_fix_pr_lifecycle_monitor_packet(
     state = observation.get("state")
     if state in TERMINAL_PR_STATES and decision != "no_followup":
         errors.append("terminal PR state must choose no_followup")
-    if state in TERMINAL_PR_STATES and transition.get("terminal_state_precedence") is not True:
+    if (
+        state in TERMINAL_PR_STATES
+        and transition.get("terminal_state_precedence") is not True
+    ):
         errors.append("terminal PR state must record terminal_state_precedence")
     if transition.get("material_change") is True and decision == "monitor_continuation":
         errors.append("material PR change must not choose monitor_continuation")
@@ -795,7 +863,9 @@ def validate_issue_fix_pr_lifecycle_monitor_packet(
             if packet.get("maintainer_correction_fingerprint") != correction.get(
                 "correction_fingerprint"
             ):
-                errors.append("maintainer correction fingerprint must match normalized input")
+                errors.append(
+                    "maintainer correction fingerprint must match normalized input"
+                )
             if state in TERMINAL_PR_STATES and decision != "no_followup":
                 errors.append("terminal PR state must supersede maintainer correction")
     contract = packet.get("writeback_contract")
@@ -808,7 +878,10 @@ def validate_issue_fix_pr_lifecycle_monitor_packet(
         errors.append("todo_write_performed must be boolean")
     todo_write = packet.get("todo_write")
     if todo_write_performed is True:
-        if not isinstance(todo_write, Mapping) or todo_write.get("write_performed") is not True:
+        if (
+            not isinstance(todo_write, Mapping)
+            or todo_write.get("write_performed") is not True
+        ):
             errors.append("performed todo write requires a compact todo_write receipt")
         elif todo_write.get("path_recorded") is not False:
             errors.append("todo_write path_recorded must be false")
@@ -842,7 +915,11 @@ def render_issue_fix_pr_lifecycle_monitor_markdown(payload: dict[str, Any]) -> s
     ]
     observation = payload.get("observation")
     if isinstance(observation, Mapping):
-        checks = observation.get("checks") if isinstance(observation.get("checks"), Mapping) else {}
+        checks = (
+            observation.get("checks")
+            if isinstance(observation.get("checks"), Mapping)
+            else {}
+        )
         lines.extend(
             [
                 "",
@@ -898,7 +975,11 @@ def render_issue_fix_pr_lifecycle_monitor_markdown(payload: dict[str, Any]) -> s
         )
     validation = payload.get("validation")
     if isinstance(validation, Mapping):
-        errors = validation.get("errors") if isinstance(validation.get("errors"), list) else []
+        errors = (
+            validation.get("errors")
+            if isinstance(validation.get("errors"), list)
+            else []
+        )
         lines.extend(
             [
                 "",

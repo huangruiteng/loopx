@@ -100,7 +100,9 @@ def main() -> int:
             "state": "MERGED",
             "reviewDecision": "REVIEW_REQUIRED",
             "mergeStateStatus": "UNKNOWN",
-            "statusCheckRollup": [{"name": "Full Public Smokes", "conclusion": "SUCCESS"}],
+            "statusCheckRollup": [
+                {"name": "Full Public Smokes", "conclusion": "SUCCESS"}
+            ],
             "body": "raw issue body text that must stay gated",
             "comments": ["full issue comment text that must stay gated"],
             "raw": "raw provider response payload",
@@ -118,7 +120,9 @@ def main() -> int:
             "state": "OPEN",
             "reviewDecision": "REVIEW_REQUIRED",
             "mergeStateStatus": "CLEAN",
-            "statusCheckRollup": [{"name": "Full Public Smokes", "conclusion": "FAILURE"}],
+            "statusCheckRollup": [
+                {"name": "Full Public Smokes", "conclusion": "FAILURE"}
+            ],
             "check_log": "private check log",
         },
     )
@@ -178,6 +182,9 @@ def main() -> int:
             "state": "OPEN",
             "reviewDecision": "REVIEW_REQUIRED",
             "mergeStateStatus": "CLEAN",
+            "createdAt": "2026-06-23T00:00:00Z",
+            "headRefOid": "a" * 40,
+            "commits": [{"oid": "a" * 40}],
             "statusCheckRollup": [{"name": "lint", "conclusion": "SUCCESS"}],
         },
     )
@@ -186,15 +193,15 @@ def main() -> int:
     assert quiet["observation"]["issue_ref"] == "issues_1700", quiet
     assert quiet["transition"]["material_change"] is False
     assert quiet["writeback_contract"]["monitor_quiet_skip_allowed"] is True
+    assert quiet["first_push_ci"]["status"] == "PASSING", quiet
+    assert quiet["first_push_ci"]["pr_ref"] == "pull_1715", quiet
     for alias in ("#1700", "issue_1700", "issues/1700", "issue 1700"):
         alias_packet = build_issue_fix_pr_lifecycle_monitor_packet(
             url="https://github.com/huangruiteng/loopx/pull/1715",
             issue_ref=alias,
             provider_payload={"state": "OPEN"},
         )
-        assert alias_packet["observation"]["issue_ref"] == "issues_1700", (
-            alias_packet
-        )
+        assert alias_packet["observation"]["issue_ref"] == "issues_1700", alias_packet
     repo_ref = build_issue_fix_pr_lifecycle_monitor_packet(
         repo="huangruiteng/loopx",
         pr_ref="pull_1715",
@@ -228,7 +235,9 @@ def main() -> int:
         assert quiet["domain_state_projection"]["write_skipped_reason"] == (
             "observation_fingerprint_unchanged"
         ), quiet
-        rows = [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()]
+        rows = [
+            json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()
+        ]
         assert len(rows) == 1, rows
         assert rows[0]["domain_state_key"] == key, rows
         assert_public_safe(rows[0])
@@ -240,6 +249,9 @@ def main() -> int:
                     "state": "OPEN",
                     "reviewDecision": "REVIEW_REQUIRED",
                     "mergeStateStatus": "CLEAN",
+                    "createdAt": "2026-06-23T00:00:00Z",
+                    "headRefOid": "a" * 40,
+                    "commits": [{"oid": "a" * 40}],
                     "statusCheckRollup": [{"name": "lint", "conclusion": "SUCCESS"}],
                 }
             ),
@@ -307,6 +319,12 @@ def main() -> int:
         assert material_result["write_performed"] is True, material_result
         assert failing["domain_state_projection"]["write_performed"] is True, failing
         assert ledger.stat().st_ino != first_inode
+        material_rows = [
+            json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()
+        ]
+        assert material_rows[0]["first_push_ci"] == quiet["first_push_ci"], (
+            material_rows
+        )
 
     print("issue-fix-pr-lifecycle-smoke: ok")
     return 0

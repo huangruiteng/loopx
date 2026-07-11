@@ -22,9 +22,7 @@ def _upsert_issue_fix_payload(
     key: dict[str, Any],
     existing_key_fn: Callable[[dict[str, Any]], dict[str, Any] | None],
     unchanged_fn: Callable[[dict[str, Any], dict[str, Any]], bool] | None = None,
-    merge_existing_fn: Callable[
-        [dict[str, Any], dict[str, Any]], dict[str, Any]
-    ]
+    merge_existing_fn: Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]]
     | None = None,
 ) -> dict[str, Any]:
     projection = payload.get("domain_state_projection")
@@ -60,7 +58,9 @@ def issue_fix_feasibility_ledger_key(payload: dict[str, Any]) -> dict[str, Any]:
     repo = str(observation.get("repo") or "").strip()
     issue_ref = str(observation.get("issue_ref") or "").strip()
     if not repo or not issue_ref:
-        raise ValueError("issue-fix feasibility payload must include repo and issue_ref")
+        raise ValueError(
+            "issue-fix feasibility payload must include repo and issue_ref"
+        )
     return {
         "repo": repo,
         "issue_ref": issue_ref,
@@ -74,7 +74,9 @@ def upsert_issue_fix_feasibility_ledger_jsonl(
     """Upsert one compact issue-fix feasibility decision into domain state."""
 
     if payload.get("ok") is not True:
-        raise ValueError("only successful issue-fix feasibility payloads can be written")
+        raise ValueError(
+            "only successful issue-fix feasibility payloads can be written"
+        )
     for key in (
         "issue_body_captured",
         "comment_bodies_captured",
@@ -113,7 +115,9 @@ def upsert_issue_fix_pr_lifecycle_ledger_jsonl(
     """Upsert a compact issue-fix PR lifecycle packet into domain state."""
 
     if payload.get("ok") is not True:
-        raise ValueError("only successful issue-fix PR lifecycle payloads can be written")
+        raise ValueError(
+            "only successful issue-fix PR lifecycle payloads can be written"
+        )
     for key in (
         "issue_body_captured",
         "comment_bodies_captured",
@@ -124,6 +128,7 @@ def upsert_issue_fix_pr_lifecycle_ledger_jsonl(
     ):
         if payload.get(key) is not False:
             raise ValueError(f"issue-fix domain-state payload must keep {key}=false")
+
     def unchanged_quiet_observation(
         existing: dict[str, Any],
         incoming: dict[str, Any],
@@ -145,16 +150,22 @@ def upsert_issue_fix_pr_lifecycle_ledger_jsonl(
             and existing_receipts == incoming_receipts
         )
 
-    def preserve_reviewer_notification_receipts(
+    def preserve_compact_lifecycle_evidence(
         existing: dict[str, Any],
         incoming: dict[str, Any],
     ) -> dict[str, Any]:
-        if "reviewer_notification_receipts" in incoming:
-            return incoming
+        merged = incoming
         receipts = existing.get("reviewer_notification_receipts")
-        if not isinstance(receipts, list) or not receipts:
-            return incoming
-        return {**incoming, "reviewer_notification_receipts": list(receipts)}
+        if (
+            "reviewer_notification_receipts" not in merged
+            and isinstance(receipts, list)
+            and receipts
+        ):
+            merged = {**merged, "reviewer_notification_receipts": list(receipts)}
+        first_push_ci = existing.get("first_push_ci")
+        if "first_push_ci" not in merged and isinstance(first_push_ci, dict):
+            merged = {**merged, "first_push_ci": dict(first_push_ci)}
+        return merged
 
     return _upsert_issue_fix_payload(
         ledger_path,
@@ -162,7 +173,7 @@ def upsert_issue_fix_pr_lifecycle_ledger_jsonl(
         key=issue_fix_pr_lifecycle_ledger_key(payload),
         existing_key_fn=issue_fix_pr_lifecycle_ledger_key,
         unchanged_fn=unchanged_quiet_observation,
-        merge_existing_fn=preserve_reviewer_notification_receipts,
+        merge_existing_fn=preserve_compact_lifecycle_evidence,
     )
 
 

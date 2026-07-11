@@ -269,6 +269,44 @@ def main() -> int:
         assert pr_metric["values"]["Metric Updated At"] == 1785542400000
         assert sync["public_safe_redaction"] is True
 
+        partial_supplement = root / "partial-supplement.json"
+        _write_json(
+            partial_supplement,
+            {
+                "schema_version": "issue_fix_metrics_supplement_v0",
+                "counts": {"human_interventions": 1},
+                "coverage": {
+                    "first_push_ci": {
+                        "eligible_prs": 2,
+                        "observed_prs": 1,
+                        "complete": False,
+                    }
+                },
+            },
+        )
+        partial_command = [
+            str(partial_supplement) if value == str(supplement) else value
+            for value in command
+        ]
+        partial_result = subprocess.run(
+            partial_command,
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        partial_packet = json.loads(partial_result.stdout)
+        partial_rows = {row["metric_id"]: row for row in partial_packet["impact_rows"]}
+        assert partial_rows["quality_first_push_ci_pass_rate"]["missing_reason"] == (
+            "first-push CI coverage is incomplete (1/2 observed)"
+        ), partial_packet
+        assert partial_packet["supplement_coverage"]["first_push_ci"] == {
+            "eligible_prs": 2,
+            "observed_prs": 1,
+            "complete": False,
+        }, partial_packet
+
         cli_sync = subprocess.run(
             [
                 sys.executable,

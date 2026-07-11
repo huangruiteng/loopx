@@ -101,6 +101,14 @@ writes, and capability-gap `found` / `fixed` / `real_callsite_verified`
 transitions. Events outside the reporting period are ignored, duplicate event
 identities are rejected, and a capability gap is counted once per gap identity.
 
+PR lifecycle collection also captures first-push CI evidence without another
+ledger when public metadata proves that the PR still has exactly one commit and
+its check rollup is terminal (`PASSING` or `FAILING`). The compact evidence is
+preserved across later lifecycle upserts. The supplement reports
+`coverage.first_push_ci` and only publishes pass/total counts when every PR in
+the reporting cohort has evidence. Partial observation stays unavailable and
+surfaces its observed/eligible coverage instead of reporting a biased rate.
+
 The composer performs no provider call and does not infer absent events. When no
 explicit memory result is supplied, it may use a compact feasibility memory hook
 only when that hook records `read_performed=true`; otherwise memory fields remain

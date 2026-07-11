@@ -52,6 +52,7 @@ def main() -> int:
             domain / "pr-lifecycle.jsonl",
             [
                 {
+                    "generated_at": "2026-07-05T00:00:00Z",
                     "observation": {
                         "repo": repo,
                         "pr_ref": "pull_77",
@@ -60,6 +61,7 @@ def main() -> int:
                     "transition": {"decision": "no_followup"},
                 },
                 {
+                    "generated_at": "2026-07-06T00:00:00Z",
                     "observation": {
                         "repo": repo,
                         "pr_ref": "pull_78",
@@ -68,12 +70,19 @@ def main() -> int:
                     "transition": {"decision": "no_followup"},
                 },
                 {
+                    "generated_at": "2026-07-07T00:00:00Z",
                     "observation": {
                         "repo": repo,
                         "pr_ref": "pull_79",
                         "state": "OPEN",
                     },
                     "transition": {"decision": "monitor_continuation"},
+                    "first_push_ci": {
+                        "schema_version": "issue_fix_first_push_ci_evidence_v0",
+                        "pr_ref": "pull_79",
+                        "status": "PASSING",
+                        "observed_at": "2026-07-07T00:00:00Z",
+                    },
                 },
             ],
         )
@@ -197,8 +206,13 @@ def main() -> int:
         assert counts["triage_outcomes"] == 1, packet
         assert counts["automatic_terminal_closeouts"] == 2, packet
         assert counts["human_interventions"] == 2, packet
-        assert counts["first_push_ci_passed"] == 1, packet
-        assert counts["first_push_ci_total"] == 2, packet
+        assert counts["first_push_ci_passed"] == 2, packet
+        assert counts["first_push_ci_total"] == 3, packet
+        assert packet["supplement"]["coverage"]["first_push_ci"] == {
+            "eligible_prs": 3,
+            "observed_prs": 3,
+            "complete": True,
+        }, packet
         assert counts["loopx_capability_gaps_found"] == 1, packet
         assert counts["loopx_capability_gaps_fixed"] == 1, packet
         assert counts["loopx_capability_gaps_real_callsite_verified"] == 1, packet
@@ -216,6 +230,25 @@ def main() -> int:
             "local_paths_captured",
         ):
             assert packet[field] is False, packet
+
+        event_arg_index = command.index("--event-json")
+        incomplete_command = command[:event_arg_index] + command[event_arg_index + 2 :]
+        incomplete_result = subprocess.run(
+            incomplete_command,
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        incomplete = json.loads(incomplete_result.stdout)
+        assert incomplete["supplement"]["coverage"]["first_push_ci"] == {
+            "eligible_prs": 3,
+            "observed_prs": 1,
+            "complete": False,
+        }, incomplete
+        assert "first_push_ci_total" in incomplete["missing_fields"], incomplete
+        assert "first_push_ci_passed" in incomplete["missing_fields"], incomplete
 
     print("issue-fix metrics supplement smoke: ok")
     return 0

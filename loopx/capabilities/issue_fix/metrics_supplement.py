@@ -95,6 +95,47 @@ def _events_in_period(
     return events
 
 
+def _lifecycle_first_push_ci(
+    lifecycles: list[dict[str, Any]],
+    *,
+    period_start: datetime,
+    period_end: datetime,
+) -> tuple[set[str], dict[str, str]]:
+    eligible_refs: set[str] = set()
+    observed: dict[str, str] = {}
+    for index, row in enumerate(lifecycles):
+        observation = row.get("observation") or {}
+        pr_ref = str(observation.get("pr_ref") or "").strip()
+        if not pr_ref:
+            continue
+        eligible_refs.add(pr_ref)
+        evidence = row.get("first_push_ci")
+        if not isinstance(evidence, dict):
+            continue
+        if evidence.get("schema_version") != "issue_fix_first_push_ci_evidence_v0":
+            raise ValueError(
+                f"pr_lifecycle_rows[{index}].first_push_ci uses an unsupported schema"
+            )
+        observed_at = _timestamp(
+            evidence.get("observed_at"),
+            field=f"pr_lifecycle_rows[{index}].first_push_ci.observed_at",
+        )
+        if not period_start <= observed_at <= period_end:
+            continue
+        status = str(evidence.get("status") or "").upper()
+        if status not in {"PASSING", "FAILING"}:
+            raise ValueError(
+                f"pr_lifecycle_rows[{index}].first_push_ci.status must be PASSING or FAILING"
+            )
+        evidence_ref = str(evidence.get("pr_ref") or "").strip()
+        if evidence_ref and evidence_ref != pr_ref:
+            raise ValueError(
+                f"pr_lifecycle_rows[{index}].first_push_ci.pr_ref must match observation"
+            )
+        observed[pr_ref] = status
+    return eligible_refs, observed
+
+
 def _memory_counts(
     memory_results: list[dict[str, Any]], feasibility: list[dict[str, Any]]
 ) -> dict[str, int] | None:
@@ -169,6 +210,11 @@ def build_issue_fix_metrics_supplement(
     feasibility = _latest_rows(feasibility_rows, repo=repo, ref_field="issue_ref")
     lifecycles = _latest_rows(pr_lifecycle_rows, repo=repo, ref_field="pr_ref")
     events = _events_in_period(event_batch, period_start=start, period_end=end)
+    first_push_eligible, first_push_statuses = _lifecycle_first_push_ci(
+        lifecycles,
+        period_start=start,
+        period_end=end,
+    )
     counts: dict[str, int] = {
         "issues_screened": len(feasibility),
         "triage_outcomes": sum(
@@ -202,8 +248,14 @@ def build_issue_fix_metrics_supplement(
         statuses = [str(item.get("status") or "").upper() for item in first_push]
         if any(status not in {"PASSING", "FAILING"} for status in statuses):
             raise ValueError("first_push_ci status must be PASSING or FAILING")
-        counts["first_push_ci_total"] = len(first_push)
-        counts["first_push_ci_passed"] = sum(status == "PASSING" for status in statuses)
+        for pr_ref, status in zip(pr_refs, statuses):
+            existing = first_push_statuses.get(pr_ref)
+            if existing is not None and existing != status:
+                raise ValueError(
+                    f"first_push_ci event for {pr_ref} conflicts with lifecycle evidence"
+                )
+            first_push_eligible.add(pr_ref)
+            first_push_statuses[pr_ref] = status
 
         gaps = [item for item in events if item.get("event_type") == "capability_gap"]
         gap_states: dict[str, set[str]] = {}
@@ -224,6 +276,15 @@ def build_issue_fix_metrics_supplement(
             "real_callsite_verified" in states for states in gap_states.values()
         )
 
+    first_push_complete = bool(first_push_eligible) and len(first_push_statuses) == len(
+        first_push_eligible
+    )
+    if first_push_complete:
+        counts["first_push_ci_total"] = len(first_push_statuses)
+        counts["first_push_ci_passed"] = sum(
+            status == "PASSING" for status in first_push_statuses.values()
+        )
+
     memory = _memory_counts(repository_memory_results, feasibility)
     if memory is not None:
         counts.update(memory)
@@ -232,6 +293,13 @@ def build_issue_fix_metrics_supplement(
     supplement = {
         "schema_version": SUPPLEMENT_SCHEMA_VERSION,
         "counts": counts,
+        "coverage": {
+            "first_push_ci": {
+                "eligible_prs": len(first_push_eligible),
+                "observed_prs": len(first_push_statuses),
+                "complete": first_push_complete,
+            }
+        },
     }
     return {
         "ok": True,
