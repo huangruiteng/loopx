@@ -139,6 +139,7 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
             "SKILLSBENCH_DOCKER_API_VERSION": "1.43",
             "SKILLSBENCH_REMOTE_CODEX_BIN": "/remote/bin/codex",
             "SKILLSBENCH_LOCAL_CODEX_SANDBOX": "danger-full-access",
+            "SKILLSBENCH_CLI_GOAL_THREAD_PREWARM": "1",
             "SKILLSBENCH_RUN_STAMP": "20260709T000000CST",
             "SKILLSBENCH_TUNNEL_PROBE_TIMEOUT_SEC": "19",
             "SKILLSBENCH_TUNNEL_READY_TIMEOUT_SEC": "71",
@@ -172,6 +173,8 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
     assert "--local-codex-bin /remote/bin/codex" in output, output
     assert "--local-codex-sandbox danger-full-access" in output, output
     assert "local_codex_sandbox=danger-full-access" in output, output
+    assert "codex_cli_goal_thread_prewarm=1" in output, output
+    assert "--codex-cli-goal-thread-prewarm" in output, output
     assert "remote_codex_bin_mode=explicit" in output, output
     assert "--probe-timeout-sec 19" in output, output
     assert "--tunnel-ready-timeout-sec 71" in output, output
@@ -232,6 +235,7 @@ def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
     assert "--remote-failure-cleanup-pattern" in output, output
     assert "--remote-failure-cleanup-include-docker" in output, output
     assert "--update-ledger" not in output, output
+    assert "--codex-cli-goal-thread-prewarm" not in output, output
     assert "--local-target-lane-id codex-cli-goal-xhigh" in output, output
     assert "--local-target-run-group-contains" not in output, output
     assert "--local-target-backfill-run-group-contains" not in output, output
