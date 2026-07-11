@@ -114,7 +114,10 @@ def _latest_unspent_accountable_delivery_run(runtime_root: Path, goal_id: str) -
             continue
         if classification == QUOTA_SLOT_SPENT_CLASSIFICATION:
             return None
-        if classification == QUOTA_MONITOR_POLL_CLASSIFICATION:
+        if (
+            classification == QUOTA_MONITOR_POLL_CLASSIFICATION
+            and run.get("material_change") is not True
+        ):
             return None
         delivery_outcome = normalize_delivery_outcome(run.get("delivery_outcome"))
         if delivery_outcome in ACCOUNTABLE_DELIVERY_OUTCOMES:
