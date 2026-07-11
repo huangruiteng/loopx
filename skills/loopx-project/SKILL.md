@@ -159,16 +159,27 @@ different read models over one evidence source:
 - an executive graph applies semantic compression for operator decisions. It
   should show the decision contract, baseline/incumbent, decisive negative
   evidence, active work or capacity, material risk, terminal gate, and next
-  decision.
+  decision. Semantic compression may tighten labels and remove true
+  duplication, but it must preserve material decision and evidence nodes plus
+  their lineage.
 
 Never overwrite an executive whiteboard directly from a full or focused
 canonical export unless a declared presentation contract proves that the
 export already carries those semantic roles. For a recurring sync, keep a
-project-local display contract with node/edge budgets, required roles, stable
-canonical ids, and a non-identity guard. Render with the target renderer, run
-overlap/text-overflow checks, inspect the preview, then sync and verify the
-remote source or digest. If any check fails, keep the previous owner view and
-repair the projection; do not publish a structurally valid but unreadable graph.
+project-local display contract with required roles, stable canonical ids,
+semantic sections or linked subgraphs, and a non-identity guard. The default
+cardinality policy is graph growth: do not omit or merge away a material node
+because the graph crossed a generic count such as 20 nodes. A hard
+`max_nodes` or `max_edges` limit is valid only as an explicit opt-in
+presentation policy with declared scope and overflow behavior; absent that
+policy, treat those limits as unbounded.
+
+Render with the target renderer, run overlap and text-overflow checks, inspect
+the actual preview, then sync and verify the remote source or digest. Repair a
+failed readability check by relayout, shorter labels, larger frames, or more
+semantic subgraphs, not by deleting material evidence. If any check still
+fails, keep the previous owner view; do not publish a structurally valid but
+unreadable graph.
 
 This separation does not transfer quota, todo, launch, stop, or promotion
 authority into the presentation layer. Record material experiment transitions

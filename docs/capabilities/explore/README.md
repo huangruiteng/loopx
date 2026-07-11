@@ -100,13 +100,28 @@ the operator needs to see:
 - terminal decision gate;
 - next decision or evidence gap.
 
-Give the projection explicit node and edge budgets, stable references back to
-canonical node ids, and a fail-fast guard that rejects accidental identity with
-the canonical export. Before syncing, render it with the target renderer, run
-geometry checks for overlap and text overflow, and visually inspect the actual
-preview. After syncing, verify the remote source or digest matches the validated
-projection. The canonical JSON and Nodes/Edges/Findings tables remain complete
-and authoritative throughout this presentation step.
+The default cardinality policy is graph growth. Preserve material decision and
+evidence nodes and their relationships; semantic compression means tightening
+labels, removing true duplication while retaining lineage, and organizing the
+view into semantic sections or linked subgraphs. It does not mean dropping a
+material node because the graph crossed a generic threshold such as 20 nodes.
+Stable canonical ids must survive relayouts and movement between sections so
+the owner can trace every displayed decision and evidence item back to source.
+
+Hard `max_nodes` and `max_edges` limits are allowed only in an explicit opt-in
+presentation policy. That policy must name its scope, rationale, overflow or
+linked-subgraph behavior, and material-node preservation rule. Without such a
+policy, treat both limits as unbounded; never infer a hard cap from renderer
+convenience, an earlier graph size, or a generic executive-view convention.
+
+Keep a fail-fast guard that rejects accidental identity with the canonical
+export. Before syncing, render with the target renderer, run overlap and
+text-overflow checks, and visually inspect the actual preview. Repair readability
+through relayout, shorter labels, larger frames, or more semantic subgraphs
+rather than deleting material evidence. After syncing, verify the remote source
+or digest matches the validated projection. The canonical JSON and
+Nodes/Edges/Findings tables remain complete and authoritative throughout this
+presentation step.
 
 ## Experimental Todo Branch Plan
 
