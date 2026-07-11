@@ -459,7 +459,7 @@ only after validation; the local JSON path is not stored:
 
 This prototype is proposal-only. Never claim an injection, handoff, discard, or
 session termination happened unless a host adapter exposes every required
-capability and appends a capability-matched `supervisor_host_receipt_v0` with
+capability and appends a capability-matched `supervisor_host_receipt_v1` with
 authority and evidence references. A proposal record is never execution
 evidence. Missing capabilities leave the proposal unexecuted. Do not mutate
 peer claims merely to make the proposal look resolved.

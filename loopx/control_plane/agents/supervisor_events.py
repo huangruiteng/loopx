@@ -20,7 +20,7 @@ from .supervisor import normalize_supervisor_decision
 
 SUPERVISOR_EVENT_LOG_NAME = "supervisor-events.jsonl"
 SUPERVISOR_EVENT_PROJECTION_SCHEMA_VERSION = "supervisor_event_projection_v0"
-SUPERVISOR_RECEIPT_SCHEMA_VERSION = "supervisor_host_receipt_v0"
+SUPERVISOR_RECEIPT_SCHEMA_VERSION = "supervisor_host_receipt_v1"
 
 _INLINE_SECRET_PATTERN = re.compile(
     r"(?i)\b(?:ak|sk|access[_-]?key|secret[_-]?key)\b\s*[:=]\s*\S+"
@@ -31,6 +31,11 @@ class SupervisorReceiptOutcome(str, Enum):
     EXECUTED = "executed"
     REJECTED = "rejected"
     FAILED = "failed"
+
+
+class SupervisorRollbackMode(str, Enum):
+    COMPENSATING_ACTION = "compensating_action"
+    NOT_REVERSIBLE = "not_reversible"
 
 
 def supervisor_event_log_path(runtime_root: Path, goal_id: str) -> Path:
@@ -126,6 +131,25 @@ def normalize_supervisor_receipt(
     required_capabilities = list(decision.get("required_host_capabilities") or [])
     missing_capabilities = sorted(set(required_capabilities) - set(capabilities))
     authority_ref = normalize_todo_claimed_by(raw.get("authority_ref"))
+    raw_rollback = raw.get("rollback_boundary")
+    rollback_boundary = None
+    if raw_rollback is not None:
+        if not isinstance(raw_rollback, Mapping):
+            raise ValueError("rollback_boundary must be an object")
+        try:
+            rollback_mode = SupervisorRollbackMode(str(raw_rollback.get("mode") or ""))
+        except ValueError as exc:
+            choices = ", ".join(item.value for item in SupervisorRollbackMode)
+            raise ValueError(f"rollback_boundary.mode must be one of: {choices}") from exc
+        rollback_ref = _required_token(raw_rollback, "ref")
+        if raw_rollback.get("automatic") is not False:
+            raise ValueError("rollback_boundary.automatic must be false")
+        rollback_boundary = {
+            "mode": rollback_mode.value,
+            "ref": rollback_ref,
+            "automatic": False,
+            "requires_explicit_authority": True,
+        }
     if outcome is SupervisorReceiptOutcome.EXECUTED:
         if missing_capabilities:
             raise ValueError(
@@ -134,6 +158,8 @@ def normalize_supervisor_receipt(
             )
         if not authority_ref:
             raise ValueError("executed receipt requires authority_ref")
+        if rollback_boundary is None:
+            raise ValueError("executed receipt requires rollback_boundary")
 
     receipt = {
         "schema_version": SUPERVISOR_RECEIPT_SCHEMA_VERSION,
@@ -147,6 +173,7 @@ def normalize_supervisor_receipt(
         "capability_match": not missing_capabilities,
         "missing_capabilities": missing_capabilities,
         "authority_ref": authority_ref,
+        "rollback_boundary": rollback_boundary,
         "evidence_refs": evidence_refs,
         "reason_codes": reason_codes,
     }
