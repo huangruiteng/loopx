@@ -67,6 +67,22 @@ names; they do not retain semantic-contract values. Complete aligned coverage
 can pass the corpus gate, but the overall promotion decision remains false
 until repeated live-model evidence and explicit owner review are present.
 
+### Retained Public-Safe Decisions
+
+Real shadow decisions may be retained only through the explicit local-runtime
+`model_behavior_retained_case_v0` store. Each full packet must pass the same
+public-safety and schema validation as an actor request, remain below the case
+size limit, and carry a stable id and digest. Writes are atomic, mode `0600`,
+bounded to 24 cases, and rejected when the requested runtime root is inside a
+git worktree. Existing ids are idempotent only when their complete content
+matches.
+
+The store is never populated automatically. It contains no model response,
+conversation, credential metadata, or candidate packet; a current candidate is
+rebuilt in memory when the case is loaded into a corpus. Store receipts expose
+only case id, digest, created/idempotent status, and count, never the packet or
+local path.
+
 ## No-Write Boundary
 
 The actor request always declares:
