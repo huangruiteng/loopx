@@ -171,8 +171,15 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert "worktree_policy" not in member, member
     assert "requires_independent_worktree" not in member, member
     assert member["current_claims"] == ["todo_side_tui"], member
-    assert member["lease_projection"]["source"] == "todo.claimed_by+task_lease", member
-    assert member["lease_projection"]["hard_lease_available"] is True, member
+    lease_projection = member["lease_projection"]
+    assert lease_projection == {
+        "schema_version": "agent_lease_projection_v0",
+        "source": "todo.claimed_by",
+        "soft_claim_default": True,
+        "hard_lease_available": True,
+        "hard_lease_mode": "explicit_cli_opt_in",
+        "hard_lease_enforced_by_quota": False,
+    }, member
     assert member["handoff_assignment_status"] == "task_policy_selected", member
     assert "handoff_agent" not in member, member
     assert item["project_asset"]["agent_member"] == member, item

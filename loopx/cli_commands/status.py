@@ -543,8 +543,12 @@ def _build_agent_member_projection(
         "current_claims": claims[:10],
         "current_claim_count": len(claims),
         "lease_projection": {
-            "source": "todo.claimed_by+task_lease",
+            "schema_version": "agent_lease_projection_v0",
+            "source": "todo.claimed_by",
+            "soft_claim_default": True,
             "hard_lease_available": True,
+            "hard_lease_mode": "explicit_cli_opt_in",
+            "hard_lease_enforced_by_quota": False,
         },
     }
     if role:
