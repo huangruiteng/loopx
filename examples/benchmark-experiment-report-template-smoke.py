@@ -13,7 +13,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.status import benchmark_comparison_decision_note  # noqa: E402
+from loopx.control_plane.runtime.benchmark_comparison import (  # noqa: E402
+    benchmark_comparison_decision_note,
+)
 
 TOPIC_DIR = REPO_ROOT / "docs" / "research" / "long-horizon-agent-benchmarks"
 README = TOPIC_DIR / "README.md"

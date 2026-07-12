@@ -15,12 +15,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.review_packet import build_review_packet  # noqa: E402
-from loopx.status import (  # noqa: E402
+from loopx.control_plane.runtime.benchmark_comparison import (  # noqa: E402
     benchmark_comparison_decision_note,
-    collect_status,
     compact_benchmark_comparison,
 )
+from loopx.review_packet import build_review_packet  # noqa: E402
+from loopx.status import collect_status  # noqa: E402
 
 
 GOAL_ID = "benchmark-append-cli-fixture"

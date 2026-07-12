@@ -9,6 +9,9 @@ from pathlib import Path
 from ..benchmark_adapters.agents_last_exam import (
     build_agents_last_exam_result_benchmark_report,
 )
+from ..control_plane.runtime.benchmark_comparison import (
+    compact_benchmark_comparison,
+)
 from ..control_plane.work_items.delivery_batch_scale import DELIVERY_BATCH_SCALE_CHOICES
 from ..control_plane.work_items.delivery_outcome import DELIVERY_OUTCOME_CHOICES
 from ..control_plane.runtime.trajectory_hygiene import build_trajectory_hygiene_summary
@@ -40,7 +43,6 @@ from ..presentation.renderers.trajectory_hygiene_markdown import (
 )
 from ..status import (
     compact_active_user_assisted_pilot,
-    compact_benchmark_comparison,
     compact_benchmark_experiment_report,
     compact_benchmark_learning_ledger,
     compact_benchmark_result,
