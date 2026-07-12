@@ -561,6 +561,9 @@ smoke，而不是 pilot 叙事本身。
 - issue/outcome Kanban、repository snapshot、可归因 impact metric 与 `Monthly Impact`；
 - rolling 默认分支 OpenViking retrieval、一次 fresh-issue 实测、显式
   reusable-knowledge writeback 与诚实的 decision-influence 计数；
+- reviewer-facing PR 描述工作前可选调用 `semantic-preference`。Issue-Fix 自己拥有
+  `issue_fix.pr_description` query 及结果应用方式；通用 hook 只返回有界 provider
+  结果和无状态 compact receipt，再由现有 evidence/state 路径写回；
 - host agent 驱动的 LoopX todo/quota/monitor/Kanban 集成。
 
 ### 下一阶段

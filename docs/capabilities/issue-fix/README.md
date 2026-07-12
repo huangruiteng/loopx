@@ -587,6 +587,10 @@ revision and focused smokes, not the pilot narrative, remain authoritative.
 - rolling-default-branch OpenViking retrieval, one fresh-issue measured
   dogfood, and explicit reusable-knowledge writeback with honest
   decision-influence accounting;
+- optional `semantic-preference` recall before reviewer-facing PR description
+  work. Issue-fix owns the `issue_fix.pr_description` query and how results
+  influence the description; the generic hook only returns bounded provider
+  results and a stateless compact receipt for existing evidence/state writeback;
 - LoopX todo/quota/monitor/Kanban integration through the host agent.
 
 ### Next stage
