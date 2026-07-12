@@ -24,8 +24,9 @@ truth into chat history:
 - An **agent can project as a workspace member**: controller, executor,
   reviewer, monitor, critic, or dreaming/planning proposer, each with scope and
   last action.
-- A **task claim should be a per-todo lease**: explicit ownership of one
-  `todo_id` with TTL, write scope, idempotency key, and conflict policy.
+- A **task claim is a soft per-todo route by default**. When a concrete
+  contention case needs exclusivity, an optional hard lease adds TTL, write
+  scope, idempotency, and conflict handling for one `todo_id`.
 - A **chat or channel thread is a projection**: useful for human collaboration,
   but never the only durable authority.
 

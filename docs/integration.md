@@ -378,7 +378,6 @@ Minimal registry fields for this pattern are:
     "agent_model": "peer_v1",
     "registered_agents": ["codex-main-control", "codex-side-bypass"],
     "write_scope": ["docs/**", "examples/**"],
-    "claim_ttl_minutes": 30,
     "requires_parent_approval": ["write", "publish", "production-action"]
   }
 }
@@ -398,11 +397,12 @@ authority. Repository-writing peers use isolated worktrees when the selected
 task requires it. Small AGENTS-eligible validated changes may self-merge with
 explicit evidence; broader or higher-risk work uses an explicit
 `independent_handoff` with `action_kind=review`, optionally excluding the author
-when executor separation is required. A future version can add
-claim files, stale-claim detection, overlap warnings, TTLs, and
-compare-and-swap conflict responses. That future pending contract should be per
-todo: a pending lease is keyed by `(goal_id, todo_id)`, so unrelated todos under
-the same goal can still run in parallel when scopes permit.
+when executor separation is required. Soft claims do not expire. The legacy
+bootstrap option `--claim-ttl-minutes` is accepted but ignored; use the optional
+`loopx task-lease` CLI when a concrete contention case needs TTL, overlap
+checks, transfer, and compare-and-swap behavior. Hard leases remain keyed by
+`(goal_id, todo_id)`, so unrelated todos under the same goal can still run in
+parallel when scopes permit.
 
 ## Shared Runtime
 

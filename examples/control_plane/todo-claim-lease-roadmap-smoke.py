@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Smoke-test the public todo claim and future per-todo lease contract."""
+"""Smoke-test the public soft-claim and optional hard-lease contract."""
 
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 
@@ -48,11 +51,13 @@ def main() -> int:
     require(
         roadmap,
         [
-            "A **task claim should be a per-todo lease**",
+            "A **task claim is a soft per-todo route by default**",
+            "an optional hard lease adds TTL",
             "pending key is per todo: `(goal_id, todo_id)`",
             "LoopX does not have a separate issue object",
-            "one active pending lease per\n  `(goal_id, todo_id)`",
-            "not one active lease per goal or project",
+            "Do not serialize an entire\ngoal",
+            "does not replace\nthe default soft `claimed_by` route or participate in quota decisions",
+            "registered-owner validation",
             "repository-writing peers use isolated worktrees",
             "self-merge with\nevidence",
             "review action over an independent handoff",
@@ -75,16 +80,52 @@ def main() -> int:
         registry = json.loads(source.read_text(encoding="utf-8"))
         for goal in registry.get("goals") or []:
             coordination = goal.get("coordination") or {}
-            if "claim_ttl_minutes" not in coordination:
-                continue
-            registered_agents = coordination.get("registered_agents")
-            assert isinstance(registered_agents, list) and registered_agents, (
-                f"{source}: goal {goal.get('id')} has claim_ttl_minutes but no registered_agents"
+            assert "claim_ttl_minutes" not in coordination, (
+                f"{source}: soft claims must not advertise an inert TTL"
             )
-            assert coordination.get("agent_model") == "peer_v1", (
-                f"{source}: goal {goal.get('id')} must use the peer runtime"
-            )
-            assert "primary_agent" not in coordination, f"{source}: durable hierarchy is forbidden"
+
+    help_result = subprocess.run(
+        [sys.executable, "-m", "loopx.cli", "bootstrap", "--help"],
+        cwd=REPO_ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    assert "--claim-ttl-minutes" not in help_result.stdout, help_result.stdout
+
+    with tempfile.TemporaryDirectory(prefix="loopx-soft-claim-ttl-smoke-") as tmp:
+        root = Path(tmp)
+        registry_path = root / "registry.json"
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--registry",
+                str(registry_path),
+                "--format",
+                "json",
+                "bootstrap",
+                "--project",
+                str(root / "project"),
+                "--goal-id",
+                "soft-claim-ttl-smoke",
+                "--objective",
+                "verify soft claim TTL compatibility",
+                "--claim-ttl-minutes",
+                "5",
+                "--no-onboarding-scan",
+                "--no-global-sync",
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        assert result.returncode == 0, result.stdout or result.stderr
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        coordination = registry["goals"][0]["coordination"]
+        assert "claim_ttl_minutes" not in coordination, coordination
 
     print("todo-claim-lease-roadmap-smoke ok")
     return 0

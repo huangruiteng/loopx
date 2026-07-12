@@ -42,7 +42,6 @@
           "examples/**",
           "src/adapters/**"
         ],
-        "claim_ttl_minutes": 30,
         "requires_parent_approval": [
           "publish",
           "production-action"

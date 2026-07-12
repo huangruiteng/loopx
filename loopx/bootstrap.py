@@ -491,7 +491,6 @@ def build_goal_entry(
     max_children: int,
     allowed_domains: list[str],
     write_scope: list[str],
-    claim_ttl_minutes: int,
     execution_profile: dict[str, Any] | None,
 ) -> dict[str, Any]:
     authority_sources = []
@@ -528,7 +527,6 @@ def build_goal_entry(
         },
         "coordination": {
             "write_scope": write_scope,
-            "claim_ttl_minutes": max(1, claim_ttl_minutes),
             "requires_parent_approval": [
                 "write",
                 "publish",
@@ -589,7 +587,6 @@ def bootstrap_project(
     max_children: int,
     allowed_domains: list[str] | None,
     write_scope: list[str] | None,
-    claim_ttl_minutes: int,
     execution_minimum_scale: str | None = None,
     execution_must_include: list[str] | None = None,
     execution_small_streak_threshold: int | None = None,
@@ -665,7 +662,6 @@ def bootstrap_project(
         max_children=max_children,
         allowed_domains=allowed_domains or [],
         write_scope=write_scope or [],
-        claim_ttl_minutes=claim_ttl_minutes,
         execution_profile=execution_profile,
     )
     registry, registry_goal_action = merge_goal(registry, goal_entry, force=force)
