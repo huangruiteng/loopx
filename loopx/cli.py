@@ -98,6 +98,14 @@ from .help_surface import (
 from .paths import DEFAULT_RUNTIME_ROOT, default_registry_path, global_registry_path
 
 
+class LoopXArgumentParser(argparse.ArgumentParser):
+    """Require complete option names across the automation-facing CLI."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        kwargs.setdefault("allow_abbrev", False)
+        super().__init__(*args, **kwargs)
+
+
 def print_payload(payload: dict[str, object], fmt: str, markdown_renderer) -> None:
     if fmt == "json":
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -134,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     raw_argv = rewrite_auto_research_question_argv(raw_argv)
 
-    parser = argparse.ArgumentParser(description="LoopX control-plane helper.")
+    parser = LoopXArgumentParser(description="LoopX control-plane helper.")
     parser.add_argument("--version", action="version", version=f"loopx {__version__}")
     parser.add_argument("--registry", default=str(default_registry_path()), help="Path to a project-local registry.")
     parser.add_argument("--runtime-root", help="Override registry common_runtime_root.")
