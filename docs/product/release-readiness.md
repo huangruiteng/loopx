@@ -213,6 +213,19 @@ path, and canary route rather than as a user-facing release baseline.
   non-blocking user actions. The repository also establishes parallel pytest,
   Ruff, strict typing, import-boundary, coverage-floor, and release-promotion
   concurrency checks so these broader capabilities remain maintainable.
+- `v0.2.2` on 2026-07-12: visible execution and projection reliability
+  fast-follow at the matching `v0.2.2` tag. Explore gains recoverable execution
+  episodes and ReplayPoint-based counterfactual branches, plus an optional
+  owner-facing visual sink and real graph examples in the public entry
+  surfaces (#1892, #1962, #1965-#1966, #1971). Visible multi-agent runs now
+  wake only lanes whose runnable state changed and freeze the newest compatible
+  host Codex CLI before launch (#1967, #1973). Diagnose capability projection,
+  terminal PR-gate reconciliation, and vision replanning under monitor load are
+  repaired (#1963-#1964, #1969). Benchmark comparison, report, learning-ledger,
+  and result read models move into their control-plane runtime owner while
+  preserving compatibility imports and restoring the full-public smoke shard
+  (#1961, #1968, #1970, #1972). No persisted-state migration is required;
+  Explore execution and visual sinks remain explicit opt-ins.
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.
