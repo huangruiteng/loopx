@@ -254,7 +254,9 @@ revision，避免 feature branch 自己的提交把作者推荐回来；
 issue 和 PR 标题概括的改动，并指向 PR 描述中的动机、验证与风险；新评论不再暴露
 幂等 marker。
 workflow plan 还会投影 `issue_fix_pr_description_contract_v0`，复用 PR review
-五块结构中的动机、改动思路、具体改动、验证、对主干风险与未覆盖；“我的整体评价”
+五块结构中的动机、改动思路、具体改动、验证、对主干风险与未覆盖。代码类改动还必须
+提供最小的“关键代码或伪代码”与“修复后复现”；后者可使用仓库 CLI，或 focused
+代码/测试入口。只有复杂改动才可选配 infographic，且不能替代文字证据。“我的整体评价”
 属于 reviewer verdict，不会让 PR 作者预先写进描述。
 当人确认某个 unresolved git display name 对应具体 GitHub 账号时，
 `--identity-map-json` 会把这条紧凑映射作为 verified identity evidence，并基于原有
@@ -865,8 +867,10 @@ commit、output links 与 risks，而不会降回 feasibility 阶段的声明值
 
 Lark adapter 会把它渲染成一等 issue 维度，而不只是把 packet 压平写进 `Evidence`。
 Outcome 行设置 `Work Item Type=Issue Fix`，并填写 `Repository`、`Issue`、
-`Pull Request`、`Route`、`Stage`、`Validation` 和 `Outcome`。`Issue Fix Outcomes`
-提供表格视图，`Issue Fix Kanban` 按 `Stage` 分组展示同一批行。已有看板通过幂等的
+`Pull Request`、`Route`、`Stage`、`Validation`、`Outcome` 和 `Context Tags`。
+这个有界多选字段独立展示 route、stage、复现/验证状态、测试改动、多文件范围与已落地的
+repository context，不复制自由文本 evidence。`Issue Fix Outcomes` 提供表格视图，
+`Issue Fix Kanban` 按 `Stage` 分组展示同一批行。已有看板通过幂等的
 `lark-kanban setup --execute` schema reconciliation 自动补齐缺失字段和视图。
 
 ## 命令
