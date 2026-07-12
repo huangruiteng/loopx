@@ -129,6 +129,9 @@ runtime contract, benchmark route, or launch draft.
   value model for Loop Agents that separates quantity, quality, token cost, and
   user attention cost without turning one benchmark score into a universal
   product claim.
+- [Agent-facing interaction and trajectory quality](agent-facing-trajectory-quality.md):
+  Chinese project note on bounded turn context, trajectory-hygiene monitoring,
+  semantic parity, landed PR evidence, and a conservative optimization roadmap.
 - [Loop Engineering principles and pitfalls](loop-engineering-principles-and-pitfalls.md):
   short public-safe digest of the operating rules behind source of truth, human
   gates, safe fallback, feedback, compact evidence, quota, and performance
