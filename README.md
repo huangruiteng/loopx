@@ -826,12 +826,17 @@ contract.
 - [Public/private boundary](docs/public-private-boundary.md): what may be
   committed, published, or retained.
 - [Contributor tasks](CONTRIBUTOR_TASKS.md): public, claimable work.
+- [Project governance](GOVERNANCE.md), [authors and contributors](AUTHORS.md),
+  [project history](docs/project/history.md), and [name and marks](TRADEMARKS.md):
+  maintainer authority, attribution, public milestones, and identity guidance.
 
 ## Contributing
 
 External contributors should start with
 [CONTRIBUTOR_TASKS.md](CONTRIBUTOR_TASKS.md) for public, claimable work and
 [CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation, and boundary rules.
+Project roles and public history are recorded in [GOVERNANCE.md](GOVERNANCE.md),
+[AUTHORS.md](AUTHORS.md), and [docs/project/history.md](docs/project/history.md).
 
 LoopX keeps local active goal state separate from the public repository:
 do not commit `.loopx/`, `.codex/goals/`, live

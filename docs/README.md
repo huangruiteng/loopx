@@ -67,6 +67,10 @@ incident report, or launch draft.
   published, or retained.
 - [Contributor tasks](../CONTRIBUTOR_TASKS.md): visible public work, sorted by
   complexity and ownership.
+- [Project governance](../GOVERNANCE.md), [authors and contributors](../AUTHORS.md),
+  [project history](project/history.md), and [name and marks](../TRADEMARKS.md):
+  maintainer authority, public attribution, evidence-backed milestones, and
+  community identity guidance.
 
 ## Stable Reference
 
@@ -130,6 +134,14 @@ incident report, or launch draft.
 - [Codex peer task orchestration](codex-subagent-orchestration.md)
 - [Dashboard frontend selection](dashboard-frontend-selection.md)
 - [Experiment controller milestone](experiment-controller-milestone.md)
+
+### Project Governance
+
+- [Project governance](../GOVERNANCE.md)
+- [Authors and contributors](../AUTHORS.md)
+- [Project history](project/history.md)
+- [Name and marks](../TRADEMARKS.md)
+- [Contributing](../CONTRIBUTING.md)
 
 ### Research And Evidence
 
