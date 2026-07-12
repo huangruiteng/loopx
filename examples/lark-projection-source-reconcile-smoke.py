@@ -46,11 +46,12 @@ def projection_payload(*, extra_row: bool = False) -> dict[str, object]:
 class FixtureRunner:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
-        self.remote: dict[str, str] = {
-            DESIRED_ID: "recDesired",
-            ORPHAN_ID: "recOrphan",
-            OTHER_ID: "recOther",
-        }
+        self.remote: list[tuple[str, str]] = [
+            (DESIRED_ID, "recDuplicate"),
+            (DESIRED_ID, "recDesired"),
+            (ORPHAN_ID, "recOrphan"),
+            (OTHER_ID, "recOther"),
+        ]
         self.has_more = False
 
     def __call__(
@@ -58,7 +59,7 @@ class FixtureRunner:
     ) -> dict[str, object]:
         self.calls.append(args)
         if "+record-list" in args:
-            rows = [[GOAL_ID, todo_id] for todo_id in self.remote]
+            rows = [[GOAL_ID, todo_id] for todo_id, _ in self.remote]
             return {
                 "returncode": 0,
                 "stdout": json.dumps(
@@ -67,7 +68,9 @@ class FixtureRunner:
                         "data": {
                             "fields": ["LoopX Goal ID", "LoopX Todo ID"],
                             "data": rows,
-                            "record_id_list": list(self.remote.values()),
+                            "record_id_list": [
+                                record_id for _, record_id in self.remote
+                            ],
                             "has_more": self.has_more,
                         },
                     }
@@ -93,11 +96,11 @@ class FixtureRunner:
                 for index, value in enumerate(args)
                 if value == "--record-id"
             ]
-            self.remote = {
-                todo_id: record_id
-                for todo_id, record_id in self.remote.items()
+            self.remote = [
+                (todo_id, record_id)
+                for todo_id, record_id in self.remote
                 if record_id not in record_ids
-            }
+            ]
             return {
                 "returncode": 0,
                 "stdout": json.dumps({"ok": True, "data": {"deleted": record_ids}}),
@@ -197,11 +200,17 @@ def main() -> int:
         assert preview["ok"] is True, preview
         assert receipt["mode"] == "preview", receipt
         assert receipt["remote_orphan_record_ids"] == ["recOrphan"], receipt
+        assert receipt["remote_duplicate_record_ids"] == ["recDuplicate"], receipt
+        assert receipt["remote_delete_record_ids"] == [
+            "recDuplicate",
+            "recOrphan",
+        ], receipt
+        assert receipt["remote_duplicate_key_count"] == 1, receipt
         assert set(receipt["local_mapping_keys_to_remove"]) == {
             f"{GOAL_ID}:{ORPHAN_ID}",
             f"{GOAL_ID}:{STALE_ID}",
         }, receipt
-        assert receipt["remote_delete_count"] == 1, receipt
+        assert receipt["remote_delete_count"] == 2, receipt
         assert receipt["local_mapping_delete_count"] == 2, receipt
         assert not any("+record-delete" in call for call in runner.calls), runner.calls
         assert read_lark_kanban_local_config(config_path)["todo_records"] == local_map
@@ -214,10 +223,15 @@ def main() -> int:
         receipt = executed["source_reconcile"]
         assert executed["ok"] is True, executed
         assert receipt["mode"] == "execute", receipt
-        assert receipt["executed_remote_delete_count"] == 1, receipt
+        assert receipt["executed_remote_delete_count"] == 2, receipt
         delete_calls = [call for call in runner.calls if "+record-delete" in call]
         assert len(delete_calls) == 1, runner.calls
-        assert "recOrphan" in delete_calls[0] and "--yes" in delete_calls[0]
+        assert {
+            delete_calls[0][index + 1]
+            for index, value in enumerate(delete_calls[0])
+            if value == "--record-id"
+        } == {"recDuplicate", "recOrphan"}
+        assert "--yes" in delete_calls[0]
         stored = read_lark_kanban_local_config(config_path)["todo_records"]
         assert f"{GOAL_ID}:{DESIRED_ID}" in stored, stored
         assert f"{GOAL_ID}:{OTHER_ID}" in stored, stored

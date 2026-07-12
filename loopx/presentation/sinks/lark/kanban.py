@@ -1964,6 +1964,8 @@ def sync_loopx_projection_to_lark_kanban(
             "goal_id": resolved_goal_id,
             "source_id": resolved_source_id,
             "remote_orphan_record_ids": [],
+            "remote_duplicate_record_ids": [],
+            "remote_delete_record_ids": [],
             "local_mapping_keys_to_remove": [],
             "remote_delete_count": 0,
             "local_mapping_delete_count": 0,
@@ -2004,11 +2006,11 @@ def sync_loopx_projection_to_lark_kanban(
             break
 
     executed_remote_delete_count = 0
-    if ok and reconcile_source and reconcile_plan["remote_orphan_record_ids"]:
+    if ok and reconcile_source and reconcile_plan["remote_delete_record_ids"]:
         delete_result = _run_command(
             build_record_delete_command(
                 config,
-                record_ids=reconcile_plan["remote_orphan_record_ids"],
+                record_ids=reconcile_plan["remote_delete_record_ids"],
             ),
             execute=execute,
             runner=runner,
@@ -2248,7 +2250,16 @@ def _load_lark_todo_record_map(
     remote_complete = False
     if list_result.get("ok"):
         remote_records = todo_record_entries(list_result.get("json"))
-        record_map.update({item["key"]: item["record_id"] for item in remote_records})
+        remote_by_key: dict[str, list[str]] = {}
+        for item in remote_records:
+            remote_by_key.setdefault(item["key"], []).append(item["record_id"])
+        for key, record_ids in remote_by_key.items():
+            preferred_record_id = record_map.get(key)
+            record_map[key] = (
+                preferred_record_id
+                if preferred_record_id in record_ids
+                else sorted(record_ids)[0]
+            )
         remote_complete = record_list_is_complete(list_result.get("json"))
     return local, record_map, remote_records, remote_complete
 

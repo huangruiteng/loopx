@@ -193,9 +193,7 @@ def assert_default_goal_sync_composes_outcomes() -> None:
                 "state": "OPEN",
                 "reviewDecision": "REVIEW_REQUIRED",
                 "mergeStateStatus": "CLEAN",
-                "statusCheckRollup": [
-                    {"name": "focused", "conclusion": "SUCCESS"}
-                ],
+                "statusCheckRollup": [{"name": "focused", "conclusion": "SUCCESS"}],
             },
         )
         assert linked["observation"]["issue_ref"] == "issues_42", linked
@@ -209,9 +207,7 @@ def assert_default_goal_sync_composes_outcomes() -> None:
                 "state": "OPEN",
                 "reviewDecision": "REVIEW_REQUIRED",
                 "mergeStateStatus": "CLEAN",
-                "statusCheckRollup": [
-                    {"name": "focused", "conclusion": "SUCCESS"}
-                ],
+                "statusCheckRollup": [{"name": "focused", "conclusion": "SUCCESS"}],
             },
         )
         retry_write = upsert_issue_fix_pr_lifecycle_ledger_jsonl(
@@ -296,7 +292,9 @@ def assert_default_goal_sync_composes_outcomes() -> None:
             check=True,
         )
         preview_packet = json.loads(preview.stdout)
-        assert preview_packet["issue_fix_outcomes"][0]["validation"]["status"] == "passed"
+        assert (
+            preview_packet["issue_fix_outcomes"][0]["validation"]["status"] == "passed"
+        )
         assert preview_packet["source_contract"]["writes_source_state"] is False
         assert feasibility_ledger.read_text(encoding="utf-8") == ledger_before_preview
 
@@ -415,6 +413,15 @@ def main() -> None:
         "src/parser.py",
         "tests/test_parser.py",
     ], outcome
+    assert outcome["context_tags"] == [
+        "fix_pr",
+        "ci_pending",
+        "reproduction_confirmed",
+        "validation_passed",
+        "tests_changed",
+        "multi_file",
+        "repository_context_grounded",
+    ], outcome
     assert outcome["pull_request"]["checks"]["aggregate"] == "PENDING", outcome
     assert outcome["result"]["kind"] == "fix_pr_open", outcome
     assert projection["source_contract"]["creates_parallel_state_machine"] is False
@@ -441,12 +448,18 @@ def main() -> None:
     assert row["values"]["Action Kind"] == "issue_fix_outcome", row
     assert row["values"]["Work Item Type"] == "Issue Fix", row
     assert row["values"]["Repository"] == "public-fixture/widgets", row
-    assert row["values"]["Issue"] == "https://github.com/public-fixture/widgets/issues/42", row
-    assert row["values"]["Pull Request"] == "https://github.com/public-fixture/widgets/pull/77", row
+    assert (
+        row["values"]["Issue"] == "https://github.com/public-fixture/widgets/issues/42"
+    ), row
+    assert (
+        row["values"]["Pull Request"]
+        == "https://github.com/public-fixture/widgets/pull/77"
+    ), row
     assert row["values"]["Route"] == "fix_pr", row
     assert row["values"]["Stage"] == "ci_pending", row
     assert row["values"]["Validation"].startswith("passed:"), row
     assert row["values"]["Outcome"] == "fix_pr_open", row
+    assert row["values"]["Context Tags"] == outcome["context_tags"], row
     assert "stage=ci_pending" in row["values"]["Evidence"], row
     assert "commit=fix-parser-abc1234" in row["values"]["Evidence"], row
     assert "risks=full integration suite" in row["values"]["Evidence"], row

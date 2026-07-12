@@ -116,6 +116,40 @@ def _package_install_pre_agent_plan() -> dict:
     }
 
 
+def _runner_source_mismatch_prerequisites() -> dict:
+    return {
+        "loopx_runner_source_fingerprint_status": "mismatched_expected",
+        "loopx_runner_source_first_blocker": (
+            "loopx_runner_source_git_head_mismatch"
+        ),
+        "loopx_runner_source_git_head": "1" * 40,
+        "loopx_runner_source_expected_git_head": "2" * 40,
+        "loopx_runner_source_git_head_recorded": True,
+        "loopx_runner_source_expected_git_head_recorded": True,
+        "loopx_runner_source_matches_expected": False,
+        "loopx_runner_source_path_recorded": False,
+        "loopx_runner_source_raw_git_output_recorded": False,
+    }
+
+
+def _countable_attempt_accounting() -> dict:
+    phases = ("launcher", "case", "solver", "verifier", "official_score")
+    return {
+        "schema_version": "benchmark_attempt_accounting_v0",
+        "lifecycle_phase": "runner_accepted_args",
+        "failure_class": "verifier_bootstrap_failed",
+        "failure_label": "verifier_dependency_install_failure",
+        "launcher_attempt_countable": True,
+        "case_attempt_countable": True,
+        "solver_attempt_countable": True,
+        "verifier_attempt_countable": True,
+        "official_score_attempt_countable": True,
+        "attempts": {
+            phase: {"attempted": True, "countable": True} for phase in phases
+        },
+    }
+
+
 def test_missing_score_uv_bootstrap_risk_gets_verifier_dependency_attribution() -> None:
     compact = _missing_score_compact()
     plan = _uv_bootstrap_plan()
@@ -390,6 +424,124 @@ def test_codex_egress_preflight_overrides_verifier_package_risk() -> None:
     assert diagnostic["raw_trajectory_read"] is False, diagnostic
 
 
+def test_runner_source_mismatch_overrides_verifier_package_risk() -> None:
+    compact = _missing_score_compact()
+    plan = _package_install_pre_agent_plan()
+    compact.update(
+        {
+            "mode": "skillsbench_codex_cli_goal_baseline",
+            "route": "codex-cli-goal-baseline",
+            "score_failure_attribution": "verifier_dependency_install_failure",
+            "first_blocker": "verifier_dependency_install_failure",
+            "failure_attribution_labels": [
+                "verifier_dependency_install_failure",
+                "skillsbench_verifier_bootstrap_missing_official_score",
+                "skillsbench_verifier_package_install_risk",
+                "official_score_missing",
+                "skillsbench_runner_error",
+            ],
+            "runner_prerequisites": _runner_source_mismatch_prerequisites(),
+            "task_staging": plan["task_staging"],
+            "task_setup_preflight": plan["task_setup_preflight"],
+            "attempt_accounting": _countable_attempt_accounting(),
+        }
+    )
+
+    reduced = compact_benchmark_run(compact)
+
+    assert reduced is not None, compact
+    blocker = "loopx_runner_source_git_head_mismatch"
+    assert reduced["score_failure_attribution"] == blocker, reduced
+    assert reduced["first_blocker"] == blocker, reduced
+    assert reduced["repeat_blocked_by"] == blocker, reduced
+    assert reduced["failure_attribution_labels"][0] == blocker, reduced
+    assert reduced["runner_failure"]["failure_class"] == blocker, reduced
+    assert reduced["attempt_accounting"]["failure_label"] == blocker, reduced
+    assert reduced["attempt_accounting"]["failure_class"] == (
+        "job_materialization_failed"
+    ), reduced
+    assert reduced["runner_prerequisites"][
+        "loopx_runner_source_first_blocker"
+    ] == blocker, reduced
+    assert reduced["runner_prerequisites"][
+        "loopx_runner_source_matches_expected"
+    ] is False, reduced
+    attempt_accounting = reduced["attempt_accounting"]
+    assert attempt_accounting["launcher_attempt_countable"] is True, attempt_accounting
+    for field in (
+        "case_attempt_countable",
+        "solver_attempt_countable",
+        "verifier_attempt_countable",
+        "official_score_attempt_countable",
+    ):
+        assert attempt_accounting[field] is False, attempt_accounting
+    launcher = attempt_accounting["attempts"]["launcher"]
+    assert launcher == {"attempted": True, "countable": True}, attempt_accounting
+    for phase_name in ("case", "solver", "verifier", "official_score"):
+        phase = attempt_accounting["attempts"][phase_name]
+        assert phase["attempted"] is False, attempt_accounting
+        assert phase["countable"] is False, attempt_accounting
+    assert "verifier_dependency_install_failure" not in reduced[
+        "failure_attribution_labels"
+    ], reduced
+    assert "skillsbench_verifier_package_install_risk" not in reduced[
+        "failure_attribution_labels"
+    ], reduced
+    assert "verifier_bootstrap_diagnostic" not in reduced, reduced
+
+
+def test_egress_preflight_wins_three_way_attribution() -> None:
+    compact = _missing_score_compact()
+    plan = _package_install_pre_agent_plan()
+    compact.update(
+        {
+            "mode": "skillsbench_codex_cli_goal_baseline",
+            "route": "codex-cli-goal-baseline",
+            "failure_attribution_labels": [
+                "official_score_missing",
+                "skillsbench_runner_error",
+                "skillsbench_runner_setup_error",
+                "skillsbench_product_mode_uncountable_treatment",
+                "skillsbench_remote_bridge_agent_operation_trace_missing",
+            ],
+            "runner_prerequisites": _runner_source_mismatch_prerequisites(),
+            "runner_config": {
+                "benchmark_egress_proxy_required": True,
+                "benchmark_egress_proxy_ready": False,
+                "benchmark_egress_proxy_status": "invalid_proxy_value",
+                "benchmark_egress_proxy_error_kind": "unexpanded_placeholder",
+            },
+            "task_staging": plan["task_staging"],
+            "task_setup_preflight": plan["task_setup_preflight"],
+            "attempt_accounting": _countable_attempt_accounting(),
+        }
+    )
+
+    reduced = compact_benchmark_run(compact)
+
+    assert reduced is not None, compact
+    blocker = "skillsbench_benchmark_egress_proxy_preflight_blocked"
+    assert reduced["score_failure_attribution"] == blocker, reduced
+    assert reduced["first_blocker"] == blocker, reduced
+    assert reduced["failure_attribution_labels"][0] == blocker, reduced
+    assert "verifier_bootstrap_diagnostic" not in reduced, reduced
+    attempt_accounting = reduced["attempt_accounting"]
+    assert attempt_accounting["launcher_attempt_countable"] is True, reduced
+    for field in (
+        "case_attempt_countable",
+        "solver_attempt_countable",
+        "verifier_attempt_countable",
+        "official_score_attempt_countable",
+    ):
+        assert attempt_accounting[field] is False, reduced
+    launcher = attempt_accounting["attempts"]["launcher"]
+    assert launcher == {"attempted": True, "countable": True}, reduced
+    for phase_name in ("case", "solver", "verifier", "official_score"):
+        phase = attempt_accounting["attempts"][phase_name]
+        assert phase["attempted"] is False, reduced
+        assert phase["countable"] is False, reduced
+
+
 def test_completed_score_is_not_reclassified_by_bootstrap_risk() -> None:
     compact = _missing_score_compact()
     plan = _uv_bootstrap_plan()
@@ -439,5 +591,7 @@ if __name__ == "__main__":
     test_pre_agent_package_install_risk_overrides_bridge_trace_missing()
     test_benchmark_egress_preflight_overrides_verifier_package_risk()
     test_codex_egress_preflight_overrides_verifier_package_risk()
+    test_runner_source_mismatch_overrides_verifier_package_risk()
+    test_egress_preflight_wins_three_way_attribution()
     test_completed_score_is_not_reclassified_by_bootstrap_risk()
     print("skillsbench-verifier-bootstrap-missing-score-smoke: ok")

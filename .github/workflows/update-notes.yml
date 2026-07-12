@@ -21,8 +21,7 @@ on:
     - cron: "17 3 * * 0"
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: biweekly-update-notes
@@ -58,34 +57,28 @@ jobs:
       - name: Validate update-note archive
         if: steps.generate.outputs.changed == 'true'
         run: |
-          python3 -m py_compile scripts/update_notes_release_job.py examples/update-notes-archive-smoke.py
+          python3 -m py_compile scripts/update_notes_release_job.py examples/update-notes-archive-smoke.py examples/update-notes-generator-quality-smoke.py
           python3 examples/update-notes-archive-smoke.py
+          python3 examples/update-notes-generator-quality-smoke.py
           git diff --check
           python3 -m loopx.cli check \
             --scan-path .github/workflows/update-notes.yml \
             --scan-path scripts/update_notes_release_job.py \
             --scan-path docs/update-notes \
-            --scan-path examples/update-notes-archive-smoke.py
+            --scan-path examples/update-notes-archive-smoke.py \
+            --scan-path examples/update-notes-generator-quality-smoke.py
 
-      - name: Open update-note PR
+      - name: Package reviewable draft
         if: steps.generate.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v6
+        run: git diff --binary > update-note.patch
+
+      - name: Upload update-note draft
+        if: steps.generate.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: codex/biweekly-update-notes-${{ steps.generate.outputs.window_slug }}
-          delete-branch: true
-          draft: true
-          title: Add biweekly update note ${{ steps.generate.outputs.window }}
-          commit-message: Add biweekly update note ${{ steps.generate.outputs.window }}
-          body: |
-            ## Summary
-            - generated the next public-safe biweekly update-note source draft from public git history
-            - updated the update-note archive and latest pointer
-
-            This workflow does not use an LLM. Treat the generated note as a factual source packet and draft PR; a maintainer or LoopX agent should refine the narrative before marking this PR ready.
-
-            ## Validation
-            - python3 -m py_compile scripts/update_notes_release_job.py examples/update-notes-archive-smoke.py
-            - python3 examples/update-notes-archive-smoke.py
-            - git diff --check
-            - python3 -m loopx.cli check --scan-path .github/workflows/update-notes.yml --scan-path scripts/update_notes_release_job.py --scan-path docs/update-notes --scan-path examples/update-notes-archive-smoke.py
+          name: biweekly-update-note-${{ steps.generate.outputs.window_slug }}
+          path: |
+            ${{ steps.generate.outputs.note_file }}
+            docs/update-notes/README.md
+            update-note.patch
+          retention-days: 30

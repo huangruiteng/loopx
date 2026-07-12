@@ -43,7 +43,7 @@ or command payload with auth material.
 | Scope | `Scope` text, advisory in v0. |
 | Quota | Omitted in v0; the prototype assumes no quota limit. |
 | Worker launch | `Worker Command` and `Workdir`, consumed by heartbeat. |
-| Issue-fix outcome | One stable `Work Item Type=Issue Fix` row with `Repository`, `Issue`, `Pull Request`, `Route`, `Stage`, `Validation`, and `Outcome`. |
+| Issue-fix outcome | One stable `Work Item Type=Issue Fix` row with `Repository`, `Issue`, `Pull Request`, `Route`, `Stage`, `Validation`, `Outcome`, and bounded multi-select `Context Tags`. |
 
 The Kanban view groups by `Status`, so the board is the operator-facing
 control surface. Agent workers use the filtered `Worker Queue` view.
@@ -77,8 +77,10 @@ queue:
 - `Issue Fix Kanban`: Kanban view with the same filter, grouped by `Stage`.
 
 Their visible fields are `Task`, `Repository`, `Issue`, `Pull Request`,
-`Route`, `Stage`, `Validation`, `Outcome`, and `Status`. This keeps the existing
-todo Kanban compact while making per-issue state and output directly scannable.
+`Route`, `Stage`, `Validation`, `Outcome`, `Context Tags`, and `Status`. Context
+tags expose stable route, stage, reproduction, validation, and focused-change
+signals without copying free-form evidence. This keeps the existing todo Kanban
+compact while making per-issue state and output directly scannable.
 
 `lark-cli` 1.0.56 exposes `base +view-set-visible-fields`, so
 `lark-kanban setup` writes this compact Kanban card field list directly. Verify

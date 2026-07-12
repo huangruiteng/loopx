@@ -1163,6 +1163,11 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "codex_api_reverse_tunnel_proxy_source",
         "codex_api_reverse_tunnel_proxy_scheme",
         "codex_api_reverse_tunnel_proxy_endpoint_kind",
+        "loopx_runner_source_fingerprint_status",
+        "loopx_runner_source_first_blocker",
+        "loopx_runner_source_git_head",
+        "loopx_runner_source_expected_git_head",
+        "loopx_runner_source_error_kind",
         "remote_command_file_bridge_consumption_status",
         "remote_command_file_bridge_agent_operation_trace_status",
         "remote_command_file_bridge_driver_lifecycle_execution_style",
@@ -1254,6 +1259,11 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "runner_interrupted_before_official_result",
         "runner_interruption_compact_closeout_expected",
         "runner_interruption_raw_material_recorded",
+        "loopx_runner_source_git_head_recorded",
+        "loopx_runner_source_expected_git_head_recorded",
+        "loopx_runner_source_matches_expected",
+        "loopx_runner_source_path_recorded",
+        "loopx_runner_source_raw_git_output_recorded",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -1795,13 +1805,14 @@ def _apply_skillsbench_benchmark_egress_preflight_compact_projection(
             "verifier_dependency_install_failure",
         }
     ]
-    for item in (
+    primary_labels = (
         label,
         "skillsbench_environment_setup_error",
         status_label,
-    ):
-        if item not in labels:
-            labels.append(item)
+    )
+    labels = list(primary_labels) + [
+        item for item in labels if item not in primary_labels
+    ]
     compact["failure_attribution_labels"] = labels[:MAX_BENCHMARK_RUN_LIST_ITEMS]
 
     attempt_accounting = compact.get("attempt_accounting")
@@ -1888,6 +1899,111 @@ def _apply_skillsbench_benchmark_egress_preflight_compact_projection(
         "raw_trajectory_read": False,
         "next_diagnostic_action": "restore_required_private_egress_then_retry",
     }
+
+
+def _apply_skillsbench_runner_source_fingerprint_compact_projection(
+    compact: dict[str, Any],
+    *,
+    source: dict[str, Any] | None = None,
+) -> None:
+    source = source if isinstance(source, dict) else {}
+    prerequisites = (
+        compact.get("runner_prerequisites")
+        if isinstance(compact.get("runner_prerequisites"), dict)
+        else {}
+    )
+    source_config = (
+        source.get("runner_config")
+        if isinstance(source.get("runner_config"), dict)
+        else {}
+    )
+    status = public_safe_compact_text(
+        prerequisites.get("loopx_runner_source_fingerprint_status")
+        or source_config.get("loopx_runner_source_fingerprint_status"),
+        limit=80,
+    )
+    blocker = public_safe_compact_text(
+        prerequisites.get("loopx_runner_source_first_blocker")
+        or source_config.get("loopx_runner_source_first_blocker"),
+        limit=120,
+    )
+    if (
+        status != "mismatched_expected"
+        or blocker != "loopx_runner_source_git_head_mismatch"
+        or not _skillsbench_compact_official_score_missing(compact)
+    ):
+        return
+
+    compact["score_failure_attribution"] = blocker
+    compact["first_blocker"] = blocker
+    compact["repeat_blocked_by"] = blocker
+    compact["official_score_comparable_to_native_codex"] = False
+    compact["official_score_comparable_to_loopx_treatment"] = False
+
+    verifier_labels = {
+        "verifier_dependency_bootstrap_timeout",
+        "verifier_dependency_install_failure",
+        "verifier_uv_install_or_download_failure",
+        "skillsbench_verifier_bootstrap_missing_official_score",
+        "skillsbench_verifier_bootstrap_preflight_blocked",
+        "skillsbench_verifier_package_install_risk",
+    }
+    labels = [
+        item
+        for item in compact.get("failure_attribution_labels", [])
+        if isinstance(item, str) and item and item not in verifier_labels
+    ]
+    primary_labels = (
+        blocker,
+        "skillsbench_runner_source_fingerprint_mismatch",
+        "skillsbench_runner_setup_error",
+    )
+    labels = list(primary_labels) + [
+        item for item in labels if item not in primary_labels
+    ]
+    compact["failure_attribution_labels"] = labels[:MAX_BENCHMARK_RUN_LIST_ITEMS]
+
+    attempt_accounting = compact.get("attempt_accounting")
+    if isinstance(attempt_accounting, dict):
+        attempt_accounting["lifecycle_phase"] = "runner_accepted_args"
+        attempt_accounting["failure_label"] = blocker
+        attempt_accounting["failure_class"] = "job_materialization_failed"
+        attempt_accounting["launcher_attempt_countable"] = True
+        for field in (
+            "case_attempt_countable",
+            "solver_attempt_countable",
+            "verifier_attempt_countable",
+            "official_score_attempt_countable",
+        ):
+            attempt_accounting[field] = False
+        attempts = attempt_accounting.get("attempts")
+        if isinstance(attempts, dict):
+            launcher = attempts.get("launcher")
+            if isinstance(launcher, dict):
+                launcher["attempted"] = True
+                launcher["countable"] = True
+            for phase_name in ("case", "solver", "verifier", "official_score"):
+                phase = attempts.get(phase_name)
+                if isinstance(phase, dict):
+                    phase["attempted"] = False
+                    phase["countable"] = False
+    runner_failure = compact.get("runner_failure")
+    if isinstance(runner_failure, dict):
+        runner_failure["failure_class"] = blocker
+        runner_failure["runner_source_fingerprint_mismatch"] = True
+
+    validation = (
+        compact.get("validation")
+        if isinstance(compact.get("validation"), dict)
+        else {}
+    )
+    validation["runner_source_fingerprint_mismatch"] = True
+    validation["all_passed"] = False
+    compact["validation"] = validation
+
+    compose_setup_diagnostic = compact.get("compose_setup_diagnostic")
+    if isinstance(compose_setup_diagnostic, dict):
+        compose_setup_diagnostic["case_attempt_budget_should_count"] = False
 
 
 def _compact_benchmark_result_discovery(value: Any) -> dict[str, Any]:
@@ -3186,6 +3302,10 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         compact["validation"] = compact_validation
         _apply_skillsbench_pre_agent_setup_compact_projection(compact)
 
+    _apply_skillsbench_runner_source_fingerprint_compact_projection(
+        compact,
+        source=source,
+    )
     _apply_skillsbench_benchmark_egress_preflight_compact_projection(
         compact,
         source=source,

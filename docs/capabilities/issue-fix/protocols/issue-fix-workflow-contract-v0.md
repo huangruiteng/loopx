@@ -59,7 +59,12 @@ open PRs, merge, publish, or run destructive git without an explicit gate.
    passing-after evidence when that repro path is available.
 9. **PR review packet:** emit `issue_fix_pr_review_packet_v0` only when branch,
    validation, and repo-relative changed-file evidence are sufficient for human
-   review. The packet is review evidence, not external publication authority.
+   review. Its `issue_fix_pr_description_contract_v0` keeps the PR-review
+   motivation/approach/change/validation/risk structure, requires a compact key
+   code or pseudocode section for code changes, and requires a post-fix
+   repository CLI or focused code/test reproduction when applicable. Optional
+   infographics are limited to complex changes and cannot replace textual
+   evidence. The packet is review evidence, not external publication authority.
 10. **PR lifecycle monitor:** after a PR exists, use
    `issue_fix_pr_lifecycle_monitor_v0` to project compact public PR state into
    exactly one of `runnable_successor`, `monitor_continuation`, `user_gate`, or
@@ -81,7 +86,8 @@ open PRs, merge, publish, or run destructive git without an explicit gate.
    context, optional `issue_fix_delivery_evidence_input_v0`, and optional PR
    lifecycle row. This projection writes no source state and creates no parallel
    workflow state machine. It must keep unknown delivery evidence explicit,
-   retain terminal outputs, and remain consumable by generic projection sinks.
+   retain terminal outputs, derive only bounded public-safe `context_tags`, and
+   remain consumable by generic projection sinks.
    Default goal-level Kanban sync derives an
    `issue_fix_outcome_collection_projection_v0` from all feasibility rows and
    explicitly linked lifecycle rows before upserting issue outcome cards.

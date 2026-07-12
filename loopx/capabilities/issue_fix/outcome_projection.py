@@ -170,9 +170,7 @@ def _reusable_knowledge(value: Any) -> dict[str, Any] | None:
             }
         )
     missing = [
-        key
-        for key, item in compact.items()
-        if key != "schema_version" and not item
+        key for key, item in compact.items() if key != "schema_version" and not item
     ]
     if missing:
         raise ValueError(
@@ -244,9 +242,7 @@ def _delivery_evidence(value: Mapping[str, Any] | None) -> dict[str, Any]:
             value.get("recorded_at"), field="recorded_at", limit=80
         )
         or None,
-        "reusable_knowledge": _reusable_knowledge(
-            value.get("reusable_knowledge")
-        ),
+        "reusable_knowledge": _reusable_knowledge(value.get("reusable_knowledge")),
     }
 
 
@@ -335,6 +331,35 @@ def _stage_and_card_status(
     if reproduction_status in {"missing", "blocked"}:
         return "reproduction_blocked", "blocked", "P0"
     return "fix_in_progress", "open", "P0"
+
+
+def _context_tags(
+    *,
+    route: str,
+    stage: str,
+    reproduction_status: str,
+    validation_status: str,
+    repository_context_status: str,
+    changed_files: Sequence[str],
+) -> list[str]:
+    """Build bounded, filterable reviewer context without free-form prose."""
+
+    tags = [
+        route,
+        stage,
+        f"reproduction_{reproduction_status}",
+        f"validation_{validation_status}",
+    ]
+    if any(
+        PurePosixPath(path).parts and PurePosixPath(path).parts[0] in {"test", "tests"}
+        for path in changed_files
+    ):
+        tags.append("tests_changed")
+    if len(changed_files) > 1:
+        tags.append("multi_file")
+    if repository_context_status == "grounded":
+        tags.append("repository_context_grounded")
+    return list(dict.fromkeys(tags))
 
 
 def _result(
@@ -497,6 +522,20 @@ def build_issue_fix_outcome_projection(
         field="validation label",
         limit=260,
     )
+    validation_status = str(
+        delivery.get("validation_status")
+        or ("declared" if validation_label else "unknown")
+    )
+    repository_context_status = (
+        _safe_text(
+            repository_context.get("context_status")
+            or context_effect.get("context_status"),
+            field="context status",
+            limit=80,
+        )
+        or "unknown"
+    )
+    changed_files = list(delivery.get("changed_files") or [])
     feasibility_transition = _mapping(feasibility_packet.get("transition"))
     projected_todo = _mapping(feasibility_transition.get("projected_todo"))
     next_action = _safe_text(
@@ -562,8 +601,7 @@ def build_issue_fix_outcome_projection(
             ),
         },
         "validation": {
-            "status": delivery.get("validation_status")
-            or ("declared" if validation_label else "unknown"),
+            "status": validation_status,
             "label": validation_label or None,
             "evidence_refs": list(context_effect.get("validation_evidence_refs") or []),
         },
@@ -571,7 +609,7 @@ def build_issue_fix_outcome_projection(
             "evidence_provided": delivery.get("provided") is True,
             "outcome_status": delivery.get("outcome_status"),
             "commit_ref": delivery.get("commit_ref"),
-            "changed_files": list(delivery.get("changed_files") or []),
+            "changed_files": changed_files,
             "recorded_at": delivery.get("recorded_at"),
         },
         "reusable_knowledge": delivery.get("reusable_knowledge"),
@@ -599,6 +637,14 @@ def build_issue_fix_outcome_projection(
             delivery=delivery,
         ),
         "risks": list(delivery.get("risks") or []),
+        "context_tags": _context_tags(
+            route=route,
+            stage=stage,
+            reproduction_status=reproduction_status,
+            validation_status=validation_status,
+            repository_context_status=repository_context_status,
+            changed_files=changed_files,
+        ),
         "next_action": next_action or None,
         "handoff": next_action or "No further action projected.",
         "scope": "issue_fix_outcome",
@@ -747,18 +793,17 @@ def build_issue_fix_outcome_collection_from_domain_state(
                 pr_lifecycle_packet=lifecycle_packet,
                 delivery_evidence_input=(
                     feasibility_packet.get("delivery_evidence")
-                    if isinstance(
-                        feasibility_packet.get("delivery_evidence"), Mapping
-                    )
+                    if isinstance(feasibility_packet.get("delivery_evidence"), Mapping)
                     else None
                 ),
                 agent_id=agent_id,
                 generated_at=generated_at,
             )
         except ValueError as exc:
-            safe_identity = public_safe_compact_text(
-                f"{repo}:{issue_ref}", limit=220
-            ) or "unknown issue"
+            safe_identity = (
+                public_safe_compact_text(f"{repo}:{issue_ref}", limit=220)
+                or "unknown issue"
+            )
             safe_error = public_safe_compact_text(exc, limit=260) or "invalid row"
             warnings.append(f"skipped {safe_identity}: {safe_error}")
             continue

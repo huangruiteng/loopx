@@ -225,10 +225,13 @@ receipt. It names the linked issue and compact PR-title change summary, points
 to the PR description for motivation, validation, and risk, and does not expose
 an idempotency marker.
 The workflow plan also projects an `issue_fix_pr_description_contract_v0`
-template adapted from the PR-review five-block structure: motivation, approach,
-concrete changes, validation, and main-branch risk/uncovered scope. The
-reviewer's verdict section remains review-only and is not authored into the PR
-description.
+template adapted from the PR-review five-block structure. Code changes add two
+reviewer-context sections: the smallest key-code or pseudocode slice, and a
+post-fix reproduction using the repository CLI or focused code/test surface.
+Motivation, approach, concrete changes, validation, and main-branch
+risk/uncovered scope remain required. An infographic is optional only for a
+complex change and never replaces textual evidence. The reviewer's verdict
+section remains review-only and is not authored into the PR description.
 When a human confirms that an unresolved git display name belongs to a specific
 GitHub account, `--identity-map-json` records that compact mapping as verified
 identity evidence and reranks the same repository-native contribution evidence.
@@ -948,10 +951,12 @@ Repeating the same compact evidence is an unchanged, no-write operation.
 The Lark adapter renders this as a first-class issue dimension rather than
 only flattening the packet into `Evidence`. Outcome rows set
 `Work Item Type=Issue Fix` and populate `Repository`, `Issue`, `Pull Request`,
-`Route`, `Stage`, `Validation`, and `Outcome`. `Issue Fix Outcomes` provides the
-table view; `Issue Fix Kanban` groups the same rows by `Stage`. Existing boards
-gain the missing fields and views through idempotent `lark-kanban setup
---execute` schema reconciliation.
+`Route`, `Stage`, `Validation`, `Outcome`, and `Context Tags`. The bounded
+multi-select tags expose route, stage, reproduction/validation status, test
+changes, multi-file scope, and grounded repository context without copying
+free-form evidence. `Issue Fix Outcomes` provides the table view; `Issue Fix
+Kanban` groups the same rows by `Stage`. Existing boards gain the missing fields
+and views through idempotent `lark-kanban setup --execute` schema reconciliation.
 
 ## Commands
 
