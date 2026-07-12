@@ -1766,13 +1766,14 @@ def _apply_skillsbench_benchmark_egress_preflight_compact_projection(
             "skillsbench_remote_bridge_agent_operation_trace_missing",
         }
     ]
-    for item in (
+    primary_labels = (
         label,
         "skillsbench_environment_setup_error",
         f"skillsbench_benchmark_egress_proxy_{proxy_status}",
-    ):
-        if item not in labels:
-            labels.append(item)
+    )
+    labels = list(primary_labels) + [
+        item for item in labels if item not in primary_labels
+    ]
     compact["failure_attribution_labels"] = labels[:MAX_BENCHMARK_RUN_LIST_ITEMS]
 
     attempt_accounting = compact.get("attempt_accounting")
@@ -1876,19 +1877,33 @@ def _apply_skillsbench_runner_source_fingerprint_compact_projection(
         for item in compact.get("failure_attribution_labels", [])
         if isinstance(item, str) and item and item not in verifier_labels
     ]
-    for item in (
+    primary_labels = (
         blocker,
         "skillsbench_runner_source_fingerprint_mismatch",
         "skillsbench_runner_setup_error",
-    ):
-        if item not in labels:
-            labels.append(item)
+    )
+    labels = list(primary_labels) + [
+        item for item in labels if item not in primary_labels
+    ]
     compact["failure_attribution_labels"] = labels[:MAX_BENCHMARK_RUN_LIST_ITEMS]
 
     attempt_accounting = compact.get("attempt_accounting")
     if isinstance(attempt_accounting, dict):
         attempt_accounting["failure_label"] = blocker
         attempt_accounting["failure_class"] = "job_materialization_failed"
+        for field in (
+            "launcher_attempt_countable",
+            "case_attempt_countable",
+            "solver_attempt_countable",
+            "verifier_attempt_countable",
+            "official_score_attempt_countable",
+        ):
+            attempt_accounting[field] = False
+        attempts = attempt_accounting.get("attempts")
+        if isinstance(attempts, dict):
+            for phase in attempts.values():
+                if isinstance(phase, dict):
+                    phase["countable"] = False
     runner_failure = compact.get("runner_failure")
     if isinstance(runner_failure, dict):
         runner_failure["failure_class"] = blocker
@@ -1902,6 +1917,10 @@ def _apply_skillsbench_runner_source_fingerprint_compact_projection(
     validation["runner_source_fingerprint_mismatch"] = True
     validation["all_passed"] = False
     compact["validation"] = validation
+
+    compose_setup_diagnostic = compact.get("compose_setup_diagnostic")
+    if isinstance(compose_setup_diagnostic, dict):
+        compose_setup_diagnostic["case_attempt_budget_should_count"] = False
 
 
 def _compact_benchmark_result_discovery(value: Any) -> dict[str, Any]:
