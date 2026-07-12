@@ -266,6 +266,24 @@ def main() -> int:
             + "\n",
             encoding="utf-8",
         )
+        state_file = (
+            project
+            / ".codex"
+            / "goals"
+            / "example-goal"
+            / "ACTIVE_GOAL_STATE.md"
+        )
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        state_file.write_text(
+            "# Active Goal State\n\n"
+            "## User Todo / Owner Review Reading Queue\n\n"
+            "- [ ] Approve public PR merge.\n"
+            "  <!-- loopx:todo todo_id=todo_merge_gate_1716 status=open "
+            "task_class=user_gate decision_scope=direction:action:merge_pr_1716 "
+            "blocks_agent=codex-test -->\n\n"
+            "## Agent Todo\n\n",
+            encoding="utf-8",
+        )
         ledger = default_issue_fix_domain_state_ledger_path(
             project=project,
             goal_id="example-goal",
@@ -376,6 +394,119 @@ def main() -> int:
             ),
             encoding="utf-8",
         )
+        gate_open_metadata_path = project / "gate-open-pr.json"
+        gate_open_metadata_path.write_text(
+            json.dumps(
+                {
+                    "state": "OPEN",
+                    "reviewDecision": "APPROVED",
+                    "statusCheckRollup": [
+                        {"name": "lint", "conclusion": "SUCCESS"}
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        gate_merged_metadata_path = project / "gate-merged-pr.json"
+        gate_merged_metadata_path.write_text(
+            json.dumps(
+                {
+                    "state": "MERGED",
+                    "mergedAt": "2026-06-25T00:00:00Z",
+                    "reviewDecision": "APPROVED",
+                    "statusCheckRollup": [
+                        {"name": "lint", "conclusion": "SUCCESS"}
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        gate_base_args = [
+            "issue-fix",
+            "pr-gate-reconcile",
+            "--url",
+            "https://github.com/huangruiteng/loopx/pull/1716",
+            "--goal-id",
+            "example-goal",
+            "--todo-id",
+            "todo_merge_gate_1716",
+            "--project",
+            str(project),
+        ]
+        open_gate = json.loads(
+            run_cli(
+                [
+                    *gate_base_args,
+                    "--metadata-json",
+                    str(gate_open_metadata_path),
+                    "--execute",
+                ],
+                registry_path=registry_path,
+                runtime_root=runtime_root,
+            ).stdout
+        )
+        assert open_gate["terminal"] is False, open_gate
+        assert open_gate["write_performed"] is False, open_gate
+        assert open_gate["skip_reason"] == "pr_not_terminal", open_gate
+        assert "status=open" in state_file.read_text(encoding="utf-8")
+
+        preview_gate = json.loads(
+            run_cli(
+                [
+                    *gate_base_args,
+                    "--metadata-json",
+                    str(gate_merged_metadata_path),
+                ],
+                registry_path=registry_path,
+                runtime_root=runtime_root,
+            ).stdout
+        )
+        assert preview_gate["terminal"] is True, preview_gate
+        assert preview_gate["would_reconcile"] is True, preview_gate
+        assert preview_gate["write_performed"] is False, preview_gate
+        assert preview_gate["skip_reason"] == "execute_required", preview_gate
+
+        reconciled_gate = json.loads(
+            run_cli(
+                [
+                    *gate_base_args,
+                    "--metadata-json",
+                    str(gate_merged_metadata_path),
+                    "--execute",
+                ],
+                registry_path=registry_path,
+                runtime_root=runtime_root,
+            ).stdout
+        )
+        assert reconciled_gate["reconciled"] is True, reconciled_gate
+        assert reconciled_gate["write_performed"] is True, reconciled_gate
+        assert reconciled_gate["todo_completion"]["status"] == "done", reconciled_gate
+        assert reconciled_gate["rollout_event"]["appended"] is True, reconciled_gate
+        assert "status=done" in state_file.read_text(encoding="utf-8")
+        gate_projection = parse_active_state_todos(
+            state_file.read_text(encoding="utf-8")
+        )
+        gate_item = gate_projection["user_todos"]["items"][0]
+        assert gate_item["status"] == "done", gate_item
+        assert "state=MERGED" in gate_item["evidence"], gate_item
+        assert_public_safe(reconciled_gate)
+
+        repeated_gate = json.loads(
+            run_cli(
+                [
+                    *gate_base_args,
+                    "--metadata-json",
+                    str(gate_merged_metadata_path),
+                    "--execute",
+                ],
+                registry_path=registry_path,
+                runtime_root=runtime_root,
+            ).stdout
+        )
+        assert repeated_gate["already_reconciled"] is True, repeated_gate
+        assert repeated_gate["write_performed"] is False, repeated_gate
+        assert repeated_gate["rollout_event"]["already_recorded"] is True, repeated_gate
+
         merged_args = [
             "issue-fix",
             "pr-lifecycle",
@@ -412,7 +543,10 @@ def main() -> int:
         rollout_events = load_rollout_events(
             rollout_event_log_path(runtime_root, "example-goal")
         )
-        assert len(rollout_events) == 1, rollout_events
+        assert len(rollout_events) == 2, rollout_events
+        assert {
+            event["code_refs"]["pr_ref"] for event in rollout_events
+        } == {"huangruiteng/loopx#1715", "huangruiteng/loopx#1716"}
         parsed = parse_active_state_todos(
             "## Agent Todo\n\n"
             "- [ ] Resume after merge.\n"
