@@ -16,7 +16,7 @@ public-safe facts:
 - the current repository revision and repo-relative/public evidence refs;
 - `issue_fix_duplicate_search_evidence_v0`, proving that both open and closed
   issues were checked and recording either `reuse_existing` or
-  `no_equivalent_found`;
+  `no_equivalent_found`, plus a compact decision rationale;
 - an optional focused PR URL.
 
 The duplicate decision remains an evidence-backed agent judgment. LoopX does

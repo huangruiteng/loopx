@@ -116,6 +116,11 @@ def promotion_input(
             "query_summary": "vector resource raster parser provider error",
             "candidate_issue_urls": candidates,
             "decision": decision,
+            "decision_summary": (
+                "Issue 42 describes the same parser path and expected behavior."
+                if decision == "reuse_existing"
+                else "No open or closed issue describes this vector-to-raster routing defect."
+            ),
             "canonical_issue_url": canonical,
         },
         "pr_url": (
@@ -161,12 +166,14 @@ class FakeGitHub:
                 ),
                 "stderr": "",
             }
-        if args[1:3] == ["pr", "edit"]:
+        if args[1:3] == ["api", "repos/example/public-repo/pulls/99"]:
             if self.fail_edit:
                 return {"returncode": 1, "stdout": "", "stderr": "permission denied"}
             self.write_count += 1
             self.linked = True
-            self.last_pr_body = args[args.index("--body") + 1]
+            body_arg = args[args.index("-f") + 1]
+            assert body_arg.startswith("body=")
+            self.last_pr_body = body_arg.removeprefix("body=")
             assert self.last_pr_body.endswith("Fixes #42")
             return {"returncode": 0, "stdout": "", "stderr": ""}
         raise AssertionError(args)
@@ -302,6 +309,7 @@ def main() -> int:
         observation = feasibility_rows[0]["observation"]
         assert observation["issue_ref"] == "issues_42"
         assert observation["repository_context"]["repository_revision"] == "a" * 40
+        assert feasibility_rows[0]["generated_at"] == source["generated_at"]
         assert feasibility_rows[0]["promotion_lineage"]["source_issue_ref"] == (
             "discovered-vector-input"
         )

@@ -141,7 +141,9 @@ def promote_issue_fix_feasibility_ledger_jsonl(
                             f"invalid JSONL row {index} in issue-fix feasibility ledger"
                         ) from exc
                     if not isinstance(row, dict):
-                        continue
+                        raise ValueError(
+                            f"issue-fix feasibility ledger row {index} must be an object"
+                        )
                     try:
                         row_key = issue_fix_feasibility_ledger_key(row)
                     except ValueError:

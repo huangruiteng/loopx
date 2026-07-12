@@ -53,6 +53,7 @@ _DUPLICATE_FIELDS = {
     "query_summary",
     "candidate_issue_urls",
     "decision",
+    "decision_summary",
     "canonical_issue_url",
 }
 _CLOSING_REFERENCE_PATTERN = re.compile(
@@ -297,6 +298,11 @@ def _normalise_input(value: Mapping[str, Any]) -> dict[str, Any]:
             ),
             "candidate_issue_urls": candidate_urls[:20],
             "decision": decision,
+            "decision_summary": _safe_text(
+                raw_duplicate.get("decision_summary"),
+                field="duplicate_search.decision_summary",
+                limit=400,
+            ),
             "canonical_issue_url": canonical_url,
         },
         "pr_url": pr_url,
@@ -434,29 +440,29 @@ def _ensure_pr_closing_reference(
                 "GitHub PR does not yet report the closing issue reference"
             )
         raw_body = str(before.get("body") or "").rstrip()
-        if not any(
+        has_closing_line = any(
             int(match.group(1)) == issue_number
             for match in _CLOSING_REFERENCE_PATTERN.finditer(raw_body)
-        ):
+        )
+        if not has_closing_line:
             raw_body = f"{raw_body}\n\nFixes #{issue_number}".strip()
-        try:
-            result = runner(
-                [
-                    "gh",
-                    "pr",
-                    "edit",
-                    str(reference["number"]),
-                    "--repo",
-                    repo,
-                    "--body",
-                    raw_body,
-                ]
-            )
-        except (OSError, subprocess.SubprocessError):
-            raise ValueError("GitHub PR closing-reference update failed") from None
-        if result.get("returncode") != 0:
-            raise ValueError("GitHub PR closing-reference update failed")
-        write_performed = True
+            try:
+                result = runner(
+                    [
+                        "gh",
+                        "api",
+                        f"repos/{repo}/pulls/{reference['number']}",
+                        "--method",
+                        "PATCH",
+                        "-f",
+                        f"body={raw_body}",
+                    ]
+                )
+            except (OSError, subprocess.SubprocessError):
+                raise ValueError("GitHub PR closing-reference update failed") from None
+            if result.get("returncode") != 0:
+                raise ValueError("GitHub PR closing-reference update failed")
+            write_performed = True
     after = read_pr()
     verified_numbers = {
         item.get("number")
@@ -551,6 +557,7 @@ def _promotion_lineage(
         "canonical_issue_ref": canonical_issue_ref,
         "canonical_issue_url": canonical_issue_url,
         "duplicate_search_decision": duplicate_search.get("decision"),
+        "duplicate_search_decision_summary": duplicate_search.get("decision_summary"),
         "candidate_issue_urls": list(
             duplicate_search.get("candidate_issue_urls") or []
         ),
@@ -605,7 +612,6 @@ def promote_issue_fix_feasibility_packet(
             separators=(",", ":"),
         ).encode("utf-8")
     ).hexdigest()[:16]
-    promoted["generated_at"] = generated_at
     promoted["domain_state_key"] = {"repo": repo, "issue_ref": canonical_ref}
     projection = promoted.get("domain_state_projection")
     if not isinstance(projection, dict):
@@ -820,7 +826,10 @@ def build_issue_fix_discovered_issue_promotion_packet(
         )
     elif canonical_row is not None:
         promoted = copy.deepcopy(canonical_row)
-        if not isinstance(promoted.get("promotion_lineage"), Mapping):
+        existing_lineage = promoted.get("promotion_lineage")
+        if not isinstance(existing_lineage, Mapping) or existing_lineage.get(
+            "duplicate_search_decision_summary"
+        ) != duplicate.get("decision_summary"):
             promoted["promotion_lineage"] = _promotion_lineage(
                 source_issue_ref=value["source_issue_ref"],
                 canonical_issue_ref=issue["issue_ref"],
