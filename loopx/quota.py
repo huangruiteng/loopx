@@ -2327,6 +2327,7 @@ def record_quota_monitor_poll(
     source: str = DEFAULT_SLOT_SPEND_SOURCE,
     reason_summary: str | None = None,
     agent_id: str | None = None,
+    available_capabilities: Any = None,
     todo_id: str | None = None,
     target_key: str | None = None,
     result_hash: str | None = None,
@@ -2338,7 +2339,12 @@ def record_quota_monitor_poll(
     next_claimed_by: str | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
-    before = build_quota_should_run(status_payload, goal_id=safe_goal_id, agent_id=agent_id)
+    before = build_quota_should_run(
+        status_payload,
+        goal_id=safe_goal_id,
+        agent_id=agent_id,
+        available_capabilities=available_capabilities,
+    )
     return record_quota_monitor_poll_for_decision(
         before,
         status_payload,
@@ -2347,6 +2353,7 @@ def record_quota_monitor_poll(
             after_status,
             goal_id=safe_goal_id,
             agent_id=agent_id,
+            available_capabilities=available_capabilities,
         ),
         registry_path=registry_path,
         execute=execute,

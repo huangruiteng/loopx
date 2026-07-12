@@ -236,6 +236,7 @@ def handle_quota_command(
                 source=args.source,
                 reason_summary=args.reason_summary,
                 agent_id=args.agent_id,
+                available_capabilities=args.available_capabilities,
                 todo_id=args.todo_id,
                 target_key=args.target_key,
                 result_hash=args.result_hash,

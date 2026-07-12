@@ -114,6 +114,7 @@ def write_fixture(
         "todo_id=todo_monitorpolladvance "
         "status=open "
         "task_class=advancement_task "
+        "required_capabilities=network "
         f"claimed_by={AGENT_ID} "
         "-->\n"
         if include_advancement
@@ -529,6 +530,8 @@ def assert_compacted_auxiliary_due_monitor_can_write_back() -> None:
             GOAL_ID,
             "--agent-id",
             AGENT_ID,
+            "--available-capability",
+            "network",
         )
         assert quota["work_lane_contract"]["obligation"] == "advance_one_bounded_segment", quota
         assert quota["agent_todo_summary"]["monitor_due_count"] == 2, quota
@@ -544,6 +547,8 @@ def assert_compacted_auxiliary_due_monitor_can_write_back() -> None:
             GOAL_ID,
             "--agent-id",
             AGENT_ID,
+            "--available-capability",
+            "network",
             "--todo-id",
             "todo_monitorpoll111",
             "--target-key",
@@ -554,6 +559,8 @@ def assert_compacted_auxiliary_due_monitor_can_write_back() -> None:
         )
         assert payload["ok"] is True, payload
         assert payload["todo_writeback"]["todo_id"] == "todo_monitorpoll111", payload
+        assert "network" in payload["before"]["capability_gate"]["available"], payload
+        assert "network" in payload["after"]["capability_gate"]["available"], payload
         other = find_todo(state_file, "todo_monitorpoll111")
         assert other["consecutive_no_change"] == "2", other
         assert other["next_due_at"] != "2026-01-01T00:00:00+00:00", other
@@ -610,7 +617,7 @@ def assert_cli_monitor_poll_uses_should_run_lookback() -> None:
         quota_command="monitor-poll",
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
-        available_capabilities=None,
+        available_capabilities=["network"],
         include_scheduler_detail=False,
         slots=1,
         source="heartbeat",
@@ -655,6 +662,7 @@ def assert_cli_monitor_poll_uses_should_run_lookback() -> None:
 
     assert rc == 0, rc
     assert seen["limit"] == AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, seen
+    assert seen["record_kwargs"]["available_capabilities"] == ["network"], seen
     assert seen["payload"] == {"ok": True, "mode": "monitor-poll", "dry_run": True, "appended": False}, seen
 
 
