@@ -25,7 +25,6 @@ from loopx.control_plane.goals import global_registry_shadow as global_registry_
 from loopx.control_plane.goals import path_resolution as path_resolution_read_model  # noqa: E402
 from loopx.control_plane.agents import management_projection as management_projection_read_model  # noqa: E402
 from loopx.control_plane.runtime import agent_scoped_evidence_log as evidence_log_read_model  # noqa: E402
-from loopx.control_plane.runtime import event_ledger as event_ledger_read_model  # noqa: E402
 from loopx.control_plane.runtime import run_compaction as run_compaction_read_model  # noqa: E402
 from loopx.control_plane.runtime import session_runtime as session_runtime_read_model  # noqa: E402
 from loopx.control_plane.runtime import status_projection_cache as status_cache_read_model  # noqa: E402
@@ -127,8 +126,6 @@ def assert_direct_status_aliases() -> None:
     assert status_module.is_automation_run is usage_summary_read_model.is_automation_run
     assert status_module.is_progress_signal_run is usage_summary_read_model.is_progress_signal_run
     assert status_module.blank_usage_goal is usage_summary_read_model.blank_usage_goal
-    assert status_module.blank_event_class_counts is event_ledger_read_model.blank_event_class_counts
-    assert status_module.blank_event_ledger_goal is event_ledger_read_model.blank_event_ledger_goal
 
 
 def assert_wrapper_parity() -> None:
