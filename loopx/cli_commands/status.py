@@ -206,6 +206,16 @@ def register_status_commands(
         ),
     )
     diagnose_parser.add_argument(
+        "--available-capability",
+        dest="available_capabilities",
+        action="append",
+        help=(
+            "Declare a capability available in the current agent environment. "
+            "Repeat for multiple capabilities so diagnose uses the same runtime "
+            "envelope as quota should-run."
+        ),
+    )
+    diagnose_parser.add_argument(
         "--scan-root",
         default=default_public_scan_root(),
         help="Public files to scan for obvious private material. Defaults to the LoopX install root.",
@@ -811,6 +821,7 @@ def handle_diagnose_command(
             limit=max(1, args.limit),
             goal_id=args.goal_id,
             agent_id=args.agent_id,
+            available_capabilities=args.available_capabilities,
         )
     except Exception as exc:
         payload = {

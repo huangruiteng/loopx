@@ -17,6 +17,7 @@ from loopx.diagnose import _first_agent_todo_text, render_diagnosis_markdown  # 
 
 GOAL_ID = "diagnose-smoke-goal"
 SCOPED_GOAL_ID = "diagnose-smoke-agent-scoped"
+CAPABILITY_GOAL_ID = "diagnose-smoke-runtime-capability"
 
 
 def run_cli(*args: str, cwd: Path = REPO_ROOT) -> dict:
@@ -216,6 +217,69 @@ def write_agent_scoped_registry(root: Path, runtime: Path) -> Path:
     return registry
 
 
+def write_capability_scoped_registry(root: Path, runtime: Path) -> Path:
+    project = write_project(root, "capability-scoped-project")
+    state_file = f".codex/goals/{CAPABILITY_GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    state_path = project / state_file
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        "---\n"
+        "status: active\n"
+        "updated_at: 2026-01-01T00:00:00+00:00\n"
+        "---\n\n"
+        "# Runtime-Capability Diagnose Fixture\n\n"
+        "## Agent Todo\n\n"
+        "- [ ] [P1] Fetch bounded public evidence for the selected repair.\n"
+        "  <!-- loopx:todo todo_id=todo_network_repair status=open "
+        "task_class=advancement_task action_kind=fetch_evidence "
+        "claimed_by=codex-main-control priority=P1 "
+        "required_capabilities=network -->\n",
+        encoding="utf-8",
+    )
+    registry = project / ".loopx" / "registry.json"
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "common_runtime_root": str(runtime),
+                "goals": [
+                    {
+                        "id": CAPABILITY_GOAL_ID,
+                        "domain": "agent-diagnose-fixture",
+                        "status": "active",
+                        "repo": str(project),
+                        "state_file": state_file,
+                        "adapter": {
+                            "kind": "fixture_connected_delivery_v0",
+                            "status": "connected-delivery",
+                        },
+                        "quota": {"compute": 1.0, "window_hours": 24},
+                        "coordination": {
+                            "agent_model": "peer_v1",
+                            "registered_agents": ["codex-main-control"],
+                            "agent_profiles": {
+                                "codex-main-control": {
+                                    "schema_version": "agent_profile_v1",
+                                    "profile_role": "delivery",
+                                    "scope": "bounded public delivery",
+                                }
+                            },
+                            "write_scope": ["docs/**"],
+                        },
+                    }
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return registry
+
+
 def main() -> int:
     assert_selected_agent_todo_preferred()
     assert_diagnose_markdown_separates_status_and_packet_goal_counts()
@@ -330,6 +394,47 @@ def main() -> int:
         assert any(
             f"--goal-id {SCOPED_GOAL_ID}" in command for command in scoped_selected["agent_commands"]
         ), scoped_selected
+
+        capability_registry = write_capability_scoped_registry(root, runtime)
+        capability_blocked = run_cli(
+            "--registry",
+            str(capability_registry),
+            "--runtime-root",
+            str(runtime),
+            "diagnose",
+            "--goal-id",
+            CAPABILITY_GOAL_ID,
+            "--agent-id",
+            "codex-main-control",
+        )
+        assert capability_blocked["selected"]["machine_signal"] == "user_or_controller_attention", (
+            capability_blocked
+        )
+
+        capability_ready = run_cli(
+            "--registry",
+            str(capability_registry),
+            "--runtime-root",
+            str(runtime),
+            "diagnose",
+            "--goal-id",
+            CAPABILITY_GOAL_ID,
+            "--agent-id",
+            "codex-main-control",
+            "--available-capability",
+            "network",
+        )
+        capability_selected = capability_ready["selected"]
+        assert capability_ready["available_capabilities"] == ["network"], capability_ready
+        assert capability_selected["available_capabilities"] == ["network"], capability_selected
+        assert capability_selected["machine_signal"] == "agent_work_attention", capability_selected
+        assert capability_selected["quota_signals"]["should_run"] is True, capability_selected
+        assert capability_selected["quota_signals"]["action_required"] is False, capability_selected
+        assert capability_selected["quota_signals"]["open_count"] == 0, capability_selected
+        assert any(
+            "--available-capability network" in command
+            for command in capability_selected["agent_commands"]
+        ), capability_selected
 
     print("agent-diagnose-packet-smoke ok")
     return 0

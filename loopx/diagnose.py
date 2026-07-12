@@ -7,8 +7,10 @@ from typing import Any
 from .presentation.markdown import as_dict as _as_dict
 from .presentation.markdown import as_list as _as_list
 from .presentation.markdown import markdown_scalar
+from .project_prompt import render_available_capability_args
 from .quota import build_quota_should_run
 from .status import collect_status
+from .control_plane.todos.contract import normalize_required_capabilities
 
 
 DIAGNOSIS_SCHEMA_VERSION = "loopx_agent_diagnosis_packet_v0"
@@ -106,9 +108,20 @@ def _goal_ids_for_packet(status_payload: dict[str, Any], *, goal_id: str | None,
     return ids
 
 
-def _quota_for_goal(status_payload: dict[str, Any], goal_id: str, *, agent_id: str | None) -> dict[str, Any]:
+def _quota_for_goal(
+    status_payload: dict[str, Any],
+    goal_id: str,
+    *,
+    agent_id: str | None,
+    available_capabilities: Any = None,
+) -> dict[str, Any]:
     try:
-        return build_quota_should_run(status_payload, goal_id=goal_id, agent_id=agent_id)
+        return build_quota_should_run(
+            status_payload,
+            goal_id=goal_id,
+            agent_id=agent_id,
+            available_capabilities=available_capabilities,
+        )
     except Exception as exc:  # noqa: BLE001 - diagnosis packets should preserve compact failure context.
         return {
             "ok": False,
@@ -187,25 +200,27 @@ def _agent_commands(
     scan_roots: list[Path],
     limit: int,
     agent_id: str | None,
+    available_capabilities: Any = None,
 ) -> list[str]:
     registry_arg = shlex.quote(str(registry_path))
     scan_args = " ".join(f"--scan-path {shlex.quote(str(path))}" for path in scan_roots)
     diagnose = f"loopx --registry {registry_arg} diagnose"
     status = f"loopx --registry {registry_arg} status"
     agent_arg = f" --agent-id {shlex.quote(agent_id)}" if agent_id else ""
+    capability_args = render_available_capability_args(available_capabilities)
     goal_arg = f" --goal-id {shlex.quote(goal_id)}" if goal_id else ""
     if scan_args:
         diagnose = f"{diagnose} {scan_args}"
         status = f"{status} {scan_args}"
     commands = [
-        f"{diagnose}{goal_arg}{agent_arg} --limit {max(1, limit)}",
+        f"{diagnose}{goal_arg}{agent_arg}{capability_args} --limit {max(1, limit)}",
         f"{status}{goal_arg}{agent_arg} --limit {max(1, limit)}",
     ]
     if goal_id:
         quoted_goal = shlex.quote(goal_id)
         commands.append(
             f"loopx --registry {registry_arg} --format json quota should-run "
-            f"--goal-id {quoted_goal}{agent_arg}"
+            f"--goal-id {quoted_goal}{agent_arg}{capability_args}"
         )
         commands.append(f"loopx --registry {registry_arg} history --goal-id {quoted_goal} --limit {max(1, limit)}")
     return commands
@@ -354,6 +369,7 @@ def _build_goal_packet(
     scan_roots: list[Path],
     limit: int,
     agent_id: str | None,
+    available_capabilities: Any = None,
 ) -> dict[str, Any]:
     goal_id = str((item or {}).get("goal_id") or quota.get("goal_id") or "")
     item = item or {}
@@ -378,6 +394,7 @@ def _build_goal_packet(
         },
         "quota_signals": _compact_quota_signals(quota),
         "agent_id": agent_id,
+        "available_capabilities": normalize_required_capabilities(available_capabilities),
         "interaction_contract": _as_dict(quota.get("interaction_contract")),
         "work_lane_contract": _as_dict(quota.get("work_lane_contract")),
         "goal_boundary": _as_dict(quota.get("goal_boundary")),
@@ -394,6 +411,7 @@ def _build_goal_packet(
             scan_roots=scan_roots,
             limit=limit,
             agent_id=agent_id,
+            available_capabilities=available_capabilities,
         ),
     }
 
@@ -406,6 +424,7 @@ def collect_diagnosis(
     limit: int,
     goal_id: str | None = None,
     agent_id: str | None = None,
+    available_capabilities: Any = None,
 ) -> dict[str, Any]:
     limit = max(1, limit)
     registry_path = registry_path.expanduser()
@@ -424,7 +443,12 @@ def collect_diagnosis(
     goal_packets = []
     for current_goal_id in goal_ids:
         item = item_by_goal.get(current_goal_id)
-        quota = _quota_for_goal(status_payload, current_goal_id, agent_id=agent_id)
+        quota = _quota_for_goal(
+            status_payload,
+            current_goal_id,
+            agent_id=agent_id,
+            available_capabilities=available_capabilities,
+        )
         goal_packets.append(
             _build_goal_packet(
                 status_payload=status_payload,
@@ -434,6 +458,7 @@ def collect_diagnosis(
                 scan_roots=scan_roots,
                 limit=limit,
                 agent_id=agent_id,
+                available_capabilities=available_capabilities,
             )
         )
     selected_item = _select_attention_item(status_payload, goal_id=goal_id)
@@ -448,6 +473,7 @@ def collect_diagnosis(
             scan_roots=scan_roots,
             limit=limit,
             agent_id=agent_id,
+            available_capabilities=available_capabilities,
         )
     contract = _as_dict(status_payload.get("contract"))
     contract_errors = _compact_text_signals(contract.get("errors"))
@@ -461,6 +487,7 @@ def collect_diagnosis(
         "runtime_root": status_payload.get("runtime_root"),
         "goal_id": goal_id,
         "agent_id": agent_id,
+        "available_capabilities": normalize_required_capabilities(available_capabilities),
         "selected_goal_id": selected.get("goal_id"),
         "status_ok": status_payload.get("ok"),
         "goal_count": status_payload.get("goal_count"),
