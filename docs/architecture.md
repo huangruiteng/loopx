@@ -148,14 +148,17 @@ The server path should land in layers:
    concurrency with per-goal locks, idempotency keys, and optimistic revision
    checks. `todo`, `refresh-state`, reward writeback, quota spend, and history
    append paths should fail closed on stale revision or overlapping write scope.
-2. **Lease projection**: add `task_lease_v0` records for claimed todos,
-   including owner, TTL, write scope, idempotency key, and conflict policy.
+2. **Lease adoption**: the optional local `task_lease_v0` CLI already provides
+   owner, TTL, write scope, idempotency, conflict, transfer, and release
+   semantics. Keep `claimed_by` as the default soft route and adopt hard leases
+   only for hosts with a demonstrated concurrent-write problem.
    The pending/lease key should be per todo: `(goal_id, todo_id)` is the
    contention unit, not the whole goal or project. Different todos under the
    same goal may proceed in parallel when their write scopes and gates allow
    it; competing claims on the same todo fail closed or renew.
-   Status and quota should expose active leases so Codex/App/CLI loops can
-   avoid duplicate work without reading chat history.
+   Status currently exposes capability availability; quota does not enforce or
+   consume hard leases. A later host integration may project active lease rows
+   after its adoption contract and fallback behavior are validated.
 3. **Loopback coordinator**: extend the existing local status server into a
    loopback-only coordinator that can centralize per-goal locks, leases, quota
    decisions, compact status projection, and heartbeat scheduling. It must bind

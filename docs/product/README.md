@@ -103,8 +103,8 @@ runtime contract, benchmark route, or launch draft.
   same-TUI attach stays blocked until proof and idle evidence pass.
 - [Agent profile contract](agent-profile-contract.md): the registry-owned
   advisory capability/scope contract for peers, while task and repository
-  policy own workspace/review requirements and todos retain ownership through
-  `claimed_by` and future leases.
+  policy own workspace/review requirements and todos retain soft ownership
+  through `claimed_by`, with optional hard leases for explicit contention cases.
 - [Non-technical operator status model](nontechnical-operator-status-model.md):
   first-screen Agent Work Feed and card model for people who need to review
   agent outputs, progress, blockers, next moves, signal inbox, anchor

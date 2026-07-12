@@ -60,7 +60,7 @@ LoopX turns the workflow into visible control-plane objects:
 | Synthetic demo data versus private user material | boundary note |
 | What changed since last check | run history summary |
 | Safe work while a publishing gate waits | safe side path |
-| Agent identity and lane ownership | claim / future lease |
+| Agent identity and lane ownership | soft claim / optional hard lease |
 
 The important behavior is gate-aware continuation. The agent should not
 autopublish or treat private drafts as public evidence. But while a publishing
