@@ -135,6 +135,13 @@ def task_lease_owner_constraint(
 ) -> dict[str, Any]:
     if todo is None:
         return {"effective": False, "reason": "todo_not_found"}
+    todo_status = str(todo.get("status") or "").strip().lower()
+    if todo_status != "open":
+        return {
+            "effective": False,
+            "reason": "todo_not_open",
+            "todo_status": todo_status or "unknown",
+        }
     normalized_owner = normalize_todo_claimed_by(owner)
     if not normalized_owner:
         return {"effective": False, "reason": "invalid_owner"}
@@ -203,6 +210,11 @@ def require_task_lease_owner_allowed(
         reason = str(constraint.get("reason") or "owner_not_allowed")
         if reason == "todo_not_found":
             message = "todo is missing from the canonical projection"
+        elif reason == "todo_not_open":
+            message = (
+                f"task lease requires an open todo; "
+                f"{todo_id!r} is {constraint.get('todo_status')!r}"
+            )
         elif reason == "owner_excluded_from_todo":
             message = f"task lease owner {owner!r} is excluded from todo {todo_id!r}"
         elif reason == "owner_not_registered":

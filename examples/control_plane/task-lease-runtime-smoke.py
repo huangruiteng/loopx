@@ -85,6 +85,17 @@ def set_excluded_agents(state_file: Path, *, todo_id: str, agents: list[str]) ->
     raise AssertionError(f"todo metadata not found: {todo_id}")
 
 
+def set_todo_status(state_file: Path, *, todo_id: str, status: str) -> None:
+    lines = state_file.read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        if f"todo_id={todo_id}" not in line:
+            continue
+        lines[index] = re.sub(r"\bstatus=[^\s<>]+", f"status={status}", line)
+        state_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return
+    raise AssertionError(f"todo metadata not found: {todo_id}")
+
+
 def cli(registry_path: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
@@ -160,6 +171,49 @@ def main() -> int:
         assert first["ok"] is True and first["acquired"] is True, first
         assert first["lease"]["schema_version"] == "task_lease_v0", first
         assert first["lease"]["version"] == 1, first
+
+        set_todo_status(state_file, todo_id=TODO_A, status="done")
+        terminal_inspect = payload(
+            cli(registry_path, "inspect", "--goal-id", GOAL_ID, "--todo-id", TODO_A)
+        )
+        assert terminal_inspect["active"] is False, terminal_inspect
+        assert terminal_inspect["executor_constraint"]["reason"] == "todo_not_open", (
+            terminal_inspect
+        )
+        terminal_renew = cli(
+            registry_path,
+            "renew",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            TODO_A,
+            "--owner",
+            "codex-main-control",
+            "--idempotency-key",
+            "turn-1",
+            check=False,
+        )
+        assert terminal_renew.returncode == 1, terminal_renew.stdout
+        assert payload(terminal_renew)["error_code"] == "todo_not_open", terminal_renew.stdout
+        set_todo_status(state_file, todo_id=TODO_A, status="open")
+
+        set_todo_status(state_file, todo_id=TODO_C, status="deferred")
+        terminal_acquire = cli(
+            registry_path,
+            "acquire",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            TODO_C,
+            "--owner",
+            "codex-side-bypass",
+            "--idempotency-key",
+            "deferred-acquire",
+            check=False,
+        )
+        assert terminal_acquire.returncode == 1, terminal_acquire.stdout
+        assert payload(terminal_acquire)["error_code"] == "todo_not_open", terminal_acquire.stdout
+        set_todo_status(state_file, todo_id=TODO_C, status="open")
 
         unregistered_acquire = cli(
             registry_path,
