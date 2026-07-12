@@ -665,6 +665,29 @@ def main() -> int:
         assert failed_runner.comments == 0
         assert_public_safe(failed)
 
+        failed_combined = FakeCombinedRunner(
+            FakeGitHubRunner(
+                before=metadata(),
+                edit_returncode=1,
+                edit_stderr="provider failure",
+            )
+        )
+        failed_with_lark = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            notification_sinks_input=sinks_input,
+            execute=True,
+            runner=failed_combined,
+        )
+        assert failed_with_lark["ok"] is False, failed_with_lark
+        assert failed_with_lark["blocker"] == "github_review_request_failed"
+        assert failed_with_lark["secondary_notification_status"] == "sent_verified"
+        assert failed_with_lark["secondary_notification_verified"] is True
+        assert failed_with_lark["external_writes_performed"] is True
+        assert len(failed_combined.lark_calls) == 3
+        assert_public_safe(failed_with_lark)
+
         preview = build_issue_fix_reviewer_request_packet(
             repo_path=path,
             url="https://github.com/owner/repo/pull/42",
