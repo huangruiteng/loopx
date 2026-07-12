@@ -343,6 +343,7 @@ def assert_selected_monitor_handle(
     expected_target_key: str,
     expected_text: str,
     expected_signal: str | None = None,
+    expected_channel: str | None = None,
     **status_options: Any,
 ) -> None:
     summary = agent_todos(items)
@@ -357,6 +358,8 @@ def assert_selected_monitor_handle(
     assert signal and signal["monitor_handle"]["todo_id"] == expected_todo_id, signal
     if expected_signal:
         assert signal["matched_signal"] == expected_signal, signal
+    if expected_channel:
+        assert signal["matched_channel"] == expected_channel, signal
     guard = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=AGENT_ID)
     observation = guard["external_evidence_observation"]
     assert observation["monitor_handle"]["todo_id"] == expected_todo_id, guard
@@ -387,6 +390,7 @@ def assert_monitor_handle_precedence() -> None:
         expected_target_key="pr_merged:#532",
         expected_text="Monitor PR #532",
         expected_signal="external_dependency_wait",
+        expected_channel="state",
         status="active",
         next_action=dependency_action,
         lifecycle_flags=[],
@@ -400,6 +404,11 @@ def assert_monitor_handle_precedence() -> None:
         expected_todo_id="todo_monitor_due",
         expected_target_key="job:compact-result",
         expected_text="Monitor compact result",
+        expected_signal="direct_observe",
+        expected_channel="todo",
+        status="active",
+        next_action=dependency_action,
+        lifecycle_flags=[],
     )
 
 
