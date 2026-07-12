@@ -11,12 +11,13 @@ operator-only state are intentionally excluded.
 
 ## Latest
 
-- [2026-06-14 to 2026-06-27](2026-06-14-to-2026-06-27.md)
+- [2026-06-28 to 2026-07-11](2026-06-28-to-2026-07-11.md)
 
 ## Archive
 
 | Window | Note | Focus |
 | --- | --- | --- |
+| 2026-06-28 to 2026-07-11 | [Read note](2026-06-28-to-2026-07-11.md) | v0.2 peer-agent runtime, issue-fix maintainer loops, resumable Explore and Auto Research, control-plane state reliability, and public validation. |
 | 2026-06-14 to 2026-06-27 | [Read note](2026-06-14-to-2026-06-27.md) | LoopX rename, benchmark workflow hardening, host commands, issue-fix workflow, evented state, task graph, and scheduler reliability. |
 | 2026-05-31 to 2026-06-13 | [Read note](2026-05-31-to-2026-06-13.md) | Public scaffold, local control plane, dashboard surface, quota/heartbeat loop, review packets, and project-agent todo contracts. |
 
@@ -30,7 +31,7 @@ operator-only state are intentionally excluded.
   history, LoopX CLI behavior, and shipped docs.
 - Publish on a two-week cadence anchored at the initial public scaffold on
   2026-05-31.
-- Next expected window: 2026-06-28 to 2026-07-11.
+- Next expected window: 2026-07-12 to 2026-07-25.
 
 ## Automation
 
