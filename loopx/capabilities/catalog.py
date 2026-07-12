@@ -209,6 +209,57 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
         ),
     },
     {
+        "id": "semantic-preference",
+        "title": "Optional semantic preference hook",
+        "status": "active-preview",
+        "real_world_anchor": "provider-neutral preference recall before domain work",
+        "user_value": (
+            "Let any LoopX module recall provider-owned semantic preferences and "
+            "record a compact application receipt without creating a second memory ledger."
+        ),
+        "entry_command": "loopx semantic-preference recall --config <ignored-config.json> --surface <module.surface> --format json",
+        "commands": [
+            {
+                "command": "loopx semantic-preference recall --config <ignored-config.json> --surface <module.surface> --execute --format json",
+                "purpose": "Send one bounded recall request to a configured command_json_v0 provider.",
+                "write_boundary": "provider read only; LoopX does not persist recalled semantic content",
+            },
+            {
+                "command": "loopx semantic-preference receipt --surface <module.surface> --application-id <id> --outcome applied --format json",
+                "purpose": "Build a compact receipt with hashed preference references for existing evidence/state writeback.",
+                "write_boundary": "stateless output only; no provider, file, or external write",
+            },
+        ],
+        "implemented_protocols": [
+            {
+                "schema_version": "semantic_preference_hook_config_v0",
+                "module": "loopx.capabilities.semantic_preference.contract",
+                "doc": "docs/capabilities/semantic-preference/README.md",
+            },
+            {
+                "schema_version": "semantic_preference_provider_request_v0",
+                "module": "loopx.capabilities.semantic_preference.contract",
+                "doc": "docs/capabilities/semantic-preference/README.md",
+            },
+            {
+                "schema_version": "semantic_preference_application_receipt_v0",
+                "module": "loopx.capabilities.semantic_preference.contract",
+                "doc": "docs/capabilities/semantic-preference/README.md",
+            },
+        ],
+        "smokes": ["python3 examples/semantic-preference-hook-smoke.py"],
+        "docs": ["docs/capabilities/semantic-preference/README.md"],
+        "boundaries": [
+            "The hook is disabled until an enabled local-private config is supplied.",
+            "Surface ids and queries are domain-owned configuration; the runtime has no issue-fix branch.",
+            "LoopX does not persist recalled semantic content, receipts, provider commands, config paths, or raw errors.",
+            "Provider failures follow explicit fail-open/fail-closed policy and do not become user gates automatically.",
+        ],
+        "next_real_step": (
+            "Keep the hook opt-in until a second domain module proves useful recall and existing-state receipt writeback."
+        ),
+    },
+    {
         "id": "content-ops",
         "title": "Creator/content operations loop",
         "status": "active-preview",

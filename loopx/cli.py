@@ -14,6 +14,10 @@ from .capabilities.issue_fix.cli import (
     handle_issue_fix_command,
     register_issue_fix_commands,
 )
+from .capabilities.semantic_preference.cli import (
+    handle_semantic_preference_command,
+    register_semantic_preference_commands,
+)
 from .capabilities.auto_research.cli import (
     handle_auto_research_command,
     register_auto_research_commands,
@@ -174,6 +178,8 @@ def main(argv: list[str] | None = None) -> int:
     register_content_ops_commands(sub, add_subcommand_format)
 
     register_issue_fix_commands(sub, add_subcommand_format)
+
+    register_semantic_preference_commands(sub, add_subcommand_format)
 
     register_value_connector_commands(sub, add_subcommand_format)
 
@@ -364,6 +370,14 @@ def main(argv: list[str] | None = None) -> int:
             output_format=output_format,
             print_payload=print_payload,
         )
+
+    semantic_preference_result = handle_semantic_preference_command(
+        args,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if semantic_preference_result is not None:
+        return semantic_preference_result
 
     if args.command == "value-connectors":
         return handle_value_connector_command(args, output_format=output_format, print_payload=print_payload)
