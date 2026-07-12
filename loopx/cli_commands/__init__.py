@@ -85,6 +85,7 @@ from .dreaming import handle_dreaming_command, register_dreaming_commands
 from .evidence_log import handle_evidence_log_command, register_evidence_log_command
 from .explore import handle_explore_command, register_explore_commands
 from .history import handle_history_command, register_history_command
+from .lark_inbox import handle_lark_inbox_command, register_lark_inbox_commands
 from .lark_kanban import handle_lark_kanban_command, register_lark_kanban_commands
 from .ml_experiment import handle_ml_experiment_command, register_ml_experiment_commands
 from .multi_agent import handle_multi_agent_command, register_multi_agent_commands
@@ -214,6 +215,7 @@ __all__ = [
     "handle_evidence_log_command",
     "handle_explore_command",
     "handle_history_command",
+    "handle_lark_inbox_command",
     "handle_lark_kanban_command",
     "handle_ml_experiment_command",
     "handle_multi_agent_command",
@@ -265,6 +267,7 @@ __all__ = [
     "register_evidence_log_command",
     "register_explore_commands",
     "register_history_command",
+    "register_lark_inbox_commands",
     "register_lark_kanban_commands",
     "register_ml_experiment_commands",
     "register_multi_agent_commands",

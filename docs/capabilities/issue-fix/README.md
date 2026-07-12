@@ -6,7 +6,8 @@
 [Acceptance loop](protocols/issue-fix-acceptance-loop-v0.md) ·
 [Reviewer recommendation](protocols/issue-fix-reviewer-recommendation-v0.md) ·
 [Reviewer request](protocols/issue-fix-reviewer-request-v0.md) ·
-[Reviewer notification sinks](protocols/issue-fix-reviewer-notification-sinks-v0.md)
+[Reviewer notification sinks](protocols/issue-fix-reviewer-notification-sinks-v0.md) ·
+[Lark feedback inbox](../lark-event-inbox.md)
 
 Issue-fix is LoopX's product path for turning a public repository issue into a
 small, validated, reviewable pull request and then keeping that PR moving until
@@ -232,8 +233,10 @@ When a human confirms that an unresolved git display name belongs to a specific
 GitHub account, `--identity-map-json` records that compact mapping as verified
 identity evidence and reranks the same repository-native contribution evidence.
 
-`--notification-sinks-json` optionally adds a secondary notification after
-canonical GitHub coverage is verified. The first adapter uses an explicitly
+`--notification-sinks-json` optionally adds a parallel reviewer channel. A
+configured GitHub request and configured Lark notification are independent
+obligations: LoopX attempts both, while the permission-only GitHub comment
+remains a fallback for the GitHub request itself. The first Lark adapter uses an explicitly
 named, project-dedicated Lark/Feishu bot profile to mention the same reviewer in
 an approved group and read the message back. It rejects default/shared bot
 identities, never selects a different reviewer, and never copies the local bot
@@ -250,6 +253,13 @@ sending, and persist only new
 mode auto-materializes it from a fresh compact GitHub lifecycle read before
 the external notification. Restart/retry returns `already_notified`; no
 notification ledger or public config path is added.
+
+The same local-private sink config may reference a generic
+`lark_event_inbox_config_v0`. When a reviewer group is configured, issue-fix
+auto-binds that inbox through `reviewer-feedback-inbox`; host collection runs
+without an agent, and heartbeats periodically drain messages addressed to the
+dedicated bot. A message is acknowledged only after its PR/todo/vision effect
+or no-follow-up rationale is written back.
 
 `--reviewer-sources-json` is the bridge for repository-specific public routing
 knowledge. The host reads an approved public source, such as a maintainer-map
