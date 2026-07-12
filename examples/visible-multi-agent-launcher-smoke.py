@@ -365,6 +365,9 @@ def main() -> int:
                 [
                     "#!/usr/bin/env python3",
                     "import json, os, sys",
+                    "if '--version' in sys.argv:",
+                    "    print('codex-cli 9.9.9')",
+                    "    raise SystemExit(0)",
                     "path = os.environ.get('FAKE_CODEX_ARGV_LOG')",
                     "if path:",
                     "    with open(path, 'w', encoding='utf-8') as f:",
@@ -898,6 +901,10 @@ def main() -> int:
         assert launch["auto_wake"]["broadcaster_reads_todo_readiness"] is True, launch
         assert launch["auto_wake"]["broadcaster_selects_todo"] is False, launch
         assert launch["auto_wake"]["artifact"] == "auto-wake.public.jsonl", launch
+        codex_resolution = launch["codex_executable_resolution"]
+        assert codex_resolution["selected_version"] == "9.9.9", codex_resolution
+        assert codex_resolution["path_frozen"] is True, codex_resolution
+        assert "selected_path" not in codex_resolution, codex_resolution
         acceptance = launch["visible_acceptance"]
         assert acceptance["schema_version"] == "multi_agent_visible_launch_acceptance_v0", acceptance
         assert acceptance["accepted"] is True, acceptance

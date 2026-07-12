@@ -438,7 +438,7 @@ def main() -> int:
             start_payloads.append(
                 command_path.read_text(encoding="utf-8") if command_path.is_file() else command
             )
-        assert all("LOOPX_CODEX_BIN=codex" in command for command in start_payloads), start_payloads
+        assert all("LOOPX_RESOLVED_CODEX_BIN" in command for command in start_payloads), start_payloads
         assert all("LOOPX_CODEX_REASONING_EFFORT=high" in command for command in start_payloads), start_payloads
         assert all("exec python3 -c" in command for command in start_payloads), start_payloads
         assert all("LOOPX_PANE_ARTIFACT_DIR" in command for command in start_payloads), start_payloads

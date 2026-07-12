@@ -21,6 +21,10 @@ from .capabilities.multi_agent.contract import (
     generic_role_prompt as _generic_role_prompt,
     role_skill_profile as _role_skill_profile,
 )
+from .capabilities.multi_agent.codex_executable import (
+    resolve_codex_executable,
+    write_codex_compatibility_shim,
+)
 from .capabilities.multi_agent.runtime_scripts import (
     CODEX_TUI_EXEC_PY as _CODEX_TUI_EXEC_PY,
     SCOPED_LOOPX_WRAPPER_PY as _SCOPED_LOOPX_WRAPPER_PY,
@@ -188,7 +192,10 @@ def build_visible_lane_command(
     visible_lane_count: int | None = None,
 ) -> str:
     codex_exec_env = (
+        'export LOOPX_CODEX_BIN="${LOOPX_RESOLVED_CODEX_BIN:-}"; '
+        'if [ -z "$LOOPX_CODEX_BIN" ]; then '
         f"export LOOPX_CODEX_BIN={_q(codex_bin)}; "
+        "fi; "
         f"export LOOPX_CODEX_REASONING_EFFORT={_q(reasoning_effort)}; "
     )
     scoped_loopx_wrapper = (
@@ -802,7 +809,7 @@ def execute_visible_multi_agent_launcher(
     lane_default: str = "agent-lane",
 ) -> tuple[dict[str, object], str, str]:
     require_executable(cli_bin, field="cli_bin")
-    require_executable(codex_bin, field="codex_bin")
+    resolved_codex_bin, codex_resolution = resolve_codex_executable(codex_bin)
     chosen = resolve_visible_launcher(requested=requested_launcher, tmux_bin=tmux_bin)
     project, workspace_mode = resolve_visible_workspace(workspace, create=create_workspace, cwd=cwd)
     worker_skills = _materialize_worker_skills(
@@ -824,7 +831,7 @@ def execute_visible_multi_agent_launcher(
         runtime_root=runtime_root,
         tmux_bin=tmux_bin,
         cli_bin=cli_bin,
-        codex_bin=codex_bin,
+        codex_bin=resolved_codex_bin,
         attach=attach,
         replace_existing=replace_existing,
         launch_result_schema=launch_result_schema,
@@ -835,6 +842,7 @@ def execute_visible_multi_agent_launcher(
         auto_wake_interval_seconds=auto_wake_interval_seconds,
     )
     result["worker_skill_materialization"] = worker_skills
+    result["codex_executable_resolution"] = codex_resolution
     return result, chosen, workspace_mode
 
 
@@ -898,6 +906,10 @@ def _launch_with_tmux(
         subprocess.run([tmux_bin, "kill-session", "-t", session], check=True, env=env)
 
     script_dir = runtime_root / "visible-launcher" / _script_slug(session)
+    codex_shim = write_codex_compatibility_shim(
+        directory=script_dir / "resolved-codex-bin",
+        executable=codex_bin,
+    )
     goal_id = str(payload.get("goal_id") or "").strip()
     initial_wake_plan = resolve_initial_wake_plan(
         lanes=lanes,
@@ -927,6 +939,8 @@ def _launch_with_tmux(
             name=lane_id,
             command=runtime_shell_command(
                 f"export LOOPX_CODEX_TRUST_WORKSPACE={_q('1' if codex_trust_workspace else '0')}; "
+                f"export LOOPX_RESOLVED_CODEX_BIN={_q(codex_bin)}; "
+                f"export PATH={_q(str(codex_shim.parent))}:\"$PATH\"; "
                 "export LOOPX_CODEX_INITIAL_PROMPT_ENABLED="
                 f"{_q('1' if not state_aware_initial_prompt or lane_id in initial_runnable_lanes else '0')}; "
                 f"export LOOPX_VISIBLE_LANE_COUNT={_q(len(lanes))}; "
