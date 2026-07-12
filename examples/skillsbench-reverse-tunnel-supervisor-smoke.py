@@ -99,6 +99,7 @@ def _flaky_fake_ssh(
     state_dir: Path,
     *,
     first_tunnel_exits: bool,
+    probe_delay_sec: float = 0.0,
 ) -> None:
     generation_path = state_dir / "tunnel-generation"
     probe_count_path = state_dir / "probe-count"
@@ -113,6 +114,7 @@ log_path = Path({str(log_path)!r})
 generation_path = Path({str(generation_path)!r})
 probe_count_path = Path({str(probe_count_path)!r})
 first_tunnel_exits = {first_tunnel_exits!r}
+probe_delay_sec = {probe_delay_sec!r}
 args = sys.argv[1:]
 with log_path.open("a", encoding="utf-8") as handle:
     handle.write(repr(args) + "\\n")
@@ -136,6 +138,7 @@ if "-R" in args:
 
 remote_command = args[-1] if args else ""
 if "LOOPX_REVERSE_TUNNEL_PROBE" in remote_command:
+    time.sleep(probe_delay_sec)
     generation = int(generation_path.read_text() or "0") if generation_path.exists() else 0
     count = int(probe_count_path.read_text() or "0") if probe_count_path.exists() else 0
     probe_count_path.write_text(str(count + 1), encoding="utf-8")
@@ -151,6 +154,10 @@ if "run-long-skillsbench" in remote_command:
 
 if "run-timeout-skillsbench" in remote_command:
     time.sleep(2.0)
+    sys.exit(0)
+
+if "run-probe-deadline-skillsbench" in remote_command:
+    time.sleep(1.1)
     sys.exit(0)
 
 print('{{"ok": true}}')
@@ -392,6 +399,62 @@ def test_supervisor_timeout_does_not_sync_live_artifacts() -> None:
         assert payload["first_blocker"] == "remote_command_timeout", payload
         assert payload["remote_command_timeout"] is True, payload
         assert payload["tunnel_liveness"]["state"] == "disabled", payload
+        ssh_log_text = ssh_log.read_text(encoding="utf-8")
+        assert "benchmark_remote_public_artifact_collection_v0" not in ssh_log_text
+
+
+def test_liveness_probe_cannot_cross_deadline_and_sync_artifacts() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-tunnel-probe-deadline-") as tmp:
+        root = Path(tmp)
+        fake_ssh = root / "ssh"
+        ssh_log = root / "ssh.log"
+        synced_dir = root / "synced"
+        _flaky_fake_ssh(
+            fake_ssh,
+            ssh_log,
+            root,
+            first_tunnel_exits=False,
+            probe_delay_sec=1.5,
+        )
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--ssh-bin",
+                str(fake_ssh),
+                "--ssh-destination",
+                "opaque-benchmark-host.example",
+                "--remote-command",
+                "run-probe-deadline-skillsbench",
+                "--remote-public-artifact-root",
+                "/opaque/private/jobs",
+                "--remote-public-artifact-glob",
+                "job/*/benchmark_run.compact.json",
+                "--local-public-artifact-dir",
+                str(synced_dir),
+                "--tunnel-ready-timeout-sec",
+                "5",
+                "--tunnel-health-interval-sec",
+                "0.05",
+                "--tunnel-health-failure-threshold",
+                "2",
+                "--probe-timeout-sec",
+                "2",
+                "--run-timeout-sec",
+                "1",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        assert proc.returncode == 124, proc.stderr or proc.stdout
+        payload = json.loads(proc.stdout)
+        assert payload["first_blocker"] == "remote_command_timeout", payload
+        assert payload["remote_command_timeout"] is True, payload
+        assert payload["tunnel_liveness"]["enabled"] is True, payload
         ssh_log_text = ssh_log.read_text(encoding="utf-8")
         assert "benchmark_remote_public_artifact_collection_v0" not in ssh_log_text
 
@@ -720,6 +783,7 @@ if __name__ == "__main__":
     test_supervisor_reconnects_after_tunnel_process_exit()
     test_supervisor_preserves_live_tunnel_and_fails_closed()
     test_supervisor_timeout_does_not_sync_live_artifacts()
+    test_liveness_probe_cannot_cross_deadline_and_sync_artifacts()
     test_supervisor_syncs_only_compact_public_artifacts()
     test_public_artifact_materializer_rejects_private_children()
     test_closeout_requires_compact_when_ledger_is_requested()

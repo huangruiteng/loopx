@@ -1711,6 +1711,39 @@ def _apply_skillsbench_pre_agent_setup_compact_projection(
     compact["native_goal_worker_pre_agent_setup_blocked"] = True
 
 
+def _mark_skillsbench_pre_task_attempt_accounting(
+    compact: dict[str, Any],
+    *,
+    failure_label: str,
+) -> None:
+    attempt_accounting = compact.get("attempt_accounting")
+    if not isinstance(attempt_accounting, dict):
+        return
+    attempt_accounting["lifecycle_phase"] = "runner_accepted_args"
+    attempt_accounting["failure_label"] = failure_label
+    attempt_accounting["failure_class"] = "job_materialization_failed"
+    attempt_accounting["launcher_attempt_countable"] = True
+    for field in (
+        "case_attempt_countable",
+        "solver_attempt_countable",
+        "verifier_attempt_countable",
+        "official_score_attempt_countable",
+    ):
+        attempt_accounting[field] = False
+    attempts = attempt_accounting.get("attempts")
+    if not isinstance(attempts, dict):
+        return
+    launcher = attempts.get("launcher")
+    if isinstance(launcher, dict):
+        launcher["attempted"] = True
+        launcher["countable"] = True
+    for phase_name in ("case", "solver", "verifier", "official_score"):
+        phase = attempts.get(phase_name)
+        if isinstance(phase, dict):
+            phase["attempted"] = False
+            phase["countable"] = False
+
+
 def _apply_skillsbench_benchmark_egress_preflight_compact_projection(
     compact: dict[str, Any],
     *,
@@ -1815,10 +1848,10 @@ def _apply_skillsbench_benchmark_egress_preflight_compact_projection(
     ]
     compact["failure_attribution_labels"] = labels[:MAX_BENCHMARK_RUN_LIST_ITEMS]
 
-    attempt_accounting = compact.get("attempt_accounting")
-    if isinstance(attempt_accounting, dict):
-        attempt_accounting["failure_label"] = label
-        attempt_accounting["failure_class"] = "job_materialization_failed"
+    _mark_skillsbench_pre_task_attempt_accounting(
+        compact,
+        failure_label=label,
+    )
     runner_failure = compact.get("runner_failure")
     if isinstance(runner_failure, dict):
         runner_failure["failure_class"] = label
@@ -1963,30 +1996,10 @@ def _apply_skillsbench_runner_source_fingerprint_compact_projection(
     ]
     compact["failure_attribution_labels"] = labels[:MAX_BENCHMARK_RUN_LIST_ITEMS]
 
-    attempt_accounting = compact.get("attempt_accounting")
-    if isinstance(attempt_accounting, dict):
-        attempt_accounting["lifecycle_phase"] = "runner_accepted_args"
-        attempt_accounting["failure_label"] = blocker
-        attempt_accounting["failure_class"] = "job_materialization_failed"
-        attempt_accounting["launcher_attempt_countable"] = True
-        for field in (
-            "case_attempt_countable",
-            "solver_attempt_countable",
-            "verifier_attempt_countable",
-            "official_score_attempt_countable",
-        ):
-            attempt_accounting[field] = False
-        attempts = attempt_accounting.get("attempts")
-        if isinstance(attempts, dict):
-            launcher = attempts.get("launcher")
-            if isinstance(launcher, dict):
-                launcher["attempted"] = True
-                launcher["countable"] = True
-            for phase_name in ("case", "solver", "verifier", "official_score"):
-                phase = attempts.get(phase_name)
-                if isinstance(phase, dict):
-                    phase["attempted"] = False
-                    phase["countable"] = False
+    _mark_skillsbench_pre_task_attempt_accounting(
+        compact,
+        failure_label=blocker,
+    )
     runner_failure = compact.get("runner_failure")
     if isinstance(runner_failure, dict):
         runner_failure["failure_class"] = blocker

@@ -419,9 +419,21 @@ def _tunnel_command(
     return command
 
 
-def _probe_command(args: argparse.Namespace) -> str:
+def _probe_command(
+    args: argparse.Namespace,
+    *,
+    timeout_sec: float | None = None,
+) -> str:
     parsed = _parse_remote_forward(args.remote_forward)
-    timeout = max(1.0, float(args.probe_timeout_sec))
+    timeout = max(
+        0.01,
+        min(
+            float(args.probe_timeout_sec),
+            float(timeout_sec)
+            if timeout_sec is not None
+            else float(args.probe_timeout_sec),
+        ),
+    )
     code = (
         "# LOOPX_REVERSE_TUNNEL_PROBE\n"
         "import socket, sys\n"
@@ -445,15 +457,29 @@ def _probe_command(args: argparse.Namespace) -> str:
     return "python3 -c " + shlex.quote(code)
 
 
-def _run_remote_probe(args: argparse.Namespace) -> tuple[bool, str]:
-    command = [*_ssh_base_command(args), args.ssh_destination, _probe_command(args)]
+def _run_remote_probe(
+    args: argparse.Namespace,
+    *,
+    timeout_sec: float | None = None,
+) -> tuple[bool, str]:
+    probe_timeout = max(0.01, float(args.probe_timeout_sec))
+    command_timeout = (
+        max(0.01, float(timeout_sec))
+        if timeout_sec is not None
+        else probe_timeout + 5.0
+    )
+    command = [
+        *_ssh_base_command(args),
+        args.ssh_destination,
+        _probe_command(args, timeout_sec=command_timeout),
+    ]
     try:
         proc = subprocess.run(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=max(1.0, float(args.probe_timeout_sec) + 5.0),
+            timeout=command_timeout,
             check=False,
         )
     except subprocess.TimeoutExpired:
@@ -502,8 +528,18 @@ def _wait_for_tunnel_ready(
             return False, "run_deadline_exceeded", attempts
         if tunnel_proc.poll() is not None:
             return False, "tunnel_process_exited", attempts
-        ready, status = _run_remote_probe(args)
+        now = time.monotonic()
+        probe_budget = max(0.01, deadline - now)
+        if run_deadline is not None:
+            probe_budget = max(0.01, min(probe_budget, run_deadline - now))
+        ready, status = _run_remote_probe(args, timeout_sec=probe_budget)
         attempts += 1
+        if run_deadline is not None and time.monotonic() >= run_deadline:
+            return False, "run_deadline_exceeded", attempts
+        if remote_proc is not None and remote_proc.poll() is not None:
+            return False, "remote_command_completed", attempts
+        if time.monotonic() >= deadline:
+            return False, status, attempts
         if ready:
             return True, status, attempts
         time.sleep(max(0.1, float(args.probe_interval_sec)))
@@ -1013,7 +1049,10 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                     health_ready = False
                     health_status = "tunnel_process_exited"
                 else:
-                    health_ready, health_status = _run_remote_probe(args)
+                    health_ready, health_status = _run_remote_probe(
+                        args,
+                        timeout_sec=max(0.01, run_deadline - now),
+                    )
                     payload["probe_attempt_count"] = (
                         int(payload["probe_attempt_count"]) + 1
                     )
@@ -1021,6 +1060,12 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                     int(liveness["health_probe_attempt_count"]) + 1
                 )
                 liveness["last_probe_status"] = health_status
+                if time.monotonic() >= run_deadline:
+                    remote_command_timed_out = True
+                    _stop_process_group(remote_proc, grace_sec=1.0)
+                    break
+                if remote_proc.poll() is not None:
+                    break
                 if health_ready:
                     liveness["health_probe_success_count"] = (
                         int(liveness["health_probe_success_count"]) + 1

@@ -150,6 +150,25 @@ def _countable_attempt_accounting() -> dict:
     }
 
 
+def _assert_pre_task_attempt_accounting(reduced: dict) -> None:
+    attempt_accounting = reduced["attempt_accounting"]
+    assert attempt_accounting["lifecycle_phase"] == "runner_accepted_args", reduced
+    assert attempt_accounting["launcher_attempt_countable"] is True, reduced
+    for field in (
+        "case_attempt_countable",
+        "solver_attempt_countable",
+        "verifier_attempt_countable",
+        "official_score_attempt_countable",
+    ):
+        assert attempt_accounting[field] is False, reduced
+    launcher = attempt_accounting["attempts"]["launcher"]
+    assert launcher == {"attempted": True, "countable": True}, reduced
+    for phase_name in ("case", "solver", "verifier", "official_score"):
+        phase = attempt_accounting["attempts"][phase_name]
+        assert phase["attempted"] is False, reduced
+        assert phase["countable"] is False, reduced
+
+
 def test_missing_score_uv_bootstrap_risk_gets_verifier_dependency_attribution() -> None:
     compact = _missing_score_compact()
     plan = _uv_bootstrap_plan()
@@ -295,12 +314,7 @@ def test_benchmark_egress_preflight_overrides_verifier_package_risk() -> None:
             },
             "task_staging": plan["task_staging"],
             "task_setup_preflight": plan["task_setup_preflight"],
-            "attempt_accounting": {
-                "schema_version": "skillsbench_attempt_accounting_v0",
-                "attempt_lifecycle_phase": "not_started",
-                "failure_class": "none",
-                "failure_label": "not_run_adapter_skeleton",
-            },
+            "attempt_accounting": _countable_attempt_accounting(),
             "runner_failure": {
                 "schema_version": "skillsbench_runner_failure_v0",
                 "exception_type": "SkillsBenchSetupPreflightBlocked",
@@ -330,6 +344,7 @@ def test_benchmark_egress_preflight_overrides_verifier_package_risk() -> None:
     assert reduced["attempt_accounting"]["failure_class"] == (
         "job_materialization_failed"
     ), reduced
+    _assert_pre_task_attempt_accounting(reduced)
     assert (
         "skillsbench_remote_bridge_agent_operation_trace_missing"
         not in reduced["failure_attribution_labels"]
@@ -380,12 +395,7 @@ def test_codex_egress_preflight_overrides_verifier_package_risk() -> None:
             },
             "task_staging": plan["task_staging"],
             "task_setup_preflight": plan["task_setup_preflight"],
-            "attempt_accounting": {
-                "schema_version": "skillsbench_attempt_accounting_v0",
-                "attempt_lifecycle_phase": "not_started",
-                "failure_class": "none",
-                "failure_label": "not_run_adapter_skeleton",
-            },
+            "attempt_accounting": _countable_attempt_accounting(),
             "runner_failure": {
                 "schema_version": "skillsbench_runner_failure_v0",
                 "exception_type": "SkillsBenchSetupPreflightBlocked",
@@ -408,6 +418,7 @@ def test_codex_egress_preflight_overrides_verifier_package_risk() -> None:
     assert reduced["attempt_accounting"]["failure_class"] == (
         "job_materialization_failed"
     ), reduced
+    _assert_pre_task_attempt_accounting(reduced)
     assert (
         "skillsbench_codex_api_egress_failed" in reduced["failure_attribution_labels"]
     ), reduced
