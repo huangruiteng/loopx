@@ -58,6 +58,7 @@ from .pr_lifecycle import (
     validate_issue_fix_pr_lifecycle_monitor_packet,
 )
 from .pr_lifecycle_rollout import append_pr_merge_rollout_event
+from . import pr_gate_reconcile_cli
 from .reviewer_recommendation import (
     build_issue_fix_reviewer_recommendation_packet,
     render_issue_fix_reviewer_recommendation_markdown,
@@ -694,6 +695,7 @@ def register_issue_fix_commands(
             "by the generated concrete user gate."
         ),
     )
+    pr_gate_reconcile_cli.register_pr_gate_reconciliation_command(issue_fix_sub)
     outcome_parser = issue_fix_sub.add_parser(
         "outcome",
         help=(
@@ -1324,6 +1326,9 @@ def handle_issue_fix_command(
                         "goal_id_or_ledger_path_missing"
                     )
             renderer = render_issue_fix_feasibility_markdown
+        elif args.issue_fix_command == "pr-gate-reconcile":
+            payload = pr_gate_reconcile_cli.build_pr_gate_reconciliation_from_args(args, registry_path, runtime_root_arg, generated_at)
+            renderer = pr_gate_reconcile_cli.render_issue_fix_pr_gate_reconciliation_markdown
         elif args.issue_fix_command == "pr-lifecycle":
             if args.fetch_metadata and args.metadata_json:
                 raise ValueError("--fetch-metadata cannot be combined with --metadata-json")
@@ -1953,7 +1958,7 @@ def handle_issue_fix_command(
             raise ValueError(
                 "issue-fix requires `repository-memory-sync`, `promote-discovered-issue`, "
                 "`workflow-plan`, `feasibility`, "
-                "`acceptance-fixture`, `pr-lifecycle`, `outcome`, `metrics`, "
+                "`acceptance-fixture`, `pr-lifecycle`, `pr-gate-reconcile`, `outcome`, `metrics`, "
                 "`metrics-supplement`, "
                 "`repository-snapshot`, `reviewer-plan`, "
                 "`reviewer-request`, "
@@ -1975,7 +1980,7 @@ def handle_issue_fix_command(
             else render_issue_fix_feasibility_markdown
             if getattr(args, "issue_fix_command", None) == "feasibility"
             else render_issue_fix_pr_lifecycle_monitor_markdown
-            if getattr(args, "issue_fix_command", None) == "pr-lifecycle"
+            if getattr(args, "issue_fix_command", None) in {"pr-lifecycle", "pr-gate-reconcile"}
             else render_issue_fix_outcome_projection_markdown
             if getattr(args, "issue_fix_command", None) == "outcome"
             else render_issue_fix_metrics_projection_markdown

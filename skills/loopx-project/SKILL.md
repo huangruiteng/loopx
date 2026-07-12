@@ -281,6 +281,25 @@ interaction, not a silent skip. Read `gate_prompt`, `operator_question`,
 `recommended_action`, `next_handoff_condition`, `missing_gates`, and
 `user_todo_summary` and `agent_todo_summary` when present, then ask the concrete gate in Chinese unless
 the same unresolved question was already surfaced in the recent visible thread.
+Before repeating a public PR merge-approval gate, reconcile it against current
+compact PR lifecycle state. When the todo has a merge-scoped decision such as
+`direction:action:merge_pr_<number>` and the public PR URL is unambiguous, run:
+
+```bash
+loopx issue-fix pr-gate-reconcile \
+  --goal-id <STABLE_GOAL_ID> \
+  --todo-id <USER_GATE_TODO_ID> \
+  --url <PUBLIC_GITHUB_PR_URL> \
+  --fetch-metadata \
+  --execute
+```
+
+Then rerun `quota should-run`. The command may complete only the matching
+`user_gate`, and only after compact public metadata reports `MERGED` or
+`CLOSED`; it records no body, comments, logs, provider payload, or external
+write. If the URL is ambiguous or the public read fails, preserve the gate and
+surface that exact resolution failure instead of claiming the owner still needs
+to approve an already-terminal PR.
 Only when `interaction_contract.user_channel.action_required=true` or
 `user_todo_summary.open_count > 0`, the notification must name concrete payload
 todo(s)/questions, never only "owner gate"; if those required user-facing items
