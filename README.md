@@ -125,6 +125,24 @@ LoopX is not an autonomous production controller. It is a local coordination
 substrate: dangerous permissions, publishing, production writes, and final
 ownership stay with the human/operator.
 
+## Two Real Long-Running Loops
+
+Open the graphs to inspect the actual nodes, edges, evidence branches, and
+terminal decisions preserved across agent turns.
+
+**Open-source issue fix: PR delivery and reusable capability evolve together.**
+
+<a href="docs/assets/openviking-issue-fix-explore.png">
+  <img src="docs/assets/openviking-issue-fix-explore.png" alt="Open-source issue-fix Explore graph linking focused PR delivery with reusable LoopX capabilities">
+</a>
+
+**Auto ML Experiment: hypotheses, matched evidence, invalid lineages, running
+replicates, and promote/stop gates remain visible in one graph.**
+
+<a href="docs/assets/auto-ml-experiment-explore.jpg">
+  <img src="docs/assets/auto-ml-experiment-explore.jpg" alt="Auto ML Experiment Explore graph with experiment lineages, evidence gates, and promotion decisions" width="760">
+</a>
+
 ## Quick Start
 
 Requirements: Python 3.11+, `curl`, `tar`, macOS or Linux shell. Git is only
@@ -365,25 +383,6 @@ manual, then use the short proof surfaces:
 
 For more cases, open the [showcase catalog](docs/showcases/README.md). For a
 full presenter material, see the optional and emerging features below.
-
-### Two Real Long-Running Loops
-
-These are full public-safe Explore projections, not simplified process
-illustrations. Open the images to inspect the actual nodes, edges, evidence
-branches, and terminal decisions preserved across agent turns.
-
-**Open-source issue fix: PR delivery and reusable capability evolve together.**
-
-<a href="docs/assets/openviking-issue-fix-explore.png">
-  <img src="docs/assets/openviking-issue-fix-explore.png" alt="Open-source issue-fix Explore graph linking focused PR delivery with reusable LoopX capabilities">
-</a>
-
-**Auto ML Experiment: hypotheses, matched evidence, invalid lineages, running
-replicates, and promote/stop gates remain visible in one graph.**
-
-<a href="docs/assets/auto-ml-experiment-explore.jpg">
-  <img src="docs/assets/auto-ml-experiment-explore.jpg" alt="Auto ML Experiment Explore graph with experiment lineages, evidence gates, and promotion decisions" width="760">
-</a>
 
 ## Optional And Emerging Features
 
