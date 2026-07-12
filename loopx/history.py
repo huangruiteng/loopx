@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .authority import goal_authority_registry_summary
-from .capabilities.explore.activation import compact_explore_graph_policy
 from .control_plane import compact_control_plane_policy
 from .control_plane.runtime.time import now_local_iso
 from .control_plane.runtime.run_index_duplicates import (
@@ -19,6 +18,7 @@ from .control_plane.work_items.delivery_batch_scale import require_delivery_batc
 from .control_plane.work_items.delivery_outcome import require_delivery_outcome
 from .doctor import PROMOTION_READINESS_CLASSIFICATIONS
 from .execution_profile import compact_execution_profile
+from .explore_graph import compact_explore_graph_policy
 from .paths import resolve_runtime_root
 from .presentation.markdown import (
     markdown_code,

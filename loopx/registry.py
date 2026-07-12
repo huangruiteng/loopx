@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from .authority import authority_registry_summary
-from .capabilities.explore.activation import compact_explore_graph_policy
 from .control_plane import compact_control_plane_policy, control_plane_policy_summary
 from .execution_profile import compact_execution_profile, execution_profile_summary
+from .explore_graph import compact_explore_graph_policy
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
 from .presentation.markdown import markdown_code, markdown_table_row, markdown_table_separator
 from .quota import goal_quota_config

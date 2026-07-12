@@ -5,17 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from ...agent_registry import load_goal_from_registry
+from ...explore_graph import compact_explore_graph_policy
 
 
 EXPLORE_GRAPH_ACTIVATION_SCHEMA_VERSION = "loopx_explore_graph_activation_v0"
-
-
-def compact_explore_graph_policy(value: Any) -> dict[str, bool]:
-    """Return the strict, default-off per-goal Explore Graph gate."""
-
-    policy = value if isinstance(value, Mapping) else {}
-    return {"enabled": policy.get("enabled") is True}
-
 
 def sync_explore_graph_after_material_refresh(
     *,

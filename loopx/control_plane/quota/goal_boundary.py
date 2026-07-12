@@ -4,8 +4,8 @@ from typing import Any
 
 from ...benchmark_core import compact_run_permission_policy_for_quota
 from ...boundary_authority import checkpointed_boundary_authority_summary
-from ...capabilities.explore.activation import compact_explore_graph_policy
 from ...execution_profile import execution_profile_outcome_floor
+from ...explore_graph import compact_explore_graph_policy
 from ...orchestration import compact_orchestration_policy
 from ..todos.contract import (
     normalize_required_capabilities,

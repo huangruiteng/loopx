@@ -17,7 +17,7 @@ from .boundary_authority import (
 )
 from .agent_registry import normalize_registered_agents
 from .control_plane import compact_control_plane_policy, control_plane_policy_summary
-from .capabilities.explore.activation import compact_explore_graph_policy
+from .explore_graph import compact_explore_graph_policy
 from .orchestration import (
     DEFAULT_ORCHESTRATION_MODE,
     EXPLORE_HARNESS_PROFILES,
