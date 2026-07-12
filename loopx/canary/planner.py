@@ -962,6 +962,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "examples/issue-fix-validated-memory-writeback-smoke.py",
             "loopx/capabilities/issue_fix/outcome_projection.py",
             "loopx/capabilities/issue_fix/repository_memory_provider.py",
+            "loopx/capabilities/context_providers/service_ownership.py",
             "loopx/presentation/sinks/lark/projection_rows.py",
             "projection_source_reconcile",
         ),
@@ -976,6 +977,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "tier": "default",
                 "reason": "guards explicit owner gating, validated distilled facts, idempotent provider writes, and unsafe-capture rejection",
             },
+            {"command": "python3 examples/context-provider-service-ownership-smoke.py", "tier": "default", "reason": "guards persistent ownership, restart detection, append-attempt accounting, and public-safe receipts"},
             {"command": "python3 examples/lark-projection-source-reconcile-smoke.py",
              "tier": "default", "reason": "guards preview-first complete-source "
              "orphan and stale-mapping reconciliation"},

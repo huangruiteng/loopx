@@ -11,7 +11,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import unquote
 
-from ..context_providers import build_context_provider, canonical_context_matches
+from ..context_providers import (
+    build_context_provider,
+    canonical_context_matches,
+    context_provider_service_restarted,
+    load_context_provider_service_ownership,
+)
 from ..context_providers.base import ContextProvider, opaque_provider_ref
 from ...control_plane.runtime.public_safety import public_safe_compact_text
 from .repository_memory import (
@@ -48,6 +53,7 @@ _CONFIG_FIELDS = {
     "writeback_scope_ref",
     "workspace_scope",
     "peer_scope",
+    "service_ownership_receipt_path",
 }
 _REMOVED_REVISION_LIFECYCLE_FIELDS = {
     "repository_scope_root",
@@ -251,6 +257,9 @@ def _normalise_config(
     writeback_scope_ref = str(config.get("writeback_scope_ref") or "").strip()
     workspace_scope = str(config.get("workspace_scope") or "").strip()
     peer_scope = str(config.get("peer_scope") or "").strip()
+    service_ownership_receipt_path = str(
+        config.get("service_ownership_receipt_path") or ""
+    ).strip()
     if writeback_enabled:
         writeback_scope_ref = _compact(
             writeback_scope_ref,
@@ -283,6 +292,7 @@ def _normalise_config(
         "writeback_scope_ref": writeback_scope_ref,
         "workspace_scope": workspace_scope,
         "peer_scope": peer_scope,
+        "service_ownership_receipt_path": service_ownership_receipt_path,
     }
 
 
@@ -931,6 +941,38 @@ def sync_issue_fix_repository_memory(
         resources.append((str(source), f"{scope_ref}/{reference.as_posix()}"))
 
     provider = provider or build_context_provider(normalised)
+    ownership_required = normalised["revision_policy"] == "rolling_default_branch"
+    ownership_before = (
+        load_context_provider_service_ownership(
+            normalised["service_ownership_receipt_path"],
+            expected_provider=str(normalised["provider"]),
+        )
+        if ownership_required
+        else None
+    )
+    if execute and ownership_before is not None and not ownership_before.verified:
+        return {
+            "schema_version": "issue_fix_repository_memory_sync_v0",
+            "ok": False,
+            "status": "blocked",
+            "reason_code": ownership_before.reason_code,
+            "provider": normalised["provider"],
+            "namespace": normalised["namespace"],
+            "repository_revision": repository_revision,
+            "requested_reference_count": len(resources),
+            "completed_count": 0,
+            "write_count": 0,
+            "pending_count": 0,
+            "external_writes_performed": False,
+            "fail_open": True,
+            "revision_scoped": False,
+            "automatic_capture_performed": False,
+            "memory_writeback_performed": False,
+            "repository_context": repository_context,
+            "provider_service_ownership": ownership_before.public_packet(
+                required=True
+            ),
+        }
     sync = provider.sync(
         namespace=str(normalised["namespace"]),
         resources=resources,
@@ -939,6 +981,37 @@ def sync_issue_fix_repository_memory(
         execute=execute,
     )
     packet = sync.public_packet()
+    ownership_after = (
+        load_context_provider_service_ownership(
+            normalised["service_ownership_receipt_path"],
+            expected_provider=str(normalised["provider"]),
+        )
+        if ownership_required
+        else None
+    )
+    restart_detected = bool(
+        ownership_before is not None
+        and ownership_after is not None
+        and context_provider_service_restarted(ownership_before, ownership_after)
+    )
+    if execute and restart_detected:
+        packet.update(
+            {
+                "ok": False,
+                "status": "partial",
+                "reason_code": "provider_service_restarted",
+                "retry_disposition": "restart_detected_no_resume",
+            }
+        )
+    elif execute and ownership_after is not None and not ownership_after.verified:
+        packet.update(
+            {
+                "ok": False,
+                "status": "partial",
+                "reason_code": "provider_service_ownership_lost",
+                "retry_disposition": "manual_reconcile",
+            }
+        )
     packet.update(
         {
             "schema_version": "issue_fix_repository_memory_sync_v0",
@@ -950,6 +1023,12 @@ def sync_issue_fix_repository_memory(
             "repository_context": repository_context,
         }
     )
+    if ownership_after is not None:
+        packet["provider_service_ownership"] = ownership_after.public_packet(
+            required=True,
+            restart_detected=restart_detected,
+            attempt_latency_ms=sync.latency_ms,
+        )
     return packet
 
 

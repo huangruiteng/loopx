@@ -707,6 +707,7 @@ issue-fix caller for verification; it is not encoded into the provider scope:
   "timeout_seconds": 15,
   "sync_timeout_seconds": 180,
   "resource_references": ["src/module.py", "tests/test_module.py"],
+  "service_ownership_receipt_path": ".loopx/context-provider-service.json",
   "writeback_enabled": false,
   "writeback_scope_ref": "viking://resources/public-repository/owner-repo/outcomes/<git-revision>",
   "workspace_scope": "owner-repo",
@@ -722,6 +723,19 @@ on an activation receipt. A hit from the rolling index remains advisory: LoopX
 maps it to a repo-relative file and verifies it against the current checkout
 before it can influence reproduction, change scope, patch, or validation.
 Unverified or stale hits remain counts only.
+
+Retrieval and a provider-owned watch do not need a LoopX process lease. A
+LoopX-triggered rolling sync is different because it can start a long external
+write from a short-lived agent host. Before that write, LoopX requires a local
+`context_provider_service_ownership_receipt_v0` from a persistent external
+service or supervisor. The receipt names the provider, an opaque service
+identity, its generation, and a live process id. LoopX reads it before and
+after the sync, never publishes its path or process id, and blocks with zero
+writes when ownership is absent. If the generation or process changes during
+the call, the result is `restart_detected_no_resume`: completed or pending
+writes and elapsed time remain recorded as an additional attempt rather than
+being reported as resumed progress. This contract is provider-neutral and
+does not make LoopX a provider process manager.
 
 `pinned` remains available for an intentionally immutable corpus. In that
 compatibility mode, `repository_revision` must match the caller checkout and

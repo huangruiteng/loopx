@@ -77,11 +77,13 @@ class RollingProvider(ContractProvider):
         resource_ref: str,
         content: str,
         sync_status: str = "completed",
+        restart_receipt_path: Path | None = None,
     ) -> None:
         super().__init__(resource_ref=resource_ref, content=content)
         self.sync_status = sync_status
         self.retrieve_count = 0
         self.sync_count = 0
+        self.restart_receipt_path = restart_receipt_path
 
     def retrieve(self, **kwargs: Any) -> ContextProviderRetrieval:
         self.retrieve_count += 1
@@ -89,6 +91,13 @@ class RollingProvider(ContractProvider):
 
     def sync(self, **kwargs: Any) -> ContextProviderSync:
         self.sync_count += 1
+        if self.restart_receipt_path is not None:
+            receipt = json.loads(self.restart_receipt_path.read_text(encoding="utf-8"))
+            receipt["generation"] = "provider-generation-2"
+            receipt["pid"] = os.getpid()
+            self.restart_receipt_path.write_text(
+                json.dumps(receipt), encoding="utf-8"
+            )
         resources = list(kwargs["resources"])
         return ContextProviderSync(
             provider="contract_provider",
@@ -228,6 +237,23 @@ def repository_context() -> dict[str, object]:
             },
         ],
     }
+
+
+def write_service_receipt(path: Path, *, generation: str = "provider-generation-1") -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "context_provider_service_ownership_receipt_v0",
+                "provider": "contract_provider",
+                "service_ref": "public-repository-index-service",
+                "ownership_mode": "persistent_external",
+                "generation": generation,
+                "pid": os.getpid(),
+                "observed_at": "2026-07-11T03:30:00+08:00",
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def completed_memory() -> dict[str, object]:
@@ -541,6 +567,8 @@ def main() -> int:
         assert_boundary(provider_result)
 
         rolling_scope = "viking://resources/public-repository/example-repo/main"
+        service_receipt_path = checkout / "provider-service-receipt.json"
+        write_service_receipt(service_receipt_path)
         rolling_provider = RollingProvider(
             resource_ref=f"{rolling_scope}/src/worker.py",
             content=source.read_text(encoding="utf-8"),
@@ -557,6 +585,7 @@ def main() -> int:
             "max_results": 3,
             "timeout_seconds": 5,
             "sync_timeout_seconds": 5,
+            "service_ownership_receipt_path": str(service_receipt_path),
         }
         rolling_retrieval = retrieve_issue_fix_repository_memory(
             config=rolling_config,
@@ -596,11 +625,60 @@ def main() -> int:
             provider=rolling_provider,
         )
         assert rolling_sync["status"] == "completed", rolling_sync
+        assert rolling_sync["provider_service_ownership"]["status"] == "verified"
+        assert rolling_sync["provider_service_ownership"]["restart_detected"] is False
+        assert rolling_sync["provider_service_ownership"]["progress_disposition"] == "fresh_attempt"
+        assert rolling_sync["provider_service_ownership"]["cost_accounting"] == "append_attempt"
         assert rolling_sync["revision_scoped"] is False
         assert "repository_context_activation" not in rolling_sync
         assert rolling_provider.sync_count == 1
         assert rolling_scope not in json.dumps(rolling_sync)
         assert_boundary(rolling_sync)
+
+        missing_receipt_provider = RollingProvider(
+            resource_ref=f"{rolling_scope}/src/worker.py",
+            content=source.read_text(encoding="utf-8"),
+        )
+        missing_receipt_sync = sync_issue_fix_repository_memory(
+            config={
+                key: value
+                for key, value in rolling_config.items()
+                if key != "service_ownership_receipt_path"
+            },
+            repo_path=checkout,
+            repository_revision=REVISION,
+            references=["src/worker.py"],
+            observed_at="2026-07-11T03:31:15+08:00",
+            execute=True,
+            provider=missing_receipt_provider,
+        )
+        assert missing_receipt_sync["status"] == "blocked", missing_receipt_sync
+        assert missing_receipt_sync["reason_code"] == "provider_service_ownership_receipt_required"
+        assert missing_receipt_sync["external_writes_performed"] is False
+        assert missing_receipt_provider.sync_count == 0
+
+        restarting_provider = RollingProvider(
+            resource_ref=f"{rolling_scope}/src/worker.py",
+            content=source.read_text(encoding="utf-8"),
+            restart_receipt_path=service_receipt_path,
+        )
+        restarted_sync = sync_issue_fix_repository_memory(
+            config=rolling_config,
+            repo_path=checkout,
+            repository_revision=REVISION,
+            references=["src/worker.py"],
+            observed_at="2026-07-11T03:31:20+08:00",
+            execute=True,
+            provider=restarting_provider,
+        )
+        assert restarted_sync["status"] == "partial", restarted_sync
+        ownership = restarted_sync["provider_service_ownership"]
+        assert ownership["restart_detected"] is True, ownership
+        assert ownership["progress_disposition"] == "restart_detected_no_resume", ownership
+        assert ownership["cost_accounting"] == "append_attempt", ownership
+        assert restarted_sync["write_count"] == 1, restarted_sync
+        assert restarted_sync["external_writes_performed"] is True, restarted_sync
+        assert restarted_sync["reason_code"] == "provider_service_restarted", restarted_sync
 
         pending_provider = RollingProvider(
             resource_ref=f"{rolling_scope}/src/worker.py",

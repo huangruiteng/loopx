@@ -677,6 +677,7 @@ memory body、自动 transcript capture、私有 namespace、凭据和 provider 
   "timeout_seconds": 15,
   "sync_timeout_seconds": 180,
   "resource_references": ["src/module.py", "tests/test_module.py"],
+  "service_ownership_receipt_path": ".loopx/context-provider-service.json",
   "writeback_enabled": false,
   "writeback_scope_ref": "viking://resources/public-repository/owner-repo/outcomes/<git-revision>",
   "workspace_scope": "owner-repo",
@@ -689,6 +690,15 @@ memory body、自动 transcript capture、私有 namespace、凭据和 provider 
 scope，不保存 active revision，也不会等待 activation receipt 才允许检索。rolling index 的
 命中始终只是 advisory：LoopX 把它映射回 repo-relative 文件，并在当前 checkout 验证后，
 才允许影响 reproduction、change scope、patch 或 validation；未验证或过期命中只保留计数。
+
+普通 retrieval 与 provider 自己维护的 watch 不需要 LoopX 进程租约；但由 LoopX 主动触发的
+rolling sync 可能从短生命周期 agent host 发起长时间外部写入，因此语义不同。写入前，LoopX
+要求持久外部服务或 supervisor 提供本地
+`context_provider_service_ownership_receipt_v0`，其中声明 provider、服务身份、generation 与
+仍存活的进程 id。LoopX 会在 sync 前后各读取一次，不向公开 packet 暴露收据路径或进程 id；
+缺失时保持零写入并明确阻塞。若调用期间 generation 或进程发生变化，结果会标为
+`restart_detected_no_resume`：已经完成或 pending 的写入与耗时仍作为新增的一次 attempt 计入，
+但不会伪装成断点续跑。该 contract 对 provider 通用，也不会让 LoopX 变成 provider 进程管理器。
 
 有意维护 immutable corpus 时仍可使用 `pinned` 兼容模式。此时
 `repository_revision` 必须匹配调用方 checkout，且 revision 必须出现在 `scope_ref`：
