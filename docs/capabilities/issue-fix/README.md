@@ -375,6 +375,7 @@ tests whether the system is a durable employee rather than a scripted demo.
 | Metrics projection | [`loopx issue-fix metrics`](protocols/issue-fix-metrics-projection-v0.md) | Keep repository baseline separate from attributable agent output, combine existing feasibility/PR lifecycle rows with caller-supplied public snapshots, and report deltas, ratios, inventory, and missing data without another ledger. |
 | Repository snapshot | `loopx issue-fix repository-snapshot` | Explicitly collect bounded public GitHub stock/flow and known issue/PR state; optionally retain only material daily changes in the existing issue-fix domain state. |
 | Metrics supplement | `loopx issue-fix metrics-supplement` | Derive screened issues, triage outcomes, automatic terminal closeouts, complete-coverage first-push CI, and explicit memory evidence from existing issue-fix state; compose coverage-gated human interventions and typed capability-gap todo transitions from existing rollout evidence, while accepting a compact event batch for other lifecycle counts and preserving honest missing-data semantics. |
+| Explore progress graph | `lark-kanban sync-loopx-todos` + Explore result layer | Idempotently project material issue selection, reproduction, PR publication/terminal state, capability-gap lifecycle, and todo supersession into the two delivery/capability graph lanes; update the configured Lark graph only when its semantic digest changes. |
 | Acceptance fixture | `loopx issue-fix acceptance-fixture` | Prove failure-before, minimal patch, and pass-after in a deterministic fixture. |
 | Git branch fixture | `loopx issue-fix repo-branch-fixture` | Exercise the same repair contract through a temporary git branch. |
 | Caller repo branch | `loopx issue-fix caller-repo-branch` | Inspect an approved local repo, create/claim an issue branch, and run caller-declared validation. |
@@ -384,6 +385,21 @@ tests whether the system is a durable employee rather than a scripted demo.
 The capability module lives at `loopx/capabilities/issue_fix/`; domain-state
 rows live in the existing issue-fix domain pack rather than a parallel context
 ledger.
+
+### Automatic progress graph
+
+The default Kanban todo sync also composes a public-safe Explore projection
+from the existing issue-fix domain state, todo metadata, and rollout events.
+Stable result ids make retries idempotent. Poll timestamps and unchanged
+monitor observations are excluded from the semantic digest, so they do not
+rewrite the Lark graph. A failed Lark write remains retryable because the sink
+digest advances only after a successful sync.
+
+This path does **not** require the Explore Harness switch. The result graph is
+an operator projection; the harness is a separate opt-in worker-planning
+facility. LoopX still treats issue-fix domain state and rollout events as the
+facts, while the graph presents two connected stories: repository delivery
+and reusable agent capability improvement.
 
 ## Truth And Evidence Model
 
@@ -981,6 +997,7 @@ python3 examples/issue-fix-metrics-supplement-smoke.py
 python3 examples/issue-fix-capability-gap-metrics-smoke.py
 python3 examples/issue-fix-maintainer-correction-smoke.py
 python3 examples/issue-fix-outcome-projection-smoke.py
+python3 examples/issue-fix-explore-projection-smoke.py
 python3 examples/issue-fix-acceptance-loop-smoke.py
 loopx canary premerge --from-git-diff
 ```

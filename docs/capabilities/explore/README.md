@@ -477,6 +477,14 @@ with the remote row and skips unchanged records. Newly created record ids are
 persisted immediately, so an interrupted large-graph sync can resume without
 recreating rows that were already delivered.
 
+For the issue-fix domain, the default `lark-kanban sync-loopx-todos` call also
+projects material domain-state, todo, and rollout transitions into this result
+layer. It invokes remote Explore sync only when a timestamp-free semantic graph
+digest differs from the last successful sink digest. This keeps the graph
+continuously current without spending writes on unchanged CI/review polls. It
+uses the result layer only and does not enable or depend on Explore Harness
+worker orchestration.
+
 The text `From Node` / `To Node` columns remain stable public ids for
 automation and review, while the linked-record columns are the Feishu-native
 graph substrate. A Base plugin, relationship-aware view, or Feishu dashboard
@@ -521,6 +529,7 @@ operator permits the write.
 
 ```bash
 python3 examples/explore-result-layer-smoke.py
+python3 examples/issue-fix-explore-projection-smoke.py
 python3 examples/explore-harness-runtime-resume-smoke.py
 ```
 

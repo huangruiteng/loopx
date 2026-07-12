@@ -33,6 +33,9 @@ from ..presentation.sinks.lark.kanban import (
     sync_loopx_todos_to_lark_kanban,
     use_lark_kanban_board,
 )
+from ..presentation.sinks.lark.explore_results import (
+    sync_issue_fix_explore_on_material_change,
+)
 
 
 PrintPayload = Callable[
@@ -388,6 +391,64 @@ def handle_lark_kanban_command(
                 limit=args.limit,
                 execute=bool(args.execute),
             )
+            try:
+                explore_sync = sync_issue_fix_explore_on_material_change(
+                    registry_path=registry_path,
+                    goal_id=args.goal_id,
+                    agent_id=args.agent_id,
+                    project=Path(args.project).expanduser() if args.project else None,
+                    state_file=Path(args.state_file).expanduser()
+                    if args.state_file
+                    else None,
+                    execute=bool(args.execute),
+                )
+                projection_result = (
+                    explore_sync.get("projection")
+                    if isinstance(explore_sync.get("projection"), dict)
+                    else {}
+                )
+                lark_sync = (
+                    explore_sync.get("lark_sync")
+                    if isinstance(explore_sync.get("lark_sync"), dict)
+                    else {}
+                )
+                payload["issue_fix_explore_projection"] = {
+                    "ok": projection_result.get("ok"),
+                    "applicable": projection_result.get("applicable"),
+                    "material_change": projection_result.get("material_change"),
+                    "candidate_event_count": projection_result.get(
+                        "candidate_event_count"
+                    ),
+                    "material_event_count": projection_result.get(
+                        "material_event_count"
+                    ),
+                    "appended_event_count": projection_result.get(
+                        "appended_event_count"
+                    ),
+                    "semantic_digest": projection_result.get("semantic_digest"),
+                    "counts": projection_result.get("counts"),
+                }
+                payload["issue_fix_explore_lark_sync"] = {
+                    "ok": explore_sync.get("ok"),
+                    "status": explore_sync.get("status"),
+                    "needs_sync": explore_sync.get("needs_sync"),
+                    "semantic_digest": explore_sync.get("semantic_digest"),
+                    "written_rows": lark_sync.get("written_rows"),
+                    "skipped_rows": lark_sync.get("skipped_rows"),
+                    "duplicate_remote_rows": lark_sync.get(
+                        "duplicate_remote_rows"
+                    ),
+                    "error": lark_sync.get("error"),
+                }
+                payload["ok"] = bool(payload.get("ok")) and bool(
+                    explore_sync.get("ok")
+                )
+            except Exception as exc:
+                payload["ok"] = False
+                payload["issue_fix_explore_projection"] = {
+                    "ok": False,
+                    "error": str(exc),
+                }
             payload = compact_lark_kanban_sync_receipt(
                 payload,
                 include_command_details=bool(args.include_command_details),

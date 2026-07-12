@@ -901,6 +901,135 @@ def sync_explore_results_to_lark(
     }
 
 
+def sync_issue_fix_explore_on_material_change(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    agent_id: str | None = None,
+    project: Path | None = None,
+    state_file: Path | None = None,
+    execute: bool = False,
+    runner: CommandRunner = default_subprocess_runner,
+) -> dict[str, Any]:
+    """Project issue-fix facts and sync Lark only when the graph digest changed.
+
+    The canonical Explore result log is updated before this adapter runs.  A
+    failed or interrupted Lark write therefore remains retryable: the stored
+    sink digest advances only after a successful remote sync.
+    """
+
+    from ....capabilities.issue_fix.explore_projection import (
+        project_issue_fix_explore_graph,
+    )
+
+    projection_result = project_issue_fix_explore_graph(
+        registry_path=registry_path,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        project=project,
+        state_file=state_file,
+        execute=execute,
+    )
+    config_path = default_lark_explore_config_path(registry_path)
+    local = read_lark_explore_local_config(config_path)
+    config = lark_explore_config_from_payload(local) if local.get("ok") else None
+    sync_state = (
+        local.get("automatic_projection_sync")
+        if isinstance(local.get("automatic_projection_sync"), dict)
+        else {}
+    )
+    prior = sync_state.get(goal_id) if isinstance(sync_state.get(goal_id), dict) else {}
+    digest = str(projection_result.get("semantic_digest") or "")
+    prior_digest = str(prior.get("semantic_digest") or "")
+    needs_sync = bool(digest and digest != prior_digest)
+    if not projection_result.get("applicable"):
+        return {
+            "ok": True,
+            "schema_version": "issue_fix_explore_lark_material_sync_v0",
+            "status": "not_applicable",
+            "execute": execute,
+            "needs_sync": False,
+            "semantic_digest": digest,
+            "prior_semantic_digest": prior_digest or None,
+            "projection": projection_result,
+            "lark_sync": None,
+            "config_path": str(config_path),
+        }
+    if config is None:
+        return {
+            "ok": True,
+            "schema_version": "issue_fix_explore_lark_material_sync_v0",
+            "status": "not_configured",
+            "execute": execute,
+            "needs_sync": needs_sync,
+            "semantic_digest": digest,
+            "prior_semantic_digest": prior_digest or None,
+            "projection": projection_result,
+            "lark_sync": None,
+            "config_path": str(config_path),
+        }
+    if not needs_sync:
+        return {
+            "ok": True,
+            "schema_version": "issue_fix_explore_lark_material_sync_v0",
+            "status": "unchanged",
+            "execute": execute,
+            "needs_sync": False,
+            "semantic_digest": digest,
+            "prior_semantic_digest": prior_digest or None,
+            "projection": projection_result,
+            "lark_sync": None,
+            "config_path": str(config_path),
+        }
+    if not execute:
+        return {
+            "ok": True,
+            "schema_version": "issue_fix_explore_lark_material_sync_v0",
+            "status": "would_sync",
+            "execute": False,
+            "needs_sync": True,
+            "semantic_digest": digest,
+            "prior_semantic_digest": prior_digest or None,
+            "projection": projection_result,
+            "lark_sync": None,
+            "config_path": str(config_path),
+        }
+    lark_sync = sync_explore_results_to_lark(
+        config,
+        projection=projection_result["projection"],
+        config_path=config_path,
+        execute=True,
+        runner=runner,
+    )
+    if lark_sync.get("ok"):
+        updated_sync_state = dict(sync_state)
+        updated_sync_state[goal_id] = {
+            "semantic_digest": digest,
+            "synced_at": now_lark_datetime(),
+        }
+        # The inner sync persists new record ids incrementally. Re-read that
+        # write before adding the digest so this outer checkpoint cannot
+        # restore the stale pre-sync record map.
+        persisted_local = read_lark_explore_local_config(config_path)
+        updated_local = dict(
+            persisted_local if persisted_local.get("ok") else local
+        )
+        updated_local["automatic_projection_sync"] = updated_sync_state
+        write_lark_explore_local_config(config_path, updated_local)
+    return {
+        "ok": bool(lark_sync.get("ok")),
+        "schema_version": "issue_fix_explore_lark_material_sync_v0",
+        "status": "synced" if lark_sync.get("ok") else "sync_failed",
+        "execute": True,
+        "needs_sync": True,
+        "semantic_digest": digest,
+        "prior_semantic_digest": prior_digest or None,
+        "projection": projection_result,
+        "lark_sync": lark_sync,
+        "config_path": str(config_path),
+    }
+
+
 def build_explore_card_markdown(projection: Mapping[str, Any]) -> str:
     counts = projection.get("counts") if isinstance(projection.get("counts"), dict) else {}
     by_status = (
