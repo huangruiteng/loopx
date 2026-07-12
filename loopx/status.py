@@ -1889,10 +1889,11 @@ def _apply_skillsbench_runner_source_fingerprint_compact_projection(
 
     attempt_accounting = compact.get("attempt_accounting")
     if isinstance(attempt_accounting, dict):
+        attempt_accounting["lifecycle_phase"] = "runner_accepted_args"
         attempt_accounting["failure_label"] = blocker
         attempt_accounting["failure_class"] = "job_materialization_failed"
+        attempt_accounting["launcher_attempt_countable"] = True
         for field in (
-            "launcher_attempt_countable",
             "case_attempt_countable",
             "solver_attempt_countable",
             "verifier_attempt_countable",
@@ -1901,8 +1902,14 @@ def _apply_skillsbench_runner_source_fingerprint_compact_projection(
             attempt_accounting[field] = False
         attempts = attempt_accounting.get("attempts")
         if isinstance(attempts, dict):
-            for phase in attempts.values():
+            launcher = attempts.get("launcher")
+            if isinstance(launcher, dict):
+                launcher["attempted"] = True
+                launcher["countable"] = True
+            for phase_name in ("case", "solver", "verifier", "official_score"):
+                phase = attempts.get(phase_name)
                 if isinstance(phase, dict):
+                    phase["attempted"] = False
                     phase["countable"] = False
     runner_failure = compact.get("runner_failure")
     if isinstance(runner_failure, dict):

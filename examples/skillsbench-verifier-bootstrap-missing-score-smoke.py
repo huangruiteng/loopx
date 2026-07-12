@@ -384,15 +384,19 @@ def test_runner_source_mismatch_overrides_verifier_package_risk() -> None:
         "loopx_runner_source_matches_expected"
     ] is False, reduced
     attempt_accounting = reduced["attempt_accounting"]
+    assert attempt_accounting["launcher_attempt_countable"] is True, attempt_accounting
     for field in (
-        "launcher_attempt_countable",
         "case_attempt_countable",
         "solver_attempt_countable",
         "verifier_attempt_countable",
         "official_score_attempt_countable",
     ):
         assert attempt_accounting[field] is False, attempt_accounting
-    for phase in attempt_accounting["attempts"].values():
+    launcher = attempt_accounting["attempts"]["launcher"]
+    assert launcher == {"attempted": True, "countable": True}, attempt_accounting
+    for phase_name in ("case", "solver", "verifier", "official_score"):
+        phase = attempt_accounting["attempts"][phase_name]
+        assert phase["attempted"] is False, attempt_accounting
         assert phase["countable"] is False, attempt_accounting
     assert "verifier_dependency_install_failure" not in reduced[
         "failure_attribution_labels"
@@ -438,15 +442,20 @@ def test_egress_preflight_wins_three_way_attribution() -> None:
     assert reduced["first_blocker"] == blocker, reduced
     assert reduced["failure_attribution_labels"][0] == blocker, reduced
     assert "verifier_bootstrap_diagnostic" not in reduced, reduced
+    attempt_accounting = reduced["attempt_accounting"]
+    assert attempt_accounting["launcher_attempt_countable"] is True, reduced
     for field in (
-        "launcher_attempt_countable",
         "case_attempt_countable",
         "solver_attempt_countable",
         "verifier_attempt_countable",
         "official_score_attempt_countable",
     ):
-        assert reduced["attempt_accounting"][field] is False, reduced
-    for phase in reduced["attempt_accounting"]["attempts"].values():
+        assert attempt_accounting[field] is False, reduced
+    launcher = attempt_accounting["attempts"]["launcher"]
+    assert launcher == {"attempted": True, "countable": True}, reduced
+    for phase_name in ("case", "solver", "verifier", "official_score"):
+        phase = attempt_accounting["attempts"][phase_name]
+        assert phase["attempted"] is False, reduced
         assert phase["countable"] is False, reduced
 
 
