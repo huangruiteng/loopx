@@ -934,7 +934,8 @@ def render_configure_goal_markdown(payload: dict[str, Any]) -> str:
                     f"  - consider: {feature.get('consider_when')}",
                     f"  - preview: `{commands.get('preview_enable')}`",
                     f"  - apply: `{commands.get('apply_enable')}`",
-                    f"  - disable: `{commands.get('disable')}`",
+                    f"  - preview_disable: `{commands.get('preview_disable')}`",
+                    f"  - apply_disable: `{commands.get('apply_disable')}`",
                     f"  - verify: {'; '.join(f'`{command}`' for command in verify_commands)}",
                     f"  - docs: [{documentation.get('path')}]({documentation.get('url')})",
                 ]

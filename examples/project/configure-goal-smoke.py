@@ -182,6 +182,8 @@ def main() -> int:
         assert features["explore_graph"]["current"]["enabled"] is False
         assert "--execute" not in features["explore_harness"]["commands"]["preview_enable"]
         assert "--execute" in features["explore_harness"]["commands"]["apply_enable"]
+        assert "--execute" not in features["explore_graph"]["commands"]["preview_disable"]
+        assert "--execute" in features["explore_graph"]["commands"]["apply_disable"]
         migration = dry["heartbeat_prompt_migration"]
         assert migration["schema_version"] == "heartbeat_prompt_migration_v1", migration
         assert "agent identity changed" in migration["reason"], migration

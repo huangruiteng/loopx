@@ -103,7 +103,10 @@ def build_goal_configuration_catalog(
                     "apply_enable": _configure_command(
                         goal_id, *multi_enable_args, execute=True
                     ),
-                    "disable": _configure_command(
+                    "preview_disable": _configure_command(
+                        goal_id, "--multi-subagent-feature", "off"
+                    ),
+                    "apply_disable": _configure_command(
                         goal_id, "--multi-subagent-feature", "off", execute=True
                     ),
                     "verify": [
@@ -141,7 +144,10 @@ def build_goal_configuration_catalog(
                     "apply_enable": _configure_command(
                         goal_id, *graph_enable_args, execute=True
                     ),
-                    "disable": _configure_command(
+                    "preview_disable": _configure_command(
+                        goal_id, "--no-explore-graph-enabled"
+                    ),
+                    "apply_disable": _configure_command(
                         goal_id, "--no-explore-graph-enabled", execute=True
                     ),
                     "verify": [
@@ -191,7 +197,10 @@ def build_goal_configuration_catalog(
                     "apply_enable": _configure_command(
                         goal_id, *harness_enable_args, execute=True
                     ),
-                    "disable": _configure_command(
+                    "preview_disable": _configure_command(
+                        goal_id, "--no-explore-harness-enabled"
+                    ),
+                    "apply_disable": _configure_command(
                         goal_id, "--no-explore-harness-enabled", execute=True
                     ),
                     "verify": [
