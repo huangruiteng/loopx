@@ -31,6 +31,55 @@ def run_json(*args: str, env: dict[str, str] | None = None) -> dict[str, object]
     return payload
 
 
+def assert_packet_summary_refs(
+    payload: dict[str, object],
+    *,
+    packet_kind: str,
+) -> dict[str, object]:
+    summary = payload["packet_summary"]
+    assert isinstance(summary, dict)
+    assert summary["schema_version"] == "loopx_start_goal_packet_summary_v0"
+    assert summary["packet_kind"] == packet_kind
+    compatibility = summary["compatibility"]
+    assert isinstance(compatibility, dict)
+    assert compatibility == {
+        "legacy_fields_retained": True,
+        "compact_projection_default": False,
+        "removal_gate": "explicit_host_shadow_parity",
+    }
+    detail_refs = summary["detail_refs"]
+    assert isinstance(detail_refs, dict)
+    for detail_ref in detail_refs.values():
+        assert isinstance(detail_ref, dict)
+        assert detail_ref["schema_version"] == "loopx_packet_json_pointer_ref_v0"
+        pointer = str(detail_ref["json_pointer"])
+        assert pointer.startswith("#/"), pointer
+        current: object = payload
+        for escaped_part in pointer[2:].split("/"):
+            part = escaped_part.replace("~1", "/").replace("~0", "~")
+            if isinstance(current, dict):
+                current = current[part]
+            elif isinstance(current, list):
+                current = current[int(part)]
+            else:
+                raise AssertionError((pointer, current))
+    measurement = summary["duplication_measurement"]
+    assert isinstance(measurement, dict)
+    assert measurement["schema_version"] == "loopx_packet_duplication_measurement_v0"
+    assert (
+        measurement["measurement_scope"]
+        == "compatibility_projection_without_packet_summary"
+    )
+    assert int(measurement["serialized_bytes"]) > 0
+    current_bytes = len(
+        json.dumps(
+            payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+        ).encode("utf-8")
+    )
+    assert current_bytes > int(measurement["serialized_bytes"])
+    return summary
+
+
 def test_missing_project_stops_before_mutation() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         project = Path(tmp) / "fresh-project"
@@ -62,6 +111,10 @@ def test_missing_project_stops_before_mutation() -> None:
         assert "LoopX command surface is available. Useful commands:" in onboarding["suggested_user_note"]
         assert "loopx slash-commands" in onboarding["suggested_user_note"]
         assert payload["read_only"] is True
+        summary = assert_packet_summary_refs(
+            payload, packet_kind="bootstrap_command_pack"
+        )
+        assert summary["next_step_kind"] == "confirm_before_bootstrap_mutation"
         assert connection["connection_state"] == "not_connected"
         assert connection["mutation_confirmation_required"] is True
         assert not (project / ".loopx").exists()
@@ -99,6 +152,19 @@ def test_goal_text_invocation_plans_ranked_todos_before_activation() -> None:
         )
 
         assert payload["goal_text"] == "Ship the lightweight issue triage workflow"
+        summary = assert_packet_summary_refs(
+            payload, packet_kind="bootstrap_command_pack"
+        )
+        assert summary["objective"] == "Ship the lightweight issue triage workflow"
+        measurement = summary["duplication_measurement"]
+        assert isinstance(measurement, dict)
+        objective_measurement = measurement["objective_content"]
+        assert isinstance(objective_measurement, dict)
+        assert int(objective_measurement["substring_occurrences"]) > 1
+        assert int(objective_measurement["duplicate_occurrences"]) > 0
+        command_measurement = measurement["command_content"]
+        assert isinstance(command_measurement, dict)
+        assert int(command_measurement["duplicate_occurrences"]) > 0
         next_step = payload["recommended_next_step"]
         assert isinstance(next_step, dict)
         assert next_step["kind"] == "goal_plan_write_and_activate"
@@ -212,6 +278,23 @@ def test_start_goal_guided_previews_transaction_without_mutation() -> None:
         assert payload["guided"] is True
         assert payload["goal_text"] == "Connect this repo and start an auto research lane"
         assert payload["goal_id"] == "guided-goal"
+        summary = assert_packet_summary_refs(payload, packet_kind="guided_start_goal")
+        assert summary["objective"] == "Connect this repo and start an auto research lane"
+        assert summary["next_step_kind"] == "goal_plan_write_and_activate"
+        detail_refs = summary["detail_refs"]
+        assert isinstance(detail_refs, dict)
+        assert (
+            detail_refs["command_pack_summary"]["json_pointer"]
+            == "#/command_pack/packet_summary"
+        )
+        measurement = summary["duplication_measurement"]
+        assert isinstance(measurement, dict)
+        objective_measurement = measurement["objective_content"]
+        assert isinstance(objective_measurement, dict)
+        assert int(objective_measurement["substring_occurrences"]) > 1
+        command_measurement = measurement["command_content"]
+        assert isinstance(command_measurement, dict)
+        assert int(command_measurement["duplicate_occurrences"]) > 0
 
         safety = payload["safety_contract"]
         assert isinstance(safety, dict)
