@@ -150,6 +150,25 @@ def _countable_attempt_accounting() -> dict:
     }
 
 
+def _assert_pre_task_attempt_accounting(reduced: dict) -> None:
+    attempt_accounting = reduced["attempt_accounting"]
+    assert attempt_accounting["lifecycle_phase"] == "runner_accepted_args", reduced
+    assert attempt_accounting["launcher_attempt_countable"] is True, reduced
+    for field in (
+        "case_attempt_countable",
+        "solver_attempt_countable",
+        "verifier_attempt_countable",
+        "official_score_attempt_countable",
+    ):
+        assert attempt_accounting[field] is False, reduced
+    launcher = attempt_accounting["attempts"]["launcher"]
+    assert launcher == {"attempted": True, "countable": True}, reduced
+    for phase_name in ("case", "solver", "verifier", "official_score"):
+        phase = attempt_accounting["attempts"][phase_name]
+        assert phase["attempted"] is False, reduced
+        assert phase["countable"] is False, reduced
+
+
 def test_missing_score_uv_bootstrap_risk_gets_verifier_dependency_attribution() -> None:
     compact = _missing_score_compact()
     plan = _uv_bootstrap_plan()
@@ -166,12 +185,13 @@ def test_missing_score_uv_bootstrap_risk_gets_verifier_dependency_attribution() 
         "verifier_dependency_install_failure"
     ), compact
     assert compact["verifier_dependency_failure_count"] == 1, compact
-    assert "verifier_dependency_install_failure" in compact[
-        "failure_attribution_labels"
-    ], compact
-    assert "verifier_uv_install_or_download_failure" in compact[
-        "failure_attribution_labels"
-    ], compact
+    assert (
+        "verifier_dependency_install_failure" in compact["failure_attribution_labels"]
+    ), compact
+    assert (
+        "verifier_uv_install_or_download_failure"
+        in compact["failure_attribution_labels"]
+    ), compact
     diagnostic = compact["verifier_bootstrap_diagnostic"]
     assert diagnostic["raw_verifier_output_read"] is False, diagnostic
     assert diagnostic["verifier_uv_bootstrap_version"] == "0.7.13", diagnostic
@@ -243,12 +263,14 @@ def test_pre_agent_package_install_risk_overrides_bridge_trace_missing() -> None
     assert reduced["attempt_accounting"]["failure_class"] == (
         "job_materialization_failed"
     ), reduced
-    assert "skillsbench_remote_bridge_agent_operation_trace_missing" not in reduced[
-        "failure_attribution_labels"
-    ], reduced
-    assert "skillsbench_verifier_package_install_risk" in reduced[
-        "failure_attribution_labels"
-    ], reduced
+    assert (
+        "skillsbench_remote_bridge_agent_operation_trace_missing"
+        not in reduced["failure_attribution_labels"]
+    ), reduced
+    assert (
+        "skillsbench_verifier_package_install_risk"
+        in reduced["failure_attribution_labels"]
+    ), reduced
     diagnostic = reduced["verifier_bootstrap_diagnostic"]
     assert diagnostic["pre_agent_setup_blocked"] is True, diagnostic
     assert diagnostic["verifier_package_install_risk_detected"] is True, diagnostic
@@ -284,16 +306,15 @@ def test_benchmark_egress_preflight_overrides_verifier_package_risk() -> None:
                 "benchmark_egress_proxy_mode_requested": "require",
                 "benchmark_egress_proxy_mode_effective": "require",
                 "benchmark_egress_proxy_url_recorded": False,
+                "codex_api_egress_preflight_required": True,
+                "codex_api_egress_preflight_ready": False,
+                "codex_api_egress_preflight_status": "failed",
+                "codex_api_egress_preflight_error_kind": "TimeoutError",
                 "fail_fast_on_verifier_bootstrap_risk": False,
             },
             "task_staging": plan["task_staging"],
             "task_setup_preflight": plan["task_setup_preflight"],
-            "attempt_accounting": {
-                "schema_version": "skillsbench_attempt_accounting_v0",
-                "attempt_lifecycle_phase": "not_started",
-                "failure_class": "none",
-                "failure_label": "not_run_adapter_skeleton",
-            },
+            "attempt_accounting": _countable_attempt_accounting(),
             "runner_failure": {
                 "schema_version": "skillsbench_runner_failure_v0",
                 "exception_type": "SkillsBenchSetupPreflightBlocked",
@@ -323,18 +344,91 @@ def test_benchmark_egress_preflight_overrides_verifier_package_risk() -> None:
     assert reduced["attempt_accounting"]["failure_class"] == (
         "job_materialization_failed"
     ), reduced
-    assert "skillsbench_remote_bridge_agent_operation_trace_missing" not in reduced[
-        "failure_attribution_labels"
-    ], reduced
-    assert "skillsbench_benchmark_egress_proxy_invalid_proxy_value" in reduced[
-        "failure_attribution_labels"
-    ], reduced
+    _assert_pre_task_attempt_accounting(reduced)
+    assert (
+        "skillsbench_remote_bridge_agent_operation_trace_missing"
+        not in reduced["failure_attribution_labels"]
+    ), reduced
+    assert (
+        "skillsbench_benchmark_egress_proxy_invalid_proxy_value"
+        in reduced["failure_attribution_labels"]
+    ), reduced
     assert "verifier_bootstrap_diagnostic" not in reduced, reduced
     diagnostic = reduced["benchmark_egress_proxy_diagnostic"]
     assert diagnostic["proxy_required"] is True, diagnostic
     assert diagnostic["proxy_ready"] is False, diagnostic
     assert diagnostic["proxy_status"] == "invalid_proxy_value", diagnostic
     assert diagnostic["proxy_error_kind"] == "unexpanded_placeholder", diagnostic
+    assert diagnostic["proxy_url_recorded"] is False, diagnostic
+    assert diagnostic["raw_logs_read"] is False, diagnostic
+    assert diagnostic["raw_task_text_read"] is False, diagnostic
+    assert diagnostic["raw_trajectory_read"] is False, diagnostic
+
+
+def test_codex_egress_preflight_overrides_verifier_package_risk() -> None:
+    compact = _missing_score_compact()
+    plan = _package_install_pre_agent_plan()
+    compact.update(
+        {
+            "mode": "skillsbench_codex_cli_goal_baseline",
+            "route": "codex-cli-goal-baseline",
+            "task_id": "civ6-adjacency-optimizer",
+            "score_failure_attribution": "verifier_dependency_install_failure",
+            "first_blocker": "verifier_dependency_install_failure",
+            "failure_attribution_labels": [
+                "verifier_dependency_install_failure",
+                "skillsbench_verifier_package_install_risk",
+                "skillsbench_runner_setup_error",
+            ],
+            "runner_config": {
+                "schema_version": "skillsbench_runner_config_v0",
+                "codex_api_egress_preflight_required": True,
+                "codex_api_egress_preflight_ready": False,
+                "codex_api_egress_preflight_status": "failed",
+                "codex_api_egress_preflight_error_kind": "TimeoutError",
+                "codex_api_egress_mode_requested": "reverse-tunnel",
+                "codex_api_egress_mode_resolved": "reverse-tunnel",
+                "codex_api_reverse_tunnel_required": True,
+                "codex_api_reverse_tunnel_proxy_configured": True,
+                "codex_api_reverse_tunnel_proxy_url_recorded": False,
+                "fail_fast_on_verifier_bootstrap_risk": False,
+            },
+            "task_staging": plan["task_staging"],
+            "task_setup_preflight": plan["task_setup_preflight"],
+            "attempt_accounting": _countable_attempt_accounting(),
+            "runner_failure": {
+                "schema_version": "skillsbench_runner_failure_v0",
+                "exception_type": "SkillsBenchSetupPreflightBlocked",
+                "failure_class": "verifier_dependency_install_failure",
+                "raw_error_recorded": False,
+                "raw_logs_read": False,
+                "raw_task_text_read": False,
+                "raw_trajectory_read": False,
+            },
+        }
+    )
+
+    reduced = compact_benchmark_run(compact)
+
+    assert reduced is not None, compact
+    label = "skillsbench_codex_api_egress_preflight_blocked"
+    assert reduced["score_failure_attribution"] == label, reduced
+    assert reduced["first_blocker"] == label, reduced
+    assert reduced["runner_failure"]["failure_class"] == label, reduced
+    assert reduced["attempt_accounting"]["failure_class"] == (
+        "job_materialization_failed"
+    ), reduced
+    _assert_pre_task_attempt_accounting(reduced)
+    assert (
+        "skillsbench_codex_api_egress_failed" in reduced["failure_attribution_labels"]
+    ), reduced
+    assert "verifier_bootstrap_diagnostic" not in reduced, reduced
+    diagnostic = reduced["codex_api_egress_diagnostic"]
+    assert diagnostic["egress_required"] is True, diagnostic
+    assert diagnostic["egress_ready"] is False, diagnostic
+    assert diagnostic["egress_status"] == "failed", diagnostic
+    assert diagnostic["egress_error_kind"] == "TimeoutError", diagnostic
+    assert diagnostic["reverse_tunnel_required"] is True, diagnostic
     assert diagnostic["proxy_url_recorded"] is False, diagnostic
     assert diagnostic["raw_logs_read"] is False, diagnostic
     assert diagnostic["raw_task_text_read"] is False, diagnostic
@@ -488,11 +582,26 @@ def test_completed_score_is_not_reclassified_by_bootstrap_risk() -> None:
     ), compact
     assert "verifier_bootstrap_diagnostic" not in compact, compact
 
+    compact["runner_config"] = {
+        "schema_version": "skillsbench_runner_config_v0",
+        "codex_api_egress_preflight_required": True,
+        "codex_api_egress_preflight_ready": False,
+        "codex_api_egress_preflight_status": "failed",
+        "codex_api_egress_preflight_error_kind": "TimeoutError",
+    }
+    reduced = compact_benchmark_run(compact)
+    assert reduced is not None, compact
+    assert reduced["score_failure_attribution"] == (
+        "official_verifier_solution_failure"
+    ), reduced
+    assert "codex_api_egress_diagnostic" not in reduced, reduced
+
 
 if __name__ == "__main__":
     test_missing_score_uv_bootstrap_risk_gets_verifier_dependency_attribution()
     test_pre_agent_package_install_risk_overrides_bridge_trace_missing()
     test_benchmark_egress_preflight_overrides_verifier_package_risk()
+    test_codex_egress_preflight_overrides_verifier_package_risk()
     test_runner_source_mismatch_overrides_verifier_package_risk()
     test_egress_preflight_wins_three_way_attribution()
     test_completed_score_is_not_reclassified_by_bootstrap_risk()

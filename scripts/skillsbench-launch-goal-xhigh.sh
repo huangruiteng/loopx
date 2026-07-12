@@ -38,6 +38,11 @@ Optional env:
                                        default 20
   SKILLSBENCH_TUNNEL_READY_TIMEOUT_SEC Reverse-tunnel readiness budget,
                                        default 60
+  SKILLSBENCH_TUNNEL_HEALTH_INTERVAL_SEC Ongoing CONNECT probe interval,
+                                       default 30; 0 disables
+  SKILLSBENCH_TUNNEL_HEALTH_FAILURE_THRESHOLD Consecutive failures before
+                                       reconnect, default 2
+  SKILLSBENCH_TUNNEL_RECONNECT_ATTEMPTS Bounded reconnect attempts, default 2
   SKILLSBENCH_PARALLEL_CASES           Batch concurrency, default 3
   SKILLSBENCH_BATCH_CASE_START_GAP_SEC Delay between case starts, default 3
   SKILLSBENCH_GOAL_ID                  Local evidence goal id, default loopx-meta
@@ -165,6 +170,9 @@ build_stall_timeout="${SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC:-3600}"
 run_timeout="${SKILLSBENCH_RUN_TIMEOUT_SEC:-28800}"
 tunnel_probe_timeout="${SKILLSBENCH_TUNNEL_PROBE_TIMEOUT_SEC:-20}"
 tunnel_ready_timeout="${SKILLSBENCH_TUNNEL_READY_TIMEOUT_SEC:-60}"
+tunnel_health_interval="${SKILLSBENCH_TUNNEL_HEALTH_INTERVAL_SEC:-30}"
+tunnel_health_failure_threshold="${SKILLSBENCH_TUNNEL_HEALTH_FAILURE_THRESHOLD:-2}"
+tunnel_reconnect_attempts="${SKILLSBENCH_TUNNEL_RECONNECT_ATTEMPTS:-2}"
 parallel_cases="${SKILLSBENCH_PARALLEL_CASES:-3}"
 if ((parallel_cases > task_count)); then
   parallel_cases="$task_count"
@@ -336,6 +344,10 @@ supervisor_cmd=(
   --remote-forward "127.0.0.1:${remote_proxy_port}:${local_proxy_host}:${local_proxy_port}"
   --probe-timeout-sec "$tunnel_probe_timeout"
   --tunnel-ready-timeout-sec "$tunnel_ready_timeout"
+  --tunnel-health-interval-sec "$tunnel_health_interval"
+  --tunnel-health-failure-threshold "$tunnel_health_failure_threshold"
+  --tunnel-reconnect-attempts "$tunnel_reconnect_attempts"
+  --tunnel-reconnect-ready-timeout-sec "$tunnel_ready_timeout"
   --run-timeout-sec "$run_timeout"
   --remote-failure-cleanup-pattern "$job_name"
   --remote-failure-cleanup-include-docker

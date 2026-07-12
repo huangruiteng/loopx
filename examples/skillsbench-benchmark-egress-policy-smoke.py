@@ -143,6 +143,9 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
             "SKILLSBENCH_RUN_STAMP": "20260709T000000CST",
             "SKILLSBENCH_TUNNEL_PROBE_TIMEOUT_SEC": "19",
             "SKILLSBENCH_TUNNEL_READY_TIMEOUT_SEC": "71",
+            "SKILLSBENCH_TUNNEL_HEALTH_INTERVAL_SEC": "29",
+            "SKILLSBENCH_TUNNEL_HEALTH_FAILURE_THRESHOLD": "3",
+            "SKILLSBENCH_TUNNEL_RECONNECT_ATTEMPTS": "4",
         }
     )
     env.pop("SKILLSBENCH_APPEND_HISTORY", None)
@@ -178,6 +181,10 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
     assert "remote_codex_bin_mode=explicit" in output, output
     assert "--probe-timeout-sec 19" in output, output
     assert "--tunnel-ready-timeout-sec 71" in output, output
+    assert "--tunnel-health-interval-sec 29" in output, output
+    assert "--tunnel-health-failure-threshold 3" in output, output
+    assert "--tunnel-reconnect-attempts 4" in output, output
+    assert "--tunnel-reconnect-ready-timeout-sec 71" in output, output
     assert (
         "--local-ledger-catchup-run-group-contains "
         "skillsbench-codex-cli-goal-xhigh-citation-check-egress-smoke-"
