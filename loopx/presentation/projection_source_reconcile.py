@@ -77,8 +77,40 @@ def plan_projection_source_reconcile(
         if key.startswith(prefix) and record_id:
             remote_source_records.append({"key": key, "record_id": record_id})
 
+    remote_by_key: dict[str, list[dict[str, str]]] = {}
+    for item in remote_source_records:
+        remote_by_key.setdefault(item["key"], []).append(item)
+
     remote_orphans = sorted(
-        (item for item in remote_source_records if item["key"] not in desired),
+        (
+            item
+            for key, items in remote_by_key.items()
+            if key not in desired
+            for item in items
+        ),
+        key=lambda item: (item["key"], item["record_id"]),
+    )
+    remote_duplicates: list[dict[str, str]] = []
+    duplicate_keys: list[str] = []
+    for key, items in sorted(remote_by_key.items()):
+        if key not in desired or len(items) < 2:
+            continue
+        ordered = sorted(items, key=lambda item: item["record_id"])
+        preferred_record_id = str(local_record_map.get(key) or "").strip()
+        keeper_record_id = (
+            preferred_record_id
+            if any(item["record_id"] == preferred_record_id for item in ordered)
+            else ordered[0]["record_id"]
+        )
+        duplicates = [
+            item for item in ordered if item["record_id"] != keeper_record_id
+        ]
+        if duplicates:
+            duplicate_keys.append(key)
+            remote_duplicates.extend(duplicates)
+
+    remote_delete_records = sorted(
+        [*remote_orphans, *remote_duplicates],
         key=lambda item: (item["key"], item["record_id"]),
     )
     local_mapping_keys_to_remove = sorted(local_source_keys - desired)
@@ -89,10 +121,20 @@ def plan_projection_source_reconcile(
         "namespace_prefix": prefix,
         "desired_key_count": len(desired),
         "remote_source_record_count": len(remote_source_records),
+        "remote_source_key_count": len(remote_by_key),
         "local_source_mapping_count": len(local_source_keys),
         "remote_orphans": remote_orphans,
         "remote_orphan_record_ids": [item["record_id"] for item in remote_orphans],
+        "remote_duplicate_key_count": len(duplicate_keys),
+        "remote_duplicate_keys": duplicate_keys,
+        "remote_duplicates": remote_duplicates,
+        "remote_duplicate_record_ids": [
+            item["record_id"] for item in remote_duplicates
+        ],
+        "remote_delete_record_ids": [
+            item["record_id"] for item in remote_delete_records
+        ],
         "local_mapping_keys_to_remove": local_mapping_keys_to_remove,
-        "remote_delete_count": len(remote_orphans),
+        "remote_delete_count": len(remote_delete_records),
         "local_mapping_delete_count": len(local_mapping_keys_to_remove),
     }
