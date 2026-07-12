@@ -121,14 +121,10 @@ def main() -> None:
             feasibility_packet(),
         )
         upsert_issue_fix_pr_lifecycle_ledger_jsonl(
-            default_issue_fix_domain_state_ledger_path(
-                project=project, goal_id=goal_id
-            ),
+            default_issue_fix_domain_state_ledger_path(project=project, goal_id=goal_id),
             lifecycle_packet(),
         )
-        rollout_log = rollout_event_log_path(
-            resolve_runtime_root(load_registry(registry)), goal_id
-        )
+        rollout_log = rollout_event_log_path(resolve_runtime_root(load_registry(registry)), goal_id)
         append_rollout_event(
             rollout_log,
             build_rollout_event(
@@ -160,9 +156,7 @@ def main() -> None:
         findings = {item["finding_id"] for item in first["projection"]["findings"]}
         assert "issue_7_8_lifecycle" in findings, findings
         issue_finding = next(
-            item
-            for item in first["projection"]["findings"]
-            if item["finding_id"] == "issue_7_8_lifecycle"
+            item for item in first["projection"]["findings"] if item["finding_id"] == "issue_7_8_lifecycle"
         )
         assert "reproduction=confirmed" in issue_finding["summary"], issue_finding
         assert "PR #8 published" in issue_finding["summary"], issue_finding
@@ -212,10 +206,7 @@ def main() -> None:
             explore_results.write_lark_explore_local_config(config_path, persisted)
             return {
                 "ok": True,
-                "written_rows": sum(
-                    projection["counts"][key]
-                    for key in ("node_count", "edge_count", "finding_count")
-                ),
+                "written_rows": sum(projection["counts"][key] for key in ("node_count", "edge_count", "finding_count")),
                 "skipped_rows": 0,
                 "duplicate_remote_rows": 0,
                 "error": None,
@@ -225,15 +216,10 @@ def main() -> None:
             digest = str(kwargs["semantic_digest"])
             display = kwargs["display_projection"]
             assert isinstance(display, dict), display
-            assert (
-                display["schema_version"] == "issue_fix_executive_visual_projection_v0"
-            )
+            assert display["schema_version"] == "issue_fix_executive_visual_projection_v0"
             assert display["graph_counts"]["delivery_node_count"] == 1, display
             expected_capability_nodes = 0 if len(visual_calls) >= 2 else 1
-            assert (
-                display["graph_counts"]["capability_node_count"]
-                == expected_capability_nodes
-            ), display
+            assert display["graph_counts"]["capability_node_count"] == expected_capability_nodes, display
             visual_calls.append(digest)
             if len(visual_calls) == 1:
                 return {
@@ -310,10 +296,7 @@ def main() -> None:
             assert changed["status"] == "synced", changed
             assert len(sync_calls) == 2, sync_calls
             assert len(visual_calls) == 3, visual_calls
-            changed_nodes = {
-                item["node_id"]: item
-                for item in changed["projection"]["projection"]["nodes"]
-            }
+            changed_nodes = {item["node_id"]: item for item in changed["projection"]["projection"]["nodes"]}
             assert changed_nodes["cap_explore_projection"]["status"] == "resolved"
         finally:
             explore_results.sync_explore_results_to_lark = original_sync
@@ -322,14 +305,8 @@ def main() -> None:
         stored = json.loads(config_path.read_text(encoding="utf-8"))
         assert stored["result_records"] == {"public-remote-row": "rec_public"}, stored
         assert stored["visual_sink"]["whiteboard_token"] == "wb_public_fixture", stored
-        assert (
-            stored["automatic_projection_sync"][goal_id]["semantic_digest"]
-            == changed["semantic_digest"]
-        )
-        assert (
-            stored["automatic_projection_sync"][goal_id]["visual_semantic_digest"]
-            == changed["semantic_digest"]
-        )
+        assert stored["automatic_projection_sync"][goal_id]["semantic_digest"] == changed["semantic_digest"]
+        assert stored["automatic_projection_sync"][goal_id]["visual_semantic_digest"] == changed["semantic_digest"]
         assert str(project) not in json.dumps(changed["projection"]["projection"])
 
     print("issue-fix explore projection smoke: ok")

@@ -22,7 +22,7 @@ def _benchmark_comparison_source(run: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def _compact_comparison_delta(value: Any) -> int | float | str | None:
+def compact_comparison_delta(value: Any) -> int | float | str | None:
     if isinstance(value, bool) or value is None:
         return None
     if isinstance(value, (int, float)):
@@ -110,7 +110,7 @@ def compact_benchmark_comparison(run: dict[str, Any]) -> dict[str, Any] | None:
         "with_loopx_extra_spends",
         "checklist_pass_count",
     ):
-        delta = _compact_comparison_delta(source.get(field))
+        delta = compact_comparison_delta(source.get(field))
         if delta is not None:
             compact[field] = delta
 

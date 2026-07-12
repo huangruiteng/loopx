@@ -200,6 +200,19 @@ path, and canary route rather than as a user-facing release baseline.
   public result contracts, while install/update, release provenance, quota,
   todo, scheduler, and protocol-action smokes were swept under the full-public
   suite for the 0.2 release cut.
+- `v0.2.1` on 2026-07-12: agent-facing quality and long-run reliability
+  fast-follow at the matching `v0.2.1` tag. This release makes bounded turn
+  context explicit through TurnEnvelope contracts, adds trajectory-hygiene
+  and packet-duplication measurements, and preserves action contracts while
+  trimming repeated hot-path material. Issue-Fix gains repository snapshots,
+  decision-useful memory, Explore projection, reviewer/CI receipts, impact
+  metrics, and guarded promotion of newly discovered public defects. Optional
+  Explore planning now preserves independent experiment lanes and supports
+  resource-aware portfolio decisions. Peer routing is hardened across task
+  lease validity, advisory agent profiles, deferred successor exclusions, and
+  non-blocking user actions. The repository also establishes parallel pytest,
+  Ruff, strict typing, import-boundary, coverage-floor, and release-promotion
+  concurrency checks so these broader capabilities remain maintainable.
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.

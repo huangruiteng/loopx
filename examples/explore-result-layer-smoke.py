@@ -126,9 +126,7 @@ def check_result_log_contract() -> dict[str, object]:
         assert len(events) == 5, events
 
         projection = result_log.build_explore_result_projection(events, goal_id=goal_id)
-        assert projection["schema_version"] == "loopx_explore_result_projection_v0", (
-            projection
-        )
+        assert projection["schema_version"] == "loopx_explore_result_projection_v0", projection
         counts = projection["counts"]
         assert counts["node_count"] == 2, counts
         assert counts["edge_count"] == 1, counts
@@ -136,9 +134,7 @@ def check_result_log_contract() -> dict[str, object]:
         assert counts["nodes_by_status"]["blocked"] == 1, counts
 
         # Latest node event wins and keeps update lineage.
-        kcg = next(
-            node for node in projection["nodes"] if node["node_id"] == "node_kcg"
-        )
+        kcg = next(node for node in projection["nodes"] if node["node_id"] == "node_kcg")
         assert kcg["status"] == "blocked", kcg
         assert kcg["blocked_reason"] == "vendor licence terms unclear", kcg
         assert kcg["update_count"] == 2, kcg
@@ -186,9 +182,7 @@ def check_result_log_contract() -> dict[str, object]:
             tags=["priority"],
             include_ancestors=False,
         )
-        assert [node["node_id"] for node in leaf_only["nodes"]] == ["node_kcg"], (
-            leaf_only
-        )
+        assert [node["node_id"] for node in leaf_only["nodes"]] == ["node_kcg"], leaf_only
         assert leaf_only["edges"] == [], leaf_only
 
     # Public-safety gates at record time.
@@ -219,9 +213,7 @@ def check_result_log_contract() -> dict[str, object]:
     except ValueError:
         pass
     try:
-        result_log.build_explore_node_event(
-            goal_id=goal_id, title="stuck node", status="blocked"
-        )
+        result_log.build_explore_node_event(goal_id=goal_id, title="stuck node", status="blocked")
         raise AssertionError("blocked node without blocked_reason must be rejected")
     except ValueError:
         pass
@@ -302,9 +294,7 @@ def check_lark_sync_contract() -> None:
         def arg_value(args: list[str], flag: str) -> str:
             return args[args.index(flag) + 1]
 
-        def fake_runner(
-            args: list[str], cwd: Path | None, timeout: float | None
-        ) -> dict[str, object]:
+        def fake_runner(args: list[str], cwd: Path | None, timeout: float | None) -> dict[str, object]:
             nonlocal upsert_attempts, created_records
             if "+record-list" in args:
                 table_id = arg_value(args, "--table-id")
@@ -314,11 +304,7 @@ def check_lark_sync_contract() -> None:
                 page = records[offset : offset + limit]
                 return {
                     "returncode": 0,
-                    "stdout": json.dumps(
-                        lark_value_list_fixture(
-                            page, has_more=offset + len(page) < len(records)
-                        )
-                    ),
+                    "stdout": json.dumps(lark_value_list_fixture(page, has_more=offset + len(page) < len(records))),
                     "stderr": "",
                     "timed_out": False,
                 }
@@ -328,9 +314,7 @@ def check_lark_sync_contract() -> None:
                 if upsert_attempts == fail_on_upsert_attempt:
                     return {
                         "returncode": 1,
-                        "stdout": json.dumps(
-                            {"ok": False, "error": "simulated interruption"}
-                        ),
+                        "stdout": json.dumps({"ok": False, "error": "simulated interruption"}),
                         "stderr": "",
                         "timed_out": False,
                     }
@@ -384,16 +368,7 @@ def check_lark_sync_contract() -> None:
         assert len(upsert_calls) == 3, upsert_calls
         assert all("--record-id" not in call for call in upsert_calls), upsert_calls
         assert first["written_rows"] == 3 and first["skipped_rows"] == 1, first
-        assert (
-            len(
-                [
-                    item
-                    for item in first["commands"]
-                    if "+record-list" in item["command"]
-                ]
-            )
-            == 4
-        )
+        assert len([item for item in first["commands"] if "+record-list" in item["command"]]) == 4
         stored = json.loads(config_path.read_text(encoding="utf-8"))
         assert len(stored["result_records"]) == 4, stored
 
@@ -411,15 +386,9 @@ def check_lark_sync_contract() -> None:
         assert not upsert_calls, upsert_calls
         assert second["written_rows"] == 0 and second["skipped_rows"] == 4, second
         assert config_path.read_text(encoding="utf-8") == stored_before_second
-        edge_record = next(
-            item for item in second["records"] if item["table"] == "edges"
-        )
-        assert edge_record["values"]["From Node Link"] == [{"id": "rec_new_2"}], (
-            edge_record
-        )
-        assert edge_record["values"]["To Node Link"] == [{"id": "rec_new_1"}], (
-            edge_record
-        )
+        edge_record = next(item for item in second["records"] if item["table"] == "edges")
+        assert edge_record["values"]["From Node Link"] == [{"id": "rec_new_2"}], edge_record
+        assert edge_record["values"]["To Node Link"] == [{"id": "rec_new_1"}], edge_record
 
         # A remote single-row drift is repaired without rewriting the full graph.
         remote_records["tblN"]["rec_new_1"]["Title"] = "manually drifted title"
@@ -450,38 +419,28 @@ def check_lark_sync_contract() -> None:
 
 def check_lark_setup_and_card() -> None:
     goal_id = "explore-smoke-goal"
-    projection = result_log.build_explore_result_projection(
-        build_sample_events(goal_id), goal_id=goal_id
-    )
+    projection = result_log.build_explore_result_projection(build_sample_events(goal_id), goal_id=goal_id)
 
     schema = explore_results.lark_explore_schema_payload()
     assert schema["schema_version"] == "loopx_lark_explore_result_board_v0", schema
     assert set(schema["tables"]) == {"nodes", "edges", "findings"}, schema
     edge_fields = schema["tables"]["edges"]["fields"]
     assert any(
-        field.get("name") == "From Node Link"
-        and field.get("type") == "link"
-        and field.get("link_table") == "Nodes"
+        field.get("name") == "From Node Link" and field.get("type") == "link" and field.get("link_table") == "Nodes"
         for field in edge_fields
     ), edge_fields
     assert any(
-        field.get("name") == "To Node Link"
-        and field.get("type") == "link"
-        and field.get("link_table") == "Nodes"
+        field.get("name") == "To Node Link" and field.get("type") == "link" and field.get("link_table") == "Nodes"
         for field in edge_fields
     ), edge_fields
 
     with tempfile.TemporaryDirectory(prefix="loopx-explore-smoke-") as tmp:
         config_path = Path(tmp) / ".loopx" / "lark-explore.json"
-        dry = explore_results.setup_lark_explore_board(
-            config_path=config_path, execute=False
-        )
+        dry = explore_results.setup_lark_explore_board(config_path=config_path, execute=False)
         assert dry["ok"] is True and not config_path.exists(), dry
         assert len(dry["commands"]) == 4, dry
 
-        def fake_runner(
-            args: list[str], cwd: Path | None, timeout: float | None
-        ) -> dict[str, object]:
+        def fake_runner(args: list[str], cwd: Path | None, timeout: float | None) -> dict[str, object]:
             if "+base-create" in args:
                 payload = {
                     "ok": True,
@@ -505,23 +464,17 @@ def check_lark_setup_and_card() -> None:
                 "timed_out": False,
             }
 
-        executed = explore_results.setup_lark_explore_board(
-            config_path=config_path, execute=True, runner=fake_runner
-        )
+        executed = explore_results.setup_lark_explore_board(config_path=config_path, execute=True, runner=fake_runner)
         assert executed["ok"] is True, executed
         assert executed["tables"] == {
             "nodes": "tblNodes",
             "edges": "tblEdges",
             "findings": "tblFindings",
         }, executed
-        assert (
-            executed["board"]["base_url"] == "https://example.invalid/base/SMOKE_BASE"
-        ), executed
+        assert executed["board"]["base_url"] == "https://example.invalid/base/SMOKE_BASE", executed
         stored = json.loads(config_path.read_text(encoding="utf-8"))
         assert stored["board"]["tables"]["nodes"] == "tblNodes", stored
-        assert (
-            stored["board"]["base_url"] == "https://example.invalid/base/SMOKE_BASE"
-        ), stored
+        assert stored["board"]["base_url"] == "https://example.invalid/base/SMOKE_BASE", stored
 
         config_path.write_bytes(b"\xef\xbb\xbf" + config_path.read_bytes())
         bom_payload = explore_results.read_lark_explore_local_config(config_path)
@@ -533,9 +486,7 @@ def check_lark_setup_and_card() -> None:
     assert card_payload["schema_version"] == "loopx_lark_explore_card_v0", card_payload
     markdown = card_payload["card_markdown"]
     assert "**Exploration map**: 2 nodes" in markdown, markdown
-    assert "**Blocked**" in markdown and "vendor licence terms unclear" in markdown, (
-        markdown
-    )
+    assert "**Blocked**" in markdown and "vendor licence terms unclear" in markdown, markdown
     assert "[confirmed] Two open-source Lustre toolchains" in markdown, markdown
     card = card_payload["card"]
     assert card["header"]["title"]["content"].startswith("Exploration map:"), card
@@ -601,33 +552,22 @@ def check_todo_branch_prediction_contract() -> None:
     assert plan["ok"] is True and plan["dry_run"] is True, plan
     assert plan["schema_version"] == "loopx_explore_todo_branch_plan_v0", plan
     assert plan["boundary"]["starts_agents"] is False, plan
-    assert (
-        plan["scheduler"]["schema_version"] == "loopx_explore_speculative_scheduler_v0"
-    ), plan
+    assert plan["scheduler"]["schema_version"] == "loopx_explore_speculative_scheduler_v0", plan
     assert plan["scheduler"]["strategy"] == "dspark_confidence_scheduled_prefix", plan
     assert set(plan["scheduler"]["ab_comparison"]) == {
         "baseline_serial",
         "dspark_selected",
     }, plan
-    assert (
-        plan["ab_result"]["schema_version"] == "loopx_explore_branch_plan_ab_result_v0"
-    ), plan
+    assert plan["ab_result"]["schema_version"] == "loopx_explore_branch_plan_ab_result_v0", plan
     assert plan["ab_result"]["baseline_serial_theta"] > 0, plan
     assert plan["ab_result"]["estimated_speedup_vs_baseline"] > 0, plan
     selected_ids = [item["todo_id"] for item in plan["selected_branches"]]
     assert selected_ids[:2] == ["todo_primary", "todo_parallel"], plan
-    assert all(
-        "expected_evidence_units" in item for item in plan["selected_branches"]
-    ), plan
+    assert all("expected_evidence_units" in item for item in plan["selected_branches"]), plan
     rejected = {item["todo_id"]: item for item in plan["rejected_candidates"]}
     assert rejected["todo_conflict"]["selection_status"] == "rejected_hazard", plan
-    assert rejected["todo_other"]["selection_status"] == "blocked_claimed_by_other", (
-        plan
-    )
-    assert any(
-        "task-lease acquire" in command
-        for command in plan["selected_branches"][0]["suggested_commands"]
-    ), plan
+    assert rejected["todo_other"]["selection_status"] == "blocked_claimed_by_other", plan
+    assert any("task-lease acquire" in command for command in plan["selected_branches"][0]["suggested_commands"]), plan
 
     worker_plan = build_explore_worker_branch_plan(
         goal_id=goal_id,
@@ -638,28 +578,16 @@ def check_todo_branch_prediction_contract() -> None:
         max_todos_per_branch=3,
     )
     assert worker_plan["ok"] is True and worker_plan["dry_run"] is True, worker_plan
-    assert worker_plan["schema_version"] == "loopx_explore_worker_branch_plan_v0", (
-        worker_plan
-    )
-    assert worker_plan["harness_compatibility"]["replaces_loopx_runtime"] is False, (
-        worker_plan
-    )
+    assert worker_plan["schema_version"] == "loopx_explore_worker_branch_plan_v0", worker_plan
+    assert worker_plan["harness_compatibility"]["replaces_loopx_runtime"] is False, worker_plan
     assert worker_plan["boundary"]["starts_agents"] is False, worker_plan
     assert worker_plan["selected_worker_branch_count"] >= 1, worker_plan
     first_worker = worker_plan["selected_worker_branches"][0]
     assert len(first_worker["todo_bundle"]) >= 1, worker_plan
-    assert first_worker["execution_contract"]["must_enter_loopx_harness"] is True, (
-        worker_plan
-    )
-    assert (
-        worker_plan["ab_result"]["schema_version"]
-        == "loopx_explore_worker_branch_plan_ab_result_v0"
-    ), worker_plan
+    assert first_worker["execution_contract"]["must_enter_loopx_harness"] is True, worker_plan
+    assert worker_plan["ab_result"]["schema_version"] == "loopx_explore_worker_branch_plan_ab_result_v0", worker_plan
     assert worker_plan["ab_result"]["estimated_speedup_vs_baseline"] > 0, worker_plan
-    assert any(
-        event["event_type"] == "predicted"
-        for event in worker_plan["accept_reject_trace"]
-    ), worker_plan
+    assert any(event["event_type"] == "predicted" for event in worker_plan["accept_reject_trace"]), worker_plan
 
     adaptive_worker_plan = build_explore_worker_branch_plan(
         goal_id=goal_id,
@@ -670,54 +598,30 @@ def check_todo_branch_prediction_contract() -> None:
         harness_profile="adaptive-resilient",
     )
     assert adaptive_worker_plan["ok"] is True, adaptive_worker_plan
-    assert adaptive_worker_plan["harness_profile"] == "adaptive-resilient", (
+    assert adaptive_worker_plan["harness_profile"] == "adaptive-resilient", adaptive_worker_plan
+    assert adaptive_worker_plan["branch_fill_policy"] == "value-first", adaptive_worker_plan
+    assert adaptive_worker_plan["selected_worker_branch_count"] <= 6, adaptive_worker_plan
+    assert adaptive_worker_plan["harness_compatibility"]["duration_guard_controlled_by_planner"] is False, (
         adaptive_worker_plan
     )
-    assert adaptive_worker_plan["branch_fill_policy"] == "value-first", (
+    assert adaptive_worker_plan["harness_compatibility"]["fixed_worker_count_controlled_by_planner"] is False, (
         adaptive_worker_plan
     )
-    assert adaptive_worker_plan["selected_worker_branch_count"] <= 6, (
-        adaptive_worker_plan
-    )
-    assert (
-        adaptive_worker_plan["harness_compatibility"][
-            "duration_guard_controlled_by_planner"
-        ]
-        is False
-    ), adaptive_worker_plan
-    assert (
-        adaptive_worker_plan["harness_compatibility"][
-            "fixed_worker_count_controlled_by_planner"
-        ]
-        is False
-    ), adaptive_worker_plan
-    assert (
-        adaptive_worker_plan["harness_compatibility"]["forces_full_branch_fill"]
-        is False
-    ), adaptive_worker_plan
-    assert adaptive_worker_plan["max_todos_per_branch_explicit"] is False, (
-        adaptive_worker_plan
-    )
-    assert (
-        adaptive_worker_plan["harness_compatibility"]["adaptive_todo_batching"] is True
-    ), adaptive_worker_plan
+    assert adaptive_worker_plan["harness_compatibility"]["forces_full_branch_fill"] is False, adaptive_worker_plan
+    assert adaptive_worker_plan["max_todos_per_branch_explicit"] is False, adaptive_worker_plan
+    assert adaptive_worker_plan["harness_compatibility"]["adaptive_todo_batching"] is True, adaptive_worker_plan
     profile = adaptive_worker_plan["worker_harness_profile"]
     assert profile["duration_guard"]["enabled"] is False, profile
     assert profile["concurrency_policy"]["fixed_worker_count"] is False, profile
-    assert profile["concurrency_policy"]["does_not_force_requested_width"] is True, (
-        profile
-    )
+    assert profile["concurrency_policy"]["does_not_force_requested_width"] is True, profile
     assert profile["retry_policy"]["enabled"] is True, profile
     assert profile["infra_cooldown"]["enabled"] is True, profile
-    assert any(
-        0 < len(branch["todo_bundle"]) < 8
-        for branch in adaptive_worker_plan["selected_worker_branches"]
-    ), adaptive_worker_plan
+    assert any(0 < len(branch["todo_bundle"]) < 8 for branch in adaptive_worker_plan["selected_worker_branches"]), (
+        adaptive_worker_plan
+    )
 
 
-def _router_smoke_todo(
-    index: int, *, family: str, priority: str = "P0"
-) -> dict[str, object]:
+def _router_smoke_todo(index: int, *, family: str, priority: str = "P0") -> dict[str, object]:
     return {
         "todo_id": f"todo_router_{family}_{index}",
         "index": index,
@@ -734,10 +638,7 @@ def check_worker_lane_router_contract() -> None:
     # 1. Width is no longer silently clamped to 8: 12 distinct-family todos at
     #    worker_width=10 under independent-lane admission saturate all 10 lanes.
     families = [f"fam{index:02d}" for index in range(12)]
-    wide_todos = [
-        _router_smoke_todo(index + 1, family=family)
-        for index, family in enumerate(families)
-    ]
+    wide_todos = [_router_smoke_todo(index + 1, family=family) for index, family in enumerate(families)]
     wide_plan = build_explore_worker_branch_plan(
         goal_id=goal_id,
         todos=wide_todos,
@@ -746,15 +647,9 @@ def check_worker_lane_router_contract() -> None:
         harness_profile="adaptive-resilient",
     )
     assert wide_plan["worker_width"] == 10, wide_plan["worker_width"]
-    assert wide_plan["scheduler_model"] == "independent_lane_admission", wide_plan[
-        "scheduler_model"
-    ]
-    assert wide_plan["selected_worker_branch_count"] == 10, wide_plan[
-        "selected_worker_branch_count"
-    ]
-    assert wide_plan["admission_audit"]["queue_exhausted"] is False, wide_plan[
-        "admission_audit"
-    ]
+    assert wide_plan["scheduler_model"] == "independent_lane_admission", wide_plan["scheduler_model"]
+    assert wide_plan["selected_worker_branch_count"] == 10, wide_plan["selected_worker_branch_count"]
+    assert wide_plan["admission_audit"]["queue_exhausted"] is False, wide_plan["admission_audit"]
     outside = [
         branch
         for branch in wide_plan["rejected_worker_branches"]
@@ -770,12 +665,8 @@ def check_worker_lane_router_contract() -> None:
         worker_width=10,
         harness_profile="adaptive-resilient",
     )
-    assert narrow_plan["selected_worker_branch_count"] == 5, narrow_plan[
-        "selected_worker_branch_count"
-    ]
-    assert narrow_plan["admission_audit"]["queue_exhausted"] is True, narrow_plan[
-        "admission_audit"
-    ]
+    assert narrow_plan["selected_worker_branch_count"] == 5, narrow_plan["selected_worker_branch_count"]
+    assert narrow_plan["admission_audit"]["queue_exhausted"] is True, narrow_plan["admission_audit"]
 
     # 3. moe-router without router state still plans (router disabled but supported).
     bare_moe_plan = build_explore_worker_branch_plan(
@@ -785,13 +676,9 @@ def check_worker_lane_router_contract() -> None:
         worker_width=4,
         harness_profile="moe-router",
     )
-    assert bare_moe_plan["router"]["supported_by_profile"] is True, bare_moe_plan[
-        "router"
-    ]
+    assert bare_moe_plan["router"]["supported_by_profile"] is True, bare_moe_plan["router"]
     assert bare_moe_plan["router"]["enabled"] is False, bare_moe_plan["router"]
-    assert bare_moe_plan["strategy"] == "independent_lane_worker_prediction", (
-        bare_moe_plan["strategy"]
-    )
+    assert bare_moe_plan["strategy"] == "independent_lane_worker_prediction", bare_moe_plan["strategy"]
 
     # 4. Aux-loss-free invariant: bias reorders routing but leaves value
     #    bookkeeping untouched. Two equal-score families; biasing the
@@ -820,17 +707,12 @@ def check_worker_lane_router_contract() -> None:
         router_state=biased_state,
     )
     assert unbiased_plan["router"]["enabled"] is True, unbiased_plan["router"]
-    unbiased_order = [
-        branch["affinity_key"] for branch in unbiased_plan["selected_worker_branches"]
-    ]
-    biased_order = [
-        branch["affinity_key"] for branch in biased_plan["selected_worker_branches"]
-    ]
+    unbiased_order = [branch["affinity_key"] for branch in unbiased_plan["selected_worker_branches"]]
+    biased_order = [branch["affinity_key"] for branch in biased_plan["selected_worker_branches"]]
     assert unbiased_order[0].endswith(fam_first), unbiased_order
     assert biased_order[0].endswith(fam_second), biased_order
     evidence_by_family = lambda plan: {  # noqa: E731
-        branch["affinity_key"]: branch["expected_evidence_units"]
-        for branch in plan["selected_worker_branches"]
+        branch["affinity_key"]: branch["expected_evidence_units"] for branch in plan["selected_worker_branches"]
     }
     assert evidence_by_family(unbiased_plan) == evidence_by_family(biased_plan), (
         evidence_by_family(unbiased_plan),
@@ -853,9 +735,7 @@ def check_worker_lane_router_contract() -> None:
         # keeps only the first as parallel-safe; bundle FORMATION is what is
         # under test here, so collect selected and rejected branches alike.
         branches = list(plan["selected_worker_branches"]) + [
-            branch
-            for branch in plan["rejected_worker_branches"]
-            if branch.get("todo_bundle")
+            branch for branch in plan["rejected_worker_branches"] if branch.get("todo_bundle")
         ]
         return sorted(len(branch["todo_bundle"]) for branch in branches)
 
@@ -897,8 +777,7 @@ def check_worker_lane_router_contract() -> None:
     #    The expansion is bounded by value floors, not a blind fill rule.
     expansion_families = [f"expand_fam_{index:02d}" for index in range(10)]
     expansion_todos = [
-        _router_smoke_todo(index + 1, family=family, priority="P1")
-        for index, family in enumerate(expansion_families)
+        _router_smoke_todo(index + 1, family=family, priority="P1") for index, family in enumerate(expansion_families)
     ]
     expansion_state = initial_router_state()
     expansion_state["updated_epoch"] = 3
@@ -931,9 +810,7 @@ def check_worker_lane_router_contract() -> None:
     expansion_audit = expansion_plan["admission_audit"]
     assert expansion_plan["selected_worker_branch_count"] >= 6, expansion_audit
     assert expansion_audit["opportunistic_admitted_count"] > 0, expansion_audit
-    assert (
-        expansion_audit["core_lane_count"] < expansion_audit["admitted_lane_count"]
-    ), expansion_audit
+    assert expansion_audit["core_lane_count"] < expansion_audit["admitted_lane_count"], expansion_audit
     assert expansion_audit["opportunistic_utilization_floor"] == 0.65, expansion_audit
 
     # 7. Router state lifecycle: the novelty ledger dedupes across epochs and
@@ -989,12 +866,8 @@ def check_worker_lane_router_contract() -> None:
         },
     )
     calibration = calibrated_plan["load_calibration"]
-    assert calibration is not None and calibration["measured_load_factor"] == 0.0, (
-        calibration
-    )
-    assert calibrated_plan["scheduler"]["load_factor"] < 0.2, calibrated_plan[
-        "scheduler"
-    ]["load_factor"]
+    assert calibration is not None and calibration["measured_load_factor"] == 0.0, calibration
+    assert calibrated_plan["scheduler"]["load_factor"] < 0.2, calibrated_plan["scheduler"]["load_factor"]
 
 
 def check_harness_domain_purity() -> None:
@@ -1161,9 +1034,7 @@ def check_cli_surface() -> None:
         )
         assert focused_graph["filter"]["active"] is True, focused_graph
         assert focused_graph["graph_counts"]["matched_node_count"] == 1, focused_graph
-        assert [item["node_id"] for item in focused_graph["nodes"]] == [
-            "node_cli_root"
-        ], focused_graph
+        assert [item["node_id"] for item in focused_graph["nodes"]] == ["node_cli_root"], focused_graph
         branch_plan = run_cli(
             "explore",
             "todo-branch-plan",
@@ -1174,24 +1045,16 @@ def check_cli_surface() -> None:
             "--width",
             "2",
         )
-        assert branch_plan["ok"] is True and branch_plan["selected_count"] == 2, (
-            branch_plan
-        )
+        assert branch_plan["ok"] is True and branch_plan["selected_count"] == 2, branch_plan
         assert branch_plan["enabled"] is True, branch_plan
-        assert branch_plan["orchestration_gate"]["state"] == "commands_suggested", (
-            branch_plan
-        )
+        assert branch_plan["orchestration_gate"]["state"] == "commands_suggested", branch_plan
         assert branch_plan["boundary"]["claims_todos"] is False, branch_plan
-        assert branch_plan["selected_branches"][0]["todo_id"] == "todo_cli_primary", (
-            branch_plan
-        )
+        assert branch_plan["selected_branches"][0]["todo_id"] == "todo_cli_primary", branch_plan
         assert set(branch_plan["scheduler"]["ab_comparison"]) == {
             "baseline_serial",
             "dspark_selected",
         }, branch_plan
-        assert branch_plan["ab_result"]["estimated_speedup_vs_baseline"] > 0, (
-            branch_plan
-        )
+        assert branch_plan["ab_result"]["estimated_speedup_vs_baseline"] > 0, branch_plan
         resource_branch_plan = run_cli(
             "explore",
             "todo-branch-plan",
@@ -1210,12 +1073,8 @@ def check_cli_surface() -> None:
             "--resource-usage",
             "short_pool=2",
         )
-        assert resource_branch_plan["resource_portfolio"]["selected_slot_count"] == 2, (
-            resource_branch_plan
-        )
-        assert (
-            resource_branch_plan["resource_portfolio"]["remaining_slot_count"] == 0
-        ), resource_branch_plan
+        assert resource_branch_plan["resource_portfolio"]["selected_slot_count"] == 2, resource_branch_plan
+        assert resource_branch_plan["resource_portfolio"]["remaining_slot_count"] == 0, resource_branch_plan
         worker_branch_plan = run_cli(
             "explore",
             "worker-branch-plan",
@@ -1229,29 +1088,14 @@ def check_cli_surface() -> None:
             "2",
         )
         assert worker_branch_plan["ok"] is True, worker_branch_plan
-        assert (
-            worker_branch_plan["schema_version"]
-            == "loopx_explore_worker_branch_plan_v0"
-        ), worker_branch_plan
+        assert worker_branch_plan["schema_version"] == "loopx_explore_worker_branch_plan_v0", worker_branch_plan
         assert worker_branch_plan["enabled"] is True, worker_branch_plan
+        assert worker_branch_plan["orchestration_gate"]["state"] == "commands_suggested", worker_branch_plan
+        assert worker_branch_plan["harness_compatibility"]["uses_loopx_todo_projection"] is True, worker_branch_plan
+        assert worker_branch_plan["boundary"]["claims_todos"] is False, worker_branch_plan
+        assert worker_branch_plan["selected_worker_branch_count"] >= 1, worker_branch_plan
         assert (
-            worker_branch_plan["orchestration_gate"]["state"] == "commands_suggested"
-        ), worker_branch_plan
-        assert (
-            worker_branch_plan["harness_compatibility"]["uses_loopx_todo_projection"]
-            is True
-        ), worker_branch_plan
-        assert worker_branch_plan["boundary"]["claims_todos"] is False, (
-            worker_branch_plan
-        )
-        assert worker_branch_plan["selected_worker_branch_count"] >= 1, (
-            worker_branch_plan
-        )
-        assert (
-            worker_branch_plan["selected_worker_branches"][0]["execution_contract"][
-                "requires_quota_should_run"
-            ]
-            is True
+            worker_branch_plan["selected_worker_branches"][0]["execution_contract"]["requires_quota_should_run"] is True
         ), worker_branch_plan
         adaptive_worker_branch_plan = run_cli(
             "explore",
@@ -1266,39 +1110,21 @@ def check_cli_surface() -> None:
             "5",
         )
         assert adaptive_worker_branch_plan["ok"] is True, adaptive_worker_branch_plan
-        assert adaptive_worker_branch_plan["harness_profile"] == "adaptive-resilient", (
-            adaptive_worker_branch_plan
-        )
-        assert adaptive_worker_branch_plan["branch_fill_policy"] == "value-first", (
-            adaptive_worker_branch_plan
-        )
-        assert (
-            adaptive_worker_branch_plan["worker_harness_profile"]["duration_guard"][
-                "enabled"
-            ]
-            is False
-        ), adaptive_worker_branch_plan
-        assert (
-            adaptive_worker_branch_plan["harness_compatibility"][
-                "fixed_worker_count_controlled_by_planner"
-            ]
-            is False
-        ), adaptive_worker_branch_plan
-        assert (
-            adaptive_worker_branch_plan["harness_compatibility"][
-                "forces_full_branch_fill"
-            ]
-            is False
-        ), adaptive_worker_branch_plan
-        assert adaptive_worker_branch_plan["max_todos_per_branch_explicit"] is False, (
+        assert adaptive_worker_branch_plan["harness_profile"] == "adaptive-resilient", adaptive_worker_branch_plan
+        assert adaptive_worker_branch_plan["branch_fill_policy"] == "value-first", adaptive_worker_branch_plan
+        assert adaptive_worker_branch_plan["worker_harness_profile"]["duration_guard"]["enabled"] is False, (
             adaptive_worker_branch_plan
         )
         assert (
-            adaptive_worker_branch_plan["harness_compatibility"][
-                "adaptive_todo_batching"
-            ]
-            is True
+            adaptive_worker_branch_plan["harness_compatibility"]["fixed_worker_count_controlled_by_planner"] is False
         ), adaptive_worker_branch_plan
+        assert adaptive_worker_branch_plan["harness_compatibility"]["forces_full_branch_fill"] is False, (
+            adaptive_worker_branch_plan
+        )
+        assert adaptive_worker_branch_plan["max_todos_per_branch_explicit"] is False, adaptive_worker_branch_plan
+        assert adaptive_worker_branch_plan["harness_compatibility"]["adaptive_todo_batching"] is True, (
+            adaptive_worker_branch_plan
+        )
         router_state_path = Path(tmp) / "router_state.json"
         router_state_path.write_text(
             json.dumps(initial_router_state(), indent=2) + "\n",
@@ -1335,32 +1161,17 @@ def check_cli_surface() -> None:
             str(load_profile_path),
         )
         assert moe_worker_branch_plan["ok"] is True, moe_worker_branch_plan
-        assert moe_worker_branch_plan["harness_profile"] == "moe-router", (
+        assert moe_worker_branch_plan["harness_profile"] == "moe-router", moe_worker_branch_plan
+        assert moe_worker_branch_plan["router"]["enabled"] is True, moe_worker_branch_plan["router"]
+        assert moe_worker_branch_plan["scheduler_model"] == "independent_lane_admission", moe_worker_branch_plan
+        assert moe_worker_branch_plan["load_calibration"]["source"] == "smoke_observed_profile", moe_worker_branch_plan
+        assert moe_worker_branch_plan["admission_audit"] is not None, moe_worker_branch_plan
+        assert moe_worker_branch_plan["max_todos_per_branch_source"] == "confident_prefix_scheduler_safety_cap", (
             moe_worker_branch_plan
         )
-        assert moe_worker_branch_plan["router"]["enabled"] is True, (
-            moe_worker_branch_plan["router"]
-        )
-        assert (
-            moe_worker_branch_plan["scheduler_model"] == "independent_lane_admission"
-        ), moe_worker_branch_plan
-        assert (
-            moe_worker_branch_plan["load_calibration"]["source"]
-            == "smoke_observed_profile"
-        ), moe_worker_branch_plan
-        assert moe_worker_branch_plan["admission_audit"] is not None, (
+        assert moe_worker_branch_plan["harness_compatibility"]["confidence_prefix_todo_batching"] is True, (
             moe_worker_branch_plan
         )
-        assert (
-            moe_worker_branch_plan["max_todos_per_branch_source"]
-            == "confident_prefix_scheduler_safety_cap"
-        ), moe_worker_branch_plan
-        assert (
-            moe_worker_branch_plan["harness_compatibility"][
-                "confidence_prefix_todo_batching"
-            ]
-            is True
-        ), moe_worker_branch_plan
         sync = run_cli(
             "explore",
             "feishu-sync",
@@ -1426,15 +1237,9 @@ def check_cli_surface() -> None:
             str(config_path),
         )
         assert stored_cli_sync["ok"] is True, stored_cli_sync
-        assert stored_cli_sync["commands"][0]["command"].startswith(
-            "stored-lark-cli "
-        ), stored_cli_sync
-        assert stored_cli_sync["visual_sync"]["status"] == "would_publish", (
-            stored_cli_sync
-        )
-        assert (
-            "whiteboard +update" in stored_cli_sync["visual_sync"]["command"]["command"]
-        ), stored_cli_sync
+        assert stored_cli_sync["commands"][0]["command"].startswith("stored-lark-cli "), stored_cli_sync
+        assert stored_cli_sync["visual_sync"]["status"] == "would_publish", stored_cli_sync
+        assert "whiteboard +update" in stored_cli_sync["visual_sync"]["command"]["command"], stored_cli_sync
 
         # Error contract: unknown target without config fails with exit 1.
         error = subprocess.run(

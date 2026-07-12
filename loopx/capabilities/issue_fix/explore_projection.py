@@ -78,16 +78,8 @@ def build_issue_fix_executive_visual_projection(
 ) -> dict[str, Any]:
     """Compress canonical issue-fix evidence into two owner-facing lanes."""
 
-    nodes = [
-        dict(item)
-        for item in projection.get("nodes") or []
-        if isinstance(item, Mapping)
-    ]
-    edges = [
-        dict(item)
-        for item in projection.get("edges") or []
-        if isinstance(item, Mapping)
-    ]
+    nodes = [dict(item) for item in projection.get("nodes") or [] if isinstance(item, Mapping)]
+    edges = [dict(item) for item in projection.get("edges") or [] if isinstance(item, Mapping)]
     by_id = {str(item.get("node_id") or ""): item for item in nodes}
     root_id = "ov_pilot" if "ov_pilot" in by_id else ISSUE_FIX_ROOT_ID
 
@@ -117,14 +109,11 @@ def build_issue_fix_executive_visual_projection(
             continue
         tags = {str(tag) for tag in node.get("tags") or []}
         if "lane-capability" in tags or (
-            "capability-gap" in tags
-            and str(node.get("status") or "") != NODE_STATUS_RESOLVED
+            "capability-gap" in tags and str(node.get("status") or "") != NODE_STATUS_RESOLVED
         ):
             capability_nodes.append(node)
 
-    selected = {
-        str(node.get("node_id") or "") for node in [*delivery_nodes, *capability_nodes]
-    }
+    selected = {str(node.get("node_id") or "") for node in [*delivery_nodes, *capability_nodes]}
     lines = [
         "flowchart TB",
         f'  {root_id}["{_visual_mermaid_label(by_id.get(root_id, {}).get("title") or "PR issue-fix campaign")}"]',
@@ -226,50 +215,28 @@ def _latest_events(
 
 
 def _material_event(event: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        key: value
-        for key, value in event.items()
-        if key not in _NON_MATERIAL_EVENT_KEYS
-    }
+    return {key: value for key, value in event.items() if key not in _NON_MATERIAL_EVENT_KEYS}
 
 
 def _semantic_projection_digest(projection: Mapping[str, Any]) -> str:
     def clean(item: Mapping[str, Any]) -> dict[str, Any]:
-        return {
-            key: value
-            for key, value in item.items()
-            if key not in _NON_MATERIAL_VIEW_KEYS
-        }
+        return {key: value for key, value in item.items() if key not in _NON_MATERIAL_VIEW_KEYS}
 
     material = {
         "nodes": sorted(
-            (
-                clean(item)
-                for item in projection.get("nodes") or []
-                if isinstance(item, Mapping)
-            ),
+            (clean(item) for item in projection.get("nodes") or [] if isinstance(item, Mapping)),
             key=lambda item: str(item.get("node_id") or ""),
         ),
         "edges": sorted(
-            (
-                clean(item)
-                for item in projection.get("edges") or []
-                if isinstance(item, Mapping)
-            ),
+            (clean(item) for item in projection.get("edges") or [] if isinstance(item, Mapping)),
             key=lambda item: str(item.get("edge_id") or ""),
         ),
         "findings": sorted(
-            (
-                clean(item)
-                for item in projection.get("findings") or []
-                if isinstance(item, Mapping)
-            ),
+            (clean(item) for item in projection.get("findings") or [] if isinstance(item, Mapping)),
             key=lambda item: str(item.get("finding_id") or ""),
         ),
     }
-    encoded = json.dumps(
-        material, ensure_ascii=True, sort_keys=True, separators=(",", ":")
-    )
+    encoded = json.dumps(material, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
@@ -286,9 +253,7 @@ def _all_todos(state_file: Path) -> list[dict[str, Any]]:
     return items
 
 
-def _existing_node(
-    existing: Mapping[tuple[str, str], dict[str, Any]], node_id: str
-) -> dict[str, Any]:
+def _existing_node(existing: Mapping[tuple[str, str], dict[str, Any]], node_id: str) -> dict[str, Any]:
     return dict(existing.get((EVENT_KIND_NODE, node_id)) or {})
 
 
@@ -338,15 +303,9 @@ def _issue_number(outcome: Mapping[str, Any]) -> str:
 def _issue_node_id(outcome: Mapping[str, Any]) -> str:
     issue_number = _issue_number(outcome)
     pull_request = outcome.get("pull_request")
-    pr_number = (
-        str(pull_request.get("number") or "").strip()
-        if isinstance(pull_request, Mapping)
-        else ""
-    )
+    pr_number = str(pull_request.get("number") or "").strip() if isinstance(pull_request, Mapping) else ""
     return _token(
-        f"fix_{issue_number}_{pr_number}"
-        if pr_number
-        else f"fix_{issue_number}_candidate",
+        f"fix_{issue_number}_{pr_number}" if pr_number else f"fix_{issue_number}_candidate",
         fallback="fix_candidate",
     )
 
@@ -354,32 +313,23 @@ def _issue_node_id(outcome: Mapping[str, Any]) -> str:
 def _todo_node_refs(todo: Mapping[str, Any]) -> list[str]:
     refs = todo.get("explore_result_node_refs")
     if isinstance(refs, Sequence) and not isinstance(refs, (str, bytes)):
-        return [
-            _token(item, fallback="capability") for item in refs if str(item).strip()
-        ]
+        return [_token(item, fallback="capability") for item in refs if str(item).strip()]
     return []
 
 
 def _todo_capabilities(todo: Mapping[str, Any]) -> list[str]:
     capabilities = todo.get("target_capabilities")
-    if isinstance(capabilities, Sequence) and not isinstance(
-        capabilities, (str, bytes)
-    ):
+    if isinstance(capabilities, Sequence) and not isinstance(capabilities, (str, bytes)):
         return [str(item).strip() for item in capabilities if str(item).strip()]
     return []
 
 
-def _capability_node_ids(
-    todo: Mapping[str, Any] | None, capabilities: Sequence[str]
-) -> list[str]:
+def _capability_node_ids(todo: Mapping[str, Any] | None, capabilities: Sequence[str]) -> list[str]:
     if todo:
         refs = _todo_node_refs(todo)
         if refs:
             return refs
-    return [
-        _token(f"cap_{capability}", fallback="capability")
-        for capability in capabilities
-    ]
+    return [_token(f"cap_{capability}", fallback="capability") for capability in capabilities]
 
 
 def _candidate_events(
@@ -393,27 +343,17 @@ def _candidate_events(
 ) -> list[dict[str, Any]]:
     existing = _latest_events(existing_events)
     candidates: list[dict[str, Any]] = []
-    todo_by_id = {
-        str(todo.get("todo_id") or ""): dict(todo)
-        for todo in todos
-        if str(todo.get("todo_id") or "")
-    }
+    todo_by_id = {str(todo.get("todo_id") or ""): dict(todo) for todo in todos if str(todo.get("todo_id") or "")}
     has_issue_facts = bool(outcomes)
-    capability_events = [
-        event for event in rollout_events if event.get("event_kind") == "capability_gap"
-    ]
+    capability_events = [event for event in rollout_events if event.get("event_kind") == "capability_gap"]
     has_capability_facts = bool(capability_events) or any(
         _todo_capabilities(todo) or _todo_node_refs(todo) for todo in todos
     )
-    issue_fix_context = (
-        has_issue_facts or (EVENT_KIND_NODE, ISSUE_FIX_LANE_ID) in existing
-    )
+    issue_fix_context = has_issue_facts or (EVENT_KIND_NODE, ISSUE_FIX_LANE_ID) in existing
     if not issue_fix_context:
         return []
 
-    root_id = (
-        "ov_pilot" if (EVENT_KIND_NODE, "ov_pilot") in existing else ISSUE_FIX_ROOT_ID
-    )
+    root_id = "ov_pilot" if (EVENT_KIND_NODE, "ov_pilot") in existing else ISSUE_FIX_ROOT_ID
     candidates.append(
         _node_event(
             goal_id=goal_id,
@@ -476,14 +416,8 @@ def _candidate_events(
             if stage in _BLOCKED_STAGES
             else NODE_STATUS_EXPLORING
         )
-        issue = (
-            outcome.get("issue") if isinstance(outcome.get("issue"), Mapping) else {}
-        )
-        pull_request = (
-            outcome.get("pull_request")
-            if isinstance(outcome.get("pull_request"), Mapping)
-            else {}
-        )
+        issue = outcome.get("issue") if isinstance(outcome.get("issue"), Mapping) else {}
+        pull_request = outcome.get("pull_request") if isinstance(outcome.get("pull_request"), Mapping) else {}
         pr_number = str(pull_request.get("number") or "").strip()
         repo = str(outcome.get("repo") or "repository")
         route = str(outcome.get("route") or "triage")
@@ -510,9 +444,7 @@ def _candidate_events(
                 existing=existing,
             )
         )
-        candidate_node_id = _token(
-            f"fix_{issue_number}_candidate", fallback="fix_candidate"
-        )
+        candidate_node_id = _token(f"fix_{issue_number}_candidate", fallback="fix_candidate")
         if pr_number and (EVENT_KIND_NODE, candidate_node_id) in existing:
             candidates.append(
                 _node_event(
@@ -541,17 +473,9 @@ def _candidate_events(
                     agent_id=agent_id,
                 )
             )
-        reproduction = (
-            outcome.get("reproduction")
-            if isinstance(outcome.get("reproduction"), Mapping)
-            else {}
-        )
+        reproduction = outcome.get("reproduction") if isinstance(outcome.get("reproduction"), Mapping) else {}
         repro_status = str(reproduction.get("status") or "unknown")
-        validation = (
-            outcome.get("validation")
-            if isinstance(outcome.get("validation"), Mapping)
-            else {}
-        )
+        validation = outcome.get("validation") if isinstance(outcome.get("validation"), Mapping) else {}
         validation_status = str(validation.get("status") or "unknown")
         lifecycle_summary = "; ".join(
             part
@@ -591,13 +515,9 @@ def _candidate_events(
     for event in capability_events:
         todo_id = str(event.get("todo_id") or "")
         todo = todo_by_id.get(todo_id)
-        details = (
-            event.get("details") if isinstance(event.get("details"), Mapping) else {}
-        )
+        details = event.get("details") if isinstance(event.get("details"), Mapping) else {}
         raw_capabilities = str(details.get("target_capabilities") or "")
-        capabilities = [
-            item.strip() for item in raw_capabilities.split(",") if item.strip()
-        ]
+        capabilities = [item.strip() for item in raw_capabilities.split(",") if item.strip()]
         if not capabilities and todo:
             capabilities = _todo_capabilities(todo)
         if not capabilities:
@@ -629,9 +549,7 @@ def _candidate_events(
                 node_id,
                 (
                     "found",
-                    capabilities[min(index, len(capabilities) - 1)]
-                    if capabilities
-                    else node_id,
+                    capabilities[min(index, len(capabilities) - 1)] if capabilities else node_id,
                     _refs(todo.get("evidence")),
                     str(todo.get("todo_id") or "") or None,
                 ),
@@ -643,9 +561,7 @@ def _candidate_events(
                 node_id=node_id,
                 title=f"Capability: {capability}",
                 node_kind=NODE_KIND_ARTIFACT,
-                status=NODE_STATUS_RESOLVED
-                if status in _CAPABILITY_RESOLVED_STATUSES
-                else NODE_STATUS_EXPLORING,
+                status=NODE_STATUS_RESOLVED if status in _CAPABILITY_RESOLVED_STATUSES else NODE_STATUS_EXPLORING,
                 summary=f"Generic issue-fix capability gap is {status}.",
                 parent_id=CAPABILITY_LANE_ID,
                 blocked_reason=None,
@@ -672,9 +588,7 @@ def _candidate_events(
             candidates.append(
                 build_explore_finding_event(
                     goal_id=goal_id,
-                    finding_id=_token(
-                        f"superseded_{todo_id}_{node_id}", fallback="superseded"
-                    ),
+                    finding_id=_token(f"superseded_{todo_id}_{node_id}", fallback="superseded"),
                     node_id=node_id,
                     title=f"Todo {todo_id} superseded",
                     summary=f"Continued by {successor_id}.",
@@ -740,11 +654,7 @@ def project_issue_fix_explore_graph(
     candidates = _candidate_events(
         goal_id=goal_id,
         agent_id=agent_id,
-        outcomes=[
-            item
-            for item in outcomes_packet.get("issue_fix_outcomes") or []
-            if isinstance(item, Mapping)
-        ],
+        outcomes=[item for item in outcomes_packet.get("issue_fix_outcomes") or [] if isinstance(item, Mapping)],
         todos=todos,
         rollout_events=rollout_events,
         existing_events=existing_events,
@@ -758,12 +668,7 @@ def project_issue_fix_explore_graph(
         event
         for event in candidates
         if _material_event(event)
-        != _material_event(
-            latest.get(
-                (str(event.get("event_kind") or ""), str(event.get("result_id") or ""))
-            )
-            or {}
-        )
+        != _material_event(latest.get((str(event.get("event_kind") or ""), str(event.get("result_id") or ""))) or {})
     ]
     if execute:
         for event in material_events:

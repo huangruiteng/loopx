@@ -191,6 +191,7 @@ from .control_plane.runtime.benchmark_event_timeline import (
 from .control_plane.runtime.benchmark_comparison import (
     benchmark_comparison_decision_note as _benchmark_comparison_decision_note_read_model,
     compact_benchmark_comparison as _compact_benchmark_comparison_read_model,
+    compact_comparison_delta as _compact_comparison_delta,
 )
 from .control_plane.runtime.benchmark_lifecycle_contracts import (
     compact_app_server_goal_round_semantics as _compact_app_server_goal_round_semantics,
