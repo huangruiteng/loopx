@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
+from pathlib import Path
+from typing import Any
+
+import pytest
 
 from loopx.control_plane.quota.turn_envelope import (
     TURN_ENVELOPE_BUDGET_BYTES,
@@ -8,7 +13,32 @@ from loopx.control_plane.quota.turn_envelope import (
     quota_action_signature_document,
     turn_envelope_action_signature_document,
 )
-from loopx.control_plane.work_items.interaction_contract import build_protocol_action_packet
+from loopx.control_plane.work_items.interaction_contract import (
+    build_protocol_action_packet,
+)
+
+
+STATE_MATRIX = json.loads(
+    (Path(__file__).parent / "fixtures" / "turn_envelope_state_matrix.json").read_text(
+        encoding="utf-8"
+    )
+)
+
+
+def _deep_update(target: dict[str, Any], patch: dict[str, Any]) -> None:
+    for key, value in patch.items():
+        if isinstance(value, dict) and isinstance(target.get(key), dict):
+            _deep_update(target[key], value)
+        else:
+            target[key] = deepcopy(value)
+
+
+def _path_value(payload: dict[str, Any], path: str) -> Any:
+    current: Any = payload
+    for part in path.split("."):
+        assert isinstance(current, dict), (path, part, current)
+        current = current[part]
+    return current
 
 
 def _full_decision() -> dict[str, object]:
@@ -59,7 +89,11 @@ def _full_decision() -> dict[str, object]:
                 "spend_policy": "spend once after validated writeback",
             },
             "required_reads": [
-                {"kind": "repository", "command": "git status --short", "reason": "inspect state"}
+                {
+                    "kind": "repository",
+                    "command": "git status --short",
+                    "reason": "inspect state",
+                }
             ],
         },
         "goal_boundary": {
@@ -107,7 +141,10 @@ def _full_decision() -> dict[str, object]:
             "outcome_followthrough": {
                 "required": True,
                 "obligation": "advance_primary_outcome_or_write_blocker",
-                "accepted_resolution_kinds": ["product_path_execution", "blocker_writeback"],
+                "accepted_resolution_kinds": [
+                    "product_path_execution",
+                    "blocker_writeback",
+                ],
                 "spend_policy": "spend after validated evidence",
             },
         },
@@ -151,6 +188,51 @@ def _full_decision() -> dict[str, object]:
     return source
 
 
+@pytest.mark.parametrize(
+    "case",
+    STATE_MATRIX["cases"],
+    ids=[case["name"] for case in STATE_MATRIX["cases"]],
+)
+def test_turn_envelope_state_matrix_preserves_parity_and_budget(
+    case: dict[str, Any],
+) -> None:
+    source = _full_decision()
+    _deep_update(source, case["patch"])
+    source["protocol_action_packet"] = build_protocol_action_packet(source)
+
+    envelope = build_turn_envelope(source)
+
+    assert quota_action_signature_document(
+        source
+    ) == turn_envelope_action_signature_document(envelope)
+    assert envelope["action_signature"]["matches"] is True
+    assert (
+        envelope["contract_capsule"]["protocol_action_packet"][
+            "reconstruction_verified"
+        ]
+        is True
+    )
+    assert envelope["compaction"]["within_budget"] is True
+    assert envelope["compaction"]["envelope_json_bytes"] <= TURN_ENVELOPE_BUDGET_BYTES
+    assert (
+        envelope["compaction"]["byte_reduction_ratio"]
+        >= case["minimum_reduction_ratio"]
+    )
+    for path, expected in case["expected"].items():
+        assert _path_value(envelope, path) == expected, (case["name"], path)
+
+
+def test_turn_envelope_matrix_keeps_default_view_opt_in() -> None:
+    decision = STATE_MATRIX["promotion_decision"]
+
+    assert decision["state"] == "keep_opt_in"
+    assert decision["required_next_evidence"] == [
+        "shadow parity from at least one real host integration",
+        "no consumer regression when the full decision remains available as a cold path",
+        "explicit compatibility acceptance for changing the default CLI view",
+    ]
+
+
 def test_turn_envelope_preserves_action_boundary_and_writeback() -> None:
     source = _full_decision()
     envelope = build_turn_envelope(source)
@@ -171,24 +253,24 @@ def test_turn_envelope_preserves_action_boundary_and_writeback() -> None:
     assert envelope["execution_policy"]["normal_delivery_allowed"] is True
     assert envelope["execution_policy"]["safe_bypass_allowed"] is False
     assert envelope["writeback"]["spend_after_validation"] is True
-    assert envelope["scheduler"]["codex_app"]["stateful_backoff"]["apply_needed"] is True
+    assert (
+        envelope["scheduler"]["codex_app"]["stateful_backoff"]["apply_needed"] is True
+    )
     assert envelope["scheduler"]["codex_app"]["ack_cli_args"][0] == "quota"
     assert (
-        envelope["contract_capsule"]["work_lane_contract"]["lane"]
-        == "advancement_task"
+        envelope["contract_capsule"]["work_lane_contract"]["lane"] == "advancement_task"
     )
     assert (
         envelope["contract_capsule"]["execution_obligation"]["contract_obligation"]
         == "advance_primary_outcome_or_write_blocker"
     )
-    assert (
-        envelope["contract_capsule"]["automation_liveness"]["pause_allowed"]
-        is False
-    )
+    assert envelope["contract_capsule"]["automation_liveness"]["pause_allowed"] is False
     assert envelope["contract_capsule"]["protocol_action_packet"] == {
         "schema_version": "protocol_action_packet_v0",
         "present": True,
-        "summary_hash": envelope["contract_capsule"]["protocol_action_packet"]["summary_hash"],
+        "summary_hash": envelope["contract_capsule"]["protocol_action_packet"][
+            "summary_hash"
+        ],
         "derivation_status": "verified",
         "reconstruction_verified": True,
         "llm_policy": "no_api",
@@ -201,8 +283,13 @@ def test_turn_envelope_preserves_action_boundary_and_writeback() -> None:
         ],
     }
     assert envelope["action_signature"]["matches"] is True
-    assert envelope["action_signature"]["source_hash"] == envelope["action_signature"]["envelope_hash"]
-    assert quota_action_signature_document(source) == turn_envelope_action_signature_document(envelope)
+    assert (
+        envelope["action_signature"]["source_hash"]
+        == envelope["action_signature"]["envelope_hash"]
+    )
+    assert quota_action_signature_document(
+        source
+    ) == turn_envelope_action_signature_document(envelope)
 
     assert "agent_todo_summary" not in envelope
     assert "goal_frontier_projection" not in envelope
@@ -244,12 +331,16 @@ def test_action_signature_detects_semantic_drift() -> None:
     envelope = build_turn_envelope(source)
     envelope["writeback"]["spend_after_validation"] = False
 
-    assert quota_action_signature_document(source) != turn_envelope_action_signature_document(envelope)
+    assert quota_action_signature_document(
+        source
+    ) != turn_envelope_action_signature_document(envelope)
 
     envelope = build_turn_envelope(source)
     envelope["execution_policy"]["safe_bypass_allowed"] = True
 
-    assert quota_action_signature_document(source) != turn_envelope_action_signature_document(envelope)
+    assert quota_action_signature_document(
+        source
+    ) != turn_envelope_action_signature_document(envelope)
 
 
 def test_protocol_packet_derivation_keeps_only_real_residue() -> None:
@@ -355,7 +446,9 @@ def test_contract_capsule_stays_bounded_with_replan_and_vision_contracts() -> No
 
     assert envelope["action_signature"]["matches"] is True
     assert envelope["contract_capsule"]["autonomous_replan_scope"]["applies"] is True
-    assert envelope["contract_capsule"]["agent_scope_frontier"]["requires_replan"] is True
+    assert (
+        envelope["contract_capsule"]["agent_scope_frontier"]["requires_replan"] is True
+    )
     assert envelope["contract_capsule"]["vision_continuation_audit"]["required"] is True
     assert envelope["compaction"]["within_budget"] is True
     assert envelope["compaction"]["envelope_json_bytes"] < TURN_ENVELOPE_BUDGET_BYTES

@@ -48,3 +48,20 @@ This contract is a projection only. It does not change quota selection, todo
 routing, scheduler state, history writes, or state transitions. Promoting it to
 the default agent view requires separate parity evidence across delivery,
 monitor, user-gate, capability-gate, workspace-guard, and blocked states.
+
+## Multi-State Parity Evidence
+
+`tests/fixtures/turn_envelope_state_matrix.json` is the durable synthetic
+promotion fixture. It covers delivery, monitor quiet-skip, user gate,
+capability gate, workspace guard, autonomous replan, successor replan,
+blocked, and throttled decisions. Every case must preserve the canonical action
+signature, reconstruct `protocol_action_packet`, and remain within the 8 KiB
+budget.
+
+The current matrix produces envelopes from 4,866 to 5,602 bytes, with 66.44% to
+69.36% reduction from the full synthetic decision. This is sufficient to keep
+the projection available as an opt-in host view. It is not sufficient to change
+the default CLI response: default promotion still requires shadow parity from a
+real host integration, no consumer regression with the full decision available
+as a cold path, and explicit compatibility acceptance for the default-view
+change.

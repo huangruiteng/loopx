@@ -1,0 +1,460 @@
+{
+  "schema_version": "turn_envelope_state_matrix_v0",
+  "promotion_decision": {
+    "state": "keep_opt_in",
+    "reason": "Synthetic state parity and size evidence prove projection safety, not default host compatibility.",
+    "required_next_evidence": [
+      "shadow parity from at least one real host integration",
+      "no consumer regression when the full decision remains available as a cold path",
+      "explicit compatibility acceptance for changing the default CLI view"
+    ]
+  },
+  "cases": [
+    {
+      "name": "delivery",
+      "patch": {},
+      "expected": {
+        "decision": "run",
+        "should_run": true,
+        "effective_action": "normal_run",
+        "state": "eligible",
+        "action.must_attempt": true,
+        "action.delivery_allowed": true,
+        "action.quiet_noop_allowed": false,
+        "user.action_required": false,
+        "contract_capsule.interaction_contract.mode": "bounded_delivery",
+        "contract_capsule.work_lane_contract.lane": "advancement_task",
+        "scheduler.action": "run_now"
+      },
+      "minimum_reduction_ratio": 0.5
+    },
+    {
+      "name": "monitor_quiet_skip",
+      "patch": {
+        "decision": "skip",
+        "should_run": false,
+        "effective_action": "monitor_wait",
+        "state": "waiting",
+        "normal_delivery_allowed": false,
+        "recommended_action": "stay quiet until a material monitor transition",
+        "selected_todo": {
+          "todo_id": "todo_monitor0001",
+          "priority": "P1",
+          "status": "open",
+          "task_class": "continuous_monitor",
+          "action_kind": "monitor",
+          "claimed_by": "codex-fixture",
+          "next_due_at": "2026-07-13T00:00:00Z",
+          "text": "Watch one public evidence target"
+        },
+        "interaction_contract": {
+          "mode": "monitor_quiet_skip",
+          "agent_channel": {
+            "must_attempt": false,
+            "delivery_allowed": false,
+            "quiet_noop_allowed": true,
+            "primary_action": "quiet until a material monitor transition"
+          },
+          "cli_channel": {
+            "next_cli_actions": [],
+            "spend_allowed_now": false,
+            "spend_after_validation": false,
+            "spend_policy": "no spend for unchanged monitor wait"
+          }
+        },
+        "work_lane_contract": {
+          "lane": "continuous_monitor",
+          "next_lane": "continuous_monitor",
+          "obligation": "quiet_until_material_monitor_transition",
+          "must_attempt_work": false,
+          "action": "quiet until a material monitor transition"
+        },
+        "execution_obligation": {
+          "contract_obligation": "quiet_until_material_monitor_transition",
+          "must_attempt_work": false,
+          "delivery_allowed": false,
+          "reason": "monitor is not due"
+        },
+        "automation_liveness": {
+          "automation_action": "backoff_until_material_transition"
+        },
+        "scheduler_hint": {
+          "action": "backoff_until_material_transition",
+          "cadence_class": "monitor_wait"
+        }
+      },
+      "expected": {
+        "decision": "skip",
+        "should_run": false,
+        "effective_action": "monitor_wait",
+        "state": "waiting",
+        "action.must_attempt": false,
+        "action.delivery_allowed": false,
+        "action.quiet_noop_allowed": true,
+        "user.action_required": false,
+        "contract_capsule.interaction_contract.mode": "monitor_quiet_skip",
+        "contract_capsule.work_lane_contract.lane": "continuous_monitor",
+        "scheduler.action": "backoff_until_material_transition"
+      },
+      "minimum_reduction_ratio": 0.5
+    },
+    {
+      "name": "user_gate",
+      "patch": {
+        "decision": "skip",
+        "should_run": false,
+        "effective_action": "operator_gate",
+        "state": "operator_gate",
+        "normal_delivery_allowed": false,
+        "action_required": true,
+        "open_count": 1,
+        "recommended_action": "wait for explicit release approval",
+        "selected_todo": null,
+        "interaction_contract": {
+          "mode": "user_gate",
+          "user_channel": {
+            "action_required": true,
+            "notify": "NOTIFY",
+            "actions": [
+              "Approve public release"
+            ],
+            "reason": "release approval required"
+          },
+          "agent_channel": {
+            "must_attempt": false,
+            "delivery_allowed": false,
+            "quiet_noop_allowed": false,
+            "primary_action": "wait for explicit release approval"
+          },
+          "cli_channel": {
+            "next_cli_actions": [],
+            "spend_allowed_now": false,
+            "spend_after_validation": false,
+            "spend_policy": "no spend while user gate is open"
+          }
+        },
+        "work_lane_contract": {
+          "lane": "user_gate",
+          "next_lane": "user_gate",
+          "obligation": "wait_for_user",
+          "must_attempt_work": false,
+          "action": "wait for explicit release approval"
+        },
+        "execution_obligation": {
+          "contract_obligation": "wait_for_user",
+          "must_attempt_work": false,
+          "delivery_allowed": false,
+          "reason": "concrete user decision required"
+        },
+        "automation_liveness": {
+          "automation_action": "wait_for_user"
+        },
+        "scheduler_hint": {
+          "action": "wait_for_user",
+          "cadence_class": "operator_gate"
+        }
+      },
+      "expected": {
+        "decision": "skip",
+        "should_run": false,
+        "effective_action": "operator_gate",
+        "state": "operator_gate",
+        "action.must_attempt": false,
+        "user.action_required": true,
+        "user.open_count": 1,
+        "contract_capsule.interaction_contract.mode": "user_gate",
+        "scheduler.action": "wait_for_user"
+      },
+      "minimum_reduction_ratio": 0.5
+    },
+    {
+      "name": "capability_gate",
+      "patch": {
+        "effective_action": "capability_repair",
+        "normal_delivery_allowed": false,
+        "capability_repair_allowed": true,
+        "recommended_action": "repair the missing benchmark runner capability",
+        "selected_todo": {
+          "todo_id": "todo_capability0001",
+          "priority": "P0",
+          "status": "open",
+          "task_class": "advancement_task",
+          "action_kind": "capability_repair",
+          "claimed_by": "codex-fixture",
+          "text": "Repair the missing benchmark runner capability"
+        },
+        "interaction_contract": {
+          "mode": "bounded_delivery",
+          "agent_channel": {
+            "must_attempt": true,
+            "delivery_allowed": true,
+            "quiet_noop_allowed": false,
+            "primary_action": "repair the missing benchmark runner capability"
+          }
+        },
+        "capability_gate": {
+          "action": "repair",
+          "reason": "benchmark runner is unavailable",
+          "required_capabilities": [
+            "benchmark_runner"
+          ],
+          "missing_capabilities": [
+            "benchmark_runner"
+          ],
+          "owner_action": "install or expose the runner"
+        },
+        "capability_monitor_fallback": {
+          "schema_version": "capability_monitor_fallback_v0",
+          "capability_gate_action": "repair",
+          "blocked_advancement_count": 1,
+          "mode": "repair"
+        }
+      },
+      "expected": {
+        "effective_action": "capability_repair",
+        "action.must_attempt": true,
+        "boundary.capability_gate.action": "repair",
+        "boundary.capability_gate.missing_capabilities": [
+          "benchmark_runner"
+        ],
+        "execution_policy.capability_repair_allowed": true,
+        "contract_capsule.capability_monitor_fallback.mode": "repair"
+      },
+      "minimum_reduction_ratio": 0.5
+    },
+    {
+      "name": "workspace_guard",
+      "patch": {
+        "effective_action": "workspace_repair",
+        "normal_delivery_allowed": false,
+        "workspace_repair_allowed": true,
+        "recommended_action": "repair the stale writable workspace",
+        "selected_todo": {
+          "todo_id": "todo_workspace0001",
+          "priority": "P0",
+          "status": "open",
+          "task_class": "advancement_task",
+          "action_kind": "workspace_repair",
+          "claimed_by": "codex-fixture",
+          "text": "Repair the stale writable workspace"
+        },
+        "interaction_contract": {
+          "mode": "bounded_delivery",
+          "agent_channel": {
+            "must_attempt": true,
+            "delivery_allowed": true,
+            "quiet_noop_allowed": false,
+            "primary_action": "repair the stale writable workspace"
+          }
+        },
+        "workspace_guard": {
+          "schema_version": "workspace_guard_v0",
+          "action": "repair",
+          "status": "stale",
+          "reason": "worktree is behind origin/main",
+          "write_allowed": false
+        }
+      },
+      "expected": {
+        "effective_action": "workspace_repair",
+        "action.must_attempt": true,
+        "boundary.workspace_guard.action": "repair",
+        "boundary.workspace_guard.status": "stale",
+        "execution_policy.workspace_repair_allowed": true
+      },
+      "minimum_reduction_ratio": 0.5
+    },
+    {
+      "name": "autonomous_replan",
+      "patch": {
+        "effective_action": "autonomous_replan",
+        "recommended_action": "write a bounded replan delta",
+        "interaction_contract": {
+          "mode": "bounded_delivery",
+          "agent_channel": {
+            "must_attempt": true,
+            "delivery_allowed": true,
+            "quiet_noop_allowed": false,
+            "primary_action": "write a bounded replan delta"
+          }
+        },
+        "autonomous_replan_scope": {
+          "schema_version": "autonomous_replan_scope_v0",
+          "required": true,
+          "applies": true,
+          "scope": "explicit_agent_owner",
+          "owner_agent_ids": [
+            "codex-fixture"
+          ],
+          "selected_peer_agent": "codex-fixture"
+        },
+        "agent_scope_frontier": {
+          "schema_version": "agent_scope_frontier_v0",
+          "action": "autonomous_replan",
+          "effective_action": "autonomous_replan",
+          "blocks_delivery": true,
+          "quiet_noop_allowed": false,
+          "requires_replan": true,
+          "recommended_action": "write a bounded replan delta",
+          "spend_policy": "spend only after the replan delta is written"
+        }
+      },
+      "expected": {
+        "effective_action": "autonomous_replan",
+        "action.must_attempt": true,
+        "contract_capsule.autonomous_replan_scope.applies": true,
+        "contract_capsule.agent_scope_frontier.requires_replan": true,
+        "contract_capsule.agent_scope_frontier.action": "autonomous_replan"
+      },
+      "minimum_reduction_ratio": 0.5
+    },
+    {
+      "name": "successor_replan",
+      "patch": {
+        "effective_action": "successor_replan_required",
+        "recommended_action": "write a concrete successor todo",
+        "interaction_contract": {
+          "mode": "bounded_delivery",
+          "agent_channel": {
+            "must_attempt": true,
+            "delivery_allowed": true,
+            "quiet_noop_allowed": false,
+            "primary_action": "write a concrete successor todo"
+          }
+        },
+        "agent_scope_frontier": {
+          "schema_version": "agent_scope_frontier_v0",
+          "action": "successor_replan_required",
+          "effective_action": "successor_replan_required",
+          "blocks_delivery": true,
+          "quiet_noop_allowed": false,
+          "requires_replan": true,
+          "recommended_action": "write a concrete successor todo",
+          "spend_policy": "spend only after successor writeback"
+        }
+      },
+      "expected": {
+        "effective_action": "successor_replan_required",
+        "action.must_attempt": true,
+        "contract_capsule.agent_scope_frontier.requires_replan": true,
+        "contract_capsule.agent_scope_frontier.action": "successor_replan_required"
+      },
+      "minimum_reduction_ratio": 0.5
+    },
+    {
+      "name": "blocked",
+      "patch": {
+        "decision": "skip",
+        "should_run": false,
+        "effective_action": "blocked",
+        "state": "blocked",
+        "normal_delivery_allowed": false,
+        "blocked_action_scope": "all_delivery",
+        "recommended_action": "record the concrete blocker",
+        "interaction_contract": {
+          "mode": "blocked",
+          "agent_channel": {
+            "must_attempt": false,
+            "delivery_allowed": false,
+            "quiet_noop_allowed": false,
+            "primary_action": "record the concrete blocker"
+          },
+          "cli_channel": {
+            "next_cli_actions": [],
+            "spend_allowed_now": false,
+            "spend_after_validation": false,
+            "spend_policy": "no spend without blocker writeback"
+          }
+        },
+        "work_lane_contract": {
+          "lane": "blocked",
+          "next_lane": "blocked",
+          "obligation": "record_concrete_blocker",
+          "must_attempt_work": false,
+          "action": "record the concrete blocker"
+        },
+        "execution_obligation": {
+          "contract_obligation": "record_concrete_blocker",
+          "must_attempt_work": false,
+          "delivery_allowed": false,
+          "reason": "delivery is blocked"
+        },
+        "automation_liveness": {
+          "automation_action": "wait_for_material_transition"
+        },
+        "scheduler_hint": {
+          "action": "wait_for_material_transition",
+          "cadence_class": "blocked"
+        }
+      },
+      "expected": {
+        "decision": "skip",
+        "should_run": false,
+        "effective_action": "blocked",
+        "state": "blocked",
+        "action.must_attempt": false,
+        "execution_policy.blocked_action_scope": "all_delivery",
+        "contract_capsule.interaction_contract.mode": "blocked",
+        "scheduler.action": "wait_for_material_transition"
+      },
+      "minimum_reduction_ratio": 0.5
+    },
+    {
+      "name": "throttled",
+      "patch": {
+        "decision": "skip",
+        "should_run": false,
+        "effective_action": "quota_throttled",
+        "state": "throttled",
+        "normal_delivery_allowed": false,
+        "recommended_action": "wait for quota window recovery",
+        "interaction_contract": {
+          "mode": "throttled",
+          "agent_channel": {
+            "must_attempt": false,
+            "delivery_allowed": false,
+            "quiet_noop_allowed": true,
+            "primary_action": "wait for quota window recovery"
+          },
+          "cli_channel": {
+            "next_cli_actions": [],
+            "spend_allowed_now": false,
+            "spend_after_validation": false,
+            "spend_policy": "no spend while throttled"
+          }
+        },
+        "work_lane_contract": {
+          "lane": "throttled",
+          "next_lane": "throttled",
+          "obligation": "wait_for_quota",
+          "must_attempt_work": false,
+          "action": "wait for quota window recovery"
+        },
+        "execution_obligation": {
+          "contract_obligation": "wait_for_quota",
+          "must_attempt_work": false,
+          "delivery_allowed": false,
+          "reason": "quota window is exhausted"
+        },
+        "automation_liveness": {
+          "automation_action": "backoff_until_quota_recovers"
+        },
+        "scheduler_hint": {
+          "action": "backoff_until_quota_recovers",
+          "cadence_class": "throttled"
+        }
+      },
+      "expected": {
+        "decision": "skip",
+        "should_run": false,
+        "effective_action": "quota_throttled",
+        "state": "throttled",
+        "action.must_attempt": false,
+        "action.quiet_noop_allowed": true,
+        "contract_capsule.interaction_contract.mode": "throttled",
+        "scheduler.action": "backoff_until_quota_recovers"
+      },
+      "minimum_reduction_ratio": 0.5
+    }
+  ]
+}
