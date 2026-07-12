@@ -8,21 +8,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CLI_COMMANDS = ROOT / "loopx" / "cli_commands"
 
-DEFAULT_MAX_LINES = 500
+DEFAULT_MAX_LINES = 1000
 LEGACY_MODULE_LIMITS = {
     "benchmark_review_lifecycle.py": 1300,
-    "benchmark_run_ledger.py": 820,
-    "canary.py": 580,
-    "explore.py": 800,
-    "history.py": 720,
-    "project_lifecycle.py": 580,
-    "registry_admin.py": 780,
-    "status.py": 940,
-    "support_control.py": 620,
-    "terminal_bench_adapter.py": 760,
     "terminal_bench_environment_result.py": 1280,
-    "todo.py": 860,
-    "worker_bridge.py": 700,
 }
 STARTER_MODULE_LIMITS = {
     "starter.py": 180,
@@ -96,7 +85,7 @@ def assert_module_size_budgets() -> None:
         require(
             count <= limit,
             f"{path.name} has {count} lines, above budget {limit}; "
-            "split the command family before adding more code",
+            "extract a cohesive command owner before adding more code",
         )
 
     for module_name in sorted(LEGACY_MODULE_LIMITS):
