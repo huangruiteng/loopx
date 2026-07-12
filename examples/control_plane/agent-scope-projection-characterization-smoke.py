@@ -14,8 +14,11 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.control_plane.agents.agent_scope import (  # noqa: E402
     _agent_lane_frontier_hint,
+    _agent_scope_deferred_resume_candidates,
     _agent_scope_filter_user_gate_items,
+    _agent_scope_monitor_blocked_resume_candidates,
     _agent_scope_no_candidate_frontier,
+    _agent_scope_route_continuation_replan_candidates,
     _agent_scoped_user_gate_override,
     _scoped_user_gate_fallback,
 )
@@ -324,6 +327,70 @@ def assert_agent_scope_frontier_and_hint_contract() -> None:
     assert hint["quiet_noop_allowed"] is False
 
 
+def assert_executor_exclusions_survive_precomputed_resume_lanes() -> None:
+    excluded_ready = todo(
+        "todo_excluded_ready",
+        "[P1] Ready work owned by another peer.",
+        index=1,
+        status="deferred",
+        resume_ready=True,
+        excluded_agents=[AGENT_ID],
+    )
+    eligible_ready = todo(
+        "todo_eligible_ready",
+        "[P1] Ready work available to this peer.",
+        index=2,
+        status="deferred",
+        resume_ready=True,
+    )
+    ready = _agent_scope_deferred_resume_candidates(
+        {
+            "unclaimed_deferred_resume_candidates": [
+                excluded_ready,
+                eligible_ready,
+            ]
+        },
+        agent_id=AGENT_ID,
+    )
+    assert [item["todo_id"] for item in ready] == ["todo_eligible_ready"], ready
+
+    blocked_condition = {
+        "target_status": "open",
+        "target_task_class": "continuous_monitor",
+        "target_todo_id": "todo_monitor",
+    }
+    excluded_blocked = todo(
+        "todo_excluded_blocked",
+        "[P1] Monitor-gated work owned by another peer.",
+        index=3,
+        resume_ready=False,
+        resume_condition=blocked_condition,
+        excluded_agents=[AGENT_ID],
+    )
+    assert (
+        _agent_scope_monitor_blocked_resume_candidates(
+            {"unclaimed_monitor_blocked_resume_candidates": [excluded_blocked]},
+            agent_id=AGENT_ID,
+        )
+        == []
+    )
+
+    excluded_route = todo(
+        "todo_excluded_route",
+        "[P1] Route continuation owned by another peer.",
+        index=4,
+        route_continuation_replan_required=True,
+        excluded_agents=[AGENT_ID],
+    )
+    assert (
+        _agent_scope_route_continuation_replan_candidates(
+            {"unclaimed_route_continuation_replan_candidates": [excluded_route]},
+            agent_id=AGENT_ID,
+        )
+        == []
+    )
+
+
 def assert_other_agent_frontier_wait_contract() -> None:
     other_agent_item = todo(
         "todo_primary_owned",
@@ -388,6 +455,7 @@ def main() -> None:
     assert_agent_scoped_user_gate_override_contract()
     assert_agent_scope_frontier_builder_contract()
     assert_agent_scope_frontier_and_hint_contract()
+    assert_executor_exclusions_survive_precomputed_resume_lanes()
     assert_other_agent_frontier_wait_contract()
     print("agent-scope-projection-characterization-smoke ok")
 

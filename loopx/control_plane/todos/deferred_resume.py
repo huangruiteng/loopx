@@ -17,13 +17,18 @@ from .contract import (
     normalize_todo_status,
     normalize_todo_task_class,
 )
-from .projection import todo_item_is_deferred, todo_projection_sort_key
+from .projection import (
+    todo_item_excludes_agent,
+    todo_item_is_deferred,
+    todo_projection_sort_key,
+)
 
 
 TODO_DEFERRED_RESUME_SELECTION_POLICY = (
     "quota may wake the current peer only for ready deferred todos "
     "claimed by that agent or unclaimed; other-agent deferred todos remain "
-    "diagnostic visibility"
+    "diagnostic visibility and executor-excluded todos remain visible but "
+    "non-selectable"
 )
 TODO_MONITOR_BLOCKED_RESUME_SELECTION_POLICY = (
     "open advancement todos gated by todo_done:<continuous_monitor> must "
@@ -302,6 +307,14 @@ def _agent_claim_filtered_deferred_items(
     selected: list[dict[str, Any]] = []
     for item in items:
         claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+        excluded = todo_item_excludes_agent(item, agent_id=agent_id)
+        if claim == "excluded":
+            if not excluded:
+                continue
+            selected.append(item)
+            continue
+        if excluded:
+            continue
         if claim == "current" and claimed_by != agent_id:
             continue
         if claim == "unclaimed" and claimed_by:
@@ -356,6 +369,11 @@ def build_todo_resume_blocked_visibility_lanes(
             agent_id=agent_id,
             claim="other",
         )
+        excluded_self_candidates = _agent_claim_filtered_deferred_items(
+            monitor_blocked_items,
+            agent_id=agent_id,
+            claim="excluded",
+        )
         lanes.update(
             {
                 "current_agent_monitor_blocked_resume_candidates": (
@@ -372,6 +390,12 @@ def build_todo_resume_blocked_visibility_lanes(
                 ),
                 "unclaimed_monitor_blocked_resume_count": len(unclaimed_candidates),
                 "other_agent_monitor_blocked_resume_count": len(other_agent_candidates),
+                "executor_excluded_self_monitor_blocked_resume_candidates": (
+                    excluded_self_candidates[:item_limit]
+                ),
+                "executor_excluded_self_monitor_blocked_resume_count": len(
+                    excluded_self_candidates
+                ),
                 "monitor_blocked_resume_selection_policy": (
                     TODO_MONITOR_BLOCKED_RESUME_SELECTION_POLICY
                 ),
@@ -424,6 +448,11 @@ def build_todo_deferred_visibility_lanes(
             agent_id=agent_id,
             claim="other",
         )
+        excluded_self_candidates = _agent_claim_filtered_deferred_items(
+            deferred_resume_candidates,
+            agent_id=agent_id,
+            claim="excluded",
+        )
         lanes.update(
             {
                 "current_agent_deferred_resume_candidates": (
@@ -438,6 +467,12 @@ def build_todo_deferred_visibility_lanes(
                 "current_agent_deferred_resume_count": len(current_agent_candidates),
                 "unclaimed_deferred_resume_count": len(unclaimed_candidates),
                 "other_agent_deferred_resume_count": len(other_agent_candidates),
+                "executor_excluded_self_deferred_resume_candidates": (
+                    excluded_self_candidates[:item_limit]
+                ),
+                "executor_excluded_self_deferred_resume_count": len(
+                    excluded_self_candidates
+                ),
                 "deferred_resume_selection_policy": (
                     TODO_DEFERRED_RESUME_SELECTION_POLICY
                 ),

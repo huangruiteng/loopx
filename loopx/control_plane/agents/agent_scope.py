@@ -726,6 +726,8 @@ def _agent_scope_deferred_resume_candidates(
     unique: list[dict[str, Any]] = []
     seen: set[str] = set()
     for item in candidates:
+        if todo_item_excludes_agent(item, agent_id=agent_id):
+            continue
         if item.get("resume_ready") is not True:
             continue
         if not todo_item_is_deferred(item):
@@ -762,6 +764,8 @@ def _agent_scope_monitor_blocked_resume_candidates(
     unique: list[dict[str, Any]] = []
     seen: set[str] = set()
     for item in candidates:
+        if todo_item_excludes_agent(item, agent_id=agent_id):
+            continue
         if _todo_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
             continue
         if item.get("resume_ready") is not False:
@@ -900,6 +904,11 @@ def _agent_scope_route_continuation_replan_candidates(
     unique: list[dict[str, Any]] = []
     seen: set[str] = set()
     for item in candidates:
+        if not _route_continuation_candidate_matches_agent(
+            item,
+            agent_id=agent_id,
+        ):
+            continue
         if item.get("route_continuation_replan_required") is False:
             continue
         identity = str(
