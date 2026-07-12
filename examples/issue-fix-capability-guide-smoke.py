@@ -18,8 +18,7 @@ REVIEWER_PROTOCOL = (
     / "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-recommendation-v0.md"
 )
 REVIEWER_REQUEST_PROTOCOL = (
-    ROOT
-    / "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-request-v0.md"
+    ROOT / "docs/capabilities/issue-fix/protocols/issue-fix-reviewer-request-v0.md"
 )
 REVIEWER_NOTIFICATION_SINK_PROTOCOL = (
     ROOT
@@ -75,6 +74,9 @@ def main() -> int:
         "loopx issue-fix reviewer-plan",
         "loopx issue-fix reviewer-request",
         "loopx issue-fix promote-discovered-issue",
+        "loopx semantic-preference recall",
+        "loopx lark-inbox collector-install",
+        "loopx lark-inbox collector-status",
         "CODEOWNERS",
         "continuous_monitor",
         "runnable_successor",
@@ -99,6 +101,11 @@ def main() -> int:
         "lark-kanban sync-projection --reconcile-source",
         "--notification-sinks-json",
         "python3 examples/issue-fix-reviewer-notification-sink-smoke.py",
+        "explore_graph.enabled",
+        "explore_harness.enabled",
+        "https://github.com/huangruiteng/loopx/pull/1991",
+        "https://github.com/huangruiteng/loopx/pull/1995",
+        "https://github.com/huangruiteng/loopx/pull/2000",
     )
     assert_markers(english, shared_markers)
     assert_markers(chinese, shared_markers)
@@ -126,6 +133,9 @@ def main() -> int:
             "## Public OpenViking Usage And Evidence",
             "Event-backed wait and resume",
             "Merge-triggered resume",
+            "Three OpenViking knowledge lanes",
+            "Workspace-scoped user memory",
+            "Generic inbound feedback",
         ),
     )
     assert_markers(
@@ -152,6 +162,9 @@ def main() -> int:
             "## OpenViking 的公开用法与 Pilot 证据",
             "事件驱动的 wait/resume",
             "Merge 后自动恢复",
+            "三条 OpenViking 知识通道",
+            "Workspace-scoped user memory",
+            "通用入站反馈",
         ),
     )
     assert reviewer_protocol.startswith("# issue_fix_reviewer_recommendation_v0")

@@ -377,6 +377,8 @@ tests whether the system is a durable employee rather than a scripted demo.
 | AgentLoop host entry | `/loopx Fix <issue-url>`, guided start/command pack | Hand the same objective to Codex, Claude Code, or another host agent; LoopX constrains the delivery protocol without binding one model. |
 | State kernel | `loopx todo`, `quota`, `refresh-state`, scheduler/monitor | Persist ownership, authority, bounded compute, replan, wait/resume, and terminal closeout. |
 | OpenViking memory hook | `--repository-memory-*`, `repository-memory-sync` | Retrieve bounded advisory evidence from a stable rolling default-branch index; allow decision influence only after current-checkout verification, and authorize manual resource sync and reusable-knowledge writeback separately. |
+| Semantic preference hook | `loopx semantic-preference recall`, stateless receipt | Optionally recall workspace-scoped user/reviewer preferences before a configured surface; the domain applies them, while LoopX retains only compact application evidence rather than raw memory. |
+| Generic inbound feedback | `loopx lark-inbox` collector/install/status/drain | Run a project-configured host collector independently of the agent process, durably project bounded inbound events, and require domain writeback before ACK; outbound messages remain a separate configured authority. |
 | Issue-fix domain state | `loopx/domain_packs/issue_fix.py`, `issue-fix outcome` | Retain feasibility, PR lifecycle, compact delivery evidence, and stable outcomes inside the existing goal rather than a parallel workflow ledger. |
 | Workflow plan | `loopx issue-fix workflow-plan` | Compose body-free metadata, intake, branch plan, validation label, ordered todo previews, gates, and PR-readiness blockers. |
 | Repository context | `--repository-context-json` | Pin policy, architecture, change-scope, reproduction, and validation evidence with trust and freshness. |
@@ -390,7 +392,7 @@ tests whether the system is a durable employee rather than a scripted demo.
 | Metrics projection | [`loopx issue-fix metrics`](protocols/issue-fix-metrics-projection-v0.md) | Keep repository baseline separate from attributable agent output, combine existing feasibility/PR lifecycle rows with caller-supplied public snapshots, and report deltas, ratios, inventory, and missing data without another ledger. |
 | Repository snapshot | `loopx issue-fix repository-snapshot` | Explicitly collect bounded public GitHub stock/flow and known issue/PR state; optionally retain only material daily changes in the existing issue-fix domain state. |
 | Metrics supplement | `loopx issue-fix metrics-supplement` | Derive screened issues, triage outcomes, automatic terminal closeouts, complete-coverage first-push CI, and explicit memory evidence from existing issue-fix state; compose coverage-gated human interventions and typed capability-gap todo transitions from existing rollout evidence, while accepting a compact event batch for other lifecycle counts and preserving honest missing-data semantics. |
-| Explore progress graph | `lark-kanban sync-loopx-todos` + Explore result layer | Idempotently project material issue selection, reproduction, PR publication/terminal state, capability-gap lifecycle, and todo supersession into the two delivery/capability graph lanes; update the configured Lark graph only when its semantic digest changes. |
+| Explore progress graph | `explore_graph.enabled` + material `refresh-state` | Idempotently project material issue selection, reproduction, PR publication/terminal state, capability-gap lifecycle, and todo supersession into the two delivery/capability graph lanes; update configured row/visual sinks only when their semantic digests change. |
 | Acceptance fixture | `loopx issue-fix acceptance-fixture` | Prove failure-before, minimal patch, and pass-after in a deterministic fixture. |
 | Git branch fixture | `loopx issue-fix repo-branch-fixture` | Exercise the same repair contract through a temporary git branch. |
 | Caller repo branch | `loopx issue-fix caller-repo-branch` | Inspect an approved local repo, create/claim an issue branch, and run caller-declared validation. |
@@ -404,18 +406,20 @@ ledger.
 
 ### Automatic progress graph
 
-The default Kanban todo sync also composes a public-safe Explore projection
-from the existing issue-fix domain state, todo metadata, and rollout events.
-Stable result ids make retries idempotent. Poll timestamps and unchanged
-monitor observations are excluded from the semantic digest, so they do not
-rewrite the Lark graph. A failed Lark write remains retryable because the sink
-digest advances only after a successful sync.
+When a goal enables `explore_graph.enabled`, each material `refresh-state`
+transaction composes a public-safe Explore projection from issue-fix domain
+state, todo metadata, and rollout events, then runs configured sinks. Stable
+result ids make retries idempotent. Poll timestamps and unchanged monitor
+observations are excluded from the semantic digest, so they do not rewrite the
+graph. A failed sink remains retryable because its digest advances only after a
+successful write.
 
-This path does **not** require the Explore Harness switch. The result graph is
-an operator projection; the harness is a separate opt-in worker-planning
-facility. LoopX still treats issue-fix domain state and rollout events as the
-facts, while the graph presents two connected stories: repository delivery
-and reusable agent capability improvement.
+`explore_graph.enabled` and `explore_harness.enabled` are independent switches.
+The graph is an operator projection and may be on while the harness remains
+off; the harness is a separate opt-in worker-planning facility. LoopX still
+treats issue-fix domain state and rollout events as facts, while the graph
+presents two connected stories even between PRs: repository delivery and
+reusable agent capability improvement.
 
 The canonical Base rows and the owner-facing Docx whiteboard are separate
 configured sinks. A project may place the Docx as a root-level resource in the
@@ -527,6 +531,21 @@ context-provider boundary. The integration does not make OpenViking the source
 of truth for a patch: current checkout source and tests still outrank retrieved
 knowledge.
 
+### Three OpenViking knowledge lanes
+
+The integration keeps these lanes separate:
+
+| Lane | What is stored and read | How Issue-Fix may use it |
+| --- | --- | --- |
+| Rolling repository resources | A low-frequency watched public default branch for architecture, modules, files, and current patterns. | Advisory navigation only; every used hit is re-read from the current checkout before it can influence reproduction, scope, patch, or validation. |
+| Revision-stamped learning cards | Compact reusable knowledge learned while fixing a PR: symptom, root cause, violated invariant, repair pattern, validation, observed revision, and applicability boundary. | Historical hypotheses that may be stale; retrieval alone has zero authority, and decision influence is recorded only after current-checkout confirmation. |
+| Workspace-scoped user memory | Stable reviewer/user preferences such as PR language, section structure, and response style. | Recalled only for configured surfaces such as `issue_fix.pr_description`; raw semantic content stays with the provider and LoopX writes a stateless hashed receipt through existing evidence/state. |
+
+These lanes are not interchangeable. Repository resources answer “where and
+how does current public `main` work?”, learning cards answer “what did a prior
+fix teach at a named revision?”, and user memory answers “how should this
+reviewer-facing artifact be presented?”.
+
 Representative public issue/PR cases now cover independent code paths:
 
 | Public case | Focused outcome | Capability evidence |
@@ -536,7 +555,7 @@ Representative public issue/PR cases now cover independent code paths:
 | [issue #3124](https://github.com/volcengine/OpenViking/issues/3124) → [merged PR #3148](https://github.com/volcengine/OpenViking/pull/3148) | Show configured VLM identity before usage telemetry exists. | Reusable knowledge distilled from a validated outcome and recovered by a future-style symptom query without falsely claiming decision influence. |
 | [issue #3152](https://github.com/volcengine/OpenViking/issues/3152) → [PR #3176](https://github.com/volcengine/OpenViking/pull/3176) | Anchor user-scoped nested resource writes at the direct parent. | First fresh-issue rolling-index dogfood with decision influence and staleness recorded separately from retrieval volume. |
 
-The concrete OpenViking memory run used a revision-scoped public
+An earlier learning-card validation used a revision-scoped public
 `viking://resources/.../<git-revision>` namespace. After the #3148 delivery
 commit was proven to be an ancestor of the pinned revision, LoopX wrote one
 `issue_fix_reusable_knowledge_input_v0` fact containing symptom, reproduction,
@@ -565,7 +584,13 @@ control-plane groundwork, [PR
 #1883](https://github.com/huangruiteng/loopx/pull/1883) made merged PR evidence
 resume dependent todos, and [PR
 #1887](https://github.com/huangruiteng/loopx/pull/1887) separated reusable
-repository knowledge from audit-only delivery outcomes. The merged LoopX
+repository knowledge from audit-only delivery outcomes. Later slices added the
+provider-neutral semantic-preference hook in [PR
+#1991](https://github.com/huangruiteng/loopx/pull/1991), independent automatic
+Explore Graph activation in [PR
+#1995](https://github.com/huangruiteng/loopx/pull/1995), and the generic
+host-managed Lark event collector lifecycle in [PR
+#2000](https://github.com/huangruiteng/loopx/pull/2000). The merged LoopX
 revision and focused smokes, not the pilot narrative, remain authoritative.
 
 ## Roadmap
@@ -591,6 +616,12 @@ revision and focused smokes, not the pilot narrative, remain authoritative.
   work. Issue-fix owns the `issue_fix.pr_description` query and how results
   influence the description; the generic hook only returns bounded provider
   results and a stateless compact receipt for existing evidence/state writeback;
+- goal-scoped `explore_graph.enabled` projection at material refresh boundaries,
+  independent from `explore_harness.enabled`, with separate row and visual sink
+  digests;
+- generic host-managed Lark inbound collection with install/status/health and
+  durable inbox drain/ACK; domains configure routing, while outbound remains a
+  separate authority;
 - LoopX todo/quota/monitor/Kanban integration through the host agent.
 
 ### Next stage
@@ -975,7 +1006,8 @@ loopx issue-fix workflow-plan \
   --format json
 
 # Or configure the reusable OpenViking provider once. The config stays local
-# and binds a public viking:// scope to the exact repository revision.
+# and binds one stable public default-branch scope; checkout revision is
+# supplied separately for verification.
 export LOOPX_ISSUE_FIX_REPOSITORY_MEMORY_PROVIDER_CONFIG=/path/to/provider.json
 loopx issue-fix workflow-plan \
   --url https://github.com/owner/repo/issues/123 \
@@ -984,6 +1016,26 @@ loopx issue-fix workflow-plan \
   --repository-memory-query "affected module reproduction validation" \
   --validation-label "focused unit test" \
   --format json
+
+# Optionally recall workspace-scoped presentation preferences before writing
+# a reviewer-facing artifact. Semantic content remains provider-owned.
+loopx semantic-preference recall \
+  --project . \
+  --config .loopx/config/semantic-preference.json \
+  --surface issue_fix.pr_description \
+  --context repository=owner/repo \
+  --execute \
+  --format json
+
+# If inbound feedback is configured, install the generic host collector once,
+# inspect health, and drain durable events before acknowledging them.
+loopx lark-inbox collector-install \
+  --project . --config .loopx/config/lark/collector.json --execute --format json
+loopx lark-inbox collector-status \
+  --project . --config .loopx/config/lark/collector.json \
+  --probe-event-bus --format json
+loopx lark-inbox drain \
+  --project . --config .loopx/config/lark/event-inbox.json --format json
 
 # Select one route and persist compact goal-scoped feasibility state.
 loopx issue-fix feasibility \
