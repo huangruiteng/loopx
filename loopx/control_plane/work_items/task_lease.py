@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
 from datetime import datetime, timedelta
@@ -291,6 +292,51 @@ def scope_root(scope: str) -> str:
     return value.rstrip("/")
 
 
+def _scope_has_glob(scope: str) -> bool:
+    return any(token in scope for token in ("*", "?", "["))
+
+
+def _scope_literal_prefix(scope: str) -> str:
+    indexes = [scope.find(token) for token in ("*", "?", "[") if scope.find(token) >= 0]
+    return scope[: min(indexes)] if indexes else scope
+
+
+def _scope_pair_overlaps(left: str, right: str) -> bool:
+    if left == right:
+        return True
+    if left in {"*", "**", "./"} or right in {"*", "**", "./"}:
+        return True
+
+    left_has_glob = _scope_has_glob(left)
+    right_has_glob = _scope_has_glob(right)
+    if left_has_glob and not right_has_glob:
+        prefix = _scope_literal_prefix(left)
+        return fnmatch.fnmatchcase(right, left) or (
+            prefix.endswith("/") and right.rstrip("/") == prefix.rstrip("/")
+        )
+    if right_has_glob and not left_has_glob:
+        prefix = _scope_literal_prefix(right)
+        return fnmatch.fnmatchcase(left, right) or (
+            prefix.endswith("/") and left.rstrip("/") == prefix.rstrip("/")
+        )
+    if left_has_glob and right_has_glob:
+        left_prefix = _scope_literal_prefix(left)
+        right_prefix = _scope_literal_prefix(right)
+        return bool(
+            not left_prefix
+            or not right_prefix
+            or left_prefix.startswith(right_prefix)
+            or right_prefix.startswith(left_prefix)
+        )
+
+    left_root = left.rstrip("/")
+    right_root = right.rstrip("/")
+    return bool(
+        (left.endswith("/") and right.startswith(left_root + "/"))
+        or (right.endswith("/") and left.startswith(right_root + "/"))
+    )
+
+
 def write_scopes_overlap(left: list[str], right: list[str]) -> bool:
     left_scopes = normalize_required_write_scopes(left)
     right_scopes = normalize_required_write_scopes(right)
@@ -298,15 +344,7 @@ def write_scopes_overlap(left: list[str], right: list[str]) -> bool:
         return False
     for left_scope in left_scopes:
         for right_scope in right_scopes:
-            if left_scope == right_scope:
-                return True
-            left_root = scope_root(left_scope)
-            right_root = scope_root(right_scope)
-            if not left_root or not right_root:
-                return True
-            if left_root.startswith(right_root.rstrip("/") + "/"):
-                return True
-            if right_root.startswith(left_root.rstrip("/") + "/"):
+            if _scope_pair_overlaps(left_scope, right_scope):
                 return True
     return False
 

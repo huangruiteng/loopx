@@ -13,6 +13,11 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.control_plane.work_items.task_lease import write_scopes_overlap  # noqa: E402
+
+
 GOAL_ID = "task-lease-runtime-goal"
 TODO_A = "todo_taskleasea"
 TODO_B = "todo_taskleaseb"
@@ -147,6 +152,11 @@ def quota_should_run(registry_path: Path, *, agent_id: str) -> dict[str, Any]:
 
 
 def main() -> int:
+    assert write_scopes_overlap(["docs/**"], ["docs/a.md"])
+    assert write_scopes_overlap(["docs/sub/**"], ["docs/sub/a.md"])
+    assert write_scopes_overlap(["docs/a*.md"], ["docs/ab.md"])
+    assert not write_scopes_overlap(["docs/a.md"], ["docs/b.md"])
+
     with tempfile.TemporaryDirectory(prefix="loopx-task-lease-smoke-") as tmp:
         registry_path, state_file = write_fixture(Path(tmp))
 
@@ -336,7 +346,7 @@ def main() -> int:
             "--ttl-seconds",
             "120",
             "--write-scope",
-            "loopx/cli_commands/**",
+            "loopx/cli_commands/todo.py",
             check=False,
         )
         assert conflict.returncode == 1, conflict.stdout
