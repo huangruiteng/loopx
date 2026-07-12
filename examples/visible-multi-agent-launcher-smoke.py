@@ -132,12 +132,12 @@ def main() -> int:
     assert "ungated open todo for this role" in runtime_source
     assert "selected_todo_id" in runtime_source
     assert "claim_allowed_rule" in runtime_source
-    assert "Honor the role prompt's human output language" in contract_source
-    assert "This Codex TUI owns the first visible research turn" in contract_source
+    assert "Human output language:" in contract_source
+    assert "receives an initial or targeted wake prompt" in contract_source
     assert "tick reads your quota/frontier; it runs a role worker only when" in contract_source
     assert "manual research is required" in contract_source
     assert "Treat `$LOOPX_PANE_TICK_SUMMARY` as previous pane-local evidence" in contract_source
-    assert "not a gate that cancels later fixed wakes" in contract_source
+    assert "not a gate that cancels later targeted retries" in contract_source
     assert "Use $loopx-project" in contract_source
     assert "Use $loopx-doc-registry" in contract_source
     assert "LOOPX_VISIBLE_FORCE_MARKDOWN" in launcher_source
@@ -212,20 +212,21 @@ def main() -> int:
     assert runner_contract["pane_local_a2a"]["cadence_wakeup_command"] == (
         "loopx multi-agent wake --session-name <session>"
     )
-    assert runner_contract["pane_local_a2a"]["cadence_wakeup_model"] == "fixed_prompt_broadcast"
+    assert runner_contract["pane_local_a2a"]["cadence_wakeup_model"] == "todo_readiness_targeted_wake"
     assert runner_contract["pane_local_a2a"]["cadence_broadcaster_decides_work"] is False
     driver = runner_contract["decentralized_a2a_driver"]
-    assert driver["schema_version"] == "multi_agent_decentralized_a2a_driver_contract_v0", driver
+    assert driver["schema_version"] == "multi_agent_decentralized_a2a_driver_contract_v1", driver
     assert driver["owner_layer"] == "generic_multi_agent_kernel", driver
-    assert driver["driver_model"] == "fixed_prompt_broadcast_plus_pane_local_state_check", driver
+    assert driver["driver_model"] == "todo_readiness_edge_plus_fixed_retry", driver
     assert driver["broadcaster"]["reads_frontier"] is False, driver
+    assert driver["broadcaster"]["reads_todo_readiness"] is True, driver
     assert driver["broadcaster"]["selects_todo"] is False, driver
     assert driver["broadcaster"]["runs_worker_turn"] is False, driver
     assert driver["pane"]["decision_owner"] == "codex_tui_agent_via_loopx_state", driver
     assert driver["prompt"]["tick_summary_ref"] == "$LOOPX_PANE_TICK_SUMMARY", driver
     assert "own_prior_status_summary" in driver["pane"]["reads"], driver
     assert driver["pane"]["cadence_action"] == (
-        "fixed_prompt_wakeup_then_own_quota_frontier_check_when_runnable"
+        "targeted_wakeup_then_own_quota_frontier_check_when_runnable"
     ), driver
     assert driver["prompt"]["wake_round"] == "fresh_agent_scoped_quota_frontier_check", driver
     assert (
@@ -628,11 +629,10 @@ def main() -> int:
             assert wake["schema_version"] == "multi_agent_pane_a2a_wakeup_v0", wake
             assert wake["mode"] == "execute", wake
             assert wake["wakeup_model"] == "fixed_prompt_broadcast", wake
-            assert "$LOOPX_PANE_TICK_SUMMARY" in wake["prompt"], wake
-            assert "fresh decentralized state check" in wake["prompt"], wake
-            assert "not as a completed research round" in wake["prompt"], wake
-            assert "prior pane-local status summary" in wake["prompt"], wake
-            assert "Run $LOOPX_PANE_A2A_TICK once" in wake["prompt"], wake
+            assert "LoopX targeted wake" in wake["prompt"], wake
+            assert "do not inspect skills" in wake["prompt"], wake
+            assert "not research evidence or completion" in wake["prompt"], wake
+            assert "First run $LOOPX_PANE_A2A_TICK once" in wake["prompt"], wake
             assert wake["pane_input_ready_verified"] is True, wake
             assert wake["prompt_delivery"] == (
                 "tmux_paste_buffer_after_codex_tui_first_turn_ready"
@@ -670,9 +670,8 @@ def main() -> int:
             ), footer_ready_wake
             os.environ["FAKE_TMUX_CAPTURE_TEXT"] = (
                 "\n"
-                "› Honor the role prompt's human output language for summaries while keeping "
-                "machine artifact schema keys unchanged. Do not ask the broadcaster for "
-                "direction; LoopX state is the source of truth.\n\n"
+                "› quiet with a brief no-action note. This wake is not research evidence or "
+                "completion. LoopX state, not the scheduler, decides the work.\n\n"
                 "  gpt-5.5 high · /tmp/loopx-visible-workspace\n"
             )
             tail_retry_wake = wake_visible_multi_agent_panes(
@@ -724,6 +723,27 @@ def main() -> int:
                 item["not_ready_reason"] == "codex_tui_busy_or_not_ready"
                 for item in busy_wake["pane_input_ready_checks"]
             ), busy_wake
+            os.environ["FAKE_TMUX_CAPTURE_TEXT"] = (
+                "╭────────────────────────╮\n"
+                "│ >_ OpenAI Codex        │\n"
+                "│ model: gpt-5.6-sol high│\n"
+                "╰────────────────────────╯\n\n"
+                "• Working (45s • esc to interrupt)\n\n"
+                "› Queue another request\n\n"
+                "  gpt-5.6-sol high · /tmp/loopx-visible-workspace\n"
+            )
+            queueable_busy_wake = wake_visible_multi_agent_panes(
+                session_name="loopx-visible-launcher-smoke",
+                tmux_bin="tmux",
+                lanes=["planner", "reviewer"],
+                execute=True,
+                input_ready_timeout_seconds=0.25,
+            )
+            assert queueable_busy_wake["prompt_delivery"] == (
+                "skipped_no_input_ready_panes"
+            ), queueable_busy_wake
+            assert queueable_busy_wake["ready_lanes"] == [], queueable_busy_wake
+            assert queueable_busy_wake["prompt_submit_checks"] == [], queueable_busy_wake
             before_usage_limit_log_count = len(
                 tmux_log.read_text(encoding="utf-8").splitlines()
             )
@@ -875,6 +895,7 @@ def main() -> int:
         assert launch["auto_wake"]["target_lanes"] == ["planner", "reviewer"], launch
         assert launch["auto_wake"]["workflow_driver"] is False, launch
         assert launch["auto_wake"]["broadcaster_reads_frontier"] is False, launch
+        assert launch["auto_wake"]["broadcaster_reads_todo_readiness"] is True, launch
         assert launch["auto_wake"]["broadcaster_selects_todo"] is False, launch
         assert launch["auto_wake"]["artifact"] == "auto-wake.public.jsonl", launch
         acceptance = launch["visible_acceptance"]

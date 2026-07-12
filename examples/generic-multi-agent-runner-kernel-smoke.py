@@ -75,7 +75,7 @@ def main() -> int:
     assert role_prompt["default_kernel_skill_policy"][
         "preset_should_not_repeat_skill_playbooks"
     ] is True, runner
-    assert role_prompt["fixed_wake_prompt_owner"] == "generic_multi_agent_kernel", runner
+    assert role_prompt["wake_prompt_owner"] == "generic_multi_agent_kernel", runner
     assert (
         runner["decentralized_a2a_driver"]["prompt"]["owner_layer"]
         == "generic_multi_agent_kernel"

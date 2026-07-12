@@ -117,7 +117,7 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert kernel["surface_count"] == 4, payload
     assert kernel["state_bus"] == "loopx_registry_runtime_todo_quota_frontier", payload
     assert kernel["kernel_driver"] == "decentralized_a2a_driver", payload
-    assert kernel["kernel_driver_schema"] == "multi_agent_decentralized_a2a_driver_contract_v0", payload
+    assert kernel["kernel_driver_schema"] == "multi_agent_decentralized_a2a_driver_contract_v1", payload
     assert kernel["worker_turn_owner"] == "generic_multi_agent_kernel", payload
     assert "pane_local_a2a_status_check" in kernel["delegated_kernel_mechanics"], payload
     assert kernel["presentation_layers_in_kernel"] is False, payload

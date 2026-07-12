@@ -415,7 +415,7 @@ if os.environ.get("LOOPX_CODEX_TRUST_WORKSPACE") == "1":
 
 args.extend(["-c", f"model_reasoning_effort={reasoning_effort}", "-C", project])
 prompt_path = os.environ.get("LOOPX_CODEX_TUI_PROMPT_ARTIFACT")
-if prompt_path:
+if prompt_path and os.environ.get("LOOPX_CODEX_INITIAL_PROMPT_ENABLED", "1") != "0":
     try:
         prompt = Path(prompt_path).read_text(encoding="utf-8").strip()
     except Exception:

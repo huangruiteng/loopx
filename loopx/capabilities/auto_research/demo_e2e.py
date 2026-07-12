@@ -1074,6 +1074,9 @@ def _load_visible_wake_into_payload(
         "wakeup_model": wake.get("wakeup_model"),
         "workflow_driver": bool(wake.get("workflow_driver")),
         "broadcaster_reads_frontier": bool(wake.get("broadcaster_reads_frontier")),
+        "broadcaster_reads_todo_readiness": bool(
+            wake.get("broadcaster_reads_todo_readiness")
+        ),
         "broadcaster_selects_todo": bool(wake.get("broadcaster_selects_todo")),
         "pane_decision_owner": wake.get("pane_decision_owner"),
         "pane_input_ready_verified": wake.get("pane_input_ready_verified") is True,
@@ -1248,7 +1251,7 @@ def _build_visible_readiness(payload: dict[str, object]) -> dict[str, object]:
         "coordination_pattern": "decentralized_state_a2a",
         "wake_model": wake.get("wakeup_model"),
         "workflow_model": driver.get("driver_model")
-        or "fixed_prompt_broadcast_plus_pane_local_state_check",
+        or "todo_readiness_edge_plus_fixed_retry",
         "driver_owner_layer": driver.get("owner_layer"),
         "auto_research_preset_role": "thin_domain_defaults_only",
         "user_contract_invocation": contract_acceptance.get("canonical_invocation"),

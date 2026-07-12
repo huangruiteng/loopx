@@ -54,9 +54,12 @@ def _codex_tui_input_ready(capture: str) -> bool:
     has_codex_surface = "OpenAI Codex" in capture or "gpt-" in capture[prompt_index:]
     if not has_codex_surface:
         return False
-    current_view = capture[prompt_index:]
-    if "Queued follow-up inputs" in current_view or "Working (" in current_view:
+    # Codex keeps a queueable input prompt visible while a turn is still running.
+    # Busy markers render immediately above that prompt, so checking only the
+    # text after the final prompt incorrectly treats an active turn as idle.
+    if "Queued follow-up inputs" in capture or "Working (" in capture:
         return False
+    current_view = capture[prompt_index:]
     if "Starting MCP servers" in current_view:
         return False
     return True
@@ -392,6 +395,9 @@ def wake_visible_multi_agent_panes(
         "driver_contract": driver_contract,
         "workflow_driver": False,
         "broadcaster_reads_frontier": driver_contract["broadcaster"]["reads_frontier"],
+        "broadcaster_reads_todo_readiness": driver_contract["broadcaster"].get(
+            "reads_todo_readiness", False
+        ),
         "broadcaster_selects_todo": driver_contract["broadcaster"]["selects_todo"],
         "pane_decision_owner": driver_contract["pane"]["decision_owner"],
         "pane_input_ready_verified": (

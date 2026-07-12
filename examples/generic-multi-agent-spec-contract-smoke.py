@@ -136,7 +136,9 @@ def main() -> int:
     assert driver["schema_version"] == DECENTRALIZED_A2A_DRIVER_CONTRACT_SCHEMA_VERSION, driver
     assert driver["owner_layer"] == "generic_multi_agent_kernel", driver
     assert driver["coordination_pattern"] == "decentralized_state_a2a", driver
-    assert driver["broadcaster"]["model"] == "fixed_prompt_broadcast", driver
+    assert driver["schema_version"] == "multi_agent_decentralized_a2a_driver_contract_v1", driver
+    assert driver["broadcaster"]["model"] == "todo_readiness_targeted_wake", driver
+    assert driver["broadcaster"]["reads_todo_readiness"] is True, driver
     assert driver["broadcaster"]["decides_work"] is False, driver
     assert driver["pane"]["decision_owner"] == "codex_tui_agent_via_loopx_state", driver
     assert driver["acceptance"]["user_and_preset_do_not_own_tick_driver"] is True, driver
@@ -209,7 +211,7 @@ def main() -> int:
     assert compact["schema_version"] == GENERIC_MULTI_AGENT_COMPACT_STATUS_SCHEMA_VERSION, compact
     assert compact["role_count"] == 2, compact
     assert compact["first_action"] == "$LOOPX_PANE_A2A_TICK", compact
-    assert compact["driver_model"] == "fixed_prompt_broadcast_plus_pane_local_state_check", compact
+    assert compact["driver_model"] == "todo_readiness_edge_plus_fixed_retry", compact
     assert compact["coordination_pattern"] == "decentralized_state_a2a", compact
     assert compact["machine_json_policy"] == "artifact_only_in_visible_panes", compact
     assert [role["lane_id"] for role in compact["roles"]] == ["planner", "builder"], compact

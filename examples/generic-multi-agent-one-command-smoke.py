@@ -272,21 +272,22 @@ def main() -> int:
             "loopx multi-agent wake --session-name <session>"
         ), dry_packet
         assert dry_packet["runner_contract"]["pane_local_a2a"]["cadence_wakeup_model"] == (
-            "fixed_prompt_broadcast"
+            "todo_readiness_targeted_wake"
         ), dry_packet
         assert dry_packet["runner_contract"]["pane_local_a2a"]["cadence_broadcaster_decides_work"] is False, dry_packet
         driver = dry_packet["runner_contract"]["decentralized_a2a_driver"]
-        assert driver["schema_version"] == "multi_agent_decentralized_a2a_driver_contract_v0", driver
+        assert driver["schema_version"] == "multi_agent_decentralized_a2a_driver_contract_v1", driver
         assert driver["owner_layer"] == "generic_multi_agent_kernel", driver
         assert driver["driver_model"] == (
-            "fixed_prompt_broadcast_plus_pane_local_state_check"
+            "todo_readiness_edge_plus_fixed_retry"
         ), driver
         assert driver["broadcaster"]["decides_work"] is False, driver
+        assert driver["broadcaster"]["reads_todo_readiness"] is True, driver
         assert driver["pane"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", driver
         assert driver["prompt"]["tick_summary_ref"] == "$LOOPX_PANE_TICK_SUMMARY", driver
         assert "own_prior_status_summary" in driver["pane"]["reads"], driver
         assert driver["pane"]["cadence_action"] == (
-            "fixed_prompt_wakeup_then_own_quota_frontier_check_when_runnable"
+            "targeted_wakeup_then_own_quota_frontier_check_when_runnable"
         ), driver
         assert driver["prompt"]["tick_summary_semantics"] == (
             "prior_pane_status_not_research_evidence"
@@ -311,7 +312,7 @@ def main() -> int:
         assert compact["role_count"] == 2, compact
         assert compact["first_action"] == "$LOOPX_PANE_A2A_TICK", compact
         assert compact["driver_model"] == (
-            "fixed_prompt_broadcast_plus_pane_local_state_check"
+            "todo_readiness_edge_plus_fixed_retry"
         ), compact
         assert compact["user_takeover"] == "attach to the session and type into any role pane", compact
         assert dry_packet["interactive_tui_contract"]["schema_version"] == "multi_agent_visible_interactive_tui_contract_v0", dry_packet
@@ -382,11 +383,10 @@ def main() -> int:
         assert dry_wake["broadcaster_reads_frontier"] is False, dry_wake
         assert dry_wake["broadcaster_selects_todo"] is False, dry_wake
         assert "$LOOPX_PANE_A2A_TICK" in dry_wake["prompt"], dry_wake
-        assert "$LOOPX_PANE_TICK_SUMMARY" in dry_wake["prompt"], dry_wake
-        assert "fresh decentralized state check" in dry_wake["prompt"], dry_wake
-        assert "not as a completed research round" in dry_wake["prompt"], dry_wake
-        assert "prior pane-local status summary" in dry_wake["prompt"], dry_wake
-        assert "Run $LOOPX_PANE_A2A_TICK once" in dry_wake["prompt"], dry_wake
+        assert "LoopX targeted wake" in dry_wake["prompt"], dry_wake
+        assert "do not inspect skills" in dry_wake["prompt"], dry_wake
+        assert "not research evidence or completion" in dry_wake["prompt"], dry_wake
+        assert "First run $LOOPX_PANE_A2A_TICK once" in dry_wake["prompt"], dry_wake
         assert "\n" not in dry_wake["prompt"], dry_wake
         exec_wake = run_wake_command(
             env,

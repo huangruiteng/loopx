@@ -25,6 +25,11 @@ from .capabilities.multi_agent.runtime_scripts import (
     CODEX_TUI_EXEC_PY as _CODEX_TUI_EXEC_PY,
     SCOPED_LOOPX_WRAPPER_PY as _SCOPED_LOOPX_WRAPPER_PY,
 )
+from .capabilities.multi_agent.visible_wake_scheduler import (
+    DEFAULT_READINESS_POLL_SECONDS,
+    STATE_AWARE_WAKE_MODEL,
+    resolve_initial_wake_plan,
+)
 from .visible_multi_agent_tmux import (
     PANE_A2A_INPUT_READY_TIMEOUT_SECONDS,
     PANE_A2A_WAKEUP_PROMPT,
@@ -697,28 +702,31 @@ def _start_auto_wake_loop(
     registry: Path,
     runtime_root: Path,
     session: str,
-    lanes: list[str],
+    lane_agents: dict[str, str],
+    goal_id: str,
+    initial_projection: dict[str, object],
     tmux_bin: str,
     cli_bin: str,
     interval_seconds: float,
     env: dict[str, str],
 ) -> dict[str, object]:
     interval = max(5.0, float(interval_seconds or 0))
-    lane_flags = " ".join(f"--lane {_q(lane)}" for lane in lanes if lane)
+    artifact = (
+        runtime_root
+        / "visible-launcher-artifacts"
+        / _script_slug(session)
+        / "auto-wake.public.jsonl"
+    )
     wake_command = (
-        'WAKE_LOG="$LOOPX_VISIBLE_ARTIFACT_DIR/auto-wake.public.jsonl"; '
-        'WAKE_TMP="$LOOPX_VISIBLE_ARTIFACT_DIR/auto-wake.last.public.json"; '
-        f"while {_q(tmux_bin)} has-session -t \"$LOOPX_VISIBLE_SESSION\" >/dev/null 2>&1; do "
-        f"sleep {_q(f'{interval:g}')}; "
-        f"{_q(cli_bin)} --format json multi-agent wake "
-        '--session-name "$LOOPX_VISIBLE_SESSION" '
-        f"--tmux-bin {_q(tmux_bin)} "
-        f"{lane_flags} --execute > \"$WAKE_TMP\" 2>&1 || true; "
-        "cat \"$WAKE_TMP\" >> \"$WAKE_LOG\"; printf '\\n' >> \"$WAKE_LOG\"; "
-        "if grep -Eq '\"auto_wake_backoff_recommended\"[[:space:]]*:[[:space:]]*true' \"$WAKE_TMP\"; then "
-        "break; "
-        "fi; "
-        "done"
+        "exec python3 -m loopx.capabilities.multi_agent.visible_wake_scheduler "
+        f"--cli-bin {_q(cli_bin)} --tmux-bin {_q(tmux_bin)} "
+        f"--registry {_q(registry)} --runtime-root {_q(runtime_root)} "
+        f"--goal-id {_q(goal_id)} --session {_q(session)} "
+        f"--lane-agents-json {_q(json.dumps(lane_agents, sort_keys=True))} "
+        f"--initial-projection-json {_q(json.dumps(initial_projection, sort_keys=True))} "
+        f"--artifact {_q(artifact)} "
+        f"--retry-interval-seconds {_q(f'{interval:g}')} "
+        f"--poll-interval-seconds {_q(f'{DEFAULT_READINESS_POLL_SECONDS:g}')}"
     )
     script = _write_tmux_script(
         script_dir=script_dir,
@@ -744,13 +752,21 @@ def _start_auto_wake_loop(
         "enabled": True,
         "mode": "background_process",
         "interval_seconds": interval,
-        "target_lanes": lanes,
-        "wakeup_model": "fixed_prompt_broadcast",
+        "target_lanes": list(lane_agents),
+        "wakeup_model": (
+            STATE_AWARE_WAKE_MODEL
+            if initial_projection.get("recognized")
+            else "fixed_prompt_broadcast_fallback"
+        ),
         "workflow_driver": False,
         "broadcaster_reads_frontier": False,
+        "broadcaster_reads_todo_readiness": True,
         "broadcaster_selects_todo": False,
         "pane_decision_owner": "codex_tui_agent_via_loopx_state",
         "artifact": "auto-wake.public.jsonl",
+        "artifact_path": str(artifact),
+        "readiness_poll_seconds": DEFAULT_READINESS_POLL_SECONDS,
+        "initial_projection": initial_projection,
         "process_started": True,
         "pid_recorded": False,
         "boundary": {
@@ -882,6 +898,18 @@ def _launch_with_tmux(
         subprocess.run([tmux_bin, "kill-session", "-t", session], check=True, env=env)
 
     script_dir = runtime_root / "visible-launcher" / _script_slug(session)
+    goal_id = str(payload.get("goal_id") or "").strip()
+    initial_wake_plan = resolve_initial_wake_plan(
+        lanes=lanes,
+        cli_bin=cli_bin,
+        registry=registry,
+        runtime_root=runtime_root,
+        goal_id=goal_id,
+    )
+    lane_agents = dict(initial_wake_plan["lane_agents"])
+    initial_projection = dict(initial_wake_plan["projection"])
+    initial_runnable_lanes = set(initial_wake_plan["target_lanes"])
+    state_aware_initial_prompt = bool(initial_wake_plan["state_aware"])
     started_lanes = []
     lane_targets: dict[str, str] = {}
     launcher_scripts: dict[str, str] = {}
@@ -899,6 +927,8 @@ def _launch_with_tmux(
             name=lane_id,
             command=runtime_shell_command(
                 f"export LOOPX_CODEX_TRUST_WORKSPACE={_q('1' if codex_trust_workspace else '0')}; "
+                "export LOOPX_CODEX_INITIAL_PROMPT_ENABLED="
+                f"{_q('1' if not state_aware_initial_prompt or lane_id in initial_runnable_lanes else '0')}; "
                 f"export LOOPX_VISIBLE_LANE_COUNT={_q(len(lanes))}; "
                 f"{launch_command}",
                 project=lane_project,
@@ -984,7 +1014,13 @@ def _launch_with_tmux(
             registry=registry,
             runtime_root=runtime_root,
             session=session,
-            lanes=started_lanes,
+            lane_agents={
+                lane_id: lane_agents[lane_id]
+                for lane_id in started_lanes
+                if lane_id in lane_agents
+            },
+            goal_id=goal_id,
+            initial_projection=initial_projection,
             tmux_bin=tmux_bin,
             cli_bin=cli_bin,
             interval_seconds=auto_wake_interval_seconds,
@@ -1028,6 +1064,24 @@ def _launch_with_tmux(
         "operator_takeover": "attach to the tmux session, interrupt any lane, or kill the session",
         "auto_wake": auto_wake_result,
         "visible_acceptance": acceptance,
+        "initial_prompt": {
+            "mode": (
+                "todo_readiness_targeted"
+                if state_aware_initial_prompt
+                else "all_lanes_compatibility_fallback"
+            ),
+            "target_lanes": [
+                lane_id for lane_id in started_lanes if lane_id in initial_runnable_lanes
+            ]
+            if state_aware_initial_prompt
+            else started_lanes,
+            "deferred_lanes": [
+                lane_id for lane_id in started_lanes if lane_id not in initial_runnable_lanes
+            ]
+            if state_aware_initial_prompt
+            else [],
+            "projection": initial_projection,
+        },
         "tmux_layout": {
             "window_name": window_name,
             "single_window": True,

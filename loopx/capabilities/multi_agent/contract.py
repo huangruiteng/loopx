@@ -10,7 +10,7 @@ VISIBLE_LAUNCHER_ACCEPTANCE_CONTRACT_SCHEMA_VERSION = (
     "multi_agent_visible_launcher_acceptance_contract_v0"
 )
 DECENTRALIZED_A2A_DRIVER_CONTRACT_SCHEMA_VERSION = (
-    "multi_agent_decentralized_a2a_driver_contract_v0"
+    "multi_agent_decentralized_a2a_driver_contract_v1"
 )
 GENERIC_MULTI_AGENT_ROLE_PROFILE_SCHEMA_VERSION = "generic_multi_agent_role_profile_v0"
 GENERIC_MULTI_AGENT_COMPACT_STATUS_SCHEMA_VERSION = "generic_multi_agent_compact_status_v0"
@@ -20,16 +20,12 @@ THREE_LAYER_MINIMALITY_CONTRACT_SCHEMA_VERSION = (
 GENERIC_MULTI_AGENT_DEFAULT_KERNEL_SKILLS = ("loopx-project", "loopx-doc-registry")
 
 PANE_LOCAL_A2A_WAKEUP_PROMPT = (
-    "LoopX pane-local A2A wakeup: read $LOOPX_CODEX_TUI_PROMPT_ARTIFACT for role/scope if needed. "
-    "Treat this fixed wake as a fresh decentralized state check, not as a completed research round. "
-    "Inspect $LOOPX_PANE_TICK_SUMMARY only as your own prior pane-local status summary, then read your own LoopX quota/frontier. "
-    "Run $LOOPX_PANE_A2A_TICK once to refresh guard/frontier state when your own state shows runnable work or the user asked for another step. "
-    "The status check is never research completion unless a configured worker explicitly writes real public-safe evidence. "
-    "Use only your own LOOPX_GOAL_ID/LOOPX_AGENT_ID quota/frontier; "
-    "if no runnable frontier remains, stay quiet with a brief no-action note; "
-    "if frontier remains, do the role's visible research work yourself and summarize public evidence and next handoff. "
-    "Honor the role prompt's human output language for summaries while keeping machine artifact schema keys unchanged. "
-    "Do not ask the broadcaster for direction; LoopX state is the source of truth."
+    "LoopX targeted wake. First run $LOOPX_PANE_A2A_TICK once; do not inspect skills "
+    "or role artifacts before this gate. The tick reads only your own LOOPX_GOAL_ID and "
+    "LOOPX_AGENT_ID state. If it reports runnable work, read "
+    "$LOOPX_CODEX_TUI_PROMPT_ARTIFACT as needed and continue your role. If not, stay "
+    "quiet with a brief no-action note. This wake is not research evidence or completion. "
+    "LoopX state, not the scheduler, decides the work."
 )
 
 GENERIC_MULTI_AGENT_KERNEL_MECHANICS = (
@@ -154,9 +150,9 @@ def generic_role_prompt(
             "",
             "How to work:",
             "- Treat LoopX state as the shared A2A surface.",
-            "- This Codex TUI owns the first visible research turn; run `$LOOPX_PANE_A2A_TICK` once to refresh guard/frontier state before deciding what to do.",
-            "- Treat `$LOOPX_PANE_TICK_SUMMARY` as previous pane-local evidence; it is not a gate that cancels later fixed wakes.",
-            "- On each fixed wake, read your own LoopX quota/frontier and run the bounded `$LOOPX_PANE_A2A_TICK` once when runnable work remains or the user asks for another round.",
+            "- When this pane receives an initial or targeted wake prompt, run `$LOOPX_PANE_A2A_TICK` once to refresh guard/frontier state before deciding what to do.",
+            "- Treat `$LOOPX_PANE_TICK_SUMMARY` as previous pane-local evidence; it is not a gate that cancels later targeted retries.",
+            "- On each wake, read your own LoopX quota/frontier and run the bounded `$LOOPX_PANE_A2A_TICK` once when runnable work remains or the user asks for another round.",
             "- If no runnable frontier remains, stay quiet with a brief no-action note.",
             "- The tick reads your quota/frontier; it runs a role worker only when the preset explicitly configures one.",
             "- If the tick says no worker is configured or manual research is required, do the role's research work visibly and write public-safe evidence/todos yourself.",
@@ -178,12 +174,12 @@ def build_decentralized_a2a_driver_contract(
     *,
     wake_command: str = "loopx multi-agent wake --session-name <session>",
 ) -> dict[str, object]:
-    """Describe the reusable fixed-prompt driver for live Codex TUI agents."""
+    """Describe the reusable state-aware wake driver for live Codex TUI agents."""
 
     return {
         "schema_version": DECENTRALIZED_A2A_DRIVER_CONTRACT_SCHEMA_VERSION,
         "owner_layer": "generic_multi_agent_kernel",
-        "driver_model": "fixed_prompt_broadcast_plus_pane_local_state_check",
+        "driver_model": "todo_readiness_edge_plus_fixed_retry",
         "coordination_pattern": "decentralized_state_a2a",
         "prompt": {
             "owner_layer": "generic_multi_agent_kernel",
@@ -199,8 +195,9 @@ def build_decentralized_a2a_driver_contract(
         },
         "broadcaster": {
             "command": wake_command,
-            "model": "fixed_prompt_broadcast",
+            "model": "todo_readiness_targeted_wake",
             "reads_frontier": False,
+            "reads_todo_readiness": True,
             "selects_todo": False,
             "runs_worker_turn": False,
             "writes_loopx_state": False,
@@ -211,7 +208,7 @@ def build_decentralized_a2a_driver_contract(
             "decision_owner": "codex_tui_agent_via_loopx_state",
             "tick_command": "$LOOPX_PANE_A2A_TICK",
             "first_action": "codex_tui_first_turn_status_check",
-            "cadence_action": "fixed_prompt_wakeup_then_own_quota_frontier_check_when_runnable",
+            "cadence_action": "targeted_wakeup_then_own_quota_frontier_check_when_runnable",
             "reads": [
                 "own_LOOPX_GOAL_ID",
                 "own_LOOPX_AGENT_ID",
@@ -229,7 +226,8 @@ def build_decentralized_a2a_driver_contract(
             "preset_layer": ["domain_roles", "handoff_hints", "optional_worker_hook"],
             "kernel_layer": [
                 "tmux_codex_tui_lifecycle",
-                "fixed_prompt_wakeup",
+                "todo_readiness_edge_wakeup",
+                "fixed_retry_wakeup",
                 "pane_local_status_check_runtime",
                 "loopx_state_protocol",
             ],
@@ -309,7 +307,7 @@ def build_tui_multi_agent_runner_contract(
             "all_lane_workspace_isolation": all_lane_workspace_isolation,
         },
         "role_prompt_and_skill": {
-            "bootstrap_prompt": "written_to_public_artifact_for_fixed_wake_context",
+            "bootstrap_prompt": "written_to_public_artifact_for_targeted_wake_context",
             "role_profile": "role-local public json artifact",
             "default_kernel_skills": list(GENERIC_MULTI_AGENT_DEFAULT_KERNEL_SKILLS),
             "default_kernel_skill_policy": {
@@ -318,7 +316,7 @@ def build_tui_multi_agent_runner_contract(
                 "preset_should_not_repeat_skill_playbooks": True,
                 "worker_skill_scope": "role_specific_semantics_and_successor_declarations",
             },
-            "fixed_wake_prompt_owner": "generic_multi_agent_kernel",
+            "wake_prompt_owner": "generic_multi_agent_kernel",
             "skill_materialization": ".codex/skills/<skill>/SKILL.md",
             "worker_local_skill_scope": "role_specific_semantics_only",
         },
@@ -468,7 +466,7 @@ def build_compact_human_status(payload: dict[str, object]) -> dict[str, object]:
         "stop": commands.get("stop"),
         "first_action": "$LOOPX_PANE_A2A_TICK",
         "driver_model": driver.get("driver_model")
-        or "fixed_prompt_broadcast_plus_pane_local_state_check",
+        or "todo_readiness_edge_plus_fixed_retry",
         "coordination_pattern": driver.get("coordination_pattern")
         or "decentralized_state_a2a",
         "machine_json_policy": "artifact_only_in_visible_panes",

@@ -154,7 +154,7 @@ def assert_visible_wake_loader_requires_prompt_delivery() -> None:
             "prompt_submit_checks": [{"target": "%2", "retry_count": 0}],
             "prompt_delivery": "tmux_paste_buffer_after_codex_tui_first_turn_ready",
             "driver_contract": {
-                "schema_version": "multi_agent_decentralized_a2a_driver_contract_v0",
+                "schema_version": "multi_agent_decentralized_a2a_driver_contract_v1",
                 "owner_layer": "generic_multi_agent_kernel",
             },
         },
@@ -196,7 +196,7 @@ def assert_visible_wake_loader_requires_prompt_delivery() -> None:
             "prompt_submit_checks": [],
             "prompt_delivery": "skipped_no_input_ready_panes",
             "driver_contract": {
-                "schema_version": "multi_agent_decentralized_a2a_driver_contract_v0",
+                "schema_version": "multi_agent_decentralized_a2a_driver_contract_v1",
                 "owner_layer": "generic_multi_agent_kernel",
             },
         },
