@@ -285,7 +285,7 @@ def main() -> int:
     assert schema["task_spawning_model"]["board_creates_tasks"] is False, schema
     assert "LoopX todo lifecycle" in schema["task_spawning_model"]["rule"], schema
     field_names = [field["name"] for field in schema["fields"]]
-    for expected in ["Task", "Status", "Claim", "Handoff", "Evidence", "Run History", "Worker Command", "Work Item Type", "Repository", "Issue", "Pull Request", "Route", "Stage", "Validation", "Outcome", "Metric Group", "Metric", "Baseline", "Current", "Delta", "Numerator", "Denominator", "Metric Source", "Metric Updated At", "Missing Data"]:
+    for expected in ["Task", "Status", "Claim", "Handoff", "Evidence", "Run History", "Worker Command", "Work Item Type", "Repository", "Issue", "Pull Request", "Route", "Stage", "Validation", "Outcome", "Context Tags", "Metric Group", "Metric", "Baseline", "Current", "Delta", "Numerator", "Denominator", "Metric Source", "Metric Updated At", "Missing Data"]:
         assert expected in field_names, field_names
     assert schema["heartbeat_model"]["fallback"].startswith("agent heartbeat"), schema
     assert schema["operator_view"]["kanban_card_fields"] == lark_kanban_operator_card_fields(), schema
@@ -301,6 +301,17 @@ def main() -> int:
     issue_fields = {field["name"]: field for field in schema["fields"]}
     assert issue_fields["Issue"]["style"]["type"] == "url", issue_fields["Issue"]
     assert issue_fields["Pull Request"]["style"]["type"] == "url", issue_fields["Pull Request"]
+    assert issue_fields["Context Tags"]["type"] == "select", issue_fields["Context Tags"]
+    assert issue_fields["Context Tags"]["multiple"] is True, issue_fields["Context Tags"]
+    assert {
+        "fix_pr",
+        "ci_pending",
+        "reproduction_confirmed",
+        "validation_passed",
+        "tests_changed",
+    } <= {
+        option["name"] for option in issue_fields["Context Tags"]["options"]
+    }, issue_fields["Context Tags"]
     assert issue_fix_surface.ISSUE_FIX_STAGE_OPTIONS[:6] == [
         "reproduction_planned",
         "fix_in_progress",
@@ -440,7 +451,7 @@ def main() -> int:
         use_lark_kanban_board(config_path=config_path, base_url="https://example.invalid/base/base_existing?table=tbl_existing", cli_bin="lark-cli", identity="user")
         migrated = setup_lark_kanban_board(config_path=config_path, base_name="LoopX Existing Board Fixture", cli_bin="lark-cli", identity="user", execute=True, runner=existing_setup_runner)
         assert migrated["ok"] is True, migrated
-        assert {"Work Item Type", "Repository", "Route", "Validation", "Outcome"} <= set(migrated["created_fields"]), migrated
+        assert {"Work Item Type", "Repository", "Route", "Validation", "Outcome", "Context Tags"} <= set(migrated["created_fields"]), migrated
         assert set(migrated["updated_fields"]) == {"Issue", "Pull Request", "Stage"}, migrated
         field_updates = [args for args in existing_setup_calls if "+field-update" in args]
         assert len(field_updates) == 3, field_updates

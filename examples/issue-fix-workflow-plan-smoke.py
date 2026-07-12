@@ -126,10 +126,22 @@ def assert_workflow_shape(payload: dict[str, Any]) -> None:
     assert [section["label"] for section in description["sections"]] == [
         "动机",
         "改动思路",
+        "关键代码或伪代码",
         "具体改动",
+        "修复后复现",
         "验证",
         "对主干的风险与未覆盖",
     ]
+    assert description["sections"][2]["applicability"] == "code_changes"
+    assert description["sections"][4]["accepted_surfaces"] == [
+        "repository_cli",
+        "focused_code_or_test",
+    ]
+    assert description["infographic_policy"] == {
+        "required": False,
+        "allowed_when": "complex_change",
+        "must_not_replace_textual_evidence": True,
+    }
     assert description["review_only_section_excluded"] == "我的整体评价"
     assert description["requires_current_diff_evidence"] is True
 
@@ -146,9 +158,10 @@ def main() -> int:
     )
     assert_workflow_shape(packet)
     assert packet["branch_plan"]["status"] == "needs_approved_repo_context", packet
-    assert "approved_repo_context_missing" in packet["review_packet_preview"][
-        "readiness_blockers"
-    ]
+    assert (
+        "approved_repo_context_missing"
+        in packet["review_packet_preview"]["readiness_blockers"]
+    )
 
     with tempfile.TemporaryDirectory(prefix="loopx-issue-fix-plan-") as tmpdir:
         tmp = Path(tmpdir)

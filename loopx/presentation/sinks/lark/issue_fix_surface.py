@@ -21,6 +21,7 @@ ISSUE_FIX_CARD_FIELDS = [
     "Stage",
     "Validation",
     "Outcome",
+    "Context Tags",
     "Status",
 ]
 
@@ -61,6 +62,28 @@ ISSUE_FIX_STAGE_OPTIONS = [
     "triage_complete",
 ]
 
+ISSUE_FIX_CONTEXT_TAG_OPTIONS = list(
+    dict.fromkeys(
+        [
+            "fix_pr",
+            "comment_only",
+            "triage_only",
+            *ISSUE_FIX_STAGE_OPTIONS,
+            "reproduction_confirmed",
+            "reproduction_missing",
+            "validation_passed",
+            "validation_failed",
+            "validation_partial",
+            "validation_not_run",
+            "validation_declared",
+            "validation_unknown",
+            "tests_changed",
+            "multi_file",
+            "repository_context_grounded",
+        ]
+    )
+)
+
 
 def issue_fix_field_definitions(
     select_options: Callable[[list[str]], list[dict[str, str]]],
@@ -89,6 +112,12 @@ def issue_fix_field_definitions(
         },
         {"name": "Validation", "type": "text", "style": {"type": "plain"}},
         {"name": "Outcome", "type": "text", "style": {"type": "plain"}},
+        {
+            "name": "Context Tags",
+            "type": "select",
+            "multiple": True,
+            "options": select_options(ISSUE_FIX_CONTEXT_TAG_OPTIONS),
+        },
         {
             "name": "Metric Group",
             "type": "select",
@@ -171,6 +200,7 @@ def issue_fix_record_values(
             "Stage": "",
             "Validation": "",
             "Outcome": "",
+            "Context Tags": [],
             "Metric Group": compact_text(block.get("metric_group"), limit=80),
             "Metric": compact_text(block.get("metric"), limit=180),
             "Baseline": _number_or_none(block.get("baseline")),
@@ -222,6 +252,11 @@ def issue_fix_record_values(
             limit=300,
         ),
         "Outcome": compact_text(result.get("kind"), limit=120),
+        "Context Tags": [
+            safe_tag
+            for tag in block.get("context_tags") or []
+            if (safe_tag := compact_text(tag, limit=80))
+        ],
         "Metric Group": "",
         "Metric": "",
         "Baseline": None,
@@ -245,6 +280,7 @@ def todo_record_values() -> dict[str, str]:
         "Stage": "",
         "Validation": "",
         "Outcome": "",
+        "Context Tags": [],
         "Metric Group": "",
         "Metric": "",
         "Baseline": None,
@@ -319,7 +355,14 @@ def field_definition_migrations(
     for definition in definitions:
         name = str(definition.get("name") or "").strip()
         if (
-            name not in {"Work Item Type", "Issue", "Pull Request", "Stage"}
+            name
+            not in {
+                "Work Item Type",
+                "Issue",
+                "Pull Request",
+                "Stage",
+                "Context Tags",
+            }
             or name not in existing
         ):
             continue

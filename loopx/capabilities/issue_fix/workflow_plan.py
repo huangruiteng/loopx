@@ -348,6 +348,7 @@ def build_issue_fix_workflow_plan_packet(
         "pr_description_contract": {
             "schema_version": "issue_fix_pr_description_contract_v0",
             "source_contract": "pr_review_five_block_template_v0",
+            "extension_contract": "issue_fix_reviewer_context_v0",
             "sections": [
                 {
                     "label": "动机",
@@ -358,8 +359,28 @@ def build_issue_fix_workflow_plan_packet(
                     "purpose": "Explain the chosen fix route and the main design tradeoff.",
                 },
                 {
+                    "label": "关键代码或伪代码",
+                    "purpose": (
+                        "Show the smallest code or pseudocode slice that lets a "
+                        "reviewer verify the behavioral change quickly."
+                    ),
+                    "applicability": "code_changes",
+                },
+                {
                     "label": "具体改动",
                     "purpose": "Name the reviewer-relevant modules, behavior, and focused regression coverage.",
+                },
+                {
+                    "label": "修复后复现",
+                    "purpose": (
+                        "Provide a post-fix reproduction path using the repository "
+                        "CLI or focused code/test surface."
+                    ),
+                    "applicability": "reproducible_changes",
+                    "accepted_surfaces": [
+                        "repository_cli",
+                        "focused_code_or_test",
+                    ],
                 },
                 {
                     "label": "验证",
@@ -370,6 +391,11 @@ def build_issue_fix_workflow_plan_packet(
                     "purpose": "State compatibility risk, residual gaps, and checks not run.",
                 },
             ],
+            "infographic_policy": {
+                "required": False,
+                "allowed_when": "complex_change",
+                "must_not_replace_textual_evidence": True,
+            },
             "review_only_section_excluded": "我的整体评价",
             "requires_current_diff_evidence": True,
         },
@@ -441,7 +467,9 @@ def build_issue_fix_workflow_plan_packet(
     return packet
 
 
-def validate_issue_fix_workflow_plan_packet(packet: Mapping[str, Any]) -> dict[str, Any]:
+def validate_issue_fix_workflow_plan_packet(
+    packet: Mapping[str, Any],
+) -> dict[str, Any]:
     errors: list[str] = []
     if packet.get("schema_version") != ISSUE_FIX_WORKFLOW_PLAN_PACKET_SCHEMA_VERSION:
         errors.append("packet schema_version must be issue_fix_workflow_plan_packet_v0")
@@ -491,20 +519,18 @@ def validate_issue_fix_workflow_plan_packet(packet: Mapping[str, Any]) -> dict[s
         if repository_context.get("external_writes_performed") is not False:
             errors.append("repository_context must not perform external writes")
         truth_contract = repository_context.get("truth_contract")
-        if not isinstance(truth_contract, Mapping) or truth_contract.get(
-            "context_cannot_authorize_external_writes"
-        ) is not True:
+        if (
+            not isinstance(truth_contract, Mapping)
+            or truth_contract.get("context_cannot_authorize_external_writes")
+            is not True
+        ):
             errors.append("repository_context must deny external-write authority")
 
     routes = packet.get("resolution_route_candidates")
     if not isinstance(routes, Sequence) or isinstance(routes, (str, bytes)):
         errors.append("resolution_route_candidates must be a list")
         routes = []
-    route_names = {
-        route.get("route")
-        for route in routes
-        if isinstance(route, Mapping)
-    }
+    route_names = {route.get("route") for route in routes if isinstance(route, Mapping)}
     for route_name in ("fix_pr", "comment_only", "triage_only"):
         if route_name not in route_names:
             errors.append(f"resolution route {route_name} is required")
@@ -608,11 +634,33 @@ def validate_issue_fix_workflow_plan_packet(packet: Mapping[str, Any]) -> dict[s
         if labels != [
             "动机",
             "改动思路",
+            "关键代码或伪代码",
             "具体改动",
+            "修复后复现",
             "验证",
             "对主干的风险与未覆盖",
         ]:
             errors.append("PR description contract sections are incomplete")
+        section_by_label = {
+            str(section.get("label") or ""): section
+            for section in sections or []
+            if isinstance(section, Mapping)
+        }
+        if section_by_label.get("关键代码或伪代码", {}).get("applicability") != (
+            "code_changes"
+        ):
+            errors.append("key code section must apply to code changes")
+        if section_by_label.get("修复后复现", {}).get("accepted_surfaces") != [
+            "repository_cli",
+            "focused_code_or_test",
+        ]:
+            errors.append("post-fix reproduction surfaces are incomplete")
+        if description.get("infographic_policy") != {
+            "required": False,
+            "allowed_when": "complex_change",
+            "must_not_replace_textual_evidence": True,
+        }:
+            errors.append("PR description infographic policy is incomplete")
         if description.get("review_only_section_excluded") != "我的整体评价":
             errors.append("PR description contract must exclude reviewer verdict")
     if review.get("external_issue_comment_performed") is not False:
@@ -766,9 +814,26 @@ def render_issue_fix_workflow_plan_markdown(payload: dict[str, Any]) -> str:
                 f"- merge_performed: `{review.get('merge_performed')}`",
             ]
         )
+        description = review.get("pr_description_contract")
+        if isinstance(description, Mapping):
+            lines.extend(["", "### PR Description Contract", ""])
+            for section in description.get("sections") or []:
+                if isinstance(section, Mapping):
+                    lines.append(
+                        f"- **{section.get('label')}**: {section.get('purpose')}"
+                    )
+            infographic = description.get("infographic_policy")
+            if isinstance(infographic, Mapping):
+                lines.append(
+                    "- infographic: optional for complex changes; textual evidence remains required"
+                )
     validation = payload.get("validation")
     if isinstance(validation, Mapping):
-        errors = validation.get("errors") if isinstance(validation.get("errors"), list) else []
+        errors = (
+            validation.get("errors")
+            if isinstance(validation.get("errors"), list)
+            else []
+        )
         lines.extend(
             [
                 "",
