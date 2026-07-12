@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from ...agent_registry import registered_agent_ids_from_registry, require_registered_agent_id
 from ...file_lock import exclusive_file_lock
 from ...history import load_registry
 from ...paths import resolve_runtime_root
@@ -130,12 +131,19 @@ def task_lease_owner_constraint(
     todo: dict[str, Any] | None,
     *,
     owner: Any,
+    registered_agents: list[str] | None = None,
 ) -> dict[str, Any]:
     if todo is None:
         return {"effective": False, "reason": "todo_not_found"}
     normalized_owner = normalize_todo_claimed_by(owner)
     if not normalized_owner:
         return {"effective": False, "reason": "invalid_owner"}
+    if registered_agents is not None and normalized_owner not in registered_agents:
+        return {
+            "effective": False,
+            "reason": "owner_not_registered",
+            "registered_agents": registered_agents,
+        }
     excluded_agents = normalize_todo_excluded_agents(todo.get("excluded_agents"))
     if normalized_owner in excluded_agents:
         return {
@@ -146,6 +154,28 @@ def task_lease_owner_constraint(
     return {"effective": True}
 
 
+def require_registered_task_lease_owner(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    todo_id: str,
+    owner: str,
+) -> str:
+    try:
+        return require_registered_agent_id(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            agent_id=owner,
+            field="task lease owner",
+        )
+    except ValueError as exc:
+        raise TaskLeaseError(
+            str(exc),
+            code="owner_not_registered",
+            payload={"goal_id": goal_id, "todo_id": todo_id, "owner": owner},
+        ) from exc
+
+
 def require_task_lease_owner_allowed(
     *,
     registry_path: Path,
@@ -153,18 +183,30 @@ def require_task_lease_owner_allowed(
     todo_id: str,
     owner: str,
 ) -> dict[str, Any]:
+    owner = require_registered_task_lease_owner(
+        registry_path=registry_path,
+        goal_id=goal_id,
+        todo_id=todo_id,
+        owner=owner,
+    )
     todo = task_lease_todo_projection(
         registry_path=registry_path,
         goal_id=goal_id,
         todo_id=todo_id,
     )
-    constraint = task_lease_owner_constraint(todo, owner=owner)
+    constraint = task_lease_owner_constraint(
+        todo,
+        owner=owner,
+        registered_agents=registered_agent_ids_from_registry(registry_path, goal_id),
+    )
     if constraint.get("effective") is not True:
         reason = str(constraint.get("reason") or "owner_not_allowed")
         if reason == "todo_not_found":
             message = "todo is missing from the canonical projection"
         elif reason == "owner_excluded_from_todo":
             message = f"task lease owner {owner!r} is excluded from todo {todo_id!r}"
+        elif reason == "owner_not_registered":
+            message = f"task lease owner {owner!r} is not registered for goal {goal_id!r}"
         else:
             message = f"task lease owner {owner!r} is not eligible for todo {todo_id!r}"
         raise TaskLeaseError(
@@ -267,6 +309,7 @@ def active_conflicts(
     at: datetime,
 ) -> list[dict[str, Any]]:
     conflicts: list[dict[str, Any]] = []
+    registered_agents = registered_agent_ids_from_registry(registry_path, goal_id)
     lease_dir = task_lease_dir(runtime_root=runtime_root, goal_id=goal_id)
     if not lease_dir.exists():
         return conflicts
@@ -282,7 +325,11 @@ def active_conflicts(
             goal_id=goal_id,
             todo_id=lease_todo_id,
         )
-        if task_lease_owner_constraint(todo, owner=lease.get("owner")).get("effective") is not True:
+        if task_lease_owner_constraint(
+            todo,
+            owner=lease.get("owner"),
+            registered_agents=registered_agents,
+        ).get("effective") is not True:
             continue
         if write_scopes_overlap(write_scopes, normalize_required_write_scopes(lease.get("write_scopes"))):
             conflicts.append(
@@ -369,9 +416,11 @@ def acquire_task_lease(
         assert_expected_version(existing, expected_version)
         existing_is_effective = bool(
             lease_is_active(existing, at=at)
-            and task_lease_owner_constraint(todo, owner=(existing or {}).get("owner")).get(
-                "effective"
-            )
+            and task_lease_owner_constraint(
+                todo,
+                owner=(existing or {}).get("owner"),
+                registered_agents=registered_agent_ids_from_registry(registry_path, goal_id),
+            ).get("effective")
             is True
         )
         if existing_is_effective:
@@ -504,6 +553,12 @@ def transfer_task_lease(
     lease_path = task_lease_path(runtime_root=runtime_root, goal_id=goal_id, todo_id=todo_id)
     at = now_utc()
     with exclusive_file_lock(lock_target):
+        require_registered_task_lease_owner(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            todo_id=todo_id,
+            owner=owner,
+        )
         require_task_lease_owner_allowed(
             registry_path=registry_path,
             goal_id=goal_id,
@@ -606,6 +661,7 @@ def inspect_task_lease(
             executor_constraint = task_lease_owner_constraint(
                 todo,
                 owner=lease.get("owner"),
+                registered_agents=registered_agent_ids_from_registry(registry_path, goal_id),
             )
             if executor_constraint.get("effective") is not True:
                 active = False

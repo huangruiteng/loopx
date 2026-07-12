@@ -161,6 +161,48 @@ def main() -> int:
         assert first["lease"]["schema_version"] == "task_lease_v0", first
         assert first["lease"]["version"] == 1, first
 
+        unregistered_acquire = cli(
+            registry_path,
+            "acquire",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            TODO_C,
+            "--owner",
+            "codex-unregistered-peer",
+            "--idempotency-key",
+            "unregistered-acquire",
+            "--write-scope",
+            "scripts/**",
+            check=False,
+        )
+        assert unregistered_acquire.returncode == 1, unregistered_acquire.stdout
+        assert payload(unregistered_acquire)["error_code"] == "owner_not_registered", (
+            unregistered_acquire.stdout
+        )
+
+        legacy_unregistered_path = Path(first["lease_path"]).with_name(f"{TODO_C}.json")
+        legacy_unregistered_path.write_text(
+            json.dumps(
+                {
+                    **first["lease"],
+                    "todo_id": TODO_C,
+                    "owner": "codex-unregistered-peer",
+                    "write_scopes": ["scripts/**"],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        legacy_inspect = payload(
+            cli(registry_path, "inspect", "--goal-id", GOAL_ID, "--todo-id", TODO_C)
+        )
+        assert legacy_inspect["active"] is False, legacy_inspect
+        assert legacy_inspect["executor_constraint"]["reason"] == "owner_not_registered", (
+            legacy_inspect
+        )
+        legacy_unregistered_path.unlink()
+
         idempotent = payload(
             cli(
                 registry_path,
@@ -311,6 +353,30 @@ def main() -> int:
         assert blocked_transfer.returncode == 1, blocked_transfer.stdout
         assert payload(blocked_transfer)["error_code"] == "owner_excluded_from_todo", (
             blocked_transfer.stdout
+        )
+
+        unregistered_transfer = cli(
+            registry_path,
+            "transfer",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            TODO_A,
+            "--owner",
+            "codex-main-control",
+            "--idempotency-key",
+            "turn-1",
+            "--new-owner",
+            "codex-unregistered-peer",
+            "--new-idempotency-key",
+            "unregistered-transfer",
+            "--expected-version",
+            "2",
+            check=False,
+        )
+        assert unregistered_transfer.returncode == 1, unregistered_transfer.stdout
+        assert payload(unregistered_transfer)["error_code"] == "owner_not_registered", (
+            unregistered_transfer.stdout
         )
 
         set_excluded_agents(state_file, todo_id=TODO_A, agents=[])
