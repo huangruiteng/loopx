@@ -512,6 +512,7 @@ Representative public issue/PR cases now cover independent code paths:
 | [issue #3102](https://github.com/volcengine/OpenViking/issues/3102) → [merged PR #3115](https://github.com/volcengine/OpenViking/pull/3115) | Send `peer_id` for OpenClaw session messages. | First end-to-end fix, focused validation, publication, review, merge monitor, terminal closeout, and Kanban outcome. |
 | [issue #3090](https://github.com/volcengine/OpenViking/issues/3090) → [merged PR #3121](https://github.com/volcengine/OpenViking/pull/3121) | Accept sparse indexed rerank results. | A second independent module, repository-native reviewer routing, review notification fallback, and repeated lifecycle handling. |
 | [issue #3124](https://github.com/volcengine/OpenViking/issues/3124) → [merged PR #3148](https://github.com/volcengine/OpenViking/pull/3148) | Show configured VLM identity before usage telemetry exists. | Reusable knowledge distilled from a validated outcome and recovered by a future-style symptom query without falsely claiming decision influence. |
+| [issue #3152](https://github.com/volcengine/OpenViking/issues/3152) → [PR #3176](https://github.com/volcengine/OpenViking/pull/3176) | Anchor user-scoped nested resource writes at the direct parent. | First fresh-issue rolling-index dogfood with decision influence and staleness recorded separately from retrieval volume. |
 
 The concrete OpenViking memory run used a revision-scoped public
 `viking://resources/.../<git-revision>` namespace. After the #3148 delivery
@@ -523,6 +524,18 @@ status when usage telemetry is empty” returned the knowledge overview and body
 an exact read recovered the causal and boundary fields. That proves
 discoverability, not future patch value, so decision influence remains zero
 until a different issue actually uses the result.
+
+The first fresh-issue rolling-index dogfood was deliberately mixed rather than
+reported as a blanket success. For issue #3152, a symptom/module query located
+the relevant source and nearby tests, and a later validation query recovered
+the focused test surface. A causal query was weak and did not determine the
+patch. Every used locator was re-read and confirmed in the current checkout at
+revision `5bfa9b617ecff478f825ca435a35bc4222b30582`; the reproduction and code
+change were derived from that checkout. The resulting accounting is therefore:
+useful `change_scope` and `validation` influence, zero memory patch authority,
+and no stale result allowed into the compact repository context. This measured
+positive-but-mixed result keeps rolling-main retrieval optional and fail-open
+until repeated independent issues show stronger value.
 
 The pilot has also produced generic LoopX fixes: [PR
 #1784](https://github.com/huangruiteng/loopx/pull/1784) established early
@@ -549,8 +562,9 @@ revision and focused smokes, not the pilot narrative, remain authoritative.
 - idempotent `pr_merge` event projection and todo `resume_when` recovery;
 - issue/outcome Kanban projection, repository snapshots, attributable impact
   metrics, and `Monthly Impact` rows;
-- rolling-default-branch OpenViking retrieval plus explicit reusable-knowledge
-  writeback with honest decision-influence accounting;
+- rolling-default-branch OpenViking retrieval, one fresh-issue measured
+  dogfood, and explicit reusable-knowledge writeback with honest
+  decision-influence accounting;
 - LoopX todo/quota/monitor/Kanban integration through the host agent.
 
 ### Next stage
@@ -559,7 +573,7 @@ revision and focused smokes, not the pilot narrative, remain authoritative.
 - resolve public GitHub identities and repository teams without leaking email;
 - make publication authority visible per external action;
 - make unchanged lifecycle observations physically idempotent everywhere;
-- dogfood two-stage repository-memory retrieval on fresh issues and record
+- repeat two-stage repository-memory retrieval on independent fresh issues and record
   confirmed/refuted/stale results plus concrete reproduction, scope, patch, or
   validation influence;
 - add revision-lineage supersession and stale quarantine for reusable knowledge;
