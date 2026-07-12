@@ -874,7 +874,10 @@ def _is_monitor_only_lane(
 ) -> bool:
     return bool(
         _is_continuous_monitor_lane(work_lane_contract)
-        and work_lane_contract.get("must_attempt_work") is False
+        and (
+            work_lane_contract.get("must_attempt_work") is False
+            or work_lane_contract.get("monitor_kind") == "todo_monitor_due"
+        )
     )
 
 
@@ -1259,7 +1262,12 @@ def build_goal_frontier_projection_from_summaries(
         agent_todo_summary=agent_todo_summary,
         agent_id=agent_id,
     )
-    monitor_only_lane = _is_monitor_only_lane(work_lane_contract)
+    monitor_only_lane = bool(
+        _is_monitor_only_lane(work_lane_contract)
+        and agent_counts.get("monitor", 0) > 0
+        and agent_counts.get("advancement", 0) == 0
+        and sum(frontier_counts.values()) == 0
+    )
     return build_goal_frontier_projection(
         goal_id=goal_id,
         agent_id=agent_id,

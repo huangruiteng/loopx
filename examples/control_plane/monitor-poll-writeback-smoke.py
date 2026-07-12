@@ -309,7 +309,7 @@ def assert_unchanged_writeback() -> None:
         assert payload["before"]["work_lane_contract"]["obligation"] == "attempt_due_monitor", payload
         assert summary["after"]["effective_action"] == payload["after"]["effective_action"], payload
         assert "interaction_contract" not in summary["after"], payload
-        assert payload["after"]["interaction_contract"]["mode"] == "bounded_delivery", payload
+        assert payload["after"]["interaction_contract"]["mode"] == "autonomous_replan", payload
         records = monitor_poll_records(registry_path)
         assert [record["classification"] for record in records] == ["quota_monitor_poll"], records
 
@@ -499,7 +499,7 @@ def assert_target_key_cannot_hijack_selected_due_monitor() -> None:
         )
         assert "- ok: `False`" in markdown, markdown
         assert "- mode: `monitor-poll`" in markdown, markdown
-        assert f"- todo_id: ``" in markdown, markdown
+        assert "- todo_id: ``" in markdown, markdown
         assert f"- target_key: `{OTHER_TARGET_KEY}`" in markdown, markdown
         assert "- material_change: `True`" in markdown, markdown
         assert "- appended: `False`" in markdown, markdown

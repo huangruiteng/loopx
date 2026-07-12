@@ -103,6 +103,31 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-agent-context-retention-") as raw_tmp:
         registry_path, runtime = write_fixture(Path(raw_tmp))
+        runs_dir = runtime / "goals" / GOAL_ID / "runs"
+        with (runs_dir / "index.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "generated_at": "2026-07-06T00:07:00+00:00",
+                        "goal_id": GOAL_ID,
+                        "classification": "state_refreshed",
+                        "agent_id": SIDE_AGENT,
+                        "recommended_action": "keep side vision unchanged",
+                        "json_path": str(runs_dir / "unchanged-side-vision.json"),
+                        "markdown_path": str(runs_dir / "unchanged-side-vision.md"),
+                        "vision_checkpoint": {
+                            "schema_version": "vision_checkpoint_v0",
+                            "agent_id": SIDE_AGENT,
+                            "required": True,
+                            "satisfied": True,
+                            "decision": "unchanged_with_reason",
+                            "unchanged_reason": "The active side vision still applies.",
+                        },
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
         history = collect_history(
             registry_path=registry_path,
             runtime_root=runtime,
@@ -112,9 +137,9 @@ def main() -> None:
         goal = history["goals"][0]
         latest_runs = goal["latest_runs"]
         assert [run["recommended_action"] for run in latest_runs[:3]] == [
+            "keep side vision unchanged",
             "latest main",
             "latest product",
-            "second main",
         ], latest_runs
         assert any(
             run.get("agent_id") == SIDE_AGENT and run.get("agent_vision")

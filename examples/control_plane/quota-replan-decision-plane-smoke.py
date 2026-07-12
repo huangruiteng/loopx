@@ -544,6 +544,25 @@ def assert_future_scheduled_monitor_requires_replan_without_frontier_delta() -> 
     assert "required_reads" in guard["interaction_contract"]["cli_channel"], guard
 
 
+def assert_due_monitor_requires_replan_without_advancement_frontier() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            [monitor_item(next_due_at="2000-01-01T00:00:00+00:00")],
+            replan_obligation=None,
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    assert guard["should_run"] is True, guard
+    assert guard["goal_frontier_projection"]["replan_required"] is True, guard
+    assert guard["goal_frontier_projection"]["monitor_only_lanes"]["present"] is True, guard
+    obligation = guard["autonomous_replan_obligation"]
+    assert obligation["triggers"][0]["kind"] == "frontier_exhausted_monitor_lane", guard
+    assert obligation["triggers"][0]["future_monitor_schedule_present"] is False, guard
+
+
 def assert_ready_deferred_successor_beats_monitor_quiet_skip() -> None:
     guard = build_quota_should_run(
         status_payload(
@@ -1426,6 +1445,7 @@ def main() -> None:
     assert_replan_beats_monitor_quiet_skip()
     assert_frontier_delta_ack_clears_existing_replan_obligation()
     assert_future_scheduled_monitor_requires_replan_without_frontier_delta()
+    assert_due_monitor_requires_replan_without_advancement_frontier()
     assert_ready_deferred_successor_beats_monitor_quiet_skip()
     assert_completed_advancement_without_successor_beats_monitor_quiet_skip()
     assert_replan_preserves_current_agent_runnable_frontier()

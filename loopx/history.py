@@ -10,7 +10,6 @@ from .authority import goal_authority_registry_summary
 from .control_plane import compact_control_plane_policy
 from .control_plane.runtime.time import now_local_iso
 from .control_plane.runtime.run_index_duplicates import (
-    STRUCTURED_INDEX_KEYS,
     classify_index_duplicate_records,
     duplicate_repair_decision,
     index_identity,
@@ -22,7 +21,6 @@ from .execution_profile import compact_execution_profile
 from .paths import resolve_runtime_root
 from .presentation.markdown import (
     markdown_code,
-    markdown_scalar,
     markdown_table_row,
     markdown_table_separator,
 )
@@ -687,21 +685,44 @@ def latest_runs_with_agent_context(
     *,
     limit: int,
 ) -> list[dict[str, Any]]:
-    """Keep recent runs plus each agent's newest vision/replan context run."""
+    """Keep recent runs plus each agent's newest durable context per field."""
 
     bounded = max(0, limit)
     selected = list(runs[:bounded])
     selected_ids = {id(run) for run in selected}
-    agents_with_context: set[str] = set()
+    retained_context_fields: set[tuple[str, str]] = set()
+    retired_agent_visions: set[str] = set()
 
     for run in runs:
         agent_id = str(run.get("agent_id") or "").strip()
-        if not agent_id or agent_id in agents_with_context:
+        if not agent_id:
             continue
-        if not any(isinstance(run.get(field), dict) for field in PER_AGENT_CONTEXT_RUN_FIELDS):
-            continue
-        agents_with_context.add(agent_id)
-        if id(run) not in selected_ids:
+        fields_to_retain: list[str] = []
+        checkpoint = (
+            run.get("vision_checkpoint")
+            if isinstance(run.get("vision_checkpoint"), dict)
+            else {}
+        )
+        if (
+            checkpoint.get("satisfied") is True
+            and str(checkpoint.get("decision") or "").strip()
+            == "retired_or_superseded"
+        ):
+            retired_agent_visions.add(agent_id)
+            retained_context_fields.add((agent_id, "agent_vision"))
+
+        for field in PER_AGENT_CONTEXT_RUN_FIELDS:
+            context_key = (agent_id, field)
+            if context_key in retained_context_fields:
+                continue
+            if not isinstance(run.get(field), dict):
+                continue
+            if field == "agent_vision" and agent_id in retired_agent_visions:
+                continue
+            retained_context_fields.add(context_key)
+            fields_to_retain.append(field)
+
+        if fields_to_retain and id(run) not in selected_ids:
             selected.append(run)
             selected_ids.add(id(run))
     return selected
