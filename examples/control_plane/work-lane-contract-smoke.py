@@ -706,9 +706,9 @@ def assert_due_monitor_only_requires_attempt() -> None:
         goal_id=GOAL_ID,
     )
     lane = guard["work_lane_contract"]
-    assert guard["decision"] == "run", guard
+    assert guard["decision"] == "autonomous_replan_required", guard
     assert guard["should_run"] is True, guard
-    assert guard["effective_action"] == "normal_run", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
     assert lane["lane"] == "continuous_monitor", lane
     assert lane["monitor_kind"] == "todo_monitor_due", lane
     assert lane["obligation"] == "attempt_due_monitor", lane
@@ -717,8 +717,11 @@ def assert_due_monitor_only_requires_attempt() -> None:
     assert lane["monitor_due_count"] == 1, lane
     assert lane["selected_next_due_at"] == PAST_DUE_AT, lane
     assert guard["agent_todo_summary"]["monitor_due_count"] == 1, guard
-    assert guard["recommended_action"] == due_todo, guard
-    assert guard["interaction_contract"]["agent_channel"]["primary_action"] == due_todo, guard
+    assert guard["goal_frontier_projection"]["replan_required"] is True, guard
+    assert guard["interaction_contract"]["mode"] == "autonomous_replan", guard
+    assert guard["interaction_contract"]["agent_channel"]["primary_action"] == (
+        f"run one bounded autonomous replan slice around {due_todo}"
+    ), guard
     assert "agent_lane_next_action" not in guard, guard
     markdown = render_quota_should_run_markdown(guard)
     assert "work_lane_monitor_due: count=1" in markdown, markdown

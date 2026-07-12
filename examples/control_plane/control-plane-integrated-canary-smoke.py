@@ -531,12 +531,14 @@ def assert_due_monitor_poll_state_machine(root: Path) -> None:
     )
     assert quota_payload["ok"] is True, quota_payload
     assert quota_payload["should_run"] is True, quota_payload
-    assert quota_payload["effective_action"] == "normal_run", quota_payload
+    assert quota_payload["decision"] == "autonomous_replan_required", quota_payload
+    assert quota_payload["effective_action"] == "autonomous_replan_required", quota_payload
     lane = quota_payload["work_lane_contract"]
     assert lane["monitor_kind"] == "todo_monitor_due", lane
     assert lane["obligation"] == "attempt_due_monitor", lane
     assert lane["selected_todo_id"] == MONITOR_TODO_ID, lane
     contract = quota_payload["interaction_contract"]
+    assert contract["mode"] == "autonomous_replan", contract
     assert contract["agent_channel"]["must_attempt"] is True, contract
     assert contract["agent_channel"]["quiet_noop_allowed"] is False, contract
     assert contract["cli_channel"]["spend_allowed_now"] is False, contract

@@ -28,6 +28,13 @@ PRIVATE_SHAPES = [
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\bBearer\s+[A-Za-z0-9._-]+"),
 ]
+IMAGE_SIGNATURES = {
+    ".gif": (b"GIF87a", b"GIF89a"),
+    ".jpeg": (b"\xff\xd8\xff",),
+    ".jpg": (b"\xff\xd8\xff",),
+    ".png": (b"\x89PNG\r\n\x1a\n",),
+    ".webp": (b"RIFF",),
+}
 
 
 def tracked_dashboard_files() -> list[Path]:
@@ -56,14 +63,30 @@ def assert_public_safe(text: str, *, label: str) -> None:
             raise AssertionError(f"{label} matched private shape {pattern.pattern!r}")
 
 
+def assert_tracked_file_public_safe(path: Path) -> None:
+    payload = path.read_bytes()
+    signatures = IMAGE_SIGNATURES.get(path.suffix.lower())
+    if signatures is not None:
+        if not any(payload.startswith(signature) for signature in signatures):
+            raise AssertionError(f"{path} does not match its image signature")
+        if path.suffix.lower() == ".webp" and payload[8:12] != b"WEBP":
+            raise AssertionError(f"{path} does not match its WebP signature")
+        return
+
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise AssertionError(f"unrecognized binary tracked fixture: {path}") from exc
+    assert_public_safe(text, label=str(path))
+
+
 def main() -> int:
     files = tracked_dashboard_files()
     if not files:
         raise AssertionError("no tracked dashboard files found")
 
     for path in files:
-        text = (REPO_ROOT / path).read_text(encoding="utf-8")
-        assert_public_safe(text, label=str(path))
+        assert_tracked_file_public_safe(REPO_ROOT / path)
 
     assert_public_safe("./fixtures/runtime", label="relative fixture path")
     assert_public_safe("/tmp/loopx-dashboard-smoke", label="temporary path")

@@ -153,11 +153,14 @@ def main() -> int:
             "resolution_summary": "source=mode:user_gate drift=true",
         },
         "monitor": {
-            "decision": "run",
-            "effective_action": "normal_run",
-            "mode": "bounded_delivery",
-            "primary_action": "todo_monitor: [P0] Poll the due monitor.",
-            "resolution_summary": "source=selected drift=true",
+            "decision": "autonomous_replan_required",
+            "effective_action": "autonomous_replan_required",
+            "mode": "autonomous_replan",
+            "primary_action": (
+                "run one bounded autonomous replan slice around todo_monitor: "
+                "[P0] Poll the due monitor."
+            ),
+            "resolution_summary": "source=mode:autonomous_replan drift=true",
         },
         "replan": {
             "decision": "autonomous_replan_required",
