@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - non-POSIX fallback
+    fcntl = None  # type: ignore[assignment]
 
 from ..domain_state import default_domain_state_file_path, upsert_domain_state_jsonl
 
@@ -92,6 +99,105 @@ def upsert_issue_fix_feasibility_ledger_jsonl(
         key=issue_fix_feasibility_ledger_key(payload),
         existing_key_fn=issue_fix_feasibility_ledger_key,
     )
+
+
+def promote_issue_fix_feasibility_ledger_jsonl(
+    ledger_path: str | Path,
+    payload: dict[str, Any],
+    *,
+    source_issue_ref: str,
+) -> dict[str, Any]:
+    """Atomically replace a discovered placeholder with one canonical issue row."""
+
+    if payload.get("ok") is not True:
+        raise ValueError(
+            "only successful issue-fix feasibility payloads can be promoted"
+        )
+    canonical_key = issue_fix_feasibility_ledger_key(payload)
+    source_ref = str(source_issue_ref or "").strip()
+    if not source_ref or source_ref == canonical_key["issue_ref"]:
+        raise ValueError("source_issue_ref must differ from the canonical issue_ref")
+    path = Path(ledger_path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_name(path.name + ".lock")
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        if fcntl is not None:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            rows: list[dict[str, Any]] = []
+            source_found = False
+            canonical_found = False
+            canonical_existing: dict[str, Any] | None = None
+            if path.exists():
+                for index, line in enumerate(
+                    path.read_text(encoding="utf-8").splitlines(), start=1
+                ):
+                    if not line.strip():
+                        continue
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError as exc:
+                        raise ValueError(
+                            f"invalid JSONL row {index} in issue-fix feasibility ledger"
+                        ) from exc
+                    if not isinstance(row, dict):
+                        continue
+                    try:
+                        row_key = issue_fix_feasibility_ledger_key(row)
+                    except ValueError:
+                        rows.append(row)
+                        continue
+                    if row_key == {
+                        "repo": canonical_key["repo"],
+                        "issue_ref": source_ref,
+                    }:
+                        source_found = True
+                        continue
+                    if row_key == canonical_key:
+                        canonical_found = True
+                        canonical_existing = row
+                        continue
+                    rows.append(row)
+            projection = payload.get("domain_state_projection")
+            if isinstance(projection, dict):
+                projection["write_performed"] = True
+            candidate = {**payload, "domain_state_key": canonical_key}
+            rows.append(candidate)
+            unchanged = bool(
+                canonical_found and not source_found and canonical_existing == candidate
+            )
+            if not unchanged:
+                with tempfile.NamedTemporaryFile(
+                    "w",
+                    encoding="utf-8",
+                    dir=path.parent,
+                    prefix=f"{path.name}.",
+                    suffix=".tmp",
+                    delete=False,
+                ) as tmp_file:
+                    tmp_name = tmp_file.name
+                    tmp_file.write(
+                        "".join(
+                            json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n"
+                            for row in rows
+                        )
+                    )
+                os.replace(tmp_name, path)
+        finally:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+    projection = payload.get("domain_state_projection")
+    if isinstance(projection, dict):
+        projection["write_performed"] = not unchanged
+    return {
+        "status": "unchanged" if unchanged else "promoted",
+        "write_performed": not unchanged,
+        "source_placeholder_removed": source_found,
+        "canonical_row_retained": True,
+        "duplicate_rows_remaining": 0,
+        "row_count": len(rows),
+        "path_recorded": False,
+    }
 
 
 def issue_fix_pr_lifecycle_ledger_key(payload: dict[str, Any]) -> dict[str, Any]:
