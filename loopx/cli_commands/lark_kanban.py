@@ -172,6 +172,20 @@ def register_lark_kanban_commands(
     )
     projection.add_argument("--include-done", action="store_true")
     projection.add_argument("--limit", type=int, default=50)
+    projection.add_argument(
+        "--reconcile-source",
+        action="store_true",
+        help=(
+            "Preview or execute orphan retirement only inside the projection's "
+            "stable source namespace. Requires --source-snapshot-complete and "
+            "--include-done; agent-filtered or row-limited inputs are rejected."
+        ),
+    )
+    projection.add_argument(
+        "--source-snapshot-complete",
+        action="store_true",
+        help="Attest that the projection contains the complete source namespace.",
+    )
     projection.add_argument("--execute", action="store_true", help="Actually upsert records and remember record ids.")
 
     heartbeat = sub.add_parser(
@@ -461,6 +475,8 @@ def handle_lark_kanban_command(
                 agent_id=args.agent_id,
                 source_id=args.source_id,
                 sink_visibility=args.sink_visibility,
+                reconcile_source=bool(args.reconcile_source),
+                source_snapshot_complete=bool(args.source_snapshot_complete),
                 config_path=config_path,
                 include_done=bool(args.include_done),
                 limit=args.limit,

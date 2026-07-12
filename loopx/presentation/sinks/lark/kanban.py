@@ -21,6 +21,10 @@ from ....control_plane.todos.contract import (
     normalize_explicit_todo_task_class,
     normalize_todo_status,
 )
+from ...projection_source_reconcile import (
+    plan_projection_source_reconcile,
+    validate_projection_source_reconcile_request,
+)
 from . import issue_fix_surface
 from .projection_rows import (
     projection_lifecycle_parts as _projection_lifecycle_parts,
@@ -30,6 +34,12 @@ from .projection_rows import (
     projection_rows_from_payload as _projection_rows_from_payload,
     projection_text_list as _as_text_list,
     todo_matches_agent_scope,
+)
+from .record_io import (
+    build_record_delete_command,
+    lark_record_rows,
+    record_list_is_complete,
+    todo_record_entries,
 )
 from .sync_receipt import (
     compact_lark_kanban_sync_receipt as compact_lark_kanban_sync_receipt,
@@ -625,24 +635,6 @@ def append_history(existing: Any, entry: str, *, limit: int = TEXT_LIMIT) -> str
     if len(combined) <= limit:
         return combined
     return combined[-limit:]
-
-
-def lark_record_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
-    fields = data.get("fields") if isinstance(data, dict) else None
-    rows = data.get("data") if isinstance(data, dict) else None
-    record_ids = data.get("record_id_list") if isinstance(data, dict) else None
-    if not isinstance(fields, list) or not isinstance(rows, list):
-        return []
-    records: list[dict[str, Any]] = []
-    for index, values in enumerate(rows):
-        if not isinstance(values, list):
-            continue
-        record = {str(field): values[pos] if pos < len(values) else None for pos, field in enumerate(fields)}
-        if isinstance(record_ids, list) and index < len(record_ids):
-            record["_record_id"] = record_ids[index]
-        records.append(record)
-    return records
 
 
 def normalize_select_value(value: Any) -> str:
@@ -1898,6 +1890,8 @@ def sync_loopx_projection_to_lark_kanban(
     include_done: bool = False,
     limit: int = 50,
     sink_visibility: str = SINK_VISIBILITY_OWNER_ONLY,
+    reconcile_source: bool = False,
+    source_snapshot_complete: bool = False,
     execute: bool = False,
     runner: CommandRunner = default_subprocess_runner,
 ) -> dict[str, Any]:
@@ -1917,9 +1911,63 @@ def sync_loopx_projection_to_lark_kanban(
     )
     warnings = [*namespace_warnings, *warnings]
 
+    complete_rows, complete_warnings = rows, []
+    if reconcile_source:
+        _, complete_rows, complete_warnings = _projection_rows_from_payload(
+            projection,
+            goal_id=goal_id,
+            agent_id=None,
+            source_id=resolved_source_id,
+            include_done=True,
+            limit=2**31 - 1,
+        )
+    validate_projection_source_reconcile_request(
+        requested=reconcile_source,
+        source_snapshot_complete=source_snapshot_complete,
+        agent_id=agent_id,
+        include_done=include_done,
+        namespace_warnings=namespace_warnings,
+        selected_row_count=len(rows),
+        complete_row_count=len(complete_rows),
+        complete_warnings=complete_warnings,
+    )
+
     commands: list[dict[str, Any]] = []
-    local, record_map = _load_lark_todo_record_map(
-        config, config_path=config_path, execute=execute, commands=commands, runner=runner
+    local, record_map, remote_records, remote_list_complete = _load_lark_todo_record_map(
+        config,
+        config_path=config_path,
+        execute=execute,
+        inspect_remote=reconcile_source,
+        commands=commands,
+        runner=runner,
+    )
+    if reconcile_source and not remote_list_complete:
+        raise ValueError(
+            "source reconcile requires a complete remote record list"
+        )
+
+    desired_keys = {
+        f"{str(row.get('goal_id') or resolved_goal_id)}:{str(row.get('todo_id') or '').strip()}"
+        for row in rows
+    }
+    reconcile_plan = (
+        plan_projection_source_reconcile(
+            goal_id=resolved_goal_id,
+            source_id=resolved_source_id,
+            desired_keys=sorted(desired_keys),
+            local_record_map=record_map,
+            remote_records=remote_records,
+        )
+        if reconcile_source
+        else {
+            "schema_version": "projection_source_reconcile_plan_v0",
+            "goal_id": resolved_goal_id,
+            "source_id": resolved_source_id,
+            "remote_orphan_record_ids": [],
+            "local_mapping_keys_to_remove": [],
+            "remote_delete_count": 0,
+            "local_mapping_delete_count": 0,
+        }
     )
 
     results: list[dict[str, Any]] = []
@@ -1955,6 +2003,28 @@ def sync_loopx_projection_to_lark_kanban(
         if execute and not result.get("ok"):
             break
 
+    executed_remote_delete_count = 0
+    if ok and reconcile_source and reconcile_plan["remote_orphan_record_ids"]:
+        delete_result = _run_command(
+            build_record_delete_command(
+                config,
+                record_ids=reconcile_plan["remote_orphan_record_ids"],
+            ),
+            execute=execute,
+            runner=runner,
+        )
+        commands.append(delete_result)
+        ok = ok and bool(delete_result.get("ok"))
+        if execute and delete_result.get("ok"):
+            executed_remote_delete_count = reconcile_plan["remote_delete_count"]
+
+    removed_local_mapping_count = 0
+    if execute and ok and reconcile_source:
+        for key in reconcile_plan["local_mapping_keys_to_remove"]:
+            if key in record_map:
+                removed_local_mapping_count += 1
+                record_map.pop(key, None)
+
     if execute and ok:
         _persist_lark_todo_record_map(config, config_path=config_path, local=local, record_map=record_map)
 
@@ -1969,6 +2039,16 @@ def sync_loopx_projection_to_lark_kanban(
         "public_safe_redaction": public_safe,
         "projection_schema_version": projection.get("schema_version"),
         "row_count": len(rows),
+        "source_reconcile": {
+            **reconcile_plan,
+            "requested": reconcile_source,
+            "source_snapshot_complete": source_snapshot_complete,
+            "mode": "execute" if reconcile_source and execute else (
+                "preview" if reconcile_source else "disabled"
+            ),
+            "executed_remote_delete_count": executed_remote_delete_count,
+            "removed_local_mapping_count": removed_local_mapping_count,
+        },
         "records": results,
         "commands": commands,
         "warnings": warnings,
@@ -2043,8 +2123,13 @@ def sync_loopx_todos_to_lark_kanban(
     ]
 
     commands: list[dict[str, Any]] = []
-    local, record_map = _load_lark_todo_record_map(
-        config, config_path=config_path, execute=execute, commands=commands, runner=runner
+    local, record_map, _, _ = _load_lark_todo_record_map(
+        config,
+        config_path=config_path,
+        execute=execute,
+        inspect_remote=False,
+        commands=commands,
+        runner=runner,
     )
 
     results: list[dict[str, Any]] = []
@@ -2142,12 +2227,13 @@ def sync_loopx_todos_to_lark_kanban(
 
 def _load_lark_todo_record_map(
     config: LarkKanbanConfig, *, config_path: Path | None, execute: bool,
+    inspect_remote: bool,
     commands: list[dict[str, Any]], runner: CommandRunner,
-) -> tuple[dict[str, Any], dict[str, str]]:
+) -> tuple[dict[str, Any], dict[str, str], list[dict[str, str]], bool | None]:
     local = read_lark_kanban_local_config(config_path) if config_path else {}
     record_map = _todo_record_map_from_local_config(local)
-    if not execute:
-        return local, record_map
+    if not execute and not inspect_remote:
+        return local, record_map, [], None
 
     list_config = LarkKanbanConfig(
         **{"base_" + "token": config.base_token},
@@ -2158,9 +2244,13 @@ def _load_lark_todo_record_map(
     )
     list_result = _run_command(build_record_list_command(list_config), execute=True, runner=runner)
     commands.append(list_result)
+    remote_records: list[dict[str, str]] = []
+    remote_complete = False
     if list_result.get("ok"):
-        record_map.update(_todo_record_map_from_lark_records(list_result.get("json")))
-    return local, record_map
+        remote_records = todo_record_entries(list_result.get("json"))
+        record_map.update({item["key"]: item["record_id"] for item in remote_records})
+        remote_complete = record_list_is_complete(list_result.get("json"))
+    return local, record_map, remote_records, remote_complete
 
 
 def _todo_record_map_from_local_config(local: dict[str, Any]) -> dict[str, str]:
@@ -2168,17 +2258,6 @@ def _todo_record_map_from_local_config(local: dict[str, Any]) -> dict[str, str]:
     if not isinstance(records, dict):
         return {}
     return {str(key): str(value) for key, value in records.items() if str(key).strip() and str(value).strip()}
-
-
-def _todo_record_map_from_lark_records(parsed: Any) -> dict[str, str]:
-    result: dict[str, str] = {}
-    for record in lark_record_rows(parsed if isinstance(parsed, dict) else {}):
-        todo_id = str(record.get("LoopX Todo ID") or "").strip()
-        row_goal_id = str(record.get("LoopX Goal ID") or "").strip()
-        record_id = str(record.get("_record_id") or "").strip()
-        if todo_id and row_goal_id and record_id:
-            result[f"{row_goal_id}:{todo_id}"] = record_id
-    return result
 
 
 def _persist_lark_todo_record_map(
