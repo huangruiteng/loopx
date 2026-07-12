@@ -249,6 +249,78 @@ def assert_agent_due_monitor_survives_claimed_lane_compaction() -> None:
     ), selected
 
 
+def assert_legacy_and_canonical_shared_lanes_stay_in_parity() -> None:
+    items = [
+        {
+            "index": 1,
+            "todo_id": "todo_shared_monitor",
+            "text": "[P1] Observe the shared due monitor.",
+            "status": "open",
+            "task_class": "continuous_monitor",
+            "claimed_by": "codex-product-capability",
+            "target_key": "shared-monitor",
+            "next_due_at": "2000-01-01T00:00:00+00:00",
+        },
+        {
+            "index": 2,
+            "todo_id": "todo_shared_advancement",
+            "text": "[P1] Continue the shared advancement lane.",
+            "status": "open",
+            "task_class": "advancement_task",
+            "claimed_by": "codex-product-capability",
+        },
+    ]
+    active_next = [items[1]]
+    monitor_writeback = {"supported": True, "source": "active_state"}
+    canonical = summarize_user_todos_for_quota(
+        {
+            "schema_version": "todo_summary_v0",
+            "source_section": "Agent Todo",
+            "total_count": 2,
+            "open_count": 2,
+            "done_count": 0,
+            "items": items,
+            "active_next_action_items": active_next,
+            "monitor_writeback": monitor_writeback,
+        },
+        agent_identity=AGENT_IDENTITY,
+    )
+    legacy = summarize_project_asset_todos_for_quota(
+        {
+            "source_section": "project_asset",
+            "open": 2,
+            "done": 0,
+            "first_open_items": items,
+            "active_next_action_items": active_next,
+            "monitor_writeback": monitor_writeback,
+        },
+        agent_identity=AGENT_IDENTITY,
+    )
+    assert canonical is not None and legacy is not None
+    shared_keys = {
+        "open_count",
+        "first_open_items",
+        "first_executable_items",
+        "monitor_open_items",
+        "monitor_due_count",
+        "monitor_due_items",
+        "active_next_action_items",
+        "active_next_action_executable_items",
+        "backlog_items",
+        "executable_backlog_items",
+        "claimed_open_count",
+        "unclaimed_open_count",
+        "claimed_open_items",
+        "claimed_advancement_open_items",
+        "claimed_monitor_open_items",
+        "current_agent_claimed_open_items",
+        "current_agent_claimed_advancement_items",
+        "current_agent_claimed_monitor_items",
+    }
+    for key in shared_keys:
+        assert canonical.get(key) == legacy.get(key), (key, canonical, legacy)
+
+
 def assert_user_gate_hint_detection_is_preserved() -> None:
     assert is_user_gate_todo_item(
         {
@@ -337,6 +409,7 @@ def main() -> None:
     assert_project_asset_fallback_and_canonical_precedence()
     assert_project_asset_summary_reuses_canonical_shape()
     assert_agent_due_monitor_survives_claimed_lane_compaction()
+    assert_legacy_and_canonical_shared_lanes_stay_in_parity()
     assert_user_gate_hint_detection_is_preserved()
     assert_quota_payload_summary_compacts_hot_path_lanes()
     print("quota todo summary read model smoke passed")
