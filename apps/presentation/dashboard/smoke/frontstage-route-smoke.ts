@@ -151,6 +151,10 @@ includes(frontstageSource, "Start the loop from one TUI message", "developer one
 includes(frontstageSource, "workspace_guard isolates peer writes", "developer workspace guard copy");
 includes(frontstageSource, "Developer mode ignores statusUrl", "developer public statusUrl guard");
 includes(frontstageSource, 'data-testid="frontstage-public-showcase-contract"', "public showcase contract panel");
+includes(frontstageSource, "import.meta.env.BASE_URL", "showcase asset base path");
+includes(frontstageSource, 'showcaseAssetPath("openviking-issue-fix-explore.png")', "issue-fix showcase asset");
+includes(frontstageSource, 'showcaseAssetPath("auto-ml-experiment-explore.jpg")', "Auto ML showcase asset");
+excludes(frontstageSource, 'image: "/showcase/', "root-relative showcase asset path");
 includes(frontstageSource, "Local status URLs stay behind explicit Ops live URLs", "ops-only live status copy");
 includes(frontstageSource, 'data-testid="frontstage-ops-entry-hint"', "explicit ops entry hint");
 includes(frontstageSource, "Use mode=ops with statusUrl.", "wrapped ops entry hint copy");

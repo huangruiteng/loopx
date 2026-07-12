@@ -2903,19 +2903,21 @@ function PublicShowcaseBoundaryPanel() {
   );
 }
 
+const showcaseAssetPath = (assetName: string) => `${import.meta.env.BASE_URL}showcase/${assetName}`;
+
 const showcaseGraphStories = [
   {
     eyebrow: "Open-source issue fix",
     title: "PR delivery and reusable capability evolve together",
     body: "Merged and open fixes stay connected to reviewer routing, repository knowledge, terminal resume, and the next reusable discovery loop.",
-    image: "/showcase/openviking-issue-fix-explore.png",
+    image: showcaseAssetPath("openviking-issue-fix-explore.png"),
     imageAlt: "Open-source issue-fix Explore graph linking focused PR delivery with reusable LoopX capabilities",
   },
   {
     eyebrow: "Auto ML Experiment",
     title: "Evidence branches stay visible until promote or stop",
     body: "Matched baselines, invalid lineages, negative results, running replicates, capacity slots, and decision gates remain traceable in one Explore topology.",
-    image: "/showcase/auto-ml-experiment-explore.jpg",
+    image: showcaseAssetPath("auto-ml-experiment-explore.jpg"),
     imageAlt: "Auto ML Experiment Explore graph with experiment lineages, evidence gates, and promotion decisions",
   },
 ];
