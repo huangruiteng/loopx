@@ -25,8 +25,12 @@ def vision(state: str) -> dict[str, object]:
 
 
 @pytest.mark.parametrize("state", ["vision_closed", "closed", "satisfied"])
-def test_active_goal_closed_stage_requires_successor_vision(state: str) -> None:
-    gaps = acceptance_gaps_from_agent_vision(vision(state), goal_status="active")
+@pytest.mark.parametrize("goal_status", ["active", "active-read-only"])
+def test_active_goal_closed_stage_requires_successor_vision(
+    state: str,
+    goal_status: str,
+) -> None:
+    gaps = acceptance_gaps_from_agent_vision(vision(state), goal_status=goal_status)
 
     assert len(gaps) == 1
     assert gaps[0]["kind"] == "vision_successor_required"
@@ -38,6 +42,7 @@ def test_active_goal_closed_stage_requires_successor_vision(state: str) -> None:
     [
         ("vision_closed", "completed"),
         ("retired", "active"),
+        ("retired_or_superseded", "active"),
         ("superseded", "active"),
         ("no_followup", "active"),
     ],
