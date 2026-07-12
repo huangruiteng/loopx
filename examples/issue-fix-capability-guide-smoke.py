@@ -74,6 +74,7 @@ def main() -> int:
         "triage_only",
         "loopx issue-fix reviewer-plan",
         "loopx issue-fix reviewer-request",
+        "loopx issue-fix promote-discovered-issue",
         "CODEOWNERS",
         "continuous_monitor",
         "runnable_successor",
@@ -90,6 +91,7 @@ def main() -> int:
         "memory_verified_decision_influence",
         "python3 examples/issue-fix-reviewer-recommendation-smoke.py",
         "python3 examples/issue-fix-reviewer-request-smoke.py",
+        "python3 examples/issue-fix-discovered-issue-promotion-smoke.py",
         "--notification-sinks-json",
         "python3 examples/issue-fix-reviewer-notification-sink-smoke.py",
     )

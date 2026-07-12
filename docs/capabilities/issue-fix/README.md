@@ -2,6 +2,7 @@
 
 [中文](README.zh-CN.md) · [Capability index](../README.md) ·
 [Workflow contract](protocols/issue-fix-workflow-contract-v0.md) ·
+[Discovered issue promotion](protocols/issue-fix-discovered-issue-promotion-v0.md) ·
 [Acceptance loop](protocols/issue-fix-acceptance-loop-v0.md) ·
 [Reviewer recommendation](protocols/issue-fix-reviewer-recommendation-v0.md) ·
 [Reviewer request](protocols/issue-fix-reviewer-request-v0.md) ·
@@ -367,6 +368,7 @@ tests whether the system is a durable employee rather than a scripted demo.
 | Workflow plan | `loopx issue-fix workflow-plan` | Compose body-free metadata, intake, branch plan, validation label, ordered todo previews, gates, and PR-readiness blockers. |
 | Repository context | `--repository-context-json` | Pin policy, architecture, change-scope, reproduction, and validation evidence with trust and freshness. |
 | Feasibility | `loopx issue-fix feasibility` | Select exactly one `fix_pr`, `comment_only`, or `triage_only` route and optionally persist compact domain state. |
+| Discovered issue promotion | [`loopx issue-fix promote-discovered-issue`](protocols/issue-fix-discovered-issue-promotion-v0.md) | After a real defect is reproduced during adjacent work, require open-and-closed duplicate-search evidence, create or reuse one canonical public issue under `publish` authority, verify the PR closing reference, and atomically replace the `discovered-*` placeholder so Kanban and metrics retain one case. |
 | Reviewer plan | `loopx issue-fix reviewer-plan` | Rank explainable reviewer candidates from CODEOWNERS, caller-verified public maintainer maps, and changed-path/module history without requesting review. |
 | Reviewer notification | `loopx issue-fix reviewer-request` | Under standing authority, exclude the live PR author and existing coverage, request the top candidate, fall back to one verified `@reviewer` comment only on permission denial, and avoid duplicates. |
 | PR lifecycle | `loopx issue-fix pr-lifecycle` | Project CI, review, merge state, draft, merged, and closed signals into monitor transitions. |
@@ -921,6 +923,16 @@ loopx issue-fix feasibility \
   --goal-id example-goal \
   --format json
 
+# Promote a reproducible defect found during real work into one canonical issue.
+# The structured input records open/closed duplicate-search evidence and the
+# revision-pinned public facts; retries do not create another issue or row.
+loopx issue-fix promote-discovered-issue \
+  --goal-id example-goal \
+  --project /path/to/connected/project \
+  --promotion-json discovered-issue-promotion.json \
+  --execute \
+  --format json
+
 # Project repository impact and attributed outputs without writing state.
 loopx issue-fix metrics \
   --goal-id public-issue-fix-goal \
@@ -990,6 +1002,7 @@ python3 examples/issue-fix-repository-context-smoke.py
 python3 examples/issue-fix-repository-memory-smoke.py
 python3 examples/issue-fix-validated-memory-writeback-smoke.py
 python3 examples/issue-fix-feasibility-smoke.py
+python3 examples/issue-fix-discovered-issue-promotion-smoke.py
 python3 examples/issue-fix-pr-lifecycle-smoke.py
 python3 examples/issue-fix-metrics-projection-smoke.py
 python3 examples/issue-fix-repository-snapshot-smoke.py
