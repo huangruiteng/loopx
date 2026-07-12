@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Sequence
+
+from ...feedback import append_human_reward
 
 
 EVENT_SCHEMA_VERSION = "lark_event_inbox_event_v0"
@@ -114,6 +117,16 @@ def _event_from_file(path: Path) -> dict[str, Any] | None:
     except (OSError, json.JSONDecodeError):
         return None
     return _event_from_payload(payload)
+
+
+def _event_by_message_id(inbox: Path, message_id: str) -> dict[str, Any] | None:
+    for path in sorted(inbox.glob("*.json")) if inbox.is_dir() else []:
+        if path.name == "processed.json":
+            continue
+        event = _event_from_file(path)
+        if event and event.get("message_id") == message_id:
+            return event
+    return None
 
 
 def ingest_lark_event_inbox(
@@ -285,5 +298,77 @@ def acknowledge_lark_event_inbox(
         "write_performed": bool(execute and added),
         "message_ids": normalized,
         "local_private_content_captured": False,
+        "external_writes_performed": False,
+    }
+
+
+def project_lark_event_inbox_reward(
+    *,
+    project: str | Path,
+    config_path: str | Path,
+    registry_path: Path,
+    runtime_root_override: str | None,
+    goal_id: str,
+    message_id: str,
+    reward: dict[str, Any],
+    run_generated_at: str | None = None,
+    state_file_override: Path | None = None,
+    execute: bool = False,
+) -> dict[str, Any]:
+    """Project one local Lark event into reward state before acknowledging it."""
+
+    if not MESSAGE_ID_PATTERN.fullmatch(str(message_id or "").strip()):
+        raise ValueError("project-reward requires a valid Lark message id")
+    config = load_lark_event_inbox_config(project=project, config_path=config_path)
+    if not config["enabled"]:
+        raise ValueError("lark event inbox is not enabled")
+    event = _event_by_message_id(config["inbox_path"], message_id)
+    if event is None:
+        raise ValueError("project-reward message is not present in the configured inbox")
+
+    reward_payload = dict(reward)
+    reward_payload["source"] = {
+        "schema_version": "user_reward_source_v0",
+        "kind": "lark",
+        "digest": "sha256:"
+        + hashlib.sha256(f"lark:{message_id}".encode("utf-8")).hexdigest(),
+    }
+    projected = append_human_reward(
+        registry_path=registry_path,
+        runtime_root_override=runtime_root_override,
+        goal_id=goal_id,
+        run_generated_at=run_generated_at,
+        reward=reward_payload,
+        dry_run=not execute,
+        state_file_override=state_file_override,
+        write_active_state_summary=True,
+    )
+    ledger = (
+        projected.get("reward_event_ledger")
+        if isinstance(projected.get("reward_event_ledger"), dict)
+        else {}
+    )
+    acknowledged = acknowledge_lark_event_inbox(
+        project=project,
+        config_path=config_path,
+        message_ids=[message_id],
+        execute=bool(execute and (ledger.get("appended") or ledger.get("already_exists"))),
+    )
+    return {
+        "ok": True,
+        "schema_version": "lark_event_reward_projection_v0",
+        "execute": execute,
+        "goal_id": goal_id,
+        "reward_id": ledger.get("reward_id"),
+        "reward_event_appended": ledger.get("appended"),
+        "reward_event_already_exists": ledger.get("already_exists"),
+        "active_state_written": (
+            projected.get("active_state_update") or {}
+        ).get("written"),
+        "acknowledged": acknowledged.get("write_performed"),
+        "ack_already_present": bool(acknowledged.get("already_acknowledged_count")),
+        "source_content_returned": False,
+        "source_ref_persisted_raw": False,
+        "external_reads_performed": False,
         "external_writes_performed": False,
     }

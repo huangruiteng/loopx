@@ -121,7 +121,8 @@ def assert_reward_preview(registry: Path, runtime_root: Path, state_file: Path) 
     assert payload["active_state_update"]["would_write"] is True, payload
     assert payload["active_state_update"]["written"] is False, payload
     visibility = payload["project_agent_visibility"]
-    assert visibility["source_of_truth"] == "run_bound_human_reward_overlay", visibility
+    assert visibility["source_of_truth"] == "goal_reward_event_ledger", visibility
+    assert visibility["run_overlay_role"] == "compatibility_annotation", visibility
     assert visibility["history_command"] == f"loopx history --goal-id {GOAL_ID} --limit 3", visibility
     assert "human_reward" not in state_file.read_text(encoding="utf-8"), "dry-run must not write state"
 
@@ -166,6 +167,7 @@ def assert_contract_doc() -> None:
         "write_effect",
         "project_agent_visibility",
         "run_bound_human_reward_overlay",
+        "goal_reward_event_ledger",
         "operator_gate_decision_run",
         "--enable-reward-write-api",
         "There is no dashboard `operator_gate` apply endpoint",

@@ -9,6 +9,10 @@ from typing import Any, Callable
 from .authority import goal_authority_registry_summary
 from .control_plane import compact_control_plane_policy
 from .control_plane.runtime.time import now_local_iso
+from .control_plane.runtime.reward_events import (
+    active_reward_lessons,
+    load_reward_events,
+)
 from .control_plane.runtime.run_index_duplicates import (
     classify_index_duplicate_records,
     duplicate_repair_decision,
@@ -748,6 +752,11 @@ def collect_history(
         include_runtime_goals=include_runtime_goals,
     ):
         index_path = runtime_root / "goals" / current_goal_id / "runs" / "index.jsonl"
+        reward_event_path = (
+            runtime_root / "goals" / current_goal_id / "reward-events" / "index.jsonl"
+        )
+        reward_events = load_reward_events(reward_event_path)
+        active_lessons = active_reward_lessons(reward_events)
         runs, raw_count = load_index(index_path)
         runs = [
             run
@@ -789,6 +798,11 @@ def collect_history(
             "unique_runs": len(runs),
             "latest_status_run": latest_status_run(runs),
             "latest_runs": latest_runs_with_agent_context(runs, limit=limit),
+            "reward_event_path": str(reward_event_path),
+            "reward_event_count": len(reward_events),
+            "reward_events": reward_events[: max(1, limit)],
+            "active_reward_lesson_count": len(active_lessons),
+            "active_reward_lessons": active_lessons[: max(1, limit)],
         }
         if registry_member:
             for field in REGISTRY_ATTENTION_FIELDS:

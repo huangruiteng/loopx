@@ -9,6 +9,10 @@ from typing import Any
 from .history import load_index, load_registry
 from .paths import resolve_runtime_root
 from .registry import registry_goals, resolve_state_file
+from .control_plane.runtime.reward_events import (
+    append_reward_event,
+    compact_reward_source,
+)
 
 
 REWARD_VALUES = {"positive", "negative", "mixed", "neutral"}
@@ -49,12 +53,14 @@ LOCAL_CONTROL_TEXT_PATTERNS = (
     re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
 )
 HUMAN_REWARD_FIELDS = (
+    "reward_id",
     "recorded_at",
     "decision",
     "reward",
     "reason_summary",
     "follow_up",
     "lesson",
+    "source",
 )
 RUN_OVERLAY_FIELDS = (
     "generated_at",
@@ -139,6 +145,8 @@ def compact_reward(
     reason_summary: str,
     follow_up: str | None,
     lesson: dict[str, Any] | None = None,
+    source_kind: str | None = None,
+    source_event_ref: str | None = None,
 ) -> dict[str, Any]:
     if reward not in REWARD_VALUES:
         raise ValueError(f"reward must be one of: {', '.join(sorted(REWARD_VALUES))}")
@@ -155,6 +163,9 @@ def compact_reward(
         payload["follow_up"] = follow_up
     if lesson:
         payload["lesson"] = compact_reward_lesson(lesson)
+    source = compact_reward_source(source_kind, source_event_ref)
+    if source:
+        payload["source"] = source
     return payload
 
 
@@ -166,11 +177,40 @@ def compact_reward_lesson(lesson: dict[str, Any]) -> dict[str, Any]:
     if not summary:
         raise ValueError("lesson summary is required when lesson metadata is provided")
     validate_public_safe_text("lesson summary", summary)
+    strength = str(lesson.get("strength") or "advisory").strip()
+    if strength not in {"advisory", "required"}:
+        raise ValueError("lesson strength must be advisory or required")
+    scope = str(lesson.get("scope") or "goal").strip()
+    if scope not in {"goal", "workspace", "repository", "delivery_surface"}:
+        raise ValueError(
+            "lesson scope must be goal, workspace, repository, or delivery_surface"
+        )
+    scope_key = str(lesson.get("scope_key") or "").strip()
+    validate_public_safe_text("lesson scope_key", scope_key)
+    supersedes: list[str] = []
+    for raw_value in lesson.get("supersedes") or []:
+        value = str(raw_value or "").strip()
+        if not re.fullmatch(r"reward_[0-9a-f]{16}", value):
+            raise ValueError("lesson supersedes values must be reward_<16 hex> ids")
+        if value not in supersedes:
+            supersedes.append(value)
+    advanced_contract = any(
+        key in lesson for key in ("strength", "scope", "scope_key", "supersedes")
+    )
     payload: dict[str, Any] = {
-        "schema_version": "human_reward_lesson_v0",
+        "schema_version": (
+            "human_reward_lesson_v1" if advanced_contract else "human_reward_lesson_v0"
+        ),
         "kind": kind,
         "summary": summary,
     }
+    if advanced_contract:
+        payload["strength"] = strength
+        payload["scope"] = scope
+        if scope_key:
+            payload["scope_key"] = scope_key
+        if supersedes:
+            payload["supersedes"] = supersedes[:5]
     for field in ("avoid", "prefer"):
         raw_items = lesson.get(field) or []
         if isinstance(raw_items, str):
@@ -239,7 +279,7 @@ def build_reward_coordination(
     summary = (
         f"{verb}目标 `{goal_id}` 的 run `{run_generated_at}` "
         f"human_reward={reward_value}，decision=`{decision}`。"
-        "权威来源是 run-bound `human_reward` overlay；"
+        "权威来源是 goal-scoped reward event ledger；run-bound overlay 仅作兼容摘要；"
         "active state 只摘要这个指针和下一步。"
     )
     if reason_summary:
@@ -254,7 +294,8 @@ def build_reward_coordination(
             f"{lesson.get('summary')}"
         )
     visibility = {
-        "source_of_truth": "run_bound_human_reward_overlay",
+        "source_of_truth": "goal_reward_event_ledger",
+        "run_overlay_role": "compatibility_annotation",
         "history_command": f"loopx history --goal-id {goal_id} --limit 3",
         "active_state_role": "summary_only",
         "review_packet_role": "optional_handoff_only",
@@ -392,6 +433,23 @@ def append_human_reward(
     if missing_paths:
         raise ValueError(f"selected run is missing required index path fields: {', '.join(missing_paths)}")
 
+    reward_event_path = runtime_root / "goals" / goal_id / "reward-events" / "index.jsonl"
+    reward_event = append_reward_event(
+        reward_event_path,
+        goal_id=goal_id,
+        run_generated_at=str(selected.get("generated_at") or ""),
+        reward=reward,
+        dry_run=dry_run,
+    )
+    event_record = reward_event.get("record") if isinstance(reward_event.get("record"), dict) else {}
+    event_reward = (
+        event_record.get("human_reward")
+        if isinstance(event_record.get("human_reward"), dict)
+        else reward
+    )
+    reward = dict(event_reward)
+    reward["reward_id"] = reward_event["reward_id"]
+
     index_record = {
         field: selected[field]
         for field in RUN_OVERLAY_FIELDS
@@ -433,14 +491,22 @@ def append_human_reward(
         dry_run=dry_run,
     )
 
-    if not dry_run:
+    existing_overlay = (
+        selected.get("human_reward")
+        if isinstance(selected.get("human_reward"), dict)
+        else {}
+    )
+    overlay_already_present = existing_overlay.get("reward_id") == reward_event["reward_id"]
+    overlay_written = False
+    if not dry_run and not overlay_already_present:
         index_path.parent.mkdir(parents=True, exist_ok=True)
         with index_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(index_record, ensure_ascii=False) + "\n")
-        if state_file_to_write and state_text_to_write is not None:
-            state_file_to_write.write_text(state_text_to_write, encoding="utf-8")
-            active_state_update["written"] = True
-            active_state_update["would_write"] = False
+        overlay_written = True
+    if not dry_run and state_file_to_write and state_text_to_write is not None:
+        state_file_to_write.write_text(state_text_to_write, encoding="utf-8")
+        active_state_update["written"] = True
+        active_state_update["would_write"] = False
 
     return {
         "ok": True,
@@ -452,10 +518,16 @@ def append_human_reward(
         "dry_run": dry_run,
         "selected_run": selected_run,
         "human_reward": index_record["human_reward"],
+        "reward_event_ledger": {
+            key: reward_event.get(key)
+            for key in ("path", "reward_id", "appended", "already_exists", "dry_run")
+        },
+        "overlay_written": overlay_written,
+        "overlay_already_present": overlay_already_present,
         **coordination,
         "active_state_update": active_state_update,
         "index_record": index_record,
-        "appended": not dry_run,
+        "appended": bool(reward_event.get("appended") or overlay_written),
     }
 
 
@@ -555,6 +627,7 @@ def render_reward_markdown(payload: dict[str, Any]) -> str:
                 "",
                 "## Project-Agent Visibility",
                 f"- source_of_truth: `{visibility.get('source_of_truth')}`",
+                f"- run_overlay_role: `{visibility.get('run_overlay_role')}`",
                 f"- history_command: `{visibility.get('history_command')}`",
                 f"- active_state_role: `{visibility.get('active_state_role')}`",
                 f"- review_packet_role: `{visibility.get('review_packet_role')}`",

@@ -7,7 +7,6 @@ from typing import Any
 
 from .control_plane.agents.agent_scope import (
     AgentScopeFrontierAction,
-    _action_scope_tokens_from_text,
     _agent_lane_frontier_hint,
     _agent_scope_deferred_resume_candidates,
     _agent_scope_frontier_action,
@@ -75,8 +74,11 @@ from .control_plane.quota.monitor_poll import (
     render_quota_monitor_poll_markdown,
 )
 from .control_plane.quota.recent_runs import (
-    goal_latest_runs as _goal_latest_runs,
     recent_external_monitor_observation_unchanged as _recent_external_monitor_observation_unchanged,
+)
+from .control_plane.quota.reward_lessons import (
+    reward_lesson_projection as _reward_lesson_projection,
+    reward_lesson_projection_warning as _reward_lesson_projection_warning,
 )
 from .control_plane.quota.markdown import (
     render_quota_markdown,
@@ -1133,77 +1135,6 @@ def _quota_plan_items(plan: dict[str, Any]) -> list[dict[str, Any]]:
     return items
 
 
-def _recent_reward_lessons(status_payload: dict[str, Any], *, goal_id: str) -> list[dict[str, Any]]:
-    lessons: list[dict[str, Any]] = []
-    for run in _goal_latest_runs(status_payload, goal_id=goal_id):
-        reward = run.get("human_reward") if isinstance(run.get("human_reward"), dict) else {}
-        lesson = reward.get("lesson") if isinstance(reward.get("lesson"), dict) else {}
-        if not lesson:
-            continue
-        lessons.append(
-            {
-                "generated_at": run.get("generated_at"),
-                "decision": reward.get("decision"),
-                "reward": reward.get("reward"),
-                "kind": lesson.get("kind"),
-                "summary": lesson.get("summary"),
-                "avoid": lesson.get("avoid") if isinstance(lesson.get("avoid"), list) else [],
-                "prefer": lesson.get("prefer") if isinstance(lesson.get("prefer"), list) else [],
-            }
-        )
-    return lessons
-
-
-def _reward_lesson_projection_warning(
-    status_payload: dict[str, Any],
-    *,
-    goal_id: str,
-    recommended_action: str | None,
-) -> dict[str, Any] | None:
-    action = str(recommended_action or "").strip()
-    if not action:
-        return None
-    action_lower = action.lower()
-    action_tokens = _action_scope_tokens_from_text(action)
-    matches: list[dict[str, Any]] = []
-    for lesson in _recent_reward_lessons(status_payload, goal_id=goal_id):
-        for avoid in lesson.get("avoid") or []:
-            avoid_text = str(avoid or "").strip()
-            if not avoid_text:
-                continue
-            avoid_tokens = _action_scope_tokens_from_text(avoid_text)
-            exact_match = avoid_text.lower() in action_lower
-            if not exact_match and not avoid_tokens:
-                continue
-            token_overlap = sorted(action_tokens & avoid_tokens)
-            if not exact_match and len(token_overlap) < min(2, len(avoid_tokens)):
-                continue
-            matches.append(
-                {
-                    "generated_at": lesson.get("generated_at"),
-                    "decision": lesson.get("decision"),
-                    "kind": lesson.get("kind"),
-                    "summary": lesson.get("summary"),
-                    "avoid": avoid_text,
-                    "token_overlap": token_overlap[:5],
-                }
-            )
-    if not matches:
-        return None
-    return {
-        "schema_version": "reward_lesson_projection_warning_v0",
-        "source": "run_history.human_reward.lesson",
-        "goal_id": goal_id,
-        "message": (
-            "recommended_action overlaps a recent human_reward lesson avoid rule; "
-            "rebase the route or update the affected todo/next action before continuing"
-        ),
-        "recommended_action": action,
-        "match_count": len(matches),
-        "matches": matches[:3],
-    }
-
-
 def _registry_goal_by_id(status_payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
     registry_value = status_payload.get("registry")
     if not registry_value:
@@ -2131,6 +2062,12 @@ def build_quota_should_run(
         promotion_warning = _promotion_readiness_warning(status_payload)
         if promotion_warning:
             payload["promotion_readiness_warning"] = promotion_warning
+        reward_lesson_projection = _reward_lesson_projection(
+            status_payload,
+            goal_id=safe_goal_id,
+        )
+        if reward_lesson_projection:
+            payload["reward_lesson_projection"] = reward_lesson_projection
         reward_lesson_warning = _reward_lesson_projection_warning(
             status_payload,
             goal_id=safe_goal_id,

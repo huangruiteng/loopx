@@ -332,6 +332,37 @@ def register_project_lifecycle_commands(
         help="Public-safe phrase/action that future recommended_action should prefer. Repeatable.",
     )
     reward_parser.add_argument(
+        "--lesson-strength",
+        choices=["advisory", "required"],
+        default="advisory",
+        help="Whether the lesson is advisory guidance or a required operating constraint.",
+    )
+    reward_parser.add_argument(
+        "--lesson-scope",
+        choices=["goal", "workspace", "repository", "delivery_surface"],
+        default="goal",
+        help="Scope where the lesson applies.",
+    )
+    reward_parser.add_argument(
+        "--lesson-scope-key",
+        help="Optional public-safe scope identifier, such as a repository or delivery surface.",
+    )
+    reward_parser.add_argument(
+        "--lesson-supersedes",
+        action="append",
+        default=[],
+        help="Reward id superseded by this correction. Repeatable.",
+    )
+    reward_parser.add_argument(
+        "--source-kind",
+        choices=["direct", "github", "lark", "operator", "other"],
+        help="Optional feedback source kind; requires --source-event-ref.",
+    )
+    reward_parser.add_argument(
+        "--source-event-ref",
+        help="Local source event reference. Only its SHA-256 digest is persisted.",
+    )
+    reward_parser.add_argument(
         "--state-file",
         help="Active goal state path for optional summary writeback. Defaults to the registry goal state_file.",
     )
@@ -522,9 +553,15 @@ def handle_project_lifecycle_command(
                     "summary": args.lesson_summary,
                     "avoid": args.lesson_avoid,
                     "prefer": args.lesson_prefer,
+                    "strength": args.lesson_strength,
+                    "scope": args.lesson_scope,
+                    "scope_key": args.lesson_scope_key,
+                    "supersedes": args.lesson_supersedes,
                 }
                 if args.lesson_kind
                 else None,
+                source_kind=args.source_kind,
+                source_event_ref=args.source_event_ref,
             )
             payload = append_human_reward(
                 registry_path=registry_path,

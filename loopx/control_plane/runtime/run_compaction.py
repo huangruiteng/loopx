@@ -4,12 +4,14 @@ from typing import Any, Callable, Optional
 
 
 HUMAN_REWARD_COMPACT_FIELDS = (
+    "reward_id",
     "recorded_at",
     "decision",
     "reward",
     "reason_summary",
     "follow_up",
     "lesson",
+    "source",
 )
 OPERATOR_GATE_COMPACT_FIELDS = (
     "recorded_at",
@@ -108,7 +110,17 @@ def compact_human_reward(reward: Any) -> dict[str, Any] | None:
     if isinstance(lesson, dict):
         compact["lesson"] = {
             field: lesson[field]
-            for field in ("schema_version", "kind", "summary", "avoid", "prefer")
+            for field in (
+                "schema_version",
+                "kind",
+                "summary",
+                "strength",
+                "scope",
+                "scope_key",
+                "supersedes",
+                "avoid",
+                "prefer",
+            )
             if field in lesson
         }
     return compact or None

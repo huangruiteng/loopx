@@ -511,6 +511,37 @@ def _interaction_required_reads(payload: dict[str, Any]) -> list[dict[str, Any]]
     return result
 
 
+def _interaction_operating_lessons(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    projection = (
+        payload.get("reward_lesson_projection")
+        if isinstance(payload.get("reward_lesson_projection"), dict)
+        else {}
+    )
+    result: list[dict[str, Any]] = []
+    for item in projection.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        summary = protocol_action_text(item.get("summary"), limit=240)
+        if not summary:
+            continue
+        compact = {
+            key: item.get(key)
+            for key in (
+                "reward_id",
+                "kind",
+                "strength",
+                "scope",
+                "scope_key",
+                "avoid",
+                "prefer",
+            )
+            if item.get(key) not in (None, [], "")
+        }
+        compact["summary"] = summary
+        result.append(compact)
+    return result[:5]
+
+
 def _interaction_spend_policy(
     execution_obligation: dict[str, Any],
     heartbeat_recommendation: dict[str, Any],
@@ -830,6 +861,7 @@ def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
     )
     spend_after_validation = _interaction_spend_after_validation(mode)
     required_reads = _interaction_required_reads(payload)
+    operating_lessons = _interaction_operating_lessons(payload)
 
     contract = {
         "schema_version": INTERACTION_CONTRACT_SCHEMA_VERSION,
@@ -855,6 +887,11 @@ def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
         ),
     }
     _attach_interaction_required_reads(contract, required_reads)
+    if operating_lessons:
+        contract["agent_channel"]["operating_lessons"] = operating_lessons
+        contract["agent_channel"]["operating_lesson_policy"] = (
+            "required lessons are hard operating constraints; advisory lessons are preferences"
+        )
     _attach_interaction_vision_continuation_audit(contract, payload)
     if _interaction_fallback_policy_required(payload, mode=mode):
         contract["fallback_policy"] = {"do_not_cancel_on_block": True}
