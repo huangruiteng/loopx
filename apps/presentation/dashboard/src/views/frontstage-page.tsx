@@ -2903,6 +2903,69 @@ function PublicShowcaseBoundaryPanel() {
   );
 }
 
+const showcaseGraphStories = [
+  {
+    eyebrow: "Open-source issue fix",
+    title: "PR delivery and reusable capability evolve together",
+    body: "Merged and open fixes stay connected to reviewer routing, repository knowledge, terminal resume, and the next reusable discovery loop.",
+    image: "/showcase/openviking-issue-fix-explore.png",
+    imageAlt: "Open-source issue-fix Explore graph linking focused PR delivery with reusable LoopX capabilities",
+  },
+  {
+    eyebrow: "Auto ML Experiment",
+    title: "Evidence branches stay visible until promote or stop",
+    body: "Matched baselines, invalid lineages, negative results, running replicates, capacity slots, and decision gates remain traceable in one Explore topology.",
+    image: "/showcase/auto-ml-experiment-explore.jpg",
+    imageAlt: "Auto ML Experiment Explore graph with experiment lineages, evidence gates, and promotion decisions",
+  },
+];
+
+function ShowcaseGraphStories() {
+  return (
+    <section className="mt-5" data-testid="frontstage-showcase-graph-stories">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 pb-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">
+            Real Explore topology
+          </div>
+          <h2 className="mt-1 text-base font-semibold leading-7 text-slate-950 sm:text-lg">
+            Two long-running loops, without flattening the evidence graph.
+          </h2>
+        </div>
+        <Badge variant="info">original projections</Badge>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+        {showcaseGraphStories.map((story) => (
+          <a
+            className="group min-w-0 overflow-hidden rounded-md border border-slate-200 bg-slate-50 text-inherit no-underline transition-colors hover:border-sky-400"
+            href={story.image}
+            key={story.title}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <div className="frontstage-showcase-graph-frame border-b border-slate-200 bg-white">
+              <img
+                alt={story.imageAlt}
+                className="frontstage-showcase-graph-image"
+                loading="eager"
+                src={story.image}
+              />
+            </div>
+            <div className="grid gap-1 px-3 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-normal text-sky-700">{story.eyebrow}</div>
+              <div className="flex items-start justify-between gap-2 sm:gap-3">
+                <h3 className="text-xs font-semibold leading-5 text-slate-950 sm:text-sm sm:leading-6">{story.title}</h3>
+                <ExternalLink className="mt-1 h-3.5 w-3.5 shrink-0 text-slate-400 group-hover:text-sky-600" />
+              </div>
+              <p className="hidden text-xs font-medium leading-5 text-slate-600 sm:block">{story.body}</p>
+            </div>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function DeveloperOnboardingPanel() {
   return (
     <Panel icon={Bot} title="Developer Onboarding">
@@ -3427,7 +3490,7 @@ function FrontstageRoute({
                   </div>
                 ) : null}
               </div>
-              <div className="grid min-w-[220px] grid-cols-2 gap-2 text-center">
+              <div className="hidden min-w-[220px] grid-cols-2 gap-2 text-center sm:grid">
                 {heroStats.map((stat) => (
                   <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2" key={stat.label}>
                     <div className="text-lg font-semibold">{stat.value}</div>
@@ -3436,6 +3499,7 @@ function FrontstageRoute({
                 ))}
               </div>
             </div>
+            {isShowcaseMode ? <ShowcaseGraphStories /> : null}
             {isShowcaseMode ? <ShowcaseStateFlowHero /> : null}
             {isShowcaseMode ? <ShowcaseKineticCaseStrip /> : null}
             <div className="mt-5 grid gap-2 border-t border-slate-200 pt-4 sm:grid-cols-2 xl:grid-cols-4" data-testid="frontstage-operations-strip">
