@@ -489,11 +489,17 @@ def _wait_for_tunnel_ready(
     tunnel_proc: subprocess.Popen[Any],
     *,
     timeout_sec: float,
+    remote_proc: subprocess.Popen[Any] | None = None,
+    run_deadline: float | None = None,
 ) -> tuple[bool, str, int]:
     deadline = time.monotonic() + max(1.0, float(timeout_sec))
     status = "not_started"
     attempts = 0
     while time.monotonic() < deadline:
+        if remote_proc is not None and remote_proc.poll() is not None:
+            return False, "remote_command_completed", attempts
+        if run_deadline is not None and time.monotonic() >= run_deadline:
+            return False, "run_deadline_exceeded", attempts
         if tunnel_proc.poll() is not None:
             return False, "tunnel_process_exited", attempts
         ready, status = _run_remote_probe(args)
@@ -1043,12 +1049,20 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                     next_health_probe = time.monotonic() + health_interval
                     continue
 
+                if tunnel_proc.poll() is None:
+                    liveness["state"] = "failed"
+                    liveness["last_probe_status"] = (
+                        "new_connect_admission_failed_tunnel_preserved"
+                    )
+                    tunnel_liveness_failed = True
+                    _stop_process_group(remote_proc, grace_sec=1.0)
+                    break
+
                 recovered = False
                 for _attempt in range(int(liveness["reconnect_attempt_limit"])):
                     liveness["reconnect_attempt_count"] = (
                         int(liveness["reconnect_attempt_count"]) + 1
                     )
-                    _stop_process_group(tunnel_proc, grace_sec=1.0)
                     try:
                         tunnel_proc = _start_tunnel_process(
                             args,
@@ -1067,12 +1081,21 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                             args,
                             tunnel_proc,
                             timeout_sec=args.tunnel_reconnect_ready_timeout_sec,
+                            remote_proc=remote_proc,
+                            run_deadline=run_deadline,
                         )
                     )
                     payload["probe_attempt_count"] = (
                         int(payload["probe_attempt_count"]) + reconnect_probes
                     )
                     liveness["last_probe_status"] = reconnect_status
+                    if reconnect_status == "remote_command_completed":
+                        recovered = True
+                        break
+                    if reconnect_status == "run_deadline_exceeded":
+                        remote_command_timed_out = True
+                        _stop_process_group(remote_proc, grace_sec=1.0)
+                        break
                     if reconnect_ready:
                         liveness["reconnect_success_count"] = (
                             int(liveness["reconnect_success_count"]) + 1
@@ -1084,6 +1107,8 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                     liveness["reconnect_failure_count"] = (
                         int(liveness["reconnect_failure_count"]) + 1
                     )
+                if remote_command_timed_out:
+                    break
                 if not recovered:
                     liveness["state"] = "failed"
                     tunnel_liveness_failed = True
@@ -1103,7 +1128,6 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
             stdout_text=stdout_text,
             stderr_text=stderr_text,
         )
-        payload["public_artifact_sync"] = _sync_remote_public_artifacts(args)
         if remote_command_timed_out:
             payload["remote_command_timeout"] = True
             payload["first_blocker"] = "remote_command_timeout"
@@ -1120,6 +1144,7 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                 trigger="reverse_tunnel_liveness_unrecoverable",
             )
             return finish(75)
+        payload["public_artifact_sync"] = _sync_remote_public_artifacts(args)
         sync_ok = (
             not _public_artifact_sync_requested(args)
             or payload["public_artifact_sync"].get("ok") is True

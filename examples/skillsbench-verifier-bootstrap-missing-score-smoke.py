@@ -253,6 +253,10 @@ def test_benchmark_egress_preflight_overrides_verifier_package_risk() -> None:
                 "benchmark_egress_proxy_mode_requested": "require",
                 "benchmark_egress_proxy_mode_effective": "require",
                 "benchmark_egress_proxy_url_recorded": False,
+                "codex_api_egress_preflight_required": True,
+                "codex_api_egress_preflight_ready": False,
+                "codex_api_egress_preflight_status": "failed",
+                "codex_api_egress_preflight_error_kind": "TimeoutError",
                 "fail_fast_on_verifier_bootstrap_risk": False,
             },
             "task_staging": plan["task_staging"],
@@ -414,6 +418,20 @@ def test_completed_score_is_not_reclassified_by_bootstrap_risk() -> None:
         "official_verifier_solution_failure"
     ), compact
     assert "verifier_bootstrap_diagnostic" not in compact, compact
+
+    compact["runner_config"] = {
+        "schema_version": "skillsbench_runner_config_v0",
+        "codex_api_egress_preflight_required": True,
+        "codex_api_egress_preflight_ready": False,
+        "codex_api_egress_preflight_status": "failed",
+        "codex_api_egress_preflight_error_kind": "TimeoutError",
+    }
+    reduced = compact_benchmark_run(compact)
+    assert reduced is not None, compact
+    assert reduced["score_failure_attribution"] == (
+        "official_verifier_solution_failure"
+    ), reduced
+    assert "codex_api_egress_diagnostic" not in reduced, reduced
 
 
 if __name__ == "__main__":
