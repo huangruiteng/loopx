@@ -1027,8 +1027,6 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         return None
     if _blocking_handoff_gate_count(agent_todo_summary, agent_id=agent_id) > 0:
         return None
-    if _ready_deferred_successor_count(agent_todo_summary, agent_id=agent_id) > 0:
-        return None
 
     user_counts = _summary_task_counts(user_todo_summary)
     agent_counts = _summary_task_counts(agent_todo_summary)
@@ -1044,6 +1042,11 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         item.get("kind") == VISION_SUCCESSOR_GAP_TRIGGER
         for item in compact_acceptance_gaps
     )
+    if (
+        _ready_deferred_successor_count(agent_todo_summary, agent_id=agent_id) > 0
+        and not successor_vision_required
+    ):
+        return None
     acceptance_allows_watch_lane_continuation = bool(
         compact_acceptance_gaps
         and not any(

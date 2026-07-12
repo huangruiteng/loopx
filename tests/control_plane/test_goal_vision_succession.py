@@ -60,7 +60,10 @@ def test_terminal_goal_or_lane_closure_does_not_require_successor(
     )
 
 
-def test_successor_vision_replan_precedes_existing_advancement() -> None:
+@pytest.mark.parametrize("ready_deferred_count", [0, 2])
+def test_successor_vision_replan_precedes_existing_work(
+    ready_deferred_count: int,
+) -> None:
     gaps = acceptance_gaps_from_agent_vision(
         vision("vision_closed"),
         goal_status="active",
@@ -77,6 +80,7 @@ def test_successor_vision_replan_precedes_existing_advancement() -> None:
             "open_count": 1,
             "current_agent_claimed_open_count": 1,
             "current_agent_claimed_advancement_count": 1,
+            "current_agent_deferred_resume_count": ready_deferred_count,
             "unclaimed_open_count": 0,
             "executable_backlog_items": [todo],
         },
@@ -89,3 +93,20 @@ def test_successor_vision_replan_precedes_existing_advancement() -> None:
     assert obligation is not None
     assert obligation["required"] is True
     assert obligation["triggers"][0]["kind"] == "vision_successor_required"
+
+
+def test_user_gate_still_precedes_successor_vision_replan() -> None:
+    gaps = acceptance_gaps_from_agent_vision(
+        vision("vision_closed"),
+        goal_status="active",
+    )
+    obligation = derive_goal_frontier_replan_obligation_from_summaries(
+        user_todo_summary={"open_count": 1},
+        agent_todo_summary={"open_count": 0},
+        work_lane_contract={"lane": "advancement_task", "must_attempt_work": True},
+        agent_id=AGENT_ID,
+        existing_replan_obligation=None,
+        acceptance_gaps=gaps,
+    )
+
+    assert obligation is None
