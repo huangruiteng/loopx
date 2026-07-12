@@ -783,15 +783,33 @@ and captured local paths are rejected. The provider packet retains only opaque
 refs and compact receipts.
 
 An outcome without `reusable_knowledge` remains an audit fact: it proves what
-was delivered, but it is not promoted as patch guidance. Reusable knowledge is
-written to a separate collection only when delivery evidence supplies the
-complete `issue_fix_reusable_knowledge_input_v0` contract:
+was delivered, but it is not promoted as patch guidance. The compatibility
+`issue_fix_reusable_knowledge_input_v0` contract remains available for existing
+callers. New terminal outcomes should use
+`issue_fix_repository_learning_card_input_v0`; LoopX accepts it only after the
+issue-fix stage is merged, comment-published, or triage-complete, and writes it
+to the separate `repository-learning-cards` collection. Both contracts require:
 
 - a searchable symptom signature and a focused reproduction contract;
 - the checkout-verified root cause and violated invariant;
 - the repair pattern, focused validation contract, and repository-relative
   verification references;
 - explicit applicability and non-applicability boundaries.
+
+A repository learning card additionally requires explicit confidence,
+repo-relative affected modules, bounded invalidation conditions, a
+revalidation contract, and `current_checkout_verification_required: true`.
+The stored card combines those fields with the source revision, outcome
+`observed_at`, public evidence URLs, validation result, commit, and provenance
+already enforced by the writeback envelope. Writeback also stores SHA-256
+digests of the cited verification references, never their raw contents. On
+retrieval, LoopX exposes only bounded card metadata and marks the hit confirmed
+when every cited file still has the same digest in the current checkout;
+missing or changed references leave it unverified. The card is therefore
+searchable as a historical hypothesis but never self-authorizing: retrieval
+starts with zero decision influence, and a later issue must inspect the stated
+invalidation conditions and complete the revalidation contract before
+recording reproduction, scope, patch, or validation influence.
 
 This distinction prevents PR titles, changed-file lists, and passing-test
 labels from being mistaken for reusable diagnosis. Confirmation against the

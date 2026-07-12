@@ -21,6 +21,9 @@ ISSUE_FIX_DELIVERY_EVIDENCE_INPUT_SCHEMA_VERSION = (
 ISSUE_FIX_REUSABLE_KNOWLEDGE_INPUT_SCHEMA_VERSION = (
     "issue_fix_reusable_knowledge_input_v0"
 )
+ISSUE_FIX_REPOSITORY_LEARNING_CARD_INPUT_SCHEMA_VERSION = (
+    "issue_fix_repository_learning_card_input_v0"
+)
 
 DELIVERY_VALIDATION_STATUSES = {"passed", "failed", "partial", "not_run"}
 DELIVERY_OUTCOME_STATUSES = {"in_progress", "completed", "blocked"}
@@ -77,16 +80,17 @@ def _reusable_knowledge(value: Any) -> dict[str, Any] | None:
         return None
     if not isinstance(value, Mapping):
         raise ValueError("reusable_knowledge must be an object")
-    if (
-        str(value.get("schema_version") or "").strip()
-        != ISSUE_FIX_REUSABLE_KNOWLEDGE_INPUT_SCHEMA_VERSION
-    ):
+    schema_version = str(value.get("schema_version") or "").strip()
+    if schema_version not in {
+        ISSUE_FIX_REUSABLE_KNOWLEDGE_INPUT_SCHEMA_VERSION,
+        ISSUE_FIX_REPOSITORY_LEARNING_CARD_INPUT_SCHEMA_VERSION,
+    }:
         raise ValueError(
-            "reusable_knowledge schema_version must be "
-            "issue_fix_reusable_knowledge_input_v0"
+            "reusable_knowledge schema_version must be a supported reusable "
+            "knowledge or repository learning-card input"
         )
     compact = {
-        "schema_version": ISSUE_FIX_REUSABLE_KNOWLEDGE_INPUT_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "symptom_signature": _safe_text(
             value.get("symptom_signature"),
             field="reusable_knowledge.symptom_signature",
@@ -131,6 +135,40 @@ def _reusable_knowledge(value: Any) -> dict[str, Any] | None:
             value.get("verification_references") or []
         ),
     }
+    if schema_version == ISSUE_FIX_REPOSITORY_LEARNING_CARD_INPUT_SCHEMA_VERSION:
+        confidence = _safe_text(
+            value.get("confidence"),
+            field="reusable_knowledge.confidence",
+            limit=20,
+        ).lower()
+        if confidence not in {"high", "medium", "low"}:
+            raise ValueError(
+                "reusable_knowledge.confidence must be high, medium, or low"
+            )
+        if value.get("current_checkout_verification_required") is not True:
+            raise ValueError(
+                "repository learning cards require current checkout verification"
+            )
+        compact.update(
+            {
+                "confidence": confidence,
+                "affected_modules": _repo_relative_files(
+                    value.get("affected_modules") or []
+                ),
+                "invalidation_conditions": _safe_text_list(
+                    value.get("invalidation_conditions") or [],
+                    field="reusable_knowledge.invalidation_conditions",
+                    limit=320,
+                    count_limit=8,
+                ),
+                "revalidation_contract": _safe_text(
+                    value.get("revalidation_contract"),
+                    field="reusable_knowledge.revalidation_contract",
+                    limit=420,
+                ),
+                "current_checkout_verification_required": True,
+            }
+        )
     missing = [
         key
         for key, item in compact.items()

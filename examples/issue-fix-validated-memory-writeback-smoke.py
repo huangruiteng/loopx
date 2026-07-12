@@ -15,7 +15,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from loopx.capabilities.context_providers.base import ContextProviderSync  # noqa: E402
+from loopx.capabilities.context_providers.base import (  # noqa: E402
+    ContextProviderItem,
+    ContextProviderRetrieval,
+    ContextProviderSync,
+)
 from loopx.capabilities.issue_fix.feasibility import (  # noqa: E402
     build_issue_fix_feasibility_packet,
 )
@@ -23,6 +27,7 @@ from loopx.capabilities.issue_fix.outcome_projection import (  # noqa: E402
     build_issue_fix_outcome_projection,
 )
 from loopx.capabilities.issue_fix.repository_memory_provider import (  # noqa: E402
+    retrieve_issue_fix_repository_memory,
     write_issue_fix_validated_outcome_memory,
 )
 
@@ -43,8 +48,26 @@ class WritebackContractProvider:
     def __init__(self) -> None:
         self.contents: dict[str, str] = {}
 
-    def retrieve(self, **kwargs: Any) -> Any:  # pragma: no cover
-        raise AssertionError(kwargs)
+    def retrieve(self, **kwargs: Any) -> ContextProviderRetrieval:
+        target, content = next(iter(self.contents.items()))
+        return ContextProviderRetrieval(
+            provider=self.provider_id,
+            namespace=str(kwargs["namespace"]),
+            status="completed",
+            query_summary=str(kwargs["query_summary"]),
+            observed_at=str(kwargs["observed_at"]),
+            search_performed=True,
+            read_performed=True,
+            requested_limit=int(kwargs["max_results"]),
+            items=(
+                ContextProviderItem(
+                    resource_ref=target,
+                    summary="Configured identity is independent of optional usage.",
+                    content=content,
+                    score=0.94,
+                ),
+            ),
+        )
 
     def sync(self, **kwargs: Any) -> ContextProviderSync:
         assert kwargs["execute"] is True, kwargs
@@ -94,6 +117,35 @@ def repository_context(revision: str = REVISION) -> dict[str, object]:
     }
 
 
+def merged_lifecycle() -> dict[str, object]:
+    return {
+        "ok": True,
+        "schema_version": "issue_fix_pr_lifecycle_monitor_v0",
+        "observation": {
+            "repo": "owner/repo",
+            "pr_ref": "pull_8",
+            "number": 8,
+            "permalink": "https://github.com/owner/repo/pull/8",
+            "state": "MERGED",
+            "is_draft": False,
+            "checks": {
+                "aggregate": "PASSING",
+                "failing_count": 0,
+                "pending_count": 0,
+                "passing_count": 1,
+            },
+            "review_decision": "APPROVED",
+            "merge_state_status": "CLEAN",
+            "merged_at": OBSERVED_AT,
+            "closed_at": OBSERVED_AT,
+        },
+        "transition": {
+            "decision": "no_followup",
+            "reason": "PR is merged; close the monitor with no follow-up.",
+        },
+    }
+
+
 def outcome_packet(
     *,
     revision: str = REVISION,
@@ -120,7 +172,21 @@ def outcome_packet(
         "risks": ["broader integration validation was not run"],
         "recorded_at": OBSERVED_AT,
         "reusable_knowledge": {
-            "schema_version": "issue_fix_reusable_knowledge_input_v0",
+            "schema_version": "issue_fix_repository_learning_card_input_v0",
+            "confidence": "high",
+            "affected_modules": [
+                "loopx/capabilities/issue_fix",
+                "examples",
+            ],
+            "invalidation_conditions": [
+                "Status identity no longer combines configuration with optional usage.",
+                "The cited verification references are removed or substantially rewritten.",
+            ],
+            "revalidation_contract": (
+                "At the current checkout, inspect the cited implementation and rerun "
+                "the focused empty-usage and usage-failure cases before influence."
+            ),
+            "current_checkout_verification_required": True,
             "symptom_signature": (
                 "A configured status component disappears when runtime usage is empty."
             ),
@@ -153,14 +219,15 @@ def outcome_packet(
                 "runtime observation exists."
             ),
             "verification_references": [
-                "loopx/capabilities/issue_fix/repository_memory_provider.py",
-                "examples/issue-fix-validated-memory-writeback-smoke.py",
+                "pyproject.toml",
+                "LICENSE",
             ],
         },
     }
     outcome = build_issue_fix_outcome_projection(
         goal_id="public-issue-fix-goal",
         feasibility_packet=feasibility,
+        pr_lifecycle_packet=merged_lifecycle(),
         delivery_evidence_input=delivery,
         agent_id="public-issue-fix-agent",
         generated_at=OBSERVED_AT,
@@ -224,8 +291,13 @@ def main() -> int:
     assert first["checkout_verification"]["repo_path_recorded"] is False, first
     stored_fact = next(iter(provider.contents.values()))
     for expected in (
-        "issue_fix_reusable_knowledge_memory_v0",
-        '"fact_type": "reusable_issue_fix_knowledge"',
+        "issue_fix_repository_learning_card_memory_v0",
+        '"fact_type": "repository_learning_card"',
+        '"confidence": "high"',
+        '"current_checkout_verification_required": true',
+        '"verification_reference_digests": {',
+        '"invalidation_conditions": [',
+        '"affected_modules": [',
         '"symptom_signature": "A configured status component disappears',
         '"validation_status": "passed"',
         '"freshness": "revision_pinned"',
@@ -233,9 +305,65 @@ def main() -> int:
     ):
         assert expected in stored_fact, expected
     assert first["knowledge_eligible"] is True, first
-    assert "/reusable-knowledge/" in next(iter(provider.contents)), provider.contents
+    assert "/repository-learning-cards/" in next(iter(provider.contents)), provider.contents
     assert_public_boundary(first)
     assert_public_boundary(retry)
+
+    retrieved = retrieve_issue_fix_repository_memory(
+        config=provider_config(),
+        repo_path=ROOT,
+        repository_revision=REVISION,
+        query="configured status identity missing before usage",
+        query_summary="Configured identity and optional usage telemetry.",
+        supports=["change_scope", "validation"],
+        observed_at=OBSERVED_AT,
+        provider=provider,
+    )
+    memory = retrieved["memory_input"]
+    assert memory["results"][0]["verification_status"] == "confirmed", memory
+    checkout = retrieved["provider_projection"]["checkout_verification"]
+    assert checkout["learning_card_count"] == 1, checkout
+    assert checkout["learning_card_confirmed_count"] == 1, checkout
+    candidate = retrieved["provider_projection"]["learning_cards"][0]
+    assert candidate["confidence"] == "high", candidate
+    assert candidate["reference_digest_match"] is True, candidate
+    assert candidate["current_checkout_verification_required"] is True, candidate
+    assert candidate["revalidation_contract"], candidate
+    assert_public_boundary(retrieved)
+
+    stale_provider = WritebackContractProvider()
+    target, stored = next(iter(provider.contents.items()))
+    marker = "```json"
+    start = stored.index(marker) + len(marker)
+    end = stored.index("```", start)
+    stale_card = json.loads(stored[start:end].strip())
+    stale_card["verification_reference_digests"]["pyproject.toml"] = (
+        "sha256:" + "0" * 64
+    )
+    stale_provider.contents[target] = (
+        stored[:start]
+        + "\n"
+        + json.dumps(stale_card, ensure_ascii=False, sort_keys=True, indent=2)
+        + "\n"
+        + stored[end:]
+    )
+    stale = retrieve_issue_fix_repository_memory(
+        config=provider_config(),
+        repo_path=ROOT,
+        repository_revision=REVISION,
+        query="configured status identity missing before usage",
+        query_summary="Configured identity and optional usage telemetry.",
+        supports=["change_scope", "validation"],
+        observed_at=OBSERVED_AT,
+        provider=stale_provider,
+    )
+    assert stale["memory_input"]["results"][0]["verification_status"] == "unverified"
+    assert (
+        stale["provider_projection"]["learning_cards"][0][
+            "reference_digest_match"
+        ]
+        is False
+    )
 
     audit_delivery = dict(delivery)
     audit_delivery.pop("reusable_knowledge")
@@ -259,6 +387,37 @@ def main() -> int:
     assert audit["knowledge_eligible"] is False, audit
     assert audit["fact_type"] == "validated_issue_fix_outcome", audit
     assert "/validated-outcomes/" in next(iter(audit_provider.contents))
+
+    legacy_delivery = json.loads(json.dumps(delivery))
+    legacy_knowledge = legacy_delivery["reusable_knowledge"]
+    legacy_knowledge["schema_version"] = "issue_fix_reusable_knowledge_input_v0"
+    for key in (
+        "confidence",
+        "affected_modules",
+        "invalidation_conditions",
+        "revalidation_contract",
+        "current_checkout_verification_required",
+    ):
+        legacy_knowledge.pop(key)
+    legacy_outcome = build_issue_fix_outcome_projection(
+        goal_id="public-issue-fix-goal",
+        feasibility_packet=feasibility,
+        delivery_evidence_input=legacy_delivery,
+        agent_id="public-issue-fix-agent",
+        generated_at=OBSERVED_AT,
+    )
+    legacy_provider = WritebackContractProvider()
+    legacy = write_issue_fix_validated_outcome_memory(
+        config=provider_config(),
+        outcome_packet=legacy_outcome,
+        repository_revision=REVISION,
+        repo_path=ROOT,
+        observed_at=OBSERVED_AT,
+        execute=True,
+        provider=legacy_provider,
+    )
+    assert legacy["fact_type"] == "reusable_issue_fix_knowledge", legacy
+    assert "/reusable-knowledge/" in next(iter(legacy_provider.contents))
 
     disabled = write_issue_fix_validated_outcome_memory(
         config={**provider_config(), "writeback_enabled": False},
@@ -318,6 +477,28 @@ def main() -> int:
         assert "root_cause" in str(exc), exc
     else:
         raise AssertionError("incomplete reusable knowledge must be rejected")
+
+    non_terminal = build_issue_fix_outcome_projection(
+        goal_id="public-issue-fix-goal",
+        feasibility_packet=feasibility,
+        delivery_evidence_input=delivery,
+        agent_id="public-issue-fix-agent",
+        generated_at=OBSERVED_AT,
+    )
+    try:
+        write_issue_fix_validated_outcome_memory(
+            config=provider_config(),
+            outcome_packet=non_terminal,
+            repository_revision=REVISION,
+            repo_path=ROOT,
+            observed_at=OBSERVED_AT,
+            execute=True,
+            provider=WritebackContractProvider(),
+        )
+    except ValueError as exc:
+        assert "terminal outcome" in str(exc), exc
+    else:
+        raise AssertionError("non-terminal learning cards must be rejected")
 
     missing_reference_delivery = json.loads(json.dumps(delivery))
     missing_reference_delivery["reusable_knowledge"]["verification_references"] = [
@@ -441,9 +622,11 @@ def main() -> int:
         )
         fake_ov.chmod(0o755)
         feasibility_path = tmp / "feasibility.json"
+        lifecycle_path = tmp / "lifecycle.json"
         delivery_path = tmp / "delivery.json"
         config_path = tmp / "provider.json"
         feasibility_path.write_text(json.dumps(feasibility), encoding="utf-8")
+        lifecycle_path.write_text(json.dumps(merged_lifecycle()), encoding="utf-8")
         delivery_path.write_text(json.dumps(delivery), encoding="utf-8")
         config_path.write_text(
             json.dumps(
@@ -470,6 +653,8 @@ def main() -> int:
             str(feasibility["observation"]["issue_ref"]),
             "--feasibility-json",
             str(feasibility_path),
+            "--pr-lifecycle-json",
+            str(lifecycle_path),
             "--delivery-evidence-json",
             str(delivery_path),
             "--repository-memory-provider-json",

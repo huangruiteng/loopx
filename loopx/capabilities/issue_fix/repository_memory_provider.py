@@ -330,6 +330,7 @@ def _validated_outcome_fact(
     repository_revision: str,
     workspace_scope: str,
     peer_scope: str,
+    verification_reference_digests: Mapping[str, str] | None = None,
 ) -> tuple[str, str, str]:
     def reject_unsafe_fields(value: Any) -> None:
         if isinstance(value, Mapping):
@@ -418,20 +419,39 @@ def _validated_outcome_fact(
     reusable_knowledge = case.get("reusable_knowledge")
     if reusable_knowledge is not None and not isinstance(reusable_knowledge, Mapping):
         raise ValueError("repository memory reusable_knowledge must be an object")
+    learning_card_eligible = bool(
+        isinstance(reusable_knowledge, Mapping)
+        and reusable_knowledge.get("schema_version")
+        == "issue_fix_repository_learning_card_input_v0"
+    )
+    if learning_card_eligible and case.get("stage") not in {
+        "merged",
+        "comment_published",
+        "triage_complete",
+    }:
+        raise ValueError("repository learning card requires a terminal outcome")
     supersession_key = "sha256:" + hashlib.sha256(
         f"{workspace_scope}\n{peer_scope}\n{repo}\n{issue_ref}".encode("utf-8")
     ).hexdigest()
     knowledge_eligible = bool(reusable_knowledge)
     fact = {
         "schema_version": (
-            "issue_fix_reusable_knowledge_memory_v0"
-            if knowledge_eligible
-            else "issue_fix_validated_outcome_memory_v0"
+            "issue_fix_repository_learning_card_memory_v0"
+            if learning_card_eligible
+            else (
+                "issue_fix_reusable_knowledge_memory_v0"
+                if knowledge_eligible
+                else "issue_fix_validated_outcome_memory_v0"
+            )
         ),
         "fact_type": (
-            "reusable_issue_fix_knowledge"
-            if knowledge_eligible
-            else "validated_issue_fix_outcome"
+            "repository_learning_card"
+            if learning_card_eligible
+            else (
+                "reusable_issue_fix_knowledge"
+                if knowledge_eligible
+                else "validated_issue_fix_outcome"
+            )
         ),
         "workspace_scope": workspace_scope,
         "peer_scope": peer_scope,
@@ -466,6 +486,28 @@ def _validated_outcome_fact(
     }
     if knowledge_eligible:
         fact["knowledge"] = dict(reusable_knowledge)
+    if learning_card_eligible:
+        fact.update(
+            {
+                "confidence": reusable_knowledge["confidence"],
+                "affected_modules": list(
+                    reusable_knowledge.get("affected_modules") or []
+                ),
+                "invalidation_conditions": list(
+                    reusable_knowledge.get("invalidation_conditions") or []
+                ),
+                "revalidation_contract": reusable_knowledge[
+                    "revalidation_contract"
+                ],
+                "current_checkout_verification_required": True,
+                "evidence_refs": [
+                    output["url"] for output in public_outputs if output.get("url")
+                ],
+                "verification_reference_digests": dict(
+                    verification_reference_digests or {}
+                ),
+            }
+        )
     canonical = json.dumps(
         fact,
         ensure_ascii=False,
@@ -585,6 +627,21 @@ def write_issue_fix_validated_outcome_memory(
             return False
         return result.returncode == 0
 
+    def git_blob_digest(reference: str) -> str | None:
+        try:
+            result = subprocess.run(
+                ["git", "show", f"{repository_revision}:{reference}"],
+                cwd=checkout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if result.returncode != 0:
+            return None
+        return "sha256:" + hashlib.sha256(result.stdout).hexdigest()
+
     verification["repository_revision_resolved"] = git_ok(
         "cat-file", "-e", f"{repository_revision}^{{commit}}"
     )
@@ -618,10 +675,21 @@ def write_issue_fix_validated_outcome_memory(
         if isinstance(case, Mapping)
         else None
     )
+    verification_reference_digests: dict[str, str] = {}
     if isinstance(reusable_knowledge, Mapping):
+        verification_references = list(
+            reusable_knowledge.get("verification_references") or []
+        )
+        if (
+            reusable_knowledge.get("schema_version")
+            == "issue_fix_repository_learning_card_input_v0"
+        ):
+            verification_references.extend(
+                reusable_knowledge.get("affected_modules") or []
+            )
         missing_references = [
             str(reference)
-            for reference in reusable_knowledge.get("verification_references") or []
+            for reference in verification_references
             if not git_ok(
                 "cat-file",
                 "-e",
@@ -638,17 +706,43 @@ def write_issue_fix_validated_outcome_memory(
                 "checkout_verification": verification,
                 "external_writes_performed": False,
             }
+        if (
+            reusable_knowledge.get("schema_version")
+            == "issue_fix_repository_learning_card_input_v0"
+        ):
+            verification_reference_digests = {
+                str(reference): digest
+                for reference in reusable_knowledge.get("verification_references")
+                or []
+                if (digest := git_blob_digest(str(reference))) is not None
+            }
+            if len(verification_reference_digests) != len(
+                reusable_knowledge.get("verification_references") or []
+            ):
+                return {
+                    **base,
+                    "ok": False,
+                    "status": "blocked",
+                    "reason_code": "knowledge_reference_digest_unavailable",
+                    "checkout_verification": verification,
+                    "external_writes_performed": False,
+                }
     idempotency_key, body, fact_type = _validated_outcome_fact(
         outcome_packet,
         repository_revision=repository_revision,
         workspace_scope=str(normalised["workspace_scope"]),
         peer_scope=str(normalised["peer_scope"]),
+        verification_reference_digests=verification_reference_digests,
     )
     digest = idempotency_key.removeprefix("sha256:")
     collection = (
-        "reusable-knowledge"
-        if fact_type == "reusable_issue_fix_knowledge"
-        else "validated-outcomes"
+        "repository-learning-cards"
+        if fact_type == "repository_learning_card"
+        else (
+            "reusable-knowledge"
+            if fact_type == "reusable_issue_fix_knowledge"
+            else "validated-outcomes"
+        )
     )
     target = (
         f"{normalised['writeback_scope_ref']}/{collection}/"
@@ -674,7 +768,8 @@ def write_issue_fix_validated_outcome_memory(
             "reason_code": sync.reason_code,
             "idempotency_key": idempotency_key,
             "fact_type": fact_type,
-            "knowledge_eligible": fact_type == "reusable_issue_fix_knowledge",
+            "knowledge_eligible": fact_type
+            in {"reusable_issue_fix_knowledge", "repository_learning_card"},
             "supersession_key_recorded": True,
             "revision_scoped": True,
             "checkout_verification": verification,
@@ -720,6 +815,53 @@ def _checkout_content(repo_path: Path, reference: str) -> str | None:
         return candidate.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
+
+
+def _checkout_digest(repo_path: Path, reference: str) -> str | None:
+    root = repo_path.expanduser().resolve()
+    candidate = (root / reference).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return None
+    if not candidate.is_file():
+        return None
+    try:
+        return "sha256:" + hashlib.sha256(candidate.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _repository_learning_card(content: str) -> Mapping[str, Any] | None:
+    marker = "```json"
+    start = content.find(marker)
+    if start < 0:
+        return None
+    end = content.find("```", start + len(marker))
+    if end < 0:
+        return None
+    try:
+        payload = json.loads(content[start + len(marker) : end].strip())
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    if (
+        payload.get("schema_version")
+        != "issue_fix_repository_learning_card_memory_v0"
+        or payload.get("fact_type") != "repository_learning_card"
+        or payload.get("current_checkout_verification_required") is not True
+    ):
+        return None
+    knowledge = payload.get("knowledge")
+    if not isinstance(knowledge, Mapping):
+        return None
+    if (
+        knowledge.get("schema_version")
+        != "issue_fix_repository_learning_card_input_v0"
+    ):
+        return None
+    return payload
 
 
 def retrieve_issue_fix_repository_memory(
@@ -812,7 +954,87 @@ def retrieve_issue_fix_repository_memory(
     results: list[dict[str, Any]] = []
     confirmed_count = 0
     stale_or_unmapped_count = 0
+    learning_card_count = 0
+    learning_card_confirmed_count = 0
+    learning_cards: list[dict[str, Any]] = []
     for item in retrieval.items:
+        learning_card = _repository_learning_card(item.content)
+        if learning_card is not None:
+            learning_card_count += 1
+            knowledge = learning_card["knowledge"]
+            references = [
+                str(reference)
+                for reference in knowledge.get("verification_references") or []
+            ]
+            digests = learning_card.get("verification_reference_digests")
+            digest_map = digests if isinstance(digests, Mapping) else {}
+            confirmed = bool(references) and all(
+                _checkout_digest(root, reference) == digest_map.get(reference)
+                for reference in references
+            )
+            symptom = _compact(
+                knowledge.get("symptom_signature"),
+                field="learning_card.symptom_signature",
+                limit=140,
+            )
+            repair = _compact(
+                knowledge.get("repair_pattern"),
+                field="learning_card.repair_pattern",
+                limit=140,
+            )
+            row = {
+                "memory_ref": opaque_provider_ref(
+                    provider=provider_id,
+                    namespace=namespace,
+                    resource_ref=item.resource_ref,
+                ),
+                "summary": _compact(
+                    f"{symptom} Repair pattern: {repair}",
+                    field="learning_card.summary",
+                    limit=220,
+                ),
+                "supports": support_values,
+                "verification_status": "confirmed" if confirmed else "unverified",
+            }
+            if confirmed:
+                row["verification_reference"] = references[0]
+                row["verification_revision"] = repository_revision
+                confirmed_count += 1
+                learning_card_confirmed_count += 1
+            else:
+                stale_or_unmapped_count += 1
+            results.append(row)
+            learning_cards.append(
+                {
+                    "memory_ref": row["memory_ref"],
+                    "confidence": _label(
+                        knowledge.get("confidence"),
+                        field="learning_card.confidence",
+                    ),
+                    "source_revision": _compact(
+                        learning_card.get("repository_revision"),
+                        field="learning_card.repository_revision",
+                        limit=120,
+                    ),
+                    "affected_modules": [
+                        _compact(value, field="learning_card.affected_module", limit=260)
+                        for value in knowledge.get("affected_modules") or []
+                    ],
+                    "verification_references": references,
+                    "invalidation_conditions": [
+                        _compact(value, field="learning_card.invalidation", limit=320)
+                        for value in knowledge.get("invalidation_conditions") or []
+                    ],
+                    "revalidation_contract": _compact(
+                        knowledge.get("revalidation_contract"),
+                        field="learning_card.revalidation_contract",
+                        limit=420,
+                    ),
+                    "current_checkout_verification_required": True,
+                    "reference_digest_match": confirmed,
+                }
+            )
+            continue
         reference = _repo_relative_ref(
             scope_ref=str(normalised["scope_ref"]),
             resource_ref=item.resource_ref,
@@ -857,7 +1079,7 @@ def retrieve_issue_fix_repository_memory(
         "requested_limit": retrieval.requested_limit,
         "configured_resource_count": len(normalised["resource_references"]),
         "stale_or_unmapped_count": stale_or_unmapped_count,
-        "verification_mode": "canonical_text_or_parser_chunk",
+        "verification_mode": "canonical_text_parser_chunk_or_learning_card_digest",
         "results": results,
     }
     if memory_input["provider_version"] is None:
@@ -869,8 +1091,11 @@ def retrieve_issue_fix_repository_memory(
         "verified_decision_influence_count": 0,
         "patch_influence_allowed_count": 0,
         "configured_resource_count": len(normalised["resource_references"]),
-        "verification_mode": "canonical_text_or_parser_chunk",
+        "verification_mode": "canonical_text_parser_chunk_or_learning_card_digest",
+        "learning_card_count": learning_card_count,
+        "learning_card_confirmed_count": learning_card_confirmed_count,
     }
+    provider_projection["learning_cards"] = learning_cards
     return {
         "memory_input": memory_input,
         "provider_projection": provider_projection,

@@ -554,7 +554,9 @@ def main() -> int:
         assert provider_memory["requested_limit"] == 3
         assert provider_memory["configured_resource_count"] == 0
         assert provider_memory["stale_or_unmapped_count"] == 0
-        assert provider_memory["verification_mode"] == "canonical_text_or_parser_chunk"
+        assert provider_memory["verification_mode"] == (
+            "canonical_text_parser_chunk_or_learning_card_digest"
+        )
         assert provider_result["provider_projection"]["checkout_verification"] == {
             "revision": REVISION,
             "confirmed_count": 1,
@@ -562,8 +564,11 @@ def main() -> int:
             "verified_decision_influence_count": 0,
             "patch_influence_allowed_count": 0,
             "configured_resource_count": 0,
-            "verification_mode": "canonical_text_or_parser_chunk",
+            "verification_mode": "canonical_text_parser_chunk_or_learning_card_digest",
+            "learning_card_count": 0,
+            "learning_card_confirmed_count": 0,
         }
+        assert provider_result["provider_projection"]["learning_cards"] == []
         assert_boundary(provider_result)
 
         rolling_scope = "viking://resources/public-repository/example-repo/main"
