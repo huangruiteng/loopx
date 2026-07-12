@@ -6,7 +6,11 @@ from collections.abc import Mapping
 from hashlib import sha256
 from typing import Any, Protocol
 
-from ..quota.turn_envelope import TURN_ENVELOPE_SCHEMA_VERSION
+from ..quota.turn_envelope import (
+    TURN_ENVELOPE_SCHEMA_VERSION,
+    quota_action_signature_document,
+    turn_envelope_action_signature_document,
+)
 from ..runtime.public_safety import (
     LOCAL_PATH_SURFACE_PATTERN,
     SECRET_LIKE_SURFACE_PATTERN,
@@ -67,11 +71,18 @@ _HARD_INVARIANT_FIELDS = (
 )
 _BEHAVIOR_SIGNAL_FIELDS = ("intended_action_kinds",)
 
+MODEL_BEHAVIOR_HARD_INVARIANT_FIELDS = _HARD_INVARIANT_FIELDS
+MODEL_BEHAVIOR_SIGNAL_FIELDS = _BEHAVIOR_SIGNAL_FIELDS
+
 
 class ModelBehaviorActor(Protocol):
     """Provider adapter that returns parsed JSON without executing tools."""
 
     def __call__(self, request: Mapping[str, Any]) -> Mapping[str, Any]: ...
+
+
+class ModelBehaviorPairValidationError(ValueError):
+    """The paired packets failed deterministic validation before actor execution."""
 
 
 def _canonical_json(value: Any) -> str:
@@ -362,6 +373,21 @@ def compare_model_behavior_receipts(
         for field in _BEHAVIOR_SIGNAL_FIELDS
         if full_receipt.get(field) != candidate_receipt.get(field)
     }
+    full_actions = list(full_receipt.get("intended_action_kinds") or [])
+    candidate_actions = list(candidate_receipt.get("intended_action_kinds") or [])
+    stochastic_drift: dict[str, Any] = {}
+    full_first_action = full_actions[0] if full_actions else None
+    candidate_first_action = candidate_actions[0] if candidate_actions else None
+    if full_first_action != candidate_first_action:
+        stochastic_drift["first_action_kind"] = {
+            "full_packet": full_first_action,
+            "candidate_packet": candidate_first_action,
+        }
+    if full_actions != candidate_actions:
+        stochastic_drift["trajectory_action_kinds"] = {
+            "full_packet": full_actions,
+            "candidate_packet": candidate_actions,
+        }
     violations = sorted(
         {
             str(item)
@@ -376,6 +402,7 @@ def compare_model_behavior_receipts(
         "equivalent": not drift and not behavior_drift and not violations,
         "hard_invariant_drift": drift,
         "behavior_signal_drift": behavior_drift,
+        "stochastic_drift": stochastic_drift,
         "safety_violations": violations,
         "receipt_digests": {
             "full_packet": _digest(dict(full_receipt)),
@@ -390,26 +417,44 @@ def run_model_behavior_qualification_pair(
     *,
     qualification_id: str,
     actor: ModelBehaviorActor,
+    arm_order: tuple[str, str] = ("full_packet", "candidate_packet"),
 ) -> dict[str, Any]:
+    if len(arm_order) != 2 or set(arm_order) != {"full_packet", "candidate_packet"}:
+        raise ModelBehaviorPairValidationError(
+            "arm_order must contain full_packet and candidate_packet once"
+        )
     action_signature = candidate_packet.get("action_signature")
     if not isinstance(action_signature, Mapping):
-        raise ValueError(
+        raise ModelBehaviorPairValidationError(
             "candidate_packet is missing its TurnEnvelope action signature"
         )
     if action_signature.get("matches") is not True:
-        raise ValueError("candidate_packet action signature parity must be verified")
+        raise ModelBehaviorPairValidationError(
+            "candidate_packet action signature parity must be verified"
+        )
     if action_signature.get("source_decision_hash") != _digest(dict(full_packet)):
-        raise ValueError("candidate_packet does not derive from the paired full packet")
-    full_receipt = run_model_behavior_qualification_arm(
-        full_packet,
-        qualification_id=qualification_id,
-        arm="full_packet",
-        actor=actor,
-    )
-    candidate_receipt = run_model_behavior_qualification_arm(
-        candidate_packet,
-        qualification_id=qualification_id,
-        arm="candidate_packet",
-        actor=actor,
-    )
+        raise ModelBehaviorPairValidationError(
+            "candidate_packet does not derive from the paired full packet"
+        )
+    if quota_action_signature_document(
+        full_packet
+    ) != turn_envelope_action_signature_document(candidate_packet):
+        raise ModelBehaviorPairValidationError(
+            "candidate_packet action semantics drift from the full packet"
+        )
+    packets = {
+        "full_packet": full_packet,
+        "candidate_packet": candidate_packet,
+    }
+    receipts = {
+        arm: run_model_behavior_qualification_arm(
+            packets[arm],
+            qualification_id=qualification_id,
+            arm=arm,
+            actor=actor,
+        )
+        for arm in arm_order
+    }
+    full_receipt = receipts["full_packet"]
+    candidate_receipt = receipts["candidate_packet"]
     return compare_model_behavior_receipts(full_receipt, candidate_receipt)

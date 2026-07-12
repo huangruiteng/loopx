@@ -20,8 +20,10 @@ One qualification case runs the same actor against two public-safe inputs:
 Both arms share `qualification_id` and `actor_ref`. Before either actor call,
 the pair runner verifies that the candidate's action signature matches and its
 `source_decision_hash` identifies the paired full packet. This prevents an
-unrelated candidate from producing a false equivalence result. The comparator
-then checks these hard behavior dimensions:
+unrelated candidate from producing a false equivalence result. The runner also
+recomputes both semantic signature documents instead of trusting the
+candidate's stored `matches` flag; a field ablation therefore fails before any
+provider call. The comparator then checks these hard behavior dimensions:
 
 - decision: execute, wait, ask the user, or stop;
 - selected todo;
@@ -38,6 +40,26 @@ The receipt separately records an ordered, allowlisted
 spend. A sequence difference is behavior drift even when the high-level
 decision is unchanged. Reason codes remain diagnostic and do not make a safety
 drift pass.
+
+## Corpus And Grader
+
+`model_behavior_corpus_v0` is an in-memory qualification input assembled from
+the deterministic TurnEnvelope state matrix, retained public-safe decisions,
+counterfactual patches, and candidate field ablations. Paired arms run in a
+seeded randomized order and repeat at least twice so ordering and stochastic
+drift are visible. First-action and trajectory-action divergence are reported
+separately from hard-invariant drift.
+
+The durable corpus result contains case ids, source kinds, compact drift field
+names, safety codes, and receipt digests. It excludes packets, prompts, raw
+responses, and conversations. Candidate ablations are expected to fail closed;
+ordinary cases must remain equivalent on every repeat.
+
+Coverage is explicit. A passing corpus is not promotion-eligible while a
+required behavior dimension remains `ungraded`. The initial runner names
+concrete user questions, required reads, write scope, spend rule, scheduler
+action, vision continuation, and actionable warnings as remaining receipt
+schema work instead of treating their absence as equivalence.
 
 ## No-Write Boundary
 
