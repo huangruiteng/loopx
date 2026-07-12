@@ -49,7 +49,8 @@ distribution or imply project endorsement.
 
 For a proposed use that may look official, open a GitHub issue before launch.
 Do not put credentials, private evidence, or embargoed security details in that
-issue; use a private maintainer contact for sensitive matters.
+issue. Ask a maintainer for a private contact path without including the
+sensitive details.
 
 Changes to this guidance require maintainer review under
 [GOVERNANCE.md](GOVERNANCE.md).
