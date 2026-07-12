@@ -325,6 +325,40 @@ def assert_future_scoped_monitor_does_not_fake_external_poll() -> None:
     assert "external_evidence_observation" not in guard, guard
 
 
+def assert_schedule_gap_monitor_outranks_future_handle() -> None:
+    summary = agent_todos(
+        [
+            monitor_todo(
+                todo_id="todo_monitor_future",
+                priority="P1",
+                next_due_at=FUTURE_DUE_AT,
+            ),
+            todo(
+                2,
+                "[P2] Monitor the ledger after the next batch completes.",
+                task_class=TODO_TASK_CLASS_MONITOR,
+                todo_id="todo_monitor_schedule_gap",
+                target_key="ledger:next-batch",
+                claimed_by=AGENT_ID,
+            ),
+        ]
+    )
+    item = selected_item(status_payload(summary))
+
+    handle = projected_monitor_handle(summary)
+    assert handle and handle["todo_id"] == "todo_monitor_schedule_gap", handle
+    assert handle["target_key"] == "ledger:next-batch", handle
+
+    signal = build_external_evidence_poll_signal(item, agent_todo_summary=summary)
+    assert signal and signal["monitor_handle"]["todo_id"] == "todo_monitor_schedule_gap", signal
+
+    guard = build_quota_should_run(status_payload(summary), goal_id=GOAL_ID, agent_id=AGENT_ID)
+    observation = guard["external_evidence_observation"]
+    assert observation["monitor_handle"]["todo_id"] == "todo_monitor_schedule_gap", guard
+    assert "Monitor the ledger" in observation["observation_target"], observation
+    assert "Monitor the ledger" in guard["interaction_contract"]["agent_channel"]["primary_action"], guard
+
+
 def assert_pr_dependency_wait_requires_first_observation() -> None:
     summary = agent_todos([pr_dependency_monitor_todo()])
     next_action = (
@@ -427,6 +461,7 @@ def main() -> int:
     assert_recent_due_monitor_no_change_quiets_external_monitor()
     assert_advancement_lane_keeps_external_monitor_as_context()
     assert_future_scoped_monitor_does_not_fake_external_poll()
+    assert_schedule_gap_monitor_outranks_future_handle()
     assert_pr_dependency_wait_requires_first_observation()
     assert_pr_dependency_wait_with_observation_does_not_reobserve_before_due()
     assert_explicit_external_wait_builds_registry_obligation()

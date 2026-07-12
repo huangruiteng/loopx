@@ -8,8 +8,10 @@ from ..todos.projection import (
     todo_summary_claim_scope_agent_id,
     todo_summary_has_only_future_scoped_monitor_work,
     todo_summary_monitor_due_count,
+    todo_summary_monitor_due_items,
     todo_summary_monitor_items,
     todo_summary_monitor_schedule_gap_count,
+    todo_summary_monitor_schedule_gap_items,
     todo_summary_open_count,
     todo_summary_open_task_counts,
 )
@@ -50,7 +52,12 @@ EXTERNAL_DEPENDENCY_TARGET_KEY_PATTERN = re.compile(
 
 
 def projected_monitor_handle(summary: dict[str, Any] | None) -> dict[str, Any] | None:
-    for item in todo_summary_monitor_items(summary):
+    actionable_items = [
+        *todo_summary_monitor_due_items(summary),
+        *todo_summary_monitor_schedule_gap_items(summary),
+    ]
+    monitor_items = actionable_items or todo_summary_monitor_items(summary)
+    for item in monitor_items:
         target_key = str(item.get("target_key") or "").strip()
         if not target_key:
             continue
