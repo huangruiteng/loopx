@@ -533,6 +533,42 @@ def main() -> int:
         assert semantic_retry_runner.comments == 0
         assert_public_safe(semantic_retry)
 
+        multi_semantic_url = "https://github.com/owner/repo/pull/42#issuecomment-1003"
+        multi_semantic_runner = FakeGitHubRunner(
+            before=metadata(
+                comments=[
+                    semantic_reviewer_comment(
+                        url=multi_semantic_url,
+                        body=(
+                            "Hi @service-owner @t0saki, could you please review "
+                            "this focused fix when convenient?"
+                        ),
+                    )
+                ]
+            )
+        )
+        multi_semantic = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            execute=True,
+            runner=multi_semantic_runner,
+        )
+        assert multi_semantic["ok"] is True, multi_semantic
+        assert multi_semantic["selected_reviewers"] == []
+        assert multi_semantic["existing_semantic_comment_notified_reviewers"] == [
+            "@service-owner",
+            "@t0saki",
+        ]
+        assert multi_semantic["reviewer_notification_mode"] == (
+            "existing_review_comment"
+        )
+        assert multi_semantic["reviewer_comment_url"] == multi_semantic_url
+        assert multi_semantic["external_writes_performed"] is False
+        assert multi_semantic_runner.edits == 0
+        assert multi_semantic_runner.comments == 0
+        assert_public_safe(multi_semantic)
+
         discussion_comment = semantic_reviewer_comment(
             login="service-owner",
             body=(

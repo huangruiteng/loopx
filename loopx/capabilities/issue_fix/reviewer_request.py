@@ -83,6 +83,13 @@ def _is_automated_reviewer_handle(value: Any) -> bool:
     return bool(handle and REVIEWER_BOT_HANDLE_PATTERN.search(handle.lstrip("@")))
 
 
+def _is_mention_cluster_separator(value: str) -> bool:
+    if "\n" in value or "\r" in value:
+        return False
+    remainder = re.sub(r"\b(?:and|or)\b|[和与及]", "", value, flags=re.IGNORECASE)
+    return bool(re.fullmatch(r"[ \t,，、:：;&+/]*", remainder))
+
+
 def _semantic_review_request_mentions(body: str) -> list[str]:
     visible_body = re.sub(r"<!--.*?-->", " ", body, flags=re.DOTALL)
     visible_body = re.sub(r"```.*?```", " ", visible_body, flags=re.DOTALL)
@@ -91,6 +98,31 @@ def _semantic_review_request_mentions(body: str) -> list[str]:
     )
     handles: list[str] = []
     mentions = list(REVIEWER_COMMENT_MENTION_PATTERN.finditer(visible_body))
+    for intent_pattern in REVIEWER_COMMENT_INTENT_PATTERNS:
+        for intent in intent_pattern.finditer(visible_body):
+            preceding = [
+                mention
+                for mention in mentions
+                if mention.end() <= intent.start()
+                and intent.start() - mention.end() <= 160
+            ]
+            if not preceding:
+                continue
+            cluster = [preceding[-1]]
+            if not _is_mention_cluster_separator(
+                visible_body[cluster[0].end() : intent.start()]
+            ):
+                continue
+            for mention in reversed(preceding[:-1]):
+                gap = visible_body[mention.end() : cluster[0].start()]
+                if not _is_mention_cluster_separator(gap):
+                    break
+                cluster.insert(0, mention)
+            for mention in cluster:
+                handle = _normalise_login(mention.group(1))
+                if handle and handle not in handles:
+                    handles.append(handle)
+
     for index, mention in enumerate(mentions):
         next_mention_start = (
             mentions[index + 1].start()
