@@ -19,6 +19,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.control_plane.work_items.interaction_contract import interaction_next_cli_actions  # noqa: E402
+from loopx.control_plane.quota.slot_accounting import (  # noqa: E402
+    _latest_unspent_accountable_delivery_run,
+)
 from loopx.quota import build_quota_monitor_poll_event, build_quota_slot_spend_event  # noqa: E402
 
 
@@ -144,6 +147,75 @@ def assert_delivery_completion_spend_preserves_requested_agent_id(agent_id: str)
     assert "validated delivery" in event["health_check"], event
 
 
+def assert_quota_neutral_events_do_not_hide_same_agent_delivery(agent_id: str) -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-quota-spend-neutral-events-") as tmp:
+        runtime = Path(tmp)
+        goal_id = "neutral-events-goal"
+        index_path = runtime / "goals" / goal_id / "runs" / "index.jsonl"
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        delivery = {
+            "generated_at": "2026-01-01T00:00:00+00:00",
+            "classification": "validated_delivery_fixture",
+            "delivery_outcome": "outcome_progress",
+            "agent_id": agent_id,
+        }
+        neutral_runs = [
+            delivery,
+            {
+                "generated_at": "2026-01-01T00:01:00+00:00",
+                "classification": "quota_monitor_poll",
+                "delivery_outcome": "surface_only",
+                "material_change": False,
+                "agent_id": agent_id,
+            },
+            {
+                "generated_at": "2026-01-01T00:02:00+00:00",
+                "classification": "quota_scheduler_ack",
+                "agent_id": agent_id,
+            },
+        ]
+        index_path.write_text(
+            "".join(json.dumps(row) + "\n" for row in neutral_runs),
+            encoding="utf-8",
+        )
+        selected = _latest_unspent_accountable_delivery_run(
+            runtime, goal_id, agent_id=agent_id
+        )
+        assert selected == delivery, selected
+
+        material_monitor = {
+            "generated_at": "2026-01-01T00:03:00+00:00",
+            "classification": "quota_monitor_poll",
+            "delivery_outcome": "outcome_progress",
+            "material_change": True,
+            "agent_id": agent_id,
+        }
+        with index_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(material_monitor) + "\n")
+        selected = _latest_unspent_accountable_delivery_run(
+            runtime, goal_id, agent_id=agent_id
+        )
+        assert selected == material_monitor, selected
+
+        with index_path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "generated_at": "2026-01-01T00:04:00+00:00",
+                        "classification": "quota_slot_spent",
+                        "agent_id": agent_id,
+                    }
+                )
+                + "\n"
+            )
+        assert (
+            _latest_unspent_accountable_delivery_run(
+                runtime, goal_id, agent_id=agent_id
+            )
+            is None
+        )
+
+
 def main() -> int:
     fixture = load_quota_plan_fixture()
     agent_id = fixture.SCOPED_AGENT_ID
@@ -151,6 +223,7 @@ def main() -> int:
     assert_monitor_poll_event_carries_agent_id(agent_id)
     assert_monitor_poll_next_cli_action_preserves_agent_id(agent_id)
     assert_delivery_completion_spend_preserves_requested_agent_id(agent_id)
+    assert_quota_neutral_events_do_not_hide_same_agent_delivery(agent_id)
 
     with tempfile.TemporaryDirectory(prefix="loopx-quota-spend-agent-identity-") as tmp:
         root = Path(tmp)

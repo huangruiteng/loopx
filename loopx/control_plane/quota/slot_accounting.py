@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from .decision_summary import compact_quota_decision, quota_decision_agent_id
 from .monitor_poll import QUOTA_MONITOR_POLL_CLASSIFICATION
+from .scheduler_ack import QUOTA_SCHEDULER_ACK_CLASSIFICATION
 from .spend_sources import DEFAULT_SLOT_SPEND_SOURCE, VALID_SLOT_SPEND_SOURCES
 from ..runtime.time import now_local_iso
 from ..runtime.run_artifacts import run_file_stem, unique_run_artifact_paths
@@ -111,7 +112,12 @@ def _latest_unspent_accountable_delivery_run(
     *,
     agent_id: str | None = None,
 ) -> dict[str, Any] | None:
-    """Return the latest run only when it is a delivery that still needs accounting."""
+    """Return the latest same-agent delivery that still needs accounting.
+
+    Unchanged monitor polls and scheduler acknowledgements are quota-neutral.
+    They may occur after validation and before accounting, so they must not
+    hide the accountable run. Other non-delivery events remain fail closed.
+    """
 
     safe_agent_id = normalize_todo_claimed_by(agent_id)
     for run in reversed(_load_goal_run_index_records(runtime_root, goal_id)):
@@ -127,7 +133,9 @@ def _latest_unspent_accountable_delivery_run(
             classification == QUOTA_MONITOR_POLL_CLASSIFICATION
             and run.get("material_change") is not True
         ):
-            return None
+            continue
+        if classification == QUOTA_SCHEDULER_ACK_CLASSIFICATION:
+            continue
         delivery_outcome = normalize_delivery_outcome(run.get("delivery_outcome"))
         if delivery_outcome in ACCOUNTABLE_DELIVERY_OUTCOMES:
             return run
