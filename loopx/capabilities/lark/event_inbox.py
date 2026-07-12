@@ -10,6 +10,7 @@ from typing import Any, Mapping, Sequence
 EVENT_SCHEMA_VERSION = "lark_event_inbox_event_v0"
 CONFIG_SCHEMA_VERSION = "lark_event_inbox_config_v0"
 PROCESSED_SCHEMA_VERSION = "lark_event_inbox_processed_v0"
+CAPTURE_SCOPES = {"addressed_only", "configured_chat_all"}
 MESSAGE_ID_PATTERN = re.compile(r"om_[A-Za-z0-9_-]+")
 EVENT_ID_PATTERN = re.compile(r"[A-Za-z0-9:_-]{1,200}")
 
@@ -44,16 +45,26 @@ def load_lark_event_inbox_config(
     except ValueError as exc:
         raise ValueError("lark inbox config must stay inside the project") from exc
     payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict) or payload.get("schema_version") != CONFIG_SCHEMA_VERSION:
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema_version") != CONFIG_SCHEMA_VERSION
+    ):
         raise ValueError("lark inbox config schema is invalid")
     enabled = payload.get("enabled") is True
     inbox_dir = str(payload.get("inbox_dir") or "").strip()
     if enabled and not inbox_dir:
         raise ValueError("enabled lark event inbox requires inbox_dir")
+    capture_scope = str(payload.get("capture_scope") or "addressed_only").strip()
+    if capture_scope not in CAPTURE_SCOPES:
+        raise ValueError(
+            "lark inbox capture_scope must be addressed_only or configured_chat_all"
+        )
     return {
         "enabled": enabled,
         "configured": True,
         "inbox_path": _safe_inbox_path(root, inbox_dir) if enabled else None,
+        "capture_scope": capture_scope,
+        "thread_complete": capture_scope == "configured_chat_all",
     }
 
 
@@ -74,16 +85,17 @@ def _load_processed(path: Path) -> set[str]:
     }
 
 
-def _event_from_file(path: Path) -> dict[str, Any] | None:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(payload, Mapping) or payload.get("schema_version") != EVENT_SCHEMA_VERSION:
+def _event_from_payload(payload: object) -> dict[str, Any] | None:
+    if (
+        not isinstance(payload, Mapping)
+        or payload.get("schema_version") != EVENT_SCHEMA_VERSION
+    ):
         return None
     message_id = str(payload.get("message_id") or "").strip()
     event_id = str(payload.get("event_id") or message_id).strip()
-    if not MESSAGE_ID_PATTERN.fullmatch(message_id) or not EVENT_ID_PATTERN.fullmatch(event_id):
+    if not MESSAGE_ID_PATTERN.fullmatch(message_id) or not EVENT_ID_PATTERN.fullmatch(
+        event_id
+    ):
         return None
     content = " ".join(str(payload.get("content") or "").split())[:1200]
     if not content:
@@ -93,6 +105,78 @@ def _event_from_file(path: Path) -> dict[str, Any] | None:
         "message_id": message_id,
         "create_time": str(payload.get("create_time") or "")[:40],
         "content": content,
+    }
+
+
+def _event_from_file(path: Path) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return _event_from_payload(payload)
+
+
+def ingest_lark_event_inbox(
+    *,
+    project: str | Path,
+    config_path: str | Path,
+    events: Sequence[object],
+    execute: bool = False,
+) -> dict[str, Any]:
+    """Persist canonical compact events supplied by a host collector or backfill."""
+
+    config = load_lark_event_inbox_config(project=project, config_path=config_path)
+    if not config["enabled"]:
+        raise ValueError("lark event inbox is not enabled")
+    inbox = config["inbox_path"]
+    existing_message_ids = {
+        event["message_id"]
+        for path in sorted(inbox.glob("*.json"))
+        if inbox.is_dir()
+        if path.name != "processed.json"
+        if (event := _event_from_file(path)) is not None
+    }
+    accepted: dict[str, dict[str, Any]] = {}
+    invalid_count = 0
+    duplicate_count = 0
+    for payload in events:
+        event = _event_from_payload(payload)
+        if event is None:
+            invalid_count += 1
+            continue
+        message_id = event["message_id"]
+        if message_id in existing_message_ids or message_id in accepted:
+            duplicate_count += 1
+            continue
+        accepted[message_id] = event
+
+    if execute and accepted:
+        inbox.mkdir(parents=True, exist_ok=True)
+        for event in accepted.values():
+            path = inbox / f"{event['message_id']}.json"
+            temporary = path.with_suffix(".json.tmp")
+            temporary.write_text(
+                json.dumps(
+                    {"schema_version": EVENT_SCHEMA_VERSION, **event},
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            temporary.replace(path)
+    return {
+        "ok": True,
+        "schema_version": "lark_event_inbox_ingest_v0",
+        "execute": execute,
+        "requested_count": len(events),
+        "accepted_count": len(accepted),
+        "invalid_count": invalid_count,
+        "duplicate_count": duplicate_count,
+        "write_performed": bool(execute and accepted),
+        "local_private_content_returned": False,
+        "external_reads_performed": False,
+        "external_writes_performed": False,
     }
 
 
@@ -106,6 +190,8 @@ def inspect_lark_event_inbox(
             "schema_version": "lark_event_inbox_projection_v0",
             "enabled": False,
             "configured": config["configured"],
+            "capture_scope": config["capture_scope"],
+            "thread_complete": config["thread_complete"],
             "pending_count": 0,
             "items": [],
             "local_private_content_returned": False,
@@ -131,6 +217,13 @@ def inspect_lark_event_inbox(
         "schema_version": "lark_event_inbox_projection_v0",
         "enabled": True,
         "configured": True,
+        "capture_scope": config["capture_scope"],
+        "thread_complete": config["thread_complete"],
+        "coverage_warning": (
+            None
+            if config["thread_complete"]
+            else "addressed_only capture does not include unaddressed thread replies"
+        ),
         "pending_count": len(pending),
         "returned_count": len(bounded),
         "processed_count": len(processed),

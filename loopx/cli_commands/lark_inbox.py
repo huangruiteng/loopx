@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import json
+import sys
 from typing import Callable
 
 from ..capabilities.lark.event_inbox import (
     acknowledge_lark_event_inbox,
+    ingest_lark_event_inbox,
     inspect_lark_event_inbox,
 )
 
@@ -35,6 +38,32 @@ def register_lark_inbox_commands(
     ack.add_argument("--config", required=True)
     ack.add_argument("--message-id", action="append", required=True)
     ack.add_argument("--execute", action="store_true")
+    ingest = sub.add_parser(
+        "ingest",
+        help=(
+            "Persist canonical compact events from stdin JSON/NDJSON for host "
+            "collection or bounded history reconciliation."
+        ),
+    )
+    add_subcommand_format(ingest)
+    ingest.add_argument("--project", default=".")
+    ingest.add_argument("--config", required=True)
+    ingest.add_argument("--execute", action="store_true")
+
+
+def _read_stdin_events() -> list[object]:
+    raw = sys.stdin.read()
+    if not raw.strip():
+        raise ValueError("lark inbox ingest requires JSON or NDJSON on stdin")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        payload = [json.loads(line) for line in raw.splitlines() if line.strip()]
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        return [payload]
+    raise ValueError("lark inbox ingest input must be an event object or event array")
 
 
 def _render(payload: dict[str, object]) -> str:
@@ -67,14 +96,21 @@ def handle_lark_inbox_command(
                 config_path=args.config,
                 limit=args.limit,
             )
-        else:
+        elif args.lark_inbox_command == "ack":
             payload = acknowledge_lark_event_inbox(
                 project=args.project,
                 config_path=args.config,
                 message_ids=args.message_id,
                 execute=args.execute,
             )
-    except (OSError, ValueError) as exc:
+        else:
+            payload = ingest_lark_event_inbox(
+                project=args.project,
+                config_path=args.config,
+                events=_read_stdin_events(),
+                execute=args.execute,
+            )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
         payload = {
             "ok": False,
             "schema_version": "lark_event_inbox_error_v0",
