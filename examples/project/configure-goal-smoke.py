@@ -106,6 +106,12 @@ def main() -> int:
         }
         agent_profile_json = json.dumps(agent_profile)
 
+        inspected = payload(run_cli(registry_path, "configure-goal", "--goal-id", GOAL_ID))
+        assert inspected["changed"] is False, inspected
+        assert inspected["configuration_catalog"]["disclosure_policy"][
+            "first_run_configuration_required"
+        ] is False
+
         dry = payload(run_cli(
             registry_path,
             "configure-goal",
@@ -166,6 +172,16 @@ def main() -> int:
             "config_pointer_registered": True,
         }, dry
         assert dry["feature_summary"]["multi_subagent"] == "enabled", dry
+        catalog = dry["configuration_catalog"]
+        assert catalog["schema_version"] == "loopx_goal_configuration_catalog_v0", catalog
+        assert catalog["scope"] == "default_off_optional_capabilities", catalog
+        assert catalog["disclosure_policy"]["first_run_configuration_required"] is False
+        features = {item["feature_id"]: item for item in catalog["features"]}
+        assert set(features) == {"multi_subagent", "explore_graph", "explore_harness"}
+        assert features["multi_subagent"]["current"]["enabled"] is True
+        assert features["explore_graph"]["current"]["enabled"] is False
+        assert "--execute" not in features["explore_harness"]["commands"]["preview_enable"]
+        assert "--execute" in features["explore_harness"]["commands"]["apply_enable"]
         migration = dry["heartbeat_prompt_migration"]
         assert migration["schema_version"] == "heartbeat_prompt_migration_v1", migration
         assert "agent identity changed" in migration["reason"], migration

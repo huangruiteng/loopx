@@ -335,6 +335,18 @@ benchmark 证据边界。
 Explore Graph / Explore Harness 已经是正式支持、默认关闭、按 goal opt-in 的可选
 能力；更新的 adapter 仍会继续打磨 first-run UX、安全默认值和 evidence contract。
 
+第一次跑出有用结果不需要配置这些可选能力。只有当具体任务确实需要 bounded child
+agent、Explore Graph 或 Explore Harness 时，再先查看该 goal 的只读配置目录：
+
+```bash
+loopx configure-goal --goal-id <goal-id>
+```
+
+目录会给出当前值、默认值、适用条件、不会授予的权限，以及可复制的 preview /
+apply / disable / verify 命令模板；完整设置面仍由
+`loopx configure-goal --help` 提供。没有 `--execute` 时只做预览；不要因为能力存在
+就主动开启。
+
 ### 先跑一个有用的 Loop
 
 想先感受 LoopX 能做什么，可以从只读 preset 开始：

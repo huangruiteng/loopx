@@ -226,7 +226,15 @@ def loop_activation_for_goal(
 def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> None:
     configure_goal_parser = subparsers.add_parser(
         "configure-goal",
-        help="Preview or apply per-goal registry settings for quota, self-repair, and orchestration.",
+        help=(
+            "Inspect current goal settings and optional features, or preview/apply an "
+            "incremental configuration change."
+        ),
+        description=(
+            "Inspect current per-goal settings, or preview/apply an incremental change. "
+            "With no setting flags this is read-only and includes the on-demand optional "
+            "feature catalog; first-run setup requires no optional configuration."
+        ),
     )
     configure_goal_parser.add_argument("--goal-id", required=True, help="Goal id to configure.")
     configure_goal_parser.add_argument("--quota-compute", type=float, help="Per-goal quota compute multiplier.")

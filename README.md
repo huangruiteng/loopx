@@ -398,6 +398,20 @@ Some, including Explore Graph and Explore Harness, are supported opt-in
 features that remain default-off; newer adapters are still settling their UX,
 safety defaults, and evidence contracts across more repositories.
 
+The first useful loop requires no optional configuration. When a concrete task
+would benefit from bounded child agents, Explore Graph, or Explore Harness,
+inspect the goal's read-only catalog first:
+
+```bash
+loopx configure-goal --goal-id <goal-id>
+```
+
+The catalog reports current and default state, when each feature is useful,
+what it does not authorize, and copyable preview/apply/disable/verify command
+templates. Use `loopx configure-goal --help` for the complete settings surface.
+Preview changes without `--execute`; do not enable a feature only because it is
+available.
+
 ### Start With A Useful Loop
 
 Use a preset to see LoopX's value before wiring up a full automation:

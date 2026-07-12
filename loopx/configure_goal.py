@@ -17,6 +17,7 @@ from .boundary_authority import (
 )
 from .agent_registry import normalize_registered_agents
 from .control_plane import compact_control_plane_policy, control_plane_policy_summary
+from .configuration_catalog import build_goal_configuration_catalog
 from .explore_graph import compact_explore_graph_policy
 from .orchestration import (
     DEFAULT_ORCHESTRATION_MODE,
@@ -796,6 +797,18 @@ def configure_goal(
             shutil.copy2(registry_path, backup_path)
         _atomic_write_json(registry_path, payload)
 
+    feature_summary = {
+        "multi_subagent": _multi_subagent_feature_status(after.get("orchestration") or {}),
+        "explore_graph": deepcopy(after.get("explore_graph") or {"enabled": False}),
+        "explore_harness": deepcopy(
+            (after.get("orchestration") or {}).get("explore_harness")
+            or {"enabled": False}
+        ),
+        "peer_supervisor": deepcopy(after.get("supervisor") or {"enabled": False}),
+        "default": "off",
+        "configuration_entry": "multi_subagent_feature",
+    }
+
     return {
         "ok": True,
         "dry_run": dry_run,
@@ -823,19 +836,14 @@ def configure_goal(
         },
         "control_plane_summary": control_plane_policy_summary(after.get("control_plane")),
         "orchestration_summary": orchestration_policy_summary(after.get("orchestration")),
-        "feature_summary": {
-            "multi_subagent": _multi_subagent_feature_status(after.get("orchestration") or {}),
-            "explore_graph": deepcopy(
-                after.get("explore_graph") or {"enabled": False}
-            ),
-            "explore_harness": deepcopy(
-                (after.get("orchestration") or {}).get("explore_harness")
-                or {"enabled": False}
-            ),
-            "peer_supervisor": deepcopy(after.get("supervisor") or {"enabled": False}),
-            "default": "off",
-            "configuration_entry": "multi_subagent_feature",
-        },
+        "feature_summary": feature_summary,
+        "configuration_catalog": build_goal_configuration_catalog(
+            goal_id=goal_id,
+            settings=after,
+            feature_summary=feature_summary,
+            default_multi_subagent_max_children=DEFAULT_MULTI_SUBAGENT_MAX_CHILDREN,
+            explore_harness_profiles=EXPLORE_HARNESS_PROFILES,
+        ),
         "heartbeat_prompt_migration": _build_heartbeat_prompt_migration(
             goal_id=goal_id,
             changed_fields=changed_fields,
@@ -897,6 +905,40 @@ def render_configure_goal_markdown(payload: dict[str, Any]) -> str:
             if supervisor.get("agent_id"):
                 supervisor_state += f"({supervisor.get('agent_id')})"
             lines.append(f"- feature_peer_supervisor: `{supervisor_state}`")
+    catalog = payload.get("configuration_catalog")
+    if isinstance(catalog, dict):
+        disclosure = catalog.get("disclosure_policy") or {}
+        lines.extend(
+            [
+                "",
+                "## Optional Features (On Demand)",
+                "",
+                "First run requires no optional feature configuration.",
+                "",
+                f"- inspect: `{disclosure.get('inspect_command')}`",
+                f"- all_settings_help: `{catalog.get('all_settings_help_command')}`",
+                "- apply_policy: preview first; add `--execute` only after review",
+            ]
+        )
+        for feature in catalog.get("features") or []:
+            if not isinstance(feature, dict):
+                continue
+            current = feature.get("current") or {}
+            state = "on" if current.get("enabled") else "off"
+            commands = feature.get("commands") or {}
+            verify_commands = commands.get("verify") or []
+            documentation = feature.get("documentation") or {}
+            lines.extend(
+                [
+                    f"- `{feature.get('feature_id')}` ({feature.get('display_name')}): `{state}`",
+                    f"  - consider: {feature.get('consider_when')}",
+                    f"  - preview: `{commands.get('preview_enable')}`",
+                    f"  - apply: `{commands.get('apply_enable')}`",
+                    f"  - disable: `{commands.get('disable')}`",
+                    f"  - verify: {'; '.join(f'`{command}`' for command in verify_commands)}",
+                    f"  - docs: [{documentation.get('path')}]({documentation.get('url')})",
+                ]
+            )
     migration = payload.get("heartbeat_prompt_migration")
     if isinstance(migration, dict):
         lines.append(f"- heartbeat_prompt_migration: {migration.get('action')}")
@@ -920,20 +962,32 @@ def render_configure_goal_markdown(payload: dict[str, Any]) -> str:
         )
         if activation.get("activated") is not True:
             lines.append(f"- host_loop_action: {activation.get('recommended_action')}")
-    lines.extend(
-        [
-            "",
-            "## Before",
-            "",
-            "```json",
-            json.dumps(payload.get("before") or {}, ensure_ascii=False, indent=2),
-            "```",
-            "",
-            "## After",
-            "",
-            "```json",
-            json.dumps(payload.get("after") or {}, ensure_ascii=False, indent=2),
-            "```",
-        ]
-    )
+    if payload.get("changed"):
+        lines.extend(
+            [
+                "",
+                "## Before",
+                "",
+                "```json",
+                json.dumps(payload.get("before") or {}, ensure_ascii=False, indent=2),
+                "```",
+                "",
+                "## After",
+                "",
+                "```json",
+                json.dumps(payload.get("after") or {}, ensure_ascii=False, indent=2),
+                "```",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "",
+                "## Current Settings",
+                "",
+                "```json",
+                json.dumps(payload.get("after") or {}, ensure_ascii=False, indent=2),
+                "```",
+            ]
+        )
     return "\n".join(lines)
