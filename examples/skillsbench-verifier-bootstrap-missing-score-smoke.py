@@ -307,6 +307,71 @@ def test_benchmark_egress_preflight_overrides_verifier_package_risk() -> None:
     assert diagnostic["raw_trajectory_read"] is False, diagnostic
 
 
+def test_runner_source_mismatch_overrides_verifier_package_risk() -> None:
+    compact = _missing_score_compact()
+    plan = _package_install_pre_agent_plan()
+    compact.update(
+        {
+            "mode": "skillsbench_codex_cli_goal_baseline",
+            "route": "codex-cli-goal-baseline",
+            "score_failure_attribution": "verifier_dependency_install_failure",
+            "first_blocker": "verifier_dependency_install_failure",
+            "failure_attribution_labels": [
+                "verifier_dependency_install_failure",
+                "skillsbench_verifier_bootstrap_missing_official_score",
+                "skillsbench_verifier_package_install_risk",
+            ],
+            "runner_prerequisites": {
+                "loopx_runner_source_fingerprint_status": "mismatched_expected",
+                "loopx_runner_source_first_blocker": (
+                    "loopx_runner_source_git_head_mismatch"
+                ),
+                "loopx_runner_source_git_head": "1" * 40,
+                "loopx_runner_source_expected_git_head": "2" * 40,
+                "loopx_runner_source_git_head_recorded": True,
+                "loopx_runner_source_expected_git_head_recorded": True,
+                "loopx_runner_source_matches_expected": False,
+                "loopx_runner_source_path_recorded": False,
+                "loopx_runner_source_raw_git_output_recorded": False,
+            },
+            "task_staging": plan["task_staging"],
+            "task_setup_preflight": plan["task_setup_preflight"],
+            "attempt_accounting": {
+                "schema_version": "skillsbench_attempt_accounting_v0",
+                "attempt_lifecycle_phase": "not_started",
+                "failure_class": "verifier_bootstrap_failed",
+                "failure_label": "verifier_dependency_install_failure",
+            },
+        }
+    )
+
+    reduced = compact_benchmark_run(compact)
+
+    assert reduced is not None, compact
+    blocker = "loopx_runner_source_git_head_mismatch"
+    assert reduced["score_failure_attribution"] == blocker, reduced
+    assert reduced["first_blocker"] == blocker, reduced
+    assert reduced["repeat_blocked_by"] == blocker, reduced
+    assert reduced["runner_failure"]["failure_class"] == blocker, reduced
+    assert reduced["attempt_accounting"]["failure_label"] == blocker, reduced
+    assert reduced["attempt_accounting"]["failure_class"] == (
+        "job_materialization_failed"
+    ), reduced
+    assert reduced["runner_prerequisites"][
+        "loopx_runner_source_first_blocker"
+    ] == blocker, reduced
+    assert reduced["runner_prerequisites"][
+        "loopx_runner_source_matches_expected"
+    ] is False, reduced
+    assert "verifier_dependency_install_failure" not in reduced[
+        "failure_attribution_labels"
+    ], reduced
+    assert "skillsbench_verifier_package_install_risk" not in reduced[
+        "failure_attribution_labels"
+    ], reduced
+    assert "verifier_bootstrap_diagnostic" not in reduced, reduced
+
+
 def test_completed_score_is_not_reclassified_by_bootstrap_risk() -> None:
     compact = _missing_score_compact()
     plan = _uv_bootstrap_plan()
@@ -341,5 +406,6 @@ if __name__ == "__main__":
     test_missing_score_uv_bootstrap_risk_gets_verifier_dependency_attribution()
     test_pre_agent_package_install_risk_overrides_bridge_trace_missing()
     test_benchmark_egress_preflight_overrides_verifier_package_risk()
+    test_runner_source_mismatch_overrides_verifier_package_risk()
     test_completed_score_is_not_reclassified_by_bootstrap_risk()
     print("skillsbench-verifier-bootstrap-missing-score-smoke: ok")
