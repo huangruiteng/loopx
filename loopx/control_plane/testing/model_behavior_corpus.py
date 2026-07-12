@@ -8,6 +8,7 @@ from typing import Any
 from ..quota.turn_envelope import build_turn_envelope
 from .model_behavior_qualification import (
     MODEL_BEHAVIOR_HARD_INVARIANT_FIELDS,
+    MODEL_BEHAVIOR_SEMANTIC_CONTRACT_FIELDS,
     MODEL_BEHAVIOR_SIGNAL_FIELDS,
     ModelBehaviorActor,
     ModelBehaviorPairValidationError,
@@ -27,15 +28,6 @@ _SOURCE_KINDS = {
     "candidate_ablation",
 }
 _EXPECTED_OUTCOMES = {"equivalent", "fail_closed"}
-_REQUIRED_UNGRADED_DIMENSIONS = (
-    "concrete_user_question",
-    "required_reads",
-    "write_scope",
-    "spend_rule",
-    "scheduler_action",
-    "vision_continuation",
-    "actionable_warnings",
-)
 
 
 def _deep_merge(base: Mapping[str, Any], patch: Mapping[str, Any]) -> dict[str, Any]:
@@ -195,6 +187,17 @@ def _compact_pair_result(result: Mapping[str, Any]) -> dict[str, Any]:
         "behavior_signal_drift_fields": sorted(
             str(key) for key in dict(result.get("behavior_signal_drift") or {})
         ),
+        "semantic_contract_complete": result.get("semantic_contract_complete") is True,
+        "semantic_contract_drift_fields": sorted(
+            str(key) for key in dict(result.get("semantic_contract_drift") or {})
+        ),
+        "semantic_contract_mismatch_fields": sorted(
+            {
+                str(item).split(":", 1)[1]
+                for item in list(result.get("safety_violations") or [])
+                if str(item).startswith("semantic_contract_mismatch:")
+            }
+        ),
         "stochastic_drift_fields": sorted(
             str(key) for key in dict(result.get("stochastic_drift") or {})
         ),
@@ -238,6 +241,7 @@ def run_model_behavior_corpus(
                     qualification_id=f"{case['case_id']}-r{repeat_index + 1}",
                     actor=actor,
                     arm_order=(arm_order[0], arm_order[1]),
+                    semantic_contract_required=True,
                 )
                 compact = _compact_pair_result(result)
             except ModelBehaviorPairValidationError:
@@ -246,6 +250,9 @@ def run_model_behavior_corpus(
                     "equivalent": False,
                     "hard_invariant_drift_fields": [],
                     "behavior_signal_drift_fields": [],
+                    "semantic_contract_complete": False,
+                    "semantic_contract_drift_fields": [],
+                    "semantic_contract_mismatch_fields": [],
                     "stochastic_drift_fields": [],
                     "safety_violations": ["pair_validation_failed"],
                     "receipt_digests": {},
@@ -271,17 +278,41 @@ def run_model_behavior_corpus(
             }
         )
     all_cases_passed = all(case["passed"] for case in case_results)
+    evaluated_runs = [
+        run
+        for case in case_results
+        if case["expected_outcome"] == "equivalent"
+        for run in case["runs"]
+    ]
+    semantic_contract_graded = bool(evaluated_runs) and all(
+        run["semantic_contract_complete"] for run in evaluated_runs
+    )
+    ungraded_required_dimensions = (
+        []
+        if semantic_contract_graded
+        else list(MODEL_BEHAVIOR_SEMANTIC_CONTRACT_FIELDS)
+    )
+    corpus_gate_passed = all_cases_passed and not ungraded_required_dimensions
+    promotion_blockers = [
+        "repeated_live_model_evidence_required",
+        "explicit_owner_review_required",
+    ]
     return {
         "schema_version": MODEL_BEHAVIOR_CORPUS_RESULT_SCHEMA_VERSION,
         "seed": seed,
         "repeats": repeats,
         "case_count": len(case_results),
         "all_cases_passed": all_cases_passed,
-        "promotion_eligible": all_cases_passed and not _REQUIRED_UNGRADED_DIMENSIONS,
+        "corpus_gate_passed": corpus_gate_passed,
+        "promotion_eligible": corpus_gate_passed and not promotion_blockers,
+        "promotion_blockers": promotion_blockers,
         "coverage": {
             "graded_hard_invariants": list(MODEL_BEHAVIOR_HARD_INVARIANT_FIELDS),
             "graded_behavior_signals": list(MODEL_BEHAVIOR_SIGNAL_FIELDS),
-            "ungraded_required_dimensions": list(_REQUIRED_UNGRADED_DIMENSIONS),
+            "graded_semantic_contract": list(MODEL_BEHAVIOR_SEMANTIC_CONTRACT_FIELDS)
+            if semantic_contract_graded
+            else [],
+            "ungraded_required_dimensions": ungraded_required_dimensions,
         },
         "cases": case_results,
         "persistence_boundary": {

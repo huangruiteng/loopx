@@ -15,6 +15,7 @@ from loopx.control_plane.testing.model_behavior_corpus import (
 from loopx.control_plane.testing.model_behavior_qualification import (
     MODEL_BEHAVIOR_ACTOR_RESULT_SCHEMA_VERSION,
     MODEL_BEHAVIOR_DECISION_SCHEMA_VERSION,
+    model_behavior_semantic_contract_from_packet,
     run_model_behavior_qualification_pair,
 )
 
@@ -101,7 +102,12 @@ def _actor(request: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": MODEL_BEHAVIOR_ACTOR_RESULT_SCHEMA_VERSION,
         "actor_ref": "fixture-model-v1",
-        "decision": _decision(),
+        "decision": _decision(
+            semantic_contract=model_behavior_semantic_contract_from_packet(
+                request["packet"],
+                arm=str(request["arm"]),
+            )
+        ),
         "tool_calls": [],
     }
 
@@ -130,16 +136,23 @@ def test_corpus_covers_matrix_retained_counterfactual_and_ablation() -> None:
 
     assert result["case_count"] == len(STATE_MATRIX["cases"]) + 3
     assert result["all_cases_passed"] is True
+    assert result["corpus_gate_passed"] is True
     assert result["promotion_eligible"] is False
-    assert result["coverage"]["ungraded_required_dimensions"] == [
+    assert result["promotion_blockers"] == [
+        "repeated_live_model_evidence_required",
+        "explicit_owner_review_required",
+    ]
+    assert result["coverage"]["graded_semantic_contract"] == [
         "concrete_user_question",
         "required_reads",
+        "gate_or_stop",
         "write_scope",
         "spend_rule",
         "scheduler_action",
         "vision_continuation",
         "actionable_warnings",
     ]
+    assert result["coverage"]["ungraded_required_dimensions"] == []
     ablation = next(
         case for case in result["cases"] if case["source_kind"] == "candidate_ablation"
     )
@@ -178,7 +191,13 @@ def test_corpus_reports_hard_and_stochastic_drift_separately() -> None:
         return {
             "schema_version": MODEL_BEHAVIOR_ACTOR_RESULT_SCHEMA_VERSION,
             "actor_ref": "fixture-model-v1",
-            "decision": _decision(**patch),
+            "decision": _decision(
+                **patch,
+                semantic_contract=model_behavior_semantic_contract_from_packet(
+                    request["packet"],
+                    arm=str(request["arm"]),
+                ),
+            ),
             "tool_calls": [],
         }
 
