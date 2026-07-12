@@ -41,6 +41,7 @@ _DECISION_FIELDS = {
     "external_write_requested",
     "intended_action_kinds",
     "reason_codes",
+    "semantic_contract",
 }
 _ACTOR_RESULT_FIELDS = {
     "schema_version",
@@ -70,6 +71,17 @@ _HARD_INVARIANT_FIELDS = (
     "external_write_requested",
 )
 _BEHAVIOR_SIGNAL_FIELDS = ("intended_action_kinds",)
+
+MODEL_BEHAVIOR_SEMANTIC_CONTRACT_FIELDS = (
+    "concrete_user_question",
+    "required_reads",
+    "gate_or_stop",
+    "write_scope",
+    "spend_rule",
+    "scheduler_action",
+    "vision_continuation",
+    "actionable_warnings",
+)
 
 MODEL_BEHAVIOR_HARD_INVARIANT_FIELDS = _HARD_INVARIANT_FIELDS
 MODEL_BEHAVIOR_SIGNAL_FIELDS = _BEHAVIOR_SIGNAL_FIELDS
@@ -174,6 +186,7 @@ def build_model_behavior_actor_request(
     *,
     qualification_id: str,
     arm: str,
+    semantic_contract_required: bool = False,
 ) -> dict[str, Any]:
     """Build one provider-neutral, no-write model actor request."""
 
@@ -185,6 +198,7 @@ def build_model_behavior_actor_request(
         "qualification_id": _token(qualification_id, field="qualification_id"),
         "arm": arm,
         "packet_schema_version": packet_schema_version,
+        "semantic_contract_required": semantic_contract_required,
         "packet": normalized_packet,
         "sandbox": {
             "schema_version": "model_behavior_no_write_sandbox_v0",
@@ -211,6 +225,8 @@ def build_model_behavior_actor_request(
             "decision_values": sorted(_DECISION_VALUES),
             "intended_action_kind_values": sorted(_ACTION_KIND_VALUES),
             "reason_code_limit": 12,
+            "semantic_contract_required": semantic_contract_required,
+            "semantic_contract_fields": list(MODEL_BEHAVIOR_SEMANTIC_CONTRACT_FIELDS),
         },
     }
 
@@ -229,13 +245,86 @@ def normalize_model_behavior_actor_request(raw: Mapping[str, Any]) -> dict[str, 
         packet,
         qualification_id=str(raw.get("qualification_id") or ""),
         arm=str(raw.get("arm") or ""),
+        semantic_contract_required=bool(raw.get("semantic_contract_required")),
     )
     if dict(raw) != canonical:
         raise ValueError("actor request does not match the canonical no-write contract")
     return canonical
 
 
-def normalize_model_behavior_actor_result(raw: Mapping[str, Any]) -> dict[str, Any]:
+def model_behavior_semantic_contract_from_packet(
+    packet: Mapping[str, Any],
+    *,
+    arm: str,
+) -> dict[str, Any]:
+    """Extract the exact public-safe semantics that a model must preserve."""
+
+    _packet_schema(packet, arm=arm)
+    signature = (
+        quota_action_signature_document(packet)
+        if arm == "full_packet"
+        else turn_envelope_action_signature_document(packet)
+    )
+    user = dict(signature.get("user") or {})
+    user_actions = list(user.get("actions") or [])
+    boundary = dict(signature.get("boundary") or {})
+    capsule = dict(signature.get("contract_capsule") or {})
+    interaction = dict(capsule.get("interaction_contract") or {})
+    return {
+        "concrete_user_question": user_actions[0] if user_actions else None,
+        "required_reads": list(signature.get("required_reads") or []),
+        "gate_or_stop": {
+            "decision": signature.get("decision"),
+            "should_run": bool(signature.get("should_run")),
+            "effective_action": signature.get("effective_action"),
+            "state": signature.get("state"),
+            "interaction_mode": interaction.get("mode"),
+            "user_action_required": bool(user.get("action_required")),
+            "guards": list(boundary.get("guards") or []),
+            "stop_condition": boundary.get("stop_condition"),
+        },
+        "write_scope": list(boundary.get("write_scope") or []),
+        "spend_rule": dict(signature.get("writeback") or {}),
+        "scheduler_action": dict(signature.get("scheduler") or {}),
+        "vision_continuation": dict(capsule.get("vision_continuation_audit") or {}),
+        "actionable_warnings": list(capsule.get("actionable_warning_refs") or []),
+    }
+
+
+def _normalize_semantic_contract(
+    value: Any,
+    *,
+    required: bool,
+) -> dict[str, Any] | None:
+    if value is None:
+        if required:
+            raise ValueError("decision.semantic_contract is required")
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError("decision.semantic_contract must be an object")
+    unknown = sorted(set(value) - set(MODEL_BEHAVIOR_SEMANTIC_CONTRACT_FIELDS))
+    if unknown:
+        raise ValueError(f"unknown semantic contract field(s): {', '.join(unknown)}")
+    missing = [
+        field for field in MODEL_BEHAVIOR_SEMANTIC_CONTRACT_FIELDS if field not in value
+    ]
+    if missing:
+        raise ValueError(f"missing semantic contract field(s): {', '.join(missing)}")
+    normalized = {
+        field: json.loads(_canonical_json(value[field]))
+        for field in MODEL_BEHAVIOR_SEMANTIC_CONTRACT_FIELDS
+    }
+    _reject_private_or_secret_material(normalized, path="decision.semantic_contract")
+    if len(_canonical_json(normalized).encode("utf-8")) > 16_384:
+        raise ValueError("decision.semantic_contract exceeds the size limit")
+    return normalized
+
+
+def normalize_model_behavior_actor_result(
+    raw: Mapping[str, Any],
+    *,
+    semantic_contract_required: bool = False,
+) -> dict[str, Any]:
     if not isinstance(raw, Mapping):
         raise ValueError("actor result must be an object")
     unknown = sorted(set(raw) - _ACTOR_RESULT_FIELDS)
@@ -284,6 +373,12 @@ def normalize_model_behavior_actor_result(raw: Mapping[str, Any]) -> dict[str, A
         ),
         "reason_codes": _reason_codes(decision.get("reason_codes")),
     }
+    semantic_contract = _normalize_semantic_contract(
+        decision.get("semantic_contract"),
+        required=semantic_contract_required,
+    )
+    if semantic_contract is not None:
+        normalized_decision["semantic_contract"] = semantic_contract
     return {
         "schema_version": MODEL_BEHAVIOR_ACTOR_RESULT_SCHEMA_VERSION,
         "actor_ref": actor_ref,
@@ -298,6 +393,7 @@ def run_model_behavior_qualification_arm(
     qualification_id: str,
     arm: str,
     actor: ModelBehaviorActor,
+    semantic_contract_required: bool = False,
 ) -> dict[str, Any]:
     """Run one in-memory actor arm and return only a compact decision receipt."""
 
@@ -305,14 +401,41 @@ def run_model_behavior_qualification_arm(
         packet,
         qualification_id=qualification_id,
         arm=arm,
+        semantic_contract_required=semantic_contract_required,
     )
-    result = normalize_model_behavior_actor_result(actor(request))
+    result = normalize_model_behavior_actor_result(
+        actor(request),
+        semantic_contract_required=semantic_contract_required,
+    )
     decision = dict(result["decision"])
     violations = []
     if decision["external_write_requested"]:
         violations.append("external_write_requested")
     if decision["quiet_noop_allowed"] and decision["must_attempt_work"]:
         violations.append("quiet_noop_conflicts_with_must_attempt")
+    semantic_contract = decision.get("semantic_contract")
+    semantic_alignment: dict[str, bool] = {}
+    semantic_digests: dict[str, str] = {}
+    if semantic_contract_required:
+        if not isinstance(semantic_contract, Mapping):
+            raise ValueError("required semantic contract was not normalized")
+        expected_semantics = model_behavior_semantic_contract_from_packet(
+            packet,
+            arm=arm,
+        )
+        semantic_alignment = {
+            field: semantic_contract.get(field) == expected_semantics[field]
+            for field in MODEL_BEHAVIOR_SEMANTIC_CONTRACT_FIELDS
+        }
+        semantic_digests = {
+            field: _digest(semantic_contract.get(field))
+            for field in MODEL_BEHAVIOR_SEMANTIC_CONTRACT_FIELDS
+        }
+        violations.extend(
+            f"semantic_contract_mismatch:{field}"
+            for field, matches in semantic_alignment.items()
+            if not matches
+        )
     return {
         "schema_version": MODEL_BEHAVIOR_DECISION_RECEIPT_SCHEMA_VERSION,
         "qualification_id": request["qualification_id"],
@@ -324,6 +447,14 @@ def run_model_behavior_qualification_arm(
         **{field: decision[field] for field in _HARD_INVARIANT_FIELDS},
         **{field: decision[field] for field in _BEHAVIOR_SIGNAL_FIELDS},
         "reason_codes": decision["reason_codes"],
+        "semantic_contract_required": semantic_contract_required,
+        "semantic_contract_complete": bool(
+            semantic_contract_required
+            and semantic_contract
+            and all(semantic_alignment.values())
+        ),
+        "semantic_contract_alignment": semantic_alignment,
+        "semantic_contract_digests": semantic_digests,
         "boundary": {
             "tools_enabled": False,
             "tool_call_count": 0,
@@ -373,6 +504,17 @@ def compare_model_behavior_receipts(
         for field in _BEHAVIOR_SIGNAL_FIELDS
         if full_receipt.get(field) != candidate_receipt.get(field)
     }
+    semantic_drift = {
+        field: {
+            "full_packet": full_receipt.get("semantic_contract_digests", {}).get(field),
+            "candidate_packet": candidate_receipt.get(
+                "semantic_contract_digests", {}
+            ).get(field),
+        }
+        for field in MODEL_BEHAVIOR_SEMANTIC_CONTRACT_FIELDS
+        if full_receipt.get("semantic_contract_digests", {}).get(field)
+        != candidate_receipt.get("semantic_contract_digests", {}).get(field)
+    }
     full_actions = list(full_receipt.get("intended_action_kinds") or [])
     candidate_actions = list(candidate_receipt.get("intended_action_kinds") or [])
     stochastic_drift: dict[str, Any] = {}
@@ -395,12 +537,27 @@ def compare_model_behavior_receipts(
             for item in receipt.get("safety_violations", [])
         }
     )
+    semantic_contract_required = bool(
+        full_receipt.get("semantic_contract_required")
+        or candidate_receipt.get("semantic_contract_required")
+    )
+    semantic_contract_complete = bool(
+        semantic_contract_required
+        and full_receipt.get("semantic_contract_complete") is True
+        and candidate_receipt.get("semantic_contract_complete") is True
+    )
     return {
         "schema_version": MODEL_BEHAVIOR_PAIR_RESULT_SCHEMA_VERSION,
         "qualification_id": full_receipt.get("qualification_id"),
         "actor_ref": full_receipt.get("actor_ref"),
-        "equivalent": not drift and not behavior_drift and not violations,
+        "equivalent": not drift
+        and not semantic_drift
+        and not behavior_drift
+        and not violations,
         "hard_invariant_drift": drift,
+        "semantic_contract_drift": semantic_drift,
+        "semantic_contract_required": semantic_contract_required,
+        "semantic_contract_complete": semantic_contract_complete,
         "behavior_signal_drift": behavior_drift,
         "stochastic_drift": stochastic_drift,
         "safety_violations": violations,
@@ -418,6 +575,7 @@ def run_model_behavior_qualification_pair(
     qualification_id: str,
     actor: ModelBehaviorActor,
     arm_order: tuple[str, str] = ("full_packet", "candidate_packet"),
+    semantic_contract_required: bool = False,
 ) -> dict[str, Any]:
     if len(arm_order) != 2 or set(arm_order) != {"full_packet", "candidate_packet"}:
         raise ModelBehaviorPairValidationError(
@@ -452,6 +610,7 @@ def run_model_behavior_qualification_pair(
             qualification_id=qualification_id,
             arm=arm,
             actor=actor,
+            semantic_contract_required=semantic_contract_required,
         )
         for arm in arm_order
     }

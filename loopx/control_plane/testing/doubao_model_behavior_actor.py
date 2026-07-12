@@ -106,11 +106,23 @@ these fields and no others:
   "quiet_noop_allowed": true|false,
   "external_write_requested": false,
   "intended_action_kinds": ["read|inspect|edit|test|writeback|spend|notify|wait|stop"],
-  "reason_codes": ["compact_public_safe_token"]
+  "reason_codes": ["compact_public_safe_token"],
+  "semantic_contract": {
+    "concrete_user_question": "exact first user action or null",
+    "required_reads": ["copy exact normalized objects from the packet"],
+    "gate_or_stop": {"copy": "exact normalized object from the packet"},
+    "write_scope": ["copy exact normalized values from the packet"],
+    "spend_rule": {"copy": "exact normalized object from the packet"},
+    "scheduler_action": {"copy": "exact normalized object from the packet"},
+    "vision_continuation": {"copy": "exact normalized object from the packet"},
+    "actionable_warnings": ["copy exact normalized values from the packet"]
+  }
 }
 Preserve user gates, selected work, execution obligations, write boundaries,
 spend timing, scheduler duties, and stop conditions from the packet. Output
-JSON only, without markdown or reasoning."""
+JSON only, without markdown or reasoning. Include semantic_contract whenever
+the qualification request sets semantic_contract_required=true; derive it from
+the packet and do not invent or summarize values."""
 
 
 def _provider_decision(response: Mapping[str, Any]) -> Mapping[str, Any]:

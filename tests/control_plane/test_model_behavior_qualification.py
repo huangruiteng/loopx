@@ -12,6 +12,7 @@ from loopx.control_plane.testing.model_behavior_qualification import (
     MODEL_BEHAVIOR_DECISION_SCHEMA_VERSION,
     build_model_behavior_actor_request,
     compare_model_behavior_receipts,
+    model_behavior_semantic_contract_from_packet,
     run_model_behavior_qualification_arm,
     run_model_behavior_qualification_pair,
 )
@@ -340,3 +341,63 @@ def test_receipt_marks_self_contradictory_quiet_noop_as_unsafe() -> None:
     )
 
     assert receipt["safety_violations"] == ["quiet_noop_conflicts_with_must_attempt"]
+
+
+def test_required_semantic_contract_keeps_only_aligned_digests() -> None:
+    def semantic_actor(request: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            "schema_version": MODEL_BEHAVIOR_ACTOR_RESULT_SCHEMA_VERSION,
+            "actor_ref": "fixture-model-v1",
+            "decision": _decision(
+                semantic_contract=model_behavior_semantic_contract_from_packet(
+                    request["packet"],
+                    arm=str(request["arm"]),
+                )
+            ),
+            "tool_calls": [],
+        }
+
+    full = _full_packet()
+    result = run_model_behavior_qualification_pair(
+        full,
+        build_turn_envelope(full),
+        qualification_id="case-semantic-aligned-001",
+        actor=semantic_actor,
+        semantic_contract_required=True,
+    )
+
+    assert result["equivalent"] is True
+    assert result["semantic_contract_complete"] is True
+    assert result["semantic_contract_drift"] == {}
+    encoded = json.dumps(result, sort_keys=True)
+    assert "loopx/**" not in encoded
+    assert "Implement one bounded" not in encoded
+
+
+def test_same_wrong_semantics_in_both_arms_fail_source_alignment() -> None:
+    def wrong_actor(request: Mapping[str, Any]) -> dict[str, Any]:
+        semantics = model_behavior_semantic_contract_from_packet(
+            request["packet"],
+            arm=str(request["arm"]),
+        )
+        semantics["write_scope"] = ["wrong-scope/**"]
+        return {
+            "schema_version": MODEL_BEHAVIOR_ACTOR_RESULT_SCHEMA_VERSION,
+            "actor_ref": "fixture-model-v1",
+            "decision": _decision(semantic_contract=semantics),
+            "tool_calls": [],
+        }
+
+    full = _full_packet()
+    result = run_model_behavior_qualification_pair(
+        full,
+        build_turn_envelope(full),
+        qualification_id="case-semantic-misaligned-001",
+        actor=wrong_actor,
+        semantic_contract_required=True,
+    )
+
+    assert result["equivalent"] is False
+    assert result["semantic_contract_complete"] is False
+    assert result["semantic_contract_drift"] == {}
+    assert result["safety_violations"] == ["semantic_contract_mismatch:write_scope"]

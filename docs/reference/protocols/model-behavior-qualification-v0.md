@@ -55,11 +55,17 @@ names, safety codes, and receipt digests. It excludes packets, prompts, raw
 responses, and conversations. Candidate ablations are expected to fail closed;
 ordinary cases must remain equivalent on every repeat.
 
-Coverage is explicit. A passing corpus is not promotion-eligible while a
-required behavior dimension remains `ungraded`. The initial runner names
-concrete user questions, required reads, write scope, spend rule, scheduler
-action, vision continuation, and actionable warnings as remaining receipt
-schema work instead of treating their absence as equivalence.
+Coverage is explicit. Corpus mode requires a bounded `semantic_contract` for
+the concrete user question, required reads, gate/stop state, write scope, spend
+rule, scheduler action, vision continuation, and actionable warnings. The core
+derives the expected contract independently from each arm's packet and compares
+the model result with that source before comparing arms. Two arms that repeat
+the same wrong or incomplete interpretation therefore fail source alignment.
+
+Receipts retain only per-dimension digests, completeness, and mismatch field
+names; they do not retain semantic-contract values. Complete aligned coverage
+can pass the corpus gate, but the overall promotion decision remains false
+until repeated live-model evidence and explicit owner review are present.
 
 ## No-Write Boundary
 
