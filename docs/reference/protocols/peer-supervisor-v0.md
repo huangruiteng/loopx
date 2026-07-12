@@ -146,6 +146,99 @@ proposal unexecuted; a model response is never accepted as proof that a session
 was injected, forked, or terminated. Destructive actions require explicit host
 authority even after an executor exists.
 
+## Future Fork Extension Gate
+
+A Shepherd-style `fork` is useful, but it is not another spelling of
+`handoff`:
+
+| Operation | Source continues | Target | Scheduling effect |
+| --- | --- | --- | --- |
+| `handoff` | Usually finished or yielding | Another registered peer continues from `state_ref` | Transfers continuation; should not increase active branch count by default |
+| future `fork` | Yes | The scheduler leases a temporary execution branch to an idle capability-matched registered peer | Increases active work and must reserve bounded capacity |
+
+LoopX should add `fork` to the closed supervisor decision set only when a real
+host call site can satisfy the complete execution contract. Until then it stays
+a documented extension gate rather than speculative production schema or a
+prompt-only action.
+
+### Identity And State Model
+
+Raft's persistent-agent model is the right constraint for LoopX: one registered
+peer keeps one durable identity and accumulated context. A fork copies
+execution state, not identity. It creates an `execution_branch_id`, then the
+scheduler assigns a `branch_lease_id` to an existing idle, capability-matched
+`executor_agent_id`. The source and executor may be the same peer, but the
+normal multi-agent path uses another available peer so the source can continue.
+The scheduler must not register a cloned peer, copy durable memory into a new
+identity, or create a hidden leader/follower relationship.
+
+The branch therefore separates four identities explicitly:
+
+- `source_agent_id`: the peer whose versioned execution state is forked;
+- `source_state_ref`: the immutable execution and workspace checkpoint;
+- `execution_branch_id`: the temporary branch identity;
+- `executor_agent_id` plus `branch_lease_id`: the registered peer temporarily
+  scheduled to run it.
+
+The branch lease is narrower than normal todo ownership. It authorizes bounded
+execution of one branch, not claiming the source peer's todo, inheriting its
+quota, or merging its durable memory. If the result is selected, ordinary
+LoopX continuation or handoff policy decides which peer owns the next durable
+todo.
+
+The source must be a versioned immutable `source_state_ref`, not a reconstructed
+chat transcript. The branch receives an isolated session/process view and a
+copy-on-write workspace view. Its effect and evidence streams remain separately
+addressable and join back to the source through stable refs.
+
+### Admission And Settlement
+
+Forking consumes more compute and creates competing outputs, so a supervisor
+proposal is not enough to start one. A future host admission receipt must prove:
+
+- `versioned_execution_state` and `session_state_fork`;
+- `workspace_copy_on_write` or equivalent isolated workspace state;
+- `scheduler_capacity_reservation` and `idle_peer_selection`, including
+  capability matching, fanout, cost, fairness, expiry, and cancel boundaries;
+- `branch_execution_lease`, preventing one idle peer from accepting competing
+  branches and making lease loss fail closed;
+- an opaque authority ref and idempotent branch id;
+- compact effect/evidence refs without raw transcript injection; and
+- `held_result_settlement`, so branch output cannot land in the canonical
+  workspace or LoopX state merely because the branch finished.
+
+The minimum lifecycle is:
+
+```text
+proposal_only -> admitted -> leased -> running -> held_result
+                                                -> failed
+                                                -> expired
+held_result -> selected | discarded
+```
+
+`selected` still passes through ordinary LoopX todo ownership, validation,
+review, merge, and user-gate policy. It is not an automatic merge. `discarded`
+retains compact evidence and releases the executor peer plus reserved capacity;
+it does not authorize destructive git cleanup. A branch that expires or loses
+its lease must fail closed instead of silently continuing.
+
+### Supervisor And Workspace Interaction
+
+The supervisor remains the preferred synthesis channel, not a centralized
+company brain. Branch progress should appear as queryable inbox-like projection
+rows so the supervisor can pull relevant changes without pushing every branch
+event into its context. Completed branch output remains held until explicit
+settlement, matching an agent-native workspace where persistent peers keep
+their own context and exchange bounded messages or artifacts.
+
+This extension should first ship as a default-off dry-run canary over a concrete
+multi-agent scheduler/host adapter. Required validation includes capacity
+exhaustion, duplicate fork idempotency, source-state immutability, workspace
+isolation, capability-based idle-peer selection, competing branch leases,
+branch expiry/cancellation, held-result settlement, and recovery when the host
+reports a partial failure. Only that evidence justifies widening
+`SupervisorDecisionKind` and the public event schema.
+
 ## Opt-In Inject Adapter Canary
 
 `loopx.control_plane.agents.supervisor_inject` exposes one narrow Python host
@@ -183,3 +276,6 @@ durable hierarchy back into `peer_v1`.
 - [Shepherd: A Meta-Agent for Versioned Execution](https://arxiv.org/abs/2605.10913)
 - [CooperBench](https://arxiv.org/abs/2601.13295)
 - [Shepherd repository](https://github.com/shepherd-agents/shepherd)
+- [Raft: Where Humans and Agents Build Together](https://raft.build/resources/blog/introducing-raft-where-humans-and-agents-build-together/)
+- [Raft: Is Having Agents in the Room Meant to Be Chaotic?](https://raft.build/resources/blog/is-having-agents-in-the-room-meant-to-be-chaotic/)
+- [Raft: You Don't Need a Company Brain](https://raft.build/zh-cn/resources/blog/you-dont-need-a-company-brain/)
