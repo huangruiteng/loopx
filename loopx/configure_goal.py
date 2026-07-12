@@ -5,6 +5,7 @@ import os
 import shlex
 import shutil
 import tempfile
+from collections.abc import Mapping
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -33,6 +34,7 @@ from .control_plane.agents.legacy_migration import (
     peer_agent_runtime_migration_completed,
     peer_agent_runtime_migration_id,
 )
+from .control_plane.agents.profile import normalize_agent_profile
 from .control_plane.agents.runtime_model import (
     AgentRuntimeModel,
     agent_runtime_model_for_goal,
@@ -175,6 +177,11 @@ def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
         "write_scope": _clean_write_scope(coordination.get("write_scope") or []) or [],
         "checkpointed_boundary_authority": checkpointed_boundary_authority_summary(coordination),
         "registered_agents": normalize_registered_agents(coordination.get("registered_agents")),
+        "agent_profiles": deepcopy(
+            coordination.get("agent_profiles")
+            if isinstance(coordination.get("agent_profiles"), dict)
+            else {}
+        ),
         "agent_model": agent_model.value,
         "configured_agent_model": coordination.get("agent_model"),
         "legacy_hierarchy_present": legacy_agent_hierarchy_present(goal),
@@ -354,6 +361,8 @@ def configure_goal(
     clear_explore_harness_profile: bool = False,
     registered_agents: list[str] | None = None,
     clear_registered_agents: bool = False,
+    agent_profiles: list[dict[str, Any]] | None = None,
+    clear_agent_profiles: list[str] | None = None,
     agent_model: str | None = None,
     automation_prompt_migration_ack: str | None = None,
     supervisor_agent: str | None = None,
@@ -461,6 +470,7 @@ def configure_goal(
         if allowed_domains:
             raise ValueError("--multi-subagent-feature off cannot be combined with --allowed-domain")
     registered_agents = _clean_registered_agents(registered_agents)
+    clear_agent_profiles = _clean_registered_agents(clear_agent_profiles)
     supervised_agents = _clean_registered_agents(supervised_agents)
     write_scope = _clean_write_scope(write_scope)
     issue_fix_reviewer_notification_config = _local_private_config_path(
@@ -472,6 +482,39 @@ def configure_goal(
     goal = next((item for item in goals if str(item.get("id")) == goal_id), None)
     if goal is None:
         raise ValueError(f"goal_id not found in registry: {goal_id}")
+
+    existing_coordination = (
+        goal.get("coordination")
+        if isinstance(goal.get("coordination"), dict)
+        else {}
+    )
+    effective_registered_agents = (
+        []
+        if clear_registered_agents
+        else registered_agents
+        if registered_agents is not None
+        else normalize_registered_agents(existing_coordination.get("registered_agents"))
+    )
+    normalized_agent_profiles: dict[str, dict[str, Any]] = {}
+    for raw_profile in agent_profiles or []:
+        if not isinstance(raw_profile, Mapping):
+            raise ValueError("--agent-profile-json must contain a JSON object")
+        profile = normalize_agent_profile(
+            raw_profile,
+            registered_agents=effective_registered_agents,
+        )
+        profile_agent_id = str(profile["agent_id"])
+        if profile_agent_id in normalized_agent_profiles:
+            raise ValueError(f"duplicate agent profile for {profile_agent_id}")
+        normalized_agent_profiles[profile_agent_id] = profile
+    profile_conflicts = sorted(
+        set(normalized_agent_profiles) & set(clear_agent_profiles or [])
+    )
+    if profile_conflicts:
+        raise ValueError(
+            "cannot write and clear the same agent profile: "
+            + ", ".join(profile_conflicts)
+        )
 
     before_goal = deepcopy(goal)
     before = _settings_summary(before_goal)
@@ -628,6 +671,8 @@ def configure_goal(
     if (
         clear_registered_agents
         or registered_agents is not None
+        or normalized_agent_profiles
+        or clear_agent_profiles
         or agent_model is not None
         or automation_prompt_migration_ack is not None
         or supervisor_agent is not None
@@ -643,11 +688,41 @@ def configure_goal(
         if clear_registered_agents:
             coordination.pop("registered_agents", None)
             coordination.pop("agent_model", None)
+            coordination.pop("agent_profiles", None)
             coordination.pop("supervisor", None)
         elif registered_agents is not None:
             coordination["registered_agents"] = registered_agents
+            existing_profiles = (
+                coordination.get("agent_profiles")
+                if isinstance(coordination.get("agent_profiles"), dict)
+                else {}
+            )
+            retained_profiles = {
+                agent: profile
+                for agent, profile in existing_profiles.items()
+                if agent in registered_agents
+            }
+            if retained_profiles:
+                coordination["agent_profiles"] = retained_profiles
+            else:
+                coordination.pop("agent_profiles", None)
         if not clear_registered_agents:
             coordination["agent_model"] = effective_agent_model
+        if not clear_registered_agents and (
+            normalized_agent_profiles or clear_agent_profiles
+        ):
+            profiles = (
+                dict(coordination.get("agent_profiles"))
+                if isinstance(coordination.get("agent_profiles"), dict)
+                else {}
+            )
+            for profile_agent_id in clear_agent_profiles or []:
+                profiles.pop(profile_agent_id, None)
+            profiles.update(normalized_agent_profiles)
+            if profiles:
+                coordination["agent_profiles"] = profiles
+            else:
+                coordination.pop("agent_profiles", None)
         if automation_prompt_migration_ack is not None and not migration_already_completed:
             coordination = migrate_coordination_to_peer_v1(
                 coordination,

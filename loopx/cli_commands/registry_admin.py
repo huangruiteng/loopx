@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -313,6 +314,23 @@ def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> 
         action="store_true",
         help="Clear coordination.registered_agents.",
     )
+    configure_goal_parser.add_argument(
+        "--agent-profile-json",
+        dest="agent_profile_jsons",
+        action="append",
+        default=None,
+        help=(
+            "Validated agent_profile_v1 JSON object for a registered peer. "
+            "Repeatable; writes advisory task routing hints only."
+        ),
+    )
+    configure_goal_parser.add_argument(
+        "--clear-agent-profile",
+        dest="clear_agent_profiles",
+        action="append",
+        default=None,
+        help="Registered agent id whose advisory profile should be removed. Repeatable.",
+    )
     register_peer_runtime_arguments(configure_goal_parser)
     register_peer_supervisor_arguments(configure_goal_parser)
     configure_goal_parser.add_argument(
@@ -545,6 +563,10 @@ def handle_registry_admin_command(
 
     if args.command == "configure-goal":
         try:
+            agent_profiles = [
+                json.loads(raw_profile)
+                for raw_profile in (args.agent_profile_jsons or [])
+            ]
             payload = configure_goal(
                 registry_path=registry_path,
                 goal_id=args.goal_id,
@@ -564,6 +586,8 @@ def handle_registry_admin_command(
                 clear_explore_harness_profile=bool(args.clear_explore_harness_profile),
                 registered_agents=args.registered_agents,
                 clear_registered_agents=bool(args.clear_registered_agents),
+                agent_profiles=agent_profiles,
+                clear_agent_profiles=args.clear_agent_profiles,
                 agent_model=args.agent_model,
                 automation_prompt_migration_ack=args.ack_automation_prompt_migration,
                 supervisor_agent=args.supervisor_agent,

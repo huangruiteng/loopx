@@ -55,6 +55,19 @@ claim or lease.
 }
 ```
 
+Profiles are written through the same validated registry path as other goal
+coordination settings:
+
+```bash
+loopx configure-goal --goal-id <goal-id> \
+  --agent-profile-json '{"schema_version":"agent_profile_v1","agent_id":"codex-runtime","profile_role":"runtime-validation","preferred_action_kinds":["runtime_*"]}' \
+  --execute
+```
+
+Use `--clear-agent-profile <agent-id>` to remove one profile. The command
+rejects unregistered peers, unknown fields, hierarchy roles, invalid task
+classes, and unsafe action-kind globs before writing the registry.
+
 `profile_role` is a human-readable functional label. It is advisory and must
 not use hierarchy labels such as `primary-agent` or `side-agent`.
 
@@ -97,6 +110,11 @@ Profile-backed selection may:
 3. avoid mismatched action kinds when another eligible peer or unclaimed task
    is available;
 4. project a concrete reassignment request when only other-peer claims remain.
+
+The preference rank is applied inside the existing claim bucket. A current
+peer claim remains ahead of an unclaimed todo even when the unclaimed todo is a
+better profile match. An explicit active-next todo also keeps its existing
+route. Without a valid profile, candidate ordering is unchanged.
 
 Selection must then enforce capability gates, task leases, workspace guards,
 write scope, and continuation policy. A profile preference never transfers a

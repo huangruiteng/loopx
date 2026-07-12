@@ -56,6 +56,8 @@ CONFIGURE_GOAL_REQUEST_FIELDS = {
     "clear_allowed_domains",
     "registered_agents",
     "clear_registered_agents",
+    "agent_profiles",
+    "clear_agent_profiles",
     "agent_model",
     "supervisor_agent",
     "supervised_agents",
@@ -344,6 +346,12 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
         registered_agents = body.get("registered_agents")
         if registered_agents is not None and not isinstance(registered_agents, list):
             raise ValueError("registered_agents must be a list of strings")
+        agent_profiles = body.get("agent_profiles")
+        if agent_profiles is not None and not isinstance(agent_profiles, list):
+            raise ValueError("agent_profiles must be a list of objects")
+        clear_agent_profiles = body.get("clear_agent_profiles")
+        if clear_agent_profiles is not None and not isinstance(clear_agent_profiles, list):
+            raise ValueError("clear_agent_profiles must be a list of strings")
         supervised_agents = body.get("supervised_agents")
         if supervised_agents is not None and not isinstance(supervised_agents, list):
             raise ValueError("supervised_agents must be a list of strings")
@@ -368,6 +376,12 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             "clear_allowed_domains": bool(body.get("clear_allowed_domains", False)),
             "registered_agents": [str(item) for item in registered_agents] if registered_agents is not None else None,
             "clear_registered_agents": bool(body.get("clear_registered_agents", False)),
+            "agent_profiles": agent_profiles,
+            "clear_agent_profiles": (
+                [str(item) for item in clear_agent_profiles]
+                if clear_agent_profiles is not None
+                else None
+            ),
             "agent_model": body.get("agent_model"),
             "supervisor_agent": body.get("supervisor_agent"),
             "supervised_agents": (
@@ -409,6 +423,8 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             clear_allowed_domains=values["clear_allowed_domains"],
             registered_agents=values["registered_agents"],
             clear_registered_agents=values["clear_registered_agents"],
+            agent_profiles=values["agent_profiles"],
+            clear_agent_profiles=values["clear_agent_profiles"],
             agent_model=values["agent_model"],
             supervisor_agent=values["supervisor_agent"],
             supervised_agents=values["supervised_agents"],
