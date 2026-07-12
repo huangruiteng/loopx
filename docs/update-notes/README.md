@@ -11,7 +11,7 @@ operator-only state are intentionally excluded.
 
 ## Latest
 
-- [2026-06-14 to 2026-06-27](2026-06-14-to-2026-06-27.md)
+- [2026-06-28 to 2026-07-11](2026-06-28-to-2026-07-11.md)
 
 ## Archive
 
@@ -30,7 +30,7 @@ operator-only state are intentionally excluded.
   history, LoopX CLI behavior, and shipped docs.
 - Publish on a two-week cadence anchored at the initial public scaffold on
   2026-05-31.
-- Next expected window: 2026-06-28 to 2026-07-11.
+- Next expected window: 2026-07-12 to 2026-07-25.
 
 ## Automation
 
