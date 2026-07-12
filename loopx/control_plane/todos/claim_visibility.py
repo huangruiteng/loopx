@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..agents.profile import agent_profile_candidate_rank
 from .contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
@@ -43,6 +44,11 @@ def build_agent_claim_scoped_open_items(
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
     if not agent_id:
         return open_items, None
+    agent_profile = (
+        agent_identity.get("agent_profile")
+        if isinstance(agent_identity.get("agent_profile"), dict)
+        else None
+    )
 
     def claim_bucket(item: dict[str, Any]) -> int:
         claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
@@ -77,7 +83,11 @@ def build_agent_claim_scoped_open_items(
     other_agent_claimed_items = [item for item in open_items if claim_bucket(item) == 2]
     selectable_items = sorted(
         [*current_agent_items, *unclaimed_items],
-        key=lambda item: (claim_bucket(item), *todo_projection_sort_key(item)),
+        key=lambda item: (
+            claim_bucket(item),
+            agent_profile_candidate_rank(item, agent_profile=agent_profile),
+            *todo_projection_sort_key(item),
+        ),
     )
     other_agent_visibility = todo_claimed_visibility_items(
         other_agent_claimed_items,
@@ -115,6 +125,16 @@ def build_agent_claim_scoped_open_items(
         ),
         "removed_continuation_policy": "legacy_review_handoffs_fail_closed_until_repaired",
     }
+    if agent_profile:
+        claim_scope["profile_routing"] = {
+            "schema_version": "agent_profile_routing_v0",
+            "applied": True,
+            "within_claim_bucket_only": True,
+            "preferred_action_kinds": list(
+                agent_profile.get("preferred_action_kinds") or []
+            ),
+            "avoid_action_kinds": list(agent_profile.get("avoid_action_kinds") or []),
+        }
     return selectable_items, claim_scope
 
 

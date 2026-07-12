@@ -1370,14 +1370,17 @@ material belongs to another connected project.
 
 **Expected behavior**
 
-A task claim should become `task_lease_v0`: an explicit, expiring claim over
-one bounded todo. The pending key is `(goal_id, todo_id)`: `goal_id` names the
-control-plane lane, while `todo_id` names the work item inside it. Different
+`claimed_by` remains the default soft routing signal. When a host has a concrete
+exclusive-write need, it may explicitly acquire `task_lease_v0`: an expiring
+hard lease over one bounded todo. The pending key is `(goal_id, todo_id)`:
+`goal_id` names the control-plane lane, while `todo_id` names the work item
+inside it. Different
 todos inside the same goal do not conflict merely because they share a goal;
 only competing pending leases for the same `todo_id` or overlapping write
-scopes should conflict. Status and future channel projections may render the
-claim, but the lease remains a projection over the LoopX ledger and does
-not override `goal_boundary`, user gates, quota, or write-scope checks.
+scopes should conflict. Status exposes whether the optional lease capability is
+available, and channel projections may render supplied lease rows. The lease is
+not enforced by `quota should-run` and does not override `goal_boundary`, user
+gates, capabilities, or write-scope checks.
 
 When a lease is active and the selected action is inside its scope, the owner
 may proceed. When a competing worker sees an active overlapping lease, it must
@@ -1408,7 +1411,7 @@ files because the only ownership signal was a chat message or dashboard label.
 
 - `docs/frontstage-channel-lease-roadmap.md`
 - `docs/architecture.md` local server / daemon roadmap
-- future `task_lease_v0` status and conflict smoke.
+- `examples/control_plane/task-lease-runtime-smoke.py`.
 
 #### IP-019 Peer Scoped Continuation
 

@@ -1086,6 +1086,11 @@ def apply_todo_update_to_lines(
     if status and not normalized_status:
         raise ValueError("todo status must be one of: open, done, blocked, deferred")
     target_status = normalized_status or str(block.get("status") or TODO_STATUS_OPEN)
+    if claim_only and target_status != TODO_STATUS_OPEN:
+        raise ValueError(
+            f"todo claim requires status=open; todo_id {normalized_todo_id!r} "
+            f"is status={target_status!r}"
+        )
     status_changed = False
     if normalized_status:
         status_changed = set_todo_marker(lines, block, normalized_status)

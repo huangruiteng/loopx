@@ -133,6 +133,38 @@ def main() -> None:
         runtime_root = tmp_root / "runtime"
         goal_id = "loopx-meta"
         log_path = rollout_event_log_path(runtime_root, goal_id)
+        identity_log_path = tmp_root / "rollout-event-identity.jsonl"
+        first_occurrence = build_rollout_event(
+            goal_id=goal_id,
+            event_kind="validation",
+            status="passed",
+            summary="Focused validation passed.",
+            recorded_at="2026-07-12T00:00:00Z",
+        )
+        append_rollout_event(identity_log_path, first_occurrence)
+        replayed = append_rollout_event(identity_log_path, dict(first_occurrence))
+        assert replayed == first_occurrence, replayed
+        assert len(load_rollout_events(identity_log_path)) == 1
+        later_occurrence = build_rollout_event(
+            goal_id=goal_id,
+            event_kind="validation",
+            status="passed",
+            summary="Focused validation passed.",
+            recorded_at="2026-07-12T00:01:00Z",
+        )
+        assert later_occurrence["event_id"] != first_occurrence["event_id"]
+        append_rollout_event(identity_log_path, later_occurrence)
+        assert len(load_rollout_events(identity_log_path)) == 2
+        conflicting = dict(first_occurrence)
+        conflicting["summary"] = "Conflicting content must not reuse an event id."
+        try:
+            append_rollout_event(identity_log_path, conflicting)
+        except ValueError as exc:
+            assert "conflicting rollout event_id" in str(exc), exc
+        else:
+            raise AssertionError("conflicting rollout event_id was appended")
+        assert len(load_rollout_events(identity_log_path)) == 2
+
         event = build_rollout_event(
             goal_id=goal_id,
             event_kind="quota_should_run",

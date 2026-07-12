@@ -126,11 +126,14 @@ class ContextProviderSync:
     provider_version: str | None = None
     latency_ms: int = 0
     result_refs: tuple[str, ...] = field(default_factory=tuple)
+    pending_count: int = 0
+    reconciliation_performed: bool = False
+    retry_disposition: str = "no_retry"
 
     def public_packet(self) -> dict[str, object]:
         return {
             "schema_version": CONTEXT_PROVIDER_SYNC_SCHEMA_VERSION,
-            "ok": self.status in {"completed", "planned"},
+            "ok": self.status in {"completed", "planned", "committed_pending"},
             "provider": self.provider,
             "namespace": self.namespace,
             "visibility": "public",
@@ -141,6 +144,9 @@ class ContextProviderSync:
             "requested_count": self.requested_count,
             "completed_count": self.completed_count,
             "write_count": self.write_count,
+            "pending_count": self.pending_count,
+            "reconciliation_performed": self.reconciliation_performed,
+            "retry_disposition": self.retry_disposition,
             "result_refs": [
                 opaque_provider_ref(
                     provider=self.provider,

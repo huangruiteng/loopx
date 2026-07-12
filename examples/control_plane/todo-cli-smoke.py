@@ -125,7 +125,36 @@ def main() -> int:
         root = Path(tmp)
         registry_path, state_file = write_fixture(root)
         legacy_registry_path, _ = write_fixture(root / "legacy", register_agents=False)
+        claim_state_registry_path, _ = write_fixture(root / "claim-state")
         original = state_file.read_text(encoding="utf-8")
+
+        blocked_todo = run_cli(
+            claim_state_registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--text",
+            "Reopen blocked work before assigning a new soft owner.",
+            "--status",
+            "blocked",
+            "--task-class",
+            "advancement_task",
+        )
+        blocked_claim = run_cli_error(
+            claim_state_registry_path,
+            "todo",
+            "claim",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            blocked_todo["todo_id"],
+            "--claimed-by",
+            "codex-main-control",
+        )
+        assert "todo claim requires status=open" in blocked_claim["error"], blocked_claim
 
         bare_user_error = run_cli_error(
             registry_path,

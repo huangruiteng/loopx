@@ -338,15 +338,15 @@ before adding new UI state.
 | Since Last Check | run history, refresh-state delivery outcome, validation evidence |
 | Signal Inbox | connector events, user feedback, issue/PR metadata, doc changes |
 | Anchor Selection | planning queue proposals, promoted todos, future anchor packets |
-| Current Work | agent todos, `claimed_by`, advisory `agent_profile_v1`, future leases |
+| Current Work | agent todos, `claimed_by`, advisory `agent_profile_v1`, optional hard leases when explicitly supplied |
 | Blocker Or Gate | user todos, operator gate, interaction contract, goal boundary |
 | Next Agent Move | quota decision, recommended action, next action, stop condition |
 | What I Need From You | user todo summary and concrete operator question |
 | Feedback Capture | reward overlay, gate command, todo update, future feedback signal |
 | Performance Review | run evidence, reward overlays, outcome classification, cost summary |
 
-Missing fields should degrade gracefully. For example, before hard leases exist,
-show `claimed_by` as soft ownership and avoid claiming exclusive execution.
+Missing fields should degrade gracefully. When no explicit hard-lease row is
+supplied, show `claimed_by` as soft ownership and avoid claiming exclusive execution.
 Without `agent_profile_v1`, show the registered peer id and current claims; do
 not infer rank or authority from the identity name.
 

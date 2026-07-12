@@ -11,6 +11,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from loopx.control_plane.agents.capability_gate import (  # noqa: E402
+    _agent_lane_candidate_sort_key,
+)
 from loopx.control_plane.todos.claim_visibility import (  # noqa: E402
     TODO_AGENT_CLAIM_SCOPE_SCHEMA_VERSION,
     build_agent_claim_scoped_open_items,
@@ -33,6 +36,7 @@ def todo(
     text: str,
     task_class: str,
     claimed_by: str | None = None,
+    action_kind: str | None = None,
     continuation_policy: str | None = None,
     removed_continuation_policy: str | None = None,
     blocks_agent: str | None = None,
@@ -45,6 +49,7 @@ def todo(
         "status": "open",
         "task_class": task_class,
         "claimed_by": claimed_by,
+        "action_kind": action_kind,
         "continuation_policy": continuation_policy,
         "removed_continuation_policy": removed_continuation_policy,
         "blocks_agent": blocks_agent,
@@ -111,6 +116,116 @@ def assert_agent_claim_scope_prefers_current_then_unclaimed() -> None:
     assert claim_scope["other_agent_claimed_weight"] == "diagnostic_only"
     assert claim_scope["other_agent_claimed_items"][0]["todo_id"] == "todo_other_p0"
     assert claim_scope["blocked_claimed_items"][0]["todo_id"] == "todo_other_p0"
+
+
+def assert_agent_profile_ranks_only_within_claim_buckets() -> None:
+    current_avoided = todo(
+        "todo_current_avoided",
+        index=1,
+        text="[P0] Current claimed but usually avoided.",
+        task_class="advancement_task",
+        action_kind="docs_cleanup",
+        claimed_by=CURRENT_AGENT,
+    )
+    current_preferred = todo(
+        "todo_current_preferred",
+        index=2,
+        text="[P2] Current claimed and preferred.",
+        task_class="advancement_task",
+        action_kind="task_lease_repair",
+        claimed_by=CURRENT_AGENT,
+    )
+    unclaimed_preferred = todo(
+        "todo_unclaimed_preferred",
+        index=3,
+        text="[P2] Unclaimed and preferred.",
+        task_class="advancement_task",
+        action_kind="todo_claim_projection",
+    )
+    unclaimed_neutral = todo(
+        "todo_unclaimed_neutral",
+        index=4,
+        text="[P0] Unclaimed and neutral.",
+        task_class="advancement_task",
+        action_kind="runtime_cleanup",
+    )
+    unclaimed_avoided = todo(
+        "todo_unclaimed_avoided",
+        index=5,
+        text="[P0] Unclaimed and avoided.",
+        task_class="advancement_task",
+        action_kind="docs_rewrite",
+    )
+    profile = {
+        "schema_version": "agent_profile_v1",
+        "agent_id": CURRENT_AGENT,
+        "preferred_action_kinds": ["task_lease_*", "todo_claim_*"],
+        "avoid_action_kinds": ["docs_*"],
+    }
+    identity = {
+        "agent_id": CURRENT_AGENT,
+        "agent_model": "peer_v1",
+        "agent_profile": profile,
+    }
+    selectable, claim_scope = build_agent_claim_scoped_open_items(
+        [
+            unclaimed_avoided,
+            unclaimed_neutral,
+            current_avoided,
+            unclaimed_preferred,
+            current_preferred,
+        ],
+        agent_identity=identity,
+        diagnostic_item_limit=3,
+    )
+    assert [item["todo_id"] for item in selectable] == [
+        "todo_current_preferred",
+        "todo_current_avoided",
+        "todo_unclaimed_preferred",
+        "todo_unclaimed_neutral",
+        "todo_unclaimed_avoided",
+    ], selectable
+    assert claim_scope is not None
+    assert claim_scope["profile_routing"]["within_claim_bucket_only"] is True
+
+    coordination = {
+        "agent_model": "peer_v1",
+        "registered_agents": [CURRENT_AGENT, OTHER_AGENT],
+        "agent_profiles": {CURRENT_AGENT: profile},
+    }
+    quota_items = [dict(current_avoided), dict(current_preferred)]
+    for item in quota_items:
+        item.pop("required_write_scopes", None)
+    quota = build_quota_should_run(
+        status_payload(
+            status="agent_profile_advisory_routing",
+            next_action=current_avoided["text"],
+            coordination=coordination,
+            agent_todo_items=quota_items,
+        ),
+        goal_id=GOAL_ID,
+        agent_id=CURRENT_AGENT,
+    )
+    assert quota["agent_identity"]["agent_profile"] == profile, quota
+    assert quota["agent_lane_next_action"]["todo_id"] == (
+        "todo_current_preferred"
+    ), quota
+    assert quota["agent_lane_next_action"]["selected_by"] == (
+        "current_agent_claimed_todo"
+    ), quota
+    active_avoided_key = _agent_lane_candidate_sort_key(
+        current_avoided,
+        agent_id=CURRENT_AGENT,
+        preferred_todo_ids={"todo_current_avoided"},
+        agent_profile=profile,
+    )
+    preferred_key = _agent_lane_candidate_sort_key(
+        current_preferred,
+        agent_id=CURRENT_AGENT,
+        preferred_todo_ids={"todo_current_avoided"},
+        agent_profile=profile,
+    )
+    assert active_avoided_key < preferred_key
 
 
 def assert_executor_exclusion_filters_only_the_named_peer() -> None:
@@ -390,6 +505,7 @@ def assert_claim_visibility_lanes_split_current_other_and_task_class() -> None:
 
 def main() -> int:
     assert_agent_claim_scope_prefers_current_then_unclaimed()
+    assert_agent_profile_ranks_only_within_claim_buckets()
     assert_executor_exclusion_filters_only_the_named_peer()
     assert_quota_routes_unclaimed_handoff_to_an_eligible_peer()
     assert_legacy_review_handoff_fails_closed_until_repaired()

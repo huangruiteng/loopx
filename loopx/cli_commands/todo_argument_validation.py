@@ -19,6 +19,7 @@ TODO_OPTION_FIELDS = (
     ("--required-write-scope", "required_write_scopes"),
     ("--required-capability", "required_capabilities"),
     ("--target-capability", "target_capabilities"),
+    ("--capability-gap-status", "capability_gap_status"),
     ("--explore-result-node-ref", "explore_result_node_refs"),
     ("--clear-explore-result-node-refs", "clear_explore_result_node_refs"),
     ("--decision-scope", "decision_scope"),
@@ -93,4 +94,25 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
             "agent-scoped user gates; --global-gate is supported by "
             "`todo add/update --role user --task-class user_gate`; --from, --limit, and "
             "--trigger are only supported by `todo suggest`"
+        )
+
+
+def validate_capability_gap_options(args: argparse.Namespace) -> None:
+    if not args.capability_gap_status:
+        return
+    if args.todo_command not in {"add", "update"}:
+        raise ValueError("--capability-gap-status is supported only by todo add/update")
+    if args.role != "agent":
+        raise ValueError("--capability-gap-status requires --role agent")
+    if not args.target_capabilities:
+        raise ValueError(
+            "--capability-gap-status requires at least one --target-capability"
+        )
+    if (
+        args.capability_gap_status in {"fixed", "real_callsite_verified"}
+        and not args.evidence
+    ):
+        raise ValueError(
+            "fixed and real_callsite_verified capability gaps require "
+            "public-safe --evidence"
         )

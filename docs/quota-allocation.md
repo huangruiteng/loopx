@@ -358,6 +358,16 @@ ordinary delivery work. Only when no ready current-agent/unclaimed deferred
 resume exists should agent-scoped quota fall through to `agent_scope_wait`,
 `reassignment_required`, or `scope_exhausted`.
 
+Priority remains authoritative across the resume boundary. When a ready
+current-agent or unclaimed deferred successor has strictly higher priority than
+the selected open advancement todo, quota also returns
+`successor_replan_required` before lower-priority delivery. The deferred item
+does not become executable in place: `selected_todo` points to the deferred
+successor so the worker can reopen, supersede, or close it explicitly, while
+`goal_frontier_projection.deferred_successors.top_ready_todo_id` reports the
+same lifecycle target. An equal-priority open todo remains executable, avoiding
+unnecessary lifecycle churn within a priority bucket.
+
 Open todos with `resume_when` use the same readiness signal before they enter
 ordinary execution lanes. Until `resume_ready=true`, quota must not include the
 todo in `capability_gate.runnable_candidates` or `agent_lane_next_action`; it

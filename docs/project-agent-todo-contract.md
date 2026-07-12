@@ -498,7 +498,10 @@ rewrite either form automatically.
 Deferred successors may carry `resume_when`, `resume_condition`, and
 `resume_ready`; `resume_ready=true` means the deferred item should be considered
 for a successor replan before any agent-scoped no-candidate wait, not that
-normal delivery may skip the todo lifecycle.
+normal delivery may skip the todo lifecycle. A ready deferred successor also
+preempts a strictly lower-priority open advancement todo for this lifecycle
+replan. It does not preempt an equal-priority open todo, and it never enters the
+normal executable backlog until a lifecycle command reopens it.
 The `todo_id` is first-class when written by the CLI.
 `claimed_by` values are normalized public-safe agent ids and should correspond to
 `coordination.registered_agents`. Legacy Markdown without metadata still gets a

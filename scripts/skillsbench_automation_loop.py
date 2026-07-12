@@ -4915,6 +4915,7 @@ def _apply_codex_cli_goal_countability_guard_attribution(
         and str(compact.get("official_score_status") or "") == "completed"
     )
     terminal_goal_failure_stages = {
+        "auth_refresh_token_revoked",
         "post_bridge_tui_model_timeout",
         "post_bridge_tui_error_prompt",
         "post_bridge_tui_rate_limit",
@@ -4932,7 +4933,9 @@ def _apply_codex_cli_goal_countability_guard_attribution(
         return False
 
     label = "skillsbench_codex_cli_goal_uncountable_no_task_activity"
-    if goal_stage == "goal_active_timeout":
+    if goal_stage == "auth_refresh_token_revoked":
+        label = "skillsbench_codex_cli_goal_uncountable_auth_refresh_token_revoked"
+    elif goal_stage == "goal_active_timeout":
         label = "skillsbench_codex_cli_goal_uncountable_goal_active_timeout"
     elif goal_stage == "pre_bridge_tui_model_timeout":
         label = "skillsbench_codex_cli_goal_uncountable_pre_bridge_model_timeout"

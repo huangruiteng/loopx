@@ -5,6 +5,10 @@
 Keep `protocol_action_packet_v0` as the hot-path protocol simplification
 contract for `quota should-run`.
 
+The opt-in TurnEnvelope may reconstruct this packet from its structured action
+contracts and omit the repeated summary only when field-level parity succeeds;
+the full decision continues to persist the compatibility packet.
+
 The hot path remains deterministic and rule-only:
 
 - `llm=no_api`

@@ -18,7 +18,7 @@ from loopx.control_plane.agents.identity import (  # noqa: E402
     build_identity_aware_prompt_upgrade,
     build_quota_agent_identity,
 )
-from loopx.control_plane.agents.runtime_model import (  # noqa: E402
+from loopx.control_plane.agents.legacy_migration import (  # noqa: E402
     PEER_AGENT_RUNTIME_MIGRATION,
 )
 from loopx.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
@@ -246,6 +246,55 @@ def main() -> int:
         )
         assert repeated_after_legacy_write["changed"] is False, repeated_after_legacy_write
         assert repeated_after_legacy_write["backup_path"] is None, repeated_after_legacy_write
+
+        custom_role_registry = Path(tmp) / "custom-role-registry.json"
+        custom_role_registry.write_text(
+            json.dumps(
+                {
+                    "goals": [
+                        {
+                            "id": GOAL_ID,
+                            "coordination": {
+                                "registered_agents": AGENTS,
+                                "agent_model": "peer_v1",
+                                "agent_profiles": {
+                                    AGENTS[0]: {
+                                        "role": "researcher",
+                                        "scope_summary": "research synthesis",
+                                    }
+                                },
+                            },
+                        }
+                    ]
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        custom_goal = json.loads(custom_role_registry.read_text(encoding="utf-8"))[
+            "goals"
+        ][0]
+        custom_identity = build_quota_agent_identity(custom_goal, agent_id=AGENTS[0])
+        custom_upgrade = build_identity_aware_prompt_upgrade(
+            custom_goal,
+            goal_id=GOAL_ID,
+            agent_identity=custom_identity,
+        )
+        assert custom_upgrade["registry_migration_required"] is True, custom_upgrade
+        custom_applied = configure_goal(
+            registry_path=custom_role_registry,
+            goal_id=GOAL_ID,
+            automation_prompt_migration_ack=custom_upgrade["migration_id"],
+            execute=True,
+        )
+        assert custom_applied["written"] is True, custom_applied
+        custom_migrated_goal = json.loads(
+            custom_role_registry.read_text(encoding="utf-8")
+        )["goals"][0]
+        custom_profile = custom_migrated_goal["coordination"]["agent_profiles"][AGENTS[0]]
+        assert custom_profile["profile_role"] == "researcher", custom_profile
+        assert custom_profile["scope_summary"] == "research synthesis", custom_profile
+        assert "role" not in custom_profile, custom_profile
 
         fresh_registry = Path(tmp) / "fresh-registry.json"
         fresh_registry.write_text(

@@ -1754,6 +1754,11 @@ def build_quota_should_run(
                     or ready_deferred_resume_candidates
                 ),
             )
+        if (
+            isinstance(agent_scope_frontier, dict)
+            and agent_scope_frontier.get("priority_preemption") is True
+        ):
+            agent_lane_next_action = None
         agent_lane_frontier_hint = None
         if not replan_decision_allowed:
             agent_lane_frontier_hint = _agent_lane_frontier_hint(
@@ -1935,6 +1940,7 @@ def build_quota_should_run(
         selected_todo_projection = _selected_todo_projection(
             agent_lane_next_action=agent_lane_next_action,
             work_lane_contract=payload_work_lane_contract,
+            agent_scope_frontier=agent_scope_frontier,
         )
         if selected_todo_projection:
             payload["selected_todo"] = selected_todo_projection

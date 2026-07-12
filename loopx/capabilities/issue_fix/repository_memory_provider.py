@@ -38,6 +38,7 @@ _CONFIG_FIELDS = {
     "namespace",
     "visibility",
     "scope_ref",
+    "revision_policy",
     "repository_revision",
     "max_results",
     "timeout_seconds",
@@ -47,6 +48,11 @@ _CONFIG_FIELDS = {
     "writeback_scope_ref",
     "workspace_scope",
     "peer_scope",
+}
+_REMOVED_REVISION_LIFECYCLE_FIELDS = {
+    "repository_scope_root",
+    "active_repository_revision",
+    "active_scope_ref",
 }
 _LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}$")
 _FORBIDDEN_WRITEBACK_FIELDS = {
@@ -147,6 +153,13 @@ def _normalise_config(
             "repository memory provider config schema_version must be "
             "issue_fix_repository_memory_provider_config_v0"
         )
+    removed_fields = sorted(set(config) & _REMOVED_REVISION_LIFECYCLE_FIELDS)
+    if removed_fields:
+        raise ValueError(
+            "per-checkout repository activation fields were removed; configure one "
+            "stable scope_ref for a provider-managed rolling default-branch index: "
+            f"{removed_fields}"
+        )
     unknown = sorted(set(config) - _CONFIG_FIELDS)
     if unknown:
         raise ValueError(
@@ -156,21 +169,52 @@ def _normalise_config(
     namespace = _label(config.get("namespace"), field="namespace")
     if config.get("visibility") != "public":
         raise ValueError("repository memory provider visibility must be public")
-    configured_revision = _compact(
-        config.get("repository_revision"),
-        field="repository_revision",
-        limit=120,
-    )
-    if not re.fullmatch(r"[0-9a-fA-F]{12,64}", configured_revision):
-        raise ValueError("repository memory provider revision must be a git object id")
-    if configured_revision != repository_revision:
+    if not re.fullmatch(r"[0-9a-fA-F]{12,64}", repository_revision):
+        raise ValueError("current repository revision must be a git object id")
+    configured_revision = str(config.get("repository_revision") or "").strip()
+    revision_policy = str(
+        config.get("revision_policy")
+        or ("pinned" if configured_revision else "rolling_default_branch")
+    ).strip()
+    if revision_policy == "checkout_head":
         raise ValueError(
-            "repository memory provider revision must match current checkout"
+            "checkout_head revision scopes were removed; use "
+            "revision_policy=rolling_default_branch with one stable scope_ref"
         )
-    scope_ref = _compact(config.get("scope_ref"), field="scope_ref", limit=500)
+    if revision_policy not in {"pinned", "rolling_default_branch"}:
+        raise ValueError(
+            "revision_policy must be pinned or rolling_default_branch"
+        )
+    if revision_policy == "pinned":
+        configured_revision = _compact(
+            configured_revision,
+            field="repository_revision",
+            limit=120,
+        )
+        if not re.fullmatch(r"[0-9a-fA-F]{12,64}", configured_revision):
+            raise ValueError(
+                "repository memory provider revision must be a git object id"
+            )
+        if configured_revision != repository_revision:
+            raise ValueError(
+                "repository memory provider revision must match current checkout"
+            )
+        scope_ref = _compact(
+            config.get("scope_ref"), field="scope_ref", limit=500
+        ).rstrip("/")
+    else:
+        if configured_revision:
+            raise ValueError(
+                "rolling_default_branch does not accept repository_revision; "
+                "the current checkout revision is supplied by the issue-fix caller"
+            )
+        configured_revision = repository_revision
+        scope_ref = _compact(
+            config.get("scope_ref"), field="scope_ref", limit=500
+        ).rstrip("/")
     if not scope_ref.startswith("viking://"):
         raise ValueError("repository memory provider scope_ref must use viking://")
-    if repository_revision[:12] not in scope_ref:
+    if revision_policy == "pinned" and repository_revision[:12] not in scope_ref:
         raise ValueError("repository memory provider scope_ref must be revision-scoped")
     max_results = min(
         max(1, int(config.get("max_results") or 3)),
@@ -227,7 +271,8 @@ def _normalise_config(
         **dict(config),
         "provider": provider,
         "namespace": namespace,
-        "scope_ref": scope_ref.rstrip("/"),
+        "scope_ref": scope_ref,
+        "revision_policy": revision_policy,
         "repository_revision": configured_revision,
         "max_results": max_results,
         "timeout_seconds": timeout_seconds,
@@ -241,13 +286,41 @@ def _normalise_config(
     }
 
 
+def _repository_context_advisory_packet(
+    normalised: Mapping[str, Any],
+    *,
+    repository_revision: str,
+) -> dict[str, Any]:
+    """Project a stable provider scope without turning it into patch authority."""
+
+    return {
+        "schema_version": "repository_context_advisory_v0",
+        "ok": True,
+        "provider": str(normalised["provider"]),
+        "namespace": str(normalised["namespace"]),
+        "visibility": "public",
+        "source_policy": str(normalised["revision_policy"]),
+        "scope_ref": opaque_provider_ref(
+            provider=str(normalised["provider"]),
+            namespace=str(normalised["namespace"]),
+            resource_ref=str(normalised["scope_ref"]),
+        ),
+        "current_checkout_revision": repository_revision,
+        "retrieval_allowed": True,
+        "verification_required": True,
+        "patch_authority": False,
+        "provider_refresh_ownership": "external",
+        "raw_provider_refs_captured": False,
+    }
+
+
 def _validated_outcome_fact(
     outcome_packet: Mapping[str, Any],
     *,
     repository_revision: str,
     workspace_scope: str,
     peer_scope: str,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     def reject_unsafe_fields(value: Any) -> None:
         if isinstance(value, Mapping):
             for raw_key, nested in value.items():
@@ -332,12 +405,24 @@ def _validated_outcome_fact(
 
     repo = _compact(case.get("repo"), field="repo", limit=180)
     issue_ref = _compact(case.get("issue_ref"), field="issue_ref", limit=180)
+    reusable_knowledge = case.get("reusable_knowledge")
+    if reusable_knowledge is not None and not isinstance(reusable_knowledge, Mapping):
+        raise ValueError("repository memory reusable_knowledge must be an object")
     supersession_key = "sha256:" + hashlib.sha256(
         f"{workspace_scope}\n{peer_scope}\n{repo}\n{issue_ref}".encode("utf-8")
     ).hexdigest()
+    knowledge_eligible = bool(reusable_knowledge)
     fact = {
-        "schema_version": "issue_fix_validated_outcome_memory_v0",
-        "fact_type": "validated_issue_fix_outcome",
+        "schema_version": (
+            "issue_fix_reusable_knowledge_memory_v0"
+            if knowledge_eligible
+            else "issue_fix_validated_outcome_memory_v0"
+        ),
+        "fact_type": (
+            "reusable_issue_fix_knowledge"
+            if knowledge_eligible
+            else "validated_issue_fix_outcome"
+        ),
         "workspace_scope": workspace_scope,
         "peer_scope": peer_scope,
         "repository": repo,
@@ -369,6 +454,8 @@ def _validated_outcome_fact(
         "provenance": "issue_fix_outcome_projection_v0",
         "supersession_key": supersession_key,
     }
+    if knowledge_eligible:
+        fact["knowledge"] = dict(reusable_knowledge)
     canonical = json.dumps(
         fact,
         ensure_ascii=False,
@@ -379,7 +466,11 @@ def _validated_outcome_fact(
         canonical.encode("utf-8")
     ).hexdigest()
     body = (
-        "# Validated issue-fix outcome\n\n```json\n"
+        (
+            "# Reusable issue-fix knowledge\n\n```json\n"
+            if knowledge_eligible
+            else "# Validated issue-fix outcome\n\n```json\n"
+        )
         + json.dumps(
             {**fact, "idempotency_key": idempotency_key},
             ensure_ascii=False,
@@ -388,7 +479,7 @@ def _validated_outcome_fact(
         )
         + "\n```\n"
     )
-    return idempotency_key, body
+    return idempotency_key, body, str(fact["fact_type"])
 
 
 def write_issue_fix_validated_outcome_memory(
@@ -512,15 +603,45 @@ def write_issue_fix_validated_outcome_memory(
             "checkout_verification": verification,
             "external_writes_performed": False,
         }
-    idempotency_key, body = _validated_outcome_fact(
+    reusable_knowledge = (
+        case.get("reusable_knowledge")
+        if isinstance(case, Mapping)
+        else None
+    )
+    if isinstance(reusable_knowledge, Mapping):
+        missing_references = [
+            str(reference)
+            for reference in reusable_knowledge.get("verification_references") or []
+            if not git_ok(
+                "cat-file",
+                "-e",
+                f"{repository_revision}:{reference}",
+            )
+        ]
+        if missing_references:
+            return {
+                **base,
+                "ok": False,
+                "status": "blocked",
+                "reason_code": "knowledge_verification_reference_not_in_revision",
+                "missing_reference_count": len(missing_references),
+                "checkout_verification": verification,
+                "external_writes_performed": False,
+            }
+    idempotency_key, body, fact_type = _validated_outcome_fact(
         outcome_packet,
         repository_revision=repository_revision,
         workspace_scope=str(normalised["workspace_scope"]),
         peer_scope=str(normalised["peer_scope"]),
     )
     digest = idempotency_key.removeprefix("sha256:")
+    collection = (
+        "reusable-knowledge"
+        if fact_type == "reusable_issue_fix_knowledge"
+        else "validated-outcomes"
+    )
     target = (
-        f"{normalised['writeback_scope_ref']}/validated-outcomes/"
+        f"{normalised['writeback_scope_ref']}/{collection}/"
         f"{normalised['workspace_scope']}/{normalised['peer_scope']}/{digest}.md"
     )
     configured_provider = provider or build_context_provider(normalised)
@@ -542,6 +663,8 @@ def write_issue_fix_validated_outcome_memory(
             "status": sync.status,
             "reason_code": sync.reason_code,
             "idempotency_key": idempotency_key,
+            "fact_type": fact_type,
+            "knowledge_eligible": fact_type == "reusable_issue_fix_knowledge",
             "supersession_key_recorded": True,
             "revision_scoped": True,
             "checkout_verification": verification,
@@ -614,6 +737,10 @@ def retrieve_issue_fix_repository_memory(
         raise ValueError(f"supports must use {sorted(SUPPORT_ASPECTS)}")
     provider_id = str(normalised["provider"])
     namespace = str(normalised["namespace"])
+    repository_context = _repository_context_advisory_packet(
+        normalised,
+        repository_revision=repository_revision,
+    )
     if not normalised["enabled"]:
         memory_input = _disabled_memory_input(
             provider=provider_id,
@@ -641,6 +768,7 @@ def retrieve_issue_fix_repository_memory(
         observed_at=observed_at,
     )
     provider_projection = retrieval.public_packet()
+    provider_projection["repository_context"] = repository_context
     if retrieval.status != "completed":
         memory_input = _unavailable_memory_input(
             provider=provider_id,
@@ -728,7 +856,8 @@ def retrieve_issue_fix_repository_memory(
         "revision": repository_revision,
         "confirmed_count": confirmed_count,
         "stale_or_unmapped_count": stale_or_unmapped_count,
-        "patch_influence_allowed_count": confirmed_count,
+        "verified_decision_influence_count": 0,
+        "patch_influence_allowed_count": 0,
         "configured_resource_count": len(normalised["resource_references"]),
         "verification_mode": "canonical_text_or_parser_chunk",
     }
@@ -748,9 +877,13 @@ def sync_issue_fix_repository_memory(
     execute: bool,
     provider: ContextProvider | None = None,
 ) -> dict[str, Any]:
-    """Bound an explicit provider resource refresh to one revision checkout."""
+    """Bound an explicit provider resource refresh to approved checkout files."""
 
     normalised = _normalise_config(config, repository_revision=repository_revision)
+    repository_context = _repository_context_advisory_packet(
+        normalised,
+        repository_revision=repository_revision,
+    )
     if not normalised["enabled"]:
         return {
             "schema_version": "issue_fix_repository_memory_sync_v0",
@@ -762,6 +895,7 @@ def sync_issue_fix_repository_memory(
             "requested_reference_count": 0,
             "external_writes_performed": False,
             "fail_open": True,
+            "repository_context": repository_context,
         }
     scope_ref = str(normalised["scope_ref"])
     if not scope_ref.startswith("viking://resources/"):
@@ -810,9 +944,10 @@ def sync_issue_fix_repository_memory(
             "schema_version": "issue_fix_repository_memory_sync_v0",
             "repository_revision": repository_revision,
             "requested_reference_count": len(resources),
-            "revision_scoped": True,
+            "revision_scoped": normalised["revision_policy"] == "pinned",
             "automatic_capture_performed": False,
             "memory_writeback_performed": False,
+            "repository_context": repository_context,
         }
     )
     return packet

@@ -100,8 +100,11 @@ def build_status_runtime_summaries(
     todo_index_limit: int,
     context: StatusRuntimeSummaryContext,
 ) -> dict[str, Any]:
-    event_class_for_run = lambda run: event_ledger_event_class(run, context=context)
-    decision_kinds = lambda run: decision_event_kinds(run, context=context)
+    def event_class_for_run(run: dict[str, Any]) -> str:
+        return event_ledger_event_class(run, context=context)
+
+    def decision_kinds(run: dict[str, Any]) -> list[str]:
+        return decision_event_kinds(run, context=context)
 
     return {
         "run_history": build_run_history(

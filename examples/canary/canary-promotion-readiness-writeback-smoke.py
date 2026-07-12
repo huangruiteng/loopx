@@ -173,11 +173,13 @@ def main() -> int:
         assert record["classification"] == module.READINESS_CLASSIFICATION, record
         assert record["goal_id"] == GOAL_ID, record
         assert record["delivery_batch_scale"] == "multi_surface", record
-        assert record["delivery_outcome"] == "primary_goal_outcome", record
+        assert record["delivery_outcome"] == module.READINESS_DELIVERY_OUTCOME, record
         assert record["recommended_action"] == module.READINESS_RECOMMENDED_ACTION, record
         assert record["progress_scope"] == "agent_lane", record
         assert record["agent_id"] == module.DEFAULT_READINESS_AGENT_ID, record
         assert record["agent_lane"] == module.DEFAULT_READINESS_AGENT_LANE, record
+        assert record["vision_checkpoint"]["required"] is False, record
+        assert record["vision_checkpoint"]["decision"] == "not_required", record
 
         json_path = Path(record["json_path"])
         markdown_path = Path(record["markdown_path"])
@@ -189,10 +191,12 @@ def main() -> int:
         payload = json.loads(json_path.read_text(encoding="utf-8"))
         assert payload["classification"] == module.READINESS_CLASSIFICATION, payload
         assert payload["delivery_batch_scale"] == "multi_surface", payload
-        assert payload["delivery_outcome"] == "primary_goal_outcome", payload
+        assert payload["delivery_outcome"] == module.READINESS_DELIVERY_OUTCOME, payload
         assert payload["progress_scope"] == "agent_lane", payload
         assert payload["agent_id"] == module.DEFAULT_READINESS_AGENT_ID, payload
         assert payload["agent_lane"] == module.DEFAULT_READINESS_AGENT_LANE, payload
+        assert payload["vision_checkpoint"]["required"] is False, payload
+        assert payload["vision_checkpoint"]["decision"] == "not_required", payload
         assert payload["state"]["path"] == str(state_path), payload
 
         global_registry = runtime / "registry.global.json"

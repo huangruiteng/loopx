@@ -1367,7 +1367,7 @@ def assert_projected_replan_ack_is_agent_scoped() -> None:
     assert scoped_guard["goal_frontier_projection"]["replan_required"] is False, scoped_guard
 
 
-def assert_agent_vision_gap_beats_replan_ack() -> None:
+def assert_explicit_as_needed_vision_gap_uses_watch_lane_continuation_ack() -> None:
     guard = build_quota_should_run(
         status_payload(
             [monitor_item()],
@@ -1394,12 +1394,14 @@ def assert_agent_vision_gap_beats_replan_ack() -> None:
         goal_id=GOAL_ID,
         agent_id=SIDE_AGENT,
     )
-    assert guard["decision"] == "autonomous_replan_required", guard
-    assert guard["effective_action"] == "autonomous_replan_required", guard
+    assert guard["decision"] == "skip", guard
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
     gaps = guard["goal_frontier_projection"]["acceptance_gaps"]
     assert len(gaps) == 1, guard
     assert gaps[0]["kind"] == "vision_acceptance_gap", guard
-    assert guard["goal_frontier_projection"]["replan_required"] is True, guard
+    assert gaps[0]["replan_trigger_source"] == "explicit_vision_trigger", guard
+    assert guard["goal_frontier_projection"]["replan_required"] is False, guard
+    assert guard.get("autonomous_replan_obligation") is None, guard
     assert guard["vision_continuation_audit"]["required"] is True, guard
     assert "autonomous_replan_ack_alone" in guard["vision_continuation_audit"]["not_satisfied_by"], guard
 
@@ -1449,7 +1451,7 @@ def main() -> None:
     assert_agent_ack_survives_other_agent_run_and_monitor_poll()
     assert_non_frontier_replan_ack_does_not_clear_monitor_replan()
     assert_projected_replan_ack_is_agent_scoped()
-    assert_agent_vision_gap_beats_replan_ack()
+    assert_explicit_as_needed_vision_gap_uses_watch_lane_continuation_ack()
     assert_blocking_handoff_gate_beats_derived_monitor_replan()
     print("quota-replan-decision-plane-smoke ok")
 

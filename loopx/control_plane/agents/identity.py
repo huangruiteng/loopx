@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...agent_registry import registered_agent_ids_for_goal
+from ...agent_registry import agent_profile_for_goal, registered_agent_ids_for_goal
 from ..todos.contract import normalize_todo_claimed_by
-from .runtime_model import (
-    PEER_AGENT_IDENTITY_SCHEMA_VERSION,
-    agent_runtime_model_for_goal,
+from .legacy_migration import (
     legacy_agent_hierarchy_present,
     peer_agent_runtime_migration_completed,
     peer_agent_runtime_migration_id,
 )
+from .profile import normalize_agent_profile
+from .runtime_model import PEER_AGENT_IDENTITY_SCHEMA_VERSION, agent_runtime_model_for_goal
 
 
 def quota_registered_agents(goal: dict[str, Any]) -> list[str]:
@@ -39,13 +39,26 @@ def build_quota_agent_identity(
             f"registered_agents={', '.join(registered_agents)}"
         )
     runtime_model = agent_runtime_model_for_goal(goal)
-    return {
+    identity = {
         "schema_version": PEER_AGENT_IDENTITY_SCHEMA_VERSION,
         "agent_model": runtime_model.value,
         "agent_id": normalized_agent_id,
         "registered": True,
         "registered_agents": registered_agents,
     }
+    raw_profile = agent_profile_for_goal(goal, normalized_agent_id)
+    if raw_profile:
+        try:
+            identity["agent_profile"] = normalize_agent_profile(
+                raw_profile,
+                registered_agents=registered_agents,
+                expected_agent_id=normalized_agent_id,
+                reject_unknown_fields=False,
+            )
+        except ValueError:
+            # Advisory metadata must not block an otherwise valid peer identity.
+            pass
+    return identity
 
 
 def build_identity_aware_prompt_upgrade(

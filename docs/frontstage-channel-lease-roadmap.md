@@ -24,8 +24,9 @@ truth into chat history:
 - An **agent can project as a workspace member**: controller, executor,
   reviewer, monitor, critic, or dreaming/planning proposer, each with scope and
   last action.
-- A **task claim should be a per-todo lease**: explicit ownership of one
-  `todo_id` with TTL, write scope, idempotency key, and conflict policy.
+- A **task claim is a soft per-todo route by default**. When a concrete
+  contention case needs exclusivity, an optional hard lease adds TTL, write
+  scope, idempotency, and conflict handling for one `todo_id`.
 - A **chat or channel thread is a projection**: useful for human collaboration,
   but never the only durable authority.
 
@@ -128,7 +129,7 @@ The v0 source map should stay boring and inspectable:
 | `decision_frame` | `interaction_contract` from `quota should-run` and review-packet routing |
 | `quota` | `quota should-run`, including the spend policy and capability/workspace guards when present |
 | `artifacts` | public-safe docs, compact run artifacts, review packets, or showcase assets already allowed by `goal_boundary` |
-| `active_leases` | current soft claims and future `task_lease_v0` records |
+| `active_leases` | current soft claims and explicitly supplied optional `task_lease_v0` rows |
 | `recent_events` | compact run-history rows only, not raw logs or transcripts |
 | `source_warnings` | stale state, todo projection gaps, private-boundary omissions, or missing authority sources |
 
@@ -196,7 +197,9 @@ identity rank or default permission. Concrete authority comes from
 
 ### `task_lease_v0`
 
-This is the concurrency contract that should eventually back task claim. The
+This optional local file-backed concurrency contract is shipped through
+`loopx task-lease acquire|renew|transfer|release|inspect`. It does not replace
+the default soft `claimed_by` route or participate in quota decisions. The
 pending key is per todo: `(goal_id, todo_id)`. Do not serialize an entire
 goal just because one todo is claimed; independent todos under the same goal
 should remain independently claimable when gates and write scopes allow it.
@@ -212,19 +215,22 @@ review action over an independent handoff, optionally excluding the author.
 ```json
 {
   "schema_version": "task_lease_v0",
-  "todo_id": "todo_123",
-  "owner_agent": "codex-local-controller",
   "goal_id": "loopx-meta",
-  "lease_until": "2026-06-15T12:30:00Z",
-  "write_scope": ["docs/frontstage-channel-lease-roadmap.md"],
+  "todo_id": "todo_123",
+  "owner": "codex-local-controller",
   "idempotency_key": "loopx-meta:todo_123:20260615T1230Z",
-  "conflict_policy": "fail_closed_on_scope_overlap",
+  "write_scopes": ["docs/frontstage-channel-lease-roadmap.md"],
+  "version": 1,
+  "acquired_at": "2026-06-15T12:00:00Z",
+  "updated_at": "2026-06-15T12:00:00Z",
+  "expires_at": "2026-06-15T12:30:00Z",
   "status": "active"
 }
 ```
 
-The first implementation can be local and file-backed. A later server can own
-the same schema with stronger locking, lease renewal, and stale-claim cleanup.
+The current implementation is local and file-backed, with per-goal locking,
+renewal, transfer, release, registered-owner validation, and stale-owner
+invalidation. A later server can own the same schema and coordination surface.
 Conflicts should be detected by `(goal_id, todo_id)` plus overlapping
 write-scope checks: another agent may claim a different todo in the same goal,
 but a second pending claim on the same todo must fail closed, renew, or
@@ -234,10 +240,9 @@ explicitly transfer ownership.
 
 P1:
 
-- Design and test `task_lease_v0` first. It prevents lost writes and concurrent
-  controller confusion, and it naturally extends the existing todo locking
-  lane. The durable invariant is per-todo pending: one active pending lease per
-  `(goal_id, todo_id)`, not one active lease per goal or project.
+- Keep the shipped optional `task_lease_v0` runtime and conflict smoke stable.
+  Adopt it in a host execution path only after a concrete concurrent-write bad
+  case demonstrates value; do not silently turn it into a default quota gate.
 - Treat the shipped React `/frontstage` route as the baseline
   `goal_channel_projection_v0` reader. Future work should polish visual
   acceptance, operator onboarding, and local fixture realism while preserving
@@ -246,8 +251,8 @@ P1:
 
 P2:
 
-- Add agent-member projection to status/review packets after leases exist, so
-  agent identity is useful rather than decorative.
+- Decide whether active hard-lease rows should join the existing agent-member
+  status/review projection after an adoption case proves the extra signal useful.
 - Build a Raft-style local frontstage view that renders channel timelines and
   member activity from LoopX projections.
 - Let dreaming/planning proposals appear as a separate channel lane or badge.

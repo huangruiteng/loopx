@@ -69,8 +69,12 @@ loopx refresh-state \
 
 `advancement_policy` is a small machine-readable frontier rule, not a domain
 label. It defaults to `as_needed`, which preserves bounded external waits: an
-implicit open-acceptance gap may remain quiet when a monitor lane has recorded
-an exact `watch_lane_continuation` ACK. Use `repeat_until_closed` for campaigns,
+open acceptance gap, whether implicit or paired with an explicit replan
+trigger, may remain quiet when a continuous monitor lane has recorded an exact
+`watch_lane_continuation` ACK. The ACK does not prove acceptance or close the
+vision; it records that current monitors cover the next decision checkpoint and
+keeps the gap visible for audit. Without that ACK or monitor coverage, the same
+gap still requires bounded replan. Use `repeat_until_closed` for campaigns,
 iterative research, sweepers, and other visions whose open acceptance requires
 another advancement iteration whenever the runnable advancement frontier is
 empty. In that mode, monitor successors and a watch ACK remain useful evidence,

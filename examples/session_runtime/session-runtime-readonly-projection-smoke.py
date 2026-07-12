@@ -16,10 +16,10 @@ from loopx.session_runtime import (  # noqa: E402
     SESSION_RUNTIME_READONLY_PROJECTION_SCHEMA_VERSION,
     build_session_runtime_readonly_projection,
 )
+from loopx.presentation.renderers.status_markdown import render_status_markdown  # noqa: E402
 from loopx.status import (  # noqa: E402
     build_attention_queue,
     build_status_runtime_summaries,
-    render_status_markdown,
 )
 
 

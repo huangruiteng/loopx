@@ -20,6 +20,7 @@ CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT = (
     "Start this persisted Codex thread. Reply with exactly the token formed by "
     "joining LOOPX, GOAL, THREAD, and READY with underscores. Do not use tools."
 )
+CODEX_CLI_GOAL_THREAD_PREWARM_HARD_CAP_MULTIPLIER = 2.0
 CODEX_CLI_GOAL_TASK_PROMPT_FILENAME = "skillsbench-task-prompt.md"
 CODEX_CLI_GOAL_KICKOFF_PROMPT = (
     "Start working on the active SkillsBench goal now. Read the referenced "
@@ -44,18 +45,25 @@ class CodexCliGoalLifecycleGeneration:
         CodexCliGoalLifecycleMarkerCounts()
     )
     current: CodexCliGoalLifecycleMarkerCounts = CodexCliGoalLifecycleMarkerCounts()
+    turn_active_observed: bool = False
 
     def begin(self, capture: str) -> None:
         self.generation += 1
         self.baseline = codex_cli_goal_lifecycle_marker_counts(capture)
         self.current = self.baseline
+        self.turn_active_observed = False
 
-    def observe(self, capture: str) -> None:
+    def observe(self, capture: str, *, turn_active: bool = False) -> None:
         self.current = codex_cli_goal_lifecycle_marker_counts(capture)
+        self.turn_active_observed = self.turn_active_observed or bool(turn_active)
 
     @property
     def active_advanced(self) -> bool:
         return self.current.active > self.baseline.active
+
+    @property
+    def active_observed(self) -> bool:
+        return self.active_advanced or self.turn_active_observed
 
     @property
     def achieved_advanced(self) -> bool:
@@ -65,8 +73,11 @@ class CodexCliGoalLifecycleGeneration:
     def failed_advanced(self) -> bool:
         return self.current.failed > self.baseline.failed
 
-    def trace_fields(self) -> dict[str, int]:
-        fields = {"goal_submission_generation": max(0, self.generation)}
+    def trace_fields(self) -> dict[str, int | bool]:
+        fields: dict[str, int | bool] = {
+            "goal_submission_generation": max(0, self.generation),
+            "goal_turn_active_observed": self.turn_active_observed,
+        }
         for name in ("active", "achieved", "failed"):
             baseline = getattr(self.baseline, name)
             current = getattr(self.current, name)
@@ -432,8 +443,11 @@ def codex_cli_goal_lifecycle_marker_counts(
 
 
 def codex_cli_tui_retryable_startup_blocker_stage(capture: str) -> str:
-    """Classify public-safe Codex CLI TUI startup blockers from screen text."""
+    """Classify public-safe Codex CLI TUI pre-action blockers."""
 
+    auth_stage = codex_cli_tui_auth_blocker_stage(capture)
+    if auth_stage:
+        return auth_stage
     lowered = str(capture or "").lower()
     if any(
         marker in lowered
@@ -447,6 +461,24 @@ def codex_cli_tui_retryable_startup_blocker_stage(capture: str) -> str:
     ):
         return "rate_limit_before_goal_active"
     return ""
+
+
+def codex_cli_tui_auth_blocker_stage(capture: str) -> str:
+    """Return a public-safe terminal auth stage from recent TUI text."""
+
+    recent = "\n".join(str(capture or "").splitlines()[-40:]).lower()
+    refresh_revoked = any(
+        marker in recent
+        for marker in (
+            "refresh token was revoked",
+            "refresh token has been revoked",
+            "token_invalidated",
+        )
+    ) or (
+        "access token could not be refreshed" in recent
+        and "sign in again" in recent
+    )
+    return "auth_refresh_token_revoked" if refresh_revoked else ""
 
 
 def codex_cli_goal_should_submit_kickoff(
@@ -557,25 +589,84 @@ def wait_for_codex_cli_tui_ready(
     return False
 
 
+def start_codex_cli_goal_tui_session(
+    *,
+    tmux_name: str,
+    cwd: str,
+    shell_command: str,
+    thread_prewarm: bool,
+    thread_prewarm_timeout_sec: float,
+) -> tuple[str, bool]:
+    """Start one fresh Codex TUI session and return its public-safe stage."""
+
+    subprocess.run(
+        [
+            "tmux",
+            "new-session",
+            "-d",
+            "-s",
+            tmux_name,
+            "-c",
+            cwd,
+            shell_command,
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if not wait_for_codex_cli_tui_ready(
+        tmux_name,
+        auto_accept_trust_prompt=True,
+    ):
+        tmux_kill_session(tmux_name)
+        return "tui_ready_timeout", False
+    if not thread_prewarm:
+        return "", False
+    thread_prewarm_observed = prewarm_codex_cli_goal_thread(
+        tmux_name=tmux_name,
+        timeout_sec=thread_prewarm_timeout_sec,
+    )
+    if not thread_prewarm_observed:
+        stage = codex_cli_tui_auth_blocker_stage(tmux_capture(tmux_name))
+        tmux_kill_session(tmux_name)
+        return stage or "thread_prewarm_timeout", False
+    return "", True
+
+
 def prewarm_codex_cli_goal_thread(
     *,
     tmux_name: str,
-    tmp_path: Path,
     timeout_sec: float = 90.0,
 ) -> bool:
     """Create the persisted TUI thread before submitting ``/goal``."""
 
-    prompt_path = tmp_path / "goal-thread-prewarm.txt"
-    prompt_path.write_text(CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT, encoding="utf-8")
-    tmux_paste_file_and_submit(
+    tmux_type_text_and_submit(
         tmux_name=tmux_name,
-        prompt_path=prompt_path,
-        buffer_suffix="prewarm",
+        text=CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT,
     )
-    deadline = time.monotonic() + max(1.0, float(timeout_sec or 0.0))
-    while time.monotonic() < deadline:
+    timeout = max(1.0, float(timeout_sec or 0.0))
+    started_at = time.monotonic()
+    nominal_deadline = started_at + timeout
+    hard_deadline = started_at + (
+        timeout * CODEX_CLI_GOAL_THREAD_PREWARM_HARD_CAP_MULTIPLIER
+    )
+    turn_active_observed = False
+    while time.monotonic() < hard_deadline:
         capture = tmux_capture(tmux_name)
+        if codex_cli_tui_auth_blocker_stage(capture):
+            return False
         if CODEX_CLI_GOAL_THREAD_PREWARM_MARKER in capture:
             return True
+        turn_active = codex_cli_tui_turn_active(capture)
+        turn_active_observed = turn_active_observed or turn_active
+        if (
+            turn_active_observed
+            and not turn_active
+            and codex_cli_tui_input_prompt_visible(capture)
+        ):
+            return True
+        if time.monotonic() >= nominal_deadline and not turn_active:
+            return False
         time.sleep(0.5)
     return False

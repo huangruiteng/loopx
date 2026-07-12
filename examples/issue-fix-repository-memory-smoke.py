@@ -24,10 +24,12 @@ from loopx.capabilities.issue_fix.repository_context import (  # noqa: E402
 )
 from loopx.capabilities.issue_fix.repository_memory_provider import (  # noqa: E402
     retrieve_issue_fix_repository_memory,
+    sync_issue_fix_repository_memory,
 )
 from loopx.capabilities.context_providers.base import (  # noqa: E402
     ContextProviderItem,
     ContextProviderRetrieval,
+    ContextProviderSync,
 )
 from loopx.capabilities.context_providers.openviking import (  # noqa: E402
     OpenVikingContextProvider,
@@ -68,6 +70,41 @@ class ContractProvider:
         raise AssertionError(kwargs)
 
 
+class RollingProvider(ContractProvider):
+    def __init__(
+        self,
+        *,
+        resource_ref: str,
+        content: str,
+        sync_status: str = "completed",
+    ) -> None:
+        super().__init__(resource_ref=resource_ref, content=content)
+        self.sync_status = sync_status
+        self.retrieve_count = 0
+        self.sync_count = 0
+
+    def retrieve(self, **kwargs: Any) -> ContextProviderRetrieval:
+        self.retrieve_count += 1
+        return super().retrieve(**kwargs)
+
+    def sync(self, **kwargs: Any) -> ContextProviderSync:
+        self.sync_count += 1
+        resources = list(kwargs["resources"])
+        return ContextProviderSync(
+            provider="contract_provider",
+            namespace=str(kwargs["namespace"]),
+            status=self.sync_status,
+            observed_at=str(kwargs["observed_at"]),
+            requested_count=len(resources),
+            completed_count=len(resources) if self.sync_status == "completed" else 0,
+            write_count=len(resources) if kwargs["execute"] else 0,
+            result_refs=tuple(target for _source, target in resources),
+            pending_count=(
+                len(resources) if self.sync_status == "committed_pending" else 0
+            ),
+        )
+
+
 class OpenVikingContractRunner:
     def __init__(self, *, scope_ref: str) -> None:
         self.scope_ref = scope_ref
@@ -102,6 +139,68 @@ class OpenVikingContractRunner:
         else:
             raise AssertionError(command)
         return subprocess.CompletedProcess(command, 0, stdout=stdout)
+
+
+class UncertainWriteRunner:
+    def __init__(
+        self,
+        *,
+        target: str,
+        source_content: str,
+        post_write_state: str = "pending",
+    ) -> None:
+        self.target = target
+        self.source_content = source_content
+        self.post_write_state = post_write_state
+        self.calls: list[list[str]] = []
+        self.write_attempted = False
+
+    def __call__(
+        self, command: list[str], **_kwargs: Any
+    ) -> subprocess.CompletedProcess[str]:
+        self.calls.append(command)
+        args = command[1:]
+        if args == ["--version"]:
+            return subprocess.CompletedProcess(
+                command, 0, stdout="openviking 0.4.9.dev40\n"
+            )
+        if args[:2] == ["status", "-o"]:
+            return subprocess.CompletedProcess(
+                command, 0, stdout=json.dumps({"status": "healthy"})
+            )
+        if args[0] == "add-resource":
+            self.write_attempted = True
+            return subprocess.CompletedProcess(command, 1, stdout="Connection Error")
+        if args[0] == "read":
+            if self.write_attempted and self.post_write_state == "verified":
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout=json.dumps({"result": self.source_content}),
+                )
+            return subprocess.CompletedProcess(command, 1, stdout="not found")
+        if args[0] == "tree":
+            rows = (
+                [{"uri": self.target}]
+                if self.write_attempted and self.post_write_state == "pending"
+                else []
+            )
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps({"result": {"resources": rows}}),
+            )
+        if args[0] == "ls":
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps({"result": {"resources": []}}),
+            )
+        if args[0] == "mkdir":
+            return subprocess.CompletedProcess(
+                command, 0, stdout=json.dumps({"ok": True})
+            )
+        raise AssertionError(command)
 
 
 def repository_context() -> dict[str, object]:
@@ -152,6 +251,7 @@ def completed_memory() -> dict[str, object]:
                 "verification_status": "confirmed",
                 "verification_reference": "openviking/server/api/v1/vlm.py",
                 "verification_revision": REVISION,
+                "decision_influence": ["change_scope", "patch"],
             },
             {
                 "memory_ref": "provider-private-record-2",
@@ -211,6 +311,7 @@ def main() -> int:
     assert hook["result_count"] == 2, hook
     assert hook["confirmed_count"] == 1, hook
     assert hook["unverified_count"] == 1, hook
+    assert hook["verified_decision_influence_count"] == 1, hook
     assert hook["patch_influence_allowed_count"] == 1, hook
     assert hook["writeback_performed"] is False, hook
     assert hook["automatic_capture_performed"] is False, hook
@@ -300,6 +401,101 @@ def main() -> int:
         assert sync_plan["ok"] is True, sync_plan
         assert sync_plan["external_writes_performed"] is False, sync_plan
         assert_boundary(sync_plan)
+
+        target = f"viking://resources/public-repo/{REVISION}/src/worker.py"
+        uncertain_runner = UncertainWriteRunner(
+            target=target,
+            source_content=source.read_text(encoding="utf-8"),
+        )
+        uncertain_provider = OpenVikingContextProvider(
+            executable="ov-contract",
+            runner=uncertain_runner,
+        )
+        uncertain = uncertain_provider.sync(
+            namespace="public-repository",
+            resources=[(str(source), target)],
+            timeout_seconds=5,
+            observed_at="2026-07-11T03:30:00+08:00",
+            execute=True,
+        ).public_packet()
+        assert uncertain["status"] == "committed_pending", uncertain
+        assert uncertain["ok"] is True, uncertain
+        assert uncertain["completed_count"] == 0, uncertain
+        assert uncertain["pending_count"] == 1, uncertain
+        assert uncertain["write_count"] == 1, uncertain
+        assert uncertain["reconciliation_performed"] is True, uncertain
+        assert uncertain["retry_disposition"] == "wait_and_reconcile", uncertain
+        assert uncertain["external_writes_performed"] is True, uncertain
+        assert_boundary(uncertain)
+
+        verified_runner = UncertainWriteRunner(
+            target=target,
+            source_content=source.read_text(encoding="utf-8"),
+            post_write_state="verified",
+        )
+        verified = (
+            OpenVikingContextProvider(
+                executable="ov-contract",
+                runner=verified_runner,
+            )
+            .sync(
+                namespace="public-repository",
+                resources=[(str(source), target)],
+                timeout_seconds=5,
+                observed_at="2026-07-11T03:30:00+08:00",
+                execute=True,
+            )
+            .public_packet()
+        )
+        assert verified["status"] == "completed", verified
+        assert verified["completed_count"] == 1, verified
+        assert verified["pending_count"] == 0, verified
+        assert verified["write_count"] == 1, verified
+        assert verified["reconciliation_performed"] is True, verified
+        assert verified["retry_disposition"] == "no_retry", verified
+
+        absent_runner = UncertainWriteRunner(
+            target=target,
+            source_content=source.read_text(encoding="utf-8"),
+            post_write_state="absent",
+        )
+        absent = (
+            OpenVikingContextProvider(
+                executable="ov-contract",
+                runner=absent_runner,
+            )
+            .sync(
+                namespace="public-repository",
+                resources=[(str(source), target)],
+                timeout_seconds=5,
+                observed_at="2026-07-11T03:30:00+08:00",
+                execute=True,
+            )
+            .public_packet()
+        )
+        assert absent["status"] == "partial", absent
+        assert absent["completed_count"] == 0, absent
+        assert absent["pending_count"] == 0, absent
+        assert absent["write_count"] == 0, absent
+        assert absent["reconciliation_performed"] is True, absent
+        assert absent["retry_disposition"] == "safe_to_retry", absent
+        assert absent["reason_code"] == "provider_sync_write_failed_absent", absent
+
+        generic_pending = ContextProviderSync(
+            provider="fake-provider",
+            namespace="public-repository",
+            status="committed_pending",
+            observed_at="2026-07-11T03:30:00+08:00",
+            requested_count=1,
+            completed_count=0,
+            write_count=1,
+            pending_count=1,
+            reconciliation_performed=True,
+            retry_disposition="wait_and_reconcile",
+        ).public_packet()
+        assert generic_pending["ok"] is True, generic_pending
+        assert generic_pending["retry_disposition"] == "wait_and_reconcile"
+        assert_boundary(generic_pending)
         provider_result = retrieve_issue_fix_repository_memory(
             config={
                 "schema_version": "issue_fix_repository_memory_provider_config_v0",
@@ -337,11 +533,116 @@ def main() -> int:
             "revision": REVISION,
             "confirmed_count": 1,
             "stale_or_unmapped_count": 0,
-            "patch_influence_allowed_count": 1,
+            "verified_decision_influence_count": 0,
+            "patch_influence_allowed_count": 0,
             "configured_resource_count": 0,
             "verification_mode": "canonical_text_or_parser_chunk",
         }
         assert_boundary(provider_result)
+
+        rolling_scope = "viking://resources/public-repository/example-repo/main"
+        rolling_provider = RollingProvider(
+            resource_ref=f"{rolling_scope}/src/worker.py",
+            content=source.read_text(encoding="utf-8"),
+        )
+        rolling_config = {
+            "schema_version": "issue_fix_repository_memory_provider_config_v0",
+            "enabled": True,
+            "provider": "contract_provider",
+            "namespace": "public-repository",
+            "visibility": "public",
+            "revision_policy": "rolling_default_branch",
+            "scope_ref": rolling_scope,
+            "resource_references": ["src/worker.py"],
+            "max_results": 3,
+            "timeout_seconds": 5,
+            "sync_timeout_seconds": 5,
+        }
+        rolling_retrieval = retrieve_issue_fix_repository_memory(
+            config=rolling_config,
+            repo_path=checkout,
+            repository_revision=REVISION,
+            query="current worker contract validation",
+            query_summary="Current worker contract evidence.",
+            supports=["change_scope", "validation"],
+            observed_at="2026-07-11T03:30:00+08:00",
+            provider=rolling_provider,
+        )
+        assert rolling_retrieval["memory_input"]["status"] == "completed"
+        advisory_context = rolling_retrieval["provider_projection"][
+            "repository_context"
+        ]
+        assert advisory_context["source_policy"] == "rolling_default_branch"
+        assert advisory_context["current_checkout_revision"] == REVISION
+        assert advisory_context["retrieval_allowed"] is True
+        assert advisory_context["verification_required"] is True
+        assert advisory_context["patch_authority"] is False
+        assert advisory_context["provider_refresh_ownership"] == "external"
+        assert rolling_provider.retrieve_count == 1
+        assert rolling_scope not in json.dumps(rolling_retrieval)
+        assert (
+            rolling_retrieval["memory_input"]["results"][0]["verification_status"]
+            == "confirmed"
+        )
+        assert_boundary(rolling_retrieval)
+
+        rolling_sync = sync_issue_fix_repository_memory(
+            config=rolling_config,
+            repo_path=checkout,
+            repository_revision=REVISION,
+            references=["src/worker.py"],
+            observed_at="2026-07-11T03:31:00+08:00",
+            execute=True,
+            provider=rolling_provider,
+        )
+        assert rolling_sync["status"] == "completed", rolling_sync
+        assert rolling_sync["revision_scoped"] is False
+        assert "repository_context_activation" not in rolling_sync
+        assert rolling_provider.sync_count == 1
+        assert rolling_scope not in json.dumps(rolling_sync)
+        assert_boundary(rolling_sync)
+
+        pending_provider = RollingProvider(
+            resource_ref=f"{rolling_scope}/src/worker.py",
+            content=source.read_text(encoding="utf-8"),
+            sync_status="committed_pending",
+        )
+        pending_sync = sync_issue_fix_repository_memory(
+            config=rolling_config,
+            repo_path=checkout,
+            repository_revision=REVISION,
+            references=["src/worker.py"],
+            observed_at="2026-07-11T03:31:30+08:00",
+            execute=True,
+            provider=pending_provider,
+        )
+        assert pending_sync["status"] == "committed_pending"
+        assert pending_sync["pending_count"] == 1
+        assert pending_sync["repository_context"]["retrieval_allowed"] is True
+        assert "repository_context_activation" not in pending_sync
+        assert_boundary(pending_sync)
+
+        try:
+            retrieve_issue_fix_repository_memory(
+                config={
+                    **rolling_config,
+                    "revision_policy": "checkout_head",
+                    "repository_scope_root": (
+                        "viking://resources/public-repository/example-repo"
+                    ),
+                },
+                repo_path=checkout,
+                repository_revision=REVISION,
+                query="current worker contract validation",
+                query_summary="Current worker contract evidence.",
+                supports=["change_scope", "validation"],
+                observed_at="2026-07-11T03:32:00+08:00",
+                provider=rolling_provider,
+            )
+        except ValueError as exc:
+            assert "per-checkout repository activation fields were removed" in str(exc)
+        else:
+            raise AssertionError("removed checkout activation config must fail closed")
 
     invalid_capture = dict(memory_input)
     invalid_capture["automatic_capture_performed"] = True
@@ -356,6 +657,20 @@ def main() -> int:
         assert "automatic capture" in str(exc), exc
     else:
         raise AssertionError("automatic memory capture must be rejected")
+
+    invalid_influence = json.loads(json.dumps(memory_input))
+    invalid_influence["results"][1]["decision_influence"] = ["patch"]
+    try:
+        build_issue_fix_repository_context_packet(
+            repo="owner/repo",
+            issue_ref="issue_1",
+            context_input=context_input,
+            memory_retrieval_input=invalid_influence,
+        )
+    except ValueError as exc:
+        assert "must be confirmed before recording decision influence" in str(exc), exc
+    else:
+        raise AssertionError("unverified memory must not claim decision influence")
 
     with tempfile.TemporaryDirectory(prefix="loopx-memory-hook-") as tmpdir:
         tmp = Path(tmpdir)

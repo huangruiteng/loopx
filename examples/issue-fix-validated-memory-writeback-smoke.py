@@ -119,6 +119,44 @@ def outcome_packet(
         ],
         "risks": ["broader integration validation was not run"],
         "recorded_at": OBSERVED_AT,
+        "reusable_knowledge": {
+            "schema_version": "issue_fix_reusable_knowledge_input_v0",
+            "symptom_signature": (
+                "A configured status component disappears when runtime usage is empty."
+            ),
+            "reproduction_contract": (
+                "Build status with a configured model and empty usage, then assert "
+                "that the configured identity remains visible."
+            ),
+            "root_cause": (
+                "The read model made configured identity conditional on optional "
+                "runtime usage observations."
+            ),
+            "violated_invariant": (
+                "Configured identity remains visible before usage; usage may enrich "
+                "the status but must not gate it."
+            ),
+            "repair_pattern": (
+                "Use configuration as the fallback identity while preferring runtime "
+                "usage when it is present."
+            ),
+            "validation_contract": (
+                "Cover empty usage and usage-read failure while retaining runtime "
+                "usage precedence when observations exist."
+            ),
+            "applicability": (
+                "Status and read-model paths that combine stable configuration with "
+                "optional runtime observations."
+            ),
+            "non_applicability": (
+                "Do not synthesize an identity when neither configuration nor a "
+                "runtime observation exists."
+            ),
+            "verification_references": [
+                "loopx/capabilities/issue_fix/repository_memory_provider.py",
+                "examples/issue-fix-validated-memory-writeback-smoke.py",
+            ],
+        },
     }
     outcome = build_issue_fix_outcome_projection(
         goal_id="public-issue-fix-goal",
@@ -186,14 +224,41 @@ def main() -> int:
     assert first["checkout_verification"]["repo_path_recorded"] is False, first
     stored_fact = next(iter(provider.contents.values()))
     for expected in (
-        "issue_fix_validated_outcome_memory_v0",
+        "issue_fix_reusable_knowledge_memory_v0",
+        '"fact_type": "reusable_issue_fix_knowledge"',
+        '"symptom_signature": "A configured status component disappears',
         '"validation_status": "passed"',
         '"freshness": "revision_pinned"',
         '"supersession_key": "sha256:',
     ):
         assert expected in stored_fact, expected
+    assert first["knowledge_eligible"] is True, first
+    assert "/reusable-knowledge/" in next(iter(provider.contents)), provider.contents
     assert_public_boundary(first)
     assert_public_boundary(retry)
+
+    audit_delivery = dict(delivery)
+    audit_delivery.pop("reusable_knowledge")
+    audit_outcome = build_issue_fix_outcome_projection(
+        goal_id="public-issue-fix-goal",
+        feasibility_packet=feasibility,
+        delivery_evidence_input=audit_delivery,
+        agent_id="public-issue-fix-agent",
+        generated_at=OBSERVED_AT,
+    )
+    audit_provider = WritebackContractProvider()
+    audit = write_issue_fix_validated_outcome_memory(
+        config=provider_config(),
+        outcome_packet=audit_outcome,
+        repository_revision=REVISION,
+        repo_path=ROOT,
+        observed_at=OBSERVED_AT,
+        execute=True,
+        provider=audit_provider,
+    )
+    assert audit["knowledge_eligible"] is False, audit
+    assert audit["fact_type"] == "validated_issue_fix_outcome", audit
+    assert "/validated-outcomes/" in next(iter(audit_provider.contents))
 
     disabled = write_issue_fix_validated_outcome_memory(
         config={**provider_config(), "writeback_enabled": False},
@@ -235,6 +300,50 @@ def main() -> int:
         assert "requires passed validation" in str(exc), exc
     else:
         raise AssertionError("failed validation must block memory writeback")
+
+    incomplete_delivery = dict(delivery)
+    incomplete_delivery["reusable_knowledge"] = {
+        **dict(delivery["reusable_knowledge"]),
+        "root_cause": "",
+    }
+    try:
+        build_issue_fix_outcome_projection(
+            goal_id="public-issue-fix-goal",
+            feasibility_packet=feasibility,
+            delivery_evidence_input=incomplete_delivery,
+            agent_id="public-issue-fix-agent",
+            generated_at=OBSERVED_AT,
+        )
+    except ValueError as exc:
+        assert "root_cause" in str(exc), exc
+    else:
+        raise AssertionError("incomplete reusable knowledge must be rejected")
+
+    missing_reference_delivery = json.loads(json.dumps(delivery))
+    missing_reference_delivery["reusable_knowledge"]["verification_references"] = [
+        "src/not-in-this-revision.py"
+    ]
+    missing_reference_outcome = build_issue_fix_outcome_projection(
+        goal_id="public-issue-fix-goal",
+        feasibility_packet=feasibility,
+        delivery_evidence_input=missing_reference_delivery,
+        agent_id="public-issue-fix-agent",
+        generated_at=OBSERVED_AT,
+    )
+    missing_reference = write_issue_fix_validated_outcome_memory(
+        config=provider_config(),
+        outcome_packet=missing_reference_outcome,
+        repository_revision=REVISION,
+        repo_path=ROOT,
+        observed_at=OBSERVED_AT,
+        execute=True,
+        provider=WritebackContractProvider(),
+    )
+    assert missing_reference["status"] == "blocked", missing_reference
+    assert missing_reference["reason_code"] == (
+        "knowledge_verification_reference_not_in_revision"
+    ), missing_reference
+    assert missing_reference["missing_reference_count"] == 1, missing_reference
 
     with tempfile.TemporaryDirectory(prefix="loopx-writeback-divergent-") as tmpdir:
         checkout = Path(tmpdir)

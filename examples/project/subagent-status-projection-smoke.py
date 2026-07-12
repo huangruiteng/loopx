@@ -13,10 +13,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from loopx.presentation.renderers.status_markdown import render_status_markdown  # noqa: E402
 from loopx.status import (  # noqa: E402
     collect_status,
     project_asset_summary_is_public_safe,
-    render_status_markdown,
 )
 
 

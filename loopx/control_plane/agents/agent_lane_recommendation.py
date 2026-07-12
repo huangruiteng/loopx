@@ -213,6 +213,11 @@ def build_agent_lane_next_action(
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
     if not agent_id or not isinstance(agent_todo_summary, dict):
         return None
+    agent_profile = (
+        agent_identity.get("agent_profile")
+        if isinstance(agent_identity.get("agent_profile"), dict)
+        else None
+    )
 
     if isinstance(scoped_user_gate_fallback, dict):
         selected = scoped_user_gate_fallback.get("selected_executable")
@@ -331,6 +336,7 @@ def build_agent_lane_next_action(
                 candidate,
                 agent_id=agent_id,
                 preferred_todo_ids=preferred_todo_ids,
+                agent_profile=agent_profile,
             ),
         ):
             text = protocol_action_text(raw_item.get("text"), limit=500)

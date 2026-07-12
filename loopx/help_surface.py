@@ -73,6 +73,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
             },
             {"command": "loopx quota should-run", "purpose": "Decide whether the next agent turn should run."},
             {"command": "loopx history --goal-id <goal-id>", "purpose": "Read compact run history."},
+            {
+                "command": "loopx history trajectory-hygiene --goal-id <goal-id> --limit 100",
+                "purpose": "Measure controller density and attribution gaps from compact history without reading raw sessions.",
+            },
         ],
     },
     {
@@ -117,6 +121,18 @@ COMMAND_GROUPS: list[dict[str, object]] = [
                 "purpose": "Check public-safe visible Codex CLI attach evidence.",
             },
             {"command": "loopx heartbeat-prompt", "purpose": "Generate a guarded heartbeat automation body."},
+            {
+                "command": "loopx supervisor-prompt",
+                "purpose": "Generate the dedicated task body for an opt-in proposal-only peer supervisor.",
+            },
+            {
+                "command": "loopx supervisor-observe",
+                "purpose": "Read one public-safe supervisor packet over peer status and evidence.",
+            },
+            {
+                "command": "loopx supervisor-event",
+                "purpose": "Preview, append, or read supervisor proposals and host execution receipts.",
+            },
             {"command": "loopx upgrade-plan", "purpose": "Plan default heartbeat upgrade propagation."},
             {"command": "loopx update", "purpose": "Check, dry-run, or execute the no-clone update path."},
         ],

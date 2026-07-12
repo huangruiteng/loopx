@@ -23,6 +23,12 @@ SUPPORT_ASPECTS = {
     "reproduction",
     "validation",
 }
+DECISION_INFLUENCE_ASPECTS = {
+    "reproduction",
+    "change_scope",
+    "patch",
+    "validation",
+}
 MAX_MEMORY_RESULTS = 6
 
 _LABEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}$")
@@ -54,6 +60,7 @@ _RESULT_FIELDS = {
     "verification_status",
     "verification_reference",
     "verification_revision",
+    "decision_influence",
 }
 
 
@@ -129,6 +136,7 @@ def _empty_projection(
         "confirmed_count": 0,
         "refuted_count": 0,
         "unverified_count": 0,
+        "verified_decision_influence_count": 0,
         "patch_influence_allowed_count": 0,
         "source_refs": [],
         "verification_refs": [],
@@ -294,6 +302,8 @@ def build_issue_fix_repository_memory_hook(
     sources: list[dict[str, Any]] = []
     verification_refs: list[str] = []
     counts = {key: 0 for key in VERIFICATION_STATUSES}
+    verified_decision_influence_count = 0
+    patch_influence_allowed_count = 0
     for index, raw in enumerate(raw_results):
         if not isinstance(raw, Mapping):
             raise ValueError(f"repository memory results[{index}] must be an object")
@@ -333,6 +343,33 @@ def build_issue_fix_repository_memory_hook(
                 f"of {sorted(VERIFICATION_STATUSES)}"
             )
         counts[verification_status] += 1
+        raw_decision_influence = raw.get("decision_influence") or []
+        if not isinstance(raw_decision_influence, Sequence) or isinstance(
+            raw_decision_influence, (str, bytes)
+        ):
+            raise ValueError(
+                f"repository memory results[{index}].decision_influence must be a list"
+            )
+        decision_influence = sorted(
+            {
+                str(value).strip()
+                for value in raw_decision_influence
+                if str(value).strip()
+            }
+        )
+        if any(
+            value not in DECISION_INFLUENCE_ASPECTS
+            for value in decision_influence
+        ):
+            raise ValueError(
+                f"repository memory results[{index}].decision_influence must use "
+                f"{sorted(DECISION_INFLUENCE_ASPECTS)}"
+            )
+        if decision_influence and verification_status != "confirmed":
+            raise ValueError(
+                f"repository memory results[{index}] must be confirmed before "
+                "recording decision influence"
+            )
 
         verification_reference: str | None = None
         if verification_status in {"confirmed", "refuted"}:
@@ -358,6 +395,10 @@ def build_issue_fix_repository_memory_hook(
             )
 
         if verification_status == "confirmed":
+            if decision_influence:
+                verified_decision_influence_count += 1
+            if "patch" in decision_influence:
+                patch_influence_allowed_count += 1
             source_id = _memory_ref_id(
                 provider=provider,
                 namespace=namespace,
@@ -367,6 +408,12 @@ def build_issue_fix_repository_memory_hook(
                 f"{summary} Checkout verification: confirmed. "
                 f"Evidence: {verification_reference}."
             )
+            if decision_influence:
+                source_summary += (
+                    " Verified decision influence: "
+                    + ", ".join(decision_influence)
+                    + "."
+                )
             sources.append(
                 {
                     "source_id": source_id,
@@ -402,7 +449,8 @@ def build_issue_fix_repository_memory_hook(
             "confirmed_count": counts["confirmed"],
             "refuted_count": counts["refuted"],
             "unverified_count": counts["unverified"],
-            "patch_influence_allowed_count": counts["confirmed"],
+            "verified_decision_influence_count": verified_decision_influence_count,
+            "patch_influence_allowed_count": patch_influence_allowed_count,
             "source_refs": [source["source_id"] for source in sources],
             "verification_refs": sorted(set(verification_refs)),
             **compact_telemetry,

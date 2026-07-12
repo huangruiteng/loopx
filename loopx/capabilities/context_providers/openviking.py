@@ -319,6 +319,113 @@ class OpenVikingContextProvider:
             requested_limit=requested_limit,
         )
 
+    def _reconcile_uncertain_sync_write(
+        self,
+        *,
+        target: str,
+        source_content: str,
+        timeout_seconds: float,
+    ) -> str:
+        """Classify an uncertain write without retrying it.
+
+        ``add-resource --wait`` can lose its transport after the server has
+        already materialized the target and queued semantic work.  Read back
+        the immutable target before deciding whether another write is safe.
+        """
+
+        try:
+            exact = self._run(
+                ["read", target, "-o", "json", "-c", "true"],
+                timeout_seconds=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired:
+            return "reconciliation_unavailable"
+        if exact.returncode == 0:
+            try:
+                content = _read_content(_extract_json(exact.stdout))
+            except ValueError:
+                content = ""
+            if content and canonical_context_matches(content, source_content):
+                return "verified_success"
+            return "committed_pending"
+
+        try:
+            tree = self._run(
+                ["tree", target, "-L", "3", "-o", "json", "-c", "true"],
+                timeout_seconds=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired:
+            return "reconciliation_unavailable"
+        if tree.returncode == 0:
+            try:
+                refs = [
+                    ref
+                    for row in _mapping_candidates(_extract_json(tree.stdout))
+                    if (ref := _resource_ref(row))
+                ]
+            except ValueError:
+                refs = []
+            if refs:
+                contents: list[str] = []
+                for ref in refs:
+                    try:
+                        read = self._run(
+                            ["read", ref, "-o", "json", "-c", "true"],
+                            timeout_seconds=timeout_seconds,
+                        )
+                    except subprocess.TimeoutExpired:
+                        continue
+                    if read.returncode != 0:
+                        continue
+                    try:
+                        content = _read_content(_extract_json(read.stdout))
+                    except ValueError:
+                        continue
+                    if content:
+                        contents.append(content)
+                source_lines = set(canonical_context_lines(source_content))
+                matched_source_lines = {
+                    line
+                    for content in contents
+                    for line in canonical_context_lines(content)
+                    if line in source_lines
+                }
+                coverage = len(matched_source_lines) / max(1, len(source_lines))
+                if (
+                    contents
+                    and all(
+                        canonical_context_matches(content, source_content)
+                        for content in contents
+                    )
+                    and coverage >= 0.8
+                ):
+                    return "verified_success"
+                return "committed_pending"
+
+        parent = target.rstrip("/").rsplit("/", 1)[0]
+        try:
+            listing = self._run(
+                ["ls", parent, "-n", "100", "-o", "json", "-c", "true"],
+                timeout_seconds=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired:
+            return "reconciliation_unavailable"
+        if listing.returncode == 0:
+            try:
+                listed_refs = [
+                    ref
+                    for row in _mapping_candidates(_extract_json(listing.stdout))
+                    if (ref := _resource_ref(row))
+                ]
+            except ValueError:
+                return "reconciliation_unavailable"
+            if any(
+                ref == target or ref.startswith(target.rstrip("/") + "/")
+                for ref in listed_refs
+            ):
+                return "committed_pending"
+        return "absent_safe_to_retry"
+
     def sync(
         self,
         *,
@@ -358,6 +465,7 @@ class OpenVikingContextProvider:
                 write_count=0,
                 reason_code="execute_required_for_resource_write",
                 latency_ms=int((time.monotonic() - started) * 1000),
+                retry_disposition="execute_required",
             )
 
         version, blocker = self._preflight(timeout_seconds=timeout_seconds)
@@ -376,8 +484,11 @@ class OpenVikingContextProvider:
             )
 
         completed_refs: list[str] = []
+        pending_refs: list[str] = []
         write_count = 0
         sync_reason: str | None = None
+        reconciliation_performed = False
+        retry_disposition = "no_retry"
         for source, target in bounded:
             parent = target.rstrip("/").rsplit("/", 1)[0]
             try:
@@ -486,6 +597,8 @@ class OpenVikingContextProvider:
                 if mkdir_result.returncode != 0:
                     sync_reason = "provider_sync_parent_create_failed"
                     break
+            reserve = min(15.0, max(1.0, remaining * 0.2))
+            write_timeout = max(1.0, remaining - reserve)
             try:
                 result = self._run(
                     [
@@ -495,23 +608,54 @@ class OpenVikingContextProvider:
                         target,
                         "--wait",
                         "--timeout",
-                        str(max(1, int(remaining))),
+                        str(max(1, int(write_timeout))),
                         "-o",
                         "json",
                         "-c",
                         "true",
                     ],
-                    timeout_seconds=remaining,
+                    timeout_seconds=write_timeout,
                 )
             except subprocess.TimeoutExpired:
-                break
-            if result.returncode != 0:
-                sync_reason = "provider_sync_write_failed"
+                result = None
+            if result is None or result.returncode != 0:
+                reconciliation_performed = True
+                reconciliation = self._reconcile_uncertain_sync_write(
+                    target=target,
+                    source_content=source_content,
+                    timeout_seconds=reserve,
+                )
+                if reconciliation == "verified_success":
+                    completed_refs.append(target)
+                    write_count += 1
+                    continue
+                if reconciliation == "committed_pending":
+                    pending_refs.append(target)
+                    write_count += 1
+                    retry_disposition = "wait_and_reconcile"
+                    continue
+                if reconciliation == "absent_safe_to_retry":
+                    sync_reason = (
+                        "provider_sync_write_timeout_absent"
+                        if result is None
+                        else "provider_sync_write_failed_absent"
+                    )
+                    retry_disposition = "safe_to_retry"
+                else:
+                    sync_reason = "provider_sync_reconciliation_unavailable"
+                    retry_disposition = "manual_reconcile"
                 break
             completed_refs.append(target)
             write_count += 1
 
-        status = "completed" if len(completed_refs) == len(bounded) else "partial"
+        accounted_count = len(completed_refs) + len(pending_refs)
+        if len(completed_refs) == len(bounded):
+            status = "completed"
+        elif accounted_count == len(bounded) and pending_refs:
+            status = "committed_pending"
+            sync_reason = "provider_sync_committed_pending"
+        else:
+            status = "partial"
         return ContextProviderSync(
             provider=self.provider_id,
             namespace=namespace,
@@ -527,5 +671,8 @@ class OpenVikingContextProvider:
             ),
             provider_version=version,
             latency_ms=int((time.monotonic() - started) * 1000),
-            result_refs=tuple(completed_refs),
+            result_refs=tuple([*completed_refs, *pending_refs]),
+            pending_count=len(pending_refs),
+            reconciliation_performed=reconciliation_performed,
+            retry_disposition=retry_disposition,
         )

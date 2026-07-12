@@ -38,7 +38,6 @@ def legacy_goal() -> dict:
     goal = peer_goal()
     goal["coordination"].update(
         {
-            "agent_model": "legacy_hierarchy",
             "agent_model": "peer_v1",
             "side_agent_handoff_agent": AGENTS[2],
         }
@@ -62,6 +61,30 @@ def assert_peer_identity_has_no_rank() -> None:
         goal_id="sample-goal",
         agent_identity=identity,
     ) is None
+
+
+def assert_peer_identity_projects_only_valid_advisory_profile() -> None:
+    goal = peer_goal()
+    profile = {
+        "schema_version": "agent_profile_v1",
+        "agent_id": AGENTS[1],
+        "profile_role": "runtime-validation",
+        "scope_summary": "Runtime checks and focused control-plane repairs.",
+        "default_task_classes": ["advancement_task"],
+        "preferred_action_kinds": ["runtime_*"],
+        "avoid_action_kinds": ["production_*"],
+    }
+    goal["coordination"]["agent_profiles"] = {AGENTS[1]: profile}
+    identity = build_quota_agent_identity(goal, agent_id=AGENTS[1])
+    assert identity is not None
+    assert identity["agent_profile"] == profile, identity
+
+    goal["coordination"]["agent_profiles"][AGENTS[1]]["profile_role"] = (
+        "primary-agent"
+    )
+    invalid_identity = build_quota_agent_identity(goal, agent_id=AGENTS[1])
+    assert invalid_identity is not None
+    assert "agent_profile" not in invalid_identity, invalid_identity
 
 
 def assert_legacy_state_only_projects_migration() -> None:
@@ -112,6 +135,7 @@ def assert_errors_are_actionable() -> None:
 
 def main() -> None:
     assert_peer_identity_has_no_rank()
+    assert_peer_identity_projects_only_valid_advisory_profile()
     assert_legacy_state_only_projects_migration()
     assert_assignment_is_deterministic()
     assert_errors_are_actionable()

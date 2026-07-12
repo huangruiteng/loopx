@@ -49,3 +49,37 @@ def append_todo_rollout_event(
             "already_exists": bool(payload.get("already_exists")),
         },
     )
+    capability_gap_status = str(
+        getattr(args, "capability_gap_status", None) or ""
+    ).strip()
+    if not capability_gap_status:
+        return
+    gap_payload: dict[str, object] = {
+        "ok": True,
+        "goal_id": payload.get("goal_id"),
+    }
+    append_cli_rollout_event(
+        gap_payload,
+        registry_path=registry_path,
+        runtime_root_arg=runtime_root_arg,
+        event_kind="capability_gap",
+        agent_id=args.agent_id or args.claimed_by,
+        todo_id=args.todo_id or str(payload.get("todo_id") or "").strip() or None,
+        status=capability_gap_status,
+        summary=(
+            f"capability gap {capability_gap_status} for "
+            f"{payload.get('todo_id') or args.todo_id}"
+        ),
+        details={
+            "command": "todo",
+            "todo_command": args.todo_command,
+            "target_capabilities": ",".join(args.target_capabilities or []),
+            "evidence": args.evidence or "not_required_for_found",
+        },
+    )
+    if gap_payload.get("rollout_event"):
+        payload["capability_gap_event"] = gap_payload["rollout_event"]
+    elif gap_payload.get("rollout_event_log_error"):
+        payload["capability_gap_event_error"] = gap_payload[
+            "rollout_event_log_error"
+        ]

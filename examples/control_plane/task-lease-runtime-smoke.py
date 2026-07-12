@@ -13,6 +13,11 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.control_plane.work_items.task_lease import write_scopes_overlap  # noqa: E402
+
+
 GOAL_ID = "task-lease-runtime-goal"
 TODO_A = "todo_taskleasea"
 TODO_B = "todo_taskleaseb"
@@ -85,6 +90,31 @@ def set_excluded_agents(state_file: Path, *, todo_id: str, agents: list[str]) ->
     raise AssertionError(f"todo metadata not found: {todo_id}")
 
 
+def set_claimed_by(state_file: Path, *, todo_id: str, owner: str | None) -> None:
+    lines = state_file.read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        if f"todo_id={todo_id}" not in line:
+            continue
+        line = re.sub(r"\s+claimed_by=[^\s<>]+", "", line)
+        if owner:
+            line = line.replace(" -->", f" claimed_by={owner} -->")
+        lines[index] = line
+        state_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return
+    raise AssertionError(f"todo metadata not found: {todo_id}")
+
+
+def set_todo_status(state_file: Path, *, todo_id: str, status: str) -> None:
+    lines = state_file.read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        if f"todo_id={todo_id}" not in line:
+            continue
+        lines[index] = re.sub(r"\bstatus=[^\s<>]+", f"status={status}", line)
+        state_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return
+    raise AssertionError(f"todo metadata not found: {todo_id}")
+
+
 def cli(registry_path: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
@@ -136,9 +166,19 @@ def quota_should_run(registry_path: Path, *, agent_id: str) -> dict[str, Any]:
 
 
 def main() -> int:
+    assert write_scopes_overlap(["docs/**"], ["docs/a.md"])
+    assert write_scopes_overlap(["docs/sub/**"], ["docs/sub/a.md"])
+    assert write_scopes_overlap(["docs/a*.md"], ["docs/ab.md"])
+    assert not write_scopes_overlap(["docs/a.md"], ["docs/b.md"])
+
     with tempfile.TemporaryDirectory(prefix="loopx-task-lease-smoke-") as tmp:
         registry_path, state_file = write_fixture(Path(tmp))
 
+        set_claimed_by(
+            state_file,
+            todo_id=TODO_A,
+            owner="codex-main-control",
+        )
         first = payload(
             cli(
                 registry_path,
@@ -160,6 +200,113 @@ def main() -> int:
         assert first["ok"] is True and first["acquired"] is True, first
         assert first["lease"]["schema_version"] == "task_lease_v0", first
         assert first["lease"]["version"] == 1, first
+        assert first["lease"]["acquire_ttl_seconds"] == 120, first
+
+        set_claimed_by(
+            state_file,
+            todo_id=TODO_A,
+            owner="codex-side-bypass",
+        )
+        claim_conflict_inspect = payload(
+            cli(registry_path, "inspect", "--goal-id", GOAL_ID, "--todo-id", TODO_A)
+        )
+        assert claim_conflict_inspect["active"] is False, claim_conflict_inspect
+        assert claim_conflict_inspect["executor_constraint"]["reason"] == (
+            "owner_conflicts_with_claim"
+        ), claim_conflict_inspect
+        assert claim_conflict_inspect["executor_constraint"]["claimed_by"] == (
+            "codex-side-bypass"
+        ), claim_conflict_inspect
+        set_claimed_by(
+            state_file,
+            todo_id=TODO_A,
+            owner="codex-main-control",
+        )
+
+        set_todo_status(state_file, todo_id=TODO_A, status="done")
+        terminal_inspect = payload(
+            cli(registry_path, "inspect", "--goal-id", GOAL_ID, "--todo-id", TODO_A)
+        )
+        assert terminal_inspect["active"] is False, terminal_inspect
+        assert terminal_inspect["executor_constraint"]["reason"] == "todo_not_open", (
+            terminal_inspect
+        )
+        terminal_renew = cli(
+            registry_path,
+            "renew",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            TODO_A,
+            "--owner",
+            "codex-main-control",
+            "--idempotency-key",
+            "turn-1",
+            check=False,
+        )
+        assert terminal_renew.returncode == 1, terminal_renew.stdout
+        assert payload(terminal_renew)["error_code"] == "todo_not_open", terminal_renew.stdout
+        set_todo_status(state_file, todo_id=TODO_A, status="open")
+
+        set_todo_status(state_file, todo_id=TODO_C, status="deferred")
+        terminal_acquire = cli(
+            registry_path,
+            "acquire",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            TODO_C,
+            "--owner",
+            "codex-side-bypass",
+            "--idempotency-key",
+            "deferred-acquire",
+            check=False,
+        )
+        assert terminal_acquire.returncode == 1, terminal_acquire.stdout
+        assert payload(terminal_acquire)["error_code"] == "todo_not_open", terminal_acquire.stdout
+        set_todo_status(state_file, todo_id=TODO_C, status="open")
+
+        unregistered_acquire = cli(
+            registry_path,
+            "acquire",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            TODO_C,
+            "--owner",
+            "codex-unregistered-peer",
+            "--idempotency-key",
+            "unregistered-acquire",
+            "--write-scope",
+            "scripts/**",
+            check=False,
+        )
+        assert unregistered_acquire.returncode == 1, unregistered_acquire.stdout
+        assert payload(unregistered_acquire)["error_code"] == "owner_not_registered", (
+            unregistered_acquire.stdout
+        )
+
+        legacy_unregistered_path = Path(first["lease_path"]).with_name(f"{TODO_C}.json")
+        legacy_unregistered_path.write_text(
+            json.dumps(
+                {
+                    **first["lease"],
+                    "todo_id": TODO_C,
+                    "owner": "codex-unregistered-peer",
+                    "write_scopes": ["scripts/**"],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        legacy_inspect = payload(
+            cli(registry_path, "inspect", "--goal-id", GOAL_ID, "--todo-id", TODO_C)
+        )
+        assert legacy_inspect["active"] is False, legacy_inspect
+        assert legacy_inspect["executor_constraint"]["reason"] == "owner_not_registered", (
+            legacy_inspect
+        )
+        legacy_unregistered_path.unlink()
 
         idempotent = payload(
             cli(
@@ -181,6 +328,29 @@ def main() -> int:
         )
         assert idempotent["ok"] is True and idempotent["idempotent"] is True, idempotent
         assert idempotent["lease"]["version"] == 1, idempotent
+
+        for retry_ttl, retry_scope in ((120, "docs/**"), (600, "loopx/**")):
+            changed_retry = cli(
+                registry_path,
+                "acquire",
+                "--goal-id",
+                GOAL_ID,
+                "--todo-id",
+                TODO_A,
+                "--owner",
+                "codex-main-control",
+                "--idempotency-key",
+                "turn-1",
+                "--ttl-seconds",
+                str(retry_ttl),
+                "--write-scope",
+                retry_scope,
+                check=False,
+            )
+            assert changed_retry.returncode == 1, changed_retry.stdout
+            assert payload(changed_retry)["error_code"] == "idempotency_key_reuse", (
+                changed_retry.stdout
+            )
 
         set_excluded_agents(
             state_file,
@@ -240,7 +410,7 @@ def main() -> int:
             "--ttl-seconds",
             "120",
             "--write-scope",
-            "loopx/cli_commands/**",
+            "loopx/cli_commands/todo.py",
             check=False,
         )
         assert conflict.returncode == 1, conflict.stdout
@@ -313,7 +483,55 @@ def main() -> int:
             blocked_transfer.stdout
         )
 
+        unregistered_transfer = cli(
+            registry_path,
+            "transfer",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            TODO_A,
+            "--owner",
+            "codex-main-control",
+            "--idempotency-key",
+            "turn-1",
+            "--new-owner",
+            "codex-unregistered-peer",
+            "--new-idempotency-key",
+            "unregistered-transfer",
+            "--expected-version",
+            "2",
+            check=False,
+        )
+        assert unregistered_transfer.returncode == 1, unregistered_transfer.stdout
+        assert payload(unregistered_transfer)["error_code"] == "owner_not_registered", (
+            unregistered_transfer.stdout
+        )
+
         set_excluded_agents(state_file, todo_id=TODO_A, agents=[])
+        claim_blocked_transfer = cli(
+            registry_path,
+            "transfer",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            TODO_A,
+            "--owner",
+            "codex-main-control",
+            "--idempotency-key",
+            "turn-1",
+            "--new-owner",
+            "codex-side-bypass",
+            "--new-idempotency-key",
+            "side-transfer",
+            "--expected-version",
+            "2",
+            check=False,
+        )
+        assert claim_blocked_transfer.returncode == 1, claim_blocked_transfer.stdout
+        assert payload(claim_blocked_transfer)["error_code"] == (
+            "owner_conflicts_with_claim"
+        )
+        set_claimed_by(state_file, todo_id=TODO_A, owner=None)
         transferred = payload(
             cli(
                 registry_path,

@@ -69,14 +69,13 @@ from loopx.codex_cli_goal_tui import (
     codex_cli_tui_input_prompt_visible,
     codex_cli_tui_retryable_startup_blocker_stage,
     codex_cli_tui_turn_active,
-    prewarm_codex_cli_goal_thread,
     resolve_codex_cli_binary,
+    start_codex_cli_goal_tui_session,
     tmux_capture,
     tmux_kill_session,
     tmux_paste_file_and_submit,
     tmux_submit_enter,
     tmux_type_text_and_submit,
-    wait_for_codex_cli_tui_ready,
 )
 
 SAFE_LOOPX_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{6,80}$")
@@ -1094,33 +1093,25 @@ class SkillsBenchLocalAcpRelay:
             post_bridge_recovery_action = ""
             post_bridge_recovery_skip_reason = ""
             pre_bridge_terminal_stage = ""
+            thread_prewarm = self._config.codex_cli_goal_thread_prewarm
             self._last_codex_cli_goal_lifecycle = goal_lifecycle = CodexCliGoalLifecycleGeneration()
             try:
-                subprocess.run(
-                    [
-                        "tmux",
-                        "new-session",
-                        "-d",
-                        "-s",
-                        tmux_name,
-                        "-c",
-                        cwd,
-                        shell_command,
-                    ],
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.PIPE,
-                    text=True,
+                startup_stage, thread_prewarm_observed = start_codex_cli_goal_tui_session(
+                    tmux_name=tmux_name,
+                    cwd=cwd,
+                    shell_command=shell_command,
+                    thread_prewarm=thread_prewarm,
+                    thread_prewarm_timeout_sec=CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC,
                 )
-                if not wait_for_codex_cli_tui_ready(tmux_name, auto_accept_trust_prompt=True):
-                    tmux_kill_session(tmux_name)
+                if startup_stage:
                     self._publish_codex_cli_goal_trace(
                         ok=False,
-                        stage="tui_ready_timeout",
+                        stage=startup_stage,
                         goal_active_observed=False,
                         goal_terminal_observed=False,
                         first_action_observed=False,
                         bridge_summary_path=bridge_summary_path,
+                        thread_prewarm_observed=thread_prewarm_observed,
                         goal_prompt_file_used=goal_prompt_file_used,
                         goal_command_submission_method=goal_command_submission_method,
                         goal_slash_command_submitted=False,
@@ -1128,30 +1119,6 @@ class SkillsBenchLocalAcpRelay:
                     return _recoverable_codex_turn_failure_message(
                         "codex_exec_first_action_timeout"
                     )
-                thread_prewarm_observed = False
-                if self._config.codex_cli_goal_thread_prewarm:
-                    thread_prewarm_observed = prewarm_codex_cli_goal_thread(
-                        tmux_name=tmux_name,
-                        tmp_path=tmp_path,
-                        timeout_sec=CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC,
-                    )
-                    if not thread_prewarm_observed:
-                        tmux_kill_session(tmux_name)
-                        self._publish_codex_cli_goal_trace(
-                            ok=False,
-                            stage="thread_prewarm_timeout",
-                            goal_active_observed=False,
-                            goal_terminal_observed=False,
-                            first_action_observed=False,
-                            bridge_summary_path=bridge_summary_path,
-                            thread_prewarm_observed=False,
-                            goal_prompt_file_used=goal_prompt_file_used,
-                            goal_command_submission_method=goal_command_submission_method,
-                            goal_slash_command_submitted=False,
-                        )
-                        return _recoverable_codex_turn_failure_message(
-                            "codex_exec_first_action_timeout"
-                        )
                 goal_lifecycle.begin(tmux_capture(tmux_name))
                 if goal_prompt_file_used:
                     tmux_type_text_and_submit(
@@ -1222,10 +1189,10 @@ class SkillsBenchLocalAcpRelay:
                     now = time.monotonic()
                     capture = self._last_codex_cli_goal_tui_capture = tmux_capture(tmux_name)
                     turn_active = codex_cli_tui_turn_active(capture)
-                    goal_lifecycle.observe(capture)
+                    goal_lifecycle.observe(capture, turn_active=turn_active)
                     if turn_active:
                         last_task_output_activity_at = now
-                    if goal_lifecycle.active_advanced:
+                    if goal_lifecycle.active_observed:
                         goal_active_observed = True
                     goal_failed_now = goal_lifecycle.failed_advanced
                     if bridge_summary_path is not None:
@@ -1344,6 +1311,7 @@ class SkillsBenchLocalAcpRelay:
                         )
                         if recovery_action in {
                             "press_enter",
+                            "restart_tui_goal",
                             "typed_goal_resubmit",
                         } and (
                             pre_bridge_recovery_attempt_count
@@ -1351,34 +1319,59 @@ class SkillsBenchLocalAcpRelay:
                         ):
                             pre_bridge_recovery_attempt_count += 1
                             pre_bridge_recovery_action = recovery_action
+                            restart_stage = ""
                             if recovery_action == "press_enter":
                                 tmux_submit_enter(tmux_name)
                             else:
-                                goal_lifecycle.begin(capture)
-                                goal_active_observed = False
-                                goal_kickoff_prompt_submitted = False
-                                tmux_type_text_and_submit(
-                                    tmux_name=tmux_name,
-                                    text=goal_command_text,
-                                )
-                            deadlines = codex_cli_goal_reset_pre_bridge_deadlines(
-                                now=now,
-                                first_action_timeout_sec=self._config.first_action_timeout_sec,
-                                goal_active_deadline=goal_active_deadline,
-                                goal_active_timeout_sec=self._config.goal_active_timeout_sec,
-                                first_action_deadline=first_action_deadline,
-                                meaningful_progress_deadline=meaningful_progress_deadline,
-                            )
-                            goal_active_deadline, first_action_deadline, meaningful_progress_deadline = deadlines
-                            if recovery_action == "typed_goal_resubmit":
-                                next_heartbeat = now + max(
-                                    1.0,
-                                    self._config.stream_heartbeat_interval_sec,
-                                )
+                                if recovery_action == "restart_tui_goal":
+                                    tmux_kill_session(tmux_name)
+                                    (
+                                        restart_stage,
+                                        thread_prewarm_observed,
+                                    ) = start_codex_cli_goal_tui_session(
+                                        tmux_name=tmux_name,
+                                        cwd=cwd,
+                                        shell_command=shell_command,
+                                        thread_prewarm=thread_prewarm,
+                                        thread_prewarm_timeout_sec=CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC,
+                                    )
+                                    if not restart_stage:
+                                        capture = tmux_capture(tmux_name)
+                                        goal_terminal_observed = False
+                                        goal_failed_observed = False
+                                if not restart_stage:
+                                    goal_lifecycle.begin(capture)
+                                    goal_active_observed = False
+                                    goal_kickoff_prompt_submitted = False
+                                    tmux_type_text_and_submit(
+                                        tmux_name=tmux_name,
+                                        text=goal_command_text,
+                                    )
+                            if restart_stage:
+                                pre_bridge_blocker_stage = restart_stage
+                                pre_bridge_recovery_skip_reason = "restart_failed"
                             else:
-                                time.sleep(1.0)
-                            continue
-                        pre_bridge_recovery_skip_reason = (
+                                deadlines = codex_cli_goal_reset_pre_bridge_deadlines(
+                                    now=now,
+                                    first_action_timeout_sec=self._config.first_action_timeout_sec,
+                                    goal_active_deadline=goal_active_deadline,
+                                    goal_active_timeout_sec=self._config.goal_active_timeout_sec,
+                                    first_action_deadline=first_action_deadline,
+                                    meaningful_progress_deadline=meaningful_progress_deadline,
+                                )
+                                goal_active_deadline, first_action_deadline, meaningful_progress_deadline = deadlines
+                                if recovery_action in {
+                                    "restart_tui_goal",
+                                    "typed_goal_resubmit",
+                                }:
+                                    next_heartbeat = now + max(
+                                        1.0,
+                                        self._config.stream_heartbeat_interval_sec,
+                                    )
+                                else:
+                                    time.sleep(1.0)
+                                continue
+                        pre_bridge_recovery_skip_reason = pre_bridge_recovery_skip_reason or (
                             codex_cli_tui_pre_bridge_recovery_skip_reason(
                                 capture,
                                 stage=pre_bridge_blocker_stage,
@@ -1388,7 +1381,11 @@ class SkillsBenchLocalAcpRelay:
                         if (
                             not pre_bridge_recovery_skip_reason
                             and recovery_action
-                            in {"press_enter", "typed_goal_resubmit"}
+                            in {
+                                "press_enter",
+                                "restart_tui_goal",
+                                "typed_goal_resubmit",
+                            }
                         ):
                             pre_bridge_recovery_skip_reason = "retry_limit_reached"
                         tmux_kill_session(tmux_name)

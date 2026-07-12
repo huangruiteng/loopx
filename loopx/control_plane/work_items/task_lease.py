@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from ...agent_registry import registered_agent_ids_from_registry, require_registered_agent_id
 from ...file_lock import exclusive_file_lock
 from ...history import load_registry
 from ...paths import resolve_runtime_root
@@ -130,12 +132,26 @@ def task_lease_owner_constraint(
     todo: dict[str, Any] | None,
     *,
     owner: Any,
+    registered_agents: list[str] | None = None,
 ) -> dict[str, Any]:
     if todo is None:
         return {"effective": False, "reason": "todo_not_found"}
+    todo_status = str(todo.get("status") or "").strip().lower()
+    if todo_status != "open":
+        return {
+            "effective": False,
+            "reason": "todo_not_open",
+            "todo_status": todo_status or "unknown",
+        }
     normalized_owner = normalize_todo_claimed_by(owner)
     if not normalized_owner:
         return {"effective": False, "reason": "invalid_owner"}
+    if registered_agents is not None and normalized_owner not in registered_agents:
+        return {
+            "effective": False,
+            "reason": "owner_not_registered",
+            "registered_agents": registered_agents,
+        }
     excluded_agents = normalize_todo_excluded_agents(todo.get("excluded_agents"))
     if normalized_owner in excluded_agents:
         return {
@@ -143,7 +159,36 @@ def task_lease_owner_constraint(
             "reason": "owner_excluded_from_todo",
             "excluded_agents": excluded_agents,
         }
+    claimed_by = normalize_todo_claimed_by(todo.get("claimed_by"))
+    if claimed_by and claimed_by != normalized_owner:
+        return {
+            "effective": False,
+            "reason": "owner_conflicts_with_claim",
+            "claimed_by": claimed_by,
+        }
     return {"effective": True}
+
+
+def require_registered_task_lease_owner(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    todo_id: str,
+    owner: str,
+) -> str:
+    try:
+        return require_registered_agent_id(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            agent_id=owner,
+            field="task lease owner",
+        )
+    except ValueError as exc:
+        raise TaskLeaseError(
+            str(exc),
+            code="owner_not_registered",
+            payload={"goal_id": goal_id, "todo_id": todo_id, "owner": owner},
+        ) from exc
 
 
 def require_task_lease_owner_allowed(
@@ -153,18 +198,40 @@ def require_task_lease_owner_allowed(
     todo_id: str,
     owner: str,
 ) -> dict[str, Any]:
+    owner = require_registered_task_lease_owner(
+        registry_path=registry_path,
+        goal_id=goal_id,
+        todo_id=todo_id,
+        owner=owner,
+    )
     todo = task_lease_todo_projection(
         registry_path=registry_path,
         goal_id=goal_id,
         todo_id=todo_id,
     )
-    constraint = task_lease_owner_constraint(todo, owner=owner)
+    constraint = task_lease_owner_constraint(
+        todo,
+        owner=owner,
+        registered_agents=registered_agent_ids_from_registry(registry_path, goal_id),
+    )
     if constraint.get("effective") is not True:
         reason = str(constraint.get("reason") or "owner_not_allowed")
         if reason == "todo_not_found":
             message = "todo is missing from the canonical projection"
+        elif reason == "todo_not_open":
+            message = (
+                f"task lease requires an open todo; "
+                f"{todo_id!r} is {constraint.get('todo_status')!r}"
+            )
         elif reason == "owner_excluded_from_todo":
             message = f"task lease owner {owner!r} is excluded from todo {todo_id!r}"
+        elif reason == "owner_conflicts_with_claim":
+            message = (
+                f"task lease owner {owner!r} conflicts with todo claim "
+                f"{constraint.get('claimed_by')!r}"
+            )
+        elif reason == "owner_not_registered":
+            message = f"task lease owner {owner!r} is not registered for goal {goal_id!r}"
         else:
             message = f"task lease owner {owner!r} is not eligible for todo {todo_id!r}"
         raise TaskLeaseError(
@@ -237,6 +304,51 @@ def scope_root(scope: str) -> str:
     return value.rstrip("/")
 
 
+def _scope_has_glob(scope: str) -> bool:
+    return any(token in scope for token in ("*", "?", "["))
+
+
+def _scope_literal_prefix(scope: str) -> str:
+    indexes = [scope.find(token) for token in ("*", "?", "[") if scope.find(token) >= 0]
+    return scope[: min(indexes)] if indexes else scope
+
+
+def _scope_pair_overlaps(left: str, right: str) -> bool:
+    if left == right:
+        return True
+    if left in {"*", "**", "./"} or right in {"*", "**", "./"}:
+        return True
+
+    left_has_glob = _scope_has_glob(left)
+    right_has_glob = _scope_has_glob(right)
+    if left_has_glob and not right_has_glob:
+        prefix = _scope_literal_prefix(left)
+        return fnmatch.fnmatchcase(right, left) or (
+            prefix.endswith("/") and right.rstrip("/") == prefix.rstrip("/")
+        )
+    if right_has_glob and not left_has_glob:
+        prefix = _scope_literal_prefix(right)
+        return fnmatch.fnmatchcase(left, right) or (
+            prefix.endswith("/") and left.rstrip("/") == prefix.rstrip("/")
+        )
+    if left_has_glob and right_has_glob:
+        left_prefix = _scope_literal_prefix(left)
+        right_prefix = _scope_literal_prefix(right)
+        return bool(
+            not left_prefix
+            or not right_prefix
+            or left_prefix.startswith(right_prefix)
+            or right_prefix.startswith(left_prefix)
+        )
+
+    left_root = left.rstrip("/")
+    right_root = right.rstrip("/")
+    return bool(
+        (left.endswith("/") and right.startswith(left_root + "/"))
+        or (right.endswith("/") and left.startswith(right_root + "/"))
+    )
+
+
 def write_scopes_overlap(left: list[str], right: list[str]) -> bool:
     left_scopes = normalize_required_write_scopes(left)
     right_scopes = normalize_required_write_scopes(right)
@@ -244,15 +356,7 @@ def write_scopes_overlap(left: list[str], right: list[str]) -> bool:
         return False
     for left_scope in left_scopes:
         for right_scope in right_scopes:
-            if left_scope == right_scope:
-                return True
-            left_root = scope_root(left_scope)
-            right_root = scope_root(right_scope)
-            if not left_root or not right_root:
-                return True
-            if left_root.startswith(right_root.rstrip("/") + "/"):
-                return True
-            if right_root.startswith(left_root.rstrip("/") + "/"):
+            if _scope_pair_overlaps(left_scope, right_scope):
                 return True
     return False
 
@@ -267,6 +371,7 @@ def active_conflicts(
     at: datetime,
 ) -> list[dict[str, Any]]:
     conflicts: list[dict[str, Any]] = []
+    registered_agents = registered_agent_ids_from_registry(registry_path, goal_id)
     lease_dir = task_lease_dir(runtime_root=runtime_root, goal_id=goal_id)
     if not lease_dir.exists():
         return conflicts
@@ -282,7 +387,11 @@ def active_conflicts(
             goal_id=goal_id,
             todo_id=lease_todo_id,
         )
-        if task_lease_owner_constraint(todo, owner=lease.get("owner")).get("effective") is not True:
+        if task_lease_owner_constraint(
+            todo,
+            owner=lease.get("owner"),
+            registered_agents=registered_agents,
+        ).get("effective") is not True:
             continue
         if write_scopes_overlap(write_scopes, normalize_required_write_scopes(lease.get("write_scopes"))):
             conflicts.append(
@@ -316,6 +425,7 @@ def build_lease(
     owner: str,
     idempotency_key: str,
     write_scopes: list[str],
+    acquire_ttl_seconds: int,
     version: int,
     acquired_at: str,
     updated_at: str,
@@ -328,6 +438,7 @@ def build_lease(
         "owner": owner,
         "idempotency_key": idempotency_key,
         "write_scopes": write_scopes,
+        "acquire_ttl_seconds": acquire_ttl_seconds,
         "version": version,
         "acquired_at": acquired_at,
         "updated_at": updated_at,
@@ -369,9 +480,11 @@ def acquire_task_lease(
         assert_expected_version(existing, expected_version)
         existing_is_effective = bool(
             lease_is_active(existing, at=at)
-            and task_lease_owner_constraint(todo, owner=(existing or {}).get("owner")).get(
-                "effective"
-            )
+            and task_lease_owner_constraint(
+                todo,
+                owner=(existing or {}).get("owner"),
+                registered_agents=registered_agent_ids_from_registry(registry_path, goal_id),
+            ).get("effective")
             is True
         )
         if existing_is_effective:
@@ -379,6 +492,24 @@ def acquire_task_lease(
                 existing.get("owner") == owner
                 and existing.get("idempotency_key") == idempotency_key
             ):
+                existing_write_scopes = normalize_required_write_scopes(
+                    existing.get("write_scopes")
+                )
+                existing_ttl = existing.get("acquire_ttl_seconds")
+                request_matches = set(existing_write_scopes) == set(normalized_write_scopes)
+                if existing_ttl is not None:
+                    request_matches = request_matches and int(existing_ttl) == ttl
+                if not request_matches:
+                    raise TaskLeaseError(
+                        "idempotency key was reused with different acquire parameters",
+                        code="idempotency_key_reuse",
+                        payload={
+                            "lease": existing,
+                            "lease_path": str(lease_path),
+                            "requested_write_scopes": normalized_write_scopes,
+                            "requested_ttl_seconds": ttl,
+                        },
+                    )
                 return {
                     "ok": True,
                     "schema_version": TASK_LEASE_SCHEMA_VERSION,
@@ -415,6 +546,7 @@ def acquire_task_lease(
             owner=owner,
             idempotency_key=idempotency_key,
             write_scopes=normalized_write_scopes,
+            acquire_ttl_seconds=ttl,
             version=int((existing or {}).get("version") or 0) + 1,
             acquired_at=updated_at,
             updated_at=updated_at,
@@ -504,6 +636,12 @@ def transfer_task_lease(
     lease_path = task_lease_path(runtime_root=runtime_root, goal_id=goal_id, todo_id=todo_id)
     at = now_utc()
     with exclusive_file_lock(lock_target):
+        require_registered_task_lease_owner(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            todo_id=todo_id,
+            owner=owner,
+        )
         require_task_lease_owner_allowed(
             registry_path=registry_path,
             goal_id=goal_id,
@@ -606,6 +744,7 @@ def inspect_task_lease(
             executor_constraint = task_lease_owner_constraint(
                 todo,
                 owner=lease.get("owner"),
+                registered_agents=registered_agent_ids_from_registry(registry_path, goal_id),
             )
             if executor_constraint.get("effective") is not True:
                 active = False

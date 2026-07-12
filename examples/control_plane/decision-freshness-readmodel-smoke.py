@@ -6,6 +6,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
+import tempfile
 from typing import Any
 
 
@@ -14,14 +15,25 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx import status as status_module  # noqa: E402
+from loopx.control_plane import status_runtime_summaries  # noqa: E402
 from loopx.control_plane.runtime import decision_freshness as decision_read_model  # noqa: E402
+from loopx.control_plane.runtime import event_ledger as event_ledger_read_model  # noqa: E402
+
+
+RUNTIME_CONTEXT = status_module.build_status_runtime_summary_context()
 
 
 def direct_decision_kinds(run: dict[str, Any]) -> list[str]:
-    return decision_read_model.decision_event_kinds(
+    return status_runtime_summaries.decision_event_kinds(
         run,
-        decision_classifications=status_module.EVENT_LEDGER_DECISION_CLASSIFICATIONS,
-        classification_prefixes=status_module.DECISION_FRESHNESS_CLASSIFICATION_PREFIXES,
+        context=RUNTIME_CONTEXT,
+    )
+
+
+def direct_event_class(run: dict[str, Any]) -> str:
+    return status_runtime_summaries.event_ledger_event_class(
+        run,
+        context=RUNTIME_CONTEXT,
     )
 
 
@@ -30,8 +42,8 @@ def direct_summary(history: dict[str, Any]) -> dict[str, Any]:
         history,
         parse_timestamp=status_module.parse_timestamp,
         decision_event_kinds=direct_decision_kinds,
-        event_class_for_run=status_module.event_ledger_event_class,
-        blank_event_class_counts=status_module.blank_event_class_counts,
+        event_class_for_run=direct_event_class,
+        blank_event_class_counts=event_ledger_read_model.blank_event_class_counts,
         window_days=status_module.DECISION_FRESHNESS_WINDOW_DAYS,
         item_limit=status_module.DECISION_FRESHNESS_ITEM_LIMIT,
         proxy_note=status_module.DECISION_FRESHNESS_PROXY_NOTE,
@@ -95,17 +107,25 @@ def main() -> None:
     ]
     history = {"runs": runs}
 
-    assert status_module.decision_event_kinds(runs[0]) == direct_decision_kinds(runs[0]) == ["operator_gate"]
-    assert status_module.decision_event_kinds(runs[2]) == direct_decision_kinds(runs[2]) == ["human_reward"]
-    assert status_module.decision_event_kinds(runs[6]) == direct_decision_kinds(runs[6]) == [
+    assert direct_decision_kinds(runs[0]) == ["operator_gate"]
+    assert direct_decision_kinds(runs[2]) == ["human_reward"]
+    assert direct_decision_kinds(runs[6]) == [
         "decision_classification"
     ]
-    assert status_module.decision_freshness_reason(
+    assert decision_read_model.decision_freshness_reason(
         stale_by_age=True,
         newer_event_count=1,
-    ) == decision_read_model.decision_freshness_reason(stale_by_age=True, newer_event_count=1)
+    ) == "decision older than freshness window and newer sampled events exist; rebase at decision point"
 
-    wrapper = status_module.build_decision_freshness_summary(history)
+    with tempfile.TemporaryDirectory(prefix="loopx-decision-freshness-summary-") as raw_tmp:
+        wrapper = status_module.build_status_runtime_summaries(
+            history=history,
+            queue={"items": []},
+            runtime_root=Path(raw_tmp),
+            goal_id_filter=None,
+            display_limit=10,
+            todo_index_limit=10,
+        )["decision_freshness_summary"]
     direct = direct_summary(history)
     assert normalize_generated_at(direct, wrapper) == wrapper, (direct, wrapper)
 

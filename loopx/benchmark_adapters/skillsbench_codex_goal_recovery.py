@@ -138,6 +138,8 @@ def codex_cli_tui_pre_bridge_recovery_action(capture: str, *, stage: str) -> str
         "pre_bridge_tui_stale_terminal",
     }:
         return ""
+    if stage == "pre_bridge_tui_stale_terminal":
+        return "restart_tui_goal"
     if stage == "pre_bridge_tui_error_prompt" and codex_cli_tui_input_prompt_visible(
         capture
     ):

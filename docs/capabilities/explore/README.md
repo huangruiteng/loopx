@@ -583,8 +583,19 @@ cooldown guidance.
 
 Record identity follows the Lark Kanban adapter contract: rows are matched by
 the `LoopX Goal ID` + `LoopX Result ID` columns, remembered in the local
-config as `result_records`, and the map is rebuilt from the remote table
-before executed upserts.
+config as `result_records`, and the map is rebuilt from all goal-filtered
+remote pages before executed upserts. Executed sync compares canonical values
+with the remote row and skips unchanged records. Newly created record ids are
+persisted immediately, so an interrupted large-graph sync can resume without
+recreating rows that were already delivered.
+
+For the issue-fix domain, the default `lark-kanban sync-loopx-todos` call also
+projects material domain-state, todo, and rollout transitions into this result
+layer. It invokes remote Explore sync only when a timestamp-free semantic graph
+digest differs from the last successful sink digest. This keeps the graph
+continuously current without spending writes on unchanged CI/review polls. It
+uses the result layer only and does not enable or depend on Explore Harness
+worker orchestration.
 
 The text `From Node` / `To Node` columns remain stable public ids for
 automation and review, while the linked-record columns are the Feishu-native
@@ -630,6 +641,7 @@ operator permits the write.
 
 ```bash
 python3 examples/explore-result-layer-smoke.py
+python3 examples/issue-fix-explore-projection-smoke.py
 python3 examples/explore-harness-runtime-resume-smoke.py
 python3 -m pytest -q \
   tests/test_explore_episode_runtime.py \
@@ -637,8 +649,9 @@ python3 -m pytest -q \
 ```
 
 The smoke proves the projection contract (folding, blocked reasons, tree,
-Mermaid), record-time path rejection, dry-run default, idempotent second sync
-by remembered record id, shared-visibility redaction, transport-free card
+Mermaid), record-time path rejection, dry-run default, paginated discovery,
+zero-write idempotent resync, single-row drift repair, nested create-receipt
+handling, shared-visibility redaction, transport-free card
 content, the experimental todo branch-plan packet, the adaptive resilient
 worker harness profile, and the CLI surface against a temp registry, without
 live Lark credentials. It additionally proves the worker-lane router

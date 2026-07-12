@@ -13,7 +13,13 @@ authors = [{ name = "LoopX contributors" }]
 dependencies = []
 
 [project.optional-dependencies]
-test = ["pytest>=8,<9"]
+test = [
+  "pytest>=8,<9",
+  "pytest-cov>=5,<7",
+  "pytest-xdist>=3,<4",
+  "ruff>=0.12,<1",
+  "mypy>=1.18,<2",
+]
 
 [project.scripts]
 loopx = "loopx.cli:main"
@@ -23,3 +29,21 @@ include = ["loopx*"]
 
 [tool.setuptools.package-data]
 "loopx.capabilities.auto_research" = ["worker_skill/SKILL.md"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = [
+  "loopx/claude_goal_baseline.py",
+  "loopx/control_plane/__init__.py",
+  "loopx/control_plane/quota/states.py",
+  "loopx/control_plane/runtime/event_store_migration_bridge.py",
+  "loopx/control_plane/runtime/time.py",
+  "loopx/control_plane/runtime/trajectory_hygiene.py",
+  "loopx/control_plane/scheduler/time.py",
+  "loopx/control_plane/work_items/delivery_batch_scale.py",
+  "loopx/control_plane/work_items/delivery_outcome.py",
+  "loopx/control_plane/work_items/lifecycle.py",
+  "loopx/presentation/renderers/trajectory_hygiene_markdown.py",
+  "loopx/presentation/renderers/turn_envelope_markdown.py",
+]

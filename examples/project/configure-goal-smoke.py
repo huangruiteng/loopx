@@ -95,6 +95,16 @@ def main() -> int:
         root = Path(tmp)
         registry_path = write_registry(root)
         original = registry_path.read_text(encoding="utf-8")
+        agent_profile = {
+            "schema_version": "agent_profile_v1",
+            "agent_id": "codex-side-bypass",
+            "profile_role": "runtime-validation",
+            "scope_summary": "Focused runtime validation and peer claim repairs.",
+            "default_task_classes": ["advancement_task"],
+            "preferred_action_kinds": ["todo_claim_*", "task_lease_*"],
+            "avoid_action_kinds": ["production_*"],
+        }
+        agent_profile_json = json.dumps(agent_profile)
 
         dry = payload(run_cli(
             registry_path,
@@ -120,6 +130,8 @@ def main() -> int:
             "codex-side-bypass,codex-main-control",
             "--agent-model",
             "peer_v1",
+            "--agent-profile-json",
+            agent_profile_json,
             "--write-scope",
             "docs/**",
             "--write-scope",
@@ -188,6 +200,8 @@ def main() -> int:
             "codex-main-control,codex-side-bypass",
             "--agent-model",
             "peer_v1",
+            "--agent-profile-json",
+            agent_profile_json,
             "--write-scope",
             "docs/**,tests/**",
             "--waiting-on",
@@ -218,6 +232,9 @@ def main() -> int:
         assert goal["spawn_policy"]["allowed_domains"] == ["docs", "validation"], goal
         assert goal["coordination"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], goal
         assert goal["coordination"]["agent_model"] == "peer_v1", goal
+        assert goal["coordination"]["agent_profiles"] == {
+            "codex-side-bypass": agent_profile,
+        }, goal
         assert goal["coordination"]["write_scope"] == ["docs/**", "tests/**"], goal
         assert goal["waiting_on"] == "user_or_controller", goal
         reviewer_policy = goal["control_plane"]["issue_fix"][
@@ -326,6 +343,48 @@ def main() -> int:
         assert authority_cleared["changed"] is True, authority_cleared
         assert "checkpointed_boundary_authority" in authority_cleared["changed_fields"], authority_cleared
         assert "checkpointed_boundary_authority" not in goal_from_registry(registry_path)["coordination"], authority_cleared
+
+        invalid_profile = dict(agent_profile, profile_role="primary-agent")
+        invalid_profile_result = payload(run_cli(
+            registry_path,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-profile-json",
+            json.dumps(invalid_profile),
+            check=False,
+        ))
+        assert invalid_profile_result["ok"] is False, invalid_profile_result
+        assert "hierarchy role" in invalid_profile_result["error"], invalid_profile_result
+
+        private_profile = dict(
+            agent_profile,
+            scope_summary="Read /Users/example/private-state before routing.",
+        )
+        private_profile_result = payload(run_cli(
+            registry_path,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-profile-json",
+            json.dumps(private_profile),
+            check=False,
+        ))
+        assert private_profile_result["ok"] is False, private_profile_result
+        assert "public-safe" in private_profile_result["error"], private_profile_result
+
+        profile_cleared = payload(run_cli(
+            registry_path,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--clear-agent-profile",
+            "codex-side-bypass",
+            "--execute",
+        ))
+        assert profile_cleared["ok"] is True, profile_cleared
+        assert "agent_profiles" in profile_cleared["changed_fields"], profile_cleared
+        assert "agent_profiles" not in goal_from_registry(registry_path)["coordination"]
 
         agents_cleared = payload(run_cli(
             registry_path,

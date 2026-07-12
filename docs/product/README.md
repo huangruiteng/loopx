@@ -103,8 +103,8 @@ runtime contract, benchmark route, or launch draft.
   same-TUI attach stays blocked until proof and idle evidence pass.
 - [Agent profile contract](agent-profile-contract.md): the registry-owned
   advisory capability/scope contract for peers, while task and repository
-  policy own workspace/review requirements and todos retain ownership through
-  `claimed_by` and future leases.
+  policy own workspace/review requirements and todos retain soft ownership
+  through `claimed_by`, with optional hard leases for explicit contention cases.
 - [Non-technical operator status model](nontechnical-operator-status-model.md):
   first-screen Agent Work Feed and card model for people who need to review
   agent outputs, progress, blockers, next moves, signal inbox, anchor
@@ -129,6 +129,9 @@ runtime contract, benchmark route, or launch draft.
   value model for Loop Agents that separates quantity, quality, token cost, and
   user attention cost without turning one benchmark score into a universal
   product claim.
+- [Agent-facing interaction and trajectory quality](agent-facing-trajectory-quality.md):
+  Chinese project note on bounded turn context, trajectory-hygiene monitoring,
+  semantic parity, landed PR evidence, and a conservative optimization roadmap.
 - [Loop Engineering principles and pitfalls](loop-engineering-principles-and-pitfalls.md):
   short public-safe digest of the operating rules behind source of truth, human
   gates, safe fallback, feedback, compact evidence, quota, and performance

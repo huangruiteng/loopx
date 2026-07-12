@@ -12,6 +12,9 @@ if str(ROOT) not in sys.path:
 from loopx import status as status_module  # noqa: E402
 from loopx.control_plane.goals.goal_vision import compact_goal_vision_packet  # noqa: E402
 from loopx.control_plane.runtime import run_compaction as run_compaction_read_model  # noqa: E402
+from loopx.control_plane.runtime.run_ingest_health import (  # noqa: E402
+    worker_bridge_ingest_health_note,
+)
 from loopx.control_plane.goals import goal_frontier as goal_frontier_read_model  # noqa: E402
 from loopx.session_runtime import SESSION_RUNTIME_READONLY_PROJECTION_SCHEMA_VERSION  # noqa: E402
 
@@ -117,7 +120,7 @@ def _direct_compact_run(run: dict[str, object]) -> dict[str, object]:
         _direct_compact_run_base(run),
         run,
         compact_benchmark_run=status_module.compact_benchmark_run,
-        worker_bridge_ingest_health_note=status_module.worker_bridge_ingest_health_note,
+        worker_bridge_ingest_health_note=worker_bridge_ingest_health_note,
         compact_benchmark_result=status_module.compact_benchmark_result,
         compact_benchmark_comparison=status_module.compact_benchmark_comparison,
         benchmark_comparison_decision_note=status_module.benchmark_comparison_decision_note,

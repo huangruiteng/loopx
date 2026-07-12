@@ -605,8 +605,12 @@ def _assert_cli_goal_rate_limit_is_public_safe_retryable_stage() -> None:
         CodexExecConfig,
         SkillsBenchLocalAcpRelay,
     )
-    from loopx.codex_cli_goal_tui import codex_cli_tui_retryable_startup_blocker_stage
+    from loopx.codex_cli_goal_tui import (
+        codex_cli_tui_auth_blocker_stage,
+        codex_cli_tui_retryable_startup_blocker_stage,
+    )
     from scripts.skillsbench_automation_loop import (
+        _apply_codex_cli_goal_countability_guard_attribution,
         _merge_host_local_acp_relay_trace_summary,
         _public_runner_prerequisites,
     )
@@ -618,6 +622,15 @@ def _assert_cli_goal_rate_limit_is_public_safe_retryable_stage() -> None:
         == "rate_limit_before_goal_active"
     )
     assert codex_cli_tui_retryable_startup_blocker_stage("Goal active") == ""
+    revoked_stage = codex_cli_tui_auth_blocker_stage(
+        "Your access token could not be refreshed because your refresh token "
+        "was revoked. Please sign in again."
+    )
+    assert revoked_stage == "auth_refresh_token_revoked"
+    assert codex_cli_tui_retryable_startup_blocker_stage("token_invalidated") == (
+        revoked_stage
+    )
+    assert codex_cli_tui_auth_blocker_stage("Goal active") == ""
 
     with tempfile.TemporaryDirectory() as temp:
         trace_dir = Path(temp) / "trace"
@@ -655,6 +668,42 @@ def _assert_cli_goal_rate_limit_is_public_safe_retryable_stage() -> None:
     assert public_prerequisites["codex_cli_goal_tui_stages"] == [
         "rate_limit_before_goal_active"
     ]
+
+    with tempfile.TemporaryDirectory() as temp:
+        trace_dir = Path(temp) / "trace"
+        relay = SkillsBenchLocalAcpRelay(
+            CodexExecConfig(worker_public_trace_dir=str(trace_dir))
+        )
+        relay._publish_codex_cli_goal_trace(
+            ok=False,
+            stage=revoked_stage,
+            goal_active_observed=False,
+            goal_terminal_observed=False,
+            first_action_observed=False,
+            bridge_summary_path=None,
+        )
+        payload = json.loads(
+            next(trace_dir.glob("*.compact.json")).read_text(encoding="utf-8")
+        )
+    auth_trace = payload["codex_cli_goal"]
+    assert auth_trace["stage"] == "auth_refresh_token_revoked"
+    assert auth_trace["raw_tui_capture_recorded"] is False
+    assert auth_trace["raw_task_text_recorded"] is False
+
+    compact = {
+        "route": "codex-cli-goal-baseline",
+        "official_score_status": "completed",
+        "interaction_counters": {
+            "codex_cli_goal_tui_trace_present": True,
+            "codex_cli_goal_tui_ok_count": 0,
+            "codex_cli_goal_tui_stage": revoked_stage,
+        },
+    }
+    assert _apply_codex_cli_goal_countability_guard_attribution(compact)
+    expected = "skillsbench_codex_cli_goal_uncountable_auth_refresh_token_revoked"
+    assert compact["score_failure_attribution"] == expected
+    assert compact["official_score_comparable_to_native_codex"] is False
+    assert compact["official_score_comparable_to_loopx_treatment"] is False
 
 
 def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
@@ -793,13 +842,13 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
             stale_goal_failed_scrollback,
             stage="pre_bridge_tui_stale_terminal",
         )
-        == "typed_goal_resubmit"
+        == "restart_tui_goal"
     )
     assert (
         codex_cli_tui_pre_bridge_recovery_skip_reason(
             stale_goal_failed_scrollback,
             stage="pre_bridge_tui_stale_terminal",
-            recovery_action="typed_goal_resubmit",
+            recovery_action="restart_tui_goal",
         )
         == ""
     )
@@ -1510,6 +1559,13 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     lifecycle.observe("Goal active\nGoal failed\nold scrollback\n› ")
     assert lifecycle.active_advanced is False
     assert lifecycle.failed_advanced is False
+    lifecycle.observe(
+        "Goal active\nold scrollback\n› ",
+        turn_active=True,
+    )
+    assert lifecycle.active_advanced is False
+    assert lifecycle.active_observed is True
+    assert lifecycle.trace_fields()["goal_turn_active_observed"] is True
     lifecycle.begin("Goal active\nGoal failed\nold scrollback\n› ")
     lifecycle.observe(
         "Goal active\nGoal failed\nold scrollback\nGoal active\nGoal achieved\n› "
@@ -1545,7 +1601,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     source = (
         REPO_ROOT / "loopx/benchmark_adapters/skillsbench_acp_relay.py"
     ).read_text(encoding="utf-8")
-    assert "auto_accept_trust_prompt=True" in source
+    assert "start_codex_cli_goal_tui_session(" in source
     assert "CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC = 120" in source
     assert "CODEX_CLI_GOAL_TASK_PROMPT_FILENAME" in source
     assert "prompt_instruction_path.write_text(" in source
@@ -1553,10 +1609,13 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "tmux_type_text_and_submit(" in source
     assert "build_codex_cli_goal_tui_input(prompt_for_codex)" not in source
     assert "codex_cli_goal_thread_prewarm: bool = False" in source
-    assert "if self._config.codex_cli_goal_thread_prewarm:" in source
-    assert "prewarm_codex_cli_goal_thread(" in source
+    assert source.count("start_codex_cli_goal_tui_session(") == 2
+    assert 'recovery_action == "restart_tui_goal"' in source
+    assert source.index('restart_stage = ""') < source.index(
+        'if recovery_action == "press_enter"'
+    )
     assert "thread_prewarm_timeout" in source
-    assert "timeout_sec=CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC" in source
+    assert "thread_prewarm_timeout_sec=CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC" in source
     assert (
         "max(90.0, float(self._config.first_action_timeout_sec or 0.0))"
         not in source
@@ -1576,8 +1635,9 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "text=CODEX_CLI_GOAL_KICKOFF_PROMPT" in source
     assert "goal_failed_now = False" in source
     assert "goal_lifecycle.failed_advanced" in source
-    assert "goal_lifecycle.active_advanced" in source
+    assert "goal_lifecycle.active_observed" in source
     assert "goal_lifecycle.achieved_advanced" in source
+    assert "goal_lifecycle.observe(capture, turn_active=turn_active)" in source
     assert source.count("goal_lifecycle.begin(") == 2
     assert source.count("goal_kickoff_prompt_submitted = False") >= 2
     assert "terminal_observed=goal_failed_now" in source
@@ -1626,7 +1686,8 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "def codex_cli_goal_reset_pre_bridge_deadlines(" in tui_source
     assert '"goal_submission_generation"' in tui_source
     assert 'fields[f"goal_{name}_marker_delta"]' in tui_source
-    assert "goal-thread-prewarm.txt" in tui_source
+    assert "goal-thread-prewarm.txt" not in tui_source
+    assert "text=CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT" in tui_source
     assert CODEX_CLI_GOAL_TASK_PROMPT_FILENAME in tui_source
     assert "tmux_send_plain_enter" in tui_source
     assert "tmux_type_text_and_submit" in tui_source

@@ -226,6 +226,9 @@ def main(argv: list[str] | None = None) -> int:
             "start-goal",
             "slash-commands",
             "heartbeat-prompt",
+            "supervisor-event",
+            "supervisor-observe",
+            "supervisor-prompt",
             "sync-global",
             "uninstall-project",
             "version",
@@ -346,6 +349,7 @@ def main(argv: list[str] | None = None) -> int:
         return handle_issue_fix_command(
             args,
             registry_path=registry_path,
+            runtime_root_arg=args.runtime_root,
             output_format=output_format,
             print_payload=print_payload,
         )

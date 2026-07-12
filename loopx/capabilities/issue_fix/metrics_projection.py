@@ -23,6 +23,7 @@ _SUPPLEMENT_FIELDS = (
     "loopx_capability_gaps_fixed",
     "loopx_capability_gaps_real_callsite_verified",
     "memory_retrievals",
+    "memory_verified_decision_influence",
     "memory_verified_patch_influence",
     "memory_stale_results",
     "useful_public_comments",
@@ -203,6 +204,37 @@ def _supplement(value: dict[str, Any] | None) -> dict[str, int | None]:
     }
 
 
+def _first_push_ci_coverage(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    coverage = value.get("coverage")
+    first_push = coverage.get("first_push_ci") if isinstance(coverage, dict) else None
+    if not isinstance(first_push, dict):
+        return None
+    eligible = _nonnegative_int(
+        first_push.get("eligible_prs"),
+        field="supplement.coverage.first_push_ci.eligible_prs",
+    )
+    observed = _nonnegative_int(
+        first_push.get("observed_prs"),
+        field="supplement.coverage.first_push_ci.observed_prs",
+    )
+    if observed > eligible:
+        raise ValueError(
+            "supplement.coverage.first_push_ci observed_prs must not exceed eligible_prs"
+        )
+    complete = first_push.get("complete") is True
+    if complete != (eligible > 0 and observed == eligible):
+        raise ValueError(
+            "supplement.coverage.first_push_ci complete must match observed coverage"
+        )
+    return {
+        "eligible_prs": eligible,
+        "observed_prs": observed,
+        "complete": complete,
+    }
+
+
 def _latest_rows(
     rows: list[dict[str, Any]],
     *,
@@ -362,9 +394,7 @@ def build_issue_fix_metrics_projection(
     current_pr_states = {
         item["pr_ref"]: item for item in current.get("pull_request_states", [])
     }
-    all_lifecycles = _latest_rows(
-        pr_lifecycle_rows, repo=repo, ref_field="pr_ref"
-    )
+    all_lifecycles = _latest_rows(pr_lifecycle_rows, repo=repo, ref_field="pr_ref")
     lifecycles = [
         row
         for row in all_lifecycles
@@ -376,9 +406,7 @@ def build_issue_fix_metrics_projection(
         for row in lifecycles
     }
     period_issue_refs.discard("")
-    all_feasibility = _latest_rows(
-        feasibility_rows, repo=repo, ref_field="issue_ref"
-    )
+    all_feasibility = _latest_rows(feasibility_rows, repo=repo, ref_field="issue_ref")
     feasibility = [
         row
         for row in all_feasibility
@@ -486,6 +514,7 @@ def build_issue_fix_metrics_projection(
         else None
     )
     supplement = _supplement(supplement_input)
+    first_push_coverage = _first_push_ci_coverage(supplement_input)
     terminal_outcomes = (
         pr_state_counts["MERGED"]
         + (supplement["useful_public_comments"] or 0)
@@ -560,6 +589,12 @@ def build_issue_fix_metrics_projection(
         ("memory_retrievals", "memory leverage is unavailable"),
     ):
         if supplement[field] is None:
+            if field == "first_push_ci_total" and first_push_coverage is not None:
+                impact = (
+                    "first-push CI coverage is incomplete "
+                    f"({first_push_coverage['observed_prs']}/"
+                    f"{first_push_coverage['eligible_prs']} observed)"
+                )
             missing_data.append({"code": f"{field}_not_captured", "impact": impact})
 
     ratios = {
@@ -737,7 +772,14 @@ def build_issue_fix_metrics_projection(
                 missing_reason=(
                     None
                     if ratio["status"] == "available"
-                    else "numerator or denominator is unavailable"
+                    else (
+                        "first-push CI coverage is incomplete "
+                        f"({first_push_coverage['observed_prs']}/"
+                        f"{first_push_coverage['eligible_prs']} observed)"
+                        if ratio_key == "first_push_ci_pass_rate"
+                        and first_push_coverage is not None
+                        else "numerator or denominator is unavailable"
+                    )
                 ),
                 updated_at=updated_at,
                 source_url=source_url,
@@ -745,16 +787,46 @@ def build_issue_fix_metrics_projection(
         )
     for metric_id, metric_group, metric, supplement_field in (
         (
+            "capability_gaps_found",
+            "Capability",
+            "LoopX capability gaps found",
+            "loopx_capability_gaps_found",
+        ),
+        (
             "capability_gaps_fixed",
             "Capability",
             "LoopX capability gaps fixed",
             "loopx_capability_gaps_fixed",
         ),
         (
+            "capability_gaps_real_callsite_verified",
+            "Capability",
+            "LoopX capability gaps real-callsite verified",
+            "loopx_capability_gaps_real_callsite_verified",
+        ),
+        (
+            "memory_retrievals",
+            "Memory",
+            "Repository-memory results retrieved",
+            "memory_retrievals",
+        ),
+        (
+            "memory_verified_decision_influence",
+            "Memory",
+            "Memory retrievals verified to influence an issue-fix decision",
+            "memory_verified_decision_influence",
+        ),
+        (
             "memory_verified_patch_influence",
             "Memory",
             "Memory retrievals verified to influence a patch",
             "memory_verified_patch_influence",
+        ),
+        (
+            "memory_stale_results",
+            "Memory",
+            "Repository-memory results verified stale",
+            "memory_stale_results",
         ),
     ):
         value = supplement[supplement_field]
@@ -802,6 +874,9 @@ def build_issue_fix_metrics_projection(
         "impact_rows": impact_rows,
         "ratios": ratios,
         "missing_data": missing_data,
+        "supplement_coverage": {
+            "first_push_ci": first_push_coverage,
+        },
         "source_summary": {
             "feasibility_rows": len(feasibility),
             "pr_lifecycle_rows": len(lifecycles),

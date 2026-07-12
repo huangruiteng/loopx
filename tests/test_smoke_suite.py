@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import pytest
+
 from loopx.canary.runner import build_canary_smoke_suite_run, run_canary_smoke_check
 
 
@@ -33,6 +35,18 @@ def _build_preview(config: Any) -> dict[str, Any]:
     )
 
 
+def _smoke_suite_requested(config: Any) -> bool:
+    return bool(
+        config.getoption("loopx_smoke_suite")
+        or _option_list(config, "loopx_smoke_modules")
+        or _option_list(config, "loopx_smoke_exclude_modules")
+        or _option_list(config, "loopx_smoke_scripts")
+        or _option_list(config, "loopx_smoke_profiles")
+        or _option_list(config, "loopx_smoke_families")
+        or config.getoption("loopx_smoke_include_deep_checks")
+    )
+
+
 def _preview(config: Any) -> dict[str, Any]:
     cached = getattr(config, "_loopx_smoke_suite_preview", None)
     if isinstance(cached, dict):
@@ -43,7 +57,9 @@ def _preview(config: Any) -> dict[str, Any]:
 
 
 def _check_id(check: dict[str, Any]) -> str:
-    normalized = check.get("normalized") if isinstance(check.get("normalized"), dict) else {}
+    normalized = (
+        check.get("normalized") if isinstance(check.get("normalized"), dict) else {}
+    )
     script = normalized.get("script") or check.get("command") or "smoke"
     return str(script).removeprefix("examples/").replace("/", "__")
 
@@ -53,7 +69,9 @@ def _format_payload(payload: dict[str, Any]) -> str:
 
 
 def _format_result(result: dict[str, Any]) -> str:
-    normalized = result.get("normalized") if isinstance(result.get("normalized"), dict) else {}
+    normalized = (
+        result.get("normalized") if isinstance(result.get("normalized"), dict) else {}
+    )
     lines = [
         f"command: {' '.join(str(part) for part in normalized.get('display_argv') or [])}",
         f"status: {result.get('status')}",
@@ -72,18 +90,25 @@ def _format_result(result: dict[str, Any]) -> str:
 def pytest_generate_tests(metafunc: Any) -> None:
     if "smoke_check" not in metafunc.fixturenames:
         return
+    if not _smoke_suite_requested(metafunc.config):
+        metafunc.parametrize("smoke_check", [])
+        return
     payload = _preview(metafunc.config)
     checks = [
-        check
-        for check in payload.get("selected_checks", [])
-        if isinstance(check, dict)
+        check for check in payload.get("selected_checks", []) if isinstance(check, dict)
     ]
-    metafunc.parametrize("smoke_check", checks, ids=[_check_id(check) for check in checks])
+    metafunc.parametrize(
+        "smoke_check", checks, ids=[_check_id(check) for check in checks]
+    )
 
 
 def test_smoke_suite_selection_contract(pytestconfig: Any) -> None:
+    if not _smoke_suite_requested(pytestconfig):
+        pytest.skip("canary smoke-suite facade is opt-in")
     payload = _preview(pytestconfig)
-    assert payload["schema_version"] == "canary_smoke_suite_run_v0", _format_payload(payload)
+    assert payload["schema_version"] == "canary_smoke_suite_run_v0", _format_payload(
+        payload
+    )
     assert payload["executes_checks"] is False, _format_payload(payload)
     assert payload["writes_evidence"] is False, _format_payload(payload)
     assert payload["warning_count"] == 0, _format_payload(payload)

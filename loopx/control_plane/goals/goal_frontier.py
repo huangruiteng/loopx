@@ -1007,14 +1007,8 @@ def derive_goal_frontier_replan_obligation_from_summaries(
     compact_acceptance_gaps = [
         item for item in (acceptance_gaps or []) if isinstance(item, dict)
     ]
-    explicit_acceptance_gaps = [
-        gap
-        for gap in compact_acceptance_gaps
-        if gap.get("replan_trigger_source") != "implicit_open_acceptance"
-    ]
-    implicit_acceptance_allows_watch_lane_continuation = bool(
+    acceptance_allows_watch_lane_continuation = bool(
         compact_acceptance_gaps
-        and not explicit_acceptance_gaps
         and not any(
             goal_vision_repeats_advancement_until_closed(
                 gap.get("advancement_policy")
@@ -1089,7 +1083,7 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         compact_acceptance_gaps
         and agent_counts.get("advancement", 0) == 0
         and total_frontier_advancement == 0
-        and not implicit_acceptance_allows_watch_lane_continuation
+        and not acceptance_allows_watch_lane_continuation
     ):
         return build_autonomous_replan_obligation_payload(
             schema_version=AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,

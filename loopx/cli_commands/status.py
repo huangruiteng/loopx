@@ -9,11 +9,11 @@ from ..contract import check_contract, render_contract_markdown
 from ..diagnose import collect_diagnosis, render_diagnosis_markdown
 from ..handoff_budget import build_handoff_interface_budget
 from ..quota import build_quota_should_run
+from ..presentation.renderers.status_markdown import render_status_markdown
 from ..review_packet import build_review_packet, render_review_packet_markdown
 from ..status import (
     AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK,
     collect_status,
-    render_status_markdown,
 )
 from ..control_plane.runtime.status_projection_cache import (
     load_status_projection_cache,
@@ -543,8 +543,12 @@ def _build_agent_member_projection(
         "current_claims": claims[:10],
         "current_claim_count": len(claims),
         "lease_projection": {
-            "source": "todo.claimed_by+task_lease",
+            "schema_version": "agent_lease_projection_v0",
+            "source": "todo.claimed_by",
+            "soft_claim_default": True,
             "hard_lease_available": True,
+            "hard_lease_mode": "explicit_cli_opt_in",
+            "hard_lease_enforced_by_quota": False,
         },
     }
     if role:

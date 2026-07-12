@@ -28,7 +28,7 @@ long-running facts become coherent:
   defaults;
 - maintainer-facing signal inbox, selected anchors, and performance-review
   summaries;
-- per-todo claim and future lease state;
+- per-todo soft claim and optional hard-lease state;
 - quota, spend, idempotency, and concurrency policy;
 - compact public/private boundary summaries;
 - compact mental-model and management projections for clients;

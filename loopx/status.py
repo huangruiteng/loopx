@@ -5,9 +5,6 @@ from pathlib import Path
 import re
 from typing import Any
 
-from .benchmark_adapters.skillsbench_signals import (
-    build_skillsbench_solution_quality_signals,
-)
 from .benchmark_adapters.skillsbench_verifier_bootstrap import (
     apply_skillsbench_verifier_bootstrap_missing_score_attribution,
 )
@@ -185,7 +182,23 @@ from .control_plane.runtime.run_compaction import (
 )
 from .control_plane.runtime.benchmark_projection import (
     benchmark_run_source as _benchmark_run_source_read_model,
+    build_benchmark_solution_quality_signals,
     compact_benchmark_run_core as _compact_benchmark_run_core_read_model,
+)
+from .control_plane.runtime.benchmark_event_timeline import (
+    compact_benchmark_case_event_timeline,
+)
+from .control_plane.runtime.benchmark_lifecycle_contracts import (
+    compact_app_server_goal_round_semantics as _compact_app_server_goal_round_semantics,
+    compact_native_goal_worker_contract as _compact_native_goal_worker_contract,
+    compact_product_mode_lifecycle_contract as _compact_product_mode_lifecycle_contract,
+)
+from .control_plane.runtime.benchmark_run_metrics import (
+    compact_benchmark_overhead_attribution_counters as _compact_benchmark_overhead_attribution_counters,
+    compact_benchmark_round_reward_trace as _compact_benchmark_round_reward_trace,
+)
+from .control_plane.runtime.goal_start_control_score import (
+    compact_goal_start_product_mode_control_score,
 )
 from .control_plane.runtime.public_safety import (
     compact_loopx_command_records as _compact_loopx_command_records,
@@ -193,24 +206,20 @@ from .control_plane.runtime.public_safety import (
     public_safe_compact_list,
     public_safe_compact_text,
 )
+from .control_plane.runtime.run_ingest_health import (
+    compact_environment_setup_failure_context,
+    compact_worker_bridge_outcome,
+    worker_bridge_ingest_health_note,
+)
 from .control_plane.runtime.time import parse_timestamp
 from .control_plane.runtime.run_history import (
     latest_run as _latest_run_read_model,
-)
-from .control_plane.runtime.event_ledger import (
-    EVENT_LEDGER_CLASSES,
-    blank_event_class_counts,
-    blank_event_ledger_goal,
-    event_ledger_event_class as _event_ledger_event_class_read_model,
 )
 from .control_plane.runtime.decision_freshness import (
     DECISION_FRESHNESS_CLASSIFICATION_PREFIXES,
     DECISION_FRESHNESS_ITEM_LIMIT,
     DECISION_FRESHNESS_PROXY_NOTE,
     DECISION_FRESHNESS_WINDOW_DAYS,
-    build_decision_freshness_summary as _build_decision_freshness_summary_read_model,
-    decision_event_kinds as _decision_event_kinds_read_model,
-    decision_freshness_reason,
 )
 from .control_plane.runtime.promotion_readiness import (
     PROMOTION_READINESS_PROXY_NOTE,
@@ -321,9 +330,6 @@ from .control_plane.quota.usage_summary import (
 from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
-from .presentation.renderers.status_markdown import (
-    render_status_markdown as _render_status_markdown,
-)
 from .rollout_event_log import load_rollout_events, rollout_event_log_path
 from .state_projection import (
     active_state_next_action_entries,
@@ -437,7 +443,6 @@ BENCHMARK_COMPARISON_SCHEMA_VERSION = "benchmark_comparison_v0"
 BENCHMARK_COMPARISON_DECISION_SCHEMA_VERSION = "benchmark_comparison_decision_note_v0"
 BENCHMARK_BASELINE_FAILURE_GATE_SCHEMA_VERSION = "benchmark_baseline_failure_gate_v0"
 BENCHMARK_LEARNING_LEDGER_SCHEMA_VERSION = "benchmark_learning_ledger_v0"
-WORKER_BRIDGE_INGEST_HEALTH_SCHEMA_VERSION = "worker_bridge_ingest_health_note_v0"
 BENCHMARK_EXPERIMENT_REPORT_SCHEMA_VERSION = "benchmark_experiment_report_v0"
 BENCHMARK_EXPERIMENT_REPORT_READINESS_SCHEMA_VERSION = "benchmark_experiment_report_readiness_note_v0"
 BENCHMARK_EXPERIMENT_REPORT_REPLAY_DECISION_SCHEMA_VERSION = "benchmark_experiment_report_replay_decision_v0"
@@ -490,43 +495,6 @@ EVENT_LEDGER_EVIDENCE_HINTS = (
     "validation",
 )
 
-
-def decision_event_kinds(run: dict[str, Any]) -> list[str]:
-    return _decision_event_kinds_read_model(
-        run,
-        decision_classifications=EVENT_LEDGER_DECISION_CLASSIFICATIONS,
-        classification_prefixes=DECISION_FRESHNESS_CLASSIFICATION_PREFIXES,
-    )
-
-
-def event_ledger_event_class(run: dict[str, Any]) -> str:
-    return _event_ledger_event_class_read_model(
-        run,
-        compact_benchmark_run=compact_benchmark_run,
-        compact_benchmark_result=compact_benchmark_result,
-        compact_benchmark_comparison=compact_benchmark_comparison,
-        compact_benchmark_learning_ledger=compact_benchmark_learning_ledger,
-        compact_benchmark_experiment_report=compact_benchmark_experiment_report,
-        compact_active_user_assisted_pilot=compact_active_user_assisted_pilot,
-        run_has_external_evidence_watch_signal=run_has_external_evidence_watch_signal,
-        decision_classifications=EVENT_LEDGER_DECISION_CLASSIFICATIONS,
-        evidence_classifications=EVENT_LEDGER_EVIDENCE_CLASSIFICATIONS,
-        evidence_hints=EVENT_LEDGER_EVIDENCE_HINTS,
-        state_classifications=EVENT_LEDGER_STATE_CLASSIFICATIONS,
-    )
-
-
-def build_decision_freshness_summary(history: dict[str, Any]) -> dict[str, Any]:
-    return _build_decision_freshness_summary_read_model(
-        history,
-        parse_timestamp=parse_timestamp,
-        decision_event_kinds=decision_event_kinds,
-        event_class_for_run=event_ledger_event_class,
-        blank_event_class_counts=blank_event_class_counts,
-        window_days=DECISION_FRESHNESS_WINDOW_DAYS,
-        item_limit=DECISION_FRESHNESS_ITEM_LIMIT,
-        proxy_note=DECISION_FRESHNESS_PROXY_NOTE,
-    )
 
 DELIVERY_BATCH_SCALE_TEST_ONLY_CLASSIFICATION_HINTS = (
     "_test",
@@ -621,234 +589,6 @@ AUTONOMOUS_RUN_HISTORY_STALL_PATTERN = re.compile(
 )
 
 
-def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-
-    events: list[dict[str, Any]] = []
-    for raw_event in value.get("events", []):
-        if not isinstance(raw_event, dict):
-            continue
-        event: dict[str, Any] = {}
-        for field in ("phase", "event", "status"):
-            text = public_safe_compact_text(raw_event.get(field), limit=120)
-            if text:
-                event[field] = text
-        if not {"phase", "event", "status"} <= set(event):
-            continue
-        for field in (
-            "execution_style",
-            "agent_operation_trace_status",
-            "host_local_acp_bridge_progress_status",
-            "host_local_acp_bridge_progress_signal_source",
-            "last_decision",
-            "recovery_stage",
-            "recovery_exception_type",
-            "runner_failure_class",
-            "official_score_status",
-            "score_failure_attribution",
-        ):
-            text = public_safe_compact_text(raw_event.get(field), limit=140)
-            if text:
-                event[field] = text
-        for field in (
-            "required",
-            "initialized_before_agent",
-            "consumed_by_solver",
-            "official_score_passed",
-            "selected_todo_completed_observed",
-            "quota_spend_missing_after_repeated_complete",
-        ):
-            if isinstance(raw_event.get(field), bool):
-                event[field] = raw_event[field]
-        for field in (
-            "index",
-            "checkpoint_count",
-            "state_read_count",
-            "state_write_count",
-            "solver_operation_count",
-            "solver_probe_ready_count",
-            "trajectory_event_count",
-            "trajectory_round_count",
-            "trajectory_tool_call_count",
-            "acp_protocol_tool_call_count",
-            "agent_bridge_request_count",
-            "agent_bridge_task_facing_operation_count",
-            "action_decision_count",
-            "initial_prompt_count",
-            "followup_prompt_count",
-            "stop_decision_count",
-            "max_rounds_budget",
-            "host_local_idle_no_task_output_progress_streak",
-            "host_local_idle_no_task_output_progress_streak_threshold",
-            "final_round",
-            "recovery_delta_events",
-            "recovery_delta_tool_calls",
-            "benchflow_agent_timeout_effective_sec",
-            "local_codex_exec_timeout_sec",
-            "todo_closeout_count",
-            "refresh_state_count",
-            "quota_spend_slot_count",
-            "selected_todo_complete_count",
-            "selected_todo_duplicate_complete_count",
-            "agent_todo_complete_unique_todo_count",
-            "non_selected_todo_complete_count",
-            "todo_complete_without_todo_id_count",
-        ):
-            raw = raw_event.get(field)
-            if isinstance(raw, int) and not isinstance(raw, bool):
-                event[field] = max(0, raw)
-        for field in ("best_round_reward", "official_score_value"):
-            raw = raw_event.get(field)
-            if isinstance(raw, (int, float)) and not isinstance(raw, bool):
-                event[field] = raw
-        labels = public_safe_compact_list(
-            raw_event.get("failure_attribution_labels"),
-            limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
-        )
-        if labels:
-            event["failure_attribution_labels"] = labels
-        events.append(event)
-
-    if not events:
-        return {}
-
-    compact: dict[str, Any] = {
-        "schema_version": "skillsbench_case_event_timeline_v0",
-        "source": "compact_public_signals",
-        "raw_material_recorded": False,
-        "event_count": len(events),
-        "events": events[:12],
-    }
-    return compact
-
-
-def _compact_goal_start_todo_snapshot(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-    compact: dict[str, Any] = {}
-    schema = public_safe_compact_text(value.get("schema_version"), limit=100)
-    if schema:
-        compact["schema_version"] = schema
-    for field in ("raw_material_recorded",):
-        if isinstance(value.get(field), bool):
-            compact[field] = value[field]
-    for field in (
-        "completed_todo_id_count",
-        "selected_todo_complete_count",
-        "selected_todo_duplicate_complete_count",
-        "non_selected_todo_complete_count",
-        "todo_complete_without_todo_id_count",
-    ):
-        raw = value.get(field)
-        if isinstance(raw, int) and not isinstance(raw, bool):
-            compact[field] = max(0, raw)
-    for field in ("selected_p0_todo_id", "todo_identity_attribution"):
-        text = public_safe_compact_text(value.get(field), limit=140)
-        if text:
-            compact[field] = text
-    planned_ids = public_safe_compact_list(value.get("planned_todo_ids"), limit=8)
-    if planned_ids:
-        compact["planned_todo_ids"] = planned_ids
-    completed_ids = public_safe_compact_list(value.get("completed_todo_ids"), limit=8)
-    if completed_ids:
-        compact["completed_todo_ids"] = completed_ids
-    planned_texts = public_safe_compact_list(
-        value.get("planned_todo_texts_public_safe"),
-        limit=8,
-    )
-    if planned_texts:
-        compact["planned_todo_texts_public_safe"] = planned_texts
-    planned_todos: list[dict[str, Any]] = []
-    source_todos = value.get("planned_todos")
-    if isinstance(source_todos, list):
-        for item in source_todos[:8]:
-            if not isinstance(item, dict):
-                continue
-            todo: dict[str, Any] = {}
-            for field in ("todo_id", "role", "status", "text_public_safe"):
-                text = public_safe_compact_text(item.get(field), limit=180)
-                if text:
-                    todo[field] = text
-            for field in ("claim_count", "update_count", "complete_count"):
-                raw = item.get(field)
-                if isinstance(raw, int) and not isinstance(raw, bool):
-                    todo[field] = max(0, raw)
-            if todo:
-                planned_todos.append(todo)
-    if planned_todos:
-        compact["planned_todos"] = planned_todos
-    return compact
-
-
-def _compact_goal_start_product_mode_control_score(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-    compact: dict[str, Any] = {}
-    schema = public_safe_compact_text(value.get("schema_version"), limit=100)
-    if schema:
-        compact["schema_version"] = schema
-    for field in (
-        "required",
-        "satisfied",
-        "raw_material_recorded",
-        "goal_start_plan_observed",
-        "planner_before_todo_write",
-        "same_priority_order_preserved",
-        "selected_todo_claimed",
-        "selected_todo_updated_before_solver",
-        "selected_todo_completed_before_spend",
-        "selected_todo_completed_observed",
-        "selected_todo_spend_observed",
-        "non_selected_todos_preserved_open_or_deferred",
-        "quota_spend_missing_after_repeated_complete",
-    ):
-        if isinstance(value.get(field), bool):
-            compact[field] = value[field]
-    for field in (
-        "component_count",
-        "satisfied_component_count",
-        "planned_todo_count",
-        "planned_todo_count_expected",
-        "planned_p0_count",
-        "premature_done_signal_count",
-        "agent_todo_claim_count",
-        "agent_todo_update_count",
-        "agent_todo_complete_count",
-        "agent_todo_complete_unique_todo_count",
-        "selected_todo_complete_count",
-        "selected_todo_duplicate_complete_count",
-        "non_selected_todo_complete_count",
-        "todo_complete_without_todo_id_count",
-        "agent_quota_spend_slot_count",
-        "driver_todo_claim_count",
-        "driver_todo_update_count",
-    ):
-        raw = value.get(field)
-        if isinstance(raw, int) and not isinstance(raw, bool):
-            compact[field] = max(0, raw)
-    score = value.get("score")
-    if isinstance(score, (int, float)) and not isinstance(score, bool):
-        compact["score"] = float(score)
-    for field in ("selected_p0_todo_id", "premature_done_stop_reason"):
-        text = public_safe_compact_text(value.get(field), limit=140)
-        if text:
-            compact[field] = text
-    planned_ids = public_safe_compact_list(value.get("planned_todo_ids"), limit=8)
-    if planned_ids:
-        compact["planned_todo_ids"] = planned_ids
-    planned_texts = public_safe_compact_list(
-        value.get("planned_todo_texts_public_safe"),
-        limit=8,
-    )
-    if planned_texts:
-        compact["planned_todo_texts_public_safe"] = planned_texts
-    snapshot = _compact_goal_start_todo_snapshot(value.get("goal_start_todo_snapshot"))
-    if snapshot:
-        compact["goal_start_todo_snapshot"] = snapshot
-    return compact
-
-
 def _benchmark_case_timeline_events_by_name(
     timeline: dict[str, Any],
 ) -> dict[str, dict[str, Any]]:
@@ -869,12 +609,6 @@ def _benchmark_positive_int(value: Any) -> int:
     return 0
 
 
-def _benchmark_nonnegative_int(value: Any) -> int | None:
-    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
-        return value
-    return None
-
-
 def build_skillsbench_post_run_debug_gate(
     run: dict[str, Any],
 ) -> dict[str, Any]:
@@ -883,7 +617,7 @@ def build_skillsbench_post_run_debug_gate(
     if not isinstance(run, dict):
         return {}
     benchmark_id = public_safe_compact_text(run.get("benchmark_id"), limit=120) or ""
-    timeline = _compact_benchmark_case_event_timeline(run.get("case_event_timeline"))
+    timeline = compact_benchmark_case_event_timeline(run.get("case_event_timeline"))
     if not benchmark_id.startswith("skillsbench"):
         return {}
 
@@ -1103,7 +837,7 @@ def build_skillsbench_post_run_debug_gate(
         run.get("failure_attribution_labels"),
         limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
     )
-    solution_quality = build_skillsbench_solution_quality_signals(run)
+    solution_quality = build_benchmark_solution_quality_signals(run)
     gate: dict[str, Any] = {
         "schema_version": "skillsbench_post_run_debug_gate_v0",
         "source": "compact_public_signals",
@@ -1668,217 +1402,6 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
     return compact
 
 
-def _compact_product_mode_lifecycle_contract(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-
-    compact: dict[str, Any] = {}
-    schema = public_safe_compact_text(value.get("schema_version"), limit=100)
-    if schema:
-        compact["schema_version"] = schema
-    for field in (
-        "required",
-        "satisfied",
-        "countable_treatment",
-        "checkpoint_required",
-        "closeout_required",
-        "closeout_satisfied",
-        "agent_operation_trace_required",
-        "agent_operation_trace_satisfied",
-        "agent_operation_trace_missing",
-        "orchestrated_driver_lifecycle_satisfied",
-        "orchestrated_driver_counts_as_product_mode",
-        "quota_spend_missing_after_repeated_complete",
-    ):
-        if isinstance(value.get(field), bool):
-            compact[field] = value[field]
-    for field in (
-        "state_read_count",
-        "state_write_count",
-        "checkpoint_count",
-        "checkpoint_round",
-        "agent_bridge_state_read_count",
-        "agent_bridge_state_write_count",
-        "agent_bridge_todo_closeout_count",
-        "agent_bridge_refresh_state_count",
-        "agent_bridge_quota_spend_slot_count",
-        "driver_lifecycle_state_read_count",
-        "driver_lifecycle_state_write_count",
-    ):
-        if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
-            compact[field] = value[field]
-    missing_reason = public_safe_compact_text(value.get("missing_reason"), limit=140)
-    if missing_reason:
-        compact["missing_reason"] = missing_reason
-    trace_status = public_safe_compact_text(
-        value.get("agent_operation_trace_status"),
-        limit=120,
-    )
-    if trace_status:
-        compact["agent_operation_trace_status"] = trace_status
-    execution_style = public_safe_compact_text(value.get("execution_style"), limit=120)
-    if execution_style:
-        compact["execution_style"] = execution_style
-    _normalize_product_mode_lifecycle_contract(compact)
-    return compact
-
-
-def _compact_native_goal_worker_contract(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-
-    compact: dict[str, Any] = {}
-    schema = public_safe_compact_text(value.get("schema_version"), limit=100)
-    if schema:
-        compact["schema_version"] = schema
-    for field in (
-        "required",
-        "countable_baseline",
-        "fresh_goal_thread_per_independent_attempt",
-        "official_reward_feedback_forwarded_to_worker",
-        "verifier_output_forwarded_to_worker",
-    ):
-        if isinstance(value.get(field), bool):
-            compact[field] = value[field]
-    for field in (
-        "benchflow_max_rounds_budget",
-        "initial_goal_turn_budget",
-        "same_thread_followup_budget",
-        "independent_attempt_budget",
-        "trace_count",
-        "ok_count",
-        "goal_get_count",
-        "turn_start_count",
-        "assistant_message_present_count",
-        "assistant_context_only_count",
-        "context_only_recovery_attempted_count",
-        "context_only_recovery_succeeded_count",
-        "context_only_followup_start_attempted_count",
-        "context_only_followup_start_succeeded_count",
-        "normal_followup_attempted_count",
-        "normal_followup_succeeded_count",
-        "normal_followup_start_attempted_count",
-        "normal_followup_start_succeeded_count",
-        "finish_guard_followup_attempted_count",
-        "finish_guard_followup_succeeded_count",
-        "finish_guard_followup_start_attempted_count",
-        "finish_guard_followup_start_succeeded_count",
-        "incomplete_turn_status_count",
-        "incomplete_after_completion_event_count",
-        "transport_reconnect_attempted_count",
-        "transport_reconnect_succeeded_count",
-        "goal_reactivation_attempted_count",
-        "goal_reactivation_succeeded_count",
-        "post_context_assistant_chars_total",
-        "first_action_observed_count",
-        "effective_action_observed_count",
-        "failure_trace_count",
-        "bridge_task_facing_operation_count",
-        "bridge_task_facing_success_count",
-    ):
-        field_value = value.get(field)
-        if isinstance(field_value, int) and not isinstance(field_value, bool):
-            compact[field] = field_value
-    for field in (
-        "session_policy",
-        "max_rounds_budget_applies_to",
-        "countability_source",
-        "trace_status",
-        "reasoning_effort",
-        "failure_category",
-        "first_blocker",
-        "failure_label",
-    ):
-        text = public_safe_compact_text(value.get(field), limit=140)
-        if text:
-            compact[field] = text
-    incomplete_statuses = public_safe_compact_list(
-        value.get("incomplete_turn_statuses"),
-        limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
-    )
-    if incomplete_statuses:
-        compact["incomplete_turn_statuses"] = incomplete_statuses
-    return compact
-
-
-def _compact_app_server_goal_round_semantics(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-
-    compact: dict[str, Any] = {}
-    for field in (
-        "schema_version",
-        "route",
-        "session_policy",
-        "max_rounds_budget_applies_to",
-    ):
-        text = public_safe_compact_text(value.get(field), limit=140)
-        if text:
-            compact[field] = text
-    for field in (
-        "benchflow_max_rounds_budget",
-        "initial_goal_turn_budget",
-        "same_thread_followup_budget",
-        "independent_attempt_budget",
-    ):
-        number = _benchmark_nonnegative_int(value.get(field))
-        if number is not None:
-            compact[field] = number
-    for field in (
-        "fresh_goal_thread_per_independent_attempt",
-        "official_reward_feedback_forwarded_to_worker",
-        "verifier_output_forwarded_to_worker",
-    ):
-        if isinstance(value.get(field), bool):
-            compact[field] = value[field]
-    return compact
-
-
-def _normalize_product_mode_lifecycle_contract(contract: dict[str, Any]) -> None:
-    """Repair old compact records whose bridge closeout evidence was copied late."""
-
-    def positive_int(field: str) -> int:
-        value = contract.get(field)
-        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
-            return value
-        return 0
-
-    agent_trace_required = contract.get("agent_operation_trace_required") is True
-    agent_trace_satisfied = contract.get("agent_operation_trace_satisfied") is True
-    agent_trace_missing = contract.get("agent_operation_trace_missing") is True
-    agent_trace_ok = bool(
-        not agent_trace_missing
-        and (agent_trace_satisfied or not agent_trace_required)
-    )
-    agent_bridge_closeout_satisfied = bool(
-        positive_int("agent_bridge_todo_closeout_count") > 0
-        and positive_int("agent_bridge_refresh_state_count") > 0
-        and positive_int("agent_bridge_quota_spend_slot_count") > 0
-    )
-    lifecycle_io_satisfied = bool(
-        positive_int("state_read_count") > 0
-        and positive_int("state_write_count") > 0
-    )
-    lifecycle_closeout_satisfied = bool(
-        contract.get("closeout_satisfied") is True
-        or agent_bridge_closeout_satisfied
-    )
-    if (
-        contract.get("required") is True
-        and agent_trace_ok
-        and lifecycle_io_satisfied
-        and lifecycle_closeout_satisfied
-    ):
-        contract["satisfied"] = True
-        contract["countable_treatment"] = True
-        contract["closeout_satisfied"] = True
-        if contract.get("missing_reason") in {
-            "missing_case_local_loopx_closeout",
-            "remote_command_file_bridge_agent_operation_trace_missing",
-        }:
-            contract.pop("missing_reason", None)
-
-
 def _repair_product_mode_lifecycle_missing_attribution(
     compact: dict[str, Any],
 ) -> None:
@@ -1966,183 +1489,6 @@ def _repair_product_mode_lifecycle_missing_attribution(
         compact["failure_attribution_labels"] = labels[:MAX_BENCHMARK_RUN_LIST_ITEMS]
     else:
         compact.pop("failure_attribution_labels", None)
-
-
-def _compact_benchmark_round_reward_trace(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-
-    compact: dict[str, Any] = {}
-    for field in (
-        "schema_version",
-        "source",
-        "round_index_origin",
-        "loop_score_policy",
-        "official_score_policy",
-    ):
-        text = public_safe_compact_text(value.get(field), limit=100)
-        if text:
-            compact[field] = text
-    for field in (
-        "success_observed",
-        "official_feedback_returned_to_agent",
-        "official_feedback_blinded",
-        "reward_feedback_forwarded",
-        "agent_declared_done",
-        "agent_declared_no_remaining_goals",
-        "product_mode_no_open_todo_below_passing_reward_stop",
-        "official_score_recovered_from_controller_trace",
-    ):
-        if isinstance(value.get(field), bool):
-            compact[field] = value[field]
-    for field in (
-        "first_success_round",
-        "declared_done_round",
-        "max_rounds_budget",
-        "final_round",
-        "best_reward_round",
-        "official_score_recovered_round",
-        "product_mode_no_open_todo_below_passing_reward_streak",
-        "product_mode_no_open_todo_below_passing_reward_streak_threshold",
-        "product_mode_no_open_todo_below_passing_reward_round",
-        "product_mode_no_open_todo_below_passing_reward_stop_round",
-        "product_mode_no_open_todo_below_passing_reward_open_todo_count_public",
-    ):
-        raw = value.get(field)
-        if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
-            compact[field] = raw
-    for field in (
-        "final_round_reward",
-        "best_round_reward",
-        "declared_done_score",
-        "product_mode_no_open_todo_below_passing_reward_score",
-    ):
-        raw = value.get(field)
-        if isinstance(raw, (int, float)) and not isinstance(raw, bool):
-            compact[field] = float(raw)
-    for field in ("product_mode_no_open_todo_below_passing_reward_score_status",):
-        text = public_safe_compact_text(value.get(field), limit=100)
-        if text:
-            compact[field] = text
-    for field in ("final_round_passed", "best_round_passed", "best_round_is_final"):
-        if isinstance(value.get(field), bool):
-            compact[field] = value[field]
-
-    records: list[dict[str, Any]] = []
-    raw_records = value.get("records")
-    if isinstance(raw_records, list):
-        seen_rounds: set[int] = set()
-        for item in raw_records:
-            if not isinstance(item, dict):
-                continue
-            agent_round = item.get("agent_round")
-            if (
-                not isinstance(agent_round, int)
-                or isinstance(agent_round, bool)
-                or agent_round <= 0
-                or agent_round in seen_rounds
-            ):
-                continue
-            seen_rounds.add(agent_round)
-            record: dict[str, Any] = {"agent_round": agent_round}
-            for field in ("reward_present", "passed"):
-                if isinstance(item.get(field), bool):
-                    record[field] = item[field]
-            reward = item.get("reward")
-            if isinstance(reward, (int, float)) and not isinstance(reward, bool):
-                record["reward"] = float(reward)
-            tool_calls = item.get("tool_calls")
-            if (
-                isinstance(tool_calls, int)
-                and not isinstance(tool_calls, bool)
-                and tool_calls >= 0
-            ):
-                record["tool_calls"] = tool_calls
-            records.append(record)
-    if records:
-        compact["records"] = sorted(records, key=lambda record: record["agent_round"])
-    return compact
-
-
-def _compact_benchmark_overhead_attribution_counters(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-
-    compact: dict[str, Any] = {}
-    for field in (
-        "schema_version",
-        "source",
-        "trace_publicness",
-        "attribution_granularity",
-        "worker_step_counter_status",
-        "attribution_caveat",
-        "timeout_tier",
-    ):
-        text = public_safe_compact_text(value.get(field), limit=160)
-        if text:
-            compact[field] = text
-
-    for field in (
-        "raw_logs_read",
-        "raw_trace_recorded",
-        "raw_task_prompt_recorded",
-        "credential_values_recorded",
-        "loopx_worker_cli_bridge_required",
-        "observed_true_long_task_bar_met",
-        "expected_hours_scale_bar_met",
-    ):
-        if isinstance(value.get(field), bool):
-            compact[field] = value[field]
-
-    for field in (
-        "wall_time_seconds",
-        "wall_time_limit_seconds",
-        "input_tokens",
-        "cache_tokens",
-        "output_tokens",
-        "cost_usd",
-        "trial_count",
-        "errored_trial_count",
-        "worker_bridge_event_count",
-        "loopx_prompt_driven_case_cli_call_count",
-        "worker_counter_trace_trial_count",
-        "worker_benchmark_run_file_count",
-        "worker_benchmark_run_schema_ok_count",
-        "worker_self_validation_official_score_mismatch_count",
-        "worker_validation_scope_ambiguous_official_score_failure_count",
-        "worker_bridge_connected_official_score_failure_count",
-        "worker_startup_blocker_count",
-        "worker_setup_diagnostic_file_count",
-        "worker_setup_diagnostic_schema_ok_count",
-        "worker_submit_eligible_mismatch_count",
-        "worker_bridge_writeback_loss_count",
-        "environment_setup_failure_before_worker_count",
-        "pre_worker_agent_setup_failure_count",
-        "codex_runtime_goal_tool_trial_count",
-        "loopx_cli_call_total",
-        "loopx_required_cli_call_total",
-        "loopx_optional_context_cli_call_total",
-        "loopx_state_read_count",
-        "loopx_state_write_count",
-        "append_benchmark_run_success_count",
-        "append_benchmark_run_schema_rejected_count",
-        "codex_runtime_goal_tool_call_total",
-    ):
-        raw = value.get(field)
-        if isinstance(raw, (int, float)) and not isinstance(raw, bool):
-            compact[field] = raw
-
-    for field in ("worker_submit_eligible_mismatch_reason",):
-        text = public_safe_compact_text(value.get(field), limit=160)
-        if text:
-            compact[field] = text
-
-    for field in ("loopx_cli_calls", "codex_runtime_goal_tool_calls"):
-        calls = _compact_numeric_map(value.get(field))
-        if calls:
-            compact[field] = calls
-
-    return compact
 
 
 def _compact_benchmark_preflight_guard(value: Any) -> dict[str, Any]:
@@ -3602,189 +2948,6 @@ def _compact_benchmark_attempt_accounting(value: Any) -> dict[str, Any]:
     return compact
 
 
-def _compact_worker_bridge_outcome(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-
-    compact: dict[str, Any] = {}
-    for field in (
-        "schema_version",
-        "bridge_surface",
-        "runner_return_status",
-        "official_score_status",
-        "trace_publicness",
-        "next_action",
-        "score_failure_attribution",
-        "worker_submit_eligible_mismatch_reason",
-        "worker_bridge_writeback_loss_reason",
-        "worker_bridge_materialization_status",
-        "worker_bridge_materialization_blocker",
-        "worker_bridge_failure_attribution",
-        "prompt_driven_first_blocker",
-        "controller_last_decision",
-        "repeat_blocked_by",
-        "pre_worker_startup_blocker",
-    ):
-        text = public_safe_compact_text(value.get(field), limit=160)
-        if text:
-            compact[field] = text
-    for field in (
-        "worker_bridge_verified",
-        "prompt_driven_loopx_trace_observed",
-        "prompt_driven_loopx_lifecycle_observed",
-        "counter_trace_present",
-        "runner_return_completed",
-        "official_score_completed",
-        "side_effect_audit_passed",
-        "raw_paths_recorded",
-        "raw_trace_recorded",
-        "credential_values_recorded",
-        "runner_side_writeback_guaranteed",
-        "worker_submit_eligible_mismatch_observed",
-        "worker_bridge_writeback_loss_observed",
-        "loopx_controller_trace_present",
-        "loopx_controller_trace_public_safe",
-        "controller_turn_completed_observed",
-    ):
-        if isinstance(value.get(field), bool):
-            compact[field] = value[field]
-    for field in (
-        "worker_loopx_cli_call_total",
-        "loopx_prompt_driven_case_cli_call_count",
-        "required_worker_loopx_cli_call_total_min",
-        "worker_self_validation_official_score_mismatch_count",
-        "worker_validation_scope_ambiguous_official_score_failure_count",
-        "worker_bridge_connected_official_score_failure_count",
-        "worker_startup_blocker_count",
-        "worker_setup_diagnostic_file_count",
-        "worker_setup_diagnostic_schema_ok_count",
-        "worker_submit_eligible_mismatch_count",
-        "worker_bridge_writeback_loss_count",
-        "environment_setup_failure_before_worker_count",
-        "pre_worker_agent_setup_failure_count",
-        "worker_runtime_exception_before_checkpoint_count",
-        "verifier_failure_attribution_count",
-        "verifier_dependency_failure_count",
-        "controller_max_round_observed",
-        "controller_max_rounds_budget",
-        "controller_followup_prompt_count",
-    ):
-        if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
-            compact[field] = value[field]
-    round_timeout = value.get("controller_round_timeout_sec")
-    if isinstance(round_timeout, (int, float)) and not isinstance(round_timeout, bool):
-        compact["controller_round_timeout_sec"] = round_timeout
-    score = value.get("official_score_value")
-    if isinstance(score, (int, float)) and not isinstance(score, bool):
-        compact["official_score_value"] = score
-
-    policy = value.get("wall_time_policy") if isinstance(value.get("wall_time_policy"), dict) else {}
-    if policy:
-        compact_policy: dict[str, Any] = {}
-        for field in ("schema_version", "kind", "timeout_tier", "interrupt_reason"):
-            text = public_safe_compact_text(policy.get(field), limit=140)
-            if text:
-                compact_policy[field] = text
-        for field in (
-            "interrupted",
-            "changes_official_benchmark_timeout",
-            "changes_official_task_resources",
-            "official_timeout_comparable",
-            "leaderboard_claim_allowed",
-            "observed_true_long_task_bar_met",
-            "expected_true_long_task_bar_met",
-            "true_long_task_bar_met",
-            "expected_hours_scale_bar_met",
-        ):
-            if isinstance(policy.get(field), bool):
-                compact_policy[field] = policy[field]
-        for field in (
-            "wall_time_seconds",
-            "wall_time_limit_seconds",
-            "true_long_task_bar_seconds",
-            "preferred_hours_scale_bar_seconds",
-        ):
-            number = policy.get(field)
-            if isinstance(number, (int, float)) and not isinstance(number, bool):
-                compact_policy[field] = number
-        if compact_policy:
-            compact["wall_time_policy"] = compact_policy
-
-    labels = public_safe_compact_list(
-        value.get("failure_attribution_labels"),
-        limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
-    )
-    if labels:
-        compact["failure_attribution_labels"] = labels
-
-    boundary = value.get("claim_boundary") if isinstance(value.get("claim_boundary"), dict) else {}
-    if boundary:
-        compact_boundary: dict[str, Any] = {}
-        allowed = public_safe_compact_text(boundary.get("public_claim_allowed"), limit=180)
-        if allowed:
-            compact_boundary["public_claim_allowed"] = allowed
-        for field in (
-            "bridge_connectivity_claim_allowed",
-            "case_success_claim_allowed",
-            "official_score_claim_allowed",
-            "leaderboard_claim_allowed",
-        ):
-            if isinstance(boundary.get(field), bool):
-                compact_boundary[field] = boundary[field]
-        forbidden = public_safe_compact_list(
-            boundary.get("forbidden_claims"),
-            limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
-        )
-        if forbidden:
-            compact_boundary["forbidden_claims"] = forbidden
-        if compact_boundary:
-            compact["claim_boundary"] = compact_boundary
-
-    env_context = _compact_environment_setup_failure_context(
-        value.get("environment_setup_failure_context")
-    )
-    if env_context:
-        compact["environment_setup_failure_context"] = env_context
-
-    return compact
-
-
-def _compact_environment_setup_failure_context(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-
-    compact: dict[str, Any] = {}
-    for field in (
-        "schema_version",
-        "surface",
-        "failure_kind",
-        "diagnostic_granularity",
-        "exception_type",
-        "timeout_signal",
-        "resource_signal",
-        "environment_setup_duration_tier",
-        "next_probe",
-    ):
-        text = public_safe_compact_text(value.get(field), limit=140)
-        if text:
-            compact[field] = text
-    for field in (
-        "environment_setup_present",
-        "environment_setup_started",
-        "environment_setup_finished",
-        "agent_setup_started",
-        "agent_execution_started",
-        "worker_trace_present",
-        "worker_benchmark_run_present",
-    ):
-        if isinstance(value.get(field), bool):
-            compact[field] = value[field]
-    seconds = value.get("environment_setup_duration_seconds")
-    if isinstance(seconds, (int, float)) and not isinstance(seconds, bool):
-        compact["environment_setup_duration_seconds"] = seconds
-    return compact
-
-
 def _compact_benchmark_episode_policy(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -4164,7 +3327,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     if interaction_counters:
         compact["interaction_counters"] = interaction_counters
 
-    goal_start_control_score = _compact_goal_start_product_mode_control_score(
+    goal_start_control_score = compact_goal_start_product_mode_control_score(
         source.get("goal_start_product_mode_control_score")
     )
     if goal_start_control_score:
@@ -4206,7 +3369,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     if app_server_goal_round_semantics:
         compact["app_server_goal_round_semantics"] = app_server_goal_round_semantics
 
-    case_event_timeline = _compact_benchmark_case_event_timeline(
+    case_event_timeline = compact_benchmark_case_event_timeline(
         source.get("case_event_timeline")
     )
     if case_event_timeline:
@@ -4250,13 +3413,13 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     if setup_timeout_repair_profile:
         compact["setup_timeout_repair_profile"] = setup_timeout_repair_profile
 
-    env_context = _compact_environment_setup_failure_context(
+    env_context = compact_environment_setup_failure_context(
         source.get("environment_setup_failure_context")
     )
     if env_context:
         compact["environment_setup_failure_context"] = env_context
 
-    worker_bridge_outcome = _compact_worker_bridge_outcome(
+    worker_bridge_outcome = compact_worker_bridge_outcome(
         source.get("worker_bridge_outcome")
     )
     if worker_bridge_outcome:
@@ -4432,7 +3595,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         setup_preflight=compact.get("task_setup_preflight"),
     )
 
-    solution_quality = build_skillsbench_solution_quality_signals(compact)
+    solution_quality = build_benchmark_solution_quality_signals(compact)
     if solution_quality:
         compact["solution_quality_signals"] = solution_quality
 
@@ -4480,7 +3643,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         for field in ("trajectory_present", "verifier_reward_present", "artifact_manifest_present", "trial_result_present"):
             if isinstance(trial.get(field), bool):
                 compact_trial[field] = trial.get(field)
-        env_context = _compact_environment_setup_failure_context(
+        env_context = compact_environment_setup_failure_context(
             trial.get("environment_setup_failure_context")
         )
         if env_context:
@@ -4551,140 +3714,6 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     if set(compact.keys()) == {"schema_version"}:
         return None
     return compact
-
-
-def worker_bridge_ingest_health_note(
-    benchmark_run: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    """Derive a compact agent-facing health note for worker-written run ingest."""
-
-    if not isinstance(benchmark_run, dict):
-        return None
-    outcome = benchmark_run.get("worker_bridge_outcome")
-    if not isinstance(outcome, dict):
-        return None
-
-    verified = bool(outcome.get("worker_bridge_verified"))
-    runner_status = public_safe_compact_text(
-        outcome.get("runner_return_status"),
-        limit=120,
-    )
-    official_status = public_safe_compact_text(
-        outcome.get("official_score_status"),
-        limit=120,
-    )
-    bridge_surface = public_safe_compact_text(outcome.get("bridge_surface"), limit=120)
-    trace_publicness = public_safe_compact_text(
-        outcome.get("trace_publicness") or benchmark_run.get("trace_publicness"),
-        limit=120,
-    )
-    materialization_status = public_safe_compact_text(
-        outcome.get("worker_bridge_materialization_status")
-        or benchmark_run.get("worker_bridge_materialization_status"),
-        limit=120,
-    )
-    materialization_blocker = public_safe_compact_text(
-        outcome.get("worker_bridge_materialization_blocker")
-        or benchmark_run.get("worker_bridge_materialization_blocker")
-        or benchmark_run.get("first_blocker"),
-        limit=120,
-    )
-    failure_attribution = public_safe_compact_text(
-        outcome.get("worker_bridge_failure_attribution")
-        or benchmark_run.get("worker_bridge_failure_attribution"),
-        limit=120,
-    )
-    cli_total = outcome.get("worker_loopx_cli_call_total")
-    required_total = outcome.get("required_worker_loopx_cli_call_total_min")
-    if isinstance(cli_total, bool) or not isinstance(cli_total, int):
-        cli_total = 0
-    if isinstance(required_total, bool) or not isinstance(required_total, int):
-        required_total = 1
-
-    validation = (
-        benchmark_run.get("validation")
-        if isinstance(benchmark_run.get("validation"), dict)
-        else {}
-    )
-    validation_all_passed = validation.get("all_passed")
-    if not isinstance(validation_all_passed, bool):
-        validation_all_passed = None
-    env_context = _compact_environment_setup_failure_context(
-        outcome.get("environment_setup_failure_context")
-        or benchmark_run.get("environment_setup_failure_context")
-    )
-
-    if materialization_status == "environment_setup_failed_before_worker":
-        health_state = "environment_setup_failed_before_worker"
-        evidence_layer = "not_ready"
-        next_action = "diagnose benchmark environment setup before worker startup"
-    elif materialization_status == "pre_worker_setup_failed":
-        health_state = (
-            materialization_blocker
-            or "pre_worker_agent_setup_failed_before_bridge_checkpoint"
-        )
-        evidence_layer = "not_ready"
-        next_action = "repair Codex agent setup/launcher before another run"
-    elif materialization_status == "pre_worker_startup_blocker_recorded":
-        health_state = materialization_blocker or "pre_worker_startup_blocker_recorded"
-        evidence_layer = "compact_startup_blocker"
-        next_action = "repair recorded worker startup blocker before another run"
-    elif materialization_status == "runtime_exception_before_checkpoint":
-        health_state = "worker_runtime_exception_before_bridge_checkpoint"
-        evidence_layer = "not_ready"
-        next_action = "diagnose compact worker runtime failure before another run"
-    elif materialization_status == "not_materialized":
-        health_state = "worker_bridge_not_materialized"
-        evidence_layer = "not_ready"
-        next_action = "repair launcher or worker startup bridge materialization before another run"
-    elif not verified:
-        health_state = "worker_bridge_evidence_incomplete"
-        evidence_layer = "not_ready"
-        next_action = "repair worker bridge compact evidence before another run"
-    elif runner_status == "completed" and official_status == "completed":
-        health_state = "official_score_ingested"
-        evidence_layer = "official_sample_score"
-        next_action = "compare against the selected baseline under no-upload policy"
-    elif runner_status.startswith("interrupted"):
-        health_state = "runner_return_blocked_after_worker_bridge"
-        evidence_layer = "worker_bridge_verified_runner_blocker"
-        next_action = "close runner return or record an explicit runner-return blocker"
-    else:
-        health_state = "worker_bridge_verified_pending_runner_return"
-        evidence_layer = "worker_bridge_ingest_only"
-        next_action = "finish runner return or append the pending-runner blocker"
-
-    note: dict[str, Any] = {
-        "schema_version": WORKER_BRIDGE_INGEST_HEALTH_SCHEMA_VERSION,
-        "source_schema_version": BENCHMARK_RUN_SCHEMA_VERSION,
-        "health_state": health_state,
-        "evidence_layer": evidence_layer,
-        "worker_bridge_verified": verified,
-        "runner_return_status": runner_status or "unknown",
-        "official_score_status": official_status or "unknown",
-        "worker_loopx_cli_call_total": cli_total,
-        "required_worker_loopx_cli_call_total_min": required_total,
-        "worker_bridge_materialization_status": materialization_status or "unknown",
-        "worker_bridge_materialization_blocker": materialization_blocker or "none",
-        "worker_bridge_failure_attribution": failure_attribution or "none",
-        "validation_all_passed": validation_all_passed,
-        "next_action": next_action,
-        "may_claim": [
-            "worker bridge ingest health from compact benchmark_run_v0",
-        ],
-        "must_not_claim": [
-            "leaderboard uplift",
-            "official reward complete without official score status completed",
-            "raw trace public",
-        ],
-    }
-    if bridge_surface:
-        note["bridge_surface"] = bridge_surface
-    if trace_publicness:
-        note["trace_publicness"] = trace_publicness
-    if env_context:
-        note["environment_setup_failure_context"] = env_context
-    return note
 
 
 def _benchmark_result_source(run: dict[str, Any]) -> dict[str, Any] | None:
@@ -6730,7 +5759,3 @@ def collect_status(
         goal_id=goal_id,
         context=build_status_collection_context(),
     )
-
-
-def render_status_markdown(payload: dict[str, Any]) -> str:
-    return _render_status_markdown(payload, event_classes=EVENT_LEDGER_CLASSES)

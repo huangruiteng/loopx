@@ -15,15 +15,14 @@ from ..heartbeat_prompt import (
     render_heartbeat_prompt_markdown,
 )
 from ..history import load_registry
-from ..paths import DEFAULT_RUNTIME_ROOT, global_registry_path, resolve_runtime_root
+from ..paths import resolve_runtime_root
+from ..presentation.renderers.status_markdown import render_status_markdown
 from ..promotion_gate import build_promotion_gate, render_promotion_gate_markdown
 from ..registry import (
     inspect_registry,
     inspect_registry_boundary,
-    registry_goals,
     render_registry_boundary_markdown,
     render_registry_markdown,
-    resolve_state_file,
 )
 from ..self_update import (
     build_rollback_plan,
@@ -37,7 +36,6 @@ from ..state_backup import (
     execute_state_backup_plan,
     render_state_backup_markdown,
 )
-from ..status import render_status_markdown
 from ..status_server import (
     DEFAULT_STATUS_HOST,
     DEFAULT_STATUS_PATH,
@@ -45,6 +43,16 @@ from ..status_server import (
     serve_status,
 )
 from ..upgrade import build_upgrade_plan, render_upgrade_plan_markdown
+from .support_control_registry import (
+    default_public_scan_root,
+    explicit_global_registry,
+    resolve_heartbeat_active_state,
+)
+from .support_control_supervisor import (
+    SUPERVISOR_CONTROL_COMMANDS,
+    handle_supervisor_control_command,
+    register_supervisor_control_commands,
+)
 
 
 PrintPayload = Callable[
@@ -63,61 +71,7 @@ SUPPORT_CONTROL_COMMANDS = {
     "registry",
     "registry-boundary",
     "serve-status",
-}
-
-
-def default_public_scan_root() -> str:
-    return str(Path(__file__).resolve().parents[2])
-
-
-def fallback_global_registry(registry_path: Path, runtime_root_arg: str | None) -> Path:
-    if registry_path.exists():
-        return registry_path
-    runtime_root = Path(runtime_root_arg).expanduser() if runtime_root_arg else DEFAULT_RUNTIME_ROOT
-    fallback_registry = global_registry_path(runtime_root)
-    return fallback_registry if fallback_registry.exists() else registry_path
-
-
-def explicit_global_registry(runtime_root_arg: str | None) -> Path:
-    runtime_root = Path(runtime_root_arg).expanduser() if runtime_root_arg else DEFAULT_RUNTIME_ROOT
-    return global_registry_path(runtime_root)
-
-
-def resolve_heartbeat_active_state(
-    *,
-    goal_id: str,
-    active_state_arg: str | None,
-    registry_path: Path,
-    runtime_root_arg: str | None,
-    allow_global_goal_lookup_fallback: bool = True,
-) -> tuple[Path | None, Path | None, str]:
-    if active_state_arg:
-        active_state = Path(active_state_arg).expanduser()
-        return active_state, active_state, "explicit"
-
-    resolved_registry = fallback_global_registry(registry_path, runtime_root_arg)
-    registry = load_registry(resolved_registry)
-    goal = next((item for item in registry_goals(registry) if item.get("id") == goal_id), None)
-    if goal is None and allow_global_goal_lookup_fallback:
-        global_registry = explicit_global_registry(runtime_root_arg)
-        if global_registry != resolved_registry and global_registry.exists():
-            global_payload = load_registry(global_registry)
-            global_goal = next((item for item in registry_goals(global_payload) if item.get("id") == goal_id), None)
-            if global_goal is not None:
-                resolved_registry = global_registry
-                registry = global_payload
-                goal = global_goal
-    if goal is None:
-        raise ValueError(f"goal_id not found in registry for heartbeat active-state lookup: {goal_id}")
-    repo_text = str(goal.get("repo") or "")
-    if not repo_text:
-        raise ValueError(f"{goal_id}: registry goal has no repo for active-state lookup")
-    state_file = resolve_state_file(Path(repo_text).expanduser(), goal.get("state_file"))
-    if state_file is None:
-        raise ValueError(f"{goal_id}: registry goal has no state_file for active-state lookup")
-    if not state_file.exists():
-        raise FileNotFoundError(f"{goal_id}: registry-declared active state file does not exist: {state_file}")
-    return None, state_file, f"registry:{resolved_registry}"
+} | SUPERVISOR_CONTROL_COMMANDS
 
 
 def register_support_control_commands(
@@ -226,6 +180,8 @@ def register_support_control_commands(
         action="store_true",
         help="Generate the thinnest generic dispatcher body for trusted agents that inspect LoopX state themselves.",
     )
+
+    register_supervisor_control_commands(subparsers, add_subcommand_format)
 
     promotion_gate_parser = subparsers.add_parser(
         "promotion-gate",
@@ -394,12 +350,14 @@ def handle_support_control_command(
         registered_agents = None
         effective_agent_id = args.agent_id
         try:
-            active_state, resolved_active_state, active_state_source = resolve_heartbeat_active_state(
-                goal_id=args.goal_id,
-                active_state_arg=args.active_state,
-                registry_path=registry_path,
-                runtime_root_arg=args.runtime_root,
-                allow_global_goal_lookup_fallback=not registry_was_supplied,
+            active_state, resolved_active_state, active_state_source = (
+                resolve_heartbeat_active_state(
+                    goal_id=args.goal_id,
+                    active_state_arg=args.active_state,
+                    registry_path=registry_path,
+                    runtime_root_arg=args.runtime_root,
+                    allow_global_goal_lookup_fallback=not registry_was_supplied,
+                )
             )
             agent_registry_path = registry_path
             if active_state_source.startswith("registry:"):
@@ -460,6 +418,16 @@ def handle_support_control_command(
             )
         print_payload(payload, output_format(args), render_heartbeat_prompt_markdown)
         return 0 if payload.get("ok") else 1
+
+    supervisor_result = handle_supervisor_control_command(
+        args,
+        registry_path=registry_path,
+        registry_was_supplied=registry_was_supplied,
+        print_payload=print_payload,
+        output_format=output_format,
+    )
+    if supervisor_result is not None:
+        return supervisor_result
 
     if args.command == "promotion-gate":
         try:

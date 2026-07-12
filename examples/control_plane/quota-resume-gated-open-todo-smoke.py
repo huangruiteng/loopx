@@ -26,6 +26,7 @@ GATED_TODO_ID = "todo_projection_wording"
 FALLBACK_TODO_ID = "todo_catalog_canary"
 ARCHIVED_DONE_TODO_ID = "todo_archived_pr_merge"
 ARCHIVE_GATED_MONITOR_ID = "todo_archive_gated_monitor"
+READY_DEFERRED_ID = "todo_ready_deferred_p0"
 GATED_ACTION = "[P0] Review refreshed projection wording."
 FALLBACK_ACTION = "[P1] Continue catalog-driven product canary coverage."
 ARCHIVE_MONITOR_ACTION = "[P1] Monitor product refactor/catalog canary continuation."
@@ -136,6 +137,66 @@ def assert_ready_open_resume_todo_can_run() -> None:
     assert quota_payload["recommended_action"] == GATED_ACTION, quota_payload
 
 
+def assert_ready_deferred_p0_preempts_open_p1_for_successor_replan() -> None:
+    deferred_action = "[P0] Resume the validated release successor."
+    agent_todos = quota_todo_summary(
+        [
+            quota_todo_item(
+                todo_id=BLOCKING_TODO_ID,
+                index=1,
+                text="[P0] Complete the release prerequisite.",
+                status="done",
+                claimed_by=PRIMARY_AGENT,
+            ),
+            quota_todo_item(
+                todo_id=READY_DEFERRED_ID,
+                index=2,
+                text=deferred_action,
+                status="deferred",
+                claimed_by=AGENT_ID,
+                resume_when=f"todo_done:{BLOCKING_TODO_ID}",
+            ),
+            quota_todo_item(
+                todo_id=FALLBACK_TODO_ID,
+                index=3,
+                priority="P1",
+                text=FALLBACK_ACTION,
+                claimed_by=AGENT_ID,
+                required_capabilities=["shell"],
+            ),
+        ],
+        role="agent",
+    )
+    quota_payload = build_quota_should_run(
+        status_payload(agent_todos, next_action=FALLBACK_ACTION),
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+    )
+    assert quota_payload["decision"] == "successor_replan_required", quota_payload
+    assert quota_payload["normal_delivery_allowed"] is False, quota_payload
+    assert quota_payload.get("agent_lane_next_action") is None, quota_payload
+    frontier = quota_payload["agent_scope_frontier"]
+    assert frontier["priority_preemption"] is True, frontier
+    assert frontier["deferred_resume_candidates"][0]["todo_id"] == READY_DEFERRED_ID, frontier
+    assert quota_payload["selected_todo"]["todo_id"] == READY_DEFERRED_ID, quota_payload
+    assert quota_payload["selected_todo"]["source"] == (
+        "agent_scope_frontier.deferred_resume_candidates"
+    ), quota_payload
+    assert quota_payload["goal_frontier_projection"]["deferred_successors"][
+        "top_ready_todo_id"
+    ] == READY_DEFERRED_ID, quota_payload
+
+    for item in agent_todos["deferred_items"]:
+        item["priority"] = "P1"
+    equal_priority = build_quota_should_run(
+        status_payload(agent_todos, next_action=FALLBACK_ACTION),
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+    )
+    assert equal_priority["decision"] == "run", equal_priority
+    assert equal_priority["selected_todo"]["todo_id"] == FALLBACK_TODO_ID, equal_priority
+
+
 def assert_archived_done_resume_target_wakes_claimed_monitor() -> None:
     fields = parse_active_state_todos(
         "# Active Goal State\n\n"
@@ -195,6 +256,7 @@ def assert_archived_done_resume_target_wakes_claimed_monitor() -> None:
 def main() -> int:
     assert_not_ready_open_resume_todo_is_not_executable()
     assert_ready_open_resume_todo_can_run()
+    assert_ready_deferred_p0_preempts_open_p1_for_successor_replan()
     assert_archived_done_resume_target_wakes_claimed_monitor()
     print("quota-resume-gated-open-todo-smoke ok")
     return 0

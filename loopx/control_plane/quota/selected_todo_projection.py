@@ -38,7 +38,21 @@ def selected_todo_projection(
     *,
     agent_lane_next_action: dict[str, Any] | None,
     work_lane_contract: dict[str, Any] | None,
+    agent_scope_frontier: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
+    if (
+        isinstance(agent_scope_frontier, dict)
+        and agent_scope_frontier.get("action") == "successor_replan_required"
+    ):
+        candidates = agent_scope_frontier.get("deferred_resume_candidates")
+        if isinstance(candidates, list) and candidates and isinstance(candidates[0], dict):
+            selected = _compact_selected_todo(
+                candidates[0],
+                source="agent_scope_frontier.deferred_resume_candidates",
+            )
+            if selected:
+                return selected
+
     if isinstance(agent_lane_next_action, dict):
         source = str(agent_lane_next_action.get("source") or "agent_lane_next_action")
         selected = _compact_selected_todo(agent_lane_next_action, source=source)

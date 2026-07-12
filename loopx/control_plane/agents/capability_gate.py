@@ -16,6 +16,7 @@ from ..todos.projection import (
 )
 from ..todos.summary_item import compact_todo_summary_item
 from .agent_scope import agent_scope_item_claimed_by
+from .profile import agent_profile_candidate_rank
 
 
 CAPABILITY_GATE_SCHEMA_VERSION = "capability_gate_v0"
@@ -141,7 +142,8 @@ def _agent_lane_candidate_sort_key(
     *,
     agent_id: str | None,
     preferred_todo_ids: set[str] | None = None,
-) -> tuple[int, int, int, int, int]:
+    agent_profile: dict[str, Any] | None = None,
+) -> tuple[int, int, int, int, int, int]:
     preferred_todo_ids = preferred_todo_ids or set()
     todo_id = str(raw_item.get("todo_id") or "").strip()
     active_next_rank = 0 if todo_id and todo_id in preferred_todo_ids else 1
@@ -151,6 +153,7 @@ def _agent_lane_candidate_sort_key(
     return (
         active_next_rank,
         claim_rank,
+        agent_profile_candidate_rank(raw_item, agent_profile=agent_profile),
         todo_priority_rank(raw_item),
         repair_rank,
         todo_index_rank(raw_item),
@@ -167,13 +170,23 @@ def _sort_capability_runnable_candidates(
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
     if not agent_id:
         return runnable, None
-    policy = "active_next_then_claim_then_priority_then_repair"
+    agent_profile = (
+        agent_identity.get("agent_profile")
+        if isinstance(agent_identity.get("agent_profile"), dict)
+        else None
+    )
+    policy = (
+        "active_next_then_claim_then_profile_then_priority_then_repair"
+        if agent_profile
+        else "active_next_then_claim_then_priority_then_repair"
+    )
     return (
         sorted(
             runnable,
             key=lambda item: _agent_lane_candidate_sort_key(
                 item,
                 agent_id=agent_id,
+                agent_profile=agent_profile,
             ),
         ),
         policy,

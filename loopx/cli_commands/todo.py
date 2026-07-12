@@ -22,7 +22,7 @@ from ..todos import (
     supersede_goal_todo,
     update_goal_todo,
 )
-from .todo_argument_validation import unsupported_todo_options, validate_shared_todo_options
+from .todo_argument_validation import unsupported_todo_options, validate_capability_gap_options, validate_shared_todo_options
 from .todo_event import RolloutEventAppender, append_todo_rollout_event
 
 
@@ -126,6 +126,14 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
             "For todo add/update, declare a capability this todo is building, "
             "repairing, materializing, or parity-checking. This is not a hard "
             "execution prerequisite."
+        ),
+    )
+    todo_parser.add_argument(
+        "--capability-gap-status",
+        choices=["found", "fixed", "real_callsite_verified"],
+        help=(
+            "For agent todo add/update, append an auditable capability-gap lifecycle "
+            "event. Requires --target-capability; the todo_id is the stable gap id."
         ),
     )
     todo_parser.add_argument(
@@ -366,6 +374,7 @@ def handle_todo_command(
     )
     try:
         validate_shared_todo_options(args)
+        validate_capability_gap_options(args)
         if args.todo_command == "list":
             unsupported = unsupported_todo_options(
                 args,
@@ -538,6 +547,7 @@ def handle_todo_command(
                 args.required_write_scopes,
                 args.required_capabilities,
                 args.target_capabilities,
+                args.capability_gap_status,
                 args.explore_result_node_refs,
                 args.clear_explore_result_node_refs,
                 args.decision_scope,

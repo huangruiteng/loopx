@@ -141,7 +141,6 @@ def _seed_visible_demo_control_plane(
         max_children=4,
         allowed_domains=["auto-research-demo"],
         write_scope=_visible_demo_goal_write_scope(preset_context),
-        claim_ttl_minutes=60,
         onboarding_scan_enabled=False,
         accept_onboarding_agent_todos=False,
         begin_autonomous_advance=True,

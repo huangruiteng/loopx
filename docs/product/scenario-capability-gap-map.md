@@ -141,7 +141,8 @@ P0 gaps:
 
 P1 gaps:
 
-- claim-aware worktree lease beyond soft `claimed_by`;
+- host-integrated worktree lease enforcement beyond soft `claimed_by` and the
+  standalone opt-in `task-lease` CLI;
 - connector support for GitHub-like issue/PR/CI surfaces through a thin host
   adapter or MCP facade;
 - frontstage card that explains "ready to patch", "waiting for repro",

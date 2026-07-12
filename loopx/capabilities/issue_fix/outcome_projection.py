@@ -18,6 +18,9 @@ ISSUE_FIX_OUTCOME_COLLECTION_PROJECTION_SCHEMA_VERSION = (
 ISSUE_FIX_DELIVERY_EVIDENCE_INPUT_SCHEMA_VERSION = (
     "issue_fix_delivery_evidence_input_v0"
 )
+ISSUE_FIX_REUSABLE_KNOWLEDGE_INPUT_SCHEMA_VERSION = (
+    "issue_fix_reusable_knowledge_input_v0"
+)
 
 DELIVERY_VALIDATION_STATUSES = {"passed", "failed", "partial", "not_run"}
 DELIVERY_OUTCOME_STATUSES = {"in_progress", "completed", "blocked"}
@@ -67,6 +70,78 @@ def _repo_relative_files(value: Any) -> list[str]:
         ):
             raise ValueError("changed_files must contain only repo-relative paths")
     return files
+
+
+def _reusable_knowledge(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError("reusable_knowledge must be an object")
+    if (
+        str(value.get("schema_version") or "").strip()
+        != ISSUE_FIX_REUSABLE_KNOWLEDGE_INPUT_SCHEMA_VERSION
+    ):
+        raise ValueError(
+            "reusable_knowledge schema_version must be "
+            "issue_fix_reusable_knowledge_input_v0"
+        )
+    compact = {
+        "schema_version": ISSUE_FIX_REUSABLE_KNOWLEDGE_INPUT_SCHEMA_VERSION,
+        "symptom_signature": _safe_text(
+            value.get("symptom_signature"),
+            field="reusable_knowledge.symptom_signature",
+            limit=320,
+        ),
+        "reproduction_contract": _safe_text(
+            value.get("reproduction_contract"),
+            field="reusable_knowledge.reproduction_contract",
+            limit=420,
+        ),
+        "root_cause": _safe_text(
+            value.get("root_cause"),
+            field="reusable_knowledge.root_cause",
+            limit=420,
+        ),
+        "violated_invariant": _safe_text(
+            value.get("violated_invariant"),
+            field="reusable_knowledge.violated_invariant",
+            limit=320,
+        ),
+        "repair_pattern": _safe_text(
+            value.get("repair_pattern"),
+            field="reusable_knowledge.repair_pattern",
+            limit=420,
+        ),
+        "validation_contract": _safe_text(
+            value.get("validation_contract"),
+            field="reusable_knowledge.validation_contract",
+            limit=420,
+        ),
+        "applicability": _safe_text(
+            value.get("applicability"),
+            field="reusable_knowledge.applicability",
+            limit=320,
+        ),
+        "non_applicability": _safe_text(
+            value.get("non_applicability"),
+            field="reusable_knowledge.non_applicability",
+            limit=320,
+        ),
+        "verification_references": _repo_relative_files(
+            value.get("verification_references") or []
+        ),
+    }
+    missing = [
+        key
+        for key, item in compact.items()
+        if key != "schema_version" and not item
+    ]
+    if missing:
+        raise ValueError(
+            "reusable_knowledge requires non-empty reusable fields: "
+            + ", ".join(missing)
+        )
+    return compact
 
 
 def _delivery_evidence(value: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -131,6 +206,9 @@ def _delivery_evidence(value: Mapping[str, Any] | None) -> dict[str, Any]:
             value.get("recorded_at"), field="recorded_at", limit=80
         )
         or None,
+        "reusable_knowledge": _reusable_knowledge(
+            value.get("reusable_knowledge")
+        ),
     }
 
 
@@ -152,6 +230,8 @@ def compact_issue_fix_delivery_evidence(
         "outputs": list(delivery.get("outputs") or []),
         "risks": list(delivery.get("risks") or []),
     }
+    if delivery.get("reusable_knowledge") is not None:
+        compact["reusable_knowledge"] = dict(delivery["reusable_knowledge"])
     effective_recorded_at = recorded_at or delivery.get("recorded_at")
     if effective_recorded_at:
         compact["recorded_at"] = _safe_text(
@@ -456,6 +536,7 @@ def build_issue_fix_outcome_projection(
             "changed_files": list(delivery.get("changed_files") or []),
             "recorded_at": delivery.get("recorded_at"),
         },
+        "reusable_knowledge": delivery.get("reusable_knowledge"),
         "pull_request": (
             {
                 "number": pr_number,

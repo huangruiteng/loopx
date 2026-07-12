@@ -70,7 +70,6 @@
           "docs/**",
           "examples/**"
         ],
-        "claim_ttl_minutes": 30,
         "requires_parent_approval": [
           "write",
           "publish",

@@ -30,6 +30,11 @@ from .feasibility import (
     build_issue_fix_feasibility_packet,
     render_issue_fix_feasibility_markdown,
 )
+from .discovered_issue_promotion import (
+    build_discovered_issue_promotion_from_cli_args,
+    register_discovered_issue_promotion_command,
+    render_issue_fix_discovered_issue_promotion_markdown,
+)
 from .outcome_projection import (
     build_issue_fix_outcome_projection,
     compact_issue_fix_delivery_evidence,
@@ -40,11 +45,19 @@ from .metrics_projection import (
     build_issue_fix_metrics_projection,
     render_issue_fix_metrics_projection_markdown,
 )
+from .metrics_supplement import (
+    render_issue_fix_metrics_supplement_markdown,
+)
+from .metrics_supplement_cli import (
+    build_issue_fix_metrics_supplement_from_args,
+    register_issue_fix_metrics_supplement_command,
+)
 from .pr_lifecycle import (
     build_issue_fix_pr_lifecycle_monitor_packet,
     render_issue_fix_pr_lifecycle_monitor_markdown,
     validate_issue_fix_pr_lifecycle_monitor_packet,
 )
+from .pr_lifecycle_rollout import append_pr_merge_rollout_event
 from .reviewer_recommendation import (
     build_issue_fix_reviewer_recommendation_packet,
     render_issue_fix_reviewer_recommendation_markdown,
@@ -357,8 +370,8 @@ def register_issue_fix_commands(
     memory_sync_parser = issue_fix_sub.add_parser(
         "repository-memory-sync",
         help=(
-            "Plan or explicitly execute a bounded revision-scoped public resource "
-            "sync through the reusable context-provider module."
+            "Plan or explicitly execute a bounded public resource sync through "
+            "the reusable context-provider module."
         ),
     )
     add_subcommand_format(memory_sync_parser)
@@ -385,6 +398,11 @@ def register_issue_fix_commands(
         help="Perform the provider resource write. Without this flag, return a plan.",
     )
     _add_generated_at_arg(memory_sync_parser, artifact="the resource sync")
+    register_discovered_issue_promotion_command(
+        issue_fix_sub,
+        add_subcommand_format=add_subcommand_format,
+        add_generated_at_arg=_add_generated_at_arg,
+    )
     workflow_parser = issue_fix_sub.add_parser(
         "workflow-plan",
         help=(
@@ -793,6 +811,11 @@ def register_issue_fix_commands(
         help="Optional PR lifecycle JSONL override; defaults to goal domain state.",
     )
     _add_generated_at_arg(metrics_parser, artifact="the metrics projection")
+    register_issue_fix_metrics_supplement_command(
+        issue_fix_sub,
+        add_subcommand_format=add_subcommand_format,
+        add_generated_at_arg=_add_generated_at_arg,
+    )
     snapshot_parser = issue_fix_sub.add_parser(
         "repository-snapshot",
         help=(
@@ -1124,6 +1147,7 @@ def handle_issue_fix_command(
     args: argparse.Namespace,
     *,
     registry_path: Path | None = None,
+    runtime_root_arg: str | None = None,
     output_format: FormatSelector,
     print_payload: PrintPayload,
 ) -> int:
@@ -1153,6 +1177,21 @@ def handle_issue_fix_command(
                 execute=args.execute,
             )
             renderer = render_issue_fix_repository_memory_sync_markdown
+        elif args.issue_fix_command == "promote-discovered-issue":
+            boundary_authority_scopes, boundary_authority_resolved = (
+                _goal_boundary_authority_projection(
+                    registry_path=registry_path,
+                    goal_id=args.goal_id,
+                )
+            )
+            payload = build_discovered_issue_promotion_from_cli_args(
+                args,
+                load_json_object=_load_json_object,
+                boundary_authority_scopes=boundary_authority_scopes,
+                boundary_authority_resolved=boundary_authority_resolved,
+                generated_at=generated_at,
+            )
+            renderer = render_issue_fix_discovered_issue_promotion_markdown
         elif args.issue_fix_command == "workflow-plan":
             if args.fetch_metadata and args.metadata_json:
                 raise ValueError("--fetch-metadata cannot be combined with --metadata-json")
@@ -1325,6 +1364,18 @@ def handle_issue_fix_command(
                     ledger_path,
                     payload,
                 )
+                observation = payload.get("observation")
+                if (
+                    args.goal_id
+                    and isinstance(observation, dict)
+                    and str(observation.get("state") or "").upper() == "MERGED"
+                ):
+                    payload["rollout_event"] = append_pr_merge_rollout_event(
+                        payload=payload,
+                        goal_id=args.goal_id,
+                        registry_path=registry_path,
+                        runtime_root_arg=runtime_root_arg,
+                    )
             else:
                 domain_state = payload.get("domain_state_projection")
                 if isinstance(domain_state, dict) and not args.no_write_domain_state:
@@ -1629,7 +1680,9 @@ def handle_issue_fix_command(
             payload = build_issue_fix_metrics_projection(
                 goal_id=args.goal_id,
                 repo=args.repo,
-                baseline_snapshot=_load_json_object(args.repository_baseline_json),
+                baseline_snapshot=_load_json_object(
+                    args.repository_baseline_json
+                ),
                 current_snapshot=_load_json_object(args.repository_current_json),
                 feasibility_rows=_load_jsonl_rows(feasibility_path),
                 pr_lifecycle_rows=_load_jsonl_rows(lifecycle_path),
@@ -1641,15 +1694,23 @@ def handle_issue_fix_command(
                 generated_at=generated_at,
             )
             renderer = render_issue_fix_metrics_projection_markdown
+        elif args.issue_fix_command == "metrics-supplement":
+            payload = build_issue_fix_metrics_supplement_from_args(
+                args,
+                registry_path=registry_path,
+                runtime_root_arg=runtime_root_arg,
+                generated_at=generated_at,
+                load_json_object=_load_json_object,
+                load_jsonl_rows=_load_jsonl_rows,
+            )
+            renderer = render_issue_fix_metrics_supplement_markdown
         elif args.issue_fix_command == "repository-snapshot":
             if not args.fetch_public_github:
                 raise ValueError("repository-snapshot requires --fetch-public-github")
             project = Path(args.project).expanduser()
             payload = collect_public_github_repository_snapshot(
                 repo=args.repo,
-                baseline_snapshot=_load_json_object(
-                    args.repository_baseline_json
-                ),
+                baseline_snapshot=_load_json_object(args.repository_baseline_json),
                 feasibility_rows=_load_jsonl_rows(
                     default_issue_fix_feasibility_ledger_path(
                         project=project, goal_id=args.goal_id
@@ -1890,8 +1951,10 @@ def handle_issue_fix_command(
             renderer = render_issue_fix_acceptance_loop_markdown
         else:
             raise ValueError(
-                "issue-fix requires `repository-memory-sync`, `workflow-plan`, `feasibility`, "
+                "issue-fix requires `repository-memory-sync`, `promote-discovered-issue`, "
+                "`workflow-plan`, `feasibility`, "
                 "`acceptance-fixture`, `pr-lifecycle`, `outcome`, `metrics`, "
+                "`metrics-supplement`, "
                 "`repository-snapshot`, `reviewer-plan`, "
                 "`reviewer-request`, "
                 "`repo-branch-fixture`, or `caller-repo-branch`"
@@ -1905,6 +1968,8 @@ def handle_issue_fix_command(
         renderer = (
             render_issue_fix_repository_memory_sync_markdown
             if getattr(args, "issue_fix_command", None) == "repository-memory-sync"
+            else render_issue_fix_discovered_issue_promotion_markdown
+            if getattr(args, "issue_fix_command", None) == "promote-discovered-issue"
             else render_issue_fix_workflow_plan_markdown
             if getattr(args, "issue_fix_command", None) == "workflow-plan"
             else render_issue_fix_feasibility_markdown
@@ -1915,6 +1980,8 @@ def handle_issue_fix_command(
             if getattr(args, "issue_fix_command", None) == "outcome"
             else render_issue_fix_metrics_projection_markdown
             if getattr(args, "issue_fix_command", None) == "metrics"
+            else render_issue_fix_metrics_supplement_markdown
+            if getattr(args, "issue_fix_command", None) == "metrics-supplement"
             else render_repository_snapshot_markdown
             if getattr(args, "issue_fix_command", None) == "repository-snapshot"
             else render_issue_fix_reviewer_recommendation_markdown

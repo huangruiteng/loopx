@@ -58,7 +58,12 @@ def register_bootstrap_connect_command(subparsers: argparse._SubParsersAction) -
         default=[],
         help="Allowed write scope such as docs/**. Repeatable.",
     )
-    bootstrap_parser.add_argument("--claim-ttl-minutes", type=int, default=30)
+    bootstrap_parser.add_argument(
+        "--claim-ttl-minutes",
+        type=int,
+        default=30,
+        help=argparse.SUPPRESS,
+    )
     bootstrap_parser.add_argument(
         "--execution-minimum-scale",
         default=str(DEFAULT_EXECUTION_PROFILE["minimum_scale"]),
@@ -197,7 +202,6 @@ def handle_bootstrap_connect_command(
             max_children=args.max_children,
             allowed_domains=args.allowed_domain,
             write_scope=args.write_scope,
-            claim_ttl_minutes=args.claim_ttl_minutes,
             execution_minimum_scale=args.execution_minimum_scale,
             execution_must_include=args.execution_must_include or None,
             execution_small_streak_threshold=args.execution_small_streak_threshold,

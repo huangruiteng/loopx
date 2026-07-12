@@ -34,6 +34,29 @@ The core repository intentionally avoids domain logic. A data experiment goal,
 a note-maintenance goal, and a harness self-improvement goal should share the
 same runtime and contract, but use different adapters.
 
+## Current Dependency Budget
+
+Dependency direction is enforced incrementally while large compatibility
+facades are split. `loopx.control_plane` may not gain dependencies on
+presentation, CLI, capability, or benchmark-adapter layers; the architecture
+test keeps one explicit quota-Markdown migration edge as debt.
+
+The legacy `loopx.status` facade currently has one additional outward edge, the
+SkillsBench verifier-bootstrap attribution helper. This is migration debt, not
+an extension point. The architecture test records its exact module target so a
+new outward edge fails, and removing the edge requires deleting its stale
+allowlist entry in the same change.
+
+Each edge should move only after characterization parity exists. Adapter-specific
+enrichment belongs behind application/plugin composition rather than in the
+status core. Status Markdown callers now use the presentation renderer directly;
+the former `loopx.status.render_status_markdown` wrapper was retired after parity
+fixtures and repository callers migrated. The formerly SkillsBench-named solution
+quality helper moved inward after characterization showed that it projects only
+generic compact benchmark fields; its shipped schema remains compatible. Hiding
+an adapter dependency inside a function or dynamic import does not count as
+architectural separation.
+
 LoopX should still absorb field-tested project-control mechanisms such
 as authority registries, current-belief TODOs, managed external-source
 manifests, experiment boards, validation surface maps, and gated handoff
@@ -125,14 +148,17 @@ The server path should land in layers:
    concurrency with per-goal locks, idempotency keys, and optimistic revision
    checks. `todo`, `refresh-state`, reward writeback, quota spend, and history
    append paths should fail closed on stale revision or overlapping write scope.
-2. **Lease projection**: add `task_lease_v0` records for claimed todos,
-   including owner, TTL, write scope, idempotency key, and conflict policy.
+2. **Lease adoption**: the optional local `task_lease_v0` CLI already provides
+   owner, TTL, write scope, idempotency, conflict, transfer, and release
+   semantics. Keep `claimed_by` as the default soft route and adopt hard leases
+   only for hosts with a demonstrated concurrent-write problem.
    The pending/lease key should be per todo: `(goal_id, todo_id)` is the
    contention unit, not the whole goal or project. Different todos under the
    same goal may proceed in parallel when their write scopes and gates allow
    it; competing claims on the same todo fail closed or renew.
-   Status and quota should expose active leases so Codex/App/CLI loops can
-   avoid duplicate work without reading chat history.
+   Status currently exposes capability availability; quota does not enforce or
+   consume hard leases. A later host integration may project active lease rows
+   after its adoption contract and fallback behavior are validated.
 3. **Loopback coordinator**: extend the existing local status server into a
    loopback-only coordinator that can centralize per-goal locks, leases, quota
    decisions, compact status projection, and heartbeat scheduling. It must bind

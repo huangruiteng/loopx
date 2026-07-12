@@ -55,6 +55,8 @@ REFRESH_RECORDED = "refresh_recorded"
 RUN_RECORDED = "run_recorded"
 QUOTA_SPENT = "quota_spent"
 EVIDENCE_ATTACHED = "evidence_attached"
+SUPERVISOR_PROPOSED = "supervisor_proposed"
+SUPERVISOR_RECEIPT_RECORDED = "supervisor_receipt_recorded"
 
 MARKDOWN_BACKFILL_PRODUCER = "loopx.backfill"
 MARKDOWN_HEADING_PATTERN = re.compile(r"^##\s+(.+?)\s*$")
@@ -77,6 +79,8 @@ SUPPORTED_EVENT_TYPES = {
     RUN_RECORDED,
     QUOTA_SPENT,
     EVIDENCE_ATTACHED,
+    SUPERVISOR_PROPOSED,
+    SUPERVISOR_RECEIPT_RECORDED,
 }
 
 TODO_EVENT_TYPES = {
