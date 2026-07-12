@@ -569,6 +569,33 @@ def main() -> int:
         assert multi_semantic_runner.comments == 0
         assert_public_safe(multi_semantic)
 
+        bounded_semantic_runner = FakeGitHubRunner(
+            before=metadata(
+                comments=[
+                    semantic_reviewer_comment(
+                        body=(
+                            "@fallback-owner; @service-owner, could you please "
+                            "review this focused fix?"
+                        ),
+                    )
+                ]
+            )
+        )
+        bounded_semantic = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            execute=True,
+            runner=bounded_semantic_runner,
+        )
+        assert bounded_semantic["existing_semantic_comment_notified_reviewers"] == [
+            "@service-owner"
+        ]
+        assert bounded_semantic["external_writes_performed"] is False
+        assert bounded_semantic_runner.edits == 0
+        assert bounded_semantic_runner.comments == 0
+        assert_public_safe(bounded_semantic)
+
         discussion_comment = semantic_reviewer_comment(
             login="service-owner",
             body=(

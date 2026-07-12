@@ -87,7 +87,7 @@ def _is_mention_cluster_separator(value: str) -> bool:
     if "\n" in value or "\r" in value:
         return False
     remainder = re.sub(r"\b(?:and|or)\b|[和与及]", "", value, flags=re.IGNORECASE)
-    return bool(re.fullmatch(r"[ \t,，、:：;&+/]*", remainder))
+    return bool(re.fullmatch(r"[ \t,，、:：&+/]*", remainder))
 
 
 def _semantic_review_request_mentions(body: str) -> list[str]:
