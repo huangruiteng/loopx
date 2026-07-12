@@ -421,6 +421,40 @@ def assert_user_notice_can_coexist_with_bounded_delivery() -> None:
     assert contract["agent_channel"]["delivery_allowed"] is True, contract
 
 
+def assert_user_action_is_non_blocking_notice() -> None:
+    payload = base_payload(
+        should_run=True,
+        effective_action="normal_run",
+        work_lane=advancement_lane(),
+        heartbeat_mode="steering_audit_then_one_step",
+    )
+    user_action = {
+        "todo_id": "todo_user_action",
+        "status": "open",
+        "task_class": "user_action",
+        "text": "Review the optional repository setting.",
+    }
+    payload["user_todo_summary"] = {
+        "first_open_items": [user_action],
+        "user_action_items": [user_action],
+    }
+    payload = finalize(payload)
+    contract = payload["interaction_contract"]
+    assert contract["mode"] == "bounded_delivery", contract
+    assert contract["user_channel"]["action_required"] is False, contract
+    assert contract["user_channel"]["notify"] == "NOTIFY", contract
+    assert contract["user_channel"]["non_blocking"] is True, contract
+    assert contract["user_channel"]["actions"] == [
+        "Review the optional repository setting."
+    ], contract
+    assert contract["agent_channel"]["must_attempt"] is True, contract
+    assert contract["agent_channel"]["delivery_allowed"] is True, contract
+    summary = payload["protocol_action_packet"]["summary"]
+    assert "actor=agent" in summary, summary
+    assert "user_action_required=false" in summary, summary
+    assert "user_action_pending=true" in summary, summary
+
+
 def assert_monitor_quiet_skip_is_no_spend() -> None:
     payload = finalize(
         base_payload(
@@ -515,6 +549,7 @@ def main() -> int:
     assert_cross_layer_state_machine_matrix()
     assert_bounded_delivery_bundle()
     assert_user_notice_can_coexist_with_bounded_delivery()
+    assert_user_action_is_non_blocking_notice()
     assert_monitor_quiet_skip_is_no_spend()
     assert_autonomous_replan_preempts_monitor_quiet()
     assert_agent_scope_wait_is_quiet_noop()

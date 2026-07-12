@@ -7,7 +7,7 @@ from ..agents.agent_scope_frontier import (
     agent_scope_frontier_action as _agent_scope_frontier_action,
 )
 from ..goals.goal_frontier import AUTONOMOUS_REPLAN_REQUIRED_MODE
-from ..todos.contract import TODO_TASK_CLASS_MONITOR
+from ..todos.contract import TODO_TASK_CLASS_MONITOR, TODO_TASK_CLASS_USER_ACTION
 from ..todos.projection import todo_item_task_class
 from ..todos.user_gate import open_todo_count
 from .primary_action import (
@@ -27,7 +27,10 @@ PROTOCOL_ACTION_PACKET_LLM_POLICY = "no_api"
 def _user_todo_item_is_explicitly_non_gating(item: dict[str, Any]) -> bool:
     if item.get("gating") is False or item.get("non_gating") is True:
         return True
-    if todo_item_task_class(item) == TODO_TASK_CLASS_MONITOR:
+    if todo_item_task_class(item) in {
+        TODO_TASK_CLASS_MONITOR,
+        TODO_TASK_CLASS_USER_ACTION,
+    }:
         return True
     action_kind = str(item.get("action_kind") or "").strip().lower()
     return action_kind in {
@@ -61,6 +64,29 @@ def user_channel_action_todo_actions(summary: Any, *, limit: int = 3) -> list[st
     return actions
 
 
+def user_channel_notice_todo_actions(summary: Any, *, limit: int = 3) -> list[str]:
+    if not isinstance(summary, dict):
+        return []
+    source_items = summary.get("user_action_items")
+    if not isinstance(source_items, list):
+        source_items = summary.get("first_open_items")
+    if not isinstance(source_items, list):
+        return []
+    actions: list[str] = []
+    for item in source_items:
+        if not isinstance(item, dict):
+            continue
+        if todo_item_task_class(item) != TODO_TASK_CLASS_USER_ACTION:
+            continue
+        text = _protocol_action_label(item.get("text"))
+        if not text:
+            continue
+        actions.append(text)
+        if len(actions) >= limit:
+            break
+    return actions
+
+
 def user_channel_action_required(payload: dict[str, Any]) -> bool:
     return bool(payload.get("requires_user_action")) or bool(
         user_channel_action_todo_actions(payload.get("user_todo_summary"))
@@ -76,8 +102,14 @@ def projected_user_channel_actions(
         payload.get("user_todo_summary"),
         limit=limit,
     )
-    if actions or not user_channel_action_required(payload):
+    if actions:
         return actions
+    notices = user_channel_notice_todo_actions(
+        payload.get("user_todo_summary"),
+        limit=limit,
+    )
+    if notices or not user_channel_action_required(payload):
+        return notices
     capability_gate = (
         payload.get("capability_gate")
         if isinstance(payload.get("capability_gate"), dict)
@@ -618,6 +650,12 @@ def _interaction_user_reason(payload: dict[str, Any]) -> Any:
             else None
         )
         or (
+            "open non-blocking user action should be surfaced while independent "
+            "agent work continues"
+            if user_channel_notice_todo_actions(payload.get("user_todo_summary"))
+            else None
+        )
+        or (
             payload.get("agent_scope_frontier", {}).get("reason")
             if isinstance(payload.get("agent_scope_frontier"), dict)
             else None
@@ -653,17 +691,22 @@ def _build_interaction_user_channel(
     *,
     user_required: bool,
 ) -> dict[str, Any]:
+    actions = projected_user_channel_actions(payload, limit=3)
+    non_blocking_notice = bool(
+        not user_required
+        and user_channel_notice_todo_actions(payload.get("user_todo_summary"), limit=3)
+    )
     channel: dict[str, Any] = {
         "action_required": user_required,
         "notify": "NOTIFY"
-        if user_required
+        if user_required or non_blocking_notice
         else heartbeat_recommendation.get("notify", "DONT_NOTIFY"),
     }
-    if user_required:
+    if actions:
         channel["max_items"] = 3
-        actions = projected_user_channel_actions(payload, limit=3)
-        if actions:
-            channel["actions"] = actions
+        channel["actions"] = actions
+    if non_blocking_notice:
+        channel["non_blocking"] = True
     reason = _interaction_user_reason(payload)
     if reason:
         channel["reason"] = reason
