@@ -193,6 +193,7 @@ def build_release_manifest(
 ) -> dict[str, Any]:
     source_env = env or os.environ
     source_metadata = _source_metadata(source_root)
+    resolved_source_git_commit = source_env.get("LOOPX_RESOLVED_SOURCE_GIT_COMMIT")
     archive_url = source_env.get("LOOPX_ARCHIVE_URL") or source_metadata.get("archive_url")
     archive_sha256 = source_env.get("LOOPX_ARCHIVE_SHA256") or source_metadata.get("archive_sha256")
     repo = source_env.get("LOOPX_REPO") or source_metadata.get("repo")
@@ -217,7 +218,7 @@ def build_release_manifest(
             "promotion_mode": promotion_mode,
             "repo": repo,
             "ref": ref,
-            "git_commit": source_metadata["git_commit"],
+            "git_commit": resolved_source_git_commit or source_metadata["git_commit"],
             "git_ref": source_metadata["git_ref"],
             "git_dirty": source_metadata["git_dirty"],
             "archive_url": archive_url,

@@ -3,10 +3,10 @@ set -euo pipefail
 
 repo="${LOOPX_REPO:-huangruiteng/loopx}"
 ref="${LOOPX_REF:-stable}"
-archive_url="${LOOPX_ARCHIVE_URL:-https://codeload.github.com/$repo/tar.gz/$ref}"
+archive_url_override="${LOOPX_ARCHIVE_URL:-}"
+archive_url="$archive_url_override"
 export LOOPX_REPO="$repo"
 export LOOPX_REF="$ref"
-export LOOPX_ARCHIVE_URL="$archive_url"
 
 need() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -18,6 +18,49 @@ need() {
 need curl
 need tar
 need python3
+
+if [[ -n "${LOOPX_RESOLVED_SOURCE_GIT_COMMIT:-}" \
+  && ! "$LOOPX_RESOLVED_SOURCE_GIT_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
+  echo "loopx installer error: LOOPX_RESOLVED_SOURCE_GIT_COMMIT must be a full Git commit SHA" >&2
+  exit 2
+fi
+
+if [[ -z "$archive_url" ]]; then
+  if [[ ! "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+    echo "loopx installer error: LOOPX_REPO must use GitHub owner/name syntax" >&2
+    exit 2
+  fi
+  commit_api_url="$(python3 - "$repo" "$ref" <<'PY'
+from urllib.parse import quote
+import sys
+
+repo, ref = sys.argv[1:]
+owner, name = repo.split("/", 1)
+print(
+    "https://api.github.com/repos/"
+    f"{quote(owner, safe='')}/{quote(name, safe='')}/commits/{quote(ref, safe='')}"
+)
+PY
+)"
+  commit_json="$(curl -fsSL \
+    -H 'Accept: application/vnd.github+json' \
+    -H 'User-Agent: LoopX-installer' \
+    "$commit_api_url")"
+  resolved_commit="$(LOOPX_COMMIT_JSON="$commit_json" python3 - <<'PY'
+import json
+import os
+
+payload = json.loads(os.environ["LOOPX_COMMIT_JSON"])
+sha = payload.get("sha")
+if not isinstance(sha, str) or len(sha) != 40:
+    raise SystemExit("GitHub commit response did not include a full SHA")
+print(sha)
+PY
+)"
+  export LOOPX_RESOLVED_SOURCE_GIT_COMMIT="$resolved_commit"
+  archive_url="https://codeload.github.com/$repo/tar.gz/$resolved_commit"
+fi
+export LOOPX_ARCHIVE_URL="$archive_url"
 
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/loopx-install.XXXXXX")"
 cleanup() {

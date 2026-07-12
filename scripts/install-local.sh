@@ -14,11 +14,65 @@ install_skill="${LOOPX_INSTALL_SKILL:-1}"
 install_canary="${LOOPX_INSTALL_CANARY:-1}"
 promote_default_request="${LOOPX_PROMOTE_DEFAULT:-auto}"
 releases_dir="${LOOPX_RELEASES_DIR:-$HOME/.local/share/loopx/releases}"
-release_id="${LOOPX_RELEASE_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
-release_dir="$releases_dir/$release_id"
-release_tmp="$release_dir.tmp.$$"
+release_id_request="${LOOPX_RELEASE_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
+release_id=""
+release_dir=""
+release_tmp=""
+install_lock=""
 legacy_line=""
 installed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+cleanup_install_lock() {
+  if [[ -n "$release_tmp" && -d "$release_tmp" ]]; then
+    rm -rf "$release_tmp"
+  fi
+  if [[ -n "$install_lock" && -d "$install_lock" ]]; then
+    rm -rf "$install_lock"
+  fi
+}
+
+trap cleanup_install_lock EXIT
+
+reserve_release_id() {
+  if [[ ! "$release_id_request" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    echo "loopx installer error: LOOPX_RELEASE_ID must be a safe release directory name" >&2
+    exit 2
+  fi
+  local candidate="$release_id_request"
+  local suffix=2
+  while [[ -e "$releases_dir/$candidate" || -L "$releases_dir/$candidate" ]]; do
+    candidate="$release_id_request-$suffix"
+    suffix=$((suffix + 1))
+  done
+  release_id="$candidate"
+  release_dir="$releases_dir/$release_id"
+  release_tmp="$(mktemp -d "$releases_dir/.${release_id}.tmp.XXXXXX")"
+}
+
+acquire_install_lock() {
+  install_lock="$releases_dir/.install-lock"
+  local attempt=0
+  until mkdir "$install_lock" 2>/dev/null; do
+    local owner_pid=""
+    if [[ -f "$install_lock/pid" ]]; then
+      owner_pid="$(cat "$install_lock/pid" 2>/dev/null || true)"
+    fi
+    if [[ "$owner_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$owner_pid" 2>/dev/null; then
+      local stale_lock="$install_lock.stale.$$"
+      if mv "$install_lock" "$stale_lock" 2>/dev/null; then
+        rm -rf "$stale_lock"
+        continue
+      fi
+    fi
+    attempt=$((attempt + 1))
+    if [[ "$attempt" -ge 600 ]]; then
+      echo "loopx installer error: timed out waiting for another local install to finish" >&2
+      exit 1
+    fi
+    sleep 0.1
+  done
+  printf '%s\n' "$$" >"$install_lock/pid"
+}
 
 warn_stale_promotion_readiness() {
   local python_bin="${LOOPX_PYTHON:-python3}"
@@ -92,15 +146,59 @@ install_symlink() {
   local link="$2"
   local tmp="$link.tmp.$$"
   rm -f "$tmp"
-  if [[ -e "$link" || -L "$link" ]]; then
-    if [[ ! -L "$link" && -d "$link" ]]; then
-      echo "loopx installer error: $link is a directory; remove it before installing" >&2
-      return 1
-    fi
-    rm -f "$link"
+  if [[ ! -L "$link" && -d "$link" ]]; then
+    echo "loopx installer error: $link is a directory; remove it before installing" >&2
+    return 1
   fi
   ln -s "$target" "$tmp"
-  mv -f "$tmp" "$link"
+  LOOPX_LINK_TMP="$tmp" LOOPX_LINK_TARGET="$link" "${LOOPX_PYTHON:-python3}" - <<'PY'
+import os
+
+os.replace(os.environ["LOOPX_LINK_TMP"], os.environ["LOOPX_LINK_TARGET"])
+PY
+}
+
+verify_default_promotion() {
+  LOOPX_VERIFY_LINK="$bin_dir/loopx" \
+    LOOPX_VERIFY_RELEASE_DIR="$release_dir" \
+    LOOPX_VERIFY_SOURCE_COMMIT="${LOOPX_RESOLVED_SOURCE_GIT_COMMIT:-$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)}" \
+    "${LOOPX_PYTHON:-python3}" - <<'PY'
+from pathlib import Path
+import json
+import os
+import sys
+
+link = Path(os.environ["LOOPX_VERIFY_LINK"])
+release_dir = Path(os.environ["LOOPX_VERIFY_RELEASE_DIR"])
+expected = (release_dir / "scripts" / "loopx").resolve()
+try:
+    actual = link.resolve(strict=True)
+except OSError as exc:
+    print(f"loopx installer error: default executable cannot be resolved: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+if actual != expected:
+    print(
+        "loopx installer error: default executable changed before promotion verification",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+manifest_path = release_dir / "release.json"
+try:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as exc:
+    print(f"loopx installer error: release manifest is unreadable: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+if manifest.get("release_id") != release_dir.name:
+    print("loopx installer error: release manifest id does not match its directory", file=sys.stderr)
+    raise SystemExit(1)
+
+expected_commit = os.environ.get("LOOPX_VERIFY_SOURCE_COMMIT") or ""
+source = manifest.get("source") if isinstance(manifest.get("source"), dict) else {}
+if expected_commit and source.get("git_commit") != expected_commit:
+    print("loopx installer error: release manifest does not match the intended source commit", file=sys.stderr)
+    raise SystemExit(1)
+PY
 }
 
 resolve_default_promotion() {
@@ -185,15 +283,15 @@ export LOOPX_PROMOTION_MODE="$promotion_mode"
 
 warn_stale_promotion_readiness
 
+mkdir -p "$releases_dir"
+acquire_install_lock
 mkdir -p "$bin_dir"
 disable_legacy_shim "goal-harness"
 disable_legacy_shim "goal-harness-canary"
 if [[ -z "$legacy_line" ]]; then
   legacy_line="- legacy command disabled: not present"
 fi
-mkdir -p "$releases_dir"
-rm -rf "$release_tmp"
-mkdir -p "$release_tmp"
+reserve_release_id
 copy_path "$repo_root/loopx" "$release_tmp/loopx"
 copy_path "$repo_root/scripts" "$release_tmp/scripts"
 copy_path "$repo_root/skills" "$release_tmp/skills"
@@ -222,12 +320,10 @@ fi
     --installed-at "$installed_at"
 )
 chmod +x "$release_tmp/scripts/loopx"
-if [[ -e "$release_dir" ]]; then
-  rm -rf "$release_tmp"
-else
-  mv "$release_tmp" "$release_dir"
-fi
+mv "$release_tmp" "$release_dir"
+release_tmp=""
 install_symlink "$release_dir/scripts/loopx" "$bin_dir/loopx"
+verify_default_promotion
 
 canary_line="- canary executable: skipped"
 if [[ "$install_canary" != "0" ]]; then
