@@ -59,7 +59,10 @@ def goal_attention(
         return legacy_runtime_goal_attention(goal, current_run, readiness_fields)
 
     if not current_run:
-        if adapter_status in connected_adapter_statuses:
+        if (
+            adapter_status in connected_adapter_statuses
+            or adapter_status in connected_delivery_adapter_statuses
+        ):
             return attention_item(
                 goal_id=goal_id,
                 status="connected_without_run",

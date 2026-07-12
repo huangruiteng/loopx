@@ -97,6 +97,14 @@ def main() -> int:
     )
     assert connected["source"] == "run_history", connected
 
+    connected_delivery = assert_routed(
+        goal(adapter_status="connected-delivery"),
+        status="connected_without_run",
+        waiting_on="codex",
+        severity="action",
+    )
+    assert connected_delivery["source"] == "run_history", connected_delivery
+
     planned = assert_routed(
         goal(adapter_status="planned", adapter_kind="demo_read_only_map_v0"),
         status="active",
