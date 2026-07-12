@@ -6,6 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from ...agent_registry import load_goal_from_registry
+from ..lark.event_inbox import (
+    acknowledge_lark_event_inbox,
+    inspect_lark_event_inbox,
+)
 from ...domain_packs.issue_fix import (
     default_issue_fix_domain_state_ledger_path,
     persist_issue_fix_reviewer_notification_receipts,
@@ -32,7 +36,9 @@ from .reviewer_request import (
 AddFormat = Callable[[argparse.ArgumentParser], None]
 AddGeneratedAt = Callable[..., None]
 Renderer = Callable[[dict[str, object]], str]
-REVIEWER_COMMANDS = frozenset({"reviewer-plan", "reviewer-request"})
+REVIEWER_COMMANDS = frozenset(
+    {"reviewer-plan", "reviewer-request", "reviewer-feedback-inbox"}
+)
 
 
 def register_issue_fix_reviewer_commands(
@@ -225,6 +231,33 @@ def register_issue_fix_reviewer_commands(
     )
     add_generated_at_arg(reviewer_request_parser, artifact="the request packet")
 
+    reviewer_feedback_parser = issue_fix_sub.add_parser(
+        "reviewer-feedback-inbox",
+        help=(
+            "Drain or acknowledge the generic Lark event inbox bound to a "
+            "configured issue-fix reviewer group."
+        ),
+    )
+    add_subcommand_format(reviewer_feedback_parser)
+    reviewer_feedback_parser.add_argument("--goal-id", required=True)
+    reviewer_feedback_parser.add_argument("--project", default=".")
+    reviewer_feedback_parser.add_argument("--limit", type=int, default=20)
+    reviewer_feedback_parser.add_argument(
+        "--message-id",
+        action="append",
+        default=[],
+        help="Acknowledge one drained message after its feedback is written back.",
+    )
+    reviewer_feedback_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Persist acknowledgement; draining remains read-only.",
+    )
+    add_generated_at_arg(
+        reviewer_feedback_parser,
+        artifact="the reviewer feedback inbox projection",
+    )
+
 
 def _load_goal_for_project(
     *,
@@ -284,7 +317,23 @@ def _materialize_goal_reviewer_notification_lifecycle(
 def reviewer_renderer(command: str | None) -> Renderer:
     if command == "reviewer-plan":
         return render_issue_fix_reviewer_recommendation_markdown
+    if command == "reviewer-feedback-inbox":
+        return render_issue_fix_reviewer_feedback_inbox_markdown
     return render_issue_fix_reviewer_request_markdown
+
+
+def render_issue_fix_reviewer_feedback_inbox_markdown(
+    packet: dict[str, object],
+) -> str:
+    return "\n".join(
+        [
+            "# Issue-fix Reviewer Feedback Inbox",
+            "",
+            f"- enabled: {packet.get('enabled')}",
+            f"- pending_count: {packet.get('pending_count')}",
+            f"- write_performed: {packet.get('write_performed')}",
+        ]
+    ).rstrip() + "\n"
 
 
 def handle_issue_fix_reviewer_command(
@@ -317,6 +366,60 @@ def handle_issue_fix_reviewer_command(
             generated_at=generated_at,
         )
         return payload, render_issue_fix_reviewer_recommendation_markdown
+
+    if args.issue_fix_command == "reviewer-feedback-inbox":
+        goal, requested_project = _load_goal_for_project(
+            registry_path=registry_path,
+            goal_id=args.goal_id,
+            project=args.project,
+        )
+        sinks_input = load_goal_reviewer_notification_sinks_input(
+            goal=goal,
+            project=requested_project,
+        )
+        lark_group_configured = bool(
+            sinks_input
+            and any(
+                isinstance(sink, dict) and sink.get("sink_kind") == "lark_chat"
+                for sink in (sinks_input.get("sinks") or [])
+            )
+        )
+        if not lark_group_configured:
+            payload = {
+                "ok": True,
+                "schema_version": "issue_fix_reviewer_feedback_inbox_v0",
+                "mode": "issue-fix-reviewer-feedback-inbox",
+                "enabled": False,
+                "configured_reviewer_group": False,
+                "pending_count": 0,
+                "items": [],
+                "external_reads_performed": False,
+            }
+        else:
+            config_ref = str(
+                sinks_input.get("feedback_inbox_config")
+                or ".loopx/config/lark/event-inbox.json"
+            )
+            if args.message_id:
+                payload = acknowledge_lark_event_inbox(
+                    project=requested_project,
+                    config_path=config_ref,
+                    message_ids=args.message_id,
+                    execute=args.execute,
+                )
+            else:
+                payload = inspect_lark_event_inbox(
+                    project=requested_project,
+                    config_path=config_ref,
+                    limit=args.limit,
+                )
+            payload = {
+                **payload,
+                "mode": "issue-fix-reviewer-feedback-inbox",
+                "configured_reviewer_group": True,
+                "source": "goal_default_lark_event_inbox",
+            }
+        return payload, render_issue_fix_reviewer_feedback_inbox_markdown
 
     if args.issue_fix_command != "reviewer-request":
         return None

@@ -820,11 +820,9 @@ def build_issue_fix_reviewer_request_packet(
     packet["secondary_notification_status"] = "not_configured"
     packet["secondary_notification_verified"] = False
     if notification_sinks_input:
-        notification_targets = (
-            list(packet.get("notified_reviewers") or [])
-            if execute
-            else list(packet.get("selected_reviewers") or [])
-        )
+        notification_targets = list(packet.get("selected_reviewers") or [])
+        if execute and packet.get("notified_reviewers"):
+            notification_targets = list(packet.get("notified_reviewers") or [])
         if execute:
             completed_reviewers = set(packet.get("existing_reviewed_by") or [])
             notification_targets = [
@@ -832,10 +830,7 @@ def build_issue_fix_reviewer_request_packet(
                 for handle in notification_targets
                 if handle not in completed_reviewers
             ]
-        canonical_ready = bool(
-            not execute or packet.get("reviewer_notification_verified") is True
-        )
-        if canonical_ready and notification_targets:
+        if notification_targets:
             secondary = build_issue_fix_reviewer_notification_sinks_result(
                 repo=repo,
                 pr_number=number,
@@ -860,9 +855,7 @@ def build_issue_fix_reviewer_request_packet(
             )
         else:
             packet["secondary_notification_status"] = (
-                "skipped_canonical_notification_unverified"
-                if execute and not canonical_ready
-                else "skipped_reviewer_already_reviewed"
+                "skipped_reviewer_already_reviewed"
                 if execute and packet.get("existing_reviewed_by")
                 else "skipped_reviewer_unavailable"
             )

@@ -35,6 +35,7 @@ from .cli_commands import (
     handle_evidence_log_command,
     handle_explore_command,
     handle_history_command,
+    handle_lark_inbox_command,
     handle_lark_kanban_command,
     handle_ml_experiment_command,
     handle_multi_agent_command,
@@ -63,6 +64,7 @@ from .cli_commands import (
     register_evidence_log_command,
     register_explore_commands,
     register_history_command,
+    register_lark_inbox_commands,
     register_lark_kanban_commands,
     register_ml_experiment_commands,
     register_multi_agent_commands,
@@ -182,6 +184,7 @@ def main(argv: list[str] | None = None) -> int:
     register_benchmark_command_group(sub, add_subcommand_format)
 
     register_project_lifecycle_commands(sub, add_subcommand_format)
+    register_lark_inbox_commands(sub, add_subcommand_format)
     register_lark_kanban_commands(sub, add_subcommand_format)
 
     register_status_commands(sub, add_subcommand_format)
@@ -402,6 +405,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     if lark_kanban_result is not None:
         return lark_kanban_result
+
+    lark_inbox_result = handle_lark_inbox_command(
+        args,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if lark_inbox_result is not None:
+        return lark_inbox_result
 
     if args.command == "check":
         return handle_check_command(
