@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 
@@ -47,6 +49,44 @@ def release_path(stdout: str) -> Path:
     raise AssertionError(stdout)
 
 
+def assert_install_waits_for_promotion_guard(root: Path) -> None:
+    env = {**install_env(root), "LOOPX_RELEASE_ID": "guarded"}
+    releases_dir = Path(env["LOOPX_RELEASES_DIR"])
+    releases_dir.mkdir(parents=True)
+    guard_path = releases_dir / ".install-guard"
+    legacy_lock = releases_dir / ".install-lock"
+    with guard_path.open("a+", encoding="utf-8") as guard:
+        fcntl.flock(guard.fileno(), fcntl.LOCK_EX)
+        process = subprocess.Popen(
+            [str(INSTALL_SCRIPT)],
+            cwd=REPO_ROOT,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline and process.poll() is None:
+                assert not legacy_lock.exists(), legacy_lock
+                time.sleep(0.05)
+            assert process.poll() is None, process.communicate()
+        except Exception:
+            process.terminate()
+            try:
+                process.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate()
+            raise
+        finally:
+            fcntl.flock(guard.fileno(), fcntl.LOCK_UN)
+
+    stdout, stderr = process.communicate(timeout=120)
+    assert process.returncode == 0, (stdout, stderr)
+    assert release_path(stdout).is_dir(), stdout
+
+
 def assert_concurrent_release_ids_are_distinct(root: Path) -> None:
     env = {**install_env(root), "LOOPX_RELEASE_ID": "same-second"}
     releases_dir = Path(env["LOOPX_RELEASES_DIR"])
@@ -69,7 +109,7 @@ def assert_concurrent_release_ids_are_distinct(root: Path) -> None:
         assert process.returncode == 0, (stdout, stderr)
 
     release_paths = [release_path(stdout).resolve() for stdout, _ in completed]
-    assert len(set(release_paths)) == 2, release_paths
+    assert len(set(release_paths)) == len(processes), release_paths
     for path in release_paths:
         manifest = json.loads((path / "release.json").read_text(encoding="utf-8"))
         assert manifest["release_id"] == path.name, manifest
@@ -98,6 +138,7 @@ def assert_resolved_archive_commit_is_recorded(root: Path) -> None:
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="loopx-release-promotion-concurrency-") as tmp:
         root = Path(tmp)
+        assert_install_waits_for_promotion_guard(root)
         assert_concurrent_release_ids_are_distinct(root)
         assert_resolved_archive_commit_is_recorded(root)
     print("release-promotion-concurrency-smoke ok")

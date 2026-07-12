@@ -33,6 +33,48 @@ cleanup_install_lock() {
 
 trap cleanup_install_lock EXIT
 
+run_under_install_guard() {
+  if [[ "${LOOPX_INSTALL_GUARD_HELD:-0}" == "1" ]]; then
+    return 0
+  fi
+  local python_bin="${LOOPX_PYTHON:-python3}"
+  local guard_file="$releases_dir/.install-guard"
+  LOOPX_INSTALL_GUARD_FILE="$guard_file" \
+    LOOPX_INSTALL_SCRIPT="$repo_root/scripts/install-local.sh" \
+    exec "$python_bin" - "$@" <<'PY'
+from pathlib import Path
+import fcntl
+import os
+import sys
+import time
+
+guard_path = Path(os.environ["LOOPX_INSTALL_GUARD_FILE"])
+script = os.environ["LOOPX_INSTALL_SCRIPT"]
+timeout = 60.0
+
+guard_path.parent.mkdir(parents=True, exist_ok=True)
+with guard_path.open("a+", encoding="utf-8") as guard:
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fcntl.flock(guard.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                print(
+                    "loopx installer error: timed out waiting for another local install to finish",
+                    file=sys.stderr,
+                )
+                raise SystemExit(1)
+            time.sleep(0.1)
+
+    os.set_inheritable(guard.fileno(), True)
+    env = dict(os.environ)
+    env["LOOPX_INSTALL_GUARD_HELD"] = "1"
+    os.execve(script, [script, *sys.argv[1:]], env)
+PY
+}
+
 reserve_release_id() {
   if [[ ! "$release_id_request" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
     echo "loopx installer error: LOOPX_RELEASE_ID must be a safe release directory name" >&2
@@ -281,9 +323,9 @@ fi
 
 export LOOPX_PROMOTION_MODE="$promotion_mode"
 
-warn_stale_promotion_readiness
-
 mkdir -p "$releases_dir"
+run_under_install_guard "$@"
+warn_stale_promotion_readiness
 acquire_install_lock
 mkdir -p "$bin_dir"
 disable_legacy_shim "goal-harness"
