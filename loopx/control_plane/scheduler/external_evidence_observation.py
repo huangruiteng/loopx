@@ -51,9 +51,33 @@ EXTERNAL_DEPENDENCY_TARGET_KEY_PATTERN = re.compile(
 )
 
 
+def _monitor_item_has_observation_state(item: dict[str, Any]) -> bool:
+    if str(item.get("result_hash") or "").strip():
+        return True
+    if str(item.get("last_checked_at") or "").strip():
+        return True
+    return False
+
+
+def _external_dependency_monitors_needing_first_observation(
+    summary: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for item in todo_summary_monitor_items(summary):
+        target_key = str(item.get("target_key") or "").strip()
+        if not target_key:
+            continue
+        if not EXTERNAL_DEPENDENCY_TARGET_KEY_PATTERN.search(target_key):
+            continue
+        if not _monitor_item_has_observation_state(item):
+            items.append(item)
+    return items
+
+
 def projected_monitor_handle(summary: dict[str, Any] | None) -> dict[str, Any] | None:
     actionable_items = [
         *todo_summary_monitor_due_items(summary),
+        *_external_dependency_monitors_needing_first_observation(summary),
         *todo_summary_monitor_schedule_gap_items(summary),
     ]
     monitor_items = actionable_items or todo_summary_monitor_items(summary)
@@ -91,26 +115,10 @@ def scoped_monitor_watch_without_advancement(summary: dict[str, Any] | None) -> 
     return todo_summary_open_task_counts(summary).get("advancement", 0) <= 0
 
 
-def _monitor_item_has_observation_state(item: dict[str, Any]) -> bool:
-    if str(item.get("result_hash") or "").strip():
-        return True
-    if str(item.get("last_checked_at") or "").strip():
-        return True
-    return False
-
-
 def _external_dependency_monitor_needs_first_observation(
     summary: dict[str, Any] | None,
 ) -> bool:
-    for item in todo_summary_monitor_items(summary):
-        target_key = str(item.get("target_key") or "").strip()
-        if not target_key:
-            continue
-        if not EXTERNAL_DEPENDENCY_TARGET_KEY_PATTERN.search(target_key):
-            continue
-        if not _monitor_item_has_observation_state(item):
-            return True
-    return False
+    return bool(_external_dependency_monitors_needing_first_observation(summary))
 
 
 def _matches_any(patterns: tuple[re.Pattern[str], ...], texts: list[str]) -> bool:
