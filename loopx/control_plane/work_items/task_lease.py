@@ -159,6 +159,13 @@ def task_lease_owner_constraint(
             "reason": "owner_excluded_from_todo",
             "excluded_agents": excluded_agents,
         }
+    claimed_by = normalize_todo_claimed_by(todo.get("claimed_by"))
+    if claimed_by and claimed_by != normalized_owner:
+        return {
+            "effective": False,
+            "reason": "owner_conflicts_with_claim",
+            "claimed_by": claimed_by,
+        }
     return {"effective": True}
 
 
@@ -218,6 +225,11 @@ def require_task_lease_owner_allowed(
             )
         elif reason == "owner_excluded_from_todo":
             message = f"task lease owner {owner!r} is excluded from todo {todo_id!r}"
+        elif reason == "owner_conflicts_with_claim":
+            message = (
+                f"task lease owner {owner!r} conflicts with todo claim "
+                f"{constraint.get('claimed_by')!r}"
+            )
         elif reason == "owner_not_registered":
             message = f"task lease owner {owner!r} is not registered for goal {goal_id!r}"
         else:

@@ -90,6 +90,20 @@ def set_excluded_agents(state_file: Path, *, todo_id: str, agents: list[str]) ->
     raise AssertionError(f"todo metadata not found: {todo_id}")
 
 
+def set_claimed_by(state_file: Path, *, todo_id: str, owner: str | None) -> None:
+    lines = state_file.read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        if f"todo_id={todo_id}" not in line:
+            continue
+        line = re.sub(r"\s+claimed_by=[^\s<>]+", "", line)
+        if owner:
+            line = line.replace(" -->", f" claimed_by={owner} -->")
+        lines[index] = line
+        state_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return
+    raise AssertionError(f"todo metadata not found: {todo_id}")
+
+
 def set_todo_status(state_file: Path, *, todo_id: str, status: str) -> None:
     lines = state_file.read_text(encoding="utf-8").splitlines()
     for index, line in enumerate(lines):
@@ -160,6 +174,11 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="loopx-task-lease-smoke-") as tmp:
         registry_path, state_file = write_fixture(Path(tmp))
 
+        set_claimed_by(
+            state_file,
+            todo_id=TODO_A,
+            owner="codex-main-control",
+        )
         first = payload(
             cli(
                 registry_path,
@@ -182,6 +201,27 @@ def main() -> int:
         assert first["lease"]["schema_version"] == "task_lease_v0", first
         assert first["lease"]["version"] == 1, first
         assert first["lease"]["acquire_ttl_seconds"] == 120, first
+
+        set_claimed_by(
+            state_file,
+            todo_id=TODO_A,
+            owner="codex-side-bypass",
+        )
+        claim_conflict_inspect = payload(
+            cli(registry_path, "inspect", "--goal-id", GOAL_ID, "--todo-id", TODO_A)
+        )
+        assert claim_conflict_inspect["active"] is False, claim_conflict_inspect
+        assert claim_conflict_inspect["executor_constraint"]["reason"] == (
+            "owner_conflicts_with_claim"
+        ), claim_conflict_inspect
+        assert claim_conflict_inspect["executor_constraint"]["claimed_by"] == (
+            "codex-side-bypass"
+        ), claim_conflict_inspect
+        set_claimed_by(
+            state_file,
+            todo_id=TODO_A,
+            owner="codex-main-control",
+        )
 
         set_todo_status(state_file, todo_id=TODO_A, status="done")
         terminal_inspect = payload(
@@ -468,6 +508,30 @@ def main() -> int:
         )
 
         set_excluded_agents(state_file, todo_id=TODO_A, agents=[])
+        claim_blocked_transfer = cli(
+            registry_path,
+            "transfer",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            TODO_A,
+            "--owner",
+            "codex-main-control",
+            "--idempotency-key",
+            "turn-1",
+            "--new-owner",
+            "codex-side-bypass",
+            "--new-idempotency-key",
+            "side-transfer",
+            "--expected-version",
+            "2",
+            check=False,
+        )
+        assert claim_blocked_transfer.returncode == 1, claim_blocked_transfer.stdout
+        assert payload(claim_blocked_transfer)["error_code"] == (
+            "owner_conflicts_with_claim"
+        )
+        set_claimed_by(state_file, todo_id=TODO_A, owner=None)
         transferred = payload(
             cli(
                 registry_path,
