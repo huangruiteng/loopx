@@ -18,7 +18,10 @@ from ..work_items.autonomous_replan_obligation import (
 )
 from ..work_items.repair_delta import repair_delta_kinds_have_frontier_delta
 from .goal_vision_policy import goal_vision_repeats_advancement_until_closed
-from .goal_vision_state import goal_vision_state_is_closed
+from .goal_vision_state import (
+    goal_vision_state_is_closed,
+    goal_vision_state_requires_successor,
+)
 
 
 GOAL_FRONTIER_PROJECTION_SCHEMA_VERSION = "goal_frontier_projection_v0"
@@ -31,6 +34,7 @@ AUTONOMOUS_REPLAN_REQUIRED_MODE = "autonomous_replan_required"
 FRONTIER_EXHAUSTED_MONITOR_TRIGGER = "frontier_exhausted_monitor_lane"
 LONG_TODO_CHAIN_TRIGGER = "long_todo_chain"
 VISION_ACCEPTANCE_GAP_TRIGGER = "vision_acceptance_gap"
+VISION_SUCCESSOR_GAP_TRIGGER = "vision_successor_required"
 VISION_CHECKPOINT_MISSING_TRIGGER = "vision_checkpoint_missing"
 TODO_SUCCESSION_GAP_TRIGGER = "completed_advancement_without_successor"
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
@@ -411,6 +415,8 @@ def projected_autonomous_replan_ack_for_agent(
 
 def acceptance_gaps_from_agent_vision(
     agent_vision: dict[str, Any] | None,
+    *,
+    goal_status: str | None = None,
 ) -> list[dict[str, Any]]:
     """Convert bounded vision replan triggers into goal-frontier gap records."""
 
@@ -419,6 +425,30 @@ def acceptance_gaps_from_agent_vision(
     patch = agent_vision.get("vision_patch") if isinstance(agent_vision.get("vision_patch"), dict) else {}
     state = str(agent_vision.get("state") or "").strip()
     if goal_vision_state_is_closed(state):
+        normalized_goal_status = str(goal_status or "").strip().lower()
+        active_goal = normalized_goal_status == "active" or normalized_goal_status.startswith(
+            "active-"
+        )
+        if goal_vision_state_requires_successor(state) and active_goal:
+            return [
+                {
+                    "kind": VISION_SUCCESSOR_GAP_TRIGGER,
+                    "source": "latest_agent_vision",
+                    "agent_id": agent_vision.get("agent_id"),
+                    "state": agent_vision.get("state"),
+                    "goal_status": normalized_goal_status,
+                    "replan_trigger_summary": (
+                        "the current stage vision is closed while the registry goal "
+                        "remains active; establish a successor vision before continuing"
+                    ),
+                    "acceptance_summary": (
+                        "Write the next bounded agent vision, or explicitly retire, "
+                        "supersede, or close the lane with no_followup."
+                    ),
+                    "advancement_policy": "repeat_until_closed",
+                    "generated_at": agent_vision.get("generated_at"),
+                }
+            ]
         return []
     acceptance = _compact_projection_text(patch.get("acceptance_summary"), limit=420)
     explicit_trigger = _compact_projection_text(
@@ -1010,6 +1040,10 @@ def derive_goal_frontier_replan_obligation_from_summaries(
     compact_acceptance_gaps = [
         item for item in (acceptance_gaps or []) if isinstance(item, dict)
     ]
+    successor_vision_required = any(
+        item.get("kind") == VISION_SUCCESSOR_GAP_TRIGGER
+        for item in compact_acceptance_gaps
+    )
     acceptance_allows_watch_lane_continuation = bool(
         compact_acceptance_gaps
         and not any(
@@ -1084,8 +1118,13 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         )
     if (
         compact_acceptance_gaps
-        and agent_counts.get("advancement", 0) == 0
-        and total_frontier_advancement == 0
+        and (
+            successor_vision_required
+            or (
+                agent_counts.get("advancement", 0) == 0
+                and total_frontier_advancement == 0
+            )
+        )
         and not acceptance_allows_watch_lane_continuation
     ):
         return build_autonomous_replan_obligation_payload(
@@ -1302,6 +1341,7 @@ def build_goal_frontier_projection_context_from_status(
     work_lane_contract: dict[str, Any] | None,
     neutral_replan_ack_classifications: set[str],
     registered_agent_ids: list[str] | None = None,
+    goal_status: str | None = None,
 ) -> dict[str, Any]:
     """Build the quota-facing goal-frontier read model.
 
@@ -1336,7 +1376,10 @@ def build_goal_frontier_projection_context_from_status(
         agent_id=agent_id,
     )
     acceptance_gaps = (
-        acceptance_gaps_from_agent_vision(latest_agent_vision)
+        acceptance_gaps_from_agent_vision(
+            latest_agent_vision,
+            goal_status=goal_status,
+        )
         + acceptance_gaps_from_vision_checkpoint(latest_missing_vision_checkpoint)
     )
     projected_replan_ack = projected_autonomous_replan_ack_for_agent(

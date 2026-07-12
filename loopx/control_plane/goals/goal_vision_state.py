@@ -14,6 +14,7 @@ GOAL_VISION_CLOSED_STATES = frozenset(
         "no_followup",
     }
 )
+GOAL_VISION_SUCCESSOR_REQUIRED_STATES = frozenset({"vision_closed"})
 GOAL_VISION_STATE_ALIASES = {
     "closed": "vision_closed",
     "satisfied": "vision_closed",
@@ -49,3 +50,13 @@ def goal_vision_state_is_closed(value: Any) -> bool:
     except ValueError:
         return False
     return state in GOAL_VISION_CLOSED_STATES
+
+
+def goal_vision_state_requires_successor(value: Any) -> bool:
+    """Return whether the state closes one stage but not the active goal lane."""
+
+    try:
+        state = normalize_goal_vision_state(value)
+    except ValueError:
+        return False
+    return state in GOAL_VISION_SUCCESSOR_REQUIRED_STATES

@@ -1279,6 +1279,7 @@ def build_quota_should_run(
     include_scheduler_detail: bool = False,
 ) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
+    registry_goal = _registry_goal_by_id(status_payload).get(safe_goal_id) or {}
     plan = build_quota_plan(status_payload, mode="should-run")
     item = next((candidate for candidate in _quota_plan_items(plan) if candidate.get("goal_id") == safe_goal_id), None)
     health_items = plan.get("health_items") if isinstance(plan.get("health_items"), list) else []
@@ -1426,6 +1427,7 @@ def build_quota_should_run(
             work_lane_contract=work_lane_contract,
             neutral_replan_ack_classifications=AUTONOMOUS_REPLAN_ACK_NEUTRAL_CLASSIFICATIONS,
             registered_agent_ids=registered_agent_ids,
+            goal_status=str(registry_goal.get("status") or ""),
         )
         replan_obligation = goal_frontier_context.get("replan_obligation")
         replan_scope = goal_frontier_context.get("replan_scope") or {}

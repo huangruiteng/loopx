@@ -245,6 +245,16 @@ The canonical stored close states are `vision_closed`, `retired`,
 `completed_current_slice` intentionally remains open because completing one
 slice is not evidence that the per-agent vision acceptance is satisfied.
 
+These close states do not all have the same succession meaning.
+`vision_closed` means the current bounded stage passed its acceptance; while
+the registry goal remains `active` (including `active-*` variants), quota must
+project `vision_successor_required` and run a bounded replan before ordinary
+advancement or monitor quiet. The agent must write the next bounded vision, or
+choose the explicit terminal lane semantics `retired`, `superseded`, or
+`no_followup`. A completed/archived registry goal does not need a successor
+vision. This keeps stage completion from silently terminating a long-horizon
+goal.
+
 ## Replan Triggers
 
 A replan trigger is goal-level and should be evaluated before lane-local quiet
