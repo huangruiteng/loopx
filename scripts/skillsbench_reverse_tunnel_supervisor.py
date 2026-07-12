@@ -38,8 +38,8 @@ SCHEMA_VERSION = "skillsbench_reverse_tunnel_supervisor_v0"
 DEFAULT_REMOTE_FORWARD = "127.0.0.1:18180:127.0.0.1:18180"
 DEFAULT_TEST_HOST = "chatgpt.com"
 DEFAULT_TEST_PORT = 443
-BRIDGE_HELPER = Path(__file__).resolve().with_name(
-    "skillsbench_reverse_channel_bridge.py"
+BRIDGE_HELPER = (
+    Path(__file__).resolve().with_name("skillsbench_reverse_channel_bridge.py")
 )
 
 
@@ -306,7 +306,9 @@ def _cleanup_remote_json_socket(args: argparse.Namespace) -> dict[str, Any]:
     return payload
 
 
-def _materialize_remote_json_client(args: argparse.Namespace, runtime_dir: Path) -> bool:
+def _materialize_remote_json_client(
+    args: argparse.Namespace, runtime_dir: Path
+) -> bool:
     local_client = runtime_dir / "json-bridge-client"
     try:
         subprocess.run(
@@ -468,6 +470,62 @@ def _run_remote_probe(args: argparse.Namespace) -> tuple[bool, str]:
     return False, "proxy_connect_rejected"
 
 
+def _start_tunnel_process(
+    args: argparse.Namespace,
+    *,
+    json_local_socket: Path | None = None,
+) -> subprocess.Popen[Any]:
+    return subprocess.Popen(
+        _tunnel_command(args, json_local_socket=json_local_socket),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        start_new_session=True,
+    )
+
+
+def _wait_for_tunnel_ready(
+    args: argparse.Namespace,
+    tunnel_proc: subprocess.Popen[Any],
+    *,
+    timeout_sec: float,
+) -> tuple[bool, str, int]:
+    deadline = time.monotonic() + max(1.0, float(timeout_sec))
+    status = "not_started"
+    attempts = 0
+    while time.monotonic() < deadline:
+        if tunnel_proc.poll() is not None:
+            return False, "tunnel_process_exited", attempts
+        ready, status = _run_remote_probe(args)
+        attempts += 1
+        if ready:
+            return True, status, attempts
+        time.sleep(max(0.1, float(args.probe_interval_sec)))
+    return False, status, attempts
+
+
+def _tunnel_liveness_public_contract(args: argparse.Namespace) -> dict[str, Any]:
+    interval_sec = max(0.0, float(args.tunnel_health_interval_sec))
+    enabled = bool(interval_sec > 0 and args.remote_command)
+    return {
+        "schema_version": "skillsbench_reverse_tunnel_liveness_v0",
+        "enabled": enabled,
+        "state": "not_started" if enabled else "disabled",
+        "health_interval_sec": interval_sec,
+        "failure_threshold": max(1, int(args.tunnel_health_failure_threshold)),
+        "reconnect_attempt_limit": max(0, int(args.tunnel_reconnect_attempts)),
+        "health_probe_attempt_count": 0,
+        "health_probe_success_count": 0,
+        "health_probe_failure_count": 0,
+        "max_consecutive_failure_count": 0,
+        "reconnect_attempt_count": 0,
+        "reconnect_success_count": 0,
+        "reconnect_failure_count": 0,
+        "last_probe_status": "not_started",
+        "raw_probe_output_recorded": False,
+    }
+
+
 def _stop_process_group(proc: subprocess.Popen[Any], *, grace_sec: float = 5.0) -> str:
     if proc.poll() is not None:
         return "already_exited"
@@ -506,12 +564,7 @@ def _write_private_log(
     target = Path(path).expanduser()
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
-        (
-            "# stdout\n"
-            f"{stdout_text}\n"
-            "# stderr\n"
-            f"{stderr_text}\n"
-        ),
+        (f"# stdout\n{stdout_text}\n# stderr\n{stderr_text}\n"),
         encoding="utf-8",
     )
     return True
@@ -590,7 +643,7 @@ def _remote_failure_cleanup_public_contract(args: argparse.Namespace) -> dict[st
 
 
 def _remote_failure_cleanup_command(args: argparse.Namespace) -> str:
-    code = r'''
+    code = r"""
 import json
 import os
 import signal
@@ -705,7 +758,7 @@ print(json.dumps({
     "docker_matched_count": docker_matched,
     "docker_removed_count": docker_removed,
 }, sort_keys=True))
-'''
+"""
     include_docker = "1" if args.remote_failure_cleanup_include_docker else "0"
     return (
         "# LOOPX_REMOTE_FAILURE_CLEANUP\n"
@@ -793,6 +846,7 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         "json_bridge": _json_bridge_public_contract(args),
         "remote_failure_cleanup": _remote_failure_cleanup_public_contract(args),
         "public_artifact_sync": _public_artifact_sync_contract(args),
+        "tunnel_liveness": _tunnel_liveness_public_contract(args),
     }
 
     tunnel_proc: subprocess.Popen[Any] | None = None
@@ -815,9 +869,7 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                 grace_sec=1.0,
             )
             if json_bridge_proc.returncode is not None:
-                payload["json_bridge"]["server_exit_code"] = (
-                    json_bridge_proc.returncode
-                )
+                payload["json_bridge"]["server_exit_code"] = json_bridge_proc.returncode
         if runtime_dir_obj is not None:
             runtime_dir_obj.cleanup()
         return returncode, payload
@@ -851,24 +903,21 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                 json_bridge_payload["server_exit_code"] = json_bridge_proc.returncode
                 return finish(2)
             json_bridge_payload["local_socket_ready"] = True
-            json_bridge_payload["remote_socket_cleanup"] = (
-                _cleanup_remote_json_socket(args)
+            json_bridge_payload["remote_socket_cleanup"] = _cleanup_remote_json_socket(
+                args
             )
             if not json_bridge_payload["remote_socket_cleanup"].get("ok"):
-                payload["first_blocker"] = (
-                    json_bridge_payload["remote_socket_cleanup"].get(
-                        "first_blocker",
-                        "json_bridge_remote_socket_cleanup_failed",
-                    )
+                payload["first_blocker"] = json_bridge_payload[
+                    "remote_socket_cleanup"
+                ].get(
+                    "first_blocker",
+                    "json_bridge_remote_socket_cleanup_failed",
                 )
                 return finish(2)
 
-        tunnel_proc = subprocess.Popen(
-            _tunnel_command(args, json_local_socket=json_local_socket),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            start_new_session=True,
+        tunnel_proc = _start_tunnel_process(
+            args,
+            json_local_socket=json_local_socket,
         )
         payload["tunnel_started"] = True
     except OSError as exc:
@@ -876,19 +925,18 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         payload["tunnel_error_type"] = type(exc).__name__[:80]
         return finish(2)
 
-    deadline = time.monotonic() + max(1.0, float(args.tunnel_ready_timeout_sec))
-    while time.monotonic() < deadline:
-        if tunnel_proc.poll() is not None:
-            payload["first_blocker"] = "reverse_tunnel_process_exited_before_ready"
-            payload["tunnel_exit_code"] = tunnel_proc.returncode
-            return finish(2)
-        ready, status = _run_remote_probe(args)
-        payload["probe_attempt_count"] = int(payload["probe_attempt_count"]) + 1
-        payload["probe_status"] = status
-        if ready:
-            payload["tunnel_ready"] = True
-            break
-        time.sleep(max(0.1, float(args.probe_interval_sec)))
+    ready, status, probe_attempts = _wait_for_tunnel_ready(
+        args,
+        tunnel_proc,
+        timeout_sec=args.tunnel_ready_timeout_sec,
+    )
+    payload["probe_attempt_count"] = probe_attempts
+    payload["probe_status"] = status
+    payload["tunnel_ready"] = ready
+    if status == "tunnel_process_exited":
+        payload["first_blocker"] = "reverse_tunnel_process_exited_before_ready"
+        payload["tunnel_exit_code"] = tunnel_proc.returncode
+        return finish(2)
 
     if payload["tunnel_ready"] is not True:
         payload["first_blocker"] = "reverse_tunnel_probe_not_ready"
@@ -918,18 +966,136 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         args.ssh_destination,
         _remote_command_with_bridge_env(args),
     ]
+    assert runtime_dir_obj is not None
+    runtime_dir = Path(runtime_dir_obj.name)
+    stdout_path = runtime_dir / "remote-command.stdout"
+    stderr_path = runtime_dir / "remote-command.stderr"
+    remote_proc: subprocess.Popen[Any] | None = None
+    remote_command_timed_out = False
+    tunnel_liveness_failed = False
+    liveness = payload["tunnel_liveness"]
     try:
-        proc = subprocess.run(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=max(1.0, float(args.run_timeout_sec)),
-            check=False,
-        )
-        stdout_text = proc.stdout or ""
-        stderr_text = proc.stderr or ""
-        payload["remote_command_exit_code"] = proc.returncode
+        with (
+            stdout_path.open("w", encoding="utf-8") as stdout_handle,
+            stderr_path.open("w", encoding="utf-8") as stderr_handle,
+        ):
+            remote_proc = subprocess.Popen(
+                command,
+                stdout=stdout_handle,
+                stderr=stderr_handle,
+                text=True,
+                start_new_session=True,
+            )
+            run_deadline = time.monotonic() + max(1.0, float(args.run_timeout_sec))
+            health_interval = max(0.0, float(args.tunnel_health_interval_sec))
+            next_health_probe = time.monotonic() + health_interval
+            consecutive_failures = 0
+            if liveness["enabled"]:
+                liveness["state"] = "healthy"
+
+            while remote_proc.poll() is None:
+                now = time.monotonic()
+                if now >= run_deadline:
+                    remote_command_timed_out = True
+                    _stop_process_group(remote_proc, grace_sec=1.0)
+                    break
+                if not liveness["enabled"] or now < next_health_probe:
+                    time.sleep(0.1)
+                    continue
+
+                if tunnel_proc.poll() is not None:
+                    health_ready = False
+                    health_status = "tunnel_process_exited"
+                else:
+                    health_ready, health_status = _run_remote_probe(args)
+                    payload["probe_attempt_count"] = (
+                        int(payload["probe_attempt_count"]) + 1
+                    )
+                liveness["health_probe_attempt_count"] = (
+                    int(liveness["health_probe_attempt_count"]) + 1
+                )
+                liveness["last_probe_status"] = health_status
+                if health_ready:
+                    liveness["health_probe_success_count"] = (
+                        int(liveness["health_probe_success_count"]) + 1
+                    )
+                    consecutive_failures = 0
+                    if liveness["state"] != "reconnected":
+                        liveness["state"] = "healthy"
+                    next_health_probe = time.monotonic() + health_interval
+                    continue
+
+                liveness["health_probe_failure_count"] = (
+                    int(liveness["health_probe_failure_count"]) + 1
+                )
+                consecutive_failures += 1
+                if health_status == "tunnel_process_exited":
+                    consecutive_failures = max(
+                        consecutive_failures,
+                        int(liveness["failure_threshold"]),
+                    )
+                liveness["max_consecutive_failure_count"] = max(
+                    int(liveness["max_consecutive_failure_count"]),
+                    consecutive_failures,
+                )
+                if consecutive_failures < int(liveness["failure_threshold"]):
+                    liveness["state"] = "degraded"
+                    next_health_probe = time.monotonic() + health_interval
+                    continue
+
+                recovered = False
+                for _attempt in range(int(liveness["reconnect_attempt_limit"])):
+                    liveness["reconnect_attempt_count"] = (
+                        int(liveness["reconnect_attempt_count"]) + 1
+                    )
+                    _stop_process_group(tunnel_proc, grace_sec=1.0)
+                    try:
+                        tunnel_proc = _start_tunnel_process(
+                            args,
+                            json_local_socket=json_local_socket,
+                        )
+                    except OSError as exc:
+                        liveness["last_probe_status"] = (
+                            f"reconnect_launch_failed_{type(exc).__name__[:40]}"
+                        )
+                        liveness["reconnect_failure_count"] = (
+                            int(liveness["reconnect_failure_count"]) + 1
+                        )
+                        continue
+                    reconnect_ready, reconnect_status, reconnect_probes = (
+                        _wait_for_tunnel_ready(
+                            args,
+                            tunnel_proc,
+                            timeout_sec=args.tunnel_reconnect_ready_timeout_sec,
+                        )
+                    )
+                    payload["probe_attempt_count"] = (
+                        int(payload["probe_attempt_count"]) + reconnect_probes
+                    )
+                    liveness["last_probe_status"] = reconnect_status
+                    if reconnect_ready:
+                        liveness["reconnect_success_count"] = (
+                            int(liveness["reconnect_success_count"]) + 1
+                        )
+                        liveness["state"] = "reconnected"
+                        consecutive_failures = 0
+                        recovered = True
+                        break
+                    liveness["reconnect_failure_count"] = (
+                        int(liveness["reconnect_failure_count"]) + 1
+                    )
+                if not recovered:
+                    liveness["state"] = "failed"
+                    tunnel_liveness_failed = True
+                    _stop_process_group(remote_proc, grace_sec=1.0)
+                    break
+                next_health_probe = time.monotonic() + health_interval
+
+            remote_proc.wait(timeout=2.0)
+
+        stdout_text = stdout_path.read_text(encoding="utf-8")
+        stderr_text = stderr_path.read_text(encoding="utf-8")
+        payload["remote_command_exit_code"] = remote_proc.returncode
         payload["remote_stdout_size_bucket"] = _size_bucket(stdout_text)
         payload["remote_stderr_size_bucket"] = _size_bucket(stderr_text)
         payload["private_log_written"] = _write_private_log(
@@ -938,12 +1104,28 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
             stderr_text=stderr_text,
         )
         payload["public_artifact_sync"] = _sync_remote_public_artifacts(args)
+        if remote_command_timed_out:
+            payload["remote_command_timeout"] = True
+            payload["first_blocker"] = "remote_command_timeout"
+            payload["remote_failure_cleanup"] = _run_remote_failure_cleanup(
+                args,
+                trigger="remote_command_timeout",
+            )
+            return finish(124)
+        if tunnel_liveness_failed:
+            payload["tunnel_ready"] = False
+            payload["first_blocker"] = "reverse_tunnel_liveness_unrecoverable"
+            payload["remote_failure_cleanup"] = _run_remote_failure_cleanup(
+                args,
+                trigger="reverse_tunnel_liveness_unrecoverable",
+            )
+            return finish(75)
         sync_ok = (
             not _public_artifact_sync_requested(args)
             or payload["public_artifact_sync"].get("ok") is True
         )
-        payload["ok"] = proc.returncode == 0 and sync_ok
-        if proc.returncode != 0:
+        payload["ok"] = remote_proc.returncode == 0 and sync_ok
+        if remote_proc.returncode != 0:
             payload["first_blocker"] = "remote_command_exit_nonzero"
             payload["remote_failure_cleanup"] = _run_remote_failure_cleanup(
                 args,
@@ -956,26 +1138,19 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
             )
         return finish(
             0
-            if proc.returncode == 0 and sync_ok
-            else proc.returncode or 3
+            if remote_proc.returncode == 0 and sync_ok
+            else remote_proc.returncode or 3
         )
-    except subprocess.TimeoutExpired as exc:
-        stdout_text = exc.stdout if isinstance(exc.stdout, str) else ""
-        stderr_text = exc.stderr if isinstance(exc.stderr, str) else ""
-        payload["remote_command_timeout"] = True
-        payload["remote_stdout_size_bucket"] = _size_bucket(stdout_text)
-        payload["remote_stderr_size_bucket"] = _size_bucket(stderr_text)
-        payload["private_log_written"] = _write_private_log(
-            args.private_log_path,
-            stdout_text=stdout_text,
-            stderr_text=stderr_text,
-        )
-        payload["first_blocker"] = "remote_command_timeout"
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        if remote_proc is not None:
+            _stop_process_group(remote_proc, grace_sec=1.0)
+        payload["first_blocker"] = "remote_command_monitor_failed"
+        payload["remote_command_monitor_error_type"] = type(exc).__name__[:80]
         payload["remote_failure_cleanup"] = _run_remote_failure_cleanup(
             args,
-            trigger="remote_command_timeout",
+            trigger="remote_command_monitor_failed",
         )
-        return finish(124)
+        return finish(3)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -997,6 +1172,33 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--probe-interval-sec", type=float, default=1.0)
     parser.add_argument("--tunnel-ready-timeout-sec", type=float, default=30.0)
     parser.add_argument("--keepalive-interval-sec", type=int, default=20)
+    parser.add_argument(
+        "--tunnel-health-interval-sec",
+        type=float,
+        default=30.0,
+        help=(
+            "Interval for CONNECT probes while the remote command is running; "
+            "set to 0 to disable ongoing liveness checks."
+        ),
+    )
+    parser.add_argument(
+        "--tunnel-health-failure-threshold",
+        type=int,
+        default=2,
+        help="Consecutive failed health probes before bounded tunnel reconnect.",
+    )
+    parser.add_argument(
+        "--tunnel-reconnect-attempts",
+        type=int,
+        default=2,
+        help="Maximum tunnel restart attempts after sustained liveness failure.",
+    )
+    parser.add_argument(
+        "--tunnel-reconnect-ready-timeout-sec",
+        type=float,
+        default=30.0,
+        help="Readiness budget for each restarted tunnel.",
+    )
     parser.add_argument("--run-timeout-sec", type=float, default=7200.0)
     parser.add_argument(
         "--remote-failure-cleanup-pattern",
@@ -1205,7 +1407,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         for pattern in args.remote_public_artifact_glob:
             parts = Path(pattern).parts
             if Path(pattern).is_absolute() or ".." in parts:
-                parser.error("--remote-public-artifact-glob must be relative and bounded")
+                parser.error(
+                    "--remote-public-artifact-glob must be relative and bounded"
+                )
     if args.local_run_ledger_path and not _public_artifact_sync_requested(args):
         parser.error("--local-run-ledger-path requires artifact sync")
     if args.local_ledger_catchup_root and not args.local_run_ledger_path:

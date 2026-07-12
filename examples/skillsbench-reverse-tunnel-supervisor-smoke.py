@@ -93,6 +93,59 @@ sys.exit(0)
     path.chmod(0o755)
 
 
+def _flaky_fake_ssh(path: Path, log_path: Path, state_dir: Path) -> None:
+    generation_path = state_dir / "tunnel-generation"
+    probe_count_path = state_dir / "probe-count"
+    path.write_text(
+        f"""#!/usr/bin/env python3
+import signal
+import sys
+import time
+from pathlib import Path
+
+log_path = Path({str(log_path)!r})
+generation_path = Path({str(generation_path)!r})
+probe_count_path = Path({str(probe_count_path)!r})
+args = sys.argv[1:]
+with log_path.open("a", encoding="utf-8") as handle:
+    handle.write(repr(args) + "\\n")
+
+if "-R" in args:
+    generation = int(generation_path.read_text() or "0") if generation_path.exists() else 0
+    generation_path.write_text(str(generation + 1), encoding="utf-8")
+    running = True
+    def stop(_sig, _frame):
+        global running
+        running = False
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    while running:
+        time.sleep(0.02)
+    sys.exit(0)
+
+remote_command = args[-1] if args else ""
+if "LOOPX_REVERSE_TUNNEL_PROBE" in remote_command:
+    generation = int(generation_path.read_text() or "0") if generation_path.exists() else 0
+    count = int(probe_count_path.read_text() or "0") if probe_count_path.exists() else 0
+    probe_count_path.write_text(str(count + 1), encoding="utf-8")
+    if generation >= 2 or count == 0:
+        print("HTTP/1.1 200 Connection Established")
+        sys.exit(0)
+    sys.exit(42)
+
+if "run-long-skillsbench" in remote_command:
+    time.sleep(0.9)
+    print('{{"ok": true, "source": "flaky_fake_remote_command"}}')
+    sys.exit(0)
+
+print('{{"ok": true}}')
+sys.exit(0)
+""",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+
+
 def test_supervisor_holds_tunnel_and_redacts_private_command() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-tunnel-supervisor-") as tmp:
         root = Path(tmp)
@@ -152,6 +205,76 @@ def test_supervisor_holds_tunnel_and_redacts_private_command() -> None:
         assert opaque_command not in public_text
         assert opaque_command in ssh_log.read_text(encoding="utf-8")
         assert private_log.exists()
+
+
+def test_supervisor_reconnects_after_mid_batch_new_connect_loss() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-tunnel-reconnect-") as tmp:
+        root = Path(tmp)
+        fake_ssh = root / "ssh"
+        ssh_log = root / "ssh.log"
+        public_output = root / "public.json"
+        private_log = root / "private.log"
+        _flaky_fake_ssh(fake_ssh, ssh_log, root)
+
+        opaque_destination = "opaque-benchmark-host.example"
+        opaque_command = "run-long-skillsbench --batch-size 6"
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--ssh-bin",
+                str(fake_ssh),
+                "--ssh-destination",
+                opaque_destination,
+                "--remote-command",
+                opaque_command,
+                "--public-output-path",
+                str(public_output),
+                "--private-log-path",
+                str(private_log),
+                "--tunnel-ready-timeout-sec",
+                "2",
+                "--probe-interval-sec",
+                "0.05",
+                "--tunnel-health-interval-sec",
+                "0.05",
+                "--tunnel-health-failure-threshold",
+                "2",
+                "--tunnel-reconnect-attempts",
+                "1",
+                "--tunnel-reconnect-ready-timeout-sec",
+                "2",
+                "--run-timeout-sec",
+                "5",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        assert proc.returncode == 0, proc.stderr or proc.stdout
+        payload = json.loads(proc.stdout)
+        assert payload["ok"] is True, payload
+        assert payload["remote_command_exit_code"] == 0, payload
+        liveness = payload["tunnel_liveness"]
+        assert liveness["enabled"] is True, liveness
+        assert liveness["state"] == "reconnected", liveness
+        assert liveness["health_probe_failure_count"] >= 2, liveness
+        assert liveness["max_consecutive_failure_count"] >= 2, liveness
+        assert liveness["reconnect_attempt_count"] == 1, liveness
+        assert liveness["reconnect_success_count"] == 1, liveness
+        assert liveness["reconnect_failure_count"] == 0, liveness
+        assert liveness["last_probe_status"] == "http_connect_ready", liveness
+        public_text = json.dumps(payload, sort_keys=True)
+        assert opaque_destination not in public_text
+        assert opaque_command not in public_text
+        tunnel_launch_count = sum(
+            1
+            for line in ssh_log.read_text(encoding="utf-8").splitlines()
+            if "'-R'" in line
+        )
+        assert tunnel_launch_count == 2, tunnel_launch_count
 
 
 def test_supervisor_syncs_only_compact_public_artifacts() -> None:
@@ -300,8 +423,7 @@ def test_closeout_requires_compact_when_ledger_is_requested() -> None:
         )
         assert result["ok"] is False, result
         assert (
-            result["first_blocker"]
-            == "benchmark_compact_missing_after_remote_closeout"
+            result["first_blocker"] == "benchmark_compact_missing_after_remote_closeout"
         ), result
 
 
@@ -395,8 +517,7 @@ def test_supervisor_holds_json_bridge_and_materializes_remote_client() -> None:
         opaque_remote_socket = "/tmp/opaque-private-json-bridge.sock"
         opaque_remote_client = "/tmp/opaque-private-json-client"
         opaque_command = (
-            "run-skillsbench --bridge {json_bridge_client} "
-            "--case bike-rebalance"
+            "run-skillsbench --bridge {json_bridge_client} --case bike-rebalance"
         )
         proc = subprocess.run(
             [
@@ -477,6 +598,7 @@ def test_supervisor_holds_json_bridge_and_materializes_remote_client() -> None:
 
 if __name__ == "__main__":
     test_supervisor_holds_tunnel_and_redacts_private_command()
+    test_supervisor_reconnects_after_mid_batch_new_connect_loss()
     test_supervisor_syncs_only_compact_public_artifacts()
     test_public_artifact_materializer_rejects_private_children()
     test_closeout_requires_compact_when_ledger_is_requested()
