@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from loopx.capabilities.semantic_preference import recall  # noqa: E402
+from loopx.capabilities.semantic_preference import application_receipt, recall  # noqa: E402
 
 
 def run(*args: str) -> dict[str, object]:
@@ -130,5 +130,17 @@ json.dump({
         assert "provider unavailable" in str(exc), exc
     else:
         raise AssertionError("fail_closed must stop the caller")
+
+    try:
+        application_receipt(
+            surface="other_module.summary",
+            application_id="bounded-receipt",
+            outcome="applied",
+            preference_refs=[f"memory://{index}" for index in range(21)],
+        )
+    except ValueError as exc:
+        assert "at most 20" in str(exc), exc
+    else:
+        raise AssertionError("receipt references must stay bounded")
 
 print("semantic preference hook smoke: ok")

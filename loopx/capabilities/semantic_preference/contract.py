@@ -15,6 +15,9 @@ RECALL_SCHEMA = "semantic_preference_recall_v0"
 RECEIPT_SCHEMA = "semantic_preference_application_receipt_v0"
 SURFACE_RE = re.compile(r"^[a-z][a-z0-9_-]*(?:\.[a-z][a-z0-9_-]*)+$")
 TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,199}$")
+MAX_PROVIDER_OUTPUT_BYTES = 256_000
+MAX_ITEM_BYTES = 8_000
+MAX_RECEIPT_REFS = 20
 
 
 def _surface(value: object) -> str:
@@ -168,6 +171,8 @@ def recall(
         return _unavailable(surface_id, policy, "execution_failed")
     if completed.returncode != 0:
         return _unavailable(surface_id, policy, "nonzero_exit")
+    if len(completed.stdout.encode("utf-8")) > MAX_PROVIDER_OUTPUT_BYTES:
+        return _unavailable(surface_id, policy, "response_too_large")
     try:
         response = json.loads(completed.stdout)
     except json.JSONDecodeError:
@@ -181,6 +186,11 @@ def recall(
     ):
         return _unavailable(surface_id, policy, "invalid_response")
     bounded = [dict(item) for item in items[:limit]]
+    if any(
+        len(json.dumps(item, ensure_ascii=False).encode("utf-8")) > MAX_ITEM_BYTES
+        for item in bounded
+    ):
+        return _unavailable(surface_id, policy, "item_too_large")
     return {
         "ok": True,
         "schema_version": RECALL_SCHEMA,
@@ -208,17 +218,16 @@ def application_receipt(
 ) -> dict[str, Any]:
     if outcome not in {"applied", "ignored", "failed"}:
         raise ValueError("outcome must be applied, ignored, or failed")
+    refs = [str(ref) for ref in preference_refs or [] if str(ref).strip()]
+    if len(refs) > MAX_RECEIPT_REFS:
+        raise ValueError(f"preference_refs supports at most {MAX_RECEIPT_REFS} items")
     return {
         "schema_version": RECEIPT_SCHEMA,
         "surface": _surface(surface),
         "application_id": _token(application_id, "application_id"),
         "outcome": outcome,
         "preference_ref_digests": sorted(
-            {
-                hashlib.sha256(str(ref).encode()).hexdigest()[:16]
-                for ref in preference_refs or []
-                if str(ref).strip()
-            }
+            {hashlib.sha256(str(ref).encode()).hexdigest()[:16] for ref in refs}
         ),
         "artifact_ref": _token(artifact_ref, "artifact_ref") if artifact_ref else None,
     }
