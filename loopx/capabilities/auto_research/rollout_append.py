@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from collections import Counter
+import json
 from pathlib import Path
+from typing import Mapping
 
 from .evidence_packet import (
     AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION,
@@ -17,6 +19,17 @@ from ...rollout_event_log import (
 )
 
 
+def _event_content_key(event: Mapping[str, object]) -> str:
+    """Identify the durable research content, not this append observation."""
+
+    content = {
+        key: value
+        for key, value in event.items()
+        if key not in {"event_id", "recorded_at"}
+    }
+    return json.dumps(content, sort_keys=True, ensure_ascii=True)
+
+
 def append_auto_research_rollout_events(
     *,
     packet_path: str,
@@ -30,22 +43,36 @@ def append_auto_research_rollout_events(
     registry = load_registry(registry_path)
     runtime_root = resolve_runtime_root(registry, runtime_root_arg)
     log_path = rollout_event_log_path(runtime_root, goal_id)
+    existing_events = load_rollout_events(log_path)
     existing_ids = {
-        str(event.get("event_id"))
-        for event in load_rollout_events(log_path)
+        str(event.get("event_id")) for event in existing_events if event.get("event_id")
+    }
+    existing_content_ids = {
+        _event_content_key(event): str(event["event_id"])
+        for event in existing_events
         if event.get("event_id")
     }
     appended_ids: list[str] = []
     skipped_ids: list[str] = []
+    effective_ids: list[str] = []
     for event in events:
         event_id = str(event["event_id"])
+        content_key = _event_content_key(event)
+        existing_content_id = existing_content_ids.get(content_key)
+        if existing_content_id:
+            skipped_ids.append(existing_content_id)
+            effective_ids.append(existing_content_id)
+            continue
         if event_id in existing_ids:
             skipped_ids.append(event_id)
+            effective_ids.append(event_id)
             continue
         if not dry_run:
             append_rollout_event(log_path, event)
             existing_ids.add(event_id)
+            existing_content_ids[content_key] = event_id
         appended_ids.append(event_id)
+        effective_ids.append(event_id)
     counts_by_kind = Counter(str(event.get("event_kind") or "") for event in events)
     return {
         "ok": True,
@@ -56,7 +83,7 @@ def append_auto_research_rollout_events(
         "appended_count": 0 if dry_run else len(appended_ids),
         "would_append_count": len(appended_ids),
         "skipped_existing_count": len(skipped_ids),
-        "event_ids": [str(event["event_id"]) for event in events],
+        "event_ids": effective_ids,
         "appended_event_ids": [] if dry_run else appended_ids,
         "skipped_existing_event_ids": skipped_ids,
         "counts_by_kind": dict(sorted(counts_by_kind.items())),
