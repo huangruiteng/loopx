@@ -39,6 +39,43 @@ def write_run(run_dir: Path, goal_id: str, *, duplicate_kind: str) -> None:
                 },
             }
         )
+    elif duplicate_kind == "projected_reward_overlay":
+        projected = {
+            key: record[key]
+            for key in (
+                "generated_at",
+                "goal_id",
+                "classification",
+                "recommended_action",
+                "json_path",
+                "markdown_path",
+            )
+        }
+        lines = [
+            {
+                **record,
+                "agent_id": "fixture-agent",
+                "progress_scope": "agent_lane",
+                "delivery_batch_scale": "multi_surface",
+                "delivery_outcome": "outcome_progress",
+            },
+            {
+                **projected,
+                "human_reward": {
+                    "recorded_at": "2026-01-01T00:00:01+00:00",
+                    "decision": "continue",
+                    "reward": "positive",
+                },
+            },
+            {
+                **projected,
+                "human_reward": {
+                    "recorded_at": "2026-01-01T00:00:02+00:00",
+                    "decision": "refine",
+                    "reward": "mixed",
+                },
+            },
+        ]
     elif duplicate_kind == "plain_duplicate":
         lines.append(dict(record))
     elif duplicate_kind == "artifact_identity_collision":
@@ -83,27 +120,72 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     runtime_root = root / "runtime"
     project = root / "project"
     project.mkdir(parents=True)
-    reward_state_file = project / ".codex" / "goals" / "reward-overlay-goal" / "ACTIVE_GOAL_STATE.md"
-    duplicate_state_file = project / ".codex" / "goals" / "plain-duplicate-goal" / "ACTIVE_GOAL_STATE.md"
-    bundle_state_file = project / ".codex" / "goals" / "structured-bundle-goal" / "ACTIVE_GOAL_STATE.md"
+    reward_state_file = (
+        project / ".codex" / "goals" / "reward-overlay-goal" / "ACTIVE_GOAL_STATE.md"
+    )
+    projected_reward_state_file = (
+        project
+        / ".codex"
+        / "goals"
+        / "projected-reward-overlay-goal"
+        / "ACTIVE_GOAL_STATE.md"
+    )
+    duplicate_state_file = (
+        project / ".codex" / "goals" / "plain-duplicate-goal" / "ACTIVE_GOAL_STATE.md"
+    )
+    bundle_state_file = (
+        project / ".codex" / "goals" / "structured-bundle-goal" / "ACTIVE_GOAL_STATE.md"
+    )
     artifact_collision_state_file = (
-        project / ".codex" / "goals" / "artifact-collision-goal" / "ACTIVE_GOAL_STATE.md"
+        project
+        / ".codex"
+        / "goals"
+        / "artifact-collision-goal"
+        / "ACTIVE_GOAL_STATE.md"
     )
     reward_state_file.parent.mkdir(parents=True)
+    projected_reward_state_file.parent.mkdir(parents=True)
     duplicate_state_file.parent.mkdir(parents=True)
     bundle_state_file.parent.mkdir(parents=True)
     artifact_collision_state_file.parent.mkdir(parents=True)
-    reward_state_file.write_text("---\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n", encoding="utf-8")
-    duplicate_state_file.write_text("---\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n", encoding="utf-8")
-    bundle_state_file.write_text("---\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n", encoding="utf-8")
-    artifact_collision_state_file.write_text("---\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n", encoding="utf-8")
+    reward_state_file.write_text(
+        "---\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n", encoding="utf-8"
+    )
+    projected_reward_state_file.write_text(
+        "---\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n",
+        encoding="utf-8",
+    )
+    duplicate_state_file.write_text(
+        "---\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n", encoding="utf-8"
+    )
+    bundle_state_file.write_text(
+        "---\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n", encoding="utf-8"
+    )
+    artifact_collision_state_file.write_text(
+        "---\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n", encoding="utf-8"
+    )
     local_private_doc = project / ".local" / "managed_doc" / "PRIVATE_DRAFT.md"
     local_private_doc.parent.mkdir(parents=True)
     private_host = "private-docs.example.invalid"
-    local_private_doc.write_text(f"https://{private_host}/docx/private-draft\n", encoding="utf-8")
+    local_private_doc.write_text(
+        f"https://{private_host}/docx/private-draft\n", encoding="utf-8"
+    )
 
-    write_run(runtime_root / "goals" / "reward-overlay-goal" / "runs", "reward-overlay-goal", duplicate_kind="reward_overlay")
-    write_run(runtime_root / "goals" / "plain-duplicate-goal" / "runs", "plain-duplicate-goal", duplicate_kind="plain_duplicate")
+    write_run(
+        runtime_root / "goals" / "reward-overlay-goal" / "runs",
+        "reward-overlay-goal",
+        duplicate_kind="reward_overlay",
+    )
+    write_run(
+        runtime_root / "goals" / "projected-reward-overlay-goal" / "runs",
+        "projected-reward-overlay-goal",
+        duplicate_kind="projected_reward_overlay",
+    )
+    write_run(
+        runtime_root / "goals" / "plain-duplicate-goal" / "runs",
+        "plain-duplicate-goal",
+        duplicate_kind="plain_duplicate",
+    )
     write_run(
         runtime_root / "goals" / "structured-bundle-goal" / "runs",
         "structured-bundle-goal",
@@ -125,6 +207,14 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
                         "id": "reward-overlay-goal",
                         "repo": str(project),
                         "state_file": ".codex/goals/reward-overlay-goal/ACTIVE_GOAL_STATE.md",
+                        "domain": "smoke",
+                        "status": "connected-read-only",
+                        "adapter": {"kind": "smoke", "status": "connected-read-only"},
+                    },
+                    {
+                        "id": "projected-reward-overlay-goal",
+                        "repo": str(project),
+                        "state_file": ".codex/goals/projected-reward-overlay-goal/ACTIVE_GOAL_STATE.md",
                         "domain": "smoke",
                         "status": "connected-read-only",
                         "adapter": {"kind": "smoke", "status": "connected-read-only"},
@@ -176,20 +266,49 @@ def main() -> None:
         checks = "\n".join(payload["checks"])
         warnings = "\n".join(payload["warnings"])
         assert payload["ok"] is True, payload
-        assert "reward-overlay-goal: reward overlay rows raw=2 unique=1 overlays=1" in checks, payload
+        assert (
+            "reward-overlay-goal: reward overlay rows raw=2 unique=1 overlays=1"
+            in checks
+        ), payload
         assert "reward-overlay-goal: duplicate index rows" not in warnings, payload
-        assert "structured-bundle-goal: structured artifact bundle rows raw=2 unique=1 bundles=1" in checks, payload
+        assert (
+            "projected-reward-overlay-goal: reward overlay rows raw=3 unique=1 overlays=2"
+            in checks
+        ), payload
+        assert "projected-reward-overlay-goal: duplicate index rows" not in warnings, (
+            payload
+        )
+        assert (
+            "structured-bundle-goal: structured artifact bundle rows raw=2 unique=1 bundles=1"
+            in checks
+        ), payload
         assert "structured-bundle-goal: duplicate index rows" not in warnings, payload
-        assert "plain-duplicate-goal: duplicate index rows raw=2 unique=1 unexpected=1 auto_repairable=1" in warnings, payload
-        assert "loopx history --goal-id plain-duplicate-goal inspect-index-duplicates" in warnings, payload
-        assert "loopx history --goal-id plain-duplicate-goal repair-index-duplicates" in warnings, payload
+        assert (
+            "plain-duplicate-goal: duplicate index rows raw=2 unique=1 unexpected=1 auto_repairable=1"
+            in warnings
+        ), payload
+        assert (
+            "loopx history --goal-id plain-duplicate-goal inspect-index-duplicates"
+            in warnings
+        ), payload
+        assert (
+            "loopx history --goal-id plain-duplicate-goal repair-index-duplicates"
+            in warnings
+        ), payload
         assert (
             "artifact-collision-goal: duplicate index rows raw=2 unique=1 unexpected=1 "
             "artifact_identity_collisions=1 artifact_collision_rows=1"
         ) in warnings, payload
-        assert "artifact identity collisions need reviewed merge semantics" in warnings, payload
-        assert "loopx history --goal-id artifact-collision-goal repair-index-duplicates" not in warnings, payload
-        assert not any(".local/managed_doc" in item for item in payload["errors"]), payload
+        assert (
+            "artifact identity collisions need reviewed merge semantics" in warnings
+        ), payload
+        assert (
+            "loopx history --goal-id artifact-collision-goal repair-index-duplicates"
+            not in warnings
+        ), payload
+        assert not any(".local/managed_doc" in item for item in payload["errors"]), (
+            payload
+        )
 
     print("contract-reward-overlay-smoke ok")
 
