@@ -125,10 +125,10 @@ LoopX is not an autonomous production controller. It is a local coordination
 substrate: dangerous permissions, publishing, production writes, and final
 ownership stay with the human/operator.
 
-## Two Real Long-Running Loops
+## Real Long-Running Loops
 
-Open the graphs to inspect the actual nodes, edges, evidence branches, and
-terminal decisions preserved across agent turns.
+Open each visual to inspect the underlying graph or workspace, including
+evidence branches and decisions preserved across agent turns.
 
 **Open-source issue fix: PR delivery and reusable capability evolve together.**
 
@@ -141,6 +141,13 @@ replicates, and promote/stop gates remain visible in one graph.**
 
 <a href="docs/assets/auto-ml-experiment-explore.jpg">
   <img src="docs/assets/auto-ml-experiment-explore.jpg" alt="Auto ML Experiment Explore graph with experiment lineages, evidence gates, and promotion decisions" width="760">
+</a>
+
+**Auto Research: proposer, executor, and evaluator/promoter agents iterate in
+parallel while todo, quota, evidence, and targeted wake remain visible.**
+
+<a href="docs/assets/auto-research-multi-agent-showcase.png">
+  <img src="docs/assets/auto-research-multi-agent-showcase.png" alt="Auto Research multi-agent workspace with proposer, executor, evaluator/promoter, todo, quota, evidence, and targeted wake activity">
 </a>
 
 ## Quick Start
