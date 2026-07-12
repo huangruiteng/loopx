@@ -383,6 +383,7 @@ tests whether the system is a durable employee rather than a scripted demo.
 | Caller repo branch | `loopx issue-fix caller-repo-branch` | Inspect an approved local repo, create/claim an issue branch, and run caller-declared validation. |
 | Content bridge | `loopx content-ops issue-fix-*` | Reuse body-free public metadata/intake boundaries. |
 | Visible projection | `status`, `lark-kanban`, dashboard | Derive human-visible issue work, outcomes, gates, and Monthly Impact from the same kernel/domain state without becoming a second source of truth. |
+| Projection source reconcile | `lark-kanban sync-projection --reconcile-source` | Keep normal sync non-destructive; only a caller-attested complete source snapshot may preview and explicitly retire remote orphan rows plus stale local record mappings within that exact namespace. |
 
 The capability module lives at `loopx/capabilities/issue_fix/`; domain-state
 rows live in the existing issue-fix domain pack rather than a parallel context

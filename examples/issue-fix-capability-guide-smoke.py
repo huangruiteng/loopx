@@ -96,6 +96,7 @@ def main() -> int:
         "python3 examples/issue-fix-reviewer-recommendation-smoke.py",
         "python3 examples/issue-fix-reviewer-request-smoke.py",
         "python3 examples/issue-fix-discovered-issue-promotion-smoke.py",
+        "lark-kanban sync-projection --reconcile-source",
         "--notification-sinks-json",
         "python3 examples/issue-fix-reviewer-notification-sink-smoke.py",
     )

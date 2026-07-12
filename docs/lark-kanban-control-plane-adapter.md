@@ -200,6 +200,33 @@ projected; a PR lifecycle row enriches it only through an explicit matching
 `repo` and `issue_ref`. This avoids title/branch guessing and makes the issue
 grid and stage Kanban part of the default sync path.
 
+Normal projection sync is intentionally non-destructive: rows missing from a
+filtered, limited, or newer payload are never deleted implicitly. When a
+caller owns a complete stable `source_id` namespace, it may request an explicit
+preview-first reconcile:
+
+```bash
+python3 -m loopx.cli lark-kanban sync-projection \
+  --projection-file complete-projection.json \
+  --include-done \
+  --reconcile-source \
+  --source-snapshot-complete
+
+# Run only after reviewing source_reconcile.remote_orphans and local mappings.
+python3 -m loopx.cli lark-kanban sync-projection \
+  --projection-file complete-projection.json \
+  --include-done \
+  --reconcile-source \
+  --source-snapshot-complete \
+  --execute
+```
+
+Reconcile refuses agent-filtered input, a row limit that truncates the source,
+source-id mismatches, omitted done rows, and incomplete remote pagination. It
+deletes only remote records whose synthetic todo id belongs to that exact goal
+and source namespace, then removes corresponding or already-missing stale local
+`goal_id:todo_id -> record_id` mappings. An idempotent retry plans zero deletes.
+
 ## CLI Surface
 
 ```bash
@@ -209,6 +236,7 @@ python3 -m loopx.cli lark-kanban setup --base-name "LoopX Kanban POC" --execute
 python3 -m loopx.cli lark-kanban use --base-url "<shared-base-url>"
 python3 -m loopx.cli lark-kanban config
 python3 -m loopx.cli lark-kanban sync-loopx-todos --goal-id <goal-id> --execute
+python3 -m loopx.cli lark-kanban sync-projection --projection-file <complete.json> --include-done --reconcile-source --source-snapshot-complete
 python3 -m loopx.cli lark-kanban plan-create --base-name "LoopX Kanban POC"
 python3 -m loopx.cli lark-kanban create-board --base-name "LoopX Kanban POC" --execute
 python3 -m loopx.cli lark-kanban seed-task --base-token <base> --table-id <table> --execute
