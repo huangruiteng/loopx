@@ -1,6 +1,6 @@
 # Exploration Result Layer
 
-Status: prototype adapter contract v0.
+Status: supported optional capability; default-off harness execution contract.
 
 Long-running exploration goals (for example a Codex loop studying an external
 software domain through LoopX) produce results that operators want to read as
@@ -123,9 +123,9 @@ or digest matches the validated projection. The canonical JSON and
 Nodes/Edges/Findings tables remain complete and authoritative throughout this
 presentation step.
 
-## Experimental Todo Branch Plan
+## Optional Todo Branch Plan
 
-`loopx explore todo-branch-plan` is a narrow experimental harness for
+`loopx explore todo-branch-plan` is a narrow opt-in harness for
 exploration goals that need to try several plausible next todos at once. It
 uses a CPU branch-prediction analogy plus a DSpark-inspired scheduler: rank
 open agent todos, estimate branch confidence and expected evidence units,
@@ -157,7 +157,7 @@ packet with:
   DSpark-style selected prefix (`ab_result.estimated_speedup_vs_baseline`);
 - suggested `loopx todo claim` and `loopx task-lease acquire` commands for a
   human operator or registered peer runner to execute explicitly;
-- the safety boundary that makes the packet experimental rather than a
+- the safety boundary that keeps the packet advisory rather than an
   replacement for `quota should-run`.
 
 An advancement todo may opt into typed result diagnostics by attaching one or
@@ -191,7 +191,7 @@ output scope. Those lanes may run in parallel. If the shared build itself is
 still mutable, keep its path in `required_write_scopes`; the planner will
 correctly serialize lanes that could write the same artifact.
 
-## Experimental Worker Branch Plan
+## Optional Worker Branch Plan
 
 `loopx explore worker-branch-plan` is the worker-lane version of the same
 experiment. It does not treat a branch as one todo. A worker branch is a
@@ -265,7 +265,7 @@ the existing LoopX harness, not beside it and not instead of it:
 1. LoopX supplies the harness inputs: quota/status context outside this command,
    the open agent todo projection, explore result projection, ownership,
    capabilities, and write-scope metadata.
-2. The experimental planner groups todos into worker-lane candidates and uses
+2. The opt-in planner groups todos into worker-lane candidates and uses
    DSpark-style confidence/prefix/load scoring to pick a worker branch prefix.
 3. Execution must return to the normal LoopX path: `quota should-run`,
    `todo claim`, `task-lease acquire`, worker execution, `explore node|edge|finding`,
@@ -281,7 +281,7 @@ mutate the control plane on its own.
 
 ### Per-Goal Opt-In Gate
 
-Both experimental planners — `todo-branch-plan` and `worker-branch-plan` —
+Both opt-in planners — `todo-branch-plan` and `worker-branch-plan` —
 are deny-by-default. The gate lives on the registered goal's `spawn_policy`,
 the single writable source that the quota/status pipeline projects into
 `quota should-run` as `goal_boundary.orchestration`. No other registry key is
@@ -554,7 +554,7 @@ The smoke proves the projection contract (folding, blocked reasons, tree,
 Mermaid), record-time path rejection, dry-run default, paginated discovery,
 zero-write idempotent resync, single-row drift repair, nested create-receipt
 handling, shared-visibility redaction, transport-free card
-content, the experimental todo branch-plan packet, the adaptive resilient
+content, the opt-in todo branch-plan packet, the adaptive resilient
 worker harness profile, and the CLI surface against a temp registry, without
 live Lark credentials. It additionally proves the worker-lane router
 contracts: requested width is no longer silently clamped below the worker

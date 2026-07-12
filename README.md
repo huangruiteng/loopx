@@ -364,13 +364,33 @@ manual, then use the short proof surfaces:
   external tools without hiding ownership or scope.
 
 For more cases, open the [showcase catalog](docs/showcases/README.md). For a
-full presenter material, see the experimental features below.
+full presenter material, see the optional and emerging features below.
 
-## Experimental Features
+### Two Real Long-Running Loops
 
-These paths are useful today, but they are intentionally kept below the core
-onboarding path while the first-run UX, safety defaults, and evidence contracts
-settle across more repositories.
+These are full public-safe Explore projections, not simplified process
+illustrations. Open the images to inspect the actual nodes, edges, evidence
+branches, and terminal decisions preserved across agent turns.
+
+**Open-source issue fix: PR delivery and reusable capability evolve together.**
+
+<a href="docs/assets/openviking-issue-fix-explore.png">
+  <img src="docs/assets/openviking-issue-fix-explore.png" alt="Open-source issue-fix Explore graph linking focused PR delivery with reusable LoopX capabilities">
+</a>
+
+**Auto ML Experiment: hypotheses, matched evidence, invalid lineages, running
+replicates, and promote/stop gates remain visible in one graph.**
+
+<a href="docs/assets/auto-ml-experiment-explore.jpg">
+  <img src="docs/assets/auto-ml-experiment-explore.jpg" alt="Auto ML Experiment Explore graph with experiment lineages, evidence gates, and promotion decisions" width="760">
+</a>
+
+## Optional And Emerging Features
+
+These paths stay below the core onboarding path so the first run remains small.
+Some, including Explore Graph and Explore Harness, are supported opt-in
+features that remain default-off; newer adapters are still settling their UX,
+safety defaults, and evidence contracts across more repositories.
 
 ### Start With A Useful Loop
 
@@ -418,10 +438,10 @@ the run can claim progress. See
 [Auto-research command path](docs/guides/auto-research-command-path.md) for the
 full stop, attach, retry, and evidence boundary.
 
-### Explore Results And Harness Planning
+### Explore Graph And Harness (Supported, Optional, Default-Off)
 
-For longer investigations, LoopX now has an experimental Explore Result Layer
-and Explore Harness path. The result layer records public-safe
+For longer investigations, LoopX provides a supported Explore Result Layer and
+an opt-in Explore Harness. The result layer records public-safe
 `node`/`edge`/`finding` events as an append-only exploration graph, then folds
 them into summaries, blocked-frontier views, Mermaid graphs, and optional
 operator sinks. The harness path reads that graph plus open todos and produces
