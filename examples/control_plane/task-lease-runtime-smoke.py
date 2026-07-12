@@ -181,6 +181,7 @@ def main() -> int:
         assert first["ok"] is True and first["acquired"] is True, first
         assert first["lease"]["schema_version"] == "task_lease_v0", first
         assert first["lease"]["version"] == 1, first
+        assert first["lease"]["acquire_ttl_seconds"] == 120, first
 
         set_todo_status(state_file, todo_id=TODO_A, status="done")
         terminal_inspect = payload(
@@ -287,6 +288,29 @@ def main() -> int:
         )
         assert idempotent["ok"] is True and idempotent["idempotent"] is True, idempotent
         assert idempotent["lease"]["version"] == 1, idempotent
+
+        for retry_ttl, retry_scope in ((120, "docs/**"), (600, "loopx/**")):
+            changed_retry = cli(
+                registry_path,
+                "acquire",
+                "--goal-id",
+                GOAL_ID,
+                "--todo-id",
+                TODO_A,
+                "--owner",
+                "codex-main-control",
+                "--idempotency-key",
+                "turn-1",
+                "--ttl-seconds",
+                str(retry_ttl),
+                "--write-scope",
+                retry_scope,
+                check=False,
+            )
+            assert changed_retry.returncode == 1, changed_retry.stdout
+            assert payload(changed_retry)["error_code"] == "idempotency_key_reuse", (
+                changed_retry.stdout
+            )
 
         set_excluded_agents(
             state_file,

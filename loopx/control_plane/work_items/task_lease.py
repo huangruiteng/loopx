@@ -413,6 +413,7 @@ def build_lease(
     owner: str,
     idempotency_key: str,
     write_scopes: list[str],
+    acquire_ttl_seconds: int,
     version: int,
     acquired_at: str,
     updated_at: str,
@@ -425,6 +426,7 @@ def build_lease(
         "owner": owner,
         "idempotency_key": idempotency_key,
         "write_scopes": write_scopes,
+        "acquire_ttl_seconds": acquire_ttl_seconds,
         "version": version,
         "acquired_at": acquired_at,
         "updated_at": updated_at,
@@ -478,6 +480,24 @@ def acquire_task_lease(
                 existing.get("owner") == owner
                 and existing.get("idempotency_key") == idempotency_key
             ):
+                existing_write_scopes = normalize_required_write_scopes(
+                    existing.get("write_scopes")
+                )
+                existing_ttl = existing.get("acquire_ttl_seconds")
+                request_matches = set(existing_write_scopes) == set(normalized_write_scopes)
+                if existing_ttl is not None:
+                    request_matches = request_matches and int(existing_ttl) == ttl
+                if not request_matches:
+                    raise TaskLeaseError(
+                        "idempotency key was reused with different acquire parameters",
+                        code="idempotency_key_reuse",
+                        payload={
+                            "lease": existing,
+                            "lease_path": str(lease_path),
+                            "requested_write_scopes": normalized_write_scopes,
+                            "requested_ttl_seconds": ttl,
+                        },
+                    )
                 return {
                     "ok": True,
                     "schema_version": TASK_LEASE_SCHEMA_VERSION,
@@ -514,6 +534,7 @@ def acquire_task_lease(
             owner=owner,
             idempotency_key=idempotency_key,
             write_scopes=normalized_write_scopes,
+            acquire_ttl_seconds=ttl,
             version=int((existing or {}).get("version") or 0) + 1,
             acquired_at=updated_at,
             updated_at=updated_at,
