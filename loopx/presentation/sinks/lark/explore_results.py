@@ -14,6 +14,7 @@ topology source in the projection is for Feishu docs or any diagram renderer.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,6 +32,7 @@ from ....capabilities.explore.result_log import (
     NODE_STATUS_OPEN,
     NODE_STATUS_RESOLVED,
     EDGE_TYPES,
+    build_explore_graph_view,
 )
 from .kanban import (
     DEFAULT_CLI_BIN,
@@ -53,6 +55,7 @@ LARK_EXPLORE_SCHEMA_VERSION = "loopx_lark_explore_result_board_v0"
 LARK_EXPLORE_LOCAL_CONFIG_VERSION = "loopx_lark_explore_local_config_v0"
 LARK_EXPLORE_SYNC_VERSION = "loopx_lark_explore_sync_v0"
 LARK_EXPLORE_CARD_VERSION = "loopx_lark_explore_card_v0"
+LARK_EXPLORE_VISUAL_SYNC_VERSION = "loopx_lark_explore_visual_sync_v0"
 
 DEFAULT_EXPLORE_BASE_NAME = "LoopX Exploration Results"
 SINK_VISIBILITY_OWNER_ONLY = "owner-only"
@@ -161,7 +164,11 @@ def lark_explore_field_definitions(table_key: str) -> list[dict[str, Any]]:
             _text_field("Summary"),
             _select_field(
                 "Status",
-                [FINDING_STATUS_TENTATIVE, FINDING_STATUS_CONFIRMED, FINDING_STATUS_REFUTED],
+                [
+                    FINDING_STATUS_TENTATIVE,
+                    FINDING_STATUS_CONFIRMED,
+                    FINDING_STATUS_REFUTED,
+                ],
             ),
             _number_field("Confidence", precision=2),
             _text_field("Node"),
@@ -280,7 +287,9 @@ def write_lark_explore_local_config(path: Path, payload: dict[str, Any]) -> None
     )
 
 
-def lark_explore_config_from_payload(payload: Mapping[str, Any]) -> LarkExploreConfig | None:
+def lark_explore_config_from_payload(
+    payload: Mapping[str, Any],
+) -> LarkExploreConfig | None:
     board = payload.get("board")
     if not isinstance(board, dict):
         return None
@@ -428,15 +437,217 @@ def _persist_lark_explore_record_map(
             "cli_bin": config.cli_bin,
             "identity": config.identity,
         }
-    write_lark_explore_local_config(
-        config_path,
+    updated = {
+        key: value
+        for key, value in local.items()
+        if key not in {"ok", "exists", "path", "updated_at"}
+    }
+    updated.update(
         {
             "schema_version": LARK_EXPLORE_LOCAL_CONFIG_VERSION,
             "board": board,
             "result_records": dict(record_map),
             "card": local.get("card") if isinstance(local.get("card"), dict) else {},
-        },
+        }
     )
+    write_lark_explore_local_config(config_path, updated)
+
+
+def configure_lark_explore_visual_sink(
+    *,
+    config_path: Path,
+    whiteboard_token: str,
+    docx_token: str | None = None,
+    statuses: list[str] | None = None,
+    tags: list[str] | None = None,
+    projection_mode: str = "canonical_filtered",
+    include_ancestors: bool = True,
+    mermaid_node_limit: int = 100,
+    execute: bool = False,
+) -> dict[str, Any]:
+    """Configure an optional owner-facing whiteboard over canonical Explore data."""
+
+    token = str(whiteboard_token or "").strip()
+    if not token:
+        raise ValueError("whiteboard_token is required")
+    if projection_mode not in {"canonical_filtered", "issue_fix_two_lane"}:
+        raise ValueError(
+            "projection_mode must be canonical_filtered or issue_fix_two_lane"
+        )
+    local = read_lark_explore_local_config(config_path)
+    if not local.get("ok") or not local.get("exists"):
+        raise ValueError(
+            "run `loopx explore feishu-setup` before configuring a visual sink"
+        )
+    visual_sink = {
+        "schema_version": "loopx_lark_explore_visual_sink_config_v0",
+        "whiteboard_token": token,
+        "docx_token": str(docx_token or "").strip() or None,
+        "statuses": [str(item) for item in statuses or [] if str(item).strip()],
+        "tags": [str(item) for item in tags or [] if str(item).strip()],
+        "projection_mode": projection_mode,
+        "include_ancestors": bool(include_ancestors),
+        "mermaid_node_limit": max(1, int(mermaid_node_limit)),
+    }
+    if execute:
+        updated = {
+            key: value
+            for key, value in local.items()
+            if key not in {"ok", "exists", "path", "updated_at"}
+        }
+        updated["visual_sink"] = visual_sink
+        write_lark_explore_local_config(config_path, updated)
+    return {
+        "ok": True,
+        "schema_version": "loopx_lark_explore_visual_sink_configure_v0",
+        "execute": execute,
+        "status": "configured" if execute else "would_configure",
+        "config_path": str(config_path),
+        "visual_sink": visual_sink,
+    }
+
+
+def sync_explore_visual_to_lark(
+    config: LarkExploreConfig,
+    *,
+    projection: Mapping[str, Any],
+    visual_sink: Mapping[str, Any] | None,
+    config_path: Path,
+    semantic_digest: str,
+    display_projection: Mapping[str, Any] | None = None,
+    execute: bool = False,
+    runner: CommandRunner = default_subprocess_runner,
+) -> dict[str, Any]:
+    """Publish a configured Mermaid whiteboard without conflating it with Base rows."""
+
+    if not isinstance(visual_sink, Mapping):
+        return {
+            "ok": True,
+            "schema_version": LARK_EXPLORE_VISUAL_SYNC_VERSION,
+            "status": "not_configured",
+            "execute": execute,
+            "published": False,
+        }
+    whiteboard_token = str(visual_sink.get("whiteboard_token") or "").strip()
+    if not whiteboard_token:
+        return {
+            "ok": False,
+            "schema_version": LARK_EXPLORE_VISUAL_SYNC_VERSION,
+            "status": "invalid_config",
+            "execute": execute,
+            "published": False,
+            "error": "visual_sink.whiteboard_token is required",
+        }
+    graph = (
+        dict(display_projection)
+        if isinstance(display_projection, Mapping)
+        else build_explore_graph_view(
+            projection.get("nodes") or [],
+            projection.get("edges") or [],
+            statuses=visual_sink.get("statuses") or [],
+            tags=visual_sink.get("tags") or [],
+            include_ancestors=bool(visual_sink.get("include_ancestors", True)),
+            node_limit=max(1, int(visual_sink.get("mermaid_node_limit") or 100)),
+        )
+    )
+    source_name = f".loopx-explore-visual-{semantic_digest[:12] or 'preview'}.mmd"
+    command = [
+        config.cli_bin,
+        "whiteboard",
+        "+update",
+        "--as",
+        config.identity,
+        "--whiteboard-token",
+        whiteboard_token,
+        "--input_format",
+        "mermaid",
+        "--source",
+        f"@{source_name}",
+        "--overwrite",
+        "--idempotent-token",
+        f"loopx-explore-{semantic_digest[:24] or 'visual-preview'}",
+        "--format",
+        "json",
+    ]
+    if not execute:
+        result = _run_command(command, execute=False, runner=runner)
+    else:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path = config_path.parent / source_name
+        source_path.write_text(str(graph.get("mermaid") or ""), encoding="utf-8")
+        try:
+            result = _run_command(
+                command,
+                execute=True,
+                runner=runner,
+                cwd=config_path.parent,
+            )
+        finally:
+            source_path.unlink(missing_ok=True)
+    return {
+        "ok": bool(result.get("ok")),
+        "schema_version": LARK_EXPLORE_VISUAL_SYNC_VERSION,
+        "status": "published"
+        if execute and result.get("ok")
+        else "would_publish"
+        if not execute
+        else "publish_failed",
+        "execute": execute,
+        "published": bool(execute and result.get("ok")),
+        "semantic_digest": semantic_digest,
+        "docx_token": str(visual_sink.get("docx_token") or "") or None,
+        "graph_counts": graph.get("graph_counts"),
+        "filter": graph.get("filter"),
+        "command": result,
+        "error": None if result.get("ok") else _command_error(result),
+    }
+
+
+def explore_visual_semantic_digest(projection: Mapping[str, Any]) -> str:
+    """Return a timestamp-free digest for an explicit visual projection sync."""
+
+    semantic = {
+        "goal_id": projection.get("goal_id"),
+        "nodes": [
+            {
+                key: node.get(key)
+                for key in (
+                    "node_id",
+                    "title",
+                    "node_kind",
+                    "status",
+                    "summary",
+                    "blocked_reason",
+                    "parent_id",
+                    "tags",
+                    "supersedes",
+                )
+            }
+            for node in projection.get("nodes") or []
+            if isinstance(node, Mapping)
+        ],
+        "edges": [
+            {
+                key: edge.get(key)
+                for key in (
+                    "edge_id",
+                    "from_node",
+                    "to_node",
+                    "edge_type",
+                    "summary",
+                )
+            }
+            for edge in projection.get("edges") or []
+            if isinstance(edge, Mapping)
+        ],
+    }
+    encoded = json.dumps(
+        semantic,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def setup_lark_explore_board(
@@ -455,13 +666,20 @@ def setup_lark_explore_board(
     commands: list[dict[str, Any]] = []
     warnings: list[str] = []
     existing = read_lark_explore_local_config(config_path)
-    existing_board = existing.get("board") if isinstance(existing.get("board"), dict) else {}
+    existing_board = (
+        existing.get("board") if isinstance(existing.get("board"), dict) else {}
+    )
     existing_tables = (
-        existing_board.get("tables") if isinstance(existing_board.get("tables"), dict) else {}
+        existing_board.get("tables")
+        if isinstance(existing_board.get("tables"), dict)
+        else {}
     )
     parsed_url = parse_lark_base_url(base_url) if base_url else {}
     effective_base_token = str(
-        base_token or parsed_url.get("base_token") or existing_board.get("base_token") or ""
+        base_token
+        or parsed_url.get("base_token")
+        or existing_board.get("base_token")
+        or ""
     ).strip()
     effective_base_url = str(base_url or existing_board.get("base_url") or "").strip()
     table_ids = {
@@ -507,10 +725,13 @@ def setup_lark_explore_board(
             )
             create_base = (
                 create_data.get("base")
-                if isinstance(create_data, dict) and isinstance(create_data.get("base"), dict)
+                if isinstance(create_data, dict)
+                and isinstance(create_data.get("base"), dict)
                 else {}
             )
-            effective_base_url = str(create_base.get("url") or effective_base_url).strip()
+            effective_base_url = str(
+                create_base.get("url") or effective_base_url
+            ).strip()
         else:
             effective_base_token = "<base-token-from-create>"
 
@@ -529,7 +750,9 @@ def setup_lark_explore_board(
                 "--name",
                 EXPLORE_TABLE_NAMES[table_key],
                 "--fields",
-                json.dumps(lark_explore_field_definitions(table_key), ensure_ascii=False),
+                json.dumps(
+                    lark_explore_field_definitions(table_key), ensure_ascii=False
+                ),
             ],
             execute=execute,
             runner=runner,
@@ -556,8 +779,12 @@ def setup_lark_explore_board(
         "tables": table_ids,
     }
     if execute:
-        write_lark_explore_local_config(
-            config_path,
+        updated = {
+            key: value
+            for key, value in existing.items()
+            if key not in {"ok", "exists", "path", "updated_at"}
+        }
+        updated.update(
             {
                 "schema_version": LARK_EXPLORE_LOCAL_CONFIG_VERSION,
                 "board": board,
@@ -566,8 +793,14 @@ def setup_lark_explore_board(
                     if isinstance(existing.get("result_records"), dict)
                     else {}
                 ),
-                "card": existing.get("card") if isinstance(existing.get("card"), dict) else {},
-            },
+                "card": existing.get("card")
+                if isinstance(existing.get("card"), dict)
+                else {},
+            }
+        )
+        write_lark_explore_local_config(
+            config_path,
+            updated,
         )
 
     return {
@@ -598,13 +831,17 @@ def _joined(values: Any) -> str:
 def _lifecycle_values(item: Mapping[str, Any], *, source_id: str) -> dict[str, Any]:
     return {
         "Source ID": source_id,
-        "Row Lifecycle": "superseded" if str(item.get("superseded_by") or "") else "current",
+        "Row Lifecycle": "superseded"
+        if str(item.get("superseded_by") or "")
+        else "current",
         "Supersedes": _joined(item.get("supersedes")),
         "Superseded By": str(item.get("superseded_by") or ""),
     }
 
 
-def _node_record_values(node: Mapping[str, Any], *, goal_id: str, source_id: str) -> dict[str, Any]:
+def _node_record_values(
+    node: Mapping[str, Any], *, goal_id: str, source_id: str
+) -> dict[str, Any]:
     return {
         "Title": str(node.get("title") or ""),
         "Kind": str(node.get("node_kind") or ""),
@@ -624,7 +861,9 @@ def _node_record_values(node: Mapping[str, Any], *, goal_id: str, source_id: str
     }
 
 
-def _edge_record_values(edge: Mapping[str, Any], *, goal_id: str, source_id: str) -> dict[str, Any]:
+def _edge_record_values(
+    edge: Mapping[str, Any], *, goal_id: str, source_id: str
+) -> dict[str, Any]:
     return {
         "From Node": str(edge.get("from_node") or ""),
         "To Node": str(edge.get("to_node") or ""),
@@ -682,8 +921,12 @@ def _with_edge_link_values(
     """
 
     linked = dict(values)
-    from_record = str(record_map.get(f"{goal_id}:{TABLE_NODES}:{values.get('From Node')}") or "")
-    to_record = str(record_map.get(f"{goal_id}:{TABLE_NODES}:{values.get('To Node')}") or "")
+    from_record = str(
+        record_map.get(f"{goal_id}:{TABLE_NODES}:{values.get('From Node')}") or ""
+    )
+    to_record = str(
+        record_map.get(f"{goal_id}:{TABLE_NODES}:{values.get('To Node')}") or ""
+    )
     if from_record:
         linked["From Node Link"] = [{"id": from_record}]
     if to_record:
@@ -824,8 +1067,11 @@ def sync_explore_results_to_lark(
             result_id = str(values.get(_RESULT_ID_FIELD) or "").strip()
             key = f"{goal_id}:{table_key}:{result_id}"
             remote_record = remote_records.get(key)
-            if execute and record_map.get(key) and remote_record and _lark_values_match(
-                values, remote_record
+            if (
+                execute
+                and record_map.get(key)
+                and remote_record
+                and _lark_values_match(values, remote_record)
             ):
                 result = _skipped_sync_command()
                 skipped_rows += 1
@@ -843,7 +1089,9 @@ def sync_explore_results_to_lark(
                 commands.append(result)
                 if execute and result.get("ok"):
                     written_rows += 1
-            record_id = _extract_created_record_id(result.get("json")) or record_map.get(key)
+            record_id = _extract_created_record_id(
+                result.get("json")
+            ) or record_map.get(key)
             if execute and result.get("ok") and record_id:
                 record_map[key] = record_id
                 if not result.get("skipped"):
@@ -884,7 +1132,9 @@ def sync_explore_results_to_lark(
         "sink_visibility": sink_visibility,
         "public_safe_redaction": public_safe,
         "projection_schema_version": projection.get("schema_version"),
-        "row_counts": {table_key: len(rows_by_table[table_key]) for table_key in EXPLORE_TABLE_KEYS},
+        "row_counts": {
+            table_key: len(rows_by_table[table_key]) for table_key in EXPLORE_TABLE_KEYS
+        },
         "written_rows": written_rows,
         "skipped_rows": skipped_rows,
         "duplicate_remote_rows": duplicate_remote_rows,
@@ -919,6 +1169,7 @@ def sync_issue_fix_explore_on_material_change(
     """
 
     from ....capabilities.issue_fix.explore_projection import (
+        build_issue_fix_executive_visual_projection,
         project_issue_fix_explore_graph,
     )
 
@@ -940,8 +1191,18 @@ def sync_issue_fix_explore_on_material_change(
     )
     prior = sync_state.get(goal_id) if isinstance(sync_state.get(goal_id), dict) else {}
     digest = str(projection_result.get("semantic_digest") or "")
-    prior_digest = str(prior.get("semantic_digest") or "")
-    needs_sync = bool(digest and digest != prior_digest)
+    prior_digest = str(
+        prior.get("canonical_rows_semantic_digest")
+        or prior.get("semantic_digest")
+        or ""
+    )
+    visual_sink = (
+        local.get("visual_sink") if isinstance(local.get("visual_sink"), dict) else None
+    )
+    prior_visual_digest = str(prior.get("visual_semantic_digest") or "")
+    needs_row_sync = bool(digest and digest != prior_digest)
+    needs_visual_sync = bool(visual_sink and digest and digest != prior_visual_digest)
+    needs_sync = needs_row_sync or needs_visual_sync
     if not projection_result.get("applicable"):
         return {
             "ok": True,
@@ -949,6 +1210,8 @@ def sync_issue_fix_explore_on_material_change(
             "status": "not_applicable",
             "execute": execute,
             "needs_sync": False,
+            "needs_row_sync": False,
+            "needs_visual_sync": False,
             "semantic_digest": digest,
             "prior_semantic_digest": prior_digest or None,
             "projection": projection_result,
@@ -962,6 +1225,8 @@ def sync_issue_fix_explore_on_material_change(
             "status": "not_configured",
             "execute": execute,
             "needs_sync": needs_sync,
+            "needs_row_sync": needs_row_sync,
+            "needs_visual_sync": needs_visual_sync,
             "semantic_digest": digest,
             "prior_semantic_digest": prior_digest or None,
             "projection": projection_result,
@@ -975,6 +1240,8 @@ def sync_issue_fix_explore_on_material_change(
             "status": "unchanged",
             "execute": execute,
             "needs_sync": False,
+            "needs_row_sync": False,
+            "needs_visual_sync": False,
             "semantic_digest": digest,
             "prior_semantic_digest": prior_digest or None,
             "projection": projection_result,
@@ -988,52 +1255,100 @@ def sync_issue_fix_explore_on_material_change(
             "status": "would_sync",
             "execute": False,
             "needs_sync": True,
+            "needs_row_sync": needs_row_sync,
+            "needs_visual_sync": needs_visual_sync,
             "semantic_digest": digest,
             "prior_semantic_digest": prior_digest or None,
             "projection": projection_result,
             "lark_sync": None,
             "config_path": str(config_path),
         }
-    lark_sync = sync_explore_results_to_lark(
-        config,
-        projection=projection_result["projection"],
-        config_path=config_path,
-        execute=True,
-        runner=runner,
-    )
-    if lark_sync.get("ok"):
-        updated_sync_state = dict(sync_state)
-        updated_sync_state[goal_id] = {
-            "semantic_digest": digest,
-            "synced_at": now_lark_datetime(),
-        }
-        # The inner sync persists new record ids incrementally. Re-read that
-        # write before adding the digest so this outer checkpoint cannot
-        # restore the stale pre-sync record map.
-        persisted_local = read_lark_explore_local_config(config_path)
-        updated_local = dict(
-            persisted_local if persisted_local.get("ok") else local
+    lark_sync = (
+        sync_explore_results_to_lark(
+            config,
+            projection=projection_result["projection"],
+            config_path=config_path,
+            execute=True,
+            runner=runner,
         )
+        if needs_row_sync
+        else None
+    )
+    visual_sync = (
+        sync_explore_visual_to_lark(
+            config,
+            projection=projection_result["projection"],
+            visual_sink=visual_sink,
+            config_path=config_path,
+            semantic_digest=digest,
+            display_projection=build_issue_fix_executive_visual_projection(
+                projection_result["projection"]
+            )
+            if str(visual_sink.get("projection_mode") or "") == "issue_fix_two_lane"
+            else None,
+            execute=True,
+            runner=runner,
+        )
+        if needs_visual_sync
+        else None
+    )
+    row_ok = lark_sync is None or bool(lark_sync.get("ok"))
+    visual_ok = visual_sync is None or bool(visual_sync.get("ok"))
+    if row_ok or visual_ok:
+        updated_sync_state = dict(sync_state)
+        updated_goal_state = dict(prior)
+        if needs_row_sync and row_ok:
+            updated_goal_state.update(
+                {
+                    "semantic_digest": digest,
+                    "canonical_rows_semantic_digest": digest,
+                    "canonical_rows_synced_at": now_lark_datetime(),
+                }
+            )
+        if needs_visual_sync and visual_ok:
+            updated_goal_state.update(
+                {
+                    "visual_semantic_digest": digest,
+                    "visual_published_at": now_lark_datetime(),
+                }
+            )
+        updated_goal_state["synced_at"] = now_lark_datetime()
+        updated_sync_state[goal_id] = updated_goal_state
+        # The row sync persists record ids incrementally. Re-read that write
+        # before adding sink-specific digests so a partial success remains
+        # retryable without restoring a stale record map.
+        persisted_local = read_lark_explore_local_config(config_path)
+        updated_local = dict(persisted_local if persisted_local.get("ok") else local)
         updated_local["automatic_projection_sync"] = updated_sync_state
         write_lark_explore_local_config(config_path, updated_local)
+    all_ok = row_ok and visual_ok
     return {
-        "ok": bool(lark_sync.get("ok")),
+        "ok": all_ok,
         "schema_version": "issue_fix_explore_lark_material_sync_v0",
-        "status": "synced" if lark_sync.get("ok") else "sync_failed",
+        "status": "synced" if all_ok else "sync_failed",
         "execute": True,
         "needs_sync": True,
+        "needs_row_sync": needs_row_sync,
+        "needs_visual_sync": needs_visual_sync,
         "semantic_digest": digest,
         "prior_semantic_digest": prior_digest or None,
+        "prior_visual_semantic_digest": prior_visual_digest or None,
         "projection": projection_result,
         "lark_sync": lark_sync,
+        "canonical_rows_sync": lark_sync,
+        "visual_sync": visual_sync,
         "config_path": str(config_path),
     }
 
 
 def build_explore_card_markdown(projection: Mapping[str, Any]) -> str:
-    counts = projection.get("counts") if isinstance(projection.get("counts"), dict) else {}
+    counts = (
+        projection.get("counts") if isinstance(projection.get("counts"), dict) else {}
+    )
     by_status = (
-        counts.get("nodes_by_status") if isinstance(counts.get("nodes_by_status"), dict) else {}
+        counts.get("nodes_by_status")
+        if isinstance(counts.get("nodes_by_status"), dict)
+        else {}
     )
     status_parts = [
         f"{by_status.get(status, 0)} {label}"
@@ -1054,20 +1369,26 @@ def build_explore_card_markdown(projection: Mapping[str, Any]) -> str:
         ),
         "",
     ]
-    stuck = [item for item in projection.get("stuck") or [] if isinstance(item, Mapping)]
+    stuck = [
+        item for item in projection.get("stuck") or [] if isinstance(item, Mapping)
+    ]
     if stuck:
         lines.append("**Blocked**")
         for node in stuck:
             reason = str(node.get("blocked_reason") or "").strip()
             lines.append(f"- {node.get('title')}" + (f" - {reason}" if reason else ""))
         lines.append("")
-    findings = [item for item in projection.get("findings") or [] if isinstance(item, Mapping)]
+    findings = [
+        item for item in projection.get("findings") or [] if isinstance(item, Mapping)
+    ]
     if findings:
         lines.append("**Latest findings**")
         for finding in findings[:5]:
             lines.append(f"- [{finding.get('status')}] {finding.get('finding')}")
         lines.append("")
-    frontier = [item for item in projection.get("frontier") or [] if isinstance(item, Mapping)]
+    frontier = [
+        item for item in projection.get("frontier") or [] if isinstance(item, Mapping)
+    ]
     if frontier:
         lines.append("**Exploring now**")
         for node in frontier[:5]:

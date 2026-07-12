@@ -485,6 +485,22 @@ continuously current without spending writes on unchanged CI/review polls. It
 uses the result layer only and does not enable or depend on Explore Harness
 worker orchestration.
 
+An optional owner-facing whiteboard is configured separately because linked
+Base rows and a rendered graph are different delivery receipts. Configure an
+existing Docx whiteboard with `explore feishu-visual-configure`; the Docx may be
+a root-level resource inside the same Base so the graph and Kanban share one
+operator entry point. A material sync checkpoints `canonical_rows_semantic_digest`
+and `visual_semantic_digest` independently. If whiteboard publication fails
+after Base rows succeed, the next run retries only the visual sink instead of
+rewriting unchanged rows. `status=synced` therefore means every configured sink
+completed; callers can inspect `canonical_rows_status` and `visual_status`
+separately.
+
+The default `canonical_filtered` projection obeys the configured status/tag
+filters. Issue-fix callers may choose `--projection-mode issue_fix_two_lane` to
+render one deduplicated delivery lane plus curated capability milestones from
+the same canonical graph; this changes presentation only, never evidence state.
+
 The text `From Node` / `To Node` columns remain stable public ids for
 automation and review, while the linked-record columns are the Feishu-native
 graph substrate. A Base plugin, relationship-aware view, or Feishu dashboard
@@ -507,6 +523,7 @@ loopx explore graph --goal-id <id> [--graph-format mermaid|json] [--out <file>]
 loopx explore todo-branch-plan --goal-id <id> [--agent-id <agent>] [--width 3]
 loopx explore worker-branch-plan --goal-id <id> [--agent-id <agent>] [--harness-profile generic|adaptive-resilient|moe-router] [--worker-width 3] [--max-todos-per-branch 3] [--router-state <file>] [--load-profile <file>]
 loopx explore feishu-setup [--base-url ...] [--execute]
+loopx explore feishu-visual-configure --whiteboard-token <token> [--docx-token <token>] [--projection-mode canonical_filtered|issue_fix_two_lane] [--tag <tag>] [--status <status>] [--execute]
 loopx explore feishu-sync --goal-id <id> [--sink-visibility owner-only|shared] [--execute]
 loopx explore feishu-card --goal-id <id> [--card-file <file>] [--message-id om_...]
 ```

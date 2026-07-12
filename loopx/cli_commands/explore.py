@@ -36,12 +36,15 @@ from ..presentation.sinks.lark.explore_results import (
     EXPLORE_TABLE_KEYS,
     LarkExploreConfig,
     build_explore_result_card,
+    configure_lark_explore_visual_sink,
     default_lark_explore_config_path,
+    explore_visual_semantic_digest,
     lark_explore_config_from_payload,
     lark_explore_schema_payload,
     read_lark_explore_local_config,
     setup_lark_explore_board,
     sync_explore_results_to_lark,
+    sync_explore_visual_to_lark,
     write_lark_explore_local_config,
 )
 from ..presentation.sinks.lark.kanban import DEFAULT_CLI_BIN
@@ -68,7 +71,9 @@ def register_explore_commands(
     )
     sub = parser.add_subparsers(dest="explore_command", required=True)
 
-    schema = sub.add_parser("schema", help="Print the result-board schema and LoopX mapping.")
+    schema = sub.add_parser(
+        "schema", help="Print the result-board schema and LoopX mapping."
+    )
     add_subcommand_format(schema)
 
     node = sub.add_parser(
@@ -77,13 +82,22 @@ def register_explore_commands(
     )
     add_subcommand_format(node)
     node.add_argument("--goal-id", required=True)
-    node.add_argument("--title", required=True, help="Compact public-safe node statement.")
-    node.add_argument("--node-id", help="Stable node id; reuse it to update the same node.")
+    node.add_argument(
+        "--title", required=True, help="Compact public-safe node statement."
+    )
+    node.add_argument(
+        "--node-id", help="Stable node id; reuse it to update the same node."
+    )
     node.add_argument("--kind", dest="node_kind", choices=sorted(NODE_KINDS))
     node.add_argument("--status", choices=sorted(NODE_STATUSES))
     node.add_argument("--summary", help="Optional compact public-safe detail.")
-    node.add_argument("--blocked-reason", help="Required when --status blocked: why the loop is stuck.")
-    node.add_argument("--parent", dest="parent_id", help="Parent node id for the topology tree.")
+    node.add_argument(
+        "--blocked-reason",
+        help="Required when --status blocked: why the loop is stuck.",
+    )
+    node.add_argument(
+        "--parent", dest="parent_id", help="Parent node id for the topology tree."
+    )
     _add_common_record_args(node)
 
     edge = sub.add_parser("edge", help="Link two exploration nodes with a typed edge.")
@@ -91,7 +105,9 @@ def register_explore_commands(
     edge.add_argument("--goal-id", required=True)
     edge.add_argument("--from", dest="from_node", required=True, help="Source node id.")
     edge.add_argument("--to", dest="to_node", required=True, help="Target node id.")
-    edge.add_argument("--type", dest="edge_type", required=True, choices=sorted(EDGE_TYPES))
+    edge.add_argument(
+        "--type", dest="edge_type", required=True, choices=sorted(EDGE_TYPES)
+    )
     edge.add_argument("--summary", help="Optional compact edge label detail.")
     edge.add_argument("--confidence", type=float, help="0..1 confidence.")
     edge.add_argument("--agent-id")
@@ -103,9 +119,15 @@ def register_explore_commands(
     )
     add_subcommand_format(finding)
     finding.add_argument("--goal-id", required=True)
-    finding.add_argument("--title", required=True, help="Compact public-safe finding statement.")
-    finding.add_argument("--finding-id", help="Stable finding id; reuse it to update the same finding.")
-    finding.add_argument("--node", dest="node_id", help="Node id this finding belongs to.")
+    finding.add_argument(
+        "--title", required=True, help="Compact public-safe finding statement."
+    )
+    finding.add_argument(
+        "--finding-id", help="Stable finding id; reuse it to update the same finding."
+    )
+    finding.add_argument(
+        "--node", dest="node_id", help="Node id this finding belongs to."
+    )
     finding.add_argument("--status", choices=sorted(FINDING_STATUSES))
     finding.add_argument("--summary", help="Optional compact public-safe detail.")
     finding.add_argument("--confidence", type=float, help="0..1 confidence.")
@@ -170,8 +192,41 @@ def register_explore_commands(
     setup.add_argument("--base-url", help="Reuse an existing shared Base URL.")
     setup.add_argument("--base-token", help="Reuse an existing Base token.")
     setup.add_argument("--cli-bin", default=DEFAULT_CLI_BIN)
-    setup.add_argument("--as", dest="identity", default="user", choices=["bot", "user", "auto"])
-    setup.add_argument("--execute", action="store_true", help="Actually run lark-cli write commands.")
+    setup.add_argument(
+        "--as", dest="identity", default="user", choices=["bot", "user", "auto"]
+    )
+    setup.add_argument(
+        "--execute", action="store_true", help="Actually run lark-cli write commands."
+    )
+
+    visual = sub.add_parser(
+        "feishu-visual-configure",
+        help="Configure an optional owner-facing Explore whiteboard. Dry-run unless --execute.",
+    )
+    add_subcommand_format(visual)
+    _add_config_path_arg(visual)
+    visual.add_argument("--whiteboard-token", required=True)
+    visual.add_argument("--docx-token")
+    visual.add_argument(
+        "--status",
+        dest="visual_statuses",
+        action="append",
+        choices=sorted(NODE_STATUSES),
+        default=[],
+    )
+    visual.add_argument("--tag", dest="visual_tags", action="append", default=[])
+    visual.add_argument(
+        "--projection-mode",
+        choices=["canonical_filtered", "issue_fix_two_lane"],
+        default="canonical_filtered",
+    )
+    visual.add_argument(
+        "--include-ancestors",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    visual.add_argument("--mermaid-node-limit", type=int, default=100)
+    visual.add_argument("--execute", action="store_true")
 
     sync = sub.add_parser(
         "feishu-sync",
@@ -185,14 +240,20 @@ def register_explore_commands(
     for table_key in EXPLORE_TABLE_KEYS:
         sync.add_argument(f"--table-id-{table_key}", dest=f"table_id_{table_key}")
     sync.add_argument("--cli-bin")
-    sync.add_argument("--as", dest="identity", default="user", choices=["bot", "user", "auto"])
+    sync.add_argument(
+        "--as", dest="identity", default="user", choices=["bot", "user", "auto"]
+    )
     sync.add_argument(
         "--sink-visibility",
         choices=["owner-only", "shared"],
         default="owner-only",
         help="Use shared to redact private links and external ids before writing rows.",
     )
-    sync.add_argument("--execute", action="store_true", help="Actually upsert records and remember record ids.")
+    sync.add_argument(
+        "--execute",
+        action="store_true",
+        help="Actually upsert records and remember record ids.",
+    )
 
     card = sub.add_parser(
         "feishu-card",
@@ -204,13 +265,17 @@ def register_explore_commands(
     _add_projection_limit_args(card)
     card.add_argument("--title")
     card.add_argument("--template", default="blue")
-    card.add_argument("--message-id", help="Existing card message id (om_...) for updates.")
+    card.add_argument(
+        "--message-id", help="Existing card message id (om_...) for updates."
+    )
     card.add_argument(
         "--remember-message-id",
         action="store_true",
         help="Persist --message-id in the local board config.",
     )
-    card.add_argument("--card-file", help="Also write the card JSON to this local file.")
+    card.add_argument(
+        "--card-file", help="Also write the card JSON to this local file."
+    )
 
 
 def _add_common_record_args(parser: argparse.ArgumentParser) -> None:
@@ -227,16 +292,23 @@ def _add_common_record_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_config_path_arg(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config-path", help="Local board config path. Defaults beside the LoopX registry.")
+    parser.add_argument(
+        "--config-path",
+        help="Local board config path. Defaults beside the LoopX registry.",
+    )
 
 
 def _add_projection_limit_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--finding-limit", type=int, default=DEFAULT_FINDING_LIMIT)
-    parser.add_argument("--mermaid-node-limit", type=int, default=DEFAULT_MERMAID_NODE_LIMIT)
+    parser.add_argument(
+        "--mermaid-node-limit", type=int, default=DEFAULT_MERMAID_NODE_LIMIT
+    )
 
 
 def _target_config(args: argparse.Namespace, *, config_path: Path) -> LarkExploreConfig:
-    stored = lark_explore_config_from_payload(read_lark_explore_local_config(config_path))
+    stored = lark_explore_config_from_payload(
+        read_lark_explore_local_config(config_path)
+    )
     base_token = args.base_token or (stored.base_token if stored else None)
     table_ids = dict(stored.table_ids) if stored else {}
     for table_key in EXPLORE_TABLE_KEYS:
@@ -255,7 +327,9 @@ def _target_config(args: argparse.Namespace, *, config_path: Path) -> LarkExplor
     )
 
 
-def _projection_for(args: argparse.Namespace, *, runtime_root: Path) -> dict[str, object]:
+def _projection_for(
+    args: argparse.Namespace, *, runtime_root: Path
+) -> dict[str, object]:
     log_path = explore_result_log_path(runtime_root, args.goal_id)
     events = load_explore_result_events(log_path, goal_id=args.goal_id)
     projection = build_explore_result_projection(
@@ -318,7 +392,9 @@ def _tree_lines(tree: object, *, indent: int = 0) -> list[str]:
 def render_explore_markdown(payload: dict[str, object]) -> str:
     lines = ["# LoopX Explore", ""]
     if not payload.get("ok"):
-        lines.extend([f"- ok: `{payload.get('ok')}`", f"- error: `{payload.get('error')}`", ""])
+        lines.extend(
+            [f"- ok: `{payload.get('ok')}`", f"- error: `{payload.get('error')}`", ""]
+        )
         return "\n".join(lines)
     for key in (
         "schema_version",
@@ -401,7 +477,9 @@ def render_explore_markdown(payload: dict[str, object]) -> str:
         for branch in selected_worker_branches:
             if not isinstance(branch, dict):
                 continue
-            todo_ids = ", ".join(str(todo_id) for todo_id in branch.get("todo_ids") or [])
+            todo_ids = ", ".join(
+                str(todo_id) for todo_id in branch.get("todo_ids") or []
+            )
             lines.append(
                 f"- {branch.get('branch_role')} `{branch.get('branch_id')}` "
                 f"worker=`{branch.get('worker_hint')}` confidence=`{branch.get('confidence')}` "
@@ -422,7 +500,9 @@ def render_explore_markdown(payload: dict[str, object]) -> str:
         for item in stuck:
             if isinstance(item, dict):
                 reason = str(item.get("blocked_reason") or "").strip()
-                lines.append(f"- {item.get('title')}" + (f" - {reason}" if reason else ""))
+                lines.append(
+                    f"- {item.get('title')}" + (f" - {reason}" if reason else "")
+                )
     findings = payload.get("findings")
     if isinstance(findings, list) and findings:
         lines.extend(["", "## Findings", ""])
@@ -480,7 +560,9 @@ def handle_explore_command(
                 tags=args.tag,
                 supersedes=args.supersedes,
             )
-            payload = _append_event_payload(event, runtime_root=runtime_root, goal_id=args.goal_id)
+            payload = _append_event_payload(
+                event, runtime_root=runtime_root, goal_id=args.goal_id
+            )
         elif args.explore_command == "edge":
             event = build_explore_edge_event(
                 goal_id=args.goal_id,
@@ -492,7 +574,9 @@ def handle_explore_command(
                 agent_id=args.agent_id,
                 run_id=args.run_id,
             )
-            payload = _append_event_payload(event, runtime_root=runtime_root, goal_id=args.goal_id)
+            payload = _append_event_payload(
+                event, runtime_root=runtime_root, goal_id=args.goal_id
+            )
         elif args.explore_command == "finding":
             event = build_explore_finding_event(
                 goal_id=args.goal_id,
@@ -508,7 +592,9 @@ def handle_explore_command(
                 tags=args.tag,
                 supersedes=args.supersedes,
             )
-            payload = _append_event_payload(event, runtime_root=runtime_root, goal_id=args.goal_id)
+            payload = _append_event_payload(
+                event, runtime_root=runtime_root, goal_id=args.goal_id
+            )
         elif args.explore_command == "summary":
             payload = _projection_for(args, runtime_root=runtime_root)
         elif args.explore_command == "graph":
@@ -537,7 +623,9 @@ def handle_explore_command(
                 out_path = Path(args.out).expanduser()
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 if args.graph_format == "mermaid":
-                    out_path.write_text(str(graph_view.get("mermaid") or "") + "\n", encoding="utf-8")
+                    out_path.write_text(
+                        str(graph_view.get("mermaid") or "") + "\n", encoding="utf-8"
+                    )
                 else:
                     graph_json = {
                         "goal_id": args.goal_id,
@@ -561,7 +649,9 @@ def handle_explore_command(
                 flag_name="--resource-usage",
             )
             orchestration = _goal_orchestration_boundary(registry, goal_id=args.goal_id)
-            gate = resolve_todo_branch_plan_gate(orchestration, requested_width=args.width)
+            gate = resolve_todo_branch_plan_gate(
+                orchestration, requested_width=args.width
+            )
             if gate["state"] == GATE_STATE_DISABLED:
                 # Short-circuit before goal-state projection so disabled and
                 # unregistered goals both get the explicit opt-in packet
@@ -688,20 +778,51 @@ def handle_explore_command(
                 identity=args.identity,
                 execute=bool(args.execute),
             )
+        elif args.explore_command == "feishu-visual-configure":
+            payload = configure_lark_explore_visual_sink(
+                config_path=config_path,
+                whiteboard_token=args.whiteboard_token,
+                docx_token=args.docx_token,
+                statuses=args.visual_statuses,
+                tags=args.visual_tags,
+                projection_mode=args.projection_mode,
+                include_ancestors=bool(args.include_ancestors),
+                mermaid_node_limit=args.mermaid_node_limit,
+                execute=bool(args.execute),
+            )
         elif args.explore_command == "feishu-sync":
             projection = _projection_for(args, runtime_root=runtime_root)
+            target = _target_config(args, config_path=config_path)
             payload = sync_explore_results_to_lark(
-                _target_config(args, config_path=config_path),
+                target,
                 projection=projection,
                 config_path=config_path,
                 sink_visibility=args.sink_visibility,
                 execute=bool(args.execute),
             )
+            local = read_lark_explore_local_config(config_path)
+            payload["visual_sync"] = sync_explore_visual_to_lark(
+                target,
+                projection=projection,
+                visual_sink=local.get("visual_sink")
+                if isinstance(local.get("visual_sink"), dict)
+                else None,
+                config_path=config_path,
+                semantic_digest=explore_visual_semantic_digest(projection),
+                execute=bool(args.execute),
+            )
+            payload["ok"] = bool(payload.get("ok")) and bool(
+                payload["visual_sync"].get("ok")
+            )
         elif args.explore_command == "feishu-card":
             projection = _projection_for(args, runtime_root=runtime_root)
             local = read_lark_explore_local_config(config_path)
-            stored_card = local.get("card") if isinstance(local.get("card"), dict) else {}
-            message_id = args.message_id or str(stored_card.get("message_id") or "") or None
+            stored_card = (
+                local.get("card") if isinstance(local.get("card"), dict) else {}
+            )
+            message_id = (
+                args.message_id or str(stored_card.get("message_id") or "") or None
+            )
             payload = build_explore_result_card(
                 projection,
                 title=args.title,

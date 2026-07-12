@@ -55,7 +55,9 @@ def register_lark_kanban_commands(
     )
     sub = parser.add_subparsers(dest="lark_kanban_command", required=True)
 
-    schema = sub.add_parser("schema", help="Print the task-board schema and LoopX mapping.")
+    schema = sub.add_parser(
+        "schema", help="Print the task-board schema and LoopX mapping."
+    )
     add_subcommand_format(schema)
     schema.add_argument("--table-name", default=DEFAULT_TABLE_NAME)
 
@@ -63,53 +65,97 @@ def register_lark_kanban_commands(
     add_subcommand_format(config)
     _add_local_config_args(config)
 
-    use = sub.add_parser("use", help="Store an existing shared Lark Base board for this project.")
+    use = sub.add_parser(
+        "use", help="Store an existing shared Lark Base board for this project."
+    )
     add_subcommand_format(use)
     _add_local_config_args(use)
-    use.add_argument("--base-url", help="Shared Lark Base URL. table/view query params are reused when present.")
+    use.add_argument(
+        "--base-url",
+        help="Shared Lark Base URL. table/view query params are reused when present.",
+    )
     use.add_argument("--base-token", help="Base token when --base-url is not used.")
-    use.add_argument("--table-id", help="Table id when --base-url does not include table=.")
+    use.add_argument(
+        "--table-id", help="Table id when --base-url does not include table=."
+    )
     use.add_argument("--view-id")
     use.add_argument("--cli-bin", default=DEFAULT_CLI_BIN)
-    use.add_argument("--as", dest="identity", default="user", choices=["bot", "user", "auto"])
+    use.add_argument(
+        "--as", dest="identity", default="user", choices=["bot", "user", "auto"]
+    )
 
-    setup = sub.add_parser("setup", help="Create or reuse the project Lark Kanban board. Dry-run unless --execute.")
+    setup = sub.add_parser(
+        "setup",
+        help="Create or reuse the project Lark Kanban board. Dry-run unless --execute.",
+    )
     add_subcommand_format(setup)
     _add_local_config_args(setup)
     setup.add_argument("--base-name", default="LoopX Kanban POC")
     setup.add_argument("--table-name", default=DEFAULT_TABLE_NAME)
     setup.add_argument("--base-url", help="Reuse an existing shared Base URL.")
-    setup.add_argument("--base-token", help="Reuse an existing Base token instead of creating a new Base.")
-    setup.add_argument("--table-id", help="Reuse an existing table id instead of creating/configuring a table.")
+    setup.add_argument(
+        "--base-token",
+        help="Reuse an existing Base token instead of creating a new Base.",
+    )
+    setup.add_argument(
+        "--table-id",
+        help="Reuse an existing table id instead of creating/configuring a table.",
+    )
     setup.add_argument("--cli-bin", default=DEFAULT_CLI_BIN)
-    setup.add_argument("--as", dest="identity", default="user", choices=["bot", "user", "auto"])
-    setup.add_argument("--execute", action="store_true", help="Actually run lark-cli write commands and save config.")
+    setup.add_argument(
+        "--as", dest="identity", default="user", choices=["bot", "user", "auto"]
+    )
+    setup.add_argument(
+        "--execute",
+        action="store_true",
+        help="Actually run lark-cli write commands and save config.",
+    )
 
-    doctor = sub.add_parser("doctor", help="Diagnose lark-cli, auth, local config, and board reachability.")
+    doctor = sub.add_parser(
+        "doctor", help="Diagnose lark-cli, auth, local config, and board reachability."
+    )
     add_subcommand_format(doctor)
     _add_local_config_args(doctor)
     doctor.add_argument("--cli-bin", default=DEFAULT_CLI_BIN)
-    doctor.add_argument("--as", dest="identity", default="user", choices=["bot", "user", "auto"])
-    doctor.add_argument("--no-board-check", action="store_true", help="Skip remote Base read checks.")
-    doctor.add_argument("--require-board", action="store_true", help="Fail if no local board config exists.")
+    doctor.add_argument(
+        "--as", dest="identity", default="user", choices=["bot", "user", "auto"]
+    )
+    doctor.add_argument(
+        "--no-board-check", action="store_true", help="Skip remote Base read checks."
+    )
+    doctor.add_argument(
+        "--require-board",
+        action="store_true",
+        help="Fail if no local board config exists.",
+    )
 
-    plan = sub.add_parser("plan-create", help="Print lark-cli commands for creating the board.")
+    plan = sub.add_parser(
+        "plan-create", help="Print lark-cli commands for creating the board."
+    )
     add_subcommand_format(plan)
     _add_create_args(plan)
 
-    create = sub.add_parser("create-board", help="Create the Lark Base board. Dry-run unless --execute.")
+    create = sub.add_parser(
+        "create-board", help="Create the Lark Base board. Dry-run unless --execute."
+    )
     add_subcommand_format(create)
     _add_create_args(create)
-    create.add_argument("--execute", action="store_true", help="Actually run lark-cli commands.")
+    create.add_argument(
+        "--execute", action="store_true", help="Actually run lark-cli commands."
+    )
 
-    seed = sub.add_parser("seed-task", help="Create one sample task row. Dry-run unless --execute.")
+    seed = sub.add_parser(
+        "seed-task", help="Create one sample task row. Dry-run unless --execute."
+    )
     add_subcommand_format(seed)
     _add_local_config_args(seed)
     _add_lark_target_args(seed)
     seed.add_argument("--goal-id", default="loopx-lark-kanban-poc")
     seed.add_argument("--worker-command", default="")
     seed.add_argument("--workdir", default="")
-    seed.add_argument("--execute", action="store_true", help="Actually upsert the sample record.")
+    seed.add_argument(
+        "--execute", action="store_true", help="Actually upsert the sample record."
+    )
 
     cases = sub.add_parser(
         "seed-cases",
@@ -121,7 +167,9 @@ def register_lark_kanban_commands(
     cases.add_argument("--goal-id", default="loopx-lark-kanban-ux")
     cases.add_argument("--worker-command", default="")
     cases.add_argument("--workdir", default="")
-    cases.add_argument("--execute", action="store_true", help="Actually upsert the records.")
+    cases.add_argument(
+        "--execute", action="store_true", help="Actually upsert the records."
+    )
 
     sync = sub.add_parser(
         "sync-loopx-todos",
@@ -134,7 +182,9 @@ def register_lark_kanban_commands(
     _add_local_config_args(sync)
     _add_lark_target_args(sync)
     sync.add_argument("--goal-id", required=True)
-    sync.add_argument("--agent-id", help="Only sync todos claimed by or blocking this agent id.")
+    sync.add_argument(
+        "--agent-id", help="Only sync todos claimed by or blocking this agent id."
+    )
     sync.add_argument("--project")
     sync.add_argument("--state-file")
     sync.add_argument("--include-done", action="store_true")
@@ -147,7 +197,11 @@ def register_lark_kanban_commands(
             "and record values. The default returns a compact operator receipt."
         ),
     )
-    sync.add_argument("--execute", action="store_true", help="Actually upsert records and remember record ids.")
+    sync.add_argument(
+        "--execute",
+        action="store_true",
+        help="Actually upsert records and remember record ids.",
+    )
 
     projection = sub.add_parser(
         "sync-projection",
@@ -161,9 +215,17 @@ def register_lark_kanban_commands(
         required=True,
         help="Projection JSON file, inline object, or '-' for stdin.",
     )
-    projection.add_argument("--goal-id", help="Only sync this goal id; defaults from the projection payload.")
-    projection.add_argument("--agent-id", help="Only sync rows claimed by, blocking, or projected for this agent id.")
-    projection.add_argument("--source-id", help="Stable source namespace used in synthetic row ids.")
+    projection.add_argument(
+        "--goal-id",
+        help="Only sync this goal id; defaults from the projection payload.",
+    )
+    projection.add_argument(
+        "--agent-id",
+        help="Only sync rows claimed by, blocking, or projected for this agent id.",
+    )
+    projection.add_argument(
+        "--source-id", help="Stable source namespace used in synthetic row ids."
+    )
     projection.add_argument(
         "--sink-visibility",
         choices=["owner-only", "shared"],
@@ -186,7 +248,11 @@ def register_lark_kanban_commands(
         action="store_true",
         help="Attest that the projection contains the complete source namespace.",
     )
-    projection.add_argument("--execute", action="store_true", help="Actually upsert records and remember record ids.")
+    projection.add_argument(
+        "--execute",
+        action="store_true",
+        help="Actually upsert records and remember record ids.",
+    )
 
     heartbeat = sub.add_parser(
         "heartbeat",
@@ -234,16 +300,27 @@ def register_lark_kanban_commands(
 
 
 def _add_local_config_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config-path", help="Local board config path. Defaults beside the LoopX registry.")
+    parser.add_argument(
+        "--config-path",
+        help="Local board config path. Defaults beside the LoopX registry.",
+    )
 
 
 def _add_create_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--base-name", default="LoopX Lark Kanban Control Plane POC")
     parser.add_argument("--table-name", default=DEFAULT_TABLE_NAME)
-    parser.add_argument("--base-token", help="Use an existing Base token instead of creating a new Base.")
-    parser.add_argument("--user-open-id", help="Grant this user full_access to a newly created/existing Base.")
+    parser.add_argument(
+        "--base-token",
+        help="Use an existing Base token instead of creating a new Base.",
+    )
+    parser.add_argument(
+        "--user-open-id",
+        help="Grant this user full_access to a newly created/existing Base.",
+    )
     parser.add_argument("--cli-bin", default=DEFAULT_CLI_BIN)
-    parser.add_argument("--as", dest="identity", default="user", choices=["bot", "user", "auto"])
+    parser.add_argument(
+        "--as", dest="identity", default="user", choices=["bot", "user", "auto"]
+    )
 
 
 def _add_lark_target_args(parser: argparse.ArgumentParser) -> None:
@@ -251,7 +328,9 @@ def _add_lark_target_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--table-id")
     parser.add_argument("--view-id")
     parser.add_argument("--cli-bin", default=DEFAULT_CLI_BIN)
-    parser.add_argument("--as", dest="identity", default="user", choices=["bot", "user", "auto"])
+    parser.add_argument(
+        "--as", dest="identity", default="user", choices=["bot", "user", "auto"]
+    )
 
 
 def _target_config(args: argparse.Namespace, *, config_path: Path) -> LarkKanbanConfig:
@@ -262,7 +341,9 @@ def _target_config(args: argparse.Namespace, *, config_path: Path) -> LarkKanban
     cli_bin = args.cli_bin or (stored.cli_bin if stored else DEFAULT_CLI_BIN)
     identity = args.identity or (stored.identity if stored else "user")
     if not base_token or not table_id:
-        raise ValueError("lark-kanban target requires --base-token/--table-id or local config from setup/use")
+        raise ValueError(
+            "lark-kanban target requires --base-token/--table-id or local config from setup/use"
+        )
     return LarkKanbanConfig(
         **{"base_" + "token": base_token},
         table_id=table_id,
@@ -400,7 +481,9 @@ def handle_lark_kanban_command(
                 agent_id=args.agent_id,
                 config_path=config_path,
                 project=Path(args.project).expanduser() if args.project else None,
-                state_file=Path(args.state_file).expanduser() if args.state_file else None,
+                state_file=Path(args.state_file).expanduser()
+                if args.state_file
+                else None,
                 include_done=bool(args.include_done),
                 limit=args.limit,
                 execute=bool(args.execute),
@@ -426,6 +509,11 @@ def handle_lark_kanban_command(
                     if isinstance(explore_sync.get("lark_sync"), dict)
                     else {}
                 )
+                visual_sync = (
+                    explore_sync.get("visual_sync")
+                    if isinstance(explore_sync.get("visual_sync"), dict)
+                    else {}
+                )
                 payload["issue_fix_explore_projection"] = {
                     "ok": projection_result.get("ok"),
                     "applicable": projection_result.get("applicable"),
@@ -446,17 +534,28 @@ def handle_lark_kanban_command(
                     "ok": explore_sync.get("ok"),
                     "status": explore_sync.get("status"),
                     "needs_sync": explore_sync.get("needs_sync"),
+                    "needs_row_sync": explore_sync.get("needs_row_sync"),
+                    "needs_visual_sync": explore_sync.get("needs_visual_sync"),
                     "semantic_digest": explore_sync.get("semantic_digest"),
+                    "canonical_rows_status": "synced"
+                    if lark_sync.get("ok")
+                    else "unchanged"
+                    if not explore_sync.get("needs_row_sync")
+                    else "sync_failed",
                     "written_rows": lark_sync.get("written_rows"),
                     "skipped_rows": lark_sync.get("skipped_rows"),
-                    "duplicate_remote_rows": lark_sync.get(
-                        "duplicate_remote_rows"
+                    "duplicate_remote_rows": lark_sync.get("duplicate_remote_rows"),
+                    "visual_status": visual_sync.get("status")
+                    or (
+                        "unchanged"
+                        if not explore_sync.get("needs_visual_sync")
+                        else "publish_failed"
                     ),
-                    "error": lark_sync.get("error"),
+                    "visual_published": visual_sync.get("published"),
+                    "visual_graph_counts": visual_sync.get("graph_counts"),
+                    "error": lark_sync.get("error") or visual_sync.get("error"),
                 }
-                payload["ok"] = bool(payload.get("ok")) and bool(
-                    explore_sync.get("ok")
-                )
+                payload["ok"] = bool(payload.get("ok")) and bool(explore_sync.get("ok"))
             except Exception as exc:
                 payload["ok"] = False
                 payload["issue_fix_explore_projection"] = {

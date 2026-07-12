@@ -404,6 +404,14 @@ facility. LoopX still treats issue-fix domain state and rollout events as the
 facts, while the graph presents two connected stories: repository delivery
 and reusable agent capability improvement.
 
+The canonical Base rows and the owner-facing Docx whiteboard are separate
+configured sinks. A project may place the Docx as a root-level resource in the
+same Base as the Kanban, then register its whiteboard with
+`loopx explore feishu-visual-configure`. Automatic sync records independent row
+and visual digests, so a successful row update can never be reported as visual
+publication. A failed whiteboard update remains runnable and retries without
+rewriting unchanged Nodes, Edges, or Findings.
+
 ## Truth And Evidence Model
 
 ### Revision-pinned repository context
