@@ -14,7 +14,7 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -22,6 +22,11 @@ ROOT = Path(__file__).resolve().parents[1]
 NOTES_DIR = ROOT / "docs" / "update-notes"
 NOTES_INDEX = NOTES_DIR / "README.md"
 WINDOW_RE = re.compile(r"(?P<since>\d{4}-\d{2}-\d{2})-to-(?P<until>\d{4}-\d{2}-\d{2})\.md$")
+SQUASH_PR_RE = re.compile(r"^(?P<title>.+?)\s+\(#(?P<pr>\d+)\)$")
+MERGE_PR_RE = re.compile(r"^Merge pull request #(?P<pr>\d+)\b")
+FIELD_SEPARATOR = "\x1f"
+RECORD_SEPARATOR = "\x1e"
+PULL_URL = "https://github.com/huangruiteng/loopx/pull"
 
 
 @dataclass(frozen=True)
@@ -55,6 +60,7 @@ class Window:
 class Commit:
     sha: str
     subject: str
+    pr_number: int
 
 
 THEMES: list[tuple[str, tuple[str, ...], str]] = [
@@ -129,26 +135,64 @@ def collect_commits(window: Window) -> list[Commit]:
     output = run_git(
         [
             "log",
-            f"--since={window.since.isoformat()}T00:00:00",
-            f"--until={window.until.isoformat()}T23:59:59",
-            "--pretty=format:%h%x09%s",
+            "HEAD",
+            "--first-parent",
+            f"--since={window.since.isoformat()}T00:00:00Z",
+            f"--until={window.until.isoformat()}T23:59:59Z",
+            "--pretty=format:%h%x1f%s%x1f%b%x1e",
         ]
     )
     commits: list[Commit] = []
-    seen_subjects: set[str] = set()
-    for line in output.splitlines():
-        if "\t" not in line:
+    seen_prs: set[int] = set()
+    for record in output.split(RECORD_SEPARATOR):
+        record = record.strip("\r\n")
+        if not record:
             continue
-        sha, subject = line.split("\t", 1)
+        fields = record.split(FIELD_SEPARATOR, 2)
+        if len(fields) != 3:
+            continue
+        sha, subject, body = fields
         subject = subject.strip()
-        if not subject or subject.startswith("Merge pull request "):
+        squash_match = SQUASH_PR_RE.match(subject)
+        merge_match = MERGE_PR_RE.match(subject)
+        if squash_match:
+            pr_number = int(squash_match.group("pr"))
+            subject = squash_match.group("title").strip()
+        elif merge_match:
+            pr_number = int(merge_match.group("pr"))
+            body_lines = [line.strip() for line in body.splitlines() if line.strip()]
+            if not body_lines:
+                continue
+            subject = body_lines[0]
+            nested_match = SQUASH_PR_RE.match(subject)
+            if nested_match:
+                subject = nested_match.group("title").strip()
+        else:
+            # Direct and branch-merge commits are useful in git history but are
+            # noisy evidence for a public update-note summary.
             continue
-        key = subject.lower()
-        if key in seen_subjects:
+        if pr_number in seen_prs:
             continue
-        seen_subjects.add(key)
-        commits.append(Commit(sha=sha, subject=subject))
+        seen_prs.add(pr_number)
+        commits.append(Commit(sha=sha, subject=subject, pr_number=pr_number))
     return commits
+
+
+def commit_rank(commit: Commit) -> tuple[int, int]:
+    lowered = commit.subject.lower()
+    rank_groups = [
+        (40, ("feat", "add", "introduce", "support", "enable", "ship", "release", "expose")),
+        (30, ("fix", "harden", "guard", "preserve", "stabilize", "repair", "prevent")),
+        (20, ("refactor", "move", "extract", "split", "retire", "simplify")),
+        (10, ("docs", "test", "ci", "chore", "bump", "refresh")),
+    ]
+    for score, signals in rank_groups:
+        if any(
+            re.search(rf"(?<![a-z0-9-]){re.escape(signal)}(?![a-z0-9-])", lowered)
+            for signal in signals
+        ):
+            return score, commit.pr_number
+    return 15, commit.pr_number
 
 
 def classify_commits(commits: list[Commit]) -> dict[str, list[Commit]]:
@@ -162,14 +206,22 @@ def classify_commits(commits: list[Commit]) -> dict[str, list[Commit]]:
                 break
         else:
             grouped["Other public changes"].append(commit)
-    return {theme: values for theme, values in grouped.items() if values}
+    return {
+        theme: sorted(values, key=commit_rank, reverse=True)
+        for theme, values in grouped.items()
+        if values
+    }
 
 
-def bulletize(commits: list[Commit], limit: int = 8) -> list[str]:
-    bullets = [f"- `{commit.sha}` {commit.subject}" for commit in commits[:limit]]
+def bulletize(commits: list[Commit], limit: int = 4) -> list[str]:
+    bullets = [
+        f"- [#{commit.pr_number}]({PULL_URL}/{commit.pr_number}) {commit.subject}"
+        for commit in commits[:limit]
+    ]
     remaining = len(commits) - limit
     if remaining > 0:
-        bullets.append(f"- ...and {remaining} more public commits in this theme.")
+        noun = "PR" if remaining == 1 else "PRs"
+        bullets.append(f"- ...and {remaining} more merged {noun} in this theme.")
     return bullets
 
 
@@ -182,20 +234,22 @@ def focus_for(grouped: dict[str, list[Commit]]) -> str:
 
 def render_note(window: Window, commits: list[Commit]) -> str:
     grouped = classify_commits(commits)
+    product_groups = {
+        theme: values for theme, values in grouped.items() if theme != "Other public changes"
+    }
     highlight_lines = []
     for theme, _needles, summary in THEMES:
-        if theme in grouped:
+        if theme in product_groups:
             highlight_lines.append(f"- {summary}")
-    if grouped.get("Other public changes"):
-        highlight_lines.append("- Additional public repository changes shipped in smaller maintenance slices.")
     if not highlight_lines:
-        highlight_lines.append("- No public commits were found for this window; review the draft before publishing.")
+        highlight_lines.append("- No merged PR evidence was found for this window; review the draft before publishing.")
 
     sections: list[str] = []
-    for theme, values in grouped.items():
+    for theme, values in product_groups.items():
         sections.append(f"### {theme}\n\n" + "\n".join(bulletize(values)))
     if not sections:
-        sections.append("### Public change review\n\n- No public commits were collected for this window.")
+        sections.append("### Public change review\n\n- No merged PR evidence was collected for this window.")
+    matched_count = sum(len(values) for values in product_groups.values())
 
     return "\n".join(
         [
@@ -213,6 +267,10 @@ def render_note(window: Window, commits: list[Commit]) -> str:
             "\n".join(highlight_lines),
             "",
             "## What Shipped",
+            "",
+            f"The generator reviewed {len(commits)} merged PRs and selected the highest-ranked "
+            f"evidence from {matched_count} PRs across stable product themes. Unclassified "
+            "maintenance remains available in git history instead of being copied into this draft.",
             "",
             "\n\n".join(sections),
             "",
@@ -232,22 +290,40 @@ def render_note(window: Window, commits: list[Commit]) -> str:
     )
 
 
+def section_bounds(index_text: str, heading: str) -> tuple[int, int]:
+    marker = f"{heading}\n"
+    start = index_text.find(marker)
+    if start < 0:
+        raise SystemExit(f"docs/update-notes/README.md missing {heading} section")
+    content_start = start + len(marker)
+    next_heading = re.search(r"^## ", index_text[content_start:], re.MULTILINE)
+    end = content_start + next_heading.start() if next_heading else len(index_text)
+    return content_start, end
+
+
 def replace_latest(index_text: str, window: Window) -> str:
     latest_line = f"- [{window.label}]({window.filename})"
-    pattern = re.compile(r"(## Latest\n\n)(?:- \[[^\n]+\]\([^)]+\)\n?)", re.MULTILINE)
-    if pattern.search(index_text):
-        return pattern.sub(rf"\1{latest_line}\n", index_text)
-    return index_text.replace("## Latest\n\n", f"## Latest\n\n{latest_line}\n\n")
+    start, end = section_bounds(index_text, "## Latest")
+    section = index_text[start:end]
+    pattern = re.compile(r"^- \[[^\n]+\]\([^)]+\)$", re.MULTILINE)
+    if pattern.search(section):
+        section = pattern.sub(latest_line, section, count=1)
+    else:
+        section = f"\n{latest_line}\n" + section.lstrip("\n")
+    return index_text[:start] + section + index_text[end:]
 
 
 def update_archive(index_text: str, window: Window, focus: str) -> str:
     row = f"| {window.label} | [Read note]({window.filename}) | {focus} |"
-    if row in index_text or window.filename in index_text:
+    start, end = section_bounds(index_text, "## Archive")
+    section = index_text[start:end]
+    if row in section or window.filename in section:
         return index_text
-    marker = "| --- | --- | --- |\n"
-    if marker not in index_text:
+    marker = "| Window | Note | Focus |\n| --- | --- | --- |\n"
+    if marker not in section:
         raise SystemExit("docs/update-notes/README.md archive table marker not found")
-    return index_text.replace(marker, marker + row + "\n", 1)
+    section = section.replace(marker, marker + row + "\n", 1)
+    return index_text[:start] + section + index_text[end:]
 
 
 def update_next_expected(index_text: str, window: Window) -> str:
@@ -272,7 +348,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--since", help="Window start date, YYYY-MM-DD.")
     parser.add_argument("--until", help="Window end date, YYYY-MM-DD.")
-    parser.add_argument("--today", default=date.today().isoformat(), help="Current date for due checks.")
+    parser.add_argument("--today", help="Current UTC date for due checks, YYYY-MM-DD.")
     parser.add_argument("--force", action="store_true", help="Write even before the inferred open-after date.")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite an existing note file.")
     parser.add_argument("--dry-run", action="store_true", help="Print the plan without writing files.")
@@ -286,7 +362,7 @@ def main() -> None:
         if args.since and args.until
         else infer_next_window()
     )
-    today = parse_date(args.today)
+    today = parse_date(args.today) if args.today else datetime.now(timezone.utc).date()
     note_path = NOTES_DIR / window.filename
 
     if today < window.open_after and not args.force:
@@ -308,7 +384,10 @@ def main() -> None:
     index_text = update_archive(index_text, window, focus)
     index_text = update_next_expected(index_text, window)
 
-    print(f"update notes: window={window.label} commits={len(commits)} file={note_path.relative_to(ROOT)}")
+    print(
+        f"update notes: window={window.label} merged_prs={len(commits)} "
+        f"file={note_path.relative_to(ROOT)}"
+    )
     if args.dry_run:
         print(note)
         write_github_output({"changed": "false", "window": window.label, "window_slug": window.slug})
