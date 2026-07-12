@@ -15,6 +15,7 @@ NOTES_INDEX = NOTES_DIR / "README.md"
 AUTOMATION = NOTES_DIR / "automation.md"
 WORKFLOW = ROOT / ".github" / "workflows" / "update-notes.yml"
 GENERATOR = ROOT / "scripts" / "update_notes_release_job.py"
+QUALITY_SMOKE = ROOT / "examples" / "update-notes-generator-quality-smoke.py"
 NOTE_FILE_RE = re.compile(r"\d{4}-\d{2}-\d{2}-to-\d{4}-\d{2}-\d{2}\.md$")
 
 FORBIDDEN_PUBLIC_STRINGS = [
@@ -96,7 +97,8 @@ def validate_automation_plan() -> None:
     assert_contains(text, "workflow_dispatch", "automation plan")
     assert_contains(text, "since", "automation plan")
     assert_contains(text, "until", "automation plan")
-    assert_contains(text, "Open a reviewable draft PR", "automation plan")
+    assert_contains(text, "reviewable draft artifact", "automation plan")
+    assert_contains(text, "explicit human action", "automation plan")
     assert_contains(text, "2026-07-12", "automation plan")
     assert_contains(text, "--dry-run", "automation plan")
     assert_contains(text, "--open-pr", "automation plan")
@@ -109,17 +111,31 @@ def validate_project_automation() -> None:
     assert_contains(workflow, "workflow_dispatch:", "update notes workflow")
     assert_contains(workflow, "fetch-depth: 0", "update notes workflow")
     assert_contains(workflow, "scripts/update_notes_release_job.py", "update notes workflow")
-    assert_contains(workflow, "peter-evans/create-pull-request", "update notes workflow")
-    assert_contains(workflow, "draft: true", "update notes workflow")
+    assert_contains(workflow, "actions/upload-artifact@v4", "update notes workflow")
+    assert_contains(workflow, "contents: read", "update notes workflow")
+    assert_not_contains(workflow, "create-pull-request", "update notes workflow")
+    assert_not_contains(workflow, "pull-requests: write", "update notes workflow")
+    assert_contains(workflow, "examples/update-notes-generator-quality-smoke.py", "update notes workflow")
     assert_contains(generator, "def infer_next_window", "update notes generator")
     assert_contains(generator, "def collect_commits", "update notes generator")
+    assert_contains(generator, "--first-parent", "update notes generator")
+    assert_contains(generator, "T00:00:00Z", "update notes generator")
     assert_contains(generator, "GITHUB_OUTPUT", "update notes generator")
     assert_contains(generator, "does not use an LLM", "update notes generator")
     assert_contains(generator, "does not include private operator state", "update notes generator")
 
 
 def main() -> None:
-    for path in [README, DOCS_INDEX, NOTES_INDEX, AUTOMATION, WORKFLOW, GENERATOR, *note_files()]:
+    for path in [
+        README,
+        DOCS_INDEX,
+        NOTES_INDEX,
+        AUTOMATION,
+        WORKFLOW,
+        GENERATOR,
+        QUALITY_SMOKE,
+        *note_files(),
+    ]:
         validate_public_boundary(path)
     validate_indexes()
     validate_notes()

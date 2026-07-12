@@ -22,7 +22,7 @@ Mixing the two would create avoidable friction:
 
 ## Recommended Shape
 
-Use a dedicated release-note job that opens a draft PR. The repository ships
+Use a dedicated release-note job that uploads a reviewable draft artifact. The repository ships
 the first version as `.github/workflows/update-notes.yml`, backed by
 `scripts/update_notes_release_job.py`. A future `loopx update-notes` CLI
 subcommand can wrap the same contract once the generator is stable.
@@ -35,13 +35,15 @@ The job should:
 
 1. Determine the next window from existing note filenames in
    `docs/update-notes/`.
-2. Collect public git history for that window.
-3. Group changes into stable product themes rather than dumping commit logs.
+2. Collect first-parent merged-PR evidence for that exact UTC window.
+3. Remove direct-commit and branch-merge noise, then rank the remaining PRs
+   into compact product themes.
 4. Write a new note under `docs/update-notes/`.
 5. Update the archive table and latest-note pointer.
 6. Keep the root README as a compact pointer, not a long changelog.
 7. Run the update-note smoke and `loopx check` over the touched public docs.
-8. Open a reviewable draft PR instead of pushing directly to `main`.
+8. Upload the note, updated archive, and patch as a reviewable artifact. PR
+   creation remains an explicit human action.
 
 ## Trigger Policy
 
@@ -65,7 +67,8 @@ The recommended first scheduled publication after this archive is for
   verifier output, local paths, credentials, or operator-only state.
 - Keep generated notes short enough to review manually.
 - Fail closed if the generator cannot determine the prior window.
-- Prefer opening a draft PR when classification confidence is low.
+- Keep GitHub Actions permissions read-only and upload a draft artifact when
+  classification confidence is low.
 - Do not require an LLM secret for the default job.
 - Treat update notes as a summary surface. They do not replace git history,
   review packets, or LoopX state.
@@ -87,7 +90,7 @@ loopx update-notes write --since 2026-06-28 --until 2026-07-11 --dry-run
 loopx update-notes write --since 2026-06-28 --until 2026-07-11 --open-pr
 ```
 
-Publishing remains a reviewed PR until the public/private boundary and grouping
+Publishing remains a reviewed human action until the public/private boundary and grouping
 quality are proven stable. If the project later wants fully written prose from
 CI, add an explicit optional LLM step with a repository secret and fail closed
 when that secret is absent; keep the deterministic source-draft mode as the
