@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
-import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -14,7 +12,6 @@ from ...domain_packs.issue_fix import (
     default_issue_fix_domain_state_ledger_path,
     default_issue_fix_feasibility_ledger_path,
     default_issue_fix_repository_snapshot_ledger_path,
-    persist_issue_fix_reviewer_notification_receipts,
     retain_issue_fix_repository_snapshot_jsonl,
     upsert_issue_fix_feasibility_ledger_jsonl,
     upsert_issue_fix_pr_lifecycle_ledger_jsonl,
@@ -35,12 +32,17 @@ from .discovered_issue_promotion import (
     register_discovered_issue_promotion_command,
     render_issue_fix_discovered_issue_promotion_markdown,
 )
+from .cli_input import (
+    _MAX_INLINE_JSON_CHARS as _MAX_INLINE_JSON_CHARS,
+    load_json_object as _load_json_object,
+    load_jsonl_row as _load_jsonl_row,
+    load_jsonl_rows as _load_jsonl_rows,
+)
 from .outcome_projection import (
     build_issue_fix_outcome_projection,
     compact_issue_fix_delivery_evidence,
     render_issue_fix_outcome_projection_markdown,
 )
-from .metadata_preview import normalise_github_issue_reference
 from .metrics_projection import (
     build_issue_fix_metrics_projection,
     render_issue_fix_metrics_projection_markdown,
@@ -59,18 +61,12 @@ from .pr_lifecycle import (
 )
 from .pr_lifecycle_rollout import append_pr_merge_rollout_event
 from . import pr_gate_reconcile_cli
-from .reviewer_recommendation import (
-    build_issue_fix_reviewer_recommendation_packet,
-    render_issue_fix_reviewer_recommendation_markdown,
-)
-from .reviewer_request import (
-    build_issue_fix_reviewer_request_packet,
-    render_issue_fix_reviewer_request_markdown,
-)
-from .reviewer_notification import (
-    load_goal_reviewer_notification_sinks_input,
-    reviewer_notification_receipts_from_state,
-    with_reviewer_notification_receipts,
+from .reviewer_cli import (
+    REVIEWER_COMMANDS,
+    _materialize_goal_reviewer_notification_lifecycle as _materialize_goal_reviewer_notification_lifecycle,
+    handle_issue_fix_reviewer_command,
+    register_issue_fix_reviewer_commands,
+    reviewer_renderer,
 )
 from .repository_memory import SUPPORT_ASPECTS
 from .repository_memory_provider import (
@@ -97,34 +93,6 @@ PrintPayload = Callable[
 ]
 FormatSelector = Callable[..., str]
 AddFormat = Callable[[argparse.ArgumentParser], None]
-
-
-_MAX_INLINE_JSON_CHARS = 1_048_576
-
-
-def _load_json_object(input_text: str) -> dict[str, Any]:
-    stripped = input_text.lstrip()
-    if input_text == "-":
-        source = "stdin"
-        raw = sys.stdin.read()
-    elif stripped.startswith(("{", "[")):
-        source = "inline"
-        raw = input_text
-    else:
-        source = "file"
-        try:
-            raw = Path(input_text).expanduser().read_text(encoding="utf-8")
-        except (OSError, RuntimeError):
-            raise ValueError("could not read JSON input file") from None
-    if source == "inline" and len(raw) > _MAX_INLINE_JSON_CHARS:
-        raise ValueError("inline JSON input exceeds the 1 MiB limit")
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
-        raise ValueError("JSON input is invalid") from None
-    if not isinstance(payload, dict):
-        raise ValueError("JSON input must contain an object")
-    return payload
 
 
 def _configured_repository_memory_input(
@@ -222,57 +190,6 @@ def _add_generated_at_arg(
     )
 
 
-def _load_jsonl_row(
-    path: Path,
-    *,
-    repo: str,
-    ref_field: str,
-    ref_value: str,
-) -> dict[str, Any]:
-    if not path.is_file():
-        raise ValueError(f"issue-fix domain-state source is missing: {path.name}")
-    match: dict[str, Any] | None = None
-    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.strip():
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"{path.name}:{line_number} is not valid JSON") from exc
-        observation = row.get("observation") if isinstance(row, dict) else None
-        if not isinstance(observation, dict):
-            continue
-        if (
-            str(observation.get("repo") or "").strip() == repo
-            and str(observation.get(ref_field) or "").strip() == ref_value
-        ):
-            match = row
-    if match is None:
-        raise ValueError(
-            f"{path.name} has no row for repo={repo} {ref_field}={ref_value}"
-        )
-    return match
-
-
-def _load_jsonl_rows(path: Path) -> list[dict[str, Any]]:
-    if not path.is_file():
-        raise ValueError(f"issue-fix domain-state source is missing: {path.name}")
-    rows: list[dict[str, Any]] = []
-    for line_number, line in enumerate(
-        path.read_text(encoding="utf-8").splitlines(), start=1
-    ):
-        if not line.strip():
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"{path.name}:{line_number} is not valid JSON") from exc
-        if not isinstance(row, dict):
-            raise ValueError(f"{path.name}:{line_number} must contain an object")
-        rows.append(row)
-    return rows
-
-
 def _goal_boundary_authority_projection(
     *,
     registry_path: Path | None,
@@ -284,9 +201,7 @@ def _goal_boundary_authority_projection(
     if not isinstance(goal, dict):
         return [], False
     coordination = (
-        goal.get("coordination")
-        if isinstance(goal.get("coordination"), dict)
-        else {}
+        goal.get("coordination") if isinstance(goal.get("coordination"), dict) else {}
     )
     summary = checkpointed_boundary_authority_summary(coordination)
     scopes = (
@@ -295,65 +210,6 @@ def _goal_boundary_authority_projection(
         else []
     )
     return [str(scope) for scope in scopes], True
-
-
-def _load_goal_for_project(
-    *,
-    registry_path: Path | None,
-    goal_id: str,
-    project: str | Path,
-) -> tuple[dict[str, Any], Path]:
-    """Resolve a connected goal from the active or explicit project registry."""
-
-    requested_project = Path(project).expanduser().resolve()
-    project_registry = requested_project / ".loopx" / "registry.json"
-    candidates = [
-        path for path in (registry_path, project_registry) if path is not None
-    ]
-    mismatched_goal = False
-    for candidate in dict.fromkeys(candidates):
-        goal = load_goal_from_registry(candidate, goal_id)
-        if not isinstance(goal, dict):
-            continue
-        goal_repo = str(goal.get("repo") or "").strip()
-        if not goal_repo:
-            raise ValueError(
-                "connected goal repository is required for goal-scoped "
-                "reviewer notification"
-            )
-        if Path(goal_repo).expanduser().resolve() == requested_project:
-            return goal, requested_project
-        mismatched_goal = True
-
-    if mismatched_goal:
-        raise ValueError(
-            "--project must match the connected goal repository for "
-            "goal-scoped reviewer notification"
-        )
-    raise ValueError(
-        "goal-scoped reviewer notification goal was not found in the active "
-        "or project-local registry"
-    )
-
-
-def _materialize_goal_reviewer_notification_lifecycle(
-    *,
-    ledger_path: str | Path,
-    url: str,
-    generated_at: str | None = None,
-    provider_payload: dict[str, Any] | None = None,
-    fetch_metadata: bool = False,
-) -> dict[str, Any]:
-    """Create the compact PR lifecycle row required for receipt persistence."""
-
-    packet = build_issue_fix_pr_lifecycle_monitor_packet(
-        url=url,
-        provider_payload=provider_payload,
-        fetch_metadata=fetch_metadata,
-        generated_at=generated_at,
-    )
-    upsert_issue_fix_pr_lifecycle_ledger_jsonl(ledger_path, packet)
-    return packet
 
 
 def register_issue_fix_commands(
@@ -843,192 +699,13 @@ def register_issue_fix_commands(
             "domain-state stream."
         ),
     )
-    snapshot_parser.add_argument(
-        "--fetch-timeout-seconds", type=int, default=30
-    )
+    snapshot_parser.add_argument("--fetch-timeout-seconds", type=int, default=30)
     _add_generated_at_arg(snapshot_parser, artifact="the repository snapshot")
-    reviewer_parser = issue_fix_sub.add_parser(
-        "reviewer-plan",
-        help=(
-            "Recommend reviewers from caller-approved repository ownership "
-            "evidence without requesting external review."
-        ),
+    register_issue_fix_reviewer_commands(
+        issue_fix_sub,
+        add_subcommand_format=add_subcommand_format,
+        add_generated_at_arg=_add_generated_at_arg,
     )
-    add_subcommand_format(reviewer_parser)
-    reviewer_parser.add_argument(
-        "--repo-path",
-        required=True,
-        help=(
-            "Caller-approved local git repository. The public packet never "
-            "records this path."
-        ),
-    )
-    reviewer_parser.add_argument(
-        "--repo",
-        default="approved_local_repo",
-        help="Public-safe repository label stored in the recommendation packet.",
-    )
-    reviewer_parser.add_argument(
-        "--changed-file",
-        action="append",
-        default=[],
-        help=(
-            "Repo-relative changed file. Repeat for multiple files. When omitted "
-            "with --execute, derive files from --base-ref...HEAD."
-        ),
-    )
-    reviewer_parser.add_argument(
-        "--base-ref",
-        default="origin/main",
-        help="Base git ref used to derive changed files when none are explicit.",
-    )
-    reviewer_parser.add_argument(
-        "--history-limit",
-        type=int,
-        default=40,
-        help="Maximum changed-path git history rows to inspect per file.",
-    )
-    reviewer_parser.add_argument(
-        "--max-candidates",
-        type=int,
-        default=5,
-        help="Maximum ranked reviewer candidates to return.",
-    )
-    reviewer_parser.add_argument(
-        "--exclude-reviewer",
-        action="append",
-        default=[],
-        help=(
-            "GitHub handle to exclude, normally the PR author or unavailable "
-            "reviewer. Repeat for multiple handles."
-        ),
-    )
-    reviewer_parser.add_argument(
-        "--exclude-author-name",
-        action="append",
-        default=[],
-        help=(
-            "Git author display-name alias to exclude when it cannot be resolved "
-            "to the PR author handle. Repeat for multiple aliases."
-        ),
-    )
-    reviewer_parser.add_argument(
-        "--identity-map-json",
-        help=(
-            "Optional public-safe JSON object mapping verified git display names "
-            "to GitHub handles; raw mapping is not copied into output."
-        ),
-    )
-    reviewer_parser.add_argument(
-        "--reviewer-sources-json",
-        help=(
-            "Optional public-safe issue_fix_reviewer_sources_input_v0 JSON with "
-            "repository-declared path routes, primary/fallback handles, trust, "
-            "freshness, observation time, and source references."
-        ),
-    )
-    reviewer_parser.add_argument(
-        "--execute",
-        action="store_true",
-        help=(
-            "Inspect only the caller-approved local repository. This still "
-            "does not request review or perform any external write."
-        ),
-    )
-    _add_generated_at_arg(reviewer_parser, artifact="the recommendation packet")
-    reviewer_request_parser = issue_fix_sub.add_parser(
-        "reviewer-request",
-        help=(
-            "Select the top requestable non-author reviewer and, with explicit "
-            "external-write authority, verify a formal request or its "
-            "permission-only comment fallback."
-        ),
-    )
-    add_subcommand_format(reviewer_request_parser)
-    reviewer_request_parser.add_argument(
-        "--url",
-        required=True,
-        help="Canonical public GitHub pull request URL.",
-    )
-    reviewer_request_parser.add_argument(
-        "--repo-path",
-        required=True,
-        help="Caller-approved local git repository; never copied into output.",
-    )
-    reviewer_request_parser.add_argument(
-        "--changed-file",
-        action="append",
-        default=[],
-        help="Repo-relative changed file; repeat or derive from --base-ref...HEAD.",
-    )
-    reviewer_request_parser.add_argument("--base-ref", default="origin/main")
-    reviewer_request_parser.add_argument("--history-limit", type=int, default=40)
-    reviewer_request_parser.add_argument("--max-candidates", type=int, default=5)
-    reviewer_request_parser.add_argument(
-        "--max-reviewers",
-        type=int,
-        default=1,
-        help="Bounded reviewer request count; default one, maximum three.",
-    )
-    reviewer_request_parser.add_argument(
-        "--exclude-reviewer", action="append", default=[]
-    )
-    reviewer_request_parser.add_argument(
-        "--exclude-author-name", action="append", default=[]
-    )
-    reviewer_request_parser.add_argument(
-        "--identity-map-json",
-        help=(
-            "Optional public-safe JSON object mapping human-verified git display "
-            "names to GitHub handles."
-        ),
-    )
-    reviewer_request_parser.add_argument(
-        "--reviewer-sources-json",
-        help=(
-            "Optional public-safe issue_fix_reviewer_sources_input_v0 JSON; "
-            "the selected candidate still requires live author exclusion and "
-            "external-write authority. Source freshness must include observation time."
-        ),
-    )
-    reviewer_request_parser.add_argument(
-        "--metadata-json",
-        help=(
-            "Optional compact PR metadata as an inline JSON object, file path, or "
-            "'-' for stdin in a no-write preview. Live execute mode fetches and "
-            "verifies GitHub state instead."
-        ),
-    )
-    reviewer_request_parser.add_argument(
-        "--notification-sinks-json",
-        help=(
-            "Optional local-private issue_fix_reviewer_notification_sinks_input_v0 "
-            "JSON. Destination, bot profile, and member IDs are consumed locally "
-            "and never copied into the public result."
-        ),
-    )
-    reviewer_request_parser.add_argument(
-        "--goal-id",
-        help=(
-            "Optional connected goal whose registered local-private default sink "
-            "and existing PR lifecycle receipts should be reused."
-        ),
-    )
-    reviewer_request_parser.add_argument(
-        "--project",
-        default=".",
-        help="Project root used for goal-default sink config and issue_fix domain state.",
-    )
-    reviewer_request_parser.add_argument(
-        "--execute",
-        action="store_true",
-        help=(
-            "Assert external-review-request authority, try formal GitHub review, "
-            "fall back to one reviewer-tagging comment only on permission denial, "
-            "and verify the result."
-        ),
-    )
-    _add_generated_at_arg(reviewer_request_parser, artifact="the request packet")
     acceptance_parser = issue_fix_sub.add_parser(
         "acceptance-fixture",
         help=(
@@ -1155,7 +832,14 @@ def handle_issue_fix_command(
 ) -> int:
     try:
         generated_at = str(args.generated_at or now_utc_iso()).strip()
-        if args.issue_fix_command == "repository-memory-sync":
+        reviewer_result = handle_issue_fix_reviewer_command(
+            args,
+            registry_path=registry_path,
+            generated_at=generated_at,
+        )
+        if reviewer_result is not None:
+            payload, renderer = reviewer_result
+        elif args.issue_fix_command == "repository-memory-sync":
             provider_path = (
                 args.repository_memory_provider_json
                 or default_repository_memory_provider_config_path()
@@ -1196,7 +880,9 @@ def handle_issue_fix_command(
             renderer = render_issue_fix_discovered_issue_promotion_markdown
         elif args.issue_fix_command == "workflow-plan":
             if args.fetch_metadata and args.metadata_json:
-                raise ValueError("--fetch-metadata cannot be combined with --metadata-json")
+                raise ValueError(
+                    "--fetch-metadata cannot be combined with --metadata-json"
+                )
             provider_path = args.repository_memory_provider_json or (
                 None
                 if args.repository_memory_json
@@ -1327,11 +1013,17 @@ def handle_issue_fix_command(
                     )
             renderer = render_issue_fix_feasibility_markdown
         elif args.issue_fix_command == "pr-gate-reconcile":
-            payload = pr_gate_reconcile_cli.build_pr_gate_reconciliation_from_args(args, registry_path, runtime_root_arg, generated_at)
-            renderer = pr_gate_reconcile_cli.render_issue_fix_pr_gate_reconciliation_markdown
+            payload = pr_gate_reconcile_cli.build_pr_gate_reconciliation_from_args(
+                args, registry_path, runtime_root_arg, generated_at
+            )
+            renderer = (
+                pr_gate_reconcile_cli.render_issue_fix_pr_gate_reconciliation_markdown
+            )
         elif args.issue_fix_command == "pr-lifecycle":
             if args.fetch_metadata and args.metadata_json:
-                raise ValueError("--fetch-metadata cannot be combined with --metadata-json")
+                raise ValueError(
+                    "--fetch-metadata cannot be combined with --metadata-json"
+                )
             if args.execute_transition and not args.maintainer_correction_json:
                 raise ValueError(
                     "--execute-transition requires --maintainer-correction-json"
@@ -1384,7 +1076,9 @@ def handle_issue_fix_command(
             else:
                 domain_state = payload.get("domain_state_projection")
                 if isinstance(domain_state, dict) and not args.no_write_domain_state:
-                    domain_state["write_skipped_reason"] = "goal_id_or_ledger_path_missing"
+                    domain_state["write_skipped_reason"] = (
+                        "goal_id_or_ledger_path_missing"
+                    )
             transition = payload.get("transition")
             if args.execute_transition:
                 if registry_path is None:
@@ -1403,7 +1097,9 @@ def handle_issue_fix_command(
                         goal_id=args.goal_id,
                         role=role,
                         text=str(transition.get("text") or ""),
-                        task_class=str(transition.get("task_class") or "advancement_task"),
+                        task_class=str(
+                            transition.get("task_class") or "advancement_task"
+                        ),
                         action_kind=str(transition.get("action_kind") or ""),
                         required_write_scopes=(
                             list(transition.get("required_write_scopes") or [])
@@ -1432,9 +1128,7 @@ def handle_issue_fix_command(
                     payload["todo_write_performed"] = todo_changed
                     writeback_contract = payload.get("writeback_contract")
                     if isinstance(writeback_contract, dict):
-                        writeback_contract["todo_write_performed"] = bool(
-                            todo_changed
-                        )
+                        writeback_contract["todo_write_performed"] = bool(todo_changed)
                 else:
                     payload["todo_write"] = {
                         "schema_version": "issue_fix_maintainer_correction_todo_write_v0",
@@ -1519,9 +1213,11 @@ def handle_issue_fix_command(
                 )
             if pr_lifecycle_packet is not None and args.pr_ref:
                 lifecycle_observation = pr_lifecycle_packet.get("observation")
-                if not isinstance(lifecycle_observation, dict) or str(
-                    lifecycle_observation.get("pr_ref") or ""
-                ).strip() != args.pr_ref:
+                if (
+                    not isinstance(lifecycle_observation, dict)
+                    or str(lifecycle_observation.get("pr_ref") or "").strip()
+                    != args.pr_ref
+                ):
                     raise ValueError(
                         "--pr-ref must match the selected PR lifecycle packet"
                     )
@@ -1685,9 +1381,7 @@ def handle_issue_fix_command(
             payload = build_issue_fix_metrics_projection(
                 goal_id=args.goal_id,
                 repo=args.repo,
-                baseline_snapshot=_load_json_object(
-                    args.repository_baseline_json
-                ),
+                baseline_snapshot=_load_json_object(args.repository_baseline_json),
                 current_snapshot=_load_json_object(args.repository_current_json),
                 feasibility_rows=_load_jsonl_rows(feasibility_path),
                 pr_lifecycle_rows=_load_jsonl_rows(lifecycle_path),
@@ -1747,182 +1441,6 @@ def handle_issue_fix_command(
                 }
                 payload["source_contract"]["writes_source_state"] = True
             renderer = render_repository_snapshot_markdown
-        elif args.issue_fix_command == "reviewer-plan":
-            payload = build_issue_fix_reviewer_recommendation_packet(
-                repo_path=args.repo_path,
-                repo=args.repo,
-                changed_files=args.changed_file,
-                base_ref=args.base_ref,
-                history_limit=args.history_limit,
-                max_candidates=args.max_candidates,
-                exclude_reviewers=args.exclude_reviewer,
-                exclude_author_names=args.exclude_author_name,
-                resolved_identities=(
-                    _load_json_object(args.identity_map_json)
-                    if args.identity_map_json
-                    else None
-                ),
-                reviewer_sources_input=(
-                    _load_json_object(args.reviewer_sources_json)
-                    if args.reviewer_sources_json
-                    else None
-                ),
-                execute=args.execute,
-                generated_at=generated_at,
-            )
-            renderer = render_issue_fix_reviewer_recommendation_markdown
-        elif args.issue_fix_command == "reviewer-request":
-            if args.execute and args.metadata_json:
-                raise ValueError(
-                    "reviewer-request execute mode must fetch live PR metadata; "
-                    "--metadata-json is preview-only"
-                )
-            notification_sinks_input = (
-                _load_json_object(args.notification_sinks_json)
-                if args.notification_sinks_json
-                else None
-            )
-            notification_sinks_source = (
-                "explicit" if notification_sinks_input is not None else "not_configured"
-            )
-            notification_lifecycle_packet: dict[str, Any] | None = None
-            notification_lifecycle_path: Path | None = None
-            notification_lifecycle_materialized = False
-            if args.goal_id:
-                goal, requested_project = _load_goal_for_project(
-                    registry_path=registry_path,
-                    goal_id=args.goal_id,
-                    project=args.project,
-                )
-                if notification_sinks_input is None:
-                    notification_sinks_input = (
-                        load_goal_reviewer_notification_sinks_input(
-                            goal=goal,
-                            project=requested_project,
-                        )
-                    )
-                if notification_sinks_input is not None:
-                    if notification_sinks_source == "not_configured":
-                        notification_sinks_source = "goal_default"
-                    reference = normalise_github_issue_reference(
-                        repo="public_repo_fixture",
-                        issue_ref="pull_request_fixture",
-                        url=args.url,
-                    )
-                    if reference.get("kind") != "pull_request":
-                        raise ValueError(
-                            "goal-scoped reviewer notification requires a GitHub PR"
-                        )
-                    notification_lifecycle_path = (
-                        default_issue_fix_domain_state_ledger_path(
-                            project=requested_project,
-                            goal_id=args.goal_id,
-                        )
-                    )
-                    try:
-                        notification_lifecycle_packet = _load_jsonl_row(
-                            notification_lifecycle_path,
-                            repo=str(reference["repo"]),
-                            ref_field="pr_ref",
-                            ref_value=f"pull_{int(reference['number'])}",
-                        )
-                    except ValueError:
-                        if args.execute:
-                            try:
-                                notification_lifecycle_packet = (
-                                    _materialize_goal_reviewer_notification_lifecycle(
-                                        ledger_path=notification_lifecycle_path,
-                                        url=args.url,
-                                        generated_at=generated_at,
-                                        fetch_metadata=True,
-                                    )
-                                )
-                            except (OSError, RuntimeError, ValueError):
-                                raise ValueError(
-                                    "goal-scoped reviewer notification could not "
-                                    "materialize a verified PR lifecycle row before "
-                                    "external send"
-                                ) from None
-                            notification_lifecycle_materialized = True
-                    notification_sinks_input = with_reviewer_notification_receipts(
-                        notification_sinks_input,
-                        reviewer_notification_receipts_from_state(
-                            notification_lifecycle_packet
-                        ),
-                    )
-            payload = build_issue_fix_reviewer_request_packet(
-                repo_path=args.repo_path,
-                url=args.url,
-                changed_files=args.changed_file,
-                base_ref=args.base_ref,
-                history_limit=args.history_limit,
-                max_candidates=args.max_candidates,
-                max_reviewers=args.max_reviewers,
-                exclude_reviewers=args.exclude_reviewer,
-                exclude_author_names=args.exclude_author_name,
-                resolved_identities=(
-                    _load_json_object(args.identity_map_json)
-                    if args.identity_map_json
-                    else None
-                ),
-                reviewer_sources_input=(
-                    _load_json_object(args.reviewer_sources_json)
-                    if args.reviewer_sources_json
-                    else None
-                ),
-                notification_sinks_input=notification_sinks_input,
-                provider_payload=(
-                    _load_json_object(args.metadata_json)
-                    if args.metadata_json
-                    else None
-                ),
-                execute=args.execute,
-                generated_at=generated_at,
-            )
-            payload["secondary_notification_source"] = notification_sinks_source
-            payload["secondary_notification_lifecycle_materialized"] = (
-                notification_lifecycle_materialized
-            )
-            payload["secondary_notification_receipts_persisted"] = False
-            secondary = payload.get("secondary_notifications")
-            new_receipts = (
-                secondary.get("receipts")
-                if isinstance(secondary, dict)
-                and isinstance(secondary.get("receipts"), list)
-                else []
-            )
-            if (
-                args.execute
-                and notification_lifecycle_packet is not None
-                and notification_lifecycle_path is not None
-                and new_receipts
-            ):
-                try:
-                    write_result = persist_issue_fix_reviewer_notification_receipts(
-                        notification_lifecycle_path,
-                        notification_lifecycle_packet,
-                        list(new_receipts),
-                    )
-                except (OSError, ValueError):
-                    payload["ok"] = False
-                    payload["secondary_notification_receipt_blocker"] = (
-                        "reviewer_notification_receipt_persistence_failed"
-                    )
-                else:
-                    payload["secondary_notification_receipt_write"] = {
-                        "schema_version": (
-                            "issue_fix_reviewer_notification_receipt_write_v0"
-                        ),
-                        "domain_pack": "issue_fix",
-                        "stream": "pr_lifecycle",
-                        "write_performed": (
-                            write_result.get("write_performed") is True
-                        ),
-                        "status": write_result.get("status"),
-                        "path_recorded": False,
-                    }
-                    payload["secondary_notification_receipts_persisted"] = True
-            renderer = render_issue_fix_reviewer_request_markdown
         elif args.issue_fix_command == "acceptance-fixture":
             payload = build_issue_fix_acceptance_fixture_packet(
                 repo=args.repo,
@@ -1980,7 +1498,8 @@ def handle_issue_fix_command(
             else render_issue_fix_feasibility_markdown
             if getattr(args, "issue_fix_command", None) == "feasibility"
             else render_issue_fix_pr_lifecycle_monitor_markdown
-            if getattr(args, "issue_fix_command", None) in {"pr-lifecycle", "pr-gate-reconcile"}
+            if getattr(args, "issue_fix_command", None)
+            in {"pr-lifecycle", "pr-gate-reconcile"}
             else render_issue_fix_outcome_projection_markdown
             if getattr(args, "issue_fix_command", None) == "outcome"
             else render_issue_fix_metrics_projection_markdown
@@ -1989,10 +1508,8 @@ def handle_issue_fix_command(
             if getattr(args, "issue_fix_command", None) == "metrics-supplement"
             else render_repository_snapshot_markdown
             if getattr(args, "issue_fix_command", None) == "repository-snapshot"
-            else render_issue_fix_reviewer_recommendation_markdown
-            if getattr(args, "issue_fix_command", None) == "reviewer-plan"
-            else render_issue_fix_reviewer_request_markdown
-            if getattr(args, "issue_fix_command", None) == "reviewer-request"
+            else reviewer_renderer(getattr(args, "issue_fix_command", None))
+            if getattr(args, "issue_fix_command", None) in REVIEWER_COMMANDS
             else render_issue_fix_acceptance_loop_markdown
         )
     print_payload(payload, output_format(args), renderer)
