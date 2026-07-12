@@ -5,10 +5,10 @@ agent-facing control-plane packet changes. It complements deterministic smokes;
 it does not replace them and does not change the default `quota should-run`
 view.
 
-The first implementation is intentionally provider-neutral. It defines the
-actor request, no-write sandbox, strict model decision, compact receipt, and
-paired comparison. A provider adapter can be added separately after its secret
-injection, redaction, cost, and rate-limit boundaries are validated.
+The core is provider-neutral. It defines the actor request, no-write sandbox,
+strict model decision, compact receipt, and paired comparison. The optional
+direct Ark adapter supports low-frequency Doubao 2.1 shadow runs without
+changing the default quota path.
 
 ## Pair Contract
 
@@ -72,6 +72,28 @@ does not contain:
 `model_behavior_pair_result_v0` retains only the drift map, safety violations,
 and receipt digests. Raw model conversations belong in ignored local runtime
 state and are never a public repository artifact.
+
+## Direct Doubao Shadow Actor
+
+`DoubaoModelBehaviorActor` calls only the canonical Ark Chat Completions
+endpoint and allowlists the versioned Doubao 2.1 Pro and Turbo model ids. It
+does not accept an arbitrary base URL, does not follow redirects, does not send
+tool definitions, and converts transport failures into bounded errors without
+provider response bodies.
+
+Live use requires `ARK_API_KEY` to be injected into the process environment.
+The key is held only by the in-memory adapter and is never placed in a LoopX
+packet, receipt, error, command argument, fixture, or repository file. The
+optional `LOOPX_MODEL_BEHAVIOR_MODEL` selector can choose one of the two
+allowlisted Doubao 2.1 model ids. Missing credentials, unsupported models,
+malformed provider JSON, or non-conforming decisions fail closed. LoopX does
+not search credential stores and does not route these calls through a memory
+system or another agent service.
+
+The live actor is deliberately absent from PR smoke and normal CI. It belongs
+in manually triggered or low-frequency shadow qualification where cost,
+repetition, corpus selection, and promotion policy are explicit. Only compact
+decision receipts and paired drift results may become durable evidence.
 
 ## Promotion Boundary
 

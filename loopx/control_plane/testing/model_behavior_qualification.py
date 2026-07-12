@@ -204,6 +204,26 @@ def build_model_behavior_actor_request(
     }
 
 
+def normalize_model_behavior_actor_request(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Rebuild and verify a canonical actor request before provider transport."""
+
+    if not isinstance(raw, Mapping):
+        raise ValueError("actor request must be an object")
+    if raw.get("schema_version") != MODEL_BEHAVIOR_ACTOR_REQUEST_SCHEMA_VERSION:
+        raise ValueError("actor request must use model_behavior_actor_request_v0")
+    packet = raw.get("packet")
+    if not isinstance(packet, Mapping):
+        raise ValueError("actor request packet must be an object")
+    canonical = build_model_behavior_actor_request(
+        packet,
+        qualification_id=str(raw.get("qualification_id") or ""),
+        arm=str(raw.get("arm") or ""),
+    )
+    if dict(raw) != canonical:
+        raise ValueError("actor request does not match the canonical no-write contract")
+    return canonical
+
+
 def normalize_model_behavior_actor_result(raw: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(raw, Mapping):
         raise ValueError("actor result must be an object")
