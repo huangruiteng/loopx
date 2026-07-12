@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .authority import goal_authority_registry_summary
+from .capabilities.explore.activation import compact_explore_graph_policy
 from .control_plane import compact_control_plane_policy
 from .control_plane.runtime.time import now_local_iso
 from .control_plane.runtime.run_index_duplicates import (
@@ -776,6 +777,9 @@ def collect_history(
             "adapter_kind": adapter.get("kind"),
             "adapter_status": adapter.get("status"),
             "coordination": meta.get("coordination") if isinstance(meta.get("coordination"), dict) else None,
+            "explore_graph": compact_explore_graph_policy(meta.get("explore_graph"))
+            if isinstance(meta.get("explore_graph"), dict)
+            else None,
             "spawn_policy": meta.get("spawn_policy") if isinstance(meta.get("spawn_policy"), dict) else None,
             "execution_profile": compact_execution_profile(meta.get("execution_profile")) if registry_member else None,
             "control_plane": compact_control_plane_policy(meta.get("control_plane")) if registry_member else None,

@@ -17,6 +17,7 @@ from .boundary_authority import (
 )
 from .agent_registry import normalize_registered_agents
 from .control_plane import compact_control_plane_policy, control_plane_policy_summary
+from .capabilities.explore.activation import compact_explore_graph_policy
 from .orchestration import (
     DEFAULT_ORCHESTRATION_MODE,
     EXPLORE_HARNESS_PROFILES,
@@ -172,6 +173,7 @@ def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
         "issue_fix_reviewer_notification": _reviewer_notification_config_summary(
             goal
         ),
+        "explore_graph": compact_explore_graph_policy(goal.get("explore_graph")),
         "orchestration": orchestration,
         "waiting_on": goal.get("waiting_on"),
         "write_scope": _clean_write_scope(coordination.get("write_scope") or []) or [],
@@ -359,6 +361,7 @@ def configure_goal(
     explore_harness_enabled: bool | None = None,
     explore_harness_profile: str | None = None,
     clear_explore_harness_profile: bool = False,
+    explore_graph_enabled: bool | None = None,
     registered_agents: list[str] | None = None,
     clear_registered_agents: bool = False,
     agent_profiles: list[dict[str, Any]] | None = None,
@@ -603,6 +606,9 @@ def configure_goal(
             control_plane.pop("issue_fix", None)
         goal["control_plane"] = control_plane
 
+    if explore_graph_enabled is not None:
+        goal["explore_graph"] = {"enabled": explore_graph_enabled}
+
     if (
         multi_subagent_feature is not None
         or
@@ -819,6 +825,9 @@ def configure_goal(
         "orchestration_summary": orchestration_policy_summary(after.get("orchestration")),
         "feature_summary": {
             "multi_subagent": _multi_subagent_feature_status(after.get("orchestration") or {}),
+            "explore_graph": deepcopy(
+                after.get("explore_graph") or {"enabled": False}
+            ),
             "explore_harness": deepcopy(
                 (after.get("orchestration") or {}).get("explore_harness")
                 or {"enabled": False}
@@ -871,6 +880,11 @@ def render_configure_goal_markdown(payload: dict[str, Any]) -> str:
     feature_summary = payload.get("feature_summary")
     if isinstance(feature_summary, dict):
         lines.append(f"- feature_multi_subagent: `{feature_summary.get('multi_subagent')}`")
+        graph = feature_summary.get("explore_graph")
+        if isinstance(graph, dict):
+            lines.append(
+                f"- feature_explore_graph: `{'on' if graph.get('enabled') else 'off'}`"
+            )
         harness = feature_summary.get("explore_harness")
         if isinstance(harness, dict):
             harness_state = "on" if harness.get("enabled") else "off"

@@ -22,6 +22,9 @@ from loopx.capabilities.issue_fix.feasibility import (  # noqa: E402
 from loopx.capabilities.issue_fix.pr_lifecycle import (  # noqa: E402
     build_issue_fix_pr_lifecycle_monitor_packet,
 )
+from loopx.capabilities.explore.activation import (  # noqa: E402
+    sync_explore_graph_after_material_refresh,
+)
 from loopx.domain_packs.issue_fix import (  # noqa: E402
     default_issue_fix_domain_state_ledger_path,
     default_issue_fix_feasibility_ledger_path,
@@ -108,6 +111,71 @@ def main() -> None:
             ),
             encoding="utf-8",
         )
+        activation_calls: list[bool] = []
+
+        def activation_syncer(**kwargs: object) -> dict[str, object]:
+            activation_calls.append(bool(kwargs.get("execute")))
+            return {
+                "ok": True,
+                "status": "unchanged",
+                "needs_row_sync": False,
+                "needs_visual_sync": False,
+                "semantic_digest": "fixture-digest",
+                "projection": {
+                    "applicable": True,
+                    "material_change": False,
+                    "material_event_count": 0,
+                    "appended_event_count": 0,
+                },
+            }
+
+        graph_disabled = sync_explore_graph_after_material_refresh(
+            registry_path=registry,
+            goal_id=goal_id,
+            agent_id="codex-fixture",
+            project=project,
+            syncer=activation_syncer,
+        )
+        assert graph_disabled["status"] == "disabled", graph_disabled
+        assert activation_calls == [], activation_calls
+
+        registry_payload = json.loads(registry.read_text(encoding="utf-8"))
+        registry_payload["goals"][0]["explore_graph"] = {"enabled": True}
+        registry.write_text(json.dumps(registry_payload), encoding="utf-8")
+        graph_enabled = sync_explore_graph_after_material_refresh(
+            registry_path=registry,
+            goal_id=goal_id,
+            agent_id="codex-fixture",
+            project=project,
+            syncer=activation_syncer,
+        )
+        assert graph_enabled["status"] == "unchanged", graph_enabled
+        assert graph_enabled["needs_row_sync"] is False, graph_enabled
+        assert activation_calls == [True], activation_calls
+
+        failure_calls: list[bool] = []
+
+        def failing_syncer(**kwargs: object) -> dict[str, object]:
+            failure_calls.append(bool(kwargs.get("execute")))
+            raise RuntimeError("fixture transport failure")
+
+        first_failure = sync_explore_graph_after_material_refresh(
+            registry_path=registry,
+            goal_id=goal_id,
+            project=project,
+            syncer=failing_syncer,
+        )
+        retry_failure = sync_explore_graph_after_material_refresh(
+            registry_path=registry,
+            goal_id=goal_id,
+            project=project,
+            syncer=failing_syncer,
+        )
+        assert first_failure["status"] == "sync_failed", first_failure
+        assert first_failure["error_type"] == "RuntimeError", first_failure
+        assert retry_failure["status"] == "sync_failed", retry_failure
+        assert failure_calls == [True, True], failure_calls
+
         unrelated = project_issue_fix_explore_graph(
             registry_path=registry,
             goal_id="unrelated-goal",

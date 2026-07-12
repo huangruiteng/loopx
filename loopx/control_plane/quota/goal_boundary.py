@@ -4,6 +4,7 @@ from typing import Any
 
 from ...benchmark_core import compact_run_permission_policy_for_quota
 from ...boundary_authority import checkpointed_boundary_authority_summary
+from ...capabilities.explore.activation import compact_explore_graph_policy
 from ...execution_profile import execution_profile_outcome_floor
 from ...orchestration import compact_orchestration_policy
 from ..todos.contract import (
@@ -131,6 +132,10 @@ def goal_boundary(goal: dict[str, Any], item: dict[str, Any] | None = None) -> d
         }
     if goal.get("next_probe"):
         boundary["next_probe"] = str(goal.get("next_probe"))
+    if isinstance(goal.get("explore_graph"), dict):
+        boundary["explore_graph"] = compact_explore_graph_policy(
+            goal.get("explore_graph")
+        )
     spawn_policy = goal.get("spawn_policy") if isinstance(goal.get("spawn_policy"), dict) else None
     if spawn_policy is not None:
         boundary["orchestration"] = compact_orchestration_policy(spawn_policy)

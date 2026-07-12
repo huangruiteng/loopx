@@ -87,6 +87,9 @@ def build_run_history(
                 "adapter_kind": goal.get("adapter_kind"),
                 "adapter_status": goal.get("adapter_status"),
                 "coordination": compact_goal_coordination(goal.get("coordination")),
+                "explore_graph": goal.get("explore_graph")
+                if isinstance(goal.get("explore_graph"), dict)
+                else None,
                 "guards": goal.get("guards") if isinstance(goal.get("guards"), list) else [],
                 "next_probe": goal.get("next_probe"),
                 "authority_registry": goal.get("authority_registry"),

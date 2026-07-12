@@ -108,6 +108,37 @@ def main() -> int:
         )
         assert disabled["orchestration_gate"]["state"] == "disabled", disabled
 
+        graph_preview = run_cli(
+            registry,
+            runtime_root,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--explore-graph-enabled",
+        )
+        assert graph_preview["dry_run"] is True, graph_preview
+        assert graph_preview["feature_summary"]["explore_graph"] == {
+            "enabled": True
+        }, graph_preview
+        assert graph_preview["feature_summary"]["explore_harness"] == {
+            "enabled": False
+        }, graph_preview
+        assert registry.read_text(encoding="utf-8") == original
+
+        graph_applied = run_cli(
+            registry,
+            runtime_root,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--explore-graph-enabled",
+            "--execute",
+        )
+        assert graph_applied["written"] is True, graph_applied
+        assert goal(registry)["explore_graph"] == {"enabled": True}
+        assert goal(registry)["spawn_policy"].get("explore_harness") is None
+        graph_configured = registry.read_text(encoding="utf-8")
+
         clear_absent = run_cli(
             registry,
             runtime_root,
@@ -134,7 +165,7 @@ def main() -> int:
             "enabled": True,
             "profile": "moe-router",
         }, preview
-        assert registry.read_text(encoding="utf-8") == original
+        assert registry.read_text(encoding="utf-8") == graph_configured
 
         applied = run_cli(
             registry,
@@ -168,6 +199,7 @@ def main() -> int:
         assert quota["ok"] is False and quota["status_health_ok"] is False, quota
         boundary = quota["goal_boundary"]["orchestration"]
         assert boundary["explore_harness"] == configured["explore_harness"], boundary
+        assert quota["goal_boundary"]["explore_graph"] == {"enabled": True}, quota
 
         worker = run_cli(
             registry,
@@ -217,6 +249,20 @@ def main() -> int:
         )
         assert closed["written"] is True, closed
         assert goal(registry)["spawn_policy"]["explore_harness"] == {"enabled": False}
+
+        graph_closed_harness_open = run_cli(
+            registry,
+            runtime_root,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--no-explore-graph-enabled",
+            "--explore-harness-enabled",
+            "--execute",
+        )
+        assert graph_closed_harness_open["written"] is True, graph_closed_harness_open
+        assert goal(registry)["explore_graph"] == {"enabled": False}
+        assert goal(registry)["spawn_policy"]["explore_harness"] == {"enabled": True}
 
         conflict = run_cli(
             registry,

@@ -279,7 +279,48 @@ deny-by-default disabled packet carries the `boundary` block plus the opt-in
 operator to decide which workers to start, but it cannot launch workers or
 mutate the control plane on its own.
 
-### Per-Goal Opt-In Gate
+### Independent Per-Goal Opt-In Gates
+
+Explore Graph and Explore Harness are separate optional capabilities. Enabling
+one never enables the other:
+
+- `explore_graph.enabled` controls durable graph projection and any already
+  configured presentation sink. After each successful material
+  `refresh-state` transaction, LoopX folds the canonical Explore evidence and
+  runs the configured sink. Semantic digests make an unchanged refresh a
+  zero-write operation. A failed sink does not advance its digest, so the next
+  material refresh retries it.
+- `spawn_policy.explore_harness.enabled` controls only the read-only branch
+  planners described below. It does not create, update, or publish a graph.
+
+Both gates are absent/false by default. A common operating mode is Graph on
+and Harness off: keep an operator-facing topology current without changing
+how work is planned.
+
+```yaml
+# inside the registered goal entry
+explore_graph:
+  enabled: true
+
+spawn_policy:
+  explore_harness:
+    enabled: false
+```
+
+Configure the gates independently instead of editing the registry:
+
+```bash
+loopx configure-goal --goal-id <id> \
+  --explore-graph-enabled \
+  --no-explore-harness-enabled \
+  --execute
+```
+
+Use `--no-explore-graph-enabled` to stop automatic graph work. Disabling the
+gate preserves existing evidence and display state; it only prevents future
+automatic projection and sink writes.
+
+#### Explore Harness planning gate
 
 Both opt-in planners — `todo-branch-plan` and `worker-branch-plan` —
 are deny-by-default. The gate lives on the registered goal's `spawn_policy`,

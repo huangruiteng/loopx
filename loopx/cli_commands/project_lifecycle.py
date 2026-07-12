@@ -8,6 +8,9 @@ from pathlib import Path
 from ..control_plane.goals.goal_vision_policy import (
     GOAL_VISION_ADVANCEMENT_POLICY_CHOICES,
 )
+from ..capabilities.explore.activation import (
+    sync_explore_graph_after_material_refresh,
+)
 from ..control_plane.work_items.delivery_batch_scale import (
     DELIVERY_BATCH_SCALE_INPUT_CHOICES,
 )
@@ -479,6 +482,18 @@ def handle_project_lifecycle_command(
                     ),
                 },
             )
+            graph_sync = sync_explore_graph_after_material_refresh(
+                registry_path=registry_path,
+                goal_id=args.goal_id,
+                agent_id=args.agent_id,
+                project=Path(args.project).expanduser() if args.project else None,
+                state_file=Path(args.state_file).expanduser() if args.state_file else None,
+            )
+            payload["explore_graph_sync"] = graph_sync
+            if graph_sync.get("enabled") and not graph_sync.get("ok"):
+                payload.setdefault("warnings", []).append(
+                    "enabled Explore Graph sync failed; the unchanged sink digest keeps it retryable"
+                )
         print_payload(payload, fmt, render_state_refresh_markdown)
         return 0 if payload.get("ok") else 1
 

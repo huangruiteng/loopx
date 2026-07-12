@@ -281,6 +281,15 @@ def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> 
         help="Clear allowed child-agent domains.",
     )
     configure_goal_parser.add_argument(
+        "--explore-graph-enabled",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Enable or disable automatic Explore Graph projection at material "
+            "refresh boundaries. This is independent from Explore Harness planning."
+        ),
+    )
+    configure_goal_parser.add_argument(
         "--explore-harness-enabled",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -584,6 +593,7 @@ def handle_registry_admin_command(
                 explore_harness_enabled=args.explore_harness_enabled,
                 explore_harness_profile=args.explore_harness_profile,
                 clear_explore_harness_profile=bool(args.clear_explore_harness_profile),
+                explore_graph_enabled=args.explore_graph_enabled,
                 registered_agents=args.registered_agents,
                 clear_registered_agents=bool(args.clear_registered_agents),
                 agent_profiles=agent_profiles,

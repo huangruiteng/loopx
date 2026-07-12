@@ -1048,6 +1048,9 @@ def build_quota_plan(status_payload: dict[str, Any], *, mode: str = "status") ->
                 or status_goal.get("root")
             ),
             "coordination": goal.get("coordination") if isinstance(goal.get("coordination"), dict) else None,
+            "explore_graph": goal.get("explore_graph")
+            if isinstance(goal.get("explore_graph"), dict)
+            else None,
             "spawn_policy": goal.get("spawn_policy") if isinstance(goal.get("spawn_policy"), dict) else None,
             "guards": goal.get("guards") if isinstance(goal.get("guards"), list) else [],
             "next_probe": goal.get("next_probe"),

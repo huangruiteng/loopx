@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .authority import authority_registry_summary
+from .capabilities.explore.activation import compact_explore_graph_policy
 from .control_plane import compact_control_plane_policy, control_plane_policy_summary
 from .execution_profile import compact_execution_profile, execution_profile_summary
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
@@ -365,6 +366,11 @@ def inspect_registry(path: Path) -> dict[str, Any]:
                 "operator_question": raw_goal.get("operator_question"),
                 "recommended_action": raw_goal.get("recommended_action"),
                 "next_handoff_condition": raw_goal.get("next_handoff_condition"),
+                "explore_graph": compact_explore_graph_policy(
+                    raw_goal.get("explore_graph")
+                )
+                if isinstance(raw_goal.get("explore_graph"), dict)
+                else None,
                 "orchestration": orchestration,
                 "orchestration_mode": orchestration.get("mode"),
                 "spawn_allowed": spawn_policy.get("allowed"),
