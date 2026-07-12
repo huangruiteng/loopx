@@ -23,7 +23,8 @@ write is enabled:
 - `follow_up`: optional public-safe next condition.
 - `preview_id`: required for browser reward append; omitted for CLI-only gate
   append until a separate gate preview endpoint exists.
-- `source_of_truth`: `run_bound_human_reward_overlay` or
+- `source_of_truth`: `goal_reward_event_ledger`,
+  `run_bound_human_reward_overlay` (legacy compatibility), or
   `operator_gate_decision_run`.
 - `write_effect`: what will be appended and what remains unchanged.
 - `project_agent_visibility`: the read path a target project agent should use
@@ -61,8 +62,42 @@ Browser append is allowed only when all of these are true:
 - The selected `run_generated_at`, compact reward payload, and raw index count
   still match the preview.
 
-Successful append writes one run-bound `human_reward` overlay row. Active state
-may carry a summary, but the run overlay remains the durable source of truth.
+Successful append writes one run-bound `human_reward` overlay row for backward
+compatibility and one idempotent `user_reward_event_v0` row under the goal's
+local reward-event ledger. The event ledger preserves multiple corrections that
+target the same run; the run overlay remains the compact dashboard annotation.
+Source adapters persist only a source kind and SHA-256 digest, never the raw
+message id or source text.
+
+A reward lesson may be `advisory` or `required`, and scoped to a goal,
+workspace, repository, or delivery surface. Required lessons are projected into
+the next `quota should-run` interaction contract as operating constraints.
+Later corrections may list prior `reward_id` values in `supersedes`; superseded
+lessons stay auditable but leave the active lesson projection.
+
+For a configured Lark event inbox, use the generic atomic projection path:
+
+```bash
+loopx lark-inbox project-reward \
+  --project . \
+  --config .loopx/config/lark/event-inbox.json \
+  --goal-id your-project-goal \
+  --message-id om_example \
+  --decision owner_correction \
+  --reward negative \
+  --reason-summary "The current route violates an explicit operating rule." \
+  --lesson-kind operating_rule \
+  --lesson-summary "Keep new deliveries in the required review state." \
+  --lesson-strength required \
+  --lesson-scope workspace \
+  --execute
+```
+
+This command appends or reuses the idempotent reward event, writes the compact
+active-state summary, and only then acknowledges the inbox message. A retry is
+safe: the source digest resolves to the same reward id and cannot duplicate the
+event. Raw inbox content remains local-private and is not copied into reward
+state.
 
 ## Operator Gate
 

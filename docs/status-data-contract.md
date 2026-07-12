@@ -1849,7 +1849,8 @@ Both dry-run and append responses include:
 {
   "active_state_summary": "dry-run：将记录目标 `example-experiment-goal` ...",
   "project_agent_visibility": {
-    "source_of_truth": "run_bound_human_reward_overlay",
+    "source_of_truth": "goal_reward_event_ledger",
+    "run_overlay_role": "compatibility_annotation",
     "history_command": "loopx history --goal-id example-experiment-goal --limit 3",
     "active_state_role": "summary_only",
     "review_packet_role": "optional_handoff_only"

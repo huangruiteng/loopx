@@ -650,6 +650,27 @@ loopx reward \
   --reason-summary "validation improved and the route is worth extending"
 ```
 
+For a durable operating correction, add a typed lesson. `required` lessons are
+included in the next agent interaction contract; `advisory` lessons remain
+preferences:
+
+```bash
+loopx reward \
+  --goal-id your-project-goal \
+  --decision owner_correction \
+  --reward negative \
+  --reason-summary "The next route must respect the review boundary." \
+  --lesson-kind safety_boundary \
+  --lesson-summary "Keep new pull requests in draft review." \
+  --lesson-strength required \
+  --lesson-scope workspace
+```
+
+When feedback arrives through a configured Lark inbox, prefer
+`loopx lark-inbox project-reward ... --execute`; it records the reward event
+before acknowledging the source message and stores only a digest of the source
+reference.
+
 ## Heartbeats And Quota
 
 Quota is compute eligibility, not strategy. It answers whether an automatic
