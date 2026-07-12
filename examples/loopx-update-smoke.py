@@ -19,6 +19,7 @@ from loopx import __version__  # noqa: E402
 from loopx.release_manifest import release_version_tag  # noqa: E402
 from loopx.self_update import (
     DEFAULT_UPDATE_REF,
+    _installer_env_for_source,
     build_rollback_plan,
     build_update_plan,
     execute_rollback_plan,
@@ -167,12 +168,32 @@ def test_module_plan() -> None:
 
 
 def test_default_source_uses_stable_ref() -> None:
-    payload = build_update_plan(doctor_payload=fake_doctor_payload())
+    with mock.patch.dict(os.environ, {}, clear=True):
+        payload = build_update_plan(doctor_payload=fake_doctor_payload())
     assert payload["source"]["ref"] == DEFAULT_UPDATE_REF == "stable", payload
     assert payload["source"]["channel"] == "github_archive_stable", payload
     assert payload["source"]["ref_source"] == "default_stable", payload
     assert "/tar.gz/stable" in payload["source"]["archive_url"], payload
     assert "LOOPX_REF=stable" in payload["plan"]["install_command"], payload
+    assert "LOOPX_ARCHIVE_URL=" not in payload["plan"]["install_command"], payload
+    default_env = _installer_env_for_source(
+        payload["source"],
+        base_env={"LOOPX_ARCHIVE_URL": "https://stale.invalid/archive.tar.gz"},
+    )
+    assert "LOOPX_ARCHIVE_URL" not in default_env, default_env
+
+
+def test_explicit_archive_url_reaches_installer() -> None:
+    payload = build_update_plan(
+        repo="example/loopx",
+        ref="fixture",
+        archive_url="https://example.invalid/loopx.tar.gz",
+        doctor_payload=fake_doctor_payload(),
+    )
+    assert payload["source"]["channel"] == "github_archive_url_override", payload
+    assert "LOOPX_ARCHIVE_URL=https://example.invalid/loopx.tar.gz" in payload["plan"]["install_command"], payload
+    installer_env = _installer_env_for_source(payload["source"], base_env={})
+    assert installer_env["LOOPX_ARCHIVE_URL"] == "https://example.invalid/loopx.tar.gz", installer_env
 
 
 def test_fresh_check_is_noop_recommendation() -> None:
@@ -358,6 +379,7 @@ def test_cli_rollback_previous_with_temp_home() -> None:
 def main() -> int:
     test_module_plan()
     test_default_source_uses_stable_ref()
+    test_explicit_archive_url_reaches_installer()
     test_fresh_check_is_noop_recommendation()
     test_check_compares_selected_source_version()
     test_check_degrades_when_source_version_is_unavailable()

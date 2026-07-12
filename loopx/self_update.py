@@ -57,7 +57,7 @@ def _command_for_source(source: dict[str, Any]) -> str:
         f"LOOPX_REF={shlex.quote(str(source['ref']))}",
     ]
     archive_url = source.get("archive_url")
-    if archive_url:
+    if source.get("channel") == "github_archive_url_override" and archive_url:
         exports.append(f"LOOPX_ARCHIVE_URL={shlex.quote(str(archive_url))}")
     return (
         " ".join(exports)
@@ -65,6 +65,21 @@ def _command_for_source(source: dict[str, Any]) -> str:
         'export PATH="$HOME/.local/bin:$PATH"\n'
         "loopx doctor"
     )
+
+
+def _installer_env_for_source(
+    source: dict[str, Any],
+    *,
+    base_env: dict[str, str] | None = None,
+) -> dict[str, str]:
+    env = dict(base_env or os.environ)
+    env["LOOPX_REPO"] = str(source.get("repo") or DEFAULT_UPDATE_REPO)
+    env["LOOPX_REF"] = str(source.get("ref") or DEFAULT_UPDATE_REF)
+    if source.get("channel") == "github_archive_url_override" and source.get("archive_url"):
+        env["LOOPX_ARCHIVE_URL"] = str(source["archive_url"])
+    else:
+        env.pop("LOOPX_ARCHIVE_URL", None)
+    return env
 
 
 def _source_version_check(source: dict[str, Any]) -> dict[str, Any]:
@@ -391,11 +406,7 @@ def build_update_plan(
 def execute_update_plan(payload: dict[str, Any], *, timeout_seconds: int = 600) -> dict[str, Any]:
     source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
     installer_url = str(source.get("installer_url") or NO_CLONE_INSTALL_URL)
-    env = os.environ.copy()
-    env["LOOPX_REPO"] = str(source.get("repo") or DEFAULT_UPDATE_REPO)
-    env["LOOPX_REF"] = str(source.get("ref") or DEFAULT_UPDATE_REF)
-    if source.get("archive_url"):
-        env["LOOPX_ARCHIVE_URL"] = str(source["archive_url"])
+    env = _installer_env_for_source(source)
     install_result = subprocess.run(
         ["bash", "-lc", f"curl -fsSL {shlex.quote(installer_url)} | bash"],
         text=True,
