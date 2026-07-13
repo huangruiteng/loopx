@@ -618,10 +618,11 @@ revision and focused smokes, not the pilot narrative, remain authoritative.
 - rolling-default-branch OpenViking retrieval, one fresh-issue measured
   dogfood, and explicit reusable-knowledge writeback with honest
   decision-influence accounting;
-- optional `semantic-preference` recall before reviewer-facing PR description
-  work. Issue-fix owns the `issue_fix.pr_description` query and how results
-  influence the description; the generic hook only returns bounded provider
-  results and a stateless compact receipt for existing evidence/state writeback;
+- an explicit, default-off `build_issue_fix_pr_description()` boundary for
+  reviewer-facing descriptions. When configured, it performs at most one
+  `issue_fix.pr_description` recall, passes results only to a caller-supplied
+  applier, preserves the base description on fail-open or unattributed changes,
+  and returns a stateless compact receipt for existing evidence/state writeback;
 - goal-scoped `explore_graph.enabled` projection at material refresh boundaries,
   independent from `explore_harness.enabled`, with separate row and visual sink
   digests;
@@ -1023,8 +1024,9 @@ loopx issue-fix workflow-plan \
   --validation-label "focused unit test" \
   --format json
 
-# Optionally recall workspace-scoped presentation preferences before writing
-# a reviewer-facing artifact. Semantic content remains provider-owned.
+# Low-level provider preflight. Normal Issue-Fix callers use
+# build_issue_fix_pr_description() so recall, fail-open, and receipt attribution
+# stay on one explicit artifact boundary. Semantic content remains provider-owned.
 loopx semantic-preference recall \
   --project . \
   --config .loopx/config/semantic-preference.json \
