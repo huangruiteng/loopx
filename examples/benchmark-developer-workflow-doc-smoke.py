@@ -170,7 +170,15 @@ def main() -> int:
     tasks = TASKS.read_text(encoding="utf-8")
     require(readme, ["docs/benchmark-developer-workflow.md"], source=README)
     require(docs_index, ["benchmark-developer-workflow.md"], source=DOCS_INDEX)
-    require(tasks, ["GH-C40", "benchmark developer workflow"], source=TASKS)
+    require(
+        tasks,
+        [
+            "GH-C40",
+            "bounded benchmark lifecycle/read-model seams",
+            "raw logs, task text, verifier output, or host paths",
+        ],
+        source=TASKS,
+    )
 
     print("benchmark-developer-workflow-doc-smoke ok")
     return 0

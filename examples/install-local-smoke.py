@@ -621,7 +621,7 @@ def main() -> int:
         assert "--delivery-outcome outcome_progress" in payload["progress_refresh_state_command"], payload
         assert "<PUBLIC_SAFE_PROGRESS_CLASSIFICATION>" in payload["progress_refresh_state_command"], payload
         assert "follow `interaction_contract`" in payload["task_body"], payload
-        assert "spend after writeback" in payload["task_body"], payload
+        assert "spend post-writeback" in payload["task_body"], payload
         assert payload["cli_bin"] == "loopx", payload
 
         canary_cli = subprocess.run(
