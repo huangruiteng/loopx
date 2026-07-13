@@ -383,6 +383,16 @@ def _record_list_has_more(payload: Mapping[str, Any]) -> bool:
     return bool(data.get("has_more")) if isinstance(data, Mapping) else False
 
 
+def _record_scan_goal_ids(goal_id: str, *, public_safe: bool) -> tuple[str, ...]:
+    desired_goal_id = _public_safe_text(goal_id) if public_safe else goal_id
+    if public_safe:
+        return (desired_goal_id,)
+    legacy_shared_goal_id = _public_safe_text(goal_id)
+    if legacy_shared_goal_id == desired_goal_id:
+        return (desired_goal_id,)
+    return desired_goal_id, legacy_shared_goal_id
+
+
 def _normalize_lark_value(value: Any) -> Any:
     if value is None or value == "":
         return ""
@@ -545,7 +555,7 @@ def _mermaid_with_delivery_marker(source: str, marker: str) -> str:
         [
             source.rstrip(),
             f'    {marker_id}["{marker}"]',
-            f"    style {marker_id} fill:transparent,stroke:transparent,color:transparent",
+            f"    style {marker_id} fill:#ffffff,stroke:#ffffff,color:#ffffff",
         ]
     )
 
@@ -1366,6 +1376,7 @@ def sync_explore_results_to_lark(
             table_key: [_public_safe_values(values) for values in rows] for table_key, rows in rows_by_table.items()
         }
     remote_goal_id = _public_safe_text(goal_id) if public_safe else goal_id
+    scan_goal_ids = _record_scan_goal_ids(goal_id, public_safe=public_safe)
 
     local = read_lark_explore_local_config(config_path) if config_path else {}
     record_map = dict(local.get("result_records") or {}) if isinstance(local.get("result_records"), dict) else {}
@@ -1383,46 +1394,51 @@ def sync_explore_results_to_lark(
         for table_key in EXPLORE_TABLE_KEYS:
             if not rows_by_table[table_key]:
                 continue
-            offset = 0
-            while True:
-                list_result = _run_command(
-                    _build_record_list_command(
-                        config,
-                        table_id=config.table_id(table_key),
-                        goal_id=remote_goal_id,
-                        offset=offset,
-                    ),
-                    execute=True,
-                    runner=runner,
-                )
-                commands.append(list_result)
-                if not list_result.get("ok"):
-                    warnings.append(f"record-list for {table_key} failed; continuing with cached record ids")
-                    break
-                payload = list_result.get("json") if isinstance(list_result.get("json"), dict) else {}
-                page_records = lark_record_rows(payload)
-                for record in page_records:
-                    result_id = str(record.get(_RESULT_ID_FIELD) or "").strip()
-                    row_goal_id = str(record.get(_GOAL_ID_FIELD) or "").strip()
-                    record_id = str(record.get("_record_id") or "").strip()
-                    if not (result_id and row_goal_id and record_id):
-                        continue
-                    if row_goal_id != remote_goal_id:
-                        continue
-                    key = f"{goal_id}:{table_key}:{result_id}"
-                    if key not in expected_keys:
-                        continue
-                    if key in remote_records:
-                        duplicate_remote_rows += 1
-                        continue
-                    remote_records[key] = record
-                    record_map[key] = record_id
-                if not _record_list_has_more(payload):
-                    break
-                if not page_records:
-                    warnings.append(f"record-list for {table_key} reported more rows but returned an empty page")
-                    break
-                offset += len(page_records)
+            for scan_goal_id in scan_goal_ids:
+                offset = 0
+                while True:
+                    list_result = _run_command(
+                        _build_record_list_command(
+                            config,
+                            table_id=config.table_id(table_key),
+                            goal_id=scan_goal_id,
+                            offset=offset,
+                        ),
+                        execute=True,
+                        runner=runner,
+                    )
+                    commands.append(list_result)
+                    if not list_result.get("ok"):
+                        warnings.append(
+                            f"record-list for {table_key} failed; continuing with cached record ids"
+                        )
+                        break
+                    payload = list_result.get("json") if isinstance(list_result.get("json"), dict) else {}
+                    page_records = lark_record_rows(payload)
+                    for record in page_records:
+                        result_id = str(record.get(_RESULT_ID_FIELD) or "").strip()
+                        row_goal_id = str(record.get(_GOAL_ID_FIELD) or "").strip()
+                        record_id = str(record.get("_record_id") or "").strip()
+                        if not (result_id and row_goal_id and record_id):
+                            continue
+                        if row_goal_id != scan_goal_id:
+                            continue
+                        key = f"{goal_id}:{table_key}:{result_id}"
+                        if key not in expected_keys:
+                            continue
+                        if key in remote_records:
+                            duplicate_remote_rows += 1
+                            continue
+                        remote_records[key] = record
+                        record_map[key] = record_id
+                    if not _record_list_has_more(payload):
+                        break
+                    if not page_records:
+                        warnings.append(
+                            f"record-list for {table_key} reported more rows but returned an empty page"
+                        )
+                        break
+                    offset += len(page_records)
 
         if duplicate_remote_rows:
             warnings.append(f"found {duplicate_remote_rows} duplicate remote result rows; reused the first row")
@@ -1450,7 +1466,7 @@ def sync_explore_results_to_lark(
                     _build_upsert_command(
                         config,
                         table_id=config.table_id(table_key),
-                        record_id=record_map.get(key),
+                        record_id=record_map.get(key) if remote_record else None,
                         values=values,
                     ),
                     execute=execute,

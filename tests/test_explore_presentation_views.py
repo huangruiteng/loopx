@@ -89,6 +89,103 @@ def test_shared_result_sync_reads_redacted_goal_id_with_canonical_local_key(
     }
 
 
+def test_owner_only_sync_migrates_confirmed_shared_row(tmp_path) -> None:
+    goal_id = "goal-recabcdef"
+    projection = {
+        "schema_version": "loopx_explore_result_projection_v0",
+        "goal_id": goal_id,
+        "nodes": [_node("candidate", status="resolved")],
+        "edges": [],
+        "findings": [],
+    }
+    config = LarkExploreConfig(
+        base_token="PUBLIC_FIXTURE_BASE",
+        table_ids={"nodes": "tblN", "edges": "tblE", "findings": "tblF"},
+    )
+    config_path = tmp_path / "lark-explore.json"
+    owner_values = sync_explore_results_to_lark(
+        config,
+        projection=projection,
+        config_path=config_path,
+        sink_visibility="owner-only",
+    )["records"][0]["values"]
+    shared_values = sync_explore_results_to_lark(
+        config,
+        projection=projection,
+        config_path=config_path,
+        sink_visibility="shared",
+    )["records"][0]["values"]
+    filters: list[str] = []
+    migrated = False
+
+    def list_result(values: dict[str, object] | None) -> dict[str, object]:
+        fields = sorted(owner_values)
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(
+                {
+                    "ok": True,
+                    "data": {
+                        "fields": fields,
+                        "data": (
+                            [[values.get(field) for field in fields]]
+                            if values is not None
+                            else []
+                        ),
+                        "record_id_list": (
+                            ["rec_legacy_shared_fixture"]
+                            if values is not None
+                            else []
+                        ),
+                        "has_more": False,
+                    },
+                }
+            ),
+            "stderr": "",
+        }
+
+    def runner(args, _cwd, _timeout):
+        nonlocal migrated
+        if "+record-list" in args:
+            filter_payload = json.loads(args[args.index("--filter-json") + 1])
+            scan_goal_id = filter_payload["conditions"][0][2]
+            filters.append(scan_goal_id)
+            if migrated:
+                assert scan_goal_id == owner_values["LoopX Goal ID"]
+                return list_result(owner_values)
+            if scan_goal_id == owner_values["LoopX Goal ID"]:
+                return list_result(None)
+            assert scan_goal_id == shared_values["LoopX Goal ID"]
+            return list_result(shared_values)
+        assert "+record-upsert" in args
+        assert args[args.index("--record-id") + 1] == "rec_legacy_shared_fixture"
+        migrated = True
+        return {
+            "returncode": 0,
+            "stdout": json.dumps({"ok": True}),
+            "stderr": "",
+        }
+
+    synced = sync_explore_results_to_lark(
+        config,
+        projection=projection,
+        config_path=config_path,
+        sink_visibility="owner-only",
+        execute=True,
+        runner=runner,
+    )
+
+    assert migrated is True
+    assert filters == [
+        owner_values["LoopX Goal ID"],
+        shared_values["LoopX Goal ID"],
+        owner_values["LoopX Goal ID"],
+    ]
+    assert synced["ok"] is True
+    assert synced["written_rows"] == 1
+    assert synced["readback"]["verified"] is True
+
+
 def _node(
     node_id: str,
     *,
@@ -766,6 +863,12 @@ def test_mermaid_visual_publish_retries_idempotency_replay_error(tmp_path) -> No
         nonlocal published_marker
         if "+update" in args:
             update_tokens.append(args[args.index("--idempotent-token") + 1])
+            source_arg = args[args.index("--source") + 1]
+            source = (cwd / source_arg.removeprefix("@")).read_text(
+                encoding="utf-8"
+            )
+            assert "fill:transparent" not in source
+            assert "fill:#ffffff,stroke:#ffffff,color:#ffffff" in source
             if len(update_tokens) == 1:
                 payload = {
                     "ok": False,
@@ -776,10 +879,6 @@ def test_mermaid_visual_publish_retries_idempotency_replay_error(tmp_path) -> No
                     "stdout": "",
                     "stderr": json.dumps(payload),
                 }
-            source_arg = args[args.index("--source") + 1]
-            source = (cwd / source_arg.removeprefix("@")).read_text(
-                encoding="utf-8"
-            )
             published_marker = re.search(
                 r"LoopX delivery [0-9a-f]{20}", source
             ).group(0)
