@@ -907,8 +907,10 @@ lifecycle domain state 推导全部 issue outcome，并与 todo 行一起 upsert
 一经落盘，即使还没有 PR，也会作为 issue work 出现在看板；只有 lifecycle observation
 带有相同 `repo` 和显式 `issue_ref` 时，PR 才会补充到该行。数字 issue 别名
 （`#123`、`issue_123`、`issues/123`）会在写入和读取旧行时统一为 `issues_123`，
-避免等价的显式关联静默落入 unlinked 计数。这个自动 closeout projection 不会新增
-outcome ledger，也不会建立第二套状态机。
+避免等价的显式关联静默落入 unlinked 计数。命令的 `--limit` 只限制 active todo
+行；所有推导出的 outcome 行仍在同步范围内，receipt 通过 `limit_policy` 显式说明
+这个边界。这个自动 closeout projection 不会新增 outcome ledger，也不会建立第二套
+状态机。
 
 只传 `--delivery-evidence-json` 仍是只读预览。focused validation 完成后，加上
 `--write-delivery-evidence`，LoopX 会把经过校验、public-safe 的紧凑证据写回现有
