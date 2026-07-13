@@ -580,6 +580,17 @@ def _whiteboard_raw_texts(payload: Any) -> list[str]:
     return texts
 
 
+def _structured_command_error(result: Mapping[str, Any]) -> Mapping[str, Any]:
+    parsed = result.get("json")
+    if not isinstance(parsed, Mapping):
+        try:
+            parsed = json.loads(str(result.get("stderr") or ""))
+        except (TypeError, json.JSONDecodeError):
+            parsed = None
+    error = parsed.get("error") if isinstance(parsed, Mapping) else None
+    return error if isinstance(error, Mapping) else {}
+
+
 def _readback_svg_delivery_marker(
     config: LarkExploreConfig,
     *,
@@ -608,10 +619,9 @@ def _readback_svg_delivery_marker(
         result = _run_command(command, execute=True, runner=runner)
         texts = _whiteboard_raw_texts(result.get("json"))
         marker_observed = marker in texts
-        parsed = result.get("json")
-        error = parsed.get("error") if isinstance(parsed, Mapping) else None
-        error_code = error.get("code") if isinstance(error, Mapping) else None
-        error_message = str(error.get("message") or "") if isinstance(error, Mapping) else ""
+        error = _structured_command_error(result)
+        error_code = error.get("code")
+        error_message = str(error.get("message") or "")
         is_applying = error_code == 4003101 and "doc is applying" in error_message
         attempts.append(
             {

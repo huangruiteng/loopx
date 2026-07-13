@@ -742,8 +742,8 @@ def test_svg_visual_readback_retries_lark_doc_applying(tmp_path, monkeypatch) ->
             )
         return {
             "returncode": 0 if payload.get("ok") else 1,
-            "stdout": json.dumps(payload),
-            "stderr": "",
+            "stdout": json.dumps(payload) if payload.get("ok") else "",
+            "stderr": "" if payload.get("ok") else json.dumps(payload),
         }
 
     synced = sync_explore_visual_to_lark(
