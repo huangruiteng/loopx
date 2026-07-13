@@ -8,8 +8,10 @@ truncates the canonical node, edge, or finding collections.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import re
+import unicodedata
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -291,6 +293,185 @@ def build_vertical_explore_mermaid(
         "column_count": columns,
         "orientation": "left_to_right" if multi_column else "top_to_bottom",
         "max_group_node_count": group_limit,
+    }
+
+
+_ATLAS_PALETTE = (
+    ("#F0F4FC", "#5178C6"),
+    ("#EAE2FE", "#8569CB"),
+    ("#DFF5E5", "#509863"),
+    ("#FEF1CE", "#D4B45B"),
+)
+_ATLAS_STATUS_COLOR = {
+    "open": "#9E9E9E",
+    "exploring": "#1E88E5",
+    "blocked": "#E53935",
+    "resolved": "#43A047",
+    "dead_end": "#9E9E9E",
+}
+
+
+def _display_width(value: str) -> int:
+    return sum(2 if unicodedata.east_asian_width(character) in {"W", "F"} else 1 for character in value)
+
+
+def _truncate_display(value: str, *, limit: int) -> str:
+    cleaned = re.sub(r"\s+", " ", str(value or "")).strip()
+    if _display_width(cleaned) <= limit:
+        return cleaned
+    result = []
+    width = 0
+    for character in cleaned:
+        character_width = 2 if unicodedata.east_asian_width(character) in {"W", "F"} else 1
+        if width + character_width > max(1, limit - 1):
+            break
+        result.append(character)
+        width += character_width
+    return "".join(result).rstrip() + "…"
+
+
+def build_explore_svg_atlas(
+    nodes: Sequence[Mapping[str, Any]],
+    edges: Sequence[Mapping[str, Any]],
+    *,
+    view_role: str,
+    group_node_limit: int = 10,
+    column_count: int = 2,
+) -> dict[str, Any]:
+    """Render a deterministic owner-facing evidence atlas as standalone SVG.
+
+    Mermaid remains useful for topology exchange, but target layout engines are
+    free to ignore subgraph hints. This renderer owns the final geometry so a
+    material refresh cannot collapse the evidence epochs into a thin strip.
+    """
+
+    node_list = [node for node in nodes if str(node.get("node_id") or "")]
+    group_limit = max(4, int(group_node_limit))
+    groups = _canonical_group_specs(node_list, group_node_limit=group_limit)
+    columns = min(max(1, int(column_count)), max(1, len(groups)))
+    row_count = max(1, (len(groups) + columns - 1) // columns)
+    role = "executive" if view_role == "executive" else "canonical"
+
+    canvas_width = 1400
+    margin = 40
+    column_gap = 28
+    row_gap = 28
+    header_height = 142
+    footer_height = 42
+    card_width = (canvas_width - 2 * margin - (columns - 1) * column_gap) / columns
+    item_columns = 2 if card_width >= 560 else 1
+    item_gap = 12
+    item_height = 44
+    card_padding = 20
+    card_header_height = 54
+    item_rows = max(1, (group_limit + item_columns - 1) // item_columns)
+    card_height = card_header_height + item_rows * item_height + (item_rows - 1) * 10 + 2 * card_padding
+    canvas_height = (
+        header_height
+        + row_count * card_height
+        + max(0, row_count - 1) * row_gap
+        + footer_height
+        + margin
+    )
+    item_width = (
+        card_width - 2 * card_padding - max(0, item_columns - 1) * item_gap
+    ) / item_columns
+
+    node_by_id = {str(node.get("node_id") or ""): node for node in node_list}
+    visible_ids = set(node_by_id)
+    visible_edge_count = sum(
+        1
+        for edge in edges
+        if str(edge.get("from_node") or "") in visible_ids
+        and str(edge.get("to_node") or "") in visible_ids
+    )
+    svg = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {canvas_width} {canvas_height:.0f}" width="{canvas_width}" height="{canvas_height:.0f}">',
+        "<defs>",
+        '<filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">',
+        '<feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#1F2329" flood-opacity="0.10"/>',
+        "</filter>",
+        '<marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">',
+        '<path d="M0,0 L8,4 L0,8 Z" fill="#BBBFC4"/>',
+        "</marker>",
+        "</defs>",
+        f'<rect width="{canvas_width}" height="{canvas_height:.0f}" rx="18" fill="#FFFFFF"/>',
+        '<text x="700" y="42" text-anchor="middle" font-size="28" font-weight="700" fill="#1F2329" font-family="Arial, PingFang SC, sans-serif">'
+        f'{role.title()} Explore Evidence Atlas</text>',
+        '<text x="700" y="72" text-anchor="middle" font-size="14" fill="#646A73" font-family="Arial, PingFang SC, sans-serif">'
+        f'{len(node_list)} decision nodes · {visible_edge_count} material relations · same-source owner projection</text>',
+    ]
+
+    if groups:
+        pill_width = min(210.0, (canvas_width - 2 * margin - (len(groups) - 1) * 18) / len(groups))
+        total_pill_width = len(groups) * pill_width + max(0, len(groups) - 1) * 18
+        pill_x = (canvas_width - total_pill_width) / 2
+        for group_index, group in enumerate(groups):
+            x = pill_x + group_index * (pill_width + 18)
+            fill, border = _ATLAS_PALETTE[group_index % len(_ATLAS_PALETTE)]
+            if group_index:
+                previous_right = x - 18
+                svg.append(
+                    f'<line x1="{previous_right + 3:.1f}" y1="104" x2="{x - 4:.1f}" y2="104" stroke="#BBBFC4" stroke-width="2" marker-end="url(#arrow)"/>'
+                )
+            svg.extend(
+                [
+                    f'<rect x="{x:.1f}" y="87" width="{pill_width:.1f}" height="34" rx="17" fill="{fill}" stroke="{border}" stroke-width="2"/>',
+                    f'<text x="{x + pill_width / 2:.1f}" y="109" text-anchor="middle" font-size="14" font-weight="600" fill="#1F2329" font-family="Arial, PingFang SC, sans-serif">Epoch {group_index + 1:02d}</text>',
+                ]
+            )
+
+    for group_index, group in enumerate(groups):
+        row = group_index // columns
+        column = group_index % columns
+        x = margin + column * (card_width + column_gap)
+        y = header_height + row * (card_height + row_gap)
+        fill, border = _ATLAS_PALETTE[group_index % len(_ATLAS_PALETTE)]
+        first_title = _truncate_display(
+            str(node_by_id[group["node_ids"][0]].get("title") or "Evidence"),
+            limit=48,
+        )
+        svg.extend(
+            [
+                f'<rect x="{x:.1f}" y="{y:.1f}" width="{card_width:.1f}" height="{card_height:.1f}" rx="14" fill="{fill}" stroke="{border}" stroke-width="2" filter="url(#shadow)"/>',
+                f'<text x="{x + card_padding:.1f}" y="{y + 30:.1f}" font-size="16" font-weight="700" fill="#1F2329" font-family="Arial, PingFang SC, sans-serif">{html.escape(f"Epoch {group_index + 1:02d} · {first_title}")}</text>',
+                f'<text x="{x + card_width - card_padding:.1f}" y="{y + 30:.1f}" text-anchor="end" font-size="13" fill="#646A73" font-family="Arial, PingFang SC, sans-serif">{len(group["node_ids"])} nodes</text>',
+            ]
+        )
+        for item_index, node_id in enumerate(group["node_ids"]):
+            node = node_by_id[node_id]
+            item_row = item_index // item_columns
+            item_column = item_index % item_columns
+            item_x = x + card_padding + item_column * (item_width + item_gap)
+            item_y = y + card_header_height + card_padding + item_row * (item_height + 10)
+            status = str(node.get("status") or "open")
+            status_color = _ATLAS_STATUS_COLOR.get(status, "#9E9E9E")
+            label = _truncate_display(str(node.get("title") or node_id), limit=34)
+            svg.extend(
+                [
+                    f'<rect x="{item_x:.1f}" y="{item_y:.1f}" width="{item_width:.1f}" height="{item_height}" rx="8" fill="#FFFFFF" stroke="{border}" stroke-width="2"/>',
+                    f'<circle cx="{item_x + 15:.1f}" cy="{item_y + item_height / 2:.1f}" r="5" fill="{status_color}"/>',
+                    f'<text x="{item_x + 28:.1f}" y="{item_y + 27:.1f}" font-size="13" fill="#1F2329" font-family="Arial, PingFang SC, sans-serif">{html.escape(label)}</text>',
+                ]
+            )
+
+    svg.append(
+        f'<text x="700" y="{canvas_height - 22:.1f}" text-anchor="middle" font-size="13" fill="#646A73" font-family="Arial, PingFang SC, sans-serif">Complete Nodes / Edges / Findings remain in the linked canonical result board.</text>'
+    )
+    svg.append("</svg>")
+    return {
+        "svg": "\n".join(svg),
+        "strategy": "fixed_grid_evidence_atlas",
+        "view_role": role,
+        "group_count": len(groups),
+        "column_count": columns,
+        "row_count": row_count,
+        "item_column_count": item_columns,
+        "max_group_node_count": group_limit,
+        "rendered_relation_count": max(0, len(groups) - 1),
+        "source_edge_count": visible_edge_count,
+        "canvas_width": canvas_width,
+        "canvas_height": round(canvas_height),
     }
 
 
@@ -593,6 +774,13 @@ def build_explore_presentation_bundle(
         group_node_limit=int(thresholds["atlas_group_node_limit"]),
         column_count=int(thresholds["atlas_column_count"]),
     )
+    canonical_svg_layout = build_explore_svg_atlas(
+        canonical_nodes,
+        canonical_edges,
+        view_role="canonical",
+        group_node_limit=int(thresholds["atlas_group_node_limit"]),
+        column_count=int(thresholds["atlas_column_count"]),
+    )
     canonical = {
         "schema_version": EXPLORE_CANONICAL_VIEW_VERSION,
         "goal_id": projection.get("goal_id"),
@@ -603,6 +791,7 @@ def build_explore_presentation_bundle(
         "edges": canonical_edges,
         "findings": findings,
         "mermaid": canonical_layout["mermaid"],
+        "svg": canonical_svg_layout["svg"],
         "graph_counts": {
             "node_count": len(canonical_nodes),
             "edge_count": len(canonical_edges),
@@ -615,6 +804,13 @@ def build_explore_presentation_bundle(
                 key: value
                 for key, value in canonical_layout.items()
                 if key != "mermaid"
+            },
+            "renderer_layouts": {
+                "svg_atlas": {
+                    key: value
+                    for key, value in canonical_svg_layout.items()
+                    if key != "svg"
+                }
             },
         },
     }
@@ -642,6 +838,13 @@ def build_explore_presentation_bundle(
         group_node_limit=int(thresholds["atlas_group_node_limit"]),
         column_count=int(thresholds["atlas_column_count"]),
     )
+    executive_svg_layout = build_explore_svg_atlas(
+        executive_nodes,
+        executive_edges,
+        view_role="executive",
+        group_node_limit=int(thresholds["atlas_group_node_limit"]),
+        column_count=int(thresholds["atlas_column_count"]),
+    )
     executive_findings = [
         finding
         for finding in findings
@@ -658,6 +861,7 @@ def build_explore_presentation_bundle(
         "edges": executive_edges,
         "findings": executive_findings,
         "mermaid": executive_layout["mermaid"],
+        "svg": executive_svg_layout["svg"],
         "graph_counts": {
             "node_count": len(executive_nodes),
             "edge_count": len(executive_edges),
@@ -692,6 +896,13 @@ def build_explore_presentation_bundle(
                 key: value
                 for key, value in executive_layout.items()
                 if key != "mermaid"
+            },
+            "renderer_layouts": {
+                "svg_atlas": {
+                    key: value
+                    for key, value in executive_svg_layout.items()
+                    if key != "svg"
+                }
             },
         },
     }

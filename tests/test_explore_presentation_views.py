@@ -180,6 +180,25 @@ def test_configured_atlas_columns_fit_wide_whiteboard_embeds() -> None:
     assert layout["orientation"] == "left_to_right"
 
 
+def test_svg_atlas_owns_a_fixed_grid_and_keeps_executive_nodes_visible() -> None:
+    bundle = build_explore_presentation_bundle(
+        _complex_projection(),
+        policy={"atlas_column_count": 2},
+    )
+
+    executive = bundle["executive"]
+    svg = executive["svg"]
+    layout = executive["filter"]["renderer_layouts"]["svg_atlas"]
+    assert svg.startswith('<svg xmlns="http://www.w3.org/2000/svg"')
+    assert "Executive Explore Evidence Atlas" in svg
+    assert layout["strategy"] == "fixed_grid_evidence_atlas"
+    assert layout["column_count"] == 2
+    assert layout["row_count"] >= 1
+    assert layout["rendered_relation_count"] == layout["group_count"] - 1
+    for node in executive["nodes"]:
+        assert str(node["title"]) in svg
+
+
 def test_executive_view_suppresses_dense_hub_scaffolding_edges() -> None:
     nodes = [_node("hub", status="open", tags=["decision"])]
     nodes.extend(
@@ -264,6 +283,7 @@ def test_visual_configuration_preserves_legacy_and_supports_roles(tmp_path) -> N
         projection_mode="executive_auto",
         view_role="executive",
         atlas_column_count=4,
+        renderer="svg_atlas",
         execute=True,
     )
 
@@ -272,6 +292,27 @@ def test_visual_configuration_preserves_legacy_and_supports_roles(tmp_path) -> N
     assert stored["visual_sinks"]["canonical"]["view_role"] == "canonical"
     assert stored["visual_sinks"]["executive"]["view_role"] == "executive"
     assert stored["visual_sinks"]["executive"]["atlas_column_count"] == 4
+    assert stored["visual_sinks"]["executive"]["renderer"] == "svg_atlas"
+
+
+def test_svg_atlas_configuration_requires_an_explicit_view_role(tmp_path) -> None:
+    config_path = tmp_path / "lark-explore.json"
+    write_lark_explore_local_config(
+        config_path,
+        {
+            "board": {
+                "base_token": "PUBLIC_FIXTURE_BASE",
+                "tables": {"nodes": "tblN", "edges": "tblE", "findings": "tblF"},
+            }
+        },
+    )
+
+    with pytest.raises(ValueError, match="requires a canonical or executive"):
+        configure_lark_explore_visual_sink(
+            config_path=config_path,
+            whiteboard_token="wb_legacy_fixture",
+            renderer="svg_atlas",
+        )
 
 
 def test_dual_visual_sync_applies_role_specific_atlas_columns(tmp_path) -> None:
@@ -285,14 +326,19 @@ def test_dual_visual_sync_applies_role_specific_atlas_columns(tmp_path) -> None:
                 "whiteboard_token": "wb_executive_fixture",
                 "view_role": "executive",
                 "atlas_column_count": 4,
+                "renderer": "svg_atlas",
             }
         },
         config_path=tmp_path / "lark-explore.json",
     )
 
     view = synced["views"]["executive"]
-    assert view["filter"]["layout"]["column_count"] == 2
-    assert view["filter"]["layout"]["orientation"] == "left_to_right"
+    assert view["filter"]["renderer_layouts"]["svg_atlas"]["column_count"] == 2
+    assert view["renderer"] == "svg_atlas"
+    assert view["input_format"] == "svg"
+    command = view["command"]["command"]
+    assert "--input_format svg" in command
+    assert ".svg --overwrite" in command
 
 
 def test_dual_visual_sync_uses_one_revision_and_rejects_stale_view(tmp_path) -> None:
@@ -374,6 +420,48 @@ def test_visual_delivery_digest_changes_when_only_rendered_mermaid_changes(tmp_p
     assert first["source_digest"] == changed["source_digest"]
     assert first["delivery_digest"] != changed["delivery_digest"]
     assert first["command"]["command"] != changed["command"]["command"]
+
+
+def test_visual_delivery_digest_and_command_include_renderer(tmp_path) -> None:
+    projection = _complex_projection()
+    config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
+    bundle = build_explore_presentation_bundle(
+        projection,
+        policy={"atlas_column_count": 2},
+    )
+    view = bundle["executive"]
+
+    mermaid = sync_explore_visual_to_lark(
+        config,
+        projection=projection,
+        visual_sink={
+            "whiteboard_token": "wb_executive_fixture",
+            "view_role": "executive",
+            "renderer": "mermaid",
+        },
+        config_path=tmp_path / "lark-explore.json",
+        semantic_digest=bundle["source_digest"],
+        display_projection=view,
+        view_key="executive",
+    )
+    svg = sync_explore_visual_to_lark(
+        config,
+        projection=projection,
+        visual_sink={
+            "whiteboard_token": "wb_executive_fixture",
+            "view_role": "executive",
+            "renderer": "svg_atlas",
+        },
+        config_path=tmp_path / "lark-explore.json",
+        semantic_digest=bundle["source_digest"],
+        display_projection=view,
+        view_key="executive",
+    )
+
+    assert mermaid["source_digest"] == svg["source_digest"]
+    assert mermaid["delivery_digest"] != svg["delivery_digest"]
+    assert mermaid["input_format"] == "mermaid"
+    assert svg["input_format"] == "svg"
 
 
 def test_visual_delivery_digest_changes_when_target_whiteboard_changes(tmp_path) -> None:

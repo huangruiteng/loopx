@@ -70,6 +70,9 @@ DEFAULT_EXPLORE_BASE_NAME = "LoopX Exploration Results"
 SINK_VISIBILITY_OWNER_ONLY = "owner-only"
 SINK_VISIBILITY_SHARED = "shared"
 SINK_VISIBILITIES = {SINK_VISIBILITY_OWNER_ONLY, SINK_VISIBILITY_SHARED}
+VISUAL_RENDERER_MERMAID = "mermaid"
+VISUAL_RENDERER_SVG_ATLAS = "svg_atlas"
+VISUAL_RENDERERS = {VISUAL_RENDERER_MERMAID, VISUAL_RENDERER_SVG_ATLAS}
 
 TABLE_NODES = "nodes"
 TABLE_EDGES = "edges"
@@ -456,6 +459,7 @@ def configure_lark_explore_visual_sink(
     include_ancestors: bool = True,
     mermaid_node_limit: int = 100,
     atlas_column_count: int = 1,
+    renderer: str = VISUAL_RENDERER_MERMAID,
     view_role: str | None = None,
     execute: bool = False,
 ) -> dict[str, Any]:
@@ -478,6 +482,11 @@ def configure_lark_explore_visual_sink(
     expected_mode = {"canonical": "canonical_full", "executive": "executive_auto"}.get(role)
     if expected_mode and projection_mode != expected_mode:
         raise ValueError(f"view_role {role} requires projection_mode {expected_mode}")
+    selected_renderer = str(renderer or VISUAL_RENDERER_MERMAID).strip()
+    if selected_renderer not in VISUAL_RENDERERS:
+        raise ValueError(f"renderer must be one of {sorted(VISUAL_RENDERERS)}")
+    if selected_renderer == VISUAL_RENDERER_SVG_ATLAS and role is None:
+        raise ValueError("svg_atlas renderer requires a canonical or executive view_role")
     local = read_lark_explore_local_config(config_path)
     if not local.get("ok") or not local.get("exists"):
         raise ValueError("run `loopx explore feishu-setup` before configuring a visual sink")
@@ -491,6 +500,7 @@ def configure_lark_explore_visual_sink(
         "include_ancestors": bool(include_ancestors),
         "mermaid_node_limit": max(1, int(mermaid_node_limit)),
         "atlas_column_count": max(1, int(atlas_column_count)),
+        "renderer": selected_renderer,
     }
     if role:
         visual_sink["view_role"] = role
@@ -526,7 +536,7 @@ def sync_explore_visual_to_lark(
     execute: bool = False,
     runner: CommandRunner = default_subprocess_runner,
 ) -> dict[str, Any]:
-    """Publish a configured Mermaid whiteboard without conflating it with Base rows."""
+    """Publish a configured whiteboard without conflating it with Base rows."""
 
     if not isinstance(visual_sink, Mapping):
         return {
@@ -577,20 +587,47 @@ def sync_explore_visual_to_lark(
         )
     )
     sink_key = str(view_key or visual_sink.get("view_role") or "visual").strip() or "visual"
+    renderer = str(visual_sink.get("renderer") or VISUAL_RENDERER_MERMAID).strip()
+    if renderer not in VISUAL_RENDERERS:
+        return {
+            "ok": False,
+            "schema_version": LARK_EXPLORE_VISUAL_SYNC_VERSION,
+            "status": "invalid_config",
+            "execute": execute,
+            "published": False,
+            "error": f"visual_sink.renderer must be one of {sorted(VISUAL_RENDERERS)}",
+        }
+    source_key, input_format, extension = {
+        VISUAL_RENDERER_MERMAID: ("mermaid", "mermaid", "mmd"),
+        VISUAL_RENDERER_SVG_ATLAS: ("svg", "svg", "svg"),
+    }[renderer]
+    rendered_source = str(graph.get(source_key) or "")
+    if not rendered_source.strip():
+        return {
+            "ok": False,
+            "schema_version": LARK_EXPLORE_VISUAL_SYNC_VERSION,
+            "status": "invalid_projection",
+            "execute": execute,
+            "published": False,
+            "view_role": str(graph.get("view_role") or sink_key),
+            "renderer": renderer,
+            "error": f"display projection does not contain {source_key} source",
+        }
     delivery_material = json.dumps(
         {
             "source_digest": semantic_digest,
             "source_revision": source_revision,
             "view_role": sink_key,
             "whiteboard_token": whiteboard_token,
-            "mermaid": str(graph.get("mermaid") or ""),
+            "renderer": renderer,
+            "rendered_source": rendered_source,
         },
         ensure_ascii=True,
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
     delivery_digest = hashlib.sha256(delivery_material).hexdigest()
-    source_name = f".loopx-explore-{sink_key}-{delivery_digest[:12]}.mmd"
+    source_name = f".loopx-explore-{sink_key}-{delivery_digest[:12]}.{extension}"
     command = [
         config.cli_bin,
         "whiteboard",
@@ -600,7 +637,7 @@ def sync_explore_visual_to_lark(
         "--whiteboard-token",
         whiteboard_token,
         "--input_format",
-        "mermaid",
+        input_format,
         "--source",
         f"@{source_name}",
         "--overwrite",
@@ -614,7 +651,7 @@ def sync_explore_visual_to_lark(
     else:
         config_path.parent.mkdir(parents=True, exist_ok=True)
         source_path = config_path.parent / source_name
-        source_path.write_text(str(graph.get("mermaid") or ""), encoding="utf-8")
+        source_path.write_text(rendered_source, encoding="utf-8")
         try:
             result = _run_command(
                 command,
@@ -635,6 +672,8 @@ def sync_explore_visual_to_lark(
         "source_digest": source_digest,
         "source_revision": source_revision,
         "view_role": str(graph.get("view_role") or sink_key),
+        "renderer": renderer,
+        "input_format": input_format,
         "docx_token": str(visual_sink.get("docx_token") or "") or None,
         "graph_counts": graph.get("graph_counts"),
         "filter": graph.get("filter"),
