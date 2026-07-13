@@ -41,6 +41,14 @@ spend. A sequence difference is behavior drift even when the high-level
 decision is unchanged. Reason codes remain diagnostic and do not make a safety
 drift pass.
 
+Each arm also has an explicit terminal boundary. A successful arm emits the
+compact decision receipt above. If provider transport or actor-result
+validation fails, the pair raises a `model_behavior_arm_terminal_receipt_v0`
+error containing only the failed arm, a bounded error code, and digests for any
+arm that already completed. It never retains exception detail, packets,
+prompts, or provider responses. Corpus mode records that failure as
+`actor_failed` instead of losing which arm stopped the pair.
+
 ## Corpus And Grader
 
 `model_behavior_corpus_v0` is an in-memory qualification input assembled from
@@ -124,6 +132,14 @@ endpoint and allowlists the versioned Doubao 2.1 Pro and Turbo model ids. It
 does not accept an arbitrary base URL, does not follow redirects, does not send
 tool definitions, and converts transport failures into bounded errors without
 provider response bodies.
+
+The provider-visible user input contains only the arm, the
+`semantic_contract_required` flag, and that arm's packet. Qualification ids,
+sandbox declarations, actor instructions, and response-contract metadata are
+validated locally but are not repeated in the model prompt. The actor disables
+provider deep thinking for this deterministic extraction task and reserves
+4096 output tokens so the bounded semantic contract is not constrained by the
+former 1200-token response budget.
 
 Live use requires `ARK_API_KEY` to be injected into the process environment.
 The key is held only by the in-memory adapter and is never placed in a LoopX
