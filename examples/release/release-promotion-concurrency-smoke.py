@@ -152,6 +152,69 @@ def assert_concurrent_release_ids_are_distinct(root: Path) -> None:
     wrapper = Path(env["LOOPX_BIN_DIR"]) / "loopx"
     assert wrapper.is_symlink(), wrapper
     assert wrapper.resolve().parents[1] in release_paths, wrapper.resolve()
+    doctor_env = {**env, "PATH": f"{wrapper.parent}:{env['PATH']}"}
+    standard_doctor = subprocess.run(
+        [str(wrapper), "--format", "json", "doctor"],
+        cwd=root,
+        env=doctor_env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    standard_payload = json.loads(standard_doctor.stdout)
+    standard_check_ids = {item["id"] for item in standard_payload["checks"]}
+    assert standard_payload["mode"] == "standard", standard_payload
+    assert not {
+        "command_package_same_root",
+        "representative_cli_commands",
+        "representative_cli_imports",
+        "representative_package_paths",
+    } & standard_check_ids, standard_payload
+
+    deep_doctor = subprocess.run(
+        [str(wrapper), "--format", "json", "doctor", "--deep"],
+        cwd=root,
+        env=doctor_env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    deep_payload = json.loads(deep_doctor.stdout)
+    deep_checks = {item["id"]: item for item in deep_payload["checks"]}
+    assert deep_payload["mode"] == "deep", deep_payload
+    for check_id in (
+        "command_package_same_root",
+        "representative_cli_commands",
+        "representative_cli_imports",
+        "representative_package_paths",
+    ):
+        assert deep_checks[check_id]["ok"] is True, deep_payload
+
+
+def assert_incomplete_candidate_does_not_replace_default(root: Path) -> None:
+    env = {**install_env(root), "LOOPX_RELEASE_ID": "broken-candidate"}
+    wrapper = Path(env["LOOPX_BIN_DIR"]) / "loopx"
+    good_target = wrapper.resolve(strict=True)
+
+    broken_root = root / "broken-source"
+    shutil.copytree(REPO_ROOT / "loopx", broken_root / "loopx")
+    shutil.copytree(REPO_ROOT / "scripts", broken_root / "scripts")
+    for filename in ("LICENSE", "README.md", "pyproject.toml"):
+        shutil.copy2(REPO_ROOT / filename, broken_root / filename)
+    (broken_root / "loopx" / "quota.py").unlink()
+
+    result = subprocess.run(
+        [str(broken_root / "scripts" / "install-local.sh")],
+        cwd=broken_root,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0, result.stdout
+    assert "release candidate doctor validation failed" in result.stderr, result.stderr
+    assert wrapper.resolve(strict=True) == good_target, wrapper.resolve()
+    assert not (Path(env["LOOPX_RELEASES_DIR"]) / "broken-candidate").exists()
 
 
 def assert_resolved_archive_commit_is_recorded(root: Path) -> None:
@@ -176,6 +239,7 @@ def main() -> int:
         assert_install_waits_for_promotion_guard(root)
         assert_legacy_lock_timeout_preserves_live_owner(root)
         assert_concurrent_release_ids_are_distinct(root)
+        assert_incomplete_candidate_does_not_replace_default(root)
         assert_resolved_archive_commit_is_recorded(root)
     print("release-promotion-concurrency-smoke ok")
     return 0
