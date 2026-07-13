@@ -24,8 +24,14 @@ does not branch on `issue_fix`, `content_ops`, or any other domain name.
   "schema_version": "semantic_preference_hook_config_v0",
   "enabled": true,
   "provider": {
+    "id": "local_memory",
     "argv": ["semantic-preference-provider"],
-    "timeout_seconds": 30
+    "timeout_seconds": 30,
+    "probe_argv": ["semantic-preference-provider", "doctor"],
+    "setup_hints": {
+      "install": "Install the provider from its official distribution.",
+      "configure": "Configure it locally, then rerun this doctor with --execute."
+    }
   },
   "surfaces": {
     "issue_fix.pr_description": {
@@ -66,6 +72,12 @@ Provider stderr and non-zero output are reduced to a bounded failure kind.
 the caller with an actionable error. Provider failures do not become user
 gates automatically.
 
+`provider.id`, `probe_argv`, and `setup_hints` are optional. They provide
+provider-neutral discovery without teaching LoopX how to install one specific
+memory system. `probe_argv` must be a read-only health check owned by the
+provider. The doctor never installs packages, starts services, changes config,
+or writes credentials; setup hints are guidance for an explicit operator action.
+
 ## CLI
 
 ```bash
@@ -74,6 +86,11 @@ loopx semantic-preference recall \
   --config <ignored-config.json> \
   --surface issue_fix.pr_description \
   --context repository=owner/repo \
+  --execute
+
+loopx semantic-preference doctor \
+  --project . \
+  --config <ignored-config.json> \
   --execute
 
 loopx semantic-preference receipt \
@@ -89,6 +106,11 @@ artifact reference, and hashes of provider-owned preference references. The
 command returns the receipt without writing a file. Callers can attach it to
 the existing evidence log, todo evidence, or `refresh-state` record; the hook
 does not maintain a second reward or memory ledger.
+
+`--context` is repeatable and each entry uses `lower_snake=value` syntax.
+Invalid config, context, surface, or fail-closed requests return a structured
+`semantic_preference_error_v0` payload with exit code 2 instead of a Python
+traceback.
 
 ## Domain integration
 

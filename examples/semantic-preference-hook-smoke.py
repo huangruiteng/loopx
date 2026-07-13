@@ -10,7 +10,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from loopx.capabilities.semantic_preference import application_receipt, recall  # noqa: E402
+from loopx.capabilities.semantic_preference import (  # noqa: E402
+    application_receipt,
+    provider_doctor,
+    recall,
+)
 
 
 def run(*args: str) -> dict[str, object]:
@@ -22,6 +26,19 @@ def run(*args: str) -> dict[str, object]:
         check=False,
     )
     assert result.returncode == 0, result.stderr or result.stdout
+    return json.loads(result.stdout)
+
+
+def run_failure(*args: str) -> dict[str, object]:
+    result = subprocess.run(
+        [sys.executable, "-m", "loopx.cli", "--format", "json", *args],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2, result.stderr or result.stdout
+    assert "Traceback" not in result.stderr, result.stderr
     return json.loads(result.stdout)
 
 
@@ -61,7 +78,15 @@ json.dump({
             {
                 "schema_version": "semantic_preference_hook_config_v0",
                 "enabled": True,
-                "provider": {"argv": [sys.executable, str(provider)]},
+                "provider": {
+                    "id": "fixture_memory",
+                    "argv": [sys.executable, str(provider)],
+                    "probe_argv": [sys.executable, "-c", "raise SystemExit(0)"],
+                    "setup_hints": {
+                        "install": "Install the fixture provider explicitly.",
+                        "configure": "Configure the fixture provider explicitly.",
+                    },
+                },
                 "surfaces": {
                     "issue_fix.pr_description": {"query": "PR description preferences"},
                     "content_ops.draft_language": {
@@ -79,6 +104,19 @@ json.dump({
         recalled = recall_cli(project, config, surface, execute=True)
         assert recalled["status"] == "completed", recalled
         assert recalled["items"][0]["summary"] == f"prefer {surface}", recalled
+
+    doctor_preview = run(
+        "semantic-preference",
+        "doctor",
+        "--project",
+        str(project),
+        "--config",
+        str(config),
+    )
+    assert doctor_preview["status"] == "probe_required", doctor_preview
+    assert doctor_preview["automatic_setup_performed"] is False, doctor_preview
+    doctor = provider_doctor(config, project=project, execute=True)
+    assert doctor["status"] == "ready" and doctor["verified"] is True, doctor
 
     receipt = run(
         "semantic-preference",
@@ -130,6 +168,45 @@ json.dump({
         assert "provider unavailable" in str(exc), exc
     else:
         raise AssertionError("fail_closed must stop the caller")
+
+    missing = temp / "missing.json"
+    missing.write_text(
+        json.dumps(
+            {
+                "schema_version": "semantic_preference_hook_config_v0",
+                "enabled": True,
+                "provider": {
+                    "id": "missing_fixture",
+                    "argv": ["definitely-missing-semantic-provider"],
+                    "setup_hints": {"install": "Install it explicitly."},
+                },
+                "surfaces": {"other_module.summary": {"query": "preferences"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    missing_doctor = provider_doctor(missing, project=project)
+    assert missing_doctor["status"] == "provider_missing", missing_doctor
+    assert missing_doctor["setup_hints"]["install"] == "Install it explicitly."
+    missing_recall = recall(
+        missing, project=project, surface="other_module.summary", execute=True
+    )
+    assert missing_recall["status"] == "provider_unavailable", missing_recall
+
+    invalid_context = run_failure(
+        "semantic-preference",
+        "recall",
+        "--project",
+        str(project),
+        "--config",
+        str(config),
+        "--surface",
+        "issue_fix.pr_description",
+        "--context",
+        "not-a-key-value",
+    )
+    assert invalid_context["status"] == "invalid_request", invalid_context
+    assert "lower-snake key=value" in invalid_context["error"], invalid_context
 
     try:
         application_receipt(

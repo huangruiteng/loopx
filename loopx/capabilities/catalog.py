@@ -220,6 +220,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
         "entry_command": "loopx semantic-preference recall --config <ignored-config.json> --surface <module.surface> --format json",
         "commands": [
             {
+                "command": "loopx semantic-preference doctor --config <ignored-config.json> --execute --format json",
+                "purpose": "Check a configured provider entry point and optional read-only probe, then return explicit install/config guidance when unavailable.",
+                "write_boundary": "read-only discovery; never installs packages, starts services, changes config, or writes credentials",
+            },
+            {
                 "command": "loopx semantic-preference recall --config <ignored-config.json> --surface <module.surface> --execute --format json",
                 "purpose": "Send one bounded recall request to a configured command_json_v0 provider.",
                 "write_boundary": "provider read only; LoopX does not persist recalled semantic content",
@@ -242,6 +247,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "doc": "docs/capabilities/semantic-preference/README.md",
             },
             {
+                "schema_version": "semantic_preference_provider_doctor_v0",
+                "module": "loopx.capabilities.semantic_preference.contract",
+                "doc": "docs/capabilities/semantic-preference/README.md",
+            },
+            {
                 "schema_version": "semantic_preference_application_receipt_v0",
                 "module": "loopx.capabilities.semantic_preference.contract",
                 "doc": "docs/capabilities/semantic-preference/README.md",
@@ -254,6 +264,7 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "Surface ids and queries are domain-owned configuration; the runtime has no issue-fix branch.",
             "LoopX does not persist recalled semantic content, receipts, provider commands, config paths, or raw errors.",
             "Provider failures follow explicit fail-open/fail-closed policy and do not become user gates automatically.",
+            "Provider setup remains guidance-only: package, service, config, and credential writes require an explicit operator action.",
         ],
         "next_real_step": (
             "Keep the hook opt-in until a second domain module proves useful recall and existing-state receipt writeback."
@@ -467,7 +478,9 @@ def get_capability(capability_id: str) -> dict[str, Any]:
     for record in CAPABILITIES:
         if record["id"] == wanted:
             return dict(record)
-    raise ValueError(f"unknown capability `{wanted}`; expected one of {capability_ids()}")
+    raise ValueError(
+        f"unknown capability `{wanted}`; expected one of {capability_ids()}"
+    )
 
 
 def build_capability_catalog_packet() -> dict[str, Any]:

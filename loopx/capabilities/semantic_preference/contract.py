@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -13,11 +14,13 @@ REQUEST_SCHEMA = "semantic_preference_provider_request_v0"
 RESPONSE_SCHEMA = "semantic_preference_provider_response_v0"
 RECALL_SCHEMA = "semantic_preference_recall_v0"
 RECEIPT_SCHEMA = "semantic_preference_application_receipt_v0"
+DOCTOR_SCHEMA = "semantic_preference_provider_doctor_v0"
 SURFACE_RE = re.compile(r"^[a-z][a-z0-9_-]*(?:\.[a-z][a-z0-9_-]*)+$")
 TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,199}$")
 MAX_PROVIDER_OUTPUT_BYTES = 256_000
 MAX_ITEM_BYTES = 8_000
 MAX_RECEIPT_REFS = 20
+MAX_SETUP_HINT_LENGTH = 1_000
 
 
 def _surface(value: object) -> str:
@@ -82,6 +85,115 @@ def _context(values: Sequence[str] | None) -> dict[str, str]:
     return result
 
 
+def _provider(payload: Mapping[str, Any]) -> tuple[Mapping[str, Any], list[str]]:
+    provider = payload.get("provider")
+    argv = provider.get("argv") if isinstance(provider, Mapping) else None
+    if (
+        not isinstance(argv, list)
+        or not argv
+        or not all(isinstance(value, str) and value for value in argv)
+    ):
+        raise ValueError("enabled provider requires a non-empty string argv list")
+    return provider, argv
+
+
+def _command_available(command: str) -> bool:
+    if "/" in command or "\\" in command:
+        path = Path(command).expanduser()
+        return path.is_file() and path.stat().st_mode & 0o111 != 0
+    return shutil.which(command) is not None
+
+
+def _setup_hints(provider: Mapping[str, Any]) -> dict[str, str]:
+    raw = provider.get("setup_hints")
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise ValueError("provider setup_hints must be an object")
+    result: dict[str, str] = {}
+    for key in ("install", "configure"):
+        value = str(raw.get(key) or "").strip()
+        if len(value) > MAX_SETUP_HINT_LENGTH:
+            raise ValueError(f"provider setup_hints.{key} exceeds 1000 characters")
+        if value:
+            result[key] = value
+    return result
+
+
+def provider_doctor(
+    config: str | Path,
+    *,
+    project: str | Path,
+    execute: bool = False,
+) -> dict[str, Any]:
+    """Inspect an optional provider without installing or configuring it."""
+
+    payload = _config(config, project)
+    if not payload.get("enabled", False):
+        return {
+            "ok": True,
+            "schema_version": DOCTOR_SCHEMA,
+            "status": "disabled",
+            "available": False,
+            "verified": False,
+            "external_writes_performed": False,
+        }
+    provider, argv = _provider(payload)
+    provider_id = str(provider.get("id") or "configured_provider").strip()
+    if not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", provider_id):
+        raise ValueError("provider id must use lower-snake token syntax")
+    hints = _setup_hints(provider)
+    command_available = _command_available(argv[0])
+    probe_argv = provider.get("probe_argv")
+    if probe_argv is not None and (
+        not isinstance(probe_argv, list)
+        or not probe_argv
+        or not all(isinstance(value, str) and value for value in probe_argv)
+    ):
+        raise ValueError("provider probe_argv must be a non-empty string list")
+    status = "ready" if command_available else "provider_missing"
+    available = command_available
+    verified = False
+    failure_kind = None
+    if command_available and probe_argv and not execute:
+        status = "probe_required"
+    elif command_available and probe_argv and execute:
+        try:
+            completed = subprocess.run(
+                probe_argv,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            completed = None
+            failure_kind = "probe_execution_failed"
+        if completed is None or completed.returncode != 0:
+            status = "provider_unavailable"
+            available = False
+            failure_kind = failure_kind or "probe_nonzero_exit"
+        else:
+            status = "ready"
+            verified = True
+    return {
+        "ok": True,
+        "schema_version": DOCTOR_SCHEMA,
+        "status": status,
+        "provider_id": provider_id,
+        "available": available,
+        "verified": verified,
+        "probe_configured": bool(probe_argv),
+        "failure_kind": failure_kind,
+        "setup_hints": hints,
+        "automatic_setup_performed": False,
+        "credential_writes_performed": False,
+        "service_writes_performed": False,
+        "external_writes_performed": False,
+    }
+
+
 def _unavailable(surface: str, policy: str, kind: str) -> dict[str, Any]:
     if policy == "fail_closed":
         raise ValueError(f"semantic preference provider unavailable: {kind}")
@@ -129,14 +241,7 @@ def recall(
         raise ValueError("surface query or limit is outside the bounded contract")
     if policy not in {"fail_open", "fail_closed"}:
         raise ValueError("failure_policy must be fail_open or fail_closed")
-    provider = payload.get("provider")
-    argv = provider.get("argv") if isinstance(provider, Mapping) else None
-    if (
-        not isinstance(argv, list)
-        or not argv
-        or not all(isinstance(v, str) and v for v in argv)
-    ):
-        raise ValueError("enabled provider requires a non-empty string argv list")
+    provider, argv = _provider(payload)
     try:
         timeout = int(provider.get("timeout_seconds", 30))
     except (TypeError, ValueError) as exc:

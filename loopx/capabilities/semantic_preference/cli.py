@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable
 
-from .contract import application_receipt, recall
+from .contract import application_receipt, provider_doctor, recall
 from .openviking_provider import (
     handle_openviking_provider,
     register_openviking_provider_arguments,
@@ -12,7 +12,16 @@ from .openviking_provider import (
 
 def _render(payload: dict[str, object]) -> str:
     lines = ["# Semantic Preference", ""]
-    for key in ("status", "surface", "outcome", "application_id"):
+    for key in (
+        "status",
+        "surface",
+        "outcome",
+        "application_id",
+        "provider_id",
+        "available",
+        "verified",
+        "error",
+    ):
         if key in payload:
             lines.append(f"- {key}: `{payload.get(key)}`")
     items = payload.get("items")
@@ -35,8 +44,27 @@ def register_semantic_preference_commands(
     recall_parser.add_argument("--config", required=True)
     recall_parser.add_argument("--project", default=".")
     recall_parser.add_argument("--surface", required=True)
-    recall_parser.add_argument("--context", action="append", default=[])
+    recall_parser.add_argument(
+        "--context",
+        action="append",
+        default=[],
+        metavar="LOWER_SNAKE=VALUE",
+        help="Repeatable bounded context entry, for example repository=owner/repo.",
+    )
     recall_parser.add_argument("--execute", action="store_true")
+
+    doctor_parser = commands.add_parser(
+        "doctor",
+        help="Inspect provider availability and configured setup hints without changing the host.",
+    )
+    add_subcommand_format(doctor_parser)
+    doctor_parser.add_argument("--config", required=True)
+    doctor_parser.add_argument("--project", default=".")
+    doctor_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Run the optional read-only provider probe; never install, configure, or write credentials.",
+    )
 
     provider_parser = commands.add_parser(
         "openviking-provider",
@@ -65,21 +93,37 @@ def handle_semantic_preference_command(
         return None
     if args.semantic_preference_command == "openviking-provider":
         return handle_openviking_provider(args)
-    if args.semantic_preference_command == "recall":
-        payload = recall(
-            args.config,
-            project=args.project,
-            surface=args.surface,
-            context=args.context,
-            execute=args.execute,
-        )
-    else:
-        payload = application_receipt(
-            surface=args.surface,
-            application_id=args.application_id,
-            outcome=args.outcome,
-            preference_refs=args.preference_ref,
-            artifact_ref=args.artifact_ref,
-        )
+    try:
+        if args.semantic_preference_command == "recall":
+            payload = recall(
+                args.config,
+                project=args.project,
+                surface=args.surface,
+                context=args.context,
+                execute=args.execute,
+            )
+        elif args.semantic_preference_command == "doctor":
+            payload = provider_doctor(
+                args.config,
+                project=args.project,
+                execute=args.execute,
+            )
+        else:
+            payload = application_receipt(
+                surface=args.surface,
+                application_id=args.application_id,
+                outcome=args.outcome,
+                preference_refs=args.preference_ref,
+                artifact_ref=args.artifact_ref,
+            )
+    except ValueError as exc:
+        payload = {
+            "ok": False,
+            "schema_version": "semantic_preference_error_v0",
+            "status": "invalid_request",
+            "error": str(exc),
+        }
+        print_payload(payload, output_format(args), _render)
+        return 2
     print_payload(payload, output_format(args), _render)
     return 0
