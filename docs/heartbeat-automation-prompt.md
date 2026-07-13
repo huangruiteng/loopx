@@ -294,16 +294,17 @@ If the result says should_run=false:
   unresolved gate has not already been asked in the recent visible thread,
   return heartbeat NOTIFY with
   one concise Chinese question that lists the gate and the expected reply
-  format. Only when `interaction_contract.user_channel.action_required=true` or
-  `user_todo_summary.open_count > 0`, the notification must name concrete payload
-  todo(s)/questions, never only "owner gate"; if those required user-facing
-  items are not projected, say "具体 user todo 未投影，需修复 LoopX 状态投影";
-  never say "no new user action" for this case. When
-  `interaction_contract.user_channel.action_required=false` and
-  `user_todo_summary.open_count=0`, allow "无用户待办/无需通知" or a quiet
-  no-notification result; do not imply a state projection bug. Do not execute
-  agent_command, adapter work, write-control, production actions, or the gated
-  path while asking.
+  format. Treat `interaction_contract.user_channel.notify` as the final
+  notification signal. When it is `NOTIFY`, name concrete projected
+  `actions`, todos, or questions even when `action_required=false`,
+  `user_todo_summary.open_count=0`, and `non_blocking=true`; non-blocking means
+  the agent may continue independent work, not that the user action is silent.
+  Never say only "owner gate". If required user-facing items are not projected,
+  say "具体 user todo 未投影，需修复 LoopX 状态投影"; never say "no new user
+  action" for this case. Only when `notify=DONT_NOTIFY`,
+  `action_required=false`, and `open_count=0` may the heartbeat say
+  "无用户待办/无需通知" or stay quiet. Do not execute agent_command, adapter
+  work, write-control, production actions, or the gated path while asking.
 - If the payload says notify_user_on_open_todo=true, treat the existing open
   user_todo_summary as a blocker-push opportunity, not as a silent skip. This
   is especially important for state=focus_wait, state=waiting, and
@@ -326,8 +327,9 @@ If the result says should_run=false:
   another P0/P1 item that does not depend on that gate. If you do a safe-bypass
   step, validate it, write back progress/critic/next action, optionally refresh
   state, append exactly one spend event, and report compactly. If
-  user_todo_summary.open_count > 0, include those todos as concrete todos and do not say
-  there is "no new user action". If
+  `interaction_contract.user_channel.notify=NOTIFY` or
+  `user_todo_summary.open_count > 0`, include the projected user actions or
+  todos concretely and do not say there is "no new user action". If
   agent_todo_summary.open_count > 0, the report should also name the first safe
   agent todo it can execute next. If no useful
   safe-bypass step exists, report the pending gate compactly instead of doing
