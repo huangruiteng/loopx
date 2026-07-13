@@ -232,6 +232,12 @@ def register_explore_commands(
         help="Arrange evidence epochs into this many whiteboard columns.",
     )
     visual.add_argument(
+        "--stage-capacity",
+        type=int,
+        default=12,
+        help="Maximum compact work nodes per vertical evidence stage (8-16).",
+    )
+    visual.add_argument(
         "--renderer",
         choices=["mermaid", "svg_atlas", "svg_board"],
         default="mermaid",
@@ -783,6 +789,7 @@ def handle_explore_command(
                 include_ancestors=bool(args.include_ancestors),
                 mermaid_node_limit=args.mermaid_node_limit,
                 atlas_column_count=args.atlas_columns,
+                stage_capacity=args.stage_capacity,
                 renderer=args.renderer,
                 view_role=args.view_role,
                 execute=bool(args.execute),
