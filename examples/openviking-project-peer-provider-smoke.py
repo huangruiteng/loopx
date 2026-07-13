@@ -129,10 +129,13 @@ with pathlib.Path(os.environ["FAKE_OV_LOG"]).open("a", encoding="utf-8") as hand
     handle.write(json.dumps(args) + "\\n")
 if os.environ.get("FAKE_OV_FAIL") == "1":
     raise SystemExit(7)
-if args[0] == "status":
+command_args = args
+if args[:1] == ["--actor-peer-id"]:
+    command_args = args[2:]
+if command_args[0] == "status":
     result = {"healthy": True}
-elif args[0] == "find":
-    target = args[args.index("-u") + 1]
+elif command_args[0] == "find":
+    target = command_args[command_args.index("-u") + 1]
     expected = os.environ["EXPECTED_PROJECT_TARGET"]
     global_target = os.environ["EXPECTED_GLOBAL_TARGET"]
     if target == expected:
@@ -220,6 +223,7 @@ print(json.dumps({"ok": True, "result": result}))
     assert len(recalled["items"]) == 1, recalled
     calls = read_calls(log)
     assert len(calls) == 1, calls
+    assert calls[0][:3] == ["--actor-peer-id", expected.peer_id, "find"]
     assert calls[0][calls[0].index("-u") + 1] == expected.memory_uri
 
     log.unlink()
@@ -233,7 +237,9 @@ print(json.dumps({"ok": True, "result": result}))
         environment,
     )
     assert wrong_result["items"] == [], wrong_result
-    assert len(read_calls(log)) == 1, "no implicit global fallback is allowed"
+    calls = read_calls(log)
+    assert len(calls) == 1, "no implicit global fallback is allowed"
+    assert calls[0][:3] == ["--actor-peer-id", wrong.peer_id, "find"]
 
     log.unlink()
     fallback_result = run_provider(
@@ -249,6 +255,7 @@ print(json.dumps({"ok": True, "result": result}))
     assert len(fallback_result["items"]) == 1, fallback_result
     calls = read_calls(log)
     assert len(calls) == 2, calls
+    assert all(call[:3] == ["--actor-peer-id", wrong.peer_id, "find"] for call in calls)
     assert calls[-1][calls[-1].index("-u") + 1] == expected.global_memory_uri
 
     config = temp / "semantic-preference.json"

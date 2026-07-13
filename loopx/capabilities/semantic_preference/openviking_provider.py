@@ -94,6 +94,7 @@ def _find(
     *,
     ov_bin: str,
     cli_config: str | None,
+    actor_peer_id: str,
     timeout_seconds: int,
     query: str,
     target_uri: str,
@@ -102,6 +103,8 @@ def _find(
     result = _run_ov(
         ov_bin,
         [
+            "--actor-peer-id",
+            actor_peer_id,
             "find",
             "-o",
             "json",
@@ -216,6 +219,7 @@ def run_openviking_provider(args: argparse.Namespace) -> int:
         items = _find(
             ov_bin=args.ov_bin,
             cli_config=args.cli_config,
+            actor_peer_id=scope.peer_id,
             timeout_seconds=args.timeout_seconds,
             query=query,
             target_uri=target_uri,

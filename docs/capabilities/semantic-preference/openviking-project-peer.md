@@ -15,6 +15,7 @@ preference provider protocol for a function-owned application and receipt.
 - Identity comes from the normalized Git `origin`, never the checkout path.
 - A non-Git project must provide a stable `--loopx-project-id`.
 - Recall targets the exact project peer by default.
+- Each `find` binds the OpenViking request actor to the derived project peer.
 - User-global memory is available only through `--include-global-fallback`.
 - The default budget is one `find`; explicit global fallback needs at least two.
 - Only concrete preference nodes under the selected target are returned.
@@ -32,8 +33,11 @@ loopx semantic-preference openviking-provider \
 
 The output contains the peer id and target URIs, but not the repository URL or
 local checkout path. An OpenViking agent integration can use the returned
-`peer_id` when adding a user message to a session; OpenViking then owns memory
-write, update, and supersede under that peer.
+`peer_id` when adding a user message to a session. For an isolated native
+write, create that session with self memory disabled, peer memory enabled, and
+the desired memory types allowed. `peer_id` alone identifies the speaker but
+does not force an extractor operation away from user-global memory. OpenViking
+then owns write, update, and supersede semantics inside the selected peer.
 
 ## Local-private hook config
 
