@@ -135,9 +135,14 @@ The bundle recommends `presentation_mode=canonical_only|dual_view` from
 multiple advisory signals rather than a single node-count cutoff. Current
 reason codes are `low_decision_density`, `excessive_terminal_branches`,
 `deep_decision_path`, and `readability_check_failed`. Static graph shape can
-estimate readability risk; a caller may also supply renderer observations for
-overlap, text overflow, or abnormal canvas expansion. These signals only
-control presentation advice. They never authorize canonical truncation.
+estimate readability risk, including excessively flat root topology; a caller
+may also supply renderer observations for overlap, text overflow, or abnormal
+canvas expansion. Both canonical and executive views use a top-to-bottom
+evidence timeline: stable source order starts at the top, bounded epochs add
+navigation, and later evidence extends the board downward instead of widening
+the first rank. Every original canonical node and edge remains present. These
+signals and layout choices only control presentation. They never authorize
+canonical truncation.
 
 ## Optional Todo Branch Plan
 

@@ -120,12 +120,51 @@ def test_complex_graph_recommends_traceable_dual_view() -> None:
     }.issubset(bundle["reason_codes"])
     assert bundle["canonical"]["source_digest"] == bundle["executive"]["source_digest"]
     assert bundle["canonical"]["source_revision"] == bundle["executive"]["source_revision"]
+    assert bundle["canonical"]["mermaid"].startswith("flowchart TB")
+    assert "subgraph canonical_atlas" in bundle["canonical"]["mermaid"]
+    assert (
+        bundle["canonical"]["filter"]["layout"]["strategy"]
+        == "vertical_evidence_timeline"
+    )
+    assert bundle["canonical"]["filter"]["layout"]["column_count"] == 1
+    assert bundle["executive"]["mermaid"].startswith("flowchart TB")
+    assert "subgraph executive_atlas" in bundle["executive"]["mermaid"]
+    assert "Canonical evidence timeline" not in bundle["executive"]["mermaid"]
+    assert (
+        bundle["executive"]["filter"]["layout"]["orientation"]
+        == "top_to_bottom"
+    )
+    canonical_mermaid = bundle["canonical"]["mermaid"]
+    for node in projection["nodes"]:
+        assert f'{str(node["node_id"]).replace("-", "_")}["' in canonical_mermaid
+    for edge in projection["edges"]:
+        source = str(edge["from_node"]).replace("-", "_")
+        target = str(edge["to_node"]).replace("-", "_")
+        assert f"{source} -->|supports| {target}" in canonical_mermaid
     canonical_ids = {node["node_id"] for node in bundle["canonical"]["nodes"]}
     assert len(bundle["executive"]["nodes"]) < len(canonical_ids)
     for node in bundle["executive"]["nodes"]:
         assert node["source_node_id"] in canonical_ids
         assert node["lineage"][-1] == node["source_node_id"]
     assert bundle["assessment"]["canonical_truncation_allowed"] is False
+
+
+def test_flat_large_graph_is_classified_as_a_readability_failure() -> None:
+    projection = {
+        "ok": True,
+        "goal_id": "goal-public-fixture",
+        "source_event_count": 80,
+        "nodes": [_node(f"root-{index}") for index in range(80)],
+        "edges": [],
+        "findings": [],
+    }
+
+    bundle = build_explore_presentation_bundle(projection)
+
+    assert "readability_check_failed" in bundle["reason_codes"]
+    assert bundle["assessment"]["metrics"]["root_node_count"] == 80
+    assert bundle["assessment"]["readability_check"]["failed"] is True
+    assert bundle["canonical"]["filter"]["layout"]["column_count"] == 1
 
 
 def test_findings_change_digest_and_stale_view_is_rejected() -> None:

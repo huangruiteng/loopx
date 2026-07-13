@@ -9,12 +9,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from typing import Any
-
-from ..capabilities.explore.result_log import build_explore_mermaid
-
 
 EXPLORE_PRESENTATION_BUNDLE_VERSION = "loopx_explore_presentation_bundle_v0"
 EXPLORE_PRESENTATION_ASSESSMENT_VERSION = "loopx_explore_presentation_assessment_v0"
@@ -67,7 +65,18 @@ DEFAULT_EXPLORE_PRESENTATION_POLICY: dict[str, float | int] = {
     "readability_node_floor": 60,
     "readability_edge_density_floor": 2.0,
     "readability_label_chars": 96,
+    "readability_root_count_floor": 16,
+    "readability_root_ratio_floor": 0.30,
+    "atlas_group_node_limit": 10,
     "executive_counterevidence_limit": 8,
+}
+
+_MERMAID_STATUS_CLASS = {
+    "open": "open",
+    "exploring": "exploring",
+    "blocked": "blocked",
+    "resolved": "resolved",
+    "dead_end": "deadend",
 }
 
 
@@ -148,6 +157,121 @@ def _node_depths(node_ids: set[str], parents: Mapping[str, str]) -> dict[str, in
     }
 
 
+def _mermaid_id(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_]", "_", str(value))
+
+
+def _mermaid_label(value: str) -> str:
+    cleaned = re.sub(r'["\[\]{}<>`|]', "'", str(value or ""))
+    return cleaned[:60].strip() or "untitled"
+
+
+def _canonical_group_specs(
+    nodes: Sequence[Mapping[str, Any]],
+    *,
+    group_node_limit: int,
+) -> list[dict[str, Any]]:
+    """Split stable source order into navigable evidence epochs."""
+
+    node_by_id = {str(node.get("node_id") or ""): node for node in nodes}
+    ordered_ids = list(node_by_id)
+    specs = []
+    for offset in range(0, len(ordered_ids), group_node_limit):
+        chunk = ordered_ids[offset : offset + group_node_limit]
+        first_title = str(node_by_id[chunk[0]].get("title") or chunk[0])
+        specs.append(
+            {
+                "title": (
+                    f"Evidence epoch {offset // group_node_limit + 1:02d} · "
+                    f"{first_title}"
+                ),
+                "node_ids": chunk,
+                "order": offset,
+            }
+        )
+    return specs
+
+
+def build_vertical_explore_mermaid(
+    nodes: Sequence[Mapping[str, Any]],
+    edges: Sequence[Mapping[str, Any]],
+    *,
+    view_role: str,
+    group_node_limit: int = 10,
+) -> dict[str, Any]:
+    """Render a complete top-to-bottom evidence atlas for a large graph."""
+
+    node_list = [node for node in nodes if str(node.get("node_id") or "")]
+    group_limit = max(4, int(group_node_limit))
+    groups = _canonical_group_specs(node_list, group_node_limit=group_limit)
+    role = "executive" if view_role == "executive" else "canonical"
+    atlas_title = f"{role.title()} evidence timeline"
+
+    node_by_id = {str(node.get("node_id") or ""): node for node in node_list}
+    shown_ids = set(node_by_id)
+    lines = ["flowchart TB", f'    subgraph {role}_atlas["{atlas_title}"]']
+    lines.append("        direction TB")
+    group_chains = []
+    for group_index, group in enumerate(groups, start=1):
+        group_id = f"{role}_group_{group_index}"
+        lines.append(f'        subgraph {group_id}["{_mermaid_label(group["title"])}"]')
+        lines.append("            direction TB")
+        chain = []
+        for node_id in group["node_ids"]:
+            node = node_by_id[node_id]
+            status = str(node.get("status") or "open")
+            marker = {
+                "blocked": " (BLOCKED)",
+                "resolved": " (done)",
+                "dead_end": " (dead end)",
+            }.get(status, "")
+            label = _mermaid_label(f"{node.get('title')}{marker}")
+            mermaid_id = _mermaid_id(node_id)
+            chain.append(mermaid_id)
+            lines.append(
+                f'            {mermaid_id}["{label}"]:::{_MERMAID_STATUS_CLASS.get(status, "open")}'
+            )
+        if len(chain) > 1:
+            lines.append(f"            {' ~~~ '.join(chain)}")
+        lines.append("        end")
+        group_chains.append(chain)
+    for previous, current in zip(group_chains, group_chains[1:]):
+        lines.append(f"        {previous[-1]} ~~~ {current[0]}")
+    lines.append("    end")
+    for edge in edges:
+        source = str(edge.get("from_node") or "")
+        target = str(edge.get("to_node") or "")
+        if source not in shown_ids or target not in shown_ids:
+            continue
+        label = _mermaid_label(str(edge.get("edge_type") or ""))
+        lines.append(f"    {_mermaid_id(source)} -->|{label}| {_mermaid_id(target)}")
+    lines.append(
+        f"    style {role}_atlas fill:#ffffff,stroke:#90a4ae,stroke-width:2px"
+    )
+    for group_index in range(1, len(groups) + 1):
+        lines.append(
+            f"    style {role}_group_{group_index} fill:#fafafa,stroke:#cfd8dc"
+        )
+    lines.extend(
+        [
+            "    classDef open fill:#f5f5f5,stroke:#9e9e9e",
+            "    classDef exploring fill:#e3f2fd,stroke:#1e88e5",
+            "    classDef blocked fill:#ffebee,stroke:#e53935,stroke-width:2px",
+            "    classDef resolved fill:#e8f5e9,stroke:#43a047",
+            "    classDef deadend fill:#eeeeee,stroke:#9e9e9e,stroke-dasharray: 4 4",
+        ]
+    )
+    return {
+        "mermaid": "\n".join(lines),
+        "strategy": "vertical_evidence_timeline",
+        "view_role": role,
+        "group_count": len(groups),
+        "column_count": 1,
+        "orientation": "top_to_bottom",
+        "max_group_node_count": group_limit,
+    }
+
+
 def _tags(node: Mapping[str, Any]) -> set[str]:
     return {str(tag or "").strip().lower() for tag in node.get("tags") or [] if str(tag or "").strip()}
 
@@ -214,6 +338,8 @@ def assess_explore_presentation(
     terminal_ratio = terminal_count / node_count if node_count else 0.0
     edge_density = edge_count / node_count if node_count else 0.0
     max_depth = max(depths.values(), default=0)
+    root_count = sum(not parents.get(node_id) for node_id in node_ids)
+    root_ratio = root_count / node_count if node_count else 0.0
     terminal_neighborhoods = _terminal_neighborhood_count(nodes, parents)
     long_label_count = sum(
         len(str(node.get("title") or "")) > int(thresholds["readability_label_chars"])
@@ -247,6 +373,10 @@ def assess_explore_presentation(
             edge_density >= float(thresholds["readability_edge_density_floor"])
             or long_label_count > 0
             or max_depth >= int(thresholds["decision_depth_floor"])
+            or (
+                root_count >= int(thresholds["readability_root_count_floor"])
+                and root_ratio >= float(thresholds["readability_root_ratio_floor"])
+            )
         )
     )
     if observed_readability_failure or estimated_readability_failure:
@@ -270,6 +400,8 @@ def assess_explore_presentation(
             "terminal_ratio": round(terminal_ratio, 4),
             "terminal_neighborhood_count": terminal_neighborhoods,
             "max_depth": max_depth,
+            "root_node_count": root_count,
+            "root_ratio": round(root_ratio, 4),
             "edge_density": round(edge_density, 4),
             "long_label_count": long_label_count,
         },
@@ -393,6 +525,14 @@ def build_explore_presentation_bundle(
         for node in nodes
     ]
     canonical_edges = [dict(edge, source_edge_id=str(edge.get("edge_id") or "")) for edge in edges]
+    thresholds = dict(DEFAULT_EXPLORE_PRESENTATION_POLICY)
+    thresholds.update(policy or {})
+    canonical_layout = build_vertical_explore_mermaid(
+        canonical_nodes,
+        canonical_edges,
+        view_role="canonical",
+        group_node_limit=int(thresholds["atlas_group_node_limit"]),
+    )
     canonical = {
         "schema_version": EXPLORE_CANONICAL_VIEW_VERSION,
         "goal_id": projection.get("goal_id"),
@@ -402,17 +542,23 @@ def build_explore_presentation_bundle(
         "nodes": canonical_nodes,
         "edges": canonical_edges,
         "findings": findings,
-        "mermaid": build_explore_mermaid(canonical_nodes, canonical_edges, node_limit=max(1, len(nodes))),
+        "mermaid": canonical_layout["mermaid"],
         "graph_counts": {
             "node_count": len(canonical_nodes),
             "edge_count": len(canonical_edges),
             "finding_count": len(findings),
         },
-        "filter": {"projection_mode": "canonical_full", "truncated": False},
+        "filter": {
+            "projection_mode": "canonical_full",
+            "truncated": False,
+            "layout": {
+                key: value
+                for key, value in canonical_layout.items()
+                if key != "mermaid"
+            },
+        },
     }
 
-    thresholds = dict(DEFAULT_EXPLORE_PRESENTATION_POLICY)
-    thresholds.update(policy or {})
     executive_ids = _executive_node_ids(
         nodes,
         edges,
@@ -430,6 +576,12 @@ def build_explore_presentation_bundle(
         if str(edge.get("from_node") or "") in executive_ids
         and str(edge.get("to_node") or "") in executive_ids
     ]
+    executive_layout = build_vertical_explore_mermaid(
+        executive_nodes,
+        executive_edges,
+        view_role="executive",
+        group_node_limit=int(thresholds["atlas_group_node_limit"]),
+    )
     executive_findings = [
         finding
         for finding in findings
@@ -445,11 +597,7 @@ def build_explore_presentation_bundle(
         "nodes": executive_nodes,
         "edges": executive_edges,
         "findings": executive_findings,
-        "mermaid": build_explore_mermaid(
-            executive_nodes,
-            executive_edges,
-            node_limit=max(1, len(executive_nodes)),
-        ),
+        "mermaid": executive_layout["mermaid"],
         "graph_counts": {
             "node_count": len(executive_nodes),
             "edge_count": len(executive_edges),
@@ -460,6 +608,11 @@ def build_explore_presentation_bundle(
             "projection_mode": "executive_auto",
             "selection": "active_or_tagged_plus_material_neighbors_and_lineage",
             "truncated": False,
+            "layout": {
+                key: value
+                for key, value in executive_layout.items()
+                if key != "mermaid"
+            },
         },
     }
     return {
