@@ -133,13 +133,21 @@ does not accept an arbitrary base URL, does not follow redirects, does not send
 tool definitions, and converts transport failures into bounded errors without
 provider response bodies.
 
-The provider-visible user input contains only the arm, the
-`semantic_contract_required` flag, and that arm's packet. Qualification ids,
-sandbox declarations, actor instructions, and response-contract metadata are
-validated locally but are not repeated in the model prompt. The actor disables
-provider deep thinking for this deterministic extraction task and reserves
-4096 output tokens so the bounded semantic contract is not constrained by the
-former 1200-token response budget.
+The provider-visible user input contains only the arm, a locally derived
+`canonical_selected_todo_id`, the `semantic_contract_required` flag, and that
+arm's packet. Qualification ids, sandbox declarations, actor instructions, and
+response-contract metadata are validated locally but are not repeated in the
+model prompt. The actor disables provider deep thinking for this deterministic
+extraction task and reserves 4096 output tokens so the bounded semantic
+contract is not constrained by the former 1200-token response budget.
+
+The actor derives `canonical_selected_todo_id` independently for each arm from
+the canonical selected-todo field: top-level `selected_todo.todo_id` in a full
+packet or `action.selected_todo.todo_id` in a TurnEnvelope. The model must copy
+that value into `selected_todo_id`, including `null`; todo ids found only in
+summaries, diagnostics, handoffs, history, or other cold-path references are
+not selected work. The pair's pre-provider action-signature check still fails
+closed when the candidate actually omits or changes selected work.
 
 Live use requires `ARK_API_KEY` to be injected into the process environment.
 The key is held only by the in-memory adapter and is never placed in a LoopX
