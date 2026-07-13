@@ -180,14 +180,14 @@ def test_complex_graph_recommends_traceable_dual_view() -> None:
     assert bundle["canonical"]["source_digest"] == bundle["executive"]["source_digest"]
     assert bundle["canonical"]["source_revision"] == bundle["executive"]["source_revision"]
     assert bundle["canonical"]["mermaid"].startswith("flowchart TB")
-    assert "subgraph canonical_atlas" in bundle["canonical"]["mermaid"]
+    assert "subgraph canonical_timeline" in bundle["canonical"]["mermaid"]
     assert (
         bundle["canonical"]["filter"]["layout"]["strategy"]
         == "vertical_evidence_timeline"
     )
     assert bundle["canonical"]["filter"]["layout"]["column_count"] == 1
     assert bundle["executive"]["mermaid"].startswith("flowchart TB")
-    assert "subgraph executive_atlas" in bundle["executive"]["mermaid"]
+    assert "subgraph executive_timeline" in bundle["executive"]["mermaid"]
     assert "Canonical evidence timeline" not in bundle["executive"]["mermaid"]
     assert (
         bundle["executive"]["filter"]["layout"]["orientation"]
@@ -230,22 +230,19 @@ def test_both_views_render_status_metric_and_conclusion_from_node_summary() -> N
         assert "candidate_model_abc1234 with a deliberately long descriptive… · DONE" in view["mermaid"]
         assert "+31.2/+72.4 bp" in view["mermaid"]
         assert "Retain as incumbent with calibration as a guardrail" in view["mermaid"]
-        assert "+31.2/+72.4 bp" in view["svg"]
-        assert "Retain as incumbent with calibration as a guardrail" in view["svg"]
-        assert "+31.2/+72.4 bp" in view["svg_board"]
-        assert "Retain as incumbent with calibration as a guardrail" in view["svg_board"]
+        assert any(
+            "+31.2/+72.4 bp" in stage["mermaid"]
+            for stage in view["stage_views"]
+        )
+        assert any(
+            "Retain as incumbent with calibration as a guardrail"
+            in stage["mermaid"]
+            for stage in view["stage_views"]
+        )
         mermaid_coverage = view["filter"]["layout"]["node_detail_coverage"]
-        svg_coverage = view["filter"]["renderer_layouts"]["svg_atlas"][
-            "node_detail_coverage"
-        ]
-        board_coverage = view["filter"]["renderer_layouts"]["svg_board"][
-            "node_detail_coverage"
-        ]
         assert mermaid_coverage["complete"] is True
         assert mermaid_coverage["summary_rendered_node_count"] == 1
         assert mermaid_coverage["metric_rendered_node_count"] == 1
-        assert svg_coverage == mermaid_coverage
-        assert board_coverage == mermaid_coverage
 
 
 def test_flat_large_graph_is_classified_as_a_readability_failure() -> None:
@@ -266,79 +263,47 @@ def test_flat_large_graph_is_classified_as_a_readability_failure() -> None:
     assert bundle["canonical"]["filter"]["layout"]["column_count"] == 1
 
 
-def test_configured_atlas_columns_fit_wide_whiteboard_embeds() -> None:
+def test_each_evidence_stage_is_a_bounded_independent_topology() -> None:
     bundle = build_explore_presentation_bundle(
         _complex_projection(),
-        policy={"atlas_column_count": 4},
+        policy={"stage_node_capacity": 14},
     )
 
-    assert bundle["executive"]["mermaid"].startswith("flowchart LR")
-    layout = bundle["executive"]["filter"]["layout"]
-    assert layout["strategy"] == "multi_column_evidence_atlas"
-    assert layout["column_count"] == layout["group_count"] == 2
-    assert layout["orientation"] == "left_to_right"
+    stages = bundle["executive"]["stage_views"]
+    assert len(stages) >= 2
+    assert all(1 <= stage["node_count"] <= 14 for stage in stages)
+    assert all(stage["primary_node_count"] <= 12 for stage in stages)
+    assert all(stage["context_node_count"] <= 2 for stage in stages)
+    assert all(stage["mermaid"].startswith("flowchart TB") for stage in stages)
 
 
-def test_svg_atlas_owns_a_fixed_grid_and_keeps_executive_nodes_visible() -> None:
-    bundle = build_explore_presentation_bundle(
-        _complex_projection(),
-        policy={"atlas_column_count": 2},
-    )
-
-    executive = bundle["executive"]
-    svg = executive["svg"]
-    layout = executive["filter"]["renderer_layouts"]["svg_atlas"]
-    assert svg.startswith('<svg xmlns="http://www.w3.org/2000/svg"')
-    assert "Executive Explore Evidence Atlas" in svg
-    assert layout["strategy"] == "fixed_grid_evidence_atlas"
-    assert layout["column_count"] == 2
-    assert layout["row_count"] >= 1
-    assert layout["rendered_relation_count"] == layout["group_count"] - 1
-    for node in executive["nodes"]:
-        assert str(node["title"]) in svg
-
-
-def test_svg_board_preserves_bounded_stages_frontier_and_real_relations() -> None:
+def test_stage_board_preserves_two_lanes_and_real_cross_lane_relation() -> None:
     bundle = build_explore_presentation_bundle(
         _lane_projection(),
-        policy={"board_stage_capacity": 8},
+        policy={"stage_node_capacity": 10},
     )
 
-    canonical = bundle["canonical"]
-    svg = canonical["svg_board"]
-    layout = canonical["filter"]["renderer_layouts"]["svg_board"]
-    assert svg.startswith('<svg xmlns="http://www.w3.org/2000/svg"')
-    assert "Live Explore Evidence Stages" in svg
-    assert "Evidence stage 01" in svg
-    assert 'data-evidence-stage="1"' in svg
-    assert 'data-stage-capacity="8"' in svg
-    assert 'data-node-id="fix-pr"' in svg
-    assert 'data-frontier="true"' in svg
-    assert 'data-edge-id="edge-fix-supports-capability"' in svg
-    assert 'data-edge-id="edge-fix-subtopic"' not in svg
-    assert layout["strategy"] == "vertical_evidence_stage_board"
-    assert layout["stage_count"] == 1
-    assert layout["stage_capacity"] == 8
-    assert layout["stage_sizes"] == [2]
-    assert layout["frontier_node_count"] == 1
-    assert layout["rendered_relation_count"] == 1
-    assert layout["cross_stage_relation_count"] == 0
-    assert layout["suppressed_relation_count"] == 1
-    assert layout["source_edge_count"] == 2
-    assert layout["semantic_contract"]["evidence_stage_capacity_bounded"] is True
+    stage = bundle["canonical"]["stage_views"][0]
+    assert stage["lane_count"] == 2
+    assert stage["lanes"] == ["capability", "delivery"]
+    assert stage["cross_lane_edge_count"] == 1
+    assert 'subgraph canonical_stage_1_lane_1["Delivery"]' in stage["mermaid"]
+    assert 'subgraph canonical_stage_1_lane_2["LoopX capability"]' in stage["mermaid"]
+    assert "fix_pr -->|supports| durable_capability" in stage["mermaid"]
+    assert "edge-fix-subtopic" not in stage["mermaid"]
 
 
-def test_svg_board_caps_each_evidence_stage() -> None:
-    bundle = build_explore_presentation_bundle(
-        _complex_projection(),
-        policy={"board_stage_capacity": 12},
-    )
+def test_single_lane_project_does_not_invent_a_second_lane() -> None:
+    projection = _small_projection()
+    projection["nodes"][0]["tags"] = ["lane-retrieval"]
+    projection["nodes"][1]["parent_id"] = "root"
 
-    layout = bundle["executive"]["filter"]["renderer_layouts"]["svg_board"]
-    assert layout["stage_count"] >= 2
-    assert layout["stage_capacity"] == 12
-    assert all(1 <= size <= 12 for size in layout["stage_sizes"])
-    assert sum(layout["stage_sizes"]) == layout["rendered_node_count"]
+    stage = build_explore_presentation_bundle(projection)["canonical"]["stage_views"][0]
+
+    assert stage["lane_count"] == 1
+    assert stage["lanes"] == ["retrieval"]
+    assert stage["cross_lane_edge_count"] == 0
+    assert stage["mermaid"].count("subgraph canonical_stage_1_lane_") == 1
 
 
 def test_executive_view_suppresses_dense_hub_scaffolding_edges() -> None:
@@ -396,7 +361,7 @@ def test_presentation_rejects_a_bounded_canonical_finding_projection() -> None:
         build_explore_presentation_bundle(projection)
 
 
-def test_visual_configuration_preserves_legacy_and_supports_roles(tmp_path) -> None:
+def test_visual_configuration_preserves_legacy_and_supports_stage_boards(tmp_path) -> None:
     config_path = tmp_path / "lark-explore.json"
     write_lark_explore_local_config(
         config_path,
@@ -424,8 +389,8 @@ def test_visual_configuration_preserves_legacy_and_supports_roles(tmp_path) -> N
         whiteboard_token="wb_executive_fixture",
         projection_mode="executive_auto",
         view_role="executive",
-        atlas_column_count=4,
-        renderer="svg_atlas",
+        stage_capacity=18,
+        stage_whiteboard_tokens=["wb_executive_fixture", "wb_stage_02"],
         execute=True,
     )
 
@@ -433,11 +398,16 @@ def test_visual_configuration_preserves_legacy_and_supports_roles(tmp_path) -> N
     assert stored["visual_sink"]["whiteboard_token"] == "wb_legacy_fixture"
     assert stored["visual_sinks"]["canonical"]["view_role"] == "canonical"
     assert stored["visual_sinks"]["executive"]["view_role"] == "executive"
-    assert stored["visual_sinks"]["executive"]["atlas_column_count"] == 4
-    assert stored["visual_sinks"]["executive"]["renderer"] == "svg_atlas"
+    assert stored["visual_sinks"]["executive"]["renderer"] == "mermaid"
+    assert stored["visual_sinks"]["executive"]["presentation_mode"] == "stage_document"
+    assert stored["visual_sinks"]["executive"]["stage_capacity"] == 18
+    assert stored["visual_sinks"]["executive"]["stage_whiteboards"] == [
+        {"stage_index": 1, "whiteboard_token": "wb_executive_fixture"},
+        {"stage_index": 2, "whiteboard_token": "wb_stage_02"},
+    ]
 
 
-def test_svg_atlas_configuration_requires_an_explicit_view_role(tmp_path) -> None:
+def test_visual_configuration_rejects_out_of_range_stage_capacity(tmp_path) -> None:
     config_path = tmp_path / "lark-explore.json"
     write_lark_explore_local_config(
         config_path,
@@ -449,45 +419,86 @@ def test_svg_atlas_configuration_requires_an_explicit_view_role(tmp_path) -> Non
         },
     )
 
-    with pytest.raises(ValueError, match="requires a canonical or executive"):
+    with pytest.raises(ValueError, match="between 10 and 20"):
         configure_lark_explore_visual_sink(
             config_path=config_path,
             whiteboard_token="wb_legacy_fixture",
-            renderer="svg_atlas",
+            stage_capacity=9,
         )
 
-    with pytest.raises(ValueError, match="requires a canonical or executive"):
+    with pytest.raises(ValueError, match="between 10 and 20"):
         configure_lark_explore_visual_sink(
             config_path=config_path,
             whiteboard_token="wb_legacy_fixture",
-            renderer="svg_board",
+            stage_capacity=21,
         )
 
 
-def test_dual_visual_sync_applies_role_specific_atlas_columns(tmp_path) -> None:
+def test_visual_configuration_can_create_all_stage_boards_from_docx(tmp_path) -> None:
+    config_path = tmp_path / "lark-explore.json"
+    write_lark_explore_local_config(
+        config_path,
+        {
+            "board": {
+                "base_token": "PUBLIC_FIXTURE_BASE",
+                "tables": {"nodes": "tblN", "edges": "tblE", "findings": "tblF"},
+            }
+        },
+    )
+
+    configure_lark_explore_visual_sink(
+        config_path=config_path,
+        docx_token="doc_public_fixture",
+        projection_mode="executive_auto",
+        view_role="executive",
+        execute=True,
+    )
+
+    stored = read_lark_explore_local_config(config_path)
+    sink = stored["visual_sinks"]["executive"]
+    assert sink["whiteboard_token"] is None
+    assert sink["docx_token"] == "doc_public_fixture"
+    assert sink["stage_whiteboards"] == []
+
+
+def test_visual_sync_publishes_one_mermaid_whiteboard_per_stage(tmp_path) -> None:
     projection = _complex_projection()
     config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
+    bundle = build_explore_presentation_bundle(
+        projection,
+        policy={"stage_node_capacity": 14},
+    )
+    stage_count = len(bundle["executive"]["stage_views"])
     synced = sync_explore_visuals_to_lark(
         config,
         projection=projection,
         visual_sinks={
             "executive": {
-                "whiteboard_token": "wb_executive_fixture",
+                "whiteboard_token": "wb_stage_01",
                 "view_role": "executive",
-                "atlas_column_count": 4,
-                "renderer": "svg_atlas",
+                "stage_capacity": 14,
+                "stage_whiteboards": [
+                    {
+                        "stage_index": index,
+                        "whiteboard_token": f"wb_stage_{index:02d}",
+                    }
+                    for index in range(1, stage_count + 1)
+                ],
             }
         },
         config_path=tmp_path / "lark-explore.json",
     )
 
     view = synced["views"]["executive"]
-    assert view["filter"]["renderer_layouts"]["svg_atlas"]["column_count"] == 2
-    assert view["renderer"] == "svg_atlas"
-    assert view["input_format"] == "svg"
-    command = view["command"]["command"]
-    assert "--input_format svg" in command
-    assert ".svg --overwrite" in command
+    assert view["stage_count"] == stage_count
+    assert view["stage_capacity"] == 14
+    assert view["presentation_mode"] == "stage_document"
+    assert all(stage["renderer"] == "mermaid" for stage in view["stages"])
+    assert all(stage["input_format"] == "mermaid" for stage in view["stages"])
+    assert all(
+        "--input_format mermaid" in stage["command"]["command"]
+        for stage in view["stages"]
+    )
 
 
 def test_dual_visual_sync_uses_one_revision_and_rejects_stale_view(tmp_path) -> None:
@@ -496,14 +507,29 @@ def test_dual_visual_sync_uses_one_revision_and_rejects_stale_view(tmp_path) -> 
         base_token="PUBLIC_FIXTURE_BASE",
         table_ids={"nodes": "tblN", "edges": "tblE", "findings": "tblF"},
     )
+    bundle = build_explore_presentation_bundle(projection)
     sinks = {
         "canonical": {
             "whiteboard_token": "wb_canonical_fixture",
             "view_role": "canonical",
+            "stage_whiteboards": [
+                {
+                    "stage_index": index,
+                    "whiteboard_token": f"wb_canonical_{index:02d}",
+                }
+                for index in range(1, len(bundle["canonical"]["stage_views"]) + 1)
+            ],
         },
         "executive": {
             "whiteboard_token": "wb_executive_fixture",
             "view_role": "executive",
+            "stage_whiteboards": [
+                {
+                    "stage_index": index,
+                    "whiteboard_token": f"wb_executive_{index:02d}",
+                }
+                for index in range(1, len(bundle["executive"]["stage_views"]) + 1)
+            ],
         },
     }
 
@@ -519,7 +545,6 @@ def test_dual_visual_sync_uses_one_revision_and_rejects_stale_view(tmp_path) -> 
     revisions = {view["source_revision"] for view in synced["views"].values()}
     assert revisions == {synced["source_revision"]}
 
-    bundle = build_explore_presentation_bundle(projection)
     changed = json.loads(json.dumps(projection))
     changed["nodes"][0]["title"] = "Changed canonical source"
     stale = sync_explore_visual_to_lark(
@@ -571,29 +596,13 @@ def test_visual_delivery_digest_changes_when_only_rendered_mermaid_changes(tmp_p
     assert first["command"]["command"] != changed["command"]["command"]
 
 
-def test_visual_delivery_digest_and_command_include_renderer(tmp_path) -> None:
+def test_legacy_grid_renderer_config_fails_with_migration_message(tmp_path) -> None:
     projection = _complex_projection()
     config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
-    bundle = build_explore_presentation_bundle(
-        projection,
-        policy={"atlas_column_count": 2},
-    )
+    bundle = build_explore_presentation_bundle(projection)
     view = bundle["executive"]
 
-    mermaid = sync_explore_visual_to_lark(
-        config,
-        projection=projection,
-        visual_sink={
-            "whiteboard_token": "wb_executive_fixture",
-            "view_role": "executive",
-            "renderer": "mermaid",
-        },
-        config_path=tmp_path / "lark-explore.json",
-        semantic_digest=bundle["source_digest"],
-        display_projection=view,
-        view_key="executive",
-    )
-    svg = sync_explore_visual_to_lark(
+    result = sync_explore_visual_to_lark(
         config,
         projection=projection,
         visual_sink={
@@ -606,32 +615,13 @@ def test_visual_delivery_digest_and_command_include_renderer(tmp_path) -> None:
         display_projection=view,
         view_key="executive",
     )
-    board = sync_explore_visual_to_lark(
-        config,
-        projection=projection,
-        visual_sink={
-            "whiteboard_token": "wb_executive_fixture",
-            "view_role": "executive",
-            "renderer": "svg_board",
-        },
-        config_path=tmp_path / "lark-explore.json",
-        semantic_digest=bundle["source_digest"],
-        display_projection=view,
-        view_key="executive",
-    )
 
-    assert mermaid["source_digest"] == svg["source_digest"] == board["source_digest"]
-    assert mermaid["delivery_digest"] != svg["delivery_digest"]
-    assert board["delivery_digest"] not in {
-        mermaid["delivery_digest"],
-        svg["delivery_digest"],
-    }
-    assert mermaid["input_format"] == "mermaid"
-    assert svg["input_format"] == "svg"
-    assert board["input_format"] == "svg"
+    assert result["ok"] is False
+    assert result["status"] == "invalid_config"
+    assert "grid/SVG Explore renderers were removed" in result["error"]
 
 
-def test_svg_visual_publish_reads_back_remote_delivery_marker(tmp_path) -> None:
+def test_mermaid_visual_publish_reads_back_remote_delivery_marker(tmp_path) -> None:
     projection = _complex_projection()
     config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
     bundle = build_explore_presentation_bundle(projection)
@@ -679,7 +669,7 @@ def test_svg_visual_publish_reads_back_remote_delivery_marker(tmp_path) -> None:
         visual_sink={
             "whiteboard_token": "wb_executive_fixture",
             "view_role": "executive",
-            "renderer": "svg_board",
+            "renderer": "mermaid",
         },
         config_path=tmp_path / "lark-explore.json",
         semantic_digest=bundle["source_digest"],
@@ -698,7 +688,7 @@ def test_svg_visual_publish_reads_back_remote_delivery_marker(tmp_path) -> None:
     assert synced["readback"]["observed_marker"] == published_marker
 
 
-def test_svg_visual_readback_retries_lark_doc_applying(tmp_path, monkeypatch) -> None:
+def test_mermaid_visual_readback_retries_lark_doc_applying(tmp_path, monkeypatch) -> None:
     projection = _complex_projection()
     config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
     bundle = build_explore_presentation_bundle(projection)
@@ -752,7 +742,7 @@ def test_svg_visual_readback_retries_lark_doc_applying(tmp_path, monkeypatch) ->
         visual_sink={
             "whiteboard_token": "wb_executive_fixture",
             "view_role": "executive",
-            "renderer": "svg_board",
+            "renderer": "mermaid",
         },
         config_path=tmp_path / "lark-explore.json",
         semantic_digest=bundle["source_digest"],
@@ -770,7 +760,7 @@ def test_svg_visual_readback_retries_lark_doc_applying(tmp_path, monkeypatch) ->
     assert delays == [0.25]
 
 
-def test_svg_visual_publish_fails_closed_when_remote_marker_is_missing(
+def test_mermaid_visual_publish_fails_closed_when_remote_marker_is_missing(
     tmp_path,
 ) -> None:
     projection = _complex_projection()
@@ -798,7 +788,7 @@ def test_svg_visual_publish_fails_closed_when_remote_marker_is_missing(
         visual_sink={
             "whiteboard_token": "wb_executive_fixture",
             "view_role": "executive",
-            "renderer": "svg_board",
+            "renderer": "mermaid",
         },
         config_path=tmp_path / "lark-explore.json",
         semantic_digest=bundle["source_digest"],
@@ -814,6 +804,97 @@ def test_svg_visual_publish_fails_closed_when_remote_marker_is_missing(
     assert synced["readback"]["performed"] is True
     assert synced["readback"]["verified"] is False
     assert "expected delivery marker" in synced["error"]
+
+
+def test_visual_sync_creates_one_document_section_and_board_per_missing_stage(
+    tmp_path,
+) -> None:
+    projection = _complex_projection()
+    bundle = build_explore_presentation_bundle(projection)
+    stage_count = len(bundle["executive"]["stage_views"])
+    config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
+    config_path = tmp_path / "lark-explore.json"
+    sink = {
+        "whiteboard_token": "wb_stage_01",
+        "docx_token": "doc_public_fixture",
+        "view_role": "executive",
+        "renderer": "mermaid",
+        "stage_whiteboards": [
+            {"stage_index": 1, "whiteboard_token": "wb_stage_01"}
+        ],
+    }
+    write_lark_explore_local_config(
+        config_path,
+        {
+            "board": {"base_token": "PUBLIC_FIXTURE_BASE"},
+            "visual_sinks": {"executive": sink},
+        },
+    )
+    created_stage = 1
+    published_markers: dict[str, str] = {}
+
+    def runner(args, cwd, _timeout):
+        nonlocal created_stage
+        if "docs" in args and "+update" in args:
+            created_stage += 1
+            payload = {
+                "ok": True,
+                "data": {
+                    "document": {
+                        "new_blocks": [
+                            {
+                                "block_id": f"block_stage_{created_stage:02d}",
+                                "block_type": "whiteboard",
+                                "block_token": f"wb_stage_{created_stage:02d}",
+                            }
+                        ]
+                    }
+                },
+            }
+        elif "+update" in args:
+            token = args[args.index("--whiteboard-token") + 1]
+            source_arg = args[args.index("--source") + 1]
+            source = (cwd / source_arg.removeprefix("@")).read_text(encoding="utf-8")
+            published_markers[token] = re.search(
+                r"LoopX delivery [0-9a-f]{20}", source
+            ).group(0)
+            payload = {"ok": True}
+        else:
+            token = args[args.index("--whiteboard-token") + 1]
+            payload = {
+                "ok": True,
+                "data": {
+                    "nodes": [{"text": {"text": published_markers[token]}}]
+                },
+            }
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(payload),
+            "stderr": "",
+        }
+
+    synced = sync_explore_visuals_to_lark(
+        config,
+        projection=projection,
+        visual_sinks={"executive": sink},
+        config_path=config_path,
+        execute=True,
+        runner=runner,
+    )
+
+    view = synced["views"]["executive"]
+    assert synced["ok"] is True
+    assert view["stage_count"] == stage_count
+    assert len(view["section_commands"]) == stage_count - 1
+    assert all(stage["published"] for stage in view["stages"])
+    stored = read_lark_explore_local_config(config_path)
+    stage_boards = stored["visual_sinks"]["executive"]["stage_whiteboards"]
+    assert [item["stage_index"] for item in stage_boards] == list(
+        range(1, stage_count + 1)
+    )
+    assert [item["whiteboard_token"] for item in stage_boards] == [
+        f"wb_stage_{index:02d}" for index in range(1, stage_count + 1)
+    ]
 
 
 def test_visual_delivery_digest_changes_when_target_whiteboard_changes(tmp_path) -> None:

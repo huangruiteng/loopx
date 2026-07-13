@@ -8,7 +8,6 @@ truncates the canonical node, edge, or finding collections.
 from __future__ import annotations
 
 import hashlib
-import html
 import json
 import re
 import unicodedata
@@ -69,9 +68,7 @@ DEFAULT_EXPLORE_PRESENTATION_POLICY: dict[str, float | int] = {
     "readability_label_chars": 96,
     "readability_root_count_floor": 16,
     "readability_root_ratio_floor": 0.30,
-    "atlas_group_node_limit": 10,
-    "atlas_column_count": 1,
-    "board_stage_capacity": 12,
+    "stage_node_capacity": 14,
     "executive_counterevidence_limit": 8,
     "executive_hub_edge_degree_floor": 4,
 }
@@ -280,7 +277,7 @@ def _canonical_group_specs(
     *,
     group_node_limit: int,
 ) -> list[dict[str, Any]]:
-    """Split stable source order into navigable evidence epochs."""
+    """Split stable source order into bounded evidence stages."""
 
     node_by_id = {str(node.get("node_id") or ""): node for node in nodes}
     ordered_ids = list(node_by_id)
@@ -291,7 +288,7 @@ def _canonical_group_specs(
         specs.append(
             {
                 "title": (
-                    f"Evidence epoch {offset // group_node_limit + 1:02d} · "
+                    f"Evidence stage {offset // group_node_limit + 1:02d} · "
                     f"{first_title}"
                 ),
                 "node_ids": chunk,
@@ -301,45 +298,110 @@ def _canonical_group_specs(
     return specs
 
 
+def _explore_lane(
+    node: Mapping[str, Any],
+    *,
+    node_by_id: Mapping[str, Mapping[str, Any]] | None = None,
+) -> str:
+    """Return a generic lane id, inheriting explicit lane tags from lineage.
+
+    Projects can define any number of lanes with ``lane-<name>`` tags on a
+    node or one of its ancestors.  The id fallbacks preserve useful behavior
+    for existing issue-fix projections that predate explicit lane tags.
+    """
+
+    direct_tags = {
+        str(tag).strip().lower()
+        for tag in node.get("tags") or []
+        if str(tag).strip()
+    }
+    direct_lanes = sorted(
+        tag for tag in direct_tags if tag.startswith("lane-") and len(tag) > 5
+    )
+    if direct_lanes:
+        return direct_lanes[0].removeprefix("lane-").replace("-", "_")
+    node_id = str(node.get("node_id") or "").lower()
+    if node_id.startswith("fix_") or direct_tags.intersection({"fix-pr", "fix_pr"}):
+        return "fix_pr"
+    if (
+        node_id.startswith("cap_")
+        or node_id.startswith("capability")
+        or "capability" in direct_tags
+    ):
+        return "capability"
+
+    ancestors = []
+    if node_by_id:
+        ancestors = [
+            node_by_id[str(ancestor_id)]
+            for ancestor_id in node.get("lineage") or []
+            if str(ancestor_id) in node_by_id
+            and str(ancestor_id) != str(node.get("node_id") or "")
+        ]
+    for candidate in reversed(ancestors):
+        tags = {
+            str(tag).strip().lower()
+            for tag in candidate.get("tags") or []
+            if str(tag).strip()
+        }
+        explicit_lanes = sorted(
+            tag for tag in tags if tag.startswith("lane-") and len(tag) > 5
+        )
+        if explicit_lanes:
+            return explicit_lanes[0].removeprefix("lane-").replace("-", "_")
+    for candidate in reversed(ancestors):
+        node_id = str(candidate.get("node_id") or "").lower()
+        tags = {
+            str(tag).strip().lower()
+            for tag in candidate.get("tags") or []
+            if str(tag).strip()
+        }
+        if node_id.startswith("fix_") or tags.intersection({"fix-pr", "fix_pr"}):
+            return "fix_pr"
+        if (
+            node_id.startswith("cap_")
+            or node_id.startswith("capability")
+            or "capability" in tags
+        ):
+            return "capability"
+    return "default"
+
+
 def build_vertical_explore_mermaid(
     nodes: Sequence[Mapping[str, Any]],
     edges: Sequence[Mapping[str, Any]],
     *,
     view_role: str,
-    group_node_limit: int = 10,
-    column_count: int = 1,
+    group_node_limit: int = 14,
 ) -> dict[str, Any]:
-    """Render a complete evidence atlas for a large graph.
+    """Render bounded Evidence Stage views over the canonical graph."""
 
-    The single-column default preserves the timeline view. Wider embedded
-    whiteboards can opt into multiple columns without changing the canonical
-    source projection.
-    """
-
-    node_list = [node for node in nodes if str(node.get("node_id") or "")]
-    group_limit = max(4, int(group_node_limit))
-    groups = _canonical_group_specs(node_list, group_node_limit=group_limit)
-    columns = min(max(1, int(column_count)), max(1, len(groups)))
-    multi_column = columns > 1
+    all_nodes = [node for node in nodes if str(node.get("node_id") or "")]
+    node_list = [
+        node for node in all_nodes if str(node.get("node_kind") or "") != "area"
+    ] or all_nodes
+    group_limit = max(10, min(20, int(group_node_limit)))
+    primary_limit = group_limit - 2
+    groups = _canonical_group_specs(node_list, group_node_limit=primary_limit)
     role = "executive" if view_role == "executive" else "canonical"
-    atlas_title = (
-        f"{role.title()} evidence atlas"
-        if multi_column
-        else f"{role.title()} evidence timeline"
-    )
+    timeline_title = f"{role.title()} evidence timeline"
 
-    node_by_id = {str(node.get("node_id") or ""): node for node in node_list}
-    shown_ids = set(node_by_id)
+    node_by_id = {str(node.get("node_id") or ""): node for node in all_nodes}
+    shown_ids = {str(node.get("node_id") or "") for node in node_list}
+    global_lanes = {
+        _explore_lane(node, node_by_id=node_by_id) for node in node_list
+    }
     detail_coverage = _node_detail_coverage(node_list)
     if not detail_coverage["complete"]:
         raise ValueError("Explore node detail projection lost summary or metric evidence")
-    flow_direction = "LR" if multi_column else "TB"
+    flow_direction = "TB"
     lines = [
         f"flowchart {flow_direction}",
-        f'    subgraph {role}_atlas["{atlas_title}"]',
+        f'    subgraph {role}_timeline["{timeline_title}"]',
     ]
     lines.append(f"        direction {flow_direction}")
     group_chains = []
+    stage_views = []
     for group_index, group in enumerate(groups, start=1):
         group_id = f"{role}_group_{group_index}"
         lines.append(f'        subgraph {group_id}["{_mermaid_label(group["title"])}"]')
@@ -365,6 +427,187 @@ def build_vertical_explore_mermaid(
             lines.append(f"            {' ~~~ '.join(chain)}")
         lines.append("        end")
         group_chains.append(chain)
+        primary_node_ids = list(group["node_ids"])
+        stage_node_order = list(primary_node_ids)
+        stage_node_ids = set(primary_node_ids)
+        relation_context = []
+        for edge in edges:
+            source = str(edge.get("from_node") or "")
+            target = str(edge.get("to_node") or "")
+            if source in stage_node_ids and target not in stage_node_ids:
+                local_id, candidate_id = source, target
+            elif target in stage_node_ids and source not in stage_node_ids:
+                local_id, candidate_id = target, source
+            else:
+                continue
+            candidate = node_by_id.get(candidate_id)
+            local = node_by_id.get(local_id)
+            if not candidate or not local:
+                continue
+            if str(candidate.get("node_kind") or "") == "area":
+                continue
+            if _explore_lane(candidate, node_by_id=node_by_id) == _explore_lane(
+                local,
+                node_by_id=node_by_id,
+            ):
+                continue
+            relation_context.append(candidate_id)
+        for candidate_id in relation_context:
+            if len(stage_node_order) >= group_limit:
+                break
+            if candidate_id in stage_node_ids:
+                continue
+            stage_node_order.append(candidate_id)
+            stage_node_ids.add(candidate_id)
+        present_lanes = {
+            _explore_lane(node_by_id[node_id], node_by_id=node_by_id)
+            for node_id in stage_node_order
+        }
+        for missing_lane in sorted(global_lanes - present_lanes):
+            if len(stage_node_order) >= group_limit:
+                break
+            candidate_id = next(
+                (
+                    str(candidate.get("node_id") or "")
+                    for candidate in node_list
+                    if str(candidate.get("node_id") or "") not in stage_node_ids
+                    and _explore_lane(candidate, node_by_id=node_by_id)
+                    == missing_lane
+                ),
+                None,
+            )
+            if candidate_id:
+                stage_node_order.append(candidate_id)
+                stage_node_ids.add(candidate_id)
+        stage_edges = [
+            edge
+            for edge in edges
+            if str(edge.get("from_node") or "") in stage_node_ids
+            and str(edge.get("to_node") or "") in stage_node_ids
+        ]
+        stage_lanes: dict[str, list[str]] = defaultdict(list)
+        for node_id in stage_node_order:
+            stage_lanes[
+                _explore_lane(node_by_id[node_id], node_by_id=node_by_id)
+            ].append(node_id)
+        stage_lines = [
+            "flowchart TB",
+            f'    subgraph {role}_stage_{group_index}["{_mermaid_label(group["title"])}"]',
+            "        direction LR" if len(stage_lanes) > 1 else "        direction TB",
+        ]
+        for lane_index, (lane, lane_node_ids) in enumerate(stage_lanes.items(), start=1):
+            lane_id = f"{role}_stage_{group_index}_lane_{lane_index}"
+            lane_title = {
+                "fix_pr": "PR issue-fix",
+                "capability": "LoopX capability",
+            }.get(lane, lane.replace("_", " ").title())
+            stage_lines.append(
+                f'        subgraph {lane_id}["{_mermaid_label(lane_title)}"]'
+            )
+            stage_lines.append("            direction TB")
+            lane_chain = []
+            for node_id in lane_node_ids:
+                node = node_by_id[node_id]
+                status = str(node.get("status") or "open")
+                label = "<br/>".join(
+                    _mermaid_label(line, limit=96)
+                    for line in _node_display_lines(
+                        node,
+                        title_limit=56,
+                        detail_limit=88,
+                    )
+                )
+                stage_lines.append(
+                    f'            {_mermaid_id(node_id)}["{label}"]:::{_MERMAID_STATUS_CLASS.get(status, "open")}'
+                )
+                lane_chain.append(_mermaid_id(node_id))
+            if len(lane_chain) > 1:
+                stage_lines.append(f"            {' ~~~ '.join(lane_chain)}")
+            stage_lines.append("        end")
+        stage_lines.append("    end")
+        for edge in stage_edges:
+            source = str(edge.get("from_node") or "")
+            target = str(edge.get("to_node") or "")
+            label = _mermaid_label(str(edge.get("edge_type") or ""))
+            stage_lines.append(
+                f"    {_mermaid_id(source)} -->|{label}| {_mermaid_id(target)}"
+            )
+        stage_lines.append(
+            f"    style {role}_stage_{group_index} fill:#ffffff,stroke:#90a4ae,stroke-width:2px"
+        )
+        stage_lines.extend(
+            [
+                "    classDef open fill:#f5f5f5,stroke:#9e9e9e",
+                "    classDef exploring fill:#e3f2fd,stroke:#1e88e5",
+                "    classDef blocked fill:#ffebee,stroke:#e53935,stroke-width:2px",
+                "    classDef resolved fill:#e8f5e9,stroke:#43a047",
+                "    classDef deadend fill:#eeeeee,stroke:#9e9e9e,stroke-dasharray: 4 4",
+            ]
+        )
+        incoming_edges = [
+            edge
+            for edge in edges
+            if str(edge.get("to_node") or "") in stage_node_ids
+            and str(edge.get("from_node") or "") not in stage_node_ids
+        ]
+        outgoing_edges = [
+            edge
+            for edge in edges
+            if str(edge.get("from_node") or "") in stage_node_ids
+            and str(edge.get("to_node") or "") not in stage_node_ids
+        ]
+        stage_views.append(
+            {
+                "stage_index": group_index,
+                "title": group["title"],
+                "node_ids": stage_node_order,
+                "primary_node_ids": primary_node_ids,
+                "context_node_ids": stage_node_order[len(primary_node_ids) :],
+                "node_count": len(stage_node_order),
+                "primary_node_count": len(primary_node_ids),
+                "context_node_count": len(stage_node_order) - len(primary_node_ids),
+                "fix_pr_node_count": sum(
+                    1
+                    for node_id in stage_node_order
+                    if _explore_lane(node_by_id[node_id], node_by_id=node_by_id)
+                    == "fix_pr"
+                ),
+                "capability_node_count": sum(
+                    1
+                    for node_id in stage_node_order
+                    if _explore_lane(node_by_id[node_id], node_by_id=node_by_id)
+                    == "capability"
+                ),
+                "lanes": sorted(
+                    {
+                        _explore_lane(node_by_id[node_id], node_by_id=node_by_id)
+                        for node_id in stage_node_order
+                    }
+                ),
+                "lane_count": len(
+                    {
+                        _explore_lane(node_by_id[node_id], node_by_id=node_by_id)
+                        for node_id in stage_node_order
+                    }
+                ),
+                "cross_lane_edge_count": sum(
+                    1
+                    for edge in stage_edges
+                    if _explore_lane(
+                        node_by_id[str(edge.get("from_node") or "")],
+                        node_by_id=node_by_id,
+                    )
+                    != _explore_lane(
+                        node_by_id[str(edge.get("to_node") or "")],
+                        node_by_id=node_by_id,
+                    )
+                ),
+                "internal_edge_count": len(stage_edges),
+                "incoming_edge_count": len(incoming_edges),
+                "outgoing_edge_count": len(outgoing_edges),
+                "mermaid": "\n".join(stage_lines),
+            }
+        )
     for previous, current in zip(group_chains, group_chains[1:]):
         lines.append(f"        {previous[-1]} ~~~ {current[0]}")
     lines.append("    end")
@@ -376,7 +619,7 @@ def build_vertical_explore_mermaid(
         label = _mermaid_label(str(edge.get("edge_type") or ""))
         lines.append(f"    {_mermaid_id(source)} -->|{label}| {_mermaid_id(target)}")
     lines.append(
-        f"    style {role}_atlas fill:#ffffff,stroke:#90a4ae,stroke-width:2px"
+        f"    style {role}_timeline fill:#ffffff,stroke:#90a4ae,stroke-width:2px"
     )
     for group_index in range(1, len(groups) + 1):
         lines.append(
@@ -393,50 +636,16 @@ def build_vertical_explore_mermaid(
     )
     return {
         "mermaid": "\n".join(lines),
-        "strategy": (
-            "multi_column_evidence_atlas"
-            if multi_column
-            else "vertical_evidence_timeline"
-        ),
+        "strategy": "vertical_evidence_timeline",
         "view_role": role,
         "group_count": len(groups),
-        "column_count": columns,
-        "orientation": "left_to_right" if multi_column else "top_to_bottom",
+        "column_count": 1,
+        "orientation": "top_to_bottom",
         "max_group_node_count": group_limit,
+        "primary_group_node_count": primary_limit,
+        "stage_views": stage_views,
         "node_detail_coverage": detail_coverage,
     }
-
-
-_ATLAS_PALETTE = (
-    ("#F0F4FC", "#5178C6"),
-    ("#EAE2FE", "#8569CB"),
-    ("#DFF5E5", "#509863"),
-    ("#FEF1CE", "#D4B45B"),
-)
-_ATLAS_STATUS_COLOR = {
-    "open": "#9E9E9E",
-    "exploring": "#1E88E5",
-    "blocked": "#E53935",
-    "resolved": "#43A047",
-    "dead_end": "#9E9E9E",
-}
-
-_BOARD_EDGE_STYLE = {
-    "answers": ("#7B61A8", ""),
-    "depends_on": ("#D97706", "6 5"),
-    "leads_to": ("#3370FF", ""),
-    "refutes": ("#D9363E", "6 5"),
-    "supports": ("#2E9B65", ""),
-}
-_BOARD_FRONTIER_TAGS = {
-    "active",
-    "ci_pending",
-    "current-best",
-    "current-frontier",
-    "incumbent",
-    "open-pr",
-    "review_wait",
-}
 
 
 def _display_width(value: str) -> int:
@@ -488,767 +697,6 @@ def _tail_display(value: str, *, limit: int) -> str:
         if 0 < boundary <= len(tail) // 2:
             tail = tail[boundary + 1 :].lstrip()
     return tail
-
-
-def build_explore_svg_atlas(
-    nodes: Sequence[Mapping[str, Any]],
-    edges: Sequence[Mapping[str, Any]],
-    *,
-    view_role: str,
-    group_node_limit: int = 10,
-    column_count: int = 2,
-) -> dict[str, Any]:
-    """Render a deterministic owner-facing evidence atlas as standalone SVG.
-
-    Mermaid remains useful for topology exchange, but target layout engines are
-    free to ignore subgraph hints. This renderer owns the final geometry so a
-    material refresh cannot collapse the evidence epochs into a thin strip.
-    """
-
-    node_list = [node for node in nodes if str(node.get("node_id") or "")]
-    group_limit = max(4, int(group_node_limit))
-    groups = _canonical_group_specs(node_list, group_node_limit=group_limit)
-    columns = min(max(1, int(column_count)), max(1, len(groups)))
-    row_count = max(1, (len(groups) + columns - 1) // columns)
-    role = "executive" if view_role == "executive" else "canonical"
-
-    canvas_width = 1400
-    margin = 40
-    column_gap = 28
-    row_gap = 28
-    header_height = 142
-    footer_height = 42
-    card_width = (canvas_width - 2 * margin - (columns - 1) * column_gap) / columns
-    item_columns = 2 if card_width >= 560 else 1
-    item_gap = 12
-    item_height = 90
-    card_padding = 20
-    card_header_height = 54
-    item_rows = max(1, (group_limit + item_columns - 1) // item_columns)
-    card_height = card_header_height + item_rows * item_height + (item_rows - 1) * 10 + 2 * card_padding
-    canvas_height = (
-        header_height
-        + row_count * card_height
-        + max(0, row_count - 1) * row_gap
-        + footer_height
-        + margin
-    )
-    item_width = (
-        card_width - 2 * card_padding - max(0, item_columns - 1) * item_gap
-    ) / item_columns
-
-    node_by_id = {str(node.get("node_id") or ""): node for node in node_list}
-    visible_ids = set(node_by_id)
-    detail_coverage = _node_detail_coverage(node_list)
-    if not detail_coverage["complete"]:
-        raise ValueError("Explore node detail projection lost summary or metric evidence")
-    visible_edge_count = sum(
-        1
-        for edge in edges
-        if str(edge.get("from_node") or "") in visible_ids
-        and str(edge.get("to_node") or "") in visible_ids
-    )
-    svg = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {canvas_width} {canvas_height:.0f}" width="{canvas_width}" height="{canvas_height:.0f}">',
-        "<defs>",
-        '<filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">',
-        '<feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#1F2329" flood-opacity="0.10"/>',
-        "</filter>",
-        '<marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">',
-        '<path d="M0,0 L8,4 L0,8 Z" fill="#BBBFC4"/>',
-        "</marker>",
-        "</defs>",
-        f'<rect width="{canvas_width}" height="{canvas_height:.0f}" rx="18" fill="#FFFFFF"/>',
-        '<text x="700" y="42" text-anchor="middle" font-size="28" font-weight="700" fill="#1F2329" font-family="Arial, PingFang SC, sans-serif">'
-        f'{role.title()} Explore Evidence Atlas</text>',
-        '<text x="700" y="72" text-anchor="middle" font-size="14" fill="#646A73" font-family="Arial, PingFang SC, sans-serif">'
-        f'{len(node_list)} decision nodes · {visible_edge_count} material relations · same-source owner projection</text>',
-    ]
-
-    if groups:
-        pill_width = min(210.0, (canvas_width - 2 * margin - (len(groups) - 1) * 18) / len(groups))
-        total_pill_width = len(groups) * pill_width + max(0, len(groups) - 1) * 18
-        pill_x = (canvas_width - total_pill_width) / 2
-        for group_index, group in enumerate(groups):
-            x = pill_x + group_index * (pill_width + 18)
-            fill, border = _ATLAS_PALETTE[group_index % len(_ATLAS_PALETTE)]
-            if group_index:
-                previous_right = x - 18
-                svg.append(
-                    f'<line x1="{previous_right + 3:.1f}" y1="104" x2="{x - 4:.1f}" y2="104" stroke="#BBBFC4" stroke-width="2" marker-end="url(#arrow)"/>'
-                )
-            svg.extend(
-                [
-                    f'<rect x="{x:.1f}" y="87" width="{pill_width:.1f}" height="34" rx="17" fill="{fill}" stroke="{border}" stroke-width="2"/>',
-                    f'<text x="{x + pill_width / 2:.1f}" y="109" text-anchor="middle" font-size="14" font-weight="600" fill="#1F2329" font-family="Arial, PingFang SC, sans-serif">Epoch {group_index + 1:02d}</text>',
-                ]
-            )
-
-    for group_index, group in enumerate(groups):
-        row = group_index // columns
-        column = group_index % columns
-        x = margin + column * (card_width + column_gap)
-        y = header_height + row * (card_height + row_gap)
-        fill, border = _ATLAS_PALETTE[group_index % len(_ATLAS_PALETTE)]
-        first_title = _truncate_display(
-            str(node_by_id[group["node_ids"][0]].get("title") or "Evidence"),
-            limit=48,
-        )
-        svg.extend(
-            [
-                f'<rect x="{x:.1f}" y="{y:.1f}" width="{card_width:.1f}" height="{card_height:.1f}" rx="14" fill="{fill}" stroke="{border}" stroke-width="2" filter="url(#shadow)"/>',
-                f'<text x="{x + card_padding:.1f}" y="{y + 30:.1f}" font-size="16" font-weight="700" fill="#1F2329" font-family="Arial, PingFang SC, sans-serif">{html.escape(f"Epoch {group_index + 1:02d} · {first_title}")}</text>',
-                f'<text x="{x + card_width - card_padding:.1f}" y="{y + 30:.1f}" text-anchor="end" font-size="13" fill="#646A73" font-family="Arial, PingFang SC, sans-serif">{len(group["node_ids"])} nodes</text>',
-            ]
-        )
-        for item_index, node_id in enumerate(group["node_ids"]):
-            node = node_by_id[node_id]
-            item_row = item_index // item_columns
-            item_column = item_index % item_columns
-            item_x = x + card_padding + item_column * (item_width + item_gap)
-            item_y = y + card_header_height + card_padding + item_row * (item_height + 10)
-            status = str(node.get("status") or "open")
-            status_color = _ATLAS_STATUS_COLOR.get(status, "#9E9E9E")
-            display_lines = _node_display_lines(
-                node,
-                title_limit=68,
-                detail_limit=76,
-            )
-            svg.extend(
-                [
-                    f'<rect x="{item_x:.1f}" y="{item_y:.1f}" width="{item_width:.1f}" height="{item_height}" rx="8" fill="#FFFFFF" stroke="{border}" stroke-width="2"/>',
-                    f'<circle cx="{item_x + 15:.1f}" cy="{item_y + 21:.1f}" r="5" fill="{status_color}"/>',
-                    f'<text x="{item_x + 28:.1f}" y="{item_y + 25:.1f}" font-size="13" font-weight="600" fill="#1F2329" font-family="Arial, PingFang SC, sans-serif">{html.escape(display_lines[0])}</text>',
-                ]
-            )
-            for detail_index, detail in enumerate(display_lines[1:3], start=1):
-                svg.append(
-                    f'<text x="{item_x + 28:.1f}" y="{item_y + 25 + detail_index * 23:.1f}" font-size="11" fill="#646A73" font-family="Arial, PingFang SC, sans-serif">{html.escape(detail)}</text>'
-                )
-
-    svg.append(
-        f'<text x="700" y="{canvas_height - 22:.1f}" text-anchor="middle" font-size="13" fill="#646A73" font-family="Arial, PingFang SC, sans-serif">Complete Nodes / Edges / Findings remain in the linked canonical result board.</text>'
-    )
-    svg.append("</svg>")
-    return {
-        "svg": "\n".join(svg),
-        "strategy": "fixed_grid_evidence_atlas",
-        "view_role": role,
-        "group_count": len(groups),
-        "column_count": columns,
-        "row_count": row_count,
-        "item_column_count": item_columns,
-        "max_group_node_count": group_limit,
-        "rendered_relation_count": max(0, len(groups) - 1),
-        "source_edge_count": visible_edge_count,
-        "node_detail_coverage": detail_coverage,
-        "canvas_width": canvas_width,
-        "canvas_height": round(canvas_height),
-    }
-
-
-def _board_lane_id(
-    node: Mapping[str, Any],
-    *,
-    lane_ids: set[str],
-) -> str | None:
-    node_id = str(node.get("node_id") or "")
-    if node_id in lane_ids:
-        return node_id
-    for ancestor_id in reversed([str(item or "") for item in node.get("lineage") or []]):
-        if ancestor_id in lane_ids:
-            return ancestor_id
-    return None
-
-
-def _is_board_frontier(node: Mapping[str, Any]) -> bool:
-    return str(node.get("status") or "") in {"blocked", "open"} or bool(_tags(node).intersection(_BOARD_FRONTIER_TAGS))
-
-
-def build_explore_svg_board(
-    nodes: Sequence[Mapping[str, Any]],
-    edges: Sequence[Mapping[str, Any]],
-    *,
-    view_role: str,
-) -> dict[str, Any]:
-    """Render a live owner board that preserves Explore semantics.
-
-    The board derives swimlanes from ``lane-*`` tagged nodes, highlights the
-    current frontier from status and tags, and draws the actual material
-    relations in the selected view. Hierarchy is encoded by lane containment,
-    so only ``subtopic_of`` relations are intentionally omitted.
-    """
-
-    node_list = [dict(node) for node in nodes if str(node.get("node_id") or "")]
-    node_by_id = {str(node.get("node_id") or ""): node for node in node_list}
-    visible_ids = set(node_by_id)
-    role = "executive" if view_role == "executive" else "canonical"
-    detail_coverage = _node_detail_coverage(node_list)
-    if not detail_coverage["complete"]:
-        raise ValueError("Explore node detail projection lost summary or metric evidence")
-
-    lane_nodes = [
-        node
-        for node in node_list
-        if str(node.get("node_kind") or "") == "area"
-        if any(tag.startswith("lane-") for tag in _tags(node))
-    ]
-    if not lane_nodes:
-        root_ids = {str(node.get("node_id") or "") for node in node_list if len(node.get("lineage") or []) <= 1}
-        candidate_lane_ids = {
-            str(node.get("node_id") or "")
-            for node in node_list
-            if str(node.get("parent_id") or "") in root_ids and str(node.get("node_kind") or "") == "area"
-        }
-        lane_nodes = [node for node in node_list if str(node.get("node_id") or "") in candidate_lane_ids]
-
-    synthetic_lane = not lane_nodes
-    if synthetic_lane:
-        lane_nodes = [
-            {
-                "node_id": "__explore_work__",
-                "title": "Explore work",
-                "status": "exploring",
-                "tags": ["lane-explore"],
-            }
-        ]
-    lane_ids = {str(node.get("node_id") or "") for node in lane_nodes}
-    lane_by_id = {str(node.get("node_id") or ""): node for node in lane_nodes}
-    lane_items: dict[str, list[dict[str, Any]]] = {lane_id: [] for lane_id in lane_ids}
-    context_nodes: list[dict[str, Any]] = []
-    for node in node_list:
-        node_id = str(node.get("node_id") or "")
-        if node_id in lane_ids:
-            continue
-        lane_id = "__explore_work__" if synthetic_lane else _board_lane_id(node, lane_ids=lane_ids)
-        if lane_id:
-            lane_items[lane_id].append(node)
-        else:
-            context_nodes.append(node)
-
-    ordered_lane_ids = [
-        str(node.get("node_id") or "") for node in lane_nodes if lane_items.get(str(node.get("node_id") or ""))
-    ]
-    if not ordered_lane_ids:
-        ordered_lane_ids = [str(lane_nodes[0].get("node_id") or "")]
-        lane_items[ordered_lane_ids[0]] = [node for node in node_list if str(node.get("node_id") or "") not in lane_ids]
-
-    canvas_width = 1800
-    margin = 42
-    header_height = 174
-    footer_height = 46
-    lane_gap = 28
-    lane_columns = min(2, len(ordered_lane_ids))
-    lane_rows = (len(ordered_lane_ids) + lane_columns - 1) // lane_columns
-    lane_width = (canvas_width - 2 * margin - max(0, lane_columns - 1) * lane_gap) / lane_columns
-    card_gap_x = 18
-    card_gap_y = 16
-    lane_padding = 22
-    lane_header_height = 86
-    card_columns = 2 if lane_width >= 760 else 1
-    card_width = (lane_width - 2 * lane_padding - max(0, card_columns - 1) * card_gap_x) / card_columns
-    card_height = 126
-    lane_card_rows = {
-        lane_id: max(
-            1,
-            (len(lane_items[lane_id]) + card_columns - 1) // card_columns,
-        )
-        for lane_id in ordered_lane_ids
-    }
-    row_heights = []
-    for row_index in range(lane_rows):
-        ids = ordered_lane_ids[row_index * lane_columns : (row_index + 1) * lane_columns]
-        max_card_rows = max(lane_card_rows[lane_id] for lane_id in ids)
-        row_heights.append(
-            lane_header_height + 2 * lane_padding + max_card_rows * card_height + max(0, max_card_rows - 1) * card_gap_y
-        )
-    canvas_height = header_height + sum(row_heights) + max(0, lane_rows - 1) * lane_gap + footer_height + margin
-
-    lane_geometry: dict[str, tuple[float, float, float, float]] = {}
-    card_geometry: dict[str, tuple[float, float, float, float]] = {}
-    row_y = header_height
-    for row_index, row_height in enumerate(row_heights):
-        ids = ordered_lane_ids[row_index * lane_columns : (row_index + 1) * lane_columns]
-        for column_index, lane_id in enumerate(ids):
-            lane_x = margin + column_index * (lane_width + lane_gap)
-            lane_geometry[lane_id] = (lane_x, row_y, lane_width, row_height)
-            for item_index, node in enumerate(lane_items[lane_id]):
-                item_row = item_index // card_columns
-                item_column = item_index % card_columns
-                x = lane_x + lane_padding + item_column * (card_width + card_gap_x)
-                y = row_y + lane_header_height + lane_padding + item_row * (card_height + card_gap_y)
-                card_geometry[str(node.get("node_id") or "")] = (
-                    x,
-                    y,
-                    card_width,
-                    card_height,
-                )
-        row_y += row_height + lane_gap
-
-    material_edges = [
-        dict(edge)
-        for edge in edges
-        if str(edge.get("from_node") or "") in card_geometry
-        and str(edge.get("to_node") or "") in card_geometry
-        and str(edge.get("edge_type") or "") != "subtopic_of"
-    ]
-    source_edge_count = sum(
-        1
-        for edge in edges
-        if str(edge.get("from_node") or "") in visible_ids
-        and str(edge.get("to_node") or "") in visible_ids
-    )
-    cross_lane_count = 0
-    for edge in material_edges:
-        source_lane = _board_lane_id(node_by_id[str(edge["from_node"])], lane_ids=lane_ids)
-        target_lane = _board_lane_id(node_by_id[str(edge["to_node"])], lane_ids=lane_ids)
-        if source_lane != target_lane:
-            cross_lane_count += 1
-    frontier_count = sum(1 for lane_id in ordered_lane_ids for node in lane_items[lane_id] if _is_board_frontier(node))
-    root_summary = _truncate_display(
-        str(context_nodes[0].get("summary") or "") if context_nodes else "",
-        limit=150,
-    )
-
-    svg = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {canvas_width} {canvas_height:.0f}" width="{canvas_width}" height="{canvas_height:.0f}">',
-        "<defs>",
-        '<filter id="board-shadow" x="-10%" y="-10%" width="120%" height="130%">',
-        '<feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#1F2329" flood-opacity="0.10"/>',
-        "</filter>",
-    ]
-    for edge_type, (color, _) in _BOARD_EDGE_STYLE.items():
-        svg.extend(
-            [
-                f'<marker id="arrow-{edge_type}" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">',
-                f'<path d="M0,0 L9,4.5 L0,9 Z" fill="{color}"/>',
-                "</marker>",
-            ]
-        )
-    svg.extend(
-        [
-            "</defs>",
-            f'<rect width="{canvas_width}" height="{canvas_height:.0f}" rx="18" fill="#F7F8FA"/>',
-            '<text x="42" y="47" font-size="30" font-weight="700" fill="#1F2329" font-family="Arial, PingFang SC, sans-serif">Live Explore Decision Board</text>',
-            f'<text x="42" y="80" font-size="15" fill="#646A73" font-family="Arial, PingFang SC, sans-serif">{html.escape(root_summary or "Canonical state → real work lanes → current frontier → material causal relations")}</text>',
-            f'<rect x="42" y="121" width="142" height="34" rx="17" fill="#E8F3FF"/><text x="113" y="143" text-anchor="middle" font-size="14" font-weight="600" fill="#1456B8" font-family="Arial, PingFang SC, sans-serif">{len(card_geometry)} work nodes</text>',
-            f'<rect x="196" y="121" width="154" height="34" rx="17" fill="#EAF8F1"/><text x="273" y="143" text-anchor="middle" font-size="14" font-weight="600" fill="#207A50" font-family="Arial, PingFang SC, sans-serif">{len(material_edges)} real relations</text>',
-            f'<rect x="362" y="121" width="148" height="34" rx="17" fill="#FFF3E5"/><text x="436" y="143" text-anchor="middle" font-size="14" font-weight="600" fill="#AD5700" font-family="Arial, PingFang SC, sans-serif">{frontier_count} at frontier</text>',
-            f'<text x="1758" y="142" text-anchor="end" font-size="13" fill="#8F959E" font-family="Arial, PingFang SC, sans-serif">{role} · {len(context_nodes)} context nodes encoded in lineage</text>',
-        ]
-    )
-
-    lane_palette = (
-        ("#EDF4FF", "#4C7DCC"),
-        ("#ECF9F0", "#4A9B68"),
-        ("#F5F0FF", "#8065C4"),
-        ("#FFF7E6", "#C58B2B"),
-    )
-    for lane_index, lane_id in enumerate(ordered_lane_ids):
-        x, y, width, height = lane_geometry[lane_id]
-        fill, border = lane_palette[lane_index % len(lane_palette)]
-        lane = lane_by_id[lane_id]
-        lane_title = _truncate_display(str(lane.get("title") or lane_id), limit=60)
-        lane_summary = _truncate_display(str(lane.get("summary") or ""), limit=82)
-        lane_frontier = sum(1 for node in lane_items[lane_id] if _is_board_frontier(node))
-        svg.extend(
-            [
-                f'<g data-lane-id="{html.escape(lane_id)}">',
-                f'<rect x="{x:.1f}" y="{y:.1f}" width="{width:.1f}" height="{height:.1f}" rx="16" fill="{fill}" stroke="{border}" stroke-width="2"/>',
-                f'<text x="{x + lane_padding:.1f}" y="{y + 38:.1f}" font-size="19" font-weight="700" fill="#1F2329" font-family="Arial, PingFang SC, sans-serif">{html.escape(lane_title)}</text>',
-                f'<text x="{x + width - lane_padding:.1f}" y="{y + 38:.1f}" text-anchor="end" font-size="13" fill="#646A73" font-family="Arial, PingFang SC, sans-serif">{len(lane_items[lane_id])} nodes · {lane_frontier} frontier</text>',
-                f'<text x="{x + lane_padding:.1f}" y="{y + 65:.1f}" font-size="12" fill="#646A73" font-family="Arial, PingFang SC, sans-serif">{html.escape(lane_summary)}</text>',
-                "</g>",
-            ]
-        )
-
-    for edge in material_edges:
-        source_id = str(edge.get("from_node") or "")
-        target_id = str(edge.get("to_node") or "")
-        edge_id = str(edge.get("edge_id") or f"{source_id}-{target_id}")
-        edge_type = str(edge.get("edge_type") or "leads_to")
-        color, dash = _BOARD_EDGE_STYLE.get(edge_type, ("#8F959E", "4 4"))
-        source_x, source_y, source_w, source_h = card_geometry[source_id]
-        target_x, target_y, target_w, target_h = card_geometry[target_id]
-        start_x = source_x + source_w
-        start_y = source_y + source_h / 2
-        end_x = target_x
-        end_y = target_y + target_h / 2
-        if end_x <= start_x:
-            start_x = source_x + source_w / 2
-            start_y = source_y + source_h
-            end_x = target_x + target_w / 2
-            end_y = target_y
-        bend = max(42.0, abs(end_x - start_x) * 0.45)
-        path = (
-            f"M {start_x:.1f} {start_y:.1f} "
-            f"C {start_x + bend:.1f} {start_y:.1f}, "
-            f"{end_x - bend:.1f} {end_y:.1f}, {end_x:.1f} {end_y:.1f}"
-        )
-        dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
-        svg.append(
-            f'<path data-edge-id="{html.escape(edge_id)}" data-edge-type="{html.escape(edge_type)}" d="{path}" fill="none" stroke="{color}" stroke-width="2.2" opacity="0.78"{dash_attr} marker-end="url(#arrow-{edge_type if edge_type in _BOARD_EDGE_STYLE else "leads_to"})"/>'
-        )
-        source_lane = _board_lane_id(node_by_id[source_id], lane_ids=lane_ids)
-        target_lane = _board_lane_id(node_by_id[target_id], lane_ids=lane_ids)
-        if source_lane != target_lane or edge_type in {"depends_on", "refutes"}:
-            label_x = (start_x + end_x) / 2
-            label_y = (start_y + end_y) / 2 - 8
-            label_width = max(58, 12 + len(edge_type) * 7)
-            svg.extend(
-                [
-                    f'<rect x="{label_x - label_width / 2:.1f}" y="{label_y - 14:.1f}" width="{label_width}" height="22" rx="11" fill="#FFFFFF" stroke="{color}" stroke-width="1" opacity="0.94"/>',
-                    f'<text x="{label_x:.1f}" y="{label_y + 1:.1f}" text-anchor="middle" font-size="11" font-weight="600" fill="{color}" font-family="Arial, PingFang SC, sans-serif">{html.escape(edge_type)}</text>',
-                ]
-            )
-
-    for lane_id in ordered_lane_ids:
-        _, border = lane_palette[ordered_lane_ids.index(lane_id) % len(lane_palette)]
-        for node in lane_items[lane_id]:
-            node_id = str(node.get("node_id") or "")
-            x, y, width, height = card_geometry[node_id]
-            status = str(node.get("status") or "open")
-            status_color = _ATLAS_STATUS_COLOR.get(status, "#9E9E9E")
-            frontier = _is_board_frontier(node)
-            display_lines = _node_display_lines(
-                node,
-                title_limit=48,
-                detail_limit=56,
-            )
-            node_kind = _truncate_display(str(node.get("node_kind") or "work"), limit=18)
-            card_stroke = "#FF8F1F" if frontier else border
-            card_stroke_width = 3 if frontier else 1.6
-            svg.extend(
-                [
-                    f'<g data-node-id="{html.escape(node_id)}" data-status="{html.escape(status)}" data-frontier="{str(frontier).lower()}">',
-                    f'<rect x="{x:.1f}" y="{y:.1f}" width="{width:.1f}" height="{height:.1f}" rx="11" fill="#FFFFFF" stroke="{card_stroke}" stroke-width="{card_stroke_width}" filter="url(#board-shadow)"/>',
-                    f'<rect x="{x:.1f}" y="{y:.1f}" width="8" height="{height:.1f}" rx="4" fill="{status_color}"/>',
-                ]
-            )
-            for line_index, line in enumerate(display_lines[:3]):
-                svg.append(
-                    f'<text x="{x + 24:.1f}" y="{y + 30 + line_index * 24:.1f}" font-size="{14 if line_index == 0 else 11}" font-weight="{600 if line_index == 0 else 400}" fill="{"#1F2329" if line_index == 0 else "#646A73"}" font-family="Arial, PingFang SC, sans-serif">{html.escape(line)}</text>'
-                )
-            svg.extend(
-                [
-                    f'<text x="{x + 24:.1f}" y="{y + height - 13:.1f}" font-size="11" fill="#8F959E" font-family="Arial, PingFang SC, sans-serif">{html.escape(node_kind)} · {html.escape(status)}</text>',
-                    (
-                        f'<text x="{x + width - 16:.1f}" y="{y + height - 13:.1f}" text-anchor="end" font-size="11" font-weight="700" fill="#AD5700" font-family="Arial, PingFang SC, sans-serif">FRONTIER</text>'
-                        if frontier
-                        else ""
-                    ),
-                    "</g>",
-                ]
-            )
-
-    svg.extend(
-        [
-            f'<text x="42" y="{canvas_height - 20:.1f}" font-size="12" fill="#646A73" font-family="Arial, PingFang SC, sans-serif">Solid: supports / leads_to / answers · dashed: depends_on / refutes · lane containment encodes subtopic lineage</text>',
-            f'<text x="1758" y="{canvas_height - 20:.1f}" text-anchor="end" font-size="12" fill="#8F959E" font-family="Arial, PingFang SC, sans-serif">Full Nodes / Edges / Findings remain in the canonical Base</text>',
-            "</svg>",
-        ]
-    )
-    return {
-        "svg": "\n".join(item for item in svg if item),
-        "strategy": "semantic_lane_decision_board",
-        "view_role": role,
-        "lane_count": len(ordered_lane_ids),
-        "lane_ids": ordered_lane_ids,
-        "rendered_node_count": len(card_geometry),
-        "context_node_count": len(context_nodes) + len(lane_ids),
-        "frontier_node_count": frontier_count,
-        "rendered_relation_count": len(material_edges),
-        "cross_lane_relation_count": cross_lane_count,
-        "suppressed_relation_count": source_edge_count - len(material_edges),
-        "source_edge_count": source_edge_count,
-        "semantic_contract": {
-            "real_relations_only": True,
-            "frontier_explicit": True,
-            "lane_membership_from_lineage": True,
-            "chronological_buckets": False,
-        },
-        "node_detail_coverage": detail_coverage,
-        "canvas_width": canvas_width,
-        "canvas_height": round(canvas_height),
-    }
-
-
-def build_explore_svg_stage_board(
-    nodes: Sequence[Mapping[str, Any]],
-    edges: Sequence[Mapping[str, Any]],
-    *,
-    view_role: str,
-    stage_capacity: int = 12,
-) -> dict[str, Any]:
-    """Render a compact vertical evidence-stage board over canonical data.
-
-    Structural area nodes stay in the header/lineage context. Material work
-    nodes are ordered by the canonical source and split into bounded stages;
-    the Base remains the full-detail surface. The default capacity is slightly
-    larger than the reference eleven-node evidence stages while preventing one
-    visually unbounded owner board.
-    """
-
-    node_list = [dict(node) for node in nodes if str(node.get("node_id") or "")]
-    node_by_id = {str(node.get("node_id") or ""): node for node in node_list}
-    visible_ids = set(node_by_id)
-    role = "executive" if view_role == "executive" else "canonical"
-    capacity = max(8, min(16, int(stage_capacity)))
-    detail_coverage = _node_detail_coverage(node_list)
-    if not detail_coverage["complete"]:
-        raise ValueError("Explore node detail projection lost summary or metric evidence")
-
-    context_nodes = [
-        node for node in node_list if str(node.get("node_kind") or "") == "area"
-    ]
-    work_nodes = [
-        node for node in node_list if str(node.get("node_kind") or "") != "area"
-    ]
-    if not work_nodes:
-        work_nodes = node_list
-        context_nodes = []
-    stages = [
-        work_nodes[offset : offset + capacity]
-        for offset in range(0, len(work_nodes), capacity)
-    ]
-
-    canvas_width = 1800
-    margin = 42
-    header_height = 136
-    footer_height = 42
-    stage_gap = 28
-    stage_padding = 20
-    stage_header_height = 54
-    card_columns = 3
-    card_gap_x = 18
-    card_gap_y = 16
-    card_height = 94
-    stage_width = canvas_width - 2 * margin
-    card_width = (
-        stage_width
-        - 2 * stage_padding
-        - (card_columns - 1) * card_gap_x
-    ) / card_columns
-    stage_heights = []
-    for stage in stages:
-        card_rows = max(1, (len(stage) + card_columns - 1) // card_columns)
-        stage_heights.append(
-            stage_header_height
-            + 2 * stage_padding
-            + card_rows * card_height
-            + max(0, card_rows - 1) * card_gap_y
-        )
-    canvas_height = (
-        header_height
-        + sum(stage_heights)
-        + max(0, len(stages) - 1) * stage_gap
-        + footer_height
-        + margin
-    )
-
-    stage_geometry: list[tuple[float, float, float, float]] = []
-    card_geometry: dict[str, tuple[float, float, float, float]] = {}
-    node_stage: dict[str, int] = {}
-    stage_y = header_height
-    for stage_index, (stage, stage_height) in enumerate(
-        zip(stages, stage_heights),
-        start=1,
-    ):
-        stage_geometry.append((margin, stage_y, stage_width, stage_height))
-        for item_index, node in enumerate(stage):
-            item_row = item_index // card_columns
-            item_column = item_index % card_columns
-            x = margin + stage_padding + item_column * (card_width + card_gap_x)
-            y = (
-                stage_y
-                + stage_header_height
-                + stage_padding
-                + item_row * (card_height + card_gap_y)
-            )
-            node_id = str(node.get("node_id") or "")
-            card_geometry[node_id] = (x, y, card_width, card_height)
-            node_stage[node_id] = stage_index
-        stage_y += stage_height + stage_gap
-
-    material_edges = [
-        dict(edge)
-        for edge in edges
-        if str(edge.get("from_node") or "") in card_geometry
-        and str(edge.get("to_node") or "") in card_geometry
-        and str(edge.get("edge_type") or "") != "subtopic_of"
-    ]
-    source_edge_count = sum(
-        1
-        for edge in edges
-        if str(edge.get("from_node") or "") in visible_ids
-        and str(edge.get("to_node") or "") in visible_ids
-    )
-    cross_stage_count = sum(
-        1
-        for edge in material_edges
-        if node_stage[str(edge.get("from_node") or "")]
-        != node_stage[str(edge.get("to_node") or "")]
-    )
-    frontier_count = sum(1 for node in work_nodes if _is_board_frontier(node))
-    root_summary = _truncate_display(
-        str(context_nodes[0].get("summary") or "") if context_nodes else "",
-        limit=150,
-    )
-
-    svg = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {canvas_width} {canvas_height:.0f}" width="{canvas_width}" height="{canvas_height:.0f}">',
-        "<defs>",
-        '<filter id="stage-shadow" x="-10%" y="-10%" width="120%" height="130%">',
-        '<feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#1F2329" flood-opacity="0.08"/>',
-        "</filter>",
-    ]
-    for edge_type, (color, _) in _BOARD_EDGE_STYLE.items():
-        svg.extend(
-            [
-                f'<marker id="stage-arrow-{edge_type}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">',
-                f'<path d="M0,0 L8,4 L0,8 Z" fill="{color}"/>',
-                "</marker>",
-            ]
-        )
-    svg.extend(
-        [
-            "</defs>",
-            f'<rect width="{canvas_width}" height="{canvas_height:.0f}" rx="18" fill="#F7F8FA"/>',
-            '<text x="42" y="43" font-size="28" font-weight="700" fill="#1F2329" font-family="Arial, PingFang SC, sans-serif">Live Explore Evidence Stages</text>',
-            f'<text x="42" y="73" font-size="14" fill="#646A73" font-family="Arial, PingFang SC, sans-serif">{html.escape(root_summary or "Canonical source order → bounded evidence stages → real material relations → current frontier")}</text>',
-            f'<text x="42" y="108" font-size="13" font-weight="600" fill="#1456B8" font-family="Arial, PingFang SC, sans-serif">{len(work_nodes)} compact nodes</text>',
-            f'<text x="218" y="108" font-size="13" font-weight="600" fill="#207A50" font-family="Arial, PingFang SC, sans-serif">{len(material_edges)} real relations</text>',
-            f'<text x="390" y="108" font-size="13" font-weight="600" fill="#AD5700" font-family="Arial, PingFang SC, sans-serif">{frontier_count} frontier</text>',
-            f'<text x="1758" y="108" text-anchor="end" font-size="12" fill="#8F959E" font-family="Arial, PingFang SC, sans-serif">{role} · capacity {capacity} / stage · full detail in Base</text>',
-        ]
-    )
-
-    stage_palette = (
-        ("#F4F8FF", "#7AA7E8"),
-        ("#F2FAF5", "#78BA8C"),
-        ("#FAF6FF", "#A58ADA"),
-        ("#FFF9ED", "#D7AD59"),
-    )
-    for stage_index, (stage, geometry) in enumerate(
-        zip(stages, stage_geometry),
-        start=1,
-    ):
-        x, y, width, height = geometry
-        fill, border = stage_palette[(stage_index - 1) % len(stage_palette)]
-        stage_frontier = sum(1 for node in stage if _is_board_frontier(node))
-        first_title = _truncate_display(
-            str(stage[0].get("title") or stage[0].get("node_id") or "Evidence"),
-            limit=54,
-        )
-        svg.extend(
-            [
-                f'<g data-evidence-stage="{stage_index}" data-stage-capacity="{capacity}">',
-                f'<rect x="{x:.1f}" y="{y:.1f}" width="{width:.1f}" height="{height:.1f}" rx="15" fill="{fill}" stroke="{border}" stroke-width="1.8"/>',
-                f'<text x="{x + stage_padding:.1f}" y="{y + 34:.1f}" font-size="17" font-weight="700" fill="#1F2329" font-family="Arial, PingFang SC, sans-serif">Evidence stage {stage_index:02d} · {html.escape(first_title)}</text>',
-                f'<text x="{x + width - stage_padding:.1f}" y="{y + 34:.1f}" text-anchor="end" font-size="12" fill="#646A73" font-family="Arial, PingFang SC, sans-serif">{len(stage)} / {capacity} nodes · {stage_frontier} frontier</text>',
-                "</g>",
-            ]
-        )
-
-    for edge in material_edges:
-        source_id = str(edge.get("from_node") or "")
-        target_id = str(edge.get("to_node") or "")
-        edge_id = str(edge.get("edge_id") or f"{source_id}-{target_id}")
-        edge_type = str(edge.get("edge_type") or "leads_to")
-        color, dash = _BOARD_EDGE_STYLE.get(edge_type, ("#8F959E", "4 4"))
-        source_x, source_y, source_w, source_h = card_geometry[source_id]
-        target_x, target_y, target_w, target_h = card_geometry[target_id]
-        if node_stage[source_id] != node_stage[target_id]:
-            forward = node_stage[source_id] < node_stage[target_id]
-            start_x = source_x + source_w / 2
-            start_y = source_y + source_h if forward else source_y
-            end_x = target_x + target_w / 2
-            end_y = target_y if forward else target_y + target_h
-            bend = max(36.0, abs(end_y - start_y) * 0.35)
-            direction = 1 if forward else -1
-            path = (
-                f"M {start_x:.1f} {start_y:.1f} "
-                f"C {start_x:.1f} {start_y + direction * bend:.1f}, "
-                f"{end_x:.1f} {end_y - direction * bend:.1f}, "
-                f"{end_x:.1f} {end_y:.1f}"
-            )
-        else:
-            forward = target_x >= source_x
-            start_x = source_x + source_w if forward else source_x
-            start_y = source_y + source_h / 2
-            end_x = target_x if forward else target_x + target_w
-            end_y = target_y + target_h / 2
-            bend = max(32.0, abs(end_x - start_x) * 0.35)
-            direction = 1 if forward else -1
-            path = (
-                f"M {start_x:.1f} {start_y:.1f} "
-                f"C {start_x + direction * bend:.1f} {start_y:.1f}, "
-                f"{end_x - direction * bend:.1f} {end_y:.1f}, "
-                f"{end_x:.1f} {end_y:.1f}"
-            )
-        dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
-        marker = edge_type if edge_type in _BOARD_EDGE_STYLE else "leads_to"
-        svg.append(
-            f'<path data-edge-id="{html.escape(edge_id)}" data-edge-type="{html.escape(edge_type)}" d="{path}" fill="none" stroke="{color}" stroke-width="1.8" opacity="0.72"{dash_attr} marker-end="url(#stage-arrow-{marker})"/>'
-        )
-
-    for node in work_nodes:
-        node_id = str(node.get("node_id") or "")
-        x, y, width, height = card_geometry[node_id]
-        status = str(node.get("status") or "open")
-        status_color = _ATLAS_STATUS_COLOR.get(status, "#9E9E9E")
-        frontier = _is_board_frontier(node)
-        display_lines = _node_display_lines(
-            node,
-            title_limit=46,
-            detail_limit=62,
-        )
-        stroke = "#FF8F1F" if frontier else "#AAB2BD"
-        stroke_width = 2.4 if frontier else 1.1
-        svg.extend(
-            [
-                f'<g data-node-id="{html.escape(node_id)}" data-status="{html.escape(status)}" data-frontier="{str(frontier).lower()}">',
-                f'<rect x="{x:.1f}" y="{y:.1f}" width="{width:.1f}" height="{height:.1f}" rx="9" fill="#FFFFFF" stroke="{stroke}" stroke-width="{stroke_width}" filter="url(#stage-shadow)"/>',
-                f'<rect x="{x:.1f}" y="{y:.1f}" width="6" height="{height:.1f}" rx="3" fill="{status_color}"/>',
-            ]
-        )
-        for line_index, line in enumerate(display_lines[:3]):
-            svg.append(
-                f'<text x="{x + 18:.1f}" y="{y + 25 + line_index * 23:.1f}" font-size="{13 if line_index == 0 else 10}" font-weight="{600 if line_index == 0 else 400}" fill="{"#1F2329" if line_index == 0 else "#646A73"}" font-family="Arial, PingFang SC, sans-serif">{html.escape(line)}</text>'
-            )
-        svg.append("</g>")
-
-    svg.extend(
-        [
-            f'<text x="42" y="{canvas_height - 18:.1f}" font-size="11" fill="#646A73" font-family="Arial, PingFang SC, sans-serif">Stage capacity is bounded; structural context and complete Nodes / Edges / Findings remain in the canonical Base.</text>',
-            f'<text x="1758" y="{canvas_height - 18:.1f}" text-anchor="end" font-size="11" fill="#8F959E" font-family="Arial, PingFang SC, sans-serif">solid: supports / leads_to / answers · dashed: depends_on / refutes</text>',
-            "</svg>",
-        ]
-    )
-    return {
-        "svg": "\n".join(svg),
-        "strategy": "vertical_evidence_stage_board",
-        "view_role": role,
-        "stage_count": len(stages),
-        "stage_capacity": capacity,
-        "stage_sizes": [len(stage) for stage in stages],
-        "rendered_node_count": len(card_geometry),
-        "context_node_count": len(context_nodes),
-        "frontier_node_count": frontier_count,
-        "rendered_relation_count": len(material_edges),
-        "cross_stage_relation_count": cross_stage_count,
-        "suppressed_relation_count": source_edge_count - len(material_edges),
-        "source_edge_count": source_edge_count,
-        "semantic_contract": {
-            "real_relations_only": True,
-            "frontier_explicit": True,
-            "evidence_stage_capacity_bounded": True,
-            "canonical_detail_in_base": True,
-        },
-        "node_detail_coverage": detail_coverage,
-        "canvas_width": canvas_width,
-        "canvas_height": round(canvas_height),
-    }
 
 
 def _tags(node: Mapping[str, Any]) -> set[str]:
@@ -1303,7 +751,15 @@ def assess_explore_presentation(
     """Recommend one or two views from several advisory readability signals."""
 
     thresholds = dict(DEFAULT_EXPLORE_PRESENTATION_POLICY)
-    thresholds.update(policy or {})
+    supplied_policy = dict(policy or {})
+    if (
+        "atlas_group_node_limit" in supplied_policy
+        and "stage_node_capacity" not in supplied_policy
+    ):
+        supplied_policy["stage_node_capacity"] = supplied_policy.pop(
+            "atlas_group_node_limit"
+        )
+    thresholds.update(supplied_policy)
     nodes = [item for item in projection.get("nodes") or [] if isinstance(item, Mapping)]
     edges = [item for item in projection.get("edges") or [] if isinstance(item, Mapping)]
     node_ids = {str(node.get("node_id") or "") for node in nodes if str(node.get("node_id") or "")}
@@ -1554,21 +1010,7 @@ def build_explore_presentation_bundle(
         canonical_nodes,
         canonical_edges,
         view_role="canonical",
-        group_node_limit=int(thresholds["atlas_group_node_limit"]),
-        column_count=int(thresholds["atlas_column_count"]),
-    )
-    canonical_svg_layout = build_explore_svg_atlas(
-        canonical_nodes,
-        canonical_edges,
-        view_role="canonical",
-        group_node_limit=int(thresholds["atlas_group_node_limit"]),
-        column_count=int(thresholds["atlas_column_count"]),
-    )
-    canonical_board_layout = build_explore_svg_stage_board(
-        canonical_nodes,
-        canonical_edges,
-        view_role="canonical",
-        stage_capacity=int(thresholds["board_stage_capacity"]),
+        group_node_limit=int(thresholds["stage_node_capacity"]),
     )
     canonical = {
         "schema_version": EXPLORE_CANONICAL_VIEW_VERSION,
@@ -1580,8 +1022,7 @@ def build_explore_presentation_bundle(
         "edges": canonical_edges,
         "findings": findings,
         "mermaid": canonical_layout["mermaid"],
-        "svg": canonical_svg_layout["svg"],
-        "svg_board": canonical_board_layout["svg"],
+        "stage_views": canonical_layout["stage_views"],
         "graph_counts": {
             "node_count": len(canonical_nodes),
             "edge_count": len(canonical_edges),
@@ -1593,19 +1034,7 @@ def build_explore_presentation_bundle(
             "layout": {
                 key: value
                 for key, value in canonical_layout.items()
-                if key != "mermaid"
-            },
-            "renderer_layouts": {
-                "svg_atlas": {
-                    key: value
-                    for key, value in canonical_svg_layout.items()
-                    if key != "svg"
-                },
-                "svg_board": {
-                    key: value
-                    for key, value in canonical_board_layout.items()
-                    if key != "svg"
-                },
+                if key not in {"mermaid", "stage_views"}
             },
         },
     }
@@ -1630,21 +1059,7 @@ def build_explore_presentation_bundle(
         executive_nodes,
         executive_edges,
         view_role="executive",
-        group_node_limit=int(thresholds["atlas_group_node_limit"]),
-        column_count=int(thresholds["atlas_column_count"]),
-    )
-    executive_svg_layout = build_explore_svg_atlas(
-        executive_nodes,
-        executive_edges,
-        view_role="executive",
-        group_node_limit=int(thresholds["atlas_group_node_limit"]),
-        column_count=int(thresholds["atlas_column_count"]),
-    )
-    executive_board_layout = build_explore_svg_stage_board(
-        executive_nodes,
-        executive_edges,
-        view_role="executive",
-        stage_capacity=int(thresholds["board_stage_capacity"]),
+        group_node_limit=int(thresholds["stage_node_capacity"]),
     )
     executive_findings = [
         finding
@@ -1662,8 +1077,7 @@ def build_explore_presentation_bundle(
         "edges": executive_edges,
         "findings": executive_findings,
         "mermaid": executive_layout["mermaid"],
-        "svg": executive_svg_layout["svg"],
-        "svg_board": executive_board_layout["svg"],
+        "stage_views": executive_layout["stage_views"],
         "graph_counts": {
             "node_count": len(executive_nodes),
             "edge_count": len(executive_edges),
@@ -1697,19 +1111,7 @@ def build_explore_presentation_bundle(
             "layout": {
                 key: value
                 for key, value in executive_layout.items()
-                if key != "mermaid"
-            },
-            "renderer_layouts": {
-                "svg_atlas": {
-                    key: value
-                    for key, value in executive_svg_layout.items()
-                    if key != "svg"
-                },
-                "svg_board": {
-                    key: value
-                    for key, value in executive_board_layout.items()
-                    if key != "svg"
-                },
+                if key not in {"mermaid", "stage_views"}
             },
         },
     }

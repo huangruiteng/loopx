@@ -195,7 +195,13 @@ def register_explore_commands(
     )
     add_subcommand_format(visual)
     _add_config_path_arg(visual)
-    visual.add_argument("--whiteboard-token", required=True)
+    visual.add_argument(
+        "--whiteboard-token",
+        help=(
+            "Existing Stage 01 whiteboard token. Optional when --docx-token "
+            "is set; missing stage boards are created in the document."
+        ),
+    )
     visual.add_argument("--docx-token")
     visual.add_argument(
         "--status",
@@ -226,26 +232,19 @@ def register_explore_commands(
     )
     visual.add_argument("--mermaid-node-limit", type=int, default=100)
     visual.add_argument(
-        "--atlas-columns",
-        type=int,
-        default=1,
-        help="Arrange evidence epochs into this many whiteboard columns.",
-    )
-    visual.add_argument(
         "--stage-capacity",
         type=int,
-        default=12,
-        help="Maximum compact work nodes per vertical evidence stage (8-16).",
+        default=14,
+        help="Maximum topology nodes per Evidence Stage whiteboard (10-20).",
     )
     visual.add_argument(
-        "--renderer",
-        choices=["mermaid", "svg_atlas", "svg_board"],
-        default="mermaid",
+        "--stage-whiteboard-token",
+        action="append",
+        default=[],
         help=(
-            "Whiteboard renderer. svg_atlas owns chronological grid geometry; "
-            "svg_board preserves semantic lanes, frontier, and real relations. "
-            "Both SVG renderers require --view-role; mermaid preserves the "
-            "compatibility default."
+            "Existing whiteboard token for one Evidence Stage, in stage order. "
+            "Repeat for multiple stages; the primary --whiteboard-token remains "
+            "the Stage 01 compatibility fallback."
         ),
     )
     visual.add_argument("--execute", action="store_true")
@@ -788,9 +787,8 @@ def handle_explore_command(
                 }.get(args.view_role, "canonical_filtered"),
                 include_ancestors=bool(args.include_ancestors),
                 mermaid_node_limit=args.mermaid_node_limit,
-                atlas_column_count=args.atlas_columns,
                 stage_capacity=args.stage_capacity,
-                renderer=args.renderer,
+                stage_whiteboard_tokens=args.stage_whiteboard_token,
                 view_role=args.view_role,
                 execute=bool(args.execute),
             )
