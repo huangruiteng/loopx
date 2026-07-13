@@ -233,11 +233,13 @@ def register_explore_commands(
     )
     visual.add_argument(
         "--renderer",
-        choices=["mermaid", "svg_atlas"],
+        choices=["mermaid", "svg_atlas", "svg_board"],
         default="mermaid",
         help=(
-            "Whiteboard renderer. svg_atlas owns final geometry and requires "
-            "--view-role; mermaid preserves the compatibility default."
+            "Whiteboard renderer. svg_atlas owns chronological grid geometry; "
+            "svg_board preserves semantic lanes, frontier, and real relations. "
+            "Both SVG renderers require --view-role; mermaid preserves the "
+            "compatibility default."
         ),
     )
     visual.add_argument("--execute", action="store_true")

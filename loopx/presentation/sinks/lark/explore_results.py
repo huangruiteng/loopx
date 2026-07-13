@@ -72,7 +72,12 @@ SINK_VISIBILITY_SHARED = "shared"
 SINK_VISIBILITIES = {SINK_VISIBILITY_OWNER_ONLY, SINK_VISIBILITY_SHARED}
 VISUAL_RENDERER_MERMAID = "mermaid"
 VISUAL_RENDERER_SVG_ATLAS = "svg_atlas"
-VISUAL_RENDERERS = {VISUAL_RENDERER_MERMAID, VISUAL_RENDERER_SVG_ATLAS}
+VISUAL_RENDERER_SVG_BOARD = "svg_board"
+VISUAL_RENDERERS = {
+    VISUAL_RENDERER_MERMAID,
+    VISUAL_RENDERER_SVG_ATLAS,
+    VISUAL_RENDERER_SVG_BOARD,
+}
 
 TABLE_NODES = "nodes"
 TABLE_EDGES = "edges"
@@ -485,8 +490,15 @@ def configure_lark_explore_visual_sink(
     selected_renderer = str(renderer or VISUAL_RENDERER_MERMAID).strip()
     if selected_renderer not in VISUAL_RENDERERS:
         raise ValueError(f"renderer must be one of {sorted(VISUAL_RENDERERS)}")
-    if selected_renderer == VISUAL_RENDERER_SVG_ATLAS and role is None:
-        raise ValueError("svg_atlas renderer requires a canonical or executive view_role")
+    if (
+        selected_renderer
+        in {
+            VISUAL_RENDERER_SVG_ATLAS,
+            VISUAL_RENDERER_SVG_BOARD,
+        }
+        and role is None
+    ):
+        raise ValueError(f"{selected_renderer} renderer requires a canonical or executive view_role")
     local = read_lark_explore_local_config(config_path)
     if not local.get("ok") or not local.get("exists"):
         raise ValueError("run `loopx explore feishu-setup` before configuring a visual sink")
@@ -600,6 +612,7 @@ def sync_explore_visual_to_lark(
     source_key, input_format, extension = {
         VISUAL_RENDERER_MERMAID: ("mermaid", "mermaid", "mmd"),
         VISUAL_RENDERER_SVG_ATLAS: ("svg", "svg", "svg"),
+        VISUAL_RENDERER_SVG_BOARD: ("svg_board", "svg", "svg"),
     }[renderer]
     rendered_source = str(graph.get(source_key) or "")
     if not rendered_source.strip():
