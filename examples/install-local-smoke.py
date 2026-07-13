@@ -614,10 +614,14 @@ def main() -> int:
             'loopx --registry "$HOME/.codex/loopx/registry.global.json" '
             "quota spend-slot --goal-id installer-smoke-goal --slots 1 --source heartbeat --execute"
         ), payload
-        assert "--delivery-batch-scale multi_surface" in payload["task_body"], payload
-        assert "--delivery-outcome outcome_progress" in payload["task_body"], payload
-        assert "<PUBLIC_SAFE_PROGRESS_CLASSIFICATION>" in payload["task_body"], payload
-        assert "DONT_NOTIFY" in payload["task_body"], payload
+        assert payload["thin"] is True, payload
+        assert payload["interface_budget"]["mode"] == "thin", payload
+        assert payload["interface_budget"]["within_budget"] is True, payload
+        assert "--delivery-batch-scale multi_surface" in payload["progress_refresh_state_command"], payload
+        assert "--delivery-outcome outcome_progress" in payload["progress_refresh_state_command"], payload
+        assert "<PUBLIC_SAFE_PROGRESS_CLASSIFICATION>" in payload["progress_refresh_state_command"], payload
+        assert "follow `interaction_contract`" in payload["task_body"], payload
+        assert "spend after writeback" in payload["task_body"], payload
         assert payload["cli_bin"] == "loopx", payload
 
         canary_cli = subprocess.run(

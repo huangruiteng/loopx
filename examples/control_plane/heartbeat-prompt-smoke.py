@@ -151,8 +151,10 @@ def main() -> int:
     thin_task = str(thin_payload["task_body"])
     assert default_payload["task_body"] == thin_payload["task_body"], default_payload
     assert default_payload["thin"] is True, default_payload
-    assert default_payload["full"] is False, default_payload
-    assert payload["full"] is True, payload
+    assert default_payload["interface_budget"]["mode"] == "thin", default_payload
+    assert payload["interface_budget"]["mode"] == "full", payload
+    assert "full" not in default_payload, default_payload
+    assert "full" not in payload, payload
     assert "Observed runtime capabilities -> `--available-capability`, never user gates." in thin_task, thin_task
     assert payload["quota_guard_command"] == (
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" '
@@ -750,7 +752,8 @@ def main() -> int:
     assert cli_payload["compact"] is False, cli_payload
     assert cli_payload["brief"] is False, cli_payload
     assert cli_payload["thin"] is True, cli_payload
-    assert cli_payload["full"] is False, cli_payload
+    assert cli_payload["interface_budget"]["mode"] == "thin", cli_payload
+    assert "full" not in cli_payload, cli_payload
     assert cli_payload["cli_bin"] == "loopx", cli_payload
     assert cli_payload["active_state_source"] == "explicit", cli_payload
 
@@ -775,8 +778,9 @@ def main() -> int:
     )
     cli_full_payload = json.loads(cli_full_json.stdout)
     assert cli_full_payload["task_body"] == payload["task_body"], cli_full_payload
-    assert cli_full_payload["full"] is True, cli_full_payload
     assert cli_full_payload["thin"] is False, cli_full_payload
+    assert cli_full_payload["interface_budget"]["mode"] == "full", cli_full_payload
+    assert "full" not in cli_full_payload, cli_full_payload
 
     cli_compact_json = subprocess.run(
         [

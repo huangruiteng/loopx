@@ -37,7 +37,8 @@ def assert_failure_payload(payload: dict) -> None:
     assert payload["resolved_active_state"] == str(ACTIVE_STATE), payload
     assert payload["compact"] is False, payload
     assert payload["brief"] is False, payload
-    assert payload["thin"] is False, payload
+    assert payload["thin"] is True, payload
+    assert "full" not in payload, payload
     assert payload["cli_bin"] == "loopx", payload
     assert payload["agent_id"] is None, payload
     assert payload["agent_scopes"] == [SCOPE], payload
@@ -86,7 +87,8 @@ def main() -> int:
     assert "- active_state_source: `explicit`" in markdown, markdown
     assert f"- resolved_active_state: `{ACTIVE_STATE}`" in markdown, markdown
     assert f"- agent_scopes: `['{SCOPE}']`" in markdown, markdown
-    assert "- thin: `False`" in markdown, markdown
+    assert "- thin: `True`" in markdown, markdown
+    assert "- full:" not in markdown, markdown
 
     json_result = run_cli(
         "--format",

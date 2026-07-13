@@ -207,10 +207,11 @@ def main() -> int:
             str(state_file),
         )["task_body"]
         compact_prompt = " ".join(prompt.split())
-        assert "state=operator_gate" in compact_prompt, prompt
-        assert "action_required=true/open_count>0" in compact_prompt, prompt
-        assert "return heartbeat `NOTIFY`" in compact_prompt, prompt
-        assert "No delivery/spend" in compact_prompt, prompt
+        assert "state=operator_gate" not in compact_prompt, prompt
+        assert "follow `interaction_contract`" in compact_prompt, prompt
+        assert "If action_required/open_count:" in compact_prompt, prompt
+        assert 'never only "owner gate"' in compact_prompt, prompt
+        assert "spend after writeback" in compact_prompt, prompt
 
     print("blocker-push-runtime-smoke ok")
     return 0
