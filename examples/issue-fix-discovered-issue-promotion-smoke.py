@@ -10,6 +10,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -130,11 +131,14 @@ def promotion_input(
 
 
 class FakeGitHub:
-    def __init__(self, *, fail_edit: bool = False) -> None:
+    def __init__(
+        self, *, fail_edit: bool = False, verification_lag_reads: int = 0
+    ) -> None:
         self.linked = False
         self.write_count = 0
         self.last_pr_body = ""
         self.fail_edit = fail_edit
+        self.verification_lag_reads = verification_lag_reads
 
     def __call__(self, args: list[str]) -> dict[str, Any]:
         if args[1:3] == ["issue", "view"]:
@@ -151,6 +155,9 @@ class FakeGitHub:
                 "stderr": "provider response payload",
             }
         if args[1:3] == ["pr", "view"]:
+            linked_visible = self.linked and self.verification_lag_reads == 0
+            if self.linked and self.verification_lag_reads > 0:
+                self.verification_lag_reads -= 1
             return {
                 "returncode": 0,
                 "stdout": json.dumps(
@@ -159,7 +166,7 @@ class FakeGitHub:
                             self.last_pr_body or "Motivation\n\nraw original PR body"
                         ),
                         "closingIssuesReferences": (
-                            [{"number": 42}] if self.linked else []
+                            [{"number": 42}] if linked_visible else []
                         ),
                         "url": "https://github.com/example/public-repo/pull/99",
                     }
@@ -283,17 +290,21 @@ def main() -> int:
         )
         upsert_issue_fix_pr_lifecycle_ledger_jsonl(lifecycle_path, lifecycle)
 
-        github = FakeGitHub()
-        promoted = build_issue_fix_discovered_issue_promotion_packet(
-            promotion_input=promotion_input(),
-            boundary_authority_scopes=["write", "publish"],
-            boundary_authority_resolved=True,
-            execute=True,
-            feasibility_ledger_path=feasibility_path,
-            pr_lifecycle_ledger_path=lifecycle_path,
-            runner=github,
-            generated_at="2026-07-12T00:00:00Z",
-        )
+        github = FakeGitHub(verification_lag_reads=2)
+        with patch(
+            "loopx.capabilities.issue_fix.discovered_issue_promotion.time.sleep"
+        ) as sleep:
+            promoted = build_issue_fix_discovered_issue_promotion_packet(
+                promotion_input=promotion_input(),
+                boundary_authority_scopes=["write", "publish"],
+                boundary_authority_resolved=True,
+                execute=True,
+                feasibility_ledger_path=feasibility_path,
+                pr_lifecycle_ledger_path=lifecycle_path,
+                runner=github,
+                generated_at="2026-07-12T00:00:00Z",
+            )
+        assert sleep.call_count == 2
         assert (
             promoted["schema_version"]
             == ISSUE_FIX_DISCOVERED_ISSUE_PROMOTION_SCHEMA_VERSION
@@ -334,6 +345,25 @@ def main() -> int:
         assert len(read_rows(feasibility_path)) == 1
         assert github.write_count == 1
         assert_public_safe(retry)
+
+        missing_lifecycle = build_issue_fix_discovered_issue_promotion_packet(
+            promotion_input=promotion_input(),
+            boundary_authority_scopes=["publish"],
+            boundary_authority_resolved=True,
+            execute=True,
+            feasibility_ledger_path=feasibility_path,
+            pr_lifecycle_ledger_path=root / "missing-pr-lifecycle.jsonl",
+            runner=github,
+            generated_at="2026-07-12T00:06:00Z",
+        )
+        assert missing_lifecycle["ok"] is True
+        assert missing_lifecycle["external_writes_performed"] is False
+        assert missing_lifecycle["domain_state_reconciliation"]["pr_lifecycle"] == {
+            "write_performed": False,
+            "status": "not_projected",
+            "path_recorded": False,
+        }
+        assert_public_safe(missing_lifecycle)
 
         read_only = build_issue_fix_discovered_issue_promotion_packet(
             promotion_input=promotion_input(),
