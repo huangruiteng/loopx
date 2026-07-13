@@ -349,6 +349,15 @@ def build_issue_fix_workflow_plan_packet(
             "schema_version": "issue_fix_pr_description_contract_v0",
             "source_contract": "pr_review_five_block_template_v0",
             "extension_contract": "issue_fix_reviewer_context_v0",
+            "builder_contract": {
+                "schema_version": "issue_fix_pr_description_build_v0",
+                "surface": "issue_fix.pr_description",
+                "default_enabled": False,
+                "explicit_dependency_injection": True,
+                "provider_call_budget": 1,
+                "fail_open_preserves_base_description": True,
+                "applied_preferences_require_compact_receipt": True,
+            },
             "sections": [
                 {
                     "label": "动机",
@@ -621,6 +630,16 @@ def validate_issue_fix_workflow_plan_packet(
             "issue_fix_pr_description_contract_v0"
         ):
             errors.append("PR description contract has wrong schema")
+        if description.get("builder_contract") != {
+            "schema_version": "issue_fix_pr_description_build_v0",
+            "surface": "issue_fix.pr_description",
+            "default_enabled": False,
+            "explicit_dependency_injection": True,
+            "provider_call_budget": 1,
+            "fail_open_preserves_base_description": True,
+            "applied_preferences_require_compact_receipt": True,
+        }:
+            errors.append("PR description builder contract is incomplete")
         sections = description.get("sections")
         labels = (
             [
