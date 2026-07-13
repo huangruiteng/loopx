@@ -98,7 +98,7 @@ def _issue_reference_policy(
         "closing_keyword": keyword,
         "closing_references": closing,
         "related_references": related,
-        "target_default_branch_verified": targets_default_branch is True,
+        "target_default_branch_asserted": targets_default_branch is True,
         "applied_after_semantic_preferences": True,
     }
 
@@ -196,8 +196,8 @@ def _result(
             "closing_keyword": policy.get("closing_keyword"),
             "closing_reference_count": len(policy.get("closing_references") or []),
             "related_reference_count": len(policy.get("related_references") or []),
-            "target_default_branch_verified": bool(
-                policy.get("target_default_branch_verified")
+            "target_default_branch_asserted": bool(
+                policy.get("target_default_branch_asserted")
             ),
             "applied_after_semantic_preferences": bool(
                 policy.get("applied_after_semantic_preferences")

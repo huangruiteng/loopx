@@ -90,7 +90,7 @@ json.dump({
         "closing_keyword": "Fixes",
         "closing_reference_count": 2,
         "related_reference_count": 1,
-        "target_default_branch_verified": True,
+        "target_default_branch_asserted": True,
         "applied_after_semantic_preferences": True,
     }, issue_reference
 
