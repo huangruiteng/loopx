@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -297,29 +298,47 @@ def test_svg_atlas_owns_a_fixed_grid_and_keeps_executive_nodes_visible() -> None
         assert str(node["title"]) in svg
 
 
-def test_svg_board_preserves_lanes_frontier_and_real_relations() -> None:
-    bundle = build_explore_presentation_bundle(_lane_projection())
+def test_svg_board_preserves_bounded_stages_frontier_and_real_relations() -> None:
+    bundle = build_explore_presentation_bundle(
+        _lane_projection(),
+        policy={"board_stage_capacity": 8},
+    )
 
     canonical = bundle["canonical"]
     svg = canonical["svg_board"]
     layout = canonical["filter"]["renderer_layouts"]["svg_board"]
     assert svg.startswith('<svg xmlns="http://www.w3.org/2000/svg"')
-    assert "Live Explore Decision Board" in svg
-    assert "Epoch" not in svg
-    assert 'data-lane-id="delivery-lane"' in svg
-    assert 'data-lane-id="capability-lane"' in svg
+    assert "Live Explore Evidence Stages" in svg
+    assert "Evidence stage 01" in svg
+    assert 'data-evidence-stage="1"' in svg
+    assert 'data-stage-capacity="8"' in svg
     assert 'data-node-id="fix-pr"' in svg
     assert 'data-frontier="true"' in svg
     assert 'data-edge-id="edge-fix-supports-capability"' in svg
     assert 'data-edge-id="edge-fix-subtopic"' not in svg
-    assert layout["strategy"] == "semantic_lane_decision_board"
-    assert layout["lane_count"] == 2
+    assert layout["strategy"] == "vertical_evidence_stage_board"
+    assert layout["stage_count"] == 1
+    assert layout["stage_capacity"] == 8
+    assert layout["stage_sizes"] == [2]
     assert layout["frontier_node_count"] == 1
     assert layout["rendered_relation_count"] == 1
-    assert layout["cross_lane_relation_count"] == 1
+    assert layout["cross_stage_relation_count"] == 0
     assert layout["suppressed_relation_count"] == 1
     assert layout["source_edge_count"] == 2
-    assert layout["semantic_contract"]["chronological_buckets"] is False
+    assert layout["semantic_contract"]["evidence_stage_capacity_bounded"] is True
+
+
+def test_svg_board_caps_each_evidence_stage() -> None:
+    bundle = build_explore_presentation_bundle(
+        _complex_projection(),
+        policy={"board_stage_capacity": 12},
+    )
+
+    layout = bundle["executive"]["filter"]["renderer_layouts"]["svg_board"]
+    assert layout["stage_count"] >= 2
+    assert layout["stage_capacity"] == 12
+    assert all(1 <= size <= 12 for size in layout["stage_sizes"])
+    assert sum(layout["stage_sizes"]) == layout["rendered_node_count"]
 
 
 def test_executive_view_suppresses_dense_hub_scaffolding_edges() -> None:
@@ -610,6 +629,119 @@ def test_visual_delivery_digest_and_command_include_renderer(tmp_path) -> None:
     assert mermaid["input_format"] == "mermaid"
     assert svg["input_format"] == "svg"
     assert board["input_format"] == "svg"
+
+
+def test_svg_visual_publish_reads_back_remote_delivery_marker(tmp_path) -> None:
+    projection = _complex_projection()
+    config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
+    bundle = build_explore_presentation_bundle(projection)
+    calls: list[list[str]] = []
+    published_marker = ""
+
+    def runner(args, cwd, _timeout):
+        nonlocal published_marker
+        calls.append(args)
+        if "+update" in args:
+            source_arg = args[args.index("--source") + 1]
+            source = (cwd / source_arg.removeprefix("@")).read_text(
+                encoding="utf-8"
+            )
+            marker_match = re.search(r"LoopX delivery [0-9a-f]{20}", source)
+            assert marker_match
+            published_marker = marker_match.group(0)
+            return {
+                "returncode": 0,
+                "stdout": json.dumps({"ok": True}),
+                "stderr": "",
+            }
+        assert "+query" in args
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(
+                {
+                    "ok": True,
+                    "data": {
+                        "nodes": [
+                            {
+                                "type": "text_shape",
+                                "text": {"text": published_marker},
+                            }
+                        ]
+                    },
+                }
+            ),
+            "stderr": "",
+        }
+
+    synced = sync_explore_visual_to_lark(
+        config,
+        projection=projection,
+        visual_sink={
+            "whiteboard_token": "wb_executive_fixture",
+            "view_role": "executive",
+            "renderer": "svg_board",
+        },
+        config_path=tmp_path / "lark-explore.json",
+        semantic_digest=bundle["source_digest"],
+        display_projection=bundle["executive"],
+        view_key="executive",
+        execute=True,
+        runner=runner,
+    )
+
+    assert len(calls) == 2
+    assert synced["ok"] is True
+    assert synced["status"] == "published"
+    assert synced["published"] is True
+    assert synced["readback"]["performed"] is True
+    assert synced["readback"]["verified"] is True
+    assert synced["readback"]["observed_marker"] == published_marker
+
+
+def test_svg_visual_publish_fails_closed_when_remote_marker_is_missing(
+    tmp_path,
+) -> None:
+    projection = _complex_projection()
+    config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
+    bundle = build_explore_presentation_bundle(projection)
+
+    def runner(args, _cwd, _timeout):
+        payload = (
+            {
+                "ok": True,
+                "data": {"nodes": [{"text": {"text": "stale visual"}}]},
+            }
+            if "+query" in args
+            else {"ok": True}
+        )
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(payload),
+            "stderr": "",
+        }
+
+    synced = sync_explore_visual_to_lark(
+        config,
+        projection=projection,
+        visual_sink={
+            "whiteboard_token": "wb_executive_fixture",
+            "view_role": "executive",
+            "renderer": "svg_board",
+        },
+        config_path=tmp_path / "lark-explore.json",
+        semantic_digest=bundle["source_digest"],
+        display_projection=bundle["executive"],
+        view_key="executive",
+        execute=True,
+        runner=runner,
+    )
+
+    assert synced["ok"] is False
+    assert synced["status"] == "publish_unverified"
+    assert synced["published"] is False
+    assert synced["readback"]["performed"] is True
+    assert synced["readback"]["verified"] is False
+    assert "expected delivery marker" in synced["error"]
 
 
 def test_visual_delivery_digest_changes_when_target_whiteboard_changes(tmp_path) -> None:

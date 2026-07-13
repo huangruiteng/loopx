@@ -15,7 +15,9 @@ topology source in the projection is for Feishu docs or any diagram renderer.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -78,6 +80,8 @@ VISUAL_RENDERERS = {
     VISUAL_RENDERER_SVG_ATLAS,
     VISUAL_RENDERER_SVG_BOARD,
 }
+
+_SVG_HEIGHT_PATTERN = re.compile(r'\bheight="(?P<height>\d+(?:\.\d+)?)"')
 
 TABLE_NODES = "nodes"
 TABLE_EDGES = "edges"
@@ -464,6 +468,7 @@ def configure_lark_explore_visual_sink(
     include_ancestors: bool = True,
     mermaid_node_limit: int = 100,
     atlas_column_count: int = 1,
+    stage_capacity: int = 12,
     renderer: str = VISUAL_RENDERER_MERMAID,
     view_role: str | None = None,
     execute: bool = False,
@@ -499,6 +504,8 @@ def configure_lark_explore_visual_sink(
         and role is None
     ):
         raise ValueError(f"{selected_renderer} renderer requires a canonical or executive view_role")
+    if not 8 <= int(stage_capacity) <= 16:
+        raise ValueError("stage_capacity must be between 8 and 16")
     local = read_lark_explore_local_config(config_path)
     if not local.get("ok") or not local.get("exists"):
         raise ValueError("run `loopx explore feishu-setup` before configuring a visual sink")
@@ -512,6 +519,7 @@ def configure_lark_explore_visual_sink(
         "include_ancestors": bool(include_ancestors),
         "mermaid_node_limit": max(1, int(mermaid_node_limit)),
         "atlas_column_count": max(1, int(atlas_column_count)),
+        "stage_capacity": int(stage_capacity),
         "renderer": selected_renderer,
     }
     if role:
@@ -533,6 +541,95 @@ def configure_lark_explore_visual_sink(
         "config_path": str(config_path),
         "view_role": role,
         "visual_sink": visual_sink,
+    }
+
+
+def _svg_with_delivery_marker(source: str, marker: str) -> str:
+    """Add a small visible audit marker that survives Lark SVG conversion."""
+
+    closing_tag = "</svg>"
+    if closing_tag not in source:
+        raise ValueError("svg visual source must contain a closing </svg> tag")
+    height_match = _SVG_HEIGHT_PATTERN.search(source)
+    marker_y = (
+        max(12.0, float(height_match.group("height")) - 8.0)
+        if height_match
+        else 12.0
+    )
+    marker_node = (
+        f'<text x="12" y="{marker_y:g}" font-family="Arial, sans-serif" '
+        f'font-size="8" fill="#8f959e">{html.escape(marker)}</text>'
+    )
+    return source.replace(closing_tag, f"{marker_node}\n{closing_tag}", 1)
+
+
+def _whiteboard_raw_texts(payload: Any) -> list[str]:
+    if not isinstance(payload, Mapping):
+        return []
+    data = payload.get("data")
+    nodes = data.get("nodes") if isinstance(data, Mapping) else None
+    texts: list[str] = []
+    for node in nodes if isinstance(nodes, list) else []:
+        if not isinstance(node, Mapping):
+            continue
+        text_node = node.get("text")
+        if isinstance(text_node, Mapping) and str(text_node.get("text") or "").strip():
+            texts.append(str(text_node.get("text")))
+    return texts
+
+
+def _readback_svg_delivery_marker(
+    config: LarkExploreConfig,
+    *,
+    whiteboard_token: str,
+    marker: str,
+    runner: CommandRunner,
+) -> dict[str, Any]:
+    command = [
+        config.cli_bin,
+        "whiteboard",
+        "+query",
+        "--as",
+        config.identity,
+        "--whiteboard-token",
+        whiteboard_token,
+        "--output_as",
+        "raw",
+        "--format",
+        "json",
+    ]
+    result = _run_command(command, execute=True, runner=runner)
+    texts = _whiteboard_raw_texts(result.get("json"))
+    marker_observed = marker in texts
+    command_receipt = {
+        key: result.get(key)
+        for key in (
+            "command",
+            "executed",
+            "ok",
+            "returncode",
+            "timed_out",
+            "stderr",
+        )
+        if result.get(key) not in (None, "")
+    }
+    return {
+        "ok": bool(result.get("ok") and marker_observed),
+        "schema_version": "loopx_lark_explore_visual_readback_v0",
+        "performed": True,
+        "verified": marker_observed,
+        "source": "whiteboard_raw_nodes",
+        "expected_marker": marker,
+        "observed_marker": marker if marker_observed else None,
+        "remote_text_node_count": len(texts),
+        "command": command_receipt,
+        "error": (
+            None
+            if result.get("ok") and marker_observed
+            else _command_error(result)
+            if not result.get("ok")
+            else "remote whiteboard raw nodes do not contain the expected delivery marker"
+        ),
     }
 
 
@@ -640,6 +737,16 @@ def sync_explore_visual_to_lark(
         separators=(",", ":"),
     ).encode("utf-8")
     delivery_digest = hashlib.sha256(delivery_material).hexdigest()
+    delivery_marker = (
+        f"LoopX delivery {delivery_digest[:20]}"
+        if input_format == "svg"
+        else None
+    )
+    published_source = (
+        _svg_with_delivery_marker(rendered_source, delivery_marker)
+        if delivery_marker
+        else rendered_source
+    )
     source_name = f".loopx-explore-{sink_key}-{delivery_digest[:12]}.{extension}"
     command = [
         config.cli_bin,
@@ -664,7 +771,7 @@ def sync_explore_visual_to_lark(
     else:
         config_path.parent.mkdir(parents=True, exist_ok=True)
         source_path = config_path.parent / source_name
-        source_path.write_text(rendered_source, encoding="utf-8")
+        source_path.write_text(published_source, encoding="utf-8")
         try:
             result = _run_command(
                 command,
@@ -674,12 +781,44 @@ def sync_explore_visual_to_lark(
             )
         finally:
             source_path.unlink(missing_ok=True)
+    readback: dict[str, Any] = {
+        "ok": True,
+        "schema_version": "loopx_lark_explore_visual_readback_v0",
+        "performed": False,
+        "verified": False,
+        "source": (
+            "not_required"
+            if not delivery_marker
+            else "would_query_whiteboard_raw_nodes"
+        ),
+        "expected_marker": delivery_marker,
+        "observed_marker": None,
+        "error": None,
+    }
+    if execute and result.get("ok") and delivery_marker:
+        readback = _readback_svg_delivery_marker(
+            config,
+            whiteboard_token=whiteboard_token,
+            marker=delivery_marker,
+            runner=runner,
+        )
+    delivery_ok = bool(
+        result.get("ok") and (not delivery_marker or readback.get("ok"))
+    )
     return {
-        "ok": bool(result.get("ok")),
+        "ok": delivery_ok,
         "schema_version": LARK_EXPLORE_VISUAL_SYNC_VERSION,
-        "status": "published" if execute and result.get("ok") else "would_publish" if not execute else "publish_failed",
+        "status": (
+            "published"
+            if execute and delivery_ok
+            else "would_publish"
+            if not execute
+            else "publish_unverified"
+            if result.get("ok") and delivery_marker
+            else "publish_failed"
+        ),
         "execute": execute,
-        "published": bool(execute and result.get("ok")),
+        "published": bool(execute and delivery_ok),
         "semantic_digest": semantic_digest,
         "delivery_digest": delivery_digest,
         "source_digest": source_digest,
@@ -691,7 +830,14 @@ def sync_explore_visual_to_lark(
         "graph_counts": graph.get("graph_counts"),
         "filter": graph.get("filter"),
         "command": result,
-        "error": None if result.get("ok") else _command_error(result),
+        "readback": readback,
+        "error": (
+            None
+            if delivery_ok
+            else str(readback.get("error") or "")
+            if result.get("ok")
+            else _command_error(result)
+        ),
     }
 
 
@@ -744,7 +890,10 @@ def sync_explore_visuals_to_lark(
                 "atlas_column_count": max(
                     1,
                     int(role_sink.get("atlas_column_count") or 1),
-                )
+                ),
+                "board_stage_capacity": int(
+                    role_sink.get("stage_capacity") or 12
+                ),
             },
         )
         results[role] = sync_explore_visual_to_lark(
