@@ -226,6 +226,21 @@ path, and canary route rather than as a user-facing release baseline.
   preserving compatibility imports and restoring the full-public smoke shard
   (#1961, #1968, #1970, #1972). No persisted-state migration is required;
   Explore execution and visual sinks remain explicit opt-ins.
+- `v0.2.3` on 2026-07-13: control-plane truthfulness and maintainer-surface
+  release at the matching `v0.2.3` tag. LoopX adds a provider-neutral
+  model-behavior qualification contract with public-safe corpus and decision
+  receipts plus an optional direct provider actor (#1994, #1998-#1999, #2001,
+  #2003). Optional capability discovery and the Lark event inbox/collector
+  become clearer product surfaces without adding mandatory first-run
+  configuration (#1978, #1986, #1997, #2000). Monitor, todo, quota, and vision
+  routing now preserve capabilities and attribution, prefer advancement over
+  stale monitor pressure, keep future waits quiet, and correlate material
+  transition receipts (#1989-#1993, #2008, #2011, #2013-#2015). Explore graph
+  activation now respects run-scoped sink authority (#1995, #2016), while
+  deterministic update notes and project governance make the public repository
+  easier to maintain (#1983, #1996, #2012). No persisted-state migration is
+  required; optional provider, Lark, semantic-preference, and Explore surfaces
+  remain opt-in.
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.
