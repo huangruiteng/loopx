@@ -100,6 +100,62 @@ def _complex_projection() -> dict[str, object]:
     }
 
 
+def _lane_projection() -> dict[str, object]:
+    nodes = [
+        {
+            **_node("root", status="exploring"),
+            "title": "Public Explore pilot",
+            "node_kind": "area",
+        },
+        {
+            **_node(
+                "delivery-lane",
+                parent_id="root",
+                status="exploring",
+                tags=["lane-delivery"],
+            ),
+            "title": "Delivery lane",
+            "node_kind": "area",
+        },
+        {
+            **_node(
+                "capability-lane",
+                parent_id="root",
+                status="exploring",
+                tags=["lane-capability"],
+            ),
+            "title": "Capability lane",
+            "node_kind": "area",
+        },
+        _node(
+            "fix-pr", parent_id="delivery-lane", status="exploring", tags=["open-pr"]
+        ),
+        _node("durable-capability", parent_id="capability-lane", status="resolved"),
+    ]
+    edges = [
+        {
+            "edge_id": "edge-fix-supports-capability",
+            "from_node": "fix-pr",
+            "to_node": "durable-capability",
+            "edge_type": "supports",
+        },
+        {
+            "edge_id": "edge-fix-subtopic",
+            "from_node": "fix-pr",
+            "to_node": "delivery-lane",
+            "edge_type": "subtopic_of",
+        },
+    ]
+    return {
+        "ok": True,
+        "goal_id": "goal-public-fixture",
+        "source_event_count": len(nodes) + len(edges),
+        "nodes": nodes,
+        "edges": edges,
+        "findings": [],
+    }
+
+
 def test_small_graph_keeps_canonical_only_and_complete() -> None:
     projection = _small_projection()
 
@@ -175,14 +231,20 @@ def test_both_views_render_status_metric_and_conclusion_from_node_summary() -> N
         assert "Retain as incumbent with calibration as a guardrail" in view["mermaid"]
         assert "+31.2/+72.4 bp" in view["svg"]
         assert "Retain as incumbent with calibration as a guardrail" in view["svg"]
+        assert "+31.2/+72.4 bp" in view["svg_board"]
+        assert "Retain as incumbent with calibration as a guardrail" in view["svg_board"]
         mermaid_coverage = view["filter"]["layout"]["node_detail_coverage"]
         svg_coverage = view["filter"]["renderer_layouts"]["svg_atlas"][
+            "node_detail_coverage"
+        ]
+        board_coverage = view["filter"]["renderer_layouts"]["svg_board"][
             "node_detail_coverage"
         ]
         assert mermaid_coverage["complete"] is True
         assert mermaid_coverage["summary_rendered_node_count"] == 1
         assert mermaid_coverage["metric_rendered_node_count"] == 1
         assert svg_coverage == mermaid_coverage
+        assert board_coverage == mermaid_coverage
 
 
 def test_flat_large_graph_is_classified_as_a_readability_failure() -> None:
@@ -233,6 +295,31 @@ def test_svg_atlas_owns_a_fixed_grid_and_keeps_executive_nodes_visible() -> None
     assert layout["rendered_relation_count"] == layout["group_count"] - 1
     for node in executive["nodes"]:
         assert str(node["title"]) in svg
+
+
+def test_svg_board_preserves_lanes_frontier_and_real_relations() -> None:
+    bundle = build_explore_presentation_bundle(_lane_projection())
+
+    canonical = bundle["canonical"]
+    svg = canonical["svg_board"]
+    layout = canonical["filter"]["renderer_layouts"]["svg_board"]
+    assert svg.startswith('<svg xmlns="http://www.w3.org/2000/svg"')
+    assert "Live Explore Decision Board" in svg
+    assert "Epoch" not in svg
+    assert 'data-lane-id="delivery-lane"' in svg
+    assert 'data-lane-id="capability-lane"' in svg
+    assert 'data-node-id="fix-pr"' in svg
+    assert 'data-frontier="true"' in svg
+    assert 'data-edge-id="edge-fix-supports-capability"' in svg
+    assert 'data-edge-id="edge-fix-subtopic"' not in svg
+    assert layout["strategy"] == "semantic_lane_decision_board"
+    assert layout["lane_count"] == 2
+    assert layout["frontier_node_count"] == 1
+    assert layout["rendered_relation_count"] == 1
+    assert layout["cross_lane_relation_count"] == 1
+    assert layout["suppressed_relation_count"] == 1
+    assert layout["source_edge_count"] == 2
+    assert layout["semantic_contract"]["chronological_buckets"] is False
 
 
 def test_executive_view_suppresses_dense_hub_scaffolding_edges() -> None:
@@ -348,6 +435,13 @@ def test_svg_atlas_configuration_requires_an_explicit_view_role(tmp_path) -> Non
             config_path=config_path,
             whiteboard_token="wb_legacy_fixture",
             renderer="svg_atlas",
+        )
+
+    with pytest.raises(ValueError, match="requires a canonical or executive"):
+        configure_lark_explore_visual_sink(
+            config_path=config_path,
+            whiteboard_token="wb_legacy_fixture",
+            renderer="svg_board",
         )
 
 
@@ -493,11 +587,29 @@ def test_visual_delivery_digest_and_command_include_renderer(tmp_path) -> None:
         display_projection=view,
         view_key="executive",
     )
+    board = sync_explore_visual_to_lark(
+        config,
+        projection=projection,
+        visual_sink={
+            "whiteboard_token": "wb_executive_fixture",
+            "view_role": "executive",
+            "renderer": "svg_board",
+        },
+        config_path=tmp_path / "lark-explore.json",
+        semantic_digest=bundle["source_digest"],
+        display_projection=view,
+        view_key="executive",
+    )
 
-    assert mermaid["source_digest"] == svg["source_digest"]
+    assert mermaid["source_digest"] == svg["source_digest"] == board["source_digest"]
     assert mermaid["delivery_digest"] != svg["delivery_digest"]
+    assert board["delivery_digest"] not in {
+        mermaid["delivery_digest"],
+        svg["delivery_digest"],
+    }
     assert mermaid["input_format"] == "mermaid"
     assert svg["input_format"] == "svg"
+    assert board["input_format"] == "svg"
 
 
 def test_visual_delivery_digest_changes_when_target_whiteboard_changes(tmp_path) -> None:
