@@ -2110,13 +2110,14 @@ def sync_loopx_todos_to_lark_kanban(
         outcome_projection,
         None,
     )
+    outcome_source_count = len(outcome_projection.get("issue_fix_outcomes") or [])
     _, outcome_rows, outcome_row_warnings = _projection_rows_from_payload(
         outcome_projection,
         goal_id=goal_id,
         agent_id=agent_id,
         source_id=outcome_source_id,
         include_done=True,
-        limit=limit,
+        limit=outcome_source_count,
     )
     outcome_warnings = [
         *outcome_namespace_warnings,
@@ -2219,6 +2220,9 @@ def sync_loopx_todos_to_lark_kanban(
         "state_file": str(resolved_state_file),
         "todo_count": len(todos),
         "issue_fix_outcome_count": len(outcome_rows),
+        "limit_policy": {
+            "todo_rows": limit, "issue_fix_outcomes": "complete_source_projection",
+        },
         "issue_fix_source_counts": outcome_projection.get("source_counts"),
         "warnings": outcome_warnings,
         "records": results,
