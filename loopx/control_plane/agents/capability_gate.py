@@ -113,6 +113,21 @@ def available_capabilities_with_defaults(value: Any) -> list[str]:
     return capabilities
 
 
+def missing_required_capabilities(
+    item: dict[str, Any],
+    *,
+    available_capabilities: Any,
+) -> list[str]:
+    available = set(available_capabilities_with_defaults(available_capabilities))
+    required = normalize_required_capabilities(item.get("required_capabilities"))
+    targets = set(normalize_target_capabilities(item.get("target_capabilities")))
+    return [
+        capability
+        for capability in required
+        if capability not in targets and capability not in available
+    ]
+
+
 def _capability_candidate_item(
     item: dict[str, Any],
     *,
@@ -262,12 +277,10 @@ def build_capability_gate(
         targets = normalize_target_capabilities(item.get("target_capabilities"))
         if required or targets:
             saw_requirement = True
-        hard_required = [
-            capability for capability in required if capability not in targets
-        ]
-        missing = [
-            capability for capability in hard_required if capability not in available
-        ]
+        missing = missing_required_capabilities(
+            item,
+            available_capabilities=available,
+        )
         missing_targets = [
             capability for capability in targets if capability not in available
         ]

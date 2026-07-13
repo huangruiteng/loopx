@@ -7,6 +7,7 @@ from ..agents.agent_scope import (
     _agent_scope_filter_user_gate_items,
     _agent_scope_selectable_todo_item,
 )
+from ..agents.capability_gate import missing_required_capabilities
 from .claim_visibility import (
     build_agent_claim_scoped_open_items,
     build_todo_claim_visibility_lanes,
@@ -55,6 +56,8 @@ QUOTA_PAYLOAD_ITEM_FIELDS = (
     "task_class",
     "action_kind",
     "continuation_policy",
+    "required_capabilities",
+    "missing_capabilities",
     "claimed_by",
     "blocks_agent",
     "excluded_agents",
@@ -85,6 +88,7 @@ QUOTA_PAYLOAD_ITEM_FIELDS = (
 )
 QUOTA_PAYLOAD_LANE_LIMITS = {
     "monitor_due_items": MONITOR_DUE_ITEM_LIMIT,
+    "monitor_capability_blocked_due_items": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
     "monitor_schedule_gap_items": MONITOR_DUE_ITEM_LIMIT,
     "first_open_items": 3,
     "first_executable_items": 3,
@@ -122,6 +126,7 @@ class _QuotaTodoLanes:
     executable_items: list[dict[str, Any]]
     monitor_items: list[dict[str, Any]]
     monitor_due_items: list[dict[str, Any]]
+    monitor_capability_blocked_due_items: list[dict[str, Any]]
     claimed_open_items: list[dict[str, Any]]
     display_open_items: list[dict[str, Any]]
     active_next_action_items: list[dict[str, Any]]
@@ -136,6 +141,7 @@ def _build_quota_todo_lanes(
     source_open_count: Any,
     agent_identity: dict[str, Any] | None,
     filter_user_gate_blocks_agent: bool,
+    available_capabilities: Any,
 ) -> _QuotaTodoLanes:
     blocking_open_items = all_open_items
     user_action_open_items: list[dict[str, Any]] = []
@@ -173,7 +179,7 @@ def _build_quota_todo_lanes(
         if todo_item_is_actionable_open(item)
         if todo_item_task_class(item) == TODO_TASK_CLASS_MONITOR
     ]
-    monitor_due_items = (
+    monitor_due_candidates = (
         [
             item
             for item in monitor_items
@@ -183,6 +189,22 @@ def _build_quota_todo_lanes(
         if todo_summary_monitor_writeback_supported(value)
         else []
     )
+    monitor_due_items: list[dict[str, Any]] = []
+    monitor_capability_blocked_due_items: list[dict[str, Any]] = []
+    for item in monitor_due_candidates:
+        missing = missing_required_capabilities(
+            item,
+            available_capabilities=available_capabilities,
+        )
+        if missing:
+            diagnostic_item = compact_todo_summary_item(
+                item,
+                text=str(item.get("text") or "").strip(),
+            )
+            diagnostic_item["missing_capabilities"] = missing
+            monitor_capability_blocked_due_items.append(diagnostic_item)
+            continue
+        monitor_due_items.append(item)
     active_next_action_items = (
         [
             compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
@@ -219,6 +241,7 @@ def _build_quota_todo_lanes(
         executable_items=executable_items,
         monitor_items=monitor_items,
         monitor_due_items=monitor_due_items,
+        monitor_capability_blocked_due_items=monitor_capability_blocked_due_items,
         claimed_open_items=[
             item for item in blocking_open_items if item.get("claimed_by")
         ],
@@ -238,6 +261,7 @@ def summarize_user_todos_for_quota(
     *,
     agent_identity: dict[str, Any] | None = None,
     filter_user_gate_blocks_agent: bool = False,
+    available_capabilities: Any = None,
 ) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
@@ -251,6 +275,7 @@ def summarize_user_todos_for_quota(
         source_open_count=value.get("open_count", len(all_open_items)),
         agent_identity=agent_identity,
         filter_user_gate_blocks_agent=filter_user_gate_blocks_agent,
+        available_capabilities=available_capabilities,
     )
     monitor_schedule_gap_items = todo_summary_monitor_schedule_gap_items(
         {
@@ -275,6 +300,14 @@ def summarize_user_todos_for_quota(
         "monitor_open_items": lanes.monitor_items,
         "monitor_due_count": len(lanes.monitor_due_items),
         "monitor_due_items": lanes.monitor_due_items[:MONITOR_DUE_ITEM_LIMIT],
+        "monitor_capability_blocked_due_count": len(
+            lanes.monitor_capability_blocked_due_items
+        ),
+        "monitor_capability_blocked_due_items": (
+            lanes.monitor_capability_blocked_due_items[
+                :QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT
+            ]
+        ),
         "monitor_schedule_gap_count": len(monitor_schedule_gap_items),
         "monitor_schedule_gap_items": monitor_schedule_gap_items[:MONITOR_DUE_ITEM_LIMIT],
         "active_next_action_items": lanes.active_next_action_items,
@@ -463,6 +496,7 @@ def summarize_project_asset_todos_for_quota(
     *,
     agent_identity: dict[str, Any] | None = None,
     filter_user_gate_blocks_agent: bool = False,
+    available_capabilities: Any = None,
 ) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
@@ -476,6 +510,7 @@ def summarize_project_asset_todos_for_quota(
             value,
             agent_identity=agent_identity,
             filter_user_gate_blocks_agent=filter_user_gate_blocks_agent,
+            available_capabilities=available_capabilities,
         )
 
     all_open_items = sorted(
@@ -495,6 +530,7 @@ def summarize_project_asset_todos_for_quota(
         source_open_count=value.get("open", value.get("open_count", len(all_open_items))),
         agent_identity=agent_identity,
         filter_user_gate_blocks_agent=filter_user_gate_blocks_agent,
+        available_capabilities=available_capabilities,
     )
     summary = {
         "schema_version": value.get("schema_version"),
@@ -507,6 +543,14 @@ def summarize_project_asset_todos_for_quota(
         "monitor_open_items": lanes.monitor_items,
         "monitor_due_count": len(lanes.monitor_due_items),
         "monitor_due_items": lanes.monitor_due_items[:MONITOR_DUE_ITEM_LIMIT],
+        "monitor_capability_blocked_due_count": len(
+            lanes.monitor_capability_blocked_due_items
+        ),
+        "monitor_capability_blocked_due_items": (
+            lanes.monitor_capability_blocked_due_items[
+                :QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT
+            ]
+        ),
         "active_next_action_items": lanes.active_next_action_items,
         "active_next_action_executable_items": lanes.active_next_action_executable_items,
         "backlog_items": lanes.display_open_items[:TODO_BACKLOG_ITEM_LIMIT],
@@ -605,11 +649,13 @@ def select_quota_todo_summary(
         canonical_value,
         agent_identity=agent_identity,
         filter_user_gate_blocks_agent=filter_user_gate_blocks_agent,
+        available_capabilities=available_capabilities,
     )
     project_asset_summary = summarize_project_asset_todos_for_quota(
         project_asset_value,
         agent_identity=agent_identity,
         filter_user_gate_blocks_agent=filter_user_gate_blocks_agent,
+        available_capabilities=available_capabilities,
     )
     if is_canonical_attention_todo_summary(canonical_value):
         return canonical_summary or project_asset_summary

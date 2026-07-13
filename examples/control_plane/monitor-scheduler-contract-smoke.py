@@ -78,6 +78,7 @@ def monitor_item(
     claimed_by: str | None = AGENT_ID,
     expires_at: str | None = None,
     last_checked_at: str | None = None,
+    required_capabilities: list[str] | None = None,
 ) -> dict:
     item = {
         "index": index,
@@ -100,6 +101,8 @@ def monitor_item(
         item["expires_at"] = expires_at
     if last_checked_at:
         item["last_checked_at"] = last_checked_at
+    if required_capabilities:
+        item["required_capabilities"] = required_capabilities
     return item
 
 
@@ -157,6 +160,7 @@ def guard_for(
     latest_runs: list[dict] | None = None,
     include_scheduler_detail: bool = False,
     now: datetime = FROZEN_NOW,
+    available_capabilities: list[str] | None = None,
 ) -> dict:
     original_scheduler_now = scheduler_hint_module.now_utc
     original_monitor_now = monitor_todo_module.now_utc
@@ -171,6 +175,7 @@ def guard_for(
             ),
             goal_id=GOAL_ID,
             agent_id=agent_id,
+            available_capabilities=available_capabilities,
             include_scheduler_detail=include_scheduler_detail,
         )
     finally:
@@ -427,6 +432,48 @@ def assert_due_monitor_requires_explicit_attempt() -> None:
     assert lane["selected_todo_id"] == "todo_monitor_due", lane
     assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is True, guard
     assert guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is False, guard
+
+
+def assert_due_monitor_requires_available_capabilities() -> None:
+    item = monitor_item(
+        index=1,
+        todo_id="todo_private_read_monitor_due",
+        priority="P0",
+        next_due_at=PAST_DUE_AT,
+        target_key="private-source-watch",
+        required_capabilities=["private_read"],
+    )
+    blocked_guard = guard_for([item])
+    blocked_summary = blocked_guard["agent_todo_summary"]
+    blocked_lane = blocked_guard.get("work_lane_contract") or {}
+    assert blocked_guard["decision"] == "skip", blocked_guard
+    assert blocked_guard["effective_action"] == "monitor_quiet_skip", blocked_guard
+    assert blocked_summary["monitor_due_count"] == 0, blocked_summary
+    assert blocked_summary["monitor_open_items"][0]["todo_id"] == item["todo_id"], blocked_summary
+    assert blocked_summary["monitor_capability_blocked_due_count"] == 1, blocked_summary
+    blocked_item = blocked_summary["monitor_capability_blocked_due_items"][0]
+    assert blocked_item["todo_id"] == item["todo_id"], blocked_item
+    assert blocked_item["required_capabilities"] == ["private_read"], blocked_item
+    assert blocked_item["missing_capabilities"] == ["private_read"], blocked_item
+    assert blocked_lane.get("selected_todo_id") != item["todo_id"], blocked_lane
+    assert blocked_guard["interaction_contract"]["agent_channel"]["must_attempt"] is False, blocked_guard
+
+    excluded_guard = guard_for([{**item, "excluded_agents": [AGENT_ID]}])
+    excluded_summary = excluded_guard["agent_todo_summary"]
+    excluded_scope = excluded_summary["claim_scope"]
+    assert excluded_summary["monitor_due_count"] == 0, excluded_summary
+    assert excluded_summary["monitor_capability_blocked_due_count"] == 0, excluded_summary
+    assert excluded_scope["executor_excluded_self_count"] == 1, excluded_scope
+    assert excluded_scope["executor_excluded_self_items"][0]["todo_id"] == item["todo_id"], excluded_scope
+
+    runnable_guard = guard_for([item], available_capabilities=["private_read"])
+    runnable_lane = runnable_guard["work_lane_contract"]
+    assert runnable_guard["decision"] == "run", runnable_guard
+    assert runnable_guard["effective_action"] == "normal_run", runnable_guard
+    assert runnable_guard["agent_todo_summary"]["monitor_due_count"] == 1, runnable_guard
+    assert runnable_guard["agent_todo_summary"]["monitor_capability_blocked_due_count"] == 0, runnable_guard
+    assert runnable_lane["selected_todo_id"] == item["todo_id"], runnable_lane
+    assert runnable_lane["obligation"] == "attempt_due_monitor", runnable_lane
 
 
 def assert_expired_monitor_does_not_catch_up() -> None:
@@ -729,6 +776,7 @@ def main() -> int:
     assert_unscheduled_monitor_requires_metadata_repair()
     assert_unscheduled_monitor_repair_survives_handoff_gates()
     assert_due_monitor_requires_explicit_attempt()
+    assert_due_monitor_requires_available_capabilities()
     assert_expired_monitor_does_not_catch_up()
     assert_due_monitor_priority_does_not_steal_advancement_lane()
     assert_capability_skip_yields_to_monitor_schedule_repair()
