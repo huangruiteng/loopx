@@ -70,6 +70,7 @@ def write_fixture(
     include_user_gate: bool = False,
     include_advancement: bool = False,
     primary_monitor_priority: str = "P0",
+    monitor_required_capabilities: tuple[str, ...] = (),
 ) -> tuple[Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
@@ -80,6 +81,11 @@ def write_fixture(
     monitor_metadata = (
         f"target_key={selected_target_key} "
         if selected_target_key
+        else ""
+    )
+    monitor_capability_metadata = (
+        f"required_capabilities={','.join(monitor_required_capabilities)} "
+        if monitor_required_capabilities
         else ""
     )
     other_monitor = (
@@ -152,6 +158,7 @@ def write_fixture(
         "status=open "
         "task_class=continuous_monitor "
         "action_kind=poll "
+        f"{monitor_capability_metadata}"
         f"claimed_by={AGENT_ID} "
         f"{monitor_metadata}"
         "cadence=15m "
@@ -620,6 +627,104 @@ def assert_compacted_auxiliary_due_monitor_can_write_back() -> None:
         assert other["next_due_at"] != "2026-01-01T00:00:00+00:00", other
 
 
+def assert_capability_gated_monitor_poll_requires_declaration_parity() -> None:
+    capabilities = ("network", "external_evidence_poll")
+    capability_args = tuple(
+        arg
+        for capability in capabilities
+        for arg in ("--available-capability", capability)
+    )
+    with tempfile.TemporaryDirectory(prefix="loopx-monitor-poll-capability-parity-") as tmp:
+        registry_path, state_file = write_fixture(
+            Path(tmp),
+            monitor_required_capabilities=capabilities,
+        )
+
+        should_run = run_cli(
+            registry_path,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+            *capability_args,
+        )
+        assert should_run["work_lane_contract"]["obligation"] == "attempt_due_monitor", should_run
+
+        failure = run_cli_expect_error(
+            registry_path,
+            "quota",
+            "monitor-poll",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+            "--todo-id",
+            TODO_ID,
+            "--target-key",
+            TARGET_KEY,
+            "--result-hash",
+            "old",
+        )
+        assert "monitor-poll recomputes should-run" in failure["reason"], failure
+        retry = failure["capability_retry"]
+        assert retry["missing"] == list(capabilities), retry
+        assert retry["cli_args"] == list(capability_args), retry
+
+        option_failure = run_cli_expect_error(
+            registry_path,
+            "quota",
+            "monitor-poll",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+            "--material-change",
+        )
+        assert "capability_retry" not in option_failure, option_failure
+
+        success = run_cli(
+            registry_path,
+            "quota",
+            "monitor-poll",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+            *capability_args,
+            "--todo-id",
+            TODO_ID,
+            "--target-key",
+            TARGET_KEY,
+            "--result-hash",
+            "old",
+        )
+        assert success["ok"] is True, success
+        assert success["before"]["work_lane_contract"]["obligation"] == "attempt_due_monitor", success
+        assert success["todo_writeback"]["todo_id"] == TODO_ID, success
+        assert find_todo(state_file, TODO_ID)["consecutive_no_change"] == "1"
+
+
+def assert_cli_help_names_capability_sensitive_commands() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "loopx.cli", "quota", "--help"],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    option_help = result.stdout[result.stdout.index("--available-capability") :]
+    for command in (
+        "quota should-run",
+        "quota monitor-poll",
+        "quota scheduler-ack",
+        "quota scheduler-ack-current",
+        "quota spend-slot",
+    ):
+        assert command in option_help, (command, option_help)
+
+
 def assert_writeback_helper_preview_contract() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-monitor-poll-helper-parity-") as tmp:
         registry_path, _state_file = write_fixture(Path(tmp))
@@ -721,6 +826,7 @@ def assert_cli_monitor_poll_uses_should_run_lookback() -> None:
 
 
 def main() -> int:
+    assert_cli_help_names_capability_sensitive_commands()
     assert_cli_monitor_poll_uses_should_run_lookback()
     assert_writeback_helper_preview_contract()
     assert_unchanged_writeback()
@@ -729,6 +835,7 @@ def main() -> int:
     assert_due_monitor_poll_allowed_with_open_user_gate()
     assert_target_key_cannot_hijack_selected_due_monitor()
     assert_compacted_auxiliary_due_monitor_can_write_back()
+    assert_capability_gated_monitor_poll_requires_declaration_parity()
     return 0
 
 

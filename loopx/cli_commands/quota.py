@@ -73,9 +73,11 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         dest="available_capabilities",
         action="append",
         help=(
-            "For `quota should-run` and `quota spend-slot`, declare a capability "
-            "available in this current agent environment. Repeat for multiple "
-            "capabilities; basic local shell/filesystem capabilities are assumed."
+            "For `quota should-run`, `quota monitor-poll`, `quota scheduler-ack`, "
+            "`quota scheduler-ack-current`, and `quota spend-slot`, declare a "
+            "capability available in this current agent environment. Repeat the "
+            "same declarations for commands that recompute should-run; basic local "
+            "shell/filesystem capabilities are assumed."
         ),
     )
     quota_parser.add_argument(
