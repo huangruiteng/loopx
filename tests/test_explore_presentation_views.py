@@ -27,6 +27,7 @@ def _node(
     parent_id: str = "",
     status: str = "resolved",
     tags: list[str] | None = None,
+    summary: str = "",
 ) -> dict[str, object]:
     return {
         "node_id": node_id,
@@ -35,6 +36,7 @@ def _node(
         "status": status,
         "parent_id": parent_id,
         "tags": tags or [],
+        "summary": summary,
     }
 
 
@@ -147,6 +149,40 @@ def test_complex_graph_recommends_traceable_dual_view() -> None:
         assert node["source_node_id"] in canonical_ids
         assert node["lineage"][-1] == node["source_node_id"]
     assert bundle["assessment"]["canonical_truncation_allowed"] is False
+
+
+def test_both_views_render_status_metric_and_conclusion_from_node_summary() -> None:
+    projection = _small_projection()
+    projection["nodes"][1].update(
+        {
+            "title": "candidate_model_abc1234 with a deliberately long descriptive title",
+            "status": "resolved",
+            "summary": (
+                "Aligned evaluation completed with stable sample parity. "
+                "Target slice is +31.2/+72.4 bp and composite +51.8 bp; "
+                "guardrail slice is -1.2 bp. "
+                "Retain as incumbent with calibration as a guardrail."
+            ),
+        }
+    )
+
+    bundle = build_explore_presentation_bundle(projection)
+
+    for role in ("canonical", "executive"):
+        view = bundle[role]
+        assert "candidate_model_abc1234 with a deliberately long descriptive… · DONE" in view["mermaid"]
+        assert "+31.2/+72.4 bp" in view["mermaid"]
+        assert "Retain as incumbent with calibration as a guardrail" in view["mermaid"]
+        assert "+31.2/+72.4 bp" in view["svg"]
+        assert "Retain as incumbent with calibration as a guardrail" in view["svg"]
+        mermaid_coverage = view["filter"]["layout"]["node_detail_coverage"]
+        svg_coverage = view["filter"]["renderer_layouts"]["svg_atlas"][
+            "node_detail_coverage"
+        ]
+        assert mermaid_coverage["complete"] is True
+        assert mermaid_coverage["summary_rendered_node_count"] == 1
+        assert mermaid_coverage["metric_rendered_node_count"] == 1
+        assert svg_coverage == mermaid_coverage
 
 
 def test_flat_large_graph_is_classified_as_a_readability_failure() -> None:

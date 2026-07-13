@@ -165,9 +165,113 @@ def _mermaid_id(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "_", str(value))
 
 
-def _mermaid_label(value: str) -> str:
+def _mermaid_label(value: str, *, limit: int = 60) -> str:
     cleaned = re.sub(r'["\[\]{}<>`|]', "'", str(value or ""))
-    return cleaned[:60].strip() or "untitled"
+    return _truncate_display(cleaned, limit=limit) or "untitled"
+
+
+_METRIC_SIGNAL = re.compile(
+    r"(?:"
+    r"[+-]\s*\d+(?:\.\d+)?"
+    r"|\d+(?:\.\d+)?\s*/\s*[+-]?\s*\d+(?:\.\d+)?"
+    r"|\d+(?:\.\d+)?\s*(?:bp|bps|%|ms|sec|secs|seconds?|x|×)\b"
+    r")",
+    flags=re.IGNORECASE,
+)
+
+_NODE_STATUS_LABEL = {
+    "open": "OPEN",
+    "exploring": "ACTIVE",
+    "blocked": "BLOCKED",
+    "resolved": "DONE",
+    "dead_end": "NO-PROMOTE",
+}
+
+
+def _summary_clauses(value: str) -> list[str]:
+    normalized = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not normalized:
+        return []
+    return [
+        clause.strip(" .;。；")
+        for clause in re.split(r"(?<=[!?。！？；;])\s*|(?<=\.)\s+", normalized)
+        if clause.strip(" .;。；")
+    ]
+
+
+def _compact_detail_clause(value: str, *, limit: int) -> str:
+    """Keep a metric-bearing portion visible when a long clause is compacted."""
+
+    normalized = re.sub(r"\s+", " ", str(value or "")).strip()
+    metric = _METRIC_SIGNAL.search(normalized)
+    if metric and _display_width(normalized) > limit:
+        context_width = max(18, limit // 3)
+        prefix = normalized[: metric.start()].rstrip()
+        metric_and_tail = normalized[metric.start() :]
+        if _display_width(prefix) > context_width:
+            prefix = "…" + _tail_display(prefix, limit=context_width - 1)
+        normalized = f"{prefix} {metric_and_tail}".strip()
+    return _truncate_display(normalized, limit=limit)
+
+
+def _node_decision_lines(
+    node: Mapping[str, Any],
+    *,
+    detail_limit: int,
+) -> list[str]:
+    """Project one metric-bearing evidence line and one conclusion line."""
+
+    clauses = _summary_clauses(str(node.get("summary") or ""))
+    if not clauses:
+        return []
+    metric_clause = next((clause for clause in clauses if _METRIC_SIGNAL.search(clause)), None)
+    selected = []
+    if metric_clause:
+        selected.append(metric_clause)
+    else:
+        selected.append(clauses[0])
+    if clauses[-1] != selected[0]:
+        selected.append(clauses[-1])
+    return [
+        _compact_detail_clause(clause, limit=detail_limit)
+        for clause in selected[:2]
+    ]
+
+
+def _node_display_lines(
+    node: Mapping[str, Any],
+    *,
+    title_limit: int,
+    detail_limit: int,
+) -> list[str]:
+    status = str(node.get("status") or "open")
+    title = _truncate_display(
+        str(node.get("title") or node.get("node_id") or "untitled"),
+        limit=title_limit,
+    )
+    header = f"{title} · {_NODE_STATUS_LABEL.get(status, status.upper())}"
+    return [header, *_node_decision_lines(node, detail_limit=detail_limit)]
+
+
+def _node_detail_coverage(nodes: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    summary_nodes = [node for node in nodes if str(node.get("summary") or "").strip()]
+    rendered = [node for node in summary_nodes if _node_decision_lines(node, detail_limit=112)]
+    metric_nodes = [
+        node for node in summary_nodes if _METRIC_SIGNAL.search(str(node.get("summary") or ""))
+    ]
+    rendered_metric_nodes = [
+        node
+        for node in metric_nodes
+        if _METRIC_SIGNAL.search(" ".join(_node_decision_lines(node, detail_limit=112)))
+    ]
+    complete = len(rendered) == len(summary_nodes) and len(rendered_metric_nodes) == len(metric_nodes)
+    return {
+        "summary_eligible_node_count": len(summary_nodes),
+        "summary_rendered_node_count": len(rendered),
+        "metric_eligible_node_count": len(metric_nodes),
+        "metric_rendered_node_count": len(rendered_metric_nodes),
+        "complete": complete,
+    }
 
 
 def _canonical_group_specs(
@@ -225,6 +329,9 @@ def build_vertical_explore_mermaid(
 
     node_by_id = {str(node.get("node_id") or ""): node for node in node_list}
     shown_ids = set(node_by_id)
+    detail_coverage = _node_detail_coverage(node_list)
+    if not detail_coverage["complete"]:
+        raise ValueError("Explore node detail projection lost summary or metric evidence")
     flow_direction = "LR" if multi_column else "TB"
     lines = [
         f"flowchart {flow_direction}",
@@ -240,12 +347,14 @@ def build_vertical_explore_mermaid(
         for node_id in group["node_ids"]:
             node = node_by_id[node_id]
             status = str(node.get("status") or "open")
-            marker = {
-                "blocked": " (BLOCKED)",
-                "resolved": " (done)",
-                "dead_end": " (dead end)",
-            }.get(status, "")
-            label = _mermaid_label(f"{node.get('title')}{marker}")
+            label = "<br/>".join(
+                _mermaid_label(line, limit=112)
+                for line in _node_display_lines(
+                    node,
+                    title_limit=64,
+                    detail_limit=112,
+                )
+            )
             mermaid_id = _mermaid_id(node_id)
             chain.append(mermaid_id)
             lines.append(
@@ -293,6 +402,7 @@ def build_vertical_explore_mermaid(
         "column_count": columns,
         "orientation": "left_to_right" if multi_column else "top_to_bottom",
         "max_group_node_count": group_limit,
+        "node_detail_coverage": detail_coverage,
     }
 
 
@@ -327,7 +437,39 @@ def _truncate_display(value: str, *, limit: int) -> str:
             break
         result.append(character)
         width += character_width
-    return "".join(result).rstrip() + "…"
+    truncated = "".join(result).rstrip()
+    if (
+        truncated
+        and len(truncated) < len(cleaned)
+        and truncated[-1].isascii()
+        and truncated[-1].isalnum()
+        and cleaned[len(truncated)].isascii()
+        and cleaned[len(truncated)].isalnum()
+    ):
+        boundary = truncated.rfind(" ")
+        if boundary >= max(1, len(truncated) // 2):
+            truncated = truncated[:boundary].rstrip()
+    return truncated + "…"
+
+
+def _tail_display(value: str, *, limit: int) -> str:
+    cleaned = re.sub(r"\s+", " ", str(value or "")).strip()
+    if _display_width(cleaned) <= limit:
+        return cleaned
+    result = []
+    width = 0
+    for character in reversed(cleaned):
+        character_width = 2 if unicodedata.east_asian_width(character) in {"W", "F"} else 1
+        if width + character_width > limit:
+            break
+        result.append(character)
+        width += character_width
+    tail = "".join(reversed(result)).lstrip()
+    if tail and tail[0].isascii() and tail[0].isalnum():
+        boundary = tail.find(" ")
+        if 0 < boundary <= len(tail) // 2:
+            tail = tail[boundary + 1 :].lstrip()
+    return tail
 
 
 def build_explore_svg_atlas(
@@ -361,7 +503,7 @@ def build_explore_svg_atlas(
     card_width = (canvas_width - 2 * margin - (columns - 1) * column_gap) / columns
     item_columns = 2 if card_width >= 560 else 1
     item_gap = 12
-    item_height = 44
+    item_height = 90
     card_padding = 20
     card_header_height = 54
     item_rows = max(1, (group_limit + item_columns - 1) // item_columns)
@@ -379,6 +521,9 @@ def build_explore_svg_atlas(
 
     node_by_id = {str(node.get("node_id") or ""): node for node in node_list}
     visible_ids = set(node_by_id)
+    detail_coverage = _node_detail_coverage(node_list)
+    if not detail_coverage["complete"]:
+        raise ValueError("Explore node detail projection lost summary or metric evidence")
     visible_edge_count = sum(
         1
         for edge in edges
@@ -446,14 +591,22 @@ def build_explore_svg_atlas(
             item_y = y + card_header_height + card_padding + item_row * (item_height + 10)
             status = str(node.get("status") or "open")
             status_color = _ATLAS_STATUS_COLOR.get(status, "#9E9E9E")
-            label = _truncate_display(str(node.get("title") or node_id), limit=34)
+            display_lines = _node_display_lines(
+                node,
+                title_limit=68,
+                detail_limit=76,
+            )
             svg.extend(
                 [
                     f'<rect x="{item_x:.1f}" y="{item_y:.1f}" width="{item_width:.1f}" height="{item_height}" rx="8" fill="#FFFFFF" stroke="{border}" stroke-width="2"/>',
-                    f'<circle cx="{item_x + 15:.1f}" cy="{item_y + item_height / 2:.1f}" r="5" fill="{status_color}"/>',
-                    f'<text x="{item_x + 28:.1f}" y="{item_y + 27:.1f}" font-size="13" fill="#1F2329" font-family="Arial, PingFang SC, sans-serif">{html.escape(label)}</text>',
+                    f'<circle cx="{item_x + 15:.1f}" cy="{item_y + 21:.1f}" r="5" fill="{status_color}"/>',
+                    f'<text x="{item_x + 28:.1f}" y="{item_y + 25:.1f}" font-size="13" font-weight="600" fill="#1F2329" font-family="Arial, PingFang SC, sans-serif">{html.escape(display_lines[0])}</text>',
                 ]
             )
+            for detail_index, detail in enumerate(display_lines[1:3], start=1):
+                svg.append(
+                    f'<text x="{item_x + 28:.1f}" y="{item_y + 25 + detail_index * 23:.1f}" font-size="11" fill="#646A73" font-family="Arial, PingFang SC, sans-serif">{html.escape(detail)}</text>'
+                )
 
     svg.append(
         f'<text x="700" y="{canvas_height - 22:.1f}" text-anchor="middle" font-size="13" fill="#646A73" font-family="Arial, PingFang SC, sans-serif">Complete Nodes / Edges / Findings remain in the linked canonical result board.</text>'
@@ -470,6 +623,7 @@ def build_explore_svg_atlas(
         "max_group_node_count": group_limit,
         "rendered_relation_count": max(0, len(groups) - 1),
         "source_edge_count": visible_edge_count,
+        "node_detail_coverage": detail_coverage,
         "canvas_width": canvas_width,
         "canvas_height": round(canvas_height),
     }
