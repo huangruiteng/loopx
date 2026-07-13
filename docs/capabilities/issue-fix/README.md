@@ -446,13 +446,18 @@ treats issue-fix domain state and rollout events as facts, while the graph
 presents two connected stories even between PRs: repository delivery and
 reusable agent capability improvement.
 
-The canonical Base rows and the owner-facing Docx whiteboard are separate
+The canonical Base rows and owner-facing Docx stage boards are separate
 configured sinks. A project may place the Docx as a root-level resource in the
-same Base as the Kanban, then register its whiteboard with
-`loopx explore feishu-visual-configure`. Automatic sync records independent row
-and visual digests, so a successful row update can never be reported as visual
-publication. A failed whiteboard update remains runnable and retries without
-rewriting unchanged Nodes, Edges, or Findings.
+same Base as the Kanban, then register its first whiteboard and Docx token with
+`loopx explore feishu-visual-configure`. Every bounded Evidence Stage gets a
+matching document section and independent whiteboard. The issue-fix projection
+groups PR delivery and LoopX capability nodes into two lanes on each stage and
+draws their real cross-lane relations; a single-lane project remains a natural
+single-lane board. Capacity is configurable from 10 to 20, defaulting to 14.
+Automatic sync records independent row and visual digests, so a successful row
+update can never be reported as visual publication. A failed stage-board update
+remains runnable and retries without rewriting unchanged Nodes, Edges, or
+Findings.
 
 ## Truth And Evidence Model
 

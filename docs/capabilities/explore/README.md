@@ -676,42 +676,59 @@ continuously current without spending writes on unchanged CI/review polls. It
 uses the result layer only and does not enable or depend on Explore Harness
 worker orchestration.
 
-An optional owner-facing whiteboard is configured separately because linked
-Base rows and a rendered graph are different delivery receipts. Configure an
-existing Docx whiteboard with `explore feishu-visual-configure`; the Docx may be
-a root-level resource inside the same Base so the graph and Kanban share one
-operator entry point. A material sync checkpoints `canonical_rows_semantic_digest`
+An optional owner-facing stage document is configured separately because linked
+Base rows and rendered graphs are different delivery receipts. Configure the
+Docx and its first whiteboard with `explore feishu-visual-configure`; the Docx
+may be a root-level resource inside the same Base so the graph and Kanban share
+one operator entry point. Each bounded Evidence Stage owns one document section
+and one independent Mermaid whiteboard. Missing sections and blank whiteboards
+are created automatically when the sink has a Docx token. Stage capacity is
+configurable from 10 through 20 nodes and defaults to 14. Full Nodes, Edges, and
+Findings always remain in the canonical Base.
+
+A material sync checkpoints `canonical_rows_semantic_digest`
 and `visual_semantic_digest` independently. If whiteboard publication fails
 after Base rows succeed, the next run retries only the visual sink instead of
 rewriting unchanged rows. `status=synced` therefore means every configured sink
 completed; callers can inspect `canonical_rows_status` and `visual_status`
 separately.
 
-The default `canonical_filtered` projection obeys the configured status/tag
-filters. Issue-fix callers may choose `--projection-mode issue_fix_two_lane` to
-render one deduplicated delivery lane plus curated capability milestones from
-the same canonical graph; this changes presentation only, never evidence state.
+The default `canonical_filtered` projection obeys configured status/tag filters.
+Projects define lanes with `lane-<name>` tags on work nodes or their ancestors.
+Each stage groups its nodes by lane and keeps real directed relations visible
+inside that board, including cross-lane edges. Issue-fix projections therefore
+show their PR delivery and LoopX capability lanes together, while a one-lane
+project such as zjxmt renders one lane without synthetic empty structure. This
+changes presentation only, never evidence state.
 
-For a same-source dual view, configure two whiteboards by role:
+For a same-source dual view, configure stage documents by role. Repeat
+`--stage-whiteboard-token` for already-created stage boards; missing boards are
+created under matching `Evidence Stage NN` sections when `--docx-token` is set:
 
 ```bash
 loopx explore feishu-visual-configure \
   --view-role canonical \
   --projection-mode canonical_full \
   --whiteboard-token <canonical-token> \
+  --docx-token <canonical-doc-token> \
+  --stage-capacity 14 \
   --execute
 loopx explore feishu-visual-configure \
   --view-role executive \
   --projection-mode executive_auto \
   --whiteboard-token <executive-token> \
+  --docx-token <executive-doc-token> \
+  --stage-capacity 14 \
   --execute
 ```
 
-`feishu-sync` then generates both views in one local projection step. It always
-publishes the canonical role and publishes the executive role when the bundle
-recommends `dual_view`. A derived view whose source revision or digest differs
-from the current canonical projection is rejected before any whiteboard
-command runs. Legacy single-whiteboard configuration remains supported.
+`feishu-sync` then generates both views in one local projection step and
+publishes one whiteboard per stage. It always publishes the canonical role and
+publishes the executive role when the bundle recommends `dual_view`. A derived
+view whose source revision or digest differs from the current canonical
+projection is rejected before any whiteboard command runs. Legacy grid/SVG
+renderer configuration fails with an explicit migration message instead of
+silently publishing the wrong visual form.
 
 The text `From Node` / `To Node` columns remain stable public ids for
 automation and review, while the linked-record columns are the Feishu-native
@@ -736,7 +753,7 @@ loopx explore graph --goal-id <id> [--graph-format mermaid|json] [--out <file>]
 loopx explore todo-branch-plan --goal-id <id> [--agent-id <agent>] [--width 3]
 loopx explore worker-branch-plan --goal-id <id> [--agent-id <agent>] [--harness-profile generic|adaptive-resilient|moe-router] [--worker-width 3] [--max-todos-per-branch 3] [--router-state <file>] [--load-profile <file>]
 loopx explore feishu-setup [--base-url ...] [--execute]
-loopx explore feishu-visual-configure --whiteboard-token <token> [--docx-token <token>] [--view-role canonical|executive] [--projection-mode canonical_filtered|issue_fix_two_lane|canonical_full|executive_auto] [--tag <tag>] [--status <status>] [--execute]
+loopx explore feishu-visual-configure [--whiteboard-token <token>] --docx-token <token> [--stage-whiteboard-token <token> ...] [--stage-capacity 10..20] [--view-role canonical|executive] [--projection-mode canonical_filtered|issue_fix_two_lane|canonical_full|executive_auto] [--tag <tag>] [--status <status>] [--execute]
 loopx explore feishu-sync --goal-id <id> [--sink-visibility owner-only|shared] [--execute]
 loopx explore feishu-card --goal-id <id> [--card-file <file>] [--message-id om_...]
 ```
