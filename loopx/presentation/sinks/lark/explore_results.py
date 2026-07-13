@@ -54,6 +54,7 @@ from .message_card import build_lark_markdown_reply_card
 LARK_EXPLORE_SCHEMA_VERSION = "loopx_lark_explore_result_board_v0"
 LARK_EXPLORE_LOCAL_CONFIG_VERSION = "loopx_lark_explore_local_config_v0"
 LARK_EXPLORE_SYNC_VERSION = "loopx_lark_explore_sync_v0"
+LARK_EXPLORE_READBACK_VERSION = "loopx_lark_explore_readback_v0"
 LARK_EXPLORE_CARD_VERSION = "loopx_lark_explore_card_v0"
 LARK_EXPLORE_VISUAL_SYNC_VERSION = "loopx_lark_explore_visual_sync_v0"
 
@@ -1027,6 +1028,94 @@ def sync_explore_results_to_lark(
                 for values in rows_by_table[TABLE_EDGES]
             ]
 
+    readback_records: dict[str, dict[str, Any]] = {}
+    readback_duplicate_rows = 0
+    readback_failed_tables: list[str] = []
+    if execute and ok:
+        for table_key in EXPLORE_TABLE_KEYS:
+            if not rows_by_table[table_key]:
+                continue
+            offset = 0
+            while True:
+                list_result = _run_command(
+                    _build_record_list_command(
+                        config,
+                        table_id=config.table_id(table_key),
+                        goal_id=goal_id,
+                        offset=offset,
+                    ),
+                    execute=True,
+                    runner=runner,
+                )
+                commands.append(list_result)
+                if not list_result.get("ok"):
+                    readback_failed_tables.append(table_key)
+                    break
+                payload = list_result.get("json") if isinstance(list_result.get("json"), dict) else {}
+                page_records = lark_record_rows(payload)
+                for record in page_records:
+                    result_id = str(record.get(_RESULT_ID_FIELD) or "").strip()
+                    row_goal_id = str(record.get(_GOAL_ID_FIELD) or "").strip()
+                    record_id = str(record.get("_record_id") or "").strip()
+                    if not (result_id and row_goal_id and record_id):
+                        continue
+                    key = f"{row_goal_id}:{table_key}:{result_id}"
+                    if key not in expected_keys:
+                        continue
+                    if key in readback_records:
+                        readback_duplicate_rows += 1
+                        continue
+                    readback_records[key] = record
+                    record_map[key] = record_id
+                if not _record_list_has_more(payload):
+                    break
+                if not page_records:
+                    readback_failed_tables.append(table_key)
+                    break
+                offset += len(page_records)
+
+    expected_values = {
+        f"{goal_id}:{table_key}:{str(values.get(_RESULT_ID_FIELD) or '').strip()}": values
+        for table_key in EXPLORE_TABLE_KEYS
+        for values in rows_by_table[table_key]
+    }
+    missing_readback_keys = sorted(expected_keys - set(readback_records))
+    mismatched_readback_keys = sorted(
+        key
+        for key, values in expected_values.items()
+        if key in readback_records and not _lark_values_match(values, readback_records[key])
+    )
+    readback_verified = bool(
+        execute
+        and ok
+        and not readback_failed_tables
+        and not missing_readback_keys
+        and not mismatched_readback_keys
+        and readback_duplicate_rows == 0
+    )
+    readback = {
+        "ok": readback_verified,
+        "schema_version": LARK_EXPLORE_READBACK_VERSION,
+        "performed": bool(execute and ok),
+        "verified": readback_verified,
+        "expected_result_count": len(expected_keys),
+        "observed_result_count": len(readback_records),
+        "missing_result_ids": [key.rsplit(":", 1)[-1] for key in missing_readback_keys],
+        "mismatched_result_ids": [key.rsplit(":", 1)[-1] for key in mismatched_readback_keys],
+        "duplicate_remote_rows": readback_duplicate_rows,
+        "failed_tables": readback_failed_tables,
+    }
+    if execute and ok and not readback_verified:
+        warnings.append("post-write row/result-id readback did not verify the Explore projection")
+    if execute and readback_verified:
+        _persist_lark_explore_record_map(
+            config,
+            config_path=config_path,
+            local=local,
+            record_map=record_map,
+        )
+    ok = ok and (not execute or readback_verified)
+
     return {
         "ok": ok,
         "schema_version": LARK_EXPLORE_SYNC_VERSION,
@@ -1040,15 +1129,20 @@ def sync_explore_results_to_lark(
         "written_rows": written_rows,
         "skipped_rows": skipped_rows,
         "duplicate_remote_rows": duplicate_remote_rows,
+        "readback": readback,
         "records": results,
         "commands": commands,
         "warnings": warnings,
         "config_path": str(config_path) if config_path else None,
         "error": None
         if ok
-        else next(
-            (_command_error(item) for item in commands if not item.get("ok")),
-            "unknown",
+        else (
+            "row/result-id readback failed"
+            if readback.get("performed") and not readback_verified
+            else next(
+                (_command_error(item) for item in commands if not item.get("ok")),
+                "unknown",
+            )
         ),
     }
 
@@ -1093,9 +1187,10 @@ def sync_issue_fix_explore_on_material_change(
     prior = sync_state.get(goal_id) if isinstance(sync_state.get(goal_id), dict) else {}
     digest = str(projection_result.get("semantic_digest") or "")
     prior_digest = str(prior.get("canonical_rows_semantic_digest") or prior.get("semantic_digest") or "")
+    prior_row_readback_digest = str(prior.get("canonical_rows_readback_semantic_digest") or "")
     visual_sink = local.get("visual_sink") if isinstance(local.get("visual_sink"), dict) else None
     prior_visual_digest = str(prior.get("visual_semantic_digest") or "")
-    needs_row_sync = bool(digest and digest != prior_digest)
+    needs_row_sync = bool(digest and (digest != prior_digest or digest != prior_row_readback_digest))
     needs_visual_sync = bool(visual_sink and digest and digest != prior_visual_digest)
     needs_sync = needs_row_sync or needs_visual_sync
     if not projection_result.get("applicable"):
@@ -1107,6 +1202,7 @@ def sync_issue_fix_explore_on_material_change(
             "needs_sync": False,
             "needs_row_sync": False,
             "needs_visual_sync": False,
+            "row_readback_verified": None,
             "semantic_digest": digest,
             "prior_semantic_digest": prior_digest or None,
             "projection": projection_result,
@@ -1114,14 +1210,16 @@ def sync_issue_fix_explore_on_material_change(
             "config_path": str(config_path),
         }
     if config is None:
+        invalid_config = local.get("ok") is not True or isinstance(local.get("board"), dict)
         return {
-            "ok": True,
+            "ok": not invalid_config,
             "schema_version": "issue_fix_explore_lark_material_sync_v0",
-            "status": "not_configured",
+            "status": "invalid_config" if invalid_config else "not_configured",
             "execute": execute,
             "needs_sync": needs_sync,
             "needs_row_sync": needs_row_sync,
             "needs_visual_sync": needs_visual_sync,
+            "row_readback_verified": None,
             "semantic_digest": digest,
             "prior_semantic_digest": prior_digest or None,
             "projection": projection_result,
@@ -1137,6 +1235,7 @@ def sync_issue_fix_explore_on_material_change(
             "needs_sync": False,
             "needs_row_sync": False,
             "needs_visual_sync": False,
+            "row_readback_verified": prior_row_readback_digest == digest,
             "semantic_digest": digest,
             "prior_semantic_digest": prior_digest or None,
             "projection": projection_result,
@@ -1152,6 +1251,7 @@ def sync_issue_fix_explore_on_material_change(
             "needs_sync": True,
             "needs_row_sync": needs_row_sync,
             "needs_visual_sync": needs_visual_sync,
+            "row_readback_verified": False,
             "semantic_digest": digest,
             "prior_semantic_digest": prior_digest or None,
             "projection": projection_result,
@@ -1168,6 +1268,7 @@ def sync_issue_fix_explore_on_material_change(
             "needs_sync": True,
             "needs_row_sync": needs_row_sync,
             "needs_visual_sync": needs_visual_sync,
+            "row_readback_verified": False,
             "semantic_digest": digest,
             "prior_semantic_digest": prior_digest or None,
             "prior_visual_semantic_digest": prior_visual_digest or None,
@@ -1206,6 +1307,14 @@ def sync_issue_fix_explore_on_material_change(
         else None
     )
     row_ok = lark_sync is None or bool(lark_sync.get("ok"))
+    row_readback_verified = bool(
+        lark_sync is None
+        or (
+            isinstance(lark_sync.get("readback"), Mapping)
+            and lark_sync["readback"].get("verified") is True
+        )
+    )
+    row_ok = row_ok and row_readback_verified
     visual_ok = visual_sync is None or bool(visual_sync.get("ok"))
     if row_ok or visual_ok:
         updated_sync_state = dict(sync_state)
@@ -1215,6 +1324,7 @@ def sync_issue_fix_explore_on_material_change(
                 {
                     "semantic_digest": digest,
                     "canonical_rows_semantic_digest": digest,
+                    "canonical_rows_readback_semantic_digest": digest,
                     "canonical_rows_synced_at": now_lark_datetime(),
                 }
             )
@@ -1243,6 +1353,7 @@ def sync_issue_fix_explore_on_material_change(
         "needs_sync": True,
         "needs_row_sync": needs_row_sync,
         "needs_visual_sync": needs_visual_sync,
+        "row_readback_verified": row_readback_verified,
         "semantic_digest": digest,
         "prior_semantic_digest": prior_digest or None,
         "prior_visual_semantic_digest": prior_visual_digest or None,

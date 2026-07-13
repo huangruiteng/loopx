@@ -129,6 +129,7 @@ def main() -> None:
                 ),
                 "needs_row_sync": not external_sink_delivery_authorized,
                 "needs_visual_sync": False,
+                "row_readback_verified": external_sink_delivery_authorized,
                 "semantic_digest": "fixture-digest",
                 "projection": {
                     "applicable": True,
@@ -146,6 +147,8 @@ def main() -> None:
             syncer=activation_syncer,
         )
         assert graph_disabled["status"] == "disabled", graph_disabled
+        assert graph_disabled["delivery_postcondition"]["satisfied"] is True, graph_disabled
+        assert graph_disabled["delivery_postcondition"]["required"] is False, graph_disabled
         assert activation_calls == [], activation_calls
 
         registry_payload = json.loads(registry.read_text(encoding="utf-8"))
@@ -160,6 +163,8 @@ def main() -> None:
         )
         assert graph_enabled["status"] == "unchanged", graph_enabled
         assert graph_enabled["needs_row_sync"] is False, graph_enabled
+        assert graph_enabled["delivery_postcondition"]["satisfied"] is True, graph_enabled
+        assert graph_enabled["delivery_postcondition"]["disposition"] == "unchanged_verified", graph_enabled
         assert activation_calls == [(True, True)], activation_calls
 
         graph_suppressed = sync_explore_graph_after_material_refresh(
@@ -173,6 +178,9 @@ def main() -> None:
         assert graph_suppressed["status"] == "external_sink_suppressed", graph_suppressed
         assert graph_suppressed["external_sink_delivery_authorized"] is False, graph_suppressed
         assert graph_suppressed["needs_row_sync"] is True, graph_suppressed
+        assert graph_suppressed["delivery_postcondition"]["satisfied"] is False, graph_suppressed
+        assert graph_suppressed["delivery_postcondition"]["blocks_delivery"] is False, graph_suppressed
+        assert graph_suppressed["delivery_postcondition"]["retry_required"] is True, graph_suppressed
         assert activation_calls == [(True, True), (True, False)], activation_calls
 
         failure_calls: list[bool] = []
@@ -195,6 +203,8 @@ def main() -> None:
         )
         assert first_failure["status"] == "sync_failed", first_failure
         assert first_failure["error_type"] == "RuntimeError", first_failure
+        assert first_failure["delivery_postcondition"]["satisfied"] is False, first_failure
+        assert first_failure["delivery_postcondition"]["blocks_delivery"] is True, first_failure
         assert retry_failure["status"] == "sync_failed", retry_failure
         assert failure_calls == [True, True], failure_calls
 
@@ -299,6 +309,7 @@ def main() -> None:
                 "written_rows": sum(projection["counts"][key] for key in ("node_count", "edge_count", "finding_count")),
                 "skipped_rows": 0,
                 "duplicate_remote_rows": 0,
+                "readback": {"ok": True, "performed": True, "verified": True},
                 "error": None,
             }
 
@@ -376,6 +387,7 @@ def main() -> None:
                 execute=True,
             )
             assert unchanged["status"] == "unchanged", unchanged
+            assert unchanged["row_readback_verified"] is True, unchanged
             assert len(sync_calls) == 1, sync_calls
             assert len(visual_calls) == 2, visual_calls
 

@@ -504,10 +504,22 @@ def handle_project_lifecycle_command(
                 ),
             )
             payload["explore_graph_sync"] = graph_sync
-            if graph_sync.get("enabled") and not graph_sync.get("ok"):
+            graph_postcondition = (
+                graph_sync.get("delivery_postcondition")
+                if isinstance(graph_sync.get("delivery_postcondition"), dict)
+                else {}
+            )
+            if graph_sync.get("enabled") and not graph_postcondition.get("satisfied"):
                 payload.setdefault("warnings", []).append(
-                    "enabled Explore Graph sync failed; the unchanged sink digest keeps it retryable"
+                    "enabled Explore Graph delivery postcondition is unsatisfied; "
+                    "the unchanged sink digest keeps it retryable"
                 )
+                if graph_postcondition.get("blocks_delivery"):
+                    payload["ok"] = False
+                    payload["error"] = (
+                        "enabled Explore Graph sync/readback failed after the material "
+                        "refresh; retry it before delivery"
+                    )
         print_payload(payload, fmt, render_state_refresh_markdown)
         return 0 if payload.get("ok") else 1
 

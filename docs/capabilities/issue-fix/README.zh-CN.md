@@ -411,11 +411,15 @@ checkout 验证；AgentLoop 继续拥有实际工具执行。
 Goal 开启 `explore_graph.enabled` 后，每次 material `refresh-state` transaction 都会从
 issue-fix domain state、todo metadata 与 rollout event 组合 public-safe Explore 投影，
 再执行已配置 sink。稳定 result id 保证重试幂等；poll 时间戳与 unchanged monitor 不进入
-语义 digest，因此不会反复改写图。某个 sink 写入失败时，其 digest 不推进，下一轮仍可重试。
+语义 digest，因此不会反复改写图。已配置 row sink 只有在写入后通过 row/result-id 回读校验
+才推进 digest；已授权 refresh 的同步或回读失败时，delivery postcondition 会失败，closeout
+不能宣称远端看板已是最新状态。
 
 如果当前运行允许更新本地 LoopX 状态、但暂时不允许任何外部写入，可使用
 `refresh-state --suppress-external-sinks`。Issue-Fix / Explore 的 canonical 投影仍会在
 本地执行；已配置 row/visual sink 的 digest 不推进，之后获得授权的 refresh 可继续重试。
+本地 refresh 可以成功，但必须留下具体的授权同步 successor，在最终交付前消除未满足的
+postcondition。
 
 `explore_graph.enabled` 与 `explore_harness.enabled` 是两个独立开关。Graph 可以开启而
 Harness 保持关闭；后者仍是显式 opt-in 的 worker planning 能力。事实源继续是 issue-fix

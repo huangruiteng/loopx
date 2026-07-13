@@ -187,6 +187,9 @@ def main() -> None:
         "read-only-map",
         "reward",
         "operator-gate",
+        "delivery_postcondition",
+        "blocks_delivery",
+        "retry it before delivery",
     ):
         require(marker in module_source, f"project lifecycle module missing {marker}")
     require("register_project_lifecycle_commands" in cli_source, "cli.py did not register project lifecycle commands")

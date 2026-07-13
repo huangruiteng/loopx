@@ -46,9 +46,14 @@ SCHEDULER_HINT_THIN_RULE = (
 RUNTIME_CAPABILITY_PROJECTION_THIN_RULE = (
     "Observed runtime capabilities -> `--available-capability`, never user gates."
 )
+EXPLORE_GRAPH_DELIVERY_RULE = (
+    "Graph-on: material refresh must sync configured sinks and verify "
+    "row/result-id readback before final delivery; unsatisfied -> retry or "
+    "blocker/successor. Explore Harness stays independent."
+)
 INTERFACE_BUDGET_CHARS = {
     "full": 12_000,
-    "compact": 6_000,
+    "compact": 6_200,
     "brief": 3_500,
     "thin": 1_570,
 }
@@ -198,8 +203,10 @@ def render_peer_agent_scope_instruction(
     )
     if thin:
         return (
-            f"Agent: `{identity}`; model: peer_v1; scope: {scope_text}. {peer_rule} "
-            "Do not write scope into todo metadata."
+            f"Agent: `{identity}`; model: peer_v1; scope: {scope_text}. Equal peer: "
+            "claim/lease before delivery; use an independent worktree; follow todo "
+            "continuation policy; no cross-agent authority. Do not write scope into "
+            "todo metadata."
         )
     if compact:
         return (
@@ -534,8 +541,7 @@ run the quota guard:
 {quota_guard_command}
 ```
 
-If that preflight still fails, do no implementation, adapter, file edit,
-research, exploration, or spend; return quiet `DONT_NOTIFY` with exact failure.
+If that preflight still fails: no work/spend; quiet `DONT_NOTIFY`.
 
 `lark_event_inbox`: if configured, drain -> writeback -> ACK.
 
@@ -669,6 +675,7 @@ If the result says `should_run=true`:
    a successor todo, or include a compact no-follow-up rationale.
    For the full field contract, see `docs/project-agent-todo-contract.md` in
    the LoopX checkout.
+   {EXPLORE_GRAPH_DELIVERY_RULE}
 8. After validation and writeback complete, append exactly one spend event
    before any state-only refresh that might close the active delivery lane:
 
@@ -696,9 +703,8 @@ If the result says `should_run=true`:
    {progress_refresh_state_command}
    ```
 
-10. Return a compact final report. Use heartbeat `NOTIFY` only for meaningful
-    user visibility, such as a committed artifact, a user gate, a real blocker,
-    or the automation self-stop. Otherwise use `DONT_NOTIFY`.
+10. Return compactly. `NOTIFY` only for an artifact, gate, blocker, or self-stop;
+    otherwise use `DONT_NOTIFY`.
 
 {material_queue_rule}
 {permission_rule}"""
@@ -761,6 +767,7 @@ validate/writeback/todos; successor todo or no-follow-up rationale for
 non-trivial feature slices; spend once; refresh with explicit delivery
 scale/outcome for progress artifacts. Stop on private, credentials, destructive
 git, prod, or review rules.
+{EXPLORE_GRAPH_DELIVERY_RULE}
 
 Spend exactly once only after completed delivery or safe-bypass work:
 `{quota_spend_command}`
@@ -862,6 +869,7 @@ If `should_run=true`:
    use `{cli_bin} todo add --goal-id {goal_id} --role user --task-class user_gate|user_action`
    for owner todos and `--role agent` for agent todos, not prose. Nontrivial done ->
    successor todo or no-follow-up rationale.
+   {EXPLORE_GRAPH_DELIVERY_RULE}
 9. After delivery/safe-bypass, spend once before refresh:
 
 ```bash
@@ -925,6 +933,7 @@ Chinese concrete todos/questions; never only "owner gate"; missing ->
 Bounded batch/quiet no-op; spend after writeback.
 Plans/done -> todo/rationale; 2 stalls -> self-repair.
 `lark_event_inbox`: `drain_command` -> writeback -> ACK.
+{EXPLORE_GRAPH_DELIVERY_RULE}
 
 P0 blocked: continue safe P1/P2; monitor-only quiet/no-spend.
 

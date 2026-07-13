@@ -365,10 +365,13 @@ def check_lark_sync_contract() -> None:
             runner=fake_runner,
         )
         assert first["ok"] is True, first
+        assert first["readback"]["verified"] is True, first
+        assert first["readback"]["expected_result_count"] == 4, first
+        assert first["readback"]["observed_result_count"] == 4, first
         assert len(upsert_calls) == 3, upsert_calls
         assert all("--record-id" not in call for call in upsert_calls), upsert_calls
         assert first["written_rows"] == 3 and first["skipped_rows"] == 1, first
-        assert len([item for item in first["commands"] if "+record-list" in item["command"]]) == 4
+        assert len([item for item in first["commands"] if "+record-list" in item["command"]]) == 8
         stored = json.loads(config_path.read_text(encoding="utf-8"))
         assert len(stored["result_records"]) == 4, stored
 
@@ -383,6 +386,7 @@ def check_lark_sync_contract() -> None:
             runner=fake_runner,
         )
         assert second["ok"] is True, second
+        assert second["readback"]["verified"] is True, second
         assert not upsert_calls, upsert_calls
         assert second["written_rows"] == 0 and second["skipped_rows"] == 4, second
         assert config_path.read_text(encoding="utf-8") == stored_before_second

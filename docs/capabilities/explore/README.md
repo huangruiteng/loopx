@@ -288,8 +288,9 @@ one never enables the other:
   configured presentation sink. After each successful material
   `refresh-state` transaction, LoopX folds the canonical Explore evidence and
   runs the configured sink. Semantic digests make an unchanged refresh a
-  zero-write operation. A failed sink does not advance its digest, so the next
-  material refresh retries it.
+  zero-write operation. A configured row sink is complete only after a
+  row/result-id readback verifies the projection. A failed sync or readback
+  does not advance its digest, so the next material refresh retries it.
 - `spawn_policy.explore_harness.enabled` controls only the read-only branch
   planners described below. It does not create, update, or publish a graph.
 
@@ -327,6 +328,14 @@ local Explore projection, reports the suppression boundary in the refresh
 packet, and leaves row/visual digests unchanged so a later authorized refresh
 can retry delivery. This run-scoped boundary does not change the goal's Graph
 or Harness opt-in settings.
+
+Graph-on is a material-delivery postcondition, not a best-effort reminder.
+An authorized `refresh-state` fails when a configured sink cannot sync and
+read back; the caller must retry before claiming delivery. A suppressed run
+may still commit canonical local state, but its packet reports an unsatisfied,
+retryable postcondition and requires a concrete authorized-sync successor.
+With no configured sink, local projection satisfies the postcondition. This
+contract does not enable Explore Harness.
 
 #### Explore Harness planning gate
 

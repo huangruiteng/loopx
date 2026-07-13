@@ -411,14 +411,17 @@ transaction composes a public-safe Explore projection from issue-fix domain
 state, todo metadata, and rollout events, then runs configured sinks. Stable
 result ids make retries idempotent. Poll timestamps and unchanged monitor
 observations are excluded from the semantic digest, so they do not rewrite the
-graph. A failed sink remains retryable because its digest advances only after a
-successful write.
+graph. A configured row sink advances its digest only after row/result-id
+readback verifies the write. An authorized refresh returns a failed delivery
+postcondition when sync/readback fails, so the closeout cannot call the remote
+board current.
 
 If the current run is allowed to update local LoopX state but external writes
 are temporarily forbidden, use `refresh-state --suppress-external-sinks`.
 Canonical issue-fix/Explore projection still runs locally; configured row and
 visual sink digests do not advance and remain retryable on a later authorized
-refresh.
+refresh. The local refresh may succeed, but the unsatisfied postcondition must
+become a concrete authorized-sync successor before final delivery.
 
 `explore_graph.enabled` and `explore_harness.enabled` are independent switches.
 The graph is an operator projection and may be on while the harness remains

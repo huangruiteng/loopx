@@ -138,6 +138,9 @@ def main() -> int:
         task_body = str(prompt_payload["task_body"])
         assert "lark_event_inbox" in task_body, task_body
         assert "drain" in task_body and "ACK" in task_body, task_body
+        assert "Graph-on: material refresh must sync configured sinks" in task_body, task_body
+        assert "row/result-id readback before final delivery" in task_body, task_body
+        assert "Explore Harness stays independent" in task_body, task_body
         if prompt_payload is not payload:
             assert "drain_command" in task_body, task_body
             assert "writeback" in task_body, task_body
@@ -466,6 +469,9 @@ def main() -> int:
         "loopx todo add --goal-id <GOAL_ID> --role user --task-class user_action",
         "Use `--role agent` for project-agent follow-up work",
         "docs/project-agent-todo-contract.md",
+        "Graph-on: material refresh must sync configured sinks",
+        "row/result-id readback before final delivery",
+        "Explore Harness stays independent",
         'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id <GOAL_ID> --slots 1 --source heartbeat --execute',
         "loopx refresh-state --goal-id <GOAL_ID>",
         "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>",
