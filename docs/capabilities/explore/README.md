@@ -123,6 +123,27 @@ or digest matches the validated projection. The canonical JSON and
 Nodes/Edges/Findings tables remain complete and authoritative throughout this
 presentation step.
 
+`loopx explore presentation --goal-id <id>` builds a presentation bundle from
+one canonical result projection. It always includes a complete `canonical`
+view and a derived `executive` view with source-node lineage. Both views carry
+the same timestamp-free `source_digest` and event-based `source_revision`.
+The executive view selects active and decision-tagged nodes, representative
+counterevidence neighborhoods, material one-hop relations, and ancestors; it
+does not store facts independently.
+
+The bundle recommends `presentation_mode=canonical_only|dual_view` from
+multiple advisory signals rather than a single node-count cutoff. Current
+reason codes are `low_decision_density`, `excessive_terminal_branches`,
+`deep_decision_path`, and `readability_check_failed`. Static graph shape can
+estimate readability risk, including excessively flat root topology; a caller
+may also supply renderer observations for overlap, text overflow, or abnormal
+canvas expansion. Both canonical and executive views use a top-to-bottom
+evidence timeline: stable source order starts at the top, bounded epochs add
+navigation, and later evidence extends the board downward instead of widening
+the first rank. Every original canonical node and edge remains present. These
+signals and layout choices only control presentation. They never authorize
+canonical truncation.
+
 ## Optional Todo Branch Plan
 
 `loopx explore todo-branch-plan` is a narrow opt-in harness for
@@ -288,8 +309,9 @@ one never enables the other:
   configured presentation sink. After each successful material
   `refresh-state` transaction, LoopX folds the canonical Explore evidence and
   runs the configured sink. Semantic digests make an unchanged refresh a
-  zero-write operation. A failed sink does not advance its digest, so the next
-  material refresh retries it.
+  zero-write operation. A configured row sink is complete only after a
+  row/result-id readback verifies the projection. A failed sync or readback
+  does not advance its digest, so the next material refresh retries it.
 - `spawn_policy.explore_harness.enabled` controls only the read-only branch
   planners described below. It does not create, update, or publish a graph.
 
@@ -319,6 +341,22 @@ loopx configure-goal --goal-id <id> \
 Use `--no-explore-graph-enabled` to stop automatic graph work. Disabling the
 gate preserves existing evidence and display state; it only prevents future
 automatic projection and sink writes.
+
+When a single run may update local state but is not authorized to write any
+configured external sink, keep the graph enabled and pass
+`refresh-state --suppress-external-sinks`. LoopX still updates the canonical
+local Explore projection, reports the suppression boundary in the refresh
+packet, and leaves row/visual digests unchanged so a later authorized refresh
+can retry delivery. This run-scoped boundary does not change the goal's Graph
+or Harness opt-in settings.
+
+Graph-on is a material-delivery postcondition, not a best-effort reminder.
+An authorized `refresh-state` fails when a configured sink cannot sync and
+read back; the caller must retry before claiming delivery. A suppressed run
+may still commit canonical local state, but its packet reports an unsatisfied,
+retryable postcondition and requires a concrete authorized-sync successor.
+With no configured sink, local projection satisfies the postcondition. This
+contract does not enable Explore Harness.
 
 #### Explore Harness planning gate
 
@@ -654,6 +692,27 @@ filters. Issue-fix callers may choose `--projection-mode issue_fix_two_lane` to
 render one deduplicated delivery lane plus curated capability milestones from
 the same canonical graph; this changes presentation only, never evidence state.
 
+For a same-source dual view, configure two whiteboards by role:
+
+```bash
+loopx explore feishu-visual-configure \
+  --view-role canonical \
+  --projection-mode canonical_full \
+  --whiteboard-token <canonical-token> \
+  --execute
+loopx explore feishu-visual-configure \
+  --view-role executive \
+  --projection-mode executive_auto \
+  --whiteboard-token <executive-token> \
+  --execute
+```
+
+`feishu-sync` then generates both views in one local projection step. It always
+publishes the canonical role and publishes the executive role when the bundle
+recommends `dual_view`. A derived view whose source revision or digest differs
+from the current canonical projection is rejected before any whiteboard
+command runs. Legacy single-whiteboard configuration remains supported.
+
 The text `From Node` / `To Node` columns remain stable public ids for
 automation and review, while the linked-record columns are the Feishu-native
 graph substrate. A Base plugin, relationship-aware view, or Feishu dashboard
@@ -672,11 +731,12 @@ loopx explore node --goal-id <id> --title <t> [--node-id ...] [--status ...] [--
 loopx explore edge --goal-id <id> --from <node> --to <node> --type <edge-type>
 loopx explore finding --goal-id <id> --title <t> [--node ...] [--status ...] [--confidence ...]
 loopx explore summary --goal-id <id>
+loopx explore presentation --goal-id <id>
 loopx explore graph --goal-id <id> [--graph-format mermaid|json] [--out <file>]
 loopx explore todo-branch-plan --goal-id <id> [--agent-id <agent>] [--width 3]
 loopx explore worker-branch-plan --goal-id <id> [--agent-id <agent>] [--harness-profile generic|adaptive-resilient|moe-router] [--worker-width 3] [--max-todos-per-branch 3] [--router-state <file>] [--load-profile <file>]
 loopx explore feishu-setup [--base-url ...] [--execute]
-loopx explore feishu-visual-configure --whiteboard-token <token> [--docx-token <token>] [--projection-mode canonical_filtered|issue_fix_two_lane] [--tag <tag>] [--status <status>] [--execute]
+loopx explore feishu-visual-configure --whiteboard-token <token> [--docx-token <token>] [--view-role canonical|executive] [--projection-mode canonical_filtered|issue_fix_two_lane|canonical_full|executive_auto] [--tag <tag>] [--status <status>] [--execute]
 loopx explore feishu-sync --goal-id <id> [--sink-visibility owner-only|shared] [--execute]
 loopx explore feishu-card --goal-id <id> [--card-file <file>] [--message-id om_...]
 ```

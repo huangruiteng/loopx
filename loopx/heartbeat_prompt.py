@@ -46,22 +46,35 @@ SCHEDULER_HINT_THIN_RULE = (
 RUNTIME_CAPABILITY_PROJECTION_THIN_RULE = (
     "Observed runtime capabilities -> `--available-capability`, never user gates."
 )
+EXPLORE_GRAPH_DELIVERY_RULE = (
+    "Graph-on: material refresh must sync configured sinks and verify "
+    "row/result-id readback before final delivery; unsatisfied -> retry or "
+    "blocker/successor. Explore Harness stays independent."
+)
 INTERFACE_BUDGET_CHARS = {
     "full": 12_000,
-    "compact": 6_000,
+    "compact": 6_200,
     "brief": 3_500,
     "thin": 1_570,
 }
 
 
-def heartbeat_prompt_mode(*, compact: bool = False, brief: bool = False, thin: bool = False) -> str:
+def heartbeat_prompt_mode(
+    *,
+    full: bool = False,
+    compact: bool = False,
+    brief: bool = False,
+    thin: bool = False,
+) -> str:
+    if full:
+        return "full"
     if thin:
         return "thin"
     if brief:
         return "brief"
     if compact:
         return "compact"
-    return "full"
+    return "thin"
 
 
 def prompt_budget_text(text: str, *, goal_id: str, active_state: str) -> str:
@@ -139,6 +152,7 @@ def build_peer_identity_required_error(
     goal_id: str,
     cli_bin: str,
     active_state_arg: str,
+    full: bool,
     compact: bool,
     brief: bool,
     thin: bool,
@@ -151,6 +165,8 @@ def build_peer_identity_required_error(
         if brief
         else " --compact"
         if compact
+        else " --full"
+        if full
         else ""
     )
     base = (
@@ -198,8 +214,10 @@ def render_peer_agent_scope_instruction(
     )
     if thin:
         return (
-            f"Agent: `{identity}`; model: peer_v1; scope: {scope_text}. {peer_rule} "
-            "Do not write scope into todo metadata."
+            f"Agent: `{identity}`; model: peer_v1; scope: {scope_text}. Equal peer: "
+            "claim/lease before delivery; use an independent worktree; follow todo "
+            "continuation policy; no cross-agent authority. Do not write scope into "
+            "todo metadata."
         )
     if compact:
         return (
@@ -231,11 +249,12 @@ def build_interface_budget(
     task_body: str,
     goal_id: str,
     active_state: str,
+    full: bool = False,
     compact: bool = False,
     brief: bool = False,
     thin: bool = False,
 ) -> dict[str, Any]:
-    mode = heartbeat_prompt_mode(compact=compact, brief=brief, thin=thin)
+    mode = heartbeat_prompt_mode(full=full, compact=compact, brief=brief, thin=thin)
     budget_text = prompt_budget_text(task_body, goal_id=goal_id, active_state=active_state)
     budget_chars = len(budget_text)
     max_chars = INTERFACE_BUDGET_CHARS[mode]
@@ -257,6 +276,7 @@ def build_heartbeat_prompt(
     resolved_active_state: Path | None = None,
     material_queue_rule: str | None = None,
     permission_rule: str | None = None,
+    full: bool = False,
     compact: bool = False,
     brief: bool = False,
     thin: bool = False,
@@ -267,6 +287,8 @@ def build_heartbeat_prompt(
     registered_agents: list[str] | tuple[str, ...] | None = None,
     available_capabilities: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
+    if not (full or compact or brief or thin):
+        thin = True
     effective_resolved_active_state = resolved_active_state or active_state
     active_state_text = str(active_state.expanduser()) if active_state else "the registry-declared active state"
     if active_state:
@@ -292,6 +314,7 @@ def build_heartbeat_prompt(
                 goal_id=goal_id,
                 cli_bin=cli_bin,
                 active_state_arg=active_state_arg,
+                full=full,
                 compact=compact,
                 brief=brief,
                 thin=thin,
@@ -353,7 +376,7 @@ def build_heartbeat_prompt(
         delivery_outcome="outcome_progress",
     )
     cli_preflight = render_cli_preflight(cli_bin=cli_bin)
-    expanded_prompt_command = f"{cli_bin} heartbeat-prompt --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
+    expanded_prompt_command = f"{cli_bin} heartbeat-prompt --full --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     compact_prompt_command = f"{cli_bin} heartbeat-prompt --compact --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     brief_prompt_command = f"{cli_bin} heartbeat-prompt --brief --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     thin_prompt_command = f"{cli_bin} heartbeat-prompt --thin --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
@@ -393,6 +416,7 @@ def build_heartbeat_prompt(
         "compact": compact,
         "brief": brief,
         "thin": thin,
+        "full": full,
         "cli_bin": cli_bin,
         "agent_id": normalized_agent_id,
         "agent_role": agent_role,
@@ -415,6 +439,7 @@ def build_heartbeat_prompt(
             task_body=task_body,
             goal_id=goal_id,
             active_state=active_state_text,
+            full=full,
             compact=compact,
             brief=brief,
             thin=thin,
@@ -432,6 +457,7 @@ def build_heartbeat_prompt_error_payload(
     active_state: Path | None = None,
     active_state_source: str | None = None,
     resolved_active_state: Path | None = None,
+    full: bool = False,
     compact: bool = False,
     brief: bool = False,
     thin: bool = False,
@@ -443,6 +469,8 @@ def build_heartbeat_prompt_error_payload(
     material_queue_rule: str | None = None,
     permission_rule: str | None = None,
 ) -> dict[str, Any]:
+    if not (full or compact or brief or thin):
+        thin = True
     active_state_text = str(active_state.expanduser()) if active_state else "the registry-declared active state"
     source = active_state_source or ("explicit" if active_state else "registry")
     active_state_arg = f" --active-state {active_state_text}" if active_state else ""
@@ -461,7 +489,7 @@ def build_heartbeat_prompt_error_payload(
     capability_args = render_available_capability_args(
         projected_available_capabilities
     )
-    expanded_prompt_command = f"{cli_bin} heartbeat-prompt --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
+    expanded_prompt_command = f"{cli_bin} heartbeat-prompt --full --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     compact_prompt_command = f"{cli_bin} heartbeat-prompt --compact --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     brief_prompt_command = f"{cli_bin} heartbeat-prompt --brief --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     thin_prompt_command = f"{cli_bin} heartbeat-prompt --thin --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
@@ -476,6 +504,7 @@ def build_heartbeat_prompt_error_payload(
         "compact": compact,
         "brief": brief,
         "thin": thin,
+        "full": full,
         "cli_bin": cli_bin,
         "agent_id": str(agent_id).strip() if agent_id else None,
         "agent_role": None,
@@ -534,8 +563,7 @@ run the quota guard:
 {quota_guard_command}
 ```
 
-If that preflight still fails, do no implementation, adapter, file edit,
-research, exploration, or spend; return quiet `DONT_NOTIFY` with exact failure.
+If that preflight still fails: no work/spend; quiet `DONT_NOTIFY`.
 
 `lark_event_inbox`: if configured, drain -> writeback -> ACK.
 
@@ -669,6 +697,7 @@ If the result says `should_run=true`:
    a successor todo, or include a compact no-follow-up rationale.
    For the full field contract, see `docs/project-agent-todo-contract.md` in
    the LoopX checkout.
+   {EXPLORE_GRAPH_DELIVERY_RULE}
 8. After validation and writeback complete, append exactly one spend event
    before any state-only refresh that might close the active delivery lane:
 
@@ -696,9 +725,8 @@ If the result says `should_run=true`:
    {progress_refresh_state_command}
    ```
 
-10. Return a compact final report. Use heartbeat `NOTIFY` only for meaningful
-    user visibility, such as a committed artifact, a user gate, a real blocker,
-    or the automation self-stop. Otherwise use `DONT_NOTIFY`.
+10. Return compactly. `NOTIFY` only for an artifact, gate, blocker, or self-stop;
+    otherwise use `DONT_NOTIFY`.
 
 {material_queue_rule}
 {permission_rule}"""
@@ -761,6 +789,7 @@ validate/writeback/todos; successor todo or no-follow-up rationale for
 non-trivial feature slices; spend once; refresh with explicit delivery
 scale/outcome for progress artifacts. Stop on private, credentials, destructive
 git, prod, or review rules.
+{EXPLORE_GRAPH_DELIVERY_RULE}
 
 Spend exactly once only after completed delivery or safe-bypass work:
 `{quota_spend_command}`
@@ -862,6 +891,7 @@ If `should_run=true`:
    use `{cli_bin} todo add --goal-id {goal_id} --role user --task-class user_gate|user_action`
    for owner todos and `--role agent` for agent todos, not prose. Nontrivial done ->
    successor todo or no-follow-up rationale.
+   {EXPLORE_GRAPH_DELIVERY_RULE}
 9. After delivery/safe-bypass, spend once before refresh:
 
 ```bash
@@ -925,6 +955,7 @@ Chinese concrete todos/questions; never only "owner gate"; missing ->
 Bounded batch/quiet no-op; spend after writeback.
 Plans/done -> todo/rationale; 2 stalls -> self-repair.
 `lark_event_inbox`: `drain_command` -> writeback -> ACK.
+{EXPLORE_GRAPH_DELIVERY_RULE}
 
 P0 blocked: continue safe P1/P2; monitor-only quiet/no-spend.
 

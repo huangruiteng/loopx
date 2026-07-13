@@ -24,7 +24,7 @@ def main() -> int:
         "contents: read",
         "fail-fast: false",
         "timeout-minutes: 120",
-        "actions/setup-python@v5",
+        "actions/setup-python@",
         "python-version: \"3.11\"",
         "python3 examples/run-smokes.py",
         "--suite full-public",
@@ -35,7 +35,7 @@ def main() -> int:
         "--jobs \"${SMOKE_JOBS}\"",
         "--no-execute",
         "--json",
-        "actions/upload-artifact@v4",
+        "actions/upload-artifact@",
         "smoke-results/full-public-shard-${{ matrix.shard }}.json",
     ]:
         assert required in text, required

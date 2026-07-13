@@ -232,6 +232,22 @@ Motivation, approach, concrete changes, validation, and main-branch
 risk/uncovered scope remain required. An infographic is optional only for a
 complex change and never replaces textual evidence. The reviewer's verdict
 section remains review-only and is not authored into the PR description.
+
+Issue-backed PRs also carry an explicit `关联 Issue` / `Related Issues` block.
+For a complete fix, the builder defaults to one standalone `Fixes #N` line per
+issue (or `Fixes owner/repository#N` across repositories). For partial work it
+uses `Related to #N`, which creates a normal reference without promising
+automatic closure. GitHub accepts the `close`, `fix`, and `resolve` keyword
+families, including their documented inflections, but LoopX normalizes them to
+`Closes`, `Fixes`, or `Resolves` for stable output. Closing references require
+an explicit assertion that the PR targets the default branch, because GitHub
+ignores closing keywords on other base branches. The functional block is
+applied after semantic preferences and PR lifecycle should verify it through
+`closingIssuesReferences`. Closing keywords in commit messages can close an
+issue, but GitHub does not then list the containing PR as the linked PR, so the
+Issue Fix format keeps the keyword in the PR body rather than relying on commit
+copy. Comments are not part of this closing contract. See GitHub's
+[linked-issue contract](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue).
 When a human confirms that an unresolved git display name belongs to a specific
 GitHub account, `--identity-map-json` records that compact mapping as verified
 identity evidence and reranks the same repository-native contribution evidence.
@@ -411,8 +427,17 @@ transaction composes a public-safe Explore projection from issue-fix domain
 state, todo metadata, and rollout events, then runs configured sinks. Stable
 result ids make retries idempotent. Poll timestamps and unchanged monitor
 observations are excluded from the semantic digest, so they do not rewrite the
-graph. A failed sink remains retryable because its digest advances only after a
-successful write.
+graph. A configured row sink advances its digest only after row/result-id
+readback verifies the write. An authorized refresh returns a failed delivery
+postcondition when sync/readback fails, so the closeout cannot call the remote
+board current.
+
+If the current run is allowed to update local LoopX state but external writes
+are temporarily forbidden, use `refresh-state --suppress-external-sinks`.
+Canonical issue-fix/Explore projection still runs locally; configured row and
+visual sink digests do not advance and remain retryable on a later authorized
+refresh. The local refresh may succeed, but the unsatisfied postcondition must
+become a concrete authorized-sync successor before final delivery.
 
 `explore_graph.enabled` and `explore_harness.enabled` are independent switches.
 The graph is an operator projection and may be on while the harness remains
@@ -612,10 +637,14 @@ revision and focused smokes, not the pilot narrative, remain authoritative.
 - rolling-default-branch OpenViking retrieval, one fresh-issue measured
   dogfood, and explicit reusable-knowledge writeback with honest
   decision-influence accounting;
-- optional `semantic-preference` recall before reviewer-facing PR description
-  work. Issue-fix owns the `issue_fix.pr_description` query and how results
-  influence the description; the generic hook only returns bounded provider
-  results and a stateless compact receipt for existing evidence/state writeback;
+- an explicit, default-off `build_issue_fix_pr_description()` boundary for
+  reviewer-facing descriptions. When configured, it performs at most one
+  `issue_fix.pr_description` recall, passes results only to a caller-supplied
+  applier, preserves the base description on fail-open or unattributed changes,
+  and returns a stateless compact receipt for existing evidence/state writeback.
+  Independently, its deterministic issue-reference block runs after semantic
+  prose: complete fixes use `Fixes`, partial work uses `Related to`, and closing
+  metadata requires explicit default-branch targeting;
 - goal-scoped `explore_graph.enabled` projection at material refresh boundaries,
   independent from `explore_harness.enabled`, with separate row and visual sink
   digests;
@@ -971,7 +1000,9 @@ even before a PR exists; a PR enriches that row only when its lifecycle
 observation carries the matching `repo` and explicit `issue_ref`. Numeric issue
 aliases (`#123`, `issue_123`, `issues/123`) canonicalize to `issues_123` on
 write and when reading legacy rows, so equivalent explicit links cannot silently
-fall into the unlinked count. This automatic closeout projection adds no outcome
+fall into the unlinked count. The command's `--limit` applies only to active todo
+rows; all derived outcome rows remain in scope, and the receipt exposes the
+split through `limit_policy`. This automatic closeout projection adds no outcome
 ledger or second state machine.
 
 Supplying `--delivery-evidence-json` alone is a read-only preview. Add
@@ -1017,8 +1048,9 @@ loopx issue-fix workflow-plan \
   --validation-label "focused unit test" \
   --format json
 
-# Optionally recall workspace-scoped presentation preferences before writing
-# a reviewer-facing artifact. Semantic content remains provider-owned.
+# Low-level provider preflight. Normal Issue-Fix callers use
+# build_issue_fix_pr_description() so recall, fail-open, and receipt attribution
+# stay on one explicit artifact boundary. Semantic content remains provider-owned.
 loopx semantic-preference recall \
   --project . \
   --config .loopx/config/semantic-preference.json \

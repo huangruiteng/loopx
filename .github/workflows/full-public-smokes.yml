@@ -58,10 +58,10 @@ jobs:
       SMOKE_JOBS: "4"
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -90,7 +90,7 @@ jobs:
 
       - name: Upload smoke result
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: full-public-smokes-shard-${{ matrix.shard }}
           path: smoke-results/full-public-shard-${{ matrix.shard }}.json

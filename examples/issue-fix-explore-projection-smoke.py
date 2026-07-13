@@ -111,15 +111,25 @@ def main() -> None:
             ),
             encoding="utf-8",
         )
-        activation_calls: list[bool] = []
+        activation_calls: list[tuple[bool, bool]] = []
 
         def activation_syncer(**kwargs: object) -> dict[str, object]:
-            activation_calls.append(bool(kwargs.get("execute")))
+            external_sink_delivery_authorized = bool(
+                kwargs.get("external_sink_delivery_authorized", True)
+            )
+            activation_calls.append(
+                (bool(kwargs.get("execute")), external_sink_delivery_authorized)
+            )
             return {
                 "ok": True,
-                "status": "unchanged",
-                "needs_row_sync": False,
+                "status": (
+                    "unchanged"
+                    if external_sink_delivery_authorized
+                    else "external_sink_suppressed"
+                ),
+                "needs_row_sync": not external_sink_delivery_authorized,
                 "needs_visual_sync": False,
+                "row_readback_verified": external_sink_delivery_authorized,
                 "semantic_digest": "fixture-digest",
                 "projection": {
                     "applicable": True,
@@ -137,6 +147,8 @@ def main() -> None:
             syncer=activation_syncer,
         )
         assert graph_disabled["status"] == "disabled", graph_disabled
+        assert graph_disabled["delivery_postcondition"]["satisfied"] is True, graph_disabled
+        assert graph_disabled["delivery_postcondition"]["required"] is False, graph_disabled
         assert activation_calls == [], activation_calls
 
         registry_payload = json.loads(registry.read_text(encoding="utf-8"))
@@ -151,7 +163,25 @@ def main() -> None:
         )
         assert graph_enabled["status"] == "unchanged", graph_enabled
         assert graph_enabled["needs_row_sync"] is False, graph_enabled
-        assert activation_calls == [True], activation_calls
+        assert graph_enabled["delivery_postcondition"]["satisfied"] is True, graph_enabled
+        assert graph_enabled["delivery_postcondition"]["disposition"] == "unchanged_verified", graph_enabled
+        assert activation_calls == [(True, True)], activation_calls
+
+        graph_suppressed = sync_explore_graph_after_material_refresh(
+            registry_path=registry,
+            goal_id=goal_id,
+            agent_id="codex-fixture",
+            project=project,
+            syncer=activation_syncer,
+            external_sink_delivery_authorized=False,
+        )
+        assert graph_suppressed["status"] == "external_sink_suppressed", graph_suppressed
+        assert graph_suppressed["external_sink_delivery_authorized"] is False, graph_suppressed
+        assert graph_suppressed["needs_row_sync"] is True, graph_suppressed
+        assert graph_suppressed["delivery_postcondition"]["satisfied"] is False, graph_suppressed
+        assert graph_suppressed["delivery_postcondition"]["blocks_delivery"] is False, graph_suppressed
+        assert graph_suppressed["delivery_postcondition"]["retry_required"] is True, graph_suppressed
+        assert activation_calls == [(True, True), (True, False)], activation_calls
 
         failure_calls: list[bool] = []
 
@@ -173,6 +203,8 @@ def main() -> None:
         )
         assert first_failure["status"] == "sync_failed", first_failure
         assert first_failure["error_type"] == "RuntimeError", first_failure
+        assert first_failure["delivery_postcondition"]["satisfied"] is False, first_failure
+        assert first_failure["delivery_postcondition"]["blocks_delivery"] is True, first_failure
         assert retry_failure["status"] == "sync_failed", retry_failure
         assert failure_calls == [True, True], failure_calls
 
@@ -255,15 +287,17 @@ def main() -> None:
             config_path=config_path,
             whiteboard_token="wb_public_fixture",
             docx_token="doc_public_fixture",
-            tags=["issue-fix"],
-            projection_mode="issue_fix_two_lane",
+            projection_mode="executive_auto",
+            view_role="executive",
             execute=True,
         )
         assert configured["status"] == "configured", configured
         sync_calls: list[str] = []
-        visual_calls: list[str] = []
+        visual_preview_calls: list[str] = []
+        visual_publish_calls: list[str] = []
+        delivery_version = ["delivery-v1"]
         original_sync = explore_results.sync_explore_results_to_lark
-        original_visual_sync = explore_results.sync_explore_visual_to_lark
+        original_visuals_sync = explore_results.sync_explore_visuals_to_lark
 
         def fake_sync(*args: object, **kwargs: object) -> dict[str, object]:
             projection = kwargs["projection"]
@@ -277,37 +311,86 @@ def main() -> None:
                 "written_rows": sum(projection["counts"][key] for key in ("node_count", "edge_count", "finding_count")),
                 "skipped_rows": 0,
                 "duplicate_remote_rows": 0,
+                "readback": {"ok": True, "performed": True, "verified": True},
                 "error": None,
             }
 
-        def fake_visual_sync(*args: object, **kwargs: object) -> dict[str, object]:
-            digest = str(kwargs["semantic_digest"])
-            display = kwargs["display_projection"]
-            assert isinstance(display, dict), display
-            assert display["schema_version"] == "issue_fix_executive_visual_projection_v0"
-            assert display["graph_counts"]["delivery_node_count"] == 1, display
-            expected_capability_nodes = 0 if len(visual_calls) >= 2 else 1
-            assert display["graph_counts"]["capability_node_count"] == expected_capability_nodes, display
-            visual_calls.append(digest)
-            if len(visual_calls) == 1:
+        def fake_visuals_sync(*args: object, **kwargs: object) -> dict[str, object]:
+            projection = kwargs["projection"]
+            assert isinstance(projection, dict), projection
+            digest = explore_results.explore_visual_semantic_digest(projection)
+            delivery_digest = f"{delivery_version[0]}:{digest[:12]}"
+            execute_visual = bool(kwargs.get("execute"))
+            if not execute_visual:
+                visual_preview_calls.append(delivery_digest)
+                return {
+                    "ok": True,
+                    "status": "would_publish",
+                    "presentation_mode": "dual_view",
+                    "source_digest": digest,
+                    "views": {
+                        "executive": {
+                            "ok": True,
+                            "status": "would_publish",
+                            "published": False,
+                            "delivery_digest": delivery_digest,
+                        }
+                    },
+                }
+            visual_publish_calls.append(delivery_digest)
+            if len(visual_publish_calls) == 1:
                 return {
                     "ok": False,
                     "status": "publish_failed",
-                    "published": False,
+                    "presentation_mode": "dual_view",
+                    "source_digest": digest,
+                    "views": {
+                        "executive": {
+                            "ok": False,
+                            "status": "publish_failed",
+                            "published": False,
+                            "delivery_digest": delivery_digest,
+                        }
+                    },
                     "error": "fixture visual transport failure",
                 }
             return {
                 "ok": True,
                 "status": "published",
-                "published": True,
-                "semantic_digest": digest,
-                "graph_counts": {"node_count": 3, "edge_count": 2},
-                "error": None,
+                "presentation_mode": "dual_view",
+                "source_digest": digest,
+                "views": {
+                    "executive": {
+                        "ok": True,
+                        "status": "published",
+                        "published": True,
+                        "delivery_digest": delivery_digest,
+                    }
+                },
             }
 
         explore_results.sync_explore_results_to_lark = fake_sync
-        explore_results.sync_explore_visual_to_lark = fake_visual_sync
+        explore_results.sync_explore_visuals_to_lark = fake_visuals_sync
         try:
+            suppressed = explore_results.sync_issue_fix_explore_on_material_change(
+                registry_path=registry,
+                goal_id=goal_id,
+                agent_id="codex-fixture",
+                project=project,
+                execute=True,
+                external_sink_delivery_authorized=False,
+            )
+            assert suppressed["status"] == "external_sink_suppressed", suppressed
+            assert suppressed["external_sink_delivery_authorized"] is False, suppressed
+            assert suppressed["needs_row_sync"] is True, suppressed
+            assert suppressed["needs_visual_sync"] is True, suppressed
+            assert suppressed["projection"]["applicable"] is True, suppressed
+            assert sync_calls == [], sync_calls
+            assert visual_publish_calls == [], visual_publish_calls
+            assert len(visual_preview_calls) == 1, visual_preview_calls
+            suppressed_config = json.loads(config_path.read_text(encoding="utf-8"))
+            assert goal_id not in suppressed_config.get("automatic_projection_sync", {}), suppressed_config
+
             partial = explore_results.sync_issue_fix_explore_on_material_change(
                 registry_path=registry,
                 goal_id=goal_id,
@@ -336,8 +419,23 @@ def main() -> None:
                 execute=True,
             )
             assert unchanged["status"] == "unchanged", unchanged
+            assert unchanged["row_readback_verified"] is True, unchanged
             assert len(sync_calls) == 1, sync_calls
-            assert len(visual_calls) == 2, visual_calls
+            assert len(visual_publish_calls) == 2, visual_publish_calls
+
+            delivery_version[0] = "delivery-v2"
+            renderer_changed = explore_results.sync_issue_fix_explore_on_material_change(
+                registry_path=registry,
+                goal_id=goal_id,
+                agent_id="codex-fixture",
+                project=project,
+                execute=True,
+            )
+            assert renderer_changed["status"] == "synced", renderer_changed
+            assert renderer_changed["canonical_rows_sync"] is None, renderer_changed
+            assert renderer_changed["visual_sync"]["status"] == "published", renderer_changed
+            assert len(sync_calls) == 1, sync_calls
+            assert len(visual_publish_calls) == 3, visual_publish_calls
 
             append_rollout_event(
                 rollout_log,
@@ -363,18 +461,21 @@ def main() -> None:
             )
             assert changed["status"] == "synced", changed
             assert len(sync_calls) == 2, sync_calls
-            assert len(visual_calls) == 3, visual_calls
+            assert len(visual_publish_calls) == 4, visual_publish_calls
             changed_nodes = {item["node_id"]: item for item in changed["projection"]["projection"]["nodes"]}
             assert changed_nodes["cap_explore_projection"]["status"] == "resolved"
         finally:
             explore_results.sync_explore_results_to_lark = original_sync
-            explore_results.sync_explore_visual_to_lark = original_visual_sync
+            explore_results.sync_explore_visuals_to_lark = original_visuals_sync
 
         stored = json.loads(config_path.read_text(encoding="utf-8"))
         assert stored["result_records"] == {"public-remote-row": "rec_public"}, stored
-        assert stored["visual_sink"]["whiteboard_token"] == "wb_public_fixture", stored
+        assert stored["visual_sinks"]["executive"]["whiteboard_token"] == "wb_public_fixture", stored
         assert stored["automatic_projection_sync"][goal_id]["semantic_digest"] == changed["semantic_digest"]
         assert stored["automatic_projection_sync"][goal_id]["visual_semantic_digest"] == changed["semantic_digest"]
+        assert stored["automatic_projection_sync"][goal_id]["visual_delivery_digests"]["executive"].startswith(
+            "delivery-v2:"
+        ), stored
         assert str(project) not in json.dumps(changed["projection"]["projection"])
 
     print("issue-fix explore projection smoke: ok")

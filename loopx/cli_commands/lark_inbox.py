@@ -11,6 +11,7 @@ from ..capabilities.lark.event_inbox import (
     ingest_lark_event_inbox,
     inspect_lark_event_inbox,
 )
+from ..capabilities.lark.inbox_reply import reply_lark_event_inbox
 from ..capabilities.lark.event_collector import (
     inspect_lark_event_collector,
     install_lark_event_collector,
@@ -28,9 +29,7 @@ def _goal_inbox_config(registry_path: Path, goal_id: str) -> str | None:
     if goal is None:
         raise ValueError(f"goal_id not found in registry: {goal_id}")
     control_plane = (
-        goal.get("control_plane")
-        if isinstance(goal.get("control_plane"), dict)
-        else {}
+        goal.get("control_plane") if isinstance(goal.get("control_plane"), dict) else {}
     )
     inbox = (
         control_plane.get("lark_event_inbox")
@@ -78,6 +77,20 @@ def register_lark_inbox_commands(
     ack.add_argument("--goal-id")
     ack.add_argument("--message-id", action="append", required=True)
     ack.add_argument("--execute", action="store_true")
+    reply = sub.add_parser(
+        "reply",
+        help=(
+            "Reply once in the source thread with the inbox-configured bot profile; "
+            "never falls back to the default app."
+        ),
+    )
+    add_subcommand_format(reply)
+    reply.add_argument("--project", default=".")
+    reply.add_argument("--config")
+    reply.add_argument("--goal-id")
+    reply.add_argument("--message-id", required=True)
+    reply.add_argument("--text", required=True)
+    reply.add_argument("--execute", action="store_true")
     ingest = sub.add_parser(
         "ingest",
         help=(
@@ -183,6 +196,17 @@ def handle_lark_inbox_command(
                 project=args.project,
                 config_path=config_path,
                 message_ids=args.message_id,
+                execute=args.execute,
+            )
+        elif args.lark_inbox_command == "reply":
+            config_path = _inbox_config(args, registry_path)
+            if config_path is None:
+                raise ValueError("goal does not configure a Lark event inbox")
+            payload = reply_lark_event_inbox(
+                project=args.project,
+                config_path=config_path,
+                message_id=args.message_id,
+                text=args.text,
                 execute=args.execute,
             )
         elif args.lark_inbox_command == "ingest":

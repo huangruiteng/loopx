@@ -72,29 +72,44 @@ def build_quota_monitor_poll_event(
         and not due_monitor_poll
     ):
         raise ValueError("quota monitor-poll requires monitor_quiet_until_material_transition mode")
-    monitor_mode = (
-        "external_monitor_observed_without_material_transition"
-        if external_monitor_poll
-        else (
-            "due_monitor_material_transition"
-            if due_monitor_poll and material_change
-            else (
-                "due_monitor_observed_without_material_transition"
-                if due_monitor_poll
-                else "monitor_quiet_until_material_transition"
-            )
+    if external_monitor_poll:
+        monitor_kind = "external monitor"
+        monitor_mode_prefix = "external_monitor"
+    elif due_monitor_poll:
+        monitor_kind = "due monitor"
+        monitor_mode_prefix = "due_monitor"
+    else:
+        monitor_kind = "monitor"
+        monitor_mode_prefix = "monitor"
+    if material_change:
+        monitor_mode = f"{monitor_mode_prefix}_material_transition"
+        default_reason_summary = f"{monitor_kind} observation produced a material transition"
+        health_check = (
+            f"{monitor_kind} material transition observed; follow-up state updated; "
+            "no quota spend by monitor-poll"
         )
-    )
-    monitor_target = build_quota_monitor_target(before, monitor_mode=monitor_mode)
-    safe_reason_summary = str(reason_summary or "").strip()
-    if not safe_reason_summary:
-        safe_reason_summary = (
-            "external monitor observation produced no material transition"
-            if external_monitor_poll
-            else recommendation.get("reason")
+    elif external_monitor_poll:
+        monitor_mode = "external_monitor_observed_without_material_transition"
+        default_reason_summary = "external monitor observation produced no material transition"
+        health_check = "external monitor observation unchanged; no quota spend; no material transition"
+    elif due_monitor_poll:
+        monitor_mode = "due_monitor_observed_without_material_transition"
+        default_reason_summary = (
+            recommendation.get("reason")
+            or before.get("reason")
+            or "due monitor poll had no material transition"
+        )
+        health_check = "due monitor observation unchanged; no quota spend; next due updated"
+    else:
+        monitor_mode = "monitor_quiet_until_material_transition"
+        default_reason_summary = (
+            recommendation.get("reason")
             or before.get("reason")
             or "monitor-only poll had no material transition"
         )
+        health_check = "monitor-only poll unchanged; no quota spend; no material transition"
+    monitor_target = build_quota_monitor_target(before, monitor_mode=monitor_mode)
+    safe_reason_summary = str(reason_summary or "").strip() or default_reason_summary
     safe_agent_id = quota_decision_agent_id(before)
 
     record = {
@@ -102,22 +117,10 @@ def build_quota_monitor_poll_event(
         "goal_id": before.get("goal_id"),
         "classification": QUOTA_MONITOR_POLL_CLASSIFICATION,
         "recommended_action": before.get("recommended_action") or recommendation.get("reason") or before.get("reason"),
-        "health_check": (
-            "due monitor material transition observed; follow-up state updated; no quota spend by monitor-poll"
-            if due_monitor_poll and material_change
-            else (
-                "due monitor observation unchanged; no quota spend; next due updated"
-                if due_monitor_poll
-                else (
-                    "external monitor observation unchanged; no quota spend; no material transition"
-                    if external_monitor_poll
-                    else "monitor-only poll unchanged; no quota spend; no material transition"
-                )
-            )
-        ),
+        "health_check": health_check,
         "delivery_outcome": (
             DeliveryOutcome.OUTCOME_PROGRESS.value
-            if due_monitor_poll and material_change
+            if material_change
             else DeliveryOutcome.SURFACE_ONLY.value
         ),
         "monitor_target": monitor_target,

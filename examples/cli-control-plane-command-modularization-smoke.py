@@ -62,6 +62,24 @@ def assert_help_surfaces() -> None:
     assert_contains(todo_help.stdout, "--self-merged", "todo help")
     assert_contains(todo_help.stdout, "--next-agent-todo", "todo help")
 
+    complete_help = run_cli("todo", "complete", "--help")
+    assert complete_help.returncode == 0, complete_help.stderr
+    assert_contains(
+        complete_help.stdout,
+        "The options below are the union for every todo command",
+        "todo complete help",
+    )
+    assert_contains(
+        complete_help.stdout,
+        "This is not lifecycle actor",
+        "todo complete agent-id help",
+    )
+    assert_contains(
+        complete_help.stdout,
+        "attribution; todo complete uses --claimed-by",
+        "todo complete claimed-by help",
+    )
+
     quota_help = run_cli("quota", "--help")
     assert quota_help.returncode == 0, quota_help.stderr
     assert_contains(quota_help.stdout, "should-run", "quota help")
@@ -89,6 +107,31 @@ def assert_todo_error_payload() -> None:
     assert payload["ok"] is False, payload
     assert payload["goal_id"] == "cli-modular-smoke", payload
     assert payload["error"] == "todo add requires --role", payload
+
+    with tempfile.TemporaryDirectory(prefix="loopx-cli-todo-agent-id-smoke-") as tmp:
+        result = run_cli(
+            "--format",
+            "json",
+            "--registry",
+            str(Path(tmp) / "missing-registry.json"),
+            "todo",
+            "complete",
+            "--goal-id",
+            "cli-modular-smoke",
+            "--todo-id",
+            "todo_123456789abc",
+            "--agent-id",
+            "codex-side-bypass",
+        )
+    assert result.returncode == 1, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False, payload
+    assert payload["error"] == (
+        "todo complete does not support --agent-id; --agent-id scopes todo "
+        "list/suggest and user-gate authoring, not lifecycle actor attribution. "
+        "Omit it; use --claimed-by only on commands that explicitly support "
+        "ownership changes."
+    ), payload
 
 
 def assert_todo_markdown_error_payload() -> None:

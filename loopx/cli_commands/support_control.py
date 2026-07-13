@@ -166,6 +166,11 @@ def register_support_control_commands(
     )
     heartbeat_style_group = heartbeat_prompt_parser.add_mutually_exclusive_group()
     heartbeat_style_group.add_argument(
+        "--full",
+        action="store_true",
+        help="Generate the expanded audit body. The default installed heartbeat body is thin.",
+    )
+    heartbeat_style_group.add_argument(
         "--compact",
         action="store_true",
         help="Generate a shorter automation body that points edge cases back to the expanded lifecycle contract.",
@@ -379,6 +384,7 @@ def handle_support_control_command(
                 resolved_active_state=resolved_active_state,
                 material_queue_rule=args.material_rule,
                 permission_rule=args.permission_rule,
+                full=bool(args.full),
                 compact=bool(args.compact),
                 brief=bool(args.brief),
                 thin=bool(args.thin),
@@ -407,6 +413,7 @@ def handle_support_control_command(
                 resolved_active_state=fallback_resolved_active_state,
                 material_queue_rule=args.material_rule,
                 permission_rule=args.permission_rule,
+                full=bool(args.full),
                 compact=bool(args.compact),
                 brief=bool(args.brief),
                 thin=bool(args.thin),

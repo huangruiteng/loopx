@@ -393,6 +393,25 @@ def assert_default_goal_sync_composes_outcomes() -> None:
         assert unlinked_record["values"]["Pull Request"] == ""
         assert str(project) not in json.dumps(sync["records"], ensure_ascii=False)
 
+        bounded_todo_sync = sync_loopx_todos_to_lark_kanban(
+            LarkKanbanConfig(
+                **{"base_" + "token": "base_public_fixture"},
+                table_id="tbl_public_fixture",
+            ),
+            registry_path=registry,
+            goal_id=goal_id,
+            agent_id="codex-public-fixture",
+            limit=1,
+            execute=False,
+        )
+        assert bounded_todo_sync["todo_count"] == 1, bounded_todo_sync
+        assert bounded_todo_sync["issue_fix_outcome_count"] == 2, bounded_todo_sync
+        assert bounded_todo_sync["limit_policy"] == {
+            "todo_rows": 1,
+            "issue_fix_outcomes": "complete_source_projection",
+        }, bounded_todo_sync
+        assert bounded_todo_sync["issue_fix_source_counts"]["outcomes"] == 2
+
 
 def main() -> None:
     projection = build_issue_fix_outcome_projection(

@@ -64,7 +64,12 @@ open PRs, merge, publish, or run destructive git without an explicit gate.
    code or pseudocode section for code changes, and requires a post-fix
    repository CLI or focused code/test reproduction when applicable. Optional
    infographics are limited to complex changes and cannot replace textual
-   evidence. The packet is review evidence, not external publication authority.
+   evidence. Issue-backed changes add one functional reference block after any
+   semantic-preference rewrite: use `Fixes #N` for a complete fix targeting the
+   default branch, and `Related to #N` for partial work. Use full syntax for
+   every issue and verify closing references through GitHub
+   `closingIssuesReferences`. The packet is review evidence, not external
+   publication authority.
 10. **PR lifecycle monitor:** after a PR exists, use
    `issue_fix_pr_lifecycle_monitor_v0` to project compact public PR state into
    exactly one of `runnable_successor`, `monitor_continuation`, `user_gate`, or

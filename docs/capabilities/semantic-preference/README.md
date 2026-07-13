@@ -1,5 +1,8 @@
 # Semantic preference hook
 
+For the built-in OpenViking project-scoped adapter, see
+[OpenViking project peer provider](openviking-project-peer.md).
+
 LoopX can optionally recall semantic preferences before a domain action and
 build a compact application receipt afterwards. The hook is deliberately thin:
 the provider owns storage, ranking, and semantic content; the caller owns how a

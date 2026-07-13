@@ -5,8 +5,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from loopx.control_plane.quota.turn_envelope import build_turn_envelope
 from loopx.control_plane.testing.model_behavior_corpus import (
     build_model_behavior_corpus,
@@ -251,5 +249,14 @@ def test_fail_closed_expectation_does_not_hide_invalid_actor_output() -> None:
     def invalid_actor(_: Mapping[str, Any]) -> dict[str, Any]:
         return {"schema_version": "unknown_actor_result_v9"}
 
-    with pytest.raises(ValueError, match="actor result"):
-        run_model_behavior_corpus(corpus, actor=invalid_actor, repeats=2)
+    result = run_model_behavior_corpus(corpus, actor=invalid_actor, repeats=2)
+
+    assert result["all_cases_passed"] is False
+    assert result["cases"][0]["passed"] is False
+    for run in result["cases"][0]["runs"]:
+        assert run["status"] == "actor_failed"
+        assert run["actor_error_code"] == "actor_result_invalid"
+        assert run["failed_arm"] in {"full_packet", "candidate_packet"}
+        assert run["safety_violations"] == [
+            f"actor_arm_failed:{run['failed_arm']}:actor_result_invalid"
+        ]

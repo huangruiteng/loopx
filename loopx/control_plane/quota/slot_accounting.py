@@ -114,9 +114,11 @@ def _latest_unspent_accountable_delivery_run(
 ) -> dict[str, Any] | None:
     """Return the latest same-agent delivery that still needs accounting.
 
-    Unchanged monitor polls and scheduler acknowledgements are quota-neutral.
-    They may occur after validation and before accounting, so they must not
-    hide the accountable run. Other non-delivery events remain fail closed.
+    Unchanged monitor polls, scheduler acknowledgements, and plain state
+    refreshes are quota-neutral. They may occur after validation and before
+    accounting, so they must not hide the accountable run. A state refresh
+    with an explicit non-accountable delivery outcome and other non-delivery
+    events remain fail closed.
     """
 
     safe_agent_id = normalize_todo_claimed_by(agent_id)
@@ -135,6 +137,10 @@ def _latest_unspent_accountable_delivery_run(
         ):
             continue
         if classification == QUOTA_SCHEDULER_ACK_CLASSIFICATION:
+            continue
+        if classification == "state_refreshed" and not str(
+            run.get("delivery_outcome") or ""
+        ).strip():
             continue
         delivery_outcome = normalize_delivery_outcome(run.get("delivery_outcome"))
         if delivery_outcome in ACCOUNTABLE_DELIVERY_OUTCOMES:

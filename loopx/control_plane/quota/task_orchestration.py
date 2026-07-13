@@ -7,6 +7,7 @@ from ..agents.runtime_model import peer_work_key, select_peer_for_work
 from ..todos.todo_summary import normalize_todo_claimed_by
 from ..work_items.work_lane import WORK_LANE_CONTRACT_SCHEMA_VERSION
 from ..work_items.work_lane_context import build_work_lane_context_contract
+from .recent_runs import latest_unchanged_monitor_observation
 
 
 AGENT_SCOPE_NON_EXECUTION_ACTIONS = {
@@ -19,13 +20,24 @@ AGENT_SCOPE_NON_EXECUTION_ACTIONS = {
 def build_quota_work_lane_contract(
     item: dict[str, Any],
     *,
+    status_payload: dict[str, Any],
+    goal_id: str,
+    agent_id: str | None,
     agent_todo_summary: dict[str, Any] | None,
     monitor_due_item_limit: int,
 ) -> dict[str, Any] | None:
+    monitor_attempt_already_recorded = bool(
+        latest_unchanged_monitor_observation(
+            status_payload,
+            goal_id=goal_id,
+            agent_id=agent_id,
+        )
+    )
     return build_work_lane_context_contract(
         item,
         agent_todo_summary=agent_todo_summary,
         monitor_due_item_limit=monitor_due_item_limit,
+        monitor_attempt_already_recorded=monitor_attempt_already_recorded,
     )
 
 

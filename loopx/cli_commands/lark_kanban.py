@@ -158,7 +158,15 @@ def register_lark_kanban_commands(
     sync.add_argument("--project")
     sync.add_argument("--state-file")
     sync.add_argument("--include-done", action="store_true")
-    sync.add_argument("--limit", type=int, default=50)
+    sync.add_argument(
+        "--limit",
+        type=int,
+        default=50,
+        help=(
+            "Maximum active todo rows to sync. Derived issue-fix outcomes always "
+            "use the complete source projection."
+        ),
+    )
     sync.add_argument(
         "--include-command-details",
         action="store_true",

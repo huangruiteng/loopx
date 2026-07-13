@@ -13,6 +13,8 @@ PROCESSED_SCHEMA_VERSION = "lark_event_inbox_processed_v0"
 CAPTURE_SCOPES = {"addressed_only", "configured_chat_all"}
 MESSAGE_ID_PATTERN = re.compile(r"om_[A-Za-z0-9_-]+")
 EVENT_ID_PATTERN = re.compile(r"[A-Za-z0-9:_-]{1,200}")
+SAFE_PROFILE_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,100}")
+CHAT_ID_PATTERN = re.compile(r"oc_[A-Za-z0-9_-]+")
 
 
 def _safe_inbox_path(project: str | Path, raw_path: str) -> Path:
@@ -59,12 +61,42 @@ def load_lark_event_inbox_config(
         raise ValueError(
             "lark inbox capture_scope must be addressed_only or configured_chat_all"
         )
+    reply_payload = payload.get("reply")
+    if reply_payload is not None and not isinstance(reply_payload, Mapping):
+        raise ValueError("lark inbox reply config must be an object")
+    reply_payload = reply_payload if isinstance(reply_payload, Mapping) else {}
+    reply_enabled = reply_payload.get("enabled") is True
+    sender_profile = str(reply_payload.get("sender_profile") or "").strip()
+    sender_identity = str(reply_payload.get("sender_identity") or "").strip()
+    bot_display_name = " ".join(
+        str(reply_payload.get("bot_display_name") or "").split()
+    )[:100]
+    chat_id = str(reply_payload.get("chat_id") or "").strip()
+    if reply_enabled and (
+        capture_scope != "configured_chat_all"
+        or not SAFE_PROFILE_PATTERN.fullmatch(sender_profile)
+        or sender_profile.lower() == "default"
+        or sender_identity != "bot"
+        or not bot_display_name
+        or not CHAT_ID_PATTERN.fullmatch(chat_id)
+    ):
+        raise ValueError(
+            "enabled lark inbox reply requires configured_chat_all plus an explicit "
+            "non-default sender_profile, bot identity, bot_display_name, and chat_id"
+        )
     return {
         "enabled": enabled,
         "configured": True,
         "inbox_path": _safe_inbox_path(root, inbox_dir) if enabled else None,
         "capture_scope": capture_scope,
         "thread_complete": capture_scope == "configured_chat_all",
+        "reply": {
+            "enabled": reply_enabled,
+            "sender_profile": sender_profile,
+            "sender_identity": sender_identity,
+            "bot_display_name": bot_display_name,
+            "chat_id": chat_id,
+        },
     }
 
 

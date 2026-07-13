@@ -31,7 +31,11 @@ from loopx.control_plane.scheduler.state import (  # noqa: E402
     load_scheduler_state,
     write_scheduler_state,
 )
-from loopx.quota import AgentScopeFrontierAction  # noqa: E402
+from loopx.control_plane.testing.quota_fixtures import (  # noqa: E402
+    quota_status_payload,
+    quota_todo_item,
+)
+from loopx.quota import AgentScopeFrontierAction, build_quota_should_run  # noqa: E402
 from loopx.status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK  # noqa: E402
 
 
@@ -505,6 +509,46 @@ def assert_scheduler_ack_plan_validation() -> None:
     }, already_applied
 
 
+def assert_normal_run_ack_preserves_runtime_capabilities() -> None:
+    status = quota_status_payload(
+        goal_id="scheduler-state-ack-runtime-capabilities",
+        status="active",
+        recommended_action="Run the bounded delivery.",
+        next_action="Run the bounded delivery.",
+        active_state_next_action="Run the bounded delivery.",
+        agent_todo_items=[
+            quota_todo_item(
+                todo_id="todo_runtime_capabilities",
+                title="Run the bounded delivery.",
+                claimed_by="codex-side-agent",
+            )
+        ],
+        coordination={
+            "agent_model": "peer_v1",
+            "registered_agents": ["codex-side-agent"],
+        },
+        latest_runs=[],
+    )
+    decision = build_quota_should_run(
+        status,
+        goal_id="scheduler-state-ack-runtime-capabilities",
+        agent_id="codex-side-agent",
+        available_capabilities=["shell", "network", "lark_read"],
+    )
+    assert decision["effective_action"] == "normal_run", decision
+    assert "capability_gate" not in decision, decision
+    ack_hint = decision["scheduler_hint"]["codex_app"]["ack_hint"]
+    assert ack_hint["args"]["available_capabilities"] == [
+        "network",
+        "lark_read",
+    ], ack_hint
+    cli_args = ack_hint["cli_args"]
+    assert cli_args.count("--available-capability") == 2, ack_hint
+    for capability in ("network", "lark_read"):
+        capability_index = cli_args.index(capability)
+        assert cli_args[capability_index - 1] == "--available-capability", ack_hint
+
+
 def assert_monitor_wait_stale_ack_hint_is_accepted() -> None:
     base = monitor_window_payload(minutes_until_due=59)
     first = build_hint_at(base, now=FROZEN_NOW)
@@ -972,6 +1016,7 @@ def main() -> int:
     assert_monitor_wait_ignores_goal_recommended_action_identity_noise()
     assert_active_work_keeps_initial_cadence()
     assert_scheduler_ack_plan_validation()
+    assert_normal_run_ack_preserves_runtime_capabilities()
     assert_monitor_wait_stale_ack_hint_is_accepted()
     assert_scheduler_state_scope_validation()
     assert_cli_scheduler_ack_progression()

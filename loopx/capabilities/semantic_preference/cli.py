@@ -4,6 +4,10 @@ import argparse
 from collections.abc import Callable
 
 from .contract import application_receipt, recall
+from .openviking_provider import (
+    handle_openviking_provider,
+    register_openviking_provider_arguments,
+)
 
 
 def _render(payload: dict[str, object]) -> str:
@@ -34,6 +38,12 @@ def register_semantic_preference_commands(
     recall_parser.add_argument("--context", action="append", default=[])
     recall_parser.add_argument("--execute", action="store_true")
 
+    provider_parser = commands.add_parser(
+        "openviking-provider",
+        help="Run the opt-in OpenViking project-as-peer provider protocol.",
+    )
+    register_openviking_provider_arguments(provider_parser)
+
     receipt_parser = commands.add_parser("receipt")
     add_subcommand_format(receipt_parser)
     receipt_parser.add_argument("--surface", required=True)
@@ -53,6 +63,8 @@ def handle_semantic_preference_command(
 ) -> int | None:
     if args.command != "semantic-preference":
         return None
+    if args.semantic_preference_command == "openviking-provider":
+        return handle_openviking_provider(args)
     if args.semantic_preference_command == "recall":
         payload = recall(
             args.config,

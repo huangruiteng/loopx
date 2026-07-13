@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from loopx.control_plane.quota.slot_accounting import (
     build_quota_slot_preview_for_decision,
     build_quota_slot_spend_event,
@@ -90,6 +92,25 @@ def _spent(generated_at: str, *, agent_id: str | None = None) -> dict[str, Any]:
     return payload
 
 
+def _run(
+    generated_at: str,
+    *,
+    classification: str,
+    agent_id: str | None = None,
+    delivery_outcome: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "generated_at": generated_at,
+        "goal_id": GOAL_ID,
+        "classification": classification,
+    }
+    if agent_id:
+        payload["agent_id"] = agent_id
+    if delivery_outcome:
+        payload["delivery_outcome"] = delivery_outcome
+    return payload
+
+
 def test_unchanged_monitor_poll_is_not_accountable_delivery(tmp_path: Path) -> None:
     runtime = tmp_path / "runtime"
     _write_run_index(runtime, [_poll("2026-01-01T00:00:00+00:00", material=False)])
@@ -157,6 +178,109 @@ def test_interleaved_peer_spend_does_not_hide_scoped_delivery(tmp_path: Path) ->
     assert scoped_a["delivery_run_agent_id"] == AGENT_A
     assert _preview(runtime, agent_id=AGENT_B)["ok"] is False
     assert _preview(runtime)["ok"] is False
+
+
+@pytest.mark.parametrize(
+    "neutral_classification",
+    ["state_refreshed", "quota_scheduler_ack"],
+)
+def test_same_agent_neutral_event_does_not_hide_scoped_delivery(
+    tmp_path: Path,
+    neutral_classification: str,
+) -> None:
+    runtime = tmp_path / "runtime"
+    material_poll = _poll(
+        "2026-01-01T00:01:00+00:00",
+        material=True,
+        agent_id=AGENT_A,
+    )
+    _write_run_index(
+        runtime,
+        [
+            material_poll,
+            _run(
+                "2026-01-01T00:02:00+00:00",
+                classification=neutral_classification,
+                agent_id=AGENT_A,
+            ),
+        ],
+    )
+
+    preview = _preview(runtime, agent_id=AGENT_A)
+
+    assert preview["ok"] is True
+    assert preview["delivery_run_generated_at"] == material_poll["generated_at"]
+    assert preview["delivery_run_classification"] == "quota_monitor_poll"
+
+
+def test_explicit_non_accountable_refresh_still_fails_closed(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    _write_run_index(
+        runtime,
+        [
+            _poll(
+                "2026-01-01T00:01:00+00:00",
+                material=True,
+                agent_id=AGENT_A,
+            ),
+            _run(
+                "2026-01-01T00:02:00+00:00",
+                classification="state_refreshed",
+                agent_id=AGENT_A,
+                delivery_outcome="surface_only",
+            ),
+        ],
+    )
+
+    assert _preview(runtime, agent_id=AGENT_A)["ok"] is False
+
+
+def test_accountable_refresh_becomes_latest_delivery(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    accountable_refresh = _run(
+        "2026-01-01T00:02:00+00:00",
+        classification="state_refreshed",
+        agent_id=AGENT_A,
+        delivery_outcome="outcome_progress",
+    )
+    _write_run_index(
+        runtime,
+        [
+            _poll(
+                "2026-01-01T00:01:00+00:00",
+                material=True,
+                agent_id=AGENT_A,
+            ),
+            accountable_refresh,
+        ],
+    )
+
+    preview = _preview(runtime, agent_id=AGENT_A)
+
+    assert preview["ok"] is True
+    assert preview["delivery_run_generated_at"] == accountable_refresh["generated_at"]
+    assert preview["delivery_run_classification"] == "state_refreshed"
+
+
+def test_other_same_agent_non_delivery_event_still_fails_closed(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    _write_run_index(
+        runtime,
+        [
+            _poll(
+                "2026-01-01T00:01:00+00:00",
+                material=True,
+                agent_id=AGENT_A,
+            ),
+            _run(
+                "2026-01-01T00:02:00+00:00",
+                classification="operator_note",
+                agent_id=AGENT_A,
+            ),
+        ],
+    )
+
+    assert _preview(runtime, agent_id=AGENT_A)["ok"] is False
 
 
 def test_legacy_unscoped_delivery_remains_attributable(tmp_path: Path) -> None:

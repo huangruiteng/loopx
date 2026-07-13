@@ -43,6 +43,57 @@ def write_index_fixture(root: Path, goal_id: str, duplicate_kind: str) -> None:
                 },
             },
         ]
+    elif duplicate_kind == "projected_reward_overlay":
+        projected = {
+            key: base[key]
+            for key in (
+                "generated_at",
+                "goal_id",
+                "classification",
+                "recommended_action",
+                "health_check",
+                "json_path",
+                "markdown_path",
+            )
+        }
+        rows = [
+            {
+                **base,
+                "agent_id": "fixture-agent",
+                "progress_scope": "agent_lane",
+                "delivery_batch_scale": "multi_surface",
+                "delivery_outcome": "outcome_progress",
+            },
+            {
+                **projected,
+                "human_reward": {
+                    "recorded_at": "2026-01-01T00:00:01+00:00",
+                    "decision": "continue",
+                    "reward": "positive",
+                },
+            },
+            {
+                **projected,
+                "human_reward": {
+                    "recorded_at": "2026-01-01T00:00:02+00:00",
+                    "decision": "refine",
+                    "reward": "mixed",
+                },
+            },
+        ]
+    elif duplicate_kind == "conflicting_projected_reward_overlay":
+        rows = [
+            base,
+            {
+                **base,
+                "recommended_action": "conflicting compact projection must stay visible",
+                "human_reward": {
+                    "recorded_at": "2026-01-01T00:00:01+00:00",
+                    "decision": "continue",
+                    "reward": "positive",
+                },
+            },
+        ]
     elif duplicate_kind == "plain_duplicate":
         rows = [base, dict(base)]
     elif duplicate_kind == "structured_artifact_collision":
@@ -90,7 +141,11 @@ def write_index_fixture(root: Path, goal_id: str, duplicate_kind: str) -> None:
         ]
     elif duplicate_kind == "artifact_identity_collision":
         rows = [
-            {**base, "classification": "benchmark_run_v0", "health_check": "benchmark_run_v0 compact event public-safe"},
+            {
+                **base,
+                "classification": "benchmark_run_v0",
+                "health_check": "benchmark_run_v0 compact event public-safe",
+            },
             {**base, "classification": "state_refreshed"},
         ]
     else:
@@ -109,6 +164,11 @@ def write_registry(root: Path) -> Path:
     goals = []
     for goal_id, kind in (
         ("reward-overlay-goal", "reward_overlay"),
+        ("projected-reward-overlay-goal", "projected_reward_overlay"),
+        (
+            "conflicting-projected-reward-overlay-goal",
+            "conflicting_projected_reward_overlay",
+        ),
         ("plain-duplicate-goal", "plain_duplicate"),
         ("structured-artifact-goal", "structured_artifact_collision"),
         ("structured-bundle-goal", "structured_artifact_bundle"),
@@ -116,7 +176,9 @@ def write_registry(root: Path) -> Path:
     ):
         state_file = project / ".codex" / "goals" / goal_id / "ACTIVE_GOAL_STATE.md"
         state_file.parent.mkdir(parents=True, exist_ok=True)
-        state_file.write_text("---\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n", encoding="utf-8")
+        state_file.write_text(
+            "---\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n", encoding="utf-8"
+        )
         write_index_fixture(root, goal_id, kind)
         goals.append(
             {
@@ -168,36 +230,95 @@ def run_cli(registry_path: Path, *args: str) -> dict:
 def main() -> None:
     with tempfile.TemporaryDirectory() as raw_tmp:
         registry_path = write_registry(Path(raw_tmp))
-        payload = run_cli(registry_path, "history", "inspect-index-duplicates", "--limit", "10")
+        payload = run_cli(
+            registry_path, "history", "inspect-index-duplicates", "--limit", "10"
+        )
         assert payload["ok"] is True, payload
-        assert payload["duplicate_group_count"] == 5, payload
-        assert payload["duplicate_row_count"] == 5, payload
+        assert payload["duplicate_group_count"] == 7, payload
+        assert payload["duplicate_row_count"] == 8, payload
         by_goal = {group["goal_id"]: group for group in payload["groups"]}
-        assert by_goal["reward-overlay-goal"]["duplicate_kind"] == "reward_overlay", payload
+        assert by_goal["reward-overlay-goal"]["duplicate_kind"] == "reward_overlay", (
+            payload
+        )
         assert by_goal["reward-overlay-goal"]["severity"] == "info", payload
-        assert by_goal["plain-duplicate-goal"]["duplicate_kind"] == "plain_duplicate", payload
+        assert (
+            by_goal["projected-reward-overlay-goal"]["duplicate_kind"]
+            == "reward_overlay"
+        ), payload
+        assert by_goal["projected-reward-overlay-goal"]["severity"] == "info", payload
+        assert by_goal["projected-reward-overlay-goal"]["reward_overlay_rows"] == 2, (
+            payload
+        )
+        assert (
+            by_goal["conflicting-projected-reward-overlay-goal"]["duplicate_kind"]
+            == "artifact_identity_collision"
+        ), payload
+        assert (
+            by_goal["conflicting-projected-reward-overlay-goal"]["severity"]
+            == "warning"
+        ), payload
+        assert by_goal["plain-duplicate-goal"]["duplicate_kind"] == "plain_duplicate", (
+            payload
+        )
         assert by_goal["plain-duplicate-goal"]["severity"] == "warning", payload
-        assert by_goal["structured-artifact-goal"]["duplicate_kind"] == "artifact_identity_collision", payload
-        assert by_goal["structured-bundle-goal"]["duplicate_kind"] == "structured_artifact_bundle", payload
+        assert (
+            by_goal["structured-artifact-goal"]["duplicate_kind"]
+            == "artifact_identity_collision"
+        ), payload
+        assert (
+            by_goal["structured-bundle-goal"]["duplicate_kind"]
+            == "structured_artifact_bundle"
+        ), payload
         assert by_goal["structured-bundle-goal"]["severity"] == "info", payload
-        assert by_goal["artifact-collision-goal"]["duplicate_kind"] == "artifact_identity_collision", payload
-        assert by_goal["artifact-collision-goal"]["classifications"] == ["benchmark_run_v0", "state_refreshed"], payload
+        assert (
+            by_goal["artifact-collision-goal"]["duplicate_kind"]
+            == "artifact_identity_collision"
+        ), payload
+        assert by_goal["artifact-collision-goal"]["classifications"] == [
+            "benchmark_run_v0",
+            "state_refreshed",
+        ], payload
         assert payload["groups"][0]["severity"] == "warning", payload
 
-        repair_preview = run_cli(registry_path, "history", "repair-index-duplicates", "--limit", "10")
+        repair_preview = run_cli(
+            registry_path, "history", "repair-index-duplicates", "--limit", "10"
+        )
         assert repair_preview["ok"] is True, repair_preview
         assert repair_preview["dry_run"] is True, repair_preview
         assert repair_preview["repaired"] is False, repair_preview
         assert repair_preview["removed_row_count"] == 2, repair_preview
-        assert repair_preview["preserved_reward_overlay_rows"] == 1, repair_preview
-        assert repair_preview["preserved_structured_artifact_bundle_rows"] == 1, repair_preview
-        assert repair_preview["unrepaired_group_count"] == 1, repair_preview
-        repair_actions = {group["goal_id"]: group["action"] for group in repair_preview["groups"]}
-        assert repair_actions["reward-overlay-goal"] == "preserve_reward_overlay", repair_preview
-        assert repair_actions["plain-duplicate-goal"] == "drop_plain_duplicate_rows", repair_preview
-        assert repair_actions["structured-artifact-goal"] == "keep_structured_artifact_row", repair_preview
-        assert repair_actions["structured-bundle-goal"] == "preserve_structured_artifact_bundle", repair_preview
-        assert repair_actions["artifact-collision-goal"] == "blocked_artifact_identity_collision", repair_preview
+        assert repair_preview["preserved_reward_overlay_rows"] == 3, repair_preview
+        assert repair_preview["preserved_structured_artifact_bundle_rows"] == 1, (
+            repair_preview
+        )
+        assert repair_preview["unrepaired_group_count"] == 2, repair_preview
+        repair_actions = {
+            group["goal_id"]: group["action"] for group in repair_preview["groups"]
+        }
+        assert repair_actions["reward-overlay-goal"] == "preserve_reward_overlay", (
+            repair_preview
+        )
+        assert (
+            repair_actions["projected-reward-overlay-goal"] == "preserve_reward_overlay"
+        ), repair_preview
+        assert (
+            repair_actions["conflicting-projected-reward-overlay-goal"]
+            == "blocked_artifact_identity_collision"
+        ), repair_preview
+        assert repair_actions["plain-duplicate-goal"] == "drop_plain_duplicate_rows", (
+            repair_preview
+        )
+        assert (
+            repair_actions["structured-artifact-goal"] == "keep_structured_artifact_row"
+        ), repair_preview
+        assert (
+            repair_actions["structured-bundle-goal"]
+            == "preserve_structured_artifact_bundle"
+        ), repair_preview
+        assert (
+            repair_actions["artifact-collision-goal"]
+            == "blocked_artifact_identity_collision"
+        ), repair_preview
 
         repair_execute = run_cli(
             registry_path,
@@ -212,15 +333,33 @@ def main() -> None:
         assert repair_execute["repaired"] is True, repair_execute
         assert repair_execute["removed_row_count"] == 2, repair_execute
 
-        after_repair = run_cli(registry_path, "history", "inspect-index-duplicates", "--limit", "10")
+        after_repair = run_cli(
+            registry_path, "history", "inspect-index-duplicates", "--limit", "10"
+        )
         assert after_repair["ok"] is True, after_repair
-        assert after_repair["duplicate_group_count"] == 3, after_repair
+        assert after_repair["duplicate_group_count"] == 5, after_repair
         after_by_goal = {group["goal_id"]: group for group in after_repair["groups"]}
         assert "plain-duplicate-goal" not in after_by_goal, after_repair
         assert "structured-artifact-goal" not in after_by_goal, after_repair
-        assert after_by_goal["reward-overlay-goal"]["duplicate_kind"] == "reward_overlay", after_repair
-        assert after_by_goal["structured-bundle-goal"]["duplicate_kind"] == "structured_artifact_bundle", after_repair
-        assert after_by_goal["artifact-collision-goal"]["duplicate_kind"] == "artifact_identity_collision", after_repair
+        assert (
+            after_by_goal["reward-overlay-goal"]["duplicate_kind"] == "reward_overlay"
+        ), after_repair
+        assert (
+            after_by_goal["projected-reward-overlay-goal"]["duplicate_kind"]
+            == "reward_overlay"
+        ), after_repair
+        assert (
+            after_by_goal["conflicting-projected-reward-overlay-goal"]["duplicate_kind"]
+            == "artifact_identity_collision"
+        ), after_repair
+        assert (
+            after_by_goal["structured-bundle-goal"]["duplicate_kind"]
+            == "structured_artifact_bundle"
+        ), after_repair
+        assert (
+            after_by_goal["artifact-collision-goal"]["duplicate_kind"]
+            == "artifact_identity_collision"
+        ), after_repair
 
         filtered = run_cli(
             registry_path,

@@ -30,15 +30,19 @@ requires active `publish` authority and performs this ordered transaction:
 
 1. verify the selected existing issue, or create a structured public issue and
    verify the returned URL;
-2. if a PR exists, add `Fixes #N` only when needed and require the PR readback
-   to expose the canonical closing issue;
+2. if a PR exists, add `Fixes #N` only when needed and use a bounded readback
+   retry to require the PR to expose the canonical closing issue;
 3. atomically replace the local placeholder feasibility row with the canonical
    issue row while preserving revision-pinned context and compact delivery
    evidence;
-4. update the existing PR lifecycle row with the same explicit `issue_ref`.
+4. update an existing PR lifecycle row with the same explicit `issue_ref`; if
+   lifecycle projection has not run yet, return `not_projected` and let the
+   existing lifecycle wrapper fill it instead of failing promotion.
 
-Retries are idempotent. An already verified issue/PR association with one
-canonical feasibility row produces zero external writes and no duplicate
+Retries are idempotent. Closing-reference verification retries at most three
+reads with a short delay, covering GitHub's write-after-read lag without
+creating a background monitor. An already verified issue/PR association with
+one canonical feasibility row produces zero external writes and no duplicate
 Kanban or metrics row.
 
 GitHub cannot provide a cross-issue/PR transaction. If issue creation succeeds

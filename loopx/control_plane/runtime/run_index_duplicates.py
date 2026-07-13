@@ -12,6 +12,13 @@ STRUCTURED_INDEX_KEYS = (
     "benchmark_experiment_report",
     "active_user_assisted_pilot",
 )
+REWARD_OVERLAY_IDENTITY_KEYS = (
+    "generated_at",
+    "goal_id",
+    "classification",
+    "json_path",
+    "markdown_path",
+)
 
 
 def index_identity(record: dict[str, Any]) -> tuple[str, str, str]:
@@ -38,10 +45,40 @@ def _normalized_key(record: dict[str, Any]) -> str:
     return json.dumps(record, sort_keys=True, ensure_ascii=False)
 
 
+def is_reward_overlay_bundle(records: list[dict[str, Any]]) -> bool:
+    """Return true when compact reward rows are projections of one base run."""
+
+    base_rows = [
+        record for record in records if not isinstance(record.get("human_reward"), dict)
+    ]
+    reward_rows = [
+        record for record in records if isinstance(record.get("human_reward"), dict)
+    ]
+    if len(base_rows) != 1 or not reward_rows:
+        return False
+
+    base = base_rows[0]
+    for overlay in reward_rows:
+        projected = _normalized_index_record(overlay)
+        if not all(key in projected for key in REWARD_OVERLAY_IDENTITY_KEYS):
+            return False
+        if any(
+            key not in base or base[key] != value for key, value in projected.items()
+        ):
+            return False
+    return True
+
+
 def is_repairable_structured_artifact_duplicate(records: list[dict[str, Any]]) -> bool:
     classifications = {str(record.get("classification") or "") for record in records}
-    health_checks = {str(record.get("health_check") or "") for record in records if record.get("health_check")}
-    structured_rows = [record for record in records if has_structured_index_payload(record)]
+    health_checks = {
+        str(record.get("health_check") or "")
+        for record in records
+        if record.get("health_check")
+    }
+    structured_rows = [
+        record for record in records if has_structured_index_payload(record)
+    ]
     return (
         len(structured_rows) == 1
         and len(classifications) == 1
@@ -66,16 +103,22 @@ def is_structured_artifact_bundle(records: list[dict[str, Any]]) -> bool:
     if not all(len(structured_index_payload_keys(record)) == 1 for record in records):
         return False
     payload_fingerprints = {
-        _normalized_key({key: record[key] for key in structured_index_payload_keys(record)})
+        _normalized_key(
+            {key: record[key] for key in structured_index_payload_keys(record)}
+        )
         for record in records
     }
     return len(payload_fingerprints) == len(records)
 
 
 def classify_index_duplicate_records(records: list[dict[str, Any]]) -> dict[str, Any]:
-    normalized_keys = {_normalized_key(_normalized_index_record(record)) for record in records}
-    reward_records = sum(1 for record in records if isinstance(record.get("human_reward"), dict))
-    if reward_records and len(normalized_keys) == 1:
+    normalized_keys = {
+        _normalized_key(_normalized_index_record(record)) for record in records
+    }
+    reward_records = sum(
+        1 for record in records if isinstance(record.get("human_reward"), dict)
+    )
+    if is_reward_overlay_bundle(records):
         return {
             "duplicate_kind": "reward_overlay",
             "severity": "info",
@@ -85,7 +128,7 @@ def classify_index_duplicate_records(records: list[dict[str, Any]]) -> dict[str,
             "reason": "reward overlay rows are intentionally merged by status checks",
         }
 
-    if len(normalized_keys) == 1:
+    if not reward_records and len(normalized_keys) == 1:
         return {
             "duplicate_kind": "plain_duplicate",
             "severity": "warning",
@@ -128,7 +171,9 @@ def classify_index_duplicate_records(records: list[dict[str, Any]]) -> dict[str,
     }
 
 
-def duplicate_repair_decision(records: list[tuple[int, dict[str, Any]]]) -> dict[str, Any]:
+def duplicate_repair_decision(
+    records: list[tuple[int, dict[str, Any]]],
+) -> dict[str, Any]:
     line_numbers = [line_number for line_number, _ in records]
     payload = classify_index_duplicate_records([record for _, record in records])
     action = payload.get("action")
@@ -144,7 +189,11 @@ def duplicate_repair_decision(records: list[tuple[int, dict[str, Any]]]) -> dict
             if has_structured_index_payload(record)
         ]
         kept_line_numbers = [structured_lines[0]]
-        removed_line_numbers = [line_number for line_number in line_numbers if line_number != structured_lines[0]]
+        removed_line_numbers = [
+            line_number
+            for line_number in line_numbers
+            if line_number != structured_lines[0]
+        ]
 
     return {
         "action": action,

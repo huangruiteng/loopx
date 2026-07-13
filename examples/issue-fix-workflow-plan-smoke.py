@@ -122,6 +122,15 @@ def assert_workflow_shape(payload: dict[str, Any]) -> None:
     assert "validation_not_run" in review["readiness_blockers"], review
     description = review["pr_description_contract"]
     assert description["schema_version"] == "issue_fix_pr_description_contract_v0"
+    assert description["builder_contract"] == {
+        "schema_version": "issue_fix_pr_description_build_v0",
+        "surface": "issue_fix.pr_description",
+        "default_enabled": False,
+        "explicit_dependency_injection": True,
+        "provider_call_budget": 1,
+        "fail_open_preserves_base_description": True,
+        "applied_preferences_require_compact_receipt": True,
+    }
     assert description["source_contract"] == "pr_review_five_block_template_v0"
     assert [section["label"] for section in description["sections"]] == [
         "动机",
@@ -131,6 +140,7 @@ def assert_workflow_shape(payload: dict[str, Any]) -> None:
         "修复后复现",
         "验证",
         "对主干的风险与未覆盖",
+        "关联 Issue",
     ]
     assert description["sections"][2]["applicability"] == "code_changes"
     assert description["sections"][4]["accepted_surfaces"] == [
@@ -141,6 +151,15 @@ def assert_workflow_shape(payload: dict[str, Any]) -> None:
         "required": False,
         "allowed_when": "complex_change",
         "must_not_replace_textual_evidence": True,
+    }
+    assert description["issue_reference_policy"] == {
+        "schema_version": "issue_fix_pr_issue_reference_policy_v0",
+        "default_closing_keyword": "Fixes",
+        "partial_fix_prefix": "Related to",
+        "closing_requires_default_branch": True,
+        "full_syntax_required_per_issue": True,
+        "applied_after_semantic_preferences": True,
+        "verification_surface": "closingIssuesReferences",
     }
     assert description["review_only_section_excluded"] == "我的整体评价"
     assert description["requires_current_diff_evidence"] is True

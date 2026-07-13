@@ -26,6 +26,10 @@ def state_text() -> str:
         done_lines.append(f"- [x] [P1] Completed implementation lane {index}.\n")
         if index == 1:
             done_lines.append("  Continuation detail must move with the archived item.\n")
+            done_lines.append(
+                "  <!-- loopx:todo todo_id=todo_completed_lane_1 status=done "
+                "task_class=advancement_task excluded_agents=codex-reviewer -->\n"
+            )
     return (
         "---\n"
         "status: active\n"
@@ -66,6 +70,9 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
                         "adapter": {
                             "kind": "harness_self_improvement",
                             "status": "connected-read-only",
+                        },
+                        "coordination": {
+                            "registered_agents": ["codex-reviewer"],
                         },
                         "authority_sources": [],
                     }
@@ -181,7 +188,40 @@ def main() -> int:
         assert "Continuation detail must move with the archived item." in updated
         assert updated.count("[P1] Completed implementation lane 1.") == 1
         assert updated.count("[P1] Completed implementation lane 2.") == 1
+        assert "excluded_agents=codex-reviewer" in updated
         assert "updated_at: 2026-01-01T00:00:00+00:00" not in updated
+
+        status_after = run_cli(registry_path, runtime, "status")
+        assert status_after["ok"] is True, status_after
+        assert status_after["contract_errors"] == [], status_after
+
+        state_path.write_text(
+            updated
+            + "- [ ] [P1] Contradictory archived work item.\n"
+            + "  <!-- loopx:todo todo_id=todo_archived_open status=done "
+            + "task_class=advancement_task excluded_agents=codex-reviewer -->\n"
+            + "- [x] [P1] Malformed archived work item.\n"
+            + "  <!-- loopx:todo todo_id=todo_archived_malformed status=<bad> "
+            + "task_class=advancement_task excluded_agents=codex-reviewer -->\n"
+            + "- [x] [P1] Empty-status archived work item.\n"
+            + "  <!-- loopx:todo todo_id=todo_archived_empty status= "
+            + "task_class=advancement_task excluded_agents=codex-reviewer -->\n",
+            encoding="utf-8",
+        )
+        invalid_status = run_cli(registry_path, runtime, "status", check=False)
+        assert invalid_status["ok"] is False, invalid_status
+        assert any(
+            "todo_archived_open" in item and "executor exclusions" in item
+            for item in invalid_status["contract_errors"]
+        ), invalid_status
+        assert any(
+            "todo_archived_malformed" in item and "malformed status metadata" in item
+            for item in invalid_status["contract_errors"]
+        ), invalid_status
+        assert any(
+            "todo_archived_empty" in item and "malformed status metadata" in item
+            for item in invalid_status["contract_errors"]
+        ), invalid_status
 
     print("todo-archive-completed-smoke ok")
     return 0

@@ -729,10 +729,8 @@ def _compact_autonomous_candidate_context(
 
 
 def _scheduler_hint(
-    payload: dict[str, Any],
-    *,
-    include_detail: bool = False,
-    codex_app_scheduler_state: dict[str, Any] | None = None,
+    payload: dict[str, Any], *, include_detail: bool = False,
+    codex_app_scheduler_state: dict[str, Any] | None = None, available_capabilities: Any = None,
 ) -> dict[str, Any]:
     return build_scheduler_hint(
         payload,
@@ -740,6 +738,7 @@ def _scheduler_hint(
         agent_scope_frontier_actions=[action.value for action in AgentScopeFrontierAction],
         include_detail=include_detail,
         codex_app_scheduler_state=codex_app_scheduler_state,
+        available_capabilities=available_capabilities,
     )
 
 
@@ -1389,6 +1388,9 @@ def build_quota_should_run(
         self_repair_allowed = bool(stall_self_repair and stall_self_repair.get("allowed"))
         work_lane_contract = build_quota_work_lane_contract(
             item,
+            status_payload=status_payload,
+            goal_id=safe_goal_id,
+            agent_id=normalize_todo_claimed_by((agent_identity or {}).get("agent_id")),
             agent_todo_summary=agent_todo_summary,
             monitor_due_item_limit=MONITOR_DUE_ITEM_LIMIT,
         )
@@ -1632,6 +1634,8 @@ def build_quota_should_run(
                 else None,
             )
             if external_evidence_observation_recent:
+                external_evidence_observation = None
+            elif external_evidence_observation.get("poll_window_status") == "before_next_due":
                 external_evidence_observation = None
         ready_deferred_resume_candidates: list[dict[str, Any]] = []
         if (
@@ -2169,6 +2173,7 @@ def build_quota_should_run(
         payload["scheduler_hint"] = _scheduler_hint(
             payload,
             include_detail=include_scheduler_detail,
+            available_capabilities=effective_available_capabilities,
             codex_app_scheduler_state=_load_codex_app_scheduler_state(
                 status_payload,
                 goal_id=safe_goal_id,
@@ -2327,6 +2332,7 @@ def record_quota_monitor_poll(
     source: str = DEFAULT_SLOT_SPEND_SOURCE,
     reason_summary: str | None = None,
     agent_id: str | None = None,
+    available_capabilities: Any = None,
     todo_id: str | None = None,
     target_key: str | None = None,
     result_hash: str | None = None,
@@ -2338,7 +2344,12 @@ def record_quota_monitor_poll(
     next_claimed_by: str | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
-    before = build_quota_should_run(status_payload, goal_id=safe_goal_id, agent_id=agent_id)
+    before = build_quota_should_run(
+        status_payload,
+        goal_id=safe_goal_id,
+        agent_id=agent_id,
+        available_capabilities=available_capabilities,
+    )
     return record_quota_monitor_poll_for_decision(
         before,
         status_payload,
@@ -2347,6 +2358,7 @@ def record_quota_monitor_poll(
             after_status,
             goal_id=safe_goal_id,
             agent_id=agent_id,
+            available_capabilities=available_capabilities,
         ),
         registry_path=registry_path,
         execute=execute,

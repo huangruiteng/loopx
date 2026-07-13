@@ -88,6 +88,17 @@ def collect_global_registry_health(
             goal,
             fallback_base=global_path.parent,
         )
+        state_path = resolve_goal_local_path(
+            goal.get("state_file"),
+            goal,
+            fallback_base=global_path.parent,
+        )
+        source_missing = source_path is None or not source_path.exists()
+        state_missing = state_path is None or not state_path.exists()
+        orphan_retirement_action = (
+            f"preview `loopx retire-global-goal --goal-id {goal_id}`; execute only "
+            "after confirming both the source registry and active state are obsolete"
+        )
         if source_path:
             source_registries.add(str(source_path))
             if not source_path.exists():
@@ -98,7 +109,11 @@ def collect_global_registry_health(
                         goal_id=goal_id,
                         path=source_path,
                         message=f"`{goal_id}` source registry is missing",
-                        recommended_action=f"reconnect `{goal_id}` from its project or archive it if the project is obsolete",
+                        recommended_action=(
+                            orphan_retirement_action
+                            if state_missing
+                            else f"reconnect `{goal_id}` from its project"
+                        ),
                     )
                 )
             else:
@@ -118,12 +133,6 @@ def collect_global_registry_health(
                                 ),
                             )
                         )
-
-        state_path = resolve_goal_local_path(
-            goal.get("state_file"),
-            goal,
-            fallback_base=global_path.parent,
-        )
         if state_path and not state_path.exists():
             findings.append(
                 global_registry_finding(
@@ -132,7 +141,11 @@ def collect_global_registry_health(
                     goal_id=goal_id,
                     path=state_path,
                     message=f"`{goal_id}` active state file is missing",
-                    recommended_action=f"repair `{goal_id}` state_file or reconnect the project",
+                    recommended_action=(
+                        orphan_retirement_action
+                        if source_missing
+                        else f"repair `{goal_id}` state_file or reconnect the project"
+                    ),
                 )
             )
         if not state_path:

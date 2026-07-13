@@ -10,6 +10,7 @@ from .model_behavior_qualification import (
     MODEL_BEHAVIOR_HARD_INVARIANT_FIELDS,
     MODEL_BEHAVIOR_SEMANTIC_CONTRACT_FIELDS,
     MODEL_BEHAVIOR_SIGNAL_FIELDS,
+    ModelBehaviorArmExecutionError,
     ModelBehaviorActor,
     ModelBehaviorPairValidationError,
     build_model_behavior_actor_request,
@@ -244,6 +245,26 @@ def run_model_behavior_corpus(
                     semantic_contract_required=True,
                 )
                 compact = _compact_pair_result(result)
+            except ModelBehaviorArmExecutionError as exc:
+                terminal = exc.receipt
+                compact = {
+                    "status": "actor_failed",
+                    "equivalent": False,
+                    "hard_invariant_drift_fields": [],
+                    "behavior_signal_drift_fields": [],
+                    "semantic_contract_complete": False,
+                    "semantic_contract_drift_fields": [],
+                    "semantic_contract_mismatch_fields": [],
+                    "stochastic_drift_fields": [],
+                    "safety_violations": [
+                        f"actor_arm_failed:{terminal['arm']}:{terminal['error_code']}"
+                    ],
+                    "failed_arm": terminal["arm"],
+                    "actor_error_code": terminal["error_code"],
+                    "receipt_digests": dict(
+                        terminal.get("completed_arm_receipt_digests") or {}
+                    ),
+                }
             except ModelBehaviorPairValidationError:
                 compact = {
                     "status": "fail_closed",

@@ -41,6 +41,7 @@ def status_payload(
     agent_todo_items: list[dict] | None = None,
     next_action: str = "Observe dependency state and then advance backlog if unchanged.",
     post_handoff_latest_run: dict | None = None,
+    latest_runs: list[dict] | None = None,
 ) -> dict:
     if agent_todo_items is None:
         agent_todo_items = [
@@ -59,7 +60,72 @@ def status_payload(
         recommended_action=next_action,
         next_action=next_action,
         post_handoff_latest_run=post_handoff_latest_run,
+        latest_runs=latest_runs,
     )
+
+
+def assert_unchanged_monitor_attempt_yields_to_advancement() -> None:
+    due_todo = "[P0] Monitor one overdue dependency."
+    advancement_todo = "[P1] Advance the bounded product slice."
+    items = [
+        {
+            "index": 1,
+            "text": due_todo,
+            "role": "agent",
+            "status": "open",
+            "priority": "P0",
+            "task_class": "continuous_monitor",
+            "action_kind": "monitor",
+            "next_due_at": PAST_DUE_AT,
+        },
+        {
+            "index": 2,
+            "text": advancement_todo,
+            "role": "agent",
+            "status": "open",
+            "priority": "P1",
+            "task_class": "advancement_task",
+        },
+    ]
+    unchanged_poll = {
+        "classification": "quota_monitor_poll",
+        "agent_id": "codex-fixture",
+        "health_check": "due monitor observation unchanged; no quota spend",
+        "monitor_event": {
+            "monitor_mode": "due_monitor_observed_without_material_transition",
+            "material_change": False,
+        },
+    }
+    payload = status_payload(
+        status="monitor_backlog_fairness",
+        agent_todo_items=items,
+        latest_runs=[unchanged_poll],
+    )
+    guard = build_quota_should_run(payload, goal_id=GOAL_ID)
+    lane = guard["work_lane_contract"]
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["reason_codes"] == [
+        "open_agent_todo",
+        "due_monitor_context",
+        "monitor_attempt_already_recorded",
+    ], lane
+    assert guard["recommended_action"] == advancement_todo, guard
+
+    payload = status_payload(
+        status="monitor_priority_reset_after_delivery",
+        agent_todo_items=items,
+        latest_runs=[
+            {
+                "classification": "validated_delivery",
+                "delivery_outcome": "outcome_progress",
+            },
+            unchanged_poll,
+        ],
+    )
+    guard = build_quota_should_run(payload, goal_id=GOAL_ID)
+    lane = guard["work_lane_contract"]
+    assert lane["lane"] == "continuous_monitor", lane
+    assert lane["selected_todo_id"], lane
 
 
 def assert_work_lane_context_matches_quota_state_machine_cases() -> None:
@@ -138,6 +204,7 @@ def assert_work_lane_context_progress_scope_sources() -> None:
 
 
 def main() -> int:
+    assert_unchanged_monitor_attempt_yields_to_advancement()
     assert_work_lane_context_matches_quota_state_machine_cases()
     assert_work_lane_context_progress_scope_sources()
 

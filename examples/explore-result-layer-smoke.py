@@ -365,10 +365,14 @@ def check_lark_sync_contract() -> None:
             runner=fake_runner,
         )
         assert first["ok"] is True, first
+        assert first["readback"]["verified"] is True, first
+        assert first["readback"]["source"] == "post_write_scan", first
+        assert first["readback"]["expected_result_count"] == 4, first
+        assert first["readback"]["observed_result_count"] == 4, first
         assert len(upsert_calls) == 3, upsert_calls
         assert all("--record-id" not in call for call in upsert_calls), upsert_calls
         assert first["written_rows"] == 3 and first["skipped_rows"] == 1, first
-        assert len([item for item in first["commands"] if "+record-list" in item["command"]]) == 4
+        assert len([item for item in first["commands"] if "+record-list" in item["command"]]) == 8
         stored = json.loads(config_path.read_text(encoding="utf-8"))
         assert len(stored["result_records"]) == 4, stored
 
@@ -383,6 +387,9 @@ def check_lark_sync_contract() -> None:
             runner=fake_runner,
         )
         assert second["ok"] is True, second
+        assert second["readback"]["verified"] is True, second
+        assert second["readback"]["source"] == "initial_scan", second
+        assert len([item for item in second["commands"] if "+record-list" in item["command"]]) == 4
         assert not upsert_calls, upsert_calls
         assert second["written_rows"] == 0 and second["skipped_rows"] == 4, second
         assert config_path.read_text(encoding="utf-8") == stored_before_second
@@ -1020,6 +1027,18 @@ def check_cli_surface() -> None:
         summary = run_cli("explore", "summary", "--goal-id", goal_id)
         assert summary["counts"]["node_count"] == 1, summary
         assert summary["counts"]["finding_count"] == 1, summary
+        presentation = run_cli(
+            "explore",
+            "presentation",
+            "--goal-id",
+            goal_id,
+        )
+        assert presentation["presentation_mode"] == "canonical_only", presentation
+        assert presentation["canonical"]["graph_counts"]["node_count"] == 1, presentation
+        assert (
+            presentation["canonical"]["source_revision"]
+            == presentation["executive"]["source_revision"]
+        ), presentation
         graph = run_cli("explore", "graph", "--goal-id", goal_id)
         assert str(graph["mermaid"]).startswith("flowchart TD"), graph
         focused_graph = run_cli(
@@ -1240,6 +1259,40 @@ def check_cli_surface() -> None:
         assert stored_cli_sync["commands"][0]["command"].startswith("stored-lark-cli "), stored_cli_sync
         assert stored_cli_sync["visual_sync"]["status"] == "would_publish", stored_cli_sync
         assert "whiteboard +update" in stored_cli_sync["visual_sync"]["command"]["command"], stored_cli_sync
+
+        for role, mode in (
+            ("canonical", "canonical_full"),
+            ("executive", "executive_auto"),
+        ):
+            role_config = run_cli(
+                "explore",
+                "feishu-visual-configure",
+                "--config-path",
+                str(config_path),
+                "--whiteboard-token",
+                f"wb_{role}_fixture",
+                "--view-role",
+                role,
+                "--projection-mode",
+                mode,
+                "--execute",
+            )
+            assert role_config["status"] == "configured", role_config
+        dual_config_sync = run_cli(
+            "explore",
+            "feishu-sync",
+            "--goal-id",
+            goal_id,
+            "--config-path",
+            str(config_path),
+        )
+        assert dual_config_sync["visual_sync"]["presentation_mode"] == "canonical_only", dual_config_sync
+        assert dual_config_sync["visual_sync"]["views"]["canonical"]["status"] == "would_publish", (
+            dual_config_sync
+        )
+        assert dual_config_sync["visual_sync"]["views"]["executive"]["status"] == "not_recommended", (
+            dual_config_sync
+        )
 
         # Error contract: unknown target without config fails with exit 1.
         error = subprocess.run(

@@ -17,6 +17,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 import loopx.cli_commands.quota as quota_command  # noqa: E402
+from loopx.control_plane.quota.monitor_poll import (  # noqa: E402
+    build_quota_monitor_poll_event,
+)
 from loopx.control_plane.scheduler.monitor_poll_writeback import (  # noqa: E402
     resolve_monitor_todo_item,
     write_monitor_poll_todo_state,
@@ -114,6 +117,7 @@ def write_fixture(
         "todo_id=todo_monitorpolladvance "
         "status=open "
         "task_class=advancement_task "
+        "required_capabilities=network "
         f"claimed_by={AGENT_ID} "
         "-->\n"
         if include_advancement
@@ -386,6 +390,11 @@ def assert_material_transition_followup() -> None:
         records = monitor_poll_records(registry_path)
         assert [record["classification"] for record in records] == ["quota_monitor_poll"], records
         assert records[0]["delivery_outcome"] == "outcome_progress", records[0]
+        event = payload["monitor_event"]
+        assert event["monitor_mode"] == "due_monitor_material_transition", event
+        assert event["reason_summary"] == "due monitor observation produced a material transition", event
+        assert "due monitor material transition observed" in payload["health_check"], payload
+        assert "unchanged" not in payload["health_check"], payload
 
         handoff = run_cli(
             registry_path,
@@ -413,6 +422,52 @@ def assert_material_transition_followup() -> None:
         contract = handoff["interaction_contract"]
         assert contract["agent_channel"]["must_attempt"] is True, contract
         assert contract["cli_channel"]["spend_after_validation"] is True, contract
+
+
+def assert_external_material_transition_receipt_correlation() -> None:
+    before = {
+        "goal_id": GOAL_ID,
+        "should_run": True,
+        "requires_user_action": False,
+        "effective_action": "external_evidence_observe",
+        "recommended_action": "Observe the external result handle.",
+        "external_evidence_observation": {
+            "required": True,
+            "must_attempt_observation": True,
+            "delivery_allowed": False,
+            "if_handle_live_and_unchanged": "quiet_noop_no_spend",
+        },
+        "work_lane_contract": {
+            "lane": "continuous_monitor",
+            "must_attempt_work": True,
+            "monitor_policy": "read_only_observation_then_no_spend_if_unchanged",
+            "reason_codes": ["external_monitor_context"],
+        },
+        "heartbeat_recommendation": {
+            "recommended_mode": "external_evidence_observe_or_blocker",
+            "reason": "Observe the external result handle before deciding whether to continue.",
+        },
+        "agent_identity": {"agent_id": AGENT_ID},
+    }
+
+    record = build_quota_monitor_poll_event(
+        before,
+        todo_id=TODO_ID,
+        target_key=TARGET_KEY,
+        result_hash="external-result-ready",
+        material_change=True,
+    )
+
+    event = record["monitor_event"]
+    assert event["material_change"] is True, record
+    assert event["monitor_mode"] == "external_monitor_material_transition", record
+    assert event["reason_summary"] == (
+        "external monitor observation produced a material transition"
+    ), record
+    assert "external monitor material transition observed" in record["health_check"], record
+    assert "unchanged" not in record["health_check"], record
+    assert "no material transition" not in record["health_check"], record
+    assert record["delivery_outcome"] == "outcome_progress", record
 
 
 def assert_due_monitor_poll_allowed_with_open_user_gate() -> None:
@@ -529,6 +584,8 @@ def assert_compacted_auxiliary_due_monitor_can_write_back() -> None:
             GOAL_ID,
             "--agent-id",
             AGENT_ID,
+            "--available-capability",
+            "network",
         )
         assert quota["work_lane_contract"]["obligation"] == "advance_one_bounded_segment", quota
         assert quota["agent_todo_summary"]["monitor_due_count"] == 2, quota
@@ -544,6 +601,8 @@ def assert_compacted_auxiliary_due_monitor_can_write_back() -> None:
             GOAL_ID,
             "--agent-id",
             AGENT_ID,
+            "--available-capability",
+            "network",
             "--todo-id",
             "todo_monitorpoll111",
             "--target-key",
@@ -554,6 +613,8 @@ def assert_compacted_auxiliary_due_monitor_can_write_back() -> None:
         )
         assert payload["ok"] is True, payload
         assert payload["todo_writeback"]["todo_id"] == "todo_monitorpoll111", payload
+        assert "network" in payload["before"]["capability_gate"]["available"], payload
+        assert "network" in payload["after"]["capability_gate"]["available"], payload
         other = find_todo(state_file, "todo_monitorpoll111")
         assert other["consecutive_no_change"] == "2", other
         assert other["next_due_at"] != "2026-01-01T00:00:00+00:00", other
@@ -610,7 +671,7 @@ def assert_cli_monitor_poll_uses_should_run_lookback() -> None:
         quota_command="monitor-poll",
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
-        available_capabilities=None,
+        available_capabilities=["network"],
         include_scheduler_detail=False,
         slots=1,
         source="heartbeat",
@@ -655,6 +716,7 @@ def assert_cli_monitor_poll_uses_should_run_lookback() -> None:
 
     assert rc == 0, rc
     assert seen["limit"] == AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, seen
+    assert seen["record_kwargs"]["available_capabilities"] == ["network"], seen
     assert seen["payload"] == {"ok": True, "mode": "monitor-poll", "dry_run": True, "appended": False}, seen
 
 
@@ -663,6 +725,7 @@ def main() -> int:
     assert_writeback_helper_preview_contract()
     assert_unchanged_writeback()
     assert_material_transition_followup()
+    assert_external_material_transition_receipt_correlation()
     assert_due_monitor_poll_allowed_with_open_user_gate()
     assert_target_key_cannot_hijack_selected_due_monitor()
     assert_compacted_auxiliary_due_monitor_can_write_back()

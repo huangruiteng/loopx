@@ -36,6 +36,11 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
     todo_parser = subparsers.add_parser(
         "todo",
         help="Add a user or agent todo to a goal's active state.",
+        description=(
+            "Manage goal todos. The options below are the union for every todo "
+            "command; each option's help names the commands that accept it, and "
+            "unsupported combinations fail before state is read or written."
+        ),
     )
     todo_parser.add_argument(
         "todo_command",
@@ -331,7 +336,9 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
             "For todo add/update on role=user task-class=user_gate, mark the "
             "authoring registered agent; when --blocks-agent is omitted, the "
             "gate blocks this agent. For todo suggest, name the project agent "
-            "that should perform the repository analysis."
+            "that should perform the repository analysis. This is not lifecycle "
+            "actor attribution; todo complete uses --claimed-by only when changing "
+            "the current todo owner."
         ),
     )
     todo_parser.add_argument(

@@ -34,6 +34,13 @@ from ....capabilities.explore.result_log import (
     EDGE_TYPES,
     build_explore_graph_view,
 )
+from ...explore_views import (
+    PRESENTATION_MODE_DUAL_VIEW,
+    build_explore_presentation_bundle,
+    explore_source_digest,
+    explore_source_revision,
+    validate_explore_view_freshness,
+)
 from .kanban import (
     DEFAULT_CLI_BIN,
     CommandRunner,
@@ -54,13 +61,23 @@ from .message_card import build_lark_markdown_reply_card
 LARK_EXPLORE_SCHEMA_VERSION = "loopx_lark_explore_result_board_v0"
 LARK_EXPLORE_LOCAL_CONFIG_VERSION = "loopx_lark_explore_local_config_v0"
 LARK_EXPLORE_SYNC_VERSION = "loopx_lark_explore_sync_v0"
+LARK_EXPLORE_READBACK_VERSION = "loopx_lark_explore_readback_v0"
 LARK_EXPLORE_CARD_VERSION = "loopx_lark_explore_card_v0"
 LARK_EXPLORE_VISUAL_SYNC_VERSION = "loopx_lark_explore_visual_sync_v0"
+LARK_EXPLORE_VISUALS_SYNC_VERSION = "loopx_lark_explore_visuals_sync_v0"
 
 DEFAULT_EXPLORE_BASE_NAME = "LoopX Exploration Results"
 SINK_VISIBILITY_OWNER_ONLY = "owner-only"
 SINK_VISIBILITY_SHARED = "shared"
 SINK_VISIBILITIES = {SINK_VISIBILITY_OWNER_ONLY, SINK_VISIBILITY_SHARED}
+VISUAL_RENDERER_MERMAID = "mermaid"
+VISUAL_RENDERER_SVG_ATLAS = "svg_atlas"
+VISUAL_RENDERER_SVG_BOARD = "svg_board"
+VISUAL_RENDERERS = {
+    VISUAL_RENDERER_MERMAID,
+    VISUAL_RENDERER_SVG_ATLAS,
+    VISUAL_RENDERER_SVG_BOARD,
+}
 
 TABLE_NODES = "nodes"
 TABLE_EDGES = "edges"
@@ -446,6 +463,9 @@ def configure_lark_explore_visual_sink(
     projection_mode: str = "canonical_filtered",
     include_ancestors: bool = True,
     mermaid_node_limit: int = 100,
+    atlas_column_count: int = 1,
+    renderer: str = VISUAL_RENDERER_MERMAID,
+    view_role: str | None = None,
     execute: bool = False,
 ) -> dict[str, Any]:
     """Configure an optional owner-facing whiteboard over canonical Explore data."""
@@ -453,8 +473,32 @@ def configure_lark_explore_visual_sink(
     token = str(whiteboard_token or "").strip()
     if not token:
         raise ValueError("whiteboard_token is required")
-    if projection_mode not in {"canonical_filtered", "issue_fix_two_lane"}:
-        raise ValueError("projection_mode must be canonical_filtered or issue_fix_two_lane")
+    valid_modes = {
+        "canonical_filtered",
+        "issue_fix_two_lane",
+        "canonical_full",
+        "executive_auto",
+    }
+    if projection_mode not in valid_modes:
+        raise ValueError(f"projection_mode must be one of {sorted(valid_modes)}")
+    role = str(view_role or "").strip() or None
+    if role not in {None, "canonical", "executive"}:
+        raise ValueError("view_role must be canonical or executive")
+    expected_mode = {"canonical": "canonical_full", "executive": "executive_auto"}.get(role)
+    if expected_mode and projection_mode != expected_mode:
+        raise ValueError(f"view_role {role} requires projection_mode {expected_mode}")
+    selected_renderer = str(renderer or VISUAL_RENDERER_MERMAID).strip()
+    if selected_renderer not in VISUAL_RENDERERS:
+        raise ValueError(f"renderer must be one of {sorted(VISUAL_RENDERERS)}")
+    if (
+        selected_renderer
+        in {
+            VISUAL_RENDERER_SVG_ATLAS,
+            VISUAL_RENDERER_SVG_BOARD,
+        }
+        and role is None
+    ):
+        raise ValueError(f"{selected_renderer} renderer requires a canonical or executive view_role")
     local = read_lark_explore_local_config(config_path)
     if not local.get("ok") or not local.get("exists"):
         raise ValueError("run `loopx explore feishu-setup` before configuring a visual sink")
@@ -467,10 +511,19 @@ def configure_lark_explore_visual_sink(
         "projection_mode": projection_mode,
         "include_ancestors": bool(include_ancestors),
         "mermaid_node_limit": max(1, int(mermaid_node_limit)),
+        "atlas_column_count": max(1, int(atlas_column_count)),
+        "renderer": selected_renderer,
     }
+    if role:
+        visual_sink["view_role"] = role
     if execute:
         updated = {key: value for key, value in local.items() if key not in {"ok", "exists", "path", "updated_at"}}
-        updated["visual_sink"] = visual_sink
+        if role:
+            visual_sinks = dict(updated.get("visual_sinks") or {})
+            visual_sinks[role] = visual_sink
+            updated["visual_sinks"] = visual_sinks
+        else:
+            updated["visual_sink"] = visual_sink
         write_lark_explore_local_config(config_path, updated)
     return {
         "ok": True,
@@ -478,6 +531,7 @@ def configure_lark_explore_visual_sink(
         "execute": execute,
         "status": "configured" if execute else "would_configure",
         "config_path": str(config_path),
+        "view_role": role,
         "visual_sink": visual_sink,
     }
 
@@ -490,10 +544,11 @@ def sync_explore_visual_to_lark(
     config_path: Path,
     semantic_digest: str,
     display_projection: Mapping[str, Any] | None = None,
+    view_key: str | None = None,
     execute: bool = False,
     runner: CommandRunner = default_subprocess_runner,
 ) -> dict[str, Any]:
-    """Publish a configured Mermaid whiteboard without conflating it with Base rows."""
+    """Publish a configured whiteboard without conflating it with Base rows."""
 
     if not isinstance(visual_sink, Mapping):
         return {
@@ -513,6 +568,24 @@ def sync_explore_visual_to_lark(
             "published": False,
             "error": "visual_sink.whiteboard_token is required",
         }
+    source_digest = explore_source_digest(projection)
+    source_revision = explore_source_revision(projection, digest=source_digest)
+    if isinstance(display_projection, Mapping) and (
+        display_projection.get("source_digest") or display_projection.get("source_revision")
+    ):
+        freshness = validate_explore_view_freshness(projection, display_projection)
+        if not freshness["fresh"]:
+            return {
+                "ok": False,
+                "schema_version": LARK_EXPLORE_VISUAL_SYNC_VERSION,
+                "status": "stale_projection",
+                "execute": execute,
+                "published": False,
+                "source_digest": source_digest,
+                "source_revision": source_revision,
+                "freshness": freshness,
+                "error": freshness["reason"],
+            }
     graph = (
         dict(display_projection)
         if isinstance(display_projection, Mapping)
@@ -525,7 +598,49 @@ def sync_explore_visual_to_lark(
             node_limit=max(1, int(visual_sink.get("mermaid_node_limit") or 100)),
         )
     )
-    source_name = f".loopx-explore-visual-{semantic_digest[:12] or 'preview'}.mmd"
+    sink_key = str(view_key or visual_sink.get("view_role") or "visual").strip() or "visual"
+    renderer = str(visual_sink.get("renderer") or VISUAL_RENDERER_MERMAID).strip()
+    if renderer not in VISUAL_RENDERERS:
+        return {
+            "ok": False,
+            "schema_version": LARK_EXPLORE_VISUAL_SYNC_VERSION,
+            "status": "invalid_config",
+            "execute": execute,
+            "published": False,
+            "error": f"visual_sink.renderer must be one of {sorted(VISUAL_RENDERERS)}",
+        }
+    source_key, input_format, extension = {
+        VISUAL_RENDERER_MERMAID: ("mermaid", "mermaid", "mmd"),
+        VISUAL_RENDERER_SVG_ATLAS: ("svg", "svg", "svg"),
+        VISUAL_RENDERER_SVG_BOARD: ("svg_board", "svg", "svg"),
+    }[renderer]
+    rendered_source = str(graph.get(source_key) or "")
+    if not rendered_source.strip():
+        return {
+            "ok": False,
+            "schema_version": LARK_EXPLORE_VISUAL_SYNC_VERSION,
+            "status": "invalid_projection",
+            "execute": execute,
+            "published": False,
+            "view_role": str(graph.get("view_role") or sink_key),
+            "renderer": renderer,
+            "error": f"display projection does not contain {source_key} source",
+        }
+    delivery_material = json.dumps(
+        {
+            "source_digest": semantic_digest,
+            "source_revision": source_revision,
+            "view_role": sink_key,
+            "whiteboard_token": whiteboard_token,
+            "renderer": renderer,
+            "rendered_source": rendered_source,
+        },
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    delivery_digest = hashlib.sha256(delivery_material).hexdigest()
+    source_name = f".loopx-explore-{sink_key}-{delivery_digest[:12]}.{extension}"
     command = [
         config.cli_bin,
         "whiteboard",
@@ -535,12 +650,12 @@ def sync_explore_visual_to_lark(
         "--whiteboard-token",
         whiteboard_token,
         "--input_format",
-        "mermaid",
+        input_format,
         "--source",
         f"@{source_name}",
         "--overwrite",
         "--idempotent-token",
-        f"loopx-explore-{semantic_digest[:24] or 'visual-preview'}",
+        f"loopx-explore-{sink_key}-{delivery_digest[:20]}",
         "--format",
         "json",
     ]
@@ -549,7 +664,7 @@ def sync_explore_visual_to_lark(
     else:
         config_path.parent.mkdir(parents=True, exist_ok=True)
         source_path = config_path.parent / source_name
-        source_path.write_text(str(graph.get("mermaid") or ""), encoding="utf-8")
+        source_path.write_text(rendered_source, encoding="utf-8")
         try:
             result = _run_command(
                 command,
@@ -566,6 +681,12 @@ def sync_explore_visual_to_lark(
         "execute": execute,
         "published": bool(execute and result.get("ok")),
         "semantic_digest": semantic_digest,
+        "delivery_digest": delivery_digest,
+        "source_digest": source_digest,
+        "source_revision": source_revision,
+        "view_role": str(graph.get("view_role") or sink_key),
+        "renderer": renderer,
+        "input_format": input_format,
         "docx_token": str(visual_sink.get("docx_token") or "") or None,
         "graph_counts": graph.get("graph_counts"),
         "filter": graph.get("filter"),
@@ -577,48 +698,101 @@ def sync_explore_visual_to_lark(
 def explore_visual_semantic_digest(projection: Mapping[str, Any]) -> str:
     """Return a timestamp-free digest for an explicit visual projection sync."""
 
-    semantic = {
-        "goal_id": projection.get("goal_id"),
-        "nodes": [
-            {
-                key: node.get(key)
-                for key in (
-                    "node_id",
-                    "title",
-                    "node_kind",
-                    "status",
-                    "summary",
-                    "blocked_reason",
-                    "parent_id",
-                    "tags",
-                    "supersedes",
-                )
+    return explore_source_digest(projection)
+
+
+def sync_explore_visuals_to_lark(
+    config: LarkExploreConfig,
+    *,
+    projection: Mapping[str, Any],
+    visual_sinks: Mapping[str, Any],
+    config_path: Path,
+    execute: bool = False,
+    runner: CommandRunner = default_subprocess_runner,
+) -> dict[str, Any]:
+    """Generate and publish configured same-source Explore views."""
+
+    bundle = build_explore_presentation_bundle(projection)
+    requested_roles = [
+        role
+        for role in ("canonical", "executive")
+        if isinstance(visual_sinks.get(role), Mapping)
+    ]
+    active_roles = ["canonical"]
+    if bundle["presentation_mode"] == PRESENTATION_MODE_DUAL_VIEW:
+        active_roles.append("executive")
+    missing_recommended_roles = [
+        role for role in active_roles if role not in requested_roles
+    ]
+    results: dict[str, Any] = {}
+    for role in requested_roles:
+        if role not in active_roles:
+            results[role] = {
+                "ok": True,
+                "status": "not_recommended",
+                "execute": execute,
+                "published": False,
+                "source_digest": bundle["source_digest"],
+                "source_revision": bundle["source_revision"],
+                "view_role": role,
             }
-            for node in projection.get("nodes") or []
-            if isinstance(node, Mapping)
-        ],
-        "edges": [
-            {
-                key: edge.get(key)
-                for key in (
-                    "edge_id",
-                    "from_node",
-                    "to_node",
-                    "edge_type",
-                    "summary",
+            continue
+        role_sink = visual_sinks[role]
+        role_bundle = build_explore_presentation_bundle(
+            projection,
+            policy={
+                "atlas_column_count": max(
+                    1,
+                    int(role_sink.get("atlas_column_count") or 1),
                 )
-            }
-            for edge in projection.get("edges") or []
-            if isinstance(edge, Mapping)
-        ],
+            },
+        )
+        results[role] = sync_explore_visual_to_lark(
+            config,
+            projection=projection,
+            visual_sink=role_sink,
+            config_path=config_path,
+            semantic_digest=role_bundle["source_digest"],
+            display_projection=role_bundle[role],
+            view_key=role,
+            execute=execute,
+            runner=runner,
+        )
+    ok = all(bool(item.get("ok")) for item in results.values())
+    if not results:
+        status = "not_configured"
+    elif not ok:
+        status = "publish_failed" if execute else "invalid_projection"
+    else:
+        status = "published" if execute else "would_publish"
+    return {
+        "ok": ok,
+        "schema_version": LARK_EXPLORE_VISUALS_SYNC_VERSION,
+        "status": status,
+        "execute": execute,
+        "presentation_mode": bundle["presentation_mode"],
+        "reason_codes": bundle["reason_codes"],
+        "source_digest": bundle["source_digest"],
+        "source_revision": bundle["source_revision"],
+        "recommended_roles": active_roles,
+        "missing_recommended_roles": missing_recommended_roles,
+        "views": results,
     }
-    encoded = json.dumps(
-        semantic,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+
+
+def _visual_delivery_digests(sync_payload: Mapping[str, Any] | None) -> dict[str, str]:
+    """Return the configured role digests that make a visual write idempotent."""
+
+    if not isinstance(sync_payload, Mapping):
+        return {}
+    views = sync_payload.get("views")
+    if not isinstance(views, Mapping):
+        return {}
+    return {
+        str(role): str(view.get("delivery_digest"))
+        for role, view in views.items()
+        if isinstance(view, Mapping) and str(view.get("delivery_digest") or "").strip()
+    }
 
 
 def setup_lark_explore_board(
@@ -1027,6 +1201,101 @@ def sync_explore_results_to_lark(
                 for values in rows_by_table[TABLE_EDGES]
             ]
 
+    readback_records: dict[str, dict[str, Any]] = {}
+    readback_duplicate_rows = 0
+    readback_failed_tables: list[str] = []
+    readback_source = "not_performed"
+    if execute and ok and written_rows == 0:
+        readback_records = dict(remote_records)
+        readback_duplicate_rows = duplicate_remote_rows
+        readback_source = "initial_scan"
+    elif execute and ok:
+        readback_source = "post_write_scan"
+        for table_key in EXPLORE_TABLE_KEYS:
+            if not rows_by_table[table_key]:
+                continue
+            offset = 0
+            while True:
+                list_result = _run_command(
+                    _build_record_list_command(
+                        config,
+                        table_id=config.table_id(table_key),
+                        goal_id=goal_id,
+                        offset=offset,
+                    ),
+                    execute=True,
+                    runner=runner,
+                )
+                commands.append(list_result)
+                if not list_result.get("ok"):
+                    readback_failed_tables.append(table_key)
+                    break
+                payload = list_result.get("json") if isinstance(list_result.get("json"), dict) else {}
+                page_records = lark_record_rows(payload)
+                for record in page_records:
+                    result_id = str(record.get(_RESULT_ID_FIELD) or "").strip()
+                    row_goal_id = str(record.get(_GOAL_ID_FIELD) or "").strip()
+                    record_id = str(record.get("_record_id") or "").strip()
+                    if not (result_id and row_goal_id and record_id):
+                        continue
+                    key = f"{row_goal_id}:{table_key}:{result_id}"
+                    if key not in expected_keys:
+                        continue
+                    if key in readback_records:
+                        readback_duplicate_rows += 1
+                        continue
+                    readback_records[key] = record
+                    record_map[key] = record_id
+                if not _record_list_has_more(payload):
+                    break
+                if not page_records:
+                    readback_failed_tables.append(table_key)
+                    break
+                offset += len(page_records)
+
+    expected_values = {
+        f"{goal_id}:{table_key}:{str(values.get(_RESULT_ID_FIELD) or '').strip()}": values
+        for table_key in EXPLORE_TABLE_KEYS
+        for values in rows_by_table[table_key]
+    }
+    missing_readback_keys = sorted(expected_keys - set(readback_records))
+    mismatched_readback_keys = sorted(
+        key
+        for key, values in expected_values.items()
+        if key in readback_records and not _lark_values_match(values, readback_records[key])
+    )
+    readback_verified = bool(
+        execute
+        and ok
+        and not readback_failed_tables
+        and not missing_readback_keys
+        and not mismatched_readback_keys
+        and readback_duplicate_rows == 0
+    )
+    readback = {
+        "ok": readback_verified,
+        "schema_version": LARK_EXPLORE_READBACK_VERSION,
+        "performed": bool(execute and ok),
+        "verified": readback_verified,
+        "source": readback_source,
+        "expected_result_count": len(expected_keys),
+        "observed_result_count": len(readback_records),
+        "missing_result_ids": [key.rsplit(":", 1)[-1] for key in missing_readback_keys],
+        "mismatched_result_ids": [key.rsplit(":", 1)[-1] for key in mismatched_readback_keys],
+        "duplicate_remote_rows": readback_duplicate_rows,
+        "failed_tables": readback_failed_tables,
+    }
+    if execute and ok and not readback_verified:
+        warnings.append("post-write row/result-id readback did not verify the Explore projection")
+    if execute and readback_verified:
+        _persist_lark_explore_record_map(
+            config,
+            config_path=config_path,
+            local=local,
+            record_map=record_map,
+        )
+    ok = ok and (not execute or readback_verified)
+
     return {
         "ok": ok,
         "schema_version": LARK_EXPLORE_SYNC_VERSION,
@@ -1040,15 +1309,20 @@ def sync_explore_results_to_lark(
         "written_rows": written_rows,
         "skipped_rows": skipped_rows,
         "duplicate_remote_rows": duplicate_remote_rows,
+        "readback": readback,
         "records": results,
         "commands": commands,
         "warnings": warnings,
         "config_path": str(config_path) if config_path else None,
         "error": None
         if ok
-        else next(
-            (_command_error(item) for item in commands if not item.get("ok")),
-            "unknown",
+        else (
+            "row/result-id readback failed"
+            if readback.get("performed") and not readback_verified
+            else next(
+                (_command_error(item) for item in commands if not item.get("ok")),
+                "unknown",
+            )
         ),
     }
 
@@ -1061,6 +1335,7 @@ def sync_issue_fix_explore_on_material_change(
     project: Path | None = None,
     state_file: Path | None = None,
     execute: bool = False,
+    external_sink_delivery_authorized: bool = True,
     runner: CommandRunner = default_subprocess_runner,
 ) -> dict[str, Any]:
     """Project issue-fix facts and sync Lark only when the graph digest changed.
@@ -1092,10 +1367,29 @@ def sync_issue_fix_explore_on_material_change(
     prior = sync_state.get(goal_id) if isinstance(sync_state.get(goal_id), dict) else {}
     digest = str(projection_result.get("semantic_digest") or "")
     prior_digest = str(prior.get("canonical_rows_semantic_digest") or prior.get("semantic_digest") or "")
-    visual_sink = local.get("visual_sink") if isinstance(local.get("visual_sink"), dict) else None
+    prior_row_readback_digest = str(prior.get("canonical_rows_readback_semantic_digest") or "")
+    visual_sinks = (
+        local.get("visual_sinks")
+        if isinstance(local.get("visual_sinks"), dict) and local.get("visual_sinks")
+        else None
+    )
+    visual_sink = (
+        local.get("visual_sink")
+        if visual_sinks is None and isinstance(local.get("visual_sink"), dict)
+        else None
+    )
     prior_visual_digest = str(prior.get("visual_semantic_digest") or "")
-    needs_row_sync = bool(digest and digest != prior_digest)
-    needs_visual_sync = bool(visual_sink and digest and digest != prior_visual_digest)
+    prior_visual_delivery_digests = (
+        prior.get("visual_delivery_digests")
+        if isinstance(prior.get("visual_delivery_digests"), dict)
+        else {}
+    )
+    needs_row_sync = bool(digest and (digest != prior_digest or digest != prior_row_readback_digest))
+    needs_visual_sync = bool(
+        (visual_sinks or visual_sink) and digest and digest != prior_visual_digest
+    )
+    visual_preview: dict[str, Any] | None = None
+    expected_visual_delivery_digests: dict[str, str] = {}
     needs_sync = needs_row_sync or needs_visual_sync
     if not projection_result.get("applicable"):
         return {
@@ -1106,6 +1400,7 @@ def sync_issue_fix_explore_on_material_change(
             "needs_sync": False,
             "needs_row_sync": False,
             "needs_visual_sync": False,
+            "row_readback_verified": None,
             "semantic_digest": digest,
             "prior_semantic_digest": prior_digest or None,
             "projection": projection_result,
@@ -1113,20 +1408,43 @@ def sync_issue_fix_explore_on_material_change(
             "config_path": str(config_path),
         }
     if config is None:
+        invalid_config = local.get("ok") is not True or isinstance(local.get("board"), dict)
         return {
-            "ok": True,
+            "ok": not invalid_config,
             "schema_version": "issue_fix_explore_lark_material_sync_v0",
-            "status": "not_configured",
+            "status": "invalid_config" if invalid_config else "not_configured",
             "execute": execute,
             "needs_sync": needs_sync,
             "needs_row_sync": needs_row_sync,
             "needs_visual_sync": needs_visual_sync,
+            "row_readback_verified": None,
             "semantic_digest": digest,
             "prior_semantic_digest": prior_digest or None,
             "projection": projection_result,
             "lark_sync": None,
             "config_path": str(config_path),
         }
+    if visual_sinks:
+        visual_preview = sync_explore_visuals_to_lark(
+            config,
+            projection=projection_result["projection"],
+            visual_sinks=visual_sinks,
+            config_path=config_path,
+            execute=False,
+            runner=runner,
+        )
+        expected_visual_delivery_digests = _visual_delivery_digests(visual_preview)
+        needs_visual_sync = bool(
+            digest
+            and (
+                not visual_preview.get("ok")
+                or any(
+                    prior_visual_delivery_digests.get(role) != delivery_digest
+                    for role, delivery_digest in expected_visual_delivery_digests.items()
+                )
+            )
+        )
+    needs_sync = needs_row_sync or needs_visual_sync
     if not needs_sync:
         return {
             "ok": True,
@@ -1136,10 +1454,12 @@ def sync_issue_fix_explore_on_material_change(
             "needs_sync": False,
             "needs_row_sync": False,
             "needs_visual_sync": False,
+            "row_readback_verified": prior_row_readback_digest == digest,
             "semantic_digest": digest,
             "prior_semantic_digest": prior_digest or None,
             "projection": projection_result,
             "lark_sync": None,
+            "visual_preview": visual_preview,
             "config_path": str(config_path),
         }
     if not execute:
@@ -1151,10 +1471,35 @@ def sync_issue_fix_explore_on_material_change(
             "needs_sync": True,
             "needs_row_sync": needs_row_sync,
             "needs_visual_sync": needs_visual_sync,
+            "row_readback_verified": False,
             "semantic_digest": digest,
             "prior_semantic_digest": prior_digest or None,
             "projection": projection_result,
             "lark_sync": None,
+            "visual_preview": visual_preview,
+            "config_path": str(config_path),
+        }
+    if not external_sink_delivery_authorized:
+        return {
+            "ok": True,
+            "schema_version": "issue_fix_explore_lark_material_sync_v0",
+            "status": "external_sink_suppressed",
+            "execute": True,
+            "external_sink_delivery_authorized": False,
+            "needs_sync": True,
+            "needs_row_sync": needs_row_sync,
+            "needs_visual_sync": needs_visual_sync,
+            "row_readback_verified": False,
+            "semantic_digest": digest,
+            "prior_semantic_digest": prior_digest or None,
+            "prior_visual_semantic_digest": prior_visual_digest or None,
+            "prior_visual_delivery_digests": dict(prior_visual_delivery_digests),
+            "projection": projection_result,
+            "lark_sync": None,
+            "canonical_rows_sync": None,
+            "visual_preview": visual_preview,
+            "visual_sync": None,
+            "retryable": True,
             "config_path": str(config_path),
         }
     lark_sync = (
@@ -1168,8 +1513,19 @@ def sync_issue_fix_explore_on_material_change(
         if needs_row_sync
         else None
     )
-    visual_sync = (
-        sync_explore_visual_to_lark(
+    if not needs_visual_sync:
+        visual_sync = None
+    elif visual_sinks:
+        visual_sync = sync_explore_visuals_to_lark(
+            config,
+            projection=projection_result["projection"],
+            visual_sinks=visual_sinks,
+            config_path=config_path,
+            execute=True,
+            runner=runner,
+        )
+    else:
+        visual_sync = sync_explore_visual_to_lark(
             config,
             projection=projection_result["projection"],
             visual_sink=visual_sink,
@@ -1181,10 +1537,15 @@ def sync_issue_fix_explore_on_material_change(
             execute=True,
             runner=runner,
         )
-        if needs_visual_sync
-        else None
-    )
     row_ok = lark_sync is None or bool(lark_sync.get("ok"))
+    row_readback_verified = bool(
+        lark_sync is None
+        or (
+            isinstance(lark_sync.get("readback"), Mapping)
+            and lark_sync["readback"].get("verified") is True
+        )
+    )
+    row_ok = row_ok and row_readback_verified
     visual_ok = visual_sync is None or bool(visual_sync.get("ok"))
     if row_ok or visual_ok:
         updated_sync_state = dict(sync_state)
@@ -1194,6 +1555,7 @@ def sync_issue_fix_explore_on_material_change(
                 {
                     "semantic_digest": digest,
                     "canonical_rows_semantic_digest": digest,
+                    "canonical_rows_readback_semantic_digest": digest,
                     "canonical_rows_synced_at": now_lark_datetime(),
                 }
             )
@@ -1204,6 +1566,10 @@ def sync_issue_fix_explore_on_material_change(
                     "visual_published_at": now_lark_datetime(),
                 }
             )
+            if visual_sinks:
+                updated_goal_state["visual_delivery_digests"] = _visual_delivery_digests(
+                    visual_sync
+                )
         updated_goal_state["synced_at"] = now_lark_datetime()
         updated_sync_state[goal_id] = updated_goal_state
         # The row sync persists record ids incrementally. Re-read that write
@@ -1222,12 +1588,15 @@ def sync_issue_fix_explore_on_material_change(
         "needs_sync": True,
         "needs_row_sync": needs_row_sync,
         "needs_visual_sync": needs_visual_sync,
+        "row_readback_verified": row_readback_verified,
         "semantic_digest": digest,
         "prior_semantic_digest": prior_digest or None,
         "prior_visual_semantic_digest": prior_visual_digest or None,
+        "prior_visual_delivery_digests": dict(prior_visual_delivery_digests),
         "projection": projection_result,
         "lark_sync": lark_sync,
         "canonical_rows_sync": lark_sync,
+        "visual_preview": visual_preview,
         "visual_sync": visual_sync,
         "config_path": str(config_path),
     }

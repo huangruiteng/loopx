@@ -8,8 +8,10 @@ from ..todos.projection import (
     todo_summary_claim_scope_agent_id,
     todo_summary_has_only_future_scoped_monitor_work,
     todo_summary_monitor_due_count,
+    todo_summary_monitor_due_items,
     todo_summary_monitor_items,
     todo_summary_monitor_schedule_gap_count,
+    todo_summary_monitor_schedule_gap_items,
     todo_summary_open_count,
     todo_summary_open_task_counts,
 )
@@ -49,8 +51,37 @@ EXTERNAL_DEPENDENCY_TARGET_KEY_PATTERN = re.compile(
 )
 
 
-def projected_monitor_handle(summary: dict[str, Any] | None) -> dict[str, Any] | None:
+def _monitor_item_has_observation_state(item: dict[str, Any]) -> bool:
+    if str(item.get("result_hash") or "").strip():
+        return True
+    if str(item.get("last_checked_at") or "").strip():
+        return True
+    return False
+
+
+def _external_dependency_monitors_needing_first_observation(
+    summary: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
     for item in todo_summary_monitor_items(summary):
+        target_key = str(item.get("target_key") or "").strip()
+        if not target_key:
+            continue
+        if not EXTERNAL_DEPENDENCY_TARGET_KEY_PATTERN.search(target_key):
+            continue
+        if not _monitor_item_has_observation_state(item):
+            items.append(item)
+    return items
+
+
+def projected_monitor_handle(summary: dict[str, Any] | None) -> dict[str, Any] | None:
+    actionable_items = [
+        *todo_summary_monitor_due_items(summary),
+        *_external_dependency_monitors_needing_first_observation(summary),
+        *todo_summary_monitor_schedule_gap_items(summary),
+    ]
+    monitor_items = actionable_items or todo_summary_monitor_items(summary)
+    for item in monitor_items:
         target_key = str(item.get("target_key") or "").strip()
         if not target_key:
             continue
@@ -84,26 +115,29 @@ def scoped_monitor_watch_without_advancement(summary: dict[str, Any] | None) -> 
     return todo_summary_open_task_counts(summary).get("advancement", 0) <= 0
 
 
-def _monitor_item_has_observation_state(item: dict[str, Any]) -> bool:
-    if str(item.get("result_hash") or "").strip():
-        return True
-    if str(item.get("last_checked_at") or "").strip():
-        return True
-    return False
-
-
-def _external_dependency_monitor_needs_first_observation(
-    summary: dict[str, Any] | None,
+def _monitor_item_matches_handle(
+    item: dict[str, Any],
+    handle: dict[str, Any] | None,
 ) -> bool:
-    for item in todo_summary_monitor_items(summary):
-        target_key = str(item.get("target_key") or "").strip()
-        if not target_key:
-            continue
-        if not EXTERNAL_DEPENDENCY_TARGET_KEY_PATTERN.search(target_key):
-            continue
-        if not _monitor_item_has_observation_state(item):
-            return True
-    return False
+    if not isinstance(handle, dict):
+        return False
+    item_todo_id = normalize_todo_id(item.get("todo_id"))
+    handle_todo_id = normalize_todo_id(handle.get("todo_id"))
+    if item_todo_id and handle_todo_id:
+        return item_todo_id == handle_todo_id
+    item_target_key = str(item.get("target_key") or "").strip()
+    handle_target_key = str(handle.get("target_key") or "").strip()
+    return bool(item_target_key and item_target_key == handle_target_key)
+
+
+def _selected_monitor_needs_first_dependency_observation(
+    summary: dict[str, Any] | None,
+    handle: dict[str, Any] | None,
+) -> bool:
+    return any(
+        _monitor_item_matches_handle(item, handle)
+        for item in _external_dependency_monitors_needing_first_observation(summary)
+    )
 
 
 def _matches_any(patterns: tuple[re.Pattern[str], ...], texts: list[str]) -> bool:
@@ -115,11 +149,11 @@ def _monitor_window_allows_poll_signal(
     *,
     scoped_monitor_watch: bool,
     scoped_monitor_handle: dict[str, Any] | None,
-    dependency_monitor_pending: bool,
+    selected_dependency_monitor_pending: bool,
 ) -> bool:
     if (
         todo_summary_has_only_future_scoped_monitor_work(summary)
-        and not dependency_monitor_pending
+        and not selected_dependency_monitor_pending
     ):
         return False
     if scoped_monitor_watch and not scoped_monitor_handle:
@@ -128,10 +162,34 @@ def _monitor_window_allows_poll_signal(
         scoped_monitor_watch
         and todo_summary_monitor_due_count(summary) <= 0
         and todo_summary_monitor_schedule_gap_count(summary) <= 0
-        and not dependency_monitor_pending
+        and not selected_dependency_monitor_pending
     ):
         return False
     return True
+
+
+def _external_evidence_observation_is_early_future_monitor(
+    observation: dict[str, Any] | None,
+    *,
+    agent_todo_summary: dict[str, Any] | None,
+) -> bool:
+    if not isinstance(observation, dict):
+        return False
+    handle = (
+        observation.get("monitor_handle")
+        if isinstance(observation.get("monitor_handle"), dict)
+        else {}
+    )
+    if not str(handle.get("next_due_at") or "").strip():
+        return False
+    return bool(
+        todo_summary_monitor_due_count(agent_todo_summary) <= 0
+        and todo_summary_monitor_schedule_gap_count(agent_todo_summary) <= 0
+        and not _selected_monitor_needs_first_dependency_observation(
+            agent_todo_summary,
+            handle,
+        )
+    )
 
 
 def build_external_evidence_poll_signal(
@@ -150,8 +208,11 @@ def build_external_evidence_poll_signal(
 
     scoped_monitor_handle = projected_monitor_handle(agent_todo_summary)
     scoped_monitor_watch = scoped_monitor_watch_without_advancement(agent_todo_summary)
-    dependency_monitor_pending = _external_dependency_monitor_needs_first_observation(
-        agent_todo_summary
+    selected_dependency_monitor_pending = (
+        _selected_monitor_needs_first_dependency_observation(
+            agent_todo_summary,
+            scoped_monitor_handle,
+        )
     )
     project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
     action_texts = [
@@ -214,7 +275,7 @@ def build_external_evidence_poll_signal(
     if launched_wait:
         matched_signal = "launched_wait"
         matched_channel = "action"
-    elif dependency_monitor_pending:
+    elif selected_dependency_monitor_pending:
         matched_signal = "external_dependency_wait"
         matched_channel = "state"
     elif direct_observe:
@@ -232,7 +293,7 @@ def build_external_evidence_poll_signal(
         agent_todo_summary,
         scoped_monitor_watch=scoped_monitor_watch,
         scoped_monitor_handle=scoped_monitor_handle,
-        dependency_monitor_pending=dependency_monitor_pending,
+        selected_dependency_monitor_pending=selected_dependency_monitor_pending,
     ):
         return None
 
@@ -345,6 +406,11 @@ def build_external_evidence_observation_obligation(
     monitor_handle = poll_signal.get("monitor_handle") if isinstance(poll_signal, dict) else None
     if isinstance(monitor_handle, dict) and monitor_handle:
         obligation["monitor_handle"] = monitor_handle
+    if _external_evidence_observation_is_early_future_monitor(
+        obligation,
+        agent_todo_summary=agent_todo_summary,
+    ):
+        obligation["poll_window_status"] = "before_next_due"
     return obligation
 
 

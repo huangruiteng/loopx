@@ -107,6 +107,17 @@ def pr_dependency_monitor_todo(
     )
 
 
+def schedule_gap_monitor_todo(*, index: int = 2, priority: str = "P2") -> dict[str, Any]:
+    return todo(
+        index,
+        f"[{priority}] Monitor the ledger after the next batch completes.",
+        task_class=TODO_TASK_CLASS_MONITOR,
+        todo_id="todo_monitor_schedule_gap",
+        target_key="ledger:next-batch",
+        claimed_by=AGENT_ID,
+    )
+
+
 def advancement_todo() -> dict[str, Any]:
     return todo(
         2,
@@ -325,6 +336,104 @@ def assert_future_scoped_monitor_does_not_fake_external_poll() -> None:
     assert "external_evidence_observation" not in guard, guard
 
 
+def assert_unavailable_advancement_does_not_wake_future_monitor() -> None:
+    summary = agent_todos(
+        [
+            monitor_todo(
+                todo_id="todo_monitor_future",
+                priority="P1",
+                next_due_at=FUTURE_DUE_AT,
+            ),
+            unavailable_advancement_todo(),
+        ]
+    )
+    item = selected_item(status_payload(summary))
+    counts = todo_summary_open_task_counts(summary)
+    assert counts["monitor"] == 1 and counts["advancement"] == 1, counts
+    assert build_external_evidence_poll_signal(item, agent_todo_summary=summary), item
+
+    guard = build_quota_should_run(status_payload(summary), goal_id=GOAL_ID, agent_id=AGENT_ID)
+    assert "external_evidence_observation" not in guard, guard
+    assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is False, guard
+    assert guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is True, guard
+
+
+def assert_selected_monitor_handle(
+    items: list[dict[str, Any]],
+    *,
+    expected_todo_id: str,
+    expected_target_key: str,
+    expected_text: str,
+    expected_signal: str | None = None,
+    expected_channel: str | None = None,
+    **status_options: Any,
+) -> None:
+    summary = agent_todos(items)
+    payload = status_payload(summary, **status_options)
+    signal = build_external_evidence_poll_signal(
+        selected_item(payload),
+        agent_todo_summary=summary,
+    )
+    handle = projected_monitor_handle(summary)
+    assert handle and handle["todo_id"] == expected_todo_id, handle
+    assert handle["target_key"] == expected_target_key, handle
+    assert signal and signal["monitor_handle"]["todo_id"] == expected_todo_id, signal
+    if expected_signal:
+        assert signal["matched_signal"] == expected_signal, signal
+    if expected_channel:
+        assert signal["matched_channel"] == expected_channel, signal
+    guard = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=AGENT_ID)
+    observation = guard["external_evidence_observation"]
+    assert observation["monitor_handle"]["todo_id"] == expected_todo_id, guard
+    assert expected_text in observation["observation_target"], observation
+    assert expected_text in guard["interaction_contract"]["agent_channel"]["primary_action"], guard
+
+
+def assert_monitor_handle_precedence() -> None:
+    future = monitor_todo(
+        todo_id="todo_monitor_future",
+        priority="P1",
+        next_due_at=FUTURE_DUE_AT,
+    )
+    assert_selected_monitor_handle(
+        [future, schedule_gap_monitor_todo()],
+        expected_todo_id="todo_monitor_schedule_gap",
+        expected_target_key="ledger:next-batch",
+        expected_text="Monitor the ledger",
+    )
+    dependency_action = (
+        "Keep PR #532 in review-required state; after maintainer review/merge, "
+        "resume dependent validation lane."
+    )
+    dependency = pr_dependency_monitor_todo()
+    assert_selected_monitor_handle(
+        [dependency, schedule_gap_monitor_todo()],
+        expected_todo_id="todo_pr_dependency_monitor",
+        expected_target_key="pr_merged:#532",
+        expected_text="Monitor PR #532",
+        expected_signal="external_dependency_wait",
+        expected_channel="state",
+        status="active",
+        next_action=dependency_action,
+        lifecycle_flags=[],
+    )
+    assert_selected_monitor_handle(
+        [
+            monitor_todo(todo_id="todo_monitor_due", priority="P2"),
+            dependency,
+            schedule_gap_monitor_todo(index=4, priority="P3"),
+        ],
+        expected_todo_id="todo_monitor_due",
+        expected_target_key="job:compact-result",
+        expected_text="Monitor compact result",
+        expected_signal="direct_observe",
+        expected_channel="todo",
+        status="active",
+        next_action=dependency_action,
+        lifecycle_flags=[],
+    )
+
+
 def assert_pr_dependency_wait_requires_first_observation() -> None:
     summary = agent_todos([pr_dependency_monitor_todo()])
     next_action = (
@@ -427,6 +536,8 @@ def main() -> int:
     assert_recent_due_monitor_no_change_quiets_external_monitor()
     assert_advancement_lane_keeps_external_monitor_as_context()
     assert_future_scoped_monitor_does_not_fake_external_poll()
+    assert_unavailable_advancement_does_not_wake_future_monitor()
+    assert_monitor_handle_precedence()
     assert_pr_dependency_wait_requires_first_observation()
     assert_pr_dependency_wait_with_observation_does_not_reobserve_before_due()
     assert_explicit_external_wait_builds_registry_obligation()

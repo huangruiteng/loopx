@@ -185,7 +185,10 @@ def main() -> int:
         )
         assert rejected.returncode == 1, rejected.stdout
         error_payload = json.loads(rejected.stdout)
-        assert "only supported by `todo suggest`" in error_payload["error"], error_payload
+        assert error_payload["error"].startswith(
+            "todo add does not support --agent-id;"
+        ), error_payload
+        assert "not lifecycle actor attribution" in error_payload["error"], error_payload
 
     print("todo-suggestion-prompt-smoke: ok")
     return 0

@@ -143,6 +143,7 @@ def build_work_lane_contract(
     monitor_schedule_gap_items: list[dict[str, Any]] | None = None,
     resume_blocked_by_monitor_count: int = 0,
     resume_blocked_by_monitor_items: list[dict[str, Any]] | None = None,
+    monitor_attempt_already_recorded: bool = False,
 ) -> dict[str, Any] | None:
     """Return the work-lane execution contract from precomputed quota facts.
 
@@ -163,6 +164,9 @@ def build_work_lane_contract(
     blocked_by_monitor_items = resume_blocked_by_monitor_items or []
     schedule_gap_items = monitor_schedule_gap_items or []
     first_schedule_gap = schedule_gap_items[0] if schedule_gap_items else None
+    effective_due_monitor_preemption = due_monitor_preempts_advancement and not (
+        has_advancement_todos and monitor_attempt_already_recorded
+    )
 
     def due_monitor_contract(*, reason_codes: list[str]) -> dict[str, Any]:
         selected = first_due_monitor or {}
@@ -189,7 +193,7 @@ def build_work_lane_contract(
         }
 
     if progress_scope != "dependency_observation":
-        if has_advancement_todos and due_monitor_preempts_advancement:
+        if has_advancement_todos and effective_due_monitor_preemption:
             return due_monitor_contract(
                 reason_codes=["monitor_due", "due_monitor_priority_preempts_advancement"]
             )
@@ -197,6 +201,8 @@ def build_work_lane_contract(
             reason_codes = ["open_agent_todo"]
             if first_due_monitor:
                 reason_codes.append("due_monitor_context")
+            if first_due_monitor and monitor_attempt_already_recorded:
+                reason_codes.append("monitor_attempt_already_recorded")
             if external_poll_signal:
                 reason_codes.append("external_monitor_context")
             if outcome_followthrough:
@@ -345,7 +351,7 @@ def build_work_lane_contract(
     reason_codes = ["dependency_observation"]
     if has_advancement_todos:
         reason_codes.append("open_agent_todo")
-        if due_monitor_preempts_advancement:
+        if effective_due_monitor_preemption:
             reason_codes.append("due_monitor_priority_preempts_advancement")
     elif monitor_only_todos:
         reason_codes.append("monitor_todo_only")
@@ -353,7 +359,7 @@ def build_work_lane_contract(
             reason_codes.append("monitor_due")
     else:
         reason_codes.append("no_open_agent_todo")
-    if due_monitor_preempts_advancement:
+    if effective_due_monitor_preemption:
         return due_monitor_contract(reason_codes=reason_codes)
     return {
         "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,

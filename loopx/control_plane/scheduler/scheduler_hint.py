@@ -616,6 +616,7 @@ def build_scheduler_hint(
     agent_scope_frontier_actions: Collection[str] = (),
     include_detail: bool = False,
     codex_app_scheduler_state: dict[str, Any] | None = None,
+    available_capabilities: Any = None,
 ) -> dict[str, Any]:
     """Project host-runtime cadence/backoff policy from a quota decision.
 
@@ -665,7 +666,9 @@ def build_scheduler_hint(
         else {}
     )
     scheduler_ack_capabilities = (
-        capability_gate.get("available")
+        available_capabilities
+        if available_capabilities is not None
+        else capability_gate.get("available")
         if isinstance(capability_gate.get("available"), list)
         else []
     )

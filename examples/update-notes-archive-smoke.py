@@ -111,7 +111,7 @@ def validate_project_automation() -> None:
     assert_contains(workflow, "workflow_dispatch:", "update notes workflow")
     assert_contains(workflow, "fetch-depth: 0", "update notes workflow")
     assert_contains(workflow, "scripts/update_notes_release_job.py", "update notes workflow")
-    assert_contains(workflow, "actions/upload-artifact@v4", "update notes workflow")
+    assert_contains(workflow, "actions/upload-artifact@", "update notes workflow")
     assert_contains(workflow, "contents: read", "update notes workflow")
     assert_not_contains(workflow, "create-pull-request", "update notes workflow")
     assert_not_contains(workflow, "pull-requests: write", "update notes workflow")

@@ -245,6 +245,170 @@ def write_recovery_backup(global_path: Path, payload: dict[str, Any], *, dry_run
     return str(backup_path)
 
 
+def _global_goal_path(
+    goal: dict[str, Any],
+    field: str,
+    *,
+    global_path: Path,
+) -> Path | None:
+    value = goal.get(field)
+    if not value:
+        return None
+    path = Path(str(value)).expanduser()
+    if path.is_absolute():
+        return path
+    repo = goal.get("repo")
+    if repo:
+        return Path(str(repo)).expanduser() / path
+    return global_path.parent / path
+
+
+def retire_global_registry_goals(
+    *,
+    runtime_root_override: str | None,
+    goal_ids: list[str],
+    execute: bool,
+) -> dict[str, Any]:
+    requested_ids = list(dict.fromkeys(goal_id.strip() for goal_id in goal_ids if goal_id.strip()))
+    if not requested_ids:
+        raise ValueError("at least one explicit --goal-id is required")
+
+    runtime_root = (
+        Path(runtime_root_override).expanduser()
+        if runtime_root_override
+        else DEFAULT_RUNTIME_ROOT
+    )
+    global_path = global_registry_path(runtime_root)
+    if not global_path.exists():
+        raise FileNotFoundError(f"global registry does not exist: {global_path}")
+
+    existing = load_registry(global_path)
+    existing_goals = existing.get("goals")
+    if not isinstance(existing_goals, list):
+        existing_goals = []
+    matches_by_id: dict[str, list[dict[str, Any]]] = {
+        goal_id: [
+            goal
+            for goal in existing_goals
+            if isinstance(goal, dict) and str(goal.get("id") or "") == goal_id
+        ]
+        for goal_id in requested_ids
+    }
+    missing_ids = [goal_id for goal_id, matches in matches_by_id.items() if not matches]
+    duplicate_ids = [goal_id for goal_id, matches in matches_by_id.items() if len(matches) > 1]
+    if missing_ids:
+        raise ValueError(f"goal_id not found in global registry: {', '.join(missing_ids)}")
+    if duplicate_ids:
+        raise ValueError(
+            "global registry contains duplicate goal ids; deduplicate before retirement: "
+            + ", ".join(duplicate_ids)
+        )
+
+    inspections: list[dict[str, Any]] = []
+    blocked_ids: list[str] = []
+    for goal_id in requested_ids:
+        goal = matches_by_id[goal_id][0]
+        source_path = _global_goal_path(goal, "source_registry", global_path=global_path)
+        state_path = _global_goal_path(goal, "state_file", global_path=global_path)
+        source_missing = source_path is None or not source_path.exists()
+        state_missing = state_path is None or not state_path.exists()
+        eligible = source_missing and state_missing
+        if not eligible:
+            blocked_ids.append(goal_id)
+        inspections.append(
+            {
+                "goal_id": goal_id,
+                "eligible": eligible,
+                "source_registry_missing": source_missing,
+                "state_file_missing": state_missing,
+            }
+        )
+    if blocked_ids:
+        raise ValueError(
+            "refusing to retire goal(s) with a live source_registry or state_file: "
+            + ", ".join(blocked_ids)
+        )
+
+    retired = set(requested_ids)
+    retained_goals = [
+        goal
+        for goal in existing_goals
+        if not (isinstance(goal, dict) and str(goal.get("id") or "") in retired)
+    ]
+    updated_at = now_local()
+    timestamp = updated_at.replace(":", "").replace("-", "")
+    backup_path = global_path.with_name(
+        f"{global_path.name}.retire-goal-backup-{timestamp}.bak"
+    )
+    writability: dict[str, Any] = {}
+    if execute:
+        writability = probe_registry_write_path(global_path, create_parent=True)
+        if not writability.get("ok"):
+            return {
+                "ok": False,
+                "schema_version": "loopx_global_goal_retirement_v0",
+                "dry_run": False,
+                "execute": True,
+                "global_registry": str(global_path),
+                "runtime_root": str(runtime_root),
+                "requested_goal_ids": requested_ids,
+                "retired_goal_ids": [],
+                "inspections": inspections,
+                "backup_path": None,
+                "backup_written": False,
+                "wrote": False,
+                "global_registry_writability": writability,
+                "error": str(writability.get("error") or "global registry is not writable"),
+                "recommended_action": writability.get("recommended_action"),
+            }
+
+        updated = dict(existing)
+        updated["updated_at"] = updated_at
+        updated["goals"] = retained_goals
+        write_json(backup_path, existing)
+        write_json(global_path, updated)
+
+    return {
+        "ok": True,
+        "schema_version": "loopx_global_goal_retirement_v0",
+        "dry_run": not execute,
+        "execute": execute,
+        "global_registry": str(global_path),
+        "runtime_root": str(runtime_root),
+        "requested_goal_ids": requested_ids,
+        "retired_goal_ids": requested_ids if execute else [],
+        "planned_retired_goal_ids": requested_ids,
+        "inspections": inspections,
+        "global_goal_count_before": len(existing_goals),
+        "global_goal_count_after": len(retained_goals),
+        "backup_path": str(backup_path),
+        "backup_written": execute,
+        "wrote": execute,
+        "updated_at": updated_at,
+        "global_registry_writability": writability,
+    }
+
+
+def render_global_goal_retirement_markdown(payload: dict[str, Any]) -> str:
+    lines = [
+        "# LoopX Global Goal Retirement",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- dry_run: `{payload.get('dry_run')}`",
+        f"- global_registry: `{payload.get('global_registry')}`",
+        f"- wrote: `{payload.get('wrote')}`",
+        f"- backup_path: `{payload.get('backup_path')}`",
+    ]
+    if payload.get("error"):
+        lines.append(f"- error: {payload.get('error')}")
+        return "\n".join(lines)
+    planned = payload.get("planned_retired_goal_ids") or []
+    if planned:
+        lines.extend(["", "## Explicit Goals"])
+        lines.extend(f"- `{goal_id}`" for goal_id in planned)
+    return "\n".join(lines)
+
+
 def sync_project_registry_to_global(
     *,
     registry_path: Path,

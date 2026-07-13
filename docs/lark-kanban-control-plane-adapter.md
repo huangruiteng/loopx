@@ -200,7 +200,10 @@ active-state paths.
 Issue outcomes are derived, not persisted separately. Every feasibility row is
 projected; a PR lifecycle row enriches it only through an explicit matching
 `repo` and `issue_ref`. This avoids title/branch guessing and makes the issue
-grid and stage Kanban part of the default sync path.
+grid and stage Kanban part of the default sync path. `--limit` bounds active
+todo rows only; it never truncates the derived issue-outcome source projection.
+The sync receipt publishes this split as `limit_policy` so a successful command
+cannot silently imply completeness after dropping newer outcomes.
 
 Normal projection sync is intentionally non-destructive: rows missing from a
 filtered, limited, or newer payload are never deleted implicitly. When a

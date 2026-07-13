@@ -349,6 +349,15 @@ def build_issue_fix_workflow_plan_packet(
             "schema_version": "issue_fix_pr_description_contract_v0",
             "source_contract": "pr_review_five_block_template_v0",
             "extension_contract": "issue_fix_reviewer_context_v0",
+            "builder_contract": {
+                "schema_version": "issue_fix_pr_description_build_v0",
+                "surface": "issue_fix.pr_description",
+                "default_enabled": False,
+                "explicit_dependency_injection": True,
+                "provider_call_budget": 1,
+                "fail_open_preserves_base_description": True,
+                "applied_preferences_require_compact_receipt": True,
+            },
             "sections": [
                 {
                     "label": "动机",
@@ -390,7 +399,24 @@ def build_issue_fix_workflow_plan_packet(
                     "label": "对主干的风险与未覆盖",
                     "purpose": "State compatibility risk, residual gaps, and checks not run.",
                 },
+                {
+                    "label": "关联 Issue",
+                    "purpose": (
+                        "Use a GitHub closing keyword for each fully resolved issue; "
+                        "use a non-closing related reference for partial work."
+                    ),
+                    "applicability": "issue_backed_changes",
+                },
             ],
+            "issue_reference_policy": {
+                "schema_version": "issue_fix_pr_issue_reference_policy_v0",
+                "default_closing_keyword": "Fixes",
+                "partial_fix_prefix": "Related to",
+                "closing_requires_default_branch": True,
+                "full_syntax_required_per_issue": True,
+                "applied_after_semantic_preferences": True,
+                "verification_surface": "closingIssuesReferences",
+            },
             "infographic_policy": {
                 "required": False,
                 "allowed_when": "complex_change",
@@ -621,6 +647,16 @@ def validate_issue_fix_workflow_plan_packet(
             "issue_fix_pr_description_contract_v0"
         ):
             errors.append("PR description contract has wrong schema")
+        if description.get("builder_contract") != {
+            "schema_version": "issue_fix_pr_description_build_v0",
+            "surface": "issue_fix.pr_description",
+            "default_enabled": False,
+            "explicit_dependency_injection": True,
+            "provider_call_budget": 1,
+            "fail_open_preserves_base_description": True,
+            "applied_preferences_require_compact_receipt": True,
+        }:
+            errors.append("PR description builder contract is incomplete")
         sections = description.get("sections")
         labels = (
             [
@@ -639,6 +675,7 @@ def validate_issue_fix_workflow_plan_packet(
             "修复后复现",
             "验证",
             "对主干的风险与未覆盖",
+            "关联 Issue",
         ]:
             errors.append("PR description contract sections are incomplete")
         section_by_label = {
@@ -655,6 +692,20 @@ def validate_issue_fix_workflow_plan_packet(
             "focused_code_or_test",
         ]:
             errors.append("post-fix reproduction surfaces are incomplete")
+        if section_by_label.get("关联 Issue", {}).get("applicability") != (
+            "issue_backed_changes"
+        ):
+            errors.append("issue reference section applicability is incomplete")
+        if description.get("issue_reference_policy") != {
+            "schema_version": "issue_fix_pr_issue_reference_policy_v0",
+            "default_closing_keyword": "Fixes",
+            "partial_fix_prefix": "Related to",
+            "closing_requires_default_branch": True,
+            "full_syntax_required_per_issue": True,
+            "applied_after_semantic_preferences": True,
+            "verification_surface": "closingIssuesReferences",
+        }:
+            errors.append("PR description issue reference policy is incomplete")
         if description.get("infographic_policy") != {
             "required": False,
             "allowed_when": "complex_change",
