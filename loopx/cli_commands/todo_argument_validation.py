@@ -77,23 +77,32 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
     )
     agent_id_allowed_for_read = args.todo_command == "list"
     global_gate_allowed = args.todo_command in {"add", "update"}
-    if args.todo_command not in {"suggest", "capture-followups"} and (
-        (
-            args.agent_id
-            and not agent_id_allowed_for_gate_authoring
-            and not agent_id_allowed_for_read
-        )
-        or (args.global_gate and not global_gate_allowed)
-        or args.suggestion_sources
-        or args.suggestion_limit is not None
-        or args.suggestion_trigger
+    if (
+        args.todo_command not in {"suggest", "capture-followups"}
+        and args.agent_id
+        and not agent_id_allowed_for_gate_authoring
+        and not agent_id_allowed_for_read
     ):
         raise ValueError(
-            "todo --agent-id is supported by `todo list`, `todo suggest`, and "
-            "by `todo add/update --role user --task-class user_gate` for "
-            "agent-scoped user gates; --global-gate is supported by "
-            "`todo add/update --role user --task-class user_gate`; --from, --limit, and "
-            "--trigger are only supported by `todo suggest`"
+            f"todo {args.todo_command} does not support --agent-id; --agent-id "
+            "scopes todo list/suggest and user-gate authoring, not lifecycle "
+            "actor attribution. Omit it; use --claimed-by only on commands that "
+            "explicitly support ownership changes."
+        )
+    if args.global_gate and not global_gate_allowed:
+        raise ValueError(
+            "--global-gate is supported only by todo add/update for user_gate items"
+        )
+    if (
+        args.todo_command not in {"suggest", "capture-followups"}
+        and (
+            args.suggestion_sources
+            or args.suggestion_limit is not None
+            or args.suggestion_trigger
+        )
+    ):
+        raise ValueError(
+            "--from, --limit, and --trigger are supported only by todo suggest"
         )
 
 
