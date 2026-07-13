@@ -25,10 +25,10 @@ from .control_plane.agents.runtime_model import (
 DEFAULT_MATERIAL_QUEUE_RULE = "Do not consume the learning material queue unless the user explicitly asks."
 DEFAULT_PERMISSION_RULE = "Do not ask for permissions when the current Codex session is already trusted."
 USER_TODO_FINAL_MESSAGE_RULE = (
-    "Only if action_required=true/open_count>0: name concrete payload todo(s)/questions, "
-    'never only "owner gate"; missing -> '
+    "notify=NOTIFY: concrete actions/todos, including non_blocking at false/0; "
+    "never only \"owner gate\"; required missing -> "
     '"具体 user todo 未投影，需修复 LoopX 状态投影". '
-    "If false/0, allow quiet/no-user-todo."
+    "Only notify=DONT_NOTIFY + false/0: quiet."
 )
 SCHEDULER_HINT_APPLICATION_RULE = (
     "Apply `scheduler_hint` for wait backoff and CLI/Claude final-check/self-stop; no spend. "
@@ -565,6 +565,8 @@ If that preflight still fails: no work/spend; quiet `DONT_NOTIFY`.
 
 `lark_event_inbox`: if configured, drain -> writeback -> ACK.
 
+{USER_TODO_FINAL_MESSAGE_RULE}
+
 If the result says `should_run=false`:
 
 - If `state=operator_gate`, treat it as a user/controller interaction. Read
@@ -574,8 +576,8 @@ If the result says `should_run=false`:
   with one concise Chinese question listing the gate and expected reply format.
   If `user_todo_summary.open_count > 0`, list existing open user todos even
   when nothing new was found; never say "no new user action".
-  {USER_TODO_FINAL_MESSAGE_RULE} Do not execute `agent_command`, adapter work,
-  write-control, production actions, or the gated path while asking.
+  Do not execute `agent_command`, adapter work, write-control, production
+  actions, or the gated path while asking.
 - If `notify_user_on_open_todo=true`, existing open `user_todo_summary` is a
   blocker-push opportunity, not a silent skip. For focus/wait/evidence lanes,
   a user/owner answer can unlock progress. If the payload explicitly includes
@@ -764,13 +766,14 @@ Preflight and quota guard:
 
 Preflight fail: quiet.
 
+User NOTIFY: Chinese actions incl. non_blocking at false/0; never only "owner
+gate"; required missing -> "具体 user todo 未投影，需修复 LoopX 状态投影".
+Only DONT_NOTIFY+false/0: quiet.
+
 If `should_run=false`: no work/spend except `safe_bypass_allowed=true`.
-Gate/open todo -> Chinese `NOTIFY`. external/wait monitor -> one read-only
-status/log/metric/marker poll; new evidence -> writeback/spend once.
-Else quiet.
+external/wait monitor -> one read-only status/log/metric/marker poll;
+new evidence -> writeback/spend once. Otherwise obey user channel.
 Apply `scheduler_hint` stateful backoff for RRULE/backoff/self-stop; no spend.
-Action/open todo: list todos/questions; never only "owner gate";
-missing -> "具体 user todo 未投影，需修复 LoopX 状态投影"; false/0: 无用户待办/无需通知 or quiet.
 `lark_event_inbox`: `drain_command` -> writeback -> ACK;
 empty=no gate/spend.
 
@@ -841,10 +844,10 @@ If `should_run=false`: `monitor_quiet_skip` appends at most one no-spend
 `quota monitor-poll --execute`, reruns guard, then stays quiet unless
 `autonomous_replan_required` / `must_attempt_work=true`; no edits/spend;
 unchanged monitor-only polls are not self-stop signals.
-`state=operator_gate` or `notify_user_on_open_todo=true`: blocker-push;
-`open_todo_notification_policy=repeat_until_resolved`: repeat `NOTIFY`;
-if action/open todo exists, list payload todo(s)/questions, never only
-"owner gate"; no delivery/spend. `safe_bypass_allowed=true`: one
+`state=operator_gate` / `notify_user_on_open_todo=true` /
+`user_channel.notify=NOTIFY`: blocker-push with actions, including
+non_blocking; `open_todo_notification_policy=repeat_until_resolved`: repeat;
+never only "owner gate"; no delivery/spend. `safe_bypass_allowed=true`: one
 gate-independent safe-bypass, validate/writeback/spend. External/wait monitor:
 one read-only status/log/metric/marker poll; unchanged quiet, new evidence
 writeback/spend. Otherwise quiet `DONT_NOTIFY`.
@@ -945,9 +948,10 @@ Use skills: `loopx-project`; if surprising/tiny/contradictory,
 {scope_sentence}
 
 Inspect registry/global quota, active state, status/history, repo; run
-{quota_guard_instruction}; follow `interaction_contract`. If action_required/open_count:
-Chinese concrete todos/questions; never only "owner gate"; missing ->
-"具体 user todo 未投影，需修复 LoopX 状态投影". If false/0: quiet/no-user-todo.
+{quota_guard_instruction}; follow `interaction_contract`.
+User NOTIFY: Chinese actions incl. non_blocking at false/0;
+never only "owner gate"; required missing ->
+"具体 user todo 未投影，需修复 LoopX 状态投影". Only DONT_NOTIFY+false/0: quiet.
 {RUNTIME_CAPABILITY_PROJECTION_THIN_RULE}
 {SCHEDULER_HINT_THIN_RULE}
 Bounded batch/quiet no-op; spend after writeback.
