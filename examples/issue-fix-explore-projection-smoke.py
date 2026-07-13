@@ -111,14 +111,23 @@ def main() -> None:
             ),
             encoding="utf-8",
         )
-        activation_calls: list[bool] = []
+        activation_calls: list[tuple[bool, bool]] = []
 
         def activation_syncer(**kwargs: object) -> dict[str, object]:
-            activation_calls.append(bool(kwargs.get("execute")))
+            external_sink_delivery_authorized = bool(
+                kwargs.get("external_sink_delivery_authorized", True)
+            )
+            activation_calls.append(
+                (bool(kwargs.get("execute")), external_sink_delivery_authorized)
+            )
             return {
                 "ok": True,
-                "status": "unchanged",
-                "needs_row_sync": False,
+                "status": (
+                    "unchanged"
+                    if external_sink_delivery_authorized
+                    else "external_sink_suppressed"
+                ),
+                "needs_row_sync": not external_sink_delivery_authorized,
                 "needs_visual_sync": False,
                 "semantic_digest": "fixture-digest",
                 "projection": {
@@ -151,7 +160,20 @@ def main() -> None:
         )
         assert graph_enabled["status"] == "unchanged", graph_enabled
         assert graph_enabled["needs_row_sync"] is False, graph_enabled
-        assert activation_calls == [True], activation_calls
+        assert activation_calls == [(True, True)], activation_calls
+
+        graph_suppressed = sync_explore_graph_after_material_refresh(
+            registry_path=registry,
+            goal_id=goal_id,
+            agent_id="codex-fixture",
+            project=project,
+            syncer=activation_syncer,
+            external_sink_delivery_authorized=False,
+        )
+        assert graph_suppressed["status"] == "external_sink_suppressed", graph_suppressed
+        assert graph_suppressed["external_sink_delivery_authorized"] is False, graph_suppressed
+        assert graph_suppressed["needs_row_sync"] is True, graph_suppressed
+        assert activation_calls == [(True, True), (True, False)], activation_calls
 
         failure_calls: list[bool] = []
 
@@ -308,6 +330,24 @@ def main() -> None:
         explore_results.sync_explore_results_to_lark = fake_sync
         explore_results.sync_explore_visual_to_lark = fake_visual_sync
         try:
+            suppressed = explore_results.sync_issue_fix_explore_on_material_change(
+                registry_path=registry,
+                goal_id=goal_id,
+                agent_id="codex-fixture",
+                project=project,
+                execute=True,
+                external_sink_delivery_authorized=False,
+            )
+            assert suppressed["status"] == "external_sink_suppressed", suppressed
+            assert suppressed["external_sink_delivery_authorized"] is False, suppressed
+            assert suppressed["needs_row_sync"] is True, suppressed
+            assert suppressed["needs_visual_sync"] is True, suppressed
+            assert suppressed["projection"]["applicable"] is True, suppressed
+            assert sync_calls == [], sync_calls
+            assert visual_calls == [], visual_calls
+            suppressed_config = json.loads(config_path.read_text(encoding="utf-8"))
+            assert goal_id not in suppressed_config.get("automatic_projection_sync", {}), suppressed_config
+
             partial = explore_results.sync_issue_fix_explore_on_material_change(
                 registry_path=registry,
                 goal_id=goal_id,

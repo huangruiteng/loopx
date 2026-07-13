@@ -621,6 +621,11 @@ def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
         f"- state_updated_at: `{frontmatter.get('updated_at')}`",
         f"- health_check: `{payload.get('health_check')}`",
     ]
+    if "external_sink_delivery_authorized" in payload:
+        lines.append(
+            "- external_sink_delivery_authorized: "
+            f"`{payload.get('external_sink_delivery_authorized')}`"
+        )
     if payload.get("error"):
         lines.append(f"- error: {payload.get('error')}")
         return "\n".join(lines)

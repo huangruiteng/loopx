@@ -195,7 +195,12 @@ def main() -> None:
     require("handle_project_lifecycle_command" in init_source, "__init__ did not export project lifecycle handler")
 
     for command, options in {
-        "refresh-state": ("--delivery-outcome", "--agent-id", "--dry-run"),
+        "refresh-state": (
+            "--delivery-outcome",
+            "--agent-id",
+            "--suppress-external-sinks",
+            "--dry-run",
+        ),
         "read-only-map": ("--recommended-action", "--dry-run"),
         "reward": ("--write-active-state-summary", "--lesson-kind", "--lesson-avoid", "--dry-run"),
         "operator-gate": ("--agent-command", "--no-global-sync"),
@@ -223,6 +228,7 @@ def main() -> None:
                 GOAL_ID,
                 "--dry-run",
                 "--no-global-sync",
+                "--suppress-external-sinks",
                 "--delivery-batch-scale",
                 "implementation",
                 "--delivery-outcome",
@@ -234,6 +240,10 @@ def main() -> None:
         require(refresh_payload.get("dry_run") is True, "refresh-state should stay dry-run")
         require(refresh_payload.get("appended") is False, "refresh-state dry-run should not append")
         require(refresh_payload.get("delivery_outcome") == "outcome_progress", "refresh-state outcome changed")
+        require(
+            refresh_payload.get("external_sink_delivery_authorized") is False,
+            "refresh-state did not project the external sink suppression boundary",
+        )
 
         map_payload = require_json_success(
             run_cli(

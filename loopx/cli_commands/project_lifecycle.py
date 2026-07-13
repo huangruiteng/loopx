@@ -249,6 +249,14 @@ def register_project_lifecycle_commands(
         action="store_true",
         help="Do not refresh the shared global registry after writing the state run.",
     )
+    refresh_state_parser.add_argument(
+        "--suppress-external-sinks",
+        action="store_true",
+        help=(
+            "Keep enabled local projections active but suppress configured external "
+            "sink writes for this refresh. Pending sink digests remain retryable."
+        ),
+    )
 
     read_only_map_parser = subparsers.add_parser(
         "read-only-map",
@@ -457,6 +465,9 @@ def handle_project_lifecycle_command(
                 "dry_run": bool(args.dry_run),
                 "error": str(exc),
             }
+        payload["external_sink_delivery_authorized"] = not bool(
+            args.suppress_external_sinks
+        )
         if payload.get("ok") and payload.get("appended") and not payload.get("dry_run"):
             append_cli_rollout_event(
                 payload,
@@ -488,6 +499,9 @@ def handle_project_lifecycle_command(
                 agent_id=args.agent_id,
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
+                external_sink_delivery_authorized=not bool(
+                    args.suppress_external_sinks
+                ),
             )
             payload["explore_graph_sync"] = graph_sync
             if graph_sync.get("enabled") and not graph_sync.get("ok"):

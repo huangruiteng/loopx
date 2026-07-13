@@ -17,6 +17,7 @@ def sync_explore_graph_after_material_refresh(
     agent_id: str | None = None,
     project: Path | None = None,
     state_file: Path | None = None,
+    external_sink_delivery_authorized: bool = True,
     syncer: Callable[..., Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Flush an enabled graph after the goal-level refresh transaction.
@@ -36,6 +37,7 @@ def sync_explore_graph_after_material_refresh(
         "goal_id": goal_id,
         "enabled": policy["enabled"],
         "trigger": "material_refresh",
+        "external_sink_delivery_authorized": external_sink_delivery_authorized,
     }
     if goal is None:
         return {**base, "ok": False, "status": "goal_not_found"}
@@ -57,6 +59,7 @@ def sync_explore_graph_after_material_refresh(
             project=project,
             state_file=state_file,
             execute=True,
+            external_sink_delivery_authorized=external_sink_delivery_authorized,
         )
     except Exception as exc:
         return {
