@@ -9,6 +9,7 @@ Lark event stream
   -> .loopx/inbox/<channel>/*.json
   -> loopx lark-inbox drain
   -> domain agent writes a todo, vision correction, artifact update, or rationale
+  -> direct bot question: loopx lark-inbox reply (optional, configured sender only)
   -> loopx lark-inbox ack --message-id ... --execute
 ```
 
@@ -51,6 +52,35 @@ configuration or host state and must not enter public LoopX packets.
 reports `thread_complete=false` and a coverage warning for that mode. For
 `configured_chat_all`, the collector's jq filter should select the configured
 chat only; do not add a content-level `@bot` predicate.
+
+Optional source-thread replies are a separate, default-off boundary. Enable
+them only for a `configured_chat_all` inbox and bind an explicit non-default
+bot profile to the same local-private chat:
+
+```json
+{
+  "schema_version": "lark_event_inbox_config_v0",
+  "enabled": true,
+  "inbox_dir": ".loopx/inbox/team-feedback",
+  "capture_scope": "configured_chat_all",
+  "reply": {
+    "enabled": true,
+    "sender_profile": "project-review-bot",
+    "sender_identity": "bot",
+    "bot_display_name": "Project Review Bot",
+    "chat_id": "oc_<local-private-chat-id>"
+  }
+}
+```
+
+The reply path never uses the machine default profile. Before any send it
+verifies that the named profile resolves to the expected bot and that the bot
+can read the configured chat. A profile/app mismatch fails with
+`lark_inbox_reply_sender_identity_mismatch`; a profile that cannot access the
+configured chat fails with
+`lark_inbox_reply_sender_not_in_configured_chat`. Neither failure falls back
+to another app. Public results contain only compact status/receipt fields, not
+the profile, chat id, message id, reply text, or provider payload.
 
 ## Host collector lifecycle
 
@@ -148,6 +178,31 @@ loopx lark-inbox ack \
 Drain is read-only and returns bounded local-private message content. A message
 must be acknowledged only after its effect is written back. Duplicate event
 files collapse by `message_id`; repeated acknowledgement is idempotent.
+
+For a direct question or explicit bot mention, write the requested durable
+effect first, preview one concise source-thread reply, execute it, require
+readback, and only then ACK:
+
+```bash
+loopx lark-inbox reply \
+  --project . \
+  --config .loopx/config/lark/event-inbox.json \
+  --message-id om_xxx \
+  --text '已记录并修正。'
+
+loopx lark-inbox reply \
+  --project . \
+  --config .loopx/config/lark/event-inbox.json \
+  --message-id om_xxx \
+  --text '已记录并修正。' \
+  --execute
+```
+
+The command uses an idempotency key derived from the source message and reply
+text, sends with `--reply-in-thread`, and reads the created message back through
+the same configured profile. Ordinary chatter remains a no-reply path;
+enabling this capability does not grant reviewer-notification or other
+outbound authority.
 
 ## Bounded history reconciliation
 
