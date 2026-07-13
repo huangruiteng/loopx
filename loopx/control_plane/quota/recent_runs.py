@@ -61,3 +61,51 @@ def recent_external_monitor_observation_unchanged(
                 "reason": "recent monitor observation was unchanged",
             }
     return None
+
+
+def latest_unchanged_monitor_observation(
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str,
+    agent_id: str | None = None,
+    scan_limit: int = 8,
+) -> dict[str, Any] | None:
+    """Return an unchanged monitor poll only when it is the latest work event.
+
+    Quota accounting and scheduler acknowledgements do not start a new work
+    lane. Any other current-agent or legacy-unscoped run does, so an older
+    monitor poll cannot suppress monitor priority after later delivery.
+    """
+
+    safe_agent_id = normalize_todo_claimed_by(agent_id)
+    for run in goal_latest_runs(status_payload, goal_id=goal_id)[: max(1, scan_limit)]:
+        run_agent_id = normalize_todo_claimed_by(run.get("agent_id"))
+        if safe_agent_id and run_agent_id and run_agent_id != safe_agent_id:
+            continue
+        classification = str(run.get("classification") or "").strip()
+        if classification.startswith("quota_slot_") or classification.startswith(
+            "quota_scheduler_"
+        ):
+            continue
+        if classification != QUOTA_MONITOR_POLL_CLASSIFICATION:
+            return None
+        monitor_event = run.get("monitor_event") if isinstance(run.get("monitor_event"), dict) else {}
+        if monitor_event.get("material_change") is True or run.get("material_change") is True:
+            return None
+        monitor_mode = str(monitor_event.get("monitor_mode") or "").strip()
+        health_check = str(run.get("health_check") or "").strip().lower()
+        if not (
+            monitor_mode.endswith("_observed_without_material_transition")
+            or "monitor observation unchanged" in health_check
+            or "due monitor observation unchanged" in health_check
+            or "external monitor observation unchanged" in health_check
+        ):
+            return None
+        return {
+            "classification": QUOTA_MONITOR_POLL_CLASSIFICATION,
+            "generated_at": run.get("generated_at"),
+            "agent_id": run_agent_id or None,
+            "monitor_mode": monitor_mode or "monitor_observed_without_material_transition",
+            "reason": "latest work event was an unchanged monitor observation",
+        }
+    return None

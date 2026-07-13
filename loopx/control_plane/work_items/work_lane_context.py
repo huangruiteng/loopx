@@ -93,6 +93,7 @@ def build_work_lane_context_contract(
     *,
     agent_todo_summary: dict[str, Any] | None,
     monitor_due_item_limit: int = DEFAULT_MONITOR_DUE_ITEM_LIMIT,
+    monitor_attempt_already_recorded: bool = False,
 ) -> dict[str, Any] | None:
     progress_scope = item_progress_scope(item)
     external_poll_signal = build_external_evidence_poll_signal(
@@ -135,4 +136,5 @@ def build_work_lane_context_contract(
         monitor_due_item_limit=monitor_due_item_limit,
         resume_blocked_by_monitor_count=len(monitor_blocked_resume_candidates),
         resume_blocked_by_monitor_items=monitor_blocked_resume_candidates,
+        monitor_attempt_already_recorded=monitor_attempt_already_recorded,
     )

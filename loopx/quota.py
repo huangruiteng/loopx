@@ -1389,6 +1389,9 @@ def build_quota_should_run(
         self_repair_allowed = bool(stall_self_repair and stall_self_repair.get("allowed"))
         work_lane_contract = build_quota_work_lane_contract(
             item,
+            status_payload=status_payload,
+            goal_id=safe_goal_id,
+            agent_id=normalize_todo_claimed_by((agent_identity or {}).get("agent_id")),
             agent_todo_summary=agent_todo_summary,
             monitor_due_item_limit=MONITOR_DUE_ITEM_LIMIT,
         )
