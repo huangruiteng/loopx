@@ -366,6 +366,7 @@ def check_lark_sync_contract() -> None:
         )
         assert first["ok"] is True, first
         assert first["readback"]["verified"] is True, first
+        assert first["readback"]["source"] == "post_write_scan", first
         assert first["readback"]["expected_result_count"] == 4, first
         assert first["readback"]["observed_result_count"] == 4, first
         assert len(upsert_calls) == 3, upsert_calls
@@ -387,6 +388,8 @@ def check_lark_sync_contract() -> None:
         )
         assert second["ok"] is True, second
         assert second["readback"]["verified"] is True, second
+        assert second["readback"]["source"] == "initial_scan", second
+        assert len([item for item in second["commands"] if "+record-list" in item["command"]]) == 4
         assert not upsert_calls, upsert_calls
         assert second["written_rows"] == 0 and second["skipped_rows"] == 4, second
         assert config_path.read_text(encoding="utf-8") == stored_before_second

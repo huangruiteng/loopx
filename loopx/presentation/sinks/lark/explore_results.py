@@ -1031,7 +1031,13 @@ def sync_explore_results_to_lark(
     readback_records: dict[str, dict[str, Any]] = {}
     readback_duplicate_rows = 0
     readback_failed_tables: list[str] = []
-    if execute and ok:
+    readback_source = "not_performed"
+    if execute and ok and written_rows == 0:
+        readback_records = dict(remote_records)
+        readback_duplicate_rows = duplicate_remote_rows
+        readback_source = "initial_scan"
+    elif execute and ok:
+        readback_source = "post_write_scan"
         for table_key in EXPLORE_TABLE_KEYS:
             if not rows_by_table[table_key]:
                 continue
@@ -1098,6 +1104,7 @@ def sync_explore_results_to_lark(
         "schema_version": LARK_EXPLORE_READBACK_VERSION,
         "performed": bool(execute and ok),
         "verified": readback_verified,
+        "source": readback_source,
         "expected_result_count": len(expected_keys),
         "observed_result_count": len(readback_records),
         "missing_result_ids": [key.rsplit(":", 1)[-1] for key in missing_readback_keys],
