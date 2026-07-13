@@ -12,18 +12,22 @@ from .control_plane.runtime.run_index_duplicates import (
     classify_index_duplicate_records,
     index_identity,
 )
+from .control_plane.todos.active_state_editing import COMPLETED_WORK_ARCHIVE_HEADING
 from .history import collect_history, load_registry
 from .paths import DEFAULT_RUNTIME_ROOT, rel_or_abs, resolve_runtime_root
 from .registry import inspect_registry, inspect_registry_boundary, registry_goals, resolve_state_file
 from .control_plane.todos.contract import (
     TODO_STATUS_DEFERRED,
     TODO_STATUS_DONE,
+    TODO_METADATA_PATTERN,
     TODO_TASK_CLASS_USER_ACTION,
     TODO_TASK_CLASS_USER_GATE,
     TODO_TASK_PATTERN,
+    decode_metadata_value,
     normalize_todo_claimed_by,
     normalize_todo_excluded_agents,
     normalize_removed_todo_continuation_policy,
+    normalize_todo_status,
     parse_todo_metadata_line,
     parse_todo_metadata_tokens,
     require_todo_excluded_agents,
@@ -284,11 +288,16 @@ def _active_state_user_gate_scope_errors(registry: dict[str, Any]) -> tuple[list
             continue
 
         role: str | None = None
+        in_completed_work_archive = False
         index = 0
         while index < len(lines):
             line = lines[index]
             if line.startswith("## "):
-                heading = line.lstrip("#").strip().lower()
+                heading_text = line.lstrip("#").strip()
+                heading = heading_text.lower()
+                in_completed_work_archive = (
+                    heading_text.casefold() == COMPLETED_WORK_ARCHIVE_HEADING.casefold()
+                )
                 if "user todo" in heading or "owner review" in heading:
                     role = "user"
                 elif "agent todo" in heading:
@@ -304,19 +313,31 @@ def _active_state_user_gate_scope_errors(registry: dict[str, Any]) -> tuple[list
             marker, text = match.groups()
             metadata: dict[str, Any] = {}
             malformed_excluded_agents = False
+            malformed_status = False
             next_index = index + 1
             while next_index < len(lines):
                 if lines[next_index].startswith("## ") or TODO_TASK_PATTERN.match(lines[next_index]):
                     break
-                raw_metadata = parse_todo_metadata_tokens(lines[next_index])
+                raw_line = lines[next_index]
+                raw_metadata = parse_todo_metadata_tokens(raw_line)
+                metadata_match = TODO_METADATA_PATTERN.match(raw_line)
+                if metadata_match:
+                    for raw_field in metadata_match.group("body").split():
+                        if not raw_field.startswith("status="):
+                            continue
+                        raw_status = decode_metadata_value(raw_field.split("=", 1)[1])
+                        if normalize_todo_status(raw_status) is None:
+                            malformed_status = True
                 for key, value in raw_metadata or []:
+                    if key == "status" and normalize_todo_status(value) is None:
+                        malformed_status = True
                     if key not in {"excluded_agent", "excluded_agents"}:
                         continue
                     try:
                         require_todo_excluded_agents(value)
                     except ValueError:
                         malformed_excluded_agents = True
-                parsed = parse_todo_metadata_line(lines[next_index])
+                parsed = parse_todo_metadata_line(raw_line)
                 if parsed:
                     metadata.update(parsed)
                 next_index += 1
@@ -331,6 +352,12 @@ def _active_state_user_gate_scope_errors(registry: dict[str, Any]) -> tuple[list
                     f"{goal_id}: todo {todo_id} has malformed excluded_agents metadata; "
                     "replace it with --excluded-agent <registered-agent> or remove it "
                     "with --clear-excluded-agents"
+                )
+            if malformed_status:
+                errors.append(
+                    f"{goal_id}: todo {todo_id} has malformed status metadata; "
+                    "replace it with status=open, status=done, status=blocked, or "
+                    "status=deferred"
                 )
             if role == "agent" and removed_continuation_policy:
                 errors.append(
@@ -355,7 +382,12 @@ def _active_state_user_gate_scope_errors(registry: dict[str, Any]) -> tuple[list
                     f"{goal_id}: agent todo {todo_id} has claimed_by={claimed_by!r} "
                     "also listed in excluded_agents"
                 )
-            if role != "agent" and excluded_agents:
+            archived_terminal_todo = (
+                in_completed_work_archive
+                and todo_status_from_marker(marker) in TERMINAL_TODO_STATUSES
+                and status in TERMINAL_TODO_STATUSES
+            )
+            if role != "agent" and excluded_agents and not archived_terminal_todo:
                 errors.append(
                     f"{goal_id}: {role or 'unscoped'} todo {todo_id} uses excluded_agents; "
                     "executor exclusions are only valid for agent todos"
