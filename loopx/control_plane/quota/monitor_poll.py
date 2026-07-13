@@ -218,6 +218,29 @@ def _monitor_poll_failure(
     }
 
 
+def _capability_declaration_retry(before: dict[str, Any]) -> dict[str, Any] | None:
+    gate = (
+        before.get("capability_gate")
+        if isinstance(before.get("capability_gate"), dict)
+        else {}
+    )
+    raw_missing = gate.get("missing") if isinstance(gate.get("missing"), list) else []
+    missing = [str(item).strip() for item in raw_missing if str(item).strip()]
+    if not missing:
+        return None
+    cli_args = [arg for capability in missing for arg in ("--available-capability", capability)]
+    return {
+        "schema_version": "monitor_poll_capability_retry_v0",
+        "command": "quota monitor-poll",
+        "missing": missing,
+        "cli_args": cli_args,
+        "reason": (
+            "monitor-poll recomputes should-run; if these capabilities are present "
+            "in the current agent environment, repeat the runtime capability declarations"
+        ),
+    }
+
+
 def record_quota_monitor_poll_for_decision(
     before: dict[str, Any],
     status_payload: dict[str, Any],
@@ -243,8 +266,8 @@ def record_quota_monitor_poll_for_decision(
     safe_target_key = str(target_key or "").strip() or None
     safe_result_hash = str(result_hash or "").strip() or None
 
-    def failure(reason: str) -> dict[str, Any]:
-        return _monitor_poll_failure(
+    def failure(reason: str, *, include_capability_retry: bool = False) -> dict[str, Any]:
+        payload = _monitor_poll_failure(
             goal_id=goal_id,
             execute=execute,
             source=source,
@@ -256,6 +279,13 @@ def record_quota_monitor_poll_for_decision(
             reason=reason,
             before=before,
         )
+        retry = _capability_declaration_retry(before) if include_capability_retry else None
+        if retry:
+            payload["capability_retry"] = retry
+            payload["reason"] = (
+                f"{reason}; {retry['reason']}: {', '.join(retry['missing'])}"
+            )
+        return payload
 
     if material_change and not (normalized_todo_id or safe_target_key):
         return failure("`quota monitor-poll --material-change` requires --todo-id or --target-key")
@@ -279,7 +309,8 @@ def record_quota_monitor_poll_for_decision(
     ):
         return failure(
             "monitor-poll requires monitor_quiet_skip, due monitor todo, "
-            "or external monitor observation"
+            "or external monitor observation",
+            include_capability_retry=True,
         )
 
     generated_at = _now_local()
