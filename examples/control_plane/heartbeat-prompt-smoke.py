@@ -184,6 +184,8 @@ def main() -> int:
         "state=operator_gate",
         "notify_user_on_open_todo=true",
         "open_todo_notification_policy=repeat_until_resolved",
+        "`user_channel.notify=NOTIFY`",
+        "including non_blocking",
         "safe_bypass_allowed=true",
         "safe_bypass_kind=outcome_floor_recovery",
         "unchanged monitor-only polls are not self-stop signals",
@@ -307,7 +309,9 @@ def main() -> int:
         "loopx heartbeat-prompt --compact --goal-id public-heartbeat-goal --active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
         "Preflight and quota guard",
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
-        "Gate/open todo ->",
+        "User NOTIFY: Chinese actions incl. non_blocking at false/0",
+        "Only DONT_NOTIFY+false/0: quiet",
+        "Otherwise obey user channel",
         "status/log/metric/marker poll",
         "safe_bypass_kind=outcome_floor_recovery",
         "ranker/cross-domain evidence recovery",
@@ -343,10 +347,9 @@ def main() -> int:
         "LoopX CLI is source of truth",
         "registry/global quota, active state, status/history, repo",
         "`quota should-run`; follow `interaction_contract`",
-        "action_required/open_count",
-        "Chinese concrete todos/questions",
+        "User NOTIFY: Chinese actions incl. non_blocking at false/0",
         'never only "owner gate"',
-        "If false/0: quiet/no-user-todo",
+        "Only DONT_NOTIFY+false/0: quiet",
         "具体 user todo 未投影，需修复 LoopX 状态投影",
         "Apply `scheduler_hint`: if App `stateful_backoff.apply_needed`",
         "RRULE then run `ack_hint.cli_args`",
@@ -361,6 +364,7 @@ def main() -> int:
     ):
         assert phrase in thin_task, phrase
     assert "if absent say" not in thin_task, thin_task
+    assert "If false/0: quiet/no-user-todo" not in thin_task, thin_task
 
     doc = DOC.read_text(encoding="utf-8")
     readme = README.read_text(encoding="utf-8")
@@ -391,13 +395,15 @@ def main() -> int:
         "user_todo_summary",
         "user_todo_summary.open_count > 0",
         "never say \"no new user action\"",
-        "Only when",
-        "`interaction_contract.user_channel.action_required=true`",
-        "name concrete payload todo(s)/questions",
-        'never only "owner gate"',
-        "When `interaction_contract.user_channel.action_required=false`",
+        "Treat `interaction_contract.user_channel.notify` as the final notification signal",
+        "When it is `NOTIFY`",
+        "even when `action_required=false`",
         "`user_todo_summary.open_count=0`",
-        "allow \"无用户待办/无需通知\"",
+        "`non_blocking=true`",
+        "non-blocking means the agent may continue independent work",
+        'Never say only "owner gate"',
+        "Only when `notify=DONT_NOTIFY`",
+        '"无用户待办/无需通知"',
         "具体 user todo 未投影，需修复 LoopX 状态投影",
         "NOTIFY",
         "notify_user_on_open_todo=true",
@@ -412,7 +418,7 @@ def main() -> int:
         "safe_bypass_allowed=true",
         "gate blocks only the gated delivery path",
         "one bounded safe-bypass step",
-        "include those todos",
+        "include the projected user actions or todos concretely",
         "quota monitor-poll --goal-id",
         "--source heartbeat --execute",
         "delivery edits",
@@ -515,10 +521,10 @@ def main() -> int:
         "user_todo_summary",
         "user_todo_summary.open_count > 0",
         "never say \"no new user action\"",
-        "Only if action_required=true/open_count>0",
-        "name concrete payload todo(s)/questions",
+        "notify=NOTIFY: concrete actions/todos",
+        "including non_blocking at false/0",
         'never only "owner gate"',
-        "If false/0, allow quiet/no-user-todo",
+        "Only notify=DONT_NOTIFY + false/0: quiet",
         "具体 user todo 未投影，需修复 LoopX 状态投影",
         "NOTIFY",
         "notify_user_on_open_todo=true",
@@ -596,6 +602,8 @@ def main() -> int:
     ):
         assert phrase in compact_generated, phrase
     assert "if absent say" not in compact_generated, compact_generated
+    assert "Only if action_required=true/open_count>0" not in compact_generated, compact_generated
+    assert "If false/0, allow quiet/no-user-todo" not in compact_generated, compact_generated
 
     assert_ordered(
         doc,
