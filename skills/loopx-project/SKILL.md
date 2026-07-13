@@ -710,6 +710,13 @@ loopx refresh-state \
   --progress-scope goal
 ```
 
+If the current run may write local LoopX state but its runtime boundary forbids
+configured external sink writes, keep `explore_graph.enabled` unchanged and add
+`--suppress-external-sinks`. This preserves canonical local graph projection,
+records the run-scoped authorization boundary, and leaves sink digests pending
+for a later authorized refresh. Do not toggle the goal-level Graph setting as a
+one-off workaround for an external-write boundary.
+
 Use `delivery_outcome` as a machine enum, not as prose:
 
 - `surface_only`: docs, contracts, smokes, setup, or preparation moved, but the

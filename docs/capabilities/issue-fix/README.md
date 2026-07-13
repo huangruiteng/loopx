@@ -414,6 +414,12 @@ observations are excluded from the semantic digest, so they do not rewrite the
 graph. A failed sink remains retryable because its digest advances only after a
 successful write.
 
+If the current run is allowed to update local LoopX state but external writes
+are temporarily forbidden, use `refresh-state --suppress-external-sinks`.
+Canonical issue-fix/Explore projection still runs locally; configured row and
+visual sink digests do not advance and remain retryable on a later authorized
+refresh.
+
 `explore_graph.enabled` and `explore_harness.enabled` are independent switches.
 The graph is an operator projection and may be on while the harness remains
 off; the harness is a separate opt-in worker-planning facility. LoopX still

@@ -413,6 +413,10 @@ issue-fix domain state、todo metadata 与 rollout event 组合 public-safe Expl
 再执行已配置 sink。稳定 result id 保证重试幂等；poll 时间戳与 unchanged monitor 不进入
 语义 digest，因此不会反复改写图。某个 sink 写入失败时，其 digest 不推进，下一轮仍可重试。
 
+如果当前运行允许更新本地 LoopX 状态、但暂时不允许任何外部写入，可使用
+`refresh-state --suppress-external-sinks`。Issue-Fix / Explore 的 canonical 投影仍会在
+本地执行；已配置 row/visual sink 的 digest 不推进，之后获得授权的 refresh 可继续重试。
+
 `explore_graph.enabled` 与 `explore_harness.enabled` 是两个独立开关。Graph 可以开启而
 Harness 保持关闭；后者仍是显式 opt-in 的 worker planning 能力。事实源继续是 issue-fix
 domain state 和 rollout event，图在没有新 PR 的阶段也能保持两条主线：OpenViking
