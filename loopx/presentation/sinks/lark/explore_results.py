@@ -18,6 +18,7 @@ import hashlib
 import html
 import json
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -82,6 +83,7 @@ VISUAL_RENDERERS = {
 }
 
 _SVG_HEIGHT_PATTERN = re.compile(r'\bheight="(?P<height>\d+(?:\.\d+)?)"')
+_VISUAL_READBACK_RETRY_DELAYS_SECONDS = (0.25, 0.5, 1.0, 2.0, 4.0)
 
 TABLE_NODES = "nodes"
 TABLE_EDGES = "edges"
@@ -598,9 +600,32 @@ def _readback_svg_delivery_marker(
         "--format",
         "json",
     ]
-    result = _run_command(command, execute=True, runner=runner)
-    texts = _whiteboard_raw_texts(result.get("json"))
-    marker_observed = marker in texts
+    attempts: list[dict[str, Any]] = []
+    result: dict[str, Any] = {}
+    texts: list[str] = []
+    marker_observed = False
+    for attempt_index in range(len(_VISUAL_READBACK_RETRY_DELAYS_SECONDS) + 1):
+        result = _run_command(command, execute=True, runner=runner)
+        texts = _whiteboard_raw_texts(result.get("json"))
+        marker_observed = marker in texts
+        parsed = result.get("json")
+        error = parsed.get("error") if isinstance(parsed, Mapping) else None
+        error_code = error.get("code") if isinstance(error, Mapping) else None
+        error_message = str(error.get("message") or "") if isinstance(error, Mapping) else ""
+        is_applying = error_code == 4003101 and "doc is applying" in error_message
+        attempts.append(
+            {
+                "attempt": attempt_index + 1,
+                "ok": bool(result.get("ok")),
+                "marker_observed": marker_observed,
+                "error_code": error_code,
+                "retryable": is_applying,
+            }
+        )
+        if result.get("ok") or not is_applying:
+            break
+        if attempt_index < len(_VISUAL_READBACK_RETRY_DELAYS_SECONDS):
+            time.sleep(_VISUAL_READBACK_RETRY_DELAYS_SECONDS[attempt_index])
     command_receipt = {
         key: result.get(key)
         for key in (
@@ -622,6 +647,8 @@ def _readback_svg_delivery_marker(
         "expected_marker": marker,
         "observed_marker": marker if marker_observed else None,
         "remote_text_node_count": len(texts),
+        "attempt_count": len(attempts),
+        "attempts": attempts,
         "command": command_receipt,
         "error": (
             None
