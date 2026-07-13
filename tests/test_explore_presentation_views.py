@@ -16,10 +16,77 @@ from loopx.presentation.sinks.lark.explore_results import (
     LarkExploreConfig,
     configure_lark_explore_visual_sink,
     read_lark_explore_local_config,
+    sync_explore_results_to_lark,
     sync_explore_visual_to_lark,
     sync_explore_visuals_to_lark,
     write_lark_explore_local_config,
 )
+
+
+def test_shared_result_sync_reads_redacted_goal_id_with_canonical_local_key(
+    tmp_path,
+) -> None:
+    goal_id = "goal-recabcdef"
+    projection = {
+        "schema_version": "loopx_explore_result_projection_v0",
+        "goal_id": goal_id,
+        "nodes": [_node("candidate", status="resolved")],
+        "edges": [],
+        "findings": [],
+    }
+    config = LarkExploreConfig(
+        base_token="PUBLIC_FIXTURE_BASE",
+        table_ids={"nodes": "tblN", "edges": "tblE", "findings": "tblF"},
+    )
+    config_path = tmp_path / "lark-explore.json"
+    dry = sync_explore_results_to_lark(
+        config,
+        projection=projection,
+        config_path=config_path,
+        sink_visibility="shared",
+    )
+    expected = dry["records"][0]["values"]
+    calls: list[list[str]] = []
+
+    def runner(args, _cwd, _timeout):
+        calls.append(args)
+        assert "+record-list" in args
+        filter_payload = json.loads(args[args.index("--filter-json") + 1])
+        assert filter_payload["conditions"][0][2] == "goal-[external-id-redacted]"
+        fields = sorted(expected)
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(
+                {
+                    "ok": True,
+                    "data": {
+                        "fields": fields,
+                        "data": [[expected.get(field) for field in fields]],
+                        "record_id_list": ["rec_public_fixture"],
+                        "has_more": False,
+                    },
+                }
+            ),
+            "stderr": "",
+        }
+
+    synced = sync_explore_results_to_lark(
+        config,
+        projection=projection,
+        config_path=config_path,
+        sink_visibility="shared",
+        execute=True,
+        runner=runner,
+    )
+
+    assert synced["ok"] is True
+    assert synced["readback"]["verified"] is True
+    assert synced["written_rows"] == 0
+    assert all("+record-upsert" not in call for call in calls)
+    stored = read_lark_explore_local_config(config_path)
+    assert stored["result_records"] == {
+        f"{goal_id}:nodes:candidate": "rec_public_fixture"
+    }
 
 
 def _node(
@@ -686,6 +753,75 @@ def test_mermaid_visual_publish_reads_back_remote_delivery_marker(tmp_path) -> N
     assert synced["readback"]["performed"] is True
     assert synced["readback"]["verified"] is True
     assert synced["readback"]["observed_marker"] == published_marker
+
+
+def test_mermaid_visual_publish_retries_idempotency_replay_error(tmp_path) -> None:
+    projection = _complex_projection()
+    config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
+    bundle = build_explore_presentation_bundle(projection)
+    update_tokens: list[str] = []
+    published_marker = ""
+
+    def runner(args, cwd, _timeout):
+        nonlocal published_marker
+        if "+update" in args:
+            update_tokens.append(args[args.index("--idempotent-token") + 1])
+            if len(update_tokens) == 1:
+                payload = {
+                    "ok": False,
+                    "error": {"code": 2891001, "message": "HE[n] is not iterable"},
+                }
+                return {
+                    "returncode": 1,
+                    "stdout": "",
+                    "stderr": json.dumps(payload),
+                }
+            source_arg = args[args.index("--source") + 1]
+            source = (cwd / source_arg.removeprefix("@")).read_text(
+                encoding="utf-8"
+            )
+            published_marker = re.search(
+                r"LoopX delivery [0-9a-f]{20}", source
+            ).group(0)
+            return {
+                "returncode": 0,
+                "stdout": json.dumps({"ok": True}),
+                "stderr": "",
+            }
+        assert "+query" in args
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(
+                {
+                    "ok": True,
+                    "data": {"nodes": [{"text": {"text": published_marker}}]},
+                }
+            ),
+            "stderr": "",
+        }
+
+    synced = sync_explore_visual_to_lark(
+        config,
+        projection=projection,
+        visual_sink={
+            "whiteboard_token": "wb_executive_fixture",
+            "view_role": "executive",
+            "renderer": "mermaid",
+        },
+        config_path=tmp_path / "lark-explore.json",
+        semantic_digest=bundle["source_digest"],
+        display_projection=bundle["executive"],
+        view_key="executive",
+        execute=True,
+        runner=runner,
+    )
+
+    assert synced["ok"] is True
+    assert synced["publish_attempt_count"] == 2
+    assert len(update_tokens) == 2
+    assert update_tokens[0] != update_tokens[1]
+    assert update_tokens[1].startswith("loopx-retry-")
+    assert synced["readback"]["verified"] is True
 
 
 def test_mermaid_visual_readback_retries_lark_doc_applying(tmp_path, monkeypatch) -> None:

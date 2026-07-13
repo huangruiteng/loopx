@@ -784,6 +784,7 @@ def sync_explore_visual_to_lark(
     ]
     if not execute:
         result = _run_command(command, execute=False, runner=runner)
+        publish_attempts = [result]
     else:
         config_path.parent.mkdir(parents=True, exist_ok=True)
         source_path = config_path.parent / source_name
@@ -795,6 +796,28 @@ def sync_explore_visual_to_lark(
                 runner=runner,
                 cwd=config_path.parent,
             )
+            publish_attempts = [result]
+            error = _structured_command_error(result)
+            if (
+                not result.get("ok")
+                and error.get("code") == 2891001
+                and "not iterable" in str(error.get("message") or "")
+            ):
+                retry_command = list(command)
+                token_index = retry_command.index("--idempotent-token") + 1
+                retry_material = (
+                    f"{retry_command[token_index]}:{time.time_ns()}".encode("utf-8")
+                )
+                retry_command[token_index] = (
+                    "loopx-retry-" + hashlib.sha256(retry_material).hexdigest()[:32]
+                )
+                result = _run_command(
+                    retry_command,
+                    execute=True,
+                    runner=runner,
+                    cwd=config_path.parent,
+                )
+                publish_attempts.append(result)
         finally:
             source_path.unlink(missing_ok=True)
     readback: dict[str, Any] = {
@@ -846,6 +869,8 @@ def sync_explore_visual_to_lark(
         "graph_counts": graph.get("graph_counts"),
         "filter": graph.get("filter"),
         "command": result,
+        "publish_attempt_count": len(publish_attempts),
+        "publish_attempts": publish_attempts,
         "readback": readback,
         "error": (
             None
@@ -1340,6 +1365,7 @@ def sync_explore_results_to_lark(
         rows_by_table = {
             table_key: [_public_safe_values(values) for values in rows] for table_key, rows in rows_by_table.items()
         }
+    remote_goal_id = _public_safe_text(goal_id) if public_safe else goal_id
 
     local = read_lark_explore_local_config(config_path) if config_path else {}
     record_map = dict(local.get("result_records") or {}) if isinstance(local.get("result_records"), dict) else {}
@@ -1363,7 +1389,7 @@ def sync_explore_results_to_lark(
                     _build_record_list_command(
                         config,
                         table_id=config.table_id(table_key),
-                        goal_id=goal_id,
+                        goal_id=remote_goal_id,
                         offset=offset,
                     ),
                     execute=True,
@@ -1381,7 +1407,9 @@ def sync_explore_results_to_lark(
                     record_id = str(record.get("_record_id") or "").strip()
                     if not (result_id and row_goal_id and record_id):
                         continue
-                    key = f"{row_goal_id}:{table_key}:{result_id}"
+                    if row_goal_id != remote_goal_id:
+                        continue
+                    key = f"{goal_id}:{table_key}:{result_id}"
                     if key not in expected_keys:
                         continue
                     if key in remote_records:
@@ -1482,7 +1510,7 @@ def sync_explore_results_to_lark(
                     _build_record_list_command(
                         config,
                         table_id=config.table_id(table_key),
-                        goal_id=goal_id,
+                        goal_id=remote_goal_id,
                         offset=offset,
                     ),
                     execute=True,
@@ -1500,7 +1528,9 @@ def sync_explore_results_to_lark(
                     record_id = str(record.get("_record_id") or "").strip()
                     if not (result_id and row_goal_id and record_id):
                         continue
-                    key = f"{row_goal_id}:{table_key}:{result_id}"
+                    if row_goal_id != remote_goal_id:
+                        continue
+                    key = f"{goal_id}:{table_key}:{result_id}"
                     if key not in expected_keys:
                         continue
                     if key in readback_records:
