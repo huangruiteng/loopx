@@ -5,7 +5,11 @@ import subprocess
 from pathlib import Path
 
 from loopx import __version__
-from loopx.doctor import build_install_freshness, git_revision_relation
+from loopx.doctor import (
+    build_install_freshness,
+    git_revision_relation,
+    trusted_release_ref_for_root,
+)
 
 
 def _git(root: Path, *args: str) -> str:
@@ -31,6 +35,8 @@ def _freshness(
     installed_commit: str,
     comparison_commit: str,
     revision_relation: str,
+    freshness_commit: str | None = None,
+    freshness_relation: str | None = None,
 ) -> dict[str, object]:
     return build_install_freshness(
         command_path=tmp_path / "loopx",
@@ -50,6 +56,17 @@ def _freshness(
             "git_commit": comparison_commit,
             "revision_relation": revision_relation,
         },
+        freshness_source=(
+            {
+                "label": "loopx/loopx@main",
+                "root": str(tmp_path),
+                "git_commit": freshness_commit,
+                "git_ref": "origin/main",
+                "revision_relation": freshness_relation,
+            }
+            if freshness_commit
+            else None
+        ),
         now=datetime(2026, 7, 13, 4, tzinfo=timezone.utc),
     )
 
@@ -71,6 +88,8 @@ def test_older_canary_does_not_stale_newer_default_release(tmp_path: Path) -> No
         installed_commit=newer,
         comparison_commit=older,
         revision_relation=relation,
+        freshness_commit=newer,
+        freshness_relation="same",
     )
 
     assert relation == "installed_ahead"
@@ -80,7 +99,7 @@ def test_older_canary_does_not_stale_newer_default_release(tmp_path: Path) -> No
     assert freshness["manifest_source_comparison_relation"] == "installed_ahead"
 
 
-def test_newer_canary_stales_older_default_release(tmp_path: Path) -> None:
+def test_newer_canary_does_not_stale_current_default_release(tmp_path: Path) -> None:
     _git(tmp_path, "init")
     _git(tmp_path, "config", "user.email", "loopx@example.invalid")
     _git(tmp_path, "config", "user.name", "LoopX Test")
@@ -97,9 +116,77 @@ def test_newer_canary_stales_older_default_release(tmp_path: Path) -> None:
         installed_commit=older,
         comparison_commit=newer,
         revision_relation=relation,
+        freshness_commit=older,
+        freshness_relation="same",
     )
 
     assert relation == "installed_behind"
+    assert freshness["status"] == "fresh"
+    assert freshness["requires_upgrade"] is False
+    assert freshness["manifest_source_comparison_relation"] == "installed_behind"
+    assert freshness["manifest_source_freshness_relation"] == "same"
+
+
+def test_trusted_main_ref_stales_older_default_release(tmp_path: Path) -> None:
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "loopx@example.invalid")
+    _git(tmp_path, "config", "user.name", "LoopX Test")
+    older = _commit(tmp_path, "older")
+    newer = _commit(tmp_path, "newer")
+
+    freshness = _freshness(
+        tmp_path,
+        installed_commit=older,
+        comparison_commit=newer,
+        revision_relation="diverged",
+        freshness_commit=newer,
+        freshness_relation="installed_behind",
+    )
+
     assert freshness["status"] == "stale"
     assert freshness["requires_upgrade"] is True
-    assert "is behind loopx-canary" in str(freshness["reason"])
+    assert "is behind loopx/loopx@main" in str(freshness["reason"])
+
+
+def test_unknown_canary_relation_does_not_stale_current_default_release(tmp_path: Path) -> None:
+    current = "a" * 40
+    freshness = _freshness(
+        tmp_path,
+        installed_commit=current,
+        comparison_commit="b" * 40,
+        revision_relation="unknown",
+        freshness_commit=current,
+        freshness_relation="same",
+    )
+
+    assert freshness["status"] == "fresh"
+    assert freshness["requires_upgrade"] is False
+    assert freshness["manifest_source_comparison_relation"] == "unknown"
+    assert freshness["manifest_source_freshness_relation"] == "same"
+
+
+def test_trusted_release_ref_matches_manifest_repository(tmp_path: Path) -> None:
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "loopx@example.invalid")
+    _git(tmp_path, "config", "user.name", "LoopX Test")
+    commit = _commit(tmp_path, "main")
+    _git(tmp_path, "remote", "add", "origin", "git@github.com:loopx/loopx.git")
+    _git(tmp_path, "update-ref", "refs/remotes/origin/main", commit)
+
+    trusted = trusted_release_ref_for_root(
+        tmp_path,
+        repository="loopx/loopx",
+        ref="main",
+    )
+
+    assert trusted is not None
+    assert trusted["git_commit"] == commit
+    assert trusted["git_ref"] == "origin/main"
+    assert (
+        trusted_release_ref_for_root(
+            tmp_path,
+            repository="someone-else/loopx",
+            ref="main",
+        )
+        is None
+    )
