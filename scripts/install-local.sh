@@ -19,6 +19,7 @@ release_id=""
 release_dir=""
 release_tmp=""
 install_lock=""
+install_lock_owned=0
 legacy_line=""
 installed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -26,7 +27,7 @@ cleanup_install_lock() {
   if [[ -n "$release_tmp" && -d "$release_tmp" ]]; then
     rm -rf "$release_tmp"
   fi
-  if [[ -n "$install_lock" && -d "$install_lock" ]]; then
+  if [[ "$install_lock_owned" == "1" && -n "$install_lock" && -d "$install_lock" ]]; then
     rm -rf "$install_lock"
   fi
 }
@@ -113,6 +114,7 @@ acquire_install_lock() {
     fi
     sleep 0.1
   done
+  install_lock_owned=1
   printf '%s\n' "$$" >"$install_lock/pid"
 }
 
