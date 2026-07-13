@@ -7,7 +7,12 @@ from pathlib import Path
 
 from ..agent_registry import normalize_registered_agents
 from ..configure_goal import configure_goal, render_configure_goal_markdown
-from ..global_registry import render_global_sync_markdown, sync_project_registry_to_global
+from ..global_registry import (
+    render_global_goal_retirement_markdown,
+    render_global_sync_markdown,
+    retire_global_registry_goals,
+    sync_project_registry_to_global,
+)
 from ..history import load_registry
 from ..orchestration import EXPLORE_HARNESS_PROFILES
 from ..paths import DEFAULT_RUNTIME_ROOT, global_registry_path, resolve_runtime_root
@@ -45,6 +50,7 @@ REGISTRY_ADMIN_COMMANDS = {
     "configure-goal",
     "register-agent",
     "archive-runtime",
+    "retire-global-goal",
     "uninstall-project",
     "sync-global",
     "migrate-state",
@@ -476,6 +482,25 @@ def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> 
         help="Actually move the runtime directory. Without this flag the command is a dry-run.",
     )
 
+    retire_global_goal_parser = subparsers.add_parser(
+        "retire-global-goal",
+        help=(
+            "Remove explicitly named obsolete goals from the global registry only when "
+            "both source_registry and state_file are missing. Defaults to dry-run."
+        ),
+    )
+    retire_global_goal_parser.add_argument(
+        "--goal-id",
+        action="append",
+        required=True,
+        help="Obsolete global goal id to retire. Repeat for multiple explicit goals.",
+    )
+    retire_global_goal_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Write a full registry backup, then remove the eligible goals.",
+    )
+
     uninstall_project_parser = subparsers.add_parser(
         "uninstall-project",
         help="Disconnect the current project from LoopX without uninstalling the LoopX CLI or other projects.",
@@ -708,6 +733,28 @@ def handle_registry_admin_command(
                 "error": str(exc),
             }
         print_payload(payload, args.format, render_archive_runtime_markdown)
+        return 0 if payload.get("ok") else 1
+
+    if args.command == "retire-global-goal":
+        try:
+            payload = retire_global_registry_goals(
+                runtime_root_override=args.runtime_root,
+                goal_ids=args.goal_id,
+                execute=bool(args.execute),
+            )
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "schema_version": "loopx_global_goal_retirement_v0",
+                "dry_run": not bool(args.execute),
+                "execute": bool(args.execute),
+                "requested_goal_ids": args.goal_id or [],
+                "retired_goal_ids": [],
+                "wrote": False,
+                "backup_written": False,
+                "error": str(exc),
+            }
+        print_payload(payload, args.format, render_global_goal_retirement_markdown)
         return 0 if payload.get("ok") else 1
 
     if args.command == "uninstall-project":

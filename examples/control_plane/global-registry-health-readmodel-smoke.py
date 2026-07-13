@@ -141,6 +141,18 @@ def main() -> None:
         assert "state_file_not_declared" in kinds, health
         assert "current_registry_scope_excludes_global_goals" in kinds, health
         assert health["source_registry_count"] == 3, health
+        orphan_findings = [
+            finding
+            for finding in health["findings"]
+            if finding.get("goal_id") == "global-only"
+            and finding.get("kind") in {"source_registry_missing", "state_file_missing"}
+        ]
+        assert len(orphan_findings) == 2, orphan_findings
+        assert all(
+            "loopx retire-global-goal --goal-id global-only"
+            in str(finding.get("recommended_action") or "")
+            for finding in orphan_findings
+        ), orphan_findings
 
         finding = status_module.global_registry_finding(
             kind="fixture",
