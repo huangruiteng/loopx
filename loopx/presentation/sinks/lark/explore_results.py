@@ -1061,6 +1061,7 @@ def sync_issue_fix_explore_on_material_change(
     project: Path | None = None,
     state_file: Path | None = None,
     execute: bool = False,
+    external_sink_delivery_authorized: bool = True,
     runner: CommandRunner = default_subprocess_runner,
 ) -> dict[str, Any]:
     """Project issue-fix facts and sync Lark only when the graph digest changed.
@@ -1155,6 +1156,26 @@ def sync_issue_fix_explore_on_material_change(
             "prior_semantic_digest": prior_digest or None,
             "projection": projection_result,
             "lark_sync": None,
+            "config_path": str(config_path),
+        }
+    if not external_sink_delivery_authorized:
+        return {
+            "ok": True,
+            "schema_version": "issue_fix_explore_lark_material_sync_v0",
+            "status": "external_sink_suppressed",
+            "execute": True,
+            "external_sink_delivery_authorized": False,
+            "needs_sync": True,
+            "needs_row_sync": needs_row_sync,
+            "needs_visual_sync": needs_visual_sync,
+            "semantic_digest": digest,
+            "prior_semantic_digest": prior_digest or None,
+            "prior_visual_semantic_digest": prior_visual_digest or None,
+            "projection": projection_result,
+            "lark_sync": None,
+            "canonical_rows_sync": None,
+            "visual_sync": None,
+            "retryable": True,
             "config_path": str(config_path),
         }
     lark_sync = (

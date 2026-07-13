@@ -320,6 +320,14 @@ Use `--no-explore-graph-enabled` to stop automatic graph work. Disabling the
 gate preserves existing evidence and display state; it only prevents future
 automatic projection and sink writes.
 
+When a single run may update local state but is not authorized to write any
+configured external sink, keep the graph enabled and pass
+`refresh-state --suppress-external-sinks`. LoopX still updates the canonical
+local Explore projection, reports the suppression boundary in the refresh
+packet, and leaves row/visual digests unchanged so a later authorized refresh
+can retry delivery. This run-scoped boundary does not change the goal's Graph
+or Harness opt-in settings.
+
 #### Explore Harness planning gate
 
 Both opt-in planners — `todo-branch-plan` and `worker-branch-plan` —
