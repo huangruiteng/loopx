@@ -267,3 +267,39 @@ def test_dual_visual_sync_uses_one_revision_and_rejects_stale_view(tmp_path) -> 
     assert stale["ok"] is False
     assert stale["status"] == "stale_projection"
     assert "command" not in stale
+
+
+def test_visual_delivery_digest_changes_when_only_rendered_mermaid_changes(tmp_path) -> None:
+    projection = _complex_projection()
+    config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
+    sink = {
+        "whiteboard_token": "wb_canonical_fixture",
+        "view_role": "canonical",
+    }
+    bundle = build_explore_presentation_bundle(projection)
+    first_view = bundle["canonical"]
+    changed_view = json.loads(json.dumps(first_view))
+    changed_view["mermaid"] += "\n    %% renderer contract changed"
+
+    first = sync_explore_visual_to_lark(
+        config,
+        projection=projection,
+        visual_sink=sink,
+        config_path=tmp_path / "lark-explore.json",
+        semantic_digest=bundle["source_digest"],
+        display_projection=first_view,
+        view_key="canonical",
+    )
+    changed = sync_explore_visual_to_lark(
+        config,
+        projection=projection,
+        visual_sink=sink,
+        config_path=tmp_path / "lark-explore.json",
+        semantic_digest=bundle["source_digest"],
+        display_projection=changed_view,
+        view_key="canonical",
+    )
+
+    assert first["source_digest"] == changed["source_digest"]
+    assert first["delivery_digest"] != changed["delivery_digest"]
+    assert first["command"]["command"] != changed["command"]["command"]

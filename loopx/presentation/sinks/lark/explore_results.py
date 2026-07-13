@@ -14,6 +14,7 @@ topology source in the projection is for Feishu docs or any diagram renderer.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -574,15 +575,19 @@ def sync_explore_visual_to_lark(
         )
     )
     sink_key = str(view_key or visual_sink.get("view_role") or "visual").strip() or "visual"
-    sink_digest = explore_source_digest(
+    delivery_material = json.dumps(
         {
-            "goal_id": projection.get("goal_id"),
-            "nodes": [{"node_id": sink_key, "title": semantic_digest}],
-            "edges": [],
-            "findings": [],
-        }
-    )
-    source_name = f".loopx-explore-{sink_key}-{sink_digest[:12]}.mmd"
+            "source_digest": semantic_digest,
+            "source_revision": source_revision,
+            "view_role": sink_key,
+            "mermaid": str(graph.get("mermaid") or ""),
+        },
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    delivery_digest = hashlib.sha256(delivery_material).hexdigest()
+    source_name = f".loopx-explore-{sink_key}-{delivery_digest[:12]}.mmd"
     command = [
         config.cli_bin,
         "whiteboard",
@@ -597,7 +602,7 @@ def sync_explore_visual_to_lark(
         f"@{source_name}",
         "--overwrite",
         "--idempotent-token",
-        f"loopx-explore-{sink_key}-{sink_digest[:20]}",
+        f"loopx-explore-{sink_key}-{delivery_digest[:20]}",
         "--format",
         "json",
     ]
@@ -623,6 +628,7 @@ def sync_explore_visual_to_lark(
         "execute": execute,
         "published": bool(execute and result.get("ok")),
         "semantic_digest": semantic_digest,
+        "delivery_digest": delivery_digest,
         "source_digest": source_digest,
         "source_revision": source_revision,
         "view_role": str(graph.get("view_role") or sink_key),
