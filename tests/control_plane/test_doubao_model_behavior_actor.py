@@ -9,6 +9,8 @@ import pytest
 from loopx.control_plane.testing.doubao_model_behavior_actor import (
     DOUBAO_2_1_PRO_MODEL,
     DOUBAO_CHAT_COMPLETIONS_ENDPOINT,
+    MODEL_BEHAVIOR_PROVIDER_INPUT_SCHEMA_VERSION,
+    DoubaoActorTransportError,
     DoubaoModelBehaviorActor,
 )
 from loopx.control_plane.testing.model_behavior_qualification import (
@@ -70,8 +72,20 @@ def test_direct_actor_uses_canonical_endpoint_without_tools_or_raw_retention() -
     assert captured["headers"]["Authorization"] == expected_authorization
     assert captured["body"]["model"] == DOUBAO_2_1_PRO_MODEL
     assert captured["body"]["response_format"] == {"type": "json_object"}
+    assert captured["body"]["thinking"] == {"type": "disabled"}
+    assert captured["body"]["max_tokens"] == 4096
     assert "tools" not in captured["body"]
     assert captured["timeout_seconds"] == 12
+    provider_input = json.loads(captured["body"]["messages"][1]["content"])
+    assert provider_input == {
+        "schema_version": MODEL_BEHAVIOR_PROVIDER_INPUT_SCHEMA_VERSION,
+        "arm": "candidate_packet",
+        "semantic_contract_required": False,
+        "packet": {"schema_version": "loopx_turn_envelope_v0"},
+    }
+    assert "sandbox" not in provider_input
+    assert "response_contract" not in provider_input
+    assert "actor_instruction" not in provider_input
     assert result["actor_ref"] == f"ark:{DOUBAO_2_1_PRO_MODEL}"
     assert result["tool_calls"] == []
     assert "fixture-key" not in json.dumps(result, sort_keys=True)
@@ -120,10 +134,11 @@ def test_actor_sanitizes_unexpected_transport_errors() -> None:
         api_key="fixture-key-not-a-secret",
         transport=transport,
     )
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(DoubaoActorTransportError) as exc_info:
         actor(_request())
 
     assert str(exc_info.value) == "Doubao actor provider transport failed"
+    assert exc_info.value.error_code == "provider_transport_failed"
 
 
 def test_actor_rejects_noncanonical_request_before_transport() -> None:

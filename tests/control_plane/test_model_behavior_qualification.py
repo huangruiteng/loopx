@@ -9,7 +9,9 @@ import pytest
 from loopx.control_plane.quota.turn_envelope import build_turn_envelope
 from loopx.control_plane.testing.model_behavior_qualification import (
     MODEL_BEHAVIOR_ACTOR_RESULT_SCHEMA_VERSION,
+    MODEL_BEHAVIOR_ARM_TERMINAL_RECEIPT_SCHEMA_VERSION,
     MODEL_BEHAVIOR_DECISION_SCHEMA_VERSION,
+    ModelBehaviorArmExecutionError,
     build_model_behavior_actor_request,
     compare_model_behavior_receipts,
     model_behavior_semantic_contract_from_packet,
@@ -226,6 +228,38 @@ def test_paired_run_reports_zero_drift_without_retaining_arm_receipts() -> None:
     assert result["safety_violations"] == []
     assert set(result["receipt_digests"]) == {"full_packet", "candidate_packet"}
     assert "receipt" not in result
+
+
+def test_paired_run_attributes_actor_failure_to_one_terminal_arm_receipt() -> None:
+    class ProviderTimeout(RuntimeError):
+        error_code = "provider_timeout"
+
+    def actor(request: Mapping[str, Any]) -> dict[str, Any]:
+        if request["arm"] == "candidate_packet":
+            raise ProviderTimeout("private provider detail")
+        return _actor(request)
+
+    full = _full_packet()
+    with pytest.raises(ModelBehaviorArmExecutionError) as exc_info:
+        run_model_behavior_qualification_pair(
+            full,
+            build_turn_envelope(full),
+            qualification_id="case-arm-timeout-001",
+            actor=actor,
+            arm_order=("full_packet", "candidate_packet"),
+        )
+
+    receipt = exc_info.value.receipt
+    assert receipt["schema_version"] == (
+        MODEL_BEHAVIOR_ARM_TERMINAL_RECEIPT_SCHEMA_VERSION
+    )
+    assert receipt["arm"] == "candidate_packet"
+    assert receipt["status"] == "failed"
+    assert receipt["error_code"] == "provider_timeout"
+    assert set(receipt["completed_arm_receipt_digests"]) == {"full_packet"}
+    assert receipt["boundary"]["raw_packet_persisted"] is False
+    assert receipt["boundary"]["raw_model_response_persisted"] is False
+    assert "private provider detail" not in json.dumps(receipt, sort_keys=True)
 
 
 def test_paired_run_rejects_unrelated_or_unverified_candidate() -> None:

@@ -22,6 +22,9 @@ MODEL_BEHAVIOR_ACTOR_REQUEST_SCHEMA_VERSION = "model_behavior_actor_request_v0"
 MODEL_BEHAVIOR_ACTOR_RESULT_SCHEMA_VERSION = "model_behavior_actor_result_v0"
 MODEL_BEHAVIOR_DECISION_SCHEMA_VERSION = "model_behavior_decision_v0"
 MODEL_BEHAVIOR_DECISION_RECEIPT_SCHEMA_VERSION = "model_behavior_decision_receipt_v0"
+MODEL_BEHAVIOR_ARM_TERMINAL_RECEIPT_SCHEMA_VERSION = (
+    "model_behavior_arm_terminal_receipt_v0"
+)
 MODEL_BEHAVIOR_PAIR_RESULT_SCHEMA_VERSION = "model_behavior_pair_result_v0"
 FULL_QUOTA_DECISION_PACKET_SCHEMA_VERSION = "loopx_quota_should_run_full_v0"
 
@@ -97,12 +100,62 @@ class ModelBehaviorPairValidationError(ValueError):
     """The paired packets failed deterministic validation before actor execution."""
 
 
+class ModelBehaviorArmExecutionError(RuntimeError):
+    """One actor arm failed with only a compact terminal receipt retained."""
+
+    def __init__(self, receipt: Mapping[str, Any]) -> None:
+        self.receipt = dict(receipt)
+        super().__init__(
+            "model behavior arm "
+            f"{self.receipt['arm']} failed: {self.receipt['error_code']}"
+        )
+
+
 def _canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def _digest(value: Any) -> str:
     return "sha256:" + sha256(_canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _actor_failure_code(exc: Exception) -> str:
+    explicit_code = getattr(exc, "error_code", None)
+    if explicit_code is not None:
+        try:
+            return _token(explicit_code, field="actor_error_code")
+        except ValueError:
+            return "actor_execution_failed"
+    if isinstance(exc, (ValueError, RuntimeError)):
+        return "actor_result_invalid"
+    return "actor_execution_failed"
+
+
+def _arm_failure_receipt(
+    *,
+    qualification_id: str,
+    arm: str,
+    exc: Exception,
+    completed_receipts: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "schema_version": MODEL_BEHAVIOR_ARM_TERMINAL_RECEIPT_SCHEMA_VERSION,
+        "qualification_id": qualification_id,
+        "arm": arm,
+        "status": "failed",
+        "error_code": _actor_failure_code(exc),
+        "completed_arm_receipt_digests": {
+            completed_arm: _digest(dict(receipt))
+            for completed_arm, receipt in completed_receipts.items()
+        },
+        "boundary": {
+            "tools_enabled": False,
+            "filesystem_writes_allowed": False,
+            "external_writes_allowed": False,
+            "raw_packet_persisted": False,
+            "raw_model_response_persisted": False,
+        },
+    }
 
 
 def _token(value: Any, *, field: str) -> str:
@@ -604,16 +657,25 @@ def run_model_behavior_qualification_pair(
         "full_packet": full_packet,
         "candidate_packet": candidate_packet,
     }
-    receipts = {
-        arm: run_model_behavior_qualification_arm(
-            packets[arm],
-            qualification_id=qualification_id,
-            arm=arm,
-            actor=actor,
-            semantic_contract_required=semantic_contract_required,
-        )
-        for arm in arm_order
-    }
+    receipts: dict[str, dict[str, Any]] = {}
+    for arm in arm_order:
+        try:
+            receipts[arm] = run_model_behavior_qualification_arm(
+                packets[arm],
+                qualification_id=qualification_id,
+                arm=arm,
+                actor=actor,
+                semantic_contract_required=semantic_contract_required,
+            )
+        except Exception as exc:
+            raise ModelBehaviorArmExecutionError(
+                _arm_failure_receipt(
+                    qualification_id=qualification_id,
+                    arm=arm,
+                    exc=exc,
+                    completed_receipts=receipts,
+                )
+            ) from None
     full_receipt = receipts["full_packet"]
     candidate_receipt = receipts["candidate_packet"]
     return compare_model_behavior_receipts(full_receipt, candidate_receipt)

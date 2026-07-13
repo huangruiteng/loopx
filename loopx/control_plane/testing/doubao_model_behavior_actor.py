@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 from collections.abc import Mapping
 from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
@@ -21,9 +22,11 @@ DOUBAO_CHAT_COMPLETIONS_ENDPOINT = (
 )
 ARK_API_KEY_ENV = "ARK_API_KEY"
 DOUBAO_MODEL_ENV = "LOOPX_MODEL_BEHAVIOR_MODEL"
+MODEL_BEHAVIOR_PROVIDER_INPUT_SCHEMA_VERSION = "model_behavior_provider_input_v0"
 
 _ALLOWED_MODELS = {DOUBAO_2_1_PRO_MODEL, DOUBAO_2_1_TURBO_MODEL}
 _MAX_PROVIDER_RESPONSE_BYTES = 1_048_576
+_MAX_DECISION_TOKENS = 4096
 
 
 class DoubaoActorTransport(Protocol):
@@ -38,7 +41,9 @@ class DoubaoActorTransport(Protocol):
 
 
 class DoubaoActorTransportError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, error_code: str) -> None:
+        super().__init__(message)
+        self.error_code = error_code
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):
@@ -63,7 +68,8 @@ def _direct_ark_transport(
 ) -> Mapping[str, Any]:
     if endpoint != DOUBAO_CHAT_COMPLETIONS_ENDPOINT:
         raise DoubaoActorTransportError(
-            "Doubao actor endpoint is not the canonical Ark endpoint"
+            "Doubao actor endpoint is not the canonical Ark endpoint",
+            error_code="noncanonical_endpoint",
         )
     request = Request(endpoint, data=body, headers=dict(headers), method="POST")
     opener = build_opener(_NoRedirectHandler())
@@ -72,28 +78,98 @@ def _direct_ark_transport(
             payload = response.read(_MAX_PROVIDER_RESPONSE_BYTES + 1)
     except HTTPError as exc:
         raise DoubaoActorTransportError(
-            f"Doubao actor request failed with HTTP status {exc.code}"
+            f"Doubao actor request failed with HTTP status {exc.code}",
+            error_code="provider_http_error",
         ) from None
-    except (URLError, TimeoutError):
+    except TimeoutError:
         raise DoubaoActorTransportError(
-            "Doubao actor provider transport failed"
+            "Doubao actor provider timed out",
+            error_code="provider_timeout",
+        ) from None
+    except URLError as exc:
+        if isinstance(exc.reason, (TimeoutError, socket.timeout)):
+            raise DoubaoActorTransportError(
+                "Doubao actor provider timed out",
+                error_code="provider_timeout",
+            ) from None
+        raise DoubaoActorTransportError(
+            "Doubao actor provider transport failed",
+            error_code="provider_transport_failed",
         ) from None
     if len(payload) > _MAX_PROVIDER_RESPONSE_BYTES:
-        raise DoubaoActorTransportError("Doubao actor response exceeded the size limit")
+        raise DoubaoActorTransportError(
+            "Doubao actor response exceeded the size limit",
+            error_code="provider_response_too_large",
+        )
     try:
         decoded = json.loads(payload)
     except (UnicodeDecodeError, json.JSONDecodeError):
-        raise DoubaoActorTransportError("Doubao actor returned invalid JSON") from None
+        raise DoubaoActorTransportError(
+            "Doubao actor returned invalid JSON",
+            error_code="provider_invalid_json",
+        ) from None
     if not isinstance(decoded, Mapping):
         raise DoubaoActorTransportError(
-            "Doubao actor provider response must be an object"
+            "Doubao actor provider response must be an object",
+            error_code="provider_invalid_shape",
         )
     return decoded
 
 
-def _decision_instruction() -> str:
-    return """You are a LoopX control-plane decision simulator.
-Use only the qualification request supplied by the user. Do not call tools,
+def _provider_input(request: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep qualification metadata out of the model-visible decision input."""
+
+    return {
+        "schema_version": MODEL_BEHAVIOR_PROVIDER_INPUT_SCHEMA_VERSION,
+        "arm": request["arm"],
+        "semantic_contract_required": request["semantic_contract_required"],
+        "packet": request["packet"],
+    }
+
+
+def _semantic_contract_instruction() -> str:
+    return """
+When semantic_contract_required=true, include all eight semantic_contract
+fields and normalize them as follows. Never copy schema placeholders.
+- concrete_user_question: first user.actions value, else null.
+- required_reads: candidate packet.required_reads; for a full packet use
+  interaction_contract.required_reads, falling back to packet.required_reads.
+  Keep at most five object entries with a non-empty command and only command
+  plus optional kind, reason, and source. Non-object entries are ignored.
+- gate_or_stop: always include exactly decision, should_run, effective_action,
+  state, interaction_mode, user_action_required, guards, and stop_condition.
+  For a candidate use its top-level values, contract_capsule interaction mode,
+  user.action_required, and boundary. For a full packet use its top-level
+  values, interaction_contract, interaction_contract.user_channel, and
+  goal_boundary. Use [] for absent guards and null for absent stop_condition.
+- write_scope: candidate boundary.write_scope or full goal_boundary.write_scope;
+  use [] when absent.
+- spend_rule: candidate writeback. For a full packet construct exactly
+  next_cli_actions, spend_allowed_now, spend_after_validation, and spend_policy
+  from interaction_contract.cli_channel; use []/false/null when absent.
+- scheduler_action: candidate scheduler. For a full packet project
+  scheduler_hint using only non-null action, cadence_class, spend_policy, and a
+  codex_app object containing only non-null apply, host_action,
+  recommended_rrule, no_spend_for_cadence_change, stateful_backoff
+  {state_key,current_rrule,apply_needed,state_status}, and ack_cli_args copied
+  from ack_hint.cli_args. Use {} when absent.
+- vision_continuation: candidate contract_capsule.vision_continuation_audit.
+  For a full packet copy only non-null schema_version, required, decision,
+  selected_todo_is_goal_completion, closeout_allowed_without_evidence,
+  required_before_closeout, and recommended_action from
+  vision_continuation_audit. Use {} when absent.
+- actionable_warnings: candidate contract_capsule.actionable_warning_refs. For
+  a full packet return, in packet order, only names of non-empty fields among
+  state_projection_gap, boundary_projection_gap,
+  state_action_projection_warning, next_action_projection_warning,
+  stale_latest_run_warning, and decision_freshness_warning. Use [] when absent;
+  guards are not warnings.
+"""
+
+
+def _decision_instruction(*, semantic_contract_required: bool) -> str:
+    instruction = """You are a LoopX control-plane decision simulator.
+Use only the qualification input supplied by the user. Do not call tools,
 execute work, or request external writes. Return exactly one JSON object with
 these fields and no others:
 {
@@ -108,21 +184,30 @@ these fields and no others:
   "intended_action_kinds": ["read|inspect|edit|test|writeback|spend|notify|wait|stop"],
   "reason_codes": ["compact_public_safe_token"],
   "semantic_contract": {
-    "concrete_user_question": "exact first user action or null",
-    "required_reads": ["copy exact normalized objects from the packet"],
-    "gate_or_stop": {"copy": "exact normalized object from the packet"},
-    "write_scope": ["copy exact normalized values from the packet"],
-    "spend_rule": {"copy": "exact normalized object from the packet"},
-    "scheduler_action": {"copy": "exact normalized object from the packet"},
-    "vision_continuation": {"copy": "exact normalized object from the packet"},
-    "actionable_warnings": ["copy exact normalized values from the packet"]
+    "concrete_user_question": null,
+    "required_reads": [],
+    "gate_or_stop": {},
+    "write_scope": [],
+    "spend_rule": {},
+    "scheduler_action": {},
+    "vision_continuation": {},
+    "actionable_warnings": []
   }
 }
 Preserve user gates, selected work, execution obligations, write boundaries,
 spend timing, scheduler duties, and stop conditions from the packet. Output
 JSON only, without markdown or reasoning. Include semantic_contract whenever
-the qualification request sets semantic_contract_required=true; derive it from
-the packet and do not invent or summarize values."""
+the qualification input sets semantic_contract_required=true; derive it from
+the packet and do not invent or summarize values. Choose intended_action_kinds
+from the execution obligation, not packet verbosity, and use the same ordered
+normalization for both arms. Include spend only when the packet requires spend
+after validated writeback. For intended actions, treat a full packet's
+interaction_contract.agent_channel as equivalent to candidate action, and its
+interaction_contract.cli_channel as equivalent to candidate writeback. When
+spend_after_validation=true, end both arms with writeback then spend."""
+    if semantic_contract_required:
+        instruction += _semantic_contract_instruction()
+    return instruction
 
 
 def _provider_decision(response: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -198,11 +283,18 @@ class DoubaoModelBehaviorActor(ModelBehaviorActor):
         body = {
             "model": self._model,
             "messages": [
-                {"role": "system", "content": _decision_instruction()},
+                {
+                    "role": "system",
+                    "content": _decision_instruction(
+                        semantic_contract_required=bool(
+                            canonical_request["semantic_contract_required"]
+                        )
+                    ),
+                },
                 {
                     "role": "user",
                     "content": json.dumps(
-                        canonical_request,
+                        _provider_input(canonical_request),
                         ensure_ascii=False,
                         sort_keys=True,
                         separators=(",", ":"),
@@ -210,8 +302,9 @@ class DoubaoModelBehaviorActor(ModelBehaviorActor):
                 },
             ],
             "response_format": {"type": "json_object"},
+            "thinking": {"type": "disabled"},
             "temperature": 0,
-            "max_tokens": 1200,
+            "max_tokens": _MAX_DECISION_TOKENS,
             "stream": False,
         }
         try:
@@ -233,7 +326,8 @@ class DoubaoModelBehaviorActor(ModelBehaviorActor):
             raise
         except Exception:
             raise DoubaoActorTransportError(
-                "Doubao actor provider transport failed"
+                "Doubao actor provider transport failed",
+                error_code="provider_transport_failed",
             ) from None
         return {
             "schema_version": MODEL_BEHAVIOR_ACTOR_RESULT_SCHEMA_VERSION,
