@@ -448,6 +448,7 @@ def assert_due_monitor_requires_available_capabilities() -> None:
     blocked_lane = blocked_guard.get("work_lane_contract") or {}
     assert blocked_guard["decision"] == "skip", blocked_guard
     assert blocked_guard["effective_action"] == "monitor_quiet_skip", blocked_guard
+    assert blocked_guard["capability_gate"]["action"] == "skip", blocked_guard
     assert blocked_summary["monitor_due_count"] == 0, blocked_summary
     assert blocked_summary["monitor_open_items"][0]["todo_id"] == item["todo_id"], blocked_summary
     assert blocked_summary["monitor_capability_blocked_due_count"] == 1, blocked_summary
@@ -474,6 +475,49 @@ def assert_due_monitor_requires_available_capabilities() -> None:
     assert runnable_guard["agent_todo_summary"]["monitor_capability_blocked_due_count"] == 0, runnable_guard
     assert runnable_lane["selected_todo_id"] == item["todo_id"], runnable_lane
     assert runnable_lane["obligation"] == "attempt_due_monitor", runnable_lane
+
+
+def assert_due_monitor_capability_resolution_is_preserved() -> None:
+    owner_guard = guard_for(
+        [
+            monitor_item(
+                index=1,
+                todo_id="todo_network_monitor_due",
+                priority="P0",
+                next_due_at=PAST_DUE_AT,
+                target_key="public-network-watch",
+                required_capabilities=["network"],
+            )
+        ]
+    )
+    owner_gate = owner_guard["capability_gate"]
+    assert owner_gate["action"] == "ask_owner", owner_guard
+    assert owner_gate["owner_missing"] == ["network"], owner_gate
+    assert owner_guard["heartbeat_recommendation"]["notify"] == "NOTIFY", owner_guard
+    assert owner_guard["interaction_contract"]["user_channel"]["action_required"] is True, owner_guard
+    assert owner_guard["interaction_contract"]["agent_channel"]["must_attempt"] is False, owner_guard
+    assert owner_guard["requires_user_action"] is True, owner_guard
+    owner_markdown = render_quota_should_run_markdown(owner_guard)
+    assert "capability_gate: action=ask_owner" in owner_markdown, owner_markdown
+    assert "missing=['network']" in owner_markdown, owner_markdown
+
+    repair_guard = guard_for(
+        [
+            monitor_item(
+                index=1,
+                todo_id="todo_bridge_monitor_due",
+                priority="P1",
+                next_due_at=PAST_DUE_AT,
+                target_key="runner-bridge-watch",
+                required_capabilities=["benchmark_runner"],
+            )
+        ]
+    )
+    repair_gate = repair_guard["capability_gate"]
+    assert repair_gate["action"] == "repair_bridge", repair_guard
+    assert repair_gate["repair_missing"] == ["benchmark_runner"], repair_gate
+    assert repair_guard["capability_repair_allowed"] is True, repair_guard
+    assert repair_guard["interaction_contract"]["agent_channel"]["must_attempt"] is True, repair_guard
 
 
 def assert_expired_monitor_does_not_catch_up() -> None:
@@ -777,6 +821,7 @@ def main() -> int:
     assert_unscheduled_monitor_repair_survives_handoff_gates()
     assert_due_monitor_requires_explicit_attempt()
     assert_due_monitor_requires_available_capabilities()
+    assert_due_monitor_capability_resolution_is_preserved()
     assert_expired_monitor_does_not_catch_up()
     assert_due_monitor_priority_does_not_steal_advancement_lane()
     assert_capability_skip_yields_to_monitor_schedule_repair()
