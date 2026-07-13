@@ -275,7 +275,8 @@ def test_each_evidence_stage_is_a_bounded_independent_topology() -> None:
     assert all(stage["primary_node_count"] <= 12 for stage in stages)
     assert all(stage["context_node_count"] <= 2 for stage in stages)
     assert all(stage["mermaid"].startswith("flowchart TB") for stage in stages)
-
+    assert all("~~~" not in stage["mermaid"] for stage in stages)
+    assert all("whiteboard_dsl" in stage for stage in stages)
 
 def test_stage_board_preserves_two_lanes_and_real_cross_lane_relation() -> None:
     bundle = build_explore_presentation_bundle(
@@ -292,6 +293,26 @@ def test_stage_board_preserves_two_lanes_and_real_cross_lane_relation() -> None:
     assert "fix_pr -->|supports| durable_capability" in stage["mermaid"]
     assert "edge-fix-subtopic" not in stage["mermaid"]
 
+    dsl = stage["whiteboard_dsl"]
+    root, *connectors = dsl["nodes"]
+    lane_row = root["children"][1]
+    lanes = lane_row["children"]
+    assert lane_row["layout"] == "horizontal"
+    assert [lane["id"] for lane in lanes] == [
+        "loopx_stage_1_fix_pr_lane",
+        "loopx_stage_1_capability_lane",
+    ]
+    assert all(lane["layout"] == "vertical" for lane in lanes)
+    assert [lane["children"][0]["text"] for lane in lanes] == [
+        "Focused Fix PR",
+        "LoopX capability",
+    ]
+    assert len(connectors) == 1
+    assert connectors[0]["connector"]["fromAnchor"] == "right"
+    assert connectors[0]["connector"]["toAnchor"] == "left"
+    rendered = json.dumps(dsl, ensure_ascii=False)
+    assert "Capability 1" not in rendered
+    assert "PR 1" not in rendered
 
 def test_single_lane_project_does_not_invent_a_second_lane() -> None:
     projection = _small_projection()
@@ -304,7 +325,9 @@ def test_single_lane_project_does_not_invent_a_second_lane() -> None:
     assert stage["lanes"] == ["retrieval"]
     assert stage["cross_lane_edge_count"] == 0
     assert stage["mermaid"].count("subgraph canonical_stage_1_lane_") == 1
-
+    lane_row = stage["whiteboard_dsl"]["nodes"][0]["children"][1]
+    assert len(lane_row["children"]) == 1
+    assert lane_row["children"][0]["layout"] == "vertical"
 
 def test_executive_view_suppresses_dense_hub_scaffolding_edges() -> None:
     nodes = [_node("hub", status="open", tags=["decision"])]
@@ -361,7 +384,9 @@ def test_presentation_rejects_a_bounded_canonical_finding_projection() -> None:
         build_explore_presentation_bundle(projection)
 
 
-def test_visual_configuration_preserves_legacy_and_supports_stage_boards(tmp_path) -> None:
+def test_visual_configuration_preserves_legacy_and_supports_stage_boards(
+    tmp_path,
+) -> None:
     config_path = tmp_path / "lark-explore.json"
     write_lark_explore_local_config(
         config_path,
@@ -398,14 +423,13 @@ def test_visual_configuration_preserves_legacy_and_supports_stage_boards(tmp_pat
     assert stored["visual_sink"]["whiteboard_token"] == "wb_legacy_fixture"
     assert stored["visual_sinks"]["canonical"]["view_role"] == "canonical"
     assert stored["visual_sinks"]["executive"]["view_role"] == "executive"
-    assert stored["visual_sinks"]["executive"]["renderer"] == "mermaid"
+    assert stored["visual_sinks"]["executive"]["renderer"] == "whiteboard_dsl"
     assert stored["visual_sinks"]["executive"]["presentation_mode"] == "stage_document"
     assert stored["visual_sinks"]["executive"]["stage_capacity"] == 18
     assert stored["visual_sinks"]["executive"]["stage_whiteboards"] == [
         {"stage_index": 1, "whiteboard_token": "wb_executive_fixture"},
         {"stage_index": 2, "whiteboard_token": "wb_stage_02"},
     ]
-
 
 def test_visual_configuration_rejects_out_of_range_stage_capacity(tmp_path) -> None:
     config_path = tmp_path / "lark-explore.json"
@@ -461,7 +485,7 @@ def test_visual_configuration_can_create_all_stage_boards_from_docx(tmp_path) ->
     assert sink["stage_whiteboards"] == []
 
 
-def test_visual_sync_publishes_one_mermaid_whiteboard_per_stage(tmp_path) -> None:
+def test_visual_sync_publishes_one_dsl_whiteboard_per_stage(tmp_path) -> None:
     projection = _complex_projection()
     config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
     bundle = build_explore_presentation_bundle(
@@ -493,13 +517,15 @@ def test_visual_sync_publishes_one_mermaid_whiteboard_per_stage(tmp_path) -> Non
     assert view["stage_count"] == stage_count
     assert view["stage_capacity"] == 14
     assert view["presentation_mode"] == "stage_document"
-    assert all(stage["renderer"] == "mermaid" for stage in view["stages"])
-    assert all(stage["input_format"] == "mermaid" for stage in view["stages"])
+    assert all(stage["renderer"] == "whiteboard_dsl" for stage in view["stages"])
+    assert all(stage["input_format"] == "raw" for stage in view["stages"])
     assert all(
-        "--input_format mermaid" in stage["command"]["command"]
+        "--input_format raw" in stage["command"]["command"] for stage in view["stages"]
+    )
+    assert all(
+        "@larksuite/whiteboard-cli" in stage["render_command"]["command"]
         for stage in view["stages"]
     )
-
 
 def test_dual_visual_sync_uses_one_revision_and_rejects_stale_view(tmp_path) -> None:
     projection = _complex_projection()
@@ -633,11 +659,11 @@ def test_mermaid_visual_publish_reads_back_remote_delivery_marker(tmp_path) -> N
         calls.append(args)
         if "+update" in args:
             source_arg = args[args.index("--source") + 1]
-            source = (cwd / source_arg.removeprefix("@")).read_text(
-                encoding="utf-8"
-            )
+            source = (cwd / source_arg.removeprefix("@")).read_text(encoding="utf-8")
             marker_match = re.search(r"LoopX delivery [0-9a-f]{20}", source)
             assert marker_match
+            assert marker_match.group(0) in source.splitlines()[-1]
+            assert "loopx_delivery_marker" not in source
             published_marker = marker_match.group(0)
             return {
                 "returncode": 0,
@@ -650,14 +676,7 @@ def test_mermaid_visual_publish_reads_back_remote_delivery_marker(tmp_path) -> N
             "stdout": json.dumps(
                 {
                     "ok": True,
-                    "data": {
-                        "nodes": [
-                            {
-                                "type": "text_shape",
-                                "text": {"text": published_marker},
-                            }
-                        ]
-                    },
+                    "data": {"code": published_marker},
                 }
             ),
             "stderr": "",
@@ -687,8 +706,206 @@ def test_mermaid_visual_publish_reads_back_remote_delivery_marker(tmp_path) -> N
     assert synced["readback"]["verified"] is True
     assert synced["readback"]["observed_marker"] == published_marker
 
+def test_dsl_visual_publish_stamps_raw_marker_and_reads_it_back(tmp_path) -> None:
+    projection = _lane_projection()
+    config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
+    bundle = build_explore_presentation_bundle(projection)
+    stage = bundle["canonical"]["stage_views"][0]
+    display = dict(bundle["canonical"])
+    display["whiteboard_dsl"] = stage["whiteboard_dsl"]
+    display["mermaid"] = stage["mermaid"]
+    calls: list[list[str]] = []
+    published_marker_id = ""
 
-def test_mermaid_visual_readback_retries_lark_doc_applying(tmp_path, monkeypatch) -> None:
+    def runner(args, cwd, _timeout):
+        nonlocal published_marker_id
+        calls.append(args)
+        if args[0] == "npx":
+            output_path = cwd / args[args.index("-o") + 1]
+            output_path.write_text(
+                json.dumps(
+                    {
+                        "nodes": [
+                            {
+                                "id": "o001:1",
+                                "type": "composite_shape",
+                                "x": 0,
+                                "y": 0,
+                                "width": 1280,
+                                "height": 276,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            payload = {"ok": True}
+        elif "+update" in args:
+            assert args[args.index("--input_format") + 1] == "raw"
+            source_arg = args[args.index("--source") + 1]
+            raw = json.loads(
+                (cwd / source_arg.removeprefix("@")).read_text(encoding="utf-8")
+            )
+            published_marker_id = raw["nodes"][0]["id"]
+            assert published_marker_id.startswith("loopx_delivery_")
+            payload = {"ok": True}
+        else:
+            assert "+query" in args
+            assert args[args.index("--output_as") + 1] == "raw"
+            payload = {
+                "ok": True,
+                "data": {"nodes": [{"id": published_marker_id}]},
+            }
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(payload),
+            "stderr": "",
+        }
+
+    synced = sync_explore_visual_to_lark(
+        config,
+        projection=projection,
+        visual_sink={
+            "whiteboard_token": "wb_stage_fixture",
+            "view_role": "canonical",
+            "renderer": "whiteboard_dsl",
+        },
+        config_path=tmp_path / "lark-explore.json",
+        semantic_digest=bundle["source_digest"],
+        display_projection=display,
+        view_key="canonical_stage_01",
+        execute=True,
+        runner=runner,
+    )
+
+    assert len(calls) == 3
+    assert synced["ok"] is True
+    assert synced["renderer"] == "whiteboard_dsl"
+    assert synced["render_command"]["delivery_marker_id"] == published_marker_id
+    assert synced["readback"]["verified"] is True
+    assert synced["readback"]["expected_remote_value"] == published_marker_id
+
+
+def test_dsl_visual_readback_fails_closed_when_raw_nodes_are_missing(tmp_path) -> None:
+    projection = _lane_projection()
+    config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
+    bundle = build_explore_presentation_bundle(projection)
+    stage = bundle["canonical"]["stage_views"][0]
+    display = dict(bundle["canonical"])
+    display["whiteboard_dsl"] = stage["whiteboard_dsl"]
+
+    def runner(args, cwd, _timeout):
+        if args[0] == "npx":
+            output_path = cwd / args[args.index("-o") + 1]
+            output_path.write_text(
+                json.dumps({"nodes": [{"id": "o001:1"}]}),
+                encoding="utf-8",
+            )
+            payload = {"ok": True}
+        elif "+query" in args:
+            payload = {"ok": True, "data": {}}
+        else:
+            payload = {"ok": True}
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(payload),
+            "stderr": "",
+        }
+
+    synced = sync_explore_visual_to_lark(
+        config,
+        projection=projection,
+        visual_sink={
+            "whiteboard_token": "wb_stage_fixture",
+            "view_role": "canonical",
+            "renderer": "whiteboard_dsl",
+        },
+        config_path=tmp_path / "lark-explore.json",
+        semantic_digest=bundle["source_digest"],
+        display_projection=display,
+        view_key="canonical_stage_01",
+        execute=True,
+        runner=runner,
+    )
+
+    assert synced["ok"] is False
+    assert synced["status"] == "publish_unverified"
+    assert synced["readback"]["verified"] is False
+    assert "expected delivery marker" in synced["error"]
+
+
+def test_mermaid_visual_publish_retries_lark_doc_applying(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    projection = _complex_projection()
+    config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
+    bundle = build_explore_presentation_bundle(projection)
+    published_marker = ""
+    update_count = 0
+    delays: list[float] = []
+    monkeypatch.setattr(
+        "loopx.presentation.sinks.lark.visual_delivery.time.sleep",
+        delays.append,
+    )
+
+    def runner(args, cwd, _timeout):
+        nonlocal published_marker, update_count
+        if "+update" in args:
+            update_count += 1
+            source_arg = args[args.index("--source") + 1]
+            source = (cwd / source_arg.removeprefix("@")).read_text(encoding="utf-8")
+            published_marker = re.search(r"LoopX delivery [0-9a-f]{20}", source).group(
+                0
+            )
+            payload = (
+                {
+                    "ok": False,
+                    "error": {
+                        "code": 4003101,
+                        "message": "doc is applying; doc data is not ready",
+                    },
+                }
+                if update_count == 1
+                else {"ok": True}
+            )
+        else:
+            payload = {
+                "ok": True,
+                "data": {"code": published_marker},
+            }
+        return {
+            "returncode": 0 if payload.get("ok") else 1,
+            "stdout": json.dumps(payload) if payload.get("ok") else "",
+            "stderr": "" if payload.get("ok") else json.dumps(payload),
+        }
+
+    synced = sync_explore_visual_to_lark(
+        config,
+        projection=projection,
+        visual_sink={
+            "whiteboard_token": "wb_fresh_fixture",
+            "view_role": "executive",
+            "renderer": "mermaid",
+        },
+        config_path=tmp_path / "lark-explore.json",
+        semantic_digest=bundle["source_digest"],
+        display_projection=bundle["executive"],
+        view_key="executive",
+        execute=True,
+        runner=runner,
+    )
+
+    assert synced["ok"] is True
+    assert synced["command"]["attempt_count"] == 2
+    assert synced["command"]["retry_delays_seconds"] == [0.5]
+    assert "doc is applying" in synced["command"]["first_attempt_error"]
+    assert delays == [0.5]
+
+
+def test_mermaid_visual_readback_retries_lark_doc_applying(
+    tmp_path, monkeypatch
+) -> None:
     projection = _complex_projection()
     config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
     bundle = build_explore_presentation_bundle(projection)
@@ -696,7 +913,7 @@ def test_mermaid_visual_readback_retries_lark_doc_applying(tmp_path, monkeypatch
     query_count = 0
     delays: list[float] = []
     monkeypatch.setattr(
-        "loopx.presentation.sinks.lark.explore_results.time.sleep",
+        "loopx.presentation.sinks.lark.visual_delivery.time.sleep",
         delays.append,
     )
 
@@ -704,9 +921,7 @@ def test_mermaid_visual_readback_retries_lark_doc_applying(tmp_path, monkeypatch
         nonlocal published_marker, query_count
         if "+update" in args:
             source_arg = args[args.index("--source") + 1]
-            source = (cwd / source_arg.removeprefix("@")).read_text(
-                encoding="utf-8"
-            )
+            source = (cwd / source_arg.removeprefix("@")).read_text(encoding="utf-8")
             published_marker = re.search(
                 r"LoopX delivery [0-9a-f]{20}",
                 source,
@@ -725,9 +940,7 @@ def test_mermaid_visual_readback_retries_lark_doc_applying(tmp_path, monkeypatch
                 if query_count == 1
                 else {
                     "ok": True,
-                    "data": {
-                        "nodes": [{"text": {"text": published_marker}}]
-                    },
+                    "data": {"code": published_marker},
                 }
             )
         return {
@@ -759,7 +972,6 @@ def test_mermaid_visual_readback_retries_lark_doc_applying(tmp_path, monkeypatch
     assert synced["readback"]["attempts"][0]["error_code"] == 4003101
     assert delays == [0.25]
 
-
 def test_mermaid_visual_publish_fails_closed_when_remote_marker_is_missing(
     tmp_path,
 ) -> None:
@@ -771,7 +983,7 @@ def test_mermaid_visual_publish_fails_closed_when_remote_marker_is_missing(
         payload = (
             {
                 "ok": True,
-                "data": {"nodes": [{"text": {"text": "stale visual"}}]},
+                "data": {"code": "stale visual"},
             }
             if "+query" in args
             else {"ok": True}
@@ -805,7 +1017,6 @@ def test_mermaid_visual_publish_fails_closed_when_remote_marker_is_missing(
     assert synced["readback"]["verified"] is False
     assert "expected delivery marker" in synced["error"]
 
-
 def test_visual_sync_creates_one_document_section_and_board_per_missing_stage(
     tmp_path,
 ) -> None:
@@ -819,9 +1030,7 @@ def test_visual_sync_creates_one_document_section_and_board_per_missing_stage(
         "docx_token": "doc_public_fixture",
         "view_role": "executive",
         "renderer": "mermaid",
-        "stage_whiteboards": [
-            {"stage_index": 1, "whiteboard_token": "wb_stage_01"}
-        ],
+        "stage_whiteboards": [{"stage_index": 1, "whiteboard_token": "wb_stage_01"}],
     }
     write_lark_explore_local_config(
         config_path,
@@ -863,9 +1072,7 @@ def test_visual_sync_creates_one_document_section_and_board_per_missing_stage(
             token = args[args.index("--whiteboard-token") + 1]
             payload = {
                 "ok": True,
-                "data": {
-                    "nodes": [{"text": {"text": published_markers[token]}}]
-                },
+                "data": {"code": published_markers[token]},
             }
         return {
             "returncode": 0,
@@ -895,7 +1102,6 @@ def test_visual_sync_creates_one_document_section_and_board_per_missing_stage(
     assert [item["whiteboard_token"] for item in stage_boards] == [
         f"wb_stage_{index:02d}" for index in range(1, stage_count + 1)
     ]
-
 
 def test_visual_delivery_digest_changes_when_target_whiteboard_changes(tmp_path) -> None:
     projection = _complex_projection()

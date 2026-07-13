@@ -234,8 +234,8 @@ def register_explore_commands(
     visual.add_argument(
         "--stage-capacity",
         type=int,
-        default=14,
-        help="Maximum topology nodes per Evidence Stage whiteboard (10-20).",
+        default=18,
+        help="Maximum topology nodes per Evidence Stage whiteboard (10-20; default 18).",
     )
     visual.add_argument(
         "--stage-whiteboard-token",

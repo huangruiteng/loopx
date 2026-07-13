@@ -68,7 +68,7 @@ DEFAULT_EXPLORE_PRESENTATION_POLICY: dict[str, float | int] = {
     "readability_label_chars": 96,
     "readability_root_count_floor": 16,
     "readability_root_ratio_floor": 0.30,
-    "stage_node_capacity": 14,
+    "stage_node_capacity": 18,
     "executive_counterevidence_limit": 8,
     "executive_hub_edge_degree_floor": 4,
 }
@@ -82,15 +82,15 @@ _MERMAID_STATUS_CLASS = {
 }
 
 
-def _material_rows(values: Sequence[Any] | None, *, id_key: str) -> list[dict[str, Any]]:
+def _material_rows(
+    values: Sequence[Any] | None, *, id_key: str
+) -> list[dict[str, Any]]:
     rows = []
     for value in values or []:
         if not isinstance(value, Mapping):
             continue
         row = {
-            key: item
-            for key, item in value.items()
-            if key not in _VOLATILE_VIEW_KEYS
+            key: item for key, item in value.items() if key not in _VOLATILE_VIEW_KEYS
         }
         if row.get(id_key):
             rows.append(row)
@@ -115,7 +115,9 @@ def explore_source_digest(projection: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def explore_source_revision(projection: Mapping[str, Any], *, digest: str | None = None) -> str:
+def explore_source_revision(
+    projection: Mapping[str, Any], *, digest: str | None = None
+) -> str:
     source_digest = digest or explore_source_digest(projection)
     event_count = max(0, int(projection.get("source_event_count") or 0))
     return f"events-{event_count}-{source_digest[:12]}"
@@ -222,7 +224,9 @@ def _node_decision_lines(
     clauses = _summary_clauses(str(node.get("summary") or ""))
     if not clauses:
         return []
-    metric_clause = next((clause for clause in clauses if _METRIC_SIGNAL.search(clause)), None)
+    metric_clause = next(
+        (clause for clause in clauses if _METRIC_SIGNAL.search(clause)), None
+    )
     selected = []
     if metric_clause:
         selected.append(metric_clause)
@@ -231,8 +235,7 @@ def _node_decision_lines(
     if clauses[-1] != selected[0]:
         selected.append(clauses[-1])
     return [
-        _compact_detail_clause(clause, limit=detail_limit)
-        for clause in selected[:2]
+        _compact_detail_clause(clause, limit=detail_limit) for clause in selected[:2]
     ]
 
 
@@ -253,16 +256,22 @@ def _node_display_lines(
 
 def _node_detail_coverage(nodes: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     summary_nodes = [node for node in nodes if str(node.get("summary") or "").strip()]
-    rendered = [node for node in summary_nodes if _node_decision_lines(node, detail_limit=112)]
+    rendered = [
+        node for node in summary_nodes if _node_decision_lines(node, detail_limit=112)
+    ]
     metric_nodes = [
-        node for node in summary_nodes if _METRIC_SIGNAL.search(str(node.get("summary") or ""))
+        node
+        for node in summary_nodes
+        if _METRIC_SIGNAL.search(str(node.get("summary") or ""))
     ]
     rendered_metric_nodes = [
         node
         for node in metric_nodes
         if _METRIC_SIGNAL.search(" ".join(_node_decision_lines(node, detail_limit=112)))
     ]
-    complete = len(rendered) == len(summary_nodes) and len(rendered_metric_nodes) == len(metric_nodes)
+    complete = len(rendered) == len(summary_nodes) and len(
+        rendered_metric_nodes
+    ) == len(metric_nodes)
     return {
         "summary_eligible_node_count": len(summary_nodes),
         "summary_rendered_node_count": len(rendered),
@@ -311,9 +320,7 @@ def _explore_lane(
     """
 
     direct_tags = {
-        str(tag).strip().lower()
-        for tag in node.get("tags") or []
-        if str(tag).strip()
+        str(tag).strip().lower() for tag in node.get("tags") or [] if str(tag).strip()
     }
     direct_lanes = sorted(
         tag for tag in direct_tags if tag.startswith("lane-") and len(tag) > 5
@@ -367,12 +374,251 @@ def _explore_lane(
     return "default"
 
 
+_STAGE_LANE_ORDER = ("fix_pr", "capability", "default")
+_STAGE_LANE_STYLE = {
+    "fix_pr": {
+        "title": "Focused Fix PR",
+        "fill": "#F0F4FC",
+        "border": "#5178C6",
+    },
+    "capability": {
+        "title": "LoopX capability",
+        "fill": "#EAE2FE",
+        "border": "#8569CB",
+    },
+    "default": {
+        "title": "Explore work",
+        "fill": "#DFF5E5",
+        "border": "#509863",
+    },
+}
+_STAGE_CONNECTOR_LIMIT = 15
+
+
+def _whiteboard_node_id(node_id: str) -> str:
+    return f"loopx_node_{hashlib.sha256(node_id.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _stage_whiteboard_lane(
+    node: Mapping[str, Any],
+    *,
+    node_by_id: Mapping[str, Mapping[str, Any]],
+) -> str:
+    """Normalize domain lane aliases into the owner-facing Stage swimlanes."""
+
+    lane = _explore_lane(node, node_by_id=node_by_id)
+    if lane in {"delivery", "fix", "fix_pr", "issue_fix", "pr_issue_fix"}:
+        return "fix_pr"
+    if lane in {"capability", "self_improvement", "agent_capability"}:
+        return "capability"
+    return lane
+
+
+def _stage_whiteboard_dsl(
+    *,
+    role: str,
+    stage_index: int,
+    title: str,
+    stage_node_order: Sequence[str],
+    stage_edges: Sequence[Mapping[str, Any]],
+    node_by_id: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Build one explicit two-column Stage board without synthetic edges."""
+
+    lanes: dict[str, list[str]] = defaultdict(list)
+    for node_id in stage_node_order:
+        lane = _stage_whiteboard_lane(
+            node_by_id[node_id],
+            node_by_id=node_by_id,
+        )
+        lanes[lane].append(node_id)
+    ordered_lanes = [lane for lane in _STAGE_LANE_ORDER if lanes.get(lane)]
+    ordered_lanes.extend(sorted(lane for lane in lanes if lane not in ordered_lanes))
+
+    lane_children = []
+    node_lane: dict[str, str] = {}
+    for lane in ordered_lanes:
+        style = _STAGE_LANE_STYLE.get(lane, _STAGE_LANE_STYLE["default"])
+        cards = []
+        for node_id in lanes[lane]:
+            node_lane[node_id] = lane
+            node = node_by_id[node_id]
+            display_lines = _node_display_lines(
+                node,
+                title_limit=46,
+                detail_limit=96,
+            )
+            title_line = _truncate_display(display_lines[0], limit=58)
+            detail = "\n".join(
+                _truncate_display(line, limit=96) for line in display_lines[1:]
+            )
+            card_children: list[dict[str, Any]] = [
+                {
+                    "type": "text",
+                    "width": "fill-container",
+                    "height": "fit-content",
+                    "text": [
+                        {
+                            "content": title_line,
+                            "bold": True,
+                            "fontSize": 15,
+                            "color": "#1F2329",
+                        }
+                    ],
+                    "fontSize": 15,
+                    "textColor": "#1F2329",
+                    "textAlign": "left",
+                    "verticalAlign": "top",
+                }
+            ]
+            if detail:
+                card_children.append(
+                    {
+                        "type": "text",
+                        "width": "fill-container",
+                        "height": "fit-content",
+                        "text": detail,
+                        "fontSize": 13,
+                        "textColor": "#646A73",
+                        "textAlign": "left",
+                        "verticalAlign": "top",
+                    }
+                )
+            cards.append(
+                {
+                    "type": "frame",
+                    "id": _whiteboard_node_id(node_id),
+                    "width": "fill-container",
+                    "height": "fit-content",
+                    "layout": "vertical",
+                    "gap": 6,
+                    "padding": 14,
+                    "fillColor": "#FFFFFF",
+                    "borderColor": style["border"],
+                    "borderWidth": 2,
+                    "borderRadius": 8,
+                    "children": card_children,
+                }
+            )
+        lane_children.append(
+            {
+                "type": "frame",
+                "id": f"loopx_stage_{stage_index}_{lane}_lane",
+                "width": "fill-container",
+                "height": "fit-content",
+                "layout": "vertical",
+                "gap": 40,
+                "padding": 20,
+                "fillColor": style["fill"],
+                "borderColor": style["border"],
+                "borderWidth": 2,
+                "borderDash": "dashed",
+                "borderRadius": 12,
+                "children": [
+                    {
+                        "type": "text",
+                        "width": "fill-container",
+                        "height": "fit-content",
+                        "text": style["title"],
+                        "fontSize": 20,
+                        "textColor": "#1F2329",
+                        "textAlign": "center",
+                    },
+                    *cards,
+                ],
+            }
+        )
+
+    root = {
+        "type": "frame",
+        "id": f"loopx_{role}_stage_{stage_index}_root",
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": "fit-content",
+        "layout": "vertical",
+        "gap": 24,
+        "padding": 28,
+        "fillColor": "#FFFFFF",
+        "borderColor": "#DEE0E3",
+        "borderWidth": 2,
+        "borderRadius": 12,
+        "children": [
+            {
+                "type": "text",
+                "width": "fill-container",
+                "height": "fit-content",
+                "text": _truncate_display(title, limit=112),
+                "fontSize": 26,
+                "textColor": "#1F2329",
+                "textAlign": "center",
+            },
+            {
+                "type": "frame",
+                "width": "fill-container",
+                "height": "fit-content",
+                "layout": "horizontal",
+                "gap": 32,
+                "padding": 0,
+                "alignItems": "stretch",
+                "children": lane_children,
+            },
+        ],
+    }
+
+    ordered_edges = sorted(
+        stage_edges,
+        key=lambda edge: (
+            node_lane.get(str(edge.get("from_node") or ""))
+            == node_lane.get(str(edge.get("to_node") or "")),
+            str(edge.get("edge_id") or ""),
+        ),
+    )[:_STAGE_CONNECTOR_LIMIT]
+    connectors = []
+    lane_position = {lane: index for index, lane in enumerate(ordered_lanes)}
+    for edge in ordered_edges:
+        source = str(edge.get("from_node") or "")
+        target = str(edge.get("to_node") or "")
+        cross_lane = node_lane.get(source) != node_lane.get(target)
+        connector: dict[str, Any] = {
+            "from": _whiteboard_node_id(source),
+            "to": _whiteboard_node_id(target),
+            "lineShape": "curve" if cross_lane else "polyline",
+            "lineColor": "#BBBFC4",
+            "lineWidth": 2,
+            "endArrow": "arrow",
+        }
+        if cross_lane:
+            source_is_left = (
+                lane_position[node_lane[source]] < lane_position[node_lane[target]]
+            )
+            connector.update(
+                {
+                    "fromAnchor": "right" if source_is_left else "left",
+                    "toAnchor": "left" if source_is_left else "right",
+                }
+            )
+        else:
+            connector.update({"fromAnchor": "bottom", "toAnchor": "top"})
+        connectors.append(
+            {
+                "type": "connector",
+                "id": f"loopx_edge_{hashlib.sha256(str(edge.get('edge_id') or f'{source}->{target}').encode('utf-8')).hexdigest()[:16]}",
+                "connector": connector,
+            }
+        )
+    return {
+        "version": 2,
+        "nodes": [root, *connectors],
+    }
+
+
 def build_vertical_explore_mermaid(
     nodes: Sequence[Mapping[str, Any]],
     edges: Sequence[Mapping[str, Any]],
     *,
     view_role: str,
-    group_node_limit: int = 14,
+    group_node_limit: int = 18,
 ) -> dict[str, Any]:
     """Render bounded Evidence Stage views over the canonical graph."""
 
@@ -388,19 +634,18 @@ def build_vertical_explore_mermaid(
 
     node_by_id = {str(node.get("node_id") or ""): node for node in all_nodes}
     shown_ids = {str(node.get("node_id") or "") for node in node_list}
-    global_lanes = {
-        _explore_lane(node, node_by_id=node_by_id) for node in node_list
-    }
+    global_lanes = {_explore_lane(node, node_by_id=node_by_id) for node in node_list}
     detail_coverage = _node_detail_coverage(node_list)
     if not detail_coverage["complete"]:
-        raise ValueError("Explore node detail projection lost summary or metric evidence")
+        raise ValueError(
+            "Explore node detail projection lost summary or metric evidence"
+        )
     flow_direction = "TB"
     lines = [
         f"flowchart {flow_direction}",
         f'    subgraph {role}_timeline["{timeline_title}"]',
     ]
     lines.append(f"        direction {flow_direction}")
-    group_chains = []
     stage_views = []
     for group_index, group in enumerate(groups, start=1):
         group_id = f"{role}_group_{group_index}"
@@ -423,10 +668,7 @@ def build_vertical_explore_mermaid(
             lines.append(
                 f'            {mermaid_id}["{label}"]:::{_MERMAID_STATUS_CLASS.get(status, "open")}'
             )
-        if len(chain) > 1:
-            lines.append(f"            {' ~~~ '.join(chain)}")
         lines.append("        end")
-        group_chains.append(chain)
         primary_node_ids = list(group["node_ids"])
         stage_node_order = list(primary_node_ids)
         stage_node_ids = set(primary_node_ids)
@@ -471,8 +713,7 @@ def build_vertical_explore_mermaid(
                     str(candidate.get("node_id") or "")
                     for candidate in node_list
                     if str(candidate.get("node_id") or "") not in stage_node_ids
-                    and _explore_lane(candidate, node_by_id=node_by_id)
-                    == missing_lane
+                    and _explore_lane(candidate, node_by_id=node_by_id) == missing_lane
                 ),
                 None,
             )
@@ -495,7 +736,9 @@ def build_vertical_explore_mermaid(
             f'    subgraph {role}_stage_{group_index}["{_mermaid_label(group["title"])}"]',
             "        direction LR" if len(stage_lanes) > 1 else "        direction TB",
         ]
-        for lane_index, (lane, lane_node_ids) in enumerate(stage_lanes.items(), start=1):
+        for lane_index, (lane, lane_node_ids) in enumerate(
+            stage_lanes.items(), start=1
+        ):
             lane_id = f"{role}_stage_{group_index}_lane_{lane_index}"
             lane_title = {
                 "fix_pr": "PR issue-fix",
@@ -505,7 +748,6 @@ def build_vertical_explore_mermaid(
                 f'        subgraph {lane_id}["{_mermaid_label(lane_title)}"]'
             )
             stage_lines.append("            direction TB")
-            lane_chain = []
             for node_id in lane_node_ids:
                 node = node_by_id[node_id]
                 status = str(node.get("status") or "open")
@@ -520,9 +762,6 @@ def build_vertical_explore_mermaid(
                 stage_lines.append(
                     f'            {_mermaid_id(node_id)}["{label}"]:::{_MERMAID_STATUS_CLASS.get(status, "open")}'
                 )
-                lane_chain.append(_mermaid_id(node_id))
-            if len(lane_chain) > 1:
-                stage_lines.append(f"            {' ~~~ '.join(lane_chain)}")
             stage_lines.append("        end")
         stage_lines.append("    end")
         for edge in stage_edges:
@@ -606,10 +845,16 @@ def build_vertical_explore_mermaid(
                 "incoming_edge_count": len(incoming_edges),
                 "outgoing_edge_count": len(outgoing_edges),
                 "mermaid": "\n".join(stage_lines),
+                "whiteboard_dsl": _stage_whiteboard_dsl(
+                    role=role,
+                    stage_index=group_index,
+                    title=group["title"],
+                    stage_node_order=stage_node_order,
+                    stage_edges=stage_edges,
+                    node_by_id=node_by_id,
+                ),
             }
         )
-    for previous, current in zip(group_chains, group_chains[1:]):
-        lines.append(f"        {previous[-1]} ~~~ {current[0]}")
     lines.append("    end")
     for edge in edges:
         source = str(edge.get("from_node") or "")
@@ -649,7 +894,10 @@ def build_vertical_explore_mermaid(
 
 
 def _display_width(value: str) -> int:
-    return sum(2 if unicodedata.east_asian_width(character) in {"W", "F"} else 1 for character in value)
+    return sum(
+        2 if unicodedata.east_asian_width(character) in {"W", "F"} else 1
+        for character in value
+    )
 
 
 def _truncate_display(value: str, *, limit: int) -> str:
@@ -659,7 +907,9 @@ def _truncate_display(value: str, *, limit: int) -> str:
     result = []
     width = 0
     for character in cleaned:
-        character_width = 2 if unicodedata.east_asian_width(character) in {"W", "F"} else 1
+        character_width = (
+            2 if unicodedata.east_asian_width(character) in {"W", "F"} else 1
+        )
         if width + character_width > max(1, limit - 1):
             break
         result.append(character)
@@ -686,7 +936,9 @@ def _tail_display(value: str, *, limit: int) -> str:
     result = []
     width = 0
     for character in reversed(cleaned):
-        character_width = 2 if unicodedata.east_asian_width(character) in {"W", "F"} else 1
+        character_width = (
+            2 if unicodedata.east_asian_width(character) in {"W", "F"} else 1
+        )
         if width + character_width > limit:
             break
         result.append(character)
@@ -700,14 +952,17 @@ def _tail_display(value: str, *, limit: int) -> str:
 
 
 def _tags(node: Mapping[str, Any]) -> set[str]:
-    return {str(tag or "").strip().lower() for tag in node.get("tags") or [] if str(tag or "").strip()}
+    return {
+        str(tag or "").strip().lower()
+        for tag in node.get("tags") or []
+        if str(tag or "").strip()
+    }
 
 
 def _decision_seed_ids(nodes: Sequence[Mapping[str, Any]]) -> set[str]:
     seeds = set()
     has_current_incumbent = any(
-        _tags(node).intersection({"current-best", "incumbent"})
-        for node in nodes
+        _tags(node).intersection({"current-best", "incumbent"}) for node in nodes
     )
     for node in nodes:
         node_id = str(node.get("node_id") or "")
@@ -728,8 +983,7 @@ def _terminal_neighborhood_count(
     parents: Mapping[str, str],
 ) -> int:
     statuses = {
-        str(node.get("node_id") or ""): str(node.get("status") or "")
-        for node in nodes
+        str(node.get("node_id") or ""): str(node.get("status") or "") for node in nodes
     }
     children: dict[str, list[str]] = defaultdict(list)
     for child, parent in parents.items():
@@ -760,13 +1014,23 @@ def assess_explore_presentation(
             "atlas_group_node_limit"
         )
     thresholds.update(supplied_policy)
-    nodes = [item for item in projection.get("nodes") or [] if isinstance(item, Mapping)]
-    edges = [item for item in projection.get("edges") or [] if isinstance(item, Mapping)]
-    node_ids = {str(node.get("node_id") or "") for node in nodes if str(node.get("node_id") or "")}
+    nodes = [
+        item for item in projection.get("nodes") or [] if isinstance(item, Mapping)
+    ]
+    edges = [
+        item for item in projection.get("edges") or [] if isinstance(item, Mapping)
+    ]
+    node_ids = {
+        str(node.get("node_id") or "")
+        for node in nodes
+        if str(node.get("node_id") or "")
+    }
     parents = _parent_map(nodes, edges)
     depths = _node_depths(node_ids, parents)
     decision_ids = _decision_seed_ids(nodes)
-    terminal_count = sum(str(node.get("status") or "") in _TERMINAL_STATUSES for node in nodes)
+    terminal_count = sum(
+        str(node.get("status") or "") in _TERMINAL_STATUSES for node in nodes
+    )
     node_count = len(nodes)
     edge_count = len(edges)
     decision_density = len(decision_ids) / node_count if node_count else 1.0
@@ -782,17 +1046,13 @@ def assess_explore_presentation(
     )
 
     reasons = []
-    if (
-        node_count >= int(thresholds["decision_density_node_floor"])
-        and decision_density < float(thresholds["decision_density_ceiling"])
-    ):
+    if node_count >= int(
+        thresholds["decision_density_node_floor"]
+    ) and decision_density < float(thresholds["decision_density_ceiling"]):
         reasons.append("low_decision_density")
-    if (
-        terminal_neighborhoods >= int(thresholds["terminal_neighborhood_floor"])
-        or (
-            node_count >= int(thresholds["terminal_ratio_node_floor"])
-            and terminal_ratio >= float(thresholds["terminal_ratio_floor"])
-        )
+    if terminal_neighborhoods >= int(thresholds["terminal_neighborhood_floor"]) or (
+        node_count >= int(thresholds["terminal_ratio_node_floor"])
+        and terminal_ratio >= float(thresholds["terminal_ratio_floor"])
     ):
         reasons.append("excessive_terminal_branches")
     if max_depth >= int(thresholds["decision_depth_floor"]):
@@ -806,16 +1066,15 @@ def assess_explore_presentation(
             "canvas_expansion_detected",
         )
     )
-    estimated_readability_failure = (
-        node_count >= int(thresholds["readability_node_floor"])
-        and (
-            edge_density >= float(thresholds["readability_edge_density_floor"])
-            or long_label_count > 0
-            or max_depth >= int(thresholds["decision_depth_floor"])
-            or (
-                root_count >= int(thresholds["readability_root_count_floor"])
-                and root_ratio >= float(thresholds["readability_root_ratio_floor"])
-            )
+    estimated_readability_failure = node_count >= int(
+        thresholds["readability_node_floor"]
+    ) and (
+        edge_density >= float(thresholds["readability_edge_density_floor"])
+        or long_label_count > 0
+        or max_depth >= int(thresholds["decision_depth_floor"])
+        or (
+            root_count >= int(thresholds["readability_root_count_floor"])
+            and root_ratio >= float(thresholds["readability_root_ratio_floor"])
         )
     )
     if observed_readability_failure or estimated_readability_failure:
@@ -885,7 +1144,11 @@ def _executive_node_ids(
     *,
     counterevidence_limit: int,
 ) -> set[str]:
-    node_ids = {str(node.get("node_id") or "") for node in nodes if str(node.get("node_id") or "")}
+    node_ids = {
+        str(node.get("node_id") or "")
+        for node in nodes
+        if str(node.get("node_id") or "")
+    }
     selected = _decision_seed_ids(nodes)
     if not selected:
         selected = {node_id for node_id in node_ids if not parents.get(node_id)}
@@ -976,9 +1239,21 @@ def build_explore_presentation_bundle(
 ) -> dict[str, Any]:
     """Build canonical and executive views atomically from one projection."""
 
-    nodes = [dict(item) for item in projection.get("nodes") or [] if isinstance(item, Mapping)]
-    edges = [dict(item) for item in projection.get("edges") or [] if isinstance(item, Mapping)]
-    findings = [dict(item) for item in projection.get("findings") or [] if isinstance(item, Mapping)]
+    nodes = [
+        dict(item)
+        for item in projection.get("nodes") or []
+        if isinstance(item, Mapping)
+    ]
+    edges = [
+        dict(item)
+        for item in projection.get("edges") or []
+        if isinstance(item, Mapping)
+    ]
+    findings = [
+        dict(item)
+        for item in projection.get("findings") or []
+        if isinstance(item, Mapping)
+    ]
     counts = projection.get("counts")
     declared_finding_count = (
         int(counts.get("finding_count") or 0)
@@ -989,7 +1264,11 @@ def build_explore_presentation_bundle(
         raise ValueError(
             "Explore presentation requires the complete canonical finding set"
         )
-    node_ids = {str(node.get("node_id") or "") for node in nodes if str(node.get("node_id") or "")}
+    node_ids = {
+        str(node.get("node_id") or "")
+        for node in nodes
+        if str(node.get("node_id") or "")
+    }
     parents = _parent_map(nodes, edges)
     digest = explore_source_digest(projection)
     revision = explore_source_revision(projection, digest=digest)
@@ -1003,7 +1282,9 @@ def build_explore_presentation_bundle(
         _view_node(node, parents=parents, node_ids=node_ids, executive=False)
         for node in nodes
     ]
-    canonical_edges = [dict(edge, source_edge_id=str(edge.get("edge_id") or "")) for edge in edges]
+    canonical_edges = [
+        dict(edge, source_edge_id=str(edge.get("edge_id") or "")) for edge in edges
+    ]
     thresholds = dict(DEFAULT_EXPLORE_PRESENTATION_POLICY)
     thresholds.update(policy or {})
     canonical_layout = build_vertical_explore_mermaid(
@@ -1147,5 +1428,7 @@ def validate_explore_view_freshness(
         "observed_source_digest": observed_digest or None,
         "expected_source_revision": revision,
         "observed_source_revision": observed_revision or None,
-        "reason": None if fresh else "derived Explore view is stale; rebuild it from the current canonical projection",
+        "reason": None
+        if fresh
+        else "derived Explore view is stale; rebuild it from the current canonical projection",
     }

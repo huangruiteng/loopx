@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -59,6 +58,12 @@ from .kanban import (
 )
 from .explore_stage_document import ensure_stage_whiteboards
 from .message_card import build_lark_markdown_reply_card
+from .visual_delivery import (
+    _mermaid_with_delivery_marker,
+    _publish_visual_with_retry,
+    _readback_visual_delivery_marker,
+    _stamp_whiteboard_openapi_delivery_marker,
+)
 
 LARK_EXPLORE_SCHEMA_VERSION = "loopx_lark_explore_result_board_v0"
 LARK_EXPLORE_LOCAL_CONFIG_VERSION = "loopx_lark_explore_local_config_v0"
@@ -73,9 +78,10 @@ SINK_VISIBILITY_OWNER_ONLY = "owner-only"
 SINK_VISIBILITY_SHARED = "shared"
 SINK_VISIBILITIES = {SINK_VISIBILITY_OWNER_ONLY, SINK_VISIBILITY_SHARED}
 VISUAL_RENDERER_MERMAID = "mermaid"
-VISUAL_RENDERERS = {VISUAL_RENDERER_MERMAID}
-
-_VISUAL_READBACK_RETRY_DELAYS_SECONDS = (0.25, 0.5, 1.0, 2.0, 4.0)
+VISUAL_RENDERER_WHITEBOARD_DSL = "whiteboard_dsl"
+VISUAL_RENDERERS = {VISUAL_RENDERER_MERMAID, VISUAL_RENDERER_WHITEBOARD_DSL}
+DEFAULT_STAGE_CAPACITY = 18
+WHITEBOARD_CLI_PACKAGE = "@larksuite/whiteboard-cli@^0.2.12"
 
 TABLE_NODES = "nodes"
 TABLE_EDGES = "edges"
@@ -461,7 +467,7 @@ def configure_lark_explore_visual_sink(
     projection_mode: str = "canonical_filtered",
     include_ancestors: bool = True,
     mermaid_node_limit: int = 100,
-    stage_capacity: int = 14,
+    stage_capacity: int = DEFAULT_STAGE_CAPACITY,
     stage_whiteboard_tokens: list[str] | None = None,
     view_role: str | None = None,
     execute: bool = False,
@@ -483,15 +489,15 @@ def configure_lark_explore_visual_sink(
     role = str(view_role or "").strip() or None
     if role not in {None, "canonical", "executive"}:
         raise ValueError("view_role must be canonical or executive")
-    expected_mode = {"canonical": "canonical_full", "executive": "executive_auto"}.get(role)
+    expected_mode = {"canonical": "canonical_full", "executive": "executive_auto"}.get(
+        role
+    )
     if expected_mode and projection_mode != expected_mode:
         raise ValueError(f"view_role {role} requires projection_mode {expected_mode}")
     if not 10 <= int(stage_capacity) <= 20:
         raise ValueError("stage_capacity must be between 10 and 20")
     tokens = [
-        str(item).strip()
-        for item in stage_whiteboard_tokens or []
-        if str(item).strip()
+        str(item).strip() for item in stage_whiteboard_tokens or [] if str(item).strip()
     ]
     if not tokens and token:
         tokens = [token]
@@ -499,7 +505,9 @@ def configure_lark_explore_visual_sink(
         tokens.insert(0, token)
     local = read_lark_explore_local_config(config_path)
     if not local.get("ok") or not local.get("exists"):
-        raise ValueError("run `loopx explore feishu-setup` before configuring a visual sink")
+        raise ValueError(
+            "run `loopx explore feishu-setup` before configuring a visual sink"
+        )
     visual_sink = {
         "schema_version": "loopx_lark_explore_visual_sink_config_v0",
         "whiteboard_token": token or None,
@@ -510,7 +518,7 @@ def configure_lark_explore_visual_sink(
         "include_ancestors": bool(include_ancestors),
         "mermaid_node_limit": max(1, int(mermaid_node_limit)),
         "stage_capacity": int(stage_capacity),
-        "renderer": VISUAL_RENDERER_MERMAID,
+        "renderer": VISUAL_RENDERER_WHITEBOARD_DSL,
         "presentation_mode": "stage_document",
         "stage_whiteboards": [
             {"stage_index": index, "whiteboard_token": stage_token}
@@ -520,7 +528,11 @@ def configure_lark_explore_visual_sink(
     if role:
         visual_sink["view_role"] = role
     if execute:
-        updated = {key: value for key, value in local.items() if key not in {"ok", "exists", "path", "updated_at"}}
+        updated = {
+            key: value
+            for key, value in local.items()
+            if key not in {"ok", "exists", "path", "updated_at"}
+        }
         if role:
             visual_sinks = dict(updated.get("visual_sinks") or {})
             visual_sinks[role] = visual_sink
@@ -538,123 +550,6 @@ def configure_lark_explore_visual_sink(
         "visual_sink": visual_sink,
     }
 
-
-def _mermaid_with_delivery_marker(source: str, marker: str) -> str:
-    marker_id = f"loopx_delivery_{hashlib.sha256(marker.encode('utf-8')).hexdigest()[:10]}"
-    return "\n".join(
-        [
-            source.rstrip(),
-            f'    {marker_id}["{marker}"]',
-            f"    style {marker_id} fill:transparent,stroke:transparent,color:transparent",
-        ]
-    )
-
-
-def _whiteboard_raw_texts(payload: Any) -> list[str]:
-    if not isinstance(payload, Mapping):
-        return []
-    data = payload.get("data")
-    nodes = data.get("nodes") if isinstance(data, Mapping) else None
-    texts: list[str] = []
-    for node in nodes if isinstance(nodes, list) else []:
-        if not isinstance(node, Mapping):
-            continue
-        text_node = node.get("text")
-        if isinstance(text_node, Mapping) and str(text_node.get("text") or "").strip():
-            texts.append(str(text_node.get("text")))
-    return texts
-
-
-def _structured_command_error(result: Mapping[str, Any]) -> Mapping[str, Any]:
-    parsed = result.get("json")
-    if not isinstance(parsed, Mapping):
-        try:
-            parsed = json.loads(str(result.get("stderr") or ""))
-        except (TypeError, json.JSONDecodeError):
-            parsed = None
-    error = parsed.get("error") if isinstance(parsed, Mapping) else None
-    return error if isinstance(error, Mapping) else {}
-
-
-def _readback_visual_delivery_marker(
-    config: LarkExploreConfig,
-    *,
-    whiteboard_token: str,
-    marker: str,
-    runner: CommandRunner,
-) -> dict[str, Any]:
-    command = [
-        config.cli_bin,
-        "whiteboard",
-        "+query",
-        "--as",
-        config.identity,
-        "--whiteboard-token",
-        whiteboard_token,
-        "--output_as",
-        "raw",
-        "--format",
-        "json",
-    ]
-    attempts: list[dict[str, Any]] = []
-    result: dict[str, Any] = {}
-    texts: list[str] = []
-    marker_observed = False
-    for attempt_index in range(len(_VISUAL_READBACK_RETRY_DELAYS_SECONDS) + 1):
-        result = _run_command(command, execute=True, runner=runner)
-        texts = _whiteboard_raw_texts(result.get("json"))
-        marker_observed = marker in texts
-        error = _structured_command_error(result)
-        error_code = error.get("code")
-        error_message = str(error.get("message") or "")
-        is_applying = error_code == 4003101 and "doc is applying" in error_message
-        attempts.append(
-            {
-                "attempt": attempt_index + 1,
-                "ok": bool(result.get("ok")),
-                "marker_observed": marker_observed,
-                "error_code": error_code,
-                "retryable": is_applying,
-            }
-        )
-        if result.get("ok") or not is_applying:
-            break
-        if attempt_index < len(_VISUAL_READBACK_RETRY_DELAYS_SECONDS):
-            time.sleep(_VISUAL_READBACK_RETRY_DELAYS_SECONDS[attempt_index])
-    command_receipt = {
-        key: result.get(key)
-        for key in (
-            "command",
-            "executed",
-            "ok",
-            "returncode",
-            "timed_out",
-            "stderr",
-        )
-        if result.get(key) not in (None, "")
-    }
-    return {
-        "ok": bool(result.get("ok") and marker_observed),
-        "schema_version": "loopx_lark_explore_visual_readback_v0",
-        "performed": True,
-        "verified": marker_observed,
-        "source": "whiteboard_raw_nodes",
-        "expected_marker": marker,
-        "observed_marker": marker if marker_observed else None,
-        "remote_text_node_count": len(texts),
-        "attempt_count": len(attempts),
-        "attempts": attempts,
-        "command": command_receipt,
-        "error": (
-            None
-            if result.get("ok") and marker_observed
-            else _command_error(result)
-            if not result.get("ok")
-            else "remote whiteboard raw nodes do not contain the expected delivery marker"
-        ),
-    }
-
-
 def sync_explore_visual_to_lark(
     config: LarkExploreConfig,
     *,
@@ -667,7 +562,7 @@ def sync_explore_visual_to_lark(
     execute: bool = False,
     runner: CommandRunner = default_subprocess_runner,
 ) -> dict[str, Any]:
-    """Publish a configured whiteboard without conflating it with Base rows."""
+    """Publish one configured Stage board without conflating it with Base rows."""
 
     if not isinstance(visual_sink, Mapping):
         return {
@@ -690,7 +585,8 @@ def sync_explore_visual_to_lark(
     source_digest = explore_source_digest(projection)
     source_revision = explore_source_revision(projection, digest=source_digest)
     if isinstance(display_projection, Mapping) and (
-        display_projection.get("source_digest") or display_projection.get("source_revision")
+        display_projection.get("source_digest")
+        or display_projection.get("source_revision")
     ):
         freshness = validate_explore_view_freshness(projection, display_projection)
         if not freshness["fresh"]:
@@ -717,9 +613,16 @@ def sync_explore_visual_to_lark(
             node_limit=max(1, int(visual_sink.get("mermaid_node_limit") or 100)),
         )
     )
-    sink_key = str(view_key or visual_sink.get("view_role") or "visual").strip() or "visual"
-    renderer = str(visual_sink.get("renderer") or VISUAL_RENDERER_MERMAID).strip()
-    if renderer != VISUAL_RENDERER_MERMAID:
+    sink_key = (
+        str(view_key or visual_sink.get("view_role") or "visual").strip() or "visual"
+    )
+    configured_renderer = str(visual_sink.get("renderer") or "").strip()
+    renderer = configured_renderer or (
+        VISUAL_RENDERER_WHITEBOARD_DSL
+        if isinstance(graph.get("whiteboard_dsl"), Mapping)
+        else VISUAL_RENDERER_MERMAID
+    )
+    if renderer not in VISUAL_RENDERERS:
         return {
             "ok": False,
             "schema_version": LARK_EXPLORE_VISUAL_SYNC_VERSION,
@@ -727,13 +630,21 @@ def sync_explore_visual_to_lark(
             "execute": execute,
             "published": False,
             "error": (
-                "grid/SVG Explore renderers were removed; migrate this sink to "
-                "renderer=mermaid with one whiteboard per Evidence Stage"
+                "grid/SVG Explore renderers were removed; use "
+                "renderer=whiteboard_dsl for explicit Stage swimlanes or "
+                "renderer=mermaid for compatibility"
             ),
         }
-    source_key, input_format, extension = ("mermaid", "mermaid", "mmd")
-    rendered_source = str(graph.get(source_key) or "")
-    if not rendered_source.strip():
+
+    if renderer == VISUAL_RENDERER_MERMAID:
+        source_key, extension = "mermaid", "mmd"
+        rendered_source: Any = str(graph.get(source_key) or "")
+        source_available = bool(rendered_source.strip())
+    else:
+        source_key, extension = "whiteboard_dsl", "json"
+        rendered_source = graph.get(source_key)
+        source_available = isinstance(rendered_source, Mapping)
+    if not source_available:
         return {
             "ok": False,
             "schema_version": LARK_EXPLORE_VISUAL_SYNC_VERSION,
@@ -744,6 +655,7 @@ def sync_explore_visual_to_lark(
             "renderer": renderer,
             "error": f"display projection does not contain {source_key} source",
         }
+
     delivery_material = json.dumps(
         {
             "source_digest": semantic_digest,
@@ -759,11 +671,30 @@ def sync_explore_visual_to_lark(
     ).encode("utf-8")
     delivery_digest = hashlib.sha256(delivery_material).hexdigest()
     delivery_marker = f"LoopX delivery {delivery_digest[:20]}"
-    published_source = _mermaid_with_delivery_marker(
-        rendered_source,
-        delivery_marker,
+    published_source: Any = (
+        _mermaid_with_delivery_marker(str(rendered_source), delivery_marker)
+        if renderer == VISUAL_RENDERER_MERMAID
+        else rendered_source
     )
     source_name = f".loopx-explore-{sink_key}-{delivery_digest[:12]}.{extension}"
+    openapi_name = f".loopx-explore-{sink_key}-{delivery_digest[:12]}.openapi.json"
+    render_command = (
+        [
+            "npx",
+            "-y",
+            WHITEBOARD_CLI_PACKAGE,
+            "-i",
+            source_name,
+            "--to",
+            "openapi",
+            "--format",
+            "json",
+            "-o",
+            openapi_name,
+        ]
+        if renderer == VISUAL_RENDERER_WHITEBOARD_DSL
+        else None
+    )
     command = [
         config.cli_bin,
         "whiteboard",
@@ -773,54 +704,99 @@ def sync_explore_visual_to_lark(
         "--whiteboard-token",
         whiteboard_token,
         "--input_format",
-        input_format,
+        "raw" if renderer == VISUAL_RENDERER_WHITEBOARD_DSL else "mermaid",
         "--source",
-        f"@{source_name}",
+        f"@{openapi_name if render_command else source_name}",
         "--overwrite",
         "--idempotent-token",
         f"loopx-explore-{sink_key}-{delivery_digest[:20]}",
         "--format",
         "json",
     ]
+
+    render_result: dict[str, Any] | None = None
     if not execute:
+        if render_command:
+            render_result = _run_command(
+                render_command,
+                execute=False,
+                runner=runner,
+                cwd=config_path.parent,
+            )
         result = _run_command(command, execute=False, runner=runner)
     else:
         config_path.parent.mkdir(parents=True, exist_ok=True)
         source_path = config_path.parent / source_name
-        source_path.write_text(published_source, encoding="utf-8")
+        openapi_path = config_path.parent / openapi_name
+        source_path.write_text(
+            str(published_source)
+            if renderer == VISUAL_RENDERER_MERMAID
+            else json.dumps(published_source, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
         try:
-            result = _run_command(
-                command,
-                execute=True,
-                runner=runner,
-                cwd=config_path.parent,
-            )
+            if render_command:
+                render_result = _run_command(
+                    render_command,
+                    execute=True,
+                    runner=runner,
+                    cwd=config_path.parent,
+                )
+                if render_result.get("ok"):
+                    try:
+                        marker_id = _stamp_whiteboard_openapi_delivery_marker(
+                            openapi_path,
+                            delivery_marker,
+                        )
+                    except ValueError as exc:
+                        render_result = dict(
+                            render_result,
+                            ok=False,
+                            error=str(exc),
+                        )
+                    else:
+                        render_result = dict(
+                            render_result,
+                            delivery_marker_id=marker_id,
+                        )
+            if render_result is not None and not render_result.get("ok"):
+                result = _run_command(command, execute=False, runner=runner)
+                result.update(
+                    {
+                        "ok": False,
+                        "executed": False,
+                        "error": "whiteboard DSL conversion failed",
+                    }
+                )
+            else:
+                result = _publish_visual_with_retry(
+                    command,
+                    runner=runner,
+                    cwd=config_path.parent,
+                )
         finally:
             source_path.unlink(missing_ok=True)
+            openapi_path.unlink(missing_ok=True)
+
     readback: dict[str, Any] = {
         "ok": True,
         "schema_version": "loopx_lark_explore_visual_readback_v0",
         "performed": False,
         "verified": False,
-        "source": (
-            "not_required"
-            if not delivery_marker
-            else "would_query_whiteboard_raw_nodes"
-        ),
+        "source": "would_query_whiteboard",
         "expected_marker": delivery_marker,
         "observed_marker": None,
         "error": None,
     }
-    if execute and result.get("ok") and delivery_marker:
+    if execute and result.get("ok"):
         readback = _readback_visual_delivery_marker(
             config,
             whiteboard_token=whiteboard_token,
             marker=delivery_marker,
+            renderer=renderer,
             runner=runner,
         )
-    delivery_ok = bool(
-        result.get("ok") and (not delivery_marker or readback.get("ok"))
-    )
+    delivery_ok = bool(result.get("ok") and readback.get("ok"))
     return {
         "ok": delivery_ok,
         "schema_version": LARK_EXPLORE_VISUAL_SYNC_VERSION,
@@ -830,7 +806,7 @@ def sync_explore_visual_to_lark(
             else "would_publish"
             if not execute
             else "publish_unverified"
-            if result.get("ok") and delivery_marker
+            if result.get("ok")
             else "publish_failed"
         ),
         "execute": execute,
@@ -841,10 +817,13 @@ def sync_explore_visual_to_lark(
         "source_revision": source_revision,
         "view_role": str(graph.get("view_role") or sink_key),
         "renderer": renderer,
-        "input_format": input_format,
+        "input_format": (
+            "raw" if renderer == VISUAL_RENDERER_WHITEBOARD_DSL else "mermaid"
+        ),
         "docx_token": str(visual_sink.get("docx_token") or "") or None,
         "graph_counts": graph.get("graph_counts"),
         "filter": graph.get("filter"),
+        "render_command": render_result,
         "command": result,
         "readback": readback,
         "error": (
@@ -852,10 +831,9 @@ def sync_explore_visual_to_lark(
             if delivery_ok
             else str(readback.get("error") or "")
             if result.get("ok")
-            else _command_error(result)
+            else str(result.get("error") or _command_error(result))
         ),
     }
-
 
 def explore_visual_semantic_digest(projection: Mapping[str, Any]) -> str:
     """Return a timestamp-free digest for an explicit visual projection sync."""
@@ -900,7 +878,7 @@ def sync_explore_visuals_to_lark(
             }
             continue
         role_sink = visual_sinks[role]
-        stage_capacity = int(role_sink.get("stage_capacity") or 14)
+        stage_capacity = int(role_sink.get("stage_capacity") or DEFAULT_STAGE_CAPACITY)
         role_bundle = build_explore_presentation_bundle(
             projection,
             policy={
@@ -913,16 +891,18 @@ def sync_explore_visuals_to_lark(
             for item in role_view.get("stage_views") or []
             if isinstance(item, Mapping)
         ]
-        configured_stages, section_commands, stage_config_error = ensure_stage_whiteboards(
-            config,
-            role=role,
-            role_sink=role_sink,
-            stage_views=stage_views,
-            config_path=config_path,
-            execute=execute,
-            runner=runner,
-            read_local_config=read_lark_explore_local_config,
-            write_local_config=write_lark_explore_local_config,
+        configured_stages, section_commands, stage_config_error = (
+            ensure_stage_whiteboards(
+                config,
+                role=role,
+                role_sink=role_sink,
+                stage_views=stage_views,
+                config_path=config_path,
+                execute=execute,
+                runner=runner,
+                read_local_config=read_lark_explore_local_config,
+                write_local_config=write_lark_explore_local_config,
+            )
         )
         missing_stage_indexes = [
             int(stage["stage_index"])
@@ -960,6 +940,7 @@ def sync_explore_visuals_to_lark(
             stage_node_ids = {str(item) for item in stage.get("node_ids") or []}
             stage_projection = dict(role_view)
             stage_projection["mermaid"] = str(stage.get("mermaid") or "")
+            stage_projection["whiteboard_dsl"] = stage.get("whiteboard_dsl")
             stage_projection["nodes"] = [
                 role_nodes[node_id]
                 for node_id in stage.get("node_ids") or []
@@ -995,12 +976,18 @@ def sync_explore_visuals_to_lark(
         results[role] = {
             "ok": role_ok,
             "status": (
-                "published" if execute and role_ok else "would_publish" if role_ok else "publish_failed"
+                "published"
+                if execute and role_ok
+                else "would_publish"
+                if role_ok
+                else "publish_failed"
             ),
             "execute": execute,
             "published": bool(execute and role_ok),
             "view_role": role,
-            "renderer": VISUAL_RENDERER_MERMAID,
+            "renderer": str(
+                role_sink.get("renderer") or VISUAL_RENDERER_WHITEBOARD_DSL
+            ),
             "presentation_mode": "stage_document",
             "source_digest": role_bundle["source_digest"],
             "source_revision": role_bundle["source_revision"],
@@ -1030,7 +1017,6 @@ def sync_explore_visuals_to_lark(
         "missing_recommended_roles": missing_recommended_roles,
         "views": results,
     }
-
 
 def _visual_delivery_digests(sync_payload: Mapping[str, Any] | None) -> dict[str, str]:
     """Return the configured role digests that make a visual write idempotent."""
