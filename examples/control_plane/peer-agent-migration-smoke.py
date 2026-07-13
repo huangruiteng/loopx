@@ -323,7 +323,8 @@ def main() -> int:
         assert "side_agent_handoff_agent" not in heartbeat, heartbeat
         assert "single primary" not in heartbeat["task_body"].lower(), heartbeat
         assert "side-agent" not in heartbeat["task_body"].lower(), heartbeat
-        assert "equal peer agent" in heartbeat["task_body"].lower(), heartbeat
+        assert "equal peer" in heartbeat["task_body"].lower(), heartbeat
+        assert "no cross-agent authority" in heartbeat["task_body"].lower(), heartbeat
 
     print("peer-agent-migration-smoke ok")
     return 0
