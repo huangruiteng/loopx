@@ -45,8 +45,10 @@ from ..presentation.sinks.lark.explore_results import (
     setup_lark_explore_board,
     sync_explore_results_to_lark,
     sync_explore_visual_to_lark,
+    sync_explore_visuals_to_lark,
     write_lark_explore_local_config,
 )
+from ..presentation.explore_views import build_explore_presentation_bundle
 from ..presentation.sinks.lark.kanban import DEFAULT_CLI_BIN
 from ..history import load_registry
 from ..paths import resolve_runtime_root
@@ -125,6 +127,14 @@ def register_explore_commands(
     summary.add_argument("--goal-id", required=True)
     _add_projection_limit_args(summary)
 
+    presentation = sub.add_parser(
+        "presentation",
+        help="Assess readability and derive same-source canonical/executive views.",
+    )
+    add_subcommand_format(presentation)
+    presentation.add_argument("--goal-id", required=True)
+    _add_projection_limit_args(presentation)
+
     graph = sub.add_parser(
         "graph",
         help="Export the exploration topology as Mermaid flowchart source or graph JSON.",
@@ -197,8 +207,17 @@ def register_explore_commands(
     visual.add_argument("--tag", dest="visual_tags", action="append", default=[])
     visual.add_argument(
         "--projection-mode",
-        choices=["canonical_filtered", "issue_fix_two_lane"],
-        default="canonical_filtered",
+        choices=[
+            "canonical_filtered",
+            "issue_fix_two_lane",
+            "canonical_full",
+            "executive_auto",
+        ],
+    )
+    visual.add_argument(
+        "--view-role",
+        choices=["canonical", "executive"],
+        help="Configure one role in a same-source dual-view presentation.",
     )
     visual.add_argument(
         "--include-ancestors",
@@ -295,13 +314,25 @@ def _target_config(args: argparse.Namespace, *, config_path: Path) -> LarkExplor
     )
 
 
-def _projection_for(args: argparse.Namespace, *, runtime_root: Path) -> dict[str, object]:
+def _projection_for(
+    args: argparse.Namespace,
+    *,
+    runtime_root: Path,
+    finding_limit_override: int | None = None,
+) -> dict[str, object]:
     log_path = explore_result_log_path(runtime_root, args.goal_id)
     events = load_explore_result_events(log_path, goal_id=args.goal_id)
+    finding_limit = (
+        int(args.finding_limit)
+        if finding_limit_override is None
+        else int(finding_limit_override)
+    )
+    if finding_limit < 0:
+        finding_limit = len(events)
     projection = build_explore_result_projection(
         events,
         goal_id=args.goal_id,
-        finding_limit=max(0, int(args.finding_limit)),
+        finding_limit=max(0, finding_limit),
         mermaid_node_limit=max(1, int(args.mermaid_node_limit)),
     )
     projection["log_path"] = str(log_path)
@@ -365,6 +396,8 @@ def render_explore_markdown(payload: dict[str, object]) -> str:
         "message_id",
         "card_file",
         "out",
+        "presentation_mode",
+        "source_revision",
     ):
         if payload.get(key) not in (None, ""):
             lines.append(f"- {key}: `{payload.get(key)}`")
@@ -378,6 +411,9 @@ def render_explore_markdown(payload: dict[str, object]) -> str:
     if isinstance(row_counts, dict):
         joined = ", ".join(f"{key}={value}" for key, value in row_counts.items())
         lines.append(f"- rows: `{joined}`")
+    reason_codes = payload.get("reason_codes")
+    if isinstance(reason_codes, list) and reason_codes:
+        lines.append(f"- reason_codes: `{', '.join(str(item) for item in reason_codes)}`")
     if payload.get("strategy"):
         lines.append(f"- strategy: `{payload.get('strategy')}`")
     if payload.get("harness_profile"):
@@ -545,6 +581,13 @@ def handle_explore_command(
             payload = _append_event_payload(event, runtime_root=runtime_root, goal_id=args.goal_id)
         elif args.explore_command == "summary":
             payload = _projection_for(args, runtime_root=runtime_root)
+        elif args.explore_command == "presentation":
+            projection = _projection_for(
+                args,
+                runtime_root=runtime_root,
+                finding_limit_override=-1,
+            )
+            payload = build_explore_presentation_bundle(projection)
         elif args.explore_command == "graph":
             projection = _projection_for(args, runtime_root=runtime_root)
             graph_view = build_explore_graph_view(
@@ -715,9 +758,14 @@ def handle_explore_command(
                 docx_token=args.docx_token,
                 statuses=args.visual_statuses,
                 tags=args.visual_tags,
-                projection_mode=args.projection_mode,
+                projection_mode=args.projection_mode
+                or {
+                    "canonical": "canonical_full",
+                    "executive": "executive_auto",
+                }.get(args.view_role, "canonical_filtered"),
                 include_ancestors=bool(args.include_ancestors),
                 mermaid_node_limit=args.mermaid_node_limit,
+                view_role=args.view_role,
                 execute=bool(args.execute),
             )
         elif args.explore_command == "feishu-sync":
@@ -731,14 +779,31 @@ def handle_explore_command(
                 execute=bool(args.execute),
             )
             local = read_lark_explore_local_config(config_path)
-            payload["visual_sync"] = sync_explore_visual_to_lark(
-                target,
-                projection=projection,
-                visual_sink=local.get("visual_sink") if isinstance(local.get("visual_sink"), dict) else None,
-                config_path=config_path,
-                semantic_digest=explore_visual_semantic_digest(projection),
-                execute=bool(args.execute),
-            )
+            visual_sinks = local.get("visual_sinks")
+            if isinstance(visual_sinks, dict) and visual_sinks:
+                visual_projection = _projection_for(
+                    args,
+                    runtime_root=runtime_root,
+                    finding_limit_override=-1,
+                )
+                payload["visual_sync"] = sync_explore_visuals_to_lark(
+                    target,
+                    projection=visual_projection,
+                    visual_sinks=visual_sinks,
+                    config_path=config_path,
+                    execute=bool(args.execute),
+                )
+            else:
+                payload["visual_sync"] = sync_explore_visual_to_lark(
+                    target,
+                    projection=projection,
+                    visual_sink=local.get("visual_sink")
+                    if isinstance(local.get("visual_sink"), dict)
+                    else None,
+                    config_path=config_path,
+                    semantic_digest=explore_visual_semantic_digest(projection),
+                    execute=bool(args.execute),
+                )
             payload["ok"] = bool(payload.get("ok")) and bool(payload["visual_sync"].get("ok"))
         elif args.explore_command == "feishu-card":
             projection = _projection_for(args, runtime_root=runtime_root)

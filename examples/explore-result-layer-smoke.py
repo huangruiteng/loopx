@@ -1027,6 +1027,18 @@ def check_cli_surface() -> None:
         summary = run_cli("explore", "summary", "--goal-id", goal_id)
         assert summary["counts"]["node_count"] == 1, summary
         assert summary["counts"]["finding_count"] == 1, summary
+        presentation = run_cli(
+            "explore",
+            "presentation",
+            "--goal-id",
+            goal_id,
+        )
+        assert presentation["presentation_mode"] == "canonical_only", presentation
+        assert presentation["canonical"]["graph_counts"]["node_count"] == 1, presentation
+        assert (
+            presentation["canonical"]["source_revision"]
+            == presentation["executive"]["source_revision"]
+        ), presentation
         graph = run_cli("explore", "graph", "--goal-id", goal_id)
         assert str(graph["mermaid"]).startswith("flowchart TD"), graph
         focused_graph = run_cli(
@@ -1247,6 +1259,40 @@ def check_cli_surface() -> None:
         assert stored_cli_sync["commands"][0]["command"].startswith("stored-lark-cli "), stored_cli_sync
         assert stored_cli_sync["visual_sync"]["status"] == "would_publish", stored_cli_sync
         assert "whiteboard +update" in stored_cli_sync["visual_sync"]["command"]["command"], stored_cli_sync
+
+        for role, mode in (
+            ("canonical", "canonical_full"),
+            ("executive", "executive_auto"),
+        ):
+            role_config = run_cli(
+                "explore",
+                "feishu-visual-configure",
+                "--config-path",
+                str(config_path),
+                "--whiteboard-token",
+                f"wb_{role}_fixture",
+                "--view-role",
+                role,
+                "--projection-mode",
+                mode,
+                "--execute",
+            )
+            assert role_config["status"] == "configured", role_config
+        dual_config_sync = run_cli(
+            "explore",
+            "feishu-sync",
+            "--goal-id",
+            goal_id,
+            "--config-path",
+            str(config_path),
+        )
+        assert dual_config_sync["visual_sync"]["presentation_mode"] == "canonical_only", dual_config_sync
+        assert dual_config_sync["visual_sync"]["views"]["canonical"]["status"] == "would_publish", (
+            dual_config_sync
+        )
+        assert dual_config_sync["visual_sync"]["views"]["executive"]["status"] == "not_recommended", (
+            dual_config_sync
+        )
 
         # Error contract: unknown target without config fails with exit 1.
         error = subprocess.run(
