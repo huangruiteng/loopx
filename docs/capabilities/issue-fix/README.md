@@ -232,6 +232,22 @@ Motivation, approach, concrete changes, validation, and main-branch
 risk/uncovered scope remain required. An infographic is optional only for a
 complex change and never replaces textual evidence. The reviewer's verdict
 section remains review-only and is not authored into the PR description.
+
+Issue-backed PRs also carry an explicit `关联 Issue` / `Related Issues` block.
+For a complete fix, the builder defaults to one standalone `Fixes #N` line per
+issue (or `Fixes owner/repository#N` across repositories). For partial work it
+uses `Related to #N`, which creates a normal reference without promising
+automatic closure. GitHub accepts the `close`, `fix`, and `resolve` keyword
+families, including their documented inflections, but LoopX normalizes them to
+`Closes`, `Fixes`, or `Resolves` for stable output. Closing references require
+an explicit assertion that the PR targets the default branch, because GitHub
+ignores closing keywords on other base branches. The functional block is
+applied after semantic preferences and PR lifecycle should verify it through
+`closingIssuesReferences`. Closing keywords in commit messages can close an
+issue, but GitHub does not then list the containing PR as the linked PR, so the
+Issue Fix format keeps the keyword in the PR body rather than relying on commit
+copy. Comments are not part of this closing contract. See GitHub's
+[linked-issue contract](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue).
 When a human confirms that an unresolved git display name belongs to a specific
 GitHub account, `--identity-map-json` records that compact mapping as verified
 identity evidence and reranks the same repository-native contribution evidence.
@@ -625,7 +641,10 @@ revision and focused smokes, not the pilot narrative, remain authoritative.
   reviewer-facing descriptions. When configured, it performs at most one
   `issue_fix.pr_description` recall, passes results only to a caller-supplied
   applier, preserves the base description on fail-open or unattributed changes,
-  and returns a stateless compact receipt for existing evidence/state writeback;
+  and returns a stateless compact receipt for existing evidence/state writeback.
+  Independently, its deterministic issue-reference block runs after semantic
+  prose: complete fixes use `Fixes`, partial work uses `Related to`, and closing
+  metadata requires explicit default-branch targeting;
 - goal-scoped `explore_graph.enabled` projection at material refresh boundaries,
   independent from `explore_harness.enabled`, with separate row and visual sink
   digests;

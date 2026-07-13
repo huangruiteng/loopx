@@ -63,6 +63,10 @@ json.dump({
         semantic_preference_config=enabled,
         application_id="pr-17-description",
         artifact_ref="https://example.com/pr/17",
+        closing_issue_references=["#17", "octo-org/example#18"],
+        related_issue_references=["#19"],
+        closing_keyword="fixed",
+        targets_default_branch=True,
         apply_preferences=lambda _base, items: {
             "description": "## 动机\n\n修复已复现的问题。\n",
             "applied_preference_refs": [items[0]["preference_ref"]],
@@ -74,6 +78,74 @@ json.dump({
     assert preference["application_status"] == "applied", preference
     assert preference["receipt"]["outcome"] == "applied", preference
     assert PREFERENCE_REF not in json.dumps(applied), applied
+    assert applied["description"].endswith(
+        "## 关联 Issue\n\nFixes #17\nFixes octo-org/example#18\nRelated to #19\n"
+    ), applied
+    issue_reference = applied["issue_reference_block"]
+    assert issue_reference == {
+        "schema_version": "issue_fix_pr_issue_reference_block_v0",
+        "configured": True,
+        "applied": True,
+        "section_label": "关联 Issue",
+        "closing_keyword": "Fixes",
+        "closing_reference_count": 2,
+        "related_reference_count": 1,
+        "target_default_branch_verified": True,
+        "applied_after_semantic_preferences": True,
+    }, issue_reference
+
+    idempotent = build_issue_fix_pr_description(
+        applied["description"],
+        project=project,
+        closing_issue_references=["#17", "octo-org/example#18"],
+        related_issue_references=["#19"],
+        targets_default_branch=True,
+    )
+    assert idempotent["description"] == applied["description"], idempotent
+    assert idempotent["issue_reference_block"]["applied"] is False, idempotent
+
+    partial = build_issue_fix_pr_description(
+        "## Summary\n\nFixes #20\n",
+        project=project,
+        related_issue_references=["#20"],
+        issue_reference_section_label="Related Issues",
+    )
+    assert "Fixes #20" not in partial["description"], partial
+    assert partial["description"].endswith("## Related Issues\n\nRelated to #20\n"), (
+        partial
+    )
+
+    try:
+        build_issue_fix_pr_description(
+            BASE,
+            project=project,
+            closing_issue_references=["#21"],
+        )
+    except ValueError as exc:
+        assert "default-branch" in str(exc), exc
+    else:
+        raise AssertionError("closing references require default-branch proof")
+
+    keyword_families = {
+        "close": "Closes",
+        "closes": "Closes",
+        "closed": "Closes",
+        "fix": "Fixes",
+        "fixes": "Fixes",
+        "fixed": "Fixes",
+        "resolve": "Resolves",
+        "resolves": "Resolves",
+        "resolved": "Resolves",
+    }
+    for keyword, canonical in keyword_families.items():
+        keyword_result = build_issue_fix_pr_description(
+            BASE,
+            project=project,
+            closing_issue_references=["#23"],
+            closing_keyword=keyword,
+            targets_default_branch=True,
+        )
+        assert f"{canonical} #23" in keyword_result["description"], keyword_result
 
     disabled = temp / "disabled.json"
     disabled.write_text(
@@ -129,11 +201,13 @@ json.dump({
         BASE,
         project=project,
         semantic_preference_config=failing,
+        closing_issue_references=["#22"],
+        targets_default_branch=True,
         apply_preferences=lambda *_: (_ for _ in ()).throw(
             AssertionError("unavailable preference must not run the applier")
         ),
     )
-    assert unavailable["description"] == BASE, unavailable
+    assert unavailable["description"].endswith("Fixes #22\n"), unavailable
     assert unavailable["fail_open_preserved_base"] is True, unavailable
 
     unattributed = build_issue_fix_pr_description(
