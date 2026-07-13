@@ -111,6 +111,7 @@ CONTRACT_CAPSULE_FIELDS = {
         "schema_version",
         "capability_gate_action",
         "blocked_advancement_count",
+        "blocked_due_monitor_count",
         "mode",
     ),
 }

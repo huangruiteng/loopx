@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from ..agents.capability_gate import build_capability_gate
+from ..todos.contract import TODO_TASK_CLASS_ADVANCEMENT, TODO_TASK_CLASS_MONITOR
+from ..todos.projection import todo_item_task_class
 from ..todos.summary_item import compact_todo_summary_item
 
 
@@ -58,20 +60,50 @@ def build_capability_skip_monitor_fallback_contract(
     if not monitor_items:
         return None, None
 
-    blocked_advancement_count = len(
+    blocked_candidates = (
         capability_gate.get("blocked_candidates")
         if isinstance(capability_gate.get("blocked_candidates"), list)
         else []
     )
+    blocked_advancement_count = sum(
+        1
+        for item in blocked_candidates
+        if isinstance(item, dict)
+        and todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+    )
+    blocked_due_monitor_count = sum(
+        1
+        for item in blocked_candidates
+        if isinstance(item, dict)
+        and todo_item_task_class(item) == TODO_TASK_CLASS_MONITOR
+    )
+    capability_unavailable_reason = (
+        "advancement_unavailable_by_capability"
+        if blocked_advancement_count
+        else "due_monitor_unavailable_by_capability"
+    )
+    if blocked_advancement_count and blocked_due_monitor_count:
+        fallback_reason = (
+            "advancement and due-monitor candidates require unavailable capabilities, "
+            "so remaining current-agent monitor work must stay visible to the scheduler"
+        )
+    elif blocked_due_monitor_count:
+        fallback_reason = (
+            "due-monitor candidates require unavailable capabilities, so their "
+            "diagnostic monitor state must stay visible to the scheduler"
+        )
+    else:
+        fallback_reason = (
+            "all advancement candidates require unavailable capabilities, so "
+            "current-agent monitor work must remain visible to the scheduler"
+        )
     base_fallback = {
         "schema_version": CAPABILITY_MONITOR_FALLBACK_SCHEMA_VERSION,
         "source": "quota.capability_gate",
         "capability_gate_action": "skip",
         "blocked_advancement_count": blocked_advancement_count,
-        "reason": (
-            "all advancement candidates require unavailable capabilities, "
-            "so current-agent monitor work must remain visible to the scheduler"
-        ),
+        "blocked_due_monitor_count": blocked_due_monitor_count,
+        "reason": fallback_reason,
     }
 
     due_items = (
@@ -91,7 +123,7 @@ def build_capability_skip_monitor_fallback_contract(
                 "obligation": "attempt_due_monitor",
                 "must_attempt_work": True,
                 "reason_codes": [
-                    "advancement_unavailable_by_capability",
+                    capability_unavailable_reason,
                     "monitor_due",
                 ],
                 "monitor_policy": "attempt_due_monitor_once_then_writeback_or_no_spend_if_unchanged",
@@ -126,7 +158,7 @@ def build_capability_skip_monitor_fallback_contract(
                 "obligation": "repair_monitor_schedule_metadata",
                 "must_attempt_work": True,
                 "reason_codes": [
-                    "advancement_unavailable_by_capability",
+                    capability_unavailable_reason,
                     "monitor_schedule_metadata_gap",
                 ],
                 "monitor_policy": "repair_schedule_metadata_before_quiet_wait",
@@ -151,7 +183,7 @@ def build_capability_skip_monitor_fallback_contract(
             "obligation": "quiet_until_material_monitor_transition",
             "must_attempt_work": False,
             "reason_codes": [
-                "advancement_unavailable_by_capability",
+                capability_unavailable_reason,
                 "monitor_todo_present",
             ],
             "monitor_policy": "write_once_per_material_transition_else_no_spend",

@@ -449,6 +449,10 @@ def assert_due_monitor_requires_available_capabilities() -> None:
     assert blocked_guard["decision"] == "skip", blocked_guard
     assert blocked_guard["effective_action"] == "monitor_quiet_skip", blocked_guard
     assert blocked_guard["capability_gate"]["action"] == "skip", blocked_guard
+    blocked_fallback = blocked_guard["capability_monitor_fallback"]
+    assert blocked_fallback["blocked_advancement_count"] == 0, blocked_fallback
+    assert blocked_fallback["blocked_due_monitor_count"] == 1, blocked_fallback
+    assert blocked_lane["reason_codes"][0] == "due_monitor_unavailable_by_capability", blocked_lane
     assert blocked_summary["monitor_due_count"] == 0, blocked_summary
     assert blocked_summary["monitor_open_items"][0]["todo_id"] == item["todo_id"], blocked_summary
     assert blocked_summary["monitor_capability_blocked_due_count"] == 1, blocked_summary
