@@ -113,6 +113,28 @@ def available_capabilities_with_defaults(value: Any) -> list[str]:
     return capabilities
 
 
+def missing_required_capabilities(
+    item: dict[str, Any],
+    *,
+    available_capabilities: Any,
+) -> list[str]:
+    available = set(available_capabilities_with_defaults(available_capabilities))
+    required = normalize_required_capabilities(item.get("required_capabilities"))
+    targets = set(normalize_target_capabilities(item.get("target_capabilities")))
+    return [
+        capability
+        for capability in required
+        if capability not in targets and capability not in available
+    ]
+
+
+def _capability_item_identity(item: dict[str, Any]) -> tuple[str, str]:
+    return (
+        str(item.get("todo_id") or ""),
+        str(item.get("text") or "").strip(),
+    )
+
+
 def _capability_candidate_item(
     item: dict[str, Any],
     *,
@@ -201,6 +223,14 @@ def build_capability_gate(
 ) -> dict[str, Any] | None:
     if not isinstance(agent_todo_summary, dict):
         return None
+    monitor_capability_blocked_due_items = agent_todo_summary.get(
+        "monitor_capability_blocked_due_items"
+    )
+    blocked_monitor_items = (
+        monitor_capability_blocked_due_items
+        if isinstance(monitor_capability_blocked_due_items, list)
+        else []
+    )
     active_next_action_executable_items = agent_todo_summary.get(
         "active_next_action_executable_items"
     )
@@ -228,27 +258,40 @@ def build_capability_gate(
     else:
         raw_items = []
         source = "agent_todo_summary.executable_backlog_items"
+    if blocked_monitor_items:
+        has_advancement_items = bool(raw_items)
+        raw_items = [*raw_items, *blocked_monitor_items]
+        source = (
+            f"{source}+agent_todo_summary.monitor_capability_blocked_due_items"
+            if has_advancement_items
+            else "agent_todo_summary.monitor_capability_blocked_due_items"
+        )
     deduped_raw_items: list[Any] = []
     seen_raw: set[tuple[str, str]] = set()
     for item in raw_items:
         if not isinstance(item, dict):
             deduped_raw_items.append(item)
             continue
-        identity = (
-            str(item.get("todo_id") or ""),
-            str(item.get("text") or "").strip(),
-        )
+        identity = _capability_item_identity(item)
         if identity in seen_raw:
             continue
         seen_raw.add(identity)
         deduped_raw_items.append(item)
     raw_items = deduped_raw_items
+    blocked_monitor_identities = {
+        _capability_item_identity(item)
+        for item in blocked_monitor_items
+        if isinstance(item, dict)
+    }
     candidates = [
         item
         for item in raw_items
         if isinstance(item, dict)
         and todo_item_is_actionable_open(item)
-        and todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+        and (
+            todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+            or _capability_item_identity(item) in blocked_monitor_identities
+        )
     ]
     if not candidates:
         return None
@@ -262,12 +305,10 @@ def build_capability_gate(
         targets = normalize_target_capabilities(item.get("target_capabilities"))
         if required or targets:
             saw_requirement = True
-        hard_required = [
-            capability for capability in required if capability not in targets
-        ]
-        missing = [
-            capability for capability in hard_required if capability not in available
-        ]
+        missing = missing_required_capabilities(
+            item,
+            available_capabilities=available,
+        )
         missing_targets = [
             capability for capability in targets if capability not in available
         ]
