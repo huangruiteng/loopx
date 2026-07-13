@@ -59,14 +59,22 @@ INTERFACE_BUDGET_CHARS = {
 }
 
 
-def heartbeat_prompt_mode(*, compact: bool = False, brief: bool = False, thin: bool = False) -> str:
+def heartbeat_prompt_mode(
+    *,
+    full: bool = False,
+    compact: bool = False,
+    brief: bool = False,
+    thin: bool = False,
+) -> str:
+    if full:
+        return "full"
     if thin:
         return "thin"
     if brief:
         return "brief"
     if compact:
         return "compact"
-    return "full"
+    return "thin"
 
 
 def prompt_budget_text(text: str, *, goal_id: str, active_state: str) -> str:
@@ -144,6 +152,7 @@ def build_peer_identity_required_error(
     goal_id: str,
     cli_bin: str,
     active_state_arg: str,
+    full: bool,
     compact: bool,
     brief: bool,
     thin: bool,
@@ -156,6 +165,8 @@ def build_peer_identity_required_error(
         if brief
         else " --compact"
         if compact
+        else " --full"
+        if full
         else ""
     )
     base = (
@@ -238,11 +249,12 @@ def build_interface_budget(
     task_body: str,
     goal_id: str,
     active_state: str,
+    full: bool = False,
     compact: bool = False,
     brief: bool = False,
     thin: bool = False,
 ) -> dict[str, Any]:
-    mode = heartbeat_prompt_mode(compact=compact, brief=brief, thin=thin)
+    mode = heartbeat_prompt_mode(full=full, compact=compact, brief=brief, thin=thin)
     budget_text = prompt_budget_text(task_body, goal_id=goal_id, active_state=active_state)
     budget_chars = len(budget_text)
     max_chars = INTERFACE_BUDGET_CHARS[mode]
@@ -264,6 +276,7 @@ def build_heartbeat_prompt(
     resolved_active_state: Path | None = None,
     material_queue_rule: str | None = None,
     permission_rule: str | None = None,
+    full: bool = False,
     compact: bool = False,
     brief: bool = False,
     thin: bool = False,
@@ -274,6 +287,8 @@ def build_heartbeat_prompt(
     registered_agents: list[str] | tuple[str, ...] | None = None,
     available_capabilities: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
+    if not (full or compact or brief or thin):
+        thin = True
     effective_resolved_active_state = resolved_active_state or active_state
     active_state_text = str(active_state.expanduser()) if active_state else "the registry-declared active state"
     if active_state:
@@ -299,6 +314,7 @@ def build_heartbeat_prompt(
                 goal_id=goal_id,
                 cli_bin=cli_bin,
                 active_state_arg=active_state_arg,
+                full=full,
                 compact=compact,
                 brief=brief,
                 thin=thin,
@@ -360,7 +376,7 @@ def build_heartbeat_prompt(
         delivery_outcome="outcome_progress",
     )
     cli_preflight = render_cli_preflight(cli_bin=cli_bin)
-    expanded_prompt_command = f"{cli_bin} heartbeat-prompt --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
+    expanded_prompt_command = f"{cli_bin} heartbeat-prompt --full --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     compact_prompt_command = f"{cli_bin} heartbeat-prompt --compact --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     brief_prompt_command = f"{cli_bin} heartbeat-prompt --brief --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     thin_prompt_command = f"{cli_bin} heartbeat-prompt --thin --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
@@ -400,6 +416,7 @@ def build_heartbeat_prompt(
         "compact": compact,
         "brief": brief,
         "thin": thin,
+        "full": full,
         "cli_bin": cli_bin,
         "agent_id": normalized_agent_id,
         "agent_role": agent_role,
@@ -422,6 +439,7 @@ def build_heartbeat_prompt(
             task_body=task_body,
             goal_id=goal_id,
             active_state=active_state_text,
+            full=full,
             compact=compact,
             brief=brief,
             thin=thin,
@@ -439,6 +457,7 @@ def build_heartbeat_prompt_error_payload(
     active_state: Path | None = None,
     active_state_source: str | None = None,
     resolved_active_state: Path | None = None,
+    full: bool = False,
     compact: bool = False,
     brief: bool = False,
     thin: bool = False,
@@ -450,6 +469,8 @@ def build_heartbeat_prompt_error_payload(
     material_queue_rule: str | None = None,
     permission_rule: str | None = None,
 ) -> dict[str, Any]:
+    if not (full or compact or brief or thin):
+        thin = True
     active_state_text = str(active_state.expanduser()) if active_state else "the registry-declared active state"
     source = active_state_source or ("explicit" if active_state else "registry")
     active_state_arg = f" --active-state {active_state_text}" if active_state else ""
@@ -468,7 +489,7 @@ def build_heartbeat_prompt_error_payload(
     capability_args = render_available_capability_args(
         projected_available_capabilities
     )
-    expanded_prompt_command = f"{cli_bin} heartbeat-prompt --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
+    expanded_prompt_command = f"{cli_bin} heartbeat-prompt --full --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     compact_prompt_command = f"{cli_bin} heartbeat-prompt --compact --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     brief_prompt_command = f"{cli_bin} heartbeat-prompt --brief --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
     thin_prompt_command = f"{cli_bin} heartbeat-prompt --thin --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
@@ -483,6 +504,7 @@ def build_heartbeat_prompt_error_payload(
         "compact": compact,
         "brief": brief,
         "thin": thin,
+        "full": full,
         "cli_bin": cli_bin,
         "agent_id": str(agent_id).strip() if agent_id else None,
         "agent_role": None,

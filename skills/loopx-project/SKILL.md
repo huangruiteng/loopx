@@ -419,9 +419,9 @@ goal, prefer the generator instead of hand-copying the quota lifecycle:
 loopx heartbeat-prompt --goal-id <STABLE_GOAL_ID>
 ```
 
-For live Codex App automations, prefer the thin body as the local machine
-default when the target Codex agent can inspect LoopX state and CLI
-output itself:
+The default generated body is thin when the target Codex agent can inspect
+LoopX state and CLI output itself. Passing `--thin` remains accepted and
+explicit:
 
 ```bash
 loopx heartbeat-prompt --thin --goal-id <STABLE_GOAL_ID>
@@ -457,16 +457,16 @@ from the registry goal `state_file`, which keeps installed automations from
 pinning a stale path. Pass `--active-state <ACTIVE_GOAL_STATE_PATH>` only for
 detached state files, migration checks, or compatibility tests.
 
-Copy the generated task body into the Codex App heartbeat automation. The full
-body is the audit source and compatibility default. The thin body is the daily
-driver for trusted local workers: it keeps the automation prompt project-agnostic
-and tells Codex to re-read registry/global quota truth, active state,
-status/run history, repo state, and project signals on each wakeup. The compact
-body is useful when context pressure matters but the installed prompt should
-still carry the quota, gate, blocker-push, recommendation, steering-audit,
-writeback, refresh, and spend lifecycle inline. The brief body keeps only
-preflight/guard, core invariants, and spend accounting in the installed prompt
-while delegating detailed branches back to the generated compact/full contracts.
+Copy the generated task body into the Codex App heartbeat automation. The thin
+body is the installed default for trusted local workers: it keeps the automation
+prompt project-agnostic and tells Codex to re-read registry/global quota truth,
+active state, status/run history, repo state, and project signals on each
+wakeup. Use `--full` for the expanded audit source. The compact body is useful
+when context pressure matters but the installed prompt should still carry the
+quota, gate, blocker-push, recommendation, steering-audit, writeback, refresh,
+and spend lifecycle inline. The brief body keeps only preflight/guard, core
+invariants, and spend accounting in the installed prompt while delegating
+detailed branches back to the generated compact/full contracts.
 The generated guard and spend commands explicitly use the shared global
 registry so project heartbeats read the same operator gates and user todos as
 the dashboard, regardless of their current repo. Completed heartbeat delivery

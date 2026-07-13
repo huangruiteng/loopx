@@ -77,8 +77,9 @@ loopx heartbeat-prompt \
   --active-state <ACTIVE_GOAL_STATE_PATH>
 ```
 
-For recurring App heartbeats, prefer the compact body after the full lifecycle
-has been reviewed:
+For recurring App heartbeats, the default body is the thin local dispatcher.
+Use the compact body after the full lifecycle has been reviewed when the
+installed prompt should carry more lifecycle detail inline:
 
 ```bash
 loopx heartbeat-prompt \
@@ -86,9 +87,17 @@ loopx heartbeat-prompt \
   --compact
 ```
 
-The expanded prompt remains the audit source and compatibility default. The
-compact prompt is the daily driver: it reduces per-tick context while preserving
-the same commands and decision points.
+The expanded prompt remains available as the explicit audit source:
+
+```bash
+loopx heartbeat-prompt \
+  --goal-id <GOAL_ID> \
+  --full
+```
+
+The thin prompt is the installed default. It keeps per-tick context small and
+expects trusted agents to pull the current LoopX state before acting. The
+compact prompt is the heavier inline lifecycle body.
 
 When multiple agents share the same project control plane, first register the
 public-safe agent ids on the goal, then give each automation an explicit

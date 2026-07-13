@@ -30,7 +30,8 @@ from loopx.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
 
 
 def main() -> int:
-    payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE)
+    default_payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE)
+    payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE, full=True)
     compact_payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE, compact=True)
     brief_payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE, brief=True)
     thin_payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE, thin=True)
@@ -119,10 +120,12 @@ def main() -> int:
         unregistered_agent = str(exc)
     assert unregistered_agent and "is not registered" in unregistered_agent, unregistered_agent
     assert_prompt_budget("full", str(payload["task_body"]))
+    assert_prompt_budget("thin", str(default_payload["task_body"]))
     assert_prompt_budget("compact", str(compact_payload["task_body"]))
     assert_prompt_budget("brief", str(brief_payload["task_body"]))
     assert_prompt_budget("thin", str(thin_payload["task_body"]))
     assert_interface_budget_payload("full", payload)
+    assert_interface_budget_payload("thin", default_payload)
     assert_interface_budget_payload("compact", compact_payload)
     assert_interface_budget_payload("brief", brief_payload)
     assert_interface_budget_payload("thin", thin_payload)
@@ -131,10 +134,11 @@ def main() -> int:
     assert_interface_budget_payload("thin", thin_scoped_payload)
     assert_interface_budget_payload("thin", profile_scoped_payload)
     assert_no_project_specific_prompt_leaks("full", str(payload["task_body"]))
+    assert_no_project_specific_prompt_leaks("thin", str(default_payload["task_body"]))
     assert_no_project_specific_prompt_leaks("compact", str(compact_payload["task_body"]))
     assert_no_project_specific_prompt_leaks("brief", str(brief_payload["task_body"]))
     assert_no_project_specific_prompt_leaks("thin", str(thin_payload["task_body"]))
-    for prompt_payload in (payload, compact_payload, brief_payload, thin_payload):
+    for prompt_payload in (payload, default_payload, compact_payload, brief_payload, thin_payload):
         task_body = str(prompt_payload["task_body"])
         assert "lark_event_inbox" in task_body, task_body
         assert "drain" in task_body and "ACK" in task_body, task_body
@@ -145,6 +149,10 @@ def main() -> int:
             assert "drain_command" in task_body, task_body
             assert "writeback" in task_body, task_body
     thin_task = str(thin_payload["task_body"])
+    assert default_payload["task_body"] == thin_payload["task_body"], default_payload
+    assert default_payload["thin"] is True, default_payload
+    assert default_payload["full"] is False, default_payload
+    assert payload["full"] is True, payload
     assert "Observed runtime capabilities -> `--available-capability`, never user gates." in thin_task, thin_task
     assert payload["quota_guard_command"] == (
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" '
@@ -169,7 +177,7 @@ def main() -> int:
     for phrase in (
         "compact LoopX heartbeat body",
         "Expanded lifecycle contract",
-        "loopx heartbeat-prompt --goal-id public-heartbeat-goal --active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
+        "loopx heartbeat-prompt --full --goal-id public-heartbeat-goal --active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
         "state=operator_gate",
         "notify_user_on_open_todo=true",
@@ -205,7 +213,7 @@ def main() -> int:
     assert registry_default_payload["active_state"] == "the registry-declared active state", registry_default_payload
     assert registry_default_payload["active_state_source"] == "registry", registry_default_payload
     assert registry_default_payload["expanded_prompt_command"] == (
-        "loopx heartbeat-prompt --goal-id public-heartbeat-goal"
+        "loopx heartbeat-prompt --full --goal-id public-heartbeat-goal"
     ), registry_default_payload
     assert registry_default_payload["compact_prompt_command"] == (
         "loopx heartbeat-prompt --compact --goal-id public-heartbeat-goal"
@@ -738,11 +746,37 @@ def main() -> int:
         text=True,
     )
     cli_payload = json.loads(cli_json.stdout)
-    assert cli_payload["task_body"] == payload["task_body"], cli_payload
+    assert cli_payload["task_body"] == default_payload["task_body"], cli_payload
     assert cli_payload["compact"] is False, cli_payload
     assert cli_payload["brief"] is False, cli_payload
+    assert cli_payload["thin"] is True, cli_payload
+    assert cli_payload["full"] is False, cli_payload
     assert cli_payload["cli_bin"] == "loopx", cli_payload
     assert cli_payload["active_state_source"] == "explicit", cli_payload
+
+    cli_full_json = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--format",
+            "json",
+            "heartbeat-prompt",
+            "--goal-id",
+            GOAL_ID,
+            "--active-state",
+            str(ACTIVE_STATE),
+            "--full",
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    cli_full_payload = json.loads(cli_full_json.stdout)
+    assert cli_full_payload["task_body"] == payload["task_body"], cli_full_payload
+    assert cli_full_payload["full"] is True, cli_full_payload
+    assert cli_full_payload["thin"] is False, cli_full_payload
 
     cli_compact_json = subprocess.run(
         [
@@ -938,7 +972,7 @@ def main() -> int:
         assert cli_registry_default_payload["active_state_source"].startswith("registry:"), cli_registry_default_payload
         assert cli_registry_default_payload["resolved_active_state"] == str(state_file), cli_registry_default_payload
         assert cli_registry_default_payload["expanded_prompt_command"] == (
-            "loopx heartbeat-prompt --goal-id public-heartbeat-goal "
+            "loopx heartbeat-prompt --full --goal-id public-heartbeat-goal "
             "--agent-id codex-main-control --agent-scope 'primary review and coordination'"
         ), cli_registry_default_payload
         assert "loopx heartbeat-prompt --compact --goal-id public-heartbeat-goal" in (
@@ -1306,7 +1340,7 @@ def main() -> int:
         text=True,
     ).stdout
     assert "# Heartbeat Automation Prompt" in cli_markdown, cli_markdown
-    assert "Copy this task body into a Codex App heartbeat automation." in cli_markdown, cli_markdown
+    assert "Copy this thin task body into a Codex App heartbeat automation." in cli_markdown, cli_markdown
     assert str(ACTIVE_STATE) in cli_markdown, cli_markdown
     print("heartbeat-prompt-smoke ok")
     return 0
