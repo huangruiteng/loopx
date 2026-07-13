@@ -336,6 +336,28 @@ def assert_future_scoped_monitor_does_not_fake_external_poll() -> None:
     assert "external_evidence_observation" not in guard, guard
 
 
+def assert_unavailable_advancement_does_not_wake_future_monitor() -> None:
+    summary = agent_todos(
+        [
+            monitor_todo(
+                todo_id="todo_monitor_future",
+                priority="P1",
+                next_due_at=FUTURE_DUE_AT,
+            ),
+            unavailable_advancement_todo(),
+        ]
+    )
+    item = selected_item(status_payload(summary))
+    counts = todo_summary_open_task_counts(summary)
+    assert counts["monitor"] == 1 and counts["advancement"] == 1, counts
+    assert build_external_evidence_poll_signal(item, agent_todo_summary=summary), item
+
+    guard = build_quota_should_run(status_payload(summary), goal_id=GOAL_ID, agent_id=AGENT_ID)
+    assert "external_evidence_observation" not in guard, guard
+    assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is False, guard
+    assert guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is True, guard
+
+
 def assert_selected_monitor_handle(
     items: list[dict[str, Any]],
     *,
@@ -514,6 +536,7 @@ def main() -> int:
     assert_recent_due_monitor_no_change_quiets_external_monitor()
     assert_advancement_lane_keeps_external_monitor_as_context()
     assert_future_scoped_monitor_does_not_fake_external_poll()
+    assert_unavailable_advancement_does_not_wake_future_monitor()
     assert_monitor_handle_precedence()
     assert_pr_dependency_wait_requires_first_observation()
     assert_pr_dependency_wait_with_observation_does_not_reobserve_before_due()

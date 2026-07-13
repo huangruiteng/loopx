@@ -1636,6 +1636,8 @@ def build_quota_should_run(
             )
             if external_evidence_observation_recent:
                 external_evidence_observation = None
+            elif external_evidence_observation.get("poll_window_status") == "before_next_due":
+                external_evidence_observation = None
         ready_deferred_resume_candidates: list[dict[str, Any]] = []
         if (
             isinstance(agent_identity, dict)

@@ -168,6 +168,30 @@ def _monitor_window_allows_poll_signal(
     return True
 
 
+def _external_evidence_observation_is_early_future_monitor(
+    observation: dict[str, Any] | None,
+    *,
+    agent_todo_summary: dict[str, Any] | None,
+) -> bool:
+    if not isinstance(observation, dict):
+        return False
+    handle = (
+        observation.get("monitor_handle")
+        if isinstance(observation.get("monitor_handle"), dict)
+        else {}
+    )
+    if not str(handle.get("next_due_at") or "").strip():
+        return False
+    return bool(
+        todo_summary_monitor_due_count(agent_todo_summary) <= 0
+        and todo_summary_monitor_schedule_gap_count(agent_todo_summary) <= 0
+        and not _selected_monitor_needs_first_dependency_observation(
+            agent_todo_summary,
+            handle,
+        )
+    )
+
+
 def build_external_evidence_poll_signal(
     item: dict[str, Any],
     *,
@@ -382,6 +406,11 @@ def build_external_evidence_observation_obligation(
     monitor_handle = poll_signal.get("monitor_handle") if isinstance(poll_signal, dict) else None
     if isinstance(monitor_handle, dict) and monitor_handle:
         obligation["monitor_handle"] = monitor_handle
+    if _external_evidence_observation_is_early_future_monitor(
+        obligation,
+        agent_todo_summary=agent_todo_summary,
+    ):
+        obligation["poll_window_status"] = "before_next_due"
     return obligation
 
 
