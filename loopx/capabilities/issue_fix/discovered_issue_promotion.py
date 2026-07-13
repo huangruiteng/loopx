@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import subprocess
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -59,6 +60,8 @@ _DUPLICATE_FIELDS = {
 _CLOSING_REFERENCE_PATTERN = re.compile(
     r"(?im)^\s*(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#([1-9][0-9]*)\s*$"
 )
+_CLOSING_REFERENCE_VERIFY_ATTEMPTS = 3
+_CLOSING_REFERENCE_VERIFY_DELAY_SECONDS = 0.5
 
 CommandRunner = Callable[[Sequence[str]], Mapping[str, Any]]
 
@@ -463,13 +466,19 @@ def _ensure_pr_closing_reference(
             if result.get("returncode") != 0:
                 raise ValueError("GitHub PR closing-reference update failed")
             write_performed = True
-    after = read_pr()
-    verified_numbers = {
-        item.get("number")
-        for item in after.get("closingIssuesReferences") or []
-        if isinstance(item, Mapping)
-    }
-    if issue_number not in verified_numbers:
+    verified_numbers: set[Any] = set()
+    for attempt in range(_CLOSING_REFERENCE_VERIFY_ATTEMPTS):
+        after = read_pr()
+        verified_numbers = {
+            item.get("number")
+            for item in after.get("closingIssuesReferences") or []
+            if isinstance(item, Mapping)
+        }
+        if issue_number in verified_numbers:
+            break
+        if attempt + 1 < _CLOSING_REFERENCE_VERIFY_ATTEMPTS:
+            time.sleep(_CLOSING_REFERENCE_VERIFY_DELAY_SECONDS)
+    else:
         raise ValueError(
             "GitHub PR does not visibly report the closing issue reference"
         )
@@ -864,21 +873,24 @@ def build_issue_fix_discovered_issue_promotion_packet(
             ref_value=f"pull_{pr_reference['number']}",
         )
         if lifecycle_source is None:
-            raise ValueError(
-                "PR lifecycle row must exist before discovered issue promotion"
+            packet["domain_state_reconciliation"]["pr_lifecycle"] = {
+                "write_performed": False,
+                "status": "not_projected",
+                "path_recorded": False,
+            }
+        else:
+            lifecycle = promote_issue_fix_pr_lifecycle_packet(
+                lifecycle_source,
+                canonical_issue_ref=issue["issue_ref"],
             )
-        lifecycle = promote_issue_fix_pr_lifecycle_packet(
-            lifecycle_source,
-            canonical_issue_ref=issue["issue_ref"],
-        )
-        lifecycle_write = upsert_issue_fix_pr_lifecycle_ledger_jsonl(
-            lifecycle_path, lifecycle
-        )
-        packet["domain_state_reconciliation"]["pr_lifecycle"] = {
-            "write_performed": lifecycle_write.get("write_performed") is True,
-            "status": lifecycle_write.get("status"),
-            "path_recorded": False,
-        }
+            lifecycle_write = upsert_issue_fix_pr_lifecycle_ledger_jsonl(
+                lifecycle_path, lifecycle
+            )
+            packet["domain_state_reconciliation"]["pr_lifecycle"] = {
+                "write_performed": lifecycle_write.get("write_performed") is True,
+                "status": lifecycle_write.get("status"),
+                "path_recorded": False,
+            }
     packet["dry_run"] = False
     if pr_blocker is not None:
         packet["ok"] = False
