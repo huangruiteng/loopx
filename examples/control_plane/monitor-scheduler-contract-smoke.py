@@ -524,6 +524,44 @@ def assert_due_monitor_capability_resolution_is_preserved() -> None:
     assert repair_guard["interaction_contract"]["agent_channel"]["must_attempt"] is True, repair_guard
 
 
+def assert_due_monitor_capability_resolution_uses_full_lane() -> None:
+    items = [
+        monitor_item(
+            index=index,
+            todo_id=f"todo_private_monitor_due_{index}",
+            priority="P0",
+            next_due_at=PAST_DUE_AT,
+            target_key=f"private-source-watch-{index}",
+            required_capabilities=["private_read"],
+        )
+        for index in (1, 2)
+    ]
+    items.append(
+        monitor_item(
+            index=3,
+            todo_id="todo_network_monitor_due_after_display_limit",
+            priority="P0",
+            next_due_at=PAST_DUE_AT,
+            target_key="public-network-watch-after-display-limit",
+            required_capabilities=["network"],
+        )
+    )
+    guard = guard_for(items)
+    summary = guard["agent_todo_summary"]
+    gate = guard["capability_gate"]
+    assert summary["monitor_capability_blocked_due_count"] == 3, summary
+    assert len(summary["monitor_capability_blocked_due_items"]) == 2, summary
+    compaction = summary["payload_compaction"]["compacted_lanes"]
+    assert compaction["monitor_capability_blocked_due_items"] == {
+        "shown": 2,
+        "total": 3,
+    }, compaction
+    assert gate["action"] == "ask_owner", gate
+    assert gate["owner_missing"] == ["network"], gate
+    assert "network" in gate["missing"], gate
+    assert guard["heartbeat_recommendation"]["notify"] == "NOTIFY", guard
+
+
 def assert_expired_monitor_does_not_catch_up() -> None:
     guard = guard_for(
         [
@@ -826,6 +864,7 @@ def main() -> int:
     assert_due_monitor_requires_explicit_attempt()
     assert_due_monitor_requires_available_capabilities()
     assert_due_monitor_capability_resolution_is_preserved()
+    assert_due_monitor_capability_resolution_uses_full_lane()
     assert_expired_monitor_does_not_catch_up()
     assert_due_monitor_priority_does_not_steal_advancement_lane()
     assert_capability_skip_yields_to_monitor_schedule_repair()

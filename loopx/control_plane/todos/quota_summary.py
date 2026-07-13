@@ -304,9 +304,7 @@ def summarize_user_todos_for_quota(
             lanes.monitor_capability_blocked_due_items
         ),
         "monitor_capability_blocked_due_items": (
-            lanes.monitor_capability_blocked_due_items[
-                :QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT
-            ]
+            lanes.monitor_capability_blocked_due_items
         ),
         "monitor_schedule_gap_count": len(monitor_schedule_gap_items),
         "monitor_schedule_gap_items": monitor_schedule_gap_items[:MONITOR_DUE_ITEM_LIMIT],
@@ -547,9 +545,7 @@ def summarize_project_asset_todos_for_quota(
             lanes.monitor_capability_blocked_due_items
         ),
         "monitor_capability_blocked_due_items": (
-            lanes.monitor_capability_blocked_due_items[
-                :QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT
-            ]
+            lanes.monitor_capability_blocked_due_items
         ),
         "active_next_action_items": lanes.active_next_action_items,
         "active_next_action_executable_items": lanes.active_next_action_executable_items,
