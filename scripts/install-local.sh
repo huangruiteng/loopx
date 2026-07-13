@@ -245,6 +245,57 @@ if expected_commit and source.get("git_commit") != expected_commit:
 PY
 }
 
+validate_release_candidate() {
+  local candidate="$1"
+  local candidate_wrapper="$candidate/scripts/loopx"
+  if [[ ! -x "$candidate_wrapper" ]]; then
+    echo "loopx installer error: release candidate is missing an executable wrapper" >&2
+    return 1
+  fi
+
+  local doctor_json
+  if ! doctor_json="$(PATH="$candidate/scripts:$PATH" "$candidate_wrapper" --format json doctor --deep)"; then
+    echo "loopx installer error: release candidate doctor validation failed" >&2
+    return 1
+  fi
+  LOOPX_CANDIDATE_DOCTOR_JSON="$doctor_json" "${LOOPX_PYTHON:-python3}" - <<'PY'
+import json
+import os
+import sys
+
+try:
+    payload = json.loads(os.environ["LOOPX_CANDIDATE_DOCTOR_JSON"])
+except (KeyError, json.JSONDecodeError) as exc:
+    print(f"loopx installer error: release candidate doctor output is invalid: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+
+required_checks = {
+    "command_package_same_root",
+    "representative_cli_commands",
+    "representative_cli_imports",
+    "representative_package_paths",
+}
+checks = {
+    str(item.get("id")): item
+    for item in payload.get("checks", [])
+    if isinstance(item, dict)
+}
+missing = sorted(required_checks - checks.keys())
+failed = sorted(
+    check_id
+    for check_id in required_checks
+    if not checks.get(check_id, {}).get("ok")
+)
+if payload.get("mode") != "deep" or not payload.get("ok") or missing or failed:
+    print(
+        "loopx installer error: release candidate is incomplete "
+        f"(missing_checks={missing}, failed_checks={failed})",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+PY
+}
+
 resolve_default_promotion() {
   case "$promote_default_request" in
     1|true|yes)
@@ -366,6 +417,10 @@ fi
 chmod +x "$release_tmp/scripts/loopx"
 mv "$release_tmp" "$release_dir"
 release_tmp=""
+if ! validate_release_candidate "$release_dir"; then
+  rm -rf "$release_dir"
+  exit 1
+fi
 install_symlink "$release_dir/scripts/loopx" "$bin_dir/loopx"
 verify_default_promotion
 

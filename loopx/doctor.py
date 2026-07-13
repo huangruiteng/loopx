@@ -643,7 +643,7 @@ def latest_promotion_readiness_event(runtime_root: Path, goal_id: str | None = N
     return latest
 
 
-def collect_doctor() -> dict[str, Any]:
+def collect_doctor(*, deep: bool = False) -> dict[str, Any]:
     loopx_path = resolve_command_path("loopx")
     invocation_path = current_script_invocation_path()
     loopx_canary_path = resolve_command_path("loopx-canary")
@@ -652,7 +652,6 @@ def collect_doctor() -> dict[str, Any]:
     command_path = command_path_primary
     command_realpath = command_path.resolve() if command_path else None
     canary_realpath = canary_path.resolve() if canary_path else None
-    loopx_realpath = loopx_path.resolve() if loopx_path else None
     loopx_canary_realpath = loopx_canary_path.resolve() if loopx_canary_path else None
     module_path = Path(__file__).resolve()
     package_dir = module_path.parent
@@ -732,6 +731,21 @@ def collect_doctor() -> dict[str, Any]:
     )
     default_global_registry = global_registry_path(DEFAULT_RUNTIME_ROOT)
     global_registry_writability = probe_registry_write_path(default_global_registry, create_parent=True)
+    deep_validation = None
+    if deep:
+        from .release_candidate import collect_release_candidate_checks
+
+        invocation_root_text = os.environ.get("LOOPX_RELEASE_ROOT")
+        invocation_root = (
+            Path(invocation_root_text).expanduser().resolve()
+            if invocation_root_text
+            else release_root
+        )
+        deep_validation = collect_release_candidate_checks(
+            command_path=command_path,
+            package_root=repo_root,
+            invocation_root=invocation_root,
+        )
     checks = [
         {
             "id": "command_available",
@@ -834,8 +848,11 @@ def collect_doctor() -> dict[str, Any]:
             else str(global_registry_writability.get("error") or default_global_registry),
         },
     ]
-    return {
+    if deep_validation:
+        checks.extend(deep_validation["checks"])
+    payload = {
         "ok": all(check["ok"] for check in checks if check["required"]),
+        "mode": "deep" if deep else "standard",
         "python": {
             "executable": sys.executable,
             "version": sys.version.split()[0],
@@ -877,6 +894,9 @@ def collect_doctor() -> dict[str, Any]:
             f"`curl -fsSL {NO_CLONE_INSTALL_URL} | bash`."
         ),
     }
+    if deep_validation:
+        payload["release_candidate"] = deep_validation
+    return payload
 
 
 def render_doctor_markdown(payload: dict[str, Any]) -> str:
