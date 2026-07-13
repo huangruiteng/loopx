@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from enum import Enum
 import json
 import os
 import re
@@ -54,6 +55,14 @@ REQUIRED_INSTALLED_SKILL_PHRASES = {
         "Repair at the lowest durable layer",
     ),
 }
+
+
+class GitRevisionRelation(str, Enum):
+    SAME = "same"
+    INSTALLED_AHEAD = "installed_ahead"
+    INSTALLED_BEHIND = "installed_behind"
+    DIVERGED = "diverged"
+    UNKNOWN = "unknown"
 
 
 def user_local_bin() -> Path:
@@ -175,6 +184,66 @@ def git_metadata_for_root(root: Path | None) -> dict[str, Any]:
     }
 
 
+def git_revision_relation(
+    root: Path | None,
+    *,
+    installed_commit: Any,
+    comparison_commit: Any,
+) -> GitRevisionRelation:
+    """Classify installed vs comparison revisions in one Git object graph."""
+    if not isinstance(installed_commit, str) or not installed_commit.strip():
+        return GitRevisionRelation.UNKNOWN
+    if not isinstance(comparison_commit, str) or not comparison_commit.strip():
+        return GitRevisionRelation.UNKNOWN
+    installed_commit = installed_commit.strip()
+    comparison_commit = comparison_commit.strip()
+    if installed_commit == comparison_commit:
+        return GitRevisionRelation.SAME
+    if root is None:
+        return GitRevisionRelation.UNKNOWN
+
+    try:
+        source_root = root.expanduser().resolve()
+    except OSError:
+        source_root = root.expanduser()
+    if not source_root.exists():
+        return GitRevisionRelation.UNKNOWN
+
+    def _is_ancestor(ancestor: str, descendant: str) -> bool | None:
+        try:
+            result = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(source_root),
+                    "merge-base",
+                    "--is-ancestor",
+                    ancestor,
+                    descendant,
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except OSError:
+            return None
+        if result.returncode == 0:
+            return True
+        if result.returncode == 1:
+            return False
+        return None
+
+    comparison_is_ancestor = _is_ancestor(comparison_commit, installed_commit)
+    installed_is_ancestor = _is_ancestor(installed_commit, comparison_commit)
+    if comparison_is_ancestor is None or installed_is_ancestor is None:
+        return GitRevisionRelation.UNKNOWN
+    if comparison_is_ancestor:
+        return GitRevisionRelation.INSTALLED_AHEAD
+    if installed_is_ancestor:
+        return GitRevisionRelation.INSTALLED_BEHIND
+    return GitRevisionRelation.DIVERGED
+
+
 def build_install_freshness(
     *,
     command_path: Path | None,
@@ -251,16 +320,25 @@ def build_install_freshness(
     comparison = comparison_source if isinstance(comparison_source, dict) else {}
     comparison_source_git_commit = comparison.get("git_commit")
     comparison_source_label = comparison.get("label") or "comparison_source"
+    comparison_revision_relation = comparison.get("revision_relation")
     manifest_source_matches_comparison = (
         manifest_source_git_commit == comparison_source_git_commit
         if manifest_source_git_commit and comparison_source_git_commit
         else None
     )
-    source_commit_mismatch = manifest_source_matches_comparison is False
+    source_commit_mismatch = (
+        manifest_source_matches_comparison is False
+        and comparison_revision_relation != GitRevisionRelation.INSTALLED_AHEAD
+    )
 
     if release_id and source_commit_mismatch and command_path is not None and not skill_problem:
         status = "stale"
-        reason = f"release manifest source commit differs from {comparison_source_label} commit"
+        if comparison_revision_relation == GitRevisionRelation.INSTALLED_BEHIND:
+            reason = f"release manifest source commit is behind {comparison_source_label} commit"
+        elif comparison_revision_relation == GitRevisionRelation.DIVERGED:
+            reason = f"release manifest source commit diverges from {comparison_source_label} commit"
+        else:
+            reason = f"release manifest source commit differs from {comparison_source_label} commit"
         requires_upgrade = True
 
     if (
@@ -311,6 +389,11 @@ def build_install_freshness(
         "comparison_source_git_ref": comparison.get("git_ref"),
         "comparison_source_git_dirty": comparison.get("git_dirty"),
         "manifest_source_matches_comparison": manifest_source_matches_comparison,
+        "manifest_source_comparison_relation": (
+            comparison_revision_relation.value
+            if isinstance(comparison_revision_relation, GitRevisionRelation)
+            else comparison_revision_relation
+        ),
         "manifest_archive_sha256": manifest_source.get("archive_sha256"),
         "manifest_skills_digest": manifest_skills.get("digest"),
     }
@@ -511,6 +594,13 @@ def collect_doctor() -> dict[str, Any]:
         if isinstance(release_manifest_body.get("source"), dict)
         else {}
     )
+    if comparison_source:
+        comparison_root = comparison_source.get("root")
+        comparison_source["revision_relation"] = git_revision_relation(
+            Path(str(comparison_root)) if comparison_root else None,
+            installed_commit=release_manifest_source.get("git_commit"),
+            comparison_commit=comparison_source.get("git_commit"),
+        )
     default_release["promotion_mode"] = release_manifest_source.get("promotion_mode")
     release_provenance = {
         "runtime_root": str(DEFAULT_RUNTIME_ROOT),
@@ -784,6 +874,7 @@ def render_doctor_markdown(payload: dict[str, Any]) -> str:
                 f"- manifest_source_git_dirty: `{freshness.get('manifest_source_git_dirty')}`",
                 f"- comparison_source: `{freshness.get('comparison_source_label')}` @ `{freshness.get('comparison_source_git_commit_short')}`",
                 f"- manifest_source_matches_comparison: `{freshness.get('manifest_source_matches_comparison')}`",
+                f"- manifest_source_comparison_relation: `{freshness.get('manifest_source_comparison_relation')}`",
                 f"- manifest_archive_sha256: `{freshness.get('manifest_archive_sha256')}`",
                 f"- manifest_skills_digest: `{freshness.get('manifest_skills_digest')}`",
                 "- upgrade_command:",
