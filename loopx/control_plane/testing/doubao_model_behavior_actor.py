@@ -8,6 +8,10 @@ from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from ..quota.turn_envelope import (
+    quota_action_signature_document,
+    turn_envelope_action_signature_document,
+)
 from .model_behavior_qualification import (
     MODEL_BEHAVIOR_ACTOR_RESULT_SCHEMA_VERSION,
     ModelBehaviorActor,
@@ -119,11 +123,20 @@ def _direct_ark_transport(
 def _provider_input(request: Mapping[str, Any]) -> dict[str, Any]:
     """Keep qualification metadata out of the model-visible decision input."""
 
+    arm = str(request["arm"])
+    packet = request["packet"]
+    signature = (
+        quota_action_signature_document(packet)
+        if arm == "full_packet"
+        else turn_envelope_action_signature_document(packet)
+    )
+    selected_todo = dict(dict(signature.get("action") or {}).get("selected_todo") or {})
     return {
         "schema_version": MODEL_BEHAVIOR_PROVIDER_INPUT_SCHEMA_VERSION,
-        "arm": request["arm"],
+        "arm": arm,
+        "canonical_selected_todo_id": selected_todo.get("todo_id"),
         "semantic_contract_required": request["semantic_contract_required"],
-        "packet": request["packet"],
+        "packet": packet,
     }
 
 
@@ -198,13 +211,17 @@ Preserve user gates, selected work, execution obligations, write boundaries,
 spend timing, scheduler duties, and stop conditions from the packet. Output
 JSON only, without markdown or reasoning. Include semantic_contract whenever
 the qualification input sets semantic_contract_required=true; derive it from
-the packet and do not invent or summarize values. Choose intended_action_kinds
-from the execution obligation, not packet verbosity, and use the same ordered
-normalization for both arms. Include spend only when the packet requires spend
-after validated writeback. For intended actions, treat a full packet's
-interaction_contract.agent_channel as equivalent to candidate action, and its
-interaction_contract.cli_channel as equivalent to candidate writeback. When
-spend_after_validation=true, end both arms with writeback then spend."""
+the packet and do not invent or summarize values. Copy
+canonical_selected_todo_id exactly into selected_todo_id, including null; it
+was derived locally from this arm's canonical action signature. Never infer a
+todo id from summaries, diagnostics, handoffs, history, or other cold-path
+references. Choose intended_action_kinds from the execution obligation, not
+packet verbosity, and use the same ordered normalization for both arms.
+Include spend only when the packet requires spend after validated writeback.
+For intended actions, treat a full packet's interaction_contract.agent_channel
+as equivalent to candidate action, and its interaction_contract.cli_channel as
+equivalent to candidate writeback. When spend_after_validation=true, end both
+arms with writeback then spend."""
     if semantic_contract_required:
         instruction += _semantic_contract_instruction()
     return instruction

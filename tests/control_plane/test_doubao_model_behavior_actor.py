@@ -12,6 +12,7 @@ from loopx.control_plane.testing.doubao_model_behavior_actor import (
     MODEL_BEHAVIOR_PROVIDER_INPUT_SCHEMA_VERSION,
     DoubaoActorTransportError,
     DoubaoModelBehaviorActor,
+    _provider_input,
 )
 from loopx.control_plane.testing.model_behavior_qualification import (
     build_model_behavior_actor_request,
@@ -21,7 +22,10 @@ from loopx.control_plane.testing.model_behavior_qualification import (
 
 def _request() -> dict[str, Any]:
     return build_model_behavior_actor_request(
-        {"schema_version": "loopx_turn_envelope_v0"},
+        {
+            "schema_version": "loopx_turn_envelope_v0",
+            "action": {"selected_todo": {"todo_id": "todo_fixture001"}},
+        },
         qualification_id="case-direct-doubao-001",
         arm="candidate_packet",
     )
@@ -40,6 +44,32 @@ def _decision() -> dict[str, Any]:
         "intended_action_kinds": ["inspect", "test", "writeback"],
         "reason_codes": ["bounded_delivery"],
     }
+
+
+def test_provider_input_does_not_select_a_diagnostic_todo() -> None:
+    request = build_model_behavior_actor_request(
+        {
+            "mode": "should-run",
+            "goal_id": "fixture-goal",
+            "interaction_contract": {},
+            "selected_todo": None,
+            "agent_todo_summary": {
+                "first_executable_items": [{"todo_id": "todo_diagnostic001"}]
+            },
+        },
+        qualification_id="case-diagnostic-todo-001",
+        arm="full_packet",
+    )
+
+    provider_input = _provider_input(request)
+
+    assert provider_input["canonical_selected_todo_id"] is None
+    assert (
+        provider_input["packet"]["agent_todo_summary"]["first_executable_items"][0][
+            "todo_id"
+        ]
+        == "todo_diagnostic001"
+    )
 
 
 def test_direct_actor_uses_canonical_endpoint_without_tools_or_raw_retention() -> None:
@@ -76,12 +106,20 @@ def test_direct_actor_uses_canonical_endpoint_without_tools_or_raw_retention() -
     assert captured["body"]["max_tokens"] == 4096
     assert "tools" not in captured["body"]
     assert captured["timeout_seconds"] == 12
+    system_instruction = captured["body"]["messages"][0]["content"]
+    compact_instruction = " ".join(system_instruction.lower().split())
+    assert "canonical_selected_todo_id exactly" in compact_instruction
+    assert "never infer a todo id from summaries" in compact_instruction
     provider_input = json.loads(captured["body"]["messages"][1]["content"])
     assert provider_input == {
         "schema_version": MODEL_BEHAVIOR_PROVIDER_INPUT_SCHEMA_VERSION,
         "arm": "candidate_packet",
+        "canonical_selected_todo_id": "todo_fixture001",
         "semantic_contract_required": False,
-        "packet": {"schema_version": "loopx_turn_envelope_v0"},
+        "packet": {
+            "schema_version": "loopx_turn_envelope_v0",
+            "action": {"selected_todo": {"todo_id": "todo_fixture001"}},
+        },
     }
     assert "sandbox" not in provider_input
     assert "response_contract" not in provider_input
