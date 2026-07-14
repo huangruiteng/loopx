@@ -241,6 +241,24 @@ path, and canary route rather than as a user-facing release baseline.
   easier to maintain (#1983, #1996, #2012). No persisted-state migration is
   required; optional provider, Lark, semantic-preference, and Explore surfaces
   remain opt-in.
+- `v0.2.4` on 2026-07-14: Explore presentation and delivery-reliability
+  release at the matching `v0.2.4` tag. Explore board layout is now a
+  first-class `board_style` product parameter with two supported values:
+  `auto_flow` uses Mermaid's automatic graph layout for topology-oriented
+  views, while `semantic_lane_columns` emits deterministic stage SVGs for
+  operator boards with meaningful parallel lanes (#2062). The Lark visual
+  sink can publish one managed board per evidence stage, project the selected
+  style into every stage, keep labels inside lane nodes, retry eventual visual
+  readback, and reconcile generated document sections so stale or duplicate
+  stages do not accumulate (#2051, #2063, #2065-#2066, #2068). The same
+  canonical Explore result graph remains authoritative for both styles, and
+  existing Mermaid-only configs continue to resolve as `auto_flow`. This
+  release also includes same-source canonical/executive views, explicit
+  issue-fix semantic-preference call sites, provider diagnostics, and further
+  monitor, scheduler, installer, onboarding, and public-smoke hardening
+  (#2002, #2005-#2006, #2018-#2021, #2027-#2028, #2032, #2036, #2052-#2061).
+  No persisted-state migration is required; Explore and its Lark visual sinks
+  remain opt-in.
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.
