@@ -17,43 +17,51 @@ open PRs, merge, publish, or run destructive git without an explicit gate.
 
 ## Workflow Stages
 
-1. **Metadata preview:** build `github_issue_metadata_preview_v0` from a public
+1. **Candidate preflight:** when the caller supplies
+   `issue_fix_candidate_preflight_input_v0`, reconcile prior issue-fix domain
+   state, all-state numeric PR references, and current-revision-verified
+   semantic implementation PR evidence before projecting patch-planning work.
+   The provider-neutral seam performs no searches itself. It returns
+   `proceed`, `reuse_existing_pr`, `comment_only`, or `skip`; non-proceed routes
+   suppress new classification/feasibility todos and preserve any existing
+   agentic-recall receipt instead of opening another recall window.
+2. **Metadata preview:** build `github_issue_metadata_preview_v0` from a public
    URL, compact reference, mocked metadata, or caller-approved metadata fetch.
    Allowed fields are repo, issue or PR number, state, title summary, labels,
    updated timestamp, author association, comment count, and permalink. Body,
    comment, timeline, event, raw, and provider response fields are gated.
-2. **Intake classification:** build `issue_fix_intake_v0` with issue class,
+3. **Intake classification:** build `issue_fix_intake_v0` with issue class,
    code-context route candidates, owner/user gate projections, and ordered
    agent todo candidates. The first screen must name `waiting_on`, top agent
    todo, top gate when present, and next safe action.
-3. **Repository context:** build `issue_fix_repository_context_v0` from a
+4. **Repository context:** build `issue_fix_repository_context_v0` from a
    pinned repository revision plus compact source refs. Current authoritative
    or verified repository evidence may ground change scope, reproduction, and
    validation. Stale memory and external experts remain advisory. The context
    projects missing reads but does not introduce another lifecycle state,
    authorize external writes, or override feasibility routing.
-4. **Workflow plan:** build `issue_fix_workflow_plan_packet_v0` to compose the
+5. **Workflow plan:** build `issue_fix_workflow_plan_packet_v0` to compose the
    metadata preview, intake, branch dry-run, validation label, ordered LoopX
    todo writeback preview, resolution route candidates, gate preview, post-PR
    lifecycle monitor plan, and PR-review readiness blockers. This stage is
    preview-only and does not write todos.
-5. **Feasibility checkpoint:** build `issue_fix_feasibility_v0` from compact
+6. **Feasibility checkpoint:** build `issue_fix_feasibility_v0` from compact
    public-safe agent observations. The decision must select exactly one
    `fix_pr`, `comment_only`, or `triage_only` route. `fix_pr` requires bounded
    scope plus named reproduction and validation surfaces; planned reproduction
    projects confirmation work before patch work. With a goal id, the compact
    decision writes issue-fix domain state by default.
-6. **LoopX todo writeback:** initially write only metadata classification and
+7. **LoopX todo writeback:** initially write only metadata classification and
    the feasibility checkpoint. Then write the single route-specific successor
    projected by feasibility, or record its structured no-follow-up. User todos
    represent concrete external-write, private-material, merge, publish, or
    repository-policy gates.
-7. **Caller repo branch:** use `issue_fix_caller_repo_branch_packet_v0` only
+8. **Caller repo branch:** use `issue_fix_caller_repo_branch_packet_v0` only
    after the caller provides an approved local git repo, base branch, issue
    branch policy, and validation command. Dry-run mode must not inspect the
    repo. Execute mode may inspect the approved repo and create or claim a
    `codex/` issue branch, but must refuse branch switches from dirty state.
-8. **Validation:** record focused validation as pass/fail, exit code, and
+9. **Validation:** record focused validation as pass/fail, exit code, and
    public-safe label. Validation stdout, stderr, local paths, and raw git output
    stay out of the packet. A validated fix should prove failing-before and
    passing-after evidence when that repro path is available. When delivery
@@ -63,7 +71,7 @@ open PRs, merge, publish, or run destructive git without an explicit gate.
    with a matching repository fingerprint plus a full recoverable branch, tag,
    or remote ref. Missing or stale commit proof fails before state mutation;
    legacy unproved rows project as `unverified`, not publication-ready.
-9. **PR review packet:** emit `issue_fix_pr_review_packet_v0` only when branch,
+10. **PR review packet:** emit `issue_fix_pr_review_packet_v0` only when branch,
    validation, and repo-relative changed-file evidence are sufficient for human
    review. Its `issue_fix_pr_description_contract_v0` keeps the PR-review
    motivation/approach/change/validation/risk structure, requires a compact key
@@ -76,7 +84,7 @@ open PRs, merge, publish, or run destructive git without an explicit gate.
    every issue and verify closing references through GitHub
    `closingIssuesReferences`. The packet is review evidence, not external
    publication authority.
-10. **PR lifecycle monitor:** after a PR exists, use
+11. **PR lifecycle monitor:** after a PR exists, use
    `issue_fix_pr_lifecycle_monitor_v0` to project compact public PR state into
    exactly one of `runnable_successor`, `monitor_continuation`, `user_gate`, or
    `no_followup`. Terminal PR states such as `MERGED` and `CLOSED` take
