@@ -187,6 +187,15 @@ def _compact_todos(project_asset: Mapping[str, Any], role: str) -> list[dict[str
     return compact
 
 
+def _user_gate_todos(user_todos: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        dict(todo)
+        for todo in user_todos
+        if todo.get("task_class") == "user_gate"
+        and todo.get("status") not in {"done", "closed", "resolved"}
+    ]
+
+
 def _open_gates(
     *,
     quota_payload: Mapping[str, Any],
@@ -194,6 +203,7 @@ def _open_gates(
     user_todos: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
     gates: list[dict[str, Any]] = []
+    user_gate_todos = _user_gate_todos(user_todos)
     raw_gates = project_asset.get("open_gates")
     if isinstance(raw_gates, list):
         for gate in raw_gates:
@@ -219,15 +229,24 @@ def _open_gates(
         if isinstance(interaction, Mapping) and isinstance(interaction.get("user_channel"), Mapping)
         else {}
     )
-    if user_channel.get("action_required") is True and not gates:
+    if (user_channel.get("action_required") is True or user_gate_todos) and not gates:
+        blocking_todos = user_gate_todos or list(user_todos)
         gates.append(
             {
-                "gate_id": "interaction_contract_user_channel",
-                "kind": "user_channel",
+                "gate_id": (
+                    "interaction_contract_user_channel"
+                    if user_channel.get("action_required") is True
+                    else "project_asset_user_gate_todos"
+                ),
+                "kind": (
+                    "user_channel"
+                    if user_channel.get("action_required") is True
+                    else "user_todo"
+                ),
                 "status": "action_required",
                 "blocks": [
                     str(todo.get("todo_id") or todo.get("title") or "user_todo")
-                    for todo in user_todos
+                    for todo in blocking_todos
                 ],
             }
         )
@@ -378,6 +397,7 @@ def build_goal_channel_projection(
         if isinstance(interaction, Mapping) and isinstance(interaction.get("agent_channel"), Mapping)
         else {}
     )
+    user_gate_todos = _user_gate_todos(user_todos)
 
     projection = {
         "schema_version": GOAL_CHANNEL_PROJECTION_SCHEMA_VERSION,
@@ -414,7 +434,9 @@ def build_goal_channel_projection(
             limit=260,
         ),
         "decision_frame": {
-            "user_action_required": bool(user_channel.get("action_required")),
+            "user_action_required": bool(
+                user_channel.get("action_required") or user_gate_todos
+            ),
             "agent_action_required": bool(agent_channel.get("must_attempt")),
             "quiet_noop_allowed": bool(agent_channel.get("quiet_noop_allowed")),
         },

@@ -114,6 +114,9 @@ def main() -> int:
     assert projection["truth_contract"]["projection_is_writable"] is False, projection
     assert projection["truth_contract"]["event_ledger_is_source_of_truth"] is True, projection
     assert projection["user_todos"][0]["todo_id"] == "todo_user_gate", projection
+    assert projection["decision_frame"]["user_action_required"] is True, projection
+    assert projection["open_gates"][0]["kind"] == "user_todo", projection
+    assert projection["open_gates"][0]["blocks"] == ["todo_user_gate"], projection
     assert projection["agent_todos"][0]["claimed_by"] == "codex-side-bypass", projection
     assert projection["active_leases"][0]["owner_agent"] == "codex-side-bypass", projection
     assert projection["recent_events"][0]["classification"] == "validated_progress", projection

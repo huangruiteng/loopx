@@ -164,6 +164,7 @@ def test_user_gate_projection() -> None:
                 "title": "Approve the bounded delivery packet.",
                 "status": "open",
                 "priority": "P0",
+                "task_class": "user_gate",
             }
         ],
     }
@@ -180,6 +181,30 @@ def test_user_gate_projection() -> None:
     assert payload["open_gates"][0]["kind"] == "user_channel", payload
     assert payload["open_gates"][0]["status"] == "action_required", payload
     assert_no_raw_values(payload)
+
+
+def test_user_gate_projection_without_interaction_contract() -> None:
+    status_item = sample_status_item()
+    status_item["project_asset"]["user_todos"] = {
+        "open_count": 1,
+        "first_open_items": [
+            {
+                "todo_id": "todo_user_2",
+                "title": "Approve the scoped cleanup.",
+                "status": "open",
+                "task_class": "user_gate",
+            }
+        ],
+    }
+    payload = build_goal_channel_projection(
+        goal_id="demo-goal",
+        status_item=status_item,
+        quota_payload={"status": "active_state_user_gate"},
+        run_history_goal=sample_run_history_goal(),
+    )
+    assert payload["decision_frame"]["user_action_required"] is True, payload
+    assert payload["open_gates"][0]["kind"] == "user_todo", payload
+    assert payload["open_gates"][0]["blocks"] == ["todo_user_2"], payload
 
 
 def test_raw_private_material_is_warned_not_copied() -> None:
@@ -226,6 +251,7 @@ def test_raw_private_material_is_warned_not_copied() -> None:
 def main() -> int:
     test_basic_projection()
     test_user_gate_projection()
+    test_user_gate_projection_without_interaction_contract()
     test_raw_private_material_is_warned_not_copied()
     print("goal-channel-projection-smoke: ok")
     return 0
