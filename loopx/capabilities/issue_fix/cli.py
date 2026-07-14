@@ -76,6 +76,7 @@ from .repository_memory_provider import (
     sync_issue_fix_repository_memory,
     write_issue_fix_validated_outcome_memory,
 )
+from .repository_commit_evidence import verify_issue_fix_repository_commit_evidence
 from .repository_snapshot import (
     collect_public_github_repository_snapshot,
     render_repository_snapshot_markdown,
@@ -93,6 +94,22 @@ PrintPayload = Callable[
 ]
 FormatSelector = Callable[..., str]
 AddFormat = Callable[[argparse.ArgumentParser], None]
+
+
+def _comparable_delivery_evidence(
+    value: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    comparable = {key: item for key, item in value.items() if key != "recorded_at"}
+    repository_evidence = comparable.get("repository_commit_evidence")
+    if isinstance(repository_evidence, dict):
+        comparable["repository_commit_evidence"] = {
+            key: item
+            for key, item in repository_evidence.items()
+            if key != "verified_at"
+        }
+    return comparable
 
 
 def _configured_repository_memory_input(
@@ -616,9 +633,18 @@ def register_issue_fix_commands(
         "--repo-path",
         default=None,
         help=(
-            "Caller-approved git checkout used only to prove that delivery commit_ref "
-            "is contained in the pinned repository revision before memory writeback. "
+            "Caller-approved git checkout used to prove delivery commit identity "
+            "before evidence writeback or repository-memory publication. "
             "The path and raw git output are never recorded."
+        ),
+    )
+    outcome_parser.add_argument(
+        "--repository-ref",
+        default=None,
+        help=(
+            "Full recoverable git ref (refs/heads, refs/remotes, or refs/tags) that "
+            "must resolve exactly to the pinned repository revision when recording "
+            "passed or completed commit evidence."
         ),
     )
     outcome_parser.add_argument(
@@ -1237,6 +1263,53 @@ def handle_issue_fix_command(
                     else None
                 )
             )
+            if explicit_delivery_evidence is not None:
+                requires_commit_verification = bool(
+                    delivery_evidence.get("commit_ref")
+                    and (
+                        delivery_evidence.get("validation_status") == "passed"
+                        or delivery_evidence.get("outcome_status") == "completed"
+                    )
+                )
+                if requires_commit_verification and (
+                    args.repo_path
+                    or args.repository_ref
+                    or args.write_delivery_evidence
+                ):
+                    if not args.repo_path or not args.repository_ref:
+                        raise ValueError(
+                            "passed or completed commit evidence writeback requires "
+                            "--repo-path and --repository-ref"
+                        )
+                    repository_context = feasibility_observation.get(
+                        "repository_context"
+                    )
+                    revision = (
+                        str(repository_context.get("repository_revision") or "").strip()
+                        if isinstance(repository_context, dict)
+                        else ""
+                    )
+                    if not revision:
+                        raise ValueError(
+                            "passed or completed commit evidence requires a pinned "
+                            "repository_revision in feasibility context"
+                        )
+                    repository_commit_evidence = (
+                        verify_issue_fix_repository_commit_evidence(
+                            repo_path=args.repo_path,
+                            repo=args.repo,
+                            repository_revision=revision,
+                            commit_ref=str(delivery_evidence["commit_ref"]),
+                            recovery_ref=args.repository_ref,
+                            verified_at=generated_at,
+                        )
+                    )
+                    delivery_evidence = compact_issue_fix_delivery_evidence(
+                        {
+                            **delivery_evidence,
+                            "repository_commit_evidence": repository_commit_evidence,
+                        }
+                    )
             domain_state_write: dict[str, Any] | None = None
             if args.write_delivery_evidence:
                 existing_delivery = feasibility_packet.get("delivery_evidence")
@@ -1245,24 +1318,8 @@ def handle_issue_fix_command(
                     if isinstance(existing_delivery, dict)
                     else None
                 )
-                comparable_existing = (
-                    {
-                        key: value
-                        for key, value in existing_compact.items()
-                        if key != "recorded_at"
-                    }
-                    if existing_compact is not None
-                    else None
-                )
-                comparable_delivery = (
-                    {
-                        key: value
-                        for key, value in delivery_evidence.items()
-                        if key != "recorded_at"
-                    }
-                    if delivery_evidence is not None
-                    else None
-                )
+                comparable_existing = _comparable_delivery_evidence(existing_compact)
+                comparable_delivery = _comparable_delivery_evidence(delivery_evidence)
                 if comparable_existing == comparable_delivery:
                     delivery_evidence = existing_delivery
                     write_result = {

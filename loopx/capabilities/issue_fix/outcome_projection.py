@@ -8,6 +8,9 @@ from typing import Any
 
 from ...control_plane.runtime.public_safety import public_safe_compact_text
 from .metadata_preview import normalise_github_issue_link_reference
+from .repository_commit_evidence import (
+    ISSUE_FIX_REPOSITORY_COMMIT_EVIDENCE_SCHEMA_VERSION,
+)
 
 
 ISSUE_FIX_OUTCOME_PROJECTION_SCHEMA_VERSION = "issue_fix_outcome_projection_v0"
@@ -28,6 +31,11 @@ ISSUE_FIX_REPOSITORY_LEARNING_CARD_INPUT_SCHEMA_VERSION = (
 DELIVERY_VALIDATION_STATUSES = {"passed", "failed", "partial", "not_run"}
 DELIVERY_OUTCOME_STATUSES = {"in_progress", "completed", "blocked"}
 BRANCH_REPLAN_MERGE_STATES = {"BEHIND", "DIRTY"}
+_REPOSITORY_FINGERPRINT_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
+_COMMIT_OID_PATTERN = re.compile(r"[0-9a-fA-F]{40,64}")
+_RECOVERY_REF_PATTERN = re.compile(
+    r"refs/(?:heads|remotes|tags)/[A-Za-z0-9][A-Za-z0-9._/-]{0,180}"
+)
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -73,6 +81,120 @@ def _repo_relative_files(value: Any) -> list[str]:
         ):
             raise ValueError("changed_files must contain only repo-relative paths")
     return files
+
+
+def _repository_commit_evidence(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError("repository_commit_evidence must be an object")
+    if (
+        value.get("schema_version")
+        != ISSUE_FIX_REPOSITORY_COMMIT_EVIDENCE_SCHEMA_VERSION
+    ):
+        raise ValueError(
+            "repository_commit_evidence schema_version must be "
+            "issue_fix_repository_commit_evidence_v0"
+        )
+    evidence = {
+        "schema_version": ISSUE_FIX_REPOSITORY_COMMIT_EVIDENCE_SCHEMA_VERSION,
+        "status": _safe_text(
+            value.get("status"), field="commit evidence status", limit=20
+        ),
+        "repo": _safe_text(value.get("repo"), field="commit evidence repo", limit=180),
+        "repository_fingerprint": _safe_text(
+            value.get("repository_fingerprint"),
+            field="repository fingerprint",
+            limit=80,
+        ),
+        "declared_repository_revision": _safe_text(
+            value.get("declared_repository_revision")
+            or value.get("repository_revision"),
+            field="declared repository revision",
+            limit=80,
+        ),
+        "repository_revision": _safe_text(
+            value.get("repository_revision"),
+            field="commit evidence repository revision",
+            limit=80,
+        ),
+        "declared_commit_ref": _safe_text(
+            value.get("declared_commit_ref"),
+            field="declared commit ref",
+            limit=80,
+        ),
+        "commit_oid": _safe_text(value.get("commit_oid"), field="commit oid", limit=80),
+        "recovery_ref": _safe_text(
+            value.get("recovery_ref"), field="recovery ref", limit=200
+        ),
+        "recovery_ref_oid": _safe_text(
+            value.get("recovery_ref_oid"), field="recovery ref oid", limit=80
+        ),
+        "commit_is_ancestor": value.get("commit_is_ancestor") is True,
+        "verified_at": _safe_text(
+            value.get("verified_at"), field="commit evidence verified_at", limit=80
+        ),
+        "repo_path_captured": value.get("repo_path_captured") is True,
+        "remote_urls_captured": value.get("remote_urls_captured") is True,
+        "raw_git_output_captured": value.get("raw_git_output_captured") is True,
+    }
+    if evidence["status"] != "verified":
+        raise ValueError("repository_commit_evidence status must be verified")
+    if not _REPOSITORY_FINGERPRINT_PATTERN.fullmatch(
+        evidence["repository_fingerprint"]
+    ):
+        raise ValueError("repository_commit_evidence fingerprint must use sha256")
+    for field in ("repository_revision", "commit_oid", "recovery_ref_oid"):
+        if not _COMMIT_OID_PATTERN.fullmatch(str(evidence[field])):
+            raise ValueError(f"repository_commit_evidence {field} must be a commit oid")
+    if not _RECOVERY_REF_PATTERN.fullmatch(str(evidence["recovery_ref"])):
+        raise ValueError(
+            "repository_commit_evidence recovery_ref must be a full git ref"
+        )
+    if evidence["recovery_ref_oid"] != evidence["repository_revision"]:
+        raise ValueError(
+            "repository_commit_evidence recovery ref must pin the revision"
+        )
+    if not evidence["commit_is_ancestor"]:
+        raise ValueError("repository_commit_evidence must prove commit ancestry")
+    if any(
+        evidence[field]
+        for field in (
+            "repo_path_captured",
+            "remote_urls_captured",
+            "raw_git_output_captured",
+        )
+    ):
+        raise ValueError(
+            "repository_commit_evidence must not capture local or raw git data"
+        )
+    return evidence
+
+
+def _commit_evidence_status(
+    delivery: Mapping[str, Any], *, repo: str, repository_revision: str
+) -> tuple[str, str | None]:
+    commit_ref = str(delivery.get("commit_ref") or "").strip()
+    verification_required = bool(
+        commit_ref
+        and (
+            delivery.get("validation_status") == "passed"
+            or delivery.get("outcome_status") == "completed"
+        )
+    )
+    if not verification_required:
+        return "not_required", None
+    evidence = delivery.get("repository_commit_evidence")
+    if not isinstance(evidence, Mapping):
+        return "unverified", "repository_commit_evidence_missing"
+    expected = {
+        "repo": repo,
+        "declared_repository_revision": repository_revision,
+        "declared_commit_ref": commit_ref,
+    }
+    if any(str(evidence.get(key) or "") != value for key, value in expected.items()):
+        return "unverified", "repository_commit_evidence_mismatch"
+    return "verified", None
 
 
 def _reusable_knowledge(value: Any) -> dict[str, Any] | None:
@@ -188,6 +310,7 @@ def _delivery_evidence(value: Mapping[str, Any] | None) -> dict[str, Any]:
             "validation_status": None,
             "changed_files": [],
             "commit_ref": None,
+            "repository_commit_evidence": None,
             "outputs": [],
             "risks": [],
         }
@@ -234,6 +357,9 @@ def _delivery_evidence(value: Mapping[str, Any] | None) -> dict[str, Any]:
         ),
         "changed_files": _repo_relative_files(value.get("changed_files") or []),
         "commit_ref": commit_ref or None,
+        "repository_commit_evidence": _repository_commit_evidence(
+            value.get("repository_commit_evidence")
+        ),
         "outputs": outputs,
         "risks": _safe_text_list(
             value.get("risks") or [], field="risks", limit=260, count_limit=10
@@ -264,6 +390,10 @@ def compact_issue_fix_delivery_evidence(
         "outputs": list(delivery.get("outputs") or []),
         "risks": list(delivery.get("risks") or []),
     }
+    if delivery.get("repository_commit_evidence") is not None:
+        compact["repository_commit_evidence"] = dict(
+            delivery["repository_commit_evidence"]
+        )
     if delivery.get("reusable_knowledge") is not None:
         compact["reusable_knowledge"] = dict(delivery["reusable_knowledge"])
     effective_recorded_at = recorded_at or delivery.get("recorded_at")
@@ -281,6 +411,7 @@ def _stage_and_card_status(
     route: str,
     reproduction_status: str,
     delivery_outcome_status: str,
+    commit_evidence_status: str,
     lifecycle_observation: Mapping[str, Any],
 ) -> tuple[str, str, str]:
     if lifecycle_observation:
@@ -297,6 +428,8 @@ def _stage_and_card_status(
             return "merged", "done", "P1"
         if state == "CLOSED":
             return "closed_without_merge", "done", "P1"
+        if commit_evidence_status == "unverified":
+            return "delivery_evidence_unverified", "blocked", "P1"
         if delivery_outcome_status == "blocked":
             return "delivery_blocked", "blocked", "P0"
         if checks_aggregate == "FAILING":
@@ -316,6 +449,8 @@ def _stage_and_card_status(
         return "pr_open", "open", "P2"
     if route == "triage_only":
         return "triage_complete", "done", "P1"
+    if commit_evidence_status == "unverified":
+        return "delivery_evidence_unverified", "blocked", "P1"
     if route == "comment_only":
         if delivery_outcome_status == "completed":
             return "comment_published", "done", "P1"
@@ -341,6 +476,7 @@ def _context_tags(
     validation_status: str,
     repository_context_status: str,
     changed_files: Sequence[str],
+    commit_evidence_status: str,
 ) -> list[str]:
     """Build bounded, filterable reviewer context without free-form prose."""
 
@@ -359,6 +495,8 @@ def _context_tags(
         tags.append("multi_file")
     if repository_context_status == "grounded":
         tags.append("repository_context_grounded")
+    if commit_evidence_status != "not_required":
+        tags.append(f"commit_{commit_evidence_status}")
     return list(dict.fromkeys(tags))
 
 
@@ -425,6 +563,9 @@ def _evidence_summary(case: Mapping[str, Any]) -> str:
         parts.append(f"issue={issue.get('url')}")
     if delivery.get("commit_ref"):
         parts.append(f"commit={delivery.get('commit_ref')}")
+        parts.append(
+            f"commit_integrity={delivery.get('commit_evidence_status') or 'unverified'}"
+        )
     changed_files = list(delivery.get("changed_files") or [])
     if changed_files:
         parts.append(f"changed_files={','.join(str(item) for item in changed_files)}")
@@ -497,13 +638,34 @@ def build_issue_fix_outcome_projection(
     repository_context = _mapping(feasibility_observation.get("repository_context"))
     context_effect = _mapping(feasibility_packet.get("repository_context_effect"))
     delivery = _delivery_evidence(delivery_evidence_input)
+    repository_revision = _safe_text(
+        repository_context.get("repository_revision"),
+        field="repository revision",
+        limit=80,
+    )
+    commit_evidence_status, commit_evidence_reason = _commit_evidence_status(
+        delivery,
+        repo=repo,
+        repository_revision=repository_revision,
+    )
+    effective_validation_status = (
+        "unverified"
+        if commit_evidence_status == "unverified"
+        else delivery.get("validation_status")
+    )
+    effective_delivery_outcome_status = (
+        "blocked"
+        if commit_evidence_status == "unverified"
+        else str(delivery.get("outcome_status") or "in_progress")
+    )
     reproduction_status = str(
         feasibility_observation.get("reproduction_status") or "missing"
     ).strip()
     stage, card_status, priority = _stage_and_card_status(
         route=route,
         reproduction_status=reproduction_status,
-        delivery_outcome_status=str(delivery.get("outcome_status") or "in_progress"),
+        delivery_outcome_status=effective_delivery_outcome_status,
+        commit_evidence_status=commit_evidence_status,
         lifecycle_observation=lifecycle_observation,
     )
     issue_url = _safe_text(
@@ -523,8 +685,7 @@ def build_issue_fix_outcome_projection(
         limit=260,
     )
     validation_status = str(
-        delivery.get("validation_status")
-        or ("declared" if validation_label else "unknown")
+        effective_validation_status or ("declared" if validation_label else "unknown")
     )
     repository_context_status = (
         _safe_text(
@@ -545,6 +706,11 @@ def build_issue_fix_outcome_projection(
         field="next action",
         limit=320,
     )
+    if commit_evidence_status == "unverified":
+        next_action = (
+            "Re-resolve commit_ref in the declared repository and record a "
+            "recoverable branch, tag, or remote ref before publication."
+        )
     case: dict[str, Any] = {
         "schema_version": ISSUE_FIX_OUTCOME_CASE_SCHEMA_VERSION,
         "outcome_id": f"{repo}:{issue_ref}",
@@ -567,12 +733,7 @@ def build_issue_fix_outcome_projection(
             "url": issue_url,
         },
         "repository_context": {
-            "revision": _safe_text(
-                repository_context.get("repository_revision"),
-                field="repository revision",
-                limit=80,
-            )
-            or None,
+            "revision": repository_revision or None,
             "fingerprint": _safe_text(
                 repository_context.get("context_fingerprint")
                 or context_effect.get("context_fingerprint"),
@@ -607,8 +768,13 @@ def build_issue_fix_outcome_projection(
         },
         "delivery": {
             "evidence_provided": delivery.get("provided") is True,
-            "outcome_status": delivery.get("outcome_status"),
+            "outcome_status": effective_delivery_outcome_status,
+            "reported_outcome_status": delivery.get("outcome_status"),
+            "reported_validation_status": delivery.get("validation_status"),
             "commit_ref": delivery.get("commit_ref"),
+            "commit_evidence_status": commit_evidence_status,
+            "commit_evidence_reason": commit_evidence_reason,
+            "repository_commit_evidence": delivery.get("repository_commit_evidence"),
             "changed_files": changed_files,
             "recorded_at": delivery.get("recorded_at"),
         },
@@ -644,6 +810,7 @@ def build_issue_fix_outcome_projection(
             validation_status=validation_status,
             repository_context_status=repository_context_status,
             changed_files=changed_files,
+            commit_evidence_status=commit_evidence_status,
         ),
         "next_action": next_action or None,
         "handoff": next_action or "No further action projected.",
@@ -670,6 +837,11 @@ def build_issue_fix_outcome_projection(
             "delivery_evidence": (
                 ISSUE_FIX_DELIVERY_EVIDENCE_INPUT_SCHEMA_VERSION
                 if delivery_evidence_input is not None
+                else None
+            ),
+            "repository_commit_evidence": (
+                ISSUE_FIX_REPOSITORY_COMMIT_EVIDENCE_SCHEMA_VERSION
+                if delivery.get("repository_commit_evidence") is not None
                 else None
             ),
             "writes_source_state": False,
@@ -826,6 +998,7 @@ def build_issue_fix_outcome_collection_from_domain_state(
             "feasibility": "issue_fix_feasibility_v0",
             "pr_lifecycle": "issue_fix_pr_lifecycle_monitor_v0",
             "delivery_evidence": "embedded_in_feasibility_row",
+            "repository_commit_evidence": "embedded_in_delivery_evidence",
             "association": "explicit_repo_and_issue_ref_only",
             "writes_source_state": False,
             "creates_parallel_state_machine": False,
