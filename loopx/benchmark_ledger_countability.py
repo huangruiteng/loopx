@@ -331,6 +331,9 @@ def official_score_attempt_uncountable(
         run.get("attempt_lifecycle_phase") or accounting.get("lifecycle_phase"),
         limit=120,
     )
+    if explicit_attempt_countable is True and lifecycle_phase == "verifier_scored":
+        return False
+
     failure_scope = _compact_text(run.get("failure_scope"), limit=120)
     failure_class = _compact_text(
         run.get("score_failure_attribution")

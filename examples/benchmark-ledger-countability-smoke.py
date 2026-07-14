@@ -175,11 +175,78 @@ def test_verifier_dependency_failure_zero_is_uncountable() -> None:
     }, countability
 
 
+def test_explicit_scored_attempt_precedes_coarse_verifier_attribution() -> None:
+    run = _setup_preflight_run()
+    run["case_id"] = "scored-verifier-attribution-case"
+    run["case_ids"] = ["scored-verifier-attribution-case"]
+    run["run_id"] = "scored-verifier-attribution-case-run"
+    run["official_score"] = 0.0
+    run["official_score_status"] = "completed"
+    run["official_task_score"] = {
+        "kind": "skillsbench_verifier_reward_recovered_from_controller_trace",
+        "value": 0.0,
+        "passed": False,
+    }
+    run["score_status"] = "failed"
+    run["failure_class"] = "verifier_dependency_install_failure"
+    run["failure_scope"] = "verifier_or_infra"
+    run["score_failure_attribution"] = "verifier_dependency_install_failure"
+    run["attempt_lifecycle_phase"] = "verifier_scored"
+    run["official_score_attempt_countable"] = True
+    accounting = run["attempt_accounting"]
+    assert isinstance(accounting, dict)
+    accounting["lifecycle_phase"] = "verifier_scored"
+    accounting["official_score_attempt_countable"] = True
+
+    assert benchmark_run_official_score_countability(run) == {
+        "countable": True,
+        "reason": "countable_official_score",
+        "score": 0.0,
+    }
+
+    ledger = upsert_benchmark_run_ledger_entry(
+        {
+            "schema_version": BENCHMARK_RUN_LEDGER_SCHEMA_VERSION,
+            "benchmarks": {},
+        },
+        run,
+    )
+    aggregate = build_benchmark_run_ledger_current_aggregate(
+        ledger,
+        benchmark_id="skillsbench@1.1",
+        canonical_case_ids=["scored-verifier-attribution-case"],
+    )
+    summary = aggregate["countable_score_summary"]
+    assert summary["countable_case_count"] == 1, aggregate
+    assert aggregate["case_best"]["scored-verifier-attribution-case"]["bucket"] == (
+        "official_zero"
+    ), aggregate
+
+    run["failure_attribution_labels"] = [
+        "skillsbench_product_mode_uncountable_treatment"
+    ]
+    assert benchmark_run_official_score_countability(run) == {
+        "countable": False,
+        "reason": "uncountable_attribution",
+        "score": 0.0,
+    }
+    run.pop("failure_attribution_labels")
+
+    run["official_score_attempt_countable"] = False
+    accounting["official_score_attempt_countable"] = False
+    assert benchmark_run_official_score_countability(run) == {
+        "countable": False,
+        "reason": "official_score_attempt_not_countable",
+        "score": 0.0,
+    }
+
+
 def main() -> None:
     test_missing_verifier_reward_bool_does_not_override_uncountable_attempt()
     test_real_bool_official_result_remains_countable_zero()
     test_verifier_infrastructure_failure_zero_is_uncountable()
     test_verifier_dependency_failure_zero_is_uncountable()
+    test_explicit_scored_attempt_precedes_coarse_verifier_attribution()
     print("benchmark-ledger-countability-smoke: ok")
 
 
