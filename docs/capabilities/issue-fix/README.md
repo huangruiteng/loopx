@@ -984,6 +984,19 @@ and `validation_status=passed|failed|partial|not_run`. Terminal PR state still
 takes precedence, while an explicit blocked delivery remains visible over a
 non-terminal wait such as pending CI.
 
+A delivery that names `commit_ref` cannot be projected as validated or
+publication-ready merely because its JSON says `passed` or `completed`. For
+those states, writeback requires `--repo-path` plus a full
+`--repository-ref` under `refs/heads`, `refs/remotes`, or `refs/tags`. LoopX
+checks that the checkout has a GitHub remote matching `--repo`, resolves the
+pinned repository revision and commit objects, proves ancestry, and requires
+the recovery ref to resolve exactly to the pinned revision. The persisted
+`issue_fix_repository_commit_evidence_v0` keeps the full object ids, recovery
+ref, and a clone-stable repository fingerprint, but no checkout path, remote
+URL, or raw git output. Legacy evidence without that proof remains visible but
+is downgraded to `validation=unverified` and
+`stage=delivery_evidence_unverified` until it is re-resolved.
+
 The case card exposes the selected route and current stage; issue and PR links;
 repository revision and context fingerprint; reproduction and validation
 status; repo-relative changed files and commit ref when explicitly supplied;
@@ -1017,7 +1030,10 @@ outcome and Kanban syncs then retain the validation, changed files, commit, outp
 links, and risks instead of falling back to the feasibility declaration. The
 write flag rejects an ad hoc `--feasibility-json` source so the destination is
 always the stable goal-scoped row.
-Repeating the same compact evidence is an unchanged, no-write operation.
+Passed or completed evidence that includes a commit also needs the approved
+checkout and recoverable ref described above. A missing, divergent, or stale
+commit fails before ledger mutation. Repeating the same material proof is an
+unchanged, no-write operation even when its verification timestamp is newer.
 
 The Lark adapter renders this as a first-class issue dimension rather than
 only flattening the packet into `Evidence`. Outcome rows set
@@ -1148,6 +1164,7 @@ loopx issue-fix outcome \
   --repository-memory-provider-json provider.json \
   --write-repository-memory \
   --repo-path /path/to/approved/repo \
+  --repository-ref refs/remotes/origin/main \
   --agent-id codex-issue-fix \
   --format json
 ```
