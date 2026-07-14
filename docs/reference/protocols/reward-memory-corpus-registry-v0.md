@@ -29,7 +29,7 @@ The reference registry covers all five classes through seven corpus families:
 | Corpus family | Class | Source and lifecycle |
 | --- | --- | --- |
 | `run_reward_overlays` | `run_bound_reward` | LoopX human-reward event ledger; append-only exact goal/run overlay. |
-| `authority_policy_sources` | `hard_policy` | Canonical user, repository, and operator authority; never inferred from provider memory. |
+| `authority_policy_sources` | `hard_policy` | Explicit or verified-contributor-derived policy content, always bound to independently verified user/repository/operator authority scope. |
 | `scoped_preferences` | `soft_preference` | Provider-managed, explicitly reviewed feedback for module-owned surfaces. |
 | `execution_trajectories` | `procedural_experience` | Revision-stamped execution evidence. |
 | `distilled_experiences` | `procedural_experience` | Reviewed and supersedable procedural or architectural learning. |
@@ -55,8 +55,14 @@ and neither grants patch authority. Corpus maintenance follows these rules:
 5. project or surface mismatch fails closed;
 6. retirement keeps a compact reason, never raw memory content.
 
-Confidence is intentionally absent from the health promotion path. Stage 0
-already establishes that confidence cannot increase authority.
+Policy content may be derived from a verified owner or core contributor's
+rewards, preferences, current-artifact-verified experience, selections, and
+accepted/rejected outcomes. The registry records this as a maintenance trigger
+only after actor identity and repository/action scope are independently
+verified; inference cannot create a new write, publish, production, cross-user,
+or cross-repository authority scope, and cannot fabricate the current state of
+a concrete gate. Confidence is intentionally absent from the health promotion
+path because it cannot widen authority.
 
 ## Health states
 
@@ -104,6 +110,10 @@ trajectories and experiences map to the two procedural corpus families, and a
 completed Working Memory archive maps to session working context. Cases remain
 training and evaluation fixtures and are not registered as executable memory.
 
+The `fresh_execution_context` corpus family is an inventory view over LoopX's
+already complete registry, active-state, todo/quota, checkout, and bounded tool
+observations. Stage 2 does not add another context store or retrieval path.
+
 Account, user, peer, session, project, surface, and repository revision remain
 independent scope dimensions. In particular, a project-peer preference corpus
 cannot be reused for another project or surface merely because the provider
@@ -120,7 +130,11 @@ bridge, maintenance invariants, and deterministic health classification. It
 does not perform provider writes, persist a second registry, read raw memory,
 distill candidates, enable cross-module recall, or promote a release.
 
-Stage 2 owns inspectable candidate distillation and explicit human review.
-Stage 3 owns live cross-module recall and application receipts. Stage 4 owns
-evaluation and the release gate; Stage 5 owns bounded dogfood and operator
-edit or retirement controls.
+Stage 2 owns one thin candidate and activation-decision seam. It may derive
+policy content from verified contributor signals but does not create authority,
+add a second store or scheduler, perform provider writes, or enable automatic
+recall. Issue Fix consumes the same generic seam rather than a parallel design.
+Stage 3 owns reasoning-mediated cross-module recall and application receipts;
+deterministic code remains limited to scope, authority, privacy, freshness, and
+conflict guards. Stage 4 owns evaluation and the release gate; Stage 5 owns
+bounded dogfood and operator edit or retirement controls.
