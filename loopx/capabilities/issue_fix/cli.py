@@ -354,6 +354,16 @@ def register_issue_fix_commands(
         ),
     )
     workflow_parser.add_argument(
+        "--candidate-preflight-json",
+        default=None,
+        help=(
+            "Optional issue_fix_candidate_preflight_input_v0 with compact prior "
+            "domain state, all-state numeric PR references, verified semantic "
+            "implementation candidates, and an existing recall receipt. The "
+            "workflow performs no provider or memory calls."
+        ),
+    )
+    workflow_parser.add_argument(
         "--repository-memory-json",
         default=None,
         help=(
@@ -920,6 +930,7 @@ def handle_issue_fix_command(
                     args.metadata_json,
                     args.repository_context_json,
                     args.repository_memory_json,
+                    args.candidate_preflight_json,
                     provider_path,
                 )
                 if value == "-"
@@ -929,6 +940,11 @@ def handle_issue_fix_command(
             repository_context_input = (
                 _load_json_object(args.repository_context_json)
                 if args.repository_context_json
+                else None
+            )
+            candidate_preflight_input = (
+                _load_json_object(args.candidate_preflight_json)
+                if args.candidate_preflight_json
                 else None
             )
             repository_memory_input = _configured_repository_memory_input(
@@ -958,6 +974,7 @@ def handle_issue_fix_command(
                 validation_label=args.validation_label,
                 repository_context_input=repository_context_input,
                 repository_memory_input=repository_memory_input,
+                candidate_preflight_input=candidate_preflight_input,
                 generated_at=generated_at,
             )
             renderer = render_issue_fix_workflow_plan_markdown

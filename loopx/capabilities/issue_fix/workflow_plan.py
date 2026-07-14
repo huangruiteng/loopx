@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from .acceptance_loop import build_issue_fix_caller_repo_branch_packet
+from .candidate_preflight import build_issue_fix_candidate_preflight_packet
 from .intake_surface import build_content_ops_issue_fix_metadata_preview_packet
 from .repository_context import build_issue_fix_repository_context_packet
 
@@ -217,6 +218,7 @@ def build_issue_fix_workflow_plan_packet(
     validation_label: str = "caller-declared validation",
     repository_context_input: Mapping[str, Any] | None = None,
     repository_memory_input: Mapping[str, Any] | None = None,
+    candidate_preflight_input: Mapping[str, Any] | None = None,
     generated_at: str | None = "2026-06-23T00:00:00Z",
 ) -> dict[str, Any]:
     """Build a public-safe issue-fix workflow plan without writing state."""
@@ -247,6 +249,12 @@ def build_issue_fix_workflow_plan_packet(
 
     repo_label = str(metadata["repo"])
     issue_label = str(metadata["issue_ref"])
+    candidate_preflight = build_issue_fix_candidate_preflight_packet(
+        repo=repo_label,
+        issue_ref=issue_label,
+        input_payload=candidate_preflight_input,
+        generated_at=generated_at,
+    )
     repository_context = build_issue_fix_repository_context_packet(
         repo=repo_label,
         issue_ref=issue_label,
@@ -296,6 +304,46 @@ def build_issue_fix_workflow_plan_packet(
             depends_on=["issue_fix_public_metadata_classification"],
         ),
     ]
+    preflight_route = str(
+        (candidate_preflight.get("decision") or {}).get("route") or "proceed"
+    )
+    if preflight_route != "proceed":
+        existing_refs = list(
+            (candidate_preflight.get("decision") or {}).get("existing_pr_refs")
+            or []
+        )
+        route_action = {
+            "reuse_existing_pr": "issue_fix_reuse_existing_pr",
+            "comment_only": "issue_fix_existing_work_disposition",
+            "skip": "issue_fix_candidate_no_followup",
+        }[preflight_route]
+        route_text = {
+            "reuse_existing_pr": (
+                f"[P0] Evaluate and reuse existing implementation work "
+                f"{', '.join(existing_refs)} for {repo_label} {issue_label}; "
+                "do not create a competing patch or reopen agentic recall."
+            ),
+            "comment_only": (
+                f"[P0] Preserve the existing disposition for {repo_label} "
+                f"{issue_label}; assess whether a compact maintainer comment is "
+                "useful before any new patch planning."
+            ),
+            "skip": (
+                f"[P0] Record the prior-work no-follow-up disposition for "
+                f"{repo_label} {issue_label}; do not make the issue runnable again."
+            ),
+        }[preflight_route]
+        agent_todos = [
+            _todo_preview(
+                planner_order=1,
+                role="agent",
+                priority="P0",
+                task_class="advancement_task",
+                action_kind=route_action,
+                text=route_text,
+                depends_on=["issue_fix_candidate_preflight_v0"],
+            )
+        ]
     user_gates: list[dict[str, Any]] = []
     if gated_fields:
         user_gates.append(
@@ -429,13 +477,27 @@ def build_issue_fix_workflow_plan_packet(
         "external_pr_created": False,
         "merge_performed": False,
     }
+    preflight_next_action = {
+        "reuse_existing_pr": (
+            "reuse or assess the matched implementation PR; keep the candidate out "
+            "of new patch planning and preserve the existing recall receipt"
+        ),
+        "comment_only": (
+            "preserve the existing route and produce only a compact disposition or "
+            "maintainer-comment plan"
+        ),
+        "skip": (
+            "record no-follow-up from prior terminal or triage evidence; do not "
+            "reopen patch planning"
+        ),
+    }.get(preflight_route)
     first_screen = {
         "waiting_on": "agent",
         "user_action_required": False,
         "agent_can_continue": True,
         "top_agent_todo": agent_todos[0],
         "top_gate": user_gates[0] if gated_fields else None,
-        "next_safe_action": (
+        "next_safe_action": preflight_next_action or (
             (
                 "inspect current repository evidence for "
                 f"{', '.join(unresolved_context)}; ground what is available and "
@@ -466,6 +528,8 @@ def build_issue_fix_workflow_plan_packet(
             "comment_bodies_captured": False,
         },
         "repository_context": repository_context,
+        "candidate_preflight": candidate_preflight,
+        "candidate_fix_workflow_allowed": preflight_route == "proceed",
         "first_screen": first_screen,
         "branch_plan": branch_plan,
         "resolution_route_candidates": resolution_routes,
@@ -552,6 +616,24 @@ def validate_issue_fix_workflow_plan_packet(
         ):
             errors.append("repository_context must deny external-write authority")
 
+    candidate_preflight = packet.get("candidate_preflight")
+    if not isinstance(candidate_preflight, Mapping):
+        errors.append("candidate_preflight is required")
+        candidate_preflight = {}
+    if candidate_preflight.get("schema_version") != "issue_fix_candidate_preflight_v0":
+        errors.append("candidate_preflight has wrong schema")
+    if candidate_preflight.get("external_reads_performed") is not False:
+        errors.append("candidate_preflight must not perform external reads")
+    if candidate_preflight.get("external_writes_performed") is not False:
+        errors.append("candidate_preflight must not perform external writes")
+    preflight_decision = candidate_preflight.get("decision")
+    preflight_decision = (
+        preflight_decision if isinstance(preflight_decision, Mapping) else {}
+    )
+    candidate_runnable = preflight_decision.get("candidate_runnable") is True
+    if packet.get("candidate_fix_workflow_allowed") is not candidate_runnable:
+        errors.append("candidate workflow permission must match preflight decision")
+
     routes = packet.get("resolution_route_candidates")
     if not isinstance(routes, Sequence) or isinstance(routes, (str, bytes)):
         errors.append("resolution_route_candidates must be a list")
@@ -624,6 +706,18 @@ def validate_issue_fix_workflow_plan_packet(
             errors.append("todo preview planner_order must be an integer")
         roles.add(preview.get("role"))
         priorities.add(preview.get("priority"))
+    if not candidate_runnable:
+        forbidden = {
+            "issue_fix_public_metadata_classification",
+            "issue_fix_feasibility_decision",
+            "issue_fix_branch_validation",
+        }
+        if any(
+            isinstance(preview, Mapping)
+            and preview.get("action_kind") in forbidden
+            for preview in previews
+        ):
+            errors.append("deduped candidate must not project new patch-planning todos")
     if orders != sorted(orders):
         errors.append("todo previews must be ordered by planner_order")
     if "agent" not in roles:
@@ -788,6 +882,25 @@ def render_issue_fix_workflow_plan_markdown(payload: dict[str, Any]) -> str:
                 f"`{repository_context.get('unresolved_required_aspects')}`",
                 f"- expert_next_action: "
                 f"`{(repository_context.get('expert_consultation') or {}).get('next_action')}`",
+            ]
+        )
+    candidate_preflight = payload.get("candidate_preflight")
+    if isinstance(candidate_preflight, Mapping):
+        decision = candidate_preflight.get("decision") or {}
+        evidence = candidate_preflight.get("evidence") or {}
+        recall = candidate_preflight.get("agentic_recall") or {}
+        lines.extend(
+            [
+                "",
+                "## Candidate Preflight",
+                "",
+                f"- configured: `{candidate_preflight.get('configured')}`",
+                f"- route: `{decision.get('route')}`",
+                f"- candidate_runnable: `{decision.get('candidate_runnable')}`",
+                f"- existing_pr_refs: `{decision.get('existing_pr_refs')}`",
+                f"- domain_state_matched: `{evidence.get('domain_state_matched')}`",
+                f"- agentic_recall_action: `{recall.get('action')}`",
+                f"- provider_calls_performed: `{recall.get('provider_calls_performed')}`",
             ]
         )
     branch = payload.get("branch_plan")
