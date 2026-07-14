@@ -34,6 +34,11 @@ local capability packet rather than public issue-fix state:
 {
   "schema_version": "issue_fix_reviewer_notification_sinks_input_v0",
   "receipts": [],
+  "delivery_policy": {
+    "timezone": "Asia/Shanghai",
+    "allowed_local_time": {"start": "09:00", "end": "21:00"},
+    "outside_window": "queue_without_send"
+  },
   "sinks": [
     {
       "sink_kind": "lark_chat",
@@ -63,6 +68,14 @@ performing send plus readback. Neither
 binding depends on the machine's active/default Lark profile. The legacy
 `bot_profile` field remains accepted for explicit manual configs, but a
 goal-default config requires both bindings.
+
+`delivery_policy` is optional and provider-neutral. When configured, execute
+mode sends only while the current local time is inside the half-open
+`[start, end)` window; overnight windows are supported. Outside the window,
+LoopX performs no provider call and returns `queued_until_window` with a
+compact `issue_fix_reviewer_notification_queue_receipt_v0`. Invalid timezone,
+time, or outside-window policy fails closed. Preview remains read-only and is
+never converted into a queued execution.
 
 Profile names, `destination_id`, and `member_id` are execution inputs. They are
 never copied into the result, domain state, todo, Kanban, PR, or public log.
@@ -104,7 +117,9 @@ Then `reviewer-request --goal-id example-goal --project ...` discovers the
 config automatically. Execute mode loads the PR's existing lifecycle row or
 auto-materializes it from a fresh compact GitHub lifecycle read before any
 external notification, merges verified hashed receipts into the private
-input, and writes only new receipts back to that same row. A restart or retry
+input, and writes new verified receipts or compact queued delivery metadata
+back to that same row. A restart preserves a queued item; a later verified send
+removes the matching queue entry while retaining the stable receipt. Retry
 therefore remains idempotent without a second ledger. Goal boundary/status
 projections expose only that the capability and pointer are configured; they
 never expose the pointer value or profiles
@@ -113,7 +128,8 @@ never expose the pointer value or profiles
 A zero exit status is insufficient. The adapter requires a message id from the
 send response, fetches that message with the same dedicated bot profile, and
 verifies both the id and PR URL. Results distinguish `preview_ready`,
-`sent_verified`, `already_notified`, `sent_unverified`, and `gate_required`.
+`queued_until_window`, `sent_verified`, `already_notified`, `sent_unverified`,
+and `gate_required`.
 Permission or group-membership errors become the concrete
 `lark_bot_group_access_required` gate.
 
@@ -159,5 +175,7 @@ python3 examples/issue-fix-reviewer-request-smoke.py
 The provider-neutral fixture covers preview, dedicated-identity enforcement,
 author exclusion, identity-resolution gates, one send plus readback, stable
 receipt retry, permission classification, unverified writes, and public-safety
-redaction. The reviewer-request smoke proves the sink is a real post-canonical
-call site rather than a disconnected adapter.
+redaction. It also covers normal and overnight delivery windows, zero-call
+queuing, and invalid-policy fail-closed behavior. The reviewer-request smoke
+proves the sink is a real post-canonical call site rather than a disconnected
+adapter and verifies queue persistence/removal across lifecycle restarts.
