@@ -8,16 +8,23 @@ from .architecture import (
     build_reward_memory_route_packet,
     pr_3237_regression_observation,
 )
+from .health import (
+    build_reward_memory_corpus_health_packet,
+    reward_memory_health_case,
+)
+from .registry import build_reward_memory_corpus_registry_packet
 
 
 def _render(payload: dict[str, object]) -> str:
     lines = ["# Reward Memory", ""]
-    for key in ("status", "decision", "case_ref"):
+    for key in ("status", "decision", "health_state", "case_ref"):
         if key in payload:
             lines.append(f"- {key}: `{payload[key]}`")
     classes = payload.get("memory_classes")
     if isinstance(classes, list):
         lines.append(f"- memory_classes: `{len(classes)}`")
+    if "corpus_count" in payload:
+        lines.append(f"- corpus_count: `{payload['corpus_count']}`")
     reasons = payload.get("reason_codes")
     if isinstance(reasons, list):
         lines.append("- reason_codes: `" + ", ".join(map(str, reasons)) + "`")
@@ -38,6 +45,35 @@ def register_reward_memory_commands(
         help="Render the provider-neutral Stage-0 architecture contract.",
     )
     add_subcommand_format(architecture)
+
+    registry = sub.add_parser(
+        "corpus-registry",
+        help="Render the Stage-1 corpus ownership and maintenance registry.",
+    )
+    add_subcommand_format(registry)
+
+    health = sub.add_parser(
+        "health-check",
+        help="Exercise a Stage-1 scope, freshness, retrieval, and readback state.",
+    )
+    add_subcommand_format(health)
+    health.add_argument(
+        "--case",
+        choices=[
+            "unavailable",
+            "empty",
+            "stale",
+            "wrong-project",
+            "wrong-surface",
+            "index-unavailable",
+            "retrieval-failed",
+            "readback-unverified",
+            "retrieval-verified",
+            "applied-verified",
+        ],
+        default="retrieval-verified",
+        help="Use a compact public health fixture.",
+    )
 
     route = sub.add_parser(
         "route-check",
@@ -84,6 +120,11 @@ def handle_reward_memory_command(
     try:
         if args.reward_memory_command == "architecture":
             payload = build_reward_memory_architecture_packet()
+        elif args.reward_memory_command == "corpus-registry":
+            payload = build_reward_memory_corpus_registry_packet()
+        elif args.reward_memory_command == "health-check":
+            corpus, observation = reward_memory_health_case(args.case)
+            payload = build_reward_memory_corpus_health_packet(corpus, observation)
         else:
             observation = (
                 pr_3237_regression_observation()
@@ -95,12 +136,8 @@ def handle_reward_memory_command(
                     "generic_boundary_for_specific_policy": (
                         args.generic_boundary_for_specific_policy
                     ),
-                    "user_visible_behavior_change": (
-                        args.user_visible_behavior_change
-                    ),
-                    "hot_path_or_storage_change": (
-                        args.hot_path_or_storage_change
-                    ),
+                    "user_visible_behavior_change": (args.user_visible_behavior_change),
+                    "hot_path_or_storage_change": (args.hot_path_or_storage_change),
                     "retrieval_or_memory_quality_claim": (
                         args.retrieval_or_memory_quality_claim
                     ),

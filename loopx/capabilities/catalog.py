@@ -287,9 +287,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
     },
     {
         "id": "reward-memory",
-        "title": "Reward-memory architecture and routing",
-        "status": "design-contract",
-        "real_world_anchor": "typed feedback memory and pilot/meta delegation",
+        "title": "Reward-memory architecture, corpus health, and routing",
+        "status": "foundation",
+        "real_world_anchor": (
+            "typed feedback memory, provider-owned corpus health, and pilot/meta delegation"
+        ),
         "user_value": (
             "Keep run judgments, policies, preferences, reusable experience, and "
             "working context distinct so recalled material cannot silently become authority."
@@ -306,6 +308,16 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "purpose": "Exercise the public negative regression for semantic-contract, cross-surface, high-complexity issue-fix routing.",
                 "write_boundary": "deterministic public fixture only; no issue body, memory content, repository, or external write",
             },
+            {
+                "command": "loopx reward-memory corpus-registry --format json",
+                "purpose": "Render the Stage-1 corpus ownership, authority, scope, freshness, lifecycle, and maintenance registry.",
+                "write_boundary": "stateless read model only; provider content stays at its source of truth",
+            },
+            {
+                "command": "loopx reward-memory health-check --case wrong-project --format json",
+                "purpose": "Exercise deterministic project, surface, freshness, index, retrieval, readback, and application health states.",
+                "write_boundary": "public fixture classification only; no memory, index, receipt, state, or external write",
+            },
         ],
         "implemented_protocols": [
             {
@@ -318,20 +330,37 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "module": "loopx.capabilities.reward_memory.architecture",
                 "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
             },
+            {
+                "schema_version": "reward_memory_corpus_registry_v0",
+                "module": "loopx.capabilities.reward_memory.registry",
+                "doc": "docs/reference/protocols/reward-memory-corpus-registry-v0.md",
+            },
+            {
+                "schema_version": "reward_memory_corpus_health_v0",
+                "module": "loopx.capabilities.reward_memory.health",
+                "doc": "docs/reference/protocols/reward-memory-corpus-registry-v0.md",
+            },
         ],
-        "smokes": ["python3 examples/reward-memory-architecture-smoke.py"],
-        "docs": ["docs/reference/protocols/reward-memory-architecture-v0.md"],
+        "smokes": [
+            "python3 examples/reward-memory-architecture-smoke.py",
+            "python3 examples/reward-memory-corpus-registry-smoke.py",
+        ],
+        "docs": [
+            "docs/reference/protocols/reward-memory-architecture-v0.md",
+            "docs/reference/protocols/reward-memory-corpus-registry-v0.md",
+        ],
         "boundaries": [
             "Run-bound reward is outcome evidence and requires explicit review before any promotion.",
             "Hard policy, fresh source truth, action authority, and privacy always outrank preferences and experience.",
             "Retrieval without current-artifact verification has zero patch authority.",
             "OpenViking cases are evaluation fixtures, provider soul text is not action authority, and session working memory remains continuation context.",
             "Corpus presence, index presence, retrieval success, readback, and applied receipts are distinct health states.",
-            "Stage 0 writes no corpus, candidate, provider memory, evaluation result, or external artifact.",
+            "Project or surface mismatch fails closed before provider availability can influence application.",
+            "Stages 0-1 write no corpus, candidate, provider memory, evaluation result, or external artifact.",
         ],
         "next_real_step": (
-            "Implement the deferred Stage-1 corpus registry and retrieval-health "
-            "contract without collapsing the five classes."
+            "Implement the deferred Stage-2 candidate distillation and explicit "
+            "human-review queue without enabling cross-module recall."
         ),
     },
     {
