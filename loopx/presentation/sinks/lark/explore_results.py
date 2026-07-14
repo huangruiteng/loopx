@@ -58,6 +58,12 @@ from .kanban import (
     parse_lark_base_url,
 )
 from .explore_stage_document import ensure_stage_whiteboards
+from .explore_visual_styles import (
+    BOARD_STYLE_AUTO_FLOW,
+    board_source_with_delivery_marker,
+    explore_board_style,
+    resolve_explore_board_style,
+)
 from .message_card import build_lark_markdown_reply_card
 
 LARK_EXPLORE_SCHEMA_VERSION = "loopx_lark_explore_result_board_v0"
@@ -72,8 +78,6 @@ DEFAULT_EXPLORE_BASE_NAME = "LoopX Exploration Results"
 SINK_VISIBILITY_OWNER_ONLY = "owner-only"
 SINK_VISIBILITY_SHARED = "shared"
 SINK_VISIBILITIES = {SINK_VISIBILITY_OWNER_ONLY, SINK_VISIBILITY_SHARED}
-VISUAL_RENDERER_MERMAID = "mermaid"
-VISUAL_RENDERERS = {VISUAL_RENDERER_MERMAID}
 
 _VISUAL_READBACK_RETRY_DELAYS_SECONDS = (0.25, 0.5, 1.0, 2.0, 4.0)
 
@@ -473,6 +477,7 @@ def configure_lark_explore_visual_sink(
     mermaid_node_limit: int = 100,
     stage_capacity: int = 14,
     stage_whiteboard_tokens: list[str] | None = None,
+    board_style: str = BOARD_STYLE_AUTO_FLOW,
     view_role: str | None = None,
     execute: bool = False,
 ) -> dict[str, Any]:
@@ -498,6 +503,7 @@ def configure_lark_explore_visual_sink(
         raise ValueError(f"view_role {role} requires projection_mode {expected_mode}")
     if not 10 <= int(stage_capacity) <= 20:
         raise ValueError("stage_capacity must be between 10 and 20")
+    style = explore_board_style(board_style)
     tokens = [
         str(item).strip()
         for item in stage_whiteboard_tokens or []
@@ -520,7 +526,8 @@ def configure_lark_explore_visual_sink(
         "include_ancestors": bool(include_ancestors),
         "mermaid_node_limit": max(1, int(mermaid_node_limit)),
         "stage_capacity": int(stage_capacity),
-        "renderer": VISUAL_RENDERER_MERMAID,
+        "board_style": style.name,
+        "renderer": style.renderer,
         "presentation_mode": "stage_document",
         "stage_whiteboards": [
             {"stage_index": index, "whiteboard_token": stage_token}
@@ -547,17 +554,6 @@ def configure_lark_explore_visual_sink(
         "view_role": role,
         "visual_sink": visual_sink,
     }
-
-
-def _mermaid_with_delivery_marker(source: str, marker: str) -> str:
-    marker_id = f"loopx_delivery_{hashlib.sha256(marker.encode('utf-8')).hexdigest()[:10]}"
-    return "\n".join(
-        [
-            source.rstrip(),
-            f'    {marker_id}["{marker}"]',
-            f"    style {marker_id} fill:#ffffff,stroke:#ffffff,color:#ffffff",
-        ]
-    )
 
 
 def _whiteboard_raw_texts(payload: Any) -> list[str]:
@@ -728,21 +724,18 @@ def sync_explore_visual_to_lark(
         )
     )
     sink_key = str(view_key or visual_sink.get("view_role") or "visual").strip() or "visual"
-    renderer = str(visual_sink.get("renderer") or VISUAL_RENDERER_MERMAID).strip()
-    if renderer != VISUAL_RENDERER_MERMAID:
+    try:
+        style = resolve_explore_board_style(visual_sink)
+    except ValueError as exc:
         return {
             "ok": False,
             "schema_version": LARK_EXPLORE_VISUAL_SYNC_VERSION,
             "status": "invalid_config",
             "execute": execute,
             "published": False,
-            "error": (
-                "grid/SVG Explore renderers were removed; migrate this sink to "
-                "renderer=mermaid with one whiteboard per Evidence Stage"
-            ),
+            "error": str(exc),
         }
-    source_key, input_format, extension = ("mermaid", "mermaid", "mmd")
-    rendered_source = str(graph.get(source_key) or "")
+    rendered_source = str(graph.get(style.source_key) or "")
     if not rendered_source.strip():
         return {
             "ok": False,
@@ -751,8 +744,8 @@ def sync_explore_visual_to_lark(
             "execute": execute,
             "published": False,
             "view_role": str(graph.get("view_role") or sink_key),
-            "renderer": renderer,
-            "error": f"display projection does not contain {source_key} source",
+            "renderer": style.renderer,
+            "error": f"display projection does not contain {style.source_key} source",
         }
     delivery_material = json.dumps(
         {
@@ -760,7 +753,8 @@ def sync_explore_visual_to_lark(
             "source_revision": source_revision,
             "view_role": sink_key,
             "whiteboard_token": whiteboard_token,
-            "renderer": renderer,
+            "board_style": style.name,
+            "renderer": style.renderer,
             "rendered_source": rendered_source,
         },
         ensure_ascii=True,
@@ -769,11 +763,12 @@ def sync_explore_visual_to_lark(
     ).encode("utf-8")
     delivery_digest = hashlib.sha256(delivery_material).hexdigest()
     delivery_marker = f"LoopX delivery {delivery_digest[:20]}"
-    published_source = _mermaid_with_delivery_marker(
+    published_source = board_source_with_delivery_marker(
         rendered_source,
         delivery_marker,
+        style=style,
     )
-    source_name = f".loopx-explore-{sink_key}-{delivery_digest[:12]}.{extension}"
+    source_name = f".loopx-explore-{sink_key}-{delivery_digest[:12]}.{style.extension}"
     command = [
         config.cli_bin,
         "whiteboard",
@@ -783,7 +778,7 @@ def sync_explore_visual_to_lark(
         "--whiteboard-token",
         whiteboard_token,
         "--input_format",
-        input_format,
+        style.input_format,
         "--source",
         f"@{source_name}",
         "--overwrite",
@@ -873,8 +868,9 @@ def sync_explore_visual_to_lark(
         "source_digest": source_digest,
         "source_revision": source_revision,
         "view_role": str(graph.get("view_role") or sink_key),
-        "renderer": renderer,
-        "input_format": input_format,
+        "board_style": style.name,
+        "renderer": style.renderer,
+        "input_format": style.input_format,
         "docx_token": str(visual_sink.get("docx_token") or "") or None,
         "graph_counts": graph.get("graph_counts"),
         "filter": graph.get("filter"),
@@ -1035,7 +1031,16 @@ def sync_explore_visuals_to_lark(
             "execute": execute,
             "published": bool(execute and role_ok),
             "view_role": role,
-            "renderer": VISUAL_RENDERER_MERMAID,
+            "board_style": (
+                str(stage_results[0].get("board_style") or "")
+                if stage_results
+                else ""
+            ),
+            "renderer": (
+                str(stage_results[0].get("renderer") or "")
+                if stage_results
+                else ""
+            ),
             "presentation_mode": "stage_document",
             "source_digest": role_bundle["source_digest"],
             "source_revision": role_bundle["source_revision"],

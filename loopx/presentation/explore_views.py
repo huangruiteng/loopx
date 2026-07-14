@@ -8,6 +8,7 @@ truncates the canonical node, edge, or finding collections.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import re
 import unicodedata
@@ -80,6 +81,139 @@ _MERMAID_STATUS_CLASS = {
     "resolved": "resolved",
     "dead_end": "deadend",
 }
+
+_SVG_STATUS_STYLE = {
+    "open": ("#f5f5f5", "#9e9e9e"),
+    "exploring": ("#e3f2fd", "#1e88e5"),
+    "blocked": ("#ffebee", "#e53935"),
+    "resolved": ("#e8f5e9", "#43a047"),
+    "dead_end": ("#eeeeee", "#9e9e9e"),
+}
+
+
+def build_stage_lane_svg(
+    *,
+    title: str,
+    node_order: Sequence[str],
+    node_by_id: Mapping[str, Mapping[str, Any]],
+    edges: Sequence[Mapping[str, Any]],
+) -> str:
+    """Render one Evidence Stage as fixed left/right semantic lanes.
+
+    Mermaid ignores a nested subgraph's direction when one of its nodes has an
+    edge to another subgraph. That turns intended vertical lanes into a wide
+    card row on the real whiteboard renderer. SVG keeps the semantic lane and
+    edge model while making placement deterministic.
+    """
+
+    lane_nodes: dict[str, list[str]] = defaultdict(list)
+    for node_id in node_order:
+        lane_nodes[_explore_lane(node_by_id[node_id], node_by_id=node_by_id)].append(
+            node_id
+        )
+    preferred = [lane for lane in ("fix_pr", "capability") if lane in lane_nodes]
+    lanes = preferred + sorted(lane for lane in lane_nodes if lane not in preferred)
+    margin, lane_width, lane_gap = 32, 500, 44
+    lane_top, lane_header_height, lane_padding = 76, 48, 24
+    node_width, node_height, node_gap = 436, 96, 34
+    max_lane_nodes = max((len(lane_nodes[lane]) for lane in lanes), default=1)
+    lane_height = (
+        lane_header_height
+        + lane_padding * 2
+        + max_lane_nodes * node_height
+        + max(0, max_lane_nodes - 1) * node_gap
+    )
+    width = margin * 2 + len(lanes) * lane_width + max(0, len(lanes) - 1) * lane_gap
+    height = lane_top + lane_height + margin
+    positions: dict[str, tuple[float, float]] = {}
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+        "<defs>",
+        '<marker id="loopx-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">',
+        '<path d="M0,0 L0,6 L9,3 z" fill="#607d8b"/>',
+        "</marker>",
+        "</defs>",
+        '<rect width="100%" height="100%" fill="#ffffff"/>',
+        f'<text x="{width / 2:.1f}" y="34" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#263238">{html.escape(title)}</text>',
+    ]
+    lane_titles = {"fix_pr": "PR issue-fix", "capability": "LoopX capability"}
+    for lane_index, lane in enumerate(lanes):
+        lane_x = margin + lane_index * (lane_width + lane_gap)
+        parts.extend(
+            [
+                f'<rect x="{lane_x}" y="{lane_top}" width="{lane_width}" height="{lane_height}" rx="16" fill="#fffde7" stroke="#c0b94f" stroke-width="2"/>',
+                f'<text x="{lane_x + lane_width / 2:.1f}" y="{lane_top + 31}" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#37474f">{html.escape(lane_titles.get(lane, lane.replace("_", " ").title()))}</text>',
+            ]
+        )
+        node_x = lane_x + (lane_width - node_width) / 2
+        node_y = lane_top + lane_header_height + lane_padding
+        for offset, node_id in enumerate(lane_nodes[lane]):
+            positions[node_id] = (node_x, node_y + offset * (node_height + node_gap))
+
+    edge_parts: list[str] = []
+    grouped_edges: dict[tuple[str, str], set[str]] = {}
+    for edge in edges:
+        source_id = str(edge.get("from_node") or "")
+        target_id = str(edge.get("to_node") or "")
+        if source_id not in positions or target_id not in positions:
+            continue
+        grouped_edges.setdefault((source_id, target_id), set()).add(
+            str(edge.get("edge_type") or "").strip()
+        )
+    for (source_id, target_id), edge_types in grouped_edges.items():
+        source_x, source_y = positions[source_id]
+        target_x, target_y = positions[target_id]
+        same_lane = _explore_lane(
+            node_by_id[source_id], node_by_id=node_by_id
+        ) == _explore_lane(node_by_id[target_id], node_by_id=node_by_id)
+        if same_lane:
+            if target_y >= source_y:
+                start_x = source_x + node_width / 2
+                end_x = target_x + node_width / 2
+                start_y = source_y + node_height
+                end_y = target_y
+                middle_y = (start_y + end_y) / 2
+                path = f"M {start_x:.1f} {start_y:.1f} C {start_x:.1f} {middle_y:.1f}, {end_x:.1f} {middle_y:.1f}, {end_x:.1f} {end_y:.1f}"
+            else:
+                start_x = source_x + node_width
+                end_x = target_x + node_width
+                start_y = source_y + node_height / 2
+                end_y = target_y + node_height / 2
+                side_x = max(source_x, target_x) + node_width + 18
+                path = f"M {start_x:.1f} {start_y:.1f} C {side_x:.1f} {start_y:.1f}, {side_x:.1f} {end_y:.1f}, {end_x:.1f} {end_y:.1f}"
+        else:
+            left_to_right = source_x < target_x
+            start_x = source_x + (node_width if left_to_right else 0)
+            end_x = target_x + (0 if left_to_right else node_width)
+            start_y = source_y + node_height / 2
+            end_y = target_y + node_height / 2
+            middle_x = (start_x + end_x) / 2
+            path = f"M {start_x:.1f} {start_y:.1f} C {middle_x:.1f} {start_y:.1f}, {middle_x:.1f} {end_y:.1f}, {end_x:.1f} {end_y:.1f}"
+        label = " / ".join(sorted(edge_type for edge_type in edge_types if edge_type))
+        edge_parts.append(
+            f'<path d="{path}" data-edge-types="{html.escape(label)}" fill="none" stroke="#607d8b" stroke-width="2" marker-end="url(#loopx-arrow)"/>'
+        )
+    parts.extend(edge_parts)
+    for node_id in node_order:
+        node = node_by_id[node_id]
+        node_x, node_y = positions[node_id]
+        fill, stroke = _SVG_STATUS_STYLE.get(
+            str(node.get("status") or "open"), _SVG_STATUS_STYLE["open"]
+        )
+        parts.append(
+            f'<rect x="{node_x:.1f}" y="{node_y:.1f}" width="{node_width}" height="{node_height}" rx="10" fill="{fill}" stroke="{stroke}" stroke-width="2"/>'
+        )
+        display_lines = _node_display_lines(
+            node, title_limit=54, detail_limit=76
+        )[:3]
+        for line_index, line in enumerate(display_lines):
+            weight = "700" if line_index == 0 else "400"
+            size = 14 if line_index == 0 else 12
+            parts.append(
+                f'<text x="{node_x + node_width / 2:.1f}" y="{node_y + 27 + line_index * 24:.1f}" text-anchor="middle" font-family="Arial, sans-serif" font-size="{size}" font-weight="{weight}" fill="#263238">{html.escape(line)}</text>'
+            )
+    parts.append("</svg>")
+    return "\n".join(parts)
 
 
 def _material_rows(values: Sequence[Any] | None, *, id_key: str) -> list[dict[str, Any]]:
@@ -556,6 +690,12 @@ def build_vertical_explore_mermaid(
             if str(edge.get("from_node") or "") in stage_node_ids
             and str(edge.get("to_node") or "") not in stage_node_ids
         ]
+        stage_svg = build_stage_lane_svg(
+            title=group["title"],
+            node_order=stage_node_order,
+            node_by_id=node_by_id,
+            edges=stage_edges,
+        )
         stage_views.append(
             {
                 "stage_index": group_index,
@@ -606,6 +746,21 @@ def build_vertical_explore_mermaid(
                 "incoming_edge_count": len(incoming_edges),
                 "outgoing_edge_count": len(outgoing_edges),
                 "mermaid": "\n".join(stage_lines),
+                "svg": stage_svg,
+                "svg_layout": {
+                    "strategy": "semantic_lane_columns",
+                    "lane_order": [
+                        lane
+                        for lane in ("fix_pr", "capability")
+                        if lane in stage_lanes
+                    ]
+                    + sorted(
+                        lane
+                        for lane in stage_lanes
+                        if lane not in {"fix_pr", "capability"}
+                    ),
+                    "orientation": "left_to_right_lanes_top_to_bottom_nodes",
+                },
             }
         )
     for previous, current in zip(group_chains, group_chains[1:]):

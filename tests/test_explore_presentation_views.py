@@ -455,6 +455,15 @@ def test_stage_board_preserves_two_lanes_and_real_cross_lane_relation() -> None:
     assert 'subgraph canonical_stage_1_lane_2["LoopX capability"]' in stage["mermaid"]
     assert "fix_pr -->|supports| durable_capability" in stage["mermaid"]
     assert "edge-fix-subtopic" not in stage["mermaid"]
+    assert stage["svg_layout"] == {
+        "strategy": "semantic_lane_columns",
+        "lane_order": ["capability", "delivery"],
+        "orientation": "left_to_right_lanes_top_to_bottom_nodes",
+    }
+    assert stage["svg"].startswith('<svg xmlns="http://www.w3.org/2000/svg"')
+    assert "LoopX capability" in stage["svg"]
+    assert "supports" in stage["svg"]
+    assert 'marker-end="url(#loopx-arrow)"' in stage["svg"]
 
 
 def test_single_lane_project_does_not_invent_a_second_lane() -> None:
@@ -555,6 +564,7 @@ def test_visual_configuration_preserves_legacy_and_supports_stage_boards(tmp_pat
         view_role="executive",
         stage_capacity=18,
         stage_whiteboard_tokens=["wb_executive_fixture", "wb_stage_02"],
+        board_style="semantic_lane_columns",
         execute=True,
     )
 
@@ -562,7 +572,11 @@ def test_visual_configuration_preserves_legacy_and_supports_stage_boards(tmp_pat
     assert stored["visual_sink"]["whiteboard_token"] == "wb_legacy_fixture"
     assert stored["visual_sinks"]["canonical"]["view_role"] == "canonical"
     assert stored["visual_sinks"]["executive"]["view_role"] == "executive"
-    assert stored["visual_sinks"]["executive"]["renderer"] == "mermaid"
+    assert (
+        stored["visual_sinks"]["executive"]["board_style"]
+        == "semantic_lane_columns"
+    )
+    assert stored["visual_sinks"]["executive"]["renderer"] == "stage_svg"
     assert stored["visual_sinks"]["executive"]["presentation_mode"] == "stage_document"
     assert stored["visual_sinks"]["executive"]["stage_capacity"] == 18
     assert stored["visual_sinks"]["executive"]["stage_whiteboards"] == [
@@ -782,7 +796,75 @@ def test_legacy_grid_renderer_config_fails_with_migration_message(tmp_path) -> N
 
     assert result["ok"] is False
     assert result["status"] == "invalid_config"
-    assert "grid/SVG Explore renderers were removed" in result["error"]
+    assert "legacy grid/SVG Explore renderers were removed" in result["error"]
+
+
+def test_stage_svg_visual_publish_preserves_lane_source_and_remote_marker(
+    tmp_path,
+) -> None:
+    projection = _lane_projection()
+    config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
+    bundle = build_explore_presentation_bundle(
+        projection,
+        policy={"stage_node_capacity": 10},
+    )
+    stage = bundle["canonical"]["stage_views"][0]
+    calls: list[list[str]] = []
+    published_marker = ""
+
+    def runner(args, cwd, _timeout):
+        nonlocal published_marker
+        calls.append(args)
+        if "+update" in args:
+            assert args[args.index("--input_format") + 1] == "svg"
+            source_arg = args[args.index("--source") + 1]
+            source = (cwd / source_arg.removeprefix("@")).read_text(
+                encoding="utf-8"
+            )
+            assert source.startswith('<svg xmlns="http://www.w3.org/2000/svg"')
+            assert "supports" in source
+            published_marker = re.search(
+                r"LoopX delivery [0-9a-f]{20}", source
+            ).group(0)
+            return {
+                "returncode": 0,
+                "stdout": json.dumps({"ok": True}),
+                "stderr": "",
+            }
+        assert "+query" in args
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(
+                {
+                    "ok": True,
+                    "data": {"nodes": [{"text": {"text": published_marker}}]},
+                }
+            ),
+            "stderr": "",
+        }
+
+    synced = sync_explore_visual_to_lark(
+        config,
+        projection=projection,
+        visual_sink={
+            "whiteboard_token": "wb_canonical_fixture",
+            "view_role": "canonical",
+            "board_style": "semantic_lane_columns",
+        },
+        config_path=tmp_path / "lark-explore.json",
+        semantic_digest=bundle["source_digest"],
+        display_projection=stage,
+        view_key="canonical_stage_01",
+        execute=True,
+        runner=runner,
+    )
+
+    assert len(calls) == 2
+    assert synced["ok"] is True
+    assert synced["board_style"] == "semantic_lane_columns"
+    assert synced["renderer"] == "stage_svg"
+    assert synced["input_format"] == "svg"
+    assert synced["readback"]["observed_marker"] == published_marker
 
 
 def test_mermaid_visual_publish_reads_back_remote_delivery_marker(tmp_path) -> None:

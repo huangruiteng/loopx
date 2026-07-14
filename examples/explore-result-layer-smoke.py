@@ -1264,7 +1264,7 @@ def check_cli_surface() -> None:
             ("canonical", "canonical_full"),
             ("executive", "executive_auto"),
         ):
-            role_config = run_cli(
+            role_args = [
                 "explore",
                 "feishu-visual-configure",
                 "--config-path",
@@ -1275,9 +1275,18 @@ def check_cli_surface() -> None:
                 role,
                 "--projection-mode",
                 mode,
-                "--execute",
-            )
+            ]
+            if role == "executive":
+                role_args.extend(
+                    ["--board-style", "semantic_lane_columns"]
+                )
+            role_args.append("--execute")
+            role_config = run_cli(*role_args)
             assert role_config["status"] == "configured", role_config
+            expected_style = (
+                "semantic_lane_columns" if role == "executive" else "auto_flow"
+            )
+            assert role_config["visual_sink"]["board_style"] == expected_style, role_config
         dual_config_sync = run_cli(
             "explore",
             "feishu-sync",

@@ -232,6 +232,16 @@ def register_explore_commands(
     )
     visual.add_argument("--mermaid-node-limit", type=int, default=100)
     visual.add_argument(
+        "--board-style",
+        choices=["auto_flow", "semantic_lane_columns"],
+        default="auto_flow",
+        help=(
+            "Whiteboard layout style. auto_flow uses Mermaid's generic graph "
+            "layout; semantic_lane_columns fixes semantic lanes into "
+            "left/right columns while retaining real directed edges."
+        ),
+    )
+    visual.add_argument(
         "--stage-capacity",
         type=int,
         default=14,
@@ -789,6 +799,7 @@ def handle_explore_command(
                 mermaid_node_limit=args.mermaid_node_limit,
                 stage_capacity=args.stage_capacity,
                 stage_whiteboard_tokens=args.stage_whiteboard_token,
+                board_style=args.board_style,
                 view_role=args.view_role,
                 execute=bool(args.execute),
             )
