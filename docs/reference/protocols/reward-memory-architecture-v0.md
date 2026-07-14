@@ -1,5 +1,7 @@
 # Reward Memory Architecture v0
 
+[中文版](reward-memory-architecture-v0.zh-CN.md)
+
 LoopX separates feedback evidence, policy content, and action authority so a
 useful judgment does not silently become a universal personal profile or create
 permissions that the actor never held. Feedback from a verified repository

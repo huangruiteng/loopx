@@ -1,0 +1,212 @@
+# Reward Memory Architecture v0（中文版）
+
+[English](reward-memory-architecture-v0.md)
+
+Reward Memory 的核心边界是把反馈证据、策略内容和动作 authority 分开。一条有价值的
+判断可以沉淀成后续策略，但不能因此变成跨场景的个人画像，也不能创造反馈者原本没有的
+权限。经过验证的仓库 owner 或核心贡献者反馈，可以在其独立验证过的仓库作用域内推导出
+持久策略。这里需要区分的是“贡献者希望系统怎么做”和“贡献者有权允许系统做什么”。
+
+Stage 0 定义五类一等记忆、带护栏的优先级和 pilot/meta 分工；Stage 1 增加 corpus
+registry 与健康状态 read model。两个阶段都不新增第二套 memory store、候选调度器、
+provider 写入、跨模块 recall、评测框架或 rollout。
+
+机器可读合同通过下面的命令查看：
+
+```bash
+loopx reward-memory architecture --format json
+```
+
+## 五类一等记忆
+
+| 类别 | 来源与作用域 | Authority 与用途 | 生命周期 |
+| --- | --- | --- | --- |
+| `run_bound_reward` | 人对某个精确 goal/run 给出的显式评价。 | 只描述该次结果。若要影响后续行为，必须先形成紧凑候选并经过 activation policy；reward overlay 本身不是长期指令。 | Overlay 只追加；修正和撤销通过引用追加，不回写被评价的原始 run。 |
+| `hard_policy` | 显式的用户、仓库或 operator authority，或者从已验证的 owner/核心贡献者证据中推导、并绑定到既有 project/action authority scope 的策略内容。 | 在已验证作用域内形成约束或否决。模型可以从 reward、preference、经过当前 artifact 验证的 experience、选项选择、接受/拒绝结果和 maintainer correction 中推导策略含义；不能推导 credential、新的 publish/production scope 或跨用户、跨仓库 authority。 | Active record 保留 actor、evidence、scope 和 derivation provenance，直到被 supersede、revoke 或 expire。临时或证据较弱的推导应当过期或回到 review。 |
+| `soft_preference` | 显式反馈、用户选择，或者后续经过 review 的候选；作用域绑定到 workspace/project 和模块自有 surface。 | 只用于 advisory ranking 或 rewrite，不能授予 publish、merge、write、credential 或 production authority。 | 只有经过显式 review 才能持久化；支持 edit、reject、supersede、revoke 和 retire。 |
+| `procedural_experience` | 带 revision 的 trajectory、distilled experience、maintainer correction、接受/拒绝变更和经过 review 的架构经验；同时带 repository/module/revision/applicability scope。 | 只有经过当前 artifact 验证，才能作为诊断、范围判断、路由或验证建议。训练/评测 case 是证据，不是可执行指令；单次 retrieval 对 patch 没有 authority。 | Trajectory 可以只追加；distilled 或 architectural experience 支持 supersede。新的 source truth 可以把旧经验标记为 stale、quarantine、refute 或 retire。 |
+| `working_context` | 包含 fresh execution state（`fresh_execution_context`）和带 revision 的 session continuation 摘要（`session_working_memory`）。 | 只服务当前执行或 session 延续，不能自动升级成可复用 policy，也不能授予动作 authority。当前 source-of-truth 读取始终高于 recall 内容。 | `fresh_execution_context` 已存在于 LoopX 的 registry/state/todo/quota/checkout observation 中，本设计直接复用。Session context 继续绑定对应 session/archive revision。 |
+
+每条持久记录除了类别，还必须包含 `source`、`scope`、`authority`、`confidence`、
+`lifecycle_state`、`supersession`、`revocation`、`expiry` 和 `privacy`。
+`confidence` 只表示证据质量，不会提高 authority。它取 `low`、`medium` 或 `high`，
+并附带判断依据。`source` 记录 kind/ref/actor/time；`scope` 记录 user/workspace、
+project/repository、module/surface 和 revision/time 边界；lifecycle 记录当前状态及
+supersession、revocation、expiry、retirement 引用；privacy 记录可见范围、保留类别和
+是否捕获 raw content。
+
+## 策略内容与 authority
+
+Hard policy 包含两个相互独立的问题：
+
+1. **策略内容是什么？** LoopX 可以从显式反馈、经过 review 的 preference、经过当前
+   artifact 验证的 experience、选项选择、重复的接受/拒绝结果和 maintainer
+   correction 中推导紧凑策略。
+2. **策略在哪个范围内生效？** Actor identity 和 repository/action authority 必须来自
+   独立验证的来源。Memory confidence 不能创造或扩大作用域。
+
+当仓库 owner 或核心贡献者身份已经验证，一条含义明确的推导策略可以直接进入 active，
+无需在每次 run 后重复询问，但需要同时满足以下条件：actor 与 authority scope 已验证；
+provenance 紧凑且可检查；不存在更高 authority 的冲突来源；记录可以通过 edit、
+supersede、revoke、retire 或 expiry 逆转。含义含糊、作用域不清、身份不确定或存在冲突
+时，候选回到 review。推导过程不能创造 credential、external-write capability、
+production permission、cross-agent authority，也不能扩展到另一个仓库。
+
+系统可以推导可复用的边界或 gate policy，但不能编造某个具体 operator gate 或
+authority checkpoint 的当前状态迁移。一次 approve、reject 或 consume receipt 仍然必须
+来自该 gate 自己的 source of truth。
+
+## 带护栏的优先级与模型推理
+
+下面的顺序定义安全与注意力边界，不是一张穷举式决策表：
+
+1. 显式 action authority 与 privacy boundary；
+2. 当前有效、作用域匹配的 hard policy；
+3. fresh working context 与当前 source of truth；
+4. 经过当前 artifact 验证的 procedural experience；
+5. 当前有效、作用域匹配的 soft preference；
+6. 只作为证据的 run-bound reward。
+
+确定性代码负责拒绝非法状态：authority 未验证、project/surface 不匹配、材料已
+revoked/expired、privacy 违规、同级 authority 冲突未解决，或者缺少当前 artifact
+验证。进入合法动作集合后，模型继续负责理解反馈含义、判断相关性与证据充分性、权衡
+取舍，并决定 apply、ignore 或 seek more evidence。紧凑 receipt 需要记录 reasoning
+summary、memory reference、artifact verification 和 authority/scope check。
+
+当证据质量接近时，优先使用 provenance 更明确的记录；这条偏好不能演化成压制有效
+推理的 hard-coded router。Raw chat、transcript、tool log、credential 和本地路径都不是
+Reward Memory record。
+
+`loopx reward-memory route-check` 是确定性回归夹具，用于覆盖 PR #3237 一类明显的
+安全或升级条件。它不是线上 Issue Fix 决策引擎，也不替代模型推理。
+
+## 架构分层与能力复用
+
+```mermaid
+flowchart TD
+  OV["OpenViking memory 底座<br/>AGFS source truth、索引、作用域检索、<br/>preference、trajectory、experience、session memory"]
+  CTX["现有 LoopX fresh execution context<br/>registry、active state、todo/quota、checkout、受限 observation"]
+  CORE["LoopX Reward Memory core<br/>类别、scope/authority、corpus health、<br/>candidate 与 activation decision"]
+  IF["Issue Fix adapter<br/>输入 run outcome 与 maintainer feedback；<br/>输出 routing/validation influence receipt"]
+  OTHER["后续模块 adapter<br/>复用同一 core contract，保留模块自有 surface"]
+
+  OV --> CORE
+  CTX --> CORE
+  CORE --> IF
+  CORE --> OTHER
+```
+
+OpenViking 负责 memory storage、index、scoped retrieval 和 session-memory 基础能力。
+LoopX 负责动作语义：class、scope、authority、lifecycle、candidate derivation、
+activation 和 application receipt。Issue Fix adapter 把 issue/PR evidence 映射到共享
+core，再消费 core 返回的决策；它不能新增平行的 memory store、policy schema 或 ranking
+pipeline。其他模块只在这条复用路径被证明后接入。
+
+### Issue Fix 是首个 adapter
+
+Issue Fix 只增加领域映射：
+
+- 精确 run reward、maintainer correction、选定的修复方向和持久 issue/PR outcome，
+  转成共享 candidate contract 的紧凑输入；
+- repository identity、contributor role、当前 checkout、issue/PR state 和 active LoopX
+  gate，提供当前 authority 与 execution context；
+- 模块显式请求时，由 OpenViking 提供作用域匹配的 preference 或 experience retrieval；
+- 共享 core 返回 apply、ignore、seek-evidence 或 review，并附带紧凑 influence receipt；
+- recalled technical claim 仍需在当前代码与测试中验证，才能影响 patch。
+
+Candidate lifecycle、contributor-policy semantics、retrieval health 和 provider
+persistence 归共享 core 所有，不由 adapter 重复实现。Issue Fix 可以充分发挥场景价值，
+但不会反过来把整个 memory 产品做成 Issue Fix 特化方案。
+
+## 与 OpenViking 的对齐关系
+
+五类记忆保持 provider-neutral；Stage 0 的边界已经结合 OpenViking 当前公开架构和代码
+进行校验：
+
+- OpenViking 是 context database，不是 action-authority system。AGFS content 是
+  source of truth，vector index 保存 retrieval reference。
+- OpenViking `preferences` 可以提供经过 review 的 `soft_preference` 候选，但不会转成
+  permission。
+- OpenViking `trajectories` 是从一次执行中提炼的只追加 operation contract；
+  `experiences` 是支持 upsert、看起来可以执行的泛化经验，也可以显式 `supersede` 旧
+  experience。两者都映射成 advisory `procedural_experience`，使用前需要验证当前
+  revision。
+- OpenViking `cases` 显式定义训练或评测任务与 rubric，不是 experience instruction，
+  也不能作为 policy 注入。
+- OpenViking Working Memory 是用于 session continuation 的七段式 archive overview，
+  映射到 `working_context/session_working_memory`，不属于长期 policy。LoopX 当前的
+  registry/todo/checkout observation 映射到另一个 subtype：
+  `fresh_execution_context`。
+- OpenViking `soul.md` 或其他 provider record 可以包含 policy evidence；只有 actor 与
+  repository/action authority scope 被独立验证后，内容才能成为 LoopX `hard_policy`。
+  内容可以推导，authority 不能推导。
+- Account、user、peer、session 和 repository-revision boundary 始终属于 scope 与
+  privacy。Peer label 不授予 cross-user 或 cross-agent authority。
+
+Provider health 拆成 `corpus_present`、`index_present`、
+`retrieval_query_succeeded`、`result_readback_verified` 和
+`memory_applied_with_receipt`，这些状态不能合并。当前 OpenViking Codex auto-recall path
+把 `experiences` quota 配置为 0，因此 experience corpus 可以存在，但不会自动 recall。
+Stage 1 负责 inventory 与 health proof；Stage 0 不声明这项能力已经可用。
+
+公开依据包括 OpenViking
+[架构](https://docs.openviking.ai/en/concepts/01-architecture)、
+[Session Management](https://docs.openviking.ai/en/concepts/08-session)、
+[Multi-Tenant and Peer Isolation](https://docs.openviking.ai/en/concepts/11-multi-tenant)，
+以及源码 revision
+[`ba46491`](https://github.com/volcengine/OpenViking/tree/ba46491af0a79467ea268ef370e35b68f86abf73)。
+
+## Pilot/meta 分工
+
+Pilot 只有在以下条件同时成立时才能直接接手 fix：行为已经确认是 bug；范围限定在一个
+surface；变更不会修改 semantic contract，也不会把产品特定 policy 放进通用边界；
+reproduction 与 validation 已明确；edge-case complexity 为 low 或 medium；相关证据
+完整。以下情况需要 meta design review：by-design 或语义不确定；semantic-contract
+change；跨 surface 变更；generic-boundary leakage；edge-case complexity 为 high。
+
+证据要求按照相关性启用，不使用笼统的“core-component”规则：effect evidence 始终必需；
+用户可见行为变化需要 UX evidence；hot path 或 storage behavior 变化需要 performance
+evidence；只有声明 retrieval 或 memory quality 时才需要 benchmark evidence。缺少必需
+证据、同时又没有 meta trigger 时，结果是 `hold_for_evidence`。这样既允许 core module
+内部的受限 bug 保持 pilot scope，也能升级那些表面很小、实际修改公开或存储合同的变更。
+
+这是一套 guarded routing，不产生 cross-agent authority。Live agent 继续在护栏内推理
+语义与证据。Meta lane 不编辑或认领 pilot todo，pilot 也不能凭一次 memory hit 绕过
+design gate。
+
+## PR #3237 回归样例
+
+[OpenViking PR #3237](https://github.com/volcengine/OpenViking/pull/3237) 是当前的负向回归
+样例。它尝试让通用 directory listing 跨 backend 与 Web Studio surface 反映
+session-specific activity，但维护中的 directory-mtime 行为原本就是 by design。该 patch
+为了一个产品特定 edge case 修改通用 filesystem/session contract，跨越 backend 与 Web
+Studio，并在 listing/storage path 增加 metadata read；同时缺少 product-effect、UX 和
+performance evidence。因为它没有声明 retrieval 或 memory-quality 收益，所以不需要
+benchmark evidence。
+
+稳定预期是 `meta_design_gate`，不是 `pilot_fix`。Meta 可以把产品行为收窄到
+session-specific presentation boundary，也可以关闭这项变更；已有 memory result 不能
+授权 generic-layer patch。
+
+```bash
+loopx reward-memory route-check --case pr-3237 --format json
+```
+
+## 分阶段职责
+
+- Stage 0：五类记忆、优先级和分工合同。
+- Stage 1：已实现的 provider-neutral
+  [corpus registry 与 health contract](reward-memory-corpus-registry-v0.md)，覆盖 ownership、
+  authority、freshness、retirement、scope isolation 和 retrieval-health 区分。其中的
+  `fresh_execution_context` 描述 LoopX 已有能力，不要求建设另一套 context system。
+- Stage 2：在现有 LoopX/OpenViking evidence 之上增加一条最薄的 candidate 与
+  activation-decision seam。不新增第二套 store、scheduler、automatic recall 或 raw-content
+  retention；Issue Fix 是首个 adapter，复用通用 record/decision shape。
+- Stage 3：opt-in cross-module recall。模型在确定性的 scope、authority、privacy、
+  freshness 和 conflict guard 内推理，并生成紧凑 application receipt。
+- Stage 4：evaluation harness 与 release gate。
+- Stage 5：受限的 cross-module dogfood，以及 operator edit/retire control。
+
+后续阶段必须在这份合同上扩展，不能合并五类记忆、重复建设 context/provider 能力，也
+不能把 provider availability 变成 user gate。Stage 1 继续保持 stateless read model，
+不执行 provider 或 external write。
