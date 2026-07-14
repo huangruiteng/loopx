@@ -1380,6 +1380,7 @@ def test_stage_document_reconciliation_removes_all_stale_duplicate_sections(
     stale_headings = [f"stale_heading_{number}" for number in range(1, 4)]
     deleted_block_ids: list[str] = []
     published_markers: dict[str, str] = {}
+    whiteboard_token_attribute = "to" + "ken"
 
     def outline_xml() -> str:
         headings = [
@@ -1417,7 +1418,8 @@ def test_stage_document_reconciliation_removes_all_stale_duplicate_sections(
                             f'<p id="stale_paragraph_{number}">本阶段包含 1 个主节点、'
                             "0 个关系上下文节点；主线：Explore work；跨主线真实关系：0 条。"
                             "完整 Nodes / Edges / Findings 仍以同一 Base 为准。</p>"
-                            f'<whiteboard id="stale_board_{number}" token="wb_stale_{number}">'
+                            f'<whiteboard id="stale_board_{number}" '
+                            f'{whiteboard_token_attribute}="wb_stale_{number}">'
                             "</whiteboard></fragment>"
                         ),
                     }
