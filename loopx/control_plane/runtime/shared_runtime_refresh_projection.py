@@ -2,17 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 from pathlib import Path
 from typing import Any
 
-from ...file_lock import exclusive_file_lock
-from ...history import load_index, load_registry, reserve_unique_run_paths
-from ...paths import DEFAULT_RUNTIME_ROOT, global_registry_path
-from ...registry import registry_goals
 from ..goals.goal_vision import compact_goal_vision_packet
-from .time import now_local_iso
+from .runtime_projection_route import (
+    resolve_runtime_projection_route,
+)
+from .runtime_projection_writer import write_compact_runtime_projection
 
 
 SHARED_RUNTIME_PROJECTION_SCHEMA_VERSION = "shared_runtime_refresh_projection_v0"
@@ -25,37 +23,17 @@ def registered_shared_runtime_root(
     goal_id: str,
     source_runtime_root: Path,
 ) -> Path | None:
-    """Find the shared runtime that registered this exact source registry route."""
+    """Compatibility wrapper over the first-class runtime projection route."""
 
-    candidate_roots: list[Path] = []
-    configured_root = str(os.environ.get("LOOPX_RUNTIME_ROOT") or "").strip()
-    if configured_root:
-        candidate_roots.append(Path(configured_root).expanduser())
-    candidate_roots.append(DEFAULT_RUNTIME_ROOT)
-
-    source_path = registry_path.expanduser().resolve()
-    seen: set[Path] = set()
-    for candidate_root in candidate_roots:
-        resolved_root = candidate_root.resolve()
-        if resolved_root in seen or resolved_root == source_runtime_root.resolve():
-            continue
-        seen.add(resolved_root)
-        candidate_registry = global_registry_path(resolved_root)
-        if not candidate_registry.exists() or candidate_registry.resolve() == source_path:
-            continue
-        shared_registry = load_registry(candidate_registry)
-        for goal in registry_goals(shared_registry):
-            if str(goal.get("id") or "") != goal_id:
-                continue
-            registered_source = str(goal.get("source_registry") or "").strip()
-            if not registered_source:
-                continue
-            registered_path = Path(registered_source).expanduser()
-            if not registered_path.is_absolute():
-                registered_path = candidate_registry.parent / registered_path
-            if registered_path.resolve() == source_path:
-                return resolved_root
-    return None
+    route = resolve_runtime_projection_route(
+        registry_path=registry_path,
+        goal_id=goal_id,
+        source_runtime_root=source_runtime_root,
+    )
+    if route.get("status") != "resolved":
+        return None
+    target = str(route.get("target_runtime_root") or "").strip()
+    return Path(target) if target else None
 
 
 def build_shared_runtime_projection(
@@ -78,6 +56,13 @@ def build_shared_runtime_projection(
         "raw_artifacts_copied": False,
         "recommended_action_copied": False,
     }
+    route_marker = (
+        record.get("runtime_projection_route")
+        if isinstance(record.get("runtime_projection_route"), dict)
+        else {}
+    )
+    if route_marker.get("route_id"):
+        marker["runtime_projection_route_id"] = route_marker["route_id"]
     projection: dict[str, Any] = {
         "generated_at": record.get("generated_at"),
         "goal_id": record.get("goal_id"),
@@ -167,6 +152,7 @@ def _render_projection_markdown(record: dict[str, Any]) -> str:
             f"- agent_id: `{record.get('agent_id')}`",
             f"- raw_artifacts_copied: `{marker.get('raw_artifacts_copied')}`",
             f"- recommended_action_copied: `{marker.get('recommended_action_copied')}`",
+            f"- runtime_projection_route_id: `{marker.get('runtime_projection_route_id')}`",
         ]
     )
 
@@ -180,53 +166,18 @@ def write_shared_runtime_projection(
     dry_run: bool,
 ) -> dict[str, Any]:
     marker = record["shared_runtime_projection"]
-    result: dict[str, Any] = {
-        "ok": True,
-        "status": "would_project" if dry_run else "projected",
-        "dry_run": dry_run,
-        "shared_runtime_root": str(shared_runtime_root),
-        "raw_artifacts_copied": False,
-        "recommended_action_copied": False,
-        "source_generated_at": marker.get("source_generated_at"),
-    }
-    if dry_run:
-        return result
-
-    runs_dir = shared_runtime_root / "goals" / goal_id / "runs"
-    index_path = runs_dir / "index.jsonl"
-    with exclusive_file_lock(index_path):
-        existing, _ = load_index(index_path)
-        if any(
-            isinstance(item.get("shared_runtime_projection"), dict)
-            and item["shared_runtime_projection"].get("source_generated_at")
-            == marker.get("source_generated_at")
-            and item["shared_runtime_projection"].get("source_projection_sha256_16")
-            == marker.get("source_projection_sha256_16")
-            for item in existing
-        ):
-            result["status"] = "already_current"
-            result["index_path"] = str(index_path)
-            return result
-        json_path, markdown_path = reserve_unique_run_paths(
-            runs_dir, str(record.get("generated_at") or now_local_iso())
-        )
-        index_record["json_path"] = str(json_path)
-        index_record["markdown_path"] = str(markdown_path)
-        json_path.write_text(
-            json.dumps(record, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        markdown_path.write_text(
-            _render_projection_markdown(record) + "\n",
-            encoding="utf-8",
-        )
-        with index_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(index_record, ensure_ascii=False) + "\n")
-    result.update(
-        {
-            "json_path": str(json_path),
-            "markdown_path": str(markdown_path),
-            "index_path": str(index_path),
-        }
+    result = write_compact_runtime_projection(
+        target_runtime_root=shared_runtime_root,
+        goal_id=goal_id,
+        record=record,
+        index_record=index_record,
+        marker_field="shared_runtime_projection",
+        identity_fields=("source_generated_at", "source_projection_sha256_16"),
+        markdown_renderer=_render_projection_markdown,
+        dry_run=dry_run,
     )
+    result["shared_runtime_root"] = str(shared_runtime_root)
+    result["raw_artifacts_copied"] = False
+    result["recommended_action_copied"] = False
+    result["source_generated_at"] = marker.get("source_generated_at")
     return result

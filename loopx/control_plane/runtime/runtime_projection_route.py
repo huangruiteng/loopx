@@ -1,0 +1,428 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+from typing import Any, Iterable
+
+from ...history import load_index, load_registry
+from ...paths import DEFAULT_RUNTIME_ROOT, global_registry_path, resolve_runtime_root
+from ...registry import registry_goals
+
+
+RUNTIME_PROJECTION_ROUTE_SCHEMA_VERSION = "runtime_projection_route_v0"
+RUNTIME_PROJECTION_ROUTE_DIAGNOSTICS_SCHEMA_VERSION = (
+    "runtime_projection_route_diagnostics_v0"
+)
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    try:
+        return left.expanduser().resolve() == right.expanduser().resolve()
+    except OSError:
+        return str(left.expanduser()) == str(right.expanduser())
+
+
+def _path_digest(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    try:
+        value = str(path.expanduser().resolve())
+    except OSError:
+        value = str(path.expanduser())
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+
+
+def _resolved_source_registry(goal: dict[str, Any], *, registry_path: Path) -> Path | None:
+    value = str(goal.get("source_registry") or "").strip()
+    if not value:
+        return None
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = registry_path.parent / path
+    return path.resolve()
+
+
+def runtime_projection_candidate_roots(
+    *,
+    source_runtime_root: Path,
+    candidate_roots: Iterable[Path] | None = None,
+) -> list[Path]:
+    roots: list[Path] = []
+    if candidate_roots is None:
+        configured = str(os.environ.get("LOOPX_RUNTIME_ROOT") or "").strip()
+        if configured:
+            roots.append(Path(configured).expanduser())
+        roots.append(DEFAULT_RUNTIME_ROOT)
+    else:
+        roots.extend(Path(root).expanduser() for root in candidate_roots)
+    roots.append(source_runtime_root.expanduser())
+
+    resolved: list[Path] = []
+    for root in roots:
+        candidate = root.resolve()
+        if any(_same_path(candidate, existing) for existing in resolved):
+            continue
+        resolved.append(candidate)
+    return resolved
+
+
+def _route_id(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    source_runtime_root: Path,
+    target_runtime_roots: list[Path],
+) -> str:
+    payload = {
+        "goal_id": goal_id,
+        "source_registry": str(registry_path.resolve()),
+        "source_runtime_root": str(source_runtime_root.resolve()),
+        "target_runtime_roots": sorted(str(root.resolve()) for root in target_runtime_roots),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:16]
+
+
+def resolve_runtime_projection_route(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    source_runtime_root: Path,
+    candidate_roots: Iterable[Path] | None = None,
+) -> dict[str, Any]:
+    """Resolve the registry-declared route from one source runtime to its read model."""
+
+    source_registry = registry_path.expanduser().resolve()
+    source_runtime = source_runtime_root.expanduser().resolve()
+    provided_roots = (
+        [Path(root).expanduser() for root in candidate_roots]
+        if candidate_roots is not None
+        else None
+    )
+    roots = runtime_projection_candidate_roots(
+        source_runtime_root=source_runtime,
+        candidate_roots=provided_roots,
+    )
+    configured_root_text = str(os.environ.get("LOOPX_RUNTIME_ROOT") or "").strip()
+    explicit_roots = (
+        provided_roots
+        if provided_roots is not None
+        else ([Path(configured_root_text).expanduser()] if configured_root_text else [])
+    )
+    matches: list[dict[str, Any]] = []
+    conflicts: list[dict[str, Any]] = []
+    available_targets: list[Path] = []
+    unreadable_target_count = 0
+    for root in roots:
+        candidate_registry = global_registry_path(root)
+        if not candidate_registry.exists():
+            continue
+        available_targets.append(root)
+        try:
+            target_registry = load_registry(candidate_registry)
+        except (OSError, ValueError, json.JSONDecodeError):
+            unreadable_target_count += 1
+            continue
+        for goal in registry_goals(target_registry):
+            if str(goal.get("id") or "") != goal_id:
+                continue
+            declared_source = _resolved_source_registry(
+                goal,
+                registry_path=candidate_registry,
+            )
+            candidate = {
+                "target_runtime_root": root,
+                "target_registry": candidate_registry.resolve(),
+                "declared_source_registry": declared_source,
+            }
+            if declared_source and _same_path(declared_source, source_registry):
+                matches.append(candidate)
+            else:
+                conflicts.append(candidate)
+
+    unique_matches: list[dict[str, Any]] = []
+    for match in matches:
+        if any(
+            _same_path(match["target_runtime_root"], item["target_runtime_root"])
+            for item in unique_matches
+        ):
+            continue
+        unique_matches.append(match)
+
+    target_roots = [item["target_runtime_root"] for item in unique_matches]
+    source_is_global = _same_path(
+        source_registry,
+        global_registry_path(source_runtime),
+    )
+    if len(unique_matches) > 1:
+        status = "ambiguous"
+        target_runtime = None
+        target_registry = None
+        projection_required = True
+        declaration_source = "multiple_target_registries.goal.source_registry"
+    elif unique_matches:
+        match = unique_matches[0]
+        target_runtime = match["target_runtime_root"]
+        target_registry = match["target_registry"]
+        projection_required = not _same_path(target_runtime, source_runtime)
+        status = "resolved" if projection_required else "single_runtime"
+        declaration_source = "target_registry.goal.source_registry"
+    elif source_is_global:
+        status = "single_runtime"
+        target_runtime = source_runtime
+        target_registry = global_registry_path(source_runtime)
+        projection_required = False
+        declaration_source = "source_registry_is_global_registry"
+        target_roots = [source_runtime]
+    else:
+        external_targets = [
+            root for root in available_targets if not _same_path(root, source_runtime)
+        ]
+        explicit_external_targets = [
+            root
+            for root in external_targets
+            if any(_same_path(root, explicit) for explicit in explicit_roots)
+        ]
+        conflict_targets = [
+            item["target_runtime_root"]
+            for item in conflicts
+            if not _same_path(item["target_runtime_root"], source_runtime)
+        ]
+        missing_targets = explicit_external_targets or conflict_targets
+        if missing_targets:
+            status = "missing"
+            target_runtime = missing_targets[0] if len(missing_targets) == 1 else None
+            target_registry = (
+                global_registry_path(target_runtime) if target_runtime is not None else None
+            )
+            projection_required = True
+            declaration_source = "target_registry_route_missing"
+            target_roots = missing_targets
+        else:
+            status = "single_runtime"
+            target_runtime = source_runtime
+            target_registry = global_registry_path(source_runtime)
+            projection_required = False
+            declaration_source = "source_runtime_fallback"
+            target_roots = [source_runtime]
+
+    route_id = _route_id(
+        registry_path=source_registry,
+        goal_id=goal_id,
+        source_runtime_root=source_runtime,
+        target_runtime_roots=target_roots,
+    )
+    return {
+        "schema_version": RUNTIME_PROJECTION_ROUTE_SCHEMA_VERSION,
+        "route_id": route_id,
+        "goal_id": goal_id,
+        "status": status,
+        "projection_required": projection_required,
+        "declaration_source": declaration_source,
+        "source_registry": str(source_registry),
+        "source_runtime_root": str(source_runtime),
+        "target_runtime_root": str(target_runtime) if target_runtime is not None else None,
+        "target_registry": str(target_registry) if target_registry is not None else None,
+        "candidate_count": len(roots),
+        "match_count": len(unique_matches),
+        "conflict_count": len(conflicts),
+        "unreadable_target_count": unreadable_target_count,
+        "target_runtime_digests": [_path_digest(root) for root in target_roots],
+    }
+
+
+def compact_runtime_projection_route(route: dict[str, Any]) -> dict[str, Any]:
+    source_registry = str(route.get("source_registry") or "").strip()
+    source_runtime = str(route.get("source_runtime_root") or "").strip()
+    target_runtime = str(route.get("target_runtime_root") or "").strip()
+    return {
+        "schema_version": RUNTIME_PROJECTION_ROUTE_SCHEMA_VERSION,
+        "route_id": route.get("route_id"),
+        "status": route.get("status"),
+        "projection_required": bool(route.get("projection_required")),
+        "declaration_source": route.get("declaration_source"),
+        "match_count": int(route.get("match_count") or 0),
+        "conflict_count": int(route.get("conflict_count") or 0),
+        "unreadable_target_count": int(route.get("unreadable_target_count") or 0),
+        "source_registry_sha256_16": _path_digest(Path(source_registry))
+        if source_registry
+        else None,
+        "source_runtime_sha256_16": _path_digest(Path(source_runtime))
+        if source_runtime
+        else None,
+        "target_runtime_sha256_16": _path_digest(Path(target_runtime))
+        if target_runtime
+        else None,
+    }
+
+
+def _latest_route_source_row(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+    route_id: str,
+) -> dict[str, Any] | None:
+    rows, _ = load_index(runtime_root / "goals" / goal_id / "runs" / "index.jsonl")
+    for row in reversed(rows):
+        marker = row.get("runtime_projection_route")
+        if (
+            isinstance(marker, dict)
+            and marker.get("route_id") == route_id
+            and marker.get("projection_enabled") is not False
+        ):
+            return row
+    return None
+
+
+def _route_projection_is_current(
+    *,
+    target_runtime_root: Path,
+    goal_id: str,
+    route_id: str,
+    source_generated_at: Any,
+) -> bool:
+    rows, _ = load_index(
+        target_runtime_root / "goals" / goal_id / "runs" / "index.jsonl"
+    )
+    return any(
+        isinstance(row.get("shared_runtime_projection"), dict)
+        and row["shared_runtime_projection"].get("runtime_projection_route_id")
+        == route_id
+        and row["shared_runtime_projection"].get("source_generated_at")
+        == source_generated_at
+        for row in rows
+    )
+
+
+def _source_routes_for_registry(
+    *,
+    registry_path: Path,
+    runtime_root: Path,
+    goal_id: str | None,
+) -> list[tuple[Path, Path, str, str | None]]:
+    registry = load_registry(registry_path)
+    is_global = bool(registry.get("registry_role") == "global-local") or _same_path(
+        registry_path,
+        global_registry_path(runtime_root),
+    )
+    routes: list[tuple[Path, Path, str, str | None]] = []
+    for goal in registry_goals(registry):
+        current_goal_id = str(goal.get("id") or "")
+        if not current_goal_id or (goal_id and current_goal_id != goal_id):
+            continue
+        source_registry = (
+            _resolved_source_registry(goal, registry_path=registry_path)
+            if is_global
+            else registry_path.resolve()
+        )
+        if source_registry is None:
+            continue
+        source_error = None
+        if source_registry.exists():
+            try:
+                source_payload = load_registry(source_registry)
+                source_runtime = resolve_runtime_root(source_payload, None)
+            except (OSError, ValueError, json.JSONDecodeError):
+                source_runtime = runtime_root
+                source_error = "source_registry_unreadable"
+        else:
+            source_runtime = runtime_root
+            source_error = "source_registry_missing"
+        item = (source_registry, source_runtime, current_goal_id, source_error)
+        if item not in routes:
+            routes.append(item)
+    return routes
+
+
+def collect_runtime_projection_route_diagnostics(
+    *,
+    registry_path: Path,
+    runtime_root: Path,
+    goal_id: str | None = None,
+) -> dict[str, Any]:
+    items: list[dict[str, Any]] = []
+    source_routes = _source_routes_for_registry(
+        registry_path=registry_path,
+        runtime_root=runtime_root,
+        goal_id=goal_id,
+    )
+    registry = load_registry(registry_path)
+    registry_is_global = bool(registry.get("registry_role") == "global-local") or _same_path(
+        registry_path,
+        global_registry_path(runtime_root),
+    )
+    for source_registry, source_runtime, current_goal_id, source_error in source_routes:
+        if source_error:
+            items.append(
+                {
+                    "goal_id": current_goal_id,
+                    "status": "missing",
+                    "reason": source_error,
+                }
+            )
+            continue
+        route = resolve_runtime_projection_route(
+            registry_path=source_registry,
+            goal_id=current_goal_id,
+            source_runtime_root=source_runtime,
+            candidate_roots=(
+                [
+                    runtime_root,
+                    *runtime_projection_candidate_roots(
+                        source_runtime_root=source_runtime,
+                    ),
+                ]
+                if registry_is_global
+                else None
+            ),
+        )
+        compact = compact_runtime_projection_route(route)
+        route_status = str(route.get("status") or "missing")
+        diagnostic_status = route_status
+        source_row = (
+            _latest_route_source_row(
+                runtime_root=source_runtime,
+                goal_id=current_goal_id,
+                route_id=str(route.get("route_id") or ""),
+            )
+            if route_status == "resolved"
+            else None
+        )
+        if source_row:
+            target_text = str(route.get("target_runtime_root") or "").strip()
+            current = bool(target_text) and _route_projection_is_current(
+                target_runtime_root=Path(target_text),
+                goal_id=current_goal_id,
+                route_id=str(route.get("route_id") or ""),
+                source_generated_at=source_row.get("generated_at"),
+            )
+            diagnostic_status = "healthy" if current else "lagging"
+        elif route_status == "resolved":
+            diagnostic_status = "ready"
+        items.append(
+            {
+                "goal_id": current_goal_id,
+                "status": diagnostic_status,
+                "route": compact,
+                "source_projection_observed": source_row is not None,
+            }
+        )
+
+    counts = {
+        status: sum(1 for item in items if item.get("status") == status)
+        for status in ("healthy", "ready", "single_runtime", "missing", "ambiguous", "lagging")
+    }
+    return {
+        "schema_version": RUNTIME_PROJECTION_ROUTE_DIAGNOSTICS_SCHEMA_VERSION,
+        "available": bool(items),
+        "goal_count": len(items),
+        "healthy": not any(
+            item.get("status") in {"missing", "ambiguous", "lagging"}
+            for item in items
+        ),
+        "counts": counts,
+        "items": items,
+    }

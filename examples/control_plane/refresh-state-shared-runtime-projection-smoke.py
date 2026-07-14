@@ -19,6 +19,14 @@ from loopx.control_plane.runtime.shared_runtime_refresh_projection import (  # n
     build_shared_runtime_projection,
     write_shared_runtime_projection,
 )
+from loopx.control_plane.runtime import runtime_projection_route as route_module  # noqa: E402
+from loopx.control_plane.runtime.runtime_projection_route import (  # noqa: E402
+    compact_runtime_projection_route,
+    resolve_runtime_projection_route,
+)
+from loopx.presentation.renderers.status_markdown import (  # noqa: E402
+    render_status_markdown,
+)
 
 
 AGENT_ID = "codex-shared-runtime-smoke"
@@ -40,6 +48,25 @@ def run_cli(*args: str, cwd: Path, shared_runtime: Path) -> dict:
         },
     )
     assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert isinstance(payload, dict), payload
+    return payload
+
+
+def run_cli_failure(*args: str, cwd: Path, shared_runtime: Path) -> dict:
+    result = subprocess.run(
+        [sys.executable, "-m", "loopx.cli", "--format", "json", *args],
+        cwd=cwd,
+        check=False,
+        text=True,
+        capture_output=True,
+        env={
+            **os.environ,
+            "PYTHONPATH": str(REPO_ROOT),
+            "LOOPX_RUNTIME_ROOT": str(shared_runtime),
+        },
+    )
+    assert result.returncode != 0, result.stdout + result.stderr
     payload = json.loads(result.stdout)
     assert isinstance(payload, dict), payload
     return payload
@@ -109,6 +136,81 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
     return project, project_runtime, source_registry, shared_registry
 
 
+def write_route_source(
+    root: Path,
+    *,
+    name: str,
+    source_runtime: Path,
+) -> tuple[Path, str]:
+    goal_id = f"runtime-route-{name}"
+    registry = root / name / "registry.json"
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    state_file = registry.parent / "goals" / goal_id / "ACTIVE_GOAL_STATE.md"
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    state_file.write_text(
+        "---\nstatus: active\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n\n"
+        f"# {goal_id}\n\n## Agent Todo\n\n- [ ] [P1] Verify route behavior.\n",
+        encoding="utf-8",
+    )
+    registry.write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1",
+                "common_runtime_root": str(source_runtime),
+                "goals": [
+                    {
+                        "id": goal_id,
+                        "status": "active",
+                        "repo": str(registry.parent),
+                        "state_file": str(state_file.relative_to(registry.parent)),
+                    }
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return registry, goal_id
+
+
+def write_route_target(
+    target_runtime: Path,
+    *,
+    source_registry: Path,
+    goal_id: str,
+    include_route: bool = True,
+) -> None:
+    target_registry = target_runtime / "registry.global.json"
+    target_registry.parent.mkdir(parents=True, exist_ok=True)
+    goals = (
+        [
+            {
+                "id": goal_id,
+                "status": "active",
+                "source_registry": str(source_registry.resolve()),
+            }
+        ]
+        if include_route
+        else []
+    )
+    target_registry.write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1",
+                "registry_role": "global-local",
+                "common_runtime_root": str(target_runtime),
+                "goals": goals,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-refresh-shared-runtime-") as tmp:
         project, project_runtime, source_registry, shared_registry = write_fixture(
@@ -151,6 +253,13 @@ def main() -> None:
         assert projection["status"] == "projected", projection
         assert projection["raw_artifacts_copied"] is False, projection
         assert projection["recommended_action_copied"] is False, projection
+        assert projection["readback_verified"] is True, projection
+        route = refresh["runtime_projection_route"]
+        assert route["schema_version"] == "runtime_projection_route_v0", route
+        assert route["status"] == "resolved", route
+        assert route["projection_required"] is True, route
+        assert route["projection_enabled"] is True, route
+        assert str(project) not in json.dumps(route), route
         assert not (project_runtime / "registry.global.json").exists()
 
         shared_index = shared_runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
@@ -174,10 +283,210 @@ def main() -> None:
         assert replay["status"] == "already_current", replay
         assert len(shared_index.read_text().splitlines()) == len(rows)
 
+        no_sync = run_cli(
+            "--registry",
+            str(source_registry),
+            "refresh-state",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+            "--progress-scope",
+            "agent_lane",
+            "--classification",
+            "shared_runtime_projection_suppressed",
+            "--recommended-action",
+            "Keep this source-local checkpoint out of the shared runtime.",
+            "--no-global-sync",
+            "--suppress-external-sinks",
+            cwd=project,
+            shared_runtime=shared_runtime,
+        )
+        assert no_sync["runtime_projection_route"]["projection_enabled"] is False
+        assert no_sync["global_sync"]["enabled"] is False
+        assert no_sync["shared_runtime_projection"]["status"] == "disabled"
+        assert len(shared_index.read_text().splitlines()) == len(rows)
+
         source_record["state"]["frontmatter"]["updated_at"] = str(project)
         boundary_record, _ = build_shared_runtime_projection(record=source_record)
         assert boundary_record["state"]["frontmatter"]["updated_at"] is None
         assert str(project) not in json.dumps(boundary_record)
+
+        status = run_cli(
+            "--registry",
+            str(source_registry),
+            "status",
+            "--goal-id",
+            GOAL_ID,
+            "--limit",
+            "5",
+            cwd=project,
+            shared_runtime=shared_runtime,
+        )
+        route_diagnostics = status["runtime_projection_routes"]
+        assert route_diagnostics["healthy"] is True, route_diagnostics
+        assert route_diagnostics["counts"]["healthy"] == 1, route_diagnostics
+        assert "runtime_projection_routes: healthy=True" in render_status_markdown(status)
+
+        source_index = project_runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
+        source_rows = [
+            json.loads(line)
+            for line in source_index.read_text(encoding="utf-8").splitlines()
+        ]
+        enabled_route_row = next(
+            row
+            for row in reversed(source_rows)
+            if (row.get("runtime_projection_route") or {}).get("projection_enabled")
+            is True
+        )
+        lagging_row = {
+            **enabled_route_row,
+            "generated_at": "2026-01-01T00:00:01+00:00",
+            "classification": "shared_runtime_projection_lag_fixture",
+        }
+        with source_index.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(lagging_row, ensure_ascii=False) + "\n")
+        lagging_status = run_cli(
+            "--registry",
+            str(source_registry),
+            "status",
+            "--goal-id",
+            GOAL_ID,
+            "--limit",
+            "5",
+            cwd=project,
+            shared_runtime=shared_runtime,
+        )
+        lagging_routes = lagging_status["runtime_projection_routes"]
+        assert lagging_routes["healthy"] is False, lagging_routes
+        assert lagging_routes["counts"]["lagging"] == 1, lagging_routes
+        lagging_markdown = render_status_markdown(lagging_status)
+        assert "## Runtime Projection Route Findings" in lagging_markdown
+        assert "status=lagging" in lagging_markdown
+
+        single_runtime = Path(tmp) / "single-runtime"
+        single_registry, single_goal = write_route_source(
+            Path(tmp),
+            name="single",
+            source_runtime=single_runtime,
+        )
+        write_route_target(
+            single_runtime,
+            source_registry=single_registry,
+            goal_id=single_goal,
+        )
+        single_route = resolve_runtime_projection_route(
+            registry_path=single_registry,
+            goal_id=single_goal,
+            source_runtime_root=single_runtime,
+            candidate_roots=[single_runtime],
+        )
+        assert single_route["status"] == "single_runtime", single_route
+        assert single_route["projection_required"] is False, single_route
+
+        standalone_runtime = Path(tmp) / "standalone-runtime"
+        standalone_registry, standalone_goal = write_route_source(
+            Path(tmp),
+            name="standalone",
+            source_runtime=standalone_runtime,
+        )
+        unrelated_runtime = Path(tmp) / "unrelated-default-runtime"
+        write_route_target(
+            unrelated_runtime,
+            source_registry=standalone_registry,
+            goal_id="unrelated-goal",
+        )
+        original_default_runtime = route_module.DEFAULT_RUNTIME_ROOT
+        route_module.DEFAULT_RUNTIME_ROOT = unrelated_runtime
+        try:
+            standalone_route = resolve_runtime_projection_route(
+                registry_path=standalone_registry,
+                goal_id=standalone_goal,
+                source_runtime_root=standalone_runtime,
+            )
+        finally:
+            route_module.DEFAULT_RUNTIME_ROOT = original_default_runtime
+        assert standalone_route["status"] == "single_runtime", standalone_route
+        assert standalone_route["declaration_source"] == "source_runtime_fallback"
+
+        missing_source_runtime = Path(tmp) / "missing-source-runtime"
+        missing_target_runtime = Path(tmp) / "missing-target-runtime"
+        missing_registry, missing_goal = write_route_source(
+            Path(tmp),
+            name="missing",
+            source_runtime=missing_source_runtime,
+        )
+        write_route_target(
+            missing_target_runtime,
+            source_registry=missing_registry,
+            goal_id=missing_goal,
+            include_route=False,
+        )
+        missing_route = resolve_runtime_projection_route(
+            registry_path=missing_registry,
+            goal_id=missing_goal,
+            source_runtime_root=missing_source_runtime,
+            candidate_roots=[missing_target_runtime],
+        )
+        assert missing_route["status"] == "missing", missing_route
+        (missing_target_runtime / "registry.global.json").write_text(
+            "{invalid-json\n",
+            encoding="utf-8",
+        )
+        unreadable_route = resolve_runtime_projection_route(
+            registry_path=missing_registry,
+            goal_id=missing_goal,
+            source_runtime_root=missing_source_runtime,
+            candidate_roots=[missing_target_runtime],
+        )
+        assert unreadable_route["status"] == "missing", unreadable_route
+        assert unreadable_route["unreadable_target_count"] == 1, unreadable_route
+        missing_refresh = run_cli_failure(
+            "--registry",
+            str(missing_registry),
+            "refresh-state",
+            "--goal-id",
+            missing_goal,
+            "--classification",
+            "runtime_projection_route_missing",
+            "--recommended-action",
+            "Repair the declared runtime projection route before retrying sync.",
+            "--suppress-external-sinks",
+            cwd=missing_registry.parent,
+            shared_runtime=missing_target_runtime,
+        )
+        assert missing_refresh["ok"] is False, missing_refresh
+        assert missing_refresh["runtime_projection_route"]["status"] == "missing"
+        assert missing_refresh["global_sync"]["enabled"] is False
+        assert missing_refresh["shared_runtime_projection"]["status"] == "route_missing"
+        assert not (missing_source_runtime / "registry.global.json").exists()
+
+        ambiguous_source_runtime = Path(tmp) / "ambiguous-source-runtime"
+        ambiguous_registry, ambiguous_goal = write_route_source(
+            Path(tmp),
+            name="ambiguous",
+            source_runtime=ambiguous_source_runtime,
+        )
+        ambiguous_targets = [
+            Path(tmp) / "ambiguous-target-a",
+            Path(tmp) / "ambiguous-target-b",
+        ]
+        for target in ambiguous_targets:
+            write_route_target(
+                target,
+                source_registry=ambiguous_registry,
+                goal_id=ambiguous_goal,
+            )
+        ambiguous_route = resolve_runtime_projection_route(
+            registry_path=ambiguous_registry,
+            goal_id=ambiguous_goal,
+            source_runtime_root=ambiguous_source_runtime,
+            candidate_roots=ambiguous_targets,
+        )
+        assert ambiguous_route["status"] == "ambiguous", ambiguous_route
+        assert ambiguous_route["match_count"] == 2, ambiguous_route
+        compact_ambiguous = compact_runtime_projection_route(ambiguous_route)
+        assert str(Path(tmp)) not in json.dumps(compact_ambiguous), compact_ambiguous
 
         quota = run_cli(
             "--registry",

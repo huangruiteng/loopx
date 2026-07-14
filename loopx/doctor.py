@@ -644,6 +644,10 @@ def latest_promotion_readiness_event(runtime_root: Path, goal_id: str | None = N
 
 
 def collect_doctor(*, deep: bool = False) -> dict[str, Any]:
+    from .control_plane.runtime.runtime_projection_route import (
+        collect_runtime_projection_route_diagnostics,
+    )
+
     loopx_path = resolve_command_path("loopx")
     invocation_path = current_script_invocation_path()
     loopx_canary_path = resolve_command_path("loopx-canary")
@@ -731,6 +735,21 @@ def collect_doctor(*, deep: bool = False) -> dict[str, Any]:
     )
     default_global_registry = global_registry_path(DEFAULT_RUNTIME_ROOT)
     global_registry_writability = probe_registry_write_path(default_global_registry, create_parent=True)
+    runtime_projection_routes = (
+        collect_runtime_projection_route_diagnostics(
+            registry_path=default_global_registry,
+            runtime_root=DEFAULT_RUNTIME_ROOT,
+        )
+        if default_global_registry.exists()
+        else {
+            "schema_version": "runtime_projection_route_diagnostics_v0",
+            "available": False,
+            "goal_count": 0,
+            "healthy": True,
+            "counts": {},
+            "items": [],
+        }
+    )
     deep_validation = None
     if deep:
         from .release_candidate import collect_release_candidate_checks
@@ -847,6 +866,16 @@ def collect_doctor(*, deep: bool = False) -> dict[str, Any]:
             if global_registry_writability.get("ok")
             else str(global_registry_writability.get("error") or default_global_registry),
         },
+        {
+            "id": "runtime_projection_routes_healthy",
+            "required": False,
+            "ok": bool(runtime_projection_routes.get("healthy", True)),
+            "detail": json.dumps(
+                runtime_projection_routes.get("counts") or {},
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+        },
     ]
     if deep_validation:
         checks.extend(deep_validation["checks"])
@@ -879,6 +908,7 @@ def collect_doctor(*, deep: bool = False) -> dict[str, Any]:
         "release_manifest": release_manifest,
         "release_provenance": release_provenance,
         "global_registry_writability": global_registry_writability,
+        "runtime_projection_routes": runtime_projection_routes,
         "install_freshness": install_freshness,
         "upgrade_hint": install_freshness,
         "skill": {
@@ -917,6 +947,7 @@ def render_doctor_markdown(payload: dict[str, Any]) -> str:
         f"- installed_skill_delivery_hints: `{(payload.get('skill') or {}).get('delivery_hints')}`",
         f"- installed_required_skills: `{','.join(sorted((payload.get('skills') or {}).keys()))}`",
         f"- global_registry_writable: `{(payload.get('global_registry_writability') or {}).get('ok')}`",
+        f"- runtime_projection_routes_healthy: `{(payload.get('runtime_projection_routes') or {}).get('healthy')}`",
         f"- user_local_bin_on_path: `{(payload.get('path') or {}).get('user_local_bin_on_path')}`",
         f"- python: `{(payload.get('python') or {}).get('executable')}`",
         "",

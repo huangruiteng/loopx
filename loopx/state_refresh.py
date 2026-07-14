@@ -21,8 +21,11 @@ from .control_plane.work_items.repair_delta import (
 )
 from .control_plane.runtime.shared_runtime_refresh_projection import (
     build_shared_runtime_projection,
-    registered_shared_runtime_root,
     write_shared_runtime_projection,
+)
+from .control_plane.runtime.runtime_projection_route import (
+    compact_runtime_projection_route,
+    resolve_runtime_projection_route,
 )
 from .feedback import validate_local_control_text, validate_public_safe_text
 from .file_lock import exclusive_file_lock
@@ -818,13 +821,22 @@ def refresh_state_run(
     normalized_repair_delta_kinds = normalize_repair_delta_kinds(repair_delta_kinds)
     registry = load_registry(registry_path)
     runtime_root = resolve_runtime_root(registry, runtime_root_override)
+    runtime_projection_route = resolve_runtime_projection_route(
+        registry_path=registry_path,
+        goal_id=safe_goal_id,
+        source_runtime_root=runtime_root,
+    )
+    route_status = str(runtime_projection_route.get("status") or "missing")
+    route_target_text = str(
+        runtime_projection_route.get("target_runtime_root") or ""
+    ).strip()
+    route_target_root = Path(route_target_text) if route_target_text else None
     shared_runtime_root = (
-        registered_shared_runtime_root(
-            registry_path=registry_path,
-            goal_id=safe_goal_id,
-            source_runtime_root=runtime_root,
-        )
-        if sync_global
+        route_target_root if sync_global and route_status == "resolved" else None
+    )
+    global_sync_runtime_root = (
+        route_target_root
+        if sync_global and route_status in {"resolved", "single_runtime"}
         else None
     )
     registry_goal, resolved_project, resolved_state_file = resolve_goal_state(
@@ -991,6 +1003,9 @@ def refresh_state_run(
         record["agent_vision"] = agent_vision
     if vision_checkpoint:
         record["vision_checkpoint"] = vision_checkpoint
+    compact_route = compact_runtime_projection_route(runtime_projection_route)
+    compact_route["projection_enabled"] = bool(sync_global)
+    record["runtime_projection_route"] = compact_route
 
     runs_dir = runtime_root / "goals" / safe_goal_id / "runs"
     json_path, markdown_path = unique_run_paths(runs_dir, generated_at)
@@ -1017,6 +1032,7 @@ def refresh_state_run(
             "updated_at": record_frontmatter.get("updated_at"),
         },
     }
+    index_record["runtime_projection_route"] = compact_route
     if normalized_delivery_batch_scale:
         index_record["delivery_batch_scale"] = normalized_delivery_batch_scale
     if normalized_delivery_outcome:
@@ -1077,7 +1093,7 @@ def refresh_state_run(
         expected_write_scopes = ["runtime_history"]
         if active_state_next_action_update and active_state_next_action_update.get("would_update"):
             expected_write_scopes.insert(0, "active_state")
-        if sync_global:
+        if sync_global and route_status in {"resolved", "single_runtime"}:
             expected_write_scopes.append("global_registry")
         if shared_runtime_root:
             expected_write_scopes.append("shared_runtime_projection")
@@ -1087,8 +1103,10 @@ def refresh_state_run(
                 patch_parts.append("preview active-state Next Action update")
             else:
                 patch_parts.append("preserve active-state Next Action")
-        if sync_global:
+        if sync_global and route_status in {"resolved", "single_runtime"}:
             patch_parts.append("sync public-safe registry projection")
+        elif sync_global:
+            patch_parts.append(f"block global sync on {route_status} runtime projection route")
         if shared_runtime_root:
             patch_parts.append("project compact refresh to registered shared runtime")
         payload["local_state_write_correctness"] = build_local_state_write_correctness_dry_run_packet(
@@ -1100,7 +1118,11 @@ def refresh_state_run(
                 "state_file_ref": "registry.goal.state_file",
                 "run_history_ref": "runtime.goal.runs",
                 "index_ref": "runtime.goal.runs.index",
-                "global_registry_ref": "runtime.registry.global" if sync_global else None,
+                "global_registry_ref": (
+                    "runtime.registry.global"
+                    if sync_global and route_status in {"resolved", "single_runtime"}
+                    else None
+                ),
                 "shared_runtime_projection_ref": (
                     "shared_runtime.goal.runs.index" if shared_runtime_root else None
                 ),
@@ -1124,10 +1146,28 @@ def refresh_state_run(
         markdown_path.write_text(render_state_refresh_markdown(payload) + "\n", encoding="utf-8")
         with index_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(index_record, ensure_ascii=False) + "\n")
-    if sync_global:
+    if sync_global and route_status in {"missing", "ambiguous"}:
+        payload["ok"] = False
+        payload["partial_write"] = not dry_run
+        payload["global_sync"] = {
+            "ok": False,
+            "enabled": False,
+            "wrote": False,
+            "reason": f"runtime projection route is {route_status}",
+            "route_status": route_status,
+        }
+        payload["shared_runtime_projection"] = {
+            "ok": False,
+            "status": f"route_{route_status}",
+            "dry_run": dry_run,
+            "raw_artifacts_copied": False,
+            "recommended_action_copied": False,
+            "runtime_projection_route_id": compact_route.get("route_id"),
+        }
+    elif sync_global:
         payload["global_sync"] = sync_project_registry_to_global(
             registry_path=registry_path,
-            runtime_root_override=str(shared_runtime_root or runtime_root),
+            runtime_root_override=str(global_sync_runtime_root or runtime_root),
             goal_id=safe_goal_id,
             dry_run=dry_run,
         )

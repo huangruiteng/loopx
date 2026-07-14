@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from .runtime.runtime_projection_route import (
+    collect_runtime_projection_route_diagnostics,
+)
+
 
 StatusCallback = Callable[..., Any]
 
@@ -79,6 +83,11 @@ def collect_status(
         registry_path=registry_path,
         runtime_root_override=str(runtime_root),
     )
+    runtime_projection_routes = collect_runtime_projection_route_diagnostics(
+        registry_path=registry_path,
+        runtime_root=runtime_root,
+        goal_id=goal_filter,
+    )
     payload = {
         "ok": bool(contract.get("ok")) and bool(global_registry.get("ok", True)),
         "registry": str(registry_path),
@@ -100,6 +109,7 @@ def collect_status(
         **runtime_summaries,
         "promotion_gate": promotion_gate,
     }
+    payload["runtime_projection_routes"] = runtime_projection_routes
     agent_management_projection = context.build_agent_management_projection(payload)
     if agent_management_projection.get("agents"):
         payload["agent_management_projection"] = agent_management_projection
