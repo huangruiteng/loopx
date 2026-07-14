@@ -639,7 +639,19 @@ def test_visual_configuration_can_create_all_stage_boards_from_docx(tmp_path) ->
     assert sink["stage_whiteboards"] == []
 
 
-def test_visual_sync_publishes_one_mermaid_whiteboard_per_stage(tmp_path) -> None:
+@pytest.mark.parametrize(
+    ("board_style", "renderer", "input_format"),
+    [
+        ("auto_flow", "mermaid", "mermaid"),
+        ("semantic_lane_columns", "stage_svg", "svg"),
+    ],
+)
+def test_visual_sync_publishes_one_whiteboard_per_stage_style(
+    tmp_path,
+    board_style,
+    renderer,
+    input_format,
+) -> None:
     projection = _complex_projection()
     config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
     bundle = build_explore_presentation_bundle(
@@ -654,6 +666,7 @@ def test_visual_sync_publishes_one_mermaid_whiteboard_per_stage(tmp_path) -> Non
             "executive": {
                 "whiteboard_token": "wb_stage_01",
                 "view_role": "executive",
+                "board_style": board_style,
                 "stage_capacity": 14,
                 "stage_whiteboards": [
                     {
@@ -671,10 +684,11 @@ def test_visual_sync_publishes_one_mermaid_whiteboard_per_stage(tmp_path) -> Non
     assert view["stage_count"] == stage_count
     assert view["stage_capacity"] == 14
     assert view["presentation_mode"] == "stage_document"
-    assert all(stage["renderer"] == "mermaid" for stage in view["stages"])
-    assert all(stage["input_format"] == "mermaid" for stage in view["stages"])
+    assert view["board_style"] == board_style
+    assert all(stage["renderer"] == renderer for stage in view["stages"])
+    assert all(stage["input_format"] == input_format for stage in view["stages"])
     assert all(
-        "--input_format mermaid" in stage["command"]["command"]
+        f"--input_format {input_format}" in stage["command"]["command"]
         for stage in view["stages"]
     )
 
