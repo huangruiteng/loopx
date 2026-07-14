@@ -13,7 +13,17 @@ _EVENT_TYPES = {
     "duplicate_external_write",
     "first_push_ci",
     "human_intervention",
+    "issue_close_recommended",
+    "issue_close_request_published",
+    "issue_closed_observed",
+    "issue_reopened_observed",
     "useful_public_comment",
+}
+_ISSUE_CLOSE_EVENT_TYPES = {
+    "issue_close_recommended",
+    "issue_close_request_published",
+    "issue_closed_observed",
+    "issue_reopened_observed",
 }
 _SUPPLEMENT_FIELDS = (
     "human_interventions",
@@ -29,6 +39,10 @@ _SUPPLEMENT_FIELDS = (
     "useful_public_comments",
     "triage_outcomes",
     "issues_screened",
+    "issue_close_recommendations",
+    "issue_close_requests_published",
+    "issue_closes_observed",
+    "issue_reopens_observed",
     "first_push_ci_passed",
     "first_push_ci_total",
 )
@@ -94,6 +108,52 @@ def _events_in_period(
         if period_start <= occurred_at <= period_end:
             events.append(dict(item))
     return events
+
+
+def _issue_close_activity(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Project bounded close evidence without treating activity as success.
+
+    Recommendations may be internal. Published requests and provider-observed
+    state transitions require a public evidence URL so downstream attribution
+    is auditable without retaining raw provider payloads.
+    """
+
+    activity_by_issue: dict[str, list[dict[str, str]]] = {}
+    for index, item in enumerate(events):
+        event_type = str(item.get("event_type") or "").strip()
+        if event_type not in _ISSUE_CLOSE_EVENT_TYPES:
+            continue
+        issue_ref = str(item.get("issue_ref") or "").strip()
+        if not issue_ref:
+            raise ValueError(f"issue close event {index} requires issue_ref")
+        evidence_url = str(item.get("evidence_url") or "").strip()
+        if event_type != "issue_close_recommended" and (
+            not evidence_url.startswith("https://")
+            or any(char.isspace() for char in evidence_url)
+        ):
+            raise ValueError(
+                f"{event_type} for {issue_ref} requires an https evidence_url"
+            )
+        compact = {
+            "event_id": str(item.get("event_id") or "").strip(),
+            "event_type": event_type,
+            "occurred_at": str(item.get("occurred_at") or "").strip(),
+        }
+        if evidence_url:
+            compact["evidence_url"] = evidence_url
+        activity_by_issue.setdefault(issue_ref, []).append(compact)
+
+    return [
+        {
+            "schema_version": "issue_fix_issue_close_activity_v0",
+            "issue_ref": issue_ref,
+            "events": sorted(
+                activity_by_issue[issue_ref],
+                key=lambda item: (item["occurred_at"], item["event_id"]),
+            ),
+        }
+        for issue_ref in sorted(activity_by_issue)
+    ]
 
 
 def _lifecycle_first_push_ci(
@@ -329,6 +389,7 @@ def build_issue_fix_metrics_supplement(
     feasibility = _latest_rows(feasibility_rows, repo=repo, ref_field="issue_ref")
     lifecycles = _latest_rows(pr_lifecycle_rows, repo=repo, ref_field="pr_ref")
     events = _events_in_period(event_batch, period_start=start, period_end=end)
+    issue_close_activity = _issue_close_activity(events)
     history_intervention_ids = _history_human_interventions(
         run_history_rows,
         period_start=start,
@@ -377,6 +438,38 @@ def build_issue_fix_metrics_supplement(
         )
         counts["useful_public_comments"] = sum(
             item.get("event_type") == "useful_public_comment" for item in events
+        )
+        counts.update(
+            {
+                "issue_close_recommendations": sum(
+                    any(
+                        event.get("event_type") == "issue_close_recommended"
+                        for event in item["events"]
+                    )
+                    for item in issue_close_activity
+                ),
+                "issue_close_requests_published": sum(
+                    any(
+                        event.get("event_type") == "issue_close_request_published"
+                        for event in item["events"]
+                    )
+                    for item in issue_close_activity
+                ),
+                "issue_closes_observed": sum(
+                    any(
+                        event.get("event_type") == "issue_closed_observed"
+                        for event in item["events"]
+                    )
+                    for item in issue_close_activity
+                ),
+                "issue_reopens_observed": sum(
+                    any(
+                        event.get("event_type") == "issue_reopened_observed"
+                        for event in item["events"]
+                    )
+                    for item in issue_close_activity
+                ),
+            }
         )
         first_push = [
             item for item in events if item.get("event_type") == "first_push_ci"
@@ -471,6 +564,7 @@ def build_issue_fix_metrics_supplement(
     supplement = {
         "schema_version": SUPPLEMENT_SCHEMA_VERSION,
         "counts": counts,
+        "issue_close_activity": issue_close_activity,
         "coverage": {
             "human_intervention": human_intervention_coverage,
             "capability_gap": capability_gap_coverage,
@@ -478,7 +572,16 @@ def build_issue_fix_metrics_supplement(
                 "eligible_prs": len(first_push_eligible),
                 "observed_prs": len(first_push_statuses),
                 "complete": first_push_complete,
-            }
+            },
+            "issue_close_activity": {
+                "source": (
+                    EVENT_BATCH_SCHEMA_VERSION
+                    if event_batch is not None
+                    else "not_supplied"
+                ),
+                "observed_issues": len(issue_close_activity),
+                "complete": event_batch is not None,
+            },
         },
     }
     return {
@@ -493,6 +596,7 @@ def build_issue_fix_metrics_supplement(
             "feasibility_rows": len(feasibility),
             "pr_lifecycle_rows": len(lifecycles),
             "event_rows": len(events),
+            "issue_close_activity_rows": len(issue_close_activity),
             "run_history_rows": len(run_history_rows),
             "rollout_event_rows": len(rollout_event_rows),
             "repository_memory_inputs": len(repository_memory_results),
@@ -518,6 +622,12 @@ def render_issue_fix_metrics_supplement_markdown(payload: dict[str, Any]) -> str
             f"- repository: `{payload.get('repo')}`",
             f"- issues screened: `{counts.get('issues_screened')}`",
             f"- automatic terminal closeouts: `{counts.get('automatic_terminal_closeouts')}`",
+            f"- issue close recommendations / published requests: "
+            f"`{counts.get('issue_close_recommendations', 'not available')}` / "
+            f"`{counts.get('issue_close_requests_published', 'not available')}`",
+            f"- issue closes / reopens observed: "
+            f"`{counts.get('issue_closes_observed', 'not available')}` / "
+            f"`{counts.get('issue_reopens_observed', 'not available')}`",
             f"- memory retrievals: `{counts.get('memory_retrievals', 'not available')}`",
             f"- missing fields: `{len(payload.get('missing_fields') or [])}`",
         ]

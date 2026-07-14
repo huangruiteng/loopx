@@ -37,7 +37,10 @@ def register_issue_fix_metrics_supplement_command(
     parser.add_argument(
         "--event-json",
         default=None,
-        help="Optional issue_fix_metrics_event_batch_v0 file, inline object, or stdin.",
+        help=(
+            "Optional issue_fix_metrics_event_batch_v0 file, inline object, or "
+            "stdin, including evidence-backed issue close activity."
+        ),
     )
     parser.add_argument(
         "--human-intervention-coverage-start",

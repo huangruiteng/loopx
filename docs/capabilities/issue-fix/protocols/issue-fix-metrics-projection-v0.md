@@ -70,7 +70,11 @@ native to feasibility or PR lifecycle rows:
     "loopx_capability_gaps_fixed": 2,
     "memory_retrievals": 4,
     "memory_verified_patch_influence": 1,
-    "memory_stale_results": 1
+    "memory_stale_results": 1,
+    "issue_close_recommendations": 3,
+    "issue_close_requests_published": 2,
+    "issue_closes_observed": 1,
+    "issue_reopens_observed": 0
   }
 }
 ```
@@ -101,8 +105,27 @@ retrieval, verified patch-influence, and stale-result counts. An optional
 `issue_fix_metrics_event_batch_v0` supplies stable event identities for
 first-push CI, human interventions, useful public comments, duplicate external
 writes, and capability-gap `found` / `fixed` / `real_callsite_verified`
-transitions. Events outside the reporting period are ignored, duplicate event
-identities are rejected, and a capability gap is counted once per gap identity.
+transitions. It also accepts four explicit issue-close stages:
+`issue_close_recommended`, `issue_close_request_published`,
+`issue_closed_observed`, and `issue_reopened_observed`. Events outside the
+reporting period are ignored, duplicate event identities are rejected, and a
+capability gap is counted once per gap identity.
+
+Issue-close events require `issue_ref`. Published requests and provider-observed
+close/reopen transitions additionally require a public HTTPS `evidence_url`;
+an internal recommendation does not. The composer folds repeated events into
+one `issue_fix_issue_close_activity_v0` row per issue, retaining only stable event
+identity, stage, timestamp, and public evidence URL. For example:
+
+```json
+{
+  "event_id": "close-request-42",
+  "event_type": "issue_close_request_published",
+  "issue_ref": "issues_42",
+  "occurred_at": "2026-07-12T00:00:00Z",
+  "evidence_url": "https://github.com/owner/repo/issues/42#issuecomment-1"
+}
+```
 
 Without an explicit event batch, the composer reads the existing compact LoopX
 run index and counts only route-changing `operator_gate_*` decisions and
@@ -175,6 +198,18 @@ rather than coercing it to zero.
 - Repository shares use explicit numerators and denominators, so a ratio is
   `not_available` when its denominator is zero or evidence is missing.
 - Open PRs are work in progress, not terminal outcomes.
+- A recommendation is activity, not a close. A published request is an
+  externally visible attempt, not a close. `issue_closes_observed` requires a
+  later provider-observed close event or a later `closed_at` in the current
+  repository snapshot.
+- An attributed close conversion requires a published request at or before the
+  observed close. This is a bounded operational attribution rule, not a causal
+  claim about why a maintainer closed the issue.
+- A later observed reopen is a reversal. The packet reports gross attributed
+  conversions, reopen reversals, and net conversions separately. Each measure
+  counts unique issue refs, so retries and repeated comments cannot inflate it.
+- PR-linked issue closes and close-activity conversions are overlapping views;
+  they must not be added together as independent terminal outcomes.
 
 ## Boundary contract
 
@@ -214,6 +249,12 @@ The metrics packet includes stable `impact_rows` for repository health,
 delivery, quality, autonomy, capability, and memory. Every row keeps its
 baseline, current value, delta, numerator/denominator when applicable, public
 source URL, freshness timestamp, and missing-data reason.
+
+Issue-close delivery has separate rows for recommendations, published requests,
+agent-pursued closes, attributed conversions, reopen reversals, net conversions,
+and conversion rate. The rows stay unavailable when the explicit event batch
+does not cover the reporting period, or when an attempted issue has neither a
+current issue state nor provider-observed close/reopen evidence.
 
 Capability delta is represented by three separate rows: gaps found, gaps
 fixed, and gaps verified on a real callsite. This keeps discovery volume,

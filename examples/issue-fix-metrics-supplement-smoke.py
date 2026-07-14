@@ -190,6 +190,45 @@ def main() -> int:
                         "occurred_at": "2026-07-10T00:00:00Z",
                     },
                     {
+                        "event_id": "close-recommend-44-a",
+                        "event_type": "issue_close_recommended",
+                        "issue_ref": "issues_44",
+                        "occurred_at": "2026-07-13T00:00:00Z",
+                    },
+                    {
+                        "event_id": "close-recommend-44-b",
+                        "event_type": "issue_close_recommended",
+                        "issue_ref": "issues_44",
+                        "occurred_at": "2026-07-14T00:00:00Z",
+                    },
+                    {
+                        "event_id": "close-request-44",
+                        "event_type": "issue_close_request_published",
+                        "issue_ref": "issues_44",
+                        "occurred_at": "2026-07-15T00:00:00Z",
+                        "evidence_url": "https://github.com/public-fixture/widgets/issues/44#issuecomment-1",
+                    },
+                    {
+                        "event_id": "closed-44",
+                        "event_type": "issue_closed_observed",
+                        "issue_ref": "issues_44",
+                        "occurred_at": "2026-07-16T00:00:00Z",
+                        "evidence_url": "https://github.com/public-fixture/widgets/issues/44",
+                    },
+                    {
+                        "event_id": "reopened-44",
+                        "event_type": "issue_reopened_observed",
+                        "issue_ref": "issues_44",
+                        "occurred_at": "2026-07-17T00:00:00Z",
+                        "evidence_url": "https://github.com/public-fixture/widgets/issues/44",
+                    },
+                    {
+                        "event_id": "close-recommend-45",
+                        "event_type": "issue_close_recommended",
+                        "issue_ref": "issues_45",
+                        "occurred_at": "2026-07-18T00:00:00Z",
+                    },
+                    {
                         "event_id": "outside-period",
                         "event_type": "human_intervention",
                         "occurred_at": "2026-06-01T00:00:00Z",
@@ -271,6 +310,16 @@ def main() -> int:
         assert counts["memory_verified_patch_influence"] == 1, packet
         assert counts["memory_stale_results"] == 0, packet
         assert counts["useful_public_comments"] == 1, packet
+        assert counts["issue_close_recommendations"] == 2, packet
+        assert counts["issue_close_requests_published"] == 1, packet
+        assert counts["issue_closes_observed"] == 1, packet
+        assert counts["issue_reopens_observed"] == 1, packet
+        assert len(packet["supplement"]["issue_close_activity"]) == 2, packet
+        assert packet["supplement"]["coverage"]["issue_close_activity"] == {
+            "source": "issue_fix_metrics_event_batch_v0",
+            "observed_issues": 2,
+            "complete": True,
+        }, packet
         assert "duplicate_external_writes" not in packet["missing_fields"], packet
         serialized = json.dumps(packet, sort_keys=True)
         assert str(root) not in serialized, serialized
@@ -301,6 +350,10 @@ def main() -> int:
         assert "first_push_ci_total" in incomplete["missing_fields"], incomplete
         assert "first_push_ci_passed" in incomplete["missing_fields"], incomplete
         assert "human_interventions" in incomplete["missing_fields"], incomplete
+        assert "issue_close_recommendations" in incomplete["missing_fields"], incomplete
+        assert "issue_close_requests_published" in incomplete["missing_fields"], (
+            incomplete
+        )
         assert incomplete["supplement"]["coverage"]["human_intervention"] == {
             "source": "loopx_compact_run_index",
             "observed_events": 2,

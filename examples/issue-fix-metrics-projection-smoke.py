@@ -70,7 +70,11 @@ def main() -> int:
                     "pull_requests_merged": 2,
                 },
                 "issue_states": [
-                    {"issue_ref": "issues_42", "state": "CLOSED"},
+                    {
+                        "issue_ref": "issues_42",
+                        "state": "CLOSED",
+                        "closed_at": "2026-07-12T00:00:00Z",
+                    },
                     {"issue_ref": "issues_43", "state": "OPEN"},
                     {"issue_ref": "issues_44", "state": "OPEN"},
                 ],
@@ -114,6 +118,82 @@ def main() -> int:
                     "memory_verified_decision_influence": 2,
                     "memory_verified_patch_influence": 1,
                     "memory_stale_results": 1,
+                    "issue_close_recommendations": 3,
+                    "issue_close_requests_published": 2,
+                    "issue_closes_observed": 2,
+                    "issue_reopens_observed": 1,
+                },
+                "issue_close_activity": [
+                    {
+                        "schema_version": "issue_fix_issue_close_activity_v0",
+                        "issue_ref": "issues_42",
+                        "events": [
+                            {
+                                "event_id": "recommend-42",
+                                "event_type": "issue_close_recommended",
+                                "occurred_at": "2026-07-10T00:00:00Z",
+                            },
+                            {
+                                "event_id": "request-42",
+                                "event_type": "issue_close_request_published",
+                                "occurred_at": "2026-07-11T00:00:00Z",
+                                "evidence_url": "https://github.com/public-fixture/widgets/issues/42#issuecomment-1",
+                            },
+                        ],
+                    },
+                    {
+                        "schema_version": "issue_fix_issue_close_activity_v0",
+                        "issue_ref": "issues_43",
+                        "events": [
+                            {
+                                "event_id": "recommend-43",
+                                "event_type": "issue_close_recommended",
+                                "occurred_at": "2026-07-13T00:00:00Z",
+                            },
+                            {
+                                "event_id": "request-43",
+                                "event_type": "issue_close_request_published",
+                                "occurred_at": "2026-07-14T00:00:00Z",
+                                "evidence_url": "https://github.com/public-fixture/widgets/issues/43#issuecomment-2",
+                            },
+                            {
+                                "event_id": "closed-43",
+                                "event_type": "issue_closed_observed",
+                                "occurred_at": "2026-07-15T00:00:00Z",
+                                "evidence_url": "https://github.com/public-fixture/widgets/issues/43",
+                            },
+                            {
+                                "event_id": "reopened-43",
+                                "event_type": "issue_reopened_observed",
+                                "occurred_at": "2026-07-16T00:00:00Z",
+                                "evidence_url": "https://github.com/public-fixture/widgets/issues/43",
+                            },
+                        ],
+                    },
+                    {
+                        "schema_version": "issue_fix_issue_close_activity_v0",
+                        "issue_ref": "issues_44",
+                        "events": [
+                            {
+                                "event_id": "closed-44-before-attempt",
+                                "event_type": "issue_closed_observed",
+                                "occurred_at": "2026-07-16T00:00:00Z",
+                                "evidence_url": "https://github.com/public-fixture/widgets/issues/44",
+                            },
+                            {
+                                "event_id": "recommend-44",
+                                "event_type": "issue_close_recommended",
+                                "occurred_at": "2026-07-17T00:00:00Z",
+                            },
+                        ],
+                    },
+                ],
+                "coverage": {
+                    "issue_close_activity": {
+                        "source": "issue_fix_metrics_event_batch_v0",
+                        "observed_issues": 3,
+                        "complete": True,
+                    }
                 },
             },
         )
@@ -230,6 +310,14 @@ def main() -> int:
         assert output["selected_issues"] == 2, packet
         assert output["merged_pull_requests"] == 1, packet
         assert output["linked_issues_closed"] == 1, packet
+        assert output["issue_close_output"] == {
+            "issue_close_recommendations": 3,
+            "issue_close_requests_published": 2,
+            "issue_closes_observed": 2,
+            "issue_close_conversions": 2,
+            "issue_close_reversals": 1,
+            "net_issue_close_conversions": 1,
+        }, packet
         assert output["pull_requests_refreshed_from_snapshot"] == 2, packet
         assert output["stale_lifecycle_rows_corrected_by_snapshot"] == 0, packet
         assert packet["delta"]["repository"]["open_issues"] == 2, packet
@@ -237,20 +325,32 @@ def main() -> int:
             packet["ratios"]["pilot_share_of_repository_prs_opened"]["value"] == 0.5
         ), packet
         assert len(packet["output_inventory"]["pull_requests"]) == 2, packet
-        assert len(packet["impact_rows"]) == 22, packet
+        assert len(packet["output_inventory"]["issue_close_activity"]) == 3, packet
+        close_by_issue = {
+            item["issue_ref"]: item
+            for item in packet["output_inventory"]["issue_close_activity"]
+        }
+        assert close_by_issue["issues_44"]["actual_close_observed"] is False, packet
+        assert len(packet["impact_rows"]) == 29, packet
         impact_by_id = {row["metric_id"]: row for row in packet["impact_rows"]}
         assert impact_by_id["agent_pull_requests"]["current"] == 2, packet
         assert impact_by_id["repository_open_issues"]["delta"] == 2, packet
         assert impact_by_id["quality_first_push_ci_pass_rate"]["current"] == 0.5
         assert impact_by_id["capability_gaps_found"]["current"] == 2, packet
         assert impact_by_id["capability_gaps_fixed"]["current"] == 1, packet
-        assert (
-            impact_by_id["capability_gaps_real_callsite_verified"]["current"] == 1
-        ), packet
+        assert impact_by_id["capability_gaps_real_callsite_verified"]["current"] == 1, (
+            packet
+        )
         assert impact_by_id["memory_retrievals"]["current"] == 3, packet
-        assert impact_by_id["memory_verified_decision_influence"]["current"] == 2, packet
+        assert impact_by_id["memory_verified_decision_influence"]["current"] == 2, (
+            packet
+        )
         assert impact_by_id["memory_verified_patch_influence"]["current"] == 1, packet
         assert impact_by_id["memory_stale_results"]["current"] == 1, packet
+        assert impact_by_id["agent_issue_close_conversions"]["current"] == 2, packet
+        assert impact_by_id["agent_issue_close_reversals"]["current"] == 1, packet
+        assert impact_by_id["agent_net_issue_close_conversions"]["current"] == 1, packet
+        assert impact_by_id["delivery_issue_close_conversion_rate"]["current"] == 1.0
 
         schema = lark_kanban_schema_payload()
         assert any(view["name"] == "Monthly Impact" for view in schema["views"]), schema
@@ -269,7 +369,7 @@ def main() -> int:
                 execute=False,
             )
         assert sync["ok"] is True, sync
-        assert sync["row_count"] == 22, sync
+        assert sync["row_count"] == 29, sync
         metric_records = {
             record["values"]["Metric"]: record for record in sync["records"]
         }
@@ -324,6 +424,9 @@ def main() -> int:
             "not_available"
         )
         assert partial_rows["memory_stale_results"]["status"] == "not_available"
+        assert partial_rows["agent_issue_close_conversions"]["status"] == (
+            "not_available"
+        )
 
         cli_sync = subprocess.run(
             [
@@ -355,7 +458,7 @@ def main() -> int:
             check=True,
         )
         cli_sync_packet = json.loads(cli_sync.stdout)
-        assert cli_sync_packet["row_count"] == 22, cli_sync_packet
+        assert cli_sync_packet["row_count"] == 29, cli_sync_packet
         serialized = json.dumps(packet, sort_keys=True)
         assert str(root) not in serialized, serialized
         assert packet["external_writes_performed"] is False, packet

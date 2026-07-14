@@ -29,6 +29,10 @@ _SUPPLEMENT_FIELDS = (
     "useful_public_comments",
     "triage_outcomes",
     "issues_screened",
+    "issue_close_recommendations",
+    "issue_close_requests_published",
+    "issue_closes_observed",
+    "issue_reopens_observed",
     "first_push_ci_passed",
     "first_push_ci_total",
 )
@@ -233,6 +237,231 @@ def _first_push_ci_coverage(value: dict[str, Any] | None) -> dict[str, Any] | No
         "observed_prs": observed,
         "complete": complete,
     }
+
+
+def _issue_close_activity(
+    value: dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    if not isinstance(value, dict):
+        return [], None
+    raw_activity = value.get("issue_close_activity")
+    coverage = value.get("coverage")
+    raw_coverage = (
+        coverage.get("issue_close_activity") if isinstance(coverage, dict) else None
+    )
+    compact_coverage = None
+    if isinstance(raw_coverage, dict):
+        observed_issues = _nonnegative_int(
+            raw_coverage.get("observed_issues"),
+            field="supplement.coverage.issue_close_activity.observed_issues",
+        )
+        compact_coverage = {
+            "source": str(raw_coverage.get("source") or "not_supplied").strip(),
+            "observed_issues": observed_issues,
+            "complete": raw_coverage.get("complete") is True,
+        }
+    if raw_activity is None:
+        return [], compact_coverage
+    if not isinstance(raw_activity, list):
+        raise ValueError("supplement.issue_close_activity must be a list")
+
+    known_types = {
+        "issue_close_recommended",
+        "issue_close_request_published",
+        "issue_closed_observed",
+        "issue_reopened_observed",
+    }
+    seen_issue_refs: set[str] = set()
+    seen_event_ids: set[str] = set()
+    activity: list[dict[str, Any]] = []
+    for row_index, row in enumerate(raw_activity):
+        if not isinstance(row, dict) or row.get("schema_version") != (
+            "issue_fix_issue_close_activity_v0"
+        ):
+            raise ValueError(
+                f"supplement.issue_close_activity[{row_index}] uses an unsupported schema"
+            )
+        issue_ref = str(row.get("issue_ref") or "").strip()
+        events = row.get("events")
+        if (
+            not issue_ref
+            or issue_ref in seen_issue_refs
+            or not isinstance(events, list)
+        ):
+            raise ValueError(
+                "supplement issue close activity requires unique issue_ref values and events"
+            )
+        seen_issue_refs.add(issue_ref)
+        compact_events: list[dict[str, str]] = []
+        for event_index, event in enumerate(events):
+            if not isinstance(event, dict):
+                raise ValueError(
+                    f"issue close activity event {row_index}:{event_index} must be an object"
+                )
+            event_id = str(event.get("event_id") or "").strip()
+            event_type = str(event.get("event_type") or "").strip()
+            occurred_at = _timestamp(
+                event.get("occurred_at"),
+                field=f"issue_close_activity.{issue_ref}.{event_index}.occurred_at",
+            )
+            if (
+                not event_id
+                or event_id in seen_event_ids
+                or event_type not in known_types
+            ):
+                raise ValueError(
+                    "issue close activity requires unique event_id values and known event types"
+                )
+            seen_event_ids.add(event_id)
+            evidence_url = _optional_https_url(
+                event.get("evidence_url"),
+                field=f"issue_close_activity.{issue_ref}.{event_index}.evidence_url",
+            )
+            if event_type != "issue_close_recommended" and evidence_url is None:
+                raise ValueError(f"{event_type} requires an https evidence_url")
+            compact_event = {
+                "event_id": event_id,
+                "event_type": event_type,
+                "occurred_at": occurred_at,
+            }
+            if evidence_url:
+                compact_event["evidence_url"] = evidence_url
+            compact_events.append(compact_event)
+        activity.append(
+            {
+                "schema_version": "issue_fix_issue_close_activity_v0",
+                "issue_ref": issue_ref,
+                "events": sorted(
+                    compact_events,
+                    key=lambda item: (item["occurred_at"], item["event_id"]),
+                ),
+            }
+        )
+    if compact_coverage and compact_coverage["observed_issues"] != len(activity):
+        raise ValueError(
+            "supplement issue close activity coverage must match activity rows"
+        )
+    return sorted(activity, key=lambda item: item["issue_ref"]), compact_coverage
+
+
+def _issue_close_output(
+    activity: list[dict[str, Any]],
+    *,
+    current_issue_states: dict[str, dict[str, Any]],
+) -> tuple[dict[str, int], list[dict[str, Any]]]:
+    inventory: list[dict[str, Any]] = []
+    for row in activity:
+        issue_ref = row["issue_ref"]
+        events = list(row["events"])
+        recommendations = [
+            event
+            for event in events
+            if event["event_type"] == "issue_close_recommended"
+        ]
+        requests = [
+            event
+            for event in events
+            if event["event_type"] == "issue_close_request_published"
+        ]
+        close_events = [
+            event for event in events if event["event_type"] == "issue_closed_observed"
+        ]
+        reopen_events = [
+            event
+            for event in events
+            if event["event_type"] == "issue_reopened_observed"
+        ]
+        attempt_times = [
+            datetime.fromisoformat(event["occurred_at"].replace("Z", "+00:00"))
+            for event in [*recommendations, *requests]
+        ]
+        request_times = [
+            datetime.fromisoformat(event["occurred_at"].replace("Z", "+00:00"))
+            for event in requests
+        ]
+        close_candidates = [
+            (
+                datetime.fromisoformat(event["occurred_at"].replace("Z", "+00:00")),
+                event["occurred_at"],
+                "event_evidence",
+            )
+            for event in close_events
+        ]
+        current_state = current_issue_states.get(issue_ref) or {}
+        if current_state.get("state") == "CLOSED" and current_state.get("closed_at"):
+            closed_at = _timestamp(
+                current_state["closed_at"],
+                field=f"current.issue_states.{issue_ref}.closed_at",
+            )
+            close_candidates.append(
+                (
+                    datetime.fromisoformat(closed_at.replace("Z", "+00:00")),
+                    closed_at,
+                    "repository_current_snapshot",
+                )
+            )
+        first_attempt = min(attempt_times) if attempt_times else None
+        eligible_closes = sorted(
+            candidate
+            for candidate in close_candidates
+            if first_attempt is not None and candidate[0] >= first_attempt
+        )
+        actual_close = eligible_closes[0] if eligible_closes else None
+        latest_close = eligible_closes[-1] if eligible_closes else None
+        attributed = bool(
+            actual_close
+            and any(request_time <= actual_close[0] for request_time in request_times)
+        )
+        reopened = bool(
+            attributed
+            and any(
+                datetime.fromisoformat(event["occurred_at"].replace("Z", "+00:00"))
+                > latest_close[0]
+                for event in reopen_events
+            )
+        )
+        inventory.append(
+            {
+                "schema_version": "issue_fix_issue_close_output_v0",
+                "issue_ref": issue_ref,
+                "close_recommended": bool(recommendations),
+                "close_request_published": bool(requests),
+                "actual_close_observed": actual_close is not None,
+                "actual_close_at": actual_close[1] if actual_close else None,
+                "actual_close_source": actual_close[2] if actual_close else None,
+                "attributed_close_conversion": attributed,
+                "reopened_after_attributed_close": reopened,
+                "current_state": current_state.get("state") or "UNKNOWN",
+                "evidence_urls": sorted(
+                    {
+                        event["evidence_url"]
+                        for event in events
+                        if event.get("evidence_url")
+                    }
+                ),
+            }
+        )
+    counts = {
+        "issue_close_recommendations": sum(
+            item["close_recommended"] for item in inventory
+        ),
+        "issue_close_requests_published": sum(
+            item["close_request_published"] for item in inventory
+        ),
+        "issue_closes_observed": sum(
+            item["actual_close_observed"] for item in inventory
+        ),
+        "issue_close_conversions": sum(
+            item["attributed_close_conversion"] for item in inventory
+        ),
+        "issue_close_reversals": sum(
+            item["reopened_after_attributed_close"] for item in inventory
+        ),
+    }
+    counts["net_issue_close_conversions"] = (
+        counts["issue_close_conversions"] - counts["issue_close_reversals"]
+    )
+    return counts, inventory
 
 
 def _latest_rows(
@@ -504,8 +733,11 @@ def build_issue_fix_metrics_projection(
                 compact[field] = observation[field]
         pr_inventory.append(compact)
 
+    current_issue_state_rows = {
+        item["issue_ref"]: item for item in current.get("issue_states", [])
+    }
     issue_states = {
-        item["issue_ref"]: item["state"] for item in current.get("issue_states", [])
+        issue_ref: item["state"] for issue_ref, item in current_issue_state_rows.items()
     }
     missing_issue_states = sorted(linked_issue_refs - issue_states.keys())
     issues_closed = (
@@ -515,6 +747,47 @@ def build_issue_fix_metrics_projection(
     )
     supplement = _supplement(supplement_input)
     first_push_coverage = _first_push_ci_coverage(supplement_input)
+    issue_close_activity, issue_close_coverage = _issue_close_activity(supplement_input)
+    issue_close_counts, issue_close_inventory = _issue_close_output(
+        issue_close_activity,
+        current_issue_states=current_issue_state_rows,
+    )
+    for field in (
+        "issue_close_recommendations",
+        "issue_close_requests_published",
+    ):
+        if (
+            supplement[field] is not None
+            and supplement[field] != issue_close_counts[field]
+        ):
+            raise ValueError(
+                f"supplement.counts.{field} must match compact issue close activity"
+            )
+    close_activity_complete = bool(
+        issue_close_coverage and issue_close_coverage["complete"] is True
+    )
+    close_outcome_missing_refs = sorted(
+        item["issue_ref"]
+        for item in issue_close_inventory
+        if item["current_state"] == "UNKNOWN" and item["actual_close_observed"] is False
+    )
+    close_outcome_complete = close_activity_complete and not close_outcome_missing_refs
+    reported_issue_close_counts = {
+        field: (
+            value
+            if (
+                close_activity_complete
+                if field
+                in {
+                    "issue_close_recommendations",
+                    "issue_close_requests_published",
+                }
+                else close_outcome_complete
+            )
+            else None
+        )
+        for field, value in issue_close_counts.items()
+    }
     terminal_outcomes = (
         pr_state_counts["MERGED"]
         + (supplement["useful_public_comments"] or 0)
@@ -533,6 +806,12 @@ def build_issue_fix_metrics_projection(
             "captured": len(linked_issue_refs) - len(missing_issue_states),
             "total": len(linked_issue_refs),
             "complete": not missing_issue_states,
+        },
+        "issue_close_output": reported_issue_close_counts,
+        "issue_close_outcome_coverage": {
+            "captured": len(issue_close_inventory) - len(close_outcome_missing_refs),
+            "total": len(issue_close_inventory),
+            "complete": close_outcome_complete,
         },
         "validation_passed": validation_passed,
         "validation_missing": validation_missing,
@@ -553,6 +832,12 @@ def build_issue_fix_metrics_projection(
         "closed_unmerged_pull_requests": 0,
         "linked_issues_closed": 0,
         "linked_issue_state_coverage": {
+            "captured": 0,
+            "total": 0,
+            "complete": True,
+        },
+        "issue_close_output": {field: 0 for field in issue_close_counts},
+        "issue_close_outcome_coverage": {
             "captured": 0,
             "total": 0,
             "complete": True,
@@ -580,6 +865,26 @@ def build_issue_fix_metrics_projection(
             {
                 "code": "fix_pr_validation_not_captured",
                 "impact": "validation pass coverage is incomplete",
+            }
+        )
+    if not close_activity_complete:
+        missing_data.append(
+            {
+                "code": "issue_close_activity_not_captured",
+                "impact": (
+                    "close recommendations, published requests, conversions, and "
+                    "reopen reversals are unavailable"
+                ),
+            }
+        )
+    elif close_outcome_missing_refs:
+        missing_data.append(
+            {
+                "code": "issue_close_outcome_states_not_captured",
+                "impact": (
+                    "close conversions and reopen reversals are unavailable; "
+                    f"{len(close_outcome_missing_refs)} attempted issue states are missing"
+                ),
             }
         )
     for field, impact in (
@@ -613,6 +918,10 @@ def build_issue_fix_metrics_projection(
         ),
         "human_interventions_per_terminal_outcome": _ratio(
             supplement["human_interventions"], terminal_outcomes
+        ),
+        "issue_close_conversion_rate": _ratio(
+            reported_issue_close_counts["issue_close_conversions"],
+            reported_issue_close_counts["issue_close_requests_published"],
         ),
     }
     source_url = current.get("source_url") or baseline.get("source_url")
@@ -725,6 +1034,57 @@ def build_issue_fix_metrics_projection(
             source_url=source_url,
         ),
     ]
+    for metric_id, metric, field in (
+        (
+            "agent_issue_close_recommendations",
+            "Issue close recommendations",
+            "issue_close_recommendations",
+        ),
+        (
+            "agent_issue_close_requests_published",
+            "Published issue close requests",
+            "issue_close_requests_published",
+        ),
+        (
+            "agent_issue_closes_observed",
+            "Agent-pursued issues closed",
+            "issue_closes_observed",
+        ),
+        (
+            "agent_issue_close_conversions",
+            "Attributed issue close conversions",
+            "issue_close_conversions",
+        ),
+        (
+            "agent_issue_close_reversals",
+            "Attributed issue close reopen reversals",
+            "issue_close_reversals",
+        ),
+        (
+            "agent_net_issue_close_conversions",
+            "Net attributed issue close conversions",
+            "net_issue_close_conversions",
+        ),
+    ):
+        value = reported_issue_close_counts[field]
+        impact_rows.append(
+            _impact_row(
+                metric_id=metric_id,
+                metric_group="Delivery",
+                metric=metric,
+                baseline=0,
+                current=value,
+                delta=value,
+                status="available" if value is not None else "not_available",
+                missing_reason=(
+                    None
+                    if value is not None
+                    else "issue close activity or outcome state coverage is incomplete"
+                ),
+                updated_at=updated_at,
+                source_url=source_url,
+            )
+        )
     for metric_id, metric_group, metric, ratio_key in (
         (
             "delivery_share_repository_prs_opened",
@@ -755,6 +1115,12 @@ def build_issue_fix_metrics_projection(
             "Autonomy",
             "Human interventions per terminal outcome",
             "human_interventions_per_terminal_outcome",
+        ),
+        (
+            "delivery_issue_close_conversion_rate",
+            "Delivery",
+            "Attributed close conversions per published close request",
+            "issue_close_conversion_rate",
         ),
     ):
         ratio = ratios[ratio_key]
@@ -870,12 +1236,16 @@ def build_issue_fix_metrics_projection(
             },
             "agent_output": agent_output,
         },
-        "output_inventory": {"pull_requests": pr_inventory},
+        "output_inventory": {
+            "pull_requests": pr_inventory,
+            "issue_close_activity": issue_close_inventory,
+        },
         "impact_rows": impact_rows,
         "ratios": ratios,
         "missing_data": missing_data,
         "supplement_coverage": {
             "first_push_ci": first_push_coverage,
+            "issue_close_activity": issue_close_coverage,
         },
         "source_summary": {
             "feasibility_rows": len(feasibility),
@@ -923,6 +1293,7 @@ def render_issue_fix_metrics_projection_markdown(payload: dict[str, Any]) -> str
         return f"# Issue-fix metrics projection\n\n- Error: {payload.get('error') or 'invalid projection'}"
     current = payload["current"]
     output = current["agent_output"]
+    close_output = output["issue_close_output"]
     repository = current["repository"]
     lines = [
         "# Issue-fix metrics projection",
@@ -933,6 +1304,12 @@ def render_issue_fix_metrics_projection_markdown(payload: dict[str, Any]) -> str
         f"- Pull requests: `{output['pull_requests']}` "
         f"(`{output['merged_pull_requests']}` merged, "
         f"`{output['open_pull_requests']}` open)",
+        "- Issue close recommended / published / closed / attributed / reopened: "
+        f"`{close_output['issue_close_recommendations']}` / "
+        f"`{close_output['issue_close_requests_published']}` / "
+        f"`{close_output['issue_closes_observed']}` / "
+        f"`{close_output['issue_close_conversions']}` / "
+        f"`{close_output['issue_close_reversals']}`",
         f"- Repository open issues / PRs: `{repository['open_issues']}` / "
         f"`{repository['open_pull_requests']}`",
         f"- Missing-data items: `{len(payload['missing_data'])}`",
@@ -948,4 +1325,16 @@ def render_issue_fix_metrics_projection_markdown(payload: dict[str, Any]) -> str
         )
     if not payload["output_inventory"]["pull_requests"]:
         lines.append("- None")
+    close_inventory = payload["output_inventory"].get("issue_close_activity") or []
+    if close_inventory:
+        lines.extend(["", "## Issue close activity", ""])
+        for item in close_inventory:
+            lines.append(
+                f"- `{item['issue_ref']}`: recommended="
+                f"{item['close_recommended']}, published="
+                f"{item['close_request_published']}, closed="
+                f"{item['actual_close_observed']}, attributed="
+                f"{item['attributed_close_conversion']}, reopened="
+                f"{item['reopened_after_attributed_close']}"
+            )
     return "\n".join(lines)
