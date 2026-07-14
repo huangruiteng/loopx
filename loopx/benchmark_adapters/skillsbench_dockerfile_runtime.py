@@ -44,6 +44,20 @@ def _stage_has_apt_update(lines: list[str]) -> bool:
     )
 
 
+def _dockerfile_stage_starts(lines: list[str]) -> list[int]:
+    starts: list[int] = []
+    heredoc_delimiter: str | None = None
+    for index, line in enumerate(lines):
+        if heredoc_delimiter is not None:
+            if line.strip() == heredoc_delimiter:
+                heredoc_delimiter = None
+            continue
+        heredoc_delimiter = dockerfile_heredoc_delimiter(line)
+        if re.match(r"^\s*FROM\s+", line, re.IGNORECASE):
+            starts.append(index)
+    return starts
+
+
 def needs_ubuntu_apt_mirror_patch(dockerfile: Path) -> bool:
     """Return whether a Dockerfile stage runs apt update.
 
@@ -95,11 +109,7 @@ def patch_ubuntu_apt_mirror(dockerfile: Path) -> bool:
         UBUNTU_APT_MIRROR_END,
     )
     lines = text.splitlines()
-    stage_starts = [
-        index
-        for index, line in enumerate(lines)
-        if re.match(r"^\s*FROM\s+", line, re.IGNORECASE)
-    ]
+    stage_starts = _dockerfile_stage_starts(lines)
     if not stage_starts:
         return False
 

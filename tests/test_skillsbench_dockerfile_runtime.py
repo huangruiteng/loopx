@@ -35,3 +35,20 @@ def test_ubuntu_apt_mirror_patch_skips_dockerfiles_without_apt(tmp_path: Path) -
     assert runtime.needs_ubuntu_apt_mirror_patch(dockerfile) is False
     assert runtime.patch_ubuntu_apt_mirror(dockerfile) is False
     assert runtime.UBUNTU_APT_MIRROR_BEGIN not in dockerfile.read_text(encoding="utf-8")
+
+
+def test_ubuntu_apt_mirror_patch_ignores_from_inside_heredoc(tmp_path: Path) -> None:
+    dockerfile = _dockerfile(
+        tmp_path,
+        "FROM ubuntu:24.04\n"
+        "RUN python3 <<'PY'\n"
+        "FROM not-a-docker-stage\n"
+        "PY\n"
+        "RUN apt-get update\n",
+    )
+
+    assert runtime.patch_ubuntu_apt_mirror(dockerfile) is True
+
+    patched = dockerfile.read_text(encoding="utf-8")
+    assert patched.count(runtime.UBUNTU_APT_MIRROR_BEGIN) == 1
+    assert patched.index(runtime.UBUNTU_APT_MIRROR_BEGIN) < patched.index("RUN python3")
