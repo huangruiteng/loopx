@@ -184,6 +184,17 @@ json.dump({
         outcome="no_write_rationale",
         corpus_ids=["fixture_preferences"],
     )["outcome"] == "no_write_rationale"
+    try:
+        maintenance_receipt(
+            trigger="explicit_feedback",
+            outcome="verified",
+            corpus_ids=["fixture_preferences"],
+            scope_refs=["not a public-safe scope"],
+        )
+    except ValueError as exc:
+        assert "public-safe" in str(exc), exc
+    else:
+        raise AssertionError("maintenance scope references must stay bounded")
 
     disabled = temp / "disabled.json"
     disabled.write_text(

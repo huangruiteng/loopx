@@ -444,9 +444,11 @@ def maintenance_receipt(
         not CORPUS_ID_RE.fullmatch(value) for value in ids
     ):
         raise ValueError("corpus_ids must contain bounded lower-snake tokens")
-    refs = [str(ref) for ref in scope_refs or [] if str(ref).strip()]
+    refs = [str(ref).strip() for ref in scope_refs or [] if str(ref).strip()]
     if len(refs) > MAX_CORPORA:
         raise ValueError(f"scope_refs supports at most {MAX_CORPORA} items")
+    if any(not TOKEN_RE.fullmatch(ref) for ref in refs):
+        raise ValueError("scope_refs must contain compact public-safe tokens")
     return {
         "schema_version": MAINTENANCE_RECEIPT_SCHEMA,
         "trigger": trigger,
