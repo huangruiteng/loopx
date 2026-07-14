@@ -1091,12 +1091,92 @@ def test_mermaid_visual_readback_retries_lark_doc_applying(tmp_path, monkeypatch
     assert delays == [0.25]
 
 
-def test_mermaid_visual_publish_fails_closed_when_remote_marker_is_missing(
+def test_mermaid_visual_readback_retries_until_remote_marker_is_visible(
     tmp_path,
+    monkeypatch,
 ) -> None:
     projection = _complex_projection()
     config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
     bundle = build_explore_presentation_bundle(projection)
+    published_marker = ""
+    query_count = 0
+    delays: list[float] = []
+    monkeypatch.setattr(
+        "loopx.presentation.sinks.lark.explore_results.time.sleep",
+        delays.append,
+    )
+
+    def runner(args, cwd, _timeout):
+        nonlocal published_marker, query_count
+        if "+update" in args:
+            source_arg = args[args.index("--source") + 1]
+            source = (cwd / source_arg.removeprefix("@")).read_text(
+                encoding="utf-8"
+            )
+            published_marker = re.search(
+                r"LoopX delivery [0-9a-f]{20}",
+                source,
+            ).group(0)
+            payload = {"ok": True}
+        else:
+            query_count += 1
+            payload = {
+                "ok": True,
+                "data": {
+                    "nodes": [
+                        {
+                            "text": {
+                                "text": (
+                                    "stale visual"
+                                    if query_count == 1
+                                    else published_marker
+                                )
+                            }
+                        }
+                    ]
+                },
+            }
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(payload),
+            "stderr": "",
+        }
+
+    synced = sync_explore_visual_to_lark(
+        config,
+        projection=projection,
+        visual_sink={
+            "whiteboard_token": "wb_executive_fixture",
+            "view_role": "executive",
+            "renderer": "mermaid",
+        },
+        config_path=tmp_path / "lark-explore.json",
+        semantic_digest=bundle["source_digest"],
+        display_projection=bundle["executive"],
+        view_key="executive",
+        execute=True,
+        runner=runner,
+    )
+
+    assert synced["ok"] is True
+    assert synced["published"] is True
+    assert synced["readback"]["verified"] is True
+    assert synced["readback"]["attempt_count"] == 2
+    assert synced["readback"]["attempts"][0]["retryable"] is True
+    assert delays == [0.25]
+
+
+def test_mermaid_visual_publish_fails_closed_when_remote_marker_is_missing(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    projection = _complex_projection()
+    config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
+    bundle = build_explore_presentation_bundle(projection)
+    monkeypatch.setattr(
+        "loopx.presentation.sinks.lark.explore_results.time.sleep",
+        lambda _delay: None,
+    )
 
     def runner(args, _cwd, _timeout):
         payload = (

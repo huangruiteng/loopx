@@ -614,16 +614,18 @@ def _readback_visual_delivery_marker(
         error_code = error.get("code")
         error_message = str(error.get("message") or "")
         is_applying = error_code == 4003101 and "doc is applying" in error_message
+        is_marker_pending = bool(result.get("ok")) and not marker_observed
+        is_retryable = is_applying or is_marker_pending
         attempts.append(
             {
                 "attempt": attempt_index + 1,
                 "ok": bool(result.get("ok")),
                 "marker_observed": marker_observed,
                 "error_code": error_code,
-                "retryable": is_applying,
+                "retryable": is_retryable,
             }
         )
-        if result.get("ok") or not is_applying:
+        if marker_observed or not is_retryable:
             break
         if attempt_index < len(_VISUAL_READBACK_RETRY_DELAYS_SECONDS):
             time.sleep(_VISUAL_READBACK_RETRY_DELAYS_SECONDS[attempt_index])
