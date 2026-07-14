@@ -1,0 +1,25 @@
+examples/skillsbench-agent-operation-snapshot-smoke.py
+  s_9a5a2bd944fdcb::t_02e8acfecf4fc8 1-126
+loopx/benchmark_adapters/skillsbench_acp_relay.py
+  s_9a5a2bd944fdcb::t_11c17c1dc669fd 474-475,2638-2646,2658-2660
+scripts/skillsbench_automation_loop.py
+  s_9a5a2bd944fdcb::t_c97e370da5c0e5 10310,10323-10352,10358-10373,10426-10436,10670-10672
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "bac80ce9c0da3862c5ca22c7d4976283f3517a7a",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
