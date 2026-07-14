@@ -1,0 +1,35 @@
+examples/control_plane/refresh-state-shared-runtime-projection-smoke.py
+  s_e3f612788718c1::t_1324199848b98a 22-29,56-74,139-213,256-262,286-309,315-490
+loopx/control_plane/runtime/runtime_projection_route.py
+  s_e3f612788718c1::t_79b82bc597cccd 1-428
+loopx/control_plane/runtime/runtime_projection_writer.py
+  s_e3f612788718c1::t_4865f40c7a84fd 1-98
+loopx/control_plane/runtime/shared_runtime_refresh_projection.py
+  s_e3f612788718c1::t_7eea2c09d0fd64 10-13,26-36,59-65,155,169-177,179-182
+loopx/control_plane/status_collection.py
+  s_e3f612788718c1::t_e31555df9faa13 7-10,86-90,112
+loopx/doctor.py
+  s_e3f612788718c1::t_eda5a3e147267f 647-650,738-752,869-878,911,950
+loopx/presentation/renderers/status_markdown.py
+  s_e3f612788718c1::t_614099d475ef37 131-166,972-977
+loopx/state_refresh.py
+  s_e3f612788718c1::t_8b25a8af91070f 26-29,824-833,835-839,1006-1008,1035,1096,1106,1108-1109,1121-1125,1149-1167,1170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e4ede4efd0fdc384c8003699773d1d6a8e01dfac",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
