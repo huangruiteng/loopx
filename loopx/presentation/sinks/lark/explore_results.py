@@ -991,6 +991,7 @@ def sync_explore_visuals_to_lark(
             stage_node_ids = {str(item) for item in stage.get("node_ids") or []}
             stage_projection = dict(role_view)
             stage_projection["mermaid"] = str(stage.get("mermaid") or "")
+            stage_projection["svg"] = str(stage.get("svg") or "")
             stage_projection["nodes"] = [
                 role_nodes[node_id]
                 for node_id in stage.get("node_ids") or []
