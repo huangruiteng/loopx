@@ -442,8 +442,8 @@ def interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[
     if mode == "external_evidence_observation":
         return [
             "read approved controller/job/marker/writeback surfaces only",
-            f"loopx refresh-state --goal-id {goal_id} --classification <compact_blocker_or_transition>",
-            f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute",
+            f"loopx refresh-state --goal-id {goal_id} --classification <compact_blocker_or_transition>{agent_arg}",
+            f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{agent_arg}",
         ]
     if mode == "agent_workspace_repair":
         agent_identity = (
@@ -470,11 +470,11 @@ def interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[
         )
         return [
             first_action,
-            f"loopx refresh-state --goal-id {goal_id} --classification autonomous_replan_recorded --autonomous-replan-recorded --repair-delta-kind <delta_kind> --delivery-batch-scale <scale> --delivery-outcome <outcome>",
+            f"loopx refresh-state --goal-id {goal_id} --classification autonomous_replan_recorded --autonomous-replan-recorded --repair-delta-kind <delta_kind> --delivery-batch-scale <scale> --delivery-outcome <outcome>{agent_arg}",
             (
                 "if the replan writeback records an accountable delta such as "
                 "outcome_progress or primary_goal_outcome, run "
-                f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute; "
+                f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{agent_arg}; "
                 "otherwise do not spend for surface_only watch-lane continuation/no-followup"
             ),
         ]
@@ -488,8 +488,8 @@ def interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[
         "bounded_delivery_with_user_notice",
     }:
         return [
-            f"loopx refresh-state --goal-id {goal_id} --classification <validated_progress>",
-            f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute",
+            f"loopx refresh-state --goal-id {goal_id} --classification <validated_progress>{agent_arg}",
+            f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{agent_arg}",
         ]
     if mode in {"user_gate", "user_todo_blocker_push", "user_action_required"}:
         return ["no quota spend for blocker-push/gate-notification"]
