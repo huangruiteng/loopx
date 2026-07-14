@@ -1348,6 +1348,10 @@ LoopX advances the progression until the max interval; when the reset token
 changes, the next projected RRULE returns to
 `reset_policy.codex_app_initial_rrule`. If the current desired RRULE is already
 applied, `recommended_rrule` is omitted and the host update should be skipped.
+For CLI payloads, `ack_hint.cli_args` begins with the registry and effective
+runtime-root binding used by the originating `should-run` call. Consumers must
+preserve that prefix so the ACK cannot split scheduler state between project
+and shared registries.
 `scheduler-ack` only records the applied host cadence; the next RRULE, if any,
 is projected by a future `quota should-run`, not by the ack response.
 The payload also includes `execution_obligation`, which is the compatibility

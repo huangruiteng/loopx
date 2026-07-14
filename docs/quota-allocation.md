@@ -745,6 +745,11 @@ After a successful host RRULE update, the agent records that fact with
 advances the per goal/agent scheduler state without spending quota. Human gates
 can move to `[30, 60, 120]` after the
 concrete user todo has been surfaced.
+CLI-produced ACK hints bind that argument vector to the exact registry and
+effective runtime root that produced `quota should-run`. Hosts must execute the
+complete vector; stripping its leading global options can route a
+project-launched ACK into project-local scheduler state instead of the shared
+control plane.
 Monitor-only quiet waits move through `[15, 30, 60]` while preserving the
 same no-spend monitor-poll contract, unless a monitor cadence or due time caps
 the progression earlier.

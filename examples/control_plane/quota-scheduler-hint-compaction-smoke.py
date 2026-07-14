@@ -71,6 +71,8 @@ def assert_compact_runtime_policy_complete(
     *,
     expected_goal_id: str,
     expected_agent_id: str,
+    expected_registry_path: Path | None = None,
+    expected_runtime_root: Path | None = None,
 ) -> None:
     codex_app = compact["codex_app"]
     unchanged_poll = compact["unchanged_poll"]
@@ -109,7 +111,7 @@ def assert_compact_runtime_policy_complete(
     assert ack_args["applied_rrule"] == codex_app["recommended_rrule"], (name, compact)
     assert ack_args["reset_token"] == stateful_backoff["reset_token"], (name, compact)
     assert ack_args["identity_signature"] == stateful_backoff["identity_signature"], (name, compact)
-    assert ack_cli_args == [
+    expected_cli_args = [
         "quota",
         "scheduler-ack-current",
         "--goal-id",
@@ -123,7 +125,24 @@ def assert_compact_runtime_policy_complete(
         "--applied-rrule",
         ack_args["applied_rrule"],
         "--execute",
-    ], (name, compact)
+    ]
+    if expected_registry_path is not None and expected_runtime_root is not None:
+        expected_cli_args = [
+            "--registry",
+            str(expected_registry_path.resolve()),
+            "--runtime-root",
+            str(expected_runtime_root.resolve()),
+            *expected_cli_args,
+        ]
+        assert ack_hint["route_binding"] == {
+            "schema_version": "scheduler_ack_cli_route_v0",
+            "source": "quota_cli_invocation",
+            "registry_bound": True,
+            "runtime_root_bound": True,
+        }, (name, compact)
+    else:
+        assert "route_binding" not in ack_hint, (name, compact)
+    assert ack_cli_args == expected_cli_args, (name, compact)
     for omitted in (
         "progression_minutes",
         "current_interval_minutes",
@@ -288,6 +307,8 @@ def assert_cli_compact_and_detail_contract() -> None:
         compact,
         expected_goal_id="needs-operator",
         expected_agent_id=fixture.SCOPED_AGENT_ID,
+        expected_registry_path=registry_path,
+        expected_runtime_root=runtime,
     )
     for key in RUNTIME_KEYS:
         assert key not in compact, (key, compact)

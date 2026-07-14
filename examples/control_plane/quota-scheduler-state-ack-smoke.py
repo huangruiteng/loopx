@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 
@@ -765,7 +766,13 @@ def assert_cli_scheduler_ack_progression() -> None:
         assert first_ack_args["applied_rrule"] == first_rrule, first
         assert first_ack_args["reset_token"], first
         assert first_ack_args["identity_signature"], first
-        assert first_ack_cli_args[:2] == ["quota", "scheduler-ack-current"], first
+        assert first_ack_cli_args[:4] == [
+            "--registry",
+            str(registry_path.resolve()),
+            "--runtime-root",
+            str(runtime.resolve()),
+        ], first
+        assert first_ack_cli_args[4:6] == ["quota", "scheduler-ack-current"], first
         assert "--reset-token" not in first_ack_cli_args, first
         assert "--identity-signature" not in first_ack_cli_args, first
 
@@ -1159,6 +1166,11 @@ def main() -> int:
     assert_cli_host_rrule_repairs_false_ack()
     assert_cli_ignores_corrupt_scheduler_state()
     assert_cli_scheduler_ack_uses_should_run_lookback()
+    subprocess.run(
+        [sys.executable, str(REPO_ROOT / "examples/control_plane/quota-scheduler-registry-route-smoke.py")],
+        cwd=REPO_ROOT,
+        check=True,
+    )
     print("quota-scheduler-state-ack-smoke ok")
     return 0
 
