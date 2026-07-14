@@ -1,0 +1,27 @@
+loopx/benchmark_adapters/skillsbench_codex_runtime.py
+  s_9a5a2bd944fdcb::t_697cca192079a4 163
+loopx/benchmark_adapters/skillsbench_failure_signals.py
+  s_9a5a2bd944fdcb::t_b62efa950cd309 4,95-117,139
+loopx/benchmark_adapters/skillsbench_setup_preflight.py
+  s_9a5a2bd944fdcb::t_5cda4499e16150 1-177
+scripts/skillsbench_automation_loop.py
+  s_9a5a2bd944fdcb::t_7239cf012eda1e 143-145,1145-1146,2003-2004,8093-8095,8357-8360,9247-9264,13227-13230,13966-13968,13972,13982,13994,14003,14006-14009,14039-14040,14045-14046,14183,14185-14201,14240-14241,15825-15833,16210-16218,16267-16270,16287,16353,16467,16486,16504,16508-16540,16703,16989,17016,17068,17138,17175,17219
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e3bae21b333fb26c10ecf041291d68cda31aebd9",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
