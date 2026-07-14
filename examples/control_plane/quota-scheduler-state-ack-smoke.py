@@ -7,6 +7,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import importlib.util
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -183,6 +184,7 @@ def build_hint_at(
     *,
     now: datetime,
     scheduler_state: dict | None = None,
+    codex_app_current_rrule: str | None = None,
 ) -> dict:
     original_now_utc = scheduler_hint_module.now_utc
     try:
@@ -191,6 +193,7 @@ def build_hint_at(
             deepcopy(payload),
             agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
             codex_app_scheduler_state=scheduler_state,
+            codex_app_current_rrule=codex_app_current_rrule,
         )
     finally:
         scheduler_hint_module.now_utc = original_now_utc
@@ -623,6 +626,20 @@ def assert_monitor_wait_stale_ack_hint_is_accepted() -> None:
     assert quiet_app["host_action"] == "none", quiet_after_stale_ack
     assert "recommended_rrule" not in quiet_app, quiet_after_stale_ack
 
+    observed_stale_host = build_hint_at(
+        base,
+        now=FROZEN_NOW + timedelta(minutes=1),
+        scheduler_state=ack_event["scheduler_state"],
+        codex_app_current_rrule="FREQ=MINUTELY;INTERVAL=59",
+    )
+    observed_app = observed_stale_host["codex_app"]
+    assert observed_app["stateful_backoff"]["apply_needed"] is True, observed_stale_host
+    assert observed_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=58", observed_stale_host
+    assert (
+        observed_app["stateful_backoff"]["host_observation"]["status"]
+        == "drift_detected"
+    ), observed_stale_host
+
     outside_state_tolerance = build_hint_at(
         base,
         now=FROZEN_NOW + timedelta(minutes=3),
@@ -872,6 +889,125 @@ def assert_cli_scheduler_ack_progression() -> None:
         assert "recommended_rrule" not in final_app, current
 
 
+def assert_cli_host_rrule_repairs_false_ack() -> None:
+    fixture = _load_quota_plan_fixture_module()
+    with tempfile.TemporaryDirectory(prefix="loopx-quota-host-rrule-") as tmp:
+        root = Path(tmp)
+        registry_path, runtime, project = fixture.write_cli_fixture(root, scoped_agents=True)
+        agent_id = fixture.SCOPED_AGENT_ID
+        first = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            "needs-operator",
+            "--agent-id",
+            agent_id,
+            registry_path=registry_path,
+            runtime=runtime,
+            project=project,
+        )
+        ledger_only = first
+        for _ in range(4):
+            current_app = ledger_only["scheduler_hint"]["codex_app"]
+            if current_app["stateful_backoff"]["apply_needed"] is False:
+                break
+            ack = run_cli(
+                root,
+                *current_app["ack_hint"]["cli_args"],
+                registry_path=registry_path,
+                runtime=runtime,
+                project=project,
+            )
+            assert ack["scheduler_state_mutated"] is True, ack
+            ledger_only = run_cli(
+                root,
+                "quota",
+                "should-run",
+                "--goal-id",
+                "needs-operator",
+                "--agent-id",
+                agent_id,
+                registry_path=registry_path,
+                runtime=runtime,
+                project=project,
+            )
+        assert ledger_only["scheduler_hint"]["codex_app"]["stateful_backoff"]["apply_needed"] is False, ledger_only
+        expected_rrule = ledger_only["scheduler_hint"]["codex_app"]["stateful_backoff"]["current_rrule"]
+
+        codex_home = root / "codex-home"
+        automation_path = codex_home / "automations" / "fixture" / "automation.toml"
+        automation_path.parent.mkdir(parents=True)
+        automation_path.write_text(
+            "\n".join(
+                [
+                    "version = 1",
+                    'id = "fixture"',
+                    'kind = "heartbeat"',
+                    'name = "Scheduler host observation fixture"',
+                    'prompt = "Advance `needs-operator` from active state. Agent: `codex-side-bypass`"',
+                    'status = "ACTIVE"',
+                    'rrule = "FREQ=MINUTELY;INTERVAL=30"',
+                    'target_thread_id = "fixture-thread"',
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        previous_codex_home = os.environ.get("CODEX_HOME")
+        previous_thread_id = os.environ.get("CODEX_THREAD_ID")
+        os.environ["CODEX_HOME"] = str(codex_home)
+        os.environ["CODEX_THREAD_ID"] = "fixture-thread"
+        try:
+            drift = run_cli(
+                root,
+                "quota",
+                "should-run",
+                "--goal-id",
+                "needs-operator",
+                "--agent-id",
+                agent_id,
+                registry_path=registry_path,
+                runtime=runtime,
+                project=project,
+            )
+        finally:
+            if previous_codex_home is None:
+                os.environ.pop("CODEX_HOME", None)
+            else:
+                os.environ["CODEX_HOME"] = previous_codex_home
+            if previous_thread_id is None:
+                os.environ.pop("CODEX_THREAD_ID", None)
+            else:
+                os.environ["CODEX_THREAD_ID"] = previous_thread_id
+        drift_app = drift["scheduler_hint"]["codex_app"]
+        assert drift_app["recommended_rrule"] == expected_rrule, drift
+        assert drift_app["stateful_backoff"]["apply_needed"] is True, drift
+        assert drift_app["stateful_backoff"]["host_observation"] == {
+            "source": "quota_should_run_host_observation",
+            "current_rrule": "FREQ=MINUTELY;INTERVAL=30",
+            "status": "drift_detected",
+        }, drift
+
+        matched = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            "needs-operator",
+            "--agent-id",
+            agent_id,
+            "--codex-app-current-rrule",
+            expected_rrule,
+            registry_path=registry_path,
+            runtime=runtime,
+            project=project,
+        )
+        matched_app = matched["scheduler_hint"]["codex_app"]
+        assert matched_app["stateful_backoff"]["apply_needed"] is False, matched
+        assert matched_app["stateful_backoff"]["host_observation"]["status"] == "matches_recommended", matched
+
+
 def assert_cli_ignores_corrupt_scheduler_state() -> None:
     fixture = _load_quota_plan_fixture_module()
     with tempfile.TemporaryDirectory(prefix="loopx-quota-scheduler-corrupt-") as tmp:
@@ -1020,6 +1156,7 @@ def main() -> int:
     assert_monitor_wait_stale_ack_hint_is_accepted()
     assert_scheduler_state_scope_validation()
     assert_cli_scheduler_ack_progression()
+    assert_cli_host_rrule_repairs_false_ack()
     assert_cli_ignores_corrupt_scheduler_state()
     assert_cli_scheduler_ack_uses_should_run_lookback()
     print("quota-scheduler-state-ack-smoke ok")

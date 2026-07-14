@@ -730,7 +730,7 @@ def _compact_autonomous_candidate_context(
 
 def _scheduler_hint(
     payload: dict[str, Any], *, include_detail: bool = False,
-    codex_app_scheduler_state: dict[str, Any] | None = None, available_capabilities: Any = None,
+    codex_app_scheduler_state: dict[str, Any] | None = None, available_capabilities: Any = None, codex_app_current_rrule: Any = None,
 ) -> dict[str, Any]:
     return build_scheduler_hint(
         payload,
@@ -738,7 +738,7 @@ def _scheduler_hint(
         agent_scope_frontier_actions=[action.value for action in AgentScopeFrontierAction],
         include_detail=include_detail,
         codex_app_scheduler_state=codex_app_scheduler_state,
-        available_capabilities=available_capabilities,
+        available_capabilities=available_capabilities, codex_app_current_rrule=codex_app_current_rrule,
     )
 
 
@@ -1278,7 +1278,7 @@ def build_quota_should_run(
     goal_id: str,
     agent_id: str | None = None,
     available_capabilities: Any = None,
-    include_scheduler_detail: bool = False,
+    include_scheduler_detail: bool = False, codex_app_current_rrule: Any = None,
 ) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
     registry_goal = _registry_goal_by_id(status_payload).get(safe_goal_id) or {}
@@ -2178,7 +2178,7 @@ def build_quota_should_run(
                 status_payload,
                 goal_id=safe_goal_id,
                 agent_id=quota_decision_agent_id(payload) or agent_id,
-            ),
+            ), codex_app_current_rrule=codex_app_current_rrule,
         )
         payload["protocol_action_packet"] = build_protocol_action_packet(payload)
         return payload

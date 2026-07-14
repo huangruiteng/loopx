@@ -18,6 +18,7 @@ from ..quota import (
     void_quota_slot,
 )
 from ..status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, collect_status
+from ..upgrade import resolve_codex_app_automation_rrule
 from ..control_plane.quota.turn_envelope import build_turn_envelope
 from ..control_plane.runtime.status_projection_cache import (
     load_status_projection_cache,
@@ -86,6 +87,14 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         help=(
             "Include cold-path scheduler detail for local scheduler, Codex CLI, "
             "and Claude loop runtimes in `quota should-run` JSON."
+        ),
+    )
+    quota_parser.add_argument(
+        "--codex-app-current-rrule",
+        help=(
+            "Current RRULE observed from the active Codex App heartbeat. For "
+            "`quota should-run`, this reconciles host reality with LoopX's last "
+            "scheduler ACK so a stale ACK cannot suppress a required update."
         ),
     )
     quota_parser.add_argument(
@@ -218,12 +227,21 @@ def handle_quota_command(
         if args.quota_command == "should-run":
             if not args.goal_id:
                 raise ValueError("`loopx quota should-run` requires --goal-id")
+            codex_app_rrule = str(args.codex_app_current_rrule or "").strip()
+            if not codex_app_rrule:
+                host_observation = resolve_codex_app_automation_rrule(
+                    goal_id=args.goal_id,
+                    agent_id=args.agent_id,
+                )
+                if host_observation.get("available") is True:
+                    codex_app_rrule = str(host_observation.get("rrule") or "")
             payload = build_quota_should_run(
                 status_payload,
                 goal_id=args.goal_id,
                 agent_id=args.agent_id,
                 available_capabilities=args.available_capabilities,
                 include_scheduler_detail=bool(args.include_scheduler_detail),
+                codex_app_current_rrule=codex_app_rrule,
             )
         elif args.quota_command == "monitor-poll":
             if not args.goal_id:

@@ -617,6 +617,7 @@ def build_scheduler_hint(
     include_detail: bool = False,
     codex_app_scheduler_state: dict[str, Any] | None = None,
     available_capabilities: Any = None,
+    codex_app_current_rrule: Any = None,
 ) -> dict[str, Any]:
     """Project host-runtime cadence/backoff policy from a quota decision.
 
@@ -856,11 +857,17 @@ def build_scheduler_hint(
         current_interval = cadence_progression[current_index]
         current_rrule = rrule_for_minutes(current_interval)
         last_applied_rrule = str(scheduler_state.get("last_applied_rrule") or "").strip()
-        current_rrule_already_applied = last_applied_rrule == current_rrule
-        if not current_rrule_already_applied and state_status == "same_identity":
+        observed_host_rrule = normalize_scheduler_rrule(codex_app_current_rrule)
+        effective_host_rrule = observed_host_rrule or last_applied_rrule
+        current_rrule_already_applied = effective_host_rrule == current_rrule
+        if (
+            not current_rrule_already_applied
+            and not observed_host_rrule
+            and state_status == "same_identity"
+        ):
             current_rrule_already_applied = _monitor_rrule_applied_within_stale_tolerance(
                 cadence_class=cadence_class,
-                last_applied_rrule=last_applied_rrule,
+                last_applied_rrule=effective_host_rrule,
                 current_rrule=current_rrule,
             )
         apply_needed = state_status != "same_identity" or not current_rrule_already_applied
@@ -915,6 +922,16 @@ def build_scheduler_hint(
             },
             "no_spend_for_cadence_change": True,
         }
+        if observed_host_rrule:
+            codex_app["stateful_backoff"]["host_observation"] = {
+                "source": "quota_should_run_host_observation",
+                "current_rrule": observed_host_rrule,
+                "status": (
+                    "matches_recommended"
+                    if current_rrule_already_applied
+                    else "drift_detected"
+                ),
+            }
         if apply_needed:
             codex_app["recommended_rrule"] = current_rrule
             if payload.get("goal_id") and identity_value("agent_identity.agent_id"):

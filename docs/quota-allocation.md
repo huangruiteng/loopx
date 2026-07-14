@@ -777,8 +777,17 @@ post-update ack protocol instead of requiring them to own or diff the whole
 quota state. `scheduler-ack` is not a second `should-run`: it confirms the
 host update and does not emit a successor RRULE to apply in the same turn. User
 feedback, newly runnable work, reassignment, or material evidence therefore
-restores the automation to the current profile's initial
-interval before backoff resumes.
+restores the automation to the current profile's initial interval before
+backoff resumes.
+
+`quota should-run` also observes the RRULE of a uniquely matched active Codex
+App heartbeat (goal + agent + current thread). The observed host RRULE takes
+precedence over `last_applied_rrule` when computing `apply_needed`, and the
+compact result is exposed as `stateful_backoff.host_observation`. A mismatch is
+`drift_detected`, so an ACK written before the host update—or a later host-side
+cadence regression—cannot permanently suppress the repair. This observation
+contains only cadence metadata; LoopX still requires `automation_update` for
+the write and never edits the App manifest directly.
 For Codex CLI TUI and Claude Code loops, the default hot path reads
 `scheduler_hint.unchanged_poll.limits.<runtime>`. A value of `3` means the third
 unchanged poll triggers the compact final quota/replan check named by
