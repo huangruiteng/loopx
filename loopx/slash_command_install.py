@@ -86,6 +86,7 @@ def _command_prompt_specs(*, cli_bin: str, include_legacy_aliases: bool) -> list
             "instructions": [
                 "Visible command arguments: `$ARGUMENTS`.",
                 f"If arguments are present, preserve them as the task text and run `{cli_bin} start-goal --guided --project . --goal-text \"$ARGUMENTS\"` before planning work.",
+                f"If that packet exposes a goal-selection gate, rerun one exact choice before any mutation. When the user asks to create or become a new peer/meta/supervisor agent, do not reuse an existing registered identity: choose a new public-safe agent id, preview then apply `{cli_bin} register-agent --goal-id <selected-goal-id> --agent-id <new-agent-id> --execute`, and rerun start-goal with explicit `--goal-id` and `--agent-id` before todo writeback.",
                 f"If arguments are empty, inspect `{cli_bin} bootstrap-command-pack --project .`, `{cli_bin} status`, and `{cli_bin} slash-commands` before changing files.",
                 f"Use `{cli_bin} agent-onboard --list-agent-types` when the host runtime is unclear; pass an exact type such as `codex-app`, `codex-cli`, or `claude-code`, never ambiguous `codex`.",
                 f"Do not configure optional features during first-run. Only when the task needs bounded child agents or Explore, inspect `{cli_bin} configure-goal --goal-id <resolved-goal-id>` and its `configuration_catalog`; preview before explicit apply and never auto-enable a feature merely because it exists.",

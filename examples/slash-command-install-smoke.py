@@ -111,6 +111,8 @@ def main() -> int:
         assert "LoopX `/loopx`" in codex_skill_text
         assert "start-goal --guided --project . --goal-text" in codex_skill_text
         assert "bootstrap-command-pack --project . --goal-text" not in codex_skill_text
+        assert "new peer/meta/supervisor agent" in codex_skill_text
+        assert "register-agent --goal-id <selected-goal-id>" in codex_skill_text
         assert "Do not configure optional features during first-run" in codex_skill_text
         assert "configure-goal --goal-id <resolved-goal-id>" in codex_skill_text
         codex_metadata = codex_home / "skills" / "loopx" / "agents" / "openai.yaml"
