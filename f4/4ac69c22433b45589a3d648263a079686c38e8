@@ -1,0 +1,23 @@
+loopx/presentation/sinks/lark/explore_results.py
+  s_9a5a2bd944fdcb::t_bfe3a71aa47cb2 617-618,625,628
+tests/test_explore_presentation_views.py
+  s_9a5a2bd944fdcb::t_aa2d9b8c4e5f7f 1094-1168,1171,1176-1179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f44ac69c22433b45589a3d648263a079686c38e8",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
