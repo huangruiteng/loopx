@@ -87,6 +87,9 @@ from loopx.benchmark_adapters.skillsbench_codex_runtime import (  # noqa: E402
     LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION,
     materialize_local_codex_participant,
 )
+from loopx.benchmark_adapters import (  # noqa: E402
+    skillsbench_dockerfile_runtime as dockerfile_runtime,
+)
 from scripts.skillsbench_automation_loop import (  # noqa: E402
     CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD,
     CODEX_ACP_RUNTIME_DEPS_SETUP_CMD,
@@ -5691,6 +5694,18 @@ def test_skillsbench_docker_task_staging_adds_apt_retry_patch() -> None:
         assert metadata["apt_retry_patch_required"] is True, metadata
         assert metadata["apt_risk_preflight_blocked"] is False, metadata
         assert metadata["apt_retry_patch_applied"] is True, metadata
+        assert (
+            metadata["dockerfile_ubuntu_apt_mirror_patch_required"] is True
+        ), metadata
+        assert (
+            metadata["dockerfile_ubuntu_apt_mirror_patch_applied"] is True
+        ), metadata
+        assert metadata["dockerfile_ubuntu_apt_mirror_host"] == (
+            dockerfile_runtime.DEFAULT_UBUNTU_APT_MIRROR_HOST
+        ), metadata
+        assert (
+            metadata["dockerfile_ubuntu_apt_mirror_raw_url_recorded"] is False
+        ), metadata
         assert metadata["codex_acp_runtime_tools_patch_applied"] is True, metadata
         assert metadata["original_task_mutated"] is False, metadata
         assert dockerfile.read_text(encoding="utf-8") == original_text
@@ -5698,6 +5713,10 @@ def test_skillsbench_docker_task_staging_adds_apt_retry_patch() -> None:
             encoding="utf-8"
         )
         assert DOCKER_APT_RETRY_BEGIN in staged_text, staged_text
+        assert dockerfile_runtime.UBUNTU_APT_MIRROR_BEGIN in staged_text, staged_text
+        assert dockerfile_runtime.DEFAULT_UBUNTU_APT_MIRROR_BASE in staged_text
+        assert "archive.ubuntu.com/ubuntu" in staged_text
+        assert "security.ubuntu.com/ubuntu" in staged_text
         assert DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN in staged_text, staged_text
         assert 'Acquire::Retries "5";' in staged_text, staged_text
 

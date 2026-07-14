@@ -197,6 +197,93 @@ def test_setup_only_preflight_classifies_public_setup_failures(
     assert result["raw_logs_read"] is False
 
 
+@pytest.mark.parametrize(
+    (
+        "message",
+        "terminal_dependency_classes",
+        "failure_reason_codes",
+        "retryability",
+    ),
+    [
+        (
+            "Docker compose command failed. ERROR: failed to solve: process "
+            "/bin/sh -c apt-get install missing-package did not complete "
+            "successfully: unable to locate package missing-package",
+            ["system_package"],
+            ["apt_package_unavailable"],
+            "non_retryable",
+        ),
+        (
+            "Docker compose command failed. ERROR: failed to solve: process "
+            "/bin/sh -c pip3 install numpy did not complete successfully: "
+            "read timed out for pypi.org; max retries exceeded",
+            ["python_package"],
+            ["connection_timeout", "retry_exhausted"],
+            "retryable",
+        ),
+        (
+            "Docker compose command failed: invalid mount config for type "
+            "bind: bind source path does not exist",
+            [],
+            ["missing_file"],
+            "non_retryable",
+        ),
+    ],
+)
+def test_setup_only_preflight_projects_terminal_failure_signals(
+    message: str,
+    terminal_dependency_classes: list[str],
+    failure_reason_codes: list[str],
+    retryability: str,
+) -> None:
+    FakeRollout.failure_stage = "environment_start"
+    FakeRollout.failure = RuntimeError(message)
+
+    result = run_preflight()
+
+    assert result["terminal_dependency_classes"] == terminal_dependency_classes
+    assert result["failure_reason_codes"] == failure_reason_codes
+    assert result["terminal_failure_reason_codes"] == failure_reason_codes
+    assert result["retryability"] == retryability
+    assert message not in json.dumps(result, sort_keys=True)
+
+
+def test_setup_only_preflight_separates_terminal_reason_and_endpoint() -> None:
+    FakeRollout.failure_stage = "environment_start"
+    FakeRollout.failure = RuntimeError(
+        "failed to fetch https://archive.ubuntu.com/package-index\n"
+        "failed to solve: process /bin/sh -c apt-get update && wget "
+        "https://archive.apache.org/dist/tool.tgz did not complete successfully"
+    )
+
+    result = run_preflight()
+
+    assert result["terminal_dependency_classes"] == [
+        "system_package",
+        "http_download",
+    ]
+    assert result["terminal_failure_reason_codes"] == ["apt_fetch_failed"]
+    assert result["dependency_endpoints"] == [
+        "ubuntu_repository",
+        "apache_archive",
+    ]
+    assert result["terminal_dependency_endpoints"] == ["apache_archive"]
+    assert result["raw_error_recorded"] is False
+
+
+def test_setup_only_preflight_classifies_ubuntu_mirror_without_raw_url() -> None:
+    FakeRollout.failure_stage = "environment_start"
+    FakeRollout.failure = RuntimeError(
+        "failed to fetch https://repo.huaweicloud.com/ubuntu/package-index"
+    )
+
+    result = run_preflight()
+
+    assert result["terminal_dependency_endpoints"] == ["ubuntu_repository_mirror"]
+    assert result["terminal_failure_reason_codes"] == ["apt_fetch_failed"]
+    assert "huaweicloud" not in json.dumps(result, sort_keys=True)
+
+
 def test_setup_only_preflight_reports_cleanup_failure_without_raw_error() -> None:
     FakeRollout.failure_stage = "cleanup"
     FakeRollout.failure = RuntimeError("secret cleanup detail /private/job")
