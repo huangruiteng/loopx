@@ -283,16 +283,16 @@ def _route_projection_is_current(
     goal_id: str,
     route_id: str,
     source_generated_at: Any,
+    marker_field: str,
 ) -> bool:
     rows, _ = load_index(
         target_runtime_root / "goals" / goal_id / "runs" / "index.jsonl"
     )
     return any(
-        isinstance(row.get("shared_runtime_projection"), dict)
-        and row["shared_runtime_projection"].get("runtime_projection_route_id")
+        isinstance(row.get(marker_field), dict)
+        and row[marker_field].get("runtime_projection_route_id")
         == route_id
-        and row["shared_runtime_projection"].get("source_generated_at")
-        == source_generated_at
+        and row[marker_field].get("source_generated_at") == source_generated_at
         for row in rows
     )
 
@@ -393,11 +393,18 @@ def collect_runtime_projection_route_diagnostics(
         )
         if source_row:
             target_text = str(route.get("target_runtime_root") or "").strip()
+            source_route = source_row.get("runtime_projection_route")
+            marker_field = (
+                str(source_route.get("projection_marker_field") or "").strip()
+                if isinstance(source_route, dict)
+                else ""
+            ) or "shared_runtime_projection"
             current = bool(target_text) and _route_projection_is_current(
                 target_runtime_root=Path(target_text),
                 goal_id=current_goal_id,
                 route_id=str(route.get("route_id") or ""),
                 source_generated_at=source_row.get("generated_at"),
+                marker_field=marker_field,
             )
             diagnostic_status = "healthy" if current else "lagging"
         elif route_status == "resolved":

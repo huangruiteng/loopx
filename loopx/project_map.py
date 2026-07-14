@@ -6,7 +6,6 @@ from typing import Any
 
 from .authority import compact_authority_registry
 from .feedback import validate_local_control_text, validate_public_safe_text
-from .global_registry import sync_project_registry_to_global
 from .history import load_registry
 from .paths import rel_or_abs, resolve_runtime_root
 from .state_refresh import (
@@ -18,6 +17,10 @@ from .state_refresh import (
     run_file_stem,
 )
 from .runtime import validate_goal_id_path_segment
+from .control_plane.runtime.shared_runtime_material_projection import (
+    finalize_material_projection,
+    prepare_material_projection_route,
+)
 
 
 DEFAULT_PROJECT_MAP_CLASSIFICATION = "read_only_project_map"
@@ -462,6 +465,12 @@ def read_only_project_map_run(
     validate_public_safe_text("classification", classification)
     registry = load_registry(registry_path)
     runtime_root = resolve_runtime_root(registry, runtime_root_override)
+    projection_route, compact_projection_route = prepare_material_projection_route(
+        registry_path=registry_path,
+        goal_id=safe_goal_id,
+        source_runtime_root=runtime_root,
+        sync_global=sync_global,
+    )
     registry_goal, resolved_project, resolved_state_file = resolve_goal_state(
         registry=registry,
         goal_id=safe_goal_id,
@@ -512,6 +521,7 @@ def read_only_project_map_run(
         registry_goal=registry_goal,
     )
     record["residual_risks"] = derive_residual_risks(record, opt_in_required=opt_in_required)
+    record["runtime_projection_route"] = compact_projection_route
     project_map = compact_project_map(record)
 
     runs_dir = runtime_root / "goals" / safe_goal_id / "runs"
@@ -527,6 +537,7 @@ def read_only_project_map_run(
         "health_check": record["health_check"],
         "residual_risks": record["residual_risks"],
         "project_map": project_map,
+        "runtime_projection_route": compact_projection_route,
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
     }
@@ -549,6 +560,7 @@ def read_only_project_map_run(
         "markdown_path": str(markdown_path),
         "index_path": str(index_path),
         "project_map": project_map,
+        "runtime_projection_route": compact_projection_route,
         **record,
     }
     if not dry_run:
@@ -557,18 +569,21 @@ def read_only_project_map_run(
         markdown_path.write_text(render_read_only_project_map_markdown(payload) + "\n", encoding="utf-8")
         with index_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(index_record, ensure_ascii=False) + "\n")
-    if sync_global:
-        payload["global_sync"] = sync_project_registry_to_global(
-            registry_path=registry_path,
-            runtime_root_override=str(runtime_root),
-            goal_id=safe_goal_id,
-            dry_run=dry_run,
-        )
-    else:
-        payload["global_sync"] = {
-            "enabled": False,
-            "global_registry": str(runtime_root / "registry.global.json"),
-            "synced_goal_ids": [],
-            "wrote": False,
-        }
+    projection_result = finalize_material_projection(
+        registry_path=registry_path,
+        source_runtime_root=runtime_root,
+        goal_id=safe_goal_id,
+        source_row=index_record,
+        projection_kind="read_only_project_map",
+        route=projection_route,
+        sync_global=sync_global,
+        dry_run=dry_run,
+    )
+    payload["global_sync"] = projection_result["global_sync"]
+    payload["shared_runtime_material_projection"] = projection_result[
+        "shared_runtime_material_projection"
+    ]
+    if not projection_result["ok"]:
+        payload["ok"] = False
+        payload["partial_write"] = projection_result["partial_write"]
     return payload

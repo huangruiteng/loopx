@@ -1005,6 +1005,7 @@ def refresh_state_run(
         record["vision_checkpoint"] = vision_checkpoint
     compact_route = compact_runtime_projection_route(runtime_projection_route)
     compact_route["projection_enabled"] = bool(sync_global)
+    compact_route["projection_marker_field"] = "shared_runtime_projection"
     record["runtime_projection_route"] = compact_route
 
     runs_dir = runtime_root / "goals" / safe_goal_id / "runs"

@@ -5,12 +5,15 @@ from pathlib import Path
 from typing import Any
 
 from .feedback import validate_local_control_text, validate_public_safe_text
-from .global_registry import sync_project_registry_to_global
 from .history import collect_history, load_registry
 from .paths import resolve_runtime_root
 from .registry import registry_goals
 from .runtime import validate_goal_id_path_segment
 from .state_refresh import now_local, run_file_stem
+from .control_plane.runtime.shared_runtime_material_projection import (
+    finalize_material_projection,
+    prepare_material_projection_route,
+)
 
 
 OPERATOR_GATE_DECISIONS = {"approve", "reject", "defer"}
@@ -311,6 +314,12 @@ def record_operator_gate(
     validate_public_safe_text("reason_summary", reason_summary)
     registry = load_registry(registry_path)
     runtime_root = resolve_runtime_root(registry, runtime_root_override)
+    projection_route, compact_projection_route = prepare_material_projection_route(
+        registry_path=registry_path,
+        goal_id=safe_goal_id,
+        source_runtime_root=runtime_root,
+        sync_global=sync_global,
+    )
     registry_goal = find_registry_goal(registry, safe_goal_id)
     question = operator_question or default_operator_question(safe_goal_id, gate)
     command = agent_command
@@ -350,6 +359,7 @@ def record_operator_gate(
         operator_gate=operator_gate,
     )
     record["operator_gate_resume_contract"] = resume_contract
+    record["runtime_projection_route"] = compact_projection_route
 
     runs_dir = runtime_root / "goals" / safe_goal_id / "runs"
     json_path = runs_dir / f"{stem}.json"
@@ -363,6 +373,7 @@ def record_operator_gate(
         "health_check": record["health_check"],
         "operator_gate": operator_gate,
         "operator_gate_resume_contract": resume_contract,
+        "runtime_projection_route": compact_projection_route,
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
     }
@@ -380,6 +391,7 @@ def record_operator_gate(
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
         "index_path": str(index_path),
+        "runtime_projection_route": compact_projection_route,
         **record,
     }
     if not dry_run:
@@ -388,13 +400,21 @@ def record_operator_gate(
         markdown_path.write_text(render_operator_gate_markdown(payload) + "\n", encoding="utf-8")
         with index_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(index_record, ensure_ascii=False) + "\n")
-    if sync_global:
-        payload["global_sync"] = sync_project_registry_to_global(
-            registry_path=registry_path,
-            runtime_root_override=str(runtime_root),
-            goal_id=safe_goal_id,
-            dry_run=dry_run,
-        )
-    else:
-        payload["global_sync"] = {"enabled": False}
+    projection_result = finalize_material_projection(
+        registry_path=registry_path,
+        source_runtime_root=runtime_root,
+        goal_id=safe_goal_id,
+        source_row=index_record,
+        projection_kind="operator_gate_decision",
+        route=projection_route,
+        sync_global=sync_global,
+        dry_run=dry_run,
+    )
+    payload["global_sync"] = projection_result["global_sync"]
+    payload["shared_runtime_material_projection"] = projection_result[
+        "shared_runtime_material_projection"
+    ]
+    if not projection_result["ok"]:
+        payload["ok"] = False
+        payload["partial_write"] = projection_result["partial_write"]
     return payload
