@@ -681,10 +681,22 @@ Base rows and rendered graphs are different delivery receipts. Configure the
 Docx and its first whiteboard with `explore feishu-visual-configure`; the Docx
 may be a root-level resource inside the same Base so the graph and Kanban share
 one operator entry point. Each bounded Evidence Stage owns one document section
-and one independent Mermaid whiteboard. Missing sections and blank whiteboards
-are created automatically when the sink has a Docx token. Stage capacity is
+and one independent whiteboard. Missing sections and blank whiteboards are
+created automatically when the sink has a Docx token. Stage capacity is
 configurable from 10 through 20 nodes and defaults to 14. Full Nodes, Edges, and
 Findings always remain in the canonical Base.
+
+`board_style` is the first-class layout contract and is independent from
+`projection_mode`, which controls evidence selection. Two styles are supported:
+
+| Board style | Best fit | Rendering behavior |
+| --- | --- | --- |
+| `auto_flow` | Generic or single-lane Explore graphs | Mermaid chooses the graph layout while LoopX preserves stage order, lanes, statuses, and real directed edges. |
+| `semantic_lane_columns` | Operator boards with meaningful parallel lanes such as PR issue-fix and capability work | LoopX emits deterministic SVG columns, keeps each lane top-to-bottom, and draws the real within-stage directed edges. |
+
+The renderer (`mermaid` or `stage_svg`) is an implementation detail derived
+from `board_style`. Existing local configs that only store `renderer=mermaid`
+remain readable as `auto_flow`.
 
 A material sync checkpoints `canonical_rows_semantic_digest`
 and `visual_semantic_digest` independently. If whiteboard publication fails
@@ -719,6 +731,7 @@ loopx explore feishu-visual-configure \
   --whiteboard-token <executive-token> \
   --docx-token <executive-doc-token> \
   --stage-capacity 14 \
+  --board-style semantic_lane_columns \
   --execute
 ```
 
@@ -753,7 +766,7 @@ loopx explore graph --goal-id <id> [--graph-format mermaid|json] [--out <file>]
 loopx explore todo-branch-plan --goal-id <id> [--agent-id <agent>] [--width 3]
 loopx explore worker-branch-plan --goal-id <id> [--agent-id <agent>] [--harness-profile generic|adaptive-resilient|moe-router] [--worker-width 3] [--max-todos-per-branch 3] [--router-state <file>] [--load-profile <file>]
 loopx explore feishu-setup [--base-url ...] [--execute]
-loopx explore feishu-visual-configure [--whiteboard-token <token>] --docx-token <token> [--stage-whiteboard-token <token> ...] [--stage-capacity 10..20] [--view-role canonical|executive] [--projection-mode canonical_filtered|issue_fix_two_lane|canonical_full|executive_auto] [--tag <tag>] [--status <status>] [--execute]
+loopx explore feishu-visual-configure [--whiteboard-token <token>] --docx-token <token> [--stage-whiteboard-token <token> ...] [--stage-capacity 10..20] [--board-style auto_flow|semantic_lane_columns] [--view-role canonical|executive] [--projection-mode canonical_filtered|issue_fix_two_lane|canonical_full|executive_auto] [--tag <tag>] [--status <status>] [--execute]
 loopx explore feishu-sync --goal-id <id> [--sink-visibility owner-only|shared] [--execute]
 loopx explore feishu-card --goal-id <id> [--card-file <file>] [--message-id om_...]
 ```
