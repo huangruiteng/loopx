@@ -1,0 +1,23 @@
+loopx/capabilities/issue_fix/outcome_projection.py
+  s_9a5a2bd944fdcb::t_9451735128e735 11-13,34-38,86-199,313,360-362,393-396,414,431-432,452-453,479,498-499,566-568,641-660,667-668,688,709-713,736,771-773,775-777,813,842-846,1001
+loopx/capabilities/issue_fix/repository_commit_evidence.py
+  s_9a5a2bd944fdcb::t_5027db6602e9df 1-186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "395d2b9353f7da5806625f99119153fc45ba51d2",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
