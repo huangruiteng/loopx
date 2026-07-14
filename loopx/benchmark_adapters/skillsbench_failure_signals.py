@@ -16,7 +16,10 @@ _SETUP_ATTRIBUTION_FINGERPRINT_PATTERNS = {
 }
 _FINGERPRINT_SETUP_ATTRIBUTIONS = (
     ("docker_api_version_mismatch", "skillsbench_docker_api_version_mismatch"),
-    ("docker_compose_plugin_unavailable", "skillsbench_docker_compose_plugin_unavailable"),
+    (
+        "docker_compose_plugin_unavailable",
+        "skillsbench_docker_compose_plugin_unavailable",
+    ),
     ("docker_daemon_unavailable", "skillsbench_docker_daemon_unavailable"),
     ("port_conflict", "skillsbench_docker_compose_port_conflict"),
     ("pip_bootstrap_failure", "skillsbench_docker_compose_pip_bootstrap_failure"),
@@ -76,20 +79,176 @@ _FAILURE_DEPENDENCY_CLASS_PATTERNS = (
     ("model_artifact", r"huggingface\.co|hf\.co"),
 )
 
+_FAILURE_REASON_PATTERNS = (
+    (
+        "dns_resolution",
+        r"temporary failure in name resolution|name or service not known|"
+        r"could not resolve host",
+    ),
+    (
+        "connection_timeout",
+        r"connection timed out|connect timeout|read timed out|operation timed out",
+    ),
+    ("connection_refused", r"connection refused|could not connect"),
+    ("connection_reset", r"connection reset|remote end closed connection"),
+    ("retry_exhausted", r"max retries exceeded"),
+    (
+        "proxy_connect",
+        r"proxyerror|proxy error|tunnel connection failed|"
+        r"cannot connect to proxy|could not connect to proxy",
+    ),
+    (
+        "tls_or_certificate",
+        r"certificate verify failed|ssl certificate problem|tls handshake|"
+        r"unable to get local issuer certificate",
+    ),
+    ("http_not_found", r"(?:http[^\n]*\s404\b|404 not found)"),
+    ("http_server_error", r"(?:http[^\n]*\s5\d\d\b|5\d\d server error)"),
+    ("apt_fetch_failed", r"failed to fetch"),
+    ("apt_signature_or_gpg", r"gpg error|no_pubkey|signatures? couldn.t be verified"),
+    ("apt_hash_mismatch", r"hash sum mismatch|hashes of expected file"),
+    (
+        "apt_release_expired",
+        r"release file .* is not valid yet|release file .* expired|"
+        r"does not have a release file",
+    ),
+    (
+        "apt_package_unavailable",
+        r"unable to locate package|has no installation candidate|"
+        r"couldn.t find any package",
+    ),
+    (
+        "pip_no_matching_distribution",
+        r"no matching distribution found|"
+        r"could not find a version that satisfies the requirement",
+    ),
+    (
+        "pip_build_failure",
+        r"failed building wheel|failed to build installable wheels|"
+        r"pip subprocess to install build dependencies did not run successfully|"
+        r"subprocess-exited-with-error",
+    ),
+    ("pip_os_error", r"could not install packages due to an oserror"),
+    ("permission_denied", r"permission denied|operation not permitted"),
+    ("missing_file", r"no such file|does not exist"),
+    ("no_space_left", r"no space left on device"),
+)
+
+_FAILURE_DEPENDENCY_ENDPOINT_PATTERNS = (
+    ("debian_repository", r"deb\.debian\.org|security\.debian\.org"),
+    ("ubuntu_repository", r"archive\.ubuntu\.com|security\.ubuntu\.com"),
+    ("ubuntu_repository_mirror", r"repo\.huaweicloud\.com/ubuntu"),
+    ("apache_archive", r"archive\.apache\.org|dlcdn\.apache\.org"),
+    ("maven_central", r"repo1\.maven\.org|repo\.maven\.apache\.org"),
+    ("github_release", r"github\.com/.+/(?:releases|archive)/"),
+    ("pypi_primary", r"pypi\.org|files\.pythonhosted\.org"),
+    ("pypi_mirror", r"pypi\.tuna\.tsinghua\.edu\.cn"),
+    ("docker_registry", r"registry-1\.docker\.io|docker\.io|gcr\.io|ghcr\.io"),
+)
+
+_TRANSIENT_FAILURE_REASONS = {
+    "connection_refused",
+    "connection_reset",
+    "connection_timeout",
+    "dns_resolution",
+    "http_server_error",
+    "proxy_connect",
+    "retry_exhausted",
+}
+_DETERMINISTIC_FAILURE_REASONS = {
+    "apt_package_unavailable",
+    "http_not_found",
+    "missing_file",
+    "no_space_left",
+    "permission_denied",
+    "pip_build_failure",
+    "pip_no_matching_distribution",
+    "pip_os_error",
+    "tls_or_certificate",
+}
+
+
+def _dependency_classes_for_lines(lines: list[str]) -> list[str]:
+    return [
+        label
+        for label, pattern in _FAILURE_DEPENDENCY_CLASS_PATTERNS
+        if any(re.search(pattern, line) for line in lines)
+    ]
+
+
+def _failure_reasons_for_lines(lines: list[str]) -> list[str]:
+    return [
+        label
+        for label, pattern in _FAILURE_REASON_PATTERNS
+        if any(re.search(pattern, line) for line in lines)
+    ]
+
+
+def _dependency_endpoints_for_lines(lines: list[str]) -> list[str]:
+    return [
+        label
+        for label, pattern in _FAILURE_DEPENDENCY_ENDPOINT_PATTERNS
+        if any(re.search(pattern, line) for line in lines)
+    ]
+
+
+def _failure_signal_lines(error_text: str) -> list[str]:
+    return [
+        line.lower()
+        for line in error_text.splitlines()
+        if any(marker in line.lower() for marker in _FAILURE_LINE_MARKERS)
+        or any(
+            re.search(pattern, line.lower()) for _, pattern in _FAILURE_REASON_PATTERNS
+        )
+    ]
+
 
 def skillsbench_failure_dependency_classes(error_text: str) -> list[str]:
     """Classify dependencies named on public-safe failure lines."""
 
-    failure_lines = [
-        line.lower()
-        for line in error_text.splitlines()
-        if any(marker in line.lower() for marker in _FAILURE_LINE_MARKERS)
-    ]
-    return [
-        label
-        for label, pattern in _FAILURE_DEPENDENCY_CLASS_PATTERNS
-        if any(re.search(pattern, line) for line in failure_lines)
-    ]
+    return _dependency_classes_for_lines(_failure_signal_lines(error_text))
+
+
+def skillsbench_terminal_failure_signals(error_text: str) -> dict[str, object]:
+    """Return the last dependency-bearing failure signal without raw text."""
+
+    failure_lines = _failure_signal_lines(error_text)
+    terminal_classes: list[str] = []
+    terminal_reasons: list[str] = []
+    terminal_endpoints: list[str] = []
+    for line in reversed(failure_lines):
+        if not terminal_classes:
+            terminal_classes = _dependency_classes_for_lines([line])
+        if not terminal_reasons:
+            terminal_reasons = _failure_reasons_for_lines([line])
+        if not terminal_endpoints:
+            terminal_endpoints = _dependency_endpoints_for_lines([line])
+        if terminal_classes and terminal_reasons and terminal_endpoints:
+            break
+
+    reasons = _failure_reasons_for_lines(failure_lines)
+    endpoints = _dependency_endpoints_for_lines(failure_lines)
+    reason_set = set(reasons)
+    if reason_set and reason_set <= _TRANSIENT_FAILURE_REASONS:
+        retryability = "retryable"
+    elif reason_set & _DETERMINISTIC_FAILURE_REASONS:
+        retryability = (
+            "mixed" if reason_set & _TRANSIENT_FAILURE_REASONS else "non_retryable"
+        )
+    elif reason_set:
+        retryability = "unknown"
+    else:
+        retryability = "unknown"
+
+    return {
+        "failure_reason_codes": reasons,
+        "terminal_failure_dependency_classes": terminal_classes,
+        "terminal_failure_reason_codes": terminal_reasons,
+        "failure_dependency_endpoints": endpoints,
+        "terminal_failure_dependency_endpoints": terminal_endpoints,
+        "retryability": retryability,
+        "raw_error_recorded": False,
+    }
 
 
 def skillsbench_setup_failure_category(
@@ -100,11 +259,7 @@ def skillsbench_setup_failure_category(
     matched_patterns = fingerprint.get("matched_patterns")
     if not isinstance(matched_patterns, list):
         return "skillsbench_docker_compose_setup_failure"
-    matched = {
-        str(item)
-        for item in matched_patterns
-        if isinstance(item, str)
-    }
+    matched = {str(item) for item in matched_patterns if isinstance(item, str)}
     return next(
         (
             attribution
@@ -128,11 +283,7 @@ def reconcile_skillsbench_setup_attribution(
     matched_patterns = fingerprint.get("matched_patterns")
     if not isinstance(matched_patterns, list):
         return False
-    matched = {
-        str(item)
-        for item in matched_patterns
-        if isinstance(item, str)
-    }
+    matched = {str(item) for item in matched_patterns if isinstance(item, str)}
     if required_pattern in matched:
         return False
 
@@ -236,8 +387,7 @@ def skillsbench_pip_bootstrap_failure_evidence(error_text: str) -> bool:
         " failed",
     )
     return any(
-        pip_command.search(line)
-        and any(marker in line for marker in command_failures)
+        pip_command.search(line) and any(marker in line for marker in command_failures)
         for line in text.splitlines()
     )
 
@@ -313,15 +463,15 @@ def skillsbench_runner_error_fingerprint(error_text: str) -> dict[str, object]:
             pattern_matched = bool(re.search(pattern, lowered))
         if pattern_matched:
             matched.append(label)
+    terminal_signals = skillsbench_terminal_failure_signals(text)
     return {
         "schema_version": "skillsbench_runner_failure_fingerprint_v0",
         "error_present": bool(text),
         "error_len_bucket": skillsbench_error_len_bucket(text),
         "line_count": len(text.splitlines()) if text else 0,
         "matched_patterns": matched,
-        "failure_line_dependency_classes": skillsbench_failure_dependency_classes(
-            text
-        ),
+        "failure_line_dependency_classes": skillsbench_failure_dependency_classes(text),
+        **terminal_signals,
         "has_host_paths": bool(re.search(r"/Users/|/private/|/var/folders/", text)),
         "has_urls": bool(re.search(r"https?://", text)),
         "has_secret_like_tokens": bool(

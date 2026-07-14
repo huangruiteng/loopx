@@ -6,10 +6,130 @@ import tempfile
 from pathlib import Path
 
 VENV_PIP_INVOCATION_MARKER = "# LOOPX_SKILLSBENCH_VENV_PIP_INVOCATION"
+UBUNTU_APT_MIRROR_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR"
+UBUNTU_APT_MIRROR_END = "# END LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR"
+DEFAULT_UBUNTU_APT_MIRROR_BASE = "https://repo.huaweicloud.com/ubuntu"
+DEFAULT_UBUNTU_APT_MIRROR_HOST = "repo.huaweicloud.com"
 _BARE_PIP_INSTALL_RE = re.compile(
     r"(?P<prefix>^\s*(?:RUN\s+)?|(?:&&|\|\||;|\|)\s*)pip3?\s+install\b",
     re.IGNORECASE,
 )
+
+
+def _write_text_atomic(path: Path, text: str) -> None:
+    fd, temp_name = tempfile.mkstemp(prefix=path.name, dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.replace(temp_name, path)
+    finally:
+        Path(temp_name).unlink(missing_ok=True)
+
+
+def _strip_marker_blocks(text: str, begin: str, end: str) -> str:
+    pattern = re.compile(
+        rf"^\s*{re.escape(begin)}\n.*?^\s*{re.escape(end)}\n?",
+        re.MULTILINE | re.DOTALL,
+    )
+    return pattern.sub("", text)
+
+
+def _stage_has_apt_update(lines: list[str]) -> bool:
+    return bool(
+        re.search(
+            r"\bapt(?:-get)?\s+update\b",
+            "\n".join(lines),
+            re.IGNORECASE,
+        )
+    )
+
+
+def needs_ubuntu_apt_mirror_patch(dockerfile: Path) -> bool:
+    """Return whether a Dockerfile stage runs apt update.
+
+    The staged patch is adaptive: it rewrites only Ubuntu source files found
+    in the image, so Debian and other apt-based images are left unchanged.
+    """
+
+    if not dockerfile.exists():
+        return False
+    text = _strip_marker_blocks(
+        dockerfile.read_text(encoding="utf-8", errors="replace"),
+        UBUNTU_APT_MIRROR_BEGIN,
+        UBUNTU_APT_MIRROR_END,
+    )
+    return _stage_has_apt_update(text.splitlines())
+
+
+def _ubuntu_apt_mirror_block() -> list[str]:
+    return [
+        UBUNTU_APT_MIRROR_BEGIN,
+        f"ARG LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR={DEFAULT_UBUNTU_APT_MIRROR_BASE}",
+        "RUN set -eux; \\",
+        "    if [ -d /etc/apt ] && [ -w /etc/apt ]; then \\",
+        "      find /etc/apt -type f \\",
+        "        \\( -name '*.list' -o -name '*.sources' \\) \\",
+        "        -exec sed -i \\",
+        '          -e "s#https\\?://archive.ubuntu.com/ubuntu#${LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR}#g" \\',
+        '          -e "s#https\\?://security.ubuntu.com/ubuntu#${LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR}#g" \\',
+        "          {} +; \\",
+        "      if [ -w /var/lib/apt/lists ]; then rm -rf /var/lib/apt/lists/*; fi; \\",
+        "    else \\",
+        "      echo 'loopx Ubuntu apt mirror skipped: apt directory is not writable'; \\",
+        "    fi",
+        UBUNTU_APT_MIRROR_END,
+    ]
+
+
+def patch_ubuntu_apt_mirror(dockerfile: Path) -> bool:
+    """Add a staged-only Ubuntu apt mirror fallback to apt-using stages."""
+
+    if not dockerfile.exists():
+        return False
+    original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    if UBUNTU_APT_MIRROR_BEGIN in original and UBUNTU_APT_MIRROR_END in original:
+        return False
+    text = _strip_marker_blocks(
+        original,
+        UBUNTU_APT_MIRROR_BEGIN,
+        UBUNTU_APT_MIRROR_END,
+    )
+    lines = text.splitlines()
+    stage_starts = [
+        index
+        for index, line in enumerate(lines)
+        if re.match(r"^\s*FROM\s+", line, re.IGNORECASE)
+    ]
+    if not stage_starts:
+        return False
+
+    patched_lines = lines[: stage_starts[0]]
+    applied = False
+    for position, start in enumerate(stage_starts):
+        end = (
+            stage_starts[position + 1]
+            if position + 1 < len(stage_starts)
+            else len(lines)
+        )
+        stage_lines = lines[start:end]
+        from_line = stage_lines[0].strip().lower()
+        if _stage_has_apt_update(stage_lines) and not re.match(
+            r"from(?:\s+--platform=\S+)?\s+scratch(?:\s|$)",
+            from_line,
+        ):
+            patched_lines.extend(
+                [stage_lines[0], "", *_ubuntu_apt_mirror_block(), "", *stage_lines[1:]]
+            )
+            applied = True
+        else:
+            patched_lines.extend(stage_lines)
+    if not applied:
+        return False
+    patched = "\n".join(patched_lines).rstrip() + "\n"
+    if patched == original:
+        return False
+    _write_text_atomic(dockerfile, patched)
+    return True
 
 
 def dockerfile_heredoc_delimiter(line: str) -> str | None:
@@ -65,7 +185,11 @@ def _rewrite_venv_stage_pip_installs(text: str) -> tuple[str, int]:
     rewritten_lines = lines[: stage_starts[0]]
     replaced = 0
     for position, start in enumerate(stage_starts):
-        end = stage_starts[position + 1] if position + 1 < len(stage_starts) else len(lines)
+        end = (
+            stage_starts[position + 1]
+            if position + 1 < len(stage_starts)
+            else len(lines)
+        )
         stage_text = "\n".join(lines[start:end])
         if _stage_activates_venv(stage_text):
             stage_text, stage_replaced = _rewrite_bare_pip_installs(stage_text)
@@ -91,7 +215,11 @@ def patch_venv_pip_invocations(dockerfile: Path) -> bool:
     patched, _ = _rewrite_venv_stage_pip_installs(original)
     lines = patched.splitlines()
     from_index = next(
-        (index for index, line in enumerate(lines) if line.lstrip().upper().startswith("FROM ")),
+        (
+            index
+            for index, line in enumerate(lines)
+            if line.lstrip().upper().startswith("FROM ")
+        ),
         -1,
     )
     lines.insert(from_index + 1, VENV_PIP_INVOCATION_MARKER)

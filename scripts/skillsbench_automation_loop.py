@@ -5601,6 +5601,9 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "include_task_skills",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "dockerfile_ubuntu_apt_mirror_patch_required",
+        "dockerfile_ubuntu_apt_mirror_patch_applied",
+        "dockerfile_ubuntu_apt_mirror_raw_url_recorded",
         "dockerfile_pip_install_risk_detected",
         "dockerfile_pip_bootstrap_patch_required",
         "dockerfile_pip_bootstrap_patch_applied",
@@ -5668,6 +5671,7 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "verifier_uv_bootstrap_mirror_host",
         "dockerfile_apache_archive_mirror_host",
         "dockerfile_maven_mirror_host",
+        "dockerfile_ubuntu_apt_mirror_host",
     ):
         raw = value.get(field)
         if isinstance(raw, str) and raw:
@@ -5747,6 +5751,15 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
             DOCKER_APP_SKILLS_MOUNT_BEGIN in dockerfile_text
         ),
         "apt_retry_patch_applied": DOCKER_APT_RETRY_BEGIN in dockerfile_text,
+        "dockerfile_ubuntu_apt_mirror_patch_applied": (
+            dockerfile_runtime.UBUNTU_APT_MIRROR_BEGIN in dockerfile_text
+        ),
+        "dockerfile_ubuntu_apt_mirror_host": (
+            dockerfile_runtime.DEFAULT_UBUNTU_APT_MIRROR_HOST
+            if dockerfile_runtime.UBUNTU_APT_MIRROR_BEGIN in dockerfile_text
+            else ""
+        ),
+        "dockerfile_ubuntu_apt_mirror_raw_url_recorded": False,
         "dockerfile_pip_bootstrap_patch_applied": (
             DOCKER_PIP_BOOTSTRAP_BEGIN in dockerfile_text
         ),
@@ -7615,6 +7628,10 @@ def stage_task_for_sandbox(
         "staged": False,
         "app_skills_mount_patch_applied": False,
         "apt_retry_patch_applied": False,
+        "dockerfile_ubuntu_apt_mirror_patch_required": False,
+        "dockerfile_ubuntu_apt_mirror_patch_applied": False,
+        "dockerfile_ubuntu_apt_mirror_host": "",
+        "dockerfile_ubuntu_apt_mirror_raw_url_recorded": False,
         "dockerfile_pip_install_risk_detected": False,
         "dockerfile_pip_bootstrap_patch_required": False,
         "dockerfile_pip_bootstrap_patch_applied": False,
@@ -7689,6 +7706,11 @@ def stage_task_for_sandbox(
     needs_apt_retry_patch = dockerfile_needs_apt_retry_patch(
         task_path / "environment" / "Dockerfile"
     )
+    needs_ubuntu_apt_mirror_patch = (
+        dockerfile_runtime.needs_ubuntu_apt_mirror_patch(
+            task_path / "environment" / "Dockerfile"
+        )
+    )
     needs_pip_bootstrap_patch = dockerfile_needs_pip_bootstrap_patch(
         task_path / "environment" / "Dockerfile"
     )
@@ -7746,6 +7768,13 @@ def stage_task_for_sandbox(
     metadata["apt_setup_risk_detected"] = needs_apt_retry_patch
     metadata["apt_retry_patch_required"] = needs_apt_retry_patch
     metadata["apt_risk_preflight_blocked"] = False
+    metadata["dockerfile_ubuntu_apt_mirror_patch_required"] = (
+        needs_ubuntu_apt_mirror_patch
+    )
+    if needs_ubuntu_apt_mirror_patch:
+        metadata["dockerfile_ubuntu_apt_mirror_host"] = (
+            dockerfile_runtime.DEFAULT_UBUNTU_APT_MIRROR_HOST
+        )
     metadata["dockerfile_pip_install_risk_detected"] = needs_pip_bootstrap_patch
     metadata["dockerfile_pip_bootstrap_patch_required"] = needs_pip_bootstrap_patch
     metadata["dockerfile_venv_pip_invocation_patch_required"] = (
@@ -7834,6 +7863,7 @@ def stage_task_for_sandbox(
         not has_task_skills
         and not needs_resource_cap
         and not needs_apt_retry_patch
+        and not needs_ubuntu_apt_mirror_patch
         and not needs_pip_bootstrap_patch
         and not needs_venv_pip_invocation_patch
         and not needs_gcr_mirror_patch
@@ -7888,6 +7918,9 @@ def stage_task_for_sandbox(
         proxy_env=benchmark_egress_proxy_env,
     )
     apt_retry_patched = patch_dockerfile_apt_retry(
+        staged_path / "environment" / "Dockerfile"
+    )
+    ubuntu_apt_mirror_patched = dockerfile_runtime.patch_ubuntu_apt_mirror(
         staged_path / "environment" / "Dockerfile"
     )
     pip_bootstrap_patched = patch_dockerfile_pip_bootstrap(
@@ -7946,6 +7979,15 @@ def stage_task_for_sandbox(
             "staged_task_path": str(staged_path),
             "app_skills_mount_patch_applied": patched,
             "apt_retry_patch_applied": apt_retry_patched,
+            "dockerfile_ubuntu_apt_mirror_patch_applied": (
+                ubuntu_apt_mirror_patched
+            ),
+            "dockerfile_ubuntu_apt_mirror_host": (
+                dockerfile_runtime.DEFAULT_UBUNTU_APT_MIRROR_HOST
+                if ubuntu_apt_mirror_patched
+                else ""
+            ),
+            "dockerfile_ubuntu_apt_mirror_raw_url_recorded": False,
             "dockerfile_pip_bootstrap_patch_applied": pip_bootstrap_patched,
             "dockerfile_venv_pip_invocation_patch_applied": (
                 venv_pip_invocation_patched

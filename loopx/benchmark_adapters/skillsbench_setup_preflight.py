@@ -67,6 +67,12 @@ def _base_result(
         "agent_execution_invoked": False,
         "verifier_invoked": False,
         "dependency_classes": [],
+        "terminal_dependency_classes": [],
+        "failure_reason_codes": [],
+        "terminal_failure_reason_codes": [],
+        "dependency_endpoints": [],
+        "terminal_dependency_endpoints": [],
+        "retryability": "unknown",
         "failure_category": "none",
         "exit_category": "pending",
         "patch_hits": _patch_hits(task_staging),
@@ -152,6 +158,32 @@ async def run_setup_only_public_preflight(
             for item in fingerprint.get("failure_line_dependency_classes", [])
             if isinstance(item, str)
         ]
+        result["terminal_dependency_classes"] = [
+            str(item)
+            for item in fingerprint.get("terminal_failure_dependency_classes", [])
+            if isinstance(item, str)
+        ]
+        result["failure_reason_codes"] = [
+            str(item)
+            for item in fingerprint.get("failure_reason_codes", [])
+            if isinstance(item, str)
+        ]
+        result["terminal_failure_reason_codes"] = [
+            str(item)
+            for item in fingerprint.get("terminal_failure_reason_codes", [])
+            if isinstance(item, str)
+        ]
+        result["dependency_endpoints"] = [
+            str(item)
+            for item in fingerprint.get("failure_dependency_endpoints", [])
+            if isinstance(item, str)
+        ]
+        result["terminal_dependency_endpoints"] = [
+            str(item)
+            for item in fingerprint.get("terminal_failure_dependency_endpoints", [])
+            if isinstance(item, str)
+        ]
+        result["retryability"] = str(fingerprint.get("retryability") or "unknown")
         result["fingerprint_patterns"] = sorted(matched_patterns)
         result["fingerprint_confidence"] = str(
             fingerprint.get("fingerprint_confidence")
