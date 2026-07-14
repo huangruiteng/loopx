@@ -12,10 +12,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.benchmark_core.loop_protocol import (
     BLIND_LOOP_DEFAULT_MAX_ROUNDS,
-    LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
+    CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
+    LEGACY_NONPRODUCT_PROMPT_POLLING_ROUTES,
     LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
     LOOPX_PACKET_ONLY_OBSERVATION_ROUTE,
-    LOOPX_PROMPT_POLLING_TEST_ROUTE,
     MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID,
     PACKET_ONLY_OBSERVATION_PROTOCOL_ID,
     PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID,
@@ -33,22 +33,17 @@ from loopx.benchmark_core.loop_protocol import (
 
 
 def main() -> int:
-    treatment = build_benchmark_loop_contract(
-        route=LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
-        max_rounds=BLIND_LOOP_DEFAULT_MAX_ROUNDS,
-    )
-    assert treatment["protocol_id"] == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
-    assert treatment["max_rounds_budget"] == 5
-    assert treatment["official_feedback_forwarded"] is False
-    assert treatment["official_feedback_blinded"] is True
-    assert treatment["blind_loop"] is True
-    assert treatment["strict_treatment_claim_allowed"] is True
-    prompt_polling_test = build_benchmark_loop_contract(
-        route=LOOPX_PROMPT_POLLING_TEST_ROUTE,
-        max_rounds=BLIND_LOOP_DEFAULT_MAX_ROUNDS,
-    )
-    assert prompt_polling_test["protocol_id"] == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
-    assert prompt_polling_test["strict_treatment_claim_allowed"] is True
+    for route in LEGACY_NONPRODUCT_PROMPT_POLLING_ROUTES:
+        legacy = build_benchmark_loop_contract(
+            route=route,
+            max_rounds=BLIND_LOOP_DEFAULT_MAX_ROUNDS,
+        )
+        assert legacy["protocol_id"] == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
+        assert legacy["strict_treatment_claim_allowed"] is False
+        assert (
+            legacy["claim_blocker"]
+            == "historical_nonproduct_invalid_for_comparison"
+        )
 
     packet_only = build_benchmark_loop_contract(
         route=LOOPX_PACKET_ONLY_OBSERVATION_ROUTE,
@@ -128,7 +123,7 @@ def main() -> int:
     )
 
     trace = build_benchmark_loop_controller_trace(
-        route=LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
+        route=CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
         max_rounds=5,
     )
     assert trace["loop_protocol_id"] == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
@@ -137,13 +132,22 @@ def main() -> int:
     assert trace["raw_task_text_recorded"] is False
 
     initial = build_blind_loop_initial_prompt(
-        route=LOOPX_PROMPT_POLLING_TEST_ROUTE,
+        route=CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
         instruction="Synthetic instruction.",
         benchmark_surface="official synthetic benchmark sandbox",
     )
-    assert "Structured prompt-polling test round 1" in initial
+    assert "Codex blind-loop baseline round 1" in initial
     assert "No official reward, pass/fail status" in initial
     assert "Synthetic instruction." in initial
+    try:
+        build_blind_loop_initial_prompt(
+            route="loopx-prompt-polling-test",
+            instruction="Synthetic instruction.",
+        )
+    except ValueError as exc:
+        assert "read-only historical labels" in str(exc)
+    else:
+        raise AssertionError("legacy prompt-polling route must fail closed")
 
     continuation = build_blind_loop_continuation_prompt(
         scheduled_round=2,
@@ -154,17 +158,24 @@ def main() -> int:
     assert "not evidence that the official verifier passed or failed" in continuation
     assert "Keep protected paths stable." in continuation
 
-    strict_claim = classify_loopx_treatment_claim(
+    historical_claim = classify_loopx_treatment_claim(
         {
-            "benchmark_loop_contract": treatment,
+            "benchmark_loop_contract": build_benchmark_loop_contract(
+                route="loopx-blind-loop-treatment",
+                max_rounds=5,
+            ),
             "controller_trace_present": True,
             "round_rewards": [{"agent_round": 1, "reward": 0.0}],
         }
     )
-    assert strict_claim["strict_loopx_treatment_claim_allowed"] is True
+    assert historical_claim["strict_loopx_treatment_claim_allowed"] is False
     assert (
-        strict_claim["loopx_treatment_evidence_tier"]
-        == "strict_max5_prompt_polling_test"
+        historical_claim["loopx_treatment_evidence_tier"]
+        == "historical_nonproduct_invalid_for_comparison"
+    )
+    assert (
+        historical_claim["loopx_treatment_claim_blocker"]
+        == "historical_nonproduct_invalid_for_comparison"
     )
 
     packet_claim = classify_loopx_treatment_claim(

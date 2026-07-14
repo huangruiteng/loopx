@@ -190,10 +190,10 @@ def assert_prerequisites_include(actual: dict[str, Any], expected: dict[str, Any
         assert actual.get(key) == value, (key, actual)
 
 
-def test_skillsbench_default_blind_loop_budget_is_sixteen() -> None:
+def test_skillsbench_default_route_is_goal_baseline() -> None:
     args = parse_args([])
     assert args.max_rounds == DEFAULT_MAX_ROUNDS == 16, args
-    assert "blind-loop" in args.route, args
+    assert args.route == "codex-cli-goal-baseline", args
     assert args.route != "codex-goal-mode-baseline", args
     with contextlib.redirect_stderr(io.StringIO()):
         try:
@@ -2572,6 +2572,8 @@ def test_skillsbench_host_local_acp_transport_probe_uses_benchflow_client() -> N
         [
             sys.executable,
             str(REPO_ROOT / "scripts/skillsbench_automation_loop.py"),
+            "--route",
+            "codex-acp-blind-loop-baseline",
             "--local-driver-worker-handshake-preflight",
             "--local-codex-cli-participant-ready",
             "--local-acp-relay-probe",
@@ -2615,6 +2617,8 @@ def test_skillsbench_worker_handshake_preflight_probe_clears_relay_gap() -> None
             [
                 sys.executable,
                 str(REPO_ROOT / "scripts/skillsbench_automation_loop.py"),
+                "--route",
+                "codex-acp-blind-loop-baseline",
                 "--local-driver-worker-handshake-preflight",
                 "--skillsbench-root",
                 str(Path(tmp) / "missing-skillsbench"),
@@ -4378,13 +4382,13 @@ def compact_skillsbench_run(
 def test_skillsbench_skeleton_builder() -> None:
     compact = compact_benchmark_run(
         build_skillsbench_benchmark_run(
-            route="loopx-blind-loop-treatment",
+            route="loopx-goal-start-product-mode",
             task_id="citation-check",
         )
     )
     assert compact is not None
     assert compact["benchmark_id"] == "skillsbench@1.1", compact
-    assert compact["mode"] == "skillsbench_loopx_blind_loop_treatment"
+    assert compact["mode"] == "skillsbench_loopx_goal_start_product_mode_treatment"
     assert compact["real_run"] is False, compact
     assert compact["submit_eligible"] is False, compact
     assert compact["leaderboard_evidence"] is False, compact
@@ -4398,15 +4402,15 @@ def test_skillsbench_skeleton_builder() -> None:
     assert "do_not_read_raw_task_prompt_solution_or_trajectory" in compact[
         "stop_conditions"
     ], compact
-    assert compact["loopx_inside_case"] is False, compact
+    assert compact["loopx_inside_case"] is True, compact
     assert compact["episode_policy"]["raw_trace_recorded"] is False, compact
     assert compact["native_goal_mode_invoked"] is False, compact
     assert compact["codex_acp_protocol_used"] is True, compact
-    assert compact["blind_loop"] is True, compact
+    assert compact["blind_loop"] is False, compact
     assert compact["official_feedback_blinded"] is True, compact
     assert compact["reward_feedback_forwarded"] is False, compact
     assert compact["skillsbench_route_semantics"] == (
-        "codex_acp_ordinary_agent_with_outer_loopx_blind_loop_no_reward_feedback"
+        "codex_agent_executes_guided_loopx_slash_start_then_authors_ranked_todos_and_selected_p0_lifecycle_no_reward_feedback"
     ), compact
 
     blind_baseline = compact_benchmark_run(
@@ -4493,7 +4497,7 @@ def test_skillsbench_verifier_tail_disabled_at_zero() -> None:
     args = parse_args(["--task-id", "sample-task", "--route", "loopx-goal-start-product-mode"])
     assert args.max_verifier_output_chars == 0, args
     default_args = parse_args(["--task-id", "sample-task"])
-    assert default_args.route == "loopx-blind-loop-treatment", default_args
+    assert default_args.route == "codex-cli-goal-baseline", default_args
 
 
 def test_skillsbench_official_result_builder() -> None:
@@ -5291,7 +5295,7 @@ def test_skillsbench_codex_acp_internal_error_attribution() -> None:
         compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="loopx-blind-loop-treatment",
+                route="codex-acp-blind-loop-baseline",
             )
         )
         assert compact is not None
@@ -5327,7 +5331,9 @@ def test_skillsbench_codex_acp_internal_error_attribution() -> None:
         assert update["entry"]["repair_class"] == (
             "skillsbench_codex_acp_runtime_preflight"
         ), update
-        assert update["case_decision"]["decision"] == "single_arm_recorded", update
+        assert update["case_decision"]["decision"] == (
+            "baseline_codex_acp_runtime_preflight_required"
+        ), update
 
 
 def test_skillsbench_codex_acp_provider_zero_activity_attribution() -> None:
@@ -7505,6 +7511,9 @@ def test_skillsbench_controller_trace_counts_are_compacted() -> None:
             )
         )
         assert blind_compact is not None
+        assert blind_compact["historical_route_read_only"] is True, blind_compact
+        assert blind_compact["skillsbench_route_semantics"] == "historical_nonproduct_invalid_for_comparison", blind_compact
+        assert blind_compact["official_score_comparable_to_loopx_treatment"] is False
         assert blind_compact["blind_loop"] is True, blind_compact
         assert blind_compact["official_feedback_blinded"] is True, blind_compact
         assert blind_compact["reward_feedback_forwarded"] is False, blind_compact
@@ -7645,6 +7654,9 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
             )
         )
         assert compact is not None
+        assert compact["historical_route_read_only"] is True, compact
+        assert compact["skillsbench_route_semantics"] == "historical_nonproduct_invalid_for_comparison", compact
+        assert compact["official_score_comparable_to_loopx_treatment"] is False
         round_trace = compact["round_reward_trace"]
         assert compact["official_score"] == 0.0, compact
         assert round_trace["final_round"] == 5, round_trace
@@ -11261,7 +11273,7 @@ def test_skillsbench_acp_trajectory_summary_is_compacted() -> None:
                 "--task-id",
                 "debug-trl-grpo",
                 "--route",
-                "loopx-blind-loop-treatment",
+                "codex-acp-blind-loop-baseline",
                 "--jobs-dir",
                 str(jobs_dir),
                 "--job-name",
@@ -11273,7 +11285,7 @@ def test_skillsbench_acp_trajectory_summary_is_compacted() -> None:
         plan = build_plan(args)
         trace = {
             "schema_version": "skillsbench_loopx_controller_trace_v0",
-            "route": "loopx-blind-loop-treatment",
+            "route": "codex-acp-blind-loop-baseline",
             "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
             "blind_loop": True,
             "official_feedback_forwarded": False,
@@ -13314,7 +13326,7 @@ def test_skillsbench_main_recovers_missing_reward_with_structured_prereq_blocker
                         "--task-id",
                         "tictoc-unnecessary-abort-detection",
                         "--route",
-                        "loopx-blind-loop-treatment",
+                        "codex-acp-blind-loop-baseline",
                         "--jobs-dir",
                         str(jobs_dir),
                         "--skillsbench-root",
@@ -14101,7 +14113,7 @@ def test_skillsbench_main_marks_empty_acp_trajectory_after_host_install() -> Non
                 Path(plan["controller_trace_json"]),
                 {
                     "schema_version": "skillsbench_loopx_controller_trace_v0",
-                    "route": "loopx-blind-loop-treatment",
+                    "route": "codex-acp-blind-loop-baseline",
                     "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
                     "heartbeat_count": 1,
                     "controller_action_decisions": 1,
@@ -14163,7 +14175,7 @@ def test_skillsbench_main_marks_empty_acp_trajectory_after_host_install() -> Non
                         "--task-id",
                         "tictoc-unnecessary-abort-detection",
                         "--route",
-                        "loopx-blind-loop-treatment",
+                        "codex-acp-blind-loop-baseline",
                         "--jobs-dir",
                         str(jobs_dir),
                         "--skillsbench-root",
@@ -14237,7 +14249,7 @@ def test_skillsbench_main_marks_agent_message_only_no_tool_calls() -> None:
                 Path(plan["controller_trace_json"]),
                 {
                     "schema_version": "skillsbench_loopx_controller_trace_v0",
-                    "route": "loopx-blind-loop-treatment",
+                    "route": "codex-acp-blind-loop-baseline",
                     "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
                     "heartbeat_count": 2,
                     "controller_action_decisions": 2,
@@ -14306,7 +14318,7 @@ def test_skillsbench_main_marks_agent_message_only_no_tool_calls() -> None:
                         "--task-id",
                         "tictoc-unnecessary-abort-detection",
                         "--route",
-                        "loopx-blind-loop-treatment",
+                        "codex-acp-blind-loop-baseline",
                         "--jobs-dir",
                         str(jobs_dir),
                         "--skillsbench-root",
@@ -14511,6 +14523,9 @@ def test_skillsbench_reduce_only_preserves_round_reward_trace() -> None:
         payload = json.loads(stdout.getvalue())
         compact_path = Path(payload["compact_benchmark_run_json"])
         compact = json.loads(compact_path.read_text(encoding="utf-8"))
+        assert compact["historical_route_read_only"] is True, compact
+        assert compact["skillsbench_route_semantics"] == "historical_nonproduct_invalid_for_comparison", compact
+        assert compact["official_score_comparable_to_loopx_treatment"] is False
         round_trace = compact["round_reward_trace"]
         assert round_trace["first_success_round"] == 2, compact
         assert [item["reward"] for item in round_trace["records"]] == [0.0, 1.0], compact
@@ -14622,7 +14637,7 @@ def test_skillsbench_reduce_only_preserves_persisted_public_prerequisites() -> N
 
 
 if __name__ == "__main__":
-    test_skillsbench_default_blind_loop_budget_is_sixteen()
+    test_skillsbench_default_route_is_goal_baseline()
     test_codex_app_server_goal_requires_public_safe_codex_api_tunnel_contract()
     test_generic_reasoning_effort_reaches_codex_exec_route()
     test_codex_exec_relay_maps_reasoning_effort_to_cli_config()

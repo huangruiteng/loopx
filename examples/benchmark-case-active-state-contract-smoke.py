@@ -136,11 +136,11 @@ def test_case_loopx_install_payload_uses_official_product_lifecycle() -> None:
     payload = benchmark_case_loopx_install_payload(
         benchmark_id="swe-marathon",
         case_id="zstd-decoder",
-        arm_id="loopx_prompt_polling_test",
-        route="loopx-prompt-polling-test",
+        arm_id="loopx_product_mode",
+        route="loopx-product-mode",
         max_rounds=5,
     )
-    goal_id = "swe-marathon-zstd-decoder-loopx-prompt-polling-test-case"
+    goal_id = "swe-marathon-zstd-decoder-loopx-product-mode-case"
     assert payload["benchmark_case_goal_id"] == goal_id
     assert payload["case_state_path"] == benchmark_case_active_state_path(goal_id)
     assert payload["case_cli_path"] == "/app/.local/bin/loopx"

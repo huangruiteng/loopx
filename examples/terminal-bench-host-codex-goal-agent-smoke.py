@@ -60,8 +60,8 @@ def main() -> int:
         packet_mode="compact",
         benchmark_id="terminal-bench",
         case_id="build-cython-ext",
-        arm_id="loopx_prompt_polling_test",
-        max_rounds=5,
+        arm_id="loopx_packet_observation",
+        max_rounds=1,
     )
     assert lifecycle_contract is not None
     assert "terminal_bench_loopx_case_lifecycle_packet_v0:" in lifecycle_packet
@@ -70,9 +70,9 @@ def main() -> int:
     assert "benchmark_case_lifecycle_contract:" in lifecycle_packet
     assert "benchmark_id: terminal-bench" in lifecycle_packet
     assert "case_id: build-cython-ext" in lifecycle_packet
-    assert "arm_id: loopx_prompt_polling_test" in lifecycle_packet
+    assert "arm_id: loopx_packet_observation" in lifecycle_packet
     assert (
-        "benchmark_case_goal_id: terminal-bench-build-cython-ext-loopx-prompt-polling-test-case"
+        "benchmark_case_goal_id: terminal-bench-build-cython-ext-loopx-packet-observation-case"
         in lifecycle_packet
     )
     assert "case_state_path: /app/.codex/goals/" in lifecycle_packet
@@ -80,16 +80,17 @@ def main() -> int:
     assert "runner_internal_prompt_polling_only_allowed: false" in lifecycle_packet
     assert "/Users/" not in lifecycle_packet
 
-    treatment_prompt = module.build_host_goal_prompt(
+    diagnostic_prompt = module.build_host_goal_prompt(
         container_name="example-container",
         instruction="Synthetic instruction placeholder.",
         task_workdir="/app",
         loopx_case_lifecycle_packet=lifecycle_packet,
     )
-    assert "LoopX case lifecycle packet:" in treatment_prompt
-    assert "benchmark_case_lifecycle_contract:" in treatment_prompt
-    assert "official Terminal-Bench scorer authoritative" in treatment_prompt
-    assert "/Users/" not in treatment_prompt
+    assert "LoopX case lifecycle packet:" in diagnostic_prompt
+    assert "benchmark_case_lifecycle_contract:" in diagnostic_prompt
+    assert "only as a LoopX lifecycle diagnostic" in diagnostic_prompt
+    assert "not present this packet-only run as LoopX treatment evidence" in diagnostic_prompt
+    assert "/Users/" not in diagnostic_prompt
 
     agent = module.HostCodexGoalAgent(
         goal_timeout_sec="7",
@@ -111,21 +112,21 @@ def main() -> int:
     assert agent.loopx_access_packet_mode == "none"
     assert agent.loopx_benchmark_id == "terminal-bench"
     assert agent.loopx_case_id == "current-case"
-    assert agent.loopx_arm_id == "codex_loopx_treatment"
-    assert agent.loopx_max_rounds == 5
+    assert agent.loopx_arm_id == "codex_loopx_packet_observation"
+    assert agent.loopx_max_rounds == 1
 
-    treatment_agent = module.HostCodexGoalAgent(
+    packet_agent = module.HostCodexGoalAgent(
         goal_surface="app_server",
         loopx_mode="codex_loopx",
         loopx_access_packet_mode="compact",
         loopx_case_id="build-cython-ext",
-        loopx_arm_id="loopx_prompt_polling_test",
-        loopx_max_rounds="5",
+        loopx_arm_id="loopx_packet_observation",
+        loopx_max_rounds="1",
     )
-    assert treatment_agent.loopx_mode == "codex_loopx"
-    assert treatment_agent.loopx_access_packet_mode == "compact"
-    assert treatment_agent.loopx_case_id == "build-cython-ext"
-    assert treatment_agent.loopx_arm_id == "loopx_prompt_polling_test"
+    assert packet_agent.loopx_mode == "codex_loopx"
+    assert packet_agent.loopx_access_packet_mode == "compact"
+    assert packet_agent.loopx_case_id == "build-cython-ext"
+    assert packet_agent.loopx_arm_id == "loopx_packet_observation"
 
     no_wait_agent = module.HostCodexGoalAgent(
         goal_surface="app_server",

@@ -400,15 +400,14 @@ UV_LINK_MODE=copy uv run --no-default-groups harbor run \
 Use the same long timeout envelope for base and treatment arms while measuring
 capability ceilings. The host Goal agents default to `21600` seconds; pass an
 explicit shorter value only for a timeout-cost experiment and record that tier
-in the compact result. LoopX prompt-polling treatments use the same
-envelope for each observed round by default, so the controller does not cut off
-a still-running Codex Goal turn at the older `900s` official timeout before
-continuation evidence exists.
+in the compact result. A matched LoopX product-mode arm must use the same outer
+timeout envelope as its baseline.
 
 For the SkillsBench main-table product-mode comparison, treat the pair contract
-as executable input, not prose memory: baseline is `raw-codex-autonomous-max5`,
-treatment is `loopx-product-mode`, both use the same case and max-5/no-feedback
-budget, and the treatment must show LoopX state/todo/replan/CLI lifecycle in
+as executable input, not prose memory. For the Goal-vs-LoopX study, baseline is
+`codex-cli-goal-baseline`, treatment is `loopx-goal-start-product-mode`, both
+use the same case, source, model, reasoning effort, timeout, and no-feedback
+budget, and the treatment must show LoopX goal-start/plan/todo/CLI lifecycle in
 compact counters. Use
 `loopx.benchmark_core.classify_product_mode_main_table_pair` before promoting a
 base/test pair into the public comparison table; shallow packet-only or
@@ -504,7 +503,7 @@ UV_LINK_MODE=copy uv run --no-default-groups harbor run \
   --agent-kwarg loopx_scan_path=<public-scan-path> \
   --agent-kwarg loopx_classification=<public-classification> \
   --agent-kwarg loopx_experiment_protocol=packet_only_observation \
-  --agent-kwarg loopx_max_rounds=5 \
+  --agent-kwarg loopx_max_rounds=1 \
   --jobs-dir <run-dir>/jobs \
   --job-name <matched-treatment-job-name> \
   -p <task-dir>
@@ -514,22 +513,17 @@ The packet is intentionally lightweight: it gives the host Codex worker LoopX
 planning/checkpoint commands and boundary reminders, while the task
 solution still goes through `harbor-env-exec` and the official Harbor verifier
 remains authoritative. It is useful as route-safety evidence, but on its own it
-must be labeled `packet_only_observation`, not the prompt-driven test arm.
+must be labeled `packet_only_observation`, never a LoopX treatment arm.
 
-The prompt-driven test contract is shared in
-`loopx.benchmark_core.loop_protocol` so SkillsBench historical rows,
-SWE-Marathon tests, and future Terminal-Bench tests use one semantics instead of
-parallel old/new definitions. The contract requires:
+The former prompt-polling controller is retired. It measured an outer
+continuation-prompt policy, not LoopX product behavior, and must not be launched
+or presented as a treatment. Reducers may still recognize historical rows, but
+must label them `historical_nonproduct_invalid_for_comparison`. Do not migrate
+those rows into a current route or include them in uplift tables.
 
-- `max_rounds_budget=5`;
-- `official_feedback_forwarded=false`;
-- scheduled continuation prompts must not reveal reward, pass/fail, verifier
-  errors, or verifier output;
-- the compact result must include public-safe controller/round evidence such as
-  `round_rewards`, `first_success_round`, `official_feedback_blinded_count`, and
-  the loop contract;
-- if a Harbor/app-server route cannot provide that controller trace, classify it
-  as packet-only route-safety evidence and do not compare it as test.
+Harbor and Terminal-Bench currently expose packet-only route diagnostics. Until
+a runner executes the real LoopX goal-start, plan, todo, work, closeout, and quota
+lifecycle inside each case, those benchmark families do not have a countable LoopX treatment arm.
 
 `best_score` is only an executable final-selection policy when the runner also
 captures a compact per-round artifact snapshot. Use
@@ -539,70 +533,12 @@ not the final round and has no restore-ready snapshot handle, keep the run as
 offline analysis evidence and record `missing_snapshot_for_best_round` instead
 of claiming the runner can submit or verify the best round.
 
-When launching the actual test arm, the outer controller should set
-`loopx_experiment_protocol=max5_blind_loop_no_feedback`, inject a fresh
-LoopX packet before each scheduled prompt, keep official feedback
-blinded, and record the public-safe controller trace. The route name for new
-SWE-Marathon/Terminal-Bench work is `loopx-prompt-polling-test`; the old
-SkillsBench route name `loopx-blind-loop-treatment` is a backward-
-compatible alias for the same no-feedback polling semantics.
-
-For Harbor-family runners, the host agent enables this controller when the
-experiment protocol is explicit:
-
-```bash
---agent-kwarg loopx_mode=codex_loopx \
---agent-kwarg loopx_access_packet_mode=compact \
---agent-kwarg loopx_experiment_protocol=max5_blind_loop_no_feedback \
---agent-kwarg loopx_max_rounds=5 \
---agent-kwarg loopx_prompt_polling_rounds=5 \
---agent-kwarg loopx_prompt_polling_round_timeout_sec=21600
-```
-
-That path starts native Codex app-server Goal once, then uses follow-up
-`turn/start` calls in the same thread for scheduled continuation prompts. It
-does not expose official reward, pass/fail status, verifier errors, or verifier
-output to the worker. The per-round timeout is separate from the full job
-timeout: if a single app-server turn does not hand control back, the controller
-must close out with a compact
-`harbor_prompt_polling_round_timeout_before_completion` blocker instead of
-waiting for the whole job timeout. If these controller fields are missing from
-compact evidence, classify the run as packet-only observation.
-
-The treatment path must also initialize the official case-local LoopX product
-lifecycle before the worker starts. Harbor's host agent installs or reuses the
-real `loopx` CLI at `/app/.local/bin/loopx`, bootstraps a case-local registry
-under `/app/.loopx/`, registers `codex-benchmark-agent`, seeds one open case
-todo through `loopx todo add`, and records public-safe rollout events. The
-host must not claim or complete the case todo for the worker. The product-path
-treatment proof is prompt-driven: before planning or editing, the worker should
-call the case-local CLI through `harbor-env-exec` for `quota should-run` and
-`todo claim`/`todo update`. The controller may still run the same case-local
-CLI as deterministic preflight, scheduler, and closeout fallback:
-`doctor`, `status`, `quota should-run`, `refresh-state`, and
-`quota spend-slot`. That scheduler route is not sufficient for a strict
-treatment claim by itself.
-Compact evidence must distinguish both surfaces:
-`loopx_prompt_driven_case_cli_call_count`,
-`loopx_prompt_driven_event_counts`,
-`loopx_prompt_driven_lifecycle_observed`, and
-`loopx_prompt_driven_trace.public.json` for worker self-calls, plus
-`loopx_case_scheduler_command_count`,
-`loopx_case_rollout_event_counts`, and
-`loopx_case_rollout_trace.public.json` for controller fallback. If the
-prompt-driven lifecycle is absent, classify the run with
-`prompt_driven_loopx_lifecycle_absent` instead of claiming uplift.
-SWE-Marathon closeouts should also expose `loopx_solution_phase_counters`:
-coarse edit/build/test/verify command counts, self-declared-done count, and
-final active-todo count only, never raw commands, diffs, logs, task text, or
-verifier output.
-Global LoopX commands are optional context only; they must not select
-todos for the benchmark case. This keeps parallel cases isolated and prevents
-the main project goal or an unrelated peer lane from leaking into benchmark treatment
-control.
-
-This is not a submit/upload path and should still be reduced to compact public
-evidence before ledger ingestion.
+The current executable treatment is SkillsBench
+`loopx-goal-start-product-mode`. It starts the case through the guided `/loopx` goal-start surface,
+requires an agent-authored plan before todo writes, and
+records case-local todo selection, solver work, closeout, refresh, and quota
+spend in compact public counters. This is not a submit/upload path and must
+still be reduced to compact public evidence before ledger ingestion.
 
 The Harbor bundle requires `codex` and `rg`. `curl` is intentionally optional:
 host-copied dynamic curl binaries can fail inside Ubuntu task images because of
@@ -850,35 +786,13 @@ official tests. The TUI `/goal` surface is a manual fallback only; do not count
 it as the default baseline when app-server `thread/goal/set`,
 `thread/goal/get`, and `turn/start` are available.
 
-For a LoopX prompt-polling treatment arm, keep the same host agent and
-explicitly request the case lifecycle packet:
-
-```bash
-tb run \
-  ... \
-  --agent-import-path terminal_bench_host_codex_goal_agent:HostCodexGoalAgent \
-  --agent-kwarg goal_surface=app_server \
-  --agent-kwarg goal_timeout_sec=21600 \
-  --agent-kwarg loopx_mode=codex_loopx \
-  --agent-kwarg loopx_access_packet_mode=compact \
-  --agent-kwarg loopx_case_id=<task-id> \
-  --agent-kwarg loopx_arm_id=loopx_prompt_polling_test \
-  --agent-kwarg loopx_max_rounds=5
-```
-
-This injects the shared `benchmark_case_lifecycle_contract` into the worker
-prompt and compact app-server metadata. A Terminal-Bench treatment run remains
-incomplete evidence until the per-case LoopX lifecycle can be observed:
-`quota_should_run`, `todo_claim_or_update`, bounded work/continuation, official
-case result or validation, `refresh_state`, and `quota_spend`.
-The app-server host agent treats the case-local LoopX active todo state as the
-treatment completion source of truth. The agent should mark the case todo done
-when the task is complete; the host exits only after it confirms that no
-case-local active todo remains. It drains app-server events opportunistically
-and writes a compact turn file with `turn_completed_observed`,
-assistant-message counters, and `completion_source_of_truth`. The official
-verifier remains the score authority; do not add a second completion file or
-hidden marker for the agent to maintain.
+Terminal-Bench does not currently ship a comparable LoopX product-mode arm.
+The host agent can inject a packet-only lifecycle diagnostic, but that result is
+not treatment evidence and must not be compared against the Goal baseline.
+Add a Terminal-Bench treatment only after the runner invokes real LoopX
+goal-start/plan/todo/closeout behavior and the compact reducer verifies that
+agent-side lifecycle without reading task text, trajectories, raw logs, or
+verifier output.
 
 When a Terminal-Bench launch produces only startup or materialization state,
 reduce it before writing LoopX evidence:
@@ -1070,32 +984,24 @@ python3 scripts/skillsbench_host_codex_goal_worker.py \
   --output-json <private-compact-worker-json>
 ```
 
-For the LoopX treatment arm, pass the same private files plus the
-per-case/arm lifecycle packet parameters. The packet is public-safe control
-context only: it names the isolated case goal, required lifecycle events, and
-round budget, while the official SkillsBench verifier remains authoritative
-and hidden from the agent loop:
+For the LoopX treatment arm, launch the complete goal-start product route rather
+than calling the host worker with a treatment-looking arm label:
 
 ```bash
-python3 scripts/skillsbench_host_codex_goal_worker.py \
+python3 scripts/skillsbench_automation_loop.py \
+  --skillsbench-root <skillsbench-root> \
+  --route loopx-goal-start-product-mode \
   --task-id <task-id> \
-  --work-dir <private-case-workdir> \
-  --prompt-file <private-prompt-file> \
-  --response-text-file <private-agent-response-file> \
-  --output-json <private-compact-worker-json> \
-  --loopx-mode codex_loopx \
-  --loopx-access-packet-mode compact \
-  --loopx-case-id <task-id> \
-  --loopx-arm-id loopx_prompt_polling_test \
-  --loopx-max-rounds 5
+  --model <model> \
+  --reasoning-effort <effort> \
+  --run-group-id <run-group> \
+  --job-name <job-name>
 ```
 
-The compact worker JSON must then show
-`loopx_case_lifecycle_packet_injected=true` and a
-`benchmark_case_lifecycle_contract` with
-`case_isolation_scope=per_benchmark_case_arm`. A baseline run should keep
-`loopx_access_packet_mode=none` and should not include LoopX
-lifecycle state.
+The compact result must show guided goal-start, an agent-authored plan before
+todo writes, selected P0 lifecycle, task-facing solver activity, and agent-side
+todo completion/refresh/quota spend. A baseline run uses
+`codex-cli-goal-baseline` and must not include LoopX lifecycle state.
 
 The compact worker JSON is safe to inspect for lifecycle debugging, but the
 response text file is private task execution material and must stay out of
@@ -1258,30 +1164,24 @@ evidence for all of the following:
 - the route does not add LoopX state, access packets, reward feedback,
   or polling semantics to the baseline arm.
 
-### LoopX Prompt-Polling Test Gate
+### LoopX Product-Mode Treatment Gate
 
-The comparable LoopX test arm is **not** the native Codex Goal baseline
-with one extra packet. It is a prompt-driven polling route: an outer controller
-injects LoopX context, schedules bounded continuation prompts, withholds
-official reward/pass-fail/verifier output from the agent, and records a
-public-safe controller trace.
-
-Use the shared protocol in `loopx.benchmark_core.loop_protocol` across
-benchmarks:
+The comparable LoopX arm must execute LoopX product behavior inside the case.
+An extra access packet, an outer prompt scheduler, or a treatment-looking arm
+label is insufficient. Use the shared product-mode and case-lifecycle contracts
+across benchmarks:
 
 | Benchmark family | Baseline arm | Test arm | Shared surface | Benchmark-specific glue |
 | --- | --- | --- | --- | --- |
-| SkillsBench | `codex-app-server-goal-baseline` for native Goal, or historical `codex-acp-blind-loop-baseline` for old ACP studies | `loopx-prompt-polling-test` (`loopx-blind-loop-treatment` is a historical alias) | `max5_blind_loop_no_feedback`, `round_rewards`, `official_feedback_blinded_count`, controller trace | BenchFlow `BaseUser` schedules continuation prompts and observes verifier reward only outside the agent-facing prompt |
-| SWE-Marathon | host Codex app-server Goal baseline through Harbor | LoopX prompt-polling test through the same Harbor task/workdir/no-upload boundary | same protocol id, max-round budget, packet-only blocker classification | host/Harbor controller must restart or continue app-server turns and re-inject prompts without exposing official verifier feedback |
-| Terminal-Bench | host Codex app-server Goal baseline or official no-upload runner baseline | LoopX prompt-polling test through the same official result/reducer path | same protocol id, max-round budget, compact official result fields | terminal runner glue must use official scorer/reducer after each attempt and keep raw panes/logs private |
+| SkillsBench | `codex-cli-goal-baseline` | `loopx-goal-start-product-mode` | matched case/source/model/reasoning/timeout, no feedback to either agent, compact official score | treatment records guided goal-start, plan-before-todo, selected-P0 work, closeout, refresh, and quota spend |
+| SWE-Marathon | host Codex app-server Goal baseline through Harbor | not yet shipped | packet-only diagnostics remain non-comparable | implement real case-local LoopX product lifecycle before adding a treatment |
+| Terminal-Bench | host Codex app-server Goal baseline or official no-upload runner baseline | not yet shipped | packet-only diagnostics remain non-comparable | implement real case-local LoopX product lifecycle before adding a treatment |
 
-The shared layer is intentionally small: route ids, max-round budget, feedback
-blinding fields, packet-only classification, and public trace counters. Do not
-force every benchmark into the same runner implementation when its upstream
-surface differs. Do force every benchmark to use the same labels before a result
-is compared: baseline is native Goal mode; test is prompt-driven polling; a
-single access packet without scheduled controller trace is only
-`packet_only_observation`.
+The shared layer is intentionally small: route ids, feedback blinding fields,
+case lifecycle, packet-only classification, and public counters. Do not force
+every benchmark into the same runner implementation when its upstream surface
+differs. Do require real product lifecycle before a result is compared. A
+single access packet is only `packet_only_observation`.
 
 For the test arm, also require the shared per-case lifecycle contract from
 `loopx.benchmark_case_state`. Each benchmark/case/arm must have an
@@ -1292,9 +1192,8 @@ lifecycle sequence `quota_should_run -> todo_claim_or_update ->
 bounded_agent_turn -> validation_or_case_result -> refresh_state ->
 quota_spend`. Harbor-family agents inject this contract into the LoopX
 access packet and compact metadata; other adapters should reuse the same
-contract rather than inventing benchmark-specific state markers. A runner that
-only performs internal prompt polling without this lifecycle remains
-`packet_only_observation` or incomplete treatment evidence.
+contract rather than inventing benchmark-specific state markers. A runner
+without this lifecycle remains `packet_only_observation` or incomplete evidence.
 
 For strict `loopx-product-mode`, "the agent touched LoopX" is not enough. The
 test arm is countable only when compact evidence shows both task-facing solver

@@ -1216,7 +1216,7 @@ def test_host_worker_contract_only_cli() -> None:
     assert payload["benchmark_case_lifecycle_contract"] is None, payload
 
 
-def test_host_worker_treatment_lifecycle_packet_is_public_safe() -> None:
+def test_host_worker_packet_observation_is_public_safe() -> None:
     worker = _load_worker_module()
     args = worker.parse_args(
         [
@@ -1230,9 +1230,9 @@ def test_host_worker_treatment_lifecycle_packet_is_public_safe() -> None:
             "--loopx-case-id",
             "tictoc-unnecessary-abort-detection",
             "--loopx-arm-id",
-            "loopx_prompt_polling_test",
+            "loopx_packet_observation",
             "--loopx-max-rounds",
-            "5",
+            "1",
         ]
     )
     packet, contract = worker.build_loopx_case_lifecycle_packet(args)
@@ -1243,9 +1243,9 @@ def test_host_worker_treatment_lifecycle_packet_is_public_safe() -> None:
     assert "benchmark_case_lifecycle_contract:" in packet
     assert "benchmark_id: skillsbench" in packet
     assert "case_id: tictoc-unnecessary-abort-detection" in packet
-    assert "arm_id: loopx_prompt_polling_test" in packet
+    assert "arm_id: loopx_packet_observation" in packet
     assert (
-        "benchmark_case_goal_id: skillsbench-tictoc-unnecessary-abort-detection-loopx-prompt-polling-test-case"
+        "benchmark_case_goal_id: skillsbench-tictoc-unnecessary-abort-detection-loopx-packet-observation-case"
         in packet
     )
     assert "case_state_path: /app/.codex/goals/" in packet
@@ -1279,9 +1279,9 @@ def test_host_worker_bridge_prompt_styles_suppress_lifecycle_packet() -> None:
                 "--loopx-case-id",
                 "tictoc-unnecessary-abort-detection",
                 "--loopx-arm-id",
-                "loopx_prompt_polling_test",
+                "loopx_packet_observation",
                 "--loopx-max-rounds",
-                "5",
+                "1",
             ]
         )
         packet, contract = worker.build_loopx_case_lifecycle_packet(args)
