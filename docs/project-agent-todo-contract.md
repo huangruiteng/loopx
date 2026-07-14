@@ -152,12 +152,29 @@ Work authority comes from `claimed_by`, task leases, the goal/write boundary,
 and typed continuation policy. Functional profile roles and scope summaries are
 advisory; they do not make one identity the default reviewer or leader.
 
+An agent todo can name a different task repository without copying agent scope
+into todo metadata:
+
+```bash
+loopx todo update \
+  --goal-id <goal-id> \
+  --role agent \
+  --todo-id <todo-id> \
+  --task-repository git:github.com/owner/repo
+```
+
+`task_repository` is a first-class, credential-free Git identity. It routes
+workspace isolation, not write authority; claim/lease, capabilities, the goal
+boundary, and repository policy continue to apply.
+
 `quota should-run --agent-id <agent-id>` is the preflight for every peer. When
 the selected task writes repository state and the peer is in a non-git,
 unrelated, or non-isolated workspace, it returns `workspace_guard` and blocks
 normal delivery until that peer moves to an independent worktree and reruns the
 guard. Read-only and monitor-only work does not require isolation merely because
-of agent identity.
+of agent identity. When `task_repository` is absent, the registered goal repo is
+still the expected repository, so an unrelated worktree cannot bypass the goal
+repository rule.
 
 Contributor-facing example:
 

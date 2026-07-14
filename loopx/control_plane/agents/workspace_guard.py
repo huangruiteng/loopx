@@ -4,6 +4,9 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
+from ...repository_identity import normalize_repository_identity
+from ..todos.contract import normalize_todo_task_repository
+
 AGENT_WORKSPACE_GUARD_SCHEMA_VERSION = "agent_workspace_guard_v1"
 PEER_WRITE_ACTION_KINDS = {
     "fix",
@@ -67,6 +70,32 @@ def _git_common_dir(path: Path) -> Path | None:
         return None
 
 
+def _git_dir(path: Path) -> Path | None:
+    root = _git_worktree_root(path)
+    if root is None:
+        return None
+    output = _git_command_output(root, "rev-parse", "--git-dir")
+    if not output:
+        return None
+    git_dir = Path(output).expanduser()
+    if not git_dir.is_absolute():
+        git_dir = root / git_dir
+    try:
+        return git_dir.resolve()
+    except OSError:
+        return None
+
+
+def _git_repository_identity(path: Path) -> str | None:
+    remote = _git_command_output(path, "config", "--get", "remote.origin.url")
+    if not remote:
+        return None
+    try:
+        return normalize_repository_identity(remote)
+    except ValueError:
+        return None
+
+
 def _peer_candidate_items(agent_todo_summary: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not isinstance(agent_todo_summary, dict):
         return []
@@ -121,27 +150,54 @@ def build_agent_workspace_guard(
         agent_todo_summary,
     ):
         return None
-    repo_value = goal.get("repo") or goal.get("project") or goal.get("root")
-    if not repo_value:
-        return None
-    repo_path = Path(str(repo_value)).expanduser()
-    if not repo_path.is_absolute():
-        return None
     current_path = current_path or Path.cwd()
+    candidates = _peer_candidate_items(agent_todo_summary)
+    candidate = candidates[0] if candidates else {}
+    task_repository = normalize_todo_task_repository(candidate.get("task_repository"))
     current_workspace = ""
-    if _is_same_or_child_path(current_path, repo_path):
-        current_workspace = "canonical_checkout"
-    else:
-        canonical_root = _git_worktree_root(repo_path) or repo_path
+    repository_source = "goal.repo"
+    if task_repository:
+        repository_source = "selected_todo.task_repository"
         current_root = _git_worktree_root(current_path)
-        canonical_common = _git_common_dir(canonical_root)
         current_common = _git_common_dir(current_path) if current_root else None
+        current_git_dir = _git_dir(current_path) if current_root else None
+        current_repository = (
+            _git_repository_identity(current_path) if current_root else None
+        )
         if current_root is None:
             current_workspace = "not_git_worktree"
-        elif canonical_common is None or current_common is None or current_common != canonical_common:
+        elif current_repository != task_repository:
             current_workspace = "foreign_git_worktree"
-        elif current_root == canonical_root:
+        elif (
+            current_common is None
+            or current_git_dir is None
+            or current_git_dir == current_common
+        ):
             current_workspace = "canonical_checkout"
+    else:
+        repo_value = goal.get("repo") or goal.get("project") or goal.get("root")
+        if not repo_value:
+            return None
+        repo_path = Path(str(repo_value)).expanduser()
+        if not repo_path.is_absolute():
+            return None
+        if _is_same_or_child_path(current_path, repo_path):
+            current_workspace = "canonical_checkout"
+        else:
+            canonical_root = _git_worktree_root(repo_path) or repo_path
+            current_root = _git_worktree_root(current_path)
+            canonical_common = _git_common_dir(canonical_root)
+            current_common = _git_common_dir(current_path) if current_root else None
+            if current_root is None:
+                current_workspace = "not_git_worktree"
+            elif (
+                canonical_common is None
+                or current_common is None
+                or current_common != canonical_common
+            ):
+                current_workspace = "foreign_git_worktree"
+            elif current_root == canonical_root:
+                current_workspace = "canonical_checkout"
     if not current_workspace:
         return None
     payload = {
@@ -152,6 +208,7 @@ def build_agent_workspace_guard(
         "required_workspace": "independent_git_worktree",
         "blocks_delivery": True,
         "agent_id": agent_identity.get("agent_id"),
+        "repository_source": repository_source,
         "reason": (
             "peer delivery with repository writes is not running from an independent "
             "worktree; normal delivery must move before repository edits"
@@ -161,4 +218,6 @@ def build_agent_workspace_guard(
             "then rerun quota should-run with the same --agent-id before editing files"
         ),
     }
+    if task_repository:
+        payload["task_repository"] = task_repository
     return payload

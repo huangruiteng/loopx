@@ -192,6 +192,7 @@ def _selected_todo(payload: Mapping[str, Any]) -> dict[str, Any] | None:
         "status",
         "task_class",
         "action_kind",
+        "task_repository",
         "claimed_by",
         "blocks_agent",
         "unblocks_todo_id",

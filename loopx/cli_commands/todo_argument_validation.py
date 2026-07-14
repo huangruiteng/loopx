@@ -15,6 +15,7 @@ TODO_OPTION_FIELDS = (
     ("--reason", "reason"),
     ("--task-class", "task_class"),
     ("--action-kind", "action_kind"),
+    ("--task-repository", "task_repository"),
     ("--continuation-policy", "continuation_policy"),
     ("--required-write-scope", "required_write_scopes"),
     ("--required-capability", "required_capabilities"),

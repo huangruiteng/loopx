@@ -113,6 +113,7 @@ def _compact_deferred_resume_item(
         "source_section",
         "task_class",
         "action_kind",
+        "task_repository",
         "continuation_policy",
         "required_write_scopes",
         "required_capabilities",

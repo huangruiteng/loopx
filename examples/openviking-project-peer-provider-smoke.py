@@ -91,9 +91,21 @@ identities = {
         "git@github.com:volcengine/OpenViking.git",
         "ssh://git@github.com/volcengine/OpenViking.git",
         REMOTE,
+        "git:github.com/volcengine/OpenViking",
     )
 }
 assert identities == {"git:github.com/volcengine/OpenViking"}, identities
+for unsafe_identity in (
+    "ftp://example.invalid/repository",
+    "git:github.com/volcengine/../private",
+    "git:github.com/volcengine/OpenViking?unsupported=query",
+):
+    try:
+        normalize_repository_identity(unsafe_identity)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError(f"unsafe repository identity accepted: {unsafe_identity}")
 
 with tempfile.TemporaryDirectory(prefix="loopx-openviking-project-peer-") as raw_temp:
     temp = Path(raw_temp)

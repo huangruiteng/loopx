@@ -161,7 +161,14 @@ def _compact_todo(item: Mapping[str, Any]) -> dict[str, Any] | None:
         "title": title,
         "status": _first_text(item.get("status"), limit=40) or "open",
     }
-    for key in ("todo_id", "priority", "claimed_by", "task_class", "action_kind"):
+    for key in (
+        "todo_id",
+        "priority",
+        "claimed_by",
+        "task_class",
+        "action_kind",
+        "task_repository",
+    ):
         value = _text(item.get(key), limit=120)
         if value:
             compact[key] = value

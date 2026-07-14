@@ -1196,6 +1196,13 @@ an independent worktree/branch, and require rerunning `quota should-run` with
 the same `--agent-id` before repository edits. This preflight does not spend
 quota; `quota spend-slot` should fail closed until the guard is rerun from the
 independent worktree.
+If the selected todo declares `task_repository`, the guard should also project
+that credential-free identity with
+`workspace_guard.repository_source=selected_todo.task_repository`; otherwise
+`repository_source=goal.repo`. A matching repository identity is necessary but
+not sufficient: the current checkout must still be a linked worktree rather
+than that repository's canonical checkout. `task_repository` is not a write
+scope or permission grant.
 Dashboard and Review Packet consumers should project `workspace_guard` as an
 agent-channel workspace repair, not as an operator or user gate. The first
 screen can render the current workspace class, required workspace class, repair

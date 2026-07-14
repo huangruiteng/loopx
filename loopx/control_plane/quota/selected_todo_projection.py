@@ -14,6 +14,7 @@ SELECTED_TODO_COMPACT_FIELDS = (
     "status",
     "task_class",
     "action_kind",
+    "task_repository",
     "claimed_by",
     "blocks_agent",
     "excluded_agents",

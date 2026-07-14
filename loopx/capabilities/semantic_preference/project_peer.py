@@ -5,52 +5,13 @@ import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlsplit
+
+from ...repository_identity import normalize_repository_identity
 
 
 PROJECT_PEER_PREFIX = "project-"
 _SAFE_PROJECT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
 _SAFE_USER_SPACE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-
-
-def normalize_repository_identity(remote_url: str) -> str:
-    """Return a credential-free identity shared by common Git transports."""
-
-    raw = str(remote_url or "").strip()
-    if not raw:
-        raise ValueError("repository remote URL is required")
-
-    scp_match = re.fullmatch(r"(?:[^@/]+@)?([^:/]+):(.+)", raw)
-    if scp_match and "://" not in raw:
-        raw = f"ssh://{scp_match.group(1)}/{scp_match.group(2)}"
-
-    parsed = urlsplit(raw)
-    if (
-        parsed.scheme not in {"git", "http", "https", "ssh"}
-        or not parsed.hostname
-        or parsed.password
-        or parsed.query
-        or parsed.fragment
-    ):
-        raise ValueError("repository remote must be a supported repository URL")
-
-    host = parsed.hostname.casefold()
-    try:
-        port = parsed.port
-    except ValueError as exc:
-        raise ValueError("repository remote has an invalid port") from exc
-    if port and not (
-        (parsed.scheme in {"http", "git"} and port == 80)
-        or (parsed.scheme in {"https", "ssh"} and port in {22, 443})
-    ):
-        host = f"{host}:{port}"
-
-    path = re.sub(r"/+", "/", parsed.path).strip("/")
-    if path.endswith(".git"):
-        path = path[:-4]
-    if not path:
-        raise ValueError("repository remote must include a repository path")
-    return f"git:{host}/{path}"
 
 
 def _origin_remote(project: Path, git_bin: str) -> str:

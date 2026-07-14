@@ -64,6 +64,14 @@ scopes, uses a write-class action kind, or goal policy explicitly requires
 isolation. Read-only observation and monitor work do not trigger the guard by
 identity alone.
 
+For a task owned by a repository other than the goal repository, the agent todo
+may declare `task_repository` as a credential-free canonical identity such as
+`git:github.com/owner/repo`. The guard then requires a linked worktree whose
+origin matches that identity. The field selects the repository used for
+workspace isolation only: it is not an agent scope, write scope, permission
+grant, or replacement for claim/lease and goal-boundary checks. Without the
+field, the goal repository remains authoritative.
+
 ## Task-Scoped Coordination
 
 When bounded multi-agent orchestration is enabled, LoopX hashes the canonical

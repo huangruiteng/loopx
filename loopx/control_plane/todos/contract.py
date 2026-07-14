@@ -6,6 +6,8 @@ from enum import Enum
 from typing import Any
 from urllib.parse import quote, unquote
 
+from ...repository_identity import normalize_repository_identity
+
 
 TODO_TASK_PATTERN = re.compile(r"^\s*[-*]\s+\[([ xX-])\]\s+(.+?)\s*$")
 TODO_METADATA_PATTERN = re.compile(r"^\s*<!--\s*loopx:(?:todo\s+)?(?P<body>.*?)\s*-->\s*$")
@@ -43,7 +45,7 @@ TODO_MONITOR_METADATA_FIELDS = (
 )
 TODO_METADATA_FIELDS = (
     "todo_id", "status", "task_class", "action_kind", "continuation_policy",
-    "required_write_scopes", "required_capabilities", "target_capabilities",
+    "task_repository", "required_write_scopes", "required_capabilities", "target_capabilities",
     "explore_result_node_refs",
     "decision_scope", "required_decision_scopes", "claimed_by", "blocks_agent",
     "excluded_agents", "global_gate", "unblocks_todo_id", "successor_todo_ids",
@@ -212,6 +214,16 @@ def normalize_todo_action_kind(value: Any) -> str | None:
     if TODO_ACTION_KIND_PATTERN.match(candidate):
         return candidate
     return None
+
+
+def normalize_todo_task_repository(value: Any) -> str | None:
+    candidate = str(value or "").strip()
+    if not candidate:
+        return None
+    try:
+        return normalize_repository_identity(candidate)
+    except ValueError:
+        return None
 
 
 def normalize_todo_continuation_policy(value: Any) -> str | None:
@@ -640,6 +652,10 @@ def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
             action_kind = normalize_todo_action_kind(value)
             if action_kind:
                 metadata["action_kind"] = action_kind
+        elif key == "task_repository":
+            task_repository = normalize_todo_task_repository(value)
+            if task_repository:
+                metadata["task_repository"] = task_repository
         elif key == "continuation_policy":
             continuation_policy = normalize_todo_continuation_policy(value)
             if continuation_policy:
@@ -727,6 +743,7 @@ def format_todo_metadata_line(
     status: str | None = None,
     task_class: str | None = None,
     action_kind: str | None = None,
+    task_repository: str | None = None,
     continuation_policy: str | None = None,
     removed_continuation_policy: str | None = None,
     required_write_scopes: Any = None,
@@ -780,6 +797,16 @@ def format_todo_metadata_line(
         raise ValueError("todo action_kind must be a public-safe token: lowercase letters, digits, '_' or '-'")
     if normalized_action_kind:
         fields.append(f"action_kind={encode_metadata_value(normalized_action_kind)}")
+    normalized_task_repository = normalize_todo_task_repository(task_repository)
+    if task_repository and not normalized_task_repository:
+        raise ValueError(
+            "todo task_repository must be a credential-free Git remote or canonical "
+            "git:<host>/<path> identity"
+        )
+    if normalized_task_repository:
+        fields.append(
+            f"task_repository={encode_metadata_value(normalized_task_repository)}"
+        )
     normalized_continuation_policy = normalize_todo_continuation_policy(
         continuation_policy
     )
@@ -941,6 +968,8 @@ def todo_block_metadata(block: dict[str, Any]) -> dict[str, Any]:
             continue
         if key == "required_write_scopes":
             normalized = normalize_required_write_scopes(value)
+        elif key == "task_repository":
+            normalized = normalize_todo_task_repository(value)
         elif key == "required_capabilities":
             normalized = normalize_required_capabilities(value)
         elif key == "target_capabilities":
@@ -978,6 +1007,12 @@ def metadata_line_for_todo_block(
             metadata.pop(key, None)
         elif key == "required_write_scopes":
             normalized = normalize_required_write_scopes(value)
+            if normalized:
+                metadata[key] = normalized
+            else:
+                metadata.pop(key, None)
+        elif key == "task_repository":
+            normalized = normalize_todo_task_repository(value)
             if normalized:
                 metadata[key] = normalized
             else:

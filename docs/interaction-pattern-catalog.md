@@ -1436,8 +1436,12 @@ loopx todo claim \
 ```
 
 When the selected task writes repository state, `agent_workspace_guard_v1`
-enforces the task/repository isolation policy. Read-only and monitor-only work
-does not require an isolated checkout merely because of agent identity. When a
+enforces the task/repository isolation policy. A cross-repository task declares
+the first-class `task_repository=git:<host>/<path>` todo field; quota matches the
+current origin to that identity and still requires a linked worktree. The field
+does not carry agent scope or grant writes, and the goal repo remains the
+fallback when it is absent. Read-only and monitor-only work does not require an
+isolated checkout merely because of agent identity. When a
 slice is small, validated, and allowed by repository policy, the peer may
 self-merge and complete with evidence:
 
