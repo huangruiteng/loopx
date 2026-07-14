@@ -35,6 +35,16 @@ json.dump({
         "preference_ref": "viking://user/preferences/pr-description-chinese",
         "summary": "Use concise structured Chinese for PR descriptions",
     }],
+    "corpus_inventory": [{
+        "corpus_id": "project_peer_preferences",
+        "scope_ref": "viking://user/pilot/peers/project-example/memories/preferences",
+        "read_role": "primary",
+        "write_mode": "provider_managed",
+        "write_actor_ref": "project-example",
+        "source_of_truth": "repository_revision_and_explicit_feedback",
+        "writeback_triggers": ["explicit_feedback", "source_truth_changed"],
+        "closure_policy": "write_wait_l2_read_scoped_recall",
+    }],
 }, sys.stdout)
 """,
         encoding="utf-8",
@@ -77,6 +87,13 @@ json.dump({
     preference = applied["semantic_preference"]
     assert preference["application_status"] == "applied", preference
     assert preference["receipt"]["outcome"] == "applied", preference
+    assert preference["corpus_inventory"][0]["corpus_id"] == (
+        "project_peer_preferences"
+    ), preference
+    assert preference["maintenance_guidance"]["writeback_triggers"] == [
+        "explicit_feedback",
+        "source_truth_changed",
+    ], preference
     assert PREFERENCE_REF not in json.dumps(applied), applied
     assert applied["description"].endswith(
         "## 关联 Issue\n\nFixes #17\nFixes octo-org/example#18\nRelated to #19\n"

@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 
 from loopx.capabilities.semantic_preference import (  # noqa: E402
     application_receipt,
+    maintenance_receipt,
     provider_doctor,
     recall,
 )
@@ -67,7 +68,20 @@ request = json.load(sys.stdin)
 surface = request["surface"]
 json.dump({
     "schema_version": "semantic_preference_provider_response_v0",
-    "items": [{"preference_ref": f"memory://{surface}", "summary": f"prefer {surface}"}],
+    "items": [{
+        "preference_ref": f"memory://{surface}",
+        "summary": f"prefer {surface}",
+    }],
+    "corpus_inventory": [{
+        "corpus_id": "fixture_preferences",
+        "scope_ref": "memory://fixture/preferences",
+        "read_role": "primary",
+        "write_mode": "provider_managed",
+        "write_actor_ref": "fixture-peer",
+        "source_of_truth": "explicit_user_feedback",
+        "writeback_triggers": ["explicit_feedback"],
+        "closure_policy": "write_wait_l2_read_scoped_recall",
+    }],
 }, sys.stdout)
 """,
         encoding="utf-8",
@@ -104,6 +118,16 @@ json.dump({
         recalled = recall_cli(project, config, surface, execute=True)
         assert recalled["status"] == "completed", recalled
         assert recalled["items"][0]["summary"] == f"prefer {surface}", recalled
+        assert recalled["corpus_inventory"][0]["corpus_id"] == (
+            "fixture_preferences"
+        ), recalled
+        assert recalled["maintenance_guidance"] == {
+            "schema_version": "semantic_preference_maintenance_guidance_v0",
+            "corpus_ids": ["fixture_preferences"],
+            "writeback_triggers": ["explicit_feedback"],
+            "closure_outcomes": ["verified", "no_write_rationale"],
+            "completion": "provider_write_then_wait_l2_read_and_scoped_recall",
+        }, recalled
 
     doctor_preview = run(
         "semantic-preference",
@@ -135,6 +159,31 @@ json.dump({
     assert receipt["preference_ref_digests"], receipt
     assert "memory://" not in json.dumps(receipt), receipt
     assert not list(project.rglob("*receipt*")), "receipt must remain stateless"
+
+    maintenance = run(
+        "semantic-preference",
+        "maintenance-receipt",
+        "--trigger",
+        "explicit_feedback",
+        "--outcome",
+        "verified",
+        "--corpus-id",
+        "fixture_preferences",
+        "--scope-ref",
+        "memory://fixture/preferences",
+        "--evidence-ref",
+        "fixture-readback-v1",
+    )
+    assert maintenance["schema_version"] == (
+        "semantic_preference_maintenance_receipt_v0"
+    ), maintenance
+    assert maintenance["scope_ref_digests"], maintenance
+    assert "memory://" not in json.dumps(maintenance), maintenance
+    assert maintenance_receipt(
+        trigger="source_truth_changed",
+        outcome="no_write_rationale",
+        corpus_ids=["fixture_preferences"],
+    )["outcome"] == "no_write_rationale"
 
     disabled = temp / "disabled.json"
     disabled.write_text(
@@ -192,6 +241,40 @@ json.dump({
         missing, project=project, surface="other_module.summary", execute=True
     )
     assert missing_recall["status"] == "provider_unavailable", missing_recall
+
+    invalid_provider = temp / "invalid-provider.py"
+    invalid_provider.write_text(
+        """import json, sys
+json.load(sys.stdin)
+json.dump({
+    "schema_version": "semantic_preference_provider_response_v0",
+    "items": [],
+    "corpus_inventory": [{"corpus_id": "INVALID"}],
+}, sys.stdout)
+""",
+        encoding="utf-8",
+    )
+    invalid_inventory = temp / "invalid-inventory.json"
+    invalid_inventory.write_text(
+        json.dumps(
+            {
+                "schema_version": "semantic_preference_hook_config_v0",
+                "enabled": True,
+                "provider": {"argv": [sys.executable, str(invalid_provider)]},
+                "surfaces": {"other_module.summary": {"query": "preferences"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    invalid_recall = recall(
+        invalid_inventory,
+        project=project,
+        surface="other_module.summary",
+        execute=True,
+    )
+    assert invalid_recall["failure_kind"] == "invalid_corpus_inventory", (
+        invalid_recall
+    )
 
     invalid_context = run_failure(
         "semantic-preference",

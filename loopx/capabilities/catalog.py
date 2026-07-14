@@ -234,6 +234,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "purpose": "Build a compact receipt with hashed preference references for existing evidence/state writeback.",
                 "write_boundary": "stateless output only; no provider, file, or external write",
             },
+            {
+                "command": "loopx semantic-preference maintenance-receipt --trigger explicit_feedback --outcome verified --corpus-id <id> --format json",
+                "purpose": "Build a compact receipt after a provider-owned corpus maintenance decision and readback closure.",
+                "write_boundary": "stateless output only; scope references are hashed and semantic content is excluded",
+            },
         ],
         "implemented_protocols": [
             {
@@ -253,6 +258,16 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             },
             {
                 "schema_version": "semantic_preference_application_receipt_v0",
+                "module": "loopx.capabilities.semantic_preference.contract",
+                "doc": "docs/capabilities/semantic-preference/README.md",
+            },
+            {
+                "schema_version": "semantic_preference_maintenance_guidance_v0",
+                "module": "loopx.capabilities.semantic_preference.contract",
+                "doc": "docs/capabilities/semantic-preference/README.md",
+            },
+            {
+                "schema_version": "semantic_preference_maintenance_receipt_v0",
                 "module": "loopx.capabilities.semantic_preference.contract",
                 "doc": "docs/capabilities/semantic-preference/README.md",
             },

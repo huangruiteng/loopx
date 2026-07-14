@@ -187,6 +187,11 @@ print(json.dumps({"ok": True, "result": result}))
     described = json.loads(describe.stdout)
     assert described["peer_id"] == expected.peer_id
     assert described["memory_uri"] == expected.memory_uri
+    described_inventory = described["corpus_inventory"]
+    assert len(described_inventory) == 1, described_inventory
+    assert described_inventory[0]["corpus_id"] == "project_peer_preferences"
+    assert described_inventory[0]["scope_ref"] == expected.preferences_uri
+    assert described_inventory[0]["write_actor_ref"] == expected.peer_id
     assert str(project) not in describe.stdout
     assert REMOTE not in describe.stdout
     assert read_calls(log) == [], "describe-scope must not contact OpenViking"
@@ -221,6 +226,9 @@ print(json.dumps({"ok": True, "result": result}))
         environment,
     )
     assert len(recalled["items"]) == 1, recalled
+    assert recalled["corpus_inventory"][0]["scope_ref"] == (
+        expected.preferences_uri
+    )
     calls = read_calls(log)
     assert len(calls) == 1, calls
     assert calls[0][:3] == ["--actor-peer-id", expected.peer_id, "find"]
@@ -253,6 +261,9 @@ print(json.dumps({"ok": True, "result": result}))
         environment,
     )
     assert len(fallback_result["items"]) == 1, fallback_result
+    assert [
+        item["corpus_id"] for item in fallback_result["corpus_inventory"]
+    ] == ["project_peer_preferences", "user_global_preferences"]
     calls = read_calls(log)
     assert len(calls) == 2, calls
     assert all(call[:3] == ["--actor-peer-id", wrong.peer_id, "find"] for call in calls)
@@ -316,6 +327,12 @@ print(json.dumps({"ok": True, "result": result}))
     )
     assert built["semantic_preference"]["application_status"] == "applied", built
     assert built["semantic_preference"]["receipt"]["outcome"] == "applied", built
+    assert built["semantic_preference"]["corpus_inventory"][0]["corpus_id"] == (
+        "project_peer_preferences"
+    ), built
+    assert built["semantic_preference"]["maintenance_guidance"]["completion"] == (
+        "provider_write_then_wait_l2_read_and_scoped_recall"
+    ), built
     assert built["raw_preference_content_returned"] is False
 
     os.environ["FAKE_OV_FAIL"] = "1"

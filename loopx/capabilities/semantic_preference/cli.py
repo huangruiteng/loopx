@@ -3,7 +3,12 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable
 
-from .contract import application_receipt, provider_doctor, recall
+from .contract import (
+    application_receipt,
+    maintenance_receipt,
+    provider_doctor,
+    recall,
+)
 from .openviking_provider import (
     handle_openviking_provider,
     register_openviking_provider_arguments,
@@ -82,6 +87,28 @@ def register_semantic_preference_commands(
     receipt_parser.add_argument("--preference-ref", action="append", default=[])
     receipt_parser.add_argument("--artifact-ref")
 
+    maintenance_parser = commands.add_parser(
+        "maintenance-receipt",
+        help=(
+            "Build a compact receipt after a provider-owned corpus "
+            "maintenance decision."
+        ),
+    )
+    add_subcommand_format(maintenance_parser)
+    maintenance_parser.add_argument(
+        "--trigger",
+        choices=["explicit_feedback", "source_truth_changed"],
+        required=True,
+    )
+    maintenance_parser.add_argument(
+        "--outcome",
+        choices=["verified", "no_write_rationale", "failed"],
+        required=True,
+    )
+    maintenance_parser.add_argument("--corpus-id", action="append", default=[])
+    maintenance_parser.add_argument("--scope-ref", action="append", default=[])
+    maintenance_parser.add_argument("--evidence-ref")
+
 
 def handle_semantic_preference_command(
     args: argparse.Namespace,
@@ -108,13 +135,21 @@ def handle_semantic_preference_command(
                 project=args.project,
                 execute=args.execute,
             )
-        else:
+        elif args.semantic_preference_command == "receipt":
             payload = application_receipt(
                 surface=args.surface,
                 application_id=args.application_id,
                 outcome=args.outcome,
                 preference_refs=args.preference_ref,
                 artifact_ref=args.artifact_ref,
+            )
+        else:
+            payload = maintenance_receipt(
+                trigger=args.trigger,
+                outcome=args.outcome,
+                corpus_ids=args.corpus_id,
+                scope_refs=args.scope_ref,
+                evidence_ref=args.evidence_ref,
             )
     except ValueError as exc:
         payload = {

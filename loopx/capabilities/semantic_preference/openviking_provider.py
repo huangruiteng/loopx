@@ -146,7 +146,40 @@ def _scope(args: argparse.Namespace) -> ProjectPeerScope:
     )
 
 
-def _describe_scope(scope: ProjectPeerScope) -> dict[str, Any]:
+def _corpus_inventory(
+    scope: ProjectPeerScope, *, include_global_fallback: bool
+) -> list[dict[str, Any]]:
+    inventory: list[dict[str, Any]] = [
+        {
+            "corpus_id": "project_peer_preferences",
+            "scope_ref": scope.preferences_uri,
+            "read_role": "primary",
+            "write_mode": "provider_managed",
+            "write_actor_ref": scope.peer_id,
+            "source_of_truth": "repository_revision_and_explicit_feedback",
+            "writeback_triggers": ["explicit_feedback", "source_truth_changed"],
+            "closure_policy": "write_wait_l2_read_scoped_recall",
+        }
+    ]
+    if include_global_fallback:
+        inventory.append(
+            {
+                "corpus_id": "user_global_preferences",
+                "scope_ref": f"{scope.global_memory_uri}/preferences",
+                "read_role": "fallback",
+                "write_mode": "provider_managed",
+                "write_actor_ref": None,
+                "source_of_truth": "explicit_user_feedback",
+                "writeback_triggers": ["explicit_feedback"],
+                "closure_policy": "write_wait_l2_read_scoped_recall",
+            }
+        )
+    return inventory
+
+
+def _describe_scope(
+    scope: ProjectPeerScope, *, include_global_fallback: bool
+) -> dict[str, Any]:
     return {
         "ok": True,
         "schema_version": SCOPE_SCHEMA,
@@ -158,6 +191,9 @@ def _describe_scope(scope: ProjectPeerScope) -> dict[str, Any]:
         "preferences_uri": scope.preferences_uri,
         "global_memory_uri": scope.global_memory_uri,
         "global_fallback_default": False,
+        "corpus_inventory": _corpus_inventory(
+            scope, include_global_fallback=include_global_fallback
+        ),
     }
 
 
@@ -199,7 +235,13 @@ def run_openviking_provider(args: argparse.Namespace) -> int:
 
     scope = _scope(args)
     if args.describe_scope:
-        json.dump(_describe_scope(scope), sys.stdout, ensure_ascii=False)
+        json.dump(
+            _describe_scope(
+                scope, include_global_fallback=args.include_global_fallback
+            ),
+            sys.stdout,
+            ensure_ascii=False,
+        )
         return 0
 
     if not 1 <= args.max_find_calls <= MAX_FIND_CALLS:
@@ -227,7 +269,16 @@ def run_openviking_provider(args: argparse.Namespace) -> int:
         )
         if items:
             break
-    json.dump({"schema_version": RESPONSE_SCHEMA, "items": items}, sys.stdout)
+    json.dump(
+        {
+            "schema_version": RESPONSE_SCHEMA,
+            "items": items,
+            "corpus_inventory": _corpus_inventory(
+                scope, include_global_fallback=args.include_global_fallback
+            ),
+        },
+        sys.stdout,
+    )
     return 0
 
 

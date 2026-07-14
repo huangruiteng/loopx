@@ -14,13 +14,22 @@ REQUEST_SCHEMA = "semantic_preference_provider_request_v0"
 RESPONSE_SCHEMA = "semantic_preference_provider_response_v0"
 RECALL_SCHEMA = "semantic_preference_recall_v0"
 RECEIPT_SCHEMA = "semantic_preference_application_receipt_v0"
+MAINTENANCE_GUIDANCE_SCHEMA = "semantic_preference_maintenance_guidance_v0"
+MAINTENANCE_RECEIPT_SCHEMA = "semantic_preference_maintenance_receipt_v0"
 DOCTOR_SCHEMA = "semantic_preference_provider_doctor_v0"
 SURFACE_RE = re.compile(r"^[a-z][a-z0-9_-]*(?:\.[a-z][a-z0-9_-]*)+$")
 TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,199}$")
+CORPUS_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 MAX_PROVIDER_OUTPUT_BYTES = 256_000
 MAX_ITEM_BYTES = 8_000
 MAX_RECEIPT_REFS = 20
+MAX_CORPORA = 20
 MAX_SETUP_HINT_LENGTH = 1_000
+
+_READ_ROLES = {"primary", "fallback", "reference"}
+_WRITE_MODES = {"read_only", "provider_managed"}
+_WRITEBACK_TRIGGERS = {"explicit_feedback", "source_truth_changed"}
+_CLOSURE_POLICIES = {"none", "write_wait_l2_read_scoped_recall"}
 
 
 def _surface(value: object) -> str:
@@ -207,6 +216,80 @@ def _unavailable(surface: str, policy: str, kind: str) -> dict[str, Any]:
     }
 
 
+def _corpus_inventory(response: Mapping[str, Any]) -> list[dict[str, Any]]:
+    raw = response.get("corpus_inventory")
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or len(raw) > MAX_CORPORA:
+        raise ValueError("provider corpus_inventory must be a bounded list")
+    inventory: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, Mapping):
+            raise ValueError("provider corpus_inventory items must be objects")
+        corpus_id = str(item.get("corpus_id") or "").strip()
+        scope_ref = str(item.get("scope_ref") or "").strip()
+        read_role = str(item.get("read_role") or "").strip()
+        write_mode = str(item.get("write_mode") or "").strip()
+        source_of_truth = str(item.get("source_of_truth") or "").strip()
+        closure_policy = str(item.get("closure_policy") or "none").strip()
+        write_actor_ref = str(item.get("write_actor_ref") or "").strip()
+        triggers = item.get("writeback_triggers") or []
+        if not CORPUS_ID_RE.fullmatch(corpus_id) or corpus_id in seen:
+            raise ValueError("provider corpus_id must be unique lower-snake tokens")
+        if not TOKEN_RE.fullmatch(scope_ref):
+            raise ValueError("provider corpus scope_ref must be a compact token")
+        if read_role not in _READ_ROLES or write_mode not in _WRITE_MODES:
+            raise ValueError("provider corpus read_role or write_mode is invalid")
+        if not TOKEN_RE.fullmatch(source_of_truth):
+            raise ValueError("provider corpus source_of_truth must be a compact token")
+        if closure_policy not in _CLOSURE_POLICIES:
+            raise ValueError("provider corpus closure_policy is invalid")
+        if write_actor_ref and not TOKEN_RE.fullmatch(write_actor_ref):
+            raise ValueError("provider corpus write_actor_ref must be a compact token")
+        if (
+            not isinstance(triggers, list)
+            or len(triggers) > len(_WRITEBACK_TRIGGERS)
+            or any(trigger not in _WRITEBACK_TRIGGERS for trigger in triggers)
+        ):
+            raise ValueError("provider corpus writeback_triggers are invalid")
+        seen.add(corpus_id)
+        inventory.append(
+            {
+                "corpus_id": corpus_id,
+                "scope_ref": scope_ref,
+                "read_role": read_role,
+                "write_mode": write_mode,
+                "write_actor_ref": write_actor_ref or None,
+                "source_of_truth": source_of_truth,
+                "writeback_triggers": sorted(set(triggers)),
+                "closure_policy": closure_policy,
+            }
+        )
+    return inventory
+
+
+def _maintenance_guidance(
+    inventory: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    writable = [item for item in inventory if item.get("write_mode") != "read_only"]
+    if not writable:
+        return None
+    return {
+        "schema_version": MAINTENANCE_GUIDANCE_SCHEMA,
+        "corpus_ids": [str(item["corpus_id"]) for item in writable],
+        "writeback_triggers": sorted(
+            {
+                str(trigger)
+                for item in writable
+                for trigger in item.get("writeback_triggers") or []
+            }
+        ),
+        "closure_outcomes": ["verified", "no_write_rationale"],
+        "completion": "provider_write_then_wait_l2_read_and_scoped_recall",
+    }
+
+
 def recall(
     config: str | Path,
     *,
@@ -296,6 +379,10 @@ def recall(
         for item in bounded
     ):
         return _unavailable(surface_id, policy, "item_too_large")
+    try:
+        inventory = _corpus_inventory(response)
+    except ValueError:
+        return _unavailable(surface_id, policy, "invalid_corpus_inventory")
     return {
         "ok": True,
         "schema_version": RECALL_SCHEMA,
@@ -303,6 +390,8 @@ def recall(
         "surface": surface_id,
         "items": bounded,
         "truncated": len(items) > len(bounded),
+        "corpus_inventory": inventory,
+        "maintenance_guidance": _maintenance_guidance(inventory),
     }
 
 
@@ -335,4 +424,36 @@ def application_receipt(
             {hashlib.sha256(str(ref).encode()).hexdigest()[:16] for ref in refs}
         ),
         "artifact_ref": _token(artifact_ref, "artifact_ref") if artifact_ref else None,
+    }
+
+
+def maintenance_receipt(
+    *,
+    trigger: str,
+    outcome: str,
+    corpus_ids: Sequence[str],
+    scope_refs: Sequence[str] | None = None,
+    evidence_ref: str | None = None,
+) -> dict[str, Any]:
+    if trigger not in _WRITEBACK_TRIGGERS:
+        raise ValueError("trigger must be explicit_feedback or source_truth_changed")
+    if outcome not in {"verified", "no_write_rationale", "failed"}:
+        raise ValueError("outcome must be verified, no_write_rationale, or failed")
+    ids = sorted({str(value or "").strip() for value in corpus_ids})
+    if not ids or len(ids) > MAX_CORPORA or any(
+        not CORPUS_ID_RE.fullmatch(value) for value in ids
+    ):
+        raise ValueError("corpus_ids must contain bounded lower-snake tokens")
+    refs = [str(ref) for ref in scope_refs or [] if str(ref).strip()]
+    if len(refs) > MAX_CORPORA:
+        raise ValueError(f"scope_refs supports at most {MAX_CORPORA} items")
+    return {
+        "schema_version": MAINTENANCE_RECEIPT_SCHEMA,
+        "trigger": trigger,
+        "outcome": outcome,
+        "corpus_ids": ids,
+        "scope_ref_digests": sorted(
+            {hashlib.sha256(ref.encode()).hexdigest()[:16] for ref in refs}
+        ),
+        "evidence_ref": _token(evidence_ref, "evidence_ref") if evidence_ref else None,
     }

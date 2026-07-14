@@ -63,9 +63,35 @@ returns one `semantic_preference_provider_response_v0` object on stdout:
       "preference_ref": "provider-owned-reference",
       "summary": "Use concise Chinese sections for this surface."
     }
+  ],
+  "corpus_inventory": [
+    {
+      "corpus_id": "project_preferences",
+      "scope_ref": "provider-owned-scope-reference",
+      "read_role": "primary",
+      "write_mode": "provider_managed",
+      "write_actor_ref": "provider-owned-actor-reference",
+      "source_of_truth": "repository_revision_and_explicit_feedback",
+      "writeback_triggers": ["explicit_feedback", "source_truth_changed"],
+      "closure_policy": "write_wait_l2_read_scoped_recall"
+    }
   ]
 }
 ```
+
+`corpus_inventory` is optional and provider-neutral. It describes which bounded
+corpora contributed to the recall and what closes a maintenance decision; it
+does not contain raw memory. LoopX validates the inventory and derives
+`semantic_preference_maintenance_guidance_v0`. A fixed function boundary can
+therefore expose the corpus ids, writeback triggers, and closure policy in the
+same provider call instead of relying on the agent to remember a separate
+runbook. Providers that omit the field remain compatible.
+
+An explicit feedback or source-of-truth change does not imply that every corpus
+must be rewritten. The caller either performs the provider-owned update and
+verifies the configured closure policy, or records a `no_write_rationale`.
+LoopX does not infer semantic updates, mirror provider storage, or turn a soft
+preference into an execution permission.
 
 Provider stderr and non-zero output are reduced to a bounded failure kind.
 `fail_open` returns no items and lets the domain continue; `fail_closed` stops
@@ -99,6 +125,13 @@ loopx semantic-preference receipt \
   --outcome applied \
   --preference-ref <provider-owned-reference> \
   --artifact-ref https://github.com/owner/repo/pull/123
+
+loopx semantic-preference maintenance-receipt \
+  --trigger source_truth_changed \
+  --outcome verified \
+  --corpus-id project_preferences \
+  --scope-ref <provider-owned-scope-reference> \
+  --evidence-ref project-preference-readback-v2
 ```
 
 Receipts contain only surface, application id, outcome, optional public
@@ -106,6 +139,13 @@ artifact reference, and hashes of provider-owned preference references. The
 command returns the receipt without writing a file. Callers can attach it to
 the existing evidence log, todo evidence, or `refresh-state` record; the hook
 does not maintain a second reward or memory ledger.
+
+Maintenance receipts are also stateless. They contain only the trigger,
+outcome, corpus ids, optional compact evidence reference, and hashes of scope
+references. A `verified` outcome means the provider-specific write, queue or
+index wait, direct read, and scoped recall required by the inventory have all
+passed. A `no_write_rationale` outcome records that the trigger was assessed
+but no durable semantic change was needed.
 
 `--context` is repeatable and each entry uses `lower_snake=value` syntax.
 Invalid config, context, surface, or fail-closed requests return a structured
@@ -123,6 +163,9 @@ preferences = recall(
     surface="issue_fix.pr_description",
     execute=True,
 )
+# The same result identifies provider-owned corpora that must be assessed after
+# explicit feedback or a source-of-truth change.
+guidance = preferences.get("maintenance_guidance")
 # The issue-fix module decides whether and how to apply preferences["items"].
 receipt = application_receipt(
     surface="issue_fix.pr_description",

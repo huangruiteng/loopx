@@ -168,6 +168,8 @@ def _result(
     fail_open_preserved_base: bool = False,
     description_changed: bool = False,
     issue_reference_policy: Mapping[str, Any] | None = None,
+    corpus_inventory: Sequence[Mapping[str, Any]] | None = None,
+    maintenance_guidance: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     policy = dict(issue_reference_policy or {})
     description, issue_reference_changed = _apply_issue_reference_policy(
@@ -185,6 +187,12 @@ def _result(
             "recalled_item_count": recalled_item_count,
             "applied_preference_count": applied_preference_count,
             "receipt": dict(receipt) if receipt is not None else None,
+            "corpus_inventory": [dict(item) for item in corpus_inventory or []],
+            "maintenance_guidance": (
+                dict(maintenance_guidance)
+                if maintenance_guidance is not None
+                else None
+            ),
         },
         "raw_preference_content_returned": False,
         "fail_open_preserved_base": fail_open_preserved_base,
@@ -271,6 +279,16 @@ def build_issue_fix_pr_description(
         if isinstance(raw_items, list)
         else []
     )
+    raw_inventory = recalled.get("corpus_inventory")
+    corpus_inventory = (
+        [dict(item) for item in raw_inventory if isinstance(item, Mapping)]
+        if isinstance(raw_inventory, list)
+        else []
+    )
+    raw_guidance = recalled.get("maintenance_guidance")
+    maintenance_guidance = (
+        dict(raw_guidance) if isinstance(raw_guidance, Mapping) else None
+    )
     if recall_status != "completed" or not items:
         return _result(
             description=base_description,
@@ -278,6 +296,8 @@ def build_issue_fix_pr_description(
             application_status=recall_status,
             fail_open_preserved_base=recall_status == "provider_unavailable",
             issue_reference_policy=issue_reference_policy,
+            corpus_inventory=corpus_inventory,
+            maintenance_guidance=maintenance_guidance,
         )
     if apply_preferences is None:
         return _result(
@@ -286,6 +306,8 @@ def build_issue_fix_pr_description(
             application_status="available_not_applied",
             recalled_item_count=len(items),
             issue_reference_policy=issue_reference_policy,
+            corpus_inventory=corpus_inventory,
+            maintenance_guidance=maintenance_guidance,
         )
     if not application_id:
         raise ValueError("application_id is required when preferences are applied")
@@ -324,6 +346,8 @@ def build_issue_fix_pr_description(
             ),
             fail_open_preserved_base=True,
             issue_reference_policy=issue_reference_policy,
+            corpus_inventory=corpus_inventory,
+            maintenance_guidance=maintenance_guidance,
         )
 
     outcome = "applied" if applied_refs else "ignored"
@@ -342,4 +366,6 @@ def build_issue_fix_pr_description(
         ),
         description_changed=description != base_description,
         issue_reference_policy=issue_reference_policy,
+        corpus_inventory=corpus_inventory,
+        maintenance_guidance=maintenance_guidance,
     )

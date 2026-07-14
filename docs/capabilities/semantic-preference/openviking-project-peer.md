@@ -32,12 +32,44 @@ loopx semantic-preference openviking-provider \
 ```
 
 The output contains the peer id and target URIs, but not the repository URL or
-local checkout path. An OpenViking agent integration can use the returned
-`peer_id` when adding a user message to a session. For an isolated native
-write, create that session with self memory disabled, peer memory enabled, and
-the desired memory types allowed. `peer_id` alone identifies the speaker but
-does not force an extractor operation away from user-global memory. OpenViking
-then owns write, update, and supersede semantics inside the selected peer.
+local checkout path. It also contains a bounded corpus inventory. The project
+peer preference corpus is primary; user-global preferences appear only when
+the caller explicitly enables global fallback.
+
+An OpenViking agent integration can use the returned `peer_id` when adding a
+user message to a session. For an isolated native write, create that session
+with self memory disabled, peer memory enabled, and the desired memory types
+allowed. Both the message peer and the request actor must be the same derived
+project peer. A message `peer_id` alone identifies the speaker; it does not
+authorize an extractor running as a different actor to update that peer.
+OpenViking then owns extraction, update, and supersede semantics inside the
+selected corpus.
+
+Do not treat a completed extraction task as sufficient write evidence. A
+maintenance closure for this provider requires all of the following:
+
+1. The task reports the expected add or update count and memory diff.
+2. Pending embedding or indexing work reaches zero without errors.
+3. A direct L2 read returns the new semantic content.
+4. A scoped `find` through the same project-peer provider recalls that content.
+
+If a trigger does not require a semantic change, emit a compact
+`no_write_rationale` maintenance receipt instead. Never persist raw memory in
+the receipt.
+
+## Repository template versus semantic preference
+
+For PR descriptions, the repository's current
+`.github/PULL_REQUEST_TEMPLATE.md` is the authoritative hard structure. Read it
+from the working revision when building the artifact. OpenViking stores only
+soft semantic preferences for how to fill that structure, such as reviewer
+language, useful detail, and risk-based validation. Do not copy the template
+body into OpenViking: doing so would create a stale second source of truth.
+
+When the repository template changes, assess the project-peer preference
+corpus because its interpretation may need to change. When explicit user
+feedback changes the prose preference, update that corpus through OpenViking's
+native extractor and complete the four-step readback above.
 
 ## Local-private hook config
 
@@ -78,4 +110,6 @@ arguments for a read-only `ov status` probe.
 
 The consuming function remains the final application boundary. For Issue Fix,
 `build_issue_fix_pr_description()` owns one recall, fail-open preservation,
-preference attribution, and the compact application receipt.
+preference attribution, the compact application receipt, and propagation of
+the provider's corpus inventory and maintenance guidance. It does not perform
+an automatic write or add a second provider call.
