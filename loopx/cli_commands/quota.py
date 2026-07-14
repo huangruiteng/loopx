@@ -35,6 +35,43 @@ PrintPayload = Callable[
 RolloutEventAppender = Callable[..., dict[str, object]]
 
 
+def _bind_scheduler_ack_cli_route(
+    payload: dict[str, object],
+    *,
+    registry_path: Path,
+    runtime_root: Path,
+) -> None:
+    """Keep the follow-up ACK on the registry/runtime that built the hint."""
+
+    scheduler_hint = payload.get("scheduler_hint")
+    if not isinstance(scheduler_hint, dict):
+        return
+    codex_app = scheduler_hint.get("codex_app")
+    if not isinstance(codex_app, dict):
+        return
+    ack_hint = codex_app.get("ack_hint")
+    if not isinstance(ack_hint, dict):
+        return
+    cli_args = ack_hint.get("cli_args")
+    if not isinstance(cli_args, list) or not cli_args:
+        return
+    if cli_args[0] == "--registry":
+        return
+    ack_hint["cli_args"] = [
+        "--registry",
+        str(registry_path.expanduser().resolve()),
+        "--runtime-root",
+        str(runtime_root.expanduser().resolve()),
+        *cli_args,
+    ]
+    ack_hint["route_binding"] = {
+        "schema_version": "scheduler_ack_cli_route_v0",
+        "source": "quota_cli_invocation",
+        "registry_bound": True,
+        "runtime_root_bound": True,
+    }
+
+
 def default_public_scan_root() -> str:
     return str(Path(__file__).resolve().parents[2])
 
@@ -242,6 +279,11 @@ def handle_quota_command(
                 available_capabilities=args.available_capabilities,
                 include_scheduler_detail=bool(args.include_scheduler_detail),
                 codex_app_current_rrule=codex_app_rrule,
+            )
+            _bind_scheduler_ack_cli_route(
+                payload,
+                registry_path=registry_path,
+                runtime_root=runtime_root,
             )
         elif args.quota_command == "monitor-poll":
             if not args.goal_id:
