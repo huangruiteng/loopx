@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -74,12 +75,27 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
     return runtime, source_registry, intruder_registry, runtime / "registry.global.json"
 
 
-def run_cli(registry: Path | None, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def run_cli(
+    registry: Path | None,
+    *args: str,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     command = [sys.executable, "-m", "loopx.cli", "--format", "json"]
     if registry is not None:
         command.extend(["--registry", str(registry)])
     command.extend(args)
-    return subprocess.run(command, cwd=REPO_ROOT, check=check, text=True, capture_output=True)
+    process_env = os.environ.copy()
+    if env:
+        process_env.update(env)
+    return subprocess.run(
+        command,
+        cwd=REPO_ROOT,
+        check=check,
+        text=True,
+        capture_output=True,
+        env=process_env,
+    )
 
 
 def payload(result: subprocess.CompletedProcess[str]) -> dict:
@@ -174,11 +190,58 @@ def assert_register_agent_uses_source_registry(root: Path) -> None:
     assert Path(only_goal(global_registry)["source_registry"]).resolve() == source_registry.resolve()
 
 
+def assert_register_agent_preserves_default_global_route(root: Path) -> None:
+    home = root / "home"
+    shared_runtime = home / ".codex" / "loopx"
+    project = root / "source"
+    source_registry = project / ".loopx" / "registry.json"
+    project_runtime = project / ".loopx" / "runtime"
+    state_file = project / ".codex/goals/loopx-meta-fixture/ACTIVE_GOAL_STATE.md"
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    state_file.write_text("# Active Goal State\n", encoding="utf-8")
+
+    source_payload = {
+        "schema_version": "0.1",
+        "common_runtime_root": str(project_runtime),
+        "goals": [goal_entry(project, source_registry, agents=["codex-main-control"])],
+    }
+    write_json(source_registry, source_payload)
+    global_payload = {
+        "schema_version": "0.1",
+        "common_runtime_root": str(shared_runtime),
+        "registry_role": "global-local",
+        "goals": [goal_entry(project, source_registry, agents=["codex-main-control"])],
+    }
+    shared_registry = shared_runtime / "registry.global.json"
+    write_json(shared_registry, global_payload)
+
+    applied = payload(
+        run_cli(
+            None,
+            "register-agent",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            "codex-meta-peer",
+            "--execute",
+            env={"HOME": str(home)},
+        )
+    )
+
+    assert applied["ok"] is True, applied
+    assert Path(applied["global_registry"]).resolve() == shared_registry.resolve(), applied
+    expected_agents = ["codex-main-control", "codex-meta-peer"]
+    assert only_goal(source_registry)["coordination"]["registered_agents"] == expected_agents
+    assert only_goal(shared_registry)["coordination"]["registered_agents"] == expected_agents
+    assert not (project_runtime / "registry.global.json").exists(), applied
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="loopx-connect-route-collision-") as tmp:
         root = Path(tmp)
         assert_sync_collision_guard(root / "collision")
         assert_register_agent_uses_source_registry(root / "register-agent")
+        assert_register_agent_preserves_default_global_route(root / "default-global-route")
     print("connect-route-collision-guard-smoke ok")
     return 0
 

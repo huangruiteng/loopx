@@ -333,6 +333,72 @@ def test_start_goal_guided_previews_transaction_without_mutation() -> None:
         assert not (project / ".codex").exists()
 
 
+def test_start_goal_guided_requires_explicit_goal_for_multi_goal_project() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        project = Path(tmp) / "multi-goal-project"
+        project.mkdir()
+        goals = []
+        for goal_id, status, agent_id in (
+            ("completed-goal", "complete", "codex-completed"),
+            ("active-goal", "active", "codex-active"),
+        ):
+            state_file = project / ".codex" / "goals" / goal_id / "ACTIVE_GOAL_STATE.md"
+            state_file.parent.mkdir(parents=True, exist_ok=True)
+            state_file.write_text("# Active Goal State\n", encoding="utf-8")
+            goals.append(
+                {
+                    "id": goal_id,
+                    "status": status,
+                    "repo": str(project),
+                    "state_file": f".codex/goals/{goal_id}/ACTIVE_GOAL_STATE.md",
+                    "coordination": {
+                        "agent_model": "peer_v1",
+                        "registered_agents": [agent_id],
+                    },
+                }
+            )
+        registry = project / ".loopx" / "registry.json"
+        registry.parent.mkdir(parents=True)
+        registry.write_text(
+            json.dumps({"schema_version": "0.1", "goals": goals}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        payload = run_json(
+            "start-goal",
+            "--guided",
+            "--project",
+            str(project),
+            "--goal-text",
+            "Add a new meta agent without reusing an old lane",
+        )
+
+        assert payload["goal_id"] is None, payload
+        assert payload["agent_id"] is None, payload
+        assert payload["project_connection"]["connection_state"] == "goal_selection_required", payload
+        assert payload["recommended_next_step"]["kind"] == "select_goal", payload
+        transaction = payload["guided_transaction"]
+        assert transaction["blocked_by"] == "goal_selection", transaction
+        assert [step["id"] for step in transaction["ordered_steps"]] == [
+            "inspect_connection",
+            "select_goal",
+        ], transaction
+        gate = payload["goal_selection_gate"]
+        assert gate["schema_version"] == "loopx_goal_selection_gate_v0", gate
+        assert [choice["goal_id"] for choice in gate["choices"]] == [
+            "completed-goal",
+            "active-goal",
+        ], gate
+        for choice in gate["choices"]:
+            assert f"--goal-id {choice['goal_id']}" in choice["rerun_command"], choice
+            assert "--goal-text 'Add a new meta agent without reusing an old lane'" in choice[
+                "rerun_command"
+            ], choice
+        assert payload["safety_contract"]["writes_registry"] is False, payload
+        assert payload["safety_contract"]["creates_heartbeat"] is False, payload
+        assert_packet_summary_refs(payload, packet_kind="guided_start_goal")
+
+
 def test_connected_project_reuses_existing_state() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         project = Path(tmp) / "connected-project"
@@ -556,6 +622,7 @@ def main() -> int:
     test_missing_project_stops_before_mutation()
     test_goal_text_invocation_plans_ranked_todos_before_activation()
     test_start_goal_guided_previews_transaction_without_mutation()
+    test_start_goal_guided_requires_explicit_goal_for_multi_goal_project()
     test_connected_project_reuses_existing_state()
     test_linked_git_worktree_reuses_canonical_source_registry()
     test_skill_slash_fallback_contract()

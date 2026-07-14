@@ -140,7 +140,9 @@ def register_agent_via_source_registry(
     if execute and configure_payload.get("written"):
         sync_payload = sync_project_registry_to_global(
             registry_path=source_registry_path,
-            runtime_root_override=runtime_root_arg,
+            # Sync back to the same shared registry that supplied source_registry.
+            # A project-local common_runtime_root must not redirect this write.
+            runtime_root_override=str(global_path.parent),
             goal_id=goal_id,
             dry_run=False,
         )

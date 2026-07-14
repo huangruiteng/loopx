@@ -741,6 +741,224 @@ def build_loopx_bootstrap_command_pack(
     return payload
 
 
+def _build_multi_goal_start_selection_packet(
+    *,
+    project: Path,
+    agent_id: str | None,
+    cli_bin: str,
+    host_surface: str,
+    goal_text: str,
+    available_capabilities: list[str] | None,
+) -> dict[str, Any] | None:
+    inspection = inspect_bootstrap_connection(project)
+    registry_path = Path(str(inspection.get("registry") or ""))
+    registry, registry_error = _read_registry(registry_path)
+    if registry_error or not registry:
+        return None
+    goals = registry_goals(registry)
+    if len(goals) <= 1:
+        return None
+
+    normalized_goal_text = " ".join(goal_text.split())
+    resolved_project = str(inspection["project"])
+    choices: list[dict[str, Any]] = []
+    for goal in goals:
+        candidate_goal_id = str(goal.get("id") or "").strip()
+        if not candidate_goal_id:
+            continue
+        rerun_command = (
+            f"{shell_arg(cli_bin)} start-goal --guided "
+            f"--project {shell_arg(resolved_project)} "
+            f"--goal-id {shell_arg(candidate_goal_id)}"
+            + (f" --agent-id {shell_arg(agent_id)}" if agent_id else "")
+            + f" --host-surface {shell_arg(host_surface)}"
+            + render_available_capability_args(available_capabilities)
+            + f" --goal-text {shell_arg(normalized_goal_text)}"
+        )
+        choices.append(
+            {
+                "goal_id": candidate_goal_id,
+                "status": goal.get("status"),
+                "state_file": goal.get("state_file"),
+                "registered_agents": registered_agent_ids_from_registry(
+                    registry_path,
+                    candidate_goal_id,
+                ),
+                "rerun_command": rerun_command,
+            }
+        )
+
+    reason = (
+        "multiple registered goals exist for this project; select one explicitly before "
+        "planning todos, registering an agent, or activating a host loop"
+    )
+    goal_selection_gate = {
+        "schema_version": "loopx_goal_selection_gate_v0",
+        "state": "selection_required",
+        "action_required": True,
+        "reason": reason,
+        "required_cli_arg": "--goal-id <registered-goal-id>",
+        "choices": choices,
+    }
+    connection = {
+        **inspection,
+        "goal_id": None,
+        "goal_found": False,
+        "state_file": None,
+        "state_file_exists": None,
+        "known_goal_ids": [choice["goal_id"] for choice in choices],
+        "connection_state": "goal_selection_required",
+        "mutation_confirmation_required": False,
+        "reason": reason,
+    }
+    recommended_next_step = {
+        "kind": "select_goal",
+        "requires_user_confirmation": False,
+        "requires_goal_selection": True,
+        "summary": reason,
+        "goal_selection_gate": goal_selection_gate,
+    }
+    slash_command_catalog = build_slash_command_catalog(cli_bin=cli_bin)
+    command_pack: dict[str, Any] = {
+        "ok": True,
+        "schema_version": SCHEMA_VERSION,
+        "slash_command": CANONICAL_SLASH_COMMAND,
+        "slash_forms": [
+            {"form": "/loopx", "mode": "inspect_or_connect_preview"},
+            {"form": "/loopx <goal text>", "mode": "goal_plan_write_and_activate"},
+        ],
+        "canonical_cli_command": None,
+        "read_only": True,
+        "goal_text": normalized_goal_text,
+        "project": resolved_project,
+        "goal_id": None,
+        "agent_id": None,
+        "requested_agent_id": agent_id,
+        "agent_type": agent_type_for_host_surface(host_surface),
+        "host_surface": host_surface,
+        "project_connection": connection,
+        "goal_selection_gate": goal_selection_gate,
+        "host_loop_activation": {
+            "activation_state": "goal_selection_required",
+            "activation_allowed": False,
+        },
+        "available_slash_commands": slash_command_catalog,
+        "onboarding_hint": slash_command_catalog["onboarding"],
+        "recommended_next_step": recommended_next_step,
+        "goal_start_contract": _goal_start_contract(
+            goal_text=normalized_goal_text,
+            connected=True,
+            agent_type=agent_type_for_host_surface(host_surface),
+        ),
+        "commands": {
+            "doctor": f"{shell_arg(cli_bin)} doctor",
+            "status": _project_command(resolved_project, f"{shell_arg(cli_bin)} status"),
+            "goal_selection_choices": choices,
+            "goal_start_connect_if_needed": None,
+            "goal_start_refresh_state": None,
+            "goal_start_host_loop_activation": None,
+            "goal_start_quota_should_run": None,
+        },
+        "safety_contract": {
+            "runs_bootstrap": False,
+            "writes_registry": False,
+            "writes_state_file": False,
+            "creates_heartbeat": False,
+            "spends_quota": False,
+            "explicit_goal_start_may_write_project_local_state": False,
+            "explicit_goal_start_must_activate_host_loop": False,
+            "host_loop_activation_allowed": False,
+        },
+    }
+    command_pack["message"] = (
+        f"{reason}. Rerun exactly one goal_selection_gate choice; no mutation or host-loop "
+        "command is valid before that selection."
+    )
+    command_pack["packet_summary"] = _build_packet_summary(
+        command_pack,
+        packet_kind="bootstrap_command_pack",
+        detail_refs={
+            "project_connection": "#/project_connection",
+            "goal_selection_gate": "#/goal_selection_gate",
+            "recommended_next_step": "#/recommended_next_step",
+            "commands": "#/commands",
+            "safety_contract": "#/safety_contract",
+            "compatibility_message": "#/message",
+        },
+    )
+    guided_transaction = {
+        "schema_version": GUIDED_START_SCHEMA_VERSION,
+        "mode": "dry_run_preview",
+        "writes_now": False,
+        "spends_quota_now": False,
+        "goal_text": normalized_goal_text,
+        "blocked_by": "goal_selection",
+        "goal_selection_gate": goal_selection_gate,
+        "ordered_steps": [
+            {
+                "id": "inspect_connection",
+                "kind": "read_only",
+                "purpose": "resolve the canonical project and discover registered goals",
+            },
+            {
+                "id": "select_goal",
+                "kind": "goal_selection_gate",
+                "choices": choices,
+                "purpose": "select one registered goal before any todo, agent, state, or host-loop mutation",
+            },
+        ],
+        "idempotency_policy": {
+            "safe_to_rerun_preview": True,
+            "reuse_connected_goal": True,
+        },
+        "preserve_todos_policy": {
+            "force_bootstrap_default": "forbidden_in_guided_flow",
+            "before_destructive_reconnect": "run backup-state and stop for an explicit preserve-todos confirmation",
+            "preferred_scope_change": "use configure-goal incremental updates instead of force bootstrap when state already exists",
+        },
+    }
+    payload: dict[str, Any] = {
+        "ok": True,
+        "schema_version": GUIDED_START_SCHEMA_VERSION,
+        "read_only": True,
+        "guided": True,
+        "project": resolved_project,
+        "goal_id": None,
+        "agent_id": None,
+        "host_surface": host_surface,
+        "goal_text": normalized_goal_text,
+        "project_connection": connection,
+        "goal_selection_gate": goal_selection_gate,
+        "recommended_next_step": recommended_next_step,
+        "guided_transaction": guided_transaction,
+        "command_pack": command_pack,
+        "safety_contract": {
+            "writes_registry": False,
+            "writes_state_file": False,
+            "creates_heartbeat": False,
+            "spends_quota": False,
+            "mutation_commands_are_previewed": False,
+            "force_bootstrap_allowed": False,
+        },
+    }
+    payload["message"] = render_start_goal_guided_markdown(payload)
+    payload["packet_summary"] = _build_packet_summary(
+        payload,
+        packet_kind="guided_start_goal",
+        detail_refs={
+            "command_pack_summary": "#/command_pack/packet_summary",
+            "project_connection": "#/project_connection",
+            "goal_selection_gate": "#/goal_selection_gate",
+            "recommended_next_step": "#/recommended_next_step",
+            "guided_transaction": "#/guided_transaction",
+            "commands": "#/command_pack/commands",
+            "safety_contract": "#/safety_contract",
+            "compatibility_message": "#/message",
+        },
+    )
+    return payload
+
+
 def build_start_goal_guided_packet(
     *,
     project: Path,
@@ -751,6 +969,17 @@ def build_start_goal_guided_packet(
     goal_text: str,
     available_capabilities: list[str] | None = None,
 ) -> dict[str, Any]:
+    if goal_id is None:
+        selection_packet = _build_multi_goal_start_selection_packet(
+            project=project,
+            agent_id=agent_id,
+            cli_bin=cli_bin,
+            host_surface=host_surface,
+            goal_text=goal_text,
+            available_capabilities=available_capabilities,
+        )
+        if selection_packet is not None:
+            return selection_packet
     command_pack = build_loopx_bootstrap_command_pack(
         project=project,
         goal_id=goal_id,
@@ -930,6 +1159,22 @@ def render_start_goal_guided_markdown(payload: dict[str, Any]) -> str:
             + "\n".join(choices)
             + "\n"
         )
+    goal_gate = transaction.get("goal_selection_gate")
+    goal_gate = goal_gate if isinstance(goal_gate, dict) else {}
+    goal_gate_lines = ""
+    if goal_gate:
+        choices = [
+            f"- `{choice.get('goal_id')}` status=`{choice.get('status')}`: "
+            f"`{choice.get('rerun_command')}`"
+            for choice in goal_gate.get("choices") or []
+            if isinstance(choice, dict)
+        ]
+        goal_gate_lines = (
+            "\n## Goal Selection Gate\n\n"
+            f"{goal_gate.get('reason')}\n\n"
+            + "\n".join(choices)
+            + "\n"
+        )
     return f"""# Guided Start Goal
 
 - schema: `{payload.get("schema_version")}`
@@ -944,6 +1189,7 @@ behind explicit command execution by the host/agent.
 ## Ordered Transaction
 
 {chr(10).join(step_lines)}
+{goal_gate_lines}
 {identity_gate_lines}
 
 ## Todo Preservation
