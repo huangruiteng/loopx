@@ -1,0 +1,29 @@
+docs/interaction-pattern-catalog.md
+  s_e3f612788718c1::t_6af8e3673feedb 1439-1444
+docs/project-agent-todo-contract.md
+  s_e3f612788718c1::t_8d2ee681636533 155-169,175-177
+docs/reference/protocols/peer-agent-runtime-v1.md
+  s_e3f612788718c1::t_efa7da97ce57ae 67-74
+docs/status-data-contract.md
+  s_e3f612788718c1::t_7b478c00eb9098 1199-1205
+skills/loopx-self-repair/references/repair-patterns.md
+  s_e3f612788718c1::t_cf1a0a07aac353 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "82f90fac12429cb7c3a72d6c2fd3a34b8be5865e",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
