@@ -1,0 +1,41 @@
+docs/capabilities/semantic-preference/README.md
+  s_9a5a2bd944fdcb::t_bc68085cf2bb98 66-77,82-95,128-134,143-149,166-168
+docs/capabilities/semantic-preference/openviking-project-peer.md
+  s_9a5a2bd944fdcb::t_a29cba0b792f20 35-72,113-115
+examples/issue-fix-pr-description-builder-smoke.py
+  s_9a5a2bd944fdcb::t_e0e05114fc05fc 38-47,90-96
+examples/openviking-project-peer-provider-smoke.py
+  s_9a5a2bd944fdcb::t_9328a31a290982 190-194,229-231,264-266,330-335
+examples/semantic-preference-hook-smoke.py
+  s_9a5a2bd944fdcb::t_aa631be744b32a 15,71-84,121-130,163-187,245-278
+loopx/capabilities/catalog.py
+  s_9a5a2bd944fdcb::t_693aee4d78f4b7 237-241,264-273
+loopx/capabilities/issue_fix/pr_description.py
+  s_9a5a2bd944fdcb::t_c245b8da9a892b 171-172,190-195,282-291,299-300,309-310,349-350,369-370
+loopx/capabilities/semantic_preference/__init__.py
+  s_9a5a2bd944fdcb::t_90559892f8cc61 3,5
+loopx/capabilities/semantic_preference/cli.py
+  s_9a5a2bd944fdcb::t_327844e18181f6 6-11,90-111,138,146-153
+loopx/capabilities/semantic_preference/contract.py
+  s_9a5a2bd944fdcb::t_6182241870f2ba 17-18,22,26,29-33,219-292,382-385,393-394,428-459
+loopx/capabilities/semantic_preference/openviking_provider.py
+  s_9a5a2bd944fdcb::t_083c26d49711e7 149-182,194-196,238-244,272-281
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "63d8c8ade5b33649de584fd8dd20bcafd0dd0378",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
