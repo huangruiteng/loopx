@@ -1273,7 +1273,21 @@ def test_visual_sync_creates_one_document_section_and_board_per_missing_stage(
 
     def runner(args, cwd, _timeout):
         nonlocal created_stage
-        if "docs" in args and "+update" in args:
+        if "docs" in args and "+fetch" in args:
+            payload = {
+                "ok": True,
+                "data": {
+                    "document": {
+                        "revision_id": 1,
+                        "content": (
+                            '<fragment mode="outline"><outline>'
+                            '<h2 id="heading_stage_01">Evidence Stage 01</h2>'
+                            "</outline></fragment>"
+                        ),
+                    }
+                },
+            }
+        elif "docs" in args and "+update" in args:
             created_stage += 1
             payload = {
                 "ok": True,
@@ -1333,6 +1347,171 @@ def test_visual_sync_creates_one_document_section_and_board_per_missing_stage(
     assert [item["whiteboard_token"] for item in stage_boards] == [
         f"wb_stage_{index:02d}" for index in range(1, stage_count + 1)
     ]
+
+
+def test_stage_document_reconciliation_removes_all_stale_duplicate_sections(
+    tmp_path,
+) -> None:
+    projection = _complex_projection()
+    bundle = build_explore_presentation_bundle(projection)
+    stage_count = len(bundle["executive"]["stage_views"])
+    stale_index = stage_count + 1
+    config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
+    config_path = tmp_path / "lark-explore.json"
+    sink = {
+        "docx_token": "doc_public_fixture",
+        "view_role": "executive",
+        "renderer": "mermaid",
+        "stage_whiteboards": [
+            {
+                "stage_index": index,
+                "whiteboard_token": f"wb_stage_{index:02d}",
+            }
+            for index in range(1, stale_index + 1)
+        ],
+    }
+    write_lark_explore_local_config(
+        config_path,
+        {
+            "board": {"base_token": "PUBLIC_FIXTURE_BASE"},
+            "visual_sinks": {"executive": sink},
+        },
+    )
+    stale_headings = [f"stale_heading_{number}" for number in range(1, 4)]
+    deleted_block_ids: list[str] = []
+    published_markers: dict[str, str] = {}
+
+    def outline_xml() -> str:
+        headings = [
+            f'<h2 id="heading_stage_{index:02d}">Evidence Stage {index:02d}</h2>'
+            for index in range(1, stage_count + 1)
+        ]
+        headings.extend(
+            f'<h2 id="{heading}">Evidence Stage {stale_index:02d}</h2>'
+            for heading in stale_headings
+        )
+        return '<fragment mode="outline"><outline>' + "".join(headings) + "</outline></fragment>"
+
+    def runner(args, cwd, _timeout):
+        if "docs" in args and "+fetch" in args and "outline" in args:
+            payload = {
+                "ok": True,
+                "data": {
+                    "document": {
+                        "revision_id": 7,
+                        "content": outline_xml(),
+                    }
+                },
+            }
+        elif "docs" in args and "+fetch" in args and "section" in args:
+            heading = args[args.index("--start-block-id") + 1]
+            number = heading.rsplit("_", 1)[-1]
+            payload = {
+                "ok": True,
+                "data": {
+                    "document": {
+                        "revision_id": 7,
+                        "content": (
+                            f'<fragment mode="section"><h2 id="{heading}">'
+                            f"Evidence Stage {stale_index:02d}</h2>"
+                            f'<p id="stale_paragraph_{number}">本阶段包含 1 个主节点、'
+                            "0 个关系上下文节点；主线：Explore work；跨主线真实关系：0 条。"
+                            "完整 Nodes / Edges / Findings 仍以同一 Base 为准。</p>"
+                            f'<whiteboard id="stale_board_{number}" token="wb_stale_{number}">'
+                            "</whiteboard></fragment>"
+                        ),
+                    }
+                },
+            }
+        elif "docs" in args and "+update" in args:
+            deleted_block_ids.extend(
+                args[args.index("--block-id") + 1].split(",")
+            )
+            stale_headings.clear()
+            payload = {
+                "ok": True,
+                "data": {"document": {"revision_id": 8}},
+            }
+        elif "+update" in args:
+            token = args[args.index("--whiteboard-token") + 1]
+            source_arg = args[args.index("--source") + 1]
+            source = (cwd / source_arg.removeprefix("@")).read_text(
+                encoding="utf-8"
+            )
+            published_markers[token] = re.search(
+                r"LoopX delivery [0-9a-f]{20}", source
+            ).group(0)
+            payload = {"ok": True}
+        else:
+            token = args[args.index("--whiteboard-token") + 1]
+            payload = {
+                "ok": True,
+                "data": {
+                    "nodes": [{"text": {"text": published_markers[token]}}]
+                },
+            }
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(payload),
+            "stderr": "",
+        }
+
+    synced = sync_explore_visuals_to_lark(
+        config,
+        projection=projection,
+        visual_sinks={"executive": sink},
+        config_path=config_path,
+        execute=True,
+        runner=runner,
+    )
+
+    view = synced["views"]["executive"]
+    assert synced["ok"] is True
+    assert view["reconciliation"] == {
+        "required": False,
+        "performed": True,
+        "remote_checked": True,
+        "stale_stage_indexes": [stale_index],
+        "duplicate_stage_indexes": [],
+        "adopted_stage_indexes": [],
+        "deleted_section_count": 3,
+        "deleted_block_count": 9,
+    }
+    assert len(deleted_block_ids) == 9
+    stored = read_lark_explore_local_config(config_path)
+    assert [
+        item["stage_index"]
+        for item in stored["visual_sinks"]["executive"]["stage_whiteboards"]
+    ] == list(range(1, stage_count + 1))
+
+
+def test_stage_document_preview_surfaces_stale_config_reconciliation(tmp_path) -> None:
+    projection = _complex_projection()
+    bundle = build_explore_presentation_bundle(projection)
+    stage_count = len(bundle["executive"]["stage_views"])
+    sink = {
+        "docx_token": "doc_public_fixture",
+        "view_role": "executive",
+        "stage_whiteboards": [
+            {
+                "stage_index": index,
+                "whiteboard_token": f"wb_stage_{index:02d}",
+            }
+            for index in range(1, stage_count + 2)
+        ],
+    }
+
+    preview = sync_explore_visuals_to_lark(
+        LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE"),
+        projection=projection,
+        visual_sinks={"executive": sink},
+        config_path=tmp_path / "lark-explore.json",
+    )
+
+    reconciliation = preview["views"]["executive"]["reconciliation"]
+    assert reconciliation["required"] is True
+    assert reconciliation["performed"] is False
+    assert reconciliation["stale_stage_indexes"] == [stage_count + 1]
 
 
 def test_visual_delivery_digest_changes_when_target_whiteboard_changes(tmp_path) -> None:

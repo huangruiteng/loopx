@@ -946,7 +946,7 @@ def sync_explore_visuals_to_lark(
             for item in role_view.get("stage_views") or []
             if isinstance(item, Mapping)
         ]
-        configured_stages, section_commands, stage_config_error = ensure_stage_whiteboards(
+        configured_stages, section_commands, _, reconciliation, stage_config_error = ensure_stage_whiteboards(
             config,
             role=role,
             role_sink=role_sink,
@@ -975,6 +975,7 @@ def sync_explore_visuals_to_lark(
                 "configured_stage_count": len(configured_stages),
                 "missing_stage_indexes": missing_stage_indexes,
                 "section_commands": section_commands,
+                "reconciliation": reconciliation,
                 "error": stage_config_error
                 or "configure one document section and whiteboard token for each Evidence Stage",
             }
@@ -1052,6 +1053,7 @@ def sync_explore_visuals_to_lark(
             "stage_capacity": stage_capacity,
             "stages": stage_results,
             "section_commands": section_commands,
+            "reconciliation": reconciliation,
         }
     ok = all(bool(item.get("ok")) for item in results.values())
     if not results:
@@ -1754,6 +1756,7 @@ def sync_issue_fix_explore_on_material_change(
             digest
             and (
                 not visual_preview.get("ok")
+                or any(bool(view.get("reconciliation", {}).get("required")) for view in visual_preview.get("views", {}).values())
                 or any(
                     prior_visual_delivery_digests.get(role) != delivery_digest
                     for role, delivery_digest in expected_visual_delivery_digests.items()
