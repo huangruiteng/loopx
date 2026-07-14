@@ -471,6 +471,8 @@ class SkillsBenchLocalAcpRelay:
         self._sessions: dict[str, dict[str, Any]] = {}
         self._published_lifecycle_stages: set[str] = set()
         self._workflow_checkpoint_count = 0
+        self._bridge_summary_snapshot_ids: dict[str, str] = {}
+        self._bridge_summary_snapshot_indexes: dict[str, int] = {}
 
     def serve(self, stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> int:
         for line in stdin:
@@ -2633,6 +2635,15 @@ raise SystemExit(proc.returncode)
                     )
                 )
         inflight_operation_count = max(0, starts - completions)
+        snapshot_key = str(bridge_summary_path)
+        snapshot_id = self._bridge_summary_snapshot_ids.setdefault(
+            snapshot_key,
+            f"bridge-{uuid.uuid4().hex[:12]}",
+        )
+        snapshot_index = (
+            self._bridge_summary_snapshot_indexes.get(snapshot_key, 0) + 1
+        )
+        self._bridge_summary_snapshot_indexes[snapshot_key] = snapshot_index
         trace = {
             "schema_version": "skillsbench_host_local_acp_relay_public_trace_v0",
             "ok": True,
@@ -2644,6 +2655,9 @@ raise SystemExit(proc.returncode)
                 "schema_version": (
                     "skillsbench_remote_command_file_bridge_agent_operations_v0"
                 ),
+                "snapshot_id": snapshot_id,
+                "snapshot_index": snapshot_index,
+                "snapshot_semantics": "cumulative",
                 "request_count": request_count,
                 "success_count": success_count,
                 "failure_count": failure_count,

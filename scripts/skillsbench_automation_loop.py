@@ -10307,6 +10307,7 @@ def _merge_host_local_acp_relay_trace_summary(
     codex_cli_goal_stages: list[str] = []
     codex_cli_goal_reasoning_efforts: list[str] = []
     raw_material_recorded = False
+    payloads: list[dict[str, Any]] = []
     for path in files:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
@@ -10319,10 +10320,56 @@ def _merge_host_local_acp_relay_trace_summary(
             != "skillsbench_host_local_acp_relay_public_trace_v0"
         ):
             continue
+        payloads.append(payload)
+
+    latest_agent_snapshot_indexes: dict[str, tuple[int, int]] = {}
+    for payload_index, payload in enumerate(payloads):
+        if payload.get("trace_kind") != "remote_command_file_bridge_agent_operations":
+            continue
+        agent_ops = payload.get("remote_command_file_bridge_agent_operations")
+        if not isinstance(agent_ops, dict):
+            continue
+        snapshot_id = agent_ops.get("snapshot_id")
+        snapshot_index = agent_ops.get("snapshot_index")
+        if (
+            agent_ops.get("snapshot_semantics") != "cumulative"
+            or not isinstance(snapshot_id, str)
+            or not snapshot_id
+            or len(snapshot_id) > 128
+            or not isinstance(snapshot_index, int)
+            or isinstance(snapshot_index, bool)
+            or snapshot_index < 1
+        ):
+            continue
+        current = latest_agent_snapshot_indexes.get(snapshot_id)
+        if current is None or snapshot_index >= current[0]:
+            latest_agent_snapshot_indexes[snapshot_id] = (
+                snapshot_index,
+                payload_index,
+            )
+
+    superseded_agent_snapshot_count = 0
+    for payload_index, payload in enumerate(payloads):
         boundary = (
             payload.get("boundary")
             if isinstance(payload.get("boundary"), dict)
             else {}
+        )
+        raw_material_recorded = raw_material_recorded or any(
+            boundary.get(field) is True
+            for field in (
+                "raw_command_recorded",
+                "raw_stdout_recorded",
+                "raw_stderr_recorded",
+                "raw_task_text_recorded",
+                "raw_logs_recorded",
+                "raw_trajectory_recorded",
+                "credential_values_recorded",
+                "host_paths_recorded",
+                "remote_paths_recorded",
+                "upload_performed",
+                "submit_performed",
+            )
         )
         trace_kind = payload.get("trace_kind")
         if trace_kind == "remote_command_file_bridge_solver_consumption":
@@ -10376,6 +10423,17 @@ def _merge_host_local_acp_relay_trace_summary(
             raw_material_recorded = raw_material_recorded or (
                 agent_ops.get("raw_material_recorded") is True
             )
+            snapshot_id = agent_ops.get("snapshot_id")
+            snapshot_index = agent_ops.get("snapshot_index")
+            if (
+                agent_ops.get("snapshot_semantics") == "cumulative"
+                and isinstance(snapshot_id, str)
+                and snapshot_id in latest_agent_snapshot_indexes
+                and latest_agent_snapshot_indexes[snapshot_id]
+                != (snapshot_index, payload_index)
+            ):
+                superseded_agent_snapshot_count += 1
+                continue
             count_fields = {
                 "request_count": "request",
                 "success_count": "success",
@@ -10560,22 +10618,6 @@ def _merge_host_local_acp_relay_trace_summary(
             )
         else:
             continue
-        raw_material_recorded = raw_material_recorded or any(
-            boundary.get(field) is True
-            for field in (
-                "raw_command_recorded",
-                "raw_stdout_recorded",
-                "raw_stderr_recorded",
-                "raw_task_text_recorded",
-                "raw_logs_recorded",
-                "raw_trajectory_recorded",
-                "credential_values_recorded",
-                "host_paths_recorded",
-                "remote_paths_recorded",
-                "upload_performed",
-                "submit_performed",
-            )
-        )
     consumed_by_solver = solver_trace_count > 0 and probe_ready_count > 0
     agent_bridge_failure_category = ""
     for category, count in sorted(agent_bridge_failure_category_counts.items()):
@@ -10624,6 +10666,9 @@ def _merge_host_local_acp_relay_trace_summary(
     )
     trace["remote_command_file_bridge_agent_operation_trace_present"] = (
         agent_bridge_trace_count > 0
+    )
+    trace["remote_command_file_bridge_agent_superseded_snapshot_count"] = (
+        superseded_agent_snapshot_count
     )
     prerequisites = plan.setdefault("runner_prerequisites", {})
     agent_trace_required = (
