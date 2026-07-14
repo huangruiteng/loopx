@@ -2278,7 +2278,7 @@ def record_quota_scheduler_ack(
     applied_rrule: str | None = None,
     reset_token: str | None = None,
     identity_signature: str | None = None,
-    reason_summary: str | None = None, use_current_hint: bool = False,
+    reason_summary: str | None = None, use_current_hint: bool = False, host_match_observed: bool = False,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
     safe_agent_id = normalize_todo_claimed_by(agent_id)
@@ -2288,7 +2288,7 @@ def record_quota_scheduler_ack(
         status_payload,
         goal_id=safe_goal_id,
         agent_id=safe_agent_id,
-        available_capabilities=available_capabilities,
+        available_capabilities=available_capabilities, codex_app_current_rrule=applied_rrule if host_match_observed else None,
     )
     raw_runtime_root = status_payload.get("runtime_root")
     if not raw_runtime_root:
@@ -2305,7 +2305,7 @@ def record_quota_scheduler_ack(
         applied_rrule=applied_rrule,
         reset_token=reset_token,
         identity_signature=identity_signature,
-        reason_summary=reason_summary, use_current_hint=use_current_hint,
+        reason_summary=reason_summary, use_current_hint=use_current_hint, host_match_observed=host_match_observed,
     )
 
 

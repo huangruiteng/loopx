@@ -38,7 +38,7 @@ The eventual host plugin should be small and explicit:
 | Lifecycle reads | Surface status, quota, review packet, and command-pack output as compact host packets. | CLI JSON from `status`, `quota should-run`, `review-packet`, and `bootstrap-command-pack`. |
 | Controlled writes | Offer only CLI-equivalent todo/gate/reward/refresh/spend operations, with dry-run when required. | LoopX CLI commands and active-state/event ledger writes. |
 | Automation install | Create or refresh the host heartbeat using `heartbeat-prompt --thin` and scoped agent identity. | Generated heartbeat prompt and registry coordination fields. |
-| Scheduler adapter | Apply `scheduler_hint.codex_app.recommended_rrule` through `automation_update` only when `stateful_backoff.apply_needed=true`, then run `codex_app.ack_hint.cli_args` so LoopX persists progression state from the latest hint. | `quota should-run.scheduler_hint`, `quota scheduler-ack-current`. |
+| Scheduler adapter | Apply `scheduler_hint.codex_app.recommended_rrule` through `automation_update` only when `stateful_backoff.apply_needed=true`, then run `codex_app.ack_hint.cli_args`; when only `ack_needed=true`, skip the host write and run the bound ack directly. | `quota should-run.scheduler_hint`, `quota scheduler-ack-current`. |
 | Privacy guard | Redact local paths and reject raw transcript/session-file/credential payloads. | Public/private boundary plus host projection boundary checks. |
 
 ## Phased Path
@@ -107,7 +107,9 @@ The host applies `quota should-run.scheduler_hint` after each heartbeat result:
   progression index, and
   last applied RRULE.
 - `apply_needed=false` means the desired RRULE is already applied; skip the host
-  update.
+  update. If `ack_needed=true`, run the bound `ack_hint.cli_args` directly so
+  LoopX persists the matching host readback; otherwise no scheduler action is
+  needed.
 - Codex CLI TUI and Claude Code loops run the final quota/replan check before
   self-stop.
 

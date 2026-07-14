@@ -501,7 +501,8 @@ RRULE update, run `loopx` with
 `scheduler_hint.codex_app.ack_hint.cli_args`; current payloads use
 `quota scheduler-ack-current` so LoopX re-reads the latest hint and owns the
 progression/reset state. When the desired RRULE is already applied, skip
-`automation_update`. For the uniquely matched current heartbeat,
+`automation_update`; if `stateful_backoff.ack_needed=true`, run the bound ack
+hint directly, otherwise do nothing. For the uniquely matched current heartbeat,
 `quota should-run` reconciles the installed RRULE with the ACK ledger; a
 `host_observation.status=drift_detected` result reopens `apply_needed`:
 
@@ -640,4 +641,6 @@ automations can all share the same LoopX quota guard without hard-coding
 different wait loops. Host implementations should read the compact
 `codex_app.stateful_backoff` packet, call `automation_update` only when
 `apply_needed=true`, and then let `quota scheduler-ack-current` persist the
-applied RRULE state from the latest scheduler hint without spending quota.
+applied RRULE state from the latest scheduler hint without spending quota. A
+matching reset readback may instead set `ack_needed=true`; in that case skip the
+host write and execute the bound ack directly.

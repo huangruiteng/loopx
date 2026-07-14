@@ -161,6 +161,14 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
     quota_parser.add_argument("--reset-token", help="Optional reset token to validate before scheduler ack.")
     quota_parser.add_argument("--identity-signature", help="Optional identity signature to validate before scheduler ack.")
     quota_parser.add_argument(
+        "--host-match-observed",
+        action="store_true",
+        help=(
+            "A bound scheduler hint observed the applied RRULE on the host, so "
+            "persist its exact reset-token/identity binding without a host write."
+        ),
+    )
+    quota_parser.add_argument(
         "--use-current-hint",
         action="store_true",
         help=(
@@ -329,6 +337,7 @@ def handle_quota_command(
                 identity_signature=args.identity_signature,
                 reason_summary=args.reason_summary,
                 use_current_hint=bool(args.use_current_hint or args.quota_command == "scheduler-ack-current"),
+                host_match_observed=bool(getattr(args, "host_match_observed", False)),
             )
         elif args.quota_command == "spend-slot":
             if not args.goal_id:

@@ -190,6 +190,8 @@ def build_codex_app_scheduler_ack_hint(
     reset_token: Any,
     identity_signature: Any,
     available_capabilities: Any = None,
+    after: str = "automation_update_rrule_success",
+    host_match_observed: bool = False,
     surface: str = CODEX_APP_SURFACE,
     state_key: str = CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
 ) -> dict[str, Any]:
@@ -228,9 +230,19 @@ def build_codex_app_scheduler_ack_hint(
             safe_state_key,
             "--applied-rrule",
             safe_rrule,
-            "--execute",
         ]
     )
+    if host_match_observed:
+        cli_args.extend(
+            [
+                "--host-match-observed",
+                "--reset-token",
+                safe_reset_token,
+                "--identity-signature",
+                safe_identity_signature,
+            ]
+        )
+    cli_args.append("--execute")
     args = {
         "goal_id": safe_goal_id,
         "agent_id": safe_agent_id,
@@ -242,9 +254,11 @@ def build_codex_app_scheduler_ack_hint(
     }
     if safe_available_capabilities:
         args["available_capabilities"] = safe_available_capabilities
+    if host_match_observed:
+        args["host_match_observed"] = True
     return {
         "schema_version": CODEX_APP_SCHEDULER_ACK_HINT_SCHEMA_VERSION,
-        "after": "automation_update_rrule_success",
+        "after": str(after or "automation_update_rrule_success").strip(),
         "command": "quota scheduler-ack-current",
         "execute": True,
         "cli_args": cli_args,
@@ -294,7 +308,9 @@ def build_scheduler_ack_plan(
             "reason": "--identity-signature does not match the current scheduler hint",
         }
     safe_applied_rrule = normalize_scheduler_rrule(applied_rrule)
-    if stateful_backoff.get("apply_needed") is not True:
+    apply_needed = stateful_backoff.get("apply_needed") is True
+    ack_needed = stateful_backoff.get("ack_needed") is True
+    if not apply_needed and not ack_needed:
         return {
             "ok": True,
             "already_applied": True,
@@ -303,7 +319,7 @@ def build_scheduler_ack_plan(
     if not safe_applied_rrule:
         return {
             "ok": False,
-            "reason": "`loopx quota scheduler-ack` requires --applied-rrule when apply_needed=true",
+            "reason": "`loopx quota scheduler-ack` requires --applied-rrule when an ack is needed",
         }
     acceptance = _scheduler_ack_rrule_acceptance(
         scheduler_hint,
@@ -324,6 +340,8 @@ def build_scheduler_ack_plan(
         "applied_rrule": acceptance["applied_rrule"],
         "expected_rrule": acceptance["expected_rrule"],
     }
+    if ack_needed and not apply_needed:
+        result["host_match_ack"] = True
     if acceptance.get("stale_hint_accepted"):
         result["stale_hint_accepted"] = True
         result["stale_hint_tolerance_minutes"] = acceptance.get(
@@ -540,7 +558,10 @@ def build_codex_app_scheduler_ack_event(
         raise ValueError("quota scheduler-ack requires scheduler_hint.codex_app.stateful_backoff")
     if str(stateful_backoff.get("state_key") or "") != state_key:
         raise ValueError("quota scheduler-ack state_key does not match current quota scheduler hint")
-    if stateful_backoff.get("apply_needed") is not True:
+    if (
+        stateful_backoff.get("apply_needed") is not True
+        and stateful_backoff.get("ack_needed") is not True
+    ):
         raise ValueError("quota scheduler-ack is not needed because the current RRULE is already applied")
     safe_applied_rrule = normalize_scheduler_rrule(applied_rrule)
     acceptance = _scheduler_ack_rrule_acceptance(
@@ -870,11 +891,21 @@ def build_scheduler_hint(
                 last_applied_rrule=effective_host_rrule,
                 current_rrule=current_rrule,
             )
-        apply_needed = state_status != "same_identity" or not current_rrule_already_applied
+        host_match_ack_needed = (
+            state_status != "same_identity"
+            and bool(observed_host_rrule)
+            and current_rrule_already_applied
+        )
+        apply_needed = (
+            not current_rrule_already_applied
+            or (state_status != "same_identity" and not host_match_ack_needed)
+        )
+        ack_needed = apply_needed or host_match_ack_needed
         stateful_backoff_detail = {
             "progression_minutes": cadence_progression,
             "current_interval_minutes": current_interval,
             "ack_required_after_apply": apply_needed,
+            "ack_required_from_host_match": host_match_ack_needed,
             "persist": "reset_token|identity_signature|progression_index|last_applied_rrule",
             "same_identity_action": (
                 "advance_index_after_scheduler_ack"
@@ -898,12 +929,20 @@ def build_scheduler_hint(
             "host_action": (
                 "update_current_heartbeat_rrule"
                 if apply_needed
-                else "none"
+                else (
+                    "ack_observed_rrule_without_update"
+                    if host_match_ack_needed
+                    else "none"
+                )
             ),
             "host_action_contract": (
                 "automation_update_rrule_then_quota_scheduler_ack"
                 if apply_needed
-                else "skip_automation_update_when_apply_needed_false"
+                else (
+                    "quota_scheduler_ack_from_matching_host_observation"
+                    if host_match_ack_needed
+                    else "skip_automation_update_when_apply_needed_false"
+                )
             ),
             "rrule_source": (
                 "scheduler_hint.codex_app.recommended_rrule"
@@ -918,6 +957,7 @@ def build_scheduler_hint(
                 "progression_index": current_index,
                 "current_rrule": current_rrule,
                 "apply_needed": apply_needed,
+                "ack_needed": ack_needed,
                 "state_status": state_status,
             },
             "no_spend_for_cadence_change": True,
@@ -934,6 +974,7 @@ def build_scheduler_hint(
             }
         if apply_needed:
             codex_app["recommended_rrule"] = current_rrule
+        if ack_needed:
             if payload.get("goal_id") and identity_value("agent_identity.agent_id"):
                 codex_app["ack_hint"] = build_codex_app_scheduler_ack_hint(
                     goal_id=payload.get("goal_id"),
@@ -942,6 +983,12 @@ def build_scheduler_hint(
                     reset_token=reset_token,
                     identity_signature=identity_signature,
                     available_capabilities=scheduler_ack_capabilities,
+                    after=(
+                        "automation_update_rrule_success"
+                        if apply_needed
+                        else "matching_host_rrule_observed"
+                    ),
+                    host_match_observed=host_match_ack_needed,
                 )
         scheduler_hint = {
             "schema_version": SCHEDULER_HINT_SCHEMA_VERSION,

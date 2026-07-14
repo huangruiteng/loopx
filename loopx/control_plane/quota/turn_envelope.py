@@ -309,7 +309,13 @@ def _scheduler(payload: Mapping[str, Any]) -> dict[str, Any]:
     if state:
         app["stateful_backoff"] = {
             field: state[field]
-            for field in ("state_key", "current_rrule", "apply_needed", "state_status")
+            for field in (
+                "state_key",
+                "current_rrule",
+                "apply_needed",
+                "ack_needed",
+                "state_status",
+            )
             if state.get(field) is not None
         }
     ack = _mapping(codex_app.get("ack_hint"))

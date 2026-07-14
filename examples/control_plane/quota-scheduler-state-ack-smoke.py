@@ -1015,6 +1015,85 @@ def assert_cli_host_rrule_repairs_false_ack() -> None:
         assert matched_app["stateful_backoff"]["host_observation"]["status"] == "matches_recommended", matched
 
 
+def assert_cli_host_match_ack_after_ambiguous_update() -> None:
+    fixture = _load_quota_plan_fixture_module()
+    with tempfile.TemporaryDirectory(prefix="loopx-quota-host-match-ack-") as tmp:
+        root = Path(tmp)
+        registry_path, runtime, project = fixture.write_cli_fixture(root, scoped_agents=True)
+        agent_id = fixture.SCOPED_AGENT_ID
+        first = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            "needs-operator",
+            "--agent-id",
+            agent_id,
+            registry_path=registry_path,
+            runtime=runtime,
+            project=project,
+        )
+        first_app = first["scheduler_hint"]["codex_app"]
+        first_rrule = first_app["recommended_rrule"]
+        assert first_app["stateful_backoff"]["apply_needed"] is True, first
+
+        observed = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            "needs-operator",
+            "--agent-id",
+            agent_id,
+            "--codex-app-current-rrule",
+            first_rrule,
+            registry_path=registry_path,
+            runtime=runtime,
+            project=project,
+        )
+        observed_app = observed["scheduler_hint"]["codex_app"]
+        assert observed_app["stateful_backoff"]["apply_needed"] is False, observed
+        assert observed_app["stateful_backoff"]["ack_needed"] is True, observed
+        assert observed_app["ack_hint"]["after"] == "matching_host_rrule_observed", observed
+        observed_ack_args = observed_app["ack_hint"]["args"]
+        observed_ack_cli_args = observed_app["ack_hint"]["cli_args"]
+        assert observed_ack_args["host_match_observed"] is True, observed
+        assert "--host-match-observed" in observed_ack_cli_args, observed
+        assert observed_ack_args["reset_token"] in observed_ack_cli_args, observed
+        assert observed_ack_args["identity_signature"] in observed_ack_cli_args, observed
+        assert observed_app["ack_hint"]["route_binding"]["registry_bound"] is True, observed
+
+        ack = run_cli(
+            root,
+            *observed_app["ack_hint"]["cli_args"],
+            registry_path=registry_path,
+            runtime=runtime,
+            project=project,
+        )
+        assert ack["ok"] is True, ack
+        assert ack["scheduler_state_mutated"] is True, ack
+        assert ack["host_match_ack"] is True, ack
+
+        advanced = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            "needs-operator",
+            "--agent-id",
+            agent_id,
+            "--codex-app-current-rrule",
+            first_rrule,
+            registry_path=registry_path,
+            runtime=runtime,
+            project=project,
+        )
+        advanced_app = advanced["scheduler_hint"]["codex_app"]
+        assert advanced_app["stateful_backoff"]["apply_needed"] is True, advanced
+        assert advanced_app["recommended_rrule"] != first_rrule, advanced
+        assert advanced_app["host_action"] == "update_current_heartbeat_rrule", advanced
+
+
 def assert_cli_ignores_corrupt_scheduler_state() -> None:
     fixture = _load_quota_plan_fixture_module()
     with tempfile.TemporaryDirectory(prefix="loopx-quota-scheduler-corrupt-") as tmp:
@@ -1164,6 +1243,7 @@ def main() -> int:
     assert_scheduler_state_scope_validation()
     assert_cli_scheduler_ack_progression()
     assert_cli_host_rrule_repairs_false_ack()
+    assert_cli_host_match_ack_after_ambiguous_update()
     assert_cli_ignores_corrupt_scheduler_state()
     assert_cli_scheduler_ack_uses_should_run_lookback()
     subprocess.run(

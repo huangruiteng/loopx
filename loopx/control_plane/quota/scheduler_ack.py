@@ -144,9 +144,28 @@ def record_quota_scheduler_ack_for_decision(
     reason_summary: str | None = None,
     generated_at: str | None = None,
     use_current_hint: bool = False,
+    host_match_observed: bool = False,
 ) -> dict[str, Any]:
     safe_agent_id = normalize_todo_claimed_by(agent_id)
-    if use_current_hint:
+    if host_match_observed and (
+        not str(applied_rrule or "").strip()
+        or not str(reset_token or "").strip()
+        or not str(identity_signature or "").strip()
+    ):
+        return scheduler_ack_failure(
+            goal_id=goal_id,
+            agent_id=safe_agent_id,
+            execute=execute,
+            surface=surface,
+            state_key=state_key,
+            applied_rrule=applied_rrule,
+            reason=(
+                "host-match scheduler ACK requires applied RRULE, reset token, "
+                "and identity signature"
+            ),
+            before=before,
+        )
+    if use_current_hint and not host_match_observed:
         applied_rrule, reset_token, identity_signature = _resolve_scheduler_ack_current_hint(
             before,
             surface=surface,
@@ -279,6 +298,13 @@ def record_quota_scheduler_ack_for_decision(
             f"{goal_id}/{safe_agent_id} applied {record['scheduler_ack_event']['applied_rrule']}"
         ),
     }
+    if ack_plan.get("host_match_ack"):
+        payload["host_match_ack"] = True
+        payload["reason"] = (
+            f"{'updated' if execute else 'dry-run preview'} scheduler state from "
+            f"matching host RRULE: {goal_id}/{safe_agent_id} observed "
+            f"{record['scheduler_ack_event']['applied_rrule']}"
+        )
     if use_current_hint:
         payload["used_current_hint"] = True
         payload["current_hint_source"] = "quota.should-run.scheduler_hint"

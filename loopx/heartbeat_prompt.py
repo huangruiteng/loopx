@@ -31,16 +31,15 @@ USER_TODO_FINAL_MESSAGE_RULE = (
     "Only notify=DONT_NOTIFY + false/0: quiet."
 )
 SCHEDULER_HINT_APPLICATION_RULE = (
-    "Apply `scheduler_hint` for wait backoff and CLI/Claude final-check/self-stop; no spend. "
-    "Codex App: if `codex_app.stateful_backoff.apply_needed=true` and "
-    "`recommended_rrule` exists, `automation_update` RRULE then "
-    "run `codex_app.ack_hint.cli_args`; LoopX owns progression."
+    "Use `scheduler_hint` for backoff/final-check; no spend. Codex App: "
+    "apply_needed -> update recommended RRULE then `ack_hint.cli_args`; "
+    "else ack_needed -> bound ack; else skip. LoopX owns progression."
 )
 SCHEDULER_HINT_COMPACT_RULE = (
-    "Scheduler: no spend. App if apply_needed: update RRULE, ack via `ack_hint`; else skip."
+    "Scheduler: no spend. App apply_needed -> update+ack; else ack_needed -> bound ack; else skip."
 )
 SCHEDULER_HINT_THIN_RULE = (
-    "Scheduler: App apply_needed -> RRULE + `ack_hint.cli_args`; "
+    "Scheduler: apply_needed -> RRULE+ack; else ack_needed -> ack; "
     "final-check CLI/Claude; no spend."
 )
 RUNTIME_CAPABILITY_PROJECTION_THIN_RULE = (
@@ -642,12 +641,10 @@ If the result says `should_run=true`:
    `must_attempt_work=true` means one bounded segment even with
    `notify=DONT_NOTIFY`; quiet no-op needs `must_attempt_work=false` and no
    `notify_user_on_open_todo=true` blocker-push notification. Use
-   `scheduler_hint` for next-wakeup cadence and external-loop unchanged limits;
-   for Codex App heartbeats, read
-   `scheduler_hint.codex_app.stateful_backoff`: if `apply_needed=true` and
-   `codex_app.recommended_rrule` exists, use `automation_update` for the RRULE,
-   then run `loopx` with `codex_app.ack_hint.cli_args`
-   (fall back to `ack_hint.args` only for older payloads); if false, skip host update.
+   `scheduler_hint` for wakeup and unchanged-loop limits. For Codex App:
+   `apply_needed=true` -> update `recommended_rrule`, then run
+   `ack_hint.cli_args`; else `ack_needed=true` -> run that bound ack directly;
+   else skip.
    LoopX owns reset/progression state. It is scheduling only, not delivery
    permission. Then use
    `heartbeat_recommendation`: `recommended_mode=run_first_read_only_map` means
