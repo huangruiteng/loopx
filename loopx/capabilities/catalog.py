@@ -329,6 +329,16 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "purpose": "Run the Stage-4 provider-neutral core-contract suite and compact release gate over the real recall/application seam.",
                 "write_boundary": "bounded local fixture reads only; no provider, memory, repository, state, model API, or external write",
             },
+            {
+                "command": "loopx reward-memory dogfood-evaluate --input <compact-observations.json> --format json",
+                "purpose": "Bind verified Issue Fix and LoopX module outcomes to compact hit, miss, refute, cost, intervention, and bot-feedback receipts after the Stage-4 gate.",
+                "write_boundary": "reads compact receipts only; no raw provider content, memory write, operator write, automatic recall, or external write",
+            },
+            {
+                "command": "loopx reward-memory operator-control --input <reviewed-record.json> --action edit --control-ref <ref> --reasoning-summary <summary> --edited-content-summary <summary> --format json",
+                "purpose": "Prepare an authority-matched edit or retirement decision for a reviewed active record.",
+                "write_boundary": "returns a control decision and next-step receipt only; the declared corpus owner must perform and exactly read back any provider write",
+            },
         ],
         "implemented_protocols": [
             {
@@ -406,6 +416,21 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "module": "loopx.capabilities.reward_memory.evaluation",
                 "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
             },
+            {
+                "schema_version": "reward_memory_dogfood_receipt_v0",
+                "module": "loopx.capabilities.reward_memory.dogfood",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
+            {
+                "schema_version": "reward_memory_dogfood_batch_v0",
+                "module": "loopx.capabilities.reward_memory.dogfood",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
+            {
+                "schema_version": "reward_memory_operator_control_v0",
+                "module": "loopx.capabilities.reward_memory.dogfood",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
         ],
         "smokes": [
             "python3 examples/reward-memory-architecture-smoke.py",
@@ -413,6 +438,7 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "python3 examples/reward-memory-candidate-review-smoke.py",
             "python3 examples/reward-memory-recall-application-smoke.py",
             "python3 examples/reward-memory-evaluation-smoke.py",
+            "python3 examples/reward-memory-dogfood-smoke.py",
         ],
         "docs": [
             "docs/reference/protocols/reward-memory-architecture-v0.md",
@@ -435,11 +461,13 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "Provider and application failures preserve the base output, emit compact receipts or setup hints, and never become user gates automatically.",
             "Private corpus summaries stay transient in-process; public packets retain opaque references and compact lineage only.",
             "Stage 4 proves bounded core-contract invariants only; its fixture pass does not claim semantic uplift or authorize production rollout.",
+            "Stage 5 receipts are derived from Stage-3 application receipts and verified module outcomes; hit or refute requires exact provider readback plus current-artifact verification.",
+            "Stage 5 trial readiness requires Issue Fix, two distinct LoopX domains, hit/miss/refute coverage, and authority-matched edit/retire controls; it still does not authorize production rollout.",
         ],
         "next_real_step": (
-            "Run bounded Stage-5 dogfood through the declared corpus owner, verify "
-            "exact provider readback, and compare real Issue Fix planning outcomes "
-            "without widening the Stage-4 contract-only claim."
+            "Feed one corpus-owner-approved, exactly read-back record through the "
+            "bounded OpenViking Issue Fix pilot and write back compact bot feedback "
+            "without widening the Stage-5 trial-only claim."
         ),
     },
     {

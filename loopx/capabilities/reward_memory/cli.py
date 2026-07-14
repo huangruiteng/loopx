@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable
+import json
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 
 from .architecture import (
     build_reward_memory_architecture_packet,
@@ -17,6 +19,11 @@ from .health import (
     reward_memory_health_case,
 )
 from .evaluation import run_reward_memory_evaluation
+from .dogfood import (
+    build_reward_memory_dogfood_batch,
+    build_reward_memory_dogfood_receipt,
+    build_reward_memory_operator_control,
+)
 from .registry import build_reward_memory_corpus_registry_packet
 
 
@@ -40,6 +47,17 @@ def _render(payload: dict[str, object]) -> str:
     if isinstance(reasons, list):
         lines.append("- reason_codes: `" + ", ".join(map(str, reasons)) + "`")
     return "\n".join(lines) + "\n"
+
+
+def _load_json_object(path_value: str) -> dict[str, object]:
+    path = Path(path_value).expanduser()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ValueError(f"cannot read input JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("input JSON must contain one object")
+    return payload
 
 
 def register_reward_memory_commands(
@@ -109,6 +127,31 @@ def register_reward_memory_commands(
         help="Run the bounded Stage-4 core-contract suite and release gate.",
     )
     add_subcommand_format(evaluate)
+
+    dogfood = sub.add_parser(
+        "dogfood-evaluate",
+        help="Evaluate compact Stage-5 module outcomes after the Stage-4 gate.",
+    )
+    add_subcommand_format(dogfood)
+    dogfood.add_argument(
+        "--input",
+        required=True,
+        help=(
+            "JSON object containing observations and operator_controls; no raw "
+            "provider content is accepted."
+        ),
+    )
+
+    control = sub.add_parser(
+        "operator-control",
+        help="Prepare an authorized Stage-5 edit or retire decision without writing.",
+    )
+    add_subcommand_format(control)
+    control.add_argument("--input", required=True)
+    control.add_argument("--action", choices=["edit", "retire"], required=True)
+    control.add_argument("--control-ref", required=True)
+    control.add_argument("--reasoning-summary", required=True)
+    control.add_argument("--edited-content-summary")
 
     route = sub.add_parser(
         "route-check",
@@ -187,6 +230,45 @@ def handle_reward_memory_command(
             payload["adapter"] = adapter
         elif args.reward_memory_command == "evaluate":
             payload = run_reward_memory_evaluation()
+        elif args.reward_memory_command == "dogfood-evaluate":
+            source = _load_json_object(args.input)
+            observations = source.get("observations")
+            controls = source.get("operator_controls")
+            if not isinstance(observations, Sequence) or isinstance(
+                observations, (str, bytes)
+            ):
+                raise ValueError("observations must be a list")
+            if not isinstance(controls, Sequence) or isinstance(controls, (str, bytes)):
+                raise ValueError("operator_controls must be a list")
+            if any(not isinstance(item, Mapping) for item in observations):
+                raise ValueError("each observation must be an object")
+            if any(not isinstance(item, Mapping) for item in controls):
+                raise ValueError("each operator control must be an object")
+            payload = build_reward_memory_dogfood_batch(
+                [build_reward_memory_dogfood_receipt(item) for item in observations],
+                [dict(item) for item in controls],
+                evaluation=run_reward_memory_evaluation(),
+            )
+        elif args.reward_memory_command == "operator-control":
+            source = _load_json_object(args.input)
+            reviewed_record = source.get("reviewed_record")
+            corpus = source.get("corpus")
+            checkpoint = source.get("operator_checkpoint")
+            if not isinstance(reviewed_record, Mapping):
+                raise ValueError("reviewed_record must be an object")
+            if not isinstance(corpus, Mapping):
+                raise ValueError("corpus must be an object")
+            if not isinstance(checkpoint, Mapping):
+                raise ValueError("operator_checkpoint must be an object")
+            payload = build_reward_memory_operator_control(
+                reviewed_record,
+                corpus,
+                action=args.action,
+                operator_checkpoint=checkpoint,
+                control_ref=args.control_ref,
+                reasoning_summary=args.reasoning_summary,
+                edited_content_summary=args.edited_content_summary,
+            )
         else:
             observation = (
                 pr_3237_regression_observation()
@@ -223,6 +305,8 @@ def handle_reward_memory_command(
         print_payload(payload, output_format(args), _render)
         return 2
     print_payload(payload, output_format(args), _render)
-    if args.reward_memory_command == "evaluate" and payload.get("ok") is not True:
+    if args.reward_memory_command in {"evaluate", "dogfood-evaluate"} and (
+        payload.get("ok") is not True
+    ):
         return 2
     return 0

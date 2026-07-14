@@ -300,3 +300,42 @@ interruption 和 user gate 计数均为零，release gate 才能通过。
 通过后的状态是 `ready_for_bounded_dogfood`，不是 production release。它只证明 core
 contract invariant，不声明 semantic uplift，也不授权 production rollout。Stage 5 必须
 使用经 corpus owner 批准的 record、精确 provider readback 和真实模块结果，才能讨论收益。
+
+## Stage 5 dogfood receipt 与 operator control
+
+Stage 5 只在 Stage 3 application receipt 上增加一层薄的证据合同，不新增 store、scheduler、
+语义路由器、automatic recall 或第二套 evaluator。调用方传入紧凑的真实模块 observation，
+其中 artifact reference 必须与 application receipt 一致：
+
+```bash
+loopx reward-memory dogfood-evaluate \
+  --input compact-observations.json --format json
+```
+
+`reward_memory_dogfood_receipt_v0` 根据已有 application outcome 推导 `hit`、`miss` 或
+`refute`，不接受调用方自行声明结果类型。`hit` 或 `refute` 必须同时满足精确 provider
+result readback 与 current-artifact verification。Receipt 只保留 opaque/hashed memory ref、
+紧凑的已验证结果摘要、latency、model token、provider call、intervention count，以及可选的
+紧凑 bot feedback；不保留 raw provider content，也不授予新的 action authority。
+
+只有 Stage 4 gate 仍然通过，并且受限 batch 同时包含至少一个 Issue Fix 结果、两个不同的
+LoopX domain 结果、hit/miss/refute 三类结果，以及 edit/retire 两类 operator control，
+`reward_memory_dogfood_batch_v0` 才会进入 `ready_for_bounded_issue_fix_pilot`。这只是
+试用就绪声明，semantic uplift 与 production rollout 仍然为 false。
+
+Edit/retire control 同样保持克制：
+
+```bash
+loopx reward-memory operator-control \
+  --input reviewed-record.json --action retire \
+  --control-ref control:example:retire \
+  --reasoning-summary 'Current source truth supersedes this record.' \
+  --format json
+```
+
+Edit checkpoint 必须匹配 corpus owner；retire checkpoint 必须匹配
+`maintenance.retirement_authority`；两者还必须绑定到准确的 corpus、project 与 action。
+Edit 生成一个引用旧 active record 的 replacement
+candidate，retire 生成 retired decision。两个命令都不写 provider state；真正的 write 与
+精确 readback 仍由声明的 corpus owner 执行，因此 operator control 不会悄悄扩大成
+publish、production 或跨项目 authority。

@@ -355,3 +355,49 @@ A pass yields `ready_for_bounded_dogfood`, not production release. It proves
 core contract invariants only, does not claim semantic uplift, and does not
 authorize production rollout. Stage 5 must use a corpus-owner-approved record,
 exact provider readback, and real module outcomes before making an uplift claim.
+
+## Stage 5 dogfood receipts and operator controls
+
+Stage 5 adds one thin evidence layer over the Stage 3 application receipt. It
+does not add a store, scheduler, semantic router, automatic recall path, or
+another evaluator. A caller supplies a compact real-module observation whose
+artifact reference matches the application receipt:
+
+```bash
+loopx reward-memory dogfood-evaluate \
+  --input compact-observations.json --format json
+```
+
+`reward_memory_dogfood_receipt_v0` derives `hit`, `miss`, or `refute` from the
+existing application outcome instead of trusting a caller-provided label. A
+hit or refute is invalid unless the selected provider result was read back
+exactly and the current artifact was verified. The receipt retains only opaque
+or hashed memory references, a compact verified outcome summary, latency,
+model-token and provider-call counts, intervention count, and optional compact
+bot feedback. It retains no raw provider content and grants no new action
+authority.
+
+`reward_memory_dogfood_batch_v0` becomes
+`ready_for_bounded_issue_fix_pilot` only when the Stage 4 gate still passes and
+the bounded batch contains at least one Issue Fix result, two distinct LoopX
+domain results, all three hit/miss/refute classes, and both operator controls.
+This is a trial-readiness statement. Semantic-uplift and production-rollout
+claims remain false.
+
+The edit/retire control is similarly narrow:
+
+```bash
+loopx reward-memory operator-control \
+  --input reviewed-record.json --action retire \
+  --control-ref control:example:retire \
+  --reasoning-summary 'Current source truth supersedes this record.' \
+  --format json
+```
+
+An edit checkpoint must match the corpus owner; a retirement checkpoint must
+match `maintenance.retirement_authority`. Both checkpoints are also bound to
+the exact corpus, project, and action. Edit produces a replacement
+candidate linked to the active record. Retire produces a retired decision.
+Neither command writes provider state. The declared corpus owner still performs
+the write and exact readback, so operator control cannot silently become a
+publish, production, or cross-project authority expansion.

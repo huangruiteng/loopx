@@ -24,6 +24,11 @@ from .health import (
     reward_memory_health_case,
 )
 from .evaluation import run_reward_memory_evaluation
+from .dogfood import (
+    build_reward_memory_dogfood_batch,
+    build_reward_memory_dogfood_receipt,
+    build_reward_memory_operator_control,
+)
 from .registry import (
     build_reward_memory_corpus_registry_packet,
     normalize_reward_memory_corpus,
@@ -40,6 +45,9 @@ __all__ = [
     "build_reward_memory_candidate",
     "build_reward_memory_corpus_health_packet",
     "build_reward_memory_corpus_registry_packet",
+    "build_reward_memory_dogfood_batch",
+    "build_reward_memory_dogfood_receipt",
+    "build_reward_memory_operator_control",
     "build_reward_memory_route_packet",
     "build_reward_memory_recall_request",
     "execute_reward_memory_recall",
