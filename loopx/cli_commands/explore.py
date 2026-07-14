@@ -48,6 +48,10 @@ from ..presentation.sinks.lark.explore_results import (
     sync_explore_visuals_to_lark,
     write_lark_explore_local_config,
 )
+from ..presentation.sinks.lark.explore_singleflight import (
+    explore_feishu_sync_busy_packet,
+    explore_feishu_sync_singleflight,
+)
 from ..presentation.explore_views import build_explore_presentation_bundle
 from ..presentation.sinks.lark.kanban import DEFAULT_CLI_BIN
 from ..history import load_registry
@@ -804,42 +808,58 @@ def handle_explore_command(
                 execute=bool(args.execute),
             )
         elif args.explore_command == "feishu-sync":
-            projection = _projection_for(args, runtime_root=runtime_root)
-            target = _target_config(args, config_path=config_path)
-            payload = sync_explore_results_to_lark(
-                target,
-                projection=projection,
+            with explore_feishu_sync_singleflight(
                 config_path=config_path,
-                sink_visibility=args.sink_visibility,
                 execute=bool(args.execute),
-            )
-            local = read_lark_explore_local_config(config_path)
-            visual_sinks = local.get("visual_sinks")
-            if isinstance(visual_sinks, dict) and visual_sinks:
-                visual_projection = _projection_for(
-                    args,
-                    runtime_root=runtime_root,
-                    finding_limit_override=-1,
-                )
-                payload["visual_sync"] = sync_explore_visuals_to_lark(
-                    target,
-                    projection=visual_projection,
-                    visual_sinks=visual_sinks,
-                    config_path=config_path,
-                    execute=bool(args.execute),
-                )
-            else:
-                payload["visual_sync"] = sync_explore_visual_to_lark(
-                    target,
-                    projection=projection,
-                    visual_sink=local.get("visual_sink")
-                    if isinstance(local.get("visual_sink"), dict)
-                    else None,
-                    config_path=config_path,
-                    semantic_digest=explore_visual_semantic_digest(projection),
-                    execute=bool(args.execute),
-                )
-            payload["ok"] = bool(payload.get("ok")) and bool(payload["visual_sync"].get("ok"))
+            ) as acquired:
+                if not acquired:
+                    payload = explore_feishu_sync_busy_packet()
+                    payload["visual_sync"] = {
+                        "ok": False,
+                        "status": "not_attempted_sync_busy",
+                        "execute": True,
+                        "published": False,
+                        "external_write_performed": False,
+                    }
+                else:
+                    projection = _projection_for(args, runtime_root=runtime_root)
+                    target = _target_config(args, config_path=config_path)
+                    payload = sync_explore_results_to_lark(
+                        target,
+                        projection=projection,
+                        config_path=config_path,
+                        sink_visibility=args.sink_visibility,
+                        execute=bool(args.execute),
+                    )
+                    local = read_lark_explore_local_config(config_path)
+                    visual_sinks = local.get("visual_sinks")
+                    if isinstance(visual_sinks, dict) and visual_sinks:
+                        visual_projection = _projection_for(
+                            args,
+                            runtime_root=runtime_root,
+                            finding_limit_override=-1,
+                        )
+                        payload["visual_sync"] = sync_explore_visuals_to_lark(
+                            target,
+                            projection=visual_projection,
+                            visual_sinks=visual_sinks,
+                            config_path=config_path,
+                            execute=bool(args.execute),
+                        )
+                    else:
+                        payload["visual_sync"] = sync_explore_visual_to_lark(
+                            target,
+                            projection=projection,
+                            visual_sink=local.get("visual_sink")
+                            if isinstance(local.get("visual_sink"), dict)
+                            else None,
+                            config_path=config_path,
+                            semantic_digest=explore_visual_semantic_digest(projection),
+                            execute=bool(args.execute),
+                        )
+                    payload["ok"] = bool(payload.get("ok")) and bool(
+                        payload["visual_sync"].get("ok")
+                    )
         elif args.explore_command == "feishu-card":
             projection = _projection_for(args, runtime_root=runtime_root)
             local = read_lark_explore_local_config(config_path)

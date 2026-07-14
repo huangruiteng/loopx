@@ -58,6 +58,7 @@ from .kanban import (
     parse_lark_base_url,
 )
 from .explore_stage_document import ensure_stage_whiteboards
+from .explore_singleflight import singleflight_issue_fix_material_sync
 from .explore_visual_styles import (
     BOARD_STYLE_AUTO_FLOW,
     board_source_with_delivery_marker,
@@ -1644,6 +1645,7 @@ def sync_explore_results_to_lark(
     }
 
 
+@singleflight_issue_fix_material_sync(default_lark_explore_config_path)
 def sync_issue_fix_explore_on_material_change(
     *,
     registry_path: Path,
@@ -1918,8 +1920,6 @@ def sync_issue_fix_explore_on_material_change(
         "visual_sync": visual_sync,
         "config_path": str(config_path),
     }
-
-
 def build_explore_card_markdown(projection: Mapping[str, Any]) -> str:
     counts = projection.get("counts") if isinstance(projection.get("counts"), dict) else {}
     by_status = counts.get("nodes_by_status") if isinstance(counts.get("nodes_by_status"), dict) else {}

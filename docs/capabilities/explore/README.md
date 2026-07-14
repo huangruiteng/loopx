@@ -749,6 +749,14 @@ missing roles, and returns a retryable configuration action; successful
 per-role diagnostics may still be inspected, but they cannot make the overall
 sink look current or advance its delivery checkpoint.
 
+Executable sync is singleflight per local board config across both the direct
+`feishu-sync` command and automatic material refresh. An overlapping process
+fails before row, visual, or checkpoint writes with `status=sync_busy`,
+`retryable=true`, and `external_write_performed=false`; dry-runs remain
+concurrent because they cannot mutate the sink. Retry after the active process
+exits instead of allowing two upsert scans to create duplicate Result IDs or
+overwrite each other's local checkpoint snapshot.
+
 The text `From Node` / `To Node` columns remain stable public ids for
 automation and review, while the linked-record columns are the Feishu-native
 graph substrate. A Base plugin, relationship-aware view, or Feishu dashboard
