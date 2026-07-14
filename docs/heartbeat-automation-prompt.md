@@ -501,7 +501,9 @@ RRULE update, run `loopx` with
 `scheduler_hint.codex_app.ack_hint.cli_args`; current payloads use
 `quota scheduler-ack-current` so LoopX re-reads the latest hint and owns the
 progression/reset state. When the desired RRULE is already applied, skip
-`automation_update`:
+`automation_update`. For the uniquely matched current heartbeat,
+`quota should-run` reconciles the installed RRULE with the ACK ledger; a
+`host_observation.status=drift_detected` result reopens `apply_needed`:
 
 ```text
 Create a heartbeat automation starting at 3 minutes for the current thread;

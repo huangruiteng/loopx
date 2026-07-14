@@ -508,6 +508,14 @@ reset tokens); LoopX owns reset/progression state
 and omits `recommended_rrule` when the
 desired RRULE is already applied. Cadence changes, reset-to-initial updates,
 final checks, and self-stop changes do not spend quota. Read
+For a uniquely matched active Codex App heartbeat, `quota should-run`
+automatically reconciles the installed RRULE with LoopX's ACK ledger. Treat
+`stateful_backoff.host_observation.status=drift_detected` as authoritative for
+cadence repair; a stale or premature ACK must not suppress `apply_needed`.
+This readback is cadence-only and never exposes the automation prompt or grants
+LoopX permission to edit Codex App files directly.
+
+Read
 `execution_obligation` before
 deciding on a quiet no-op:
 `heartbeat_recommendation.notify` is only the user-notification policy, not an

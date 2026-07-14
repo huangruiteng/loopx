@@ -282,6 +282,10 @@ def load_codex_app_automation_manifest(root: Path | None = None) -> dict[str, An
                 "available_capabilities": infer_available_capabilities_from_prompt(
                     prompt
                 ),
+                "rrule": str(automation.get("rrule") or "").strip(),
+                "target_thread_id": str(
+                    automation.get("target_thread_id") or ""
+                ).strip(),
                 "status": status,
                 "installed": status.upper() != "DELETED",
                 "source": "codex_app_automation_toml",
@@ -295,6 +299,52 @@ def load_codex_app_automation_manifest(root: Path | None = None) -> dict[str, An
         "entries": entries,
         "source": "codex_app_automations",
         "reason": None if entries else "no LoopX heartbeat automations discovered",
+    }
+
+
+def resolve_codex_app_automation_rrule(
+    *,
+    goal_id: str,
+    agent_id: str | None = None,
+    thread_id: str | None = None,
+    root: Path | None = None,
+) -> dict[str, Any]:
+    """Resolve one active Codex App heartbeat RRULE without exposing its body."""
+
+    manifest = load_codex_app_automation_manifest(root)
+    if not manifest.get("available"):
+        return {"available": False, "reason": manifest.get("reason")}
+    safe_goal_id = str(goal_id or "").strip()
+    safe_agent_id = str(agent_id or "").strip()
+    safe_thread_id = str(thread_id or os.environ.get("CODEX_THREAD_ID") or "").strip()
+    candidates = [
+        entry
+        for entry in manifest.get("entries", [])
+        if isinstance(entry, dict)
+        and entry.get("installed") is True
+        and str(entry.get("goal_id") or "") == safe_goal_id
+        and (not safe_agent_id or str(entry.get("agent_id") or "") == safe_agent_id)
+        and (
+            not safe_thread_id
+            or str(entry.get("target_thread_id") or "") == safe_thread_id
+        )
+        and str(entry.get("rrule") or "").strip()
+    ]
+    if len(candidates) != 1:
+        return {
+            "available": False,
+            "reason": (
+                "Codex App heartbeat RRULE is ambiguous"
+                if candidates
+                else "no matching active Codex App heartbeat RRULE"
+            ),
+            "candidate_count": len(candidates),
+        }
+    entry = candidates[0]
+    return {
+        "available": True,
+        "rrule": entry["rrule"],
+        "source": "codex_app_automation_manifest",
     }
 
 
