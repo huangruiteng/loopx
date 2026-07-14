@@ -858,6 +858,33 @@ def assert_closed_agent_vision_allows_bounded_monitor_wait() -> None:
         assert guard.get("autonomous_replan_obligation") is None, (state, guard)
 
 
+def assert_generic_replan_ack_does_not_silence_empty_monitor_frontier() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            [monitor_item()],
+            replan_obligation=None,
+            latest_runs=[
+                watch_lane_continuation_ack_run(
+                    delta_kinds=[
+                        "active_state_next_action",
+                        "goal_vision_patch",
+                        "no_followup",
+                    ]
+                ),
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    frontier = guard["goal_frontier_projection"]
+    assert frontier["monitor_only_lanes"]["present"] is True, frontier
+    assert frontier["replan_required"] is True, frontier
+    obligation = guard["autonomous_replan_obligation"]
+    assert obligation["triggers"][0]["kind"] == "frontier_exhausted_monitor_lane", guard
+
+
 def assert_custom_agent_vision_state_remains_open() -> None:
     guard = build_quota_should_run(
         status_payload(
@@ -1454,6 +1481,7 @@ def main() -> None:
     assert_long_chain_replan_ack_expires_after_material_review_window()
     assert_agent_vision_gap_derives_replan()
     assert_closed_agent_vision_allows_bounded_monitor_wait()
+    assert_generic_replan_ack_does_not_silence_empty_monitor_frontier()
     assert_custom_agent_vision_state_remains_open()
     assert_goal_frontier_context_helper_matches_quota_payload()
     assert_open_agent_vision_uses_watch_lane_continuation_ack()
