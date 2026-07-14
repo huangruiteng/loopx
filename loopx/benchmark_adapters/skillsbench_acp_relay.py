@@ -42,6 +42,9 @@ from loopx.benchmark_adapters.skillsbench_bridge_summary import (
 from loopx.benchmark_adapters.skillsbench_bridge_guard import (
     LOOPX_COMMAND_INSTRUMENTATION_SOURCE,
 )
+from loopx.benchmark_adapters.skillsbench_acp_failure_policy import (
+    RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES,
+)
 from loopx.benchmark_adapters.skillsbench_codex_goal_recovery import (
     CODEX_CLI_GOAL_POST_BRIDGE_CONTINUE_PROMPT,
     POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
@@ -344,13 +347,6 @@ def _codex_exec_failure_category(
     if returncode is not None:
         return "codex_exec_exit_nonzero"
     return "codex_exec_failed"
-
-
-RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES = {
-    "codex_exec_first_action_timeout",
-    "codex_exec_task_output_quiet_timeout",
-    "codex_exec_bridge_idle_timeout",
-}
 
 
 def _prompt_with_app_server_closeout_instruction(prompt_text: str) -> str:
@@ -925,6 +921,12 @@ class SkillsBenchLocalAcpRelay:
                     returncode=proc.returncode,
                     stderr_text=stderr_text,
                 )
+                recoverable_turn_failure = bool(
+                    category in RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES
+                    and prompt_text.strip()
+                    != SKILLSBENCH_LOCAL_ACP_RELAY_HEALTH_PROMPT
+                    and not _is_bridge_action_preflight_prompt(prompt_text)
+                )
                 self._publish_codex_exec_failure_trace(
                     stage="exit_nonzero",
                     returncode=proc.returncode,
@@ -935,12 +937,13 @@ class SkillsBenchLocalAcpRelay:
                         output_path.stat().st_size if output_path.exists() else 0
                     ),
                     failure_category=category,
+                    recoverable_turn_failure=recoverable_turn_failure,
                 )
                 if bridge_summary_path is not None:
                     self._publish_remote_bridge_agent_operations_trace(
                         bridge_summary_path=bridge_summary_path,
                     )
-                if category in RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES:
+                if recoverable_turn_failure:
                     return _recoverable_codex_turn_failure_message(category)
                 raise RuntimeError(f"local codex execution failed: {category}")
             try:
@@ -2775,6 +2778,7 @@ raise SystemExit(proc.returncode)
         final_message_present: bool,
         final_message_bytes: int,
         failure_category: str | None = None,
+        recoverable_turn_failure: bool | None = None,
     ) -> None:
         if not self._config.worker_public_trace_dir:
             return
@@ -2788,6 +2792,10 @@ raise SystemExit(proc.returncode)
             returncode=returncode,
             stderr_text=stderr_text,
         )
+        if recoverable_turn_failure is None:
+            recoverable_turn_failure = (
+                category in RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES
+            )
         trace = {
             "schema_version": "skillsbench_host_local_acp_relay_public_trace_v0",
             "ok": False,
@@ -2799,6 +2807,7 @@ raise SystemExit(proc.returncode)
                 "schema_version": "skillsbench_codex_exec_process_failure_v0",
                 "stage": safe_stage,
                 "failure_category": str(category or "codex_exec_failed")[:120],
+                "recoverable_turn_failure": recoverable_turn_failure,
                 "returncode": (
                     returncode
                     if isinstance(returncode, int)

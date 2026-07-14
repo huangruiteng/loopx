@@ -128,6 +128,9 @@ from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     run_skillsbench_host_local_acp_transport_probe,
     run_skillsbench_local_acp_relay_probe,
 )
+from loopx.benchmark_adapters.skillsbench_acp_failure_policy import (  # noqa: E402
+    RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES,
+)
 from loopx.benchmark_adapters.skillsbench_codex_goal_trace import (  # noqa: E402
     codex_cli_goal_recovery_public_fields,
     merge_codex_cli_goal_recovery_trace,
@@ -2838,6 +2841,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_preflight_bridge_task_facing_success_count",
         "host_local_acp_codex_exec_preflight_bridge_task_facing_failure_count",
         "host_local_acp_codex_exec_failure_trace_count",
+        "host_local_acp_codex_exec_recoverable_failure_trace_count",
+        "host_local_acp_codex_exec_fatal_failure_trace_count",
         "codex_api_reverse_tunnel_proxy_endpoint_port",
         "benchmark_egress_proxy_endpoint_port",
         "benchmark_egress_no_proxy_entry_count",
@@ -10260,6 +10265,8 @@ def _merge_host_local_acp_relay_trace_summary(
     probe_ready_count = 0
     operation_count = 0
     codex_exec_failure_trace_count = 0
+    codex_exec_recoverable_failure_trace_count = 0
+    codex_exec_fatal_failure_trace_count = 0
     codex_exec_failure_categories: list[str] = []
     agent_bridge_trace_count = 0
     agent_bridge_request_count = 0
@@ -10340,6 +10347,16 @@ def _merge_host_local_acp_relay_trace_summary(
             )
             codex_exec_failure_trace_count += 1
             category = process.get("failure_category")
+            recoverable_turn_failure = process.get("recoverable_turn_failure")
+            if not isinstance(recoverable_turn_failure, bool):
+                recoverable_turn_failure = (
+                    isinstance(category, str)
+                    and category in RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES
+                )
+            if recoverable_turn_failure:
+                codex_exec_recoverable_failure_trace_count += 1
+            else:
+                codex_exec_fatal_failure_trace_count += 1
             if (
                 isinstance(category, str)
                 and category
@@ -10583,6 +10600,12 @@ def _merge_host_local_acp_relay_trace_summary(
     )
     trace["host_local_acp_codex_exec_failure_trace_count"] = (
         codex_exec_failure_trace_count
+    )
+    trace["host_local_acp_codex_exec_recoverable_failure_trace_count"] = (
+        codex_exec_recoverable_failure_trace_count
+    )
+    trace["host_local_acp_codex_exec_fatal_failure_trace_count"] = (
+        codex_exec_fatal_failure_trace_count
     )
     trace["host_local_acp_codex_exec_failure_trace_present"] = (
         codex_exec_failure_trace_count > 0
@@ -10832,6 +10855,12 @@ def _merge_host_local_acp_relay_trace_summary(
     )
     prerequisites["host_local_acp_codex_exec_failure_trace_count"] = (
         codex_exec_failure_trace_count
+    )
+    prerequisites["host_local_acp_codex_exec_recoverable_failure_trace_count"] = (
+        codex_exec_recoverable_failure_trace_count
+    )
+    prerequisites["host_local_acp_codex_exec_fatal_failure_trace_count"] = (
+        codex_exec_fatal_failure_trace_count
     )
     prerequisites["host_local_acp_codex_exec_failure_trace_present"] = (
         codex_exec_failure_trace_count > 0

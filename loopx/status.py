@@ -830,6 +830,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count",
         "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count",
         "host_local_acp_codex_exec_failure_trace_count",
+        "host_local_acp_codex_exec_recoverable_failure_trace_count",
+        "host_local_acp_codex_exec_fatal_failure_trace_count",
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
             compact[field] = value[field]

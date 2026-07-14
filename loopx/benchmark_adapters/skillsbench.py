@@ -24,6 +24,10 @@ from .skillsbench_failure_signals import (
     skillsbench_pip_bootstrap_failure_evidence,
     skillsbench_runner_error_fingerprint,
 )
+from .skillsbench_acp_failure_policy import (
+    recoverable_transport_after_bridge_attempt,
+    without_recoverable_transport_infra_labels,
+)
 from .skillsbench_signals import build_skillsbench_solution_quality_signals
 from .skillsbench_result_discovery import (
     SKILLSBENCH_RESULT_DISCOVERY_SCHEMA_VERSION,
@@ -2664,6 +2668,12 @@ def _skillsbench_controller_trace_counters(
         "host_local_acp_codex_exec_failure_trace_count": count(
             "host_local_acp_codex_exec_failure_trace_count"
         ),
+        "host_local_acp_codex_exec_recoverable_failure_trace_count": count(
+            "host_local_acp_codex_exec_recoverable_failure_trace_count"
+        ),
+        "host_local_acp_codex_exec_fatal_failure_trace_count": count(
+            "host_local_acp_codex_exec_fatal_failure_trace_count"
+        ),
         "host_local_acp_codex_exec_failure_trace_present": controller_trace.get(
             "host_local_acp_codex_exec_failure_trace_present"
         )
@@ -4378,6 +4388,13 @@ def build_skillsbench_benchflow_result_benchmark_run(
     host_local_acp_codex_exec_failure_category = str(
         controller_counters.get("host_local_acp_codex_exec_failure_category") or ""
     )
+    host_local_acp_recoverable_transport_after_bridge_attempt = (
+        recoverable_transport_after_bridge_attempt(
+            controller_counters,
+            official_score_present=reward_value is not None,
+            task_facing_success_count=agent_bridge_task_facing_success_count,
+        )
+    )
     host_local_acp_idle_timeout_after_countable_closeout = bool(
         host_local_acp_codex_exec_failure_present
         and host_local_acp_codex_exec_failure_category == "codex_exec_bridge_idle_timeout"
@@ -4404,6 +4421,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
         and not official_passed
         and not host_local_acp_idle_timeout_after_countable_closeout
         and not host_local_acp_task_output_quiet_after_bridge_attempt
+        and not host_local_acp_recoverable_transport_after_bridge_attempt
     ):
         if host_local_acp_idle_no_task_output_progress_stop:
             host_failure_label = (
@@ -4459,6 +4477,25 @@ def build_skillsbench_benchflow_result_benchmark_run(
         for item in host_failure_extra_labels:
             if item and item not in failure_labels:
                 failure_labels.append(item)
+    elif host_local_acp_recoverable_transport_after_bridge_attempt:
+        warning_label = (
+            "skillsbench_host_local_acp_recoverable_transport_after_bridge_attempt"
+        )
+        failure_labels = without_recoverable_transport_infra_labels(failure_labels)
+        if reward_value == 0 and score_failure_attribution in {
+            "",
+            "none",
+            "skillsbench_runner_error",
+            "skillsbench_codex_acp_jsonrpc_internal_error",
+            "skillsbench_codex_acp_transport_error",
+        }:
+            exception_type = "none"
+            score_failure_attribution = "official_score_zero_case_failure"
+            runner_score_failure_attribution = "none"
+            if "official_score_zero_case_failure" not in failure_labels:
+                failure_labels.append("official_score_zero_case_failure")
+        if warning_label not in warning_labels:
+            warning_labels.append(warning_label)
     elif host_local_acp_task_output_quiet_after_bridge_attempt:
         warning_label = (
             "skillsbench_host_local_acp_task_output_quiet_after_bridge_attempt"
@@ -4557,6 +4594,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
     if (
         error_text
         and not host_local_acp_task_output_quiet_after_bridge_attempt
+        and not host_local_acp_recoverable_transport_after_bridge_attempt
     ) or native_goal_worker_uncountable:
         runner_failure = {
             "schema_version": "skillsbench_runner_failure_v0",
