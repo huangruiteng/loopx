@@ -35,9 +35,7 @@ def run_cli(*args: str) -> dict[str, object]:
 
 def main() -> int:
     architecture = build_reward_memory_architecture_packet()
-    classes = {
-        item["class_id"]: item for item in architecture["memory_classes"]
-    }
+    classes = {item["class_id"]: item for item in architecture["memory_classes"]}
     assert set(classes) == {
         "run_bound_reward",
         "hard_policy",
@@ -46,12 +44,22 @@ def main() -> int:
         "working_context",
     }
     assert classes["run_bound_reward"]["future_influence"] == (
-        "candidate_review_required"
+        "candidate_derivation_and_activation_policy_required"
     )
-    assert classes["hard_policy"]["authority"] == "constraint_or_veto"
-    assert classes["soft_preference"]["authority"] == (
-        "advisory_ranking_or_rewrite"
+    hard_policy = classes["hard_policy"]
+    assert hard_policy["authority"] == (
+        "constraint_or_veto_within_verified_actor_scope"
     )
+    assert hard_policy["derivation"]["policy_content_may_be_inferred"] is True
+    assert (
+        hard_policy["derivation"]["authority_scope_must_be_verified_independently"]
+        is True
+    )
+    assert (
+        "verified_repository_core_contributor"
+        in hard_policy["derivation"]["eligible_actor_roles"]
+    )
+    assert classes["soft_preference"]["authority"] == ("advisory_ranking_or_rewrite")
     assert classes["procedural_experience"]["authority"] == (
         "advisory_until_current_artifact_verification"
     )
@@ -67,6 +75,9 @@ def main() -> int:
     assert classes["working_context"]["durability"] == (
         "fresh_context_expires_quickly_session_summary_is_archive_revision_bound"
     )
+    assert classes["working_context"]["subtype_status"]["fresh_execution_context"] == (
+        "existing_loopx_control_plane_capability"
+    )
     assert architecture["precedence"][0] == (
         "explicit_action_authority_and_privacy_boundary"
     )
@@ -78,6 +89,16 @@ def main() -> int:
         "basis_required": True,
         "may_increase_authority": False,
     }
+    assert architecture["routing_contract"]["mode"] == (
+        "model_reasoning_inside_deterministic_safety_guards"
+    )
+    assert architecture["routing_contract"]["not_an_exhaustive_decision_table"]
+    assert (
+        architecture["existing_capability_reuse"]["fresh_execution_context"][
+            "new_stage_2_runtime_required"
+        ]
+        is False
+    )
     openviking = architecture["provider_alignment"]["openviking"]
     assert openviking["content_source_of_truth"] == "agfs_content"
     assert openviking["non_instruction_artifacts"]["openviking_cases"] == (
@@ -87,11 +108,13 @@ def main() -> int:
         "memory_applied_with_receipt"
     )
 
-    regression = build_reward_memory_route_packet(
-        pr_3237_regression_observation()
-    )
+    regression = build_reward_memory_route_packet(pr_3237_regression_observation())
     assert regression["decision"] == "meta_design_gate", regression
     assert regression["pilot_authorized"] is False
+    assert regression["route_check_role"] == (
+        "deterministic_guard_fixture_not_live_reasoner"
+    )
+    assert regression["live_reasoning_required"] is True
     assert {
         "semantics_by_design",
         "semantic_contract_change",

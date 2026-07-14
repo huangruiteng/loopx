@@ -294,7 +294,8 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
         ),
         "user_value": (
             "Keep run judgments, policies, preferences, reusable experience, and "
-            "working context distinct so recalled material cannot silently become authority."
+            "working context distinct; derive policy content from verified contributor "
+            "signals without inventing or widening authority."
         ),
         "entry_command": "loopx reward-memory architecture --format json",
         "commands": [
@@ -305,8 +306,8 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             },
             {
                 "command": "loopx reward-memory route-check --case pr-3237 --format json",
-                "purpose": "Exercise the public negative regression for semantic-contract, cross-surface, high-complexity issue-fix routing.",
-                "write_boundary": "deterministic public fixture only; no issue body, memory content, repository, or external write",
+                "purpose": "Exercise deterministic safety guards for the public PR #3237 regression; this fixture is not the live reasoning router.",
+                "write_boundary": "stateless public guard fixture only; no issue body, memory content, repository, provider, or external write",
             },
             {
                 "command": "loopx reward-memory corpus-registry --format json",
@@ -350,17 +351,20 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "docs/reference/protocols/reward-memory-corpus-registry-v0.md",
         ],
         "boundaries": [
-            "Run-bound reward is outcome evidence and requires explicit review before any promotion.",
-            "Hard policy, fresh source truth, action authority, and privacy always outrank preferences and experience.",
+            "Run-bound reward is outcome evidence; future influence requires compact candidate derivation and an activation policy.",
+            "Verified owner or core-contributor feedback may derive hard-policy content only inside independently verified repository and action authority scope.",
+            "Deterministic code enforces authority, scope, privacy, freshness, verification, and conflict guards; model reasoning owns interpretation and trade-offs inside those guards.",
             "Retrieval without current-artifact verification has zero patch authority.",
             "OpenViking cases are evaluation fixtures, provider soul text is not action authority, and session working memory remains continuation context.",
+            "LoopX fresh execution context already exists and Stage 2 must reuse it rather than add another context system.",
             "Corpus presence, index presence, retrieval success, readback, and applied receipts are distinct health states.",
             "Project or surface mismatch fails closed before provider availability can influence application.",
             "Stages 0-1 write no corpus, candidate, provider memory, evaluation result, or external artifact.",
         ],
         "next_real_step": (
-            "Implement the deferred Stage-2 candidate distillation and explicit "
-            "human-review queue without enabling cross-module recall."
+            "Implement one thin Stage-2 candidate and activation-decision seam over "
+            "existing LoopX/OpenViking evidence, with Issue Fix as the first adapter; "
+            "do not add a second store, scheduler, or automatic recall."
         ),
     },
     {

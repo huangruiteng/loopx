@@ -28,7 +28,7 @@ def _memory_classes() -> list[dict[str, Any]]:
             "source_kinds": ["explicit_human_reward"],
             "scope_floor": ["goal_id", "run_id"],
             "authority": "outcome_evidence_only",
-            "future_influence": "candidate_review_required",
+            "future_influence": "candidate_derivation_and_activation_policy_required",
             "durability": "append_only_run_overlay",
             "supersession": "append_correction_without_rewriting_the_judged_run",
             "revocation": "append_revocation_reference",
@@ -37,25 +37,57 @@ def _memory_classes() -> list[dict[str, Any]]:
         },
         {
             "class_id": "hard_policy",
-            "purpose": "Constrain or veto actions at an explicit boundary.",
+            "purpose": (
+                "Constrain or veto actions within an independently verified "
+                "actor and repository authority scope."
+            ),
             "source_kinds": [
                 "explicit_user_boundary",
                 "repository_policy",
                 "operator_gate",
                 "authority_checkpoint",
+                "verified_contributor_feedback_inference",
             ],
             "excluded_sources": [
-                "recalled_semantic_memory_without_canonical_policy_binding",
-                "provider_soul_or_boundary_text_without_action_authority",
+                "recalled_semantic_memory_without_verified_actor_and_scope_binding",
+                "provider_soul_or_boundary_text_without_verified_action_authority",
             ],
             "scope_floor": ["project_or_goal", "action_or_surface"],
-            "authority": "constraint_or_veto",
-            "future_influence": "deterministic_when_active_and_in_scope",
+            "authority": "constraint_or_veto_within_verified_actor_scope",
+            "future_influence": (
+                "reasoned_application_with_provenance_and_conflict_checks"
+            ),
             "durability": "durable_until_superseded_revoked_or_expired",
-            "supersession": "explicit_narrower_or_newer_policy_reference",
+            "supersession": ("explicit_or_stronger_newer_verified_policy_reference"),
             "revocation": "explicit_authorized_revocation",
             "expiry": "required_for_temporary_policy",
             "privacy": "private_by_default_unless_rewritten_public_safe",
+            "derivation": {
+                "policy_content_may_be_inferred": True,
+                "authority_scope_must_be_verified_independently": True,
+                "eligible_actor_roles": [
+                    "verified_repository_core_contributor",
+                    "verified_project_owner_or_operator",
+                ],
+                "evidence_inputs": [
+                    "explicit_feedback",
+                    "selected_option",
+                    "verified_scoped_preference",
+                    "current_artifact_verified_procedural_experience",
+                    "repeated_accepted_or_rejected_outcome",
+                    "maintainer_correction",
+                ],
+                "activation_rule": (
+                    "may_activate_with_compact_provenance_when_content_and_scope_"
+                    "are_unambiguous_and_no_higher_authority_conflict_exists"
+                ),
+                "cannot_derive": [
+                    "credentials",
+                    "new_write_publish_or_production_scope",
+                    "current_gate_transition_without_source_receipt",
+                    "cross_user_cross_agent_or_cross_repository_authority",
+                ],
+            },
         },
         {
             "class_id": "soft_preference",
@@ -116,6 +148,10 @@ def _memory_classes() -> list[dict[str, Any]]:
                 "fresh_execution_context",
                 "session_working_memory",
             ],
+            "subtype_status": {
+                "fresh_execution_context": "existing_loopx_control_plane_capability",
+                "session_working_memory": "provider_backed_capability_reuse",
+            },
             "purpose": (
                 "Carry fresh execution state or a revisioned session-continuation "
                 "summary without promoting either into reusable policy."
@@ -156,7 +192,8 @@ def _openviking_alignment() -> dict[str, Any]:
                 "loopx_overlay_no_direct_openviking_memory_equivalent"
             ),
             "hard_policy": (
-                "loopx_repository_operator_or_user_authority_only_provider_soul_is_advisory"
+                "explicit_or_verified_contributor_derived_policy_content_bound_to_"
+                "existing_loopx_repository_operator_or_user_authority"
             ),
             "soft_preference": "reviewed_openviking_preference_candidate",
             "procedural_experience": {
@@ -170,7 +207,8 @@ def _openviking_alignment() -> dict[str, Any]:
             },
             "working_context": {
                 "fresh_execution_context": (
-                    "loopx_registry_todo_checkout_and_tool_observation"
+                    "existing_loopx_registry_todo_checkout_and_tool_observation_"
+                    "no_new_reward_memory_store"
                 ),
                 "session_working_memory": (
                     "openviking_archive_overview_bound_to_session_and_archive_revision"
@@ -256,6 +294,29 @@ def build_reward_memory_architecture_packet() -> dict[str, Any]:
             "expired",
             "retired",
         ],
+        "routing_contract": {
+            "mode": "model_reasoning_inside_deterministic_safety_guards",
+            "deterministic_guards": [
+                "verified_actor_and_action_authority_scope",
+                "project_surface_and_revision_scope",
+                "privacy_and_external_write_boundary",
+                "revoked_expired_or_unresolved_conflict_rejection",
+                "current_artifact_verification_when_required",
+            ],
+            "reasoner_discretion": [
+                "interpret_feedback_and_candidate_meaning",
+                "judge_relevance_and_evidence_sufficiency",
+                "choose_tradeoffs_within_the_allowed_action_set",
+                "decide_whether_to_apply_ignore_or_seek_more_evidence",
+            ],
+            "required_receipt": [
+                "reasoning_summary",
+                "applied_or_ignored_memory_refs",
+                "current_artifact_verification",
+                "authority_and_scope_check",
+            ],
+            "not_an_exhaustive_decision_table": True,
+        },
         "precedence": [
             "explicit_action_authority_and_privacy_boundary",
             "active_in_scope_hard_policy",
@@ -272,15 +333,32 @@ def build_reward_memory_architecture_packet() -> dict[str, Any]:
         ],
         "safety_invariants": [
             "confidence_never_increases_authority",
-            "reward_or_preference_never_grants_permission",
+            "verified_actor_feedback_may_derive_policy_content_but_not_new_authority_scope",
+            "reward_or_preference_never_grants_new_credentials_or_action_scope",
             "memory_never_overrides_a_gate_policy_or_current_source_of_truth",
             "raw_chat_tool_logs_credentials_and_local_paths_are_not_memory_records",
             "retrieval_without_current_artifact_verification_has_zero_patch_authority",
-            "promotion_from_reward_requires_explicit_candidate_review",
-            "provider_soul_boundary_or_experience_text_never_grants_action_authority",
+            "promotion_from_reward_requires_compact_candidate_provenance_and_verified_actor_scope",
+            "provider_soul_boundary_or_experience_text_without_verified_actor_binding_never_grants_action_authority",
             "evaluation_cases_are_not_executable_instructions",
             "corpus_or_index_presence_is_not_retrieval_or_application_health",
         ],
+        "existing_capability_reuse": {
+            "fresh_execution_context": {
+                "status": "complete_in_current_loopx_control_plane",
+                "sources": [
+                    "registry",
+                    "active_state",
+                    "todo_and_quota_projection",
+                    "current_checkout_and_bounded_tool_observation",
+                ],
+                "new_stage_2_runtime_required": False,
+            },
+            "openviking_memory": {
+                "role": "provider_storage_index_retrieval_and_session_memory",
+                "reuse_before_new_infrastructure": True,
+            },
+        },
         "provider_alignment": {"openviking": _openviking_alignment()},
         "pilot_meta_delegation": {
             "schema_version": "reward_memory_pilot_meta_delegation_v0",
@@ -313,8 +391,10 @@ def build_reward_memory_architecture_packet() -> dict[str, Any]:
         "stage_boundaries": {
             "stage_0": "classification_precedence_and_delegation_only",
             "stage_1": "corpus_registry_ownership_and_retrieval_health",
-            "stage_2": "candidate_distillation_and_human_review",
-            "stage_3": "cross_module_recall_and_application",
+            "stage_2": (
+                "thin_candidate_and_review_seam_no_second_store_scheduler_or_recall"
+            ),
+            "stage_3": "reasoning_mediated_cross_module_recall_and_application",
             "stage_4": "evaluation_harness_and_release_gate",
             "stage_5": "bounded_dogfood_and_operator_controls",
         },
@@ -355,18 +435,15 @@ def _boolean(observation: Mapping[str, Any], key: str) -> bool:
 def build_reward_memory_route_packet(
     observation: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Route a bounded issue-fix observation to pilot, meta, or evidence hold."""
+    """Check a bounded issue-fix guard fixture, not the live reasoning router."""
 
     behavior_status = str(observation.get("behavior_status") or "").strip()
     if behavior_status not in BEHAVIOR_STATUSES:
-        raise ValueError(
-            f"behavior_status must be one of {sorted(BEHAVIOR_STATUSES)}"
-        )
+        raise ValueError(f"behavior_status must be one of {sorted(BEHAVIOR_STATUSES)}")
     complexity = str(observation.get("edge_case_complexity") or "").strip()
     if complexity not in EDGE_CASE_COMPLEXITIES:
         raise ValueError(
-            "edge_case_complexity must be one of "
-            f"{sorted(EDGE_CASE_COMPLEXITIES)}"
+            f"edge_case_complexity must be one of {sorted(EDGE_CASE_COMPLEXITIES)}"
         )
     surface_count = observation.get("surface_count")
     if isinstance(surface_count, bool) or not isinstance(surface_count, int):
@@ -459,6 +536,8 @@ def build_reward_memory_route_packet(
         ],
         "pilot_authorized": decision == "pilot_fix",
         "meta_review_required": decision == "meta_design_gate",
+        "route_check_role": "deterministic_guard_fixture_not_live_reasoner",
+        "live_reasoning_required": True,
         "memory_patch_authority": False,
         "external_write_authorized": False,
         "raw_issue_or_memory_captured": False,

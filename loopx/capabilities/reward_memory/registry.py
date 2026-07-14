@@ -304,9 +304,12 @@ def _reference_corpora() -> list[dict[str, Any]]:
             "maintenance": {
                 "writeback_triggers": [
                     "authority_source_changed",
+                    "verified_contributor_policy_derived",
                     "expiry_reached",
                 ],
-                "closure_policy": "canonical_source_then_readback",
+                "closure_policy": (
+                    "verified_actor_scope_then_canonical_policy_readback"
+                ),
                 "retirement_authority": "canonical_authority_sources",
             },
             "privacy": private,
