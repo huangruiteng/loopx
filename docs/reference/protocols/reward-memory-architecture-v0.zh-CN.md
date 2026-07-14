@@ -236,11 +236,38 @@ loopx reward-memory route-check --case pr-3237 --format json
 - Stage 2：已实现的无状态 candidate 与 activation-decision seam，建立在现有
   LoopX/OpenViking evidence 之上。不新增第二套 store、scheduler、automatic recall 或
   raw-content retention；Issue Fix 是首个 adapter，复用通用 record/decision shape。
-- Stage 3：opt-in cross-module recall。模型在确定性的 scope、authority、privacy、
-  freshness 和 conflict guard 内推理，并生成紧凑 application receipt。
+- Stage 3：已实现 opt-in cross-module recall/application seam。模型在确定性的
+  scope、authority、privacy、freshness 和 conflict guard 内推理；Issue Fix 的
+  patch planning 与非 Issue-Fix 的 semantic preference 模块复用同一核心和紧凑
+  application receipt。
 - Stage 4：evaluation harness 与 release gate。
 - Stage 5：受限的 cross-module dogfood，以及 operator edit/retire control。
 
 后续阶段必须在这份合同上扩展，不能合并五类记忆、重复建设 context/provider 能力，也
 不能把 provider availability 变成 user gate。Stage 1 继续保持 stateless read model，
 不执行 provider 或 external write。
+
+## Stage 3 recall 与 application seam
+
+Stage 3 只接受显式的 `reward_memory_recall_request_v0`：调用方必须准确指定一个已登记
+corpus 和一个 module-owned surface，同时提供匹配的 read-authority checkpoint、当前
+freshness 与 conflict observation。project、surface、authority、revision、lifecycle 或
+provider binding 任一不匹配，都会在调用 provider 前停止。这里是确定性安全校验，不是
+确定性语义路由器。
+
+查询与解释仍由调用模块/模型负责。`function_boundary` 只允许在命名函数边界执行一次
+查询；`bounded_agentic_search` 最多允许三次由调用方/模型给出的查询。LoopX 不会按
+similarity 自行选择模块或 corpus，也不会扫描全部 corpus、调度后续 recall，或从命中
+结果推导新的 action authority。
+
+通过 review 的 `reward_memory_candidate_review_v0` 可以封装成
+`reward_memory_active_record_v0`，但只有 corpus 声明的 owner 可以执行持久化。Recall
+只接受准确 corpus 与 surface 下的 active envelope。私有 summary 仅在进程内交给模型；
+公共 packet 只保留 opaque provider ref 与紧凑 lineage。Application receipt 保存哈希
+memory ref、模型给出的 reasoning summary 和 current-artifact verification，不保存原始
+provider content。
+
+Provider 不可用时，seam 返回 setup guidance 并保留原输出；这是 agent/runtime 条件，
+不会自动变成 user gate。模型 application 无效或异常也 fail open。只有同时归因到本次
+召回项并验证当前 artifact，才能产生 `applied` receipt。Issue Fix 使用固定的
+`issue_fix.patch_planning` surface；`semantic_preference` 是第二个非 Issue-Fix consumer。

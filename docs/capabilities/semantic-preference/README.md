@@ -154,6 +154,15 @@ traceback.
 
 ## Domain integration
 
+For reviewed reward-memory records, Stage 3 also exposes
+`run_semantic_preference_reward_memory`. The caller supplies the exact corpus,
+module-owned surface, query steps, read-authority checkpoint, provider binding,
+and model application callback. The shared reward-memory core performs the
+scope/freshness/conflict guards and returns a compact receipt; this module does
+not add another store, router, or scheduler. Function-boundary mode permits one
+query, while bounded agentic mode permits at most three caller/model-authored
+queries.
+
 ```python
 from loopx.capabilities.semantic_preference import application_receipt, recall
 

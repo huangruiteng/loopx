@@ -280,9 +280,10 @@ loopx reward-memory route-check --case pr-3237 --format json
   over existing LoopX/OpenViking evidence. It adds no second store, scheduler,
   automatic recall, or raw-content retention. Issue Fix is the first adapter
   and reuses the generic record/decision shape.
-- Stage 3: opt-in cross-module recall with model reasoning inside deterministic
-  scope, authority, privacy, freshness, and conflict guards, plus compact
-  application receipts.
+- Stage 3: the implemented opt-in cross-module recall/application seam. Model
+  reasoning stays inside deterministic scope, authority, privacy, freshness,
+  and conflict guards; Issue Fix patch planning and the non-Issue-Fix semantic
+  preference module share the same core and compact application receipt.
 - Stage 4: evaluation harness and release gate.
 - Stage 5: bounded cross-module dogfood and operator edit/retire controls.
 
@@ -290,3 +291,33 @@ Later stages must extend this contract rather than collapsing these classes,
 duplicating existing context/provider capabilities, or turning provider
 availability into a user gate. Stage 1 remains a stateless read model and
 performs no provider or external write.
+
+## Stage 3 recall and application seam
+
+Stage 3 accepts only an explicit `reward_memory_recall_request_v0` naming one
+registered corpus and one module-owned surface. The request carries a matching
+read-authority checkpoint and current freshness/conflict observations. A
+project, surface, authority, revision, lifecycle, or provider-binding mismatch
+stops before the provider is called. This is deterministic safety validation,
+not a semantic router.
+
+The caller/model owns the query and interpretation. `function_boundary` allows
+one query at a named function boundary. `bounded_agentic_search` allows at most
+three caller/model-authored queries. LoopX does not choose a module, infer a
+corpus from similarity, scan every corpus, schedule a later recall, or grant
+action authority from a hit.
+
+An accepted `reward_memory_candidate_review_v0` may be wrapped as a
+`reward_memory_active_record_v0`; only the declared corpus owner may persist
+that envelope. Recall accepts only active envelopes from the exact selected
+corpus and surface. Private summaries remain transient in-process. Public
+packets expose opaque provider references and compact lineage; application
+receipts contain hashed memory references, the model-owned reasoning summary,
+and current-artifact verification, never raw provider content.
+
+Provider unavailability returns setup guidance and preserves the base output.
+It is an agent/runtime condition, not a user gate. Invalid or failed model
+application also preserves the base output. An `applied` receipt requires both
+attribution to an item returned by this recall and current-artifact
+verification. Issue Fix uses the fixed `issue_fix.patch_planning` surface;
+`semantic_preference` is the second, non-Issue-Fix module consumer.
