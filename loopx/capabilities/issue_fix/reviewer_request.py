@@ -927,6 +927,7 @@ def build_issue_fix_reviewer_request_packet(
                 reviewer_handles=notification_targets,
                 sinks_input=notification_sinks_input,
                 execute=execute,
+                generated_at=generated_at,
                 runner=runner,
                 sink_adapters=notification_sink_adapters,
             )

@@ -20,6 +20,13 @@ ISSUE_FIX_DOMAIN_STATE_LEDGER_FILENAME = "pr-lifecycle.jsonl"
 ISSUE_FIX_FEASIBILITY_LEDGER_FILENAME = "feasibility.jsonl"
 ISSUE_FIX_REPOSITORY_SNAPSHOT_LEDGER_FILENAME = "repository-snapshots.jsonl"
 REVIEWER_NOTIFICATION_RECEIPT_PATTERN = re.compile(r"sha256:[a-f0-9]{64}")
+REVIEWER_NOTIFICATION_QUEUE_RECEIPT_SCHEMA_VERSION = (
+    "issue_fix_reviewer_notification_queue_receipt_v0"
+)
+REVIEWER_NOTIFICATION_LOCAL_TIME_PATTERN = re.compile(
+    r"(?:[01]\d|2[0-3]):[0-5]\d"
+)
+REVIEWER_NOTIFICATION_HANDLE_PATTERN = re.compile(r"@?[A-Za-z0-9_.-]{1,100}")
 
 
 def _upsert_issue_fix_payload(
@@ -251,11 +258,14 @@ def upsert_issue_fix_pr_lifecycle_ledger_jsonl(
         )
         existing_receipts = existing.get("reviewer_notification_receipts")
         incoming_receipts = incoming.get("reviewer_notification_receipts")
+        existing_queue = existing.get("reviewer_notification_queue")
+        incoming_queue = incoming.get("reviewer_notification_queue")
         return bool(
             existing_fingerprint
             and existing_fingerprint == incoming_fingerprint
             and existing_correction_fingerprint == incoming_correction_fingerprint
             and existing_receipts == incoming_receipts
+            and existing_queue == incoming_queue
         )
 
     def preserve_compact_lifecycle_evidence(
@@ -270,6 +280,13 @@ def upsert_issue_fix_pr_lifecycle_ledger_jsonl(
             and receipts
         ):
             merged = {**merged, "reviewer_notification_receipts": list(receipts)}
+        queued = existing.get("reviewer_notification_queue")
+        if (
+            "reviewer_notification_queue" not in merged
+            and isinstance(queued, list)
+            and queued
+        ):
+            merged = {**merged, "reviewer_notification_queue": list(queued)}
         first_push_ci = existing.get("first_push_ci")
         if "first_push_ci" not in merged and isinstance(first_push_ci, dict):
             merged = {**merged, "first_push_ci": dict(first_push_ci)}
@@ -292,6 +309,59 @@ def persist_issue_fix_reviewer_notification_receipts(
 ) -> dict[str, Any]:
     """Persist only verified hashed reviewer-notification receipts in PR state."""
 
+    return persist_issue_fix_reviewer_notification_state(
+        ledger_path,
+        payload,
+        receipts=receipts,
+        queued_receipts=[],
+    )
+
+
+def _validated_reviewer_notification_queue_receipt(
+    value: Any,
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError("reviewer notification queue receipts must be objects")
+    key = str(value.get("idempotency_key") or "")
+    sink_kind = str(value.get("sink_kind") or "")
+    reviewers = value.get("reviewer_handles")
+    window = value.get("allowed_local_time")
+    if (
+        value.get("schema_version")
+        != REVIEWER_NOTIFICATION_QUEUE_RECEIPT_SCHEMA_VERSION
+        or not REVIEWER_NOTIFICATION_RECEIPT_PATTERN.fullmatch(key)
+        or not re.fullmatch(r"[A-Za-z0-9_.-]{1,50}", sink_kind)
+        or not isinstance(reviewers, list)
+        or not reviewers
+        or any(
+            not REVIEWER_NOTIFICATION_HANDLE_PATTERN.fullmatch(str(handle))
+            for handle in reviewers
+        )
+        or not isinstance(window, dict)
+        or not REVIEWER_NOTIFICATION_LOCAL_TIME_PATTERN.fullmatch(
+            str(window.get("start") or "")
+        )
+        or not REVIEWER_NOTIFICATION_LOCAL_TIME_PATTERN.fullmatch(
+            str(window.get("end") or "")
+        )
+        or not str(value.get("queued_at") or "").endswith("Z")
+        or not str(value.get("not_before") or "").endswith("Z")
+        or not str(value.get("timezone") or "").strip()
+        or value.get("status") != "queued"
+    ):
+        raise ValueError("reviewer notification queue receipt is invalid")
+    return dict(value)
+
+
+def persist_issue_fix_reviewer_notification_state(
+    ledger_path: str | Path,
+    payload: dict[str, Any],
+    *,
+    receipts: list[str],
+    queued_receipts: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Persist verified receipts and restart-safe queued delivery metadata."""
+
     # Rows written before a capture-boundary field was introduced may omit it.
     # Receipt persistence is a metadata-only migration, so make that historical
     # absence explicit without weakening the guard for any truthy value.
@@ -305,26 +375,47 @@ def persist_issue_fix_reviewer_notification_receipts(
     ):
         payload.setdefault(key, False)
 
-    existing = payload.get("reviewer_notification_receipts")
-    merged = [
+    existing_receipts = payload.get("reviewer_notification_receipts")
+    merged_receipts = [
         str(value)
-        for value in (existing if isinstance(existing, list) else [])
+        for value in (
+            existing_receipts if isinstance(existing_receipts, list) else []
+        )
         if REVIEWER_NOTIFICATION_RECEIPT_PATTERN.fullmatch(str(value))
     ]
     for receipt in receipts:
         text = str(receipt)
         if not REVIEWER_NOTIFICATION_RECEIPT_PATTERN.fullmatch(text):
             raise ValueError("reviewer notification receipts must be sha256 keys")
-        if text not in merged:
-            merged.append(text)
-    if merged == (existing if isinstance(existing, list) else []):
+        if text not in merged_receipts:
+            merged_receipts.append(text)
+
+    existing_queue = payload.get("reviewer_notification_queue")
+    merged_queue: dict[str, dict[str, Any]] = {}
+    for value in existing_queue if isinstance(existing_queue, list) else []:
+        try:
+            queued = _validated_reviewer_notification_queue_receipt(value)
+        except ValueError:
+            continue
+        merged_queue[str(queued["idempotency_key"])] = queued
+    for value in queued_receipts:
+        queued = _validated_reviewer_notification_queue_receipt(value)
+        merged_queue[str(queued["idempotency_key"])] = queued
+    for key in merged_receipts:
+        merged_queue.pop(key, None)
+    queue = list(merged_queue.values())
+
+    prior_receipts = existing_receipts if isinstance(existing_receipts, list) else []
+    prior_queue = existing_queue if isinstance(existing_queue, list) else []
+    if merged_receipts == prior_receipts and queue == prior_queue:
         return {
             "status": "unchanged",
             "write_performed": False,
             "row_count": None,
             "path_recorded": False,
         }
-    payload["reviewer_notification_receipts"] = merged
+    payload["reviewer_notification_receipts"] = merged_receipts
+    payload["reviewer_notification_queue"] = queue
     return upsert_issue_fix_pr_lifecycle_ledger_jsonl(ledger_path, payload)
 
 

@@ -6,8 +6,10 @@ import json
 import re
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ...control_plane.runtime.public_safety import public_safe_compact_text
 
@@ -21,6 +23,9 @@ ISSUE_FIX_REVIEWER_NOTIFICATION_SINKS_RESULT_SCHEMA_VERSION = (
 ISSUE_FIX_REVIEWER_NOTIFICATION_SINK_RESULT_SCHEMA_VERSION = (
     "issue_fix_reviewer_notification_sink_result_v0"
 )
+ISSUE_FIX_REVIEWER_NOTIFICATION_QUEUE_RECEIPT_SCHEMA_VERSION = (
+    "issue_fix_reviewer_notification_queue_receipt_v0"
+)
 LARK_PERMISSION_PATTERN = re.compile(
     r"(?:missing\s+scope|permission|not\s+in\s+(?:the\s+)?chat|"
     r"lacks?\s+authority|99991672|230027|232033)",
@@ -30,6 +35,7 @@ SAFE_LOCAL_KEY_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,100}")
 LARK_DESTINATION_PATTERN = re.compile(r"oc_[A-Za-z0-9_-]+")
 LARK_MEMBER_PATTERN = re.compile(r"ou_[A-Za-z0-9_-]+")
 LARK_MESSAGE_PATTERN = re.compile(r"om_[A-Za-z0-9_-]+")
+LOCAL_TIME_PATTERN = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d")
 
 CommandRunner = Callable[[Sequence[str]], Mapping[str, Any]]
 NotificationSinkAdapter = Callable[..., dict[str, Any]]
@@ -135,18 +141,68 @@ def reviewer_notification_receipts_from_state(
     )
 
 
-def with_reviewer_notification_receipts(
+def reviewer_notification_queue_from_state(
+    packet: Mapping[str, Any] | None,
+) -> list[dict[str, Any]]:
+    values = packet.get("reviewer_notification_queue") if packet else []
+    queue: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for value in values if isinstance(values, list) else []:
+        if not isinstance(value, Mapping):
+            continue
+        key = str(value.get("idempotency_key") or "")
+        if (
+            value.get("schema_version")
+            != ISSUE_FIX_REVIEWER_NOTIFICATION_QUEUE_RECEIPT_SCHEMA_VERSION
+            or not re.fullmatch(r"sha256:[a-f0-9]{64}", key)
+            or key in seen
+        ):
+            continue
+        queue.append(dict(value))
+        seen.add(key)
+    return queue
+
+
+def with_reviewer_notification_state(
     sinks_input: Mapping[str, Any],
     receipts: Sequence[str],
+    queued_receipts: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
-    merged = reviewer_notification_receipts_from_state(
+    merged_receipts = reviewer_notification_receipts_from_state(
         {"reviewer_notification_receipts": list(receipts)}
     )
     for value in sinks_input.get("receipts") or []:
         text = str(value)
-        if re.fullmatch(r"sha256:[a-f0-9]{64}", text) and text not in merged:
-            merged.append(text)
-    return {**dict(sinks_input), "receipts": merged}
+        if (
+            re.fullmatch(r"sha256:[a-f0-9]{64}", text)
+            and text not in merged_receipts
+        ):
+            merged_receipts.append(text)
+
+    queue = reviewer_notification_queue_from_state(
+        {"reviewer_notification_queue": list(queued_receipts)}
+    )
+    for value in reviewer_notification_queue_from_state(
+        {"reviewer_notification_queue": sinks_input.get("queued_receipts")}
+    ):
+        if not any(
+            item["idempotency_key"] == value["idempotency_key"] for item in queue
+        ):
+            queue.append(value)
+    verified = set(merged_receipts)
+    queue = [item for item in queue if item["idempotency_key"] not in verified]
+    return {
+        **dict(sinks_input),
+        "receipts": merged_receipts,
+        "queued_receipts": queue,
+    }
+
+
+def with_reviewer_notification_receipts(
+    sinks_input: Mapping[str, Any],
+    receipts: Sequence[str],
+) -> dict[str, Any]:
+    return with_reviewer_notification_state(sinks_input, receipts, ())
 
 
 def _default_runner(args: Sequence[str]) -> Mapping[str, Any]:
@@ -211,6 +267,132 @@ def _idempotency_key(
         separators=(",", ":"),
     )
     return f"sha256:{hashlib.sha256(logical_effect.encode('utf-8')).hexdigest()}"
+
+
+def _parse_generated_at(value: str | None) -> datetime:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("generated_at is required by delivery policy")
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("generated_at must be an ISO timestamp") from exc
+    if parsed.tzinfo is None:
+        raise ValueError("generated_at must include a timezone")
+    return parsed
+
+
+def _delivery_window_decision(
+    policy: Any,
+    *,
+    generated_at: str | None,
+) -> dict[str, Any]:
+    if policy is None:
+        return {"configured": False, "allowed": True}
+    if not isinstance(policy, Mapping):
+        raise ValueError("delivery_policy must be an object")
+    timezone_name = str(policy.get("timezone") or "").strip()
+    allowed_local_time = policy.get("allowed_local_time")
+    if not isinstance(allowed_local_time, Mapping):
+        raise ValueError("delivery_policy.allowed_local_time must be an object")
+    start_text = str(allowed_local_time.get("start") or "").strip()
+    end_text = str(allowed_local_time.get("end") or "").strip()
+    if (
+        not LOCAL_TIME_PATTERN.fullmatch(start_text)
+        or not LOCAL_TIME_PATTERN.fullmatch(end_text)
+        or start_text == end_text
+        or policy.get("outside_window") != "queue_without_send"
+    ):
+        raise ValueError("delivery_policy window is invalid")
+    try:
+        location = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError("delivery_policy timezone is invalid") from exc
+
+    observed = _parse_generated_at(generated_at)
+    local = observed.astimezone(location)
+    start = time.fromisoformat(start_text)
+    end = time.fromisoformat(end_text)
+    current = local.timetz().replace(tzinfo=None)
+    allowed = (
+        start <= current < end
+        if start < end
+        else current >= start or current < end
+    )
+    decision: dict[str, Any] = {
+        "configured": True,
+        "allowed": allowed,
+        "timezone": timezone_name,
+        "start": start_text,
+        "end": end_text,
+        "observed_at": observed.astimezone(timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z"),
+    }
+    if not allowed:
+        next_start = datetime.combine(local.date(), start, tzinfo=location)
+        if local >= next_start:
+            next_start += timedelta(days=1)
+        decision["not_before"] = (
+            next_start.astimezone(timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+    return decision
+
+
+def _queued_result(
+    *,
+    repo: str,
+    pr_number: int,
+    sink_kind: str,
+    sink_instance_key: str,
+    reviewer_handles: Sequence[str],
+    execute: bool,
+    window: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not SAFE_LOCAL_KEY_PATTERN.fullmatch(sink_instance_key):
+        return _public_result(
+            sink_kind=sink_kind,
+            reviewer_handles=[],
+            idempotency_key=None,
+            status="gate_required",
+            ok=False,
+            external_write_authority_asserted=execute,
+            blocker="reviewer_notification_delivery_policy_invalid",
+        )
+    key = _idempotency_key(
+        repo=repo,
+        pr_number=pr_number,
+        sink_kind=sink_kind,
+        sink_instance_key=sink_instance_key,
+        reviewer_handles=reviewer_handles,
+    )
+    result = _public_result(
+        sink_kind=sink_kind,
+        reviewer_handles=reviewer_handles,
+        idempotency_key=key,
+        status="queued_until_window",
+        ok=True,
+        external_write_authority_asserted=execute,
+    )
+    result["queue_receipt"] = {
+        "schema_version": (
+            ISSUE_FIX_REVIEWER_NOTIFICATION_QUEUE_RECEIPT_SCHEMA_VERSION
+        ),
+        "idempotency_key": key,
+        "sink_kind": sink_kind,
+        "reviewer_handles": list(reviewer_handles),
+        "queued_at": window["observed_at"],
+        "not_before": window["not_before"],
+        "timezone": window["timezone"],
+        "allowed_local_time": {
+            "start": window["start"],
+            "end": window["end"],
+        },
+        "status": "queued",
+    }
+    return result
 
 
 def _find_message_id(value: Any) -> str | None:
@@ -787,6 +969,36 @@ def validate_issue_fix_reviewer_notification_sinks_result(
         for value in (receipts if isinstance(receipts, list) else [])
     ):
         errors.append("receipts must contain only stable sha256 keys")
+    queued_receipts = packet.get("queued_receipts")
+    if not isinstance(queued_receipts, list):
+        errors.append("queued_receipts must be a list")
+        queued_receipts = []
+    queued_keys: set[str] = set()
+    for receipt in queued_receipts:
+        if not isinstance(receipt, Mapping):
+            errors.append("each queued receipt must be an object")
+            continue
+        key = str(receipt.get("idempotency_key") or "")
+        window = receipt.get("allowed_local_time")
+        if (
+            receipt.get("schema_version")
+            != ISSUE_FIX_REVIEWER_NOTIFICATION_QUEUE_RECEIPT_SCHEMA_VERSION
+            or not re.fullmatch(r"sha256:[a-f0-9]{64}", key)
+            or key in queued_keys
+            or receipt.get("status") != "queued"
+            or not public_safe_compact_text(receipt.get("sink_kind"), limit=50)
+            or not isinstance(receipt.get("reviewer_handles"), list)
+            or not isinstance(window, Mapping)
+            or not LOCAL_TIME_PATTERN.fullmatch(str(window.get("start") or ""))
+            or not LOCAL_TIME_PATTERN.fullmatch(str(window.get("end") or ""))
+        ):
+            errors.append("queued receipt is invalid")
+            continue
+        queued_keys.add(key)
+    if isinstance(receipts, list) and queued_keys.intersection(
+        str(value) for value in receipts
+    ):
+        errors.append("verified receipts cannot remain queued")
     writes = packet.get("external_writes_performed") is True
     if writes != any(
         isinstance(result, Mapping) and result.get("external_write_performed") is True
@@ -824,6 +1036,7 @@ def build_issue_fix_reviewer_notification_sinks_result(
     reviewer_handles: Sequence[str],
     sinks_input: Mapping[str, Any],
     execute: bool = False,
+    generated_at: str | None = None,
     runner: CommandRunner = _default_runner,
     sink_adapters: Mapping[str, NotificationSinkAdapter] | None = None,
 ) -> dict[str, Any]:
@@ -852,6 +1065,7 @@ def build_issue_fix_reviewer_notification_sinks_result(
         "status": "gate_required",
         "results": [],
         "receipts": [],
+        "queued_receipts": [],
         "external_write_authority_asserted": execute,
         "external_writes_performed": False,
         "notification_verified": False,
@@ -890,6 +1104,15 @@ def build_issue_fix_reviewer_notification_sinks_result(
         for value in (raw_receipts if isinstance(raw_receipts, list) else [])
         if re.fullmatch(r"sha256:[a-f0-9]{64}", str(value))
     }
+    try:
+        delivery_window = _delivery_window_decision(
+            sinks_input.get("delivery_policy"),
+            generated_at=generated_at,
+        )
+    except ValueError:
+        base["blocker"] = "reviewer_notification_delivery_policy_invalid"
+        return _finalize_result(base)
+    base["delivery_policy_configured"] = delivery_window["configured"]
 
     adapters: dict[str, NotificationSinkAdapter] = {"lark_chat": _lark_result}
     if sink_adapters:
@@ -898,7 +1121,40 @@ def build_issue_fix_reviewer_notification_sinks_result(
     for sink in sinks:
         sink_kind = str(sink.get("sink_kind") or "").strip()
         adapter = adapters.get(sink_kind)
-        if adapter:
+        if adapter and execute and not delivery_window["allowed"]:
+            sink_instance_key = str(sink.get("sink_instance_key") or "").strip()
+            queued_key = (
+                _idempotency_key(
+                    repo=repo,
+                    pr_number=int(pr_number),
+                    sink_kind=sink_kind,
+                    sink_instance_key=sink_instance_key,
+                    reviewer_handles=reviewers,
+                )
+                if SAFE_LOCAL_KEY_PATTERN.fullmatch(sink_instance_key)
+                else None
+            )
+            if queued_key and queued_key in receipts:
+                result = _public_result(
+                    sink_kind=sink_kind,
+                    reviewer_handles=reviewers,
+                    idempotency_key=queued_key,
+                    status="already_notified",
+                    ok=True,
+                    external_write_authority_asserted=execute,
+                    notification_verified=True,
+                )
+            else:
+                result = _queued_result(
+                    repo=repo,
+                    pr_number=int(pr_number),
+                    sink_kind=sink_kind,
+                    sink_instance_key=sink_instance_key,
+                    reviewer_handles=reviewers,
+                    execute=execute,
+                    window=delivery_window,
+                )
+        elif adapter:
             result = adapter(
                 repo=repo,
                 pr_number=int(pr_number),
@@ -931,11 +1187,21 @@ def build_issue_fix_reviewer_notification_sinks_result(
             and result.get("idempotency_key")
         )
     )
+    queued_receipts = list(
+        {
+            str(receipt["idempotency_key"]): receipt
+            for result in results
+            if isinstance(result.get("queue_receipt"), Mapping)
+            for receipt in [dict(result["queue_receipt"])]
+        }.values()
+    )
     statuses = {str(result.get("status")) for result in results}
     if len(statuses) == 1:
         status = statuses.pop()
     elif any(result.get("ok") is False for result in results):
         status = "partial_failure"
+    elif queued_receipts:
+        status = "partial_queued"
     elif execute:
         status = "sent_verified"
     else:
@@ -946,6 +1212,7 @@ def build_issue_fix_reviewer_notification_sinks_result(
             "status": status,
             "results": results,
             "receipts": successful_receipts,
+            "queued_receipts": queued_receipts,
             "external_writes_performed": any(
                 result.get("external_write_performed") is True for result in results
             ),
