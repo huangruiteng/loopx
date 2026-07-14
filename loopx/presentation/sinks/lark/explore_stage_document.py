@@ -21,13 +21,18 @@ class StageDocumentConfig(Protocol):
 LocalConfigReader = Callable[[Path], dict[str, Any]]
 LocalConfigWriter = Callable[[Path, Mapping[str, Any]], None]
 
-_STAGE_HEADING_RE = re.compile(r"^Evidence Stage (\d+)$")
-_MANAGED_STAGE_PARAGRAPH_SUFFIX = (
-    "完整 Nodes / Edges / Findings 仍以同一 Base 为准。"
-)
+_MANAGED_STAGE_PARAGRAPH_SUFFIX = "完整 Nodes / Edges / Findings 仍以同一 Base 为准。"
 
 
-def _stage_section_xml(stage: Mapping[str, Any]) -> str:
+def _stage_section_prefix(*, role: str) -> str:
+    return "Executive Evidence Stage" if role == "executive" else "Evidence Stage"
+
+
+def _stage_section_title(*, role: str, stage_index: int) -> str:
+    return f"{_stage_section_prefix(role=role)} {stage_index:02d}"
+
+
+def _stage_section_xml(stage: Mapping[str, Any], *, role: str) -> str:
     stage_index = int(stage.get("stage_index") or 0)
     lane_labels = {
         "fix_pr": "PR issue-fix",
@@ -42,14 +47,14 @@ def _stage_section_xml(stage: Mapping[str, Any]) -> str:
         or "Explore work"
     )
     return (
-        f"<h2>Evidence Stage {stage_index:02d}</h2>"
+        f"<h2>{_stage_section_title(role=role, stage_index=stage_index)}</h2>"
         "<p>"
         f"本阶段包含 {int(stage.get('primary_node_count') or 0)} 个主节点、"
         f"{int(stage.get('context_node_count') or 0)} 个关系上下文节点；"
         f"主线：{html.escape(lanes)}；"
         f"跨主线真实关系：{int(stage.get('cross_lane_edge_count') or 0)} 条。"
         "完整 Nodes / Edges / Findings 仍以同一 Base 为准。"
-        "</p><whiteboard type=\"blank\"></whiteboard>"
+        '</p><whiteboard type="blank"></whiteboard>'
     )
 
 
@@ -71,14 +76,12 @@ def _created_stage_section(command: Mapping[str, Any]) -> dict[str, Any] | None:
     if not whiteboard:
         return None
     return {
-        "whiteboard_block_id": str(whiteboard.get("block_id") or "").strip()
-        or None,
+        "whiteboard_block_id": str(whiteboard.get("block_id") or "").strip() or None,
         "whiteboard_token": str(whiteboard.get("block_token") or "").strip(),
         "generated_block_ids": [
             str(block.get("block_id") or "").strip()
             for block in blocks or []
-            if isinstance(block, Mapping)
-            and str(block.get("block_id") or "").strip()
+            if isinstance(block, Mapping) and str(block.get("block_id") or "").strip()
         ],
     }
 
@@ -111,16 +114,21 @@ def _xml_root(command: Mapping[str, Any]) -> ET.Element | None:
         return None
 
 
-def _stage_headings(command: Mapping[str, Any]) -> list[dict[str, Any]] | None:
+def _stage_headings(
+    command: Mapping[str, Any], *, role: str
+) -> list[dict[str, Any]] | None:
     root = _xml_root(command)
     if root is None:
         return None
+    heading_pattern = re.compile(
+        rf"^{re.escape(_stage_section_prefix(role=role))} (\d+)$"
+    )
     headings: list[dict[str, Any]] = []
     for element in root.iter():
         if element.tag != "h2":
             continue
         title = "".join(element.itertext()).strip()
-        match = _STAGE_HEADING_RE.fullmatch(title)
+        match = heading_pattern.fullmatch(title)
         block_id = str(element.get("id") or "").strip()
         if match and block_id:
             headings.append(
@@ -133,7 +141,7 @@ def _stage_headings(command: Mapping[str, Any]) -> list[dict[str, Any]] | None:
 
 
 def _managed_stage_section(
-    command: Mapping[str, Any], *, stage_index: int
+    command: Mapping[str, Any], *, role: str, stage_index: int
 ) -> dict[str, Any] | None:
     root = _xml_root(command)
     if root is None:
@@ -142,20 +150,19 @@ def _managed_stage_section(
     if len(blocks) != 3:
         return None
     heading, paragraph, whiteboard = blocks
-    expected_title = f"Evidence Stage {stage_index:02d}"
+    expected_title = _stage_section_title(role=role, stage_index=stage_index)
     if (
         heading.tag != "h2"
         or "".join(heading.itertext()).strip() != expected_title
         or paragraph.tag != "p"
-        or not "".join(paragraph.itertext()).strip().endswith(
-            _MANAGED_STAGE_PARAGRAPH_SUFFIX
-        )
+        or not "".join(paragraph.itertext())
+        .strip()
+        .endswith(_MANAGED_STAGE_PARAGRAPH_SUFFIX)
         or whiteboard.tag != "whiteboard"
     ):
         return None
     block_ids = [
-        str(block.get("id") or "").strip()
-        for block in (heading, paragraph, whiteboard)
+        str(block.get("id") or "").strip() for block in (heading, paragraph, whiteboard)
     ]
     whiteboard_token = str(whiteboard.get("token") or "").strip()
     if not all(block_ids) or not whiteboard_token:
@@ -259,6 +266,7 @@ def ensure_stage_whiteboards(
         "performed": False,
         "remote_checked": False,
         "stale_stage_indexes": stale_configured_indexes,
+        "missing_remote_stage_indexes": [],
         "duplicate_stage_indexes": [],
         "adopted_stage_indexes": [],
         "deleted_section_count": 0,
@@ -287,7 +295,11 @@ def ensure_stage_whiteboards(
             cwd=config_path.parent,
         )
         observe(outline_command, action="fetch_stage_outline")
-        headings = _stage_headings(outline_command) if outline_command.get("ok") else None
+        headings = (
+            _stage_headings(outline_command, role=role)
+            if outline_command.get("ok")
+            else None
+        )
         if headings is None:
             reconciliation["required"] = True
             return (
@@ -313,13 +325,36 @@ def ensure_stage_whiteboards(
             for index, block_ids in headings_by_stage.items()
             if index in desired_indexes and len(block_ids) > 1
         )
+        managed_configured_indexes = {
+            index
+            for index, item in configured.items()
+            if index != 1
+            or str(item.get("section_title") or "").strip()
+            == _stage_section_title(role=role, stage_index=1)
+            or bool(item.get("whiteboard_block_id"))
+            or bool(item.get("generated_block_ids"))
+        }
+        missing_remote_stage_indexes = sorted(
+            index
+            for index in desired_indexes & managed_configured_indexes
+            if not headings_by_stage.get(index)
+        )
         reconciliation["stale_stage_indexes"] = sorted(
             set(stale_configured_indexes) | set(stale_remote_indexes)
         )
+        reconciliation["missing_remote_stage_indexes"] = missing_remote_stage_indexes
         reconciliation["duplicate_stage_indexes"] = duplicate_stage_indexes
         reconciliation["required"] = bool(
-            reconciliation["stale_stage_indexes"] or duplicate_stage_indexes
+            reconciliation["stale_stage_indexes"]
+            or missing_remote_stage_indexes
+            or duplicate_stage_indexes
         )
+
+        # A readable whiteboard token does not prove that the board is still
+        # embedded in the configured document. Drop detached checkpoints so
+        # the normal missing-stage path recreates the managed section.
+        for stage_index in missing_remote_stage_indexes:
+            configured.pop(stage_index, None)
 
         sections_by_stage: dict[int, list[dict[str, Any]]] = defaultdict(list)
         indexes_to_inspect = sorted(
@@ -349,7 +384,11 @@ def ensure_stage_whiteboards(
                     action=f"fetch_stage_section_{stage_index:02d}",
                 )
                 section = (
-                    _managed_stage_section(section_command, stage_index=stage_index)
+                    _managed_stage_section(
+                        section_command,
+                        role=role,
+                        stage_index=stage_index,
+                    )
                     if section_command.get("ok")
                     else None
                 )
@@ -464,7 +503,7 @@ def ensure_stage_whiteboards(
             )
             observe(verification_command, action="verify_stage_outline")
             remaining = (
-                _stage_headings(verification_command)
+                _stage_headings(verification_command, role=role)
                 if verification_command.get("ok")
                 else None
             )
@@ -506,6 +545,7 @@ def ensure_stage_whiteboards(
             persist_configured_stages()
         reconciliation["performed"] = bool(
             reconciliation["stale_stage_indexes"]
+            or reconciliation["missing_remote_stage_indexes"]
             or reconciliation["duplicate_stage_indexes"]
             or adopted_stage_indexes
         )
@@ -554,7 +594,7 @@ def ensure_stage_whiteboards(
                 "--command",
                 "append",
                 "--content",
-                _stage_section_xml(stage),
+                _stage_section_xml(stage, role=role),
                 "--format",
                 "json",
             ],
@@ -584,16 +624,76 @@ def ensure_stage_whiteboards(
                 )
             configured[stage_index] = {
                 "stage_index": stage_index,
-                "section_title": f"Evidence Stage {stage_index:02d}",
+                "section_title": _stage_section_title(
+                    role=role, stage_index=stage_index
+                ),
                 **section,
             }
             persist_configured_stages()
         else:
             configured[stage_index] = {
                 "stage_index": stage_index,
-                "section_title": f"Evidence Stage {stage_index:02d}",
+                "section_title": _stage_section_title(
+                    role=role, stage_index=stage_index
+                ),
                 "whiteboard_token": f"planned-stage-{stage_index:02d}",
             }
+
+    if execute and docx_token and missing:
+        verification_command = _run_command(
+            _docs_fetch_command(
+                config,
+                docx_token=docx_token,
+                scope="outline",
+            ),
+            execute=True,
+            runner=runner,
+            cwd=config_path.parent,
+        )
+        observe(verification_command, action="verify_created_stage_membership")
+        verified_headings = (
+            _stage_headings(verification_command, role=role)
+            if verification_command.get("ok")
+            else None
+        )
+        if verified_headings is None:
+            reconciliation["required"] = True
+            return (
+                configured,
+                section_commands,
+                reconciliation_commands,
+                reconciliation,
+                _command_error(verification_command)
+                if not verification_command.get("ok")
+                else "created Evidence Stage outline could not be parsed",
+            )
+        verified_counts: dict[int, int] = defaultdict(int)
+        for heading in verified_headings:
+            verified_counts[int(heading["stage_index"])] += 1
+        managed_desired_indexes = {
+            index
+            for index in desired_indexes
+            if index != 1
+            or str(configured.get(index, {}).get("section_title") or "").strip()
+            == _stage_section_title(role=role, stage_index=1)
+            or bool(configured.get(index, {}).get("whiteboard_block_id"))
+            or bool(configured.get(index, {}).get("generated_block_ids"))
+        }
+        missing_after_create = sorted(
+            index
+            for index in managed_desired_indexes
+            if verified_counts.get(index) != 1
+        )
+        if missing_after_create:
+            reconciliation["required"] = True
+            return (
+                configured,
+                section_commands,
+                reconciliation_commands,
+                reconciliation,
+                "created Evidence Stage sections are absent from document readback: "
+                + ", ".join(f"{index:02d}" for index in missing_after_create),
+            )
     return (
         configured,
         section_commands,

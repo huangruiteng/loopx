@@ -134,9 +134,7 @@ def test_owner_only_sync_migrates_confirmed_shared_row(tmp_path) -> None:
                             else []
                         ),
                         "record_id_list": (
-                            ["rec_legacy_shared_fixture"]
-                            if values is not None
-                            else []
+                            ["rec_legacy_shared_fixture"] if values is not None else []
                         ),
                         "has_more": False,
                     },
@@ -222,7 +220,9 @@ def _small_projection() -> dict[str, object]:
         "source_event_count": 3,
         "nodes": [
             _node("root", status="resolved", tags=["baseline"]),
-            _node("candidate", parent_id="root", status="exploring", tags=["current-best"]),
+            _node(
+                "candidate", parent_id="root", status="exploring", tags=["current-best"]
+            ),
         ],
         "edges": [_edge("root", "candidate")],
         "findings": [
@@ -343,7 +343,9 @@ def test_complex_graph_recommends_traceable_dual_view() -> None:
         "excessive_terminal_branches",
     }.issubset(bundle["reason_codes"])
     assert bundle["canonical"]["source_digest"] == bundle["executive"]["source_digest"]
-    assert bundle["canonical"]["source_revision"] == bundle["executive"]["source_revision"]
+    assert (
+        bundle["canonical"]["source_revision"] == bundle["executive"]["source_revision"]
+    )
     assert bundle["canonical"]["mermaid"].startswith("flowchart TB")
     assert "subgraph canonical_timeline" in bundle["canonical"]["mermaid"]
     assert (
@@ -354,10 +356,7 @@ def test_complex_graph_recommends_traceable_dual_view() -> None:
     assert bundle["executive"]["mermaid"].startswith("flowchart TB")
     assert "subgraph executive_timeline" in bundle["executive"]["mermaid"]
     assert "Canonical evidence timeline" not in bundle["executive"]["mermaid"]
-    assert (
-        bundle["executive"]["filter"]["layout"]["orientation"]
-        == "top_to_bottom"
-    )
+    assert bundle["executive"]["filter"]["layout"]["orientation"] == "top_to_bottom"
     canonical_mermaid = bundle["canonical"]["mermaid"]
     for node in projection["nodes"]:
         assert f'{str(node["node_id"]).replace("-", "_")}["' in canonical_mermaid
@@ -392,16 +391,17 @@ def test_both_views_render_status_metric_and_conclusion_from_node_summary() -> N
 
     for role in ("canonical", "executive"):
         view = bundle[role]
-        assert "candidate_model_abc1234 with a deliberately long descriptive… · DONE" in view["mermaid"]
+        assert (
+            "candidate_model_abc1234 with a deliberately long descriptive… · DONE"
+            in view["mermaid"]
+        )
         assert "+31.2/+72.4 bp" in view["mermaid"]
         assert "Retain as incumbent with calibration as a guardrail" in view["mermaid"]
         assert any(
-            "+31.2/+72.4 bp" in stage["mermaid"]
-            for stage in view["stage_views"]
+            "+31.2/+72.4 bp" in stage["mermaid"] for stage in view["stage_views"]
         )
         assert any(
-            "Retain as incumbent with calibration as a guardrail"
-            in stage["mermaid"]
+            "Retain as incumbent with calibration as a guardrail" in stage["mermaid"]
             for stage in view["stage_views"]
         )
         mermaid_coverage = view["filter"]["layout"]["node_detail_coverage"]
@@ -469,9 +469,7 @@ def test_stage_board_preserves_two_lanes_and_real_cross_lane_relation() -> None:
 
 def test_stage_svg_fits_mixed_width_node_text_and_preserves_status() -> None:
     projection = _lane_projection()
-    fix_node = next(
-        node for node in projection["nodes"] if node["node_id"] == "fix-pr"
-    )
+    fix_node = next(node for node in projection["nodes"] if node["node_id"] == "fix-pr")
     fix_node["title"] = (
         "Issue #3207 → Draft PR #3208: restore stats API unit-test isolation"
     )
@@ -561,7 +559,9 @@ def test_presentation_rejects_a_bounded_canonical_finding_projection() -> None:
         build_explore_presentation_bundle(projection)
 
 
-def test_visual_configuration_preserves_legacy_and_supports_stage_boards(tmp_path) -> None:
+def test_visual_configuration_preserves_legacy_and_supports_stage_boards(
+    tmp_path,
+) -> None:
     config_path = tmp_path / "lark-explore.json"
     write_lark_explore_local_config(
         config_path,
@@ -599,10 +599,7 @@ def test_visual_configuration_preserves_legacy_and_supports_stage_boards(tmp_pat
     assert stored["visual_sink"]["whiteboard_token"] == "wb_legacy_fixture"
     assert stored["visual_sinks"]["canonical"]["view_role"] == "canonical"
     assert stored["visual_sinks"]["executive"]["view_role"] == "executive"
-    assert (
-        stored["visual_sinks"]["executive"]["board_style"]
-        == "semantic_lane_columns"
-    )
+    assert stored["visual_sinks"]["executive"]["board_style"] == "semantic_lane_columns"
     assert stored["visual_sinks"]["executive"]["renderer"] == "stage_svg"
     assert stored["visual_sinks"]["executive"]["presentation_mode"] == "stage_document"
     assert stored["visual_sinks"]["executive"]["stage_capacity"] == 18
@@ -779,7 +776,9 @@ def test_dual_visual_sync_uses_one_revision_and_rejects_stale_view(tmp_path) -> 
     assert "command" not in stale
 
 
-def test_visual_delivery_digest_changes_when_only_rendered_mermaid_changes(tmp_path) -> None:
+def test_visual_delivery_digest_changes_when_only_rendered_mermaid_changes(
+    tmp_path,
+) -> None:
     projection = _complex_projection()
     config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
     sink = {
@@ -859,14 +858,12 @@ def test_stage_svg_visual_publish_preserves_lane_source_and_remote_marker(
         if "+update" in args:
             assert args[args.index("--input_format") + 1] == "svg"
             source_arg = args[args.index("--source") + 1]
-            source = (cwd / source_arg.removeprefix("@")).read_text(
-                encoding="utf-8"
-            )
+            source = (cwd / source_arg.removeprefix("@")).read_text(encoding="utf-8")
             assert source.startswith('<svg xmlns="http://www.w3.org/2000/svg"')
             assert "supports" in source
-            published_marker = re.search(
-                r"LoopX delivery [0-9a-f]{20}", source
-            ).group(0)
+            published_marker = re.search(r"LoopX delivery [0-9a-f]{20}", source).group(
+                0
+            )
             return {
                 "returncode": 0,
                 "stdout": json.dumps({"ok": True}),
@@ -920,9 +917,7 @@ def test_mermaid_visual_publish_reads_back_remote_delivery_marker(tmp_path) -> N
         calls.append(args)
         if "+update" in args:
             source_arg = args[args.index("--source") + 1]
-            source = (cwd / source_arg.removeprefix("@")).read_text(
-                encoding="utf-8"
-            )
+            source = (cwd / source_arg.removeprefix("@")).read_text(encoding="utf-8")
             marker_match = re.search(r"LoopX delivery [0-9a-f]{20}", source)
             assert marker_match
             published_marker = marker_match.group(0)
@@ -987,9 +982,7 @@ def test_mermaid_visual_publish_retries_idempotency_replay_error(tmp_path) -> No
         if "+update" in args:
             update_tokens.append(args[args.index("--idempotent-token") + 1])
             source_arg = args[args.index("--source") + 1]
-            source = (cwd / source_arg.removeprefix("@")).read_text(
-                encoding="utf-8"
-            )
+            source = (cwd / source_arg.removeprefix("@")).read_text(encoding="utf-8")
             assert "fill:transparent" not in source
             assert "fill:#ffffff,stroke:#ffffff,color:#ffffff" in source
             if len(update_tokens) == 1:
@@ -1002,9 +995,9 @@ def test_mermaid_visual_publish_retries_idempotency_replay_error(tmp_path) -> No
                     "stdout": "",
                     "stderr": json.dumps(payload),
                 }
-            published_marker = re.search(
-                r"LoopX delivery [0-9a-f]{20}", source
-            ).group(0)
+            published_marker = re.search(r"LoopX delivery [0-9a-f]{20}", source).group(
+                0
+            )
             return {
                 "returncode": 0,
                 "stdout": json.dumps({"ok": True}),
@@ -1046,7 +1039,9 @@ def test_mermaid_visual_publish_retries_idempotency_replay_error(tmp_path) -> No
     assert synced["readback"]["verified"] is True
 
 
-def test_mermaid_visual_readback_retries_lark_doc_applying(tmp_path, monkeypatch) -> None:
+def test_mermaid_visual_readback_retries_lark_doc_applying(
+    tmp_path, monkeypatch
+) -> None:
     projection = _complex_projection()
     config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
     bundle = build_explore_presentation_bundle(projection)
@@ -1062,9 +1057,7 @@ def test_mermaid_visual_readback_retries_lark_doc_applying(tmp_path, monkeypatch
         nonlocal published_marker, query_count
         if "+update" in args:
             source_arg = args[args.index("--source") + 1]
-            source = (cwd / source_arg.removeprefix("@")).read_text(
-                encoding="utf-8"
-            )
+            source = (cwd / source_arg.removeprefix("@")).read_text(encoding="utf-8")
             published_marker = re.search(
                 r"LoopX delivery [0-9a-f]{20}",
                 source,
@@ -1083,9 +1076,7 @@ def test_mermaid_visual_readback_retries_lark_doc_applying(tmp_path, monkeypatch
                 if query_count == 1
                 else {
                     "ok": True,
-                    "data": {
-                        "nodes": [{"text": {"text": published_marker}}]
-                    },
+                    "data": {"nodes": [{"text": {"text": published_marker}}]},
                 }
             )
         return {
@@ -1137,9 +1128,7 @@ def test_mermaid_visual_readback_retries_until_remote_marker_is_visible(
         nonlocal published_marker, query_count
         if "+update" in args:
             source_arg = args[args.index("--source") + 1]
-            source = (cwd / source_arg.removeprefix("@")).read_text(
-                encoding="utf-8"
-            )
+            source = (cwd / source_arg.removeprefix("@")).read_text(encoding="utf-8")
             published_marker = re.search(
                 r"LoopX delivery [0-9a-f]{20}",
                 source,
@@ -1257,9 +1246,7 @@ def test_visual_sync_creates_one_document_section_and_board_per_missing_stage(
         "docx_token": "doc_public_fixture",
         "view_role": "executive",
         "renderer": "mermaid",
-        "stage_whiteboards": [
-            {"stage_index": 1, "whiteboard_token": "wb_stage_01"}
-        ],
+        "stage_whiteboards": [{"stage_index": 1, "whiteboard_token": "wb_stage_01"}],
     }
     write_lark_explore_local_config(
         config_path,
@@ -1269,11 +1256,16 @@ def test_visual_sync_creates_one_document_section_and_board_per_missing_stage(
         },
     )
     created_stage = 1
+    created_headings: set[int] = set()
     published_markers: dict[str, str] = {}
 
     def runner(args, cwd, _timeout):
         nonlocal created_stage
         if "docs" in args and "+fetch" in args:
+            headings = "".join(
+                f'<h2 id="heading_stage_{index:02d}">Executive Evidence Stage {index:02d}</h2>'
+                for index in sorted(created_headings)
+            )
             payload = {
                 "ok": True,
                 "data": {
@@ -1282,13 +1274,14 @@ def test_visual_sync_creates_one_document_section_and_board_per_missing_stage(
                         "content": (
                             '<fragment mode="outline"><outline>'
                             '<h2 id="heading_stage_01">Evidence Stage 01</h2>'
-                            "</outline></fragment>"
+                            f"{headings}</outline></fragment>"
                         ),
                     }
                 },
             }
         elif "docs" in args and "+update" in args:
             created_stage += 1
+            created_headings.add(created_stage)
             payload = {
                 "ok": True,
                 "data": {
@@ -1315,9 +1308,7 @@ def test_visual_sync_creates_one_document_section_and_board_per_missing_stage(
             token = args[args.index("--whiteboard-token") + 1]
             payload = {
                 "ok": True,
-                "data": {
-                    "nodes": [{"text": {"text": published_markers[token]}}]
-                },
+                "data": {"nodes": [{"text": {"text": published_markers[token]}}]},
             }
         return {
             "returncode": 0,
@@ -1349,18 +1340,139 @@ def test_visual_sync_creates_one_document_section_and_board_per_missing_stage(
     ]
 
 
+@pytest.mark.parametrize(
+    "persist_created_membership",
+    [pytest.param(True, id="recreated"), pytest.param(False, id="readback-missing")],
+)
+def test_stage_document_recreates_configured_board_missing_from_document(
+    tmp_path,
+    persist_created_membership,
+) -> None:
+    projection = _complex_projection()
+    bundle = build_explore_presentation_bundle(projection)
+    stage_count = len(bundle["executive"]["stage_views"])
+    assert stage_count == 2
+    config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
+    config_path = tmp_path / "lark-explore.json"
+    sink = {
+        "whiteboard_token": "wb_stage_01",
+        "docx_token": "doc_public_fixture",
+        "view_role": "executive",
+        "renderer": "mermaid",
+        "stage_whiteboards": [
+            {"stage_index": 1, "whiteboard_token": "wb_stage_01"},
+            {"stage_index": 2, "whiteboard_token": "wb_detached_stage_02"},
+        ],
+    }
+    write_lark_explore_local_config(
+        config_path,
+        {
+            "board": {"base_token": "PUBLIC_FIXTURE_BASE"},
+            "visual_sinks": {"executive": sink},
+        },
+    )
+    stage_two_present = False
+    outline_fetch_count = 0
+    published_markers: dict[str, str] = {}
+
+    def runner(args, cwd, _timeout):
+        nonlocal outline_fetch_count, stage_two_present
+        if "docs" in args and "+fetch" in args:
+            outline_fetch_count += 1
+            executive_heading = (
+                '<h2 id="heading_stage_02">Executive Evidence Stage 02</h2>'
+                if stage_two_present
+                else ""
+            )
+            payload = {
+                "ok": True,
+                "data": {
+                    "document": {
+                        "revision_id": 2,
+                        "content": (
+                            '<fragment mode="outline"><outline>'
+                            '<h2 id="canonical_stage_02">Evidence Stage 02</h2>'
+                            + executive_heading
+                            + "</outline></fragment>"
+                        ),
+                    }
+                },
+            }
+        elif "docs" in args and "+update" in args:
+            stage_two_present = persist_created_membership
+            payload = {
+                "ok": True,
+                "data": {
+                    "document": {
+                        "new_blocks": [
+                            {
+                                "block_id": "block_stage_02_recreated",
+                                "block_type": "whiteboard",
+                                "block_token": "wb_stage_02_recreated",
+                            }
+                        ]
+                    }
+                },
+            }
+        elif "+update" in args:
+            token = args[args.index("--whiteboard-token") + 1]
+            source_arg = args[args.index("--source") + 1]
+            source = (cwd / source_arg.removeprefix("@")).read_text(encoding="utf-8")
+            published_markers[token] = re.search(
+                r"LoopX delivery [0-9a-f]{20}", source
+            ).group(0)
+            payload = {"ok": True}
+        else:
+            token = args[args.index("--whiteboard-token") + 1]
+            payload = {
+                "ok": True,
+                "data": {"nodes": [{"text": {"text": published_markers[token]}}]},
+            }
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(payload),
+            "stderr": "",
+        }
+
+    synced = sync_explore_visuals_to_lark(
+        config,
+        projection=projection,
+        visual_sinks={"executive": sink},
+        config_path=config_path,
+        execute=True,
+        runner=runner,
+    )
+
+    view = synced["views"]["executive"]
+    if not persist_created_membership:
+        assert synced["ok"] is False
+        assert view["status"] == "stage_whiteboards_missing"
+        assert "absent from document readback" in view["error"]
+        assert outline_fetch_count == 2
+        return
+
+    assert synced["ok"] is True
+    assert len(view["section_commands"]) == 1
+    assert view["reconciliation"]["missing_remote_stage_indexes"] == [2]
+    assert view["reconciliation"]["performed"] is True
+    assert outline_fetch_count == 2
+    stored = read_lark_explore_local_config(config_path)
+    stage_boards = stored["visual_sinks"]["executive"]["stage_whiteboards"]
+    assert stage_boards[1]["whiteboard_token"] == "wb_stage_02_recreated"
+
+
 def test_stage_document_reconciliation_removes_all_stale_duplicate_sections(
     tmp_path,
 ) -> None:
     projection = _complex_projection()
     bundle = build_explore_presentation_bundle(projection)
-    stage_count = len(bundle["executive"]["stage_views"])
+    stage_count = len(bundle["canonical"]["stage_views"])
     stale_index = stage_count + 1
     config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
     config_path = tmp_path / "lark-explore.json"
     sink = {
         "docx_token": "doc_public_fixture",
-        "view_role": "executive",
+        "view_role": "canonical",
         "renderer": "mermaid",
         "stage_whiteboards": [
             {
@@ -1374,7 +1486,7 @@ def test_stage_document_reconciliation_removes_all_stale_duplicate_sections(
         config_path,
         {
             "board": {"base_token": "PUBLIC_FIXTURE_BASE"},
-            "visual_sinks": {"executive": sink},
+            "visual_sinks": {"canonical": sink},
         },
     )
     stale_headings = [f"stale_heading_{number}" for number in range(1, 4)]
@@ -1391,7 +1503,11 @@ def test_stage_document_reconciliation_removes_all_stale_duplicate_sections(
             f'<h2 id="{heading}">Evidence Stage {stale_index:02d}</h2>'
             for heading in stale_headings
         )
-        return '<fragment mode="outline"><outline>' + "".join(headings) + "</outline></fragment>"
+        return (
+            '<fragment mode="outline"><outline>'
+            + "".join(headings)
+            + "</outline></fragment>"
+        )
 
     def runner(args, cwd, _timeout):
         if "docs" in args and "+fetch" in args and "outline" in args:
@@ -1426,9 +1542,7 @@ def test_stage_document_reconciliation_removes_all_stale_duplicate_sections(
                 },
             }
         elif "docs" in args and "+update" in args:
-            deleted_block_ids.extend(
-                args[args.index("--block-id") + 1].split(",")
-            )
+            deleted_block_ids.extend(args[args.index("--block-id") + 1].split(","))
             stale_headings.clear()
             payload = {
                 "ok": True,
@@ -1437,9 +1551,7 @@ def test_stage_document_reconciliation_removes_all_stale_duplicate_sections(
         elif "+update" in args:
             token = args[args.index("--whiteboard-token") + 1]
             source_arg = args[args.index("--source") + 1]
-            source = (cwd / source_arg.removeprefix("@")).read_text(
-                encoding="utf-8"
-            )
+            source = (cwd / source_arg.removeprefix("@")).read_text(encoding="utf-8")
             published_markers[token] = re.search(
                 r"LoopX delivery [0-9a-f]{20}", source
             ).group(0)
@@ -1448,9 +1560,7 @@ def test_stage_document_reconciliation_removes_all_stale_duplicate_sections(
             token = args[args.index("--whiteboard-token") + 1]
             payload = {
                 "ok": True,
-                "data": {
-                    "nodes": [{"text": {"text": published_markers[token]}}]
-                },
+                "data": {"nodes": [{"text": {"text": published_markers[token]}}]},
             }
         return {
             "returncode": 0,
@@ -1461,19 +1571,20 @@ def test_stage_document_reconciliation_removes_all_stale_duplicate_sections(
     synced = sync_explore_visuals_to_lark(
         config,
         projection=projection,
-        visual_sinks={"executive": sink},
+        visual_sinks={"canonical": sink},
         config_path=config_path,
         execute=True,
         runner=runner,
     )
 
-    view = synced["views"]["executive"]
+    view = synced["views"]["canonical"]
     assert synced["ok"] is True
     assert view["reconciliation"] == {
         "required": False,
         "performed": True,
         "remote_checked": True,
         "stale_stage_indexes": [stale_index],
+        "missing_remote_stage_indexes": [],
         "duplicate_stage_indexes": [],
         "adopted_stage_indexes": [],
         "deleted_section_count": 3,
@@ -1483,7 +1594,7 @@ def test_stage_document_reconciliation_removes_all_stale_duplicate_sections(
     stored = read_lark_explore_local_config(config_path)
     assert [
         item["stage_index"]
-        for item in stored["visual_sinks"]["executive"]["stage_whiteboards"]
+        for item in stored["visual_sinks"]["canonical"]["stage_whiteboards"]
     ] == list(range(1, stage_count + 1))
 
 
@@ -1516,7 +1627,9 @@ def test_stage_document_preview_surfaces_stale_config_reconciliation(tmp_path) -
     assert reconciliation["stale_stage_indexes"] == [stage_count + 1]
 
 
-def test_visual_delivery_digest_changes_when_target_whiteboard_changes(tmp_path) -> None:
+def test_visual_delivery_digest_changes_when_target_whiteboard_changes(
+    tmp_path,
+) -> None:
     projection = _complex_projection()
     config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
     bundle = build_explore_presentation_bundle(projection)
