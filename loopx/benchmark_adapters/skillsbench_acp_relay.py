@@ -2334,10 +2334,8 @@ SAFE_LOOPX_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{{6,80}}$")
 SAFE_LOOPX_GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{{0,120}}$")
 
 def loopx_public_fields(command: str) -> dict[str, str]:
-    try:
-        tokens = shlex.split(command or "")
-    except ValueError:
-        tokens = (command or "").split()
+    invocations = loopx_invocation_argvs(command)
+    tokens = invocations[0] if invocations else []
     fields: dict[str, str] = {{}}
     i = 0
     while i < len(tokens):

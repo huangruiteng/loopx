@@ -2,21 +2,108 @@ from __future__ import annotations
 
 
 LOOPX_COMMAND_INSTRUMENTATION_SOURCE = r'''
-def loopx_subcommands(command: str) -> list[str]:
+_SHELL_COMMAND_PREFIXES = {
+    "if", "then", "elif", "else", "while", "until", "do", "!", "time", "{",
+}
+_SHELL_COMMAND_WRAPPERS = {"command", "exec", "builtin", "nohup"}
+_NESTED_SHELLS = {"sh", "bash", "dash", "zsh", "ksh"}
+
+def _shell_tokens(command: str) -> list[str]:
     try:
-        tokens = shlex.split(command or "")
+        lexer = shlex.shlex(
+            command or "",
+            posix=True,
+            punctuation_chars=";&|()" + chr(10),
+        )
+        lexer.whitespace = " " + chr(9) + chr(13)
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        return list(lexer)
     except ValueError:
-        tokens = (command or "").split()
-    index = next(
-        (
-            offset
-            for offset, token in enumerate(tokens)
-            if token == "loopx" or token.endswith("/loopx")
-        ),
-        -1,
-    )
-    if index < 0:
+        return (command or "").replace(chr(10), " ; ").split()
+
+def _shell_basename(token: str) -> str:
+    return token.rsplit("/", 1)[-1]
+
+def _shell_separator(token: str) -> bool:
+    return bool(token) and all(char in ";&|()" or char == chr(10) for char in token)
+
+def _nested_shell_command(tokens: list[str], index: int) -> str | None:
+    cursor = index + 1
+    while cursor < len(tokens) and not _shell_separator(tokens[cursor]):
+        option = tokens[cursor]
+        if option == "--":
+            cursor += 1
+            continue
+        if option == "--command" or (
+            option.startswith("-")
+            and not option.startswith("--")
+            and "c" in option[1:]
+        ):
+            return tokens[cursor + 1] if cursor + 1 < len(tokens) else None
+        if not option.startswith("-"):
+            return None
+        cursor += 1
+    return None
+
+def loopx_invocation_argvs(command: str, *, _depth: int = 0) -> list[list[str]]:
+    tokens = _shell_tokens(command)
+    invocations: list[list[str]] = []
+    assignment_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
+    expect_command = True
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if _shell_separator(token):
+            expect_command = True
+            index += 1
+            continue
+        if not expect_command:
+            index += 1
+            continue
+        basename = _shell_basename(token)
+        if token in _SHELL_COMMAND_PREFIXES or assignment_re.match(token):
+            index += 1
+            continue
+        if basename in _SHELL_COMMAND_WRAPPERS:
+            index += 1
+            while index < len(tokens) and tokens[index].startswith("-"):
+                index += 1
+            continue
+        if basename == "env":
+            index += 1
+            while index < len(tokens) and (
+                tokens[index].startswith("-") or assignment_re.match(tokens[index])
+            ):
+                index += 1
+            continue
+        if basename in _NESTED_SHELLS:
+            nested = _nested_shell_command(tokens, index)
+            if nested is not None:
+                if _depth < 4:
+                    invocations.extend(loopx_invocation_argvs(nested, _depth=_depth + 1))
+                elif any(
+                    _shell_basename(item) == "loopx" for item in _shell_tokens(nested)
+                ):
+                    # Depth-limited nested shell requests are ambiguous; reject closed.
+                    invocations.extend([["loopx"], ["loopx"]])
+            expect_command = False
+            index += 1
+            continue
+        if basename == "loopx":
+            end = index + 1
+            while end < len(tokens) and not _shell_separator(tokens[end]):
+                end += 1
+            invocations.append(tokens[index:end])
+        expect_command = False
+        index += 1
+    return invocations
+
+def loopx_subcommands(command: str) -> list[str]:
+    invocations = loopx_invocation_argvs(command)
+    if not invocations:
         return []
+    tokens = invocations[0]
     out: list[str] = []
     skip = False
     valued_options = {
@@ -26,7 +113,7 @@ def loopx_subcommands(command: str) -> list[str]:
         "--agent-id", "--host-surface", "--role", "--task-class",
         "--action-kind", "--text",
     }
-    for token in tokens[index + 1:]:
+    for token in tokens[1:]:
         if skip:
             skip = False
             continue
@@ -43,46 +130,7 @@ def loopx_subcommands(command: str) -> list[str]:
     return out
 
 def loopx_invocation_count(command: str) -> int:
-    try:
-        lexer = shlex.shlex(
-            command or "",
-            posix=True,
-            punctuation_chars=";&|" + chr(10),
-        )
-        lexer.whitespace = " " + chr(9) + chr(13)
-        lexer.whitespace_split = True
-        lexer.commenters = ""
-        tokens = list(lexer)
-    except ValueError:
-        tokens = (command or "").replace(chr(10), " ; ").split()
-    segments = []
-    current = []
-    for token in tokens:
-        if token and all(char in ";&|" or char == chr(10) for char in token):
-            if current:
-                segments.append(current)
-                current = []
-            continue
-        current.append(token)
-    if current:
-        segments.append(current)
-
-    count = 0
-    assignment_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
-    for segment in segments:
-        index = 0
-        while index < len(segment) and assignment_re.match(segment[index]):
-            index += 1
-        if index < len(segment) and segment[index] == "env":
-            index += 1
-            while index < len(segment) and (
-                segment[index].startswith("-")
-                or assignment_re.match(segment[index])
-            ):
-                index += 1
-        if index < len(segment) and segment[index].rsplit("/", 1)[-1] == "loopx":
-            count += 1
-    return count
+    return len(loopx_invocation_argvs(command))
 
 def enforce_single_loopx_invocation(count, record, append_record) -> None:
     if count <= 1:

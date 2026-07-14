@@ -137,38 +137,60 @@ def test_prompt_bridge_rejects_batched_loopx_commands() -> None:
             ),
             private_bridge_command=None,
         )
-        request = {
-            "operation": "exec",
-            "cwd": "/app",
-            "command": (
+        commands = {
+            "newline": (
                 "/app/.local/bin/loopx todo add --goal-id case "
                 "--todo-id todo_agent_first --role agent --text first\n"
                 "/app/.local/bin/loopx todo claim --goal-id case "
                 "--todo-id todo_agent_first --claimed-by agent"
             ),
+            "if": (
+                "if /app/.local/bin/loopx todo add --goal-id case "
+                "--todo-id todo_agent_first --role agent --text first; then "
+                "/app/.local/bin/loopx todo claim --goal-id case "
+                "--todo-id todo_agent_first --claimed-by agent; fi"
+            ),
+            "command": (
+                "command /app/.local/bin/loopx todo add --goal-id case "
+                "--todo-id todo_agent_first --role agent --text first && "
+                "command /app/.local/bin/loopx todo claim --goal-id case "
+                "--todo-id todo_agent_first --claimed-by agent"
+            ),
+            "nested-shell": "sh -c "
+            + shlex.quote(
+                "/app/.local/bin/loopx todo add --goal-id case "
+                "--todo-id todo_agent_first --role agent --text first; "
+                "/app/.local/bin/loopx todo claim --goal-id case "
+                "--todo-id todo_agent_first --claimed-by agent"
+            ),
         }
-        result = subprocess.run(
-            [str(wrapper)],
-            input=json.dumps(request),
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        records = [
-            json.loads(line)
-            for line in summary_path.read_text(encoding="utf-8").splitlines()
-        ]
-        marker_exists = marker.exists()
-
-    assert result.returncode == 2, result
-    assert "exactly one LoopX CLI command" in result.stderr, result.stderr
-    assert marker_exists is False
-    completed = [record for record in records if record.get("record_phase") == "complete"]
-    assert completed[-1]["loopx_invocation_count"] == 2, completed
-    assert completed[-1]["failure_category"] == (
-        "multiple_loopx_commands_per_bridge_request"
-    ), completed
+        for label, command in commands.items():
+            request = {"operation": "exec", "cwd": "/app", "command": command}
+            result = subprocess.run(
+                [str(wrapper)],
+                input=json.dumps(request),
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            records = [
+                json.loads(line)
+                for line in summary_path.read_text(encoding="utf-8").splitlines()
+            ]
+            assert result.returncode == 2, (label, result)
+            assert "exactly one LoopX CLI command" in result.stderr, (
+                label,
+                result.stderr,
+            )
+            assert marker.exists() is False, label
+            completed = [
+                record for record in records if record.get("record_phase") == "complete"
+            ]
+            assert completed[-1]["loopx_invocation_count"] == 2, (label, completed)
+            assert completed[-1]["failure_category"] == (
+                "multiple_loopx_commands_per_bridge_request"
+            ), (label, completed)
 
 
 def test_codex_client_writes_last_message_and_rewrites_bridge() -> None:

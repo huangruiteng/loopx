@@ -138,36 +138,100 @@ def _assert_bridge_rejects_batched_loopx_commands() -> None:
             tmp_path=temp_path,
             summary_path=summary_path,
         )
-        request = {
-            "operation": "exec",
-            "cwd": "/app",
-            "command": (
+        commands = {
+            "newline": (
                 "/app/.local/bin/loopx todo add --goal-id case "
                 "--todo-id todo_agent_first --role agent --text first\n"
                 "/app/.local/bin/loopx todo add --goal-id case "
                 "--todo-id todo_agent_second --role agent --text second"
             ),
+            "if": (
+                "if /app/.local/bin/loopx todo add --goal-id case "
+                "--todo-id todo_agent_first --role agent --text first; then "
+                "/app/.local/bin/loopx todo claim --goal-id case "
+                "--todo-id todo_agent_first --claimed-by agent; fi"
+            ),
+            "command": (
+                "command /app/.local/bin/loopx todo add --goal-id case "
+                "--todo-id todo_agent_first --role agent --text first && "
+                "command /app/.local/bin/loopx todo claim --goal-id case "
+                "--todo-id todo_agent_first --claimed-by agent"
+            ),
+            "nested-shell": "sh -c "
+            + shlex.quote(
+                "/app/.local/bin/loopx todo add --goal-id case "
+                "--todo-id todo_agent_first --role agent --text first; "
+                "/app/.local/bin/loopx todo claim --goal-id case "
+                "--todo-id todo_agent_first --claimed-by agent"
+            ),
         }
-        result = subprocess.run(
-            [str(wrapper)],
-            input=json.dumps(request),
-            text=True,
-            check=False,
-            capture_output=True,
-        )
-        records = [
-            json.loads(line)
-            for line in summary_path.read_text(encoding="utf-8").splitlines()
-        ]
-        marker_exists = marker.exists()
-    assert result.returncode == 2, result
-    assert "exactly one LoopX CLI command" in result.stderr, result.stderr
-    assert marker_exists is False
-    completed = [record for record in records if record.get("record_phase") == "complete"]
-    assert completed[-1]["loopx_invocation_count"] == 2, completed
-    assert completed[-1]["failure_category"] == (
-        "multiple_loopx_commands_per_bridge_request"
-    ), completed
+        for label, command in commands.items():
+            request = {"operation": "exec", "cwd": "/app", "command": command}
+            result = subprocess.run(
+                [str(wrapper)],
+                input=json.dumps(request),
+                text=True,
+                check=False,
+                capture_output=True,
+            )
+            records = [
+                json.loads(line)
+                for line in summary_path.read_text(encoding="utf-8").splitlines()
+            ]
+            assert result.returncode == 2, (label, result)
+            assert "exactly one LoopX CLI command" in result.stderr, (
+                label,
+                result.stderr,
+            )
+            assert marker.exists() is False, label
+            completed = [
+                record for record in records if record.get("record_phase") == "complete"
+            ]
+            assert completed[-1]["loopx_invocation_count"] == 2, (label, completed)
+            assert completed[-1]["failure_category"] == (
+                "multiple_loopx_commands_per_bridge_request"
+            ), (label, completed)
+
+        wrapped_single_commands = {
+            "command": (
+                "command /app/.local/bin/loopx todo add --goal-id case "
+                "--todo-id todo_agent_command --role agent "
+                "--text 'mention sh -c loopx safely'"
+            ),
+            "nested-shell": "sh -c "
+            + shlex.quote(
+                "/app/.local/bin/loopx todo add --goal-id case "
+                "--todo-id todo_agent_nested_shell --role agent --text nested"
+            ),
+        }
+        for label, command in wrapped_single_commands.items():
+            marker.unlink(missing_ok=True)
+            request = {"operation": "exec", "cwd": "/app", "command": command}
+            result = subprocess.run(
+                [str(wrapper)],
+                input=json.dumps(request),
+                text=True,
+                check=False,
+                capture_output=True,
+            )
+            records = [
+                json.loads(line)
+                for line in summary_path.read_text(encoding="utf-8").splitlines()
+            ]
+            assert result.returncode == 0, (label, result)
+            assert marker.exists() is True, label
+            completed = [
+                record for record in records if record.get("record_phase") == "complete"
+            ]
+            assert completed[-1]["loopx_invocation_count"] == 1, (label, completed)
+            assert completed[-1]["loopx_subcommands"] == ["todo", "add"], (
+                label,
+                completed,
+            )
+            assert completed[-1]["loopx_todo_id"] == f"todo_agent_{label.replace('-', '_')}", (
+                label,
+                completed,
+            )
 
 
 def _assert_generated_prompt_requires_agent_authored_separate_requests() -> None:
