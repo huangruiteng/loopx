@@ -7,11 +7,22 @@ from pathlib import Path
 from typing import Any
 
 from .control_plane.runtime.time import now_local_iso
-from .control_plane.work_items.delivery_batch_scale import DELIVERY_BATCH_SCALE_CHOICES, require_delivery_batch_scale
-from .control_plane.work_items.delivery_outcome import DELIVERY_OUTCOME_CHOICES, require_delivery_outcome
+from .control_plane.work_items.delivery_batch_scale import (
+    DELIVERY_BATCH_SCALE_CHOICES as DELIVERY_BATCH_SCALE_CHOICES,
+    require_delivery_batch_scale,
+)
+from .control_plane.work_items.delivery_outcome import (
+    DELIVERY_OUTCOME_CHOICES as DELIVERY_OUTCOME_CHOICES,
+    require_delivery_outcome,
+)
 from .control_plane.work_items.repair_delta import (
-    REPAIR_DELTA_KIND_CHOICES,
+    REPAIR_DELTA_KIND_CHOICES as REPAIR_DELTA_KIND_CHOICES,
     normalize_repair_delta_kinds,
+)
+from .control_plane.runtime.shared_runtime_refresh_projection import (
+    build_shared_runtime_projection,
+    registered_shared_runtime_root,
+    write_shared_runtime_projection,
 )
 from .feedback import validate_local_control_text, validate_public_safe_text
 from .file_lock import exclusive_file_lock
@@ -807,6 +818,15 @@ def refresh_state_run(
     normalized_repair_delta_kinds = normalize_repair_delta_kinds(repair_delta_kinds)
     registry = load_registry(registry_path)
     runtime_root = resolve_runtime_root(registry, runtime_root_override)
+    shared_runtime_root = (
+        registered_shared_runtime_root(
+            registry_path=registry_path,
+            goal_id=safe_goal_id,
+            source_runtime_root=runtime_root,
+        )
+        if sync_global
+        else None
+    )
     registry_goal, resolved_project, resolved_state_file = resolve_goal_state(
         registry=registry,
         goal_id=safe_goal_id,
@@ -1059,6 +1079,8 @@ def refresh_state_run(
             expected_write_scopes.insert(0, "active_state")
         if sync_global:
             expected_write_scopes.append("global_registry")
+        if shared_runtime_root:
+            expected_write_scopes.append("shared_runtime_projection")
         patch_parts = [f"append refresh-state run classification={classification}"]
         if active_state_next_action_update:
             if active_state_next_action_update.get("would_update"):
@@ -1067,6 +1089,8 @@ def refresh_state_run(
                 patch_parts.append("preserve active-state Next Action")
         if sync_global:
             patch_parts.append("sync public-safe registry projection")
+        if shared_runtime_root:
+            patch_parts.append("project compact refresh to registered shared runtime")
         payload["local_state_write_correctness"] = build_local_state_write_correctness_dry_run_packet(
             goal_id=safe_goal_id,
             writer_id=normalized_agent_id or "loopx.refresh-state",
@@ -1077,6 +1101,9 @@ def refresh_state_run(
                 "run_history_ref": "runtime.goal.runs",
                 "index_ref": "runtime.goal.runs.index",
                 "global_registry_ref": "runtime.registry.global" if sync_global else None,
+                "shared_runtime_projection_ref": (
+                    "shared_runtime.goal.runs.index" if shared_runtime_root else None
+                ),
             },
             patch_summary="; ".join(patch_parts),
             expected_write_scopes=expected_write_scopes,
@@ -1100,15 +1127,65 @@ def refresh_state_run(
     if sync_global:
         payload["global_sync"] = sync_project_registry_to_global(
             registry_path=registry_path,
-            runtime_root_override=str(runtime_root),
+            runtime_root_override=str(shared_runtime_root or runtime_root),
             goal_id=safe_goal_id,
             dry_run=dry_run,
         )
+        if shared_runtime_root and payload["global_sync"].get("ok"):
+            projection_record, projection_index = build_shared_runtime_projection(
+                record=record,
+            )
+            try:
+                payload["shared_runtime_projection"] = write_shared_runtime_projection(
+                    shared_runtime_root=shared_runtime_root,
+                    goal_id=safe_goal_id,
+                    record=projection_record,
+                    index_record=projection_index,
+                    dry_run=dry_run,
+                )
+            except OSError as exc:
+                payload["ok"] = False
+                payload["partial_write"] = not dry_run
+                payload["shared_runtime_projection"] = {
+                    "ok": False,
+                    "status": "write_failed",
+                    "dry_run": dry_run,
+                    "shared_runtime_root": str(shared_runtime_root),
+                    "raw_artifacts_copied": False,
+                    "recommended_action_copied": False,
+                    "error": str(exc),
+                }
+        elif shared_runtime_root:
+            payload["ok"] = False
+            payload["partial_write"] = not dry_run
+            payload["shared_runtime_projection"] = {
+                "ok": False,
+                "status": "blocked_by_global_sync",
+                "dry_run": dry_run,
+                "shared_runtime_root": str(shared_runtime_root),
+                "raw_artifacts_copied": False,
+                "recommended_action_copied": False,
+            }
+        else:
+            payload["shared_runtime_projection"] = {
+                "ok": True,
+                "status": "not_required",
+                "dry_run": dry_run,
+                "raw_artifacts_copied": False,
+                "recommended_action_copied": False,
+            }
     else:
         payload["global_sync"] = {
             "enabled": False,
             "global_registry": str(runtime_root / "registry.global.json"),
             "synced_goal_ids": [],
             "wrote": False,
+        }
+        payload["shared_runtime_projection"] = {
+            "ok": True,
+            "status": "disabled",
+            "dry_run": dry_run,
+            "raw_artifacts_copied": False,
+            "recommended_action_copied": False,
         }
     return payload

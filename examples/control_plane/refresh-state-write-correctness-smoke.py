@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import runpy
 import sys
 import tempfile
 from pathlib import Path
@@ -139,6 +140,10 @@ def main() -> None:
     finally:
         state_refresh.now_local = original_now_local
 
+    runpy.run_path(
+        str(Path(__file__).with_name("refresh-state-shared-runtime-projection-smoke.py")),
+        run_name="__main__",
+    )
     print("refresh-state-write-correctness-smoke ok")
 
 
