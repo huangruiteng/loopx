@@ -23,6 +23,7 @@ from .health import (
     build_reward_memory_corpus_health_packet,
     reward_memory_health_case,
 )
+from .evaluation import run_reward_memory_evaluation
 from .registry import (
     build_reward_memory_corpus_registry_packet,
     normalize_reward_memory_corpus,
@@ -47,5 +48,6 @@ __all__ = [
     "pr_3237_regression_observation",
     "reward_memory_health_case",
     "review_reward_memory_candidate",
+    "run_reward_memory_evaluation",
     "semantic_preference_inventory_to_reward_corpora",
 ]

@@ -324,6 +324,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "purpose": "Exercise the Stage-2 shared candidate/review seam through the mapping-only Issue Fix adapter.",
                 "write_boundary": "stateless decision output only; persistence stays with the declared corpus owner and this command performs no provider or external write",
             },
+            {
+                "command": "loopx reward-memory evaluate --format json",
+                "purpose": "Run the Stage-4 provider-neutral core-contract suite and compact release gate over the real recall/application seam.",
+                "write_boundary": "bounded local fixture reads only; no provider, memory, repository, state, model API, or external write",
+            },
         ],
         "implemented_protocols": [
             {
@@ -391,12 +396,23 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "module": "loopx.capabilities.semantic_preference.reward_memory",
                 "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
             },
+            {
+                "schema_version": "reward_memory_evaluation_v0",
+                "module": "loopx.capabilities.reward_memory.evaluation",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
+            {
+                "schema_version": "reward_memory_release_gate_v0",
+                "module": "loopx.capabilities.reward_memory.evaluation",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
         ],
         "smokes": [
             "python3 examples/reward-memory-architecture-smoke.py",
             "python3 examples/reward-memory-corpus-registry-smoke.py",
             "python3 examples/reward-memory-candidate-review-smoke.py",
             "python3 examples/reward-memory-recall-application-smoke.py",
+            "python3 examples/reward-memory-evaluation-smoke.py",
         ],
         "docs": [
             "docs/reference/protocols/reward-memory-architecture-v0.md",
@@ -418,11 +434,12 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "Function-boundary recall permits one caller-owned query; bounded agentic search permits at most three caller/model-owned queries and contains no semantic router.",
             "Provider and application failures preserve the base output, emit compact receipts or setup hints, and never become user gates automatically.",
             "Private corpus summaries stay transient in-process; public packets retain opaque references and compact lineage only.",
+            "Stage 4 proves bounded core-contract invariants only; its fixture pass does not claim semantic uplift or authorize production rollout.",
         ],
         "next_real_step": (
-            "Activate one reviewed record through its declared corpus owner, verify "
-            "exact provider readback, and prove an Issue Fix patch-planning receipt "
-            "before advancing to the Stage-4 evaluation gate."
+            "Run bounded Stage-5 dogfood through the declared corpus owner, verify "
+            "exact provider readback, and compare real Issue Fix planning outcomes "
+            "without widening the Stage-4 contract-only claim."
         ),
     },
     {

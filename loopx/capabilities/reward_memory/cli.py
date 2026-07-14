@@ -16,6 +16,7 @@ from .health import (
     build_reward_memory_corpus_health_packet,
     reward_memory_health_case,
 )
+from .evaluation import run_reward_memory_evaluation
 from .registry import build_reward_memory_corpus_registry_packet
 
 
@@ -103,6 +104,12 @@ def register_reward_memory_commands(
         help="Apply one review decision without persisting provider state.",
     )
 
+    evaluate = sub.add_parser(
+        "evaluate",
+        help="Run the bounded Stage-4 core-contract suite and release gate.",
+    )
+    add_subcommand_format(evaluate)
+
     route = sub.add_parser(
         "route-check",
         help="Route a compact issue-fix observation to pilot, meta, or evidence hold.",
@@ -178,6 +185,8 @@ def handle_reward_memory_command(
                 )
             payload = review_reward_memory_candidate(candidate, review)
             payload["adapter"] = adapter
+        elif args.reward_memory_command == "evaluate":
+            payload = run_reward_memory_evaluation()
         else:
             observation = (
                 pr_3237_regression_observation()
@@ -214,4 +223,6 @@ def handle_reward_memory_command(
         print_payload(payload, output_format(args), _render)
         return 2
     print_payload(payload, output_format(args), _render)
+    if args.reward_memory_command == "evaluate" and payload.get("ok") is not True:
+        return 2
     return 0
