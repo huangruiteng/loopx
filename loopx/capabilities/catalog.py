@@ -286,6 +286,55 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
         ),
     },
     {
+        "id": "reward-memory",
+        "title": "Reward-memory architecture and routing",
+        "status": "design-contract",
+        "real_world_anchor": "typed feedback memory and pilot/meta delegation",
+        "user_value": (
+            "Keep run judgments, policies, preferences, reusable experience, and "
+            "working context distinct so recalled material cannot silently become authority."
+        ),
+        "entry_command": "loopx reward-memory architecture --format json",
+        "commands": [
+            {
+                "command": "loopx reward-memory architecture --format json",
+                "purpose": "Render the five-class Stage-0 architecture, lifecycle, precedence, and staged ownership contract.",
+                "write_boundary": "stateless contract output only; no memory, provider, state, or external write",
+            },
+            {
+                "command": "loopx reward-memory route-check --case pr-3237 --format json",
+                "purpose": "Exercise the public negative regression for semantic-contract, cross-surface, high-complexity issue-fix routing.",
+                "write_boundary": "deterministic public fixture only; no issue body, memory content, repository, or external write",
+            },
+        ],
+        "implemented_protocols": [
+            {
+                "schema_version": "reward_memory_architecture_v0",
+                "module": "loopx.capabilities.reward_memory.architecture",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
+            {
+                "schema_version": "reward_memory_pilot_meta_route_v0",
+                "module": "loopx.capabilities.reward_memory.architecture",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
+        ],
+        "smokes": ["python3 examples/reward-memory-architecture-smoke.py"],
+        "docs": ["docs/reference/protocols/reward-memory-architecture-v0.md"],
+        "boundaries": [
+            "Run-bound reward is outcome evidence and requires explicit review before any promotion.",
+            "Hard policy, fresh source truth, action authority, and privacy always outrank preferences and experience.",
+            "Retrieval without current-artifact verification has zero patch authority.",
+            "OpenViking cases are evaluation fixtures, provider soul text is not action authority, and session working memory remains continuation context.",
+            "Corpus presence, index presence, retrieval success, readback, and applied receipts are distinct health states.",
+            "Stage 0 writes no corpus, candidate, provider memory, evaluation result, or external artifact.",
+        ],
+        "next_real_step": (
+            "Implement the deferred Stage-1 corpus registry and retrieval-health "
+            "contract without collapsing the five classes."
+        ),
+    },
+    {
         "id": "content-ops",
         "title": "Creator/content operations loop",
         "status": "active-preview",
