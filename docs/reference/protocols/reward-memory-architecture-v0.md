@@ -137,7 +137,9 @@ loopx reward-memory route-check --case pr-3237 --format json
 ## Staged ownership
 
 - Stage 0: this classification, precedence, and delegation contract.
-- Stage 1: corpus inventory, ownership, authority, freshness, retirement, and
+- Stage 1: the implemented provider-neutral
+  [corpus registry and health contract](reward-memory-corpus-registry-v0.md),
+  including ownership, authority, freshness, retirement, scope isolation, and
   retrieval-health distinctions.
 - Stage 2: inspectable candidate distillation and explicit human review.
 - Stage 3: opt-in cross-module recall and compact application receipts.
@@ -145,4 +147,5 @@ loopx reward-memory route-check --case pr-3237 --format json
 - Stage 5: bounded cross-module dogfood and operator edit/retire controls.
 
 Later stages must extend this contract rather than collapsing these classes or
-turning provider availability into a user gate.
+turning provider availability into a user gate. Stage 1 remains a stateless
+read model and performs no provider or external write.
