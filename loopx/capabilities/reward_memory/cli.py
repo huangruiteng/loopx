@@ -8,6 +8,10 @@ from .architecture import (
     build_reward_memory_route_packet,
     pr_3237_regression_observation,
 )
+from .candidate_review import (
+    issue_fix_verified_contributor_candidate_fixture,
+    review_reward_memory_candidate,
+)
 from .health import (
     build_reward_memory_corpus_health_packet,
     reward_memory_health_case,
@@ -17,7 +21,13 @@ from .registry import build_reward_memory_corpus_registry_packet
 
 def _render(payload: dict[str, object]) -> str:
     lines = ["# Reward Memory", ""]
-    for key in ("status", "decision", "health_state", "case_ref"):
+    for key in (
+        "status",
+        "decision",
+        "effective_decision",
+        "health_state",
+        "case_ref",
+    ):
         if key in payload:
             lines.append(f"- {key}: `{payload[key]}`")
     classes = payload.get("memory_classes")
@@ -75,6 +85,24 @@ def register_reward_memory_commands(
         help="Use a compact public health fixture.",
     )
 
+    candidate = sub.add_parser(
+        "candidate-review",
+        help="Exercise the stateless Stage-2 candidate and review seam.",
+    )
+    add_subcommand_format(candidate)
+    candidate.add_argument(
+        "--case",
+        choices=["issue-fix-verified-contributor"],
+        default="issue-fix-verified-contributor",
+        help="Use a compact public Issue Fix adapter fixture.",
+    )
+    candidate.add_argument(
+        "--decision",
+        choices=["accept", "edit", "reject", "retire", "no_write"],
+        default="accept",
+        help="Apply one review decision without persisting provider state.",
+    )
+
     route = sub.add_parser(
         "route-check",
         help="Route a compact issue-fix observation to pilot, meta, or evidence hold.",
@@ -125,6 +153,31 @@ def handle_reward_memory_command(
         elif args.reward_memory_command == "health-check":
             corpus, observation = reward_memory_health_case(args.case)
             payload = build_reward_memory_corpus_health_packet(corpus, observation)
+        elif args.reward_memory_command == "candidate-review":
+            adapter = issue_fix_verified_contributor_candidate_fixture()
+            candidate = adapter["shared_candidate"]
+            review = {
+                "decision": args.decision,
+                "reviewer_ref": "github:user:maintainer",
+                "review_ref": f"review:fixture:{args.decision}",
+                "reasoning_summary": "The compact evidence and scope were reviewed.",
+            }
+            if args.decision == "edit":
+                review["edited_content_summary"] = (
+                    "Keep focused fixes within the affected module unless "
+                    "current evidence requires a broader surface."
+                )
+            if args.decision == "retire":
+                candidate = review_reward_memory_candidate(
+                    candidate,
+                    review
+                    | {
+                        "decision": "accept",
+                        "review_ref": "review:fixture:accept-before-retire",
+                    },
+                )
+            payload = review_reward_memory_candidate(candidate, review)
+            payload["adapter"] = adapter
         else:
             observation = (
                 pr_3237_regression_observation()

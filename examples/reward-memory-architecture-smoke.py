@@ -99,6 +99,16 @@ def main() -> int:
         ]
         is False
     )
+    candidate_review = architecture["existing_capability_reuse"]["candidate_review"]
+    assert candidate_review["status"] == "implemented_stateless_stage_2_seam"
+    assert candidate_review["review_decisions"] == [
+        "accept",
+        "edit",
+        "reject",
+        "retire",
+        "no_write",
+    ]
+    assert candidate_review["provider_write_performed_by_seam"] is False
     openviking = architecture["provider_alignment"]["openviking"]
     assert openviking["content_source_of_truth"] == "agfs_content"
     assert openviking["non_instruction_artifacts"]["openviking_cases"] == (

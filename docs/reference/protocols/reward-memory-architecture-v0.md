@@ -10,15 +10,17 @@ actor's independently verified repository scope. The distinction is between
 inferring what the contributor wants and inventing what the contributor is
 authorized to permit.
 
-This Stage-0 contract defines five memory classes, guarded precedence, and the
+This contract defines five memory classes, guarded precedence, and the
 pilot/meta delegation boundary. Stage 1 adds the corpus registry and health
-read model. Neither stage adds a second memory store, candidate scheduler,
-provider write, cross-module recall, evaluation harness, or rollout.
+read model. Stage 2 adds one stateless candidate/review seam. These stages add
+no second memory store, candidate scheduler, provider write, cross-module
+recall, evaluation harness, or rollout.
 
 The machine-readable contract is available through:
 
 ```bash
 loopx reward-memory architecture --format json
+loopx reward-memory candidate-review --case issue-fix-verified-contributor --decision accept --format json
 ```
 
 ## Five first-class classes
@@ -140,6 +142,45 @@ retrieval health, or provider persistence. Those stay reusable core concerns.
 This keeps the issue-fix scenario valuable without letting it define the whole
 memory product.
 
+## Implemented Stage-2 seam
+
+Stage 2 accepts a model-proposed compact candidate: target class, content
+summary, source actor and evidence reference, workspace/project/surface scope,
+reasoning summary, confidence, and any requested action scopes. The model owns
+interpretation and the proposed policy meaning. Deterministic code only checks
+the public-safe shape, scope binding, raw-content boundary, source freshness,
+unresolved conflicts, current-artifact proof where required, and authority
+checkpoint.
+
+For `hard_policy`, the checkpoint must independently bind the same actor, role,
+project, and action scopes. A verified core-contributor correction can
+therefore produce an activation-ready policy candidate directly, but only for
+the subset of action scopes already present in that checkpoint. An unverified,
+mismatched, or wider request remains inspectable as `guard_blocked`; an
+attempted `accept` or `edit` becomes `no_write` instead of gaining authority.
+Advisory preference and experience candidates cannot request action authority.
+
+The review contract exposes five decisions:
+
+- `accept` emits an active record;
+- `edit` emits a revised candidate linked to the prior candidate;
+- `reject` closes the candidate as rejected;
+- `retire` closes an already active reviewed record;
+- `no_write` records that no provider write should occur.
+
+These are decision records, not persistence operations. `accept` and `retire`
+only return a next-step instruction for the caller to use the declared corpus
+write authority and verify readback. The seam itself writes no LoopX state,
+OpenViking corpus, index, receipt, or external system. It also does not ingest
+raw chat or tool transcripts.
+
+`issue_fix_reward_memory_candidate_adapter_v0` is deliberately a field-mapping
+adapter. It maps a compact issue reference, repository revision, module-owned
+surface, contributor evidence, and model reasoning into
+`reward_memory_candidate_v0`; all guards and lifecycle decisions remain in the
+shared core. This is the first reuse proof, not an Issue Fix-specific memory
+implementation.
+
 ## OpenViking alignment
 
 The five classes are provider-neutral, but the Stage-0 boundary was checked
@@ -235,10 +276,10 @@ loopx reward-memory route-check --case pr-3237 --format json
   including ownership, authority, freshness, retirement, scope isolation, and
   retrieval-health distinctions. Its `fresh_execution_context` entry describes
   an existing LoopX capability; it is not a request for another context system.
-- Stage 2: one thin candidate and activation-decision seam over existing
-  LoopX/OpenViking evidence. It adds no second store, scheduler, automatic
-  recall, or raw-content retention. Issue Fix is the first adapter and reuses
-  the generic record/decision shape.
+- Stage 2: the implemented stateless candidate and activation-decision seam
+  over existing LoopX/OpenViking evidence. It adds no second store, scheduler,
+  automatic recall, or raw-content retention. Issue Fix is the first adapter
+  and reuses the generic record/decision shape.
 - Stage 3: opt-in cross-module recall with model reasoning inside deterministic
   scope, authority, privacy, freshness, and conflict guards, plus compact
   application receipts.

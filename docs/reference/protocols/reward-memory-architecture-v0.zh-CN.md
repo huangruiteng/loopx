@@ -7,14 +7,16 @@ Reward Memory 的核心边界是把反馈证据、策略内容和动作 authorit
 权限。经过验证的仓库 owner 或核心贡献者反馈，可以在其独立验证过的仓库作用域内推导出
 持久策略。这里需要区分的是“贡献者希望系统怎么做”和“贡献者有权允许系统做什么”。
 
-Stage 0 定义五类一等记忆、带护栏的优先级和 pilot/meta 分工；Stage 1 增加 corpus
-registry 与健康状态 read model。两个阶段都不新增第二套 memory store、候选调度器、
-provider 写入、跨模块 recall、评测框架或 rollout。
+这份合同定义五类一等记忆、带护栏的优先级和 pilot/meta 分工；Stage 1 增加 corpus
+registry 与健康状态 read model；Stage 2 增加一条无状态 candidate/review 薄缝。这些阶段
+都不新增第二套 memory store、候选调度器、provider 写入、跨模块 recall、评测框架或
+rollout。
 
 机器可读合同通过下面的命令查看：
 
 ```bash
 loopx reward-memory architecture --format json
+loopx reward-memory candidate-review --case issue-fix-verified-contributor --decision accept --format json
 ```
 
 ## 五类一等记忆
@@ -118,6 +120,38 @@ Candidate lifecycle、contributor-policy semantics、retrieval health 和 provid
 persistence 归共享 core 所有，不由 adapter 重复实现。Issue Fix 可以充分发挥场景价值，
 但不会反过来把整个 memory 产品做成 Issue Fix 特化方案。
 
+## 已实现的 Stage 2 薄缝
+
+Stage 2 接收模型提出的紧凑候选：target class、content summary、source actor 与 evidence
+reference、workspace/project/surface scope、reasoning summary、confidence，以及请求影响的
+action scopes。候选的含义、策略内容和权衡继续由模型推理；确定性代码只检查公共安全
+shape、scope binding、raw-content boundary、source freshness、未解决冲突、必要的当前
+artifact proof 和 authority checkpoint。
+
+对于 `hard_policy`，checkpoint 必须独立绑定同一个 actor、role、project 和 action
+scopes。因此，经过验证的核心贡献者 correction 可以直接形成 activation-ready policy
+candidate，但只能约束 checkpoint 已有 action scope 的子集。checkpoint 未验证、actor 或
+project 不一致、或者候选要求更大 scope 时，候选仍可检视，但状态为 `guard_blocked`；此时
+即使请求 `accept` 或 `edit`，有效决策也会收敛为 `no_write`，不会扩大 authority。
+Advisory preference 与 experience candidate 不允许请求 action authority。
+
+Review contract 暴露五个一等决策：
+
+- `accept`：产出 active record；
+- `edit`：产出带 prior-candidate lineage 的修订候选；
+- `reject`：关闭并拒绝候选；
+- `retire`：关闭一个已经 active 的 reviewed record；
+- `no_write`：明确记录本次不应写 provider。
+
+这些只是 decision record，不是 persistence 操作。`accept` 与 `retire` 只返回下一步提示：
+调用方必须使用 corpus 声明的 write authority，再完成 readback 验证。薄缝自身不写 LoopX
+state、OpenViking corpus、index、receipt 或外部系统，也不摄取 raw chat 或 tool transcript。
+
+`issue_fix_reward_memory_candidate_adapter_v0` 刻意保持为字段映射 adapter：把紧凑 issue
+reference、repository revision、模块自有 surface、contributor evidence 和模型 reasoning
+映射到 `reward_memory_candidate_v0`。所有 guard 与 lifecycle decision 仍由共享 core 所有。
+这是第一条复用证据，不是 Issue Fix 专用 memory 实现。
+
 ## 与 OpenViking 的对齐关系
 
 五类记忆保持 provider-neutral；Stage 0 的边界已经结合 OpenViking 当前公开架构和代码
@@ -199,9 +233,9 @@ loopx reward-memory route-check --case pr-3237 --format json
   [corpus registry 与 health contract](reward-memory-corpus-registry-v0.md)，覆盖 ownership、
   authority、freshness、retirement、scope isolation 和 retrieval-health 区分。其中的
   `fresh_execution_context` 描述 LoopX 已有能力，不要求建设另一套 context system。
-- Stage 2：在现有 LoopX/OpenViking evidence 之上增加一条最薄的 candidate 与
-  activation-decision seam。不新增第二套 store、scheduler、automatic recall 或 raw-content
-  retention；Issue Fix 是首个 adapter，复用通用 record/decision shape。
+- Stage 2：已实现的无状态 candidate 与 activation-decision seam，建立在现有
+  LoopX/OpenViking evidence 之上。不新增第二套 store、scheduler、automatic recall 或
+  raw-content retention；Issue Fix 是首个 adapter，复用通用 record/decision shape。
 - Stage 3：opt-in cross-module recall。模型在确定性的 scope、authority、privacy、
   freshness 和 conflict guard 内推理，并生成紧凑 application receipt。
 - Stage 4：evaluation harness 与 release gate。

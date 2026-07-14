@@ -287,7 +287,7 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
     },
     {
         "id": "reward-memory",
-        "title": "Reward-memory architecture, corpus health, and routing",
+        "title": "Reward-memory architecture, corpus health, and candidate review",
         "status": "foundation",
         "real_world_anchor": (
             "typed feedback memory, provider-owned corpus health, and pilot/meta delegation"
@@ -319,6 +319,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "purpose": "Exercise deterministic project, surface, freshness, index, retrieval, readback, and application health states.",
                 "write_boundary": "public fixture classification only; no memory, index, receipt, state, or external write",
             },
+            {
+                "command": "loopx reward-memory candidate-review --case issue-fix-verified-contributor --decision accept --format json",
+                "purpose": "Exercise the Stage-2 shared candidate/review seam through the mapping-only Issue Fix adapter.",
+                "write_boundary": "stateless decision output only; persistence stays with the declared corpus owner and this command performs no provider or external write",
+            },
         ],
         "implemented_protocols": [
             {
@@ -341,10 +346,26 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "module": "loopx.capabilities.reward_memory.health",
                 "doc": "docs/reference/protocols/reward-memory-corpus-registry-v0.md",
             },
+            {
+                "schema_version": "reward_memory_candidate_v0",
+                "module": "loopx.capabilities.reward_memory.candidate_review",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
+            {
+                "schema_version": "reward_memory_candidate_review_v0",
+                "module": "loopx.capabilities.reward_memory.candidate_review",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
+            {
+                "schema_version": "issue_fix_reward_memory_candidate_adapter_v0",
+                "module": "loopx.capabilities.reward_memory.candidate_review",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
         ],
         "smokes": [
             "python3 examples/reward-memory-architecture-smoke.py",
             "python3 examples/reward-memory-corpus-registry-smoke.py",
+            "python3 examples/reward-memory-candidate-review-smoke.py",
         ],
         "docs": [
             "docs/reference/protocols/reward-memory-architecture-v0.md",
@@ -360,11 +381,13 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "Corpus presence, index presence, retrieval success, readback, and applied receipts are distinct health states.",
             "Project or surface mismatch fails closed before provider availability can influence application.",
             "Stages 0-1 write no corpus, candidate, provider memory, evaluation result, or external artifact.",
+            "Stage 2 returns inspectable candidate/review decisions only; accept or retire still requires the caller to use the corpus owner's declared write authority and verify readback.",
+            "The Issue Fix Stage-2 adapter maps compact domain evidence into the shared core and owns no parallel lifecycle, store, scheduler, or recall path.",
         ],
         "next_real_step": (
-            "Implement one thin Stage-2 candidate and activation-decision seam over "
-            "existing LoopX/OpenViking evidence, with Issue Fix as the first adapter; "
-            "do not add a second store, scheduler, or automatic recall."
+            "Add opt-in Stage-3 recall and reasoning-mediated application over the "
+            "same candidate/review core; preserve provider ownership and do not add "
+            "a second store, scheduler, or automatic cross-module recall."
         ),
     },
     {

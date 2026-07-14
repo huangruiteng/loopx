@@ -358,6 +358,20 @@ def build_reward_memory_architecture_packet() -> dict[str, Any]:
                 "role": "provider_storage_index_retrieval_and_session_memory",
                 "reuse_before_new_infrastructure": True,
             },
+            "candidate_review": {
+                "status": "implemented_stateless_stage_2_seam",
+                "candidate_schema": "reward_memory_candidate_v0",
+                "review_schema": "reward_memory_candidate_review_v0",
+                "review_decisions": [
+                    "accept",
+                    "edit",
+                    "reject",
+                    "retire",
+                    "no_write",
+                ],
+                "persistence_owner": "declared_corpus_write_authority",
+                "provider_write_performed_by_seam": False,
+            },
         },
         "provider_alignment": {"openviking": _openviking_alignment()},
         "pilot_meta_delegation": {
@@ -392,7 +406,8 @@ def build_reward_memory_architecture_packet() -> dict[str, Any]:
             "stage_0": "classification_precedence_and_delegation_only",
             "stage_1": "corpus_registry_ownership_and_retrieval_health",
             "stage_2": (
-                "thin_candidate_and_review_seam_no_second_store_scheduler_or_recall"
+                "implemented_thin_candidate_and_review_seam_no_second_store_"
+                "scheduler_or_recall"
             ),
             "stage_3": "reasoning_mediated_cross_module_recall_and_application",
             "stage_4": "evaluation_harness_and_release_gate",
