@@ -152,19 +152,26 @@ def resolve_runtime_projection_route(
             continue
         unique_matches.append(match)
 
-    target_roots = [item["target_runtime_root"] for item in unique_matches]
+    external_matches = [
+        item
+        for item in unique_matches
+        if not _same_path(item["target_runtime_root"], source_runtime)
+    ]
+    source_mirror_match_count = len(unique_matches) - len(external_matches)
+    effective_matches = external_matches or unique_matches
+    target_roots = [item["target_runtime_root"] for item in effective_matches]
     source_is_global = _same_path(
         source_registry,
         global_registry_path(source_runtime),
     )
-    if len(unique_matches) > 1:
+    if len(effective_matches) > 1:
         status = "ambiguous"
         target_runtime = None
         target_registry = None
         projection_required = True
         declaration_source = "multiple_target_registries.goal.source_registry"
-    elif unique_matches:
-        match = unique_matches[0]
+    elif effective_matches:
+        match = effective_matches[0]
         target_runtime = match["target_runtime_root"]
         target_registry = match["target_registry"]
         projection_required = not _same_path(target_runtime, source_runtime)
@@ -227,7 +234,8 @@ def resolve_runtime_projection_route(
         "target_runtime_root": str(target_runtime) if target_runtime is not None else None,
         "target_registry": str(target_registry) if target_registry is not None else None,
         "candidate_count": len(roots),
-        "match_count": len(unique_matches),
+        "match_count": len(effective_matches),
+        "source_mirror_match_count": source_mirror_match_count,
         "conflict_count": len(conflicts),
         "unreadable_target_count": unreadable_target_count,
         "target_runtime_digests": [_path_digest(root) for root in target_roots],
@@ -245,6 +253,9 @@ def compact_runtime_projection_route(route: dict[str, Any]) -> dict[str, Any]:
         "projection_required": bool(route.get("projection_required")),
         "declaration_source": route.get("declaration_source"),
         "match_count": int(route.get("match_count") or 0),
+        "source_mirror_match_count": int(
+            route.get("source_mirror_match_count") or 0
+        ),
         "conflict_count": int(route.get("conflict_count") or 0),
         "unreadable_target_count": int(route.get("unreadable_target_count") or 0),
         "source_registry_sha256_16": _path_digest(Path(source_registry))

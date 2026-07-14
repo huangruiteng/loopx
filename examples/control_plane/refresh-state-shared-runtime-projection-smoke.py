@@ -384,6 +384,37 @@ def main() -> None:
         assert single_route["status"] == "single_runtime", single_route
         assert single_route["projection_required"] is False, single_route
 
+        mirrored_source_runtime = Path(tmp) / "mirrored-source-runtime"
+        mirrored_target_runtime = Path(tmp) / "mirrored-target-runtime"
+        mirrored_registry, mirrored_goal = write_route_source(
+            Path(tmp),
+            name="mirrored",
+            source_runtime=mirrored_source_runtime,
+        )
+        write_route_target(
+            mirrored_source_runtime,
+            source_registry=mirrored_registry,
+            goal_id=mirrored_goal,
+        )
+        write_route_target(
+            mirrored_target_runtime,
+            source_registry=mirrored_registry,
+            goal_id=mirrored_goal,
+        )
+        mirrored_route = resolve_runtime_projection_route(
+            registry_path=mirrored_registry,
+            goal_id=mirrored_goal,
+            source_runtime_root=mirrored_source_runtime,
+            candidate_roots=[mirrored_target_runtime],
+        )
+        assert mirrored_route["status"] == "resolved", mirrored_route
+        assert mirrored_route["projection_required"] is True, mirrored_route
+        assert mirrored_route["target_runtime_root"] == str(
+            mirrored_target_runtime.resolve()
+        ), mirrored_route
+        assert mirrored_route["match_count"] == 1, mirrored_route
+        assert mirrored_route["source_mirror_match_count"] == 1, mirrored_route
+
         standalone_runtime = Path(tmp) / "standalone-runtime"
         standalone_registry, standalone_goal = write_route_source(
             Path(tmp),
@@ -477,6 +508,11 @@ def main() -> None:
                 source_registry=ambiguous_registry,
                 goal_id=ambiguous_goal,
             )
+        write_route_target(
+            ambiguous_source_runtime,
+            source_registry=ambiguous_registry,
+            goal_id=ambiguous_goal,
+        )
         ambiguous_route = resolve_runtime_projection_route(
             registry_path=ambiguous_registry,
             goal_id=ambiguous_goal,
@@ -485,6 +521,7 @@ def main() -> None:
         )
         assert ambiguous_route["status"] == "ambiguous", ambiguous_route
         assert ambiguous_route["match_count"] == 2, ambiguous_route
+        assert ambiguous_route["source_mirror_match_count"] == 1, ambiguous_route
         compact_ambiguous = compact_runtime_projection_route(ambiguous_route)
         assert str(Path(tmp)) not in json.dumps(compact_ambiguous), compact_ambiguous
 
