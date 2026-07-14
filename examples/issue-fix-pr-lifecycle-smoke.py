@@ -562,10 +562,15 @@ def main() -> int:
         assert material_result["status"] == "updated", material_result
         assert material_result["write_performed"] is True, material_result
         assert failing["domain_state_projection"]["write_performed"] is True, failing
-        assert ledger.stat().st_ino != first_inode
         material_rows = [
             json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()
         ]
+        assert material_rows[0]["observation_fingerprint"] == failing[
+            "observation_fingerprint"
+        ], material_rows
+        assert material_rows[0]["observation_fingerprint"] != quiet[
+            "observation_fingerprint"
+        ], material_rows
         assert material_rows[0]["first_push_ci"] == quiet["first_push_ci"], (
             material_rows
         )
