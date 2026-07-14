@@ -11442,6 +11442,9 @@ def _product_mode_no_open_todo_below_passing_reward_applicable(
 
 
 def _product_mode_depth_gate_satisfied(trace: dict[str, Any]) -> bool:
+    if _product_mode_agent_lifecycle_gate_satisfied(trace):
+        return True
+
     def count(*fields: str) -> int:
         values = [
             trace.get(field)
@@ -11503,6 +11506,38 @@ def _product_mode_depth_gate_satisfied(trace: dict[str, Any]) -> bool:
 
 def _product_mode_agent_lifecycle_gate_satisfied(trace: dict[str, Any]) -> bool:
     """Return true only after the solver agent, not only the driver, touched LoopX."""
+
+    # Relay snapshots may expose successful commands before cumulative counters catch up.
+    successful_commands = {
+        record.get("subcommand")
+        for record in _goal_start_public_command_records(
+            trace.get(
+                "remote_command_file_bridge_agent_successful_loopx_command_records"
+            )
+        )
+    }
+    successful_read_observed = bool(
+        successful_commands
+        & {"start-goal", "quota should-run", "status", "diagnose"}
+    )
+    successful_write_observed = bool(
+        successful_commands
+        & {
+            "refresh-state",
+            "quota spend-slot",
+            "todo add",
+            "todo claim",
+            "todo update",
+            "todo complete",
+            "todo supersede",
+            "todo archive-completed",
+        }
+    )
+    successful_lifecycle_observed = bool(
+        successful_read_observed and successful_write_observed
+    )
+    if successful_lifecycle_observed:
+        return True
 
     remote_agent_trace_required = (
         trace.get("remote_command_file_bridge_agent_operation_trace_required") is True

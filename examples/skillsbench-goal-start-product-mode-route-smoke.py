@@ -643,6 +643,47 @@ def _assert_control_score_surface() -> None:
     assert compacted_prerequisites["goal_start_planned_todo_count_expected"] == 3
 
 
+def _assert_lifecycle_gates_use_successful_command_records() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    from scripts.skillsbench_automation_loop import (
+        _product_mode_agent_lifecycle_gate_satisfied,
+        _product_mode_depth_gate_satisfied,
+    )
+
+    trace = {
+        "remote_command_file_bridge_agent_operation_trace_required": True,
+        "remote_command_file_bridge_agent_successful_loopx_command_records": [
+            {"subcommand": "start-goal"},
+            {"subcommand": "todo add", "todo_id": "todo_public_solver"},
+        ],
+    }
+    assert _product_mode_agent_lifecycle_gate_satisfied(trace) is True, trace
+    assert _product_mode_depth_gate_satisfied(trace) is True, trace
+
+    read_only_trace = {
+        "remote_command_file_bridge_agent_operation_trace_required": True,
+        "remote_command_file_bridge_agent_successful_loopx_command_records": [
+            {"subcommand": "start-goal"},
+        ],
+    }
+    assert (
+        _product_mode_agent_lifecycle_gate_satisfied(read_only_trace) is False
+    ), read_only_trace
+    assert _product_mode_depth_gate_satisfied(read_only_trace) is False, read_only_trace
+
+    todo_read_trace = {
+        "remote_command_file_bridge_agent_operation_trace_required": True,
+        "remote_command_file_bridge_agent_successful_loopx_command_records": [
+            {"subcommand": "start-goal"},
+            {"subcommand": "todo list"},
+        ],
+    }
+    assert (
+        _product_mode_agent_lifecycle_gate_satisfied(todo_read_trace) is False
+    ), todo_read_trace
+    assert _product_mode_depth_gate_satisfied(todo_read_trace) is False, todo_read_trace
+
+
 def _assert_host_local_acp_return_arity_compat() -> None:
     sys.path.insert(0, str(REPO_ROOT))
     from scripts.skillsbench_automation_loop import (
@@ -820,6 +861,7 @@ def main() -> int:
     _assert_bridge_rejects_batched_loopx_commands()
     _assert_generated_prompt_requires_agent_authored_separate_requests()
     _assert_control_score_surface()
+    _assert_lifecycle_gates_use_successful_command_records()
     _assert_host_local_acp_return_arity_compat()
     _assert_app_server_goal_baseline_bridge_contract()
     _assert_verifier_feedback_routes_disabled()
