@@ -55,6 +55,7 @@ QUOTA_PAYLOAD_ITEM_FIELDS = (
     "priority",
     "task_class",
     "action_kind",
+    "task_repository",
     "continuation_policy",
     "required_capabilities",
     "missing_capabilities",

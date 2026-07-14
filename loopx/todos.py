@@ -18,7 +18,6 @@ from .status import (
 )
 from .control_plane.todos.contract import (
     TODO_MONITOR_METADATA_FIELDS,
-    TODO_CONTINUATION_POLICY_VALUES,
     TodoContinuationPolicy,
     TODO_STATUS_DEFERRED,
     TODO_STATUS_DONE,
@@ -46,6 +45,7 @@ from .control_plane.todos.contract import (
     normalize_todo_resume_when,
     normalize_supported_todo_resume_when,
     normalize_todo_status,
+    normalize_todo_task_repository,
     parse_todo_metadata_line,
     require_todo_excluded_agents,
     resolve_todo_continuation_policy,
@@ -70,7 +70,6 @@ from .control_plane.todos.event_writeback import (
     complete_event_projected_goal_todo,
     event_projection_todo_context,
 )
-from .control_plane.todos.markdown import render_todo_markdown
 from .control_plane.todos.monitor_metadata import require_monitor_metadata_scope
 from .control_plane.todos.text import (
     inherit_todo_priority,
@@ -608,6 +607,7 @@ def add_todo_to_lines(
     status: str | None = None,
     task_class: str | None = None,
     action_kind: str | None = None,
+    task_repository: str | None = None,
     continuation_policy: str | None = None,
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
@@ -679,6 +679,7 @@ def add_todo_to_lines(
             status=normalized_status,
             task_class=task_class,
             action_kind=action_kind,
+            task_repository=task_repository,
             continuation_policy=continuation_policy,
             required_write_scopes=required_write_scopes,
             required_capabilities=required_capabilities,
@@ -714,6 +715,8 @@ def add_todo_to_lines(
             updates["task_class"] = task_class
         if action_kind:
             updates["action_kind"] = action_kind
+        if task_repository:
+            updates["task_repository"] = task_repository
         if continuation_policy:
             updates["continuation_policy"] = continuation_policy
         if required_write_scopes is not None:
@@ -763,6 +766,9 @@ def add_todo_to_lines(
         "status": normalize_todo_status(effective_metadata.get("status")) or normalized_status,
         "task_class": effective_metadata.get("task_class") or task_class,
         "action_kind": effective_metadata.get("action_kind") or action_kind,
+        "task_repository": normalize_todo_task_repository(
+            effective_metadata.get("task_repository") or task_repository
+        ),
         "continuation_policy": normalize_todo_continuation_policy(
             effective_metadata.get("continuation_policy") or continuation_policy
         ),
@@ -810,6 +816,7 @@ def add_goal_todo(
     status: str | None = None,
     task_class: str | None = None,
     action_kind: str | None = None,
+    task_repository: str | None = None,
     continuation_policy: str | None = None,
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
@@ -844,6 +851,8 @@ def add_goal_todo(
             "blocks_agent is only valid for user gates; use --excluded-agent for "
             "agent executor constraints"
         )
+    if task_repository and role != "agent":
+        raise ValueError("task_repository is only valid for agent todos")
     normalized_status = normalize_todo_status(status) if status else TODO_STATUS_OPEN
     if status and not normalized_status:
         raise ValueError("todo status must be one of: open, done, blocked, deferred")
@@ -931,6 +940,7 @@ def add_goal_todo(
             status=normalized_status,
             task_class=task_class,
             action_kind=action_kind,
+            task_repository=task_repository,
             continuation_policy=continuation_policy,
             required_write_scopes=required_write_scopes,
             required_capabilities=required_capabilities,
@@ -972,6 +982,7 @@ def add_goal_todo(
         "status": add_result.get("status"),
         "task_class": add_result.get("task_class"),
         "action_kind": add_result.get("action_kind"),
+        "task_repository": add_result.get("task_repository"),
         "continuation_policy": add_result.get("continuation_policy"),
         "required_write_scopes": add_result.get("required_write_scopes"),
         "required_capabilities": add_result.get("required_capabilities"),
@@ -1031,6 +1042,7 @@ def apply_todo_update_to_lines(
     reason: str | None = None,
     task_class: str | None = None,
     action_kind: str | None = None,
+    task_repository: str | None = None,
     continuation_policy: str | None = None,
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
@@ -1116,6 +1128,8 @@ def apply_todo_update_to_lines(
         updates["task_class"] = task_class
     if action_kind:
         updates["action_kind"] = action_kind
+    if task_repository:
+        updates["task_repository"] = task_repository
     if continuation_policy:
         updates["continuation_policy"] = continuation_policy
     if required_write_scopes is not None:
@@ -1179,6 +1193,9 @@ def apply_todo_update_to_lines(
         "claimed_by": normalize_todo_claimed_by(effective_metadata.get("claimed_by")),
         "task_class": effective_metadata.get("task_class"),
         "action_kind": effective_metadata.get("action_kind"),
+        "task_repository": normalize_todo_task_repository(
+            effective_metadata.get("task_repository")
+        ),
         "continuation_policy": normalize_todo_continuation_policy(
             effective_metadata.get("continuation_policy")
         ),
@@ -1224,6 +1241,7 @@ def update_goal_todo(
     reason: str | None = None,
     task_class: str | None = None,
     action_kind: str | None = None,
+    task_repository: str | None = None,
     continuation_policy: str | None = None,
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
@@ -1319,6 +1337,8 @@ def update_goal_todo(
                 "blocks_agent is only valid for user gates; use excluded_agents for "
                 "agent executor constraints"
             )
+        if task_repository and target_role != "agent":
+            raise ValueError("task_repository is only valid for agent todos")
         effective_excluded_agents = (
             []
             if clear_excluded_agents
@@ -1411,6 +1431,7 @@ def update_goal_todo(
             reason=reason,
             task_class=task_class,
             action_kind=action_kind,
+            task_repository=task_repository,
             continuation_policy=continuation_policy,
             required_write_scopes=required_write_scopes,
             required_capabilities=required_capabilities,

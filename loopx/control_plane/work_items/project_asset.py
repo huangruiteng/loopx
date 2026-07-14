@@ -467,6 +467,7 @@ PROJECT_ASSET_TODO_DISPLAY_FIELDS = (
     "source_section",
     "task_class",
     "action_kind",
+    "task_repository",
     "required_write_scopes",
     "required_capabilities",
     "target_capabilities",

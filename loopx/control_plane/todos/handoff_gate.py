@@ -144,6 +144,7 @@ def _compact_handoff_gate(
         "role",
         "task_class",
         "action_kind",
+        "task_repository",
         "continuation_policy",
         "claimed_by",
         "unblocks_todo_id",

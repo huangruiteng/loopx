@@ -23,6 +23,7 @@ WORK_LANE_TODO_ITEM_FIELDS = (
     "priority",
     "task_class",
     "action_kind",
+    "task_repository",
     "claimed_by",
     "target_key",
     "next_due_at",

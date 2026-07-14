@@ -12,13 +12,13 @@ from ..todo_suggestion_prompt import (
     render_todo_suggestion_prompt_markdown,
 )
 from ..todo_followups import capture_followup_todos
+from ..control_plane.todos.markdown import render_todo_markdown
 from ..todos import (
     ARCHIVE_COMPLETED_DEFAULT_MAX_ACTIVE_DONE,
     archive_completed_todos,
     add_goal_todo,
     complete_goal_todo,
     list_goal_todos,
-    render_todo_markdown,
     supersede_goal_todo,
     update_goal_todo,
 )
@@ -94,6 +94,14 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         help=(
             "For todo add, optional public-safe action token such as run_eval, "
             "rebuild_score, compact_blocker_writeback, or monitor."
+        ),
+    )
+    todo_parser.add_argument(
+        "--task-repository",
+        help=(
+            "For agent todo add/update, declare the credential-free Git repository "
+            "identity that owns the task, such as git:github.com/owner/repo. This "
+            "selects workspace isolation; it does not grant write permission."
         ),
     )
     todo_parser.add_argument(
@@ -440,6 +448,7 @@ def handle_todo_command(
                 status=args.status,
                 task_class=args.task_class,
                 action_kind=args.action_kind,
+                task_repository=args.task_repository,
                 continuation_policy=args.continuation_policy,
                 required_write_scopes=args.required_write_scopes,
                 required_capabilities=args.required_capabilities,
@@ -481,6 +490,7 @@ def handle_todo_command(
                     ("--reason", args.reason),
                     ("--task-class", args.task_class),
                     ("--action-kind", args.action_kind),
+                    ("--task-repository", args.task_repository),
                     ("--continuation-policy", args.continuation_policy),
                     ("--required-write-scope", args.required_write_scopes),
                     ("--required-capability", args.required_capabilities),
@@ -550,6 +560,7 @@ def handle_todo_command(
                 args.reason,
                 args.task_class,
                 args.action_kind,
+                args.task_repository,
                 args.continuation_policy,
                 args.required_write_scopes,
                 args.required_capabilities,
@@ -600,6 +611,7 @@ def handle_todo_command(
                 reason=args.reason,
                 task_class=args.task_class,
                 action_kind=args.action_kind,
+                task_repository=args.task_repository,
                 continuation_policy=args.continuation_policy,
                 required_write_scopes=args.required_write_scopes,
                 required_capabilities=args.required_capabilities,
@@ -642,7 +654,7 @@ def handle_todo_command(
                 )
             if args.claimed_by and args.clear_claim:
                 raise ValueError("todo complete accepts either --claimed-by or --clear-claim, not both")
-            if args.blocks_agent or args.clear_blocks_agent or args.excluded_agents or args.clear_excluded_agents or args.global_gate or args.unblocks_todo_id or args.resume_when:
+            if args.task_repository or args.blocks_agent or args.clear_blocks_agent or args.excluded_agents or args.clear_excluded_agents or args.global_gate or args.unblocks_todo_id or args.resume_when:
                 raise ValueError("todo complete does not update current todo routing metadata; use todo update first")
             if args.monitor_target_key or args.cadence or args.next_due_at or args.expires_at:
                 raise ValueError("todo complete does not support monitor schedule metadata; use todo update before completion")
