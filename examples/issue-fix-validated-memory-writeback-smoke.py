@@ -122,10 +122,10 @@ def merged_lifecycle() -> dict[str, object]:
         "ok": True,
         "schema_version": "issue_fix_pr_lifecycle_monitor_v0",
         "observation": {
-            "repo": "owner/repo",
+            "repo": "huangruiteng/loopx",
             "pr_ref": "pull_8",
             "number": 8,
-            "permalink": "https://github.com/owner/repo/pull/8",
+            "permalink": "https://github.com/huangruiteng/loopx/pull/8",
             "state": "MERGED",
             "is_draft": False,
             "checks": {
@@ -152,7 +152,7 @@ def outcome_packet(
     commit_ref: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     feasibility = build_issue_fix_feasibility_packet(
-        url="https://github.com/owner/repo/issues/7",
+        url="https://github.com/huangruiteng/loopx/issues/7",
         reproduction_status="confirmed",
         reproduction_label="focused worker reproduction",
         scope_class="bounded",
@@ -166,8 +166,27 @@ def outcome_packet(
         "validation_label": "passed focused public contract test",
         "changed_files": ["src/worker.py", "tests/test_worker.py"],
         "commit_ref": commit_ref or revision,
+        "repository_commit_evidence": {
+            "schema_version": "issue_fix_repository_commit_evidence_v0",
+            "status": "verified",
+            "repo": "huangruiteng/loopx",
+            "repository_fingerprint": "sha256:" + "a" * 64,
+            "repository_revision": revision,
+            "declared_commit_ref": commit_ref or revision,
+            "commit_oid": commit_ref or revision,
+            "recovery_ref": "refs/heads/main",
+            "recovery_ref_oid": revision,
+            "commit_is_ancestor": True,
+            "verified_at": OBSERVED_AT,
+            "repo_path_captured": False,
+            "remote_urls_captured": False,
+            "raw_git_output_captured": False,
+        },
         "outputs": [
-            {"kind": "pull_request", "url": "https://github.com/owner/repo/pull/8"}
+            {
+                "kind": "pull_request",
+                "url": "https://github.com/huangruiteng/loopx/pull/8",
+            }
         ],
         "risks": ["broader integration validation was not run"],
         "recorded_at": OBSERVED_AT,
@@ -305,7 +324,9 @@ def main() -> int:
     ):
         assert expected in stored_fact, expected
     assert first["knowledge_eligible"] is True, first
-    assert "/repository-learning-cards/" in next(iter(provider.contents)), provider.contents
+    assert "/repository-learning-cards/" in next(iter(provider.contents)), (
+        provider.contents
+    )
     assert_public_boundary(first)
     assert_public_boundary(retry)
 
@@ -359,9 +380,7 @@ def main() -> int:
     )
     assert stale["memory_input"]["results"][0]["verification_status"] == "unverified"
     assert (
-        stale["provider_projection"]["learning_cards"][0][
-            "reference_digest_match"
-        ]
+        stale["provider_projection"]["learning_cards"][0]["reference_digest_match"]
         is False
     )
 
@@ -428,7 +447,9 @@ def main() -> int:
         execute=True,
         provider=provider,
     )
-    assert disabled["status"] == "disabled" and not disabled["external_writes_performed"]
+    assert (
+        disabled["status"] == "disabled" and not disabled["external_writes_performed"]
+    )
     try:
         write_issue_fix_validated_outcome_memory(
             config=provider_config(),
@@ -556,7 +577,12 @@ def main() -> int:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        subprocess.run(["git", "rm", "-rf", "."], cwd=checkout, check=True, stdout=subprocess.DEVNULL)
+        subprocess.run(
+            ["git", "rm", "-rf", "."],
+            cwd=checkout,
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
         (checkout / "delivery.txt").write_text("delivered\n", encoding="utf-8")
         subprocess.run(["git", "add", "delivery.txt"], cwd=checkout, check=True)
         subprocess.run(["git", "commit", "-qm", "delivery"], cwd=checkout, check=True)
@@ -599,7 +625,9 @@ def main() -> int:
             provider=blocked_provider,
         )
         assert blocked["ok"] is False and blocked["status"] == "blocked", blocked
-        assert blocked["reason_code"] == "delivery_commit_not_in_repository_revision", blocked
+        assert blocked["reason_code"] == "delivery_commit_not_in_repository_revision", (
+            blocked
+        )
         assert blocked["checkout_verification"]["commit_is_ancestor"] is False, blocked
         assert blocked["external_writes_performed"] is False, blocked
         assert blocked_provider.contents == {}, blocked_provider.contents
@@ -648,7 +676,7 @@ def main() -> int:
             "--goal-id",
             "public-issue-fix-goal",
             "--repo",
-            "owner/repo",
+            "huangruiteng/loopx",
             "--issue-ref",
             str(feasibility["observation"]["issue_ref"]),
             "--feasibility-json",
@@ -662,6 +690,8 @@ def main() -> int:
             "--write-repository-memory",
             "--repo-path",
             str(ROOT),
+            "--repository-ref",
+            "refs/remotes/origin/main",
             "--generated-at",
             OBSERVED_AT,
         ]

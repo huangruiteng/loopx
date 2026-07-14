@@ -36,6 +36,10 @@ from loopx.presentation.sinks.lark.kanban import (  # noqa: E402
 )
 
 
+FIXTURE_REVISION = "b" * 40
+FIXTURE_COMMIT_OID = "a" * 40
+
+
 def feasibility_packet(*, route: str = "fix_pr") -> dict[str, object]:
     return {
         "ok": True,
@@ -49,7 +53,7 @@ def feasibility_packet(*, route: str = "fix_pr") -> dict[str, object]:
             "reproduction_label": "focused parser contract repro",
             "validation_label": "focused parser tests",
             "repository_context": {
-                "repository_revision": "abc1234def5678",
+                "repository_revision": FIXTURE_REVISION,
                 "context_fingerprint": "context-fixture-42",
                 "context_status": "grounded",
             },
@@ -116,14 +120,18 @@ def lifecycle_packet(
     }
 
 
-def delivery_evidence() -> dict[str, object]:
-    return {
+def delivery_evidence(
+    *,
+    commit_ref: str = "fix-parser-abc1234",
+    include_repository_commit_evidence: bool = True,
+) -> dict[str, object]:
+    evidence: dict[str, object] = {
         "schema_version": "issue_fix_delivery_evidence_input_v0",
         "outcome_status": "in_progress",
         "validation_status": "passed",
         "validation_label": "12 focused parser tests and lint",
         "changed_files": ["src/parser.py", "tests/test_parser.py"],
-        "commit_ref": "fix-parser-abc1234",
+        "commit_ref": commit_ref,
         "outputs": [
             {
                 "kind": "review_packet",
@@ -132,12 +140,64 @@ def delivery_evidence() -> dict[str, object]:
         ],
         "risks": ["full integration suite remains outside focused validation"],
     }
+    if include_repository_commit_evidence:
+        evidence["repository_commit_evidence"] = {
+            "schema_version": "issue_fix_repository_commit_evidence_v0",
+            "status": "verified",
+            "repo": "public-fixture/widgets",
+            "repository_fingerprint": "sha256:" + "c" * 64,
+            "repository_revision": FIXTURE_REVISION,
+            "declared_commit_ref": commit_ref,
+            "commit_oid": FIXTURE_COMMIT_OID,
+            "recovery_ref": "refs/remotes/origin/main",
+            "recovery_ref_oid": FIXTURE_REVISION,
+            "commit_is_ancestor": True,
+            "verified_at": "2026-07-10T00:00:00Z",
+            "repo_path_captured": False,
+            "remote_urls_captured": False,
+            "raw_git_output_captured": False,
+        }
+    return evidence
 
 
 def assert_default_goal_sync_composes_outcomes() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-issue-fix-closeout-") as tmp:
         project = Path(tmp)
         goal_id = "public-issue-fix-closeout"
+        checkout = project / "checkout"
+        checkout.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=checkout, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "fixture@example.com"],
+            cwd=checkout,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "LoopX Fixture"],
+            cwd=checkout,
+            check=True,
+        )
+        subprocess.run(
+            [
+                "git",
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/public-fixture/widgets.git",
+            ],
+            cwd=checkout,
+            check=True,
+        )
+        (checkout / "fixture.txt").write_text("fixture\n", encoding="utf-8")
+        subprocess.run(["git", "add", "fixture.txt"], cwd=checkout, check=True)
+        subprocess.run(["git", "commit", "-qm", "fixture"], cwd=checkout, check=True)
+        repository_revision = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=checkout,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+        ).stdout.strip()
         registry = project / "registry.json"
         state = project / "active-state.md"
         state.write_text(
@@ -179,6 +239,11 @@ def assert_default_goal_sync_composes_outcomes() -> None:
                 scope_class="bounded",
                 reproduction_label=f"focused fixture repro {number}",
                 validation_label=f"focused fixture validation {number}",
+                repository_context_input={
+                    "schema_version": "issue_fix_repository_context_input_v0",
+                    "repository_revision": repository_revision,
+                    "sources": [],
+                },
             )
             upsert_issue_fix_feasibility_ledger_jsonl(feasibility_ledger, packet)
 
@@ -256,10 +321,16 @@ def assert_default_goal_sync_composes_outcomes() -> None:
 
         delivery_path = project / "delivery-evidence.json"
         delivery_path.write_text(
-            json.dumps(delivery_evidence(), ensure_ascii=False),
+            json.dumps(
+                delivery_evidence(
+                    commit_ref=repository_revision,
+                    include_repository_commit_evidence=False,
+                ),
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
-        outcome_command = [
+        preview_command = [
             sys.executable,
             "-m",
             "loopx.cli",
@@ -284,7 +355,7 @@ def assert_default_goal_sync_composes_outcomes() -> None:
         ]
         ledger_before_preview = feasibility_ledger.read_text(encoding="utf-8")
         preview = subprocess.run(
-            outcome_command,
+            preview_command,
             cwd=ROOT,
             text=True,
             stdout=subprocess.PIPE,
@@ -292,11 +363,43 @@ def assert_default_goal_sync_composes_outcomes() -> None:
             check=True,
         )
         preview_packet = json.loads(preview.stdout)
-        assert (
-            preview_packet["issue_fix_outcomes"][0]["validation"]["status"] == "passed"
+        preview_case = preview_packet["issue_fix_outcomes"][0]
+        assert preview_case["validation"]["status"] == "unverified", preview_case
+        assert preview_case["stage"] == "delivery_evidence_unverified", preview_case
+        assert preview_case["delivery"]["commit_evidence_reason"] == (
+            "repository_commit_evidence_missing"
         )
         assert preview_packet["source_contract"]["writes_source_state"] is False
         assert feasibility_ledger.read_text(encoding="utf-8") == ledger_before_preview
+
+        outcome_command = [
+            *preview_command,
+            "--repo-path",
+            str(checkout),
+            "--repository-ref",
+            "refs/heads/main",
+        ]
+        verified_preview = subprocess.run(
+            outcome_command,
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        verified_preview_packet = json.loads(verified_preview.stdout)
+        verified_case = verified_preview_packet["issue_fix_outcomes"][0]
+        assert verified_case["validation"]["status"] == "passed", verified_case
+        assert verified_case["delivery"]["commit_evidence_status"] == "verified"
+        repository_commit_evidence = verified_case["delivery"][
+            "repository_commit_evidence"
+        ]
+        assert repository_commit_evidence["recovery_ref"] == "refs/heads/main"
+        assert repository_commit_evidence["repository_revision"] == repository_revision
+        assert repository_commit_evidence["repository_fingerprint"].startswith(
+            "sha256:"
+        )
+        assert repository_commit_evidence["repo_path_captured"] is False
 
         persisted = subprocess.run(
             [*outcome_command, "--write-delivery-evidence"],
@@ -327,6 +430,7 @@ def assert_default_goal_sync_composes_outcomes() -> None:
             "validation_label",
             "changed_files",
             "commit_ref",
+            "repository_commit_evidence",
             "outputs",
             "risks",
             "recorded_at",
@@ -345,6 +449,34 @@ def assert_default_goal_sync_composes_outcomes() -> None:
         repeated_packet = json.loads(repeated.stdout)
         assert repeated_packet["domain_state_write"]["status"] == "unchanged"
         assert repeated_packet["domain_state_write"]["write_performed"] is False
+        assert feasibility_ledger.read_text(encoding="utf-8") == ledger_after_write
+
+        stale_delivery_path = project / "stale-delivery-evidence.json"
+        stale_delivery_path.write_text(
+            json.dumps(
+                delivery_evidence(
+                    commit_ref="deadbeef",
+                    include_repository_commit_evidence=False,
+                ),
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        stale_command = [
+            stale_delivery_path.as_posix() if item == delivery_path.as_posix() else item
+            for item in outcome_command
+        ]
+        stale = subprocess.run(
+            [*stale_command, "--write-delivery-evidence"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        assert stale.returncode != 0, stale.stdout
+        stale_packet = json.loads(stale.stdout)
+        assert "commit_ref resolution failed" in stale_packet["error"], stale_packet
         assert feasibility_ledger.read_text(encoding="utf-8") == ledger_after_write
 
         retained = build_issue_fix_outcome_collection_from_domain_state(
@@ -426,7 +558,7 @@ def main() -> None:
     outcome = projection["issue_fix_outcomes"][0]
     assert outcome["stage"] == "ci_pending", outcome
     assert outcome["route"] == "fix_pr", outcome
-    assert outcome["repository_context"]["revision"] == "abc1234def5678", outcome
+    assert outcome["repository_context"]["revision"] == FIXTURE_REVISION, outcome
     assert outcome["validation"]["status"] == "passed", outcome
     assert outcome["delivery"]["changed_files"] == [
         "src/parser.py",
@@ -440,6 +572,7 @@ def main() -> None:
         "tests_changed",
         "multi_file",
         "repository_context_grounded",
+        "commit_verified",
     ], outcome
     assert outcome["pull_request"]["checks"]["aggregate"] == "PENDING", outcome
     assert outcome["result"]["kind"] == "fix_pr_open", outcome

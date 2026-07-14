@@ -56,7 +56,13 @@ open PRs, merge, publish, or run destructive git without an explicit gate.
 8. **Validation:** record focused validation as pass/fail, exit code, and
    public-safe label. Validation stdout, stderr, local paths, and raw git output
    stay out of the packet. A validated fix should prove failing-before and
-   passing-after evidence when that repro path is available.
+   passing-after evidence when that repro path is available. When delivery
+   names a commit and reports `passed` or `completed`, writeback must resolve
+   the declared repository revision and commit in the caller-approved checkout,
+   prove commit ancestry, and retain `issue_fix_repository_commit_evidence_v0`
+   with a matching repository fingerprint plus a full recoverable branch, tag,
+   or remote ref. Missing or stale commit proof fails before state mutation;
+   legacy unproved rows project as `unverified`, not publication-ready.
 9. **PR review packet:** emit `issue_fix_pr_review_packet_v0` only when branch,
    validation, and repo-relative changed-file evidence are sufficient for human
    review. Its `issue_fix_pr_description_contract_v0` keeps the PR-review
@@ -188,6 +194,7 @@ An issue-fix workflow is PR-review-ready only when all of these are true:
 - `issue_fix_pr_lifecycle_transition_v0`
 - `issue_fix_pr_lifecycle_domain_state_projection_v0`
 - `issue_fix_delivery_evidence_input_v0`
+- `issue_fix_repository_commit_evidence_v0`
 - `issue_fix_outcome_case_v0`
 - `issue_fix_outcome_projection_v0`
 - `issue_fix_outcome_collection_projection_v0`
