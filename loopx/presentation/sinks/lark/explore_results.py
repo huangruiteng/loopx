@@ -63,6 +63,7 @@ from .explore_visual_styles import (
     board_source_with_delivery_marker,
     explore_board_style,
     resolve_explore_board_style,
+    summarize_explore_visual_sync,
 )
 from .message_card import build_lark_markdown_reply_card
 
@@ -916,9 +917,6 @@ def sync_explore_visuals_to_lark(
     active_roles = ["canonical"]
     if bundle["presentation_mode"] == PRESENTATION_MODE_DUAL_VIEW:
         active_roles.append("executive")
-    missing_recommended_roles = [
-        role for role in active_roles if role not in requested_roles
-    ]
     results: dict[str, Any] = {}
     for role in requested_roles:
         if role not in active_roles:
@@ -1055,24 +1053,21 @@ def sync_explore_visuals_to_lark(
             "section_commands": section_commands,
             "reconciliation": reconciliation,
         }
-    ok = all(bool(item.get("ok")) for item in results.values())
-    if not results:
-        status = "not_configured"
-    elif not ok:
-        status = "publish_failed" if execute else "invalid_projection"
-    else:
-        status = "published" if execute else "would_publish"
+    delivery = summarize_explore_visual_sync(
+        views=results,
+        configured_roles=requested_roles,
+        recommended_roles=active_roles,
+        execute=execute,
+    )
     return {
-        "ok": ok,
+        **delivery,
         "schema_version": LARK_EXPLORE_VISUALS_SYNC_VERSION,
-        "status": status,
         "execute": execute,
         "presentation_mode": bundle["presentation_mode"],
         "reason_codes": bundle["reason_codes"],
         "source_digest": bundle["source_digest"],
         "source_revision": bundle["source_revision"],
         "recommended_roles": active_roles,
-        "missing_recommended_roles": missing_recommended_roles,
         "views": results,
     }
 

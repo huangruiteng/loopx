@@ -72,6 +72,45 @@ def resolve_explore_board_style(
     return _RENDERER_BOARD_STYLES[renderer]
 
 
+def summarize_explore_visual_sync(
+    *,
+    views: Mapping[str, Mapping[str, Any]],
+    configured_roles: list[str],
+    recommended_roles: list[str],
+    execute: bool,
+) -> dict[str, Any]:
+    """Fail closed when a recommended visual role is not configured."""
+
+    missing_roles = [
+        role for role in recommended_roles if role not in configured_roles
+    ]
+    configured_views_ok = all(bool(view.get("ok")) for view in views.values())
+    ok = configured_views_ok and not missing_roles
+    if missing_roles and (not views or configured_views_ok):
+        status = "sink_unsatisfied"
+    elif not views:
+        status = "not_configured"
+    elif not configured_views_ok:
+        status = "publish_failed" if execute else "invalid_projection"
+    else:
+        status = "published" if execute else "would_publish"
+    missing_roles_label = ", ".join(missing_roles)
+    return {
+        "ok": ok,
+        "status": status,
+        "published": bool(execute and ok),
+        "retryable": bool(missing_roles),
+        "required_action": (
+            f"configure the {missing_roles_label} visual role"
+            f"{'s' if len(missing_roles) != 1 else ''} and retry Explore visual sync"
+            if missing_roles
+            else None
+        ),
+        "configured_roles": configured_roles,
+        "missing_recommended_roles": missing_roles,
+    }
+
+
 def board_source_with_delivery_marker(
     source: str,
     marker: str,

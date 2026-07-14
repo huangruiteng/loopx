@@ -743,6 +743,12 @@ projection is rejected before any whiteboard command runs. Legacy grid/SVG
 renderer configuration fails with an explicit migration message instead of
 silently publishing the wrong visual form.
 
+The visual sync is not satisfied when any recommended role is missing from the
+configured sinks. Its top-level receipt stays `published=false`, names the
+missing roles, and returns a retryable configuration action; successful
+per-role diagnostics may still be inspected, but they cannot make the overall
+sink look current or advance its delivery checkpoint.
+
 The text `From Node` / `To Node` columns remain stable public ids for
 automation and review, while the linked-record columns are the Feishu-native
 graph substrate. A Base plugin, relationship-aware view, or Feishu dashboard

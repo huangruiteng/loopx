@@ -663,6 +663,39 @@ def test_visual_configuration_can_create_all_stage_boards_from_docx(tmp_path) ->
     assert sink["stage_whiteboards"] == []
 
 
+def test_canonical_only_visual_sync_fails_closed_without_canonical_sink(
+    tmp_path,
+) -> None:
+    projection = _small_projection()
+
+    def runner(_args, _cwd, _timeout):
+        raise AssertionError("missing recommended role must not publish another view")
+
+    synced = sync_explore_visuals_to_lark(
+        LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE"),
+        projection=projection,
+        visual_sinks={
+            "executive": {
+                "whiteboard_token": "wb_executive_fixture",
+                "view_role": "executive",
+            }
+        },
+        config_path=tmp_path / "lark-explore.json",
+        execute=True,
+        runner=runner,
+    )
+
+    assert synced["presentation_mode"] == PRESENTATION_MODE_CANONICAL_ONLY
+    assert synced["ok"] is False
+    assert synced["status"] == "sink_unsatisfied"
+    assert synced["published"] is False
+    assert synced["retryable"] is True
+    assert synced["recommended_roles"] == ["canonical"]
+    assert synced["missing_recommended_roles"] == ["canonical"]
+    assert synced["views"]["executive"]["status"] == "not_recommended"
+    assert "configure the canonical visual role" in synced["required_action"]
+
+
 @pytest.mark.parametrize(
     ("board_style", "renderer", "input_format"),
     [
@@ -1326,7 +1359,10 @@ def test_visual_sync_creates_one_document_section_and_board_per_missing_stage(
     )
 
     view = synced["views"]["executive"]
-    assert synced["ok"] is True
+    assert synced["ok"] is False
+    assert synced["status"] == "sink_unsatisfied"
+    assert synced["missing_recommended_roles"] == ["canonical"]
+    assert view["ok"] is True
     assert view["stage_count"] == stage_count
     assert len(view["section_commands"]) == stage_count - 1
     assert all(stage["published"] for stage in view["stages"])
@@ -1451,7 +1487,10 @@ def test_stage_document_recreates_configured_board_missing_from_document(
         assert outline_fetch_count == 2
         return
 
-    assert synced["ok"] is True
+    assert synced["ok"] is False
+    assert synced["status"] == "sink_unsatisfied"
+    assert synced["missing_recommended_roles"] == ["canonical"]
+    assert view["ok"] is True
     assert len(view["section_commands"]) == 1
     assert view["reconciliation"]["missing_remote_stage_indexes"] == [2]
     assert view["reconciliation"]["performed"] is True
@@ -1578,7 +1617,10 @@ def test_stage_document_reconciliation_removes_all_stale_duplicate_sections(
     )
 
     view = synced["views"]["canonical"]
-    assert synced["ok"] is True
+    assert synced["ok"] is False
+    assert synced["status"] == "sink_unsatisfied"
+    assert synced["missing_recommended_roles"] == ["executive"]
+    assert view["ok"] is True
     assert view["reconciliation"] == {
         "required": False,
         "performed": True,
