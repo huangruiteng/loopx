@@ -50,6 +50,11 @@ Optional env:
   SKILLSBENCH_SSH_OPTIONS              Extra ssh options, one shell word each
   SKILLSBENCH_APPEND_HISTORY           Set to 1 to append LoopX history
   SKILLSBENCH_REGISTRY                 Optional registry path for history append
+  SKILLSBENCH_SKIP_GLOBAL_LEDGER_SYNC  Set to 1 to keep the remote run out of
+                                       the global benchmark ledger
+  SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE
+                                       Set to 1 to skip the remote current
+                                       aggregate update
   SKILLSBENCH_LOCAL_RUN_LEDGER_PATH    Local private live ledger; default below
                                        the goal's skillsbench-ledgers directory
   SKILLSBENCH_LOCAL_RUN_LEDGER_SEED    Optional accepted-lane ledger copied
@@ -132,6 +137,19 @@ if [[ "$codex_cli_goal_thread_prewarm" != "0" && "$codex_cli_goal_thread_prewarm
   echo "SKILLSBENCH_CLI_GOAL_THREAD_PREWARM must be 0 or 1" >&2
   exit 2
 fi
+skip_global_ledger_sync="${SKILLSBENCH_SKIP_GLOBAL_LEDGER_SYNC:-0}"
+skip_current_aggregate_update="${SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE:-0}"
+validate_bool_toggle() {
+  local env_name="$1"
+  local value="$2"
+  if [[ "$value" != "0" && "$value" != "1" ]]; then
+    echo "${env_name} must be 0 or 1" >&2
+    exit 2
+  fi
+}
+validate_bool_toggle SKILLSBENCH_SKIP_GLOBAL_LEDGER_SYNC "$skip_global_ledger_sync"
+validate_bool_toggle \
+  SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE "$skip_current_aggregate_update"
 remote_codex_bin_mode="path_lookup"
 if [[ -n "${SKILLSBENCH_REMOTE_CODEX_BIN:-}" ]]; then
   remote_codex_bin_mode="explicit"
@@ -284,6 +302,12 @@ fi
 if [[ "${SKILLSBENCH_APPEND_HISTORY:-0}" == "1" ]]; then
   extra_runner_args+=(--append-history)
 fi
+if [[ "$skip_global_ledger_sync" == "1" ]]; then
+  extra_runner_args+=(--skip-global-ledger-sync)
+fi
+if [[ "$skip_current_aggregate_update" == "1" ]]; then
+  extra_runner_args+=(--skip-current-aggregate-update)
+fi
 
 run_group="skillsbench-codex-cli-goal-xhigh-${safe_task}-${tag}-${stamp}"
 job_name="${safe_task}__codex_cli_goal_xhigh_${tag}_${stamp}"
@@ -395,6 +419,8 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'remote_codex_bin_mode=%s\n' "$remote_codex_bin_mode"
   printf 'local_codex_sandbox=%s\n' "$local_codex_sandbox"
   printf 'codex_cli_goal_thread_prewarm=%s\n' "$codex_cli_goal_thread_prewarm"
+  printf 'skip_global_ledger_sync=%s\n' "$skip_global_ledger_sync"
+  printf 'skip_current_aggregate_update=%s\n' "$skip_current_aggregate_update"
   printf 'local_run_ledger=%s\n' "$local_run_ledger"
   if [[ -n "${standard_aggregate:-}" ]]; then
     printf 'standard_aggregate=%s\n' "$standard_aggregate"

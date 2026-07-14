@@ -146,6 +146,8 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
             "SKILLSBENCH_TUNNEL_HEALTH_INTERVAL_SEC": "29",
             "SKILLSBENCH_TUNNEL_HEALTH_FAILURE_THRESHOLD": "3",
             "SKILLSBENCH_TUNNEL_RECONNECT_ATTEMPTS": "4",
+            "SKILLSBENCH_SKIP_GLOBAL_LEDGER_SYNC": "1",
+            "SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE": "1",
         }
     )
     env.pop("SKILLSBENCH_APPEND_HISTORY", None)
@@ -191,6 +193,10 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
         "20260709T000000CST" in output
     ), output
     assert "--append-history" not in output, output
+    assert "skip_global_ledger_sync=1" in output, output
+    assert "skip_current_aggregate_update=1" in output, output
+    assert "--skip-global-ledger-sync" in output, output
+    assert "--skip-current-aggregate-update" in output, output
 
 
 def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
