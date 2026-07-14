@@ -1,0 +1,23 @@
+examples/issue-fix-outcome-projection-smoke.py
+  s_9a5a2bd944fdcb::t_e674d478e05fbd 39-42,56,123-128,134,143-160,167-200,242-246,324-330,333,358,366-370,375-403,433,454-481,561,575
+examples/issue-fix-validated-memory-writeback-smoke.py
+  s_9a5a2bd944fdcb::t_838976d6abea45 125,128,155,169-184,186-189,327-329,383,450-452,580-585,628-630,679,693-694
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e6ffbacc0335624fcaca3b424327848e38247128",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
