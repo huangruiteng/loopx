@@ -282,6 +282,30 @@ def assert_public_safe(packet: dict[str, Any]) -> None:
     assert packet["commit_emails_captured"] is False
 
 
+def fake_notification_adapter(**kwargs: Any) -> dict[str, Any]:
+    assert kwargs["execute"] is False
+    return {
+        "ok": True,
+        "schema_version": "issue_fix_reviewer_notification_sink_result_v0",
+        "sink_kind": "fixture_channel",
+        "status": "preview_ready",
+        "reviewer_handles": list(kwargs["reviewer_handles"]),
+        "resolved_reviewer_count": len(kwargs["reviewer_handles"]),
+        "idempotency_key": None,
+        "identity_scope": "project_dedicated",
+        "external_write_authority_asserted": False,
+        "external_write_performed": False,
+        "verification_performed": False,
+        "notification_verified": False,
+        "bot_identity_verified": False,
+        "reader_identity_verified": False,
+        "private_destination_captured": False,
+        "private_member_ids_captured": False,
+        "private_bot_profile_captured": False,
+        "raw_provider_payload_captured": False,
+    }
+
+
 def main() -> int:
     path = Path(tempfile.mkdtemp(prefix="loopx-reviewer-request-"))
     try:
@@ -369,6 +393,78 @@ def main() -> int:
         assert with_secondary["secondary_notifications"]["receipts"]
         assert len(combined.lark_calls) == 3
         assert_public_safe(with_secondary)
+
+        fallback_sink_input = json.loads(json.dumps(sinks_input))
+        fallback_sink_input["sinks"][0]["reviewer_identities"] = {
+            "@history-owner": {
+                "member_id": "ou_private_member",
+                "display_name": "History Owner",
+            }
+        }
+        fallback_combined = FakeCombinedRunner(
+            FakeGitHubRunner(before=metadata(requested=["service-owner"]))
+        )
+        secondary_fallback = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            notification_sinks_input=fallback_sink_input,
+            execute=True,
+            runner=fallback_combined,
+        )
+        assert secondary_fallback["ok"] is True, secondary_fallback
+        assert secondary_fallback["selected_reviewers"] == []
+        assert secondary_fallback["notified_reviewers"] == ["@service-owner"]
+        assert secondary_fallback["secondary_notification_primary_targets"] == [
+            "@service-owner"
+        ]
+        assert secondary_fallback["secondary_notification_candidate_pool"][:2] == [
+            "@service-owner",
+            "@history-owner",
+        ], secondary_fallback
+        assert secondary_fallback["secondary_notification_targets"] == [
+            "@history-owner"
+        ]
+        assert secondary_fallback["secondary_notification_fallback_used"] is True
+        assert secondary_fallback["secondary_notification_status"] == "sent_verified"
+        assert secondary_fallback["secondary_notification_verified"] is True
+        assert fallback_combined.github.edits == 0
+        assert len(fallback_combined.lark_calls) == 3
+        assert_public_safe(secondary_fallback)
+
+        provider_neutral_fallback = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            notification_sinks_input={
+                "schema_version": "issue_fix_reviewer_notification_sinks_input_v0",
+                "receipts": [],
+                "sinks": [
+                    {
+                        "sink_kind": "fixture_channel",
+                        "reviewer_identities": {
+                            "@history-owner": {"identity": "fixture"}
+                        },
+                    }
+                ],
+            },
+            notification_sink_adapters={
+                "fixture_channel": fake_notification_adapter
+            },
+            provider_payload=metadata(requested=["service-owner"]),
+        )
+        assert provider_neutral_fallback["ok"] is True, provider_neutral_fallback
+        assert provider_neutral_fallback["secondary_notification_targets"] == [
+            "@history-owner"
+        ]
+        assert provider_neutral_fallback["secondary_notification_fallback_used"] is True
+        assert provider_neutral_fallback["secondary_notification_status"] == (
+            "preview_ready"
+        )
+        assert provider_neutral_fallback["secondary_notifications"]["results"][0][
+            "sink_kind"
+        ] == "fixture_channel"
+        assert_public_safe(provider_neutral_fallback)
 
         reviewed_combined = FakeCombinedRunner(
             FakeGitHubRunner(before=metadata(reviewed=["service-owner"]))

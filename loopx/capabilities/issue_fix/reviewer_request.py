@@ -10,6 +10,7 @@ from typing import Any
 from ...control_plane.runtime.public_safety import public_safe_compact_text
 from .metadata_preview import normalise_github_issue_reference
 from .reviewer_notification import (
+    NotificationSinkAdapter,
     build_issue_fix_reviewer_notification_sinks_result,
 )
 from .reviewer_recommendation import build_issue_fix_reviewer_recommendation_packet
@@ -81,6 +82,73 @@ def _normalise_login(value: Any) -> str | None:
 def _is_automated_reviewer_handle(value: Any) -> bool:
     handle = _normalise_login(value)
     return bool(handle and REVIEWER_BOT_HANDLE_PATTERN.search(handle.lstrip("@")))
+
+
+def _secondary_notification_targets(
+    *,
+    primary_handles: Sequence[str],
+    candidates: Sequence[Any],
+    sinks_input: Mapping[str, Any],
+) -> tuple[list[str], list[str]]:
+    """Choose sink-resolvable reviewers without changing GitHub coverage.
+
+    The primary handles are reviewers already covered on GitHub or selected for
+    a new GitHub request.  Ranked recommendation candidates are fallback-only:
+    they are used when every configured secondary sink declares an identity for
+    the candidate.  Sink adapters still perform the authoritative provider and
+    membership verification before sending.
+    """
+
+    primary = list(
+        dict.fromkeys(
+            handle
+            for value in primary_handles
+            if (handle := _normalise_login(value)) is not None
+        )
+    )[:3]
+    if not primary:
+        return [], []
+
+    pool = list(primary)
+    for candidate in candidates:
+        if (
+            not isinstance(candidate, Mapping)
+            or candidate.get("requestable") is not True
+        ):
+            continue
+        handle = _normalise_login(candidate.get("reviewer_handle"))
+        if handle and not _is_automated_reviewer_handle(handle) and handle not in pool:
+            pool.append(handle)
+
+    raw_sinks = sinks_input.get("sinks")
+    sinks = raw_sinks if isinstance(raw_sinks, list) else []
+    identity_maps: list[dict[str, Any]] = []
+    for sink in sinks:
+        if not isinstance(sink, Mapping):
+            return primary, pool
+        raw_identities = sink.get("reviewer_identities")
+        if not isinstance(raw_identities, Mapping):
+            return primary, pool
+        identity_maps.append(
+            {
+                handle: value
+                for raw_handle, value in raw_identities.items()
+                if (handle := _normalise_login(raw_handle)) is not None
+            }
+        )
+    if not identity_maps:
+        return primary, pool
+
+    target_count = len(primary)
+    resolved = [
+        handle
+        for handle in pool
+        if all(
+            isinstance(identities.get(handle), Mapping)
+            for identities in identity_maps
+        )
+    ][:target_count]
+    return (resolved or primary), pool
 
 
 def _is_mention_cluster_separator(value: str) -> bool:
@@ -401,6 +469,7 @@ def build_issue_fix_reviewer_request_packet(
     resolved_identities: Mapping[str, Any] | None = None,
     reviewer_sources_input: Mapping[str, Any] | None = None,
     notification_sinks_input: Mapping[str, Any] | None = None,
+    notification_sink_adapters: Mapping[str, NotificationSinkAdapter] | None = None,
     provider_payload: Mapping[str, Any] | None = None,
     execute: bool = False,
     generated_at: str | None = "2026-07-10T00:00:00Z",
@@ -821,7 +890,7 @@ def build_issue_fix_reviewer_request_packet(
     packet["secondary_notification_verified"] = False
     if notification_sinks_input:
         notification_targets = list(packet.get("selected_reviewers") or [])
-        if execute and packet.get("notified_reviewers"):
+        if packet.get("notified_reviewers"):
             notification_targets = list(packet.get("notified_reviewers") or [])
         if execute:
             completed_reviewers = set(packet.get("existing_reviewed_by") or [])
@@ -830,6 +899,23 @@ def build_issue_fix_reviewer_request_packet(
                 for handle in notification_targets
                 if handle not in completed_reviewers
             ]
+        primary_notification_targets = list(notification_targets)
+        notification_targets, notification_candidate_pool = (
+            _secondary_notification_targets(
+                primary_handles=primary_notification_targets,
+                candidates=candidates,
+                sinks_input=notification_sinks_input,
+            )
+        )
+        packet["secondary_notification_primary_targets"] = (
+            primary_notification_targets
+        )
+        packet["secondary_notification_candidate_pool"] = notification_candidate_pool
+        packet["secondary_notification_targets"] = notification_targets
+        packet["secondary_notification_fallback_used"] = bool(
+            notification_targets
+            and notification_targets != primary_notification_targets
+        )
         if notification_targets:
             secondary = build_issue_fix_reviewer_notification_sinks_result(
                 repo=repo,
@@ -842,6 +928,7 @@ def build_issue_fix_reviewer_request_packet(
                 sinks_input=notification_sinks_input,
                 execute=execute,
                 runner=runner,
+                sink_adapters=notification_sink_adapters,
             )
             packet["secondary_notifications"] = secondary
             packet["secondary_notification_status"] = secondary.get("status")
