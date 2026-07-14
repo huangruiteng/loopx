@@ -134,7 +134,8 @@ Stage 2 owns one thin candidate and activation-decision seam. It may derive
 policy content from verified contributor signals but does not create authority,
 add a second store or scheduler, perform provider writes, or enable automatic
 recall. Issue Fix consumes the same generic seam rather than a parallel design.
-Stage 3 owns reasoning-mediated cross-module recall and application receipts;
+Stage 3 implements explicit exact-corpus, module-surface recall and
+reasoning-mediated application receipts;
 deterministic code remains limited to scope, authority, privacy, freshness, and
 conflict guards. Stage 4 owns evaluation and the release gate; Stage 5 owns
 bounded dogfood and operator edit or retirement controls.

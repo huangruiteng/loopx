@@ -109,6 +109,15 @@ def main() -> int:
         "no_write",
     ]
     assert candidate_review["provider_write_performed_by_seam"] is False
+    recall_application = architecture["existing_capability_reuse"]["recall_application"]
+    assert recall_application["status"] == "implemented_opt_in_stage_3_seam"
+    assert recall_application["modes"] == [
+        "function_boundary",
+        "bounded_agentic_search",
+    ]
+    assert recall_application["automatic_recall"] is False
+    assert recall_application["provider_failure_policy"] == ("fail_open_not_user_gate")
+    assert architecture["stage_boundaries"]["stage_3"].startswith("implemented_opt_in_")
     openviking = architecture["provider_alignment"]["openviking"]
     assert openviking["content_source_of_truth"] == "agfs_content"
     assert openviking["non_instruction_artifacts"]["openviking_cases"] == (
