@@ -558,7 +558,7 @@ JSON or Markdown decision:
     "action": "backoff_waiting_for_user",
     "codex_app": {
       "recommended_interval_minutes": 30,
-      "example_progression_minutes": [30, 60, 120]
+      "example_progression_minutes": [30, 60]
     },
     "unchanged_poll": {
       "limits": {
@@ -745,8 +745,10 @@ After a successful host RRULE update, the agent records that fact with
 `loopx` plus `codex_app.ack_hint.cli_args`; current payloads use
 `quota scheduler-ack-current` to re-read the latest scheduler hint before LoopX
 advances the per goal/agent scheduler state without spending quota. Human gates
-can move to `[30, 60, 120]` after the
-concrete user todo has been surfaced.
+can move Codex App heartbeats through `[30, 60]` after the concrete user todo
+has been surfaced. LoopX caps the Codex App integration at 60 minutes; coarser
+waits remain available to the local scheduler instead of being emitted as App
+heartbeat RRULEs.
 CLI-produced ACK hints bind that argument vector to the exact registry and
 effective runtime root that produced `quota should-run`. Hosts must execute the
 complete vector; stripping its leading global options can route a
@@ -784,6 +786,10 @@ returns to the current profile's initial interval. This gives hosts a compact
 post-update ack protocol instead of requiring them to own or diff the whole
 quota state. If `apply_needed=false` and `ack_needed=true`, the same command
 records an exact matching host readback without calling `automation_update`.
+If `automation_update` fails or times out, the agent must not ACK. LoopX keeps
+the observed host RRULE authoritative, does not retry the same hint in that
+turn, and retries only on a later eligible heartbeat; it never treats an
+intended cadence as an applied cadence.
 `scheduler-ack` is not a second `should-run`: it confirms the host update or
 matching readback and does not emit a successor RRULE in the same turn. User
 feedback, newly runnable work, reassignment, or material evidence therefore

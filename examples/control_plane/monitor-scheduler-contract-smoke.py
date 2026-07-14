@@ -350,7 +350,9 @@ def assert_monitor_scheduler_active_window_respects_host_floor() -> None:
     assert context["phase"] == "active_window", context
     assert context["cadence_minutes"] == 3, context
     assert context["host_floor_minutes"] == 15, context
-    assert codex_app["example_progression_minutes"] == [15, 15, 15], scheduler
+    assert codex_app["example_progression_minutes"] == [15], scheduler
+    local_scheduler = scheduler["cold_path_detail"]["local_scheduler"]
+    assert local_scheduler["example_progression_minutes"] == [15, 15, 15], scheduler
     assert codex_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
 
 

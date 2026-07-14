@@ -26,6 +26,7 @@ CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION = "codex_app_stateful_backoff_v0"
 CODEX_APP_SCHEDULER_ACK_HINT_SCHEMA_VERSION = "codex_app_scheduler_ack_hint_v0"
 MONITOR_CADENCE_PATTERN = re.compile(r"^\s*(\d+)\s*([mhd])\s*$", re.IGNORECASE)
 MONITOR_WAIT_PROGRESSION_MINUTES = [15, 30, 60]
+CODEX_APP_MAX_INTERVAL_MINUTES = 60
 DEFAULT_ACK_CAPABILITIES = {"shell", "filesystem_read", "filesystem_write"}
 MONITOR_WAIT_HOST_FLOOR_MINUTES = 15
 MONITOR_WAIT_NEAR_WINDOW_LEAD_MINUTES = 60
@@ -734,11 +735,29 @@ def build_scheduler_hint(
         cadence_context_detail: dict[str, Any] | None = None,
         advance_same_identity: bool = True,
     ) -> dict[str, Any]:
-        cadence_progression = cadence_progression_override or [
+        local_cadence_progression = cadence_progression_override or [
             min(codex_interval * (multiplier**step), codex_max)
             for step in range(3)
         ]
-        codex_initial_interval = cadence_progression[0] if cadence_progression else codex_interval
+        codex_host_max = min(max(1, codex_max), CODEX_APP_MAX_INTERVAL_MINUTES)
+        codex_cadence_progression: list[int] = []
+        for interval in local_cadence_progression:
+            bounded_interval = min(max(1, int(interval)), codex_host_max)
+            if (
+                not codex_cadence_progression
+                or codex_cadence_progression[-1] != bounded_interval
+            ):
+                codex_cadence_progression.append(bounded_interval)
+        codex_initial_interval = (
+            codex_cadence_progression[0]
+            if codex_cadence_progression
+            else min(codex_interval, codex_host_max)
+        )
+        local_initial_interval = (
+            local_cadence_progression[0]
+            if local_cadence_progression
+            else codex_interval
+        )
         final_replan_check = {
             "enabled": cli_limit is not None or claude_limit is not None,
             "trigger": "before_unchanged_poll_after_limit",
@@ -759,8 +778,8 @@ def build_scheduler_hint(
             "cadence_class": cadence_class,
             "codex_app_initial_interval_minutes": codex_initial_interval,
             "codex_app_initial_rrule": codex_rrule,
-            "codex_app_max_interval_minutes": codex_max,
-            "codex_app_progression_minutes": cadence_progression,
+            "codex_app_max_interval_minutes": codex_host_max,
+            "codex_app_progression_minutes": codex_cadence_progression,
             "unchanged_poll_backoff_multiplier": multiplier,
             "local_scheduler_unchanged_poll_limit": cli_limit,
             "claude_code_loop_unchanged_poll_limit": claude_limit,
@@ -812,7 +831,7 @@ def build_scheduler_hint(
             "host_state_key": "scheduler_hint.reset_policy.reset_token",
             "codex_app_initial_interval_minutes": codex_initial_interval,
             "codex_app_initial_rrule": codex_rrule,
-            "local_scheduler_initial_interval_minutes": codex_initial_interval,
+            "local_scheduler_initial_interval_minutes": local_initial_interval,
             "clear_unchanged_poll_state": True,
             "identity_key_count": len(identity_keys),
             "identity_signature": identity_signature,
@@ -832,10 +851,10 @@ def build_scheduler_hint(
             "identity_signature": identity_signature,
         }
         local_scheduler = {
-            "recommended_interval_minutes": codex_initial_interval,
+            "recommended_interval_minutes": local_initial_interval,
             "max_interval_minutes": codex_max,
             "unchanged_poll_backoff_multiplier": multiplier,
-            "example_progression_minutes": cadence_progression,
+            "example_progression_minutes": local_cadence_progression,
             "unchanged_poll_limit": cli_limit,
             "after_limit": "stop_tick_loop" if cli_limit is not None else "continue",
             "final_quota_replan_check": final_replan_check,
@@ -872,10 +891,12 @@ def build_scheduler_hint(
                 except (TypeError, ValueError):
                     applied_index = -1
                 next_index = applied_index + 1 if advance_same_identity else 0
-                current_index = min(max(next_index, 0), len(cadence_progression) - 1)
+                current_index = min(
+                    max(next_index, 0), len(codex_cadence_progression) - 1
+                )
             else:
                 state_status = "reset_required"
-        current_interval = cadence_progression[current_index]
+        current_interval = codex_cadence_progression[current_index]
         current_rrule = rrule_for_minutes(current_interval)
         last_applied_rrule = str(scheduler_state.get("last_applied_rrule") or "").strip()
         observed_host_rrule = normalize_scheduler_rrule(codex_app_current_rrule)
@@ -902,8 +923,11 @@ def build_scheduler_hint(
         )
         ack_needed = apply_needed or host_match_ack_needed
         stateful_backoff_detail = {
-            "progression_minutes": cadence_progression,
+            "progression_minutes": codex_cadence_progression,
             "current_interval_minutes": current_interval,
+            "host_max_interval_minutes": codex_host_max,
+            "coarser_wait_fallback": "local_scheduler_only",
+            "host_update_failure": "no_retry_same_turn_do_not_ack_keep_observed_rrule",
             "ack_required_after_apply": apply_needed,
             "ack_required_from_host_match": host_match_ack_needed,
             "persist": "reset_token|identity_signature|progression_index|last_applied_rrule",
@@ -917,9 +941,9 @@ def build_scheduler_hint(
         }
         codex_app = {
             "recommended_interval_minutes": current_interval,
-            "max_interval_minutes": codex_max,
+            "max_interval_minutes": codex_host_max,
             "unchanged_poll_backoff_multiplier": multiplier,
-            "example_progression_minutes": cadence_progression,
+            "example_progression_minutes": codex_cadence_progression,
             "apply": (
                 "update_automation_cadence_if_possible"
                 if apply_needed

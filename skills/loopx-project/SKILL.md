@@ -504,12 +504,15 @@ search/use `automation_update` when available, but only when
 RRULE update, run `loopx` with
 `scheduler_hint.codex_app.ack_hint.cli_args` (normally `quota scheduler-ack-current`,
 which re-reads the latest scheduler hint instead of hand-copying short-lived
-reset tokens). If `apply_needed=false` but `ack_needed=true`, a matching host
+reset tokens). Attempt the host update at most once per hint and turn. If it
+fails or times out, do not retry or ACK in that turn; continue allowed delivery
+under the observed host cadence and let the next heartbeat recompute drift. If
+`apply_needed=false` but `ack_needed=true`, a matching host
 readback already proves the RRULE; skip `automation_update` and run the bound
 ack hint directly. LoopX owns reset/progression state
-and omits `recommended_rrule` when the
-desired RRULE is already applied. Cadence changes, reset-to-initial updates,
-final checks, and self-stop changes do not spend quota. Read
+and omits `recommended_rrule` when the desired RRULE is already applied.
+Cadence changes, reset-to-initial updates, final checks, and self-stop changes
+do not spend quota.
 For a uniquely matched active Codex App heartbeat, `quota should-run`
 automatically reconciles the installed RRULE with LoopX's ACK ledger. Treat
 `stateful_backoff.host_observation.status=drift_detected` as authoritative for
