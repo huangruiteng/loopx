@@ -108,17 +108,18 @@ def write_fixture_registry(
     status: str = "active",
     state_file: str | None = None,
     state_event_log: str | None = None,
-    registered_agents: Iterable[str] = (),
+    registered_agents: Iterable[str] | None = (),
     quota_allowed_slots: int | None = 10,
     peer_independent_worktree_required: bool | None = None,
     extra_goal_fields: dict[str, Any] | None = None,
 ) -> Path:
     state_file_value = state_file or default_state_file(goal_id)
-    agents = list(registered_agents)
-    coordination: dict[str, Any] = {
-        "registered_agents": agents,
-        "agent_model": "peer_v1",
-    }
+    coordination: dict[str, Any] | None = None
+    if registered_agents is not None:
+        coordination = {
+            "registered_agents": list(registered_agents),
+            "agent_model": "peer_v1",
+        }
 
     goal: dict[str, Any] = {
         "id": goal_id,
@@ -130,9 +131,10 @@ def write_fixture_registry(
             "kind": adapter_kind,
             "status": adapter_status,
         },
-        "coordination": coordination,
         "authority_sources": [],
     }
+    if coordination is not None:
+        goal["coordination"] = coordination
     if quota_allowed_slots is not None:
         goal["quota"] = {
             "compute": 1.0,
