@@ -749,6 +749,16 @@ def main() -> int:
         cleared_fields = parse_active_state_todos(state_file.read_text(encoding="utf-8"))
         assert "claimed_by" not in cleared_fields["agent_todos"]["items"][0], cleared_fields
 
+        stale_continuation = "  Stale continuation after structured metadata."
+        state_lines = state_file.read_text(encoding="utf-8").splitlines()
+        metadata_index = next(
+            index
+            for index, line in enumerate(state_lines)
+            if f"todo_id={metadata_payload['todo_id']}" in line
+        )
+        state_lines.insert(metadata_index + 1, stale_continuation)
+        state_file.write_text("\n".join(state_lines) + "\n", encoding="utf-8")
+
         update_payload = run_cli(
             registry_path,
             "todo",
@@ -800,6 +810,7 @@ def main() -> int:
         after_update = state_file.read_text(encoding="utf-8")
         assert f"- [x] {UPDATED_AGENT_TODO}" in after_update, after_update
         assert "Summarize the read-only evidence after the user" not in after_update, after_update
+        assert stale_continuation not in after_update, after_update
         assert "status=done" in after_update, after_update
         assert "Validated%20compact%20evidence%20summary." in after_update, after_update
         updated_fields = parse_active_state_todos(after_update)
