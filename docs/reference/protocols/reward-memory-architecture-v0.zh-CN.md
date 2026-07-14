@@ -271,3 +271,27 @@ Provider 不可用时，seam 返回 setup guidance 并保留原输出；这是 a
 不会自动变成 user gate。模型 application 无效或异常也 fail open。只有同时归因到本次
 召回项并验证当前 artifact，才能产生 `applied` receipt。Issue Fix 使用固定的
 `issue_fix.patch_planning` surface；`semantic_preference` 是第二个非 Issue-Fix consumer。
+
+## Stage 4 评估与发布门禁
+
+Stage 4 只在现有共享核心之上增加一套受限 contract suite，不新增另一套 evaluator、
+store、provider、scheduler 或 semantic router：
+
+```bash
+loopx reward-memory evaluate --format json
+```
+
+Runner 会直接执行真实的 candidate、recall、application、Issue Fix adapter 与 route guard
+代码，覆盖八类 case：compact/restart 后存活；project/module scope isolation；
+supersede/revoke 拒绝；stale source 拒绝；多人 authority 匹配；gate 不被覆盖；在验证当前
+artifact 后影响 candidate ranking；以及避免为 PR #3237 这类 edge case 生成大 patch。
+
+`reward_memory_evaluation_v0` 同时汇报 task outcome、真实本地 runner latency、公共证据
+字节数、model token 数、provider/storage write、false application、maintainer interruption
+与 user gate。model token 为零表示这套确定性 contract suite 没有调用模型，不代表后续
+dogfood 的 token 成本估算。只有全部 case 通过，且 write、false application、
+interruption 和 user gate 计数均为零，release gate 才能通过。
+
+通过后的状态是 `ready_for_bounded_dogfood`，不是 production release。它只证明 core
+contract invariant，不声明 semantic uplift，也不授权 production rollout。Stage 5 必须
+使用经 corpus owner 批准的 record、精确 provider readback 和真实模块结果，才能讨论收益。

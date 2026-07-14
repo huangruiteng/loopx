@@ -321,3 +321,31 @@ application also preserves the base output. An `applied` receipt requires both
 attribution to an item returned by this recall and current-artifact
 verification. Issue Fix uses the fixed `issue_fix.patch_planning` surface;
 `semantic_preference` is the second, non-Issue-Fix module consumer.
+
+## Stage 4 evaluation and release gate
+
+Stage 4 is one bounded contract suite over the existing shared core. It does
+not add another evaluator, store, provider, scheduler, or semantic router:
+
+```bash
+loopx reward-memory evaluate --format json
+```
+
+The runner executes the real candidate, recall, application, Issue Fix adapter,
+and route-guard code for eight cases: compact/restart survival; project and
+module isolation; supersede/revoke rejection; stale-source rejection;
+multi-person authority matching; gate non-override; verified candidate-ranking
+influence; and protection against a large patch for the PR #3237 edge case.
+
+`reward_memory_evaluation_v0` reports task outcome plus exact local runner
+latency, public evidence bytes, model-token count, provider/storage writes,
+false applications, maintainer interruptions, and user gates. Zero model tokens
+means this deterministic contract suite did not invoke a model; it is not a
+token-cost estimate for later dogfood. The release gate passes only when every
+case passes and all write, false-application, interruption, and user-gate counts
+remain zero.
+
+A pass yields `ready_for_bounded_dogfood`, not production release. It proves
+core contract invariants only, does not claim semantic uplift, and does not
+authorize production rollout. Stage 5 must use a corpus-owner-approved record,
+exact provider readback, and real module outcomes before making an uplift claim.
