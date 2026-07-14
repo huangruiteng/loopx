@@ -561,15 +561,17 @@ def set_todo_text(lines: list[str], block: dict[str, Any], text: str, *, status:
     end = int(block["end"])
     marker = todo_marker_for_status(status)
     replacement = f"- [{marker}] {normalized}"
-    remove_until = start + 1
-    while remove_until < end and lines[remove_until].startswith((" ", "\t")):
-        if parse_todo_metadata_line(lines[remove_until]) is not None:
-            break
-        remove_until += 1
-    removed = remove_until - start
-    lines[start:remove_until] = [replacement]
+    continuation_indexes = [
+        index
+        for index in range(start + 1, end)
+        if lines[index].startswith((" ", "\t"))
+        and parse_todo_metadata_line(lines[index]) is None
+    ]
+    lines[start] = replacement
+    for index in reversed(continuation_indexes):
+        del lines[index]
     block["text"] = normalized
-    block["end"] = end - (removed - 1)
+    block["end"] = end - len(continuation_indexes)
     return True
 
 
