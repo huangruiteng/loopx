@@ -89,6 +89,8 @@ _SVG_STATUS_STYLE = {
     "resolved": ("#e8f5e9", "#43a047"),
     "dead_end": ("#eeeeee", "#9e9e9e"),
 }
+_SVG_NODE_HEADER_DISPLAY_WIDTH = 50
+_SVG_NODE_DETAIL_DISPLAY_WIDTH = 62
 
 
 def build_stage_lane_svg(
@@ -203,9 +205,7 @@ def build_stage_lane_svg(
         parts.append(
             f'<rect x="{node_x:.1f}" y="{node_y:.1f}" width="{node_width}" height="{node_height}" rx="10" fill="{fill}" stroke="{stroke}" stroke-width="2"/>'
         )
-        display_lines = _node_display_lines(
-            node, title_limit=54, detail_limit=76
-        )[:3]
+        display_lines = _svg_node_display_lines(node)
         for line_index, line in enumerate(display_lines):
             weight = "700" if line_index == 0 else "400"
             size = 14 if line_index == 0 else 12
@@ -383,6 +383,26 @@ def _node_display_lines(
     )
     header = f"{title} · {_NODE_STATUS_LABEL.get(status, status.upper())}"
     return [header, *_node_decision_lines(node, detail_limit=detail_limit)]
+
+
+def _svg_node_display_lines(node: Mapping[str, Any]) -> list[str]:
+    status = str(node.get("status") or "open")
+    status_suffix = f" · {_NODE_STATUS_LABEL.get(status, status.upper())}"
+    title_limit = max(
+        1,
+        _SVG_NODE_HEADER_DISPLAY_WIDTH - _display_width(status_suffix),
+    )
+    title = _truncate_display(
+        str(node.get("title") or node.get("node_id") or "untitled"),
+        limit=title_limit,
+    )
+    return [
+        f"{title}{status_suffix}",
+        *_node_decision_lines(
+            node,
+            detail_limit=_SVG_NODE_DETAIL_DISPLAY_WIDTH,
+        ),
+    ][:3]
 
 
 def _node_detail_coverage(nodes: Sequence[Mapping[str, Any]]) -> dict[str, Any]:

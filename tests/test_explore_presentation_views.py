@@ -8,6 +8,7 @@ import pytest
 from loopx.presentation.explore_views import (
     PRESENTATION_MODE_CANONICAL_ONLY,
     PRESENTATION_MODE_DUAL_VIEW,
+    _display_width,
     build_explore_presentation_bundle,
     explore_source_digest,
     validate_explore_view_freshness,
@@ -464,6 +465,32 @@ def test_stage_board_preserves_two_lanes_and_real_cross_lane_relation() -> None:
     assert "LoopX capability" in stage["svg"]
     assert "supports" in stage["svg"]
     assert 'marker-end="url(#loopx-arrow)"' in stage["svg"]
+
+
+def test_stage_svg_fits_mixed_width_node_text_and_preserves_status() -> None:
+    projection = _lane_projection()
+    fix_node = next(
+        node for node in projection["nodes"] if node["node_id"] == "fix-pr"
+    )
+    fix_node["title"] = (
+        "Issue #3207 → Draft PR #3208: restore stats API unit-test isolation"
+    )
+    fix_node["summary"] = (
+        "在 shared SessionExtractContextProvider 强制可配置 conversation prompt 上限，"
+        "保留稳定配置语义并验证完整回归"
+    )
+
+    stage = build_explore_presentation_bundle(
+        projection,
+        policy={"stage_node_capacity": 10},
+    )["canonical"]["stage_views"][0]
+    headers = re.findall(r'font-size="14"[^>]*>([^<]+)</text>', stage["svg"])
+    details = re.findall(r'font-size="12"[^>]*>([^<]+)</text>', stage["svg"])
+
+    assert any(header.endswith("· ACTIVE") for header in headers)
+    assert all(_display_width(header) <= 50 for header in headers)
+    assert all(_display_width(detail) <= 62 for detail in details)
+    assert any(detail.endswith("…") for detail in details)
 
 
 def test_single_lane_project_does_not_invent_a_second_lane() -> None:
