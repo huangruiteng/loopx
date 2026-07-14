@@ -162,12 +162,84 @@ def assert_peer_monitor_no_followup() -> None:
         assert write_monitor_item["no_followup"] is True, write_monitor_item
 
 
+def assert_open_parent_successor_advisory() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-open-parent-successor-advisory-") as tmp:
+        registry_path, _state_file = write_fixture(Path(tmp))
+        parent = run_cli(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--text",
+            "Split a bounded aggregate into explicit successor work.",
+            "--claimed-by",
+            "codex-main-control",
+        )
+        successor = run_cli(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--text",
+            "Execute the first explicit successor slice.",
+            "--claimed-by",
+            "codex-side-bypass",
+        )
+
+        linked = run_cli(
+            registry_path,
+            "todo",
+            "update",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            parent["todo_id"],
+            "--successor-todo-id",
+            successor["todo_id"],
+        )
+        advisory = linked["parent_successor_advisory"]
+        assert linked["status"] == "open", linked
+        assert advisory["reason_code"] == (
+            "open_parent_remains_runnable_after_successor_link"
+        ), advisory
+        assert advisory["successor_semantics"] == "lineage_only", advisory
+        assert advisory["parent_remains_quota_runnable"] is True, advisory
+        assert advisory["automatic_transition_applied"] is False, advisory
+        assert advisory["authoring_decision_required"] is True, advisory
+        assert advisory["successor_todo_ids"] == [successor["todo_id"]], advisory
+
+        explicitly_deferred = run_cli(
+            registry_path,
+            "todo",
+            "update",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            parent["todo_id"],
+            "--status",
+            "deferred",
+            "--resume-when",
+            f"todo_done:{successor['todo_id']}",
+            "--successor-todo-id",
+            successor["todo_id"],
+        )
+        assert explicitly_deferred["status"] == "deferred", explicitly_deferred
+        assert "parent_successor_advisory" not in explicitly_deferred, explicitly_deferred
+
+
 def main() -> int:
     assert_configured_peer_handoff()
     assert_no_followup_cli_metadata()
     assert_complete_links_existing_successor()
     assert_same_title_completion_creates_fresh_successor()
     assert_peer_monitor_no_followup()
+    assert_open_parent_successor_advisory()
 
     with tempfile.TemporaryDirectory(prefix="loopx-todo-lifecycle-smoke-") as tmp:
         root = Path(tmp)

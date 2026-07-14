@@ -71,6 +71,7 @@ from .control_plane.todos.event_writeback import (
     event_projection_todo_context,
 )
 from .control_plane.todos.monitor_metadata import require_monitor_metadata_scope
+from .control_plane.todos.succession_warning import build_open_parent_successor_advisory
 from .control_plane.todos.text import (
     inherit_todo_priority,
     normalize_new_todo,
@@ -1473,6 +1474,14 @@ def update_goal_todo(
         "project": str(resolved_project) if resolved_project else None,
         "updated_at": updated_at if changed else None,
     }
+    if successor_todo_ids is not None:
+        parent_successor_advisory = build_open_parent_successor_advisory(
+            todo_id=update_result.get("todo_id"),
+            status=update_result.get("status"),
+            successor_todo_ids=update_result.get("successor_todo_ids"),
+        )
+        if parent_successor_advisory:
+            payload["parent_successor_advisory"] = parent_successor_advisory
     return _attach_todo_write_correctness_dry_run_packet(
         payload,
         goal_id=goal_id,

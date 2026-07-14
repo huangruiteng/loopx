@@ -795,6 +795,13 @@ states. When a slice merges or validates, complete the current todo only after
 creating the next concrete agent/user todo for rollout, product-path audit,
 docs, telemetry, benchmark proof, or operator decision; if there is truly no
 follow-up, write a compact no-follow-up rationale in the completion note.
+`successor_todo_ids` records lineage only: linking successors does not suspend
+an open parent. When splitting a parent into explicit successors, decide whether
+the parent still has an independent immediate action. If it does not, explicitly
+defer it with a supported `resume_when` or complete it; do not infer aggregate
+semantics from successor links alone. Treat `parent_successor_advisory` in the
+`todo update` response as the machine-readable authoring reminder for this
+decision, not as a new persisted lifecycle state.
 
 ## Record Human Reward
 
