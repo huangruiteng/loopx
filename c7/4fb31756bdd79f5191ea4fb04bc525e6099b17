@@ -1,0 +1,27 @@
+docs/quota-allocation.md
+  s_9a5a2bd944fdcb::t_b8989e190c2bd3 748-752
+docs/status-data-contract.md
+  s_9a5a2bd944fdcb::t_38cfe4535fae45 1351-1354
+examples/control_plane/quota-scheduler-registry-route-smoke.py
+  s_9a5a2bd944fdcb::t_67092a8bfca0e0 1-142
+examples/control_plane/quota-scheduler-state-ack-smoke.py
+  s_9a5a2bd944fdcb::t_9c847c3cd732c0 12,769-775,1169-1173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c74fb31756bdd79f5191ea4fb04bc525e6099b17",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
