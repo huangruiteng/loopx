@@ -35,6 +35,7 @@ AGENT_TODOS = {
         {
             "priority": "P2",
             "text": "[P2] Continue canary-gated control-plane read-model cleanup.",
+            "claimed_by": "codex-control-plane",
         }
     ]
 }
@@ -151,6 +152,15 @@ def main() -> int:
     assert regular["stall_threshold"] == AUTONOMOUS_REPLAN_STALL_THRESHOLD, regular
     assert regular["todo_actions"][0]["action"] == "split", regular
     assert regular["todo_actions"][1]["action"] == "add", regular
+    assert regular["agent_id"] == "codex-control-plane", regular
+
+    conflicting_agents = assert_parity(
+        [
+            {"kind": "no_progress_streak", "agent_id": "codex-a"},
+            {"kind": "repeated_action_loop", "agent_id": "codex-b"},
+        ]
+    )
+    assert "agent_id" not in conflicting_agents, conflicting_agents
 
     dead_monitor = assert_parity(
         [
@@ -185,6 +195,7 @@ def main() -> int:
     assert state_wrapper == state_direct, (state_wrapper, state_direct)
     assert state_wrapper is not None, state_wrapper
     assert state_wrapper["trigger_count"] == 3, state_wrapper
+    assert state_wrapper["agent_id"] == "codex-control-plane", state_wrapper
     assert [item["kind"] for item in state_wrapper["triggers"]] == [
         "no_progress_streak",
         "repeated_action_loop",

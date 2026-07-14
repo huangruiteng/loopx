@@ -48,6 +48,15 @@ def normalized_run_history_stall_signature(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip().lower())
 
 
+def _single_public_agent_id(items: list[dict[str, Any]]) -> str | None:
+    agent_ids = {
+        str(item.get("agent_id") or "").strip()
+        for item in items
+        if isinstance(item, dict) and str(item.get("agent_id") or "").strip()
+    }
+    return next(iter(agent_ids)) if len(agent_ids) == 1 else None
+
+
 def run_history_monitor_target(run: dict[str, Any]) -> dict[str, Any] | None:
     target = run.get("monitor_target")
     if isinstance(target, dict):
@@ -94,6 +103,7 @@ def run_history_stall_signal(
     signal = {
         "classification": classification,
         "generated_at": str(run.get("generated_at") or ""),
+        "agent_id": str(run.get("agent_id") or "").strip() or None,
         "recommended_action": recommended_action,
         "delivery_outcome": delivery_outcome.value if delivery_outcome else None,
         "signature": normalized_run_history_stall_signature(action_or_classification),
@@ -173,6 +183,7 @@ def autonomous_replan_periodic_review_from_runs(
             "threshold": periodic_run_threshold,
             "latest_generated_at": str(durable_runs[0].get("generated_at") or ""),
             "oldest_counted_generated_at": str(durable_runs[-1].get("generated_at") or ""),
+            "agent_id": _single_public_agent_id(durable_runs),
         }
     ]
     return build_autonomous_replan_obligation(evidence, agent_todos=agent_todos)
@@ -235,6 +246,11 @@ def build_autonomous_replan_obligation(
         open_items = agent_todos.get("first_open_items")
         if isinstance(open_items, list) and open_items and isinstance(open_items[0], dict):
             first_open = open_items[0]
+
+    evidence_has_agent_attribution = any("agent_id" in item for item in evidence)
+    replan_agent_id = _single_public_agent_id(evidence)
+    if replan_agent_id is None and not evidence_has_agent_attribution:
+        replan_agent_id = str(first_open.get("claimed_by") or "").strip() or None
 
     todo_actions: list[dict[str, Any]] = []
     first_open_text = public_safe_compact_text(first_open.get("text"), limit=140)
@@ -330,6 +346,7 @@ def build_autonomous_replan_obligation(
             "production actions, or owner-only decisions"
         ),
         recommended_action=recommended_action,
+        agent_id=replan_agent_id,
     )
     if dead_monitor_evidence:
         result["dead_monitor_detector"] = {
@@ -479,6 +496,7 @@ def autonomous_replan_obligation_from_runs(
                 "threshold": dead_monitor_repeat_threshold,
                 "monitor_target_id": monitor_target_id,
                 "latest_generated_at": signals[0].get("generated_at"),
+                "agent_id": _single_public_agent_id(monitor_signals),
             }
         ]
         return build_autonomous_replan_obligation(evidence, agent_todos=agent_todos)
@@ -498,6 +516,7 @@ def autonomous_replan_obligation_from_runs(
             "text": evidence_text,
             "run_count": len(stall_signals),
             "latest_generated_at": stall_signals[0].get("generated_at"),
+            "agent_id": _single_public_agent_id(stall_signals),
         }
     ]
     return build_autonomous_replan_obligation(evidence, agent_todos=agent_todos)
