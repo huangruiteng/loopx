@@ -728,6 +728,9 @@ def main() -> int:
     assert "codex_app.ack_hint.cli_args" in doc, doc
     assert "quota scheduler-ack-current" in doc, doc
     assert "recommended_rrule" in doc, doc
+    normalized_doc = normalized(doc)
+    assert "Attempt the host update at most once per hint and turn" in normalized_doc, doc
+    assert "do not retry or ACK in that turn" in normalized_doc, doc
     assert "must_attempt_work=true" in doc, doc
     assert "not an execution gate" in normalized(doc), doc
     assert "loopx heartbeat-prompt" in doc, doc
@@ -786,6 +789,9 @@ def main() -> int:
     assert "codex_app.ack_hint.cli_args" in project_skill, project_skill
     assert "quota scheduler-ack-current" in project_skill, project_skill
     assert "recommended_rrule" in project_skill, project_skill
+    normalized_project_skill = normalized(project_skill)
+    assert "Attempt the host update at most once per hint and turn" in normalized_project_skill, project_skill
+    assert "do not retry or ACK in that turn" in normalized_project_skill, project_skill
     assert "must_attempt_work=true" in project_skill, project_skill
     assert "not an execution gate" in normalized(project_skill), project_skill
     assert "mapped_noop_if_unchanged" in project_skill, project_skill

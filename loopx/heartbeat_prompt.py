@@ -642,9 +642,10 @@ If the result says `should_run=true`:
    `notify=DONT_NOTIFY`; quiet no-op needs `must_attempt_work=false` and no
    `notify_user_on_open_todo=true` blocker-push notification. Use
    `scheduler_hint` for wakeup and unchanged-loop limits. For Codex App:
-   `apply_needed=true` -> update `recommended_rrule`, then run
-   `ack_hint.cli_args`; else `ack_needed=true` -> run that bound ack directly;
-   else skip.
+   `apply_needed=true` -> update `recommended_rrule` once; on success run
+   `ack_hint.cli_args`, but on failure or timeout do not retry or ack in the
+   same turn and continue under the observed host cadence. Else
+   `ack_needed=true` -> run that bound ack directly; else skip.
    LoopX owns reset/progression state. It is scheduling only, not delivery
    permission. Then use
    `heartbeat_recommendation`: `recommended_mode=run_first_read_only_map` means

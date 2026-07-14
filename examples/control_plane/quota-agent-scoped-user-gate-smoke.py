@@ -651,8 +651,8 @@ def assert_scoped_gate_rejects_capability_ineligible_only_fallback() -> None:
     assert scheduler["codex_app"]["example_progression_minutes"] == [
         30,
         60,
-        120,
     ], scheduler
+    assert scheduler["codex_app"]["max_interval_minutes"] == 60, scheduler
     assert scheduler["codex_app"]["recommended_interval_minutes"] == 30, scheduler
 
 
