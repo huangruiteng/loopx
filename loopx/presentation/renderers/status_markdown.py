@@ -132,36 +132,11 @@ def append_runtime_projection_routes_markdown(
     lines: list[str],
     diagnostics: dict[str, Any],
 ) -> None:
-    if not diagnostics.get("available"):
+    healthy = diagnostics.get("healthy")
+    if healthy is None:
         return
-    counts = as_dict(diagnostics.get("counts"))
-    lines.append(
-        "- runtime_projection_routes: "
-        f"healthy={diagnostics.get('healthy')}, "
-        f"single_runtime={counts.get('single_runtime')}, "
-        f"ready={counts.get('ready')}, "
-        f"missing={counts.get('missing')}, "
-        f"ambiguous={counts.get('ambiguous')}, "
-        f"lagging={counts.get('lagging')}"
-    )
-    findings = [
-        item
-        for item in as_list(diagnostics.get("items"))
-        if isinstance(item, dict)
-        and item.get("status") in {"missing", "ambiguous", "lagging"}
-    ]
-    if not findings:
-        return
-    lines.extend(["", "## Runtime Projection Route Findings"])
-    for item in findings:
-        route = as_dict(item.get("route"))
-        lines.append(
-            "- "
-            f"goal={markdown_scalar(item.get('goal_id') or '')} "
-            f"status={markdown_scalar(item.get('status') or '')} "
-            f"reason={markdown_scalar(item.get('reason') or '')} "
-            f"route_id={markdown_scalar(route.get('route_id') or '')}"
-        )
+    suffix = "" if healthy else ", details=loopx doctor"
+    lines.append(f"- runtime_projection_routes: healthy={healthy}{suffix}")
 
 
 def append_global_registry_findings_markdown(

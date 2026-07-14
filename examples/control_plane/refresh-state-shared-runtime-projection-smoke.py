@@ -24,6 +24,7 @@ from loopx.control_plane.runtime.runtime_projection_route import (  # noqa: E402
     compact_runtime_projection_route,
     resolve_runtime_projection_route,
 )
+from loopx import doctor as doctor_module  # noqa: E402
 from loopx.presentation.renderers.status_markdown import (  # noqa: E402
     render_status_markdown,
 )
@@ -324,8 +325,7 @@ def main() -> None:
             shared_runtime=shared_runtime,
         )
         route_diagnostics = status["runtime_projection_routes"]
-        assert route_diagnostics["healthy"] is True, route_diagnostics
-        assert route_diagnostics["counts"]["healthy"] == 1, route_diagnostics
+        assert route_diagnostics == {"healthy": True}, route_diagnostics
         assert "runtime_projection_routes: healthy=True" in render_status_markdown(status)
 
         source_index = project_runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
@@ -358,11 +358,23 @@ def main() -> None:
             shared_runtime=shared_runtime,
         )
         lagging_routes = lagging_status["runtime_projection_routes"]
-        assert lagging_routes["healthy"] is False, lagging_routes
-        assert lagging_routes["counts"]["lagging"] == 1, lagging_routes
+        assert lagging_routes == {"healthy": False}, lagging_routes
         lagging_markdown = render_status_markdown(lagging_status)
-        assert "## Runtime Projection Route Findings" in lagging_markdown
-        assert "status=lagging" in lagging_markdown
+        assert "runtime_projection_routes: healthy=False" in lagging_markdown
+        assert "details=loopx doctor" in lagging_markdown
+        default_runtime_root = doctor_module.DEFAULT_RUNTIME_ROOT
+        doctor_module.DEFAULT_RUNTIME_ROOT = shared_runtime
+        try:
+            doctor = doctor_module.collect_doctor()
+        finally:
+            doctor_module.DEFAULT_RUNTIME_ROOT = default_runtime_root
+        doctor_routes = doctor["runtime_projection_routes"]
+        assert doctor_routes["healthy"] is False, doctor_routes
+        assert doctor_routes["counts"]["lagging"] == 1, doctor_routes
+        assert any(
+            item.get("goal_id") == GOAL_ID and item.get("status") == "lagging"
+            for item in doctor_routes["items"]
+        ), doctor_routes
 
         single_runtime = Path(tmp) / "single-runtime"
         single_registry, single_goal = write_route_source(

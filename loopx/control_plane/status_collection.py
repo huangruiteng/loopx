@@ -88,6 +88,13 @@ def collect_status(
         runtime_root=runtime_root,
         goal_id=goal_filter,
     )
+    runtime_projection_route_health = {
+        "healthy": (
+            bool(runtime_projection_routes.get("healthy"))
+            if runtime_projection_routes.get("available")
+            else None
+        )
+    }
     payload = {
         "ok": bool(contract.get("ok")) and bool(global_registry.get("ok", True)),
         "registry": str(registry_path),
@@ -109,7 +116,7 @@ def collect_status(
         **runtime_summaries,
         "promotion_gate": promotion_gate,
     }
-    payload["runtime_projection_routes"] = runtime_projection_routes
+    payload["runtime_projection_routes"] = runtime_projection_route_health
     agent_management_projection = context.build_agent_management_projection(payload)
     if agent_management_projection.get("agents"):
         payload["agent_management_projection"] = agent_management_projection
