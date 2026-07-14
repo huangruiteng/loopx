@@ -31,6 +31,10 @@ Optional env:
                                        workspace-write
   SKILLSBENCH_CLI_GOAL_THREAD_PREWARM  Set to 1 to prewarm the persisted Codex
                                        TUI thread before submitting /goal
+  SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN
+                                       Set to 1 to let the runner stage an
+                                       isolated task copy and apply its
+                                       public-safe setup bootstrap repairs
   SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC  Setup stall timeout, default 3600;
                                        0 disables cap
   SKILLSBENCH_RUN_TIMEOUT_SEC          Supervisor timeout, default 28800
@@ -139,6 +143,7 @@ if [[ "$codex_cli_goal_thread_prewarm" != "0" && "$codex_cli_goal_thread_prewarm
 fi
 skip_global_ledger_sync="${SKILLSBENCH_SKIP_GLOBAL_LEDGER_SYNC:-0}"
 skip_current_aggregate_update="${SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE:-0}"
+allow_staged_bootstrap_repair_run="${SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN:-0}"
 validate_bool_toggle() {
   local env_name="$1"
   local value="$2"
@@ -150,6 +155,8 @@ validate_bool_toggle() {
 validate_bool_toggle SKILLSBENCH_SKIP_GLOBAL_LEDGER_SYNC "$skip_global_ledger_sync"
 validate_bool_toggle \
   SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE "$skip_current_aggregate_update"
+validate_bool_toggle \
+  SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN "$allow_staged_bootstrap_repair_run"
 remote_codex_bin_mode="path_lookup"
 if [[ -n "${SKILLSBENCH_REMOTE_CODEX_BIN:-}" ]]; then
   remote_codex_bin_mode="explicit"
@@ -286,6 +293,9 @@ extra_runner_args=()
 if [[ "$codex_cli_goal_thread_prewarm" == "1" ]]; then
   extra_runner_args+=(--codex-cli-goal-thread-prewarm)
 fi
+if [[ "$allow_staged_bootstrap_repair_run" == "1" ]]; then
+  extra_runner_args+=(--allow-staged-bootstrap-repair-run)
+fi
 if [[ -n "${SKILLSBENCH_REGISTRY:-}" ]]; then
   extra_runner_args+=(--registry "$SKILLSBENCH_REGISTRY")
 fi
@@ -419,6 +429,7 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'remote_codex_bin_mode=%s\n' "$remote_codex_bin_mode"
   printf 'local_codex_sandbox=%s\n' "$local_codex_sandbox"
   printf 'codex_cli_goal_thread_prewarm=%s\n' "$codex_cli_goal_thread_prewarm"
+  printf 'allow_staged_bootstrap_repair_run=%s\n' "$allow_staged_bootstrap_repair_run"
   printf 'skip_global_ledger_sync=%s\n' "$skip_global_ledger_sync"
   printf 'skip_current_aggregate_update=%s\n' "$skip_current_aggregate_update"
   printf 'local_run_ledger=%s\n' "$local_run_ledger"
@@ -469,4 +480,5 @@ docker_api_version=${docker_api_version}
 remote_codex_bin_mode=${remote_codex_bin_mode}
 local_codex_sandbox=${local_codex_sandbox}
 codex_cli_goal_thread_prewarm=${codex_cli_goal_thread_prewarm}
+allow_staged_bootstrap_repair_run=${allow_staged_bootstrap_repair_run}
 EOF
