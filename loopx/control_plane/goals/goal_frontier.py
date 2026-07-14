@@ -1230,7 +1230,14 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                 "is weak, group/prune work, and write a concrete todo or vision delta"
             ),
         )
-    if autonomous_replan_ack_has_frontier_delta(latest_replan_ack):
+    # Empty monitor-only frontiers require an explicit watch continuation.
+    # Generic vision, next-action, or no-followup writebacks can close other
+    # replan obligations, but they do not prove that an active goal intended
+    # to stop generating advancement work.
+    if _autonomous_replan_ack_has_delta_kind(
+        latest_replan_ack,
+        delta_kind="watch_lane_continuation",
+    ):
         return None
     if not _is_monitor_only_lane(work_lane_contract):
         return None
