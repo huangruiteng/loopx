@@ -650,6 +650,11 @@ enough to support an operator decision without exposing local paths or private
 evidence. They must be public-safe before a project exposes this export outside
 the local machine.
 
+Goal-filtered status and quota guards validate active-state todo semantics only
+for the selected goal. Registry structure, routing ambiguity, and public-boundary
+scan failures remain global health blockers. Broad status and quota inventory
+commands continue to report active-state contract errors from every goal.
+
 ## Attention Queue
 
 The attention queue is sorted by LoopX status logic. A UI should render

@@ -60,9 +60,7 @@ from .control_plane.quota.projection_repair import (
     build_state_projection_gap,
     build_state_projection_gap_repair_hint,
 )
-from .control_plane.quota.decision_summary import (
-    quota_decision_agent_id,
-)
+from .control_plane.quota.decision_summary import goal_status_health_ok, quota_decision_agent_id
 from .control_plane.quota.goal_boundary import (
     effective_available_capabilities as _effective_available_capabilities,
     goal_boundary as _goal_boundary,
@@ -1283,6 +1281,7 @@ def build_quota_should_run(
     safe_goal_id = str(goal_id or "").strip()
     registry_goal = _registry_goal_by_id(status_payload).get(safe_goal_id) or {}
     plan = build_quota_plan(status_payload, mode="should-run")
+    goal_health_ok = goal_status_health_ok(status_payload, goal_id=safe_goal_id, fallback=bool(plan.get("ok")))
     item = next((candidate for candidate in _quota_plan_items(plan) if candidate.get("goal_id") == safe_goal_id), None)
     health_items = plan.get("health_items") if isinstance(plan.get("health_items"), list) else []
     health_item = next(
@@ -1297,10 +1296,10 @@ def build_quota_should_run(
     if item:
         quota = item.get("quota") if isinstance(item.get("quota"), dict) else {}
         state = str(quota.get("state") or "unknown")
-        normal_delivery_allowed = bool(plan.get("ok")) and state == "eligible"
-        recovery_allowed = _recovery_delivery_allowed(quota, plan_ok=bool(plan.get("ok")))
+        normal_delivery_allowed = goal_health_ok and state == "eligible"
+        recovery_allowed = _recovery_delivery_allowed(quota, plan_ok=goal_health_ok)
         reason = str(quota.get("reason") or "quota state is not eligible")
-        if not plan.get("ok"):
+        if not goal_health_ok:
             reason = "status or contract health is not ok; skip automatic compute"
         project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
         agent_identity = build_quota_agent_identity(item, agent_id=agent_id)
@@ -1337,10 +1336,10 @@ def build_quota_should_run(
                 "reason": agent_scoped_user_gate_override["reason"],
             }
             state = "eligible"
-            normal_delivery_allowed = bool(plan.get("ok"))
+            normal_delivery_allowed = goal_health_ok
             recovery_allowed = _recovery_delivery_allowed(
                 quota,
-                plan_ok=bool(plan.get("ok")),
+                plan_ok=goal_health_ok,
             )
             reason = str(agent_scoped_user_gate_override["reason"])
         outcome_floor_blocker_projected = (
@@ -1380,7 +1379,7 @@ def build_quota_should_run(
         stall_self_repair = _stall_self_repair_hint(
             item,
             state=state,
-            plan_ok=bool(plan.get("ok")),
+            plan_ok=goal_health_ok,
             health_items=health_items,
             user_todo_summary=user_todo_summary,
             agent_todo_summary=agent_todo_summary,
@@ -1517,7 +1516,7 @@ def build_quota_should_run(
         )
         replan_decision_allowed = autonomous_replan_decision_allowed(
             replan_obligation=replan_obligation,
-            plan_ok=bool(plan.get("ok")),
+            plan_ok=goal_health_ok,
             workspace_blocked=bool(workspace_guard),
             automation_prompt_upgrade_required=automation_prompt_upgrade_required,
             agent_id=agent_frontier_id,
@@ -1842,8 +1841,8 @@ def build_quota_should_run(
             agent_scope_frontier=agent_scope_frontier,
         )
         payload = {
-            "ok": bool(plan.get("ok")) or self_repair_allowed or capability_repair_allowed or workspace_repair_allowed,
-            "status_health_ok": bool(plan.get("ok")),
+            "ok": goal_health_ok or self_repair_allowed or capability_repair_allowed or workspace_repair_allowed,
+            "status_health_ok": goal_health_ok,
             "mode": "should-run",
             "goal_id": safe_goal_id,
             "decision": (

@@ -19,7 +19,13 @@ GOAL_A = "status-filter-a"
 GOAL_B = "status-filter-b"
 
 
-def write_state(project: Path, goal_id: str, todo_text: str) -> str:
+def write_state(
+    project: Path,
+    goal_id: str,
+    todo_text: str,
+    *,
+    invalid_agent_route: bool = False,
+) -> str:
     state_file = f".codex/goals/{goal_id}/ACTIVE_GOAL_STATE.md"
     path = project / state_file
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -31,7 +37,9 @@ def write_state(project: Path, goal_id: str, todo_text: str) -> str:
         f"# {goal_id}\n\n"
         "## Agent Todo\n\n"
         f"- [ ] {todo_text}\n"
-        f"  <!-- loopx:todo todo_id=todo_{goal_id} status=open task_class=advancement_task -->\n",
+        f"  <!-- loopx:todo todo_id=todo_{goal_id} status=open "
+        "task_class=advancement_task"
+        f"{' blocks_agent=legacy-agent' if invalid_agent_route else ''} -->\n",
         encoding="utf-8",
     )
     return state_file
@@ -51,7 +59,12 @@ def write_registry(project: Path, runtime: Path) -> Path:
                 "domain": "status-filter-smoke",
                 "status": "active",
                 "repo": str(project),
-                "state_file": write_state(project, goal_id, todo_text),
+                "state_file": write_state(
+                    project,
+                    goal_id,
+                    todo_text,
+                    invalid_agent_route=goal_id == GOAL_B,
+                ),
                 "adapter": {"kind": "smoke_v0", "status": "connected-read-only"},
                 "authority_sources": [],
             }
@@ -90,7 +103,13 @@ def write_run_history(runtime: Path) -> None:
         )
 
 
-def run_status(registry_path: Path, runtime: Path, project: Path, *extra: str) -> subprocess.CompletedProcess[str]:
+def run_status(
+    registry_path: Path,
+    runtime: Path,
+    project: Path,
+    *extra: str,
+    goal_id: str | None = GOAL_A,
+) -> subprocess.CompletedProcess[str]:
     command = [
         sys.executable,
         "-m",
@@ -100,16 +119,50 @@ def run_status(registry_path: Path, runtime: Path, project: Path, *extra: str) -
         "--runtime-root",
         str(runtime),
         "status",
-        "--goal-id",
-        GOAL_A,
         "--scan-path",
         str(project / "PUBLIC.md"),
         "--limit",
         "10",
-        *extra,
     ]
+    if goal_id:
+        command.extend(["--goal-id", goal_id])
+    command.extend(extra)
     return subprocess.run(
         command,
+        cwd=REPO_ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+
+def run_quota_should_run(
+    registry_path: Path,
+    runtime: Path,
+    project: Path,
+    goal_id: str,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--registry",
+            str(registry_path),
+            "--runtime-root",
+            str(runtime),
+            "--format",
+            "json",
+            "quota",
+            "should-run",
+            "--goal-id",
+            goal_id,
+            "--scan-path",
+            str(project / "PUBLIC.md"),
+            "--limit",
+            "10",
+        ],
         cwd=REPO_ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -158,6 +211,32 @@ def main() -> int:
         assert markdown_result.returncode == 0, (markdown_result.stdout, markdown_result.stderr)
         assert f"- goal_filter: `{GOAL_A}`" in markdown_result.stdout, markdown_result.stdout
         assert GOAL_B not in markdown_result.stdout, markdown_result.stdout
+
+        broad_result = run_status(
+            registry_path,
+            runtime,
+            project,
+            "--format",
+            "json",
+            goal_id=None,
+        )
+        assert broad_result.returncode != 0, broad_result.stdout
+        broad_payload = json.loads(broad_result.stdout)
+        assert broad_payload["ok"] is False, broad_payload
+        assert any(GOAL_B in item for item in broad_payload["contract_errors"]), broad_payload
+
+        selected_quota = run_quota_should_run(registry_path, runtime, project, GOAL_A)
+        assert selected_quota.returncode == 0, (selected_quota.stdout, selected_quota.stderr)
+        selected_payload = json.loads(selected_quota.stdout)
+        assert selected_payload["decision"] == "run", selected_payload
+        assert selected_payload["should_run"] is True, selected_payload
+        assert selected_payload["effective_action"] == "normal_run", selected_payload
+
+        invalid_quota = run_quota_should_run(registry_path, runtime, project, GOAL_B)
+        assert invalid_quota.returncode != 0, invalid_quota.stdout
+        invalid_payload = json.loads(invalid_quota.stdout)
+        assert invalid_payload["status_health_ok"] is False, invalid_payload
+        assert invalid_payload["should_run"] is False, invalid_payload
 
     print("status-goal-filter-smoke ok")
     return 0

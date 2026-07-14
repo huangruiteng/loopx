@@ -269,11 +269,17 @@ def _index_duplicate_warning(
     return f"{safe_goal_id}: duplicate index rows raw={raw} unique={unique}{detail}; {action}"
 
 
-def _active_state_user_gate_scope_errors(registry: dict[str, Any]) -> tuple[list[str], int]:
+def _active_state_user_gate_scope_errors(
+    registry: dict[str, Any],
+    *,
+    goal_id_filter: str | None = None,
+) -> tuple[list[str], int]:
     errors: list[str] = []
     checked = 0
     for goal in registry_goals(registry):
         goal_id = str(goal.get("id") or "")
+        if goal_id_filter and goal_id != goal_id_filter:
+            continue
         registered_agents = registered_agent_ids_for_goal(goal)
         repo_text = str(goal.get("repo") or "").strip()
         if not repo_text:
@@ -582,6 +588,7 @@ def check_contract(
     scan_roots: list[Path],
     limit: int,
     allow_missing_registry: bool = False,
+    goal_id_filter: str | None = None,
 ) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -618,7 +625,10 @@ def check_contract(
             errors.append(f"registry boundary risk: {risk}")
 
     registry = load_registry(registry_path)
-    user_gate_scope_errors, checked_user_gates = _active_state_user_gate_scope_errors(registry)
+    user_gate_scope_errors, checked_user_gates = _active_state_user_gate_scope_errors(
+        registry,
+        goal_id_filter=goal_id_filter,
+    )
     if checked_user_gates:
         checks.append(f"user-gate scopes checked: {checked_user_gates} open multi-agent gates")
     errors.extend(user_gate_scope_errors)
@@ -680,6 +690,20 @@ def check_contract(
         )
     warnings.extend(str(item) for item in boundary.get("private_state_git_warnings") or [])
 
+    goal_errors: dict[str, list[str]] = {}
+    for goal in registry_goals(registry):
+        goal_id = str(goal.get("id") or "")
+        if not goal_id:
+            continue
+        scoped = [item for item in user_gate_scope_errors if item.startswith(f"{goal_id}:")]
+        if scoped:
+            goal_errors[goal_id] = scoped
+    scoped_error_set = {
+        item
+        for items in goal_errors.values()
+        for item in items
+    }
+
     return {
         "ok": not errors,
         "registry": str(registry_path),
@@ -691,6 +715,8 @@ def check_contract(
             "checks": len(checks),
         },
         "errors": errors,
+        "global_errors": [item for item in errors if item not in scoped_error_set],
+        "goal_errors": goal_errors,
         "warnings": warnings,
         "checks": checks,
     }

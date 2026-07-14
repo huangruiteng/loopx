@@ -62,6 +62,7 @@ def collect_status(
         runtime_root_override=runtime_root_override,
         scan_roots=scan_roots,
         limit=limit,
+        goal_id_filter=goal_filter,
     )
     queue = context.build_attention_queue(
         contract=contract,
@@ -108,6 +109,8 @@ def collect_status(
             "ok": contract.get("ok"),
             "summary": contract.get("summary"),
             "errors": contract.get("errors") or [],
+            "global_errors": contract.get("global_errors") or [],
+            "goal_errors": contract.get("goal_errors") or {},
             "warnings": contract.get("warnings") or [],
             "checks": contract.get("checks") or [],
         },

@@ -538,6 +538,12 @@ the displayed gate, evidence, or health reason.
 `quota should-run` is the per-goal guard for heartbeat jobs. It returns a small
 JSON or Markdown decision:
 
+The per-goal guard, monitor, scheduler acknowledgment, and slot-accounting
+commands isolate active-state todo contract errors to their selected goal. A
+stale todo in another goal therefore remains visible in broad health inventory
+without blocking an otherwise healthy goal. Global registry, routing, and
+public-boundary failures still fail closed for every goal.
+
 ```json
 {
   "goal_id": "project-main-control",
