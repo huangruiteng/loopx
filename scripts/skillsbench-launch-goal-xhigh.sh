@@ -35,6 +35,10 @@ Optional env:
                                        Set to 1 to let the runner stage an
                                        isolated task copy and apply its
                                        public-safe setup bootstrap repairs
+  SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT
+                                       Set to 1 to stop after real job-root and
+                                       environment materialization, before any
+                                       agent or verifier lifecycle
   SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC  Setup stall timeout, default 3600;
                                        0 disables cap
   SKILLSBENCH_RUN_TIMEOUT_SEC          Supervisor timeout, default 28800
@@ -144,6 +148,7 @@ fi
 skip_global_ledger_sync="${SKILLSBENCH_SKIP_GLOBAL_LEDGER_SYNC:-0}"
 skip_current_aggregate_update="${SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE:-0}"
 allow_staged_bootstrap_repair_run="${SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN:-0}"
+setup_only_public_preflight="${SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT:-0}"
 validate_bool_toggle() {
   local env_name="$1"
   local value="$2"
@@ -157,11 +162,13 @@ validate_bool_toggle \
   SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE "$skip_current_aggregate_update"
 validate_bool_toggle \
   SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN "$allow_staged_bootstrap_repair_run"
+validate_bool_toggle \
+  SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT "$setup_only_public_preflight"
 remote_codex_bin_mode="path_lookup"
 if [[ -n "${SKILLSBENCH_REMOTE_CODEX_BIN:-}" ]]; then
   remote_codex_bin_mode="explicit"
 fi
-if [[ "$dry_run" == "false" ]]; then
+if [[ "$dry_run" == "false" && "$setup_only_public_preflight" != "1" ]]; then
   if [[ "$remote_codex_bin" == */* ]]; then
     printf -v remote_codex_probe \
       'test -x %q && %q --version >/dev/null 2>&1' \
@@ -296,6 +303,9 @@ fi
 if [[ "$allow_staged_bootstrap_repair_run" == "1" ]]; then
   extra_runner_args+=(--allow-staged-bootstrap-repair-run)
 fi
+if [[ "$setup_only_public_preflight" == "1" ]]; then
+  extra_runner_args+=(--setup-only-public-preflight)
+fi
 if [[ -n "${SKILLSBENCH_REGISTRY:-}" ]]; then
   extra_runner_args+=(--registry "$SKILLSBENCH_REGISTRY")
 fi
@@ -388,30 +398,35 @@ supervisor_cmd=(
   --remote-command "$remote_command"
   --remote-public-artifact-root "${SKILLSBENCH_REMOTE_ROOT}/.local/private-benchmark-jobs"
   --remote-public-artifact-glob "${job_name}*/runner_prerequisites.public.json"
+  --remote-public-artifact-glob "${job_name}*/setup_only_preflight.public.json"
   --remote-public-artifact-glob "${job_name}*/loopx_controller_trace.public.json"
   --remote-public-artifact-glob "${job_name}*/runner_config.public.json"
   --remote-public-artifact-glob "${job_name}*/*/benchmark_run.compact.json"
   --remote-public-artifact-glob "${job_name}*/host_local_acp_relay_traces/*.compact.json"
   --local-public-artifact-dir "$public_dir"
-  --local-run-ledger-path "$local_run_ledger"
-  --local-run-group-id "$run_group"
-  --local-ledger-catchup-root "$public_root"
-  --local-ledger-catchup-run-group-contains "$ledger_catchup_group"
   --private-log-path "${private_dir}/remote-command.log"
   --public-output-path "${public_dir}/supervisor.public.json"
 )
 
-if [[ "$dry_run" == "false" && ! -f "$local_run_ledger" && -n "${SKILLSBENCH_LOCAL_RUN_LEDGER_SEED:-}" ]]; then
-  mkdir -p "$(dirname "$local_run_ledger")"
-  cp "$SKILLSBENCH_LOCAL_RUN_LEDGER_SEED" "$local_run_ledger"
-fi
-if [[ -n "${SKILLSBENCH_CANONICAL_CASE_IDS_FILE:-}" ]]; then
-  standard_aggregate="${SKILLSBENCH_STANDARD_AGGREGATE_PATH:-$(dirname "$local_run_ledger")/standard-current-aggregate.json}"
+if [[ "$setup_only_public_preflight" != "1" ]]; then
   supervisor_cmd+=(
-    --local-current-aggregate-path "$standard_aggregate"
-    --local-canonical-case-ids-file "$SKILLSBENCH_CANONICAL_CASE_IDS_FILE"
-    --local-target-lane-id codex-cli-goal-xhigh
+    --local-run-ledger-path "$local_run_ledger"
+    --local-run-group-id "$run_group"
+    --local-ledger-catchup-root "$public_root"
+    --local-ledger-catchup-run-group-contains "$ledger_catchup_group"
   )
+  if [[ "$dry_run" == "false" && ! -f "$local_run_ledger" && -n "${SKILLSBENCH_LOCAL_RUN_LEDGER_SEED:-}" ]]; then
+    mkdir -p "$(dirname "$local_run_ledger")"
+    cp "$SKILLSBENCH_LOCAL_RUN_LEDGER_SEED" "$local_run_ledger"
+  fi
+  if [[ -n "${SKILLSBENCH_CANONICAL_CASE_IDS_FILE:-}" ]]; then
+    standard_aggregate="${SKILLSBENCH_STANDARD_AGGREGATE_PATH:-$(dirname "$local_run_ledger")/standard-current-aggregate.json}"
+    supervisor_cmd+=(
+      --local-current-aggregate-path "$standard_aggregate"
+      --local-canonical-case-ids-file "$SKILLSBENCH_CANONICAL_CASE_IDS_FILE"
+      --local-target-lane-id codex-cli-goal-xhigh
+    )
+  fi
 fi
 
 if [[ "$dry_run" == "true" ]]; then
@@ -430,6 +445,7 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'local_codex_sandbox=%s\n' "$local_codex_sandbox"
   printf 'codex_cli_goal_thread_prewarm=%s\n' "$codex_cli_goal_thread_prewarm"
   printf 'allow_staged_bootstrap_repair_run=%s\n' "$allow_staged_bootstrap_repair_run"
+  printf 'setup_only_public_preflight=%s\n' "$setup_only_public_preflight"
   printf 'skip_global_ledger_sync=%s\n' "$skip_global_ledger_sync"
   printf 'skip_current_aggregate_update=%s\n' "$skip_current_aggregate_update"
   printf 'local_run_ledger=%s\n' "$local_run_ledger"
@@ -481,4 +497,5 @@ remote_codex_bin_mode=${remote_codex_bin_mode}
 local_codex_sandbox=${local_codex_sandbox}
 codex_cli_goal_thread_prewarm=${codex_cli_goal_thread_prewarm}
 allow_staged_bootstrap_repair_run=${allow_staged_bootstrap_repair_run}
+setup_only_public_preflight=${setup_only_public_preflight}
 EOF

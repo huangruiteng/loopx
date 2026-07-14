@@ -160,6 +160,7 @@ def preflight_required(args: Any) -> bool:
         getattr(args, "host_local_acp_launch", False)
         and not getattr(args, "local_acp_relay_command", None)
         and not getattr(args, "reduce_only", False)
+        and not getattr(args, "setup_only_public_preflight", False)
     )
 
 

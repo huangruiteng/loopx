@@ -140,6 +140,9 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     run_skillsbench_remote_command_file_bridge_probe,
     skillsbench_remote_command_file_bridge_command_is_fixture_probe,
 )
+from loopx.benchmark_adapters.skillsbench_setup_preflight import (  # noqa: E402
+    run_setup_only_public_preflight,
+)
 from loopx.benchmark_core import (  # noqa: E402
     build_benchmark_launch_observable_handle,
     canonical_lifecycle,
@@ -1139,6 +1142,8 @@ def _effective_local_codex_task_output_quiet_timeout_sec(
 
 
 def _codex_api_egress_preflight_required(args: argparse.Namespace) -> bool:
+    if bool(getattr(args, "setup_only_public_preflight", False)):
+        return False
     if not bool(getattr(args, "host_local_acp_launch", False)):
         return False
     requested = _codex_api_egress_requested_mode(args)
@@ -1995,6 +2000,8 @@ def _host_local_acp_codex_exec_preflight_should_run(
 ) -> bool:
     """Return whether the host-local Codex exec path must be probed first."""
 
+    if bool(getattr(args, "setup_only_public_preflight", False)):
+        return False
     route = str(getattr(args, "route", "") or "")
     if bool(getattr(args, "host_local_acp_launch", False)) and route in {
         CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
@@ -8083,6 +8090,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     jobs_dir = Path(args.jobs_dir).expanduser()
     result_path = jobs_dir / job_name / rollout_name / "result.json"
     compact_path = jobs_dir / job_name / rollout_name / "benchmark_run.compact.json"
+    setup_only_preflight_path = (
+        jobs_dir / job_name / "setup_only_preflight.public.json"
+    )
     controller_trace_path = jobs_dir / job_name / "loopx_controller_trace.public.json"
     app_server_goal_worker_trace_dir = (
         jobs_dir / job_name / "app_server_goal_worker_traces"
@@ -8344,6 +8354,10 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "rollout_name": rollout_name,
         "result_json": str(result_path),
         "compact_benchmark_run_json": str(compact_path),
+        "setup_only_public_preflight": bool(
+            getattr(args, "setup_only_public_preflight", False)
+        ),
+        "setup_only_public_preflight_json": str(setup_only_preflight_path),
         "controller_trace_json": str(controller_trace_path),
         "build_stall_timeout_requested_sec": _requested_build_stall_timeout_sec(args),
         "build_stall_timeout_sec": _effective_build_stall_timeout_sec(args),
@@ -9230,7 +9244,24 @@ def _write_public_runner_config(plan: dict[str, Any]) -> Path | None:
 async def run_benchflow_case_with_private_output(
     args: argparse.Namespace,
     plan: dict[str, Any],
-) -> Path:
+) -> Path | dict[str, Any]:
+    if getattr(args, "setup_only_public_preflight", False):
+        plan["runner_output_capture"] = {
+            "schema_version": "skillsbench_runner_output_capture_v0",
+            "enabled": False,
+            "stdout_stderr_redirected": True,
+            "output_policy": "discard",
+            "raw_output_public": False,
+            "private_log_created": False,
+            "private_log_path_public": False,
+        }
+        with open(os.devnull, "w", encoding="utf-8") as stream:
+            with redirect_stdout(stream), redirect_stderr(stream):
+                with _benchmark_egress_proxy_env_applied(args, plan=plan):
+                    _write_public_runner_config(plan)
+                    _write_public_runner_prerequisites(plan)
+                    return await run_benchflow_case(args, plan)
+
     log_path = _private_runner_output_log_path(plan)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     plan["runner_output_capture"] = {
@@ -13193,7 +13224,10 @@ def _build_product_mode_user(
     return ProductModeUser()
 
 
-async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> Path:
+async def run_benchflow_case(
+    args: argparse.Namespace,
+    plan: dict[str, Any],
+) -> Path | dict[str, Any]:
     prerequisites = plan.setdefault("runner_prerequisites", {})
     prerequisites["benchflow_run_stage"] = "entered"
     source_fingerprint = plan.get("loopx_runner_source_fingerprint")
@@ -13929,10 +13963,13 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             await run_codex_acp_launch_preflight(env)
         return result
 
+    setup_only_public_preflight = bool(
+        getattr(args, "setup_only_public_preflight", False)
+    )
     controller_user = None
     controller_trace: dict[str, Any] | None = None
     product_mode_case_payload: dict[str, Any] | None = None
-    if _is_loopx_product_mode_route(args.route):
+    if not setup_only_public_preflight and _is_loopx_product_mode_route(args.route):
         product_mode_case_payload = benchmark_case_loopx_install_payload(
             benchmark_id="skillsbench",
             case_id=args.task_id,
@@ -13942,7 +13979,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             case_loopx_source_path=_loopx_case_source_path_for_container(args),
             goal_start_product_mode=_is_goal_start_product_mode_route(args.route),
         )
-    if args.route in {
+    if not setup_only_public_preflight and args.route in {
         CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
         LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
         LOOPX_PROMPT_POLLING_TEST_ROUTE,
@@ -13954,7 +13991,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             trace=controller_trace,
             treatment_prompt_style=args.treatment_prompt_style,
         )
-    elif args.route in PRODUCT_MODE_CONTROLLER_ROUTES:
+    elif not setup_only_public_preflight and args.route in PRODUCT_MODE_CONTROLLER_ROUTES:
         controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
         controller_user = _build_product_mode_user(
             route=args.route,
@@ -13963,10 +14000,13 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             plan=plan,
             case_payload=product_mode_case_payload,
         )
-    elif args.route == CODEX_CLI_GOAL_BASELINE_ROUTE:
+    elif not setup_only_public_preflight and args.route == CODEX_CLI_GOAL_BASELINE_ROUTE:
         controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
         controller_trace["last_decision"] = "host_codex_cli_tui_goal_worker_selected"
-    elif args.route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE:
+    elif (
+        not setup_only_public_preflight
+        and args.route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE
+    ):
         controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
         _apply_app_server_goal_round_semantics_to_controller_trace(
             controller_trace,
@@ -13996,12 +14036,14 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
 
     pre_agent_hooks = (
         []
-        if args.host_local_acp_launch
+        if setup_only_public_preflight
+        or args.host_local_acp_launch
         or args.require_preinstalled_benchflow_agent_runtime
         else [ensure_codex_acp_runtime_deps]
     )
     if _is_loopx_product_mode_route(args.route) and not args.host_local_acp_launch:
-        pre_agent_hooks.append(seed_product_mode_case_state)
+        if not setup_only_public_preflight:
+            pre_agent_hooks.append(seed_product_mode_case_state)
 
     agent_env: dict[str, str] = {}
     if runtime_mounts:
@@ -14138,11 +14180,25 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             and original_rollout_planes_class_connect_acp is not None
         ):
             rollout_planes_class.connect_acp = connect_host_local_acp_method
+    setup_only_result: dict[str, Any] | None = None
     try:
-        await run_benchflow_with_setup_stall_watchdog()
-        result_path = discover_benchflow_result_path(plan)
-        if result_path.exists():
-            _merge_final_result_round_reward(controller_trace, result_path)
+        if setup_only_public_preflight:
+            setup_only_result = await run_setup_only_public_preflight(
+                rollout_type=Rollout,
+                config=config,
+                task_staging=plan.get("task_staging"),
+                setup_preflight=plan.get("task_setup_preflight"),
+                stage_timeout_sec=float(args.sandbox_setup_timeout),
+            )
+            plan["setup_only_public_preflight_result"] = setup_only_result
+            prerequisites["benchflow_run_stage"] = str(
+                setup_only_result.get("stage") or "setup_only_preflight_complete"
+            )
+        else:
+            await run_benchflow_with_setup_stall_watchdog()
+            result_path = discover_benchflow_result_path(plan)
+            if result_path.exists():
+                _merge_final_result_round_reward(controller_trace, result_path)
     finally:
         Rollout.install_agent = original_install_agent
         Rollout._run_user_loop = original_user_loop
@@ -14181,6 +14237,8 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         _merge_app_server_goal_worker_trace_summary(plan, controller_trace)
         _merge_host_local_acp_relay_trace_summary(plan, controller_trace)
         _write_controller_trace(plan, controller_trace)
+    if setup_only_result is not None:
+        return setup_only_result
     if result_path is None:
         result_path = discover_benchflow_result_path(plan)
     if not result_path.exists():
@@ -15765,6 +15823,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Print launch plan without importing BenchFlow or running a task.",
     )
     parser.add_argument(
+        "--setup-only-public-preflight",
+        action="store_true",
+        help=(
+            "Materialize the BenchFlow job root and environment, then stop "
+            "before agent install, agent execution, and verification. Emit only "
+            "a compact public-safe setup classification."
+        ),
+    )
+    parser.add_argument(
         "--reduce-only",
         action="store_true",
         help="Reduce an existing result.json for the selected job without rerunning the task.",
@@ -16140,6 +16207,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     apt_fail_fast_explicit = "--fail-fast-on-apt-risk" in raw_argv
     verifier_fail_fast_explicit = "--fail-fast-on-verifier-bootstrap-risk" in raw_argv
     args = parser.parse_args(raw_argv)
+    if args.setup_only_public_preflight and (args.plan_only or args.reduce_only):
+        parser.error(
+            "--setup-only-public-preflight is incompatible with --plan-only "
+            "and --reduce-only"
+        )
+    if args.setup_only_public_preflight and (args.append_history or args.update_ledger):
+        parser.error(
+            "--setup-only-public-preflight does not append history or update ledgers"
+        )
     default_ledger = (
         PUBLIC_BENCHMARK_RUN_LEDGER if args.publish_public_ledger else DEFAULT_LEDGER
     )
@@ -16188,6 +16264,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     if args.independent_goal_retries < 1:
         parser.error("--independent-goal-retries must be >= 1")
     if args.independent_goal_retries > 1:
+        if args.setup_only_public_preflight:
+            parser.error(
+                "--setup-only-public-preflight does not use independent goal retries"
+            )
         if args.route not in INDEPENDENT_GOAL_RETRY_ROUTES:
             parser.error(
                 "--independent-goal-retries currently applies only to "
@@ -16204,6 +16284,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         args.route in PRODUCT_MODE_CONTROLLER_ROUTES
         and not args.plan_only
         and not args.reduce_only
+        and not args.setup_only_public_preflight
         and args.max_rounds < PRODUCT_MODE_MIN_FORMAL_MAX_ROUNDS
     ):
         parser.error(
@@ -16269,6 +16350,7 @@ async def _async_main_with_observable_handle(
     )
     if (
         getattr(args, "require_preinstalled_benchflow_agent_runtime", False)
+        and not args.setup_only_public_preflight
         and runtime_layer.get("ready") is not True
     ):
         prerequisites = plan.setdefault("runner_prerequisites", {})
@@ -16382,6 +16464,7 @@ async def _async_main_with_observable_handle(
     if (
         _codex_api_egress_preflight_required(args)
         and not args.reduce_only
+        and not args.setup_only_public_preflight
     ):
         try:
             _run_codex_api_egress_preflight(args, plan)
@@ -16400,6 +16483,7 @@ async def _async_main_with_observable_handle(
         _host_local_acp_codex_exec_preflight_should_run(args)
         and args.host_local_acp_launch
         and not args.reduce_only
+        and not args.setup_only_public_preflight
     ):
         _run_host_local_acp_codex_exec_preflight(args, plan)
 
@@ -16417,10 +16501,43 @@ async def _async_main_with_observable_handle(
         _merge_final_result_round_reward(controller_trace, result_path)
         _write_controller_trace(plan, controller_trace)
     else:
-        result_path = await asyncio.wait_for(
+        case_result = await asyncio.wait_for(
             run_benchflow_case_with_private_output(args, plan),
             timeout=args.outer_timeout_sec,
         )
+        if args.setup_only_public_preflight:
+            if not isinstance(case_result, dict):
+                raise TypeError("setup-only preflight returned a non-object result")
+            preflight_path = Path(plan["setup_only_public_preflight_json"])
+            preflight_path.parent.mkdir(parents=True, exist_ok=True)
+            preflight_path.write_text(
+                json.dumps(
+                    case_result,
+                    indent=2,
+                    sort_keys=True,
+                    default=_json_default,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            _write_public_runner_config(plan)
+            _write_public_runner_prerequisites(plan)
+            passed = case_result.get("status") == "passed"
+            return {
+                "ok": passed,
+                "setup_only_public_preflight": True,
+                "task_id": str(args.task_id),
+                "route": str(args.route),
+                "run_group_id": str(args.run_group_id or ""),
+                "job_name": str(plan.get("job_name") or ""),
+                "preflight": case_result,
+                "setup_only_public_preflight_json": preflight_path.name,
+                "compact_closeout_recorded": True,
+                "runner_returncode": 0 if passed else 1,
+            }
+        if not isinstance(case_result, Path):
+            raise TypeError("SkillsBench case returned a non-path result")
+        result_path = case_result
     compact = reduce_result(args, result_path, plan)
     compact_path = Path(plan["compact_benchmark_run_json"])
     compact_path.parent.mkdir(parents=True, exist_ok=True)
@@ -16583,7 +16700,7 @@ async def async_batch_main(
                         case_start_wait_sec,
                     )
                 payload = await async_main(case_args, plan=case_plan)
-                payload["runner_returncode"] = 0
+                payload.setdefault("runner_returncode", 0)
                 return case_start_pacer.annotate_payload(payload, case_start_wait_sec)
             except Exception as exc:
                 payload, returncode = _build_runner_exception_closeout_payload(
@@ -16869,6 +16986,7 @@ def main(argv: list[str] | None = None) -> int:
         args.route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE
         and not args.plan_only
         and not args.reduce_only
+        and not args.setup_only_public_preflight
         and not args.allow_deprecated_app_server_goal_route
     ):
         payload = {
@@ -16895,6 +17013,7 @@ def main(argv: list[str] | None = None) -> int:
         args.route == CODEX_CLI_GOAL_BASELINE_ROUTE
         and not args.plan_only
         and not args.reduce_only
+        and not args.setup_only_public_preflight
     ):
         bridge_ready = bool(
             args.remote_command_file_bridge_ready
@@ -16946,6 +17065,7 @@ def main(argv: list[str] | None = None) -> int:
         args.route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE
         and not args.plan_only
         and not args.reduce_only
+        and not args.setup_only_public_preflight
     ):
         bridge_ready = bool(
             args.remote_command_file_bridge_ready
@@ -17015,6 +17135,7 @@ def main(argv: list[str] | None = None) -> int:
         and not args.local_driver_worker_handshake_preflight
         and not args.plan_only
         and not args.reduce_only
+        and not args.setup_only_public_preflight
     ):
         payload = {
             "ok": False,
@@ -17051,6 +17172,7 @@ def main(argv: list[str] | None = None) -> int:
         and product_host_local_bridge_fixture_solver
         and not args.local_driver_worker_handshake_preflight
         and not args.plan_only
+        and not args.setup_only_public_preflight
     ):
         payload = {
             "ok": False,
@@ -17094,6 +17216,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         and not args.local_driver_worker_handshake_preflight
         and not args.plan_only
+        and not args.setup_only_public_preflight
     ):
         payload = {
             "ok": False,

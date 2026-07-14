@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 
 
 _SETUP_ATTRIBUTION_FINGERPRINT_PATTERNS = {
@@ -91,6 +92,29 @@ def skillsbench_failure_dependency_classes(error_text: str) -> list[str]:
     ]
 
 
+def skillsbench_setup_failure_category(
+    fingerprint: Mapping[str, object],
+) -> str:
+    """Map a public failure fingerprint to its most specific setup category."""
+
+    matched_patterns = fingerprint.get("matched_patterns")
+    if not isinstance(matched_patterns, list):
+        return "skillsbench_docker_compose_setup_failure"
+    matched = {
+        str(item)
+        for item in matched_patterns
+        if isinstance(item, str)
+    }
+    return next(
+        (
+            attribution
+            for pattern, attribution in _FINGERPRINT_SETUP_ATTRIBUTIONS
+            if pattern in matched
+        ),
+        "skillsbench_docker_compose_setup_failure",
+    )
+
+
 def reconcile_skillsbench_setup_attribution(
     benchmark_run: dict[str, object],
 ) -> bool:
@@ -112,14 +136,7 @@ def reconcile_skillsbench_setup_attribution(
     if required_pattern in matched:
         return False
 
-    replacement = next(
-        (
-            attribution
-            for pattern, attribution in _FINGERPRINT_SETUP_ATTRIBUTIONS
-            if pattern in matched
-        ),
-        "skillsbench_docker_compose_setup_failure",
-    )
+    replacement = skillsbench_setup_failure_category(fingerprint)
     benchmark_run["score_failure_attribution"] = replacement
     for field in ("first_blocker", "repeat_blocked_by"):
         if benchmark_run.get(field) == current:
