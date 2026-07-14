@@ -287,8 +287,8 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
     },
     {
         "id": "reward-memory",
-        "title": "Reward-memory architecture, corpus health, and candidate review",
-        "status": "foundation",
+        "title": "Reward-memory candidate, recall, and application foundation",
+        "status": "active-preview",
         "real_world_anchor": (
             "typed feedback memory, provider-owned corpus health, and pilot/meta delegation"
         ),
@@ -361,11 +361,42 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "module": "loopx.capabilities.reward_memory.candidate_review",
                 "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
             },
+            {
+                "schema_version": "reward_memory_active_record_v0",
+                "module": "loopx.capabilities.reward_memory.application",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
+            {
+                "schema_version": "reward_memory_recall_request_v0",
+                "module": "loopx.capabilities.reward_memory.application",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
+            {
+                "schema_version": "reward_memory_recall_v0",
+                "module": "loopx.capabilities.reward_memory.application",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
+            {
+                "schema_version": "reward_memory_application_receipt_v0",
+                "module": "loopx.capabilities.reward_memory.application",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
+            {
+                "schema_version": "issue_fix_reward_memory_application_v0",
+                "module": "loopx.capabilities.issue_fix.reward_memory",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
+            {
+                "schema_version": ("semantic_preference_reward_memory_application_v0"),
+                "module": "loopx.capabilities.semantic_preference.reward_memory",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
         ],
         "smokes": [
             "python3 examples/reward-memory-architecture-smoke.py",
             "python3 examples/reward-memory-corpus-registry-smoke.py",
             "python3 examples/reward-memory-candidate-review-smoke.py",
+            "python3 examples/reward-memory-recall-application-smoke.py",
         ],
         "docs": [
             "docs/reference/protocols/reward-memory-architecture-v0.md",
@@ -383,11 +414,15 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "Stages 0-1 write no corpus, candidate, provider memory, evaluation result, or external artifact.",
             "Stage 2 returns inspectable candidate/review decisions only; accept or retire still requires the caller to use the corpus owner's declared write authority and verify readback.",
             "The Issue Fix Stage-2 adapter maps compact domain evidence into the shared core and owns no parallel lifecycle, store, scheduler, or recall path.",
+            "Stage 3 recalls only after an explicit exact-corpus, module-surface request and a matching read-authority checkpoint; it never scans every corpus automatically.",
+            "Function-boundary recall permits one caller-owned query; bounded agentic search permits at most three caller/model-owned queries and contains no semantic router.",
+            "Provider and application failures preserve the base output, emit compact receipts or setup hints, and never become user gates automatically.",
+            "Private corpus summaries stay transient in-process; public packets retain opaque references and compact lineage only.",
         ],
         "next_real_step": (
-            "Add opt-in Stage-3 recall and reasoning-mediated application over the "
-            "same candidate/review core; preserve provider ownership and do not add "
-            "a second store, scheduler, or automatic cross-module recall."
+            "Activate one reviewed record through its declared corpus owner, verify "
+            "exact provider readback, and prove an Issue Fix patch-planning receipt "
+            "before advancing to the Stage-4 evaluation gate."
         ),
     },
     {

@@ -372,6 +372,16 @@ def build_reward_memory_architecture_packet() -> dict[str, Any]:
                 "persistence_owner": "declared_corpus_write_authority",
                 "provider_write_performed_by_seam": False,
             },
+            "recall_application": {
+                "status": "implemented_opt_in_stage_3_seam",
+                "active_record_schema": "reward_memory_active_record_v0",
+                "recall_schema": "reward_memory_recall_v0",
+                "application_receipt_schema": ("reward_memory_application_receipt_v0"),
+                "modes": ["function_boundary", "bounded_agentic_search"],
+                "query_owner": "module_or_model_caller",
+                "automatic_recall": False,
+                "provider_failure_policy": "fail_open_not_user_gate",
+            },
         },
         "provider_alignment": {"openviking": _openviking_alignment()},
         "pilot_meta_delegation": {
@@ -409,7 +419,10 @@ def build_reward_memory_architecture_packet() -> dict[str, Any]:
                 "implemented_thin_candidate_and_review_seam_no_second_store_"
                 "scheduler_or_recall"
             ),
-            "stage_3": "reasoning_mediated_cross_module_recall_and_application",
+            "stage_3": (
+                "implemented_opt_in_reasoning_mediated_cross_module_recall_"
+                "and_application"
+            ),
             "stage_4": "evaluation_harness_and_release_gate",
             "stage_5": "bounded_dogfood_and_operator_controls",
         },
