@@ -337,6 +337,12 @@ module isolation; supersede/revoke rejection; stale-source rejection;
 multi-person authority matching; gate non-override; verified candidate-ranking
 influence; and protection against a large patch for the PR #3237 edge case.
 
+`evaluation.py` owns case orchestration, assertions, metrics, and the release
+gate. Reusable setup and provider doubles live in `evaluation_fixtures.py` with
+neutral fixture identities; OpenViking appears there only through the explicitly
+named PR #3237 Issue Fix regression fixture. Project identity is fixture data,
+not evaluator policy.
+
 `reward_memory_evaluation_v0` reports task outcome plus exact local runner
 latency, public evidence bytes, model-token count, provider/storage writes,
 false applications, maintainer interruptions, and user gates. Zero model tokens

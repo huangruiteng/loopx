@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -10,9 +11,20 @@ sys.path.insert(0, str(REPO_ROOT))
 
 
 from loopx.capabilities.reward_memory import run_reward_memory_evaluation  # noqa: E402
+from loopx.capabilities.reward_memory.evaluation_fixtures import (  # noqa: E402
+    generic_compact_restart_fixture,
+    openviking_pr_3237_regression_fixture,
+)
 
 
 def main() -> None:
+    generic_fixture = generic_compact_restart_fixture()
+    assert "openviking" not in json.dumps(
+        generic_fixture["fixture_identity"], sort_keys=True
+    ).lower()
+    regression_fixture = openviking_pr_3237_regression_fixture()
+    assert regression_fixture["case_ref"].endswith("/OpenViking/pull/3237")
+
     packet = run_reward_memory_evaluation()
     assert packet["schema_version"] == "reward_memory_evaluation_v0", packet
     assert packet["status"] == "passed", packet

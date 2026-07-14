@@ -286,6 +286,11 @@ Runner 会直接执行真实的 candidate、recall、application、Issue Fix ada
 supersede/revoke 拒绝；stale source 拒绝；多人 authority 匹配；gate 不被覆盖；在验证当前
 artifact 后影响 candidate ranking；以及避免为 PR #3237 这类 edge case 生成大 patch。
 
+`evaluation.py` 只负责 case 编排、断言、指标与 release gate。可复用的 setup 和 provider
+double 放在 `evaluation_fixtures.py`，并使用中性的 fixture identity；OpenViking 只出现在
+显式命名的 PR #3237 Issue Fix 回归 fixture 中。项目身份属于 fixture data，不属于
+evaluator policy。
+
 `reward_memory_evaluation_v0` 同时汇报 task outcome、真实本地 runner latency、公共证据
 字节数、model token 数、provider/storage write、false application、maintainer interruption
 与 user gate。model token 为零表示这套确定性 contract suite 没有调用模型，不代表后续
