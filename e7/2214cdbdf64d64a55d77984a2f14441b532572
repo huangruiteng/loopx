@@ -1,0 +1,23 @@
+docs/reference/protocols/reward-memory-architecture-v0.md
+  s_9a5a2bd944fdcb::t_0f23178d751aac 3-14,26-27,30,41,43-71,80-139,161-164,203-206,234-242,246-249
+docs/reference/protocols/reward-memory-corpus-registry-v0.md
+  s_9a5a2bd944fdcb::t_3ae5aae98acd5b 32,58-65,113-116,133-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e72214cdbdf64d64a55d77984a2f14441b532572",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
