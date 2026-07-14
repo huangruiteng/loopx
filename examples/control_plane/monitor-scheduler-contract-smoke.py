@@ -47,6 +47,7 @@ def status_payload(
     *,
     agent_todo_items: list[dict],
     status: str = "monitor_scheduler_fixture",
+    recommended_action: str = "Route scheduled monitor todos from structured metadata.",
     coordination: dict | None = None,
     latest_runs: list[dict] | None = None,
 ) -> dict:
@@ -54,8 +55,8 @@ def status_payload(
         goal_id=GOAL_ID,
         status=status,
         agent_todo_items=agent_todo_items,
-        recommended_action="Route scheduled monitor todos from structured metadata.",
-        next_action="Route scheduled monitor todos from structured metadata.",
+        recommended_action=recommended_action,
+        next_action=recommended_action,
         coordination=coordination
         or {
             "registered_agents": [AGENT_ID],
@@ -156,6 +157,7 @@ def guard_for(
     items: list[dict],
     *,
     agent_id: str = AGENT_ID,
+    recommended_action: str = "Route scheduled monitor todos from structured metadata.",
     coordination: dict | None = None,
     latest_runs: list[dict] | None = None,
     include_scheduler_detail: bool = False,
@@ -170,6 +172,7 @@ def guard_for(
         return build_quota_should_run(
             status_payload(
                 agent_todo_items=items,
+                recommended_action=recommended_action,
                 coordination=coordination,
                 latest_runs=latest_runs,
             ),
@@ -479,6 +482,51 @@ def assert_due_monitor_requires_available_capabilities() -> None:
     assert runnable_guard["agent_todo_summary"]["monitor_capability_blocked_due_count"] == 0, runnable_guard
     assert runnable_lane["selected_todo_id"] == item["todo_id"], runnable_lane
     assert runnable_lane["obligation"] == "attempt_due_monitor", runnable_lane
+
+
+def assert_capability_blocked_due_monitor_stays_quiet_with_external_signal() -> None:
+    blocked_due = monitor_item(
+        index=1,
+        todo_id="todo_private_read_monitor_due",
+        priority="P0",
+        next_due_at=PAST_DUE_AT,
+        target_key="private-source-watch",
+        required_capabilities=["private_read"],
+    )
+    external_monitor = monitor_item(
+        index=2,
+        todo_id="todo_pr_monitor_future",
+        priority="P1",
+        next_due_at=FUTURE_DUE_AT,
+        target_key="pr_merged:example",
+    )
+    observe_action = "Observe compact result marker from the launched PR monitor."
+
+    blocked_guard = guard_for(
+        [blocked_due, external_monitor],
+        recommended_action=observe_action,
+    )
+    blocked_lane = blocked_guard["work_lane_contract"]
+    blocked_gate = blocked_guard["capability_gate"]
+    assert blocked_gate["selection_policy"] == "no_runnable_candidate", blocked_gate
+    assert blocked_gate["runnable_count"] == 0, blocked_gate
+    assert blocked_lane["must_attempt_work"] is False, blocked_lane
+    assert blocked_guard["decision"] == "skip", blocked_guard
+    assert blocked_guard["should_run"] is False, blocked_guard
+    assert blocked_guard["effective_action"] == "monitor_quiet_skip", blocked_guard
+    assert "external_evidence_observation" not in blocked_guard, blocked_guard
+    assert "selected_todo" not in blocked_guard, blocked_guard
+    assert blocked_guard["interaction_contract"]["agent_channel"]["must_attempt"] is False
+    assert blocked_guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is True
+
+    observable_guard = guard_for(
+        [external_monitor],
+        recommended_action=observe_action,
+    )
+    assert observable_guard["decision"] == "observe", observable_guard
+    assert observable_guard["effective_action"] == "external_evidence_observe", observable_guard
+    assert observable_guard["external_evidence_observation"]["required"] is True
+    assert observable_guard["work_lane_contract"]["must_attempt_work"] is True
 
 
 def assert_due_monitor_capability_resolution_is_preserved() -> None:
@@ -863,6 +911,7 @@ def main() -> int:
     assert_unscheduled_monitor_repair_survives_handoff_gates()
     assert_due_monitor_requires_explicit_attempt()
     assert_due_monitor_requires_available_capabilities()
+    assert_capability_blocked_due_monitor_stays_quiet_with_external_signal()
     assert_due_monitor_capability_resolution_is_preserved()
     assert_due_monitor_capability_resolution_uses_full_lane()
     assert_expired_monitor_does_not_catch_up()

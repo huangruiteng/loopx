@@ -327,6 +327,13 @@ def build_external_evidence_observation_obligation(
 ) -> dict[str, Any] | None:
     """Return the machine contract for a waiting external-evidence monitor."""
 
+    if (
+        isinstance(work_lane_contract, dict)
+        and work_lane_contract.get("must_attempt_work") is False
+        and "due_monitor_unavailable_by_capability"
+        in (work_lane_contract.get("reason_codes") or [])
+    ):
+        return None
     explicit_wait = state == "waiting" and str(item.get("waiting_on") or "") == "external_evidence"
     poll_signal = build_external_evidence_poll_signal(item, agent_todo_summary=agent_todo_summary)
     if not explicit_wait and not poll_signal:
