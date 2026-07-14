@@ -84,6 +84,11 @@ def summarize_explore_visual_sync(
     missing_roles = [
         role for role in recommended_roles if role not in configured_roles
     ]
+    retryable_roles = [
+        role
+        for role, view in views.items()
+        if isinstance(view, Mapping) and bool(view.get("retryable"))
+    ]
     configured_views_ok = all(bool(view.get("ok")) for view in views.values())
     ok = configured_views_ok and not missing_roles
     if missing_roles and (not views or configured_views_ok):
@@ -95,15 +100,18 @@ def summarize_explore_visual_sync(
     else:
         status = "published" if execute else "would_publish"
     missing_roles_label = ", ".join(missing_roles)
+    retryable_roles_label = ", ".join(retryable_roles)
     return {
         "ok": ok,
         "status": status,
         "published": bool(execute and ok),
-        "retryable": bool(missing_roles),
+        "retryable": bool(missing_roles or retryable_roles),
         "required_action": (
             f"configure the {missing_roles_label} visual role"
             f"{'s' if len(missing_roles) != 1 else ''} and retry Explore visual sync"
             if missing_roles
+            else f"retry Explore visual sync for the {retryable_roles_label} marker readback"
+            if retryable_roles
             else None
         ),
         "configured_roles": configured_roles,

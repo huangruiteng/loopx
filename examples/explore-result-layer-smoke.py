@@ -39,6 +39,7 @@ from loopx.capabilities.explore.worker_branch_plan import (  # noqa: E402
     build_explore_worker_branch_plan,
 )
 from loopx.presentation.sinks.lark import explore_results  # noqa: E402
+from loopx.presentation.sinks.lark import explore_visual_styles  # noqa: E402
 
 # Both exploration planners are deny-by-default behind the per-goal
 # goal_boundary.orchestration.explore_harness gate; every library-level plan
@@ -422,6 +423,74 @@ def check_lark_sync_contract() -> None:
         shared_blob = json.dumps(shared["records"], ensure_ascii=False)
         assert "internal.example.invalid" not in shared_blob, shared_blob
         assert "[private-link-redacted]" in shared_blob, shared_blob
+
+
+def check_visual_marker_readback_retry_contract() -> None:
+    marker = "LoopX delivery smoke-marker"
+    config = explore_results.LarkExploreConfig(
+        **{"base_" + "token": "SMOKE_BASE"},
+        table_ids={"nodes": "tblN", "edges": "tblE", "findings": "tblF"},
+    )
+    calls = 0
+
+    def settling_runner(
+        args: list[str], cwd: Path | None, timeout: float | None
+    ) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return {
+                "returncode": 1,
+                "stdout": json.dumps(
+                    {
+                        "ok": False,
+                        "error": {"code": 2890002, "message": "invalid arg"},
+                    }
+                ),
+                "stderr": "",
+                "timed_out": False,
+            }
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(
+                {"ok": True, "data": {"nodes": [{"text": {"text": marker}}]}}
+            ),
+            "stderr": "",
+            "timed_out": False,
+        }
+
+    original_delays = explore_results._VISUAL_READBACK_RETRY_DELAYS_SECONDS
+    explore_results._VISUAL_READBACK_RETRY_DELAYS_SECONDS = (0.0,)
+    try:
+        settled = explore_results._readback_visual_delivery_marker(
+            config,
+            whiteboard_token="wb_public_fixture",
+            marker=marker,
+            runner=settling_runner,
+        )
+    finally:
+        explore_results._VISUAL_READBACK_RETRY_DELAYS_SECONDS = original_delays
+    assert settled["ok"] is True and settled["verified"] is True, settled
+    assert settled["attempt_count"] == 2, settled
+    assert settled["attempts"][0] == {
+        "attempt": 1,
+        "ok": False,
+        "marker_observed": False,
+        "error_code": 2890002,
+        "retryable": True,
+    }, settled
+    assert settled["retryable"] is False, settled
+
+    summary = explore_visual_styles.summarize_explore_visual_sync(
+        views={"canonical": {"ok": False, "retryable": True}},
+        configured_roles=["canonical"],
+        recommended_roles=["canonical"],
+        execute=True,
+    )
+    assert summary["ok"] is False, summary
+    assert summary["status"] == "publish_failed", summary
+    assert summary["retryable"] is True, summary
+    assert "canonical marker readback" in str(summary["required_action"]), summary
 
 
 def check_lark_setup_and_card() -> None:
@@ -1334,6 +1403,7 @@ def check_cli_surface() -> None:
 def main() -> int:
     check_result_log_contract()
     check_lark_sync_contract()
+    check_visual_marker_readback_retry_contract()
     check_lark_setup_and_card()
     check_todo_branch_prediction_contract()
     check_worker_lane_router_contract()

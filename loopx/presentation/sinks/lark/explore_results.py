@@ -65,6 +65,11 @@ from .explore_visual_styles import (
     resolve_explore_board_style,
     summarize_explore_visual_sync,
 )
+from .explore_visual_readback import (
+    is_retryable_marker_readback_error,
+    structured_command_error,
+    whiteboard_raw_texts,
+)
 from .message_card import build_lark_markdown_reply_card
 
 LARK_EXPLORE_SCHEMA_VERSION = "loopx_lark_explore_result_board_v0"
@@ -557,32 +562,6 @@ def configure_lark_explore_visual_sink(
     }
 
 
-def _whiteboard_raw_texts(payload: Any) -> list[str]:
-    if not isinstance(payload, Mapping):
-        return []
-    data = payload.get("data")
-    nodes = data.get("nodes") if isinstance(data, Mapping) else None
-    texts: list[str] = []
-    for node in nodes if isinstance(nodes, list) else []:
-        if not isinstance(node, Mapping):
-            continue
-        text_node = node.get("text")
-        if isinstance(text_node, Mapping) and str(text_node.get("text") or "").strip():
-            texts.append(str(text_node.get("text")))
-    return texts
-
-
-def _structured_command_error(result: Mapping[str, Any]) -> Mapping[str, Any]:
-    parsed = result.get("json")
-    if not isinstance(parsed, Mapping):
-        try:
-            parsed = json.loads(str(result.get("stderr") or ""))
-        except (TypeError, json.JSONDecodeError):
-            parsed = None
-    error = parsed.get("error") if isinstance(parsed, Mapping) else None
-    return error if isinstance(error, Mapping) else {}
-
-
 def _readback_visual_delivery_marker(
     config: LarkExploreConfig,
     *,
@@ -609,14 +588,17 @@ def _readback_visual_delivery_marker(
     marker_observed = False
     for attempt_index in range(len(_VISUAL_READBACK_RETRY_DELAYS_SECONDS) + 1):
         result = _run_command(command, execute=True, runner=runner)
-        texts = _whiteboard_raw_texts(result.get("json"))
+        texts = whiteboard_raw_texts(result.get("json"))
         marker_observed = marker in texts
-        error = _structured_command_error(result)
+        error = structured_command_error(result)
         error_code = error.get("code")
         error_message = str(error.get("message") or "")
-        is_applying = error_code == 4003101 and "doc is applying" in error_message
+        is_query_settling = is_retryable_marker_readback_error(
+            error_code=error_code,
+            error_message=error_message,
+        )
         is_marker_pending = bool(result.get("ok")) and not marker_observed
-        is_retryable = is_applying or is_marker_pending
+        is_retryable = is_query_settling or is_marker_pending
         attempts.append(
             {
                 "attempt": attempt_index + 1,
@@ -653,6 +635,9 @@ def _readback_visual_delivery_marker(
         "remote_text_node_count": len(texts),
         "attempt_count": len(attempts),
         "attempts": attempts,
+        "retryable": bool(
+            not marker_observed and attempts and attempts[-1].get("retryable")
+        ),
         "command": command_receipt,
         "error": (
             None
@@ -805,7 +790,7 @@ def sync_explore_visual_to_lark(
                 cwd=config_path.parent,
             )
             publish_attempts = [result]
-            error = _structured_command_error(result)
+            error = structured_command_error(result)
             if (
                 not result.get("ok")
                 and error.get("code") == 2891001
@@ -852,6 +837,12 @@ def sync_explore_visual_to_lark(
     delivery_ok = bool(
         result.get("ok") and (not delivery_marker or readback.get("ok"))
     )
+    retryable = bool(
+        execute
+        and result.get("ok")
+        and delivery_marker
+        and readback.get("retryable")
+    )
     return {
         "ok": delivery_ok,
         "schema_version": LARK_EXPLORE_VISUAL_SYNC_VERSION,
@@ -881,6 +872,12 @@ def sync_explore_visual_to_lark(
         "publish_attempt_count": len(publish_attempts),
         "publish_attempts": publish_attempts,
         "readback": readback,
+        "retryable": retryable,
+        "required_action": (
+            "retry Explore visual sync; post-publish marker readback did not settle"
+            if retryable
+            else None
+        ),
         "error": (
             None
             if delivery_ok
@@ -1022,6 +1019,7 @@ def sync_explore_visuals_to_lark(
             )
             stage_results.append(dict(stage_result, stage=dict(stage)))
         role_ok = all(bool(item.get("ok")) for item in stage_results)
+        role_retryable = any(bool(item.get("retryable")) for item in stage_results)
         role_delivery_material = "|".join(
             str(item.get("delivery_digest") or "") for item in stage_results
         ).encode("utf-8")
@@ -1032,6 +1030,12 @@ def sync_explore_visuals_to_lark(
             ),
             "execute": execute,
             "published": bool(execute and role_ok),
+            "retryable": role_retryable,
+            "required_action": (
+                f"retry Explore visual sync for the {role} marker readback"
+                if role_retryable
+                else None
+            ),
             "view_role": role,
             "board_style": (
                 str(stage_results[0].get("board_style") or "")
