@@ -100,6 +100,7 @@ def _flaky_fake_ssh(
     *,
     first_tunnel_exits: bool,
     probe_delay_sec: float = 0.0,
+    probe_failure_exit_code: int = 42,
 ) -> None:
     generation_path = state_dir / "tunnel-generation"
     probe_count_path = state_dir / "probe-count"
@@ -115,6 +116,7 @@ generation_path = Path({str(generation_path)!r})
 probe_count_path = Path({str(probe_count_path)!r})
 first_tunnel_exits = {first_tunnel_exits!r}
 probe_delay_sec = {probe_delay_sec!r}
+probe_failure_exit_code = {probe_failure_exit_code!r}
 args = sys.argv[1:]
 with log_path.open("a", encoding="utf-8") as handle:
     handle.write(repr(args) + "\\n")
@@ -145,7 +147,7 @@ if "LOOPX_REVERSE_TUNNEL_PROBE" in remote_command:
     if first_tunnel_exits or generation >= 2 or count == 0:
         print("HTTP/1.1 200 Connection Established")
         sys.exit(0)
-    sys.exit(42)
+    sys.exit(probe_failure_exit_code)
 
 if "run-long-skillsbench" in remote_command:
     time.sleep(0.9)
@@ -357,6 +359,63 @@ def test_supervisor_preserves_live_tunnel_and_fails_closed() -> None:
         ssh_log_text = ssh_log.read_text(encoding="utf-8")
         assert ssh_log_text.count("'-R'") == 1, ssh_log_text
         assert "benchmark_remote_public_artifact_collection_v0" not in ssh_log_text
+
+
+def test_supervisor_keeps_running_when_ssh_probe_transport_is_unavailable() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-tunnel-probe-transport-") as tmp:
+        root = Path(tmp)
+        fake_ssh = root / "ssh"
+        ssh_log = root / "ssh.log"
+        _flaky_fake_ssh(
+            fake_ssh,
+            ssh_log,
+            root,
+            first_tunnel_exits=False,
+            probe_failure_exit_code=255,
+        )
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--ssh-bin",
+                str(fake_ssh),
+                "--ssh-destination",
+                "opaque-benchmark-host.example",
+                "--remote-command",
+                "run-long-skillsbench --batch-size 6",
+                "--tunnel-ready-timeout-sec",
+                "2",
+                "--probe-interval-sec",
+                "0.05",
+                "--tunnel-health-interval-sec",
+                "0.05",
+                "--tunnel-health-failure-threshold",
+                "2",
+                "--tunnel-reconnect-attempts",
+                "1",
+                "--run-timeout-sec",
+                "5",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        assert proc.returncode == 0, proc.stderr or proc.stdout
+        payload = json.loads(proc.stdout)
+        assert payload["ok"] is True, payload
+        assert payload["remote_command_exit_code"] == 0, payload
+        liveness = payload["tunnel_liveness"]
+        assert liveness["state"] == "degraded", liveness
+        assert liveness["health_probe_inconclusive_count"] >= 2, liveness
+        assert liveness["max_consecutive_inconclusive_count"] >= 2, liveness
+        assert liveness["health_probe_failure_count"] == 0, liveness
+        assert liveness["reconnect_attempt_count"] == 0, liveness
+        assert liveness["last_probe_status"] == "ssh_transport_unavailable", liveness
+        ssh_log_text = ssh_log.read_text(encoding="utf-8")
+        assert ssh_log_text.count("'-R'") == 1, ssh_log_text
 
 
 def test_supervisor_timeout_does_not_sync_live_artifacts() -> None:
@@ -782,6 +841,7 @@ if __name__ == "__main__":
     test_supervisor_holds_tunnel_and_redacts_private_command()
     test_supervisor_reconnects_after_tunnel_process_exit()
     test_supervisor_preserves_live_tunnel_and_fails_closed()
+    test_supervisor_keeps_running_when_ssh_probe_transport_is_unavailable()
     test_supervisor_timeout_does_not_sync_live_artifacts()
     test_liveness_probe_cannot_cross_deadline_and_sync_artifacts()
     test_supervisor_syncs_only_compact_public_artifacts()
