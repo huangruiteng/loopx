@@ -20,6 +20,7 @@ Current contracts:
 - [todo_detail_cold_path_v0](todo-detail-cold-path-v0.md)
 - [long_horizon_agent_state_protocol_v0](long-horizon-agent-state-protocol-v0.md)
 - [model_behavior_qualification_v0](model-behavior-qualification-v0.md)
+- [release_outcome_baseline_v0](release-outcome-baseline-v0.md)
 - [decentralized_auto_research_state_v0](decentralized-auto-research-state-v0.md)
 - [auto_research_lane_contract_v1](auto-research-lane-contract-v1.md)
 - [auto_research_role_state_machine_v0](auto-research-role-state-machine-v0.md)
