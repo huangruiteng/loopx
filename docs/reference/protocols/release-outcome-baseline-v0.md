@@ -19,6 +19,13 @@ The third layer measures what happened, not only whether a packet looked
 equivalent. It stays outside ordinary PR smoke because real tasks and model
 calls are slower, cost-bearing, and may depend on gated environments.
 
+The second layer follows the same CI boundary. Live provider calls are a
+low-frequency local/manual release gate for sensitive agent-facing changes,
+not a required status check on ordinary pull requests. CI owns deterministic
+fixtures and catalog canaries; the live gate adds repeated behavioral evidence
+when a maintainer is considering promotion. Provider unavailability yields
+insufficient qualification evidence, not a product-code failure.
+
 ## Pair Manifest
 
 `release_outcome_pair_manifest_v0` contains:

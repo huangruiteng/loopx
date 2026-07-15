@@ -163,6 +163,41 @@ in manually triggered or low-frequency shadow qualification where cost,
 repetition, corpus selection, and promotion policy are explicit. Only compact
 decision receipts and paired drift results may become durable evidence.
 
+## New-User Onboarding Closed Loop
+
+`onboarding_model_behavior_pair_result_v0` extends the same low-frequency
+boundary to the first new-user transaction. It compares a full-detail
+`start-goal --guided` packet with the default guided projection in two model
+turns:
+
+1. the entry turn must preserve goal and agent selection gates, the
+   `connect_if_needed` route, canonical action-command availability, no-write /
+   no-spend state, and host-loop activation after todo writeback;
+2. an allowlisted local transition runner performs the canonical connection in
+   an isolated fixture; the postcondition turn must distinguish a healthy
+   executable onboarding todo from a `state_projection_gap` repair route.
+
+The model never supplies a shell command to the transition runner. The runner
+is a caller-owned allowlist, executes only after both entry arms align with the
+source contract, and returns the compact
+`onboarding_postcondition_observation_v0` shape. A missing command, missing
+host-loop contract, or different postcondition fails before promotion evidence
+can be produced. This directly calibrates the qualification against the class
+of regression tracked by issue #2134: a visible onboarding Next Action without
+an executable structured todo.
+
+The pair result retains only source-alignment flags, drift field names, and
+receipt digests. Packets, observations, model responses, local paths, and
+credentials are not retained. The result always sets
+`automatic_release_promotion_allowed=false`.
+
+This profile is a local/manual gate for sensitive agent-facing changes and
+release qualification. Deterministic onboarding fixtures and catalog canaries
+remain the normal CI gate. A future trusted scheduled job may invoke the live
+profile with injected credentials and explicit cost limits, but ordinary pull
+requests must not depend on provider availability, latency, rate limits, or
+stochastic output.
+
 ## Promotion Boundary
 
 This contract is one gate in a larger promotion process. Turning a candidate
