@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import shlex
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from ...benchmark_core import compact_run_permission_policy_for_quota
 from ...boundary_authority import checkpointed_boundary_authority_summary
-from ...capabilities.lark.event_inbox import project_lark_event_inbox_urgency
 from ...execution_profile import execution_profile_outcome_floor
 from ...explore_graph import compact_explore_graph_policy
 from ...orchestration import compact_orchestration_policy
@@ -70,7 +70,12 @@ def quota_execution_profile_boundary_summary(value: Any) -> dict[str, Any] | Non
     return compact or None
 
 
-def goal_boundary(goal: dict[str, Any], item: dict[str, Any] | None = None) -> dict[str, Any] | None:
+def goal_boundary(
+    goal: dict[str, Any],
+    item: dict[str, Any] | None = None,
+    *,
+    lark_event_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
     boundary: dict[str, Any] = {}
     adapter_kind = goal.get("adapter_kind")
     adapter_status = goal.get("adapter_status")
@@ -157,9 +162,9 @@ def goal_boundary(goal: dict[str, Any], item: dict[str, Any] | None = None) -> d
         }
         project = Path(str(goal.get("repo") or "")).expanduser()
         config_path = str(lark_event_inbox.get("config_path") or "").strip()
-        if project.is_dir() and config_path:
+        if project.is_dir() and config_path and lark_event_inbox_urgency_projector:
             try:
-                inbox_capability["urgency"] = project_lark_event_inbox_urgency(
+                inbox_capability["urgency"] = lark_event_inbox_urgency_projector(
                     project=project,
                     config_path=config_path,
                 )
@@ -170,6 +175,13 @@ def goal_boundary(goal: dict[str, Any], item: dict[str, Any] | None = None) -> d
                     "projection_status": "unavailable",
                     "local_private_content_returned": False,
                 }
+        elif config_path:
+            inbox_capability["urgency"] = {
+                "schema_version": "lark_event_inbox_urgency_v0",
+                "enabled": True,
+                "projection_status": "unavailable",
+                "local_private_content_returned": False,
+            }
         boundary.setdefault("capabilities", {})["lark_event_inbox"] = inbox_capability
     if goal.get("next_probe"):
         boundary["next_probe"] = str(goal.get("next_probe"))

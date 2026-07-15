@@ -87,6 +87,7 @@ from .control_plane.quota.scheduler_ack import (
 from .control_plane.quota.selected_todo_projection import (
     selected_todo_projection as _selected_todo_projection,
 )
+from .capabilities.lark.event_inbox import project_lark_event_inbox_urgency as _project_lark_event_inbox_urgency
 from .control_plane.quota.task_orchestration import (
     apply_task_orchestration_contract,
     attach_task_orchestration_payload,
@@ -1351,7 +1352,7 @@ def build_quota_should_run(
             }
             recovery_allowed = False
             reason = str(quota["reason"])
-        goal_boundary = _goal_boundary(registry_goal or item, item=item)
+        goal_boundary = _goal_boundary(registry_goal or item, item=item, lark_event_inbox_urgency_projector=_project_lark_event_inbox_urgency)
         workspace_guard = build_agent_workspace_guard(
             item,
             agent_identity,
