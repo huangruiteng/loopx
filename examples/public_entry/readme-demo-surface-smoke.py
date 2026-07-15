@@ -42,7 +42,7 @@ def main() -> int:
         "Manual shell / other agents",
         "Candidate: Claude implements + Codex reviews",
         "docs/product/cross-runtime-impl-review-demo.md",
-        "## Optional And Emerging Features",
+        "## Optional Capabilities",
         "docs/assets/openviking-issue-fix-explore.png",
         "docs/assets/auto-ml-experiment-explore.jpg",
         "### Start With A Useful Loop",
