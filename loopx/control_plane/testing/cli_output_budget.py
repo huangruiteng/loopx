@@ -32,6 +32,18 @@ class CliOutputBudgetSpec:
     max_json_growth_chars_per_unit: int | None = None
 
 
+@dataclass(frozen=True)
+class CliOutputModeVariantSpec:
+    variant_id: str
+    parent_surface_id: str
+    command: str
+    output_formats: tuple[OutputFormat, ...]
+    semantic_json_keys: tuple[str, ...]
+    markdown_anchor: str
+    max_chars: dict[OutputFormat, int]
+    max_lines: dict[OutputFormat, int]
+
+
 # These ceilings characterize the emitted CLI text on public fixtures. They are
 # deliberately separate from compact in-memory payload budgets. Baseline-only
 # ceilings freeze current debt so later optimization can lower them safely.
@@ -262,6 +274,98 @@ CLI_OUTPUT_BUDGET_SPECS: tuple[CliOutputBudgetSpec, ...] = (
 CLI_OUTPUT_BUDGET_BY_ID = {spec.surface_id: spec for spec in CLI_OUTPUT_BUDGET_SPECS}
 
 
+# Explicit variants are opt-in cold paths, but they still need real stdout
+# characterization. This prevents a compact default from hiding unbounded
+# growth in the exact diagnostic mode an agent uses during repair.
+CLI_OUTPUT_MODE_VARIANT_SPECS: tuple[CliOutputModeVariantSpec, ...] = (
+    CliOutputModeVariantSpec(
+        variant_id="bootstrap_command_pack_message_only",
+        parent_surface_id="bootstrap_command_pack",
+        command="bootstrap-command-pack --message-only",
+        output_formats=("markdown",),
+        semantic_json_keys=(),
+        markdown_anchor="Handle `/loopx`",
+        max_chars={"markdown": 9_500},
+        max_lines={"markdown": 135},
+    ),
+    CliOutputModeVariantSpec(
+        variant_id="quota_should_run_scheduler_detail",
+        parent_surface_id="quota_should_run",
+        command="quota should-run --include-scheduler-detail",
+        output_formats=("json", "markdown"),
+        semantic_json_keys=("interaction_contract", "scheduler_hint", "selected_todo"),
+        markdown_anchor="# LoopX Quota Should Run",
+        max_chars={"json": 31_000, "markdown": 6_700},
+        max_lines={"json": 820, "markdown": 72},
+    ),
+    CliOutputModeVariantSpec(
+        variant_id="quota_should_run_turn_envelope",
+        parent_surface_id="quota_should_run",
+        command="quota should-run --turn-envelope",
+        output_formats=("json", "markdown"),
+        semantic_json_keys=("schema_version", "contract_capsule", "action_signature"),
+        markdown_anchor="# LoopX Turn Envelope",
+        max_chars={"json": 9_000, "markdown": 650},
+        max_lines={"json": 250, "markdown": 20},
+    ),
+    CliOutputModeVariantSpec(
+        variant_id="status_task_graph_detail",
+        parent_surface_id="status",
+        command="status --include-task-graph",
+        output_formats=("json", "markdown"),
+        semantic_json_keys=("status_contract", "attention_queue", "todo_index"),
+        markdown_anchor="# LoopX Status",
+        max_chars={"json": 47_000, "markdown": 7_000},
+        max_lines={"json": 1_250, "markdown": 85},
+    ),
+    CliOutputModeVariantSpec(
+        variant_id="review_packet_full",
+        parent_surface_id="review_packet_handoff_only",
+        command="review-packet",
+        output_formats=("json", "markdown"),
+        semantic_json_keys=("goal_id", "project_agent_handoff", "handoff_interface_budget"),
+        markdown_anchor="LoopX Review Packet",
+        max_chars={"json": 11_000, "markdown": 2_000},
+        max_lines={"json": 220, "markdown": 35},
+    ),
+    CliOutputModeVariantSpec(
+        variant_id="heartbeat_prompt_brief",
+        parent_surface_id="heartbeat_prompt_thin",
+        command="heartbeat-prompt --brief",
+        output_formats=("json", "markdown"),
+        semantic_json_keys=("task_body", "quota_guard_command", "interface_budget"),
+        markdown_anchor="# Heartbeat Automation Prompt",
+        max_chars={"json": 8_500, "markdown": 7_500},
+        max_lines={"json": 58, "markdown": 115},
+    ),
+    CliOutputModeVariantSpec(
+        variant_id="heartbeat_prompt_compact",
+        parent_surface_id="heartbeat_prompt_thin",
+        command="heartbeat-prompt --compact",
+        output_formats=("json", "markdown"),
+        semantic_json_keys=("task_body", "quota_guard_command", "interface_budget"),
+        markdown_anchor="# Heartbeat Automation Prompt",
+        max_chars={"json": 11_500, "markdown": 10_500},
+        max_lines={"json": 58, "markdown": 155},
+    ),
+    CliOutputModeVariantSpec(
+        variant_id="heartbeat_prompt_full",
+        parent_surface_id="heartbeat_prompt_thin",
+        command="heartbeat-prompt --full",
+        output_formats=("json", "markdown"),
+        semantic_json_keys=("task_body", "quota_guard_command", "interface_budget"),
+        markdown_anchor="# Heartbeat Automation Prompt",
+        max_chars={"json": 19_000, "markdown": 18_000},
+        max_lines={"json": 58, "markdown": 280},
+    ),
+)
+
+
+CLI_OUTPUT_MODE_VARIANT_BY_ID = {
+    spec.variant_id: spec for spec in CLI_OUTPUT_MODE_VARIANT_SPECS
+}
+
+
 def measure_cli_output(
     text: str,
     *,
@@ -335,10 +439,49 @@ def assert_cli_output_baseline(
             )
 
 
+def assert_cli_output_mode_variant(
+    spec: CliOutputModeVariantSpec,
+    *,
+    output_format: OutputFormat,
+    text: str,
+    measurement: dict[str, Any],
+) -> None:
+    if output_format not in spec.output_formats:
+        raise AssertionError(
+            f"{spec.variant_id} does not declare {output_format} qualification"
+        )
+    if int(measurement["chars"]) > spec.max_chars[output_format]:
+        raise AssertionError(
+            f"{spec.variant_id}/{output_format} emitted {measurement['chars']} chars; "
+            f"variant ceiling is {spec.max_chars[output_format]}"
+        )
+    if int(measurement["lines"]) > spec.max_lines[output_format]:
+        raise AssertionError(
+            f"{spec.variant_id}/{output_format} emitted {measurement['lines']} lines; "
+            f"variant ceiling is {spec.max_lines[output_format]}"
+        )
+    if output_format == "markdown":
+        if spec.markdown_anchor not in text:
+            raise AssertionError(
+                f"{spec.variant_id} markdown lost semantic anchor "
+                f"{spec.markdown_anchor!r}"
+            )
+        return
+    payload = measurement.get("payload")
+    if not isinstance(payload, dict):
+        raise AssertionError(f"{spec.variant_id} did not emit a JSON object")
+    missing = [key for key in spec.semantic_json_keys if key not in payload]
+    if missing:
+        raise AssertionError(
+            f"{spec.variant_id} JSON lost semantic key(s): {', '.join(missing)}"
+        )
+
+
 def public_manifest() -> dict[str, Any]:
     return {
         "schema_version": CLI_OUTPUT_BUDGET_SCHEMA_VERSION,
         "surface_count": len(CLI_OUTPUT_BUDGET_SPECS),
+        "mode_variant_count": len(CLI_OUTPUT_MODE_VARIANT_SPECS),
         "surfaces": [
             {
                 "surface_id": spec.surface_id,
@@ -352,5 +495,15 @@ def public_manifest() -> dict[str, Any]:
                 "scale_axis": spec.scale_axis,
             }
             for spec in CLI_OUTPUT_BUDGET_SPECS
+        ],
+        "mode_variants": [
+            {
+                "variant_id": spec.variant_id,
+                "parent_surface_id": spec.parent_surface_id,
+                "command": spec.command,
+                "qualification_policy": "explicit_opt_in_cold_path",
+                "formats": list(spec.output_formats),
+            }
+            for spec in CLI_OUTPUT_MODE_VARIANT_SPECS
         ],
     }

@@ -12,7 +12,10 @@ from loopx.cli import main as cli_main
 from loopx.control_plane.testing.cli_output_budget import (
     CLI_OUTPUT_BUDGET_BY_ID,
     CLI_OUTPUT_BUDGET_SPECS,
+    CLI_OUTPUT_MODE_VARIANT_BY_ID,
+    CLI_OUTPUT_MODE_VARIANT_SPECS,
     assert_cli_output_baseline,
+    assert_cli_output_mode_variant,
     measure_cli_output,
     public_manifest,
 )
@@ -335,6 +338,102 @@ def _measure_scenario(root: Path, scenario: Scenario) -> dict[str, dict[str, dic
     return results
 
 
+def _mode_variant_commands(
+    *,
+    project: Path,
+    runtime: Path,
+    registry_path: Path,
+    state_file: Path,
+    output_format: str,
+) -> dict[str, list[str]]:
+    common = [
+        "--registry",
+        str(registry_path),
+        "--runtime-root",
+        str(runtime),
+        "--format",
+        output_format,
+    ]
+    heartbeat = [
+        "--goal-id",
+        GOAL_ID,
+        "--active-state",
+        str(state_file),
+        "--agent-id",
+        AGENT_IDS[0],
+        "--agent-scope",
+        "Public CLI output qualification.",
+    ]
+    return {
+        "bootstrap_command_pack_message_only": [
+            "--format",
+            output_format,
+            "bootstrap-command-pack",
+            "--project",
+            str(project),
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--goal-text",
+            GOAL_TEXT,
+            "--message-only",
+        ],
+        "quota_should_run_scheduler_detail": common
+        + [
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--scan-root",
+            str(project),
+            "--include-scheduler-detail",
+        ],
+        "quota_should_run_turn_envelope": common
+        + [
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--scan-root",
+            str(project),
+            "--turn-envelope",
+        ],
+        "status_task_graph_detail": common
+        + [
+            "status",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--scan-root",
+            str(project),
+            "--limit",
+            "5",
+            "--include-task-graph",
+        ],
+        "review_packet_full": common
+        + [
+            "review-packet",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--scan-root",
+            str(project),
+            "--limit",
+            "5",
+        ],
+        "heartbeat_prompt_brief": common + ["heartbeat-prompt", "--brief", *heartbeat],
+        "heartbeat_prompt_compact": common + ["heartbeat-prompt", "--compact", *heartbeat],
+        "heartbeat_prompt_full": common + ["heartbeat-prompt", "--full", *heartbeat],
+    }
+
+
 def test_manifest_covers_the_declared_agent_facing_surface_set() -> None:
     expected = {
         "start_goal_guided",
@@ -353,6 +452,22 @@ def test_manifest_covers_the_declared_agent_facing_surface_set() -> None:
     assert manifest["surface_count"] == len(expected)
     assert {row["surface_id"] for row in manifest["surfaces"]} == expected
     assert all(spec.owner and spec.consumer_action and spec.cold_path for spec in CLI_OUTPUT_BUDGET_SPECS)
+    expected_variants = {
+        "bootstrap_command_pack_message_only",
+        "quota_should_run_scheduler_detail",
+        "quota_should_run_turn_envelope",
+        "status_task_graph_detail",
+        "review_packet_full",
+        "heartbeat_prompt_brief",
+        "heartbeat_prompt_compact",
+        "heartbeat_prompt_full",
+    }
+    assert set(CLI_OUTPUT_MODE_VARIANT_BY_ID) == expected_variants
+    assert manifest["mode_variant_count"] == len(expected_variants)
+    assert {row["variant_id"] for row in manifest["mode_variants"]} == expected_variants
+    assert all(
+        spec.parent_surface_id in expected for spec in CLI_OUTPUT_MODE_VARIANT_SPECS
+    )
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda scenario: scenario.name)
@@ -400,3 +515,28 @@ def test_collection_growth_and_bootstrap_duplication_are_explicit(tmp_path: Path
     assert bootstrap_duplication["command_content"]["duplicate_occurrences"] <= 9
     assert start_duplication["objective_content"]["duplicate_occurrences"] > 0
     assert bootstrap_duplication["objective_content"]["duplicate_occurrences"] > 0
+
+
+def test_explicit_compact_and_detail_modes_are_characterized(tmp_path: Path) -> None:
+    project, runtime, registry_path, state_file = _write_fixture(tmp_path, SCENARIOS[0])
+    for output_format in ("json", "markdown"):
+        commands = _mode_variant_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format=output_format,
+        )
+        for variant_id, command in commands.items():
+            spec = CLI_OUTPUT_MODE_VARIANT_BY_ID[variant_id]
+            if output_format not in spec.output_formats:
+                continue
+            exit_code, text = _invoke_cli(command)
+            assert exit_code == 0, (variant_id, output_format, text)
+            measurement = measure_cli_output(text, output_format=output_format)  # type: ignore[arg-type]
+            assert_cli_output_mode_variant(
+                spec,
+                output_format=output_format,  # type: ignore[arg-type]
+                text=text,
+                measurement=measurement,
+            )
