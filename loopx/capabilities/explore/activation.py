@@ -177,6 +177,7 @@ def sync_explore_graph_after_material_refresh(
         "needs_visual_sync": result.get("needs_visual_sync"),
         "row_readback_verified": row_readback_verified,
         "semantic_digest": result.get("semantic_digest"),
+        "source_runtime_route": projection.get("source_runtime_route"),
         "delivery_postcondition": explore_graph_delivery_postcondition(
             enabled=True,
             status=status,

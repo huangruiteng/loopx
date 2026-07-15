@@ -9,6 +9,30 @@ from typing import Any
 from ....file_lock import try_exclusive_file_lock
 
 
+def default_lark_explore_config_path(registry_path: Path | None = None) -> Path:
+    if registry_path is not None:
+        expanded = registry_path.expanduser()
+        if expanded.parent.name == ".loopx":
+            return expanded.parent / "lark-explore.json"
+    return Path.cwd() / ".loopx" / "lark-explore.json"
+
+
+def source_lark_explore_config_path(
+    registry_path: Path | None, goal_id: str
+) -> Path:
+    """Resolve the sink config beside the goal's canonical source registry."""
+
+    if registry_path is None or not goal_id:
+        return default_lark_explore_config_path(registry_path)
+    from .explore_source_guard import resolve_explore_source_registry
+
+    source_registry_path, _ = resolve_explore_source_registry(
+        registry_path=registry_path,
+        goal_id=goal_id,
+    )
+    return default_lark_explore_config_path(source_registry_path)
+
+
 @contextmanager
 def explore_feishu_sync_singleflight(
     *, config_path: Path, execute: bool
@@ -48,7 +72,7 @@ def explore_feishu_sync_busy_packet(
 
 
 def singleflight_issue_fix_material_sync(
-    config_path_resolver: Callable[[Path | None], Path],
+    config_path_resolver: Callable[[Path | None, str], Path],
 ) -> Callable[[Callable[..., dict[str, Any]]], Callable[..., dict[str, Any]]]:
     """Serialize an issue-fix material sync across row, visual, and checkpoint writes."""
 
@@ -63,12 +87,13 @@ def singleflight_issue_fix_material_sync(
             resolved_registry = (
                 Path(registry_path) if registry_path is not None else None
             )
+            goal_id = str(kwargs.get("goal_id") or "").strip()
             execute = bool(kwargs.get("execute", False))
             delivery_authorized = bool(
                 kwargs.get("external_sink_delivery_authorized", True)
             )
             with explore_feishu_sync_singleflight(
-                config_path=config_path_resolver(resolved_registry),
+                config_path=config_path_resolver(resolved_registry, goal_id),
                 execute=bool(execute and delivery_authorized),
             ) as acquired:
                 if not acquired:

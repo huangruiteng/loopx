@@ -44,7 +44,6 @@ from ..presentation.sinks.lark.explore_results import (
     LarkExploreConfig,
     build_explore_result_card,
     configure_lark_explore_visual_sink,
-    default_lark_explore_config_path,
     explore_visual_semantic_digest,
     lark_explore_config_from_payload,
     lark_explore_schema_payload,
@@ -56,6 +55,7 @@ from ..presentation.sinks.lark.explore_results import (
     write_lark_explore_local_config,
 )
 from ..presentation.sinks.lark.explore_singleflight import (
+    default_lark_explore_config_path,
     explore_feishu_sync_busy_packet,
     explore_feishu_sync_singleflight,
 )
@@ -600,7 +600,11 @@ def handle_explore_command(
         config_path = (
             Path(args.config_path).expanduser()
             if getattr(args, "config_path", None)
-            else default_lark_explore_config_path(registry_path)
+            else default_lark_explore_config_path(
+                Path(str(source_runtime_route["source_registry"]))
+                if source_runtime_route is not None
+                else registry_path
+            )
         )
         if args.explore_command == "schema":
             payload = lark_explore_schema_payload()

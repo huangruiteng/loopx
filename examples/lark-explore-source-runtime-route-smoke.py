@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -23,9 +24,15 @@ from loopx.capabilities.explore.result_log import (  # noqa: E402
 from loopx.capabilities.issue_fix.explore_projection import (  # noqa: E402
     ISSUE_FIX_LANE_ID,
 )
+from loopx.capabilities.explore.activation import (  # noqa: E402
+    sync_explore_graph_after_material_refresh,
+)
 from loopx.presentation.sinks.lark.explore_results import (  # noqa: E402
     sync_issue_fix_explore_on_material_change,
     write_lark_explore_local_config,
+)
+from loopx.presentation.sinks.lark.explore_singleflight import (  # noqa: E402
+    explore_feishu_sync_singleflight,
 )
 
 
@@ -43,6 +50,7 @@ def _write_registry(path: Path, *, runtime: Path, project: Path, state: Path) ->
                         "id": GOAL_ID,
                         "repo": str(project),
                         "state_file": str(state),
+                        "explore_graph": {"enabled": True},
                     }
                 ],
             }
@@ -113,7 +121,8 @@ def main() -> None:
         )
         _append_node(shared_runtime, node_id="shared_only", title="Stale shared node")
 
-        config_path = shared_root / "lark-explore.json"
+        config_path = project_loopx / "lark-explore.json"
+        stale_config_path = shared_root / "lark-explore.json"
         baseline_config = {
             "board": {
                 "base_token": "PUBLIC_FIXTURE_BASE",
@@ -135,6 +144,31 @@ def main() -> None:
             },
         }
         write_lark_explore_local_config(config_path, baseline_config)
+        assert not stale_config_path.exists()
+
+        cli_sync = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--format",
+                "json",
+                "--registry",
+                str(shared_registry),
+                "explore",
+                "feishu-sync",
+                "--goal-id",
+                GOAL_ID,
+            ],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        cli_payload = json.loads(cli_sync.stdout)
+        assert Path(cli_payload["config_path"]).resolve() == config_path.resolve(), cli_payload
+        assert cli_payload["source_runtime_route"]["status"] == "source_registry", cli_payload
+        assert not stale_config_path.exists()
 
         routed = sync_issue_fix_explore_on_material_change(
             registry_path=shared_registry,
@@ -154,6 +188,31 @@ def main() -> None:
         assert route["status"] == "source_registry", route
         assert route["routed_to_source_registry"] is True, route
         assert not any("/" in str(value) for value in route.values() if value), route
+        assert Path(routed["config_path"]).resolve() == config_path.resolve(), routed
+        assert not stale_config_path.exists()
+
+        activated = sync_explore_graph_after_material_refresh(
+            registry_path=shared_registry,
+            goal_id=GOAL_ID,
+            project=project,
+            state_file=state,
+            external_sink_delivery_authorized=False,
+        )
+        assert activated["status"] == "external_sink_suppressed", activated
+        assert activated["source_runtime_route"]["status"] == "source_registry", activated
+        assert activated["delivery_postcondition"]["blocks_delivery"] is False, activated
+
+        with explore_feishu_sync_singleflight(config_path=config_path, execute=True):
+            busy = sync_issue_fix_explore_on_material_change(
+                registry_path=shared_registry,
+                goal_id=GOAL_ID,
+                project=project,
+                state_file=state,
+                execute=True,
+            )
+        assert busy["status"] == "sync_busy", busy
+        assert busy["external_write_performed"] is False, busy
+        assert not stale_config_path.exists()
 
         divergent_config = json.loads(config_path.read_text(encoding="utf-8"))
         divergent_config["result_records"][

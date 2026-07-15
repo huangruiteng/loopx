@@ -57,22 +57,26 @@ from .kanban import (
     now_lark_datetime,
     parse_lark_base_url,
 )
+from .explore_singleflight import (
+    default_lark_explore_config_path,
+    singleflight_issue_fix_material_sync,
+    source_lark_explore_config_path,
+)
 from .explore_stage_document import ensure_stage_whiteboards
-from .explore_singleflight import singleflight_issue_fix_material_sync
-from .explore_visual_styles import (
-    board_source_with_delivery_marker,
-    resolve_explore_board_style,
-    resolve_explore_board_style_update,
-    summarize_explore_visual_sync,
+from .explore_visual_integrity import (
+    cross_role_stage_token_conflict_delivery,
+    finalize_visual_role_results,
 )
 from .explore_visual_readback import (
     readback_visual_delivery_marker,
     settle_visual_stage_readbacks,
     structured_command_error,
 )
-from .explore_visual_integrity import (
-    cross_role_stage_token_conflict_delivery,
-    finalize_visual_role_results,
+from .explore_visual_styles import (
+    board_source_with_delivery_marker,
+    resolve_explore_board_style,
+    resolve_explore_board_style_update,
+    summarize_explore_visual_sync,
 )
 from .message_card import build_lark_markdown_reply_card
 
@@ -251,14 +255,6 @@ class LarkExploreConfig:
         if not table_id:
             raise ValueError(f"missing table id for {table_key}; run `loopx explore feishu-setup` first")
         return table_id
-
-
-def default_lark_explore_config_path(registry_path: Path | None = None) -> Path:
-    if registry_path is not None:
-        expanded = registry_path.expanduser()
-        if expanded.parent.name == ".loopx":
-            return expanded.parent / "lark-explore.json"
-    return Path.cwd() / ".loopx" / "lark-explore.json"
 
 
 def read_lark_explore_local_config(path: Path) -> dict[str, Any]:
@@ -1600,7 +1596,7 @@ def sync_explore_results_to_lark(
     }
 
 
-@singleflight_issue_fix_material_sync(default_lark_explore_config_path)
+@singleflight_issue_fix_material_sync(source_lark_explore_config_path)
 def sync_issue_fix_explore_on_material_change(
     *,
     registry_path: Path,
@@ -1641,7 +1637,7 @@ def sync_issue_fix_explore_on_material_change(
         execute=execute,
     )
     projection_result["source_runtime_route"] = compact_source_runtime_route
-    config_path = default_lark_explore_config_path(registry_path)
+    config_path = default_lark_explore_config_path(source_registry_path)
     local = read_lark_explore_local_config(config_path)
     config = lark_explore_config_from_payload(local) if local.get("ok") else None
     sync_state = (
