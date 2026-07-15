@@ -60,6 +60,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "product-entry-workflows",
         "cross-runtime-impl-review-demo",
         "host-command-entry",
+        "new-user-onboarding-lifecycle",
         "runtime-connector-catalog",
         "frontstage-rollout",
         "auto-research-demo",
@@ -624,6 +625,28 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert all(check["tier"] == "default" for check in host_command_profile["checks"])
     assert host_command_profile["deep_checks_available"] is False, host_command_profile
     assert host_command_profile["deep_checks_included"] is False, host_command_profile
+
+    onboarding_payload = build_catalog_canary_plan(
+        changed_files=[
+            "loopx/bootstrap.py",
+            "loopx/bootstrap_command_pack.py",
+            "loopx/contract.py",
+        ],
+        surfaces=[
+            "new user onboarding no-onboarding-scan state projection gap start-goal"
+        ],
+    )
+    onboarding_profiles = {
+        profile["id"]: profile for profile in onboarding_payload["domain_profiles"]
+    }
+    assert "new-user-onboarding-lifecycle" in onboarding_profiles, onboarding_payload
+    onboarding_profile = onboarding_profiles["new-user-onboarding-lifecycle"]
+    assert [check["command"] for check in onboarding_profile["checks"]] == [
+        "python3 examples/project/onboarding-no-scan-projection-smoke.py"
+    ], onboarding_profile
+    assert all(check["tier"] == "default" for check in onboarding_profile["checks"])
+    assert onboarding_profile["deep_checks_available"] is False, onboarding_profile
+    assert onboarding_profile["deep_checks_included"] is False, onboarding_profile
 
     runtime_connector_payload = build_catalog_canary_plan(
         changed_files=["docs/runtime-connector-catalog.md"],
