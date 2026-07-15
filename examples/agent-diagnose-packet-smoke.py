@@ -407,9 +407,19 @@ def main() -> int:
             "--agent-id",
             "codex-main-control",
         )
-        assert capability_blocked["selected"]["machine_signal"] == "user_or_controller_attention", (
+        capability_blocked_selected = capability_blocked["selected"]
+        assert (
+            capability_blocked_selected["machine_signal"]
+            == "capability_repair_attention"
+        ), capability_blocked
+        capability_blocked_quota = capability_blocked_selected["quota_signals"]
+        assert capability_blocked_quota["capability_repair_allowed"] is True, (
             capability_blocked
         )
+        assert capability_blocked_quota["requires_user_action"] is False, (
+            capability_blocked
+        )
+        assert capability_blocked_quota["action_required"] is False, capability_blocked
 
         capability_ready = run_cli(
             "--registry",

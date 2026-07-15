@@ -171,6 +171,8 @@ def _machine_signal(*, status_payload: dict[str, Any], item: dict[str, Any] | No
     user_summary = _todo_summary(quota, item, role="user")
     if _quota_user_action_required(quota) or _open_count(user_summary) > 0:
         return "user_or_controller_attention"
+    if quota.get("capability_repair_allowed"):
+        return "capability_repair_attention"
     if quota.get("self_repair_allowed"):
         return "self_repair_attention"
     if quota.get("recovery_delivery_allowed"):
@@ -236,6 +238,7 @@ def _compact_quota_signals(quota: dict[str, Any]) -> dict[str, Any]:
         "actionable_by_codex",
         "normal_delivery_allowed",
         "recovery_delivery_allowed",
+        "capability_repair_allowed",
         "self_repair_allowed",
         "safe_bypass_allowed",
         "safe_bypass_kind",
