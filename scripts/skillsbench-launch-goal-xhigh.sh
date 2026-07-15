@@ -39,6 +39,10 @@ Optional env:
                                        Set to 1 to stop after real job-root and
                                        environment materialization, before any
                                        agent or verifier lifecycle
+  SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY
+                                       Optional product-mode intermediate
+                                       verifier policy: every-round or
+                                       final-only; unset preserves runner default
   SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC  Setup stall timeout, default 3600;
                                        0 disables cap
   SKILLSBENCH_RUN_TIMEOUT_SEC          Supervisor timeout, default 28800
@@ -149,6 +153,7 @@ skip_global_ledger_sync="${SKILLSBENCH_SKIP_GLOBAL_LEDGER_SYNC:-0}"
 skip_current_aggregate_update="${SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE:-0}"
 allow_staged_bootstrap_repair_run="${SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN:-0}"
 setup_only_public_preflight="${SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT:-0}"
+product_mode_soft_verify_policy="${SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY:-}"
 validate_bool_toggle() {
   local env_name="$1"
   local value="$2"
@@ -164,6 +169,12 @@ validate_bool_toggle \
   SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN "$allow_staged_bootstrap_repair_run"
 validate_bool_toggle \
   SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT "$setup_only_public_preflight"
+if [[ -n "$product_mode_soft_verify_policy" ]] &&
+  [[ "$product_mode_soft_verify_policy" != "every-round" ]] &&
+  [[ "$product_mode_soft_verify_policy" != "final-only" ]]; then
+  echo "SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY must be every-round or final-only" >&2
+  exit 2
+fi
 remote_codex_bin_mode="path_lookup"
 if [[ -n "${SKILLSBENCH_REMOTE_CODEX_BIN:-}" ]]; then
   remote_codex_bin_mode="explicit"
@@ -306,6 +317,11 @@ fi
 if [[ "$setup_only_public_preflight" == "1" ]]; then
   extra_runner_args+=(--setup-only-public-preflight)
 fi
+if [[ -n "$product_mode_soft_verify_policy" ]]; then
+  extra_runner_args+=(
+    --product-mode-soft-verify-policy "$product_mode_soft_verify_policy"
+  )
+fi
 if [[ -n "${SKILLSBENCH_REGISTRY:-}" ]]; then
   extra_runner_args+=(--registry "$SKILLSBENCH_REGISTRY")
 fi
@@ -446,6 +462,8 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'codex_cli_goal_thread_prewarm=%s\n' "$codex_cli_goal_thread_prewarm"
   printf 'allow_staged_bootstrap_repair_run=%s\n' "$allow_staged_bootstrap_repair_run"
   printf 'setup_only_public_preflight=%s\n' "$setup_only_public_preflight"
+  printf 'product_mode_soft_verify_policy=%s\n' \
+    "${product_mode_soft_verify_policy:-runner-default}"
   printf 'skip_global_ledger_sync=%s\n' "$skip_global_ledger_sync"
   printf 'skip_current_aggregate_update=%s\n' "$skip_current_aggregate_update"
   printf 'local_run_ledger=%s\n' "$local_run_ledger"

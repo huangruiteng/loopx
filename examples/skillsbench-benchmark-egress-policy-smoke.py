@@ -141,6 +141,7 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
             "SKILLSBENCH_LOCAL_CODEX_SANDBOX": "danger-full-access",
             "SKILLSBENCH_CLI_GOAL_THREAD_PREWARM": "1",
             "SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN": "1",
+            "SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY": "final-only",
             "SKILLSBENCH_RUN_STAMP": "20260709T000000CST",
             "SKILLSBENCH_TUNNEL_PROBE_TIMEOUT_SEC": "19",
             "SKILLSBENCH_TUNNEL_READY_TIMEOUT_SEC": "71",
@@ -183,6 +184,8 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
     assert "--codex-cli-goal-thread-prewarm" in output, output
     assert "allow_staged_bootstrap_repair_run=1" in output, output
     assert "--allow-staged-bootstrap-repair-run" in output, output
+    assert "product_mode_soft_verify_policy=final-only" in output, output
+    assert "--product-mode-soft-verify-policy final-only" in output, output
     assert "remote_codex_bin_mode=explicit" in output, output
     assert "--probe-timeout-sec 19" in output, output
     assert "--tunnel-ready-timeout-sec 71" in output, output
@@ -200,6 +203,37 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
     assert "skip_current_aggregate_update=1" in output, output
     assert "--skip-global-ledger-sync" in output, output
     assert "--skip-current-aggregate-update" in output, output
+
+
+def test_public_launcher_rejects_invalid_product_mode_soft_verify_policy() -> None:
+    env = os.environ.copy()
+    env.update(
+        {
+            "SKILLSBENCH_SSH_DESTINATION": "example.invalid",
+            "SKILLSBENCH_REMOTE_ROOT": "/remote/loopx",
+            "SKILLSBENCH_ROOT": "/remote/skillsbench",
+            "SKILLSBENCH_EXPECTED_LOOPX_GIT_HEAD": "abc1234",
+            "SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY": "sometimes",
+        }
+    )
+    proc = subprocess.run(
+        [
+            str(REPO_ROOT / "scripts" / "skillsbench-launch-goal-xhigh.sh"),
+            "--dry-run",
+            "citation-check",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 2, proc
+    assert (
+        "SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY must be "
+        "every-round or final-only" in proc.stderr
+    ), proc.stderr
 
 
 def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
@@ -253,6 +287,8 @@ def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
     assert "--update-ledger" not in output, output
     assert "--codex-cli-goal-thread-prewarm" not in output, output
     assert "--allow-staged-bootstrap-repair-run" not in output, output
+    assert "product_mode_soft_verify_policy=runner-default" in output, output
+    assert "--product-mode-soft-verify-policy" not in output, output
     assert "--local-target-lane-id codex-cli-goal-xhigh" in output, output
     assert "--local-target-run-group-contains" not in output, output
     assert "--local-target-backfill-run-group-contains" not in output, output
