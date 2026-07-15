@@ -574,3 +574,73 @@ json.dump({
         "fixture_progress",
         "quota_slot_spent",
     ]
+
+
+@pytest.mark.parametrize(
+    "result_kind", ["validated_progress", "repair_required", "replan_required"]
+)
+def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    result_kind: str,
+) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+
+    def fake_codex_host(request: dict[str, object], **_kwargs: object) -> dict[str, object]:
+        return {
+            "schema_version": "loopx_turn_result_v0",
+            "turn_key": request["turn_key"],
+            "result_kind": result_kind,
+            "completed_phases": ["host_execute", "typed_result"],
+            "classification": f"fixture_{result_kind}",
+            "recommended_action": "Apply the typed follow-up",
+            "next_action": "Run one revised public fixture check",
+            "delivery_batch_scale": "implementation",
+            "delivery_outcome": "outcome_progress",
+            "vision_unchanged_reason": "The fixture objective remains unchanged.",
+            "summary": "One public fixture advanced.",
+        }
+
+    monkeypatch.setattr("loopx.cli_commands.turn.run_codex_cli_host", fake_codex_host)
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "turn",
+                "run-once",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                "--host",
+                "codex-cli",
+                "--project",
+                str(project),
+                "--scan-root",
+                str(project),
+                "--no-global-sync",
+                "--execute",
+            ]
+        )
+
+    payload = json.loads(output.getvalue())
+    assert exit_code == 0, payload
+    assert payload["host"] == {"executable": "built-in", "kind": "codex-cli"}
+    assert payload["effects"]["state_written"] is True
+    assert payload["effects"]["quota_spent"] is True
+    state = (
+        project
+        / ".codex"
+        / "goals"
+        / "loopx-turn-fixture"
+        / "ACTIVE_GOAL_STATE.md"
+    ).read_text(encoding="utf-8")
+    assert "Run one revised public fixture check" in state
+    if result_kind != "validated_progress":
+        assert f"LoopX%20Turn%20{result_kind}" in state

@@ -13,6 +13,7 @@ from loopx.control_plane.turn_driver import (
     run_loopx_turn_once,
     validate_loopx_turn_host_result,
 )
+from loopx.control_plane.turn_driver.executor import BuiltInHostError
 
 
 def _plan() -> dict[str, object]:
@@ -134,6 +135,63 @@ def test_run_once_preview_has_no_host_or_journal_effects(tmp_path: Path) -> None
         "scheduler_acknowledged": False,
     }
     assert not (tmp_path / "runtime").exists()
+
+
+def test_run_once_rejects_oversized_built_in_host_result(tmp_path: Path) -> None:
+    plan = _plan()
+    calls = {"writeback": 0, "spend": 0, "scheduler": 0}
+    writeback, spend, scheduler = _callbacks(calls)
+    oversized = _host_result(plan)
+    oversized["summary"] = "x" * 13_000
+
+    payload = run_loopx_turn_once(
+        plan,
+        host_runner=lambda _request: oversized,
+        project=tmp_path,
+        runtime_root=tmp_path / "runtime",
+        goal_id="fixture-goal",
+        timeout_seconds=5,
+        execute=True,
+        writeback=writeback,
+        spend=spend,
+        scheduler=scheduler,
+    )
+
+    assert payload["ok"] is False
+    assert payload["reason"] == "built-in host result exceeded the result budget"
+    assert calls == {"writeback": 0, "spend": 0, "scheduler": 0}
+
+
+def test_run_once_explicitly_retries_failed_host_without_duplicate_effects(tmp_path: Path) -> None:
+    plan = _plan()
+    calls = {"host": 0, "writeback": 0, "spend": 0, "scheduler": 0}
+    writeback, spend, scheduler = _callbacks(calls)
+
+    def host(_request: dict[str, object]) -> dict[str, object]:
+        calls["host"] += 1
+        if calls["host"] == 1:
+            raise BuiltInHostError("codex_cli_model_requires_newer_codex")
+        return _host_result(plan)
+
+    kwargs = {
+        "host_runner": host,
+        "project": tmp_path,
+        "runtime_root": tmp_path / "runtime",
+        "goal_id": "fixture-goal",
+        "timeout_seconds": 5,
+        "execute": True,
+        "writeback": writeback,
+        "spend": spend,
+        "scheduler": scheduler,
+    }
+    failed = run_loopx_turn_once(plan, **kwargs)
+    replayed = run_loopx_turn_once(plan, **kwargs)
+    recovered = run_loopx_turn_once(plan, retry_failed=True, **kwargs)
+
+    assert failed["reason"] == "codex_cli_model_requires_newer_codex"
+    assert replayed["replayed"] is True
+    assert recovered["status"] == "committed"
+    assert calls == {"host": 2, "writeback": 1, "spend": 1, "scheduler": 1}
 
 
 def test_run_once_commits_once_and_replays_without_duplicate_effects(tmp_path: Path) -> None:
