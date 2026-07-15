@@ -191,6 +191,36 @@ def test_bind_decisions_requires_exact_batch_and_candidate_digests() -> None:
         bind_review_batch_decisions(batch, raw_decision)
 
 
+def test_bind_decisions_recomputes_batch_and_candidate_integrity() -> None:
+    batch = build_review_batch(_request())
+    candidate = batch["candidates"][0]
+    decisions = {
+        "schema_version": "review_batch_decisions_v0",
+        "decision_digest": batch["decision_digest"],
+        "decisions": [
+            {
+                "candidate_id": candidate["candidate_id"],
+                "candidate_decision_digest": candidate["decision_digest"],
+                "decision": "approve",
+            }
+        ],
+    }
+
+    tampered_candidate = copy.deepcopy(batch)
+    tampered_candidate["candidates"][0]["proposal"] = {
+        "action": "A different action inserted after composition."
+    }
+    with pytest.raises(ValueError, match="batch candidate digest does not match"):
+        bind_review_batch_decisions(tampered_candidate, decisions)
+
+    tampered_policy = copy.deepcopy(batch)
+    tampered_policy["policy"]["decision_values"].append("delete")
+    tampered_decisions = copy.deepcopy(decisions)
+    tampered_decisions["decisions"][0]["decision"] = "delete"
+    with pytest.raises(ValueError, match="batch decision digest does not match"):
+        bind_review_batch_decisions(tampered_policy, tampered_decisions)
+
+
 def test_review_batch_cli_composes_json(tmp_path, capsys) -> None:
     request_path = tmp_path / "request.json"
     request_path.write_text(json.dumps(_request()), encoding="utf-8")

@@ -85,6 +85,31 @@ def _digest(value: object, *, prefix: str) -> str:
     return f"{prefix}_{hashlib.sha256(encoded).hexdigest()[:24]}"
 
 
+def _candidate_decision_digest(candidate: Mapping[str, Any]) -> str:
+    digest_input = {
+        key: value
+        for key, value in candidate.items()
+        if key != "decision_digest" and value is not None
+    }
+    return _digest(digest_input, prefix="candidate")
+
+
+def _batch_decision_digest(
+    *,
+    batch_id: str,
+    policy: Mapping[str, Any],
+    candidate_decision_digests: list[str],
+) -> str:
+    return _digest(
+        {
+            "batch_id": batch_id,
+            "policy": dict(policy),
+            "candidate_decision_digests": candidate_decision_digests,
+        },
+        prefix="batch",
+    )
+
+
 def _normalize_policy(raw: object) -> dict[str, Any]:
     policy = _object(raw, "policy")
     soft_limit = int(policy.get("soft_limit", 8))
@@ -203,8 +228,7 @@ def _normalize_candidate(
             candidate.get("observed_at"), f"{label}.observed_at", maximum=80
         ),
     }
-    digest_input = {key: value for key, value in normalized.items() if value is not None}
-    normalized["decision_digest"] = _digest(digest_input, prefix="candidate")
+    normalized["decision_digest"] = _candidate_decision_digest(normalized)
     return normalized
 
 
@@ -306,13 +330,10 @@ def build_review_batch(request: Mapping[str, Any]) -> dict[str, Any]:
     )
     bounded = ordered[: policy["hard_limit"]]
     selected = bounded[: policy["soft_limit"]]
-    decision_digest = _digest(
-        {
-            "batch_id": batch_id,
-            "policy": policy,
-            "candidate_decision_digests": [item["decision_digest"] for item in selected],
-        },
-        prefix="batch",
+    decision_digest = _batch_decision_digest(
+        batch_id=batch_id,
+        policy=policy,
+        candidate_decision_digests=[item["decision_digest"] for item in selected],
     )
     return {
         "ok": True,
@@ -352,20 +373,50 @@ def bind_review_batch_decisions(
         raise ValueError(f"batch must use {BATCH_SCHEMA}")
     if decision_payload.get("schema_version") != DECISIONS_SCHEMA:
         raise ValueError(f"decisions must use {DECISIONS_SCHEMA}")
+    _reject_raw_keys(batch_payload, "batch")
     _reject_raw_keys(decision_payload, "decisions")
+    batch_id = _token(batch_payload.get("batch_id"), "batch.batch_id")
+    if batch_payload.get("batch_id") != batch_id:
+        raise ValueError("batch.batch_id must be normalized")
+    raw_policy = _object(batch_payload.get("policy"), "batch.policy")
+    policy = _normalize_policy(raw_policy)
+    if raw_policy != policy:
+        raise ValueError("batch.policy must be normalized")
+    candidates = _list(batch_payload.get("candidates"), "batch.candidates")
+    candidate_by_id: dict[str, dict[str, Any]] = {}
+    candidate_digests: list[str] = []
+    for index, value in enumerate(candidates):
+        label = f"batch.candidates[{index}]"
+        candidate = _object(value, label)
+        candidate_id = _token(candidate.get("candidate_id"), f"{label}.candidate_id")
+        if candidate.get("candidate_id") != candidate_id:
+            raise ValueError(f"{label}.candidate_id must be normalized")
+        if candidate_id in candidate_by_id:
+            raise ValueError(f"duplicate batch candidate_id {candidate_id!r}")
+        supplied_candidate_digest = _text(
+            candidate.get("decision_digest"), f"{label}.decision_digest"
+        )
+        expected_candidate_digest = _candidate_decision_digest(candidate)
+        if supplied_candidate_digest != expected_candidate_digest:
+            raise ValueError(
+                f"batch candidate digest does not match candidate {candidate_id!r}"
+            )
+        candidate_by_id[candidate_id] = candidate
+        candidate_digests.append(supplied_candidate_digest)
     expected_batch_digest = _text(batch_payload.get("decision_digest"), "batch.decision_digest")
+    recomputed_batch_digest = _batch_decision_digest(
+        batch_id=batch_id,
+        policy=policy,
+        candidate_decision_digests=candidate_digests,
+    )
+    if expected_batch_digest != recomputed_batch_digest:
+        raise ValueError("batch decision digest does not match the exact review batch")
     supplied_batch_digest = _text(
         decision_payload.get("decision_digest"), "decisions.decision_digest"
     )
     if supplied_batch_digest != expected_batch_digest:
         raise ValueError("decision batch digest does not match the exact review batch")
-    policy = _object(batch_payload.get("policy"), "batch.policy")
-    allowed = set(_list(policy.get("decision_values"), "batch.policy.decision_values"))
-    candidate_by_id = {
-        str(item["candidate_id"]): item
-        for item in _list(batch_payload.get("candidates"), "batch.candidates")
-        if isinstance(item, Mapping) and item.get("candidate_id")
-    }
+    allowed = set(policy["decision_values"])
     bound: list[dict[str, Any]] = []
     seen: set[str] = set()
     for index, value in enumerate(_list(decision_payload.get("decisions"), "decisions.decisions")):

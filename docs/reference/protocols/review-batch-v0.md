@@ -46,7 +46,8 @@ Every selected candidate receives a digest over its normalized identity,
 evidence, priority, and proposal. The batch digest binds the exact ordered list
 of candidate digests to the policy. `review_batch_decisions_v0` must repeat the
 batch digest and each decided candidate's digest. `bind-decisions` rejects
-stale, unknown, duplicated, or policy-invalid decisions and emits a compact
+stale, tampered, unknown, duplicated, or policy-invalid decisions by
+recomputing both digest layers, then emits a compact
 `review_batch_decision_receipt_v0` without executing them.
 
 ## Delivery receipts
