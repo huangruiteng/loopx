@@ -31,6 +31,10 @@ from ..capabilities.explore.worker_branch_plan import (
     build_explore_worker_branch_plan,
     resolve_explore_harness_gate,
 )
+from ..control_plane.runtime.runtime_projection_route import (
+    compact_goal_source_runtime_route,
+    resolve_goal_source_runtime_route,
+)
 from ..presentation.sinks.lark.explore_results import (
     DEFAULT_EXPLORE_BASE_NAME,
     EXPLORE_TABLE_KEYS,
@@ -563,6 +567,16 @@ def handle_explore_command(
     try:
         registry = load_registry(registry_path)
         runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+        source_runtime_route = None
+        goal_id = str(getattr(args, "goal_id", "") or "")
+        if goal_id:
+            source_runtime_route = resolve_goal_source_runtime_route(
+                registry_path=registry_path,
+                goal_id=goal_id,
+                runtime_root_override=runtime_root_arg,
+                registry=registry,
+            )
+            runtime_root = Path(str(source_runtime_route["source_runtime_root"]))
         config_path = (
             Path(args.config_path).expanduser()
             if getattr(args, "config_path", None)
@@ -890,6 +904,10 @@ def handle_explore_command(
                 payload["card_file"] = str(card_file)
         else:
             raise ValueError(f"unknown explore command: {args.explore_command}")
+        if source_runtime_route is not None:
+            payload["source_runtime_route"] = compact_goal_source_runtime_route(
+                source_runtime_route
+            )
     except Exception as exc:
         payload = {
             "ok": False,

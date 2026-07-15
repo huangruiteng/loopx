@@ -15,6 +15,7 @@ RUNTIME_PROJECTION_ROUTE_SCHEMA_VERSION = "runtime_projection_route_v0"
 RUNTIME_PROJECTION_ROUTE_DIAGNOSTICS_SCHEMA_VERSION = (
     "runtime_projection_route_diagnostics_v0"
 )
+GOAL_SOURCE_RUNTIME_ROUTE_SCHEMA_VERSION = "goal_source_runtime_route_v0"
 
 
 def _same_path(left: Path, right: Path) -> bool:
@@ -42,6 +43,183 @@ def _resolved_source_registry(goal: dict[str, Any], *, registry_path: Path) -> P
     if not path.is_absolute():
         path = registry_path.parent / path
     return path.resolve()
+
+
+def _registry_runtime_root(
+    registry: dict[str, Any],
+    *,
+    registry_path: Path,
+    goal_id: str,
+) -> Path:
+    runtime_root = resolve_runtime_root(registry, None).expanduser()
+    if not runtime_root.is_absolute():
+        goal = next(
+            (
+                item
+                for item in registry_goals(registry)
+                if str(item.get("id") or "") == goal_id
+            ),
+            None,
+        )
+        repo = Path(str((goal or {}).get("repo") or "")).expanduser()
+        if not repo.is_absolute():
+            repo = (
+                registry_path.parent.parent
+                if registry_path.parent.name == ".loopx"
+                else registry_path.parent
+            )
+        runtime_root = repo / runtime_root
+    return runtime_root.resolve()
+
+
+def _goal_source_route_packet(
+    *,
+    status: str,
+    declaration_source: str,
+    goal_id: str,
+    invoked_registry: Path,
+    source_registry: Path,
+    invoked_runtime: Path,
+    source_runtime: Path,
+) -> dict[str, Any]:
+    return {
+        "schema_version": GOAL_SOURCE_RUNTIME_ROUTE_SCHEMA_VERSION,
+        "status": status,
+        "declaration_source": declaration_source,
+        "goal_id": goal_id,
+        "invoked_registry": str(invoked_registry),
+        "source_registry": str(source_registry),
+        "invoked_runtime_root": str(invoked_runtime),
+        "source_runtime_root": str(source_runtime),
+        "routed_to_source_registry": not _same_path(
+            source_registry,
+            invoked_registry,
+        ),
+    }
+
+
+def resolve_goal_source_runtime_route(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    runtime_root_override: str | None = None,
+    registry: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Resolve goal-scoped writes and reads to the canonical source runtime.
+
+    A global registry is a shared read model. When its goal declares a
+    ``source_registry``, goal-scoped capabilities must use that registry's
+    runtime rather than treating the shared projection as the source of truth.
+    An explicit runtime override remains authoritative for diagnostics and
+    recovery commands.
+    """
+
+    invoked_registry = registry_path.expanduser().resolve()
+    registry_payload = registry if registry is not None else load_registry(invoked_registry)
+    invoked_runtime = _registry_runtime_root(
+        registry_payload,
+        registry_path=invoked_registry,
+        goal_id=goal_id,
+    )
+    if runtime_root_override:
+        runtime_root = Path(runtime_root_override).expanduser().resolve()
+        return _goal_source_route_packet(
+            status="explicit_override",
+            declaration_source="cli.runtime_root_override",
+            goal_id=goal_id,
+            invoked_registry=invoked_registry,
+            source_registry=invoked_registry,
+            invoked_runtime=invoked_runtime,
+            source_runtime=runtime_root,
+        )
+
+    registry_is_global = bool(registry_payload.get("registry_role") == "global-local") or _same_path(
+        invoked_registry,
+        global_registry_path(invoked_runtime),
+    )
+    if not registry_is_global:
+        return _goal_source_route_packet(
+            status="project_registry",
+            declaration_source="invoked_registry.common_runtime_root",
+            goal_id=goal_id,
+            invoked_registry=invoked_registry,
+            source_registry=invoked_registry,
+            invoked_runtime=invoked_runtime,
+            source_runtime=invoked_runtime,
+        )
+
+    goal = next(
+        (
+            item
+            for item in registry_goals(registry_payload)
+            if str(item.get("id") or "") == goal_id
+        ),
+        None,
+    )
+    if goal is None:
+        raise ValueError(
+            f"goal-scoped runtime route requires registered goal {goal_id!r} in the global registry"
+        )
+    source_registry = _resolved_source_registry(goal, registry_path=invoked_registry)
+    if source_registry is None or _same_path(source_registry, invoked_registry):
+        return _goal_source_route_packet(
+            status="global_runtime",
+            declaration_source="global_registry.common_runtime_root",
+            goal_id=goal_id,
+            invoked_registry=invoked_registry,
+            source_registry=invoked_registry,
+            invoked_runtime=invoked_runtime,
+            source_runtime=invoked_runtime,
+        )
+    if not source_registry.exists():
+        raise ValueError(
+            f"goal {goal_id!r} source_registry is missing; refusing to use the shared runtime as source"
+        )
+    try:
+        source_payload = load_registry(source_registry)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"goal {goal_id!r} source_registry is unreadable; refusing to use the shared runtime as source"
+        ) from exc
+    if not any(str(item.get("id") or "") == goal_id for item in registry_goals(source_payload)):
+        raise ValueError(
+            f"goal {goal_id!r} is absent from source_registry; refusing to use the shared runtime as source"
+        )
+    source_runtime = _registry_runtime_root(
+        source_payload,
+        registry_path=source_registry,
+        goal_id=goal_id,
+    )
+    return _goal_source_route_packet(
+        status="source_registry",
+        declaration_source="global_registry.goal.source_registry",
+        goal_id=goal_id,
+        invoked_registry=invoked_registry,
+        source_registry=source_registry,
+        invoked_runtime=invoked_runtime,
+        source_runtime=source_runtime,
+    )
+
+
+def compact_goal_source_runtime_route(route: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": GOAL_SOURCE_RUNTIME_ROUTE_SCHEMA_VERSION,
+        "status": route.get("status"),
+        "declaration_source": route.get("declaration_source"),
+        "routed_to_source_registry": bool(route.get("routed_to_source_registry")),
+        "invoked_registry_sha256_16": _path_digest(
+            Path(str(route.get("invoked_registry") or ""))
+        ),
+        "source_registry_sha256_16": _path_digest(
+            Path(str(route.get("source_registry") or ""))
+        ),
+        "invoked_runtime_sha256_16": _path_digest(
+            Path(str(route.get("invoked_runtime_root") or ""))
+        ),
+        "source_runtime_sha256_16": _path_digest(
+            Path(str(route.get("source_runtime_root") or ""))
+        ),
+    }
 
 
 def runtime_projection_candidate_roots(
