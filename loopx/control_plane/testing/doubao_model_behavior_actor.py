@@ -17,6 +17,10 @@ from .model_behavior_qualification import (
     ModelBehaviorActor,
     normalize_model_behavior_actor_request,
 )
+from .onboarding_model_behavior_qualification import (
+    ONBOARDING_MODEL_BEHAVIOR_RESULT_SCHEMA_VERSION,
+    normalize_onboarding_model_behavior_actor_request,
+)
 
 
 DOUBAO_2_1_PRO_MODEL = "doubao-seed-2-1-pro-260628"
@@ -249,6 +253,123 @@ def _provider_decision(response: Mapping[str, Any]) -> Mapping[str, Any]:
     return decision
 
 
+def _invoke_provider_decision(
+    *,
+    api_key: str,
+    model: str,
+    timeout_seconds: float,
+    transport: DoubaoActorTransport,
+    system_instruction: str,
+    provider_input: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    body = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_instruction},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    dict(provider_input),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            },
+        ],
+        "response_format": {"type": "json_object"},
+        "thinking": {"type": "disabled"},
+        "temperature": 0,
+        "max_tokens": _MAX_DECISION_TOKENS,
+        "stream": False,
+    }
+    try:
+        response = transport(
+            endpoint=DOUBAO_CHAT_COMPLETIONS_ENDPOINT,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            body=json.dumps(
+                body,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8"),
+            timeout_seconds=timeout_seconds,
+        )
+    except DoubaoActorTransportError:
+        raise
+    except Exception:
+        raise DoubaoActorTransportError(
+            "Doubao actor provider transport failed",
+            error_code="provider_transport_failed",
+        ) from None
+    return _provider_decision(response)
+
+
+def _onboarding_decision_instruction(phase: str) -> str:
+    common = """You are a LoopX new-user onboarding decision simulator.
+Use only the qualification packet supplied by the user. Do not call tools,
+execute commands, or request external writes. Return exactly one JSON object
+with these top-level fields and no others:
+{
+  "schema_version": "onboarding_model_behavior_decision_v0",
+  "phase": "entry|postcondition",
+  "next_action": "phase-specific route",
+  "semantic_contract": {},
+  "reason_codes": ["compact_public_safe_token"]
+}
+Copy the requested phase exactly. Output JSON only, without markdown or
+reasoning. The semantic_contract must contain exactly the phase-specific fields
+described below. Use null where instructed and never invent identifiers."""
+    if phase == "entry":
+        return common + """
+
+For phase=entry, derive the contract from the start-goal packet:
+- route: select_agent_identity when guided_transaction is blocked by an
+  identity gate; select_goal when blocked by a goal-selection gate;
+  connect_if_needed when ordered_steps contains that id; otherwise stop.
+- goal_id: copy the top-level goal_id, including null.
+- agent_id: copy top-level agent_id, falling back to
+  host_loop_activation.agent_id or command_pack.host_loop_activation.agent_id;
+  otherwise null.
+- action_command_ids: in this exact order, include each key whose value is a
+  non-empty string in top-level commands or command_pack.commands:
+  goal_start_connect_if_needed, goal_start_refresh_state,
+  goal_start_host_loop_activation, goal_start_quota_should_run.
+- host_loop_activation_available: true when top-level host_loop_activation or
+  command_pack.host_loop_activation is a non-empty object.
+- host_loop_activation_after_todo_write: copy
+  activation_required_after_todo_write from that activation object, else false.
+- writes_now and spends_quota_now: copy the corresponding booleans from
+  guided_transaction, defaulting to false.
+Set next_action equal to route. The semantic_contract must contain exactly:
+route, goal_id, agent_id, action_command_ids,
+host_loop_activation_available, host_loop_activation_after_todo_write,
+writes_now, spends_quota_now."""
+    return common + """
+
+For phase=postcondition, the packet is a locally derived observation:
+- route: copy derived_route.
+- state_projection_gap: copy the boolean field.
+- executable_todo_present: true exactly when executable_todo_count is greater
+  than zero.
+- selected_action_kind: copy the field, including null.
+- normal_delivery_allowed and user_action_required: copy both booleans.
+Set next_action equal to route. The semantic_contract must contain exactly:
+route, state_projection_gap, executable_todo_present, selected_action_kind,
+normal_delivery_allowed, user_action_required."""
+
+
+def _onboarding_provider_input(request: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": "onboarding_model_behavior_provider_input_v0",
+        "arm": request["arm"],
+        "phase": request["phase"],
+        "packet": request["packet"],
+    }
+
+
 class DoubaoModelBehaviorActor(ModelBehaviorActor):
     """Direct Ark actor for low-frequency, no-tool behavior qualification."""
 
@@ -297,58 +418,86 @@ class DoubaoModelBehaviorActor(ModelBehaviorActor):
 
     def __call__(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         canonical_request = normalize_model_behavior_actor_request(request)
-        body = {
-            "model": self._model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": _decision_instruction(
-                        semantic_contract_required=bool(
-                            canonical_request["semantic_contract_required"]
-                        )
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        _provider_input(canonical_request),
-                        ensure_ascii=False,
-                        sort_keys=True,
-                        separators=(",", ":"),
-                    ),
-                },
-            ],
-            "response_format": {"type": "json_object"},
-            "thinking": {"type": "disabled"},
-            "temperature": 0,
-            "max_tokens": _MAX_DECISION_TOKENS,
-            "stream": False,
-        }
-        try:
-            response = self._transport(
-                endpoint=DOUBAO_CHAT_COMPLETIONS_ENDPOINT,
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                },
-                body=json.dumps(
-                    body,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ).encode("utf-8"),
-                timeout_seconds=self._timeout_seconds,
-            )
-        except DoubaoActorTransportError:
-            raise
-        except Exception:
-            raise DoubaoActorTransportError(
-                "Doubao actor provider transport failed",
-                error_code="provider_transport_failed",
-            ) from None
+        decision = _invoke_provider_decision(
+            api_key=self._api_key,
+            model=self._model,
+            timeout_seconds=self._timeout_seconds,
+            transport=self._transport,
+            system_instruction=_decision_instruction(
+                semantic_contract_required=bool(
+                    canonical_request["semantic_contract_required"]
+                )
+            ),
+            provider_input=_provider_input(canonical_request),
+        )
         return {
             "schema_version": MODEL_BEHAVIOR_ACTOR_RESULT_SCHEMA_VERSION,
             "actor_ref": f"ark:{self._model}",
-            "decision": dict(_provider_decision(response)),
+            "decision": dict(decision),
+            "tool_calls": [],
+        }
+
+
+class DoubaoOnboardingModelBehaviorActor:
+    """Direct Ark actor for low-frequency onboarding closed-loop qualification."""
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str = DOUBAO_2_1_PRO_MODEL,
+        timeout_seconds: float = 90.0,
+        transport: DoubaoActorTransport = _direct_ark_transport,
+    ) -> None:
+        if not api_key.strip():
+            raise RuntimeError("Doubao actor requires a runtime-injected API key")
+        if model not in _ALLOWED_MODELS:
+            raise ValueError(
+                "Doubao actor model must be an allowlisted Doubao 2.1 model"
+            )
+        if timeout_seconds <= 0 or timeout_seconds > 300:
+            raise ValueError("Doubao actor timeout must be between 0 and 300 seconds")
+        self._api_key = api_key
+        self._model = model
+        self._timeout_seconds = timeout_seconds
+        self._transport = transport
+
+    @classmethod
+    def from_environment(
+        cls,
+        *,
+        environ: Mapping[str, str] | None = None,
+        transport: DoubaoActorTransport = _direct_ark_transport,
+        timeout_seconds: float = 90.0,
+    ) -> DoubaoOnboardingModelBehaviorActor:
+        values = os.environ if environ is None else environ
+        api_key = values.get(ARK_API_KEY_ENV, "")
+        if not api_key.strip():
+            raise RuntimeError(
+                "ARK_API_KEY is not injected; live Doubao qualification is unavailable"
+            )
+        model = values.get(DOUBAO_MODEL_ENV, DOUBAO_2_1_PRO_MODEL)
+        return cls(
+            api_key=api_key,
+            model=model,
+            timeout_seconds=timeout_seconds,
+            transport=transport,
+        )
+
+    def __call__(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        canonical_request = normalize_onboarding_model_behavior_actor_request(request)
+        phase = str(canonical_request["phase"])
+        decision = _invoke_provider_decision(
+            api_key=self._api_key,
+            model=self._model,
+            timeout_seconds=self._timeout_seconds,
+            transport=self._transport,
+            system_instruction=_onboarding_decision_instruction(phase),
+            provider_input=_onboarding_provider_input(canonical_request),
+        )
+        return {
+            "schema_version": ONBOARDING_MODEL_BEHAVIOR_RESULT_SCHEMA_VERSION,
+            "actor_ref": f"ark:{self._model}",
+            "decision": dict(decision),
             "tool_calls": [],
         }
