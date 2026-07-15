@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import shlex
+from pathlib import Path
 from typing import Any
 
 from ...benchmark_core import compact_run_permission_policy_for_quota
 from ...boundary_authority import checkpointed_boundary_authority_summary
+from ...capabilities.lark.event_inbox import project_lark_event_inbox_urgency
 from ...execution_profile import execution_profile_outcome_floor
 from ...explore_graph import compact_explore_graph_policy
 from ...orchestration import compact_orchestration_policy
@@ -148,11 +150,27 @@ def goal_boundary(goal: dict[str, Any], item: dict[str, Any] | None = None) -> d
                 ".",
             ]
         )
-        boundary.setdefault("capabilities", {})["lark_event_inbox"] = {
+        inbox_capability: dict[str, Any] = {
             "enabled": True,
             "config_pointer_registered": bool(lark_event_inbox.get("config_path")),
             "drain_command": drain_command,
         }
+        project = Path(str(goal.get("repo") or "")).expanduser()
+        config_path = str(lark_event_inbox.get("config_path") or "").strip()
+        if project.is_dir() and config_path:
+            try:
+                inbox_capability["urgency"] = project_lark_event_inbox_urgency(
+                    project=project,
+                    config_path=config_path,
+                )
+            except (OSError, ValueError):
+                inbox_capability["urgency"] = {
+                    "schema_version": "lark_event_inbox_urgency_v0",
+                    "enabled": True,
+                    "projection_status": "unavailable",
+                    "local_private_content_returned": False,
+                }
+        boundary.setdefault("capabilities", {})["lark_event_inbox"] = inbox_capability
     if goal.get("next_probe"):
         boundary["next_probe"] = str(goal.get("next_probe"))
     if isinstance(goal.get("explore_graph"), dict):

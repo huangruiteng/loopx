@@ -63,11 +63,7 @@ from .control_plane.quota.projection_repair import (
 from .control_plane.quota.decision_summary import (
     quota_decision_agent_id,
 )
-from .control_plane.quota.goal_boundary import (
-    effective_available_capabilities as _effective_available_capabilities,
-    goal_boundary as _goal_boundary,
-    quota_execution_profile_summary as _quota_execution_profile_summary,
-)
+from .control_plane.quota.goal_boundary import effective_available_capabilities as _effective_available_capabilities, goal_boundary as _goal_boundary, quota_execution_profile_summary as _quota_execution_profile_summary
 from .control_plane.quota.monitor_poll import (
     QUOTA_MONITOR_POLL_CLASSIFICATION,
     build_quota_monitor_poll_event,
@@ -128,15 +124,9 @@ from .control_plane.runtime.promotion_readiness import (
 )
 from .control_plane.work_items.goal_route_hint import build_goal_route_hint
 from .control_plane.work_items.capability_monitor_fallback import build_capability_gate_with_monitor_fallback
-from .control_plane.work_items.work_lane import (
-    scoped_user_gate_due_monitor_contract, work_lane_contract_is_due_monitor_attempt,
-)
-from .control_plane.scheduler.scheduler_hint import (
-    build_scheduler_hint,
-)
-from .control_plane.scheduler.external_evidence_observation import (
-    build_external_evidence_observation_obligation,
-)
+from .control_plane.work_items.work_lane import lark_inbox_reply_due_work_lane_contract, scoped_user_gate_due_monitor_contract, work_lane_contract_is_due_monitor_attempt, work_lane_contract_is_lark_inbox_reply_due
+from .control_plane.scheduler.scheduler_hint import build_scheduler_hint
+from .control_plane.scheduler.external_evidence_observation import build_external_evidence_observation_obligation
 from .control_plane.scheduler.automation_liveness import build_automation_liveness
 from .control_plane.scheduler.state import (
     CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
@@ -1361,7 +1351,7 @@ def build_quota_should_run(
             }
             recovery_allowed = False
             reason = str(quota["reason"])
-        goal_boundary = _goal_boundary(item)
+        goal_boundary = _goal_boundary(registry_goal or item, item=item)
         workspace_guard = build_agent_workspace_guard(
             item,
             agent_identity,
@@ -1417,6 +1407,11 @@ def build_quota_should_run(
         )
         work_lane_contract = scoped_user_gate_due_monitor_contract(
             scoped_user_gate_fallback, current_contract=work_lane_contract) or work_lane_contract
+        work_lane_contract = lark_inbox_reply_due_work_lane_contract(goal_boundary, current_contract=work_lane_contract)
+        inbox_reply_due = work_lane_contract_is_lark_inbox_reply_due(work_lane_contract)
+        if inbox_reply_due:
+            task_orchestration_contract = capability_gate = capability_monitor_contract = None
+            capability_monitor_fallback = scoped_user_gate_fallback = workspace_guard = None
         agent_frontier_id = (
             normalize_todo_claimed_by(agent_identity.get("agent_id"))
             if isinstance(agent_identity, dict)
@@ -1521,7 +1516,7 @@ def build_quota_should_run(
             state=state,
             quota=quota,
         )
-        replan_decision_allowed = autonomous_replan_decision_allowed(
+        replan_decision_allowed = not inbox_reply_due and autonomous_replan_decision_allowed(
             replan_obligation=replan_obligation,
             plan_ok=bool(plan.get("ok")),
             workspace_blocked=bool(workspace_guard),
@@ -1541,6 +1536,10 @@ def build_quota_should_run(
         if automation_prompt_upgrade_required:
             should_run = False
             effective_action = "automation_prompt_upgrade_required"
+        elif inbox_reply_due:
+            should_run, normal_delivery_allowed = True, True
+            recovery_allowed = self_repair_allowed = capability_repair_allowed = workspace_repair_allowed = False
+            effective_action, reason = "lark_inbox_reply_due", "a direct Lark question or bot mention is pending reply"
         effective_action, reason = task_orchestration_effective_action(
             task_orchestration_contract,
             should_run=should_run,
@@ -1652,7 +1651,7 @@ def build_quota_should_run(
                 agent_todo_summary,
                 agent_id=normalize_todo_claimed_by(agent_identity.get("agent_id")),
             )
-        if external_evidence_observation and not workspace_guard:
+        if external_evidence_observation and not workspace_guard and not inbox_reply_due:
             normal_delivery_allowed = False
             should_run = True
             heartbeat_recommendation = {
@@ -1731,7 +1730,7 @@ def build_quota_should_run(
                 or "Run one bounded autonomous replan slice and write back the selected todo/frontier changes."
             )
         agent_lane_next_action = None
-        if not due_monitor_attempt and not task_orchestration_contract and not capability_monitor_fallback:
+        if not due_monitor_attempt and not inbox_reply_due and not task_orchestration_contract and not capability_monitor_fallback:
             agent_lane_next_action = build_agent_lane_next_action(
                 agent_identity=agent_identity,
                 agent_todo_summary=agent_todo_summary,

@@ -14,6 +14,7 @@ WORK_LANE_CURRENT_AGENT_MONITOR_REPAIR_OBLIGATIONS = {
 WORK_LANE_EXTERNAL_EVIDENCE_OBSERVATION_OBLIGATION = (
     "observe_external_evidence_or_blocker"
 )
+WORK_LANE_LARK_INBOX_REPLY_DUE_OBLIGATION = "drain_lark_inbox_reply_due"
 WORK_LANE_TODO_MONITOR_DUE_KIND = "todo_monitor_due"
 WORK_LANE_TODO_ITEM_FIELDS = (
     "index",
@@ -91,6 +92,8 @@ def work_lane_contract_requires_current_agent_attempt(
     obligation = str(contract.get("obligation") or "")
     if obligation in WORK_LANE_CURRENT_AGENT_MONITOR_REPAIR_OBLIGATIONS:
         return True
+    if obligation == WORK_LANE_LARK_INBOX_REPLY_DUE_OBLIGATION:
+        return True
     return bool(
         obligation == WORK_LANE_EXTERNAL_EVIDENCE_OBSERVATION_OBLIGATION
         and contract.get("selected_todo_id")
@@ -106,6 +109,63 @@ def work_lane_contract_is_due_monitor_attempt(
         and contract.get("monitor_kind") == WORK_LANE_TODO_MONITOR_DUE_KIND
         and contract.get("must_attempt_work") is True
     )
+
+
+def work_lane_contract_is_lark_inbox_reply_due(
+    contract: dict[str, Any] | None,
+) -> bool:
+    return bool(
+        isinstance(contract, dict)
+        and contract.get("obligation") == WORK_LANE_LARK_INBOX_REPLY_DUE_OBLIGATION
+        and contract.get("must_attempt_work") is True
+    )
+
+
+def lark_inbox_reply_due_work_lane_contract(
+    goal_boundary: dict[str, Any] | None,
+    *,
+    current_contract: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Preempt ordinary work when a configured inbox has a direct reply due."""
+
+    if not isinstance(goal_boundary, dict):
+        return current_contract
+    capabilities = goal_boundary.get("capabilities")
+    capabilities = capabilities if isinstance(capabilities, dict) else {}
+    inbox = capabilities.get("lark_event_inbox")
+    inbox = inbox if isinstance(inbox, dict) else {}
+    urgency = inbox.get("urgency")
+    urgency = urgency if isinstance(urgency, dict) else {}
+    if urgency.get("reply_due") is not True:
+        return current_contract
+    return {
+        "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
+        "lane": "lark_event_inbox",
+        "next_lane": (
+            str(current_contract.get("lane") or "advancement_task")
+            if isinstance(current_contract, dict)
+            else "advancement_task"
+        ),
+        "obligation": WORK_LANE_LARK_INBOX_REPLY_DUE_OBLIGATION,
+        "must_attempt_work": True,
+        "priority_preemption": True,
+        "reason_codes": ["lark_inbox_reply_due", "direct_question_or_mention"],
+        "pending_count": max(0, int(urgency.get("pending_count") or 0)),
+        "direct_question_count": max(
+            0, int(urgency.get("direct_question_count") or 0)
+        ),
+        "direct_mention_count": max(
+            0, int(urgency.get("direct_mention_count") or 0)
+        ),
+        "oldest_pending_age_seconds": urgency.get("oldest_pending_age_seconds"),
+        "drain_command": inbox.get("drain_command"),
+        "monitor_policy": "durable_effect_then_one_verified_reply_then_ack",
+        "action": (
+            "drain the configured Lark inbox before ordinary work; translate the "
+            "direct question or mention into a durable effect, send exactly one "
+            "source-thread reply with idempotency and readback, then ACK"
+        ),
+    }
 
 
 def scoped_user_gate_due_monitor_contract(

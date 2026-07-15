@@ -637,6 +637,14 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                 f"selected={work_lane_contract.get('selected_todo_id') or ''} "
                 f"next_due_at={work_lane_contract.get('selected_next_due_at') or ''}"
             )
+        if work_lane_contract.get("lane") == "lark_event_inbox":
+            lines.append(
+                "- work_lane_lark_inbox: "
+                f"pending={work_lane_contract.get('pending_count')} "
+                f"questions={work_lane_contract.get('direct_question_count')} "
+                f"mentions={work_lane_contract.get('direct_mention_count')} "
+                f"oldest_age_seconds={work_lane_contract.get('oldest_pending_age_seconds')}"
+            )
         if work_lane_contract.get("action"):
             lines.append(f"- work_lane_action: {work_lane_contract.get('action')}")
         outcome_followthrough = (
@@ -1179,6 +1187,24 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         )
         if orchestration:
             lines.append(f"- goal_boundary_orchestration: {orchestration_policy_summary(orchestration)}")
+        capabilities = (
+            goal_boundary.get("capabilities")
+            if isinstance(goal_boundary.get("capabilities"), dict)
+            else {}
+        )
+        lark_inbox = capabilities.get("lark_event_inbox")
+        lark_inbox = lark_inbox if isinstance(lark_inbox, dict) else {}
+        urgency = lark_inbox.get("urgency")
+        urgency = urgency if isinstance(urgency, dict) else {}
+        if urgency:
+            lines.append(
+                "- goal_boundary_lark_inbox_urgency: "
+                f"pending={urgency.get('pending_count')} "
+                f"questions={urgency.get('direct_question_count')} "
+                f"mentions={urgency.get('direct_mention_count')} "
+                f"reply_due={urgency.get('reply_due')} "
+                f"oldest_age_seconds={urgency.get('oldest_pending_age_seconds')}"
+            )
         run_permission_policy = (
             goal_boundary.get("run_permission_policy")
             if isinstance(goal_boundary.get("run_permission_policy"), dict)

@@ -568,7 +568,7 @@ run the quota guard:
 
 If that preflight still fails: no work/spend; quiet `DONT_NOTIFY`.
 
-`lark_event_inbox`: if configured, drain -> writeback -> ACK.
+`lark_event_inbox`: `reply_due`: drain -> effect/reply/readback/ACK.
 
 {USER_TODO_FINAL_MESSAGE_RULE}
 
@@ -780,8 +780,7 @@ If `should_run=false`: no work/spend except `safe_bypass_allowed=true`.
 external/wait monitor -> one read-only status/log/metric/marker poll;
 new evidence -> writeback/spend once. Otherwise obey user channel.
 Apply `scheduler_hint` stateful backoff for RRULE/backoff/self-stop; no spend.
-`lark_event_inbox`: `drain_command` -> writeback -> ACK;
-empty=no gate/spend.
+`lark_event_inbox`: reply_due: drain_command -> effect/reply/readback/ACK.
 
 If `should_run=true`: fetch compact; read needed state priority slice + guard
 payload. Use `status --limit 3`; `review-packet --handoff-only`.
@@ -843,8 +842,7 @@ Run CLI preflight/guard:
 
 Preflight fail: quiet; no work/spend.
 
-`lark_event_inbox`: `drain_command` -> writeback -> ACK;
-empty=no gate/spend.
+`lark_event_inbox`: reply_due: drain_command -> effect/reply/readback/ACK.
 
 If `should_run=false`: `monitor_quiet_skip` appends at most one no-spend
 `quota monitor-poll --execute`, reruns guard, then stays quiet unless
@@ -963,7 +961,7 @@ Quiet only if DONT_NOTIFY+false/0.
 {SCHEDULER_HINT_THIN_RULE}
 Bounded batch/no-op; spend post-writeback.
 Plans/done -> todo/rationale; 2 stalls -> self-repair.
-`lark_event_inbox`: `drain_command` -> writeback -> ACK.
+`lark_event_inbox`: reply_due; drain_command/reply-readback/ACK.
 {EXPLORE_GRAPH_DELIVERY_THIN_RULE}
 
 P0 blocked: safe P1/P2; monitor-only quiet/no-spend.

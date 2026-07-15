@@ -10,7 +10,10 @@ from ..todos.contract import (
 )
 from ..todos.summary_item import compact_todo_summary_item
 from ..work_items.primary_action import protocol_action_text
-from ..work_items.work_lane import work_lane_contract_is_due_monitor_attempt
+from ..work_items.work_lane import (
+    work_lane_contract_is_due_monitor_attempt,
+    work_lane_contract_is_lark_inbox_reply_due,
+)
 from .agent_scope import (
     _todo_item_is_actionable_open,
     _todo_task_class,
@@ -173,6 +176,8 @@ def selected_recommended_action_from_work_lane(
     work_lane_contract: dict[str, Any] | None,
 ) -> Any:
     raw_action = item.get("recommended_action")
+    if work_lane_contract_is_lark_inbox_reply_due(work_lane_contract):
+        return work_lane_contract.get("action") or raw_action
     if work_lane_contract_is_due_monitor_attempt(work_lane_contract):
         due_items = (
             work_lane_contract.get("monitor_due_items")

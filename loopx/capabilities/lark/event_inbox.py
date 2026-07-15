@@ -15,6 +15,9 @@ MESSAGE_ID_PATTERN = re.compile(r"om_[A-Za-z0-9_-]+")
 EVENT_ID_PATTERN = re.compile(r"[A-Za-z0-9:_-]{1,200}")
 SAFE_PROFILE_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,100}")
 CHAT_ID_PATTERN = re.compile(r"oc_[A-Za-z0-9_-]+")
+QUESTION_SIGNAL_PATTERN = re.compile(
+    r"[?？]|(?:请问|怎么|怎样|为何|为什么|是不是|是否|能否|可以吗|行吗|结论呢|回复吗)"
+)
 
 
 def _safe_inbox_path(project: str | Path, raw_path: str) -> Path:
@@ -148,6 +151,131 @@ def _event_from_file(path: Path) -> dict[str, Any] | None:
     return _event_from_payload(payload)
 
 
+def _pending_events(config: Mapping[str, Any]) -> tuple[list[dict[str, Any]], int, int]:
+    inbox = config["inbox_path"]
+    processed = _load_processed(inbox / "processed.json")
+    events: dict[str, dict[str, Any]] = {}
+    invalid_count = 0
+    for path in sorted(inbox.glob("*.json")) if inbox.is_dir() else []:
+        if path.name == "processed.json":
+            continue
+        event = _event_from_file(path)
+        if event is None:
+            invalid_count += 1
+            continue
+        events.setdefault(event["message_id"], event)
+    pending = [event for key, event in events.items() if key not in processed]
+    pending.sort(key=lambda item: (item["create_time"], item["message_id"]))
+    return pending, len(events), invalid_count
+
+
+def _parse_event_time(value: object) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    if raw.isdigit():
+        number = int(raw)
+        if number > 10_000_000_000:
+            number //= 1000
+        try:
+            return datetime.fromtimestamp(number, tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _event_attention_kind(
+    event: Mapping[str, Any],
+    *,
+    bot_display_name: str,
+    capture_scope: str,
+) -> str | None:
+    content = " ".join(str(event.get("content") or "").split())
+    if not content:
+        return None
+    folded = content.casefold()
+    bot_name = " ".join(str(bot_display_name or "").split()).casefold()
+    explicit_bot_mention = bool(bot_name and bot_name in folded)
+    generic_loopx_mention = "@" in content and "loopx" in folded
+    addressed = bool(
+        capture_scope == "addressed_only"
+        or explicit_bot_mention
+        or generic_loopx_mention
+    )
+    if not addressed:
+        return None
+    if QUESTION_SIGNAL_PATTERN.search(content):
+        return "direct_question"
+    if explicit_bot_mention or generic_loopx_mention:
+        return "direct_mention"
+    return None
+
+
+def project_lark_event_inbox_urgency(
+    *,
+    project: str | Path,
+    config_path: str | Path,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Return a content-free urgency read model for quota/status routing."""
+
+    config = load_lark_event_inbox_config(project=project, config_path=config_path)
+    if not config["enabled"]:
+        return {
+            "schema_version": "lark_event_inbox_urgency_v0",
+            "enabled": False,
+            "pending_count": 0,
+            "direct_question_count": 0,
+            "direct_mention_count": 0,
+            "attention_required_count": 0,
+            "reply_due": False,
+            "local_private_content_returned": False,
+        }
+    pending, _, _ = _pending_events(config)
+    kinds = [
+        _event_attention_kind(
+            event,
+            bot_display_name=str(config["reply"].get("bot_display_name") or ""),
+            capture_scope=str(config["capture_scope"]),
+        )
+        for event in pending
+    ]
+    direct_question_count = kinds.count("direct_question")
+    direct_mention_count = kinds.count("direct_mention")
+    attention_required_count = direct_question_count + direct_mention_count
+    parsed_times = [
+        parsed
+        for event in pending
+        if (parsed := _parse_event_time(event.get("create_time"))) is not None
+    ]
+    oldest = min(parsed_times) if parsed_times else None
+    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    oldest_age_seconds = (
+        max(0, int((current - oldest).total_seconds())) if oldest else None
+    )
+    return {
+        "schema_version": "lark_event_inbox_urgency_v0",
+        "enabled": True,
+        "thread_complete": bool(config["thread_complete"]),
+        "pending_count": len(pending),
+        "direct_question_count": direct_question_count,
+        "direct_mention_count": direct_mention_count,
+        "attention_required_count": attention_required_count,
+        "oldest_pending_at": oldest.isoformat() if oldest else None,
+        "oldest_pending_age_seconds": oldest_age_seconds,
+        "reply_due": bool(
+            attention_required_count > 0 and config["reply"].get("enabled") is True
+        ),
+        "local_private_content_returned": False,
+    }
+
+
 def ingest_lark_event_inbox(
     *,
     project: str | Path,
@@ -231,18 +359,7 @@ def inspect_lark_event_inbox(
         }
     inbox = config["inbox_path"]
     processed = _load_processed(inbox / "processed.json")
-    events: dict[str, dict[str, Any]] = {}
-    invalid_count = 0
-    for path in sorted(inbox.glob("*.json")) if inbox.is_dir() else []:
-        if path.name == "processed.json":
-            continue
-        event = _event_from_file(path)
-        if event is None:
-            invalid_count += 1
-            continue
-        events.setdefault(event["message_id"], event)
-    pending = [event for key, event in events.items() if key not in processed]
-    pending.sort(key=lambda item: (item["create_time"], item["message_id"]))
+    pending, captured_count, invalid_count = _pending_events(config)
     bounded = pending[: max(1, min(int(limit), 100))]
     return {
         "ok": True,
@@ -257,7 +374,7 @@ def inspect_lark_event_inbox(
             else "addressed_only capture does not include unaddressed thread replies"
         ),
         "pending_count": len(pending),
-        "captured_count": len(events),
+        "captured_count": captured_count,
         "returned_count": len(bounded),
         "processed_count": len(processed),
         "invalid_count": invalid_count,
