@@ -11,6 +11,10 @@ from .scheduler_ack import QUOTA_SCHEDULER_ACK_CLASSIFICATION
 from .spend_sources import DEFAULT_SLOT_SPEND_SOURCE, VALID_SLOT_SPEND_SOURCES
 from ..runtime.time import now_local_iso
 from ..runtime.run_artifacts import run_file_stem, unique_run_artifact_paths
+from ..agents.workspace_guard import (
+    build_delivery_workspace_guard,
+    delivery_workspace_repository,
+)
 from ..todos.contract import normalize_todo_claimed_by
 from ..work_items.delivery_outcome import (
     ACCOUNTABLE_DELIVERY_OUTCOMES,
@@ -176,9 +180,57 @@ def build_quota_slot_preview_for_decision(
         before.get("effective_action") == "capability_bridge_repair"
         and before.get("capability_repair_allowed") is True
     )
+    raw_runtime_root = status_payload.get("runtime_root")
+    delivery_completion_run = (
+        _latest_unspent_accountable_delivery_run(
+            Path(str(raw_runtime_root)).expanduser(),
+            safe_goal_id,
+            agent_id=safe_requested_agent_id,
+        )
+        if raw_runtime_root
+        else None
+    )
+    raw_delivery_workspace = (
+        delivery_completion_run.get("delivery_workspace")
+        if isinstance(delivery_completion_run, dict)
+        and isinstance(delivery_completion_run.get("delivery_workspace"), dict)
+        else None
+    )
+    delivery_workspace = (
+        raw_delivery_workspace
+        if delivery_workspace_repository(raw_delivery_workspace)
+        else None
+    )
+    delivery_workspace_guard = (
+        build_delivery_workspace_guard(
+            delivery_completion_run,
+            agent_id=safe_requested_agent_id,
+        )
+        if delivery_completion_run and delivery_workspace
+        else None
+    )
+    if delivery_workspace_guard:
+        return {
+            "ok": False,
+            "mode": "spend-slot",
+            "dry_run": True,
+            "goal_id": safe_goal_id,
+            "slots": safe_slots,
+            "agent_id": safe_requested_agent_id,
+            "appended": False,
+            "registry_mutated": False,
+            "reason": delivery_workspace_guard["reason"],
+            "workspace_guard": delivery_workspace_guard,
+            "delivery_workspace": delivery_workspace,
+            "delivery_workspace_validated": False,
+            "before": before,
+            "after": None,
+        }
+    delivery_workspace_validated = bool(delivery_workspace)
     workspace_repair_no_spend = (
         before.get("effective_action") == "agent_workspace_repair"
         and before.get("workspace_repair_allowed") is True
+        and not delivery_workspace_validated
     )
     if workspace_repair_no_spend:
         return {
@@ -190,6 +242,8 @@ def build_quota_slot_preview_for_decision(
             "agent_id": safe_requested_agent_id,
             "appended": False,
             "registry_mutated": False,
+            "delivery_workspace": delivery_workspace,
+            "delivery_workspace_validated": False,
             "reason": (
                 "agent workspace guard requires moving to an independent "
                 "worktree and rerunning quota should-run before quota spend"
@@ -197,22 +251,16 @@ def build_quota_slot_preview_for_decision(
             "before": before,
             "after": None,
         }
-    raw_runtime_root = status_payload.get("runtime_root")
-    delivery_completion_run = (
-        _latest_unspent_accountable_delivery_run(
-            Path(str(raw_runtime_root)).expanduser(),
-            safe_goal_id,
-            agent_id=safe_requested_agent_id,
-        )
-        if raw_runtime_root
-        else None
-    )
     delivery_completion_spend = (
         delivery_completion_run is not None
         and before.get("ok")
         and (
             not before.get("should_run")
             or before.get("effective_action") == "external_evidence_observe"
+            or (
+                before.get("effective_action") == "agent_workspace_repair"
+                and delivery_workspace_validated
+            )
         )
         and before.get("effective_action") != "automation_prompt_upgrade_required"
         and not safe_bypass_spend
@@ -315,6 +363,8 @@ def build_quota_slot_preview_for_decision(
         "delivery_run_recommended_action": delivery_completion_run.get("recommended_action")
         if delivery_completion_run
         else None,
+        "delivery_workspace": delivery_workspace,
+        "delivery_workspace_validated": delivery_workspace_validated,
     }
 
 
@@ -440,6 +490,10 @@ def build_quota_slot_spend_event(
             "delivery_run_classification": preview.get("delivery_run_classification"),
             "delivery_run_agent_id": preview.get("delivery_run_agent_id"),
             "delivery_run_recommended_action": delivery_run_action or None,
+            "delivery_workspace": preview.get("delivery_workspace"),
+            "delivery_workspace_validated": bool(
+                preview.get("delivery_workspace_validated")
+            ),
             "before": before_compact,
             "after": after_compact,
         },

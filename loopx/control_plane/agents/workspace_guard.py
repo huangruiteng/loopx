@@ -5,9 +5,10 @@ import subprocess
 from typing import Any
 
 from ...repository_identity import normalize_repository_identity
-from ..todos.contract import normalize_todo_task_repository
+from ..todos.contract import normalize_todo_claimed_by, normalize_todo_task_repository
 
 AGENT_WORKSPACE_GUARD_SCHEMA_VERSION = "agent_workspace_guard_v1"
+DELIVERY_WORKSPACE_SCHEMA_VERSION = "delivery_workspace_v0"
 PEER_WRITE_ACTION_KINDS = {
     "fix",
     "implement",
@@ -94,6 +95,134 @@ def _git_repository_identity(path: Path) -> str | None:
         return normalize_repository_identity(remote)
     except ValueError:
         return None
+
+
+def capture_delivery_workspace(
+    current_path: Path | None = None,
+    *,
+    peer_independent_worktree_required: bool = False,
+) -> dict[str, Any] | None:
+    """Capture a compact, credential-free delivery workspace identity.
+
+    The snapshot intentionally excludes local paths and branch names.  It is
+    safe to persist with an accountable run and later binds quota accounting
+    to the repository where that delivery was actually written.
+    """
+
+    path = current_path or Path.cwd()
+    current_root = _git_worktree_root(path)
+    if current_root is None:
+        return None
+    current_common = _git_common_dir(path)
+    current_git_dir = _git_dir(path)
+    task_repository = _git_repository_identity(path)
+    if not task_repository or current_common is None or current_git_dir is None:
+        return None
+    workspace_kind = (
+        "independent_git_worktree"
+        if current_git_dir != current_common
+        else "canonical_checkout"
+    )
+    return {
+        "schema_version": DELIVERY_WORKSPACE_SCHEMA_VERSION,
+        "task_repository": task_repository,
+        "repository_source": "current_git_origin",
+        "workspace_kind": workspace_kind,
+        "peer_independent_worktree_required": bool(
+            peer_independent_worktree_required
+        ),
+    }
+
+
+def delivery_workspace_repository(value: Any) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    if value.get("schema_version") != DELIVERY_WORKSPACE_SCHEMA_VERSION:
+        return None
+    if value.get("workspace_kind") not in {
+        "canonical_checkout",
+        "independent_git_worktree",
+    }:
+        return None
+    if not isinstance(value.get("peer_independent_worktree_required"), bool):
+        return None
+    try:
+        return normalize_todo_task_repository(value.get("task_repository"))
+    except (TypeError, ValueError):
+        return None
+
+
+def build_delivery_workspace_guard(
+    delivery_run: dict[str, Any],
+    *,
+    agent_id: str | None = None,
+    current_path: Path | None = None,
+) -> dict[str, Any] | None:
+    """Validate quota accounting against its accountable delivery workspace.
+
+    Legacy delivery runs without a snapshot return ``None`` so the existing
+    selected-todo workspace guard remains the fail-closed fallback.
+    """
+
+    snapshot = (
+        delivery_run.get("delivery_workspace")
+        if isinstance(delivery_run.get("delivery_workspace"), dict)
+        else {}
+    )
+    task_repository = delivery_workspace_repository(snapshot)
+    if not task_repository:
+        return None
+
+    current = capture_delivery_workspace(current_path)
+    current_repository = str((current or {}).get("task_repository") or "")
+    current_workspace = str((current or {}).get("workspace_kind") or "")
+    recorded_workspace = str(snapshot.get("workspace_kind") or "")
+    peer_independent_worktree_required = bool(
+        snapshot.get("peer_independent_worktree_required")
+    )
+    if not current:
+        current_workspace = "not_git_worktree"
+    elif current_repository != task_repository:
+        current_workspace = "foreign_git_worktree"
+    elif (
+        recorded_workspace == "independent_git_worktree"
+        and current_workspace != "independent_git_worktree"
+    ):
+        current_workspace = "canonical_checkout"
+    elif (
+        peer_independent_worktree_required
+        and recorded_workspace != "independent_git_worktree"
+    ):
+        current_workspace = "delivery_not_recorded_from_independent_worktree"
+    else:
+        return None
+
+    return {
+        "schema_version": AGENT_WORKSPACE_GUARD_SCHEMA_VERSION,
+        "source": "quota.spend_slot.delivery_workspace",
+        "action": "return_to_delivery_worktree",
+        "current_workspace": current_workspace,
+        "required_workspace": (
+            "accountable_delivery_independent_git_worktree"
+            if recorded_workspace == "independent_git_worktree"
+            or peer_independent_worktree_required
+            else "accountable_delivery_git_checkout"
+        ),
+        "blocks_delivery": True,
+        "agent_id": normalize_todo_claimed_by(agent_id),
+        "repository_source": "delivery_run.delivery_workspace.task_repository",
+        "task_repository": task_repository,
+        "delivery_run_generated_at": delivery_run.get("generated_at"),
+        "delivery_run_classification": delivery_run.get("classification"),
+        "reason": (
+            "quota spend workspace does not match the latest unspent accountable "
+            "delivery workspace"
+        ),
+        "required_action": (
+            "run quota spend-slot from the workspace that produced the latest "
+            "unspent accountable delivery"
+        ),
+    }
 
 
 def _peer_candidate_items(agent_todo_summary: dict[str, Any] | None) -> list[dict[str, Any]]:

@@ -12,9 +12,11 @@ from .control_plane.work_items.delivery_batch_scale import (
     require_delivery_batch_scale,
 )
 from .control_plane.work_items.delivery_outcome import (
+    ACCOUNTABLE_DELIVERY_OUTCOMES,
     DELIVERY_OUTCOME_CHOICES as DELIVERY_OUTCOME_CHOICES,
     require_delivery_outcome,
 )
+from .control_plane.agents.workspace_guard import capture_delivery_workspace
 from .control_plane.work_items.repair_delta import (
     REPAIR_DELTA_KIND_CHOICES as REPAIR_DELTA_KIND_CHOICES,
     normalize_repair_delta_kinds,
@@ -549,6 +551,7 @@ def build_state_refresh_record(
     repair_delta_contract: dict[str, Any] | None = None,
     agent_vision: dict[str, Any] | None = None,
     vision_checkpoint: dict[str, Any] | None = None,
+    delivery_workspace: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     frontmatter = parse_frontmatter(state_text)
     next_action = extract_section_lines(state_text, "Next Action")
@@ -591,6 +594,8 @@ def build_state_refresh_record(
         record["delivery_batch_scale"] = delivery_batch_scale
     if delivery_outcome:
         record["delivery_outcome"] = delivery_outcome
+    if delivery_workspace:
+        record["delivery_workspace"] = delivery_workspace
     if autonomous_replan_recorded:
         record["autonomous_replan_ack"] = {
             "schema_version": "autonomous_replan_ack_v0",
@@ -639,6 +644,17 @@ def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
         lines.append(
             "- external_sink_delivery_authorized: "
             f"`{payload.get('external_sink_delivery_authorized')}`"
+        )
+    delivery_workspace = (
+        payload.get("delivery_workspace")
+        if isinstance(payload.get("delivery_workspace"), dict)
+        else {}
+    )
+    if delivery_workspace:
+        lines.append(
+            "- delivery_workspace: "
+            f"repository={delivery_workspace.get('task_repository')} "
+            f"kind={delivery_workspace.get('workspace_kind')}"
         )
     if payload.get("error"):
         lines.append(f"- error: {payload.get('error')}")
@@ -961,6 +977,13 @@ def refresh_state_run(
         active_state_next_action_update=active_state_next_action_update,
         repair_delta_kinds=normalized_repair_delta_kinds,
     )
+    delivery_workspace = (
+        capture_delivery_workspace(
+            peer_independent_worktree_required=multi_agent_goal,
+        )
+        if normalized_delivery_outcome in ACCOUNTABLE_DELIVERY_OUTCOMES
+        else None
+    )
     record = build_state_refresh_record(
         goal_id=safe_goal_id,
         state_file=resolved_state_file,
@@ -979,6 +1002,7 @@ def refresh_state_run(
         repair_delta_contract=repair_delta_contract,
         agent_vision=agent_vision,
         vision_checkpoint=vision_checkpoint,
+        delivery_workspace=delivery_workspace,
     )
     if autonomous_replan_recorded:
         if "autonomous_replan_ack" not in record:
@@ -1038,6 +1062,8 @@ def refresh_state_run(
         index_record["delivery_batch_scale"] = normalized_delivery_batch_scale
     if normalized_delivery_outcome:
         index_record["delivery_outcome"] = normalized_delivery_outcome
+    if delivery_workspace:
+        index_record["delivery_workspace"] = delivery_workspace
     if autonomous_replan_recorded:
         index_record["autonomous_replan_ack"] = record["autonomous_replan_ack"]
         if requested_classification != classification:
