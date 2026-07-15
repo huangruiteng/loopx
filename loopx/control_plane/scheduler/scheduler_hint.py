@@ -24,6 +24,7 @@ SCHEDULER_RESET_POLICY_SCHEMA_VERSION = "scheduler_reset_policy_v0"
 SCHEDULER_HINT_DETAIL_SCHEMA_VERSION = "scheduler_hint_detail_v0"
 CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION = "codex_app_stateful_backoff_v0"
 CODEX_APP_SCHEDULER_ACK_HINT_SCHEMA_VERSION = "codex_app_scheduler_ack_hint_v0"
+CODEX_APP_SCHEDULER_FAILURE_HINT_SCHEMA_VERSION = "codex_app_scheduler_failure_hint_v0"
 MONITOR_CADENCE_PATTERN = re.compile(r"^\s*(\d+)\s*([mhd])\s*$", re.IGNORECASE)
 MONITOR_WAIT_PROGRESSION_MINUTES = [15, 30, 60]
 CODEX_APP_MAX_INTERVAL_MINUTES = 60
@@ -266,6 +267,53 @@ def build_codex_app_scheduler_ack_hint(
         "args": args,
         "uses_current_hint": True,
         "no_spend": True,
+    }
+
+
+def build_codex_app_scheduler_failure_hint(
+    *,
+    goal_id: Any,
+    agent_id: Any,
+    failed_rrule: Any,
+    observed_host_rrule: Any = None,
+    available_capabilities: Any = None,
+) -> dict[str, Any]:
+    safe_goal_id = str(goal_id or "").strip()
+    safe_agent_id = str(agent_id or "").strip()
+    safe_rrule = normalize_scheduler_rrule(failed_rrule)
+    safe_observed_rrule = normalize_scheduler_rrule(observed_host_rrule)
+    safe_capabilities: list[str] = []
+    if isinstance(available_capabilities, (list, tuple, set)):
+        for capability in available_capabilities:
+            safe_capability = str(capability or "").strip()
+            if (
+                safe_capability
+                and safe_capability not in DEFAULT_ACK_CAPABILITIES
+                and safe_capability not in safe_capabilities
+            ):
+                safe_capabilities.append(safe_capability)
+    cli_args = [
+        "quota",
+        "scheduler-fail-current",
+        "--goal-id",
+        safe_goal_id,
+        "--agent-id",
+        safe_agent_id,
+    ]
+    for capability in safe_capabilities:
+        cli_args.extend(["--available-capability", capability])
+    cli_args.extend(
+        [
+            "--failed-rrule",
+            safe_rrule,
+        ]
+    )
+    if safe_observed_rrule:
+        cli_args.extend(["--codex-app-current-rrule", safe_observed_rrule])
+    cli_args.append("--execute")
+    return {
+        "schema_version": CODEX_APP_SCHEDULER_FAILURE_HINT_SCHEMA_VERSION,
+        "cli_args": cli_args,
     }
 
 
@@ -588,6 +636,18 @@ def build_codex_app_scheduler_ack_event(
         else codex_progression
     )
     progression_index = max(0, _int_number(stateful_backoff.get("progression_index"), default=0))
+    prior_failure = (
+        stateful_backoff.get("host_update_failure")
+        if isinstance(stateful_backoff.get("host_update_failure"), dict)
+        else None
+    )
+    preserved_failure = (
+        prior_failure
+        if prior_failure
+        and normalize_scheduler_rrule(prior_failure.get("target_rrule"))
+        != acknowledged_rrule
+        else None
+    )
     safe_generated_at = generated_at or ""
     scheduler_state = build_scheduler_state(
         goal_id=before.get("goal_id"),
@@ -601,6 +661,7 @@ def build_codex_app_scheduler_ack_event(
         last_applied_rrule=acknowledged_rrule,
         updated_at=safe_generated_at,
         source=classification,
+        host_update_failure=preserved_failure,
     )
     reason = str(reason_summary or "").strip() or (
         f"acknowledged Codex App scheduler RRULE {acknowledged_rrule}; no quota spend"
@@ -879,6 +940,12 @@ def build_scheduler_hint(
             if isinstance(codex_app_scheduler_state, dict)
             else {}
         )
+        recorded_host_failure = (
+            scheduler_state.get("host_update_failure")
+            if isinstance(scheduler_state.get("host_update_failure"), dict)
+            else None
+        )
+        same_identity = False
         if scheduler_state:
             same_identity = (
                 scheduler_state.get("reset_token") == reset_token
@@ -890,12 +957,19 @@ def build_scheduler_hint(
                     applied_index = int(scheduler_state.get("progression_index"))
                 except (TypeError, ValueError):
                     applied_index = -1
-                next_index = applied_index + 1 if advance_same_identity else 0
+                next_index = (
+                    applied_index
+                    if recorded_host_failure
+                    else applied_index + 1
+                    if advance_same_identity
+                    else 0
+                )
                 current_index = min(
                     max(next_index, 0), len(codex_cadence_progression) - 1
                 )
             else:
                 state_status = "reset_required"
+                recorded_host_failure = None
         current_interval = codex_cadence_progression[current_index]
         current_rrule = rrule_for_minutes(current_interval)
         last_applied_rrule = str(scheduler_state.get("last_applied_rrule") or "").strip()
@@ -913,24 +987,38 @@ def build_scheduler_hint(
                 current_rrule=current_rrule,
             )
         host_match_ack_needed = (
-            state_status != "same_identity"
-            and bool(observed_host_rrule)
+            bool(observed_host_rrule)
             and current_rrule_already_applied
+            and (state_status != "same_identity" or recorded_host_failure is not None)
         )
-        apply_needed = (
+        base_apply_needed = (
             not current_rrule_already_applied
             or (state_status != "same_identity" and not host_match_ack_needed)
         )
+        failed_target_rrule = normalize_scheduler_rrule(
+            (recorded_host_failure or {}).get("target_rrule")
+        )
+        failed_observed_host_rrule = normalize_scheduler_rrule(
+            (recorded_host_failure or {}).get("observed_host_rrule")
+        )
+        host_failure_suppressed = bool(
+            base_apply_needed
+            and failed_target_rrule == current_rrule
+            and failed_observed_host_rrule == effective_host_rrule
+        )
+        apply_needed = base_apply_needed and not host_failure_suppressed
         ack_needed = apply_needed or host_match_ack_needed
+        if host_failure_suppressed:
+            state_status = "host_update_failure_suppressed"
         stateful_backoff_detail = {
             "progression_minutes": codex_cadence_progression,
             "current_interval_minutes": current_interval,
             "host_max_interval_minutes": codex_host_max,
             "coarser_wait_fallback": "local_scheduler_only",
-            "host_update_failure": "no_retry_same_turn_do_not_ack_keep_observed_rrule",
+            "host_update_failure": "record_failed_target_and_observed_host_pair_then_suppress_exact_repeat_until_target_or_host_changes",
             "ack_required_after_apply": apply_needed,
             "ack_required_from_host_match": host_match_ack_needed,
-            "persist": "reset_token|identity_signature|progression_index|last_applied_rrule",
+            "persist": "reset_token|identity_signature|progression_index|last_applied_rrule|host_update_failure",
             "same_identity_action": (
                 "advance_index_after_scheduler_ack"
                 if advance_same_identity
@@ -947,13 +1035,20 @@ def build_scheduler_hint(
             "apply": (
                 "update_automation_cadence_if_possible"
                 if apply_needed
-                else "none_already_applied"
+                else (
+                    "none_recorded_host_failure"
+                    if host_failure_suppressed
+                    else "none_already_applied"
+                )
             ),
             "host_tool": "automation_update",
             "host_action": (
                 "update_current_heartbeat_rrule"
                 if apply_needed
                 else (
+                    "none_recorded_host_failure"
+                    if host_failure_suppressed
+                    else
                     "ack_observed_rrule_without_update"
                     if host_match_ack_needed
                     else "none"
@@ -963,6 +1058,9 @@ def build_scheduler_hint(
                 "automation_update_rrule_then_quota_scheduler_ack"
                 if apply_needed
                 else (
+                    "skip_automation_update_for_recorded_host_failure"
+                    if host_failure_suppressed
+                    else
                     "quota_scheduler_ack_from_matching_host_observation"
                     if host_match_ack_needed
                     else "skip_automation_update_when_apply_needed_false"
@@ -986,6 +1084,10 @@ def build_scheduler_hint(
             },
             "no_spend_for_cadence_change": True,
         }
+        if recorded_host_failure:
+            codex_app["stateful_backoff"]["host_update_failure"] = dict(
+                recorded_host_failure
+            )
         if observed_host_rrule:
             codex_app["stateful_backoff"]["host_observation"] = {
                 "source": "quota_should_run_host_observation",
@@ -998,6 +1100,14 @@ def build_scheduler_hint(
             }
         if apply_needed:
             codex_app["recommended_rrule"] = current_rrule
+            if payload.get("goal_id") and identity_value("agent_identity.agent_id"):
+                codex_app["failure_hint"] = build_codex_app_scheduler_failure_hint(
+                    goal_id=payload.get("goal_id"),
+                    agent_id=identity_value("agent_identity.agent_id"),
+                    failed_rrule=current_rrule,
+                    observed_host_rrule=effective_host_rrule,
+                    available_capabilities=scheduler_ack_capabilities,
+                )
         if ack_needed:
             if payload.get("goal_id") and identity_value("agent_identity.agent_id"):
                 codex_app["ack_hint"] = build_codex_app_scheduler_ack_hint(

@@ -78,6 +78,7 @@ def assert_compact_runtime_policy_complete(
     unchanged_poll = compact["unchanged_poll"]
     stateful_backoff = codex_app["stateful_backoff"]
     ack_hint = codex_app["ack_hint"]
+    failure_hint = codex_app["failure_hint"]
     ack_args = ack_hint["args"]
     ack_cli_args = ack_hint["cli_args"]
     assert codex_app["recommended_interval_minutes"], (name, compact)
@@ -143,6 +144,35 @@ def assert_compact_runtime_policy_complete(
     else:
         assert "route_binding" not in ack_hint, (name, compact)
     assert ack_cli_args == expected_cli_args, (name, compact)
+    failure_cli_args = failure_hint["cli_args"]
+    assert failure_hint["schema_version"] == "codex_app_scheduler_failure_hint_v0", (
+        name,
+        compact,
+    )
+    expected_failure_prefix = [
+        "quota",
+        "scheduler-fail-current",
+        "--goal-id",
+        expected_goal_id,
+        "--agent-id",
+        expected_agent_id,
+    ]
+    if expected_registry_path is not None and expected_runtime_root is not None:
+        expected_failure_prefix = [
+            "--registry",
+            str(expected_registry_path.resolve()),
+            "--runtime-root",
+            str(expected_runtime_root.resolve()),
+            *expected_failure_prefix,
+        ]
+        assert failure_hint["route_binding"]["schema_version"] == (
+            "scheduler_failure_cli_route_v0"
+        ), (name, compact)
+    assert failure_cli_args[: len(expected_failure_prefix)] == expected_failure_prefix, (
+        name,
+        compact,
+    )
+    assert failure_cli_args[-1] == "--execute", (name, compact)
     for omitted in (
         "progression_minutes",
         "current_interval_minutes",
@@ -241,7 +271,7 @@ def assert_compact_scheduler(name: str, source_payload: dict) -> None:
     assert "automation_update" in reset_detail["codex_app_apply"], (name, detailed)
     assert len(reset_detail["profile_signature"]) == 12, (name, detailed)
     assert json_size(compact) < json_size(detailed), (name, json_size(compact), json_size(detailed))
-    assert json_size(compact) <= 3_100, (name, json_size(compact))
+    assert json_size(compact) <= 3_350, (name, json_size(compact))
 
 
 def run_should_run_cli(

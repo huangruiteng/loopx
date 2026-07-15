@@ -896,6 +896,145 @@ def assert_cli_scheduler_ack_progression() -> None:
         assert "recommended_rrule" not in final_app, current
 
 
+def assert_cli_scheduler_failure_circuit_breaker() -> None:
+    fixture = _load_quota_plan_fixture_module()
+    with tempfile.TemporaryDirectory(prefix="loopx-quota-scheduler-failure-") as tmp:
+        root = Path(tmp)
+        registry_path, runtime, project = fixture.write_cli_fixture(root, scoped_agents=True)
+        agent_id = fixture.SCOPED_AGENT_ID
+        codex_home = root / "codex-home"
+        automation_path = codex_home / "automations" / "fixture" / "automation.toml"
+        automation_path.parent.mkdir(parents=True)
+
+        def write_host_rrule(rrule: str) -> None:
+            automation_path.write_text(
+                "\n".join(
+                    [
+                        "version = 1",
+                        'id = "fixture"',
+                        'kind = "heartbeat"',
+                        'name = "Scheduler failure fixture"',
+                        'prompt = "Advance `needs-operator` from active state. Agent: `codex-side-bypass`."',
+                        'status = "ACTIVE"',
+                        f'rrule = "{rrule}"',
+                        'target_thread_id = "fixture-thread"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+        write_host_rrule("FREQ=MINUTELY;INTERVAL=60")
+        previous_codex_home = os.environ.get("CODEX_HOME")
+        previous_thread_id = os.environ.get("CODEX_THREAD_ID")
+        os.environ["CODEX_HOME"] = str(codex_home)
+        os.environ["CODEX_THREAD_ID"] = "fixture-thread"
+        try:
+            first = run_cli(
+                root,
+                "quota",
+                "should-run",
+                "--goal-id",
+                "needs-operator",
+                "--agent-id",
+                agent_id,
+                registry_path=registry_path,
+                runtime=runtime,
+                project=project,
+            )
+            first_app = first["scheduler_hint"]["codex_app"]
+            target_rrule = first_app["recommended_rrule"]
+            failure_hint = first_app["failure_hint"]
+            assert first_app["stateful_backoff"]["apply_needed"] is True, first
+            assert failure_hint["route_binding"]["registry_bound"] is True, first
+
+            failure = run_cli(
+                root,
+                *failure_hint["cli_args"],
+                registry_path=registry_path,
+                runtime=runtime,
+                project=project,
+            )
+            persisted_failure = failure["scheduler_failure_event"]["scheduler_state"][
+                "host_update_failure"
+            ]
+            assert failure["scheduler_state_mutated"] is True, failure
+            assert persisted_failure["target_rrule"] == target_rrule, failure
+            assert persisted_failure["observed_host_rrule"] == (
+                "FREQ=MINUTELY;INTERVAL=60"
+            ), failure
+
+            suppressed = run_cli(
+                root,
+                "quota",
+                "should-run",
+                "--goal-id",
+                "needs-operator",
+                "--agent-id",
+                agent_id,
+                registry_path=registry_path,
+                runtime=runtime,
+                project=project,
+            )
+            suppressed_app = suppressed["scheduler_hint"]["codex_app"]
+            assert suppressed_app["stateful_backoff"]["apply_needed"] is False, suppressed
+            assert suppressed_app["stateful_backoff"]["ack_needed"] is False, suppressed
+            assert suppressed_app["stateful_backoff"]["state_status"] == (
+                "host_update_failure_suppressed"
+            ), suppressed
+            assert suppressed_app["host_action_contract"] == (
+                "skip_automation_update_for_recorded_host_failure"
+            ), suppressed
+            assert "recommended_rrule" not in suppressed_app, suppressed
+            assert "failure_hint" not in suppressed_app, suppressed
+            assert "ack_hint" not in suppressed_app, suppressed
+
+            repeated_rc, repeated = run_cli_result(
+                root,
+                *failure_hint["cli_args"],
+                registry_path=registry_path,
+                runtime=runtime,
+                project=project,
+            )
+            assert repeated_rc != 0, repeated
+            assert repeated.get("scheduler_state_mutated") is not True, repeated
+
+            write_host_rrule(target_rrule)
+            host_matched = run_cli(
+                root,
+                "quota",
+                "should-run",
+                "--goal-id",
+                "needs-operator",
+                "--agent-id",
+                agent_id,
+                registry_path=registry_path,
+                runtime=runtime,
+                project=project,
+            )
+            matched_app = host_matched["scheduler_hint"]["codex_app"]
+            assert matched_app["stateful_backoff"]["apply_needed"] is False, host_matched
+            assert matched_app["stateful_backoff"]["ack_needed"] is True, host_matched
+            assert matched_app["ack_hint"]["after"] == "matching_host_rrule_observed", host_matched
+            cleared = run_cli(
+                root,
+                *matched_app["ack_hint"]["cli_args"],
+                registry_path=registry_path,
+                runtime=runtime,
+                project=project,
+            )
+            assert "host_update_failure" not in cleared["scheduler_ack_event"]["scheduler_state"], cleared
+        finally:
+            if previous_codex_home is None:
+                os.environ.pop("CODEX_HOME", None)
+            else:
+                os.environ["CODEX_HOME"] = previous_codex_home
+            if previous_thread_id is None:
+                os.environ.pop("CODEX_THREAD_ID", None)
+            else:
+                os.environ["CODEX_THREAD_ID"] = previous_thread_id
+
+
 def assert_cli_host_rrule_repairs_false_ack() -> None:
     fixture = _load_quota_plan_fixture_module()
     with tempfile.TemporaryDirectory(prefix="loopx-quota-host-rrule-") as tmp:
@@ -1242,6 +1381,7 @@ def main() -> int:
     assert_monitor_wait_stale_ack_hint_is_accepted()
     assert_scheduler_state_scope_validation()
     assert_cli_scheduler_ack_progression()
+    assert_cli_scheduler_failure_circuit_breaker()
     assert_cli_host_rrule_repairs_false_ack()
     assert_cli_host_match_ack_after_ambiguous_update()
     assert_cli_ignores_corrupt_scheduler_state()

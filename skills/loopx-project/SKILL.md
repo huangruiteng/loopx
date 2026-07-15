@@ -505,8 +505,11 @@ RRULE update, run `loopx` with
 `scheduler_hint.codex_app.ack_hint.cli_args` (normally `quota scheduler-ack-current`,
 which re-reads the latest scheduler hint instead of hand-copying short-lived
 reset tokens). Attempt the host update at most once per hint and turn. If it
-fails or times out, do not retry or ACK in that turn; continue allowed delivery
-under the observed host cadence and let the next heartbeat recompute drift. If
+fails or times out, do not retry or ACK; run
+`scheduler_hint.codex_app.failure_hint.cli_args` once. That no-spend writeback
+records the failed target/observed-host pair so later heartbeats suppress the
+exact repeat until either value changes. Continue allowed delivery under the
+observed host cadence. If
 `apply_needed=false` but `ack_needed=true`, a matching host
 readback already proves the RRULE; skip `automation_update` and run the bound
 ack hint directly. LoopX owns reset/progression state

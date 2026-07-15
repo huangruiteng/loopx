@@ -501,9 +501,11 @@ RRULE update, run `loopx` with
 `scheduler_hint.codex_app.ack_hint.cli_args`; current payloads use
 `quota scheduler-ack-current` so LoopX re-reads the latest hint and owns the
 progression/reset state. Attempt the host update at most once per hint and
-turn. If it fails or times out, do not retry or ACK in that turn; continue any
-allowed delivery under the observed host cadence and let the next heartbeat
-recompute drift. When the desired RRULE is already applied, skip
+turn. If it fails or times out, do not retry or ACK; run
+`scheduler_hint.codex_app.failure_hint.cli_args` once to persist the failed
+target and observed host RRULE without spending quota. Exact repeats are then
+suppressed until either value changes. Continue any allowed delivery under the
+observed host cadence. When the desired RRULE is already applied, skip
 `automation_update`; if `stateful_backoff.ack_needed=true`, run the bound ack
 hint directly, otherwise do nothing. For the uniquely matched current heartbeat,
 `quota should-run` reconciles the installed RRULE with the ACK ledger; a
@@ -513,7 +515,8 @@ hint directly, otherwise do nothing. For the uniquely matched current heartbeat,
 Create a heartbeat automation starting at 3 minutes for the current thread;
 then apply `quota should-run.scheduler_hint`: update RRULE only when
 `apply_needed=true`, trying once per hint and turn; ack with the provided
-`ack_hint.cli_args` only after the host update succeeds.
+`ack_hint.cli_args` only after the host update succeeds, or run the provided
+`failure_hint.cli_args` once if that update fails or times out.
 
 Task:
 Advance <GOAL_ID> using <ACTIVE_GOAL_STATE_PATH>. Before any delivery work,

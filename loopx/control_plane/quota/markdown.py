@@ -135,6 +135,35 @@ def render_quota_scheduler_ack_markdown(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_quota_scheduler_failure_markdown(payload: dict[str, Any]) -> str:
+    event = as_dict(payload.get("scheduler_failure_event"))
+    state = as_dict(event.get("scheduler_state"))
+    failure = as_dict(state.get("host_update_failure"))
+    before = as_dict(event.get("before"))
+    lines = [
+        "# LoopX Quota Scheduler Host Update Failure",
+        "",
+        f"- goal_id: `{payload.get('goal_id')}`",
+        f"- classification: `{payload.get('classification')}`",
+        f"- agent_id: `{payload.get('agent_id') or state.get('agent_id') or ''}`",
+        f"- surface: `{payload.get('surface') or event.get('surface')}`",
+        f"- state_key: `{payload.get('state_key') or event.get('state_key')}`",
+        f"- failed_rrule: `{payload.get('failed_rrule') or failure.get('target_rrule')}`",
+        f"- observed_host_rrule: `{payload.get('observed_host_rrule') or failure.get('observed_host_rrule') or ''}`",
+        f"- failure_kind: `{payload.get('failure_kind') or failure.get('failure_kind')}`",
+        f"- failure_count: `{failure.get('failure_count')}`",
+        f"- scheduler_state_mutated: `{payload.get('scheduler_state_mutated')}`",
+        f"- effective_action: `{before.get('effective_action')}`",
+        f"- should_run: `{before.get('should_run')}`",
+        f"- health_check: {payload.get('health_check') or 'scheduler host update failure recorded; no quota spend'}",
+    ]
+    if payload.get("scheduler_state_path"):
+        lines.append(f"- scheduler_state_path: `{payload.get('scheduler_state_path')}`")
+    if payload.get("reason"):
+        lines.append(f"- reason: {payload.get('reason')}")
+    return "\n".join(lines)
+
+
 def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
     quota = as_dict(payload.get("quota"))
     lines = [

@@ -312,8 +312,8 @@ def main() -> int:
         "具体 user todo 未投影，需修复 LoopX 状态投影",
         "Quiet only if DONT_NOTIFY+false/0",
         "Observed capabilities -> `--available-capability`; never user gates",
-        "Scheduler: apply_needed -> RRULE+ack; else ack_needed -> ack",
-        "final-check CLI/Claude; no spend",
+        "Scheduler: apply -> RRULE + ack/failure_hint; ack_needed -> ack",
+        "final-check; no spend",
         "spend post-writeback",
         "Plans/done -> todo/rationale; 2 stalls -> self-repair",
         "`lark_event_inbox`: `drain_command` -> writeback -> ACK",
@@ -408,8 +408,8 @@ def main() -> int:
         'never only "owner gate"',
         "Quiet only if DONT_NOTIFY+false/0",
         "具体 user todo 未投影，需修复 LoopX 状态投影",
-        "Scheduler: apply_needed -> RRULE+ack; else ack_needed -> ack",
-        "final-check CLI/Claude; no spend",
+        "Scheduler: apply -> RRULE + ack/failure_hint; ack_needed -> ack",
+        "final-check; no spend",
         "Bounded batch/no-op; spend post-writeback",
         "Plans/done -> todo/rationale; 2 stalls -> self-repair",
         "P0 blocked: safe P1/P2",
@@ -727,10 +727,12 @@ def main() -> int:
     assert "apply_needed=true" in doc, doc
     assert "codex_app.ack_hint.cli_args" in doc, doc
     assert "quota scheduler-ack-current" in doc, doc
+    assert "scheduler_hint.codex_app.failure_hint.cli_args" in doc, doc
     assert "recommended_rrule" in doc, doc
     normalized_doc = normalized(doc)
     assert "Attempt the host update at most once per hint and turn" in normalized_doc, doc
-    assert "do not retry or ACK in that turn" in normalized_doc, doc
+    assert "do not retry or ACK" in normalized_doc, doc
+    assert "Exact repeats are then suppressed" in normalized_doc, doc
     assert "must_attempt_work=true" in doc, doc
     assert "not an execution gate" in normalized(doc), doc
     assert "loopx heartbeat-prompt" in doc, doc
@@ -788,10 +790,12 @@ def main() -> int:
     assert "apply_needed=true" in project_skill, project_skill
     assert "codex_app.ack_hint.cli_args" in project_skill, project_skill
     assert "quota scheduler-ack-current" in project_skill, project_skill
+    assert "scheduler_hint.codex_app.failure_hint.cli_args" in project_skill, project_skill
     assert "recommended_rrule" in project_skill, project_skill
     normalized_project_skill = normalized(project_skill)
     assert "Attempt the host update at most once per hint and turn" in normalized_project_skill, project_skill
-    assert "do not retry or ACK in that turn" in normalized_project_skill, project_skill
+    assert "do not retry or ACK" in normalized_project_skill, project_skill
+    assert "suppress the exact repeat" in normalized_project_skill, project_skill
     assert "must_attempt_work=true" in project_skill, project_skill
     assert "not an execution gate" in normalized(project_skill), project_skill
     assert "mapped_noop_if_unchanged" in project_skill, project_skill
