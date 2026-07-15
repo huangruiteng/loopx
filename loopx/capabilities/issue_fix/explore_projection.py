@@ -674,7 +674,11 @@ def project_issue_fix_explore_graph(
         for event in material_events:
             append_explore_result_event(result_log, event)
     projected_events = [*existing_events, *material_events]
-    projection = build_explore_result_projection(projected_events, goal_id=goal_id)
+    projection = build_explore_result_projection(
+        projected_events,
+        goal_id=goal_id,
+        finding_limit=len(projected_events),
+    )
     digest = _semantic_projection_digest(projection)
     return {
         "ok": True,

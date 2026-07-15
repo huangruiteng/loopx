@@ -25,6 +25,11 @@ from loopx.capabilities.issue_fix.pr_lifecycle import (  # noqa: E402
 from loopx.capabilities.explore.activation import (  # noqa: E402
     sync_explore_graph_after_material_refresh,
 )
+from loopx.capabilities.explore.result_log import (  # noqa: E402
+    append_explore_result_event,
+    build_explore_finding_event,
+    explore_result_log_path,
+)
 from loopx.domain_packs.issue_fix import (  # noqa: E402
     default_issue_fix_domain_state_ledger_path,
     default_issue_fix_feasibility_ledger_path,
@@ -216,6 +221,23 @@ def main() -> None:
         )
         assert unrelated["applicable"] is False, unrelated
         assert unrelated["material_event_count"] == 0, unrelated
+        unrelated_log = explore_result_log_path(runtime, "unrelated-goal")
+        for index in range(205):
+            append_explore_result_event(
+                unrelated_log,
+                build_explore_finding_event(
+                    goal_id="unrelated-goal",
+                    finding_id=f"finding_{index}",
+                    title=f"Public fixture finding {index}",
+                ),
+            )
+        full_findings = project_issue_fix_explore_graph(
+            registry_path=registry,
+            goal_id="unrelated-goal",
+            project=project,
+        )
+        assert full_findings["counts"]["finding_count"] == 205, full_findings
+        assert len(full_findings["projection"]["findings"]) == 205, full_findings
         upsert_issue_fix_feasibility_ledger_jsonl(
             default_issue_fix_feasibility_ledger_path(project=project, goal_id=goal_id),
             feasibility_packet(),
