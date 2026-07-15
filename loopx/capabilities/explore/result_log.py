@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from ...file_lock import exclusive_file_lock
+
 
 EXPLORE_RESULT_EVENT_SCHEMA_VERSION = "loopx_explore_result_event_v0"
 EXPLORE_RESULT_PROJECTION_VERSION = "loopx_explore_result_projection_v0"
@@ -398,22 +400,139 @@ def _base_event(
     return event
 
 
-def append_explore_result_event(path: Path, event: Mapping[str, Any]) -> dict[str, Any]:
-    if event.get("schema_version") != EXPLORE_RESULT_EVENT_SCHEMA_VERSION:
-        raise ValueError(
-            f"explore result event must use schema {EXPLORE_RESULT_EVENT_SCHEMA_VERSION}"
+def validate_explore_result_event(
+    event: Mapping[str, Any],
+    *,
+    expected_goal_id: str | None = None,
+) -> dict[str, Any]:
+    """Return one canonical public-safe Explore event or fail closed.
+
+    Event builders are the schema authority. Rebuilding the event catches
+    unknown fields, invalid ids, unsafe text, forged boundary flags, and stale
+    event ids without maintaining a second field-level validator.
+    """
+
+    payload = dict(event)
+    if payload.get("schema_version") != EXPLORE_RESULT_EVENT_SCHEMA_VERSION:
+        raise ValueError(f"explore result event must use schema {EXPLORE_RESULT_EVENT_SCHEMA_VERSION}")
+    event_kind = str(payload.get("event_kind") or "")
+    if event_kind not in EXPLORE_EVENT_KINDS:
+        raise ValueError(f"unsupported explore result event kind {event_kind!r}")
+    goal_id = _safe_goal_id(payload.get("goal_id"))
+    if expected_goal_id is not None and goal_id != _safe_goal_id(expected_goal_id):
+        raise ValueError("explore result event belongs to a different goal")
+    if payload.get("boundary") != PUBLIC_BOUNDARY:
+        raise ValueError("explore result event must declare the public-safe boundary")
+
+    common = {
+        "goal_id": goal_id,
+        "summary": payload.get("summary"),
+        "agent_id": payload.get("agent_id"),
+        "run_id": payload.get("run_id"),
+        "recorded_at": payload.get("recorded_at"),
+    }
+    if event_kind == EVENT_KIND_NODE:
+        rebuilt = build_explore_node_event(
+            **common,
+            title=payload.get("title"),
+            node_id=payload.get("result_id"),
+            node_kind=payload.get("node_kind"),
+            status=payload.get("status"),
+            blocked_reason=payload.get("blocked_reason"),
+            parent_id=payload.get("parent_id"),
+            evidence_refs=payload.get("evidence_refs"),
+            tags=payload.get("tags"),
+            supersedes=payload.get("supersedes"),
         )
+    elif event_kind == EVENT_KIND_EDGE:
+        rebuilt = build_explore_edge_event(
+            **common,
+            from_node=payload.get("from_node"),
+            to_node=payload.get("to_node"),
+            edge_type=payload.get("edge_type"),
+            confidence=payload.get("confidence"),
+        )
+    else:
+        rebuilt = build_explore_finding_event(
+            **common,
+            title=payload.get("title"),
+            finding_id=payload.get("result_id"),
+            node_id=payload.get("node_id"),
+            status=payload.get("status"),
+            confidence=payload.get("confidence"),
+            evidence_refs=payload.get("evidence_refs"),
+            tags=payload.get("tags"),
+            supersedes=payload.get("supersedes"),
+        )
+    if payload != rebuilt:
+        raise ValueError("explore result event is not canonical or contains unknown fields")
+    return rebuilt
+
+
+def append_explore_result_event(path: Path, event: Mapping[str, Any]) -> dict[str, Any]:
+    validated = validate_explore_result_event(event)
     log_path = path.expanduser()
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    with log_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(dict(event), ensure_ascii=False, sort_keys=True) + "\n")
+    with exclusive_file_lock(log_path):
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(validated, ensure_ascii=False, sort_keys=True) + "\n")
     return {
         "ok": True,
         "schema_version": EXPLORE_RESULT_EVENT_SCHEMA_VERSION,
         "path": str(log_path),
-        "event_id": event.get("event_id"),
-        "result_id": event.get("result_id"),
-        "event_kind": event.get("event_kind"),
+        "event_id": validated.get("event_id"),
+        "result_id": validated.get("result_id"),
+        "event_kind": validated.get("event_kind"),
+    }
+
+
+def append_explore_result_events(
+    path: Path,
+    events: Sequence[Mapping[str, Any]],
+    *,
+    expected_goal_id: str,
+) -> dict[str, Any]:
+    """Append a validated batch once by event id under the result-log lock."""
+
+    validated = [validate_explore_result_event(event, expected_goal_id=expected_goal_id) for event in events]
+    requested_ids = [str(event["event_id"]) for event in validated]
+    if len(requested_ids) != len(set(requested_ids)):
+        raise ValueError("Explore result event batch contains duplicate event ids")
+
+    log_path = path.expanduser()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    appended = 0
+    reused = 0
+    with exclusive_file_lock(log_path):
+        existing_by_id: dict[str, dict[str, Any]] = {}
+        if log_path.exists():
+            for line in log_path.read_text(encoding="utf-8").splitlines():
+                try:
+                    current = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(current, dict) and current.get("event_id"):
+                    existing_by_id[str(current["event_id"])] = current
+        pending: list[dict[str, Any]] = []
+        for event in validated:
+            event_id = str(event["event_id"])
+            existing = existing_by_id.get(event_id)
+            if existing is None:
+                pending.append(event)
+                continue
+            if existing != event:
+                raise ValueError(f"conflicting Explore result event id: {event_id}")
+            reused += 1
+        if pending:
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write("".join(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n" for event in pending))
+            appended = len(pending)
+    return {
+        "ok": True,
+        "schema_version": EXPLORE_RESULT_EVENT_SCHEMA_VERSION,
+        "requested_event_count": len(validated),
+        "appended_event_count": appended,
+        "reused_event_count": reused,
     }
 
 
@@ -446,6 +565,34 @@ def load_explore_result_events(
         events.append(payload)
     if limit is not None and limit >= 0:
         events = events[-limit:] if limit else []
+    return events
+
+
+def load_explore_result_events_strict(
+    path: Path,
+    *,
+    goal_id: str,
+) -> list[dict[str, Any]]:
+    """Load a complete result log and reject malformed or unsafe rows."""
+
+    log_path = path.expanduser()
+    if not log_path.exists():
+        return []
+    events: list[dict[str, Any]] = []
+    for line_number, line in enumerate(log_path.read_text(encoding="utf-8").splitlines(), start=1):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            payload = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"invalid Explore result JSON at line {line_number}") from exc
+        if not isinstance(payload, dict):
+            raise ValueError(f"Explore result row {line_number} is not an object")
+        try:
+            events.append(validate_explore_result_event(payload, expected_goal_id=goal_id))
+        except ValueError as exc:
+            raise ValueError(f"invalid Explore result event at line {line_number}: {exc}") from exc
     return events
 
 

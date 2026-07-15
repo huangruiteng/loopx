@@ -23,6 +23,9 @@ from ..capabilities.explore.result_log import (
 )
 from ..capabilities.explore.harness_gate import GATE_STATE_DISABLED
 from ..capabilities.explore.resource_portfolio import parse_resource_counts
+from ..capabilities.explore.source_history_reconcile import (
+    reconcile_explore_source_history,
+)
 from ..capabilities.explore.todo_branch_plan import (
     build_explore_todo_branch_plan,
     resolve_todo_branch_plan_gate,
@@ -142,6 +145,23 @@ def register_explore_commands(
     add_subcommand_format(presentation)
     presentation.add_argument("--goal-id", required=True)
     _add_projection_limit_args(presentation)
+
+    source_reconcile = sub.add_parser(
+        "source-history-reconcile",
+        help=(
+            "Recover registered public-safe results from another runtime log. "
+            "Preview only unless --execute; never deletes remote rows."
+        ),
+    )
+    add_subcommand_format(source_reconcile)
+    source_reconcile.add_argument("--goal-id", required=True)
+    source_reconcile.add_argument(
+        "--candidate-runtime-root",
+        required=True,
+        help="Runtime root containing the candidate goal result log.",
+    )
+    _add_config_path_arg(source_reconcile)
+    source_reconcile.add_argument("--execute", action="store_true")
 
     graph = sub.add_parser(
         "graph",
@@ -638,6 +658,22 @@ def handle_explore_command(
                 finding_limit_override=-1,
             )
             payload = build_explore_presentation_bundle(projection)
+        elif args.explore_command == "source-history-reconcile":
+            local = read_lark_explore_local_config(config_path)
+            result_records = (
+                local.get("result_records")
+                if isinstance(local.get("result_records"), dict)
+                else {}
+            )
+            payload = reconcile_explore_source_history(
+                canonical_log_path=explore_result_log_path(runtime_root, args.goal_id),
+                candidate_log_path=explore_result_log_path(
+                    Path(args.candidate_runtime_root), args.goal_id
+                ),
+                goal_id=args.goal_id,
+                registered_result_keys=set(result_records),
+                execute=bool(args.execute),
+            )
         elif args.explore_command == "graph":
             projection = _projection_for(args, runtime_root=runtime_root)
             graph_view = build_explore_graph_view(
