@@ -455,6 +455,8 @@ def test_turn_run_once_cli_commits_validated_result_and_one_quota_slot(
     tmp_path: Path,
 ) -> None:
     project, runtime, registry = _write_live_fixture(tmp_path)
+    host_project = tmp_path / "isolated-host-workspace"
+    host_project.mkdir()
     host_script = """
 import json
 import sys
@@ -491,7 +493,7 @@ json.dump({
                 "--agent-id",
                 "codex-fixture",
                 "--project",
-                str(project),
+                str(host_project),
                 "--host-command-json",
                 json.dumps([sys.executable, "-c", host_script]),
                 "--scan-root",
@@ -545,7 +547,7 @@ json.dump({
                 "--agent-id",
                 "codex-fixture",
                 "--project",
-                str(project),
+                str(host_project),
                 "--host-command-json",
                 json.dumps([sys.executable, "-c", host_script]),
                 "--scan-root",

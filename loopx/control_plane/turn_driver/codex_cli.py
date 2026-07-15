@@ -15,7 +15,11 @@ from pathlib import Path
 from typing import Any
 
 from ...runtime import validate_goal_id_path_segment
-from .executor import BuiltInHostError, LOOPX_TURN_HOST_REQUEST_SCHEMA_VERSION
+from .executor import (
+    HOST_RESULT_TEXT_LIMITS,
+    BuiltInHostError,
+    LOOPX_TURN_HOST_REQUEST_SCHEMA_VERSION,
+)
 from .transaction import LOOPX_TURN_RESULT_SCHEMA_VERSION, TRANSACTION_PHASES
 
 
@@ -153,6 +157,7 @@ def _store_codex_cli_session(
 
 
 def codex_cli_result_schema() -> dict[str, Any]:
+    text_limits = dict(HOST_RESULT_TEXT_LIMITS)
     properties: dict[str, Any] = {
         "schema_version": {
             "type": "string",
@@ -166,9 +171,18 @@ def codex_cli_result_schema() -> dict[str, Any]:
             "minItems": 2,
             "maxItems": 2,
         },
-        "classification": {"type": "string"},
-        "recommended_action": {"type": "string"},
-        "next_action": {"type": "string"},
+        "classification": {
+            "type": "string",
+            "maxLength": text_limits["classification"],
+        },
+        "recommended_action": {
+            "type": "string",
+            "maxLength": text_limits["recommended_action"],
+        },
+        "next_action": {
+            "type": "string",
+            "maxLength": text_limits["next_action"],
+        },
         "delivery_batch_scale": {
             "type": "string",
             "enum": [
@@ -189,8 +203,11 @@ def codex_cli_result_schema() -> dict[str, Any]:
                 "primary_goal_outcome",
             ],
         },
-        "vision_unchanged_reason": {"type": "string"},
-        "summary": {"type": "string"},
+        "vision_unchanged_reason": {
+            "type": "string",
+            "maxLength": text_limits["vision_unchanged_reason"],
+        },
+        "summary": {"type": "string", "maxLength": text_limits["summary"]},
     }
     return {
         "type": "object",

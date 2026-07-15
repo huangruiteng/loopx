@@ -29,6 +29,13 @@ LOOPX_TURN_JOURNAL_SCHEMA_VERSION = "loopx_turn_journal_v0"
 HOST_RESULT_MAX_BYTES = 12_000
 HOST_ARG_MAX_COUNT = 32
 HOST_ARG_MAX_CHARS = 1_024
+HOST_RESULT_TEXT_LIMITS = (
+    ("classification", 120),
+    ("recommended_action", 1_200),
+    ("next_action", 1_200),
+    ("vision_unchanged_reason", 240),
+    ("summary", 400),
+)
 TURN_KEY_RE = re.compile(r"^sha256:(?P<digest>[0-9a-f]{64})$")
 
 MATERIAL_HOST_RESULT_KINDS = {
@@ -166,13 +173,7 @@ def validate_loopx_turn_host_result(
         "result_kind": kind.value if kind else None,
         "completed_phases": list(TRANSACTION_PHASES[:2]),
     }
-    for field, limit in (
-        ("classification", 120),
-        ("recommended_action", 1_200),
-        ("next_action", 1_200),
-        ("vision_unchanged_reason", 240),
-        ("summary", 400),
-    ):
+    for field, limit in HOST_RESULT_TEXT_LIMITS:
         text = _bounded_public_text(
             result,
             field,

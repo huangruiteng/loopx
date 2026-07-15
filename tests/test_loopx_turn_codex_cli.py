@@ -101,6 +101,22 @@ def test_codex_cli_result_schema_requires_only_bounded_contract_fields() -> None
     assert set(schema["required"]) == set(schema["properties"])
     assert "raw_trajectory" not in schema["properties"]
     assert "stdout" not in schema["properties"]
+    assert {
+        field: schema["properties"][field]["maxLength"]
+        for field in (
+            "classification",
+            "recommended_action",
+            "next_action",
+            "vision_unchanged_reason",
+            "summary",
+        )
+    } == {
+        "classification": 120,
+        "recommended_action": 1_200,
+        "next_action": 1_200,
+        "vision_unchanged_reason": 240,
+        "summary": 400,
+    }
 
 
 def test_codex_cli_host_starts_then_resumes_opaque_session(

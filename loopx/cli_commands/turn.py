@@ -317,6 +317,8 @@ def handle_turn_command(
             selected_todo = action.get("selected_todo") if isinstance(action.get("selected_todo"), dict) else {}
 
             def writeback(result: dict[str, object]) -> dict[str, object]:
+                # The host workspace is execution context, not state authority.
+                state_project = None
                 result_kind = str(result.get("result_kind") or "")
                 if result_kind in {"repair_required", "replan_required"}:
                     todo_id = str(selected_todo.get("todo_id") or "")
@@ -330,14 +332,14 @@ def handle_turn_command(
                         note=str(result.get("summary") or result["classification"]),
                         evidence=f"LoopX Turn {result_kind}: {result['next_action']}",
                         agent_id=args.agent_id,
-                        project=project,
+                        project=state_project,
                         dry_run=False,
                     )
                 return refresh_state_run(
                     registry_path=registry_path,
                     runtime_root_override=runtime_root_arg,
                     goal_id=args.goal_id,
-                    project=project,
+                    project=state_project,
                     state_file=None,
                     classification=str(result["classification"]),
                     recommended_action=str(result["recommended_action"]),
