@@ -214,6 +214,50 @@ def assert_synthetic_projection() -> None:
     assert "reclaim_url" not in json.dumps(stale_hint, sort_keys=True), stale_hint
 
 
+def assert_event_only_todo_receipts_are_not_runtime_work() -> None:
+    payload = fixture_status_payload()
+    payload["run_history"]["goals"][0]["coordination"]["registered_agents"].append(
+        "agent-event-only"
+    )
+    payload["todo_index"]["items"].extend(
+        [
+            {
+                "goal_id": "fixture-goal",
+                "todo_id": "todo_event_shadow",
+                "role": "agent",
+                "status": "open",
+                "priority": "P0",
+                "title": "todo add recorded for todo_event_shadow",
+                "text": "todo add recorded for todo_event_shadow",
+                "agent_id": "agent-reviewer",
+                "source": "rollout_event_log",
+                "latest_event_kind": "todo_add",
+            },
+            {
+                "goal_id": "fixture-goal",
+                "todo_id": "todo_event_only",
+                "role": "agent",
+                "status": "open",
+                "priority": "P0",
+                "title": "todo add recorded for todo_event_only",
+                "text": "todo add recorded for todo_event_only",
+                "agent_id": "agent-event-only",
+                "source": "rollout_event_log",
+                "latest_event_kind": "todo_add",
+            },
+        ]
+    )
+    projection = build_agent_management_projection(payload)
+    by_agent = {
+        row.get("agent_id"): row
+        for row in projection.get("agents", [])
+        if isinstance(row, dict)
+    }
+    assert by_agent["agent-reviewer"]["current_todo"]["todo_id"] == "todo_live_handoff", by_agent
+    assert by_agent["agent-event-only"]["state"] == "unknown", by_agent
+    assert "current_todo" not in by_agent["agent-event-only"], by_agent
+
+
 def assert_advancement_current_todo_beats_standing_monitor() -> None:
     payload = fixture_status_payload()
     payload["run_history"]["goals"][0]["coordination"]["registered_agents"].append("agent-side")
@@ -463,6 +507,7 @@ def assert_live_projection(args: argparse.Namespace) -> dict[str, Any]:
 def main() -> int:
     args = parse_args()
     assert_synthetic_projection()
+    assert_event_only_todo_receipts_are_not_runtime_work()
     assert_advancement_current_todo_beats_standing_monitor()
     result: dict[str, Any] = {
         "synthetic": "ok",

@@ -17,7 +17,7 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.contract import check_contract  # noqa: E402
 from loopx.control_plane.todos.todo_summary import active_state_todo_attention_item  # noqa: E402
 from loopx.quota import build_quota_should_run  # noqa: E402
-from loopx.status import collect_status  # noqa: E402
+from loopx.status import collect_status, parse_active_state_todos  # noqa: E402
 from loopx.todos import add_goal_todo, complete_goal_todo, update_goal_todo  # noqa: E402
 
 
@@ -212,6 +212,81 @@ def main() -> int:
             claimed_by=SIDE_AGENT,
         )
         assert side_agent_todo["claimed_by"] == SIDE_AGENT, side_agent_todo
+
+        blocked_agent_todo = add_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            role="agent",
+            text="Clean up the exact approved duplicate records.",
+            status="blocked",
+            task_class="advancement_task",
+            claimed_by=SIDE_AGENT,
+        )
+        approval = add_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            role="user",
+            text="Authorize the exact duplicate cleanup.",
+            task_class="user_action",
+            unblocks_todo_id=blocked_agent_todo["todo_id"],
+        )
+        approval_completed = complete_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            todo_id=approval["todo_id"],
+            role="user",
+            evidence="user authorized the exact bounded cleanup",
+        )
+        assert approval_completed["unblock_resume"]["state"] == "resumed", approval_completed
+        assert approval_completed["unblock_resume"]["target_todo_id"] == blocked_agent_todo["todo_id"], approval_completed
+        resumed = next(
+            item
+            for item in parse_active_state_todos(state.read_text(encoding="utf-8"))["agent_todos"]["items"]
+            if item["todo_id"] == blocked_agent_todo["todo_id"]
+        )
+        assert resumed["status"] == "open", resumed
+        assert resumed["claimed_by"] == SIDE_AGENT, resumed
+
+        multiply_blocked = add_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            role="agent",
+            text="Run a cleanup that needs two exact user actions.",
+            status="blocked",
+            task_class="advancement_task",
+            claimed_by=SIDE_AGENT,
+        )
+        approvals = [
+            add_goal_todo(
+                registry_path=registry,
+                goal_id=GOAL_ID,
+                role="user",
+                text=f"Authorize bounded cleanup part {part}.",
+                task_class="user_action",
+                unblocks_todo_id=multiply_blocked["todo_id"],
+            )
+            for part in ("one", "two")
+        ]
+        first_approval = complete_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            todo_id=approvals[0]["todo_id"],
+            role="user",
+            evidence="first exact authorization",
+        )
+        assert first_approval["unblock_resume"]["state"] == "other_user_blockers_active", first_approval
+        assert first_approval["unblock_resume"]["remaining_user_blocker_todo_ids"] == [
+            approvals[1]["todo_id"]
+        ], first_approval
+        second_approval = complete_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            todo_id=approvals[1]["todo_id"],
+            role="user",
+            evidence="second exact authorization",
+        )
+        assert second_approval["unblock_resume"]["state"] == "resumed", second_approval
+
         status_payload = collect_status(
             registry_path=registry,
             runtime_root_override=str(root / "runtime"),
@@ -219,6 +294,12 @@ def main() -> int:
             limit=1,
             goal_id=GOAL_ID,
         )
+        indexed_target = next(
+            item
+            for item in status_payload["todo_index"]["items"]
+            if item.get("todo_id") == blocked_agent_todo["todo_id"]
+        )
+        assert indexed_target["status"] == "open", indexed_target
         quota_payload = build_quota_should_run(
             status_payload,
             goal_id=GOAL_ID,
@@ -228,6 +309,12 @@ def main() -> int:
         assert isinstance(user_summary, dict), quota_payload
         assert user_summary["user_action_open_count"] == 1, user_summary
         assert user_summary["gate_open_items"] == [], user_summary
+        executable_ids = {
+            item.get("todo_id")
+            for item in quota_payload["agent_todo_summary"]["first_executable_items"]
+        }
+        assert blocked_agent_todo["todo_id"] in executable_ids, quota_payload
+        assert multiply_blocked["todo_id"] in executable_ids, quota_payload
 
         assert_raises_message(
             lambda: add_goal_todo(
