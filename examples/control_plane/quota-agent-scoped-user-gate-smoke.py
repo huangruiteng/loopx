@@ -357,7 +357,11 @@ def assert_unrelated_user_gate_allows_feishu_fallback() -> None:
     assert "om_ping" in payload["recommended_action"], payload
 
 
-def exact_todo_gate_status_payload(*, include_fallback: bool = True) -> dict:
+def exact_todo_gate_status_payload(
+    *,
+    include_fallback: bool = True,
+    include_due_monitor: bool = False,
+) -> dict:
     benchmark_gate = todo_item(
         todo_id="todo_benchmark_owner_gate",
         text="Owner must choose the benchmark run target before benchmark execution.",
@@ -399,6 +403,19 @@ def exact_todo_gate_status_payload(*, include_fallback: bool = True) -> dict:
         next_due_at="2099-01-01T00:00:00Z",
     )
     agent_items = [unavailable_auto_research, blocked_benchmark]
+    if include_due_monitor:
+        due_disposition = todo_item(
+            todo_id="todo_due_disposition",
+            text="[P0] Deliver an already-due issue disposition.",
+            task_class="continuous_monitor",
+            claimed_by="codex-main-control",
+            action_kind="issue_disposition_delivery",
+            cadence="4h",
+            next_due_at="2000-01-01T00:00:00Z",
+            target_key="issue-disposition",
+        )
+        due_disposition["required_capabilities"] = ["network", "external_write"]
+        agent_items.append(due_disposition)
     if include_fallback:
         agent_items.append(independent_benchmark)
     agent_items.append(external_publish_monitor)
@@ -680,6 +697,47 @@ def assert_exact_todo_gate_survives_decision_scope_migration() -> None:
     assert selected["todo_gate_relation"]["state"] == "independent", selected
 
 
+def assert_exact_todo_gate_allows_independent_due_monitor() -> None:
+    payload = build_quota_should_run(
+        exact_todo_gate_status_payload(
+            include_fallback=False,
+            include_due_monitor=True,
+        ),
+        goal_id=GOAL_ID,
+        agent_id="codex-main-control",
+        available_capabilities=["network", "external_write"],
+    )
+    assert payload["should_run"] is True, payload
+    assert payload["decision"] == "safe_bypass_user_gate_fallback", payload
+    fallback = payload["scoped_user_gate_fallback"]
+    assert fallback["blocked_agent_items"][0]["todo_id"] == "todo_blocked_benchmark_run", fallback
+    selected = fallback["selected_executable"]
+    assert selected["todo_id"] == "todo_due_disposition", fallback
+    assert selected["todo_gate_relation"]["state"] == "independent", selected
+    assert payload["work_lane_contract"]["selected_todo_id"] == "todo_due_disposition", payload
+    assert payload["selected_todo"]["todo_id"] == "todo_due_disposition", payload
+    contract = payload["interaction_contract"]
+    assert contract["user_channel"]["action_required"] is True, contract
+    assert contract["agent_channel"]["must_attempt"] is True, contract
+    assert contract["agent_channel"]["delivery_allowed"] is True, contract
+
+    blocked_payload = build_quota_should_run(
+        exact_todo_gate_status_payload(
+            include_fallback=False,
+            include_due_monitor=True,
+        ),
+        goal_id=GOAL_ID,
+        agent_id="codex-main-control",
+        available_capabilities=["network"],
+    )
+    assert blocked_payload["should_run"] is False, blocked_payload
+    assert "scoped_user_gate_fallback" not in blocked_payload, blocked_payload
+    blocked_contract = blocked_payload["interaction_contract"]
+    assert blocked_contract["user_channel"]["action_required"] is True, blocked_contract
+    assert blocked_contract["agent_channel"]["must_attempt"] is False, blocked_contract
+    assert blocked_contract["agent_channel"]["delivery_allowed"] is False, blocked_contract
+
+
 def assert_conflicting_exact_and_decision_scope_requires_projection_repair() -> None:
     gate = {
         "todo_id": "todo_gate_conflict",
@@ -803,6 +861,7 @@ def main() -> int:
     assert_exact_todo_gate_only_blocks_target_todo()
     assert_scoped_gate_rejects_capability_ineligible_only_fallback()
     assert_exact_todo_gate_survives_decision_scope_migration()
+    assert_exact_todo_gate_allows_independent_due_monitor()
     assert_conflicting_exact_and_decision_scope_requires_projection_repair()
     assert_decision_scope_overrides_shared_action_kind_tokens()
     assert_agent_without_advancement_candidate_and_only_monitor_work_stays_quiet()

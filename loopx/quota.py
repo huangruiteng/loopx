@@ -129,7 +129,7 @@ from .control_plane.runtime.promotion_readiness import (
 from .control_plane.work_items.goal_route_hint import build_goal_route_hint
 from .control_plane.work_items.capability_monitor_fallback import build_capability_gate_with_monitor_fallback
 from .control_plane.work_items.work_lane import (
-    work_lane_contract_is_due_monitor_attempt,
+    scoped_user_gate_due_monitor_contract, work_lane_contract_is_due_monitor_attempt,
 )
 from .control_plane.scheduler.scheduler_hint import (
     build_scheduler_hint,
@@ -1411,6 +1411,12 @@ def build_quota_should_run(
         if task_orchestration_contract:
             capability_monitor_contract = capability_monitor_fallback = None
         work_lane_contract = capability_monitor_contract or work_lane_contract
+        scoped_user_gate_fallback = _scoped_user_gate_fallback(
+            user_todo_summary, agent_todo_summary, capability_gate=capability_gate,
+            allow_unrelated_gate=bool(quota.get("safe_bypass_allowed")),
+        )
+        work_lane_contract = scoped_user_gate_due_monitor_contract(
+            scoped_user_gate_fallback, current_contract=work_lane_contract) or work_lane_contract
         agent_frontier_id = (
             normalize_todo_claimed_by(agent_identity.get("agent_id"))
             if isinstance(agent_identity, dict)
@@ -1724,12 +1730,6 @@ def build_quota_should_run(
                 or str(replan_obligation.get("stop_condition") or "").strip()
                 or "Run one bounded autonomous replan slice and write back the selected todo/frontier changes."
             )
-        scoped_user_gate_fallback = _scoped_user_gate_fallback(
-            user_todo_summary,
-            agent_todo_summary,
-            capability_gate=capability_gate,
-            allow_unrelated_gate=bool(quota.get("safe_bypass_allowed")),
-        )
         agent_lane_next_action = None
         if not due_monitor_attempt and not task_orchestration_contract and not capability_monitor_fallback:
             agent_lane_next_action = build_agent_lane_next_action(
