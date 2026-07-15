@@ -72,6 +72,19 @@ def resolve_explore_board_style(
     return _RENDERER_BOARD_STYLES[renderer]
 
 
+def resolve_explore_board_style_update(
+    requested_style: str | None,
+    existing_sink: Mapping[str, Any],
+) -> ExploreBoardStyle:
+    """Preserve an existing style when a config update omits the parameter."""
+
+    if requested_style is not None:
+        return explore_board_style(requested_style)
+    if existing_sink:
+        return resolve_explore_board_style(existing_sink)
+    return explore_board_style(BOARD_STYLE_AUTO_FLOW)
+
+
 def summarize_explore_visual_sync(
     *,
     views: Mapping[str, Mapping[str, Any]],

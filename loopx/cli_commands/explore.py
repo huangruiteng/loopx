@@ -262,11 +262,11 @@ def register_explore_commands(
     visual.add_argument(
         "--board-style",
         choices=["auto_flow", "semantic_lane_columns"],
-        default="auto_flow",
         help=(
             "Whiteboard layout style. auto_flow uses Mermaid's generic graph "
             "layout; semantic_lane_columns fixes semantic lanes into "
-            "left/right columns while retaining real directed edges."
+            "left/right columns while retaining real directed edges. Omit to "
+            "preserve an existing role's style; new roles default to auto_flow."
         ),
     )
     visual.add_argument(

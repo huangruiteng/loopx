@@ -1419,6 +1419,32 @@ def check_cli_surface() -> None:
                 "semantic_lane_columns" if role == "executive" else "auto_flow"
             )
             assert role_config["visual_sink"]["board_style"] == expected_style, role_config
+            expected_renderer = "stage_svg" if role == "executive" else "mermaid"
+            assert role_config["visual_sink"]["renderer"] == expected_renderer, role_config
+
+            updated_role_config = run_cli(
+                "explore",
+                "feishu-visual-configure",
+                "--config-path",
+                str(config_path),
+                "--whiteboard-token",
+                f"wb_{role}_updated_fixture",
+                "--docx-token",
+                f"doc_{role}_updated_fixture",
+                "--stage-whiteboard-token",
+                f"wb_{role}_stage_02_updated_fixture",
+                "--view-role",
+                role,
+                "--projection-mode",
+                mode,
+                "--execute",
+            )
+            assert updated_role_config["visual_sink"]["board_style"] == expected_style, (
+                updated_role_config
+            )
+            assert updated_role_config["visual_sink"]["renderer"] == expected_renderer, (
+                updated_role_config
+            )
         dual_config_sync = run_cli(
             "explore",
             "feishu-sync",

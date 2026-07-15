@@ -60,10 +60,9 @@ from .kanban import (
 from .explore_stage_document import ensure_stage_whiteboards
 from .explore_singleflight import singleflight_issue_fix_material_sync
 from .explore_visual_styles import (
-    BOARD_STYLE_AUTO_FLOW,
     board_source_with_delivery_marker,
-    explore_board_style,
     resolve_explore_board_style,
+    resolve_explore_board_style_update,
     summarize_explore_visual_sync,
 )
 from .explore_visual_readback import (
@@ -486,7 +485,7 @@ def configure_lark_explore_visual_sink(
     mermaid_node_limit: int = 100,
     stage_capacity: int = 14,
     stage_whiteboard_tokens: list[str] | None = None,
-    board_style: str = BOARD_STYLE_AUTO_FLOW,
+    board_style: str | None = None,
     view_role: str | None = None,
     execute: bool = False,
 ) -> dict[str, Any]:
@@ -512,7 +511,19 @@ def configure_lark_explore_visual_sink(
         raise ValueError(f"view_role {role} requires projection_mode {expected_mode}")
     if not 10 <= int(stage_capacity) <= 20:
         raise ValueError("stage_capacity must be between 10 and 20")
-    style = explore_board_style(board_style)
+    local = read_lark_explore_local_config(config_path)
+    if not local.get("ok") or not local.get("exists"):
+        raise ValueError("run `loopx explore feishu-setup` before configuring a visual sink")
+    visual_sinks = local.get("visual_sinks")
+    existing_sink = (
+        visual_sinks.get(role)
+        if role and isinstance(visual_sinks, Mapping)
+        else local.get("visual_sink") if not role else None
+    )
+    style = resolve_explore_board_style_update(
+        board_style,
+        existing_sink if isinstance(existing_sink, Mapping) else {},
+    )
     tokens = [
         str(item).strip()
         for item in stage_whiteboard_tokens or []
@@ -522,9 +533,6 @@ def configure_lark_explore_visual_sink(
         tokens = [token]
     elif token and token not in tokens:
         tokens.insert(0, token)
-    local = read_lark_explore_local_config(config_path)
-    if not local.get("ok") or not local.get("exists"):
-        raise ValueError("run `loopx explore feishu-setup` before configuring a visual sink")
     visual_sink = {
         "schema_version": "loopx_lark_explore_visual_sink_config_v0",
         "whiteboard_token": token or None,

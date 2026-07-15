@@ -698,6 +698,12 @@ The renderer (`mermaid` or `stage_svg`) is an implementation detail derived
 from `board_style`. Existing local configs that only store `renderer=mermaid`
 remain readable as `auto_flow`.
 
+On first configuration, omitting `--board-style` defaults the new visual role
+to `auto_flow`. On later calls for the same role, omission preserves the stored
+style and its validated renderer. This makes Docx or Evidence Stage token
+maintenance a patch operation instead of an implicit style reset. Pass an
+explicit `--board-style` only when intentionally switching the layout.
+
 A material sync checkpoints `canonical_rows_semantic_digest`
 and `visual_semantic_digest` independently. If whiteboard publication fails
 after Base rows succeed, the next run retries only the visual sink instead of

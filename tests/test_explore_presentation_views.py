@@ -609,6 +609,69 @@ def test_visual_configuration_preserves_legacy_and_supports_stage_boards(
     ]
 
 
+def test_visual_configuration_preserves_existing_style_when_omitted(tmp_path) -> None:
+    config_path = tmp_path / "lark-explore.json"
+    write_lark_explore_local_config(
+        config_path,
+        {
+            "board": {
+                "base_token": "PUBLIC_FIXTURE_BASE",
+                "tables": {"nodes": "tblN", "edges": "tblE", "findings": "tblF"},
+            },
+            "visual_sinks": {
+                "canonical": {
+                    "whiteboard_token": "wb_canonical_fixture",
+                    "view_role": "canonical",
+                    "projection_mode": "canonical_full",
+                    "renderer": "mermaid",
+                }
+            },
+        },
+    )
+    configure_lark_explore_visual_sink(
+        config_path=config_path,
+        whiteboard_token="wb_executive_fixture",
+        projection_mode="executive_auto",
+        view_role="executive",
+        board_style="semantic_lane_columns",
+        execute=True,
+    )
+
+    canonical = configure_lark_explore_visual_sink(
+        config_path=config_path,
+        whiteboard_token="wb_canonical_updated",
+        docx_token="doc_canonical_updated",
+        projection_mode="canonical_full",
+        view_role="canonical",
+        execute=True,
+    )["visual_sink"]
+    executive = configure_lark_explore_visual_sink(
+        config_path=config_path,
+        whiteboard_token="wb_executive_updated",
+        docx_token="doc_executive_updated",
+        projection_mode="executive_auto",
+        view_role="executive",
+        stage_whiteboard_tokens=["wb_executive_updated", "wb_stage_02_updated"],
+        execute=True,
+    )["visual_sink"]
+
+    assert canonical["board_style"] == "auto_flow"
+    assert canonical["renderer"] == "mermaid"
+    assert executive["board_style"] == "semantic_lane_columns"
+    assert executive["renderer"] == "stage_svg"
+
+    changed = configure_lark_explore_visual_sink(
+        config_path=config_path,
+        whiteboard_token="wb_executive_updated",
+        projection_mode="executive_auto",
+        view_role="executive",
+        board_style="auto_flow",
+        execute=True,
+    )["visual_sink"]
+    assert changed["board_style"] == "auto_flow"
+    assert changed["renderer"] == "mermaid"
+
+
 def test_visual_configuration_rejects_out_of_range_stage_capacity(tmp_path) -> None:
     config_path = tmp_path / "lark-explore.json"
     write_lark_explore_local_config(
