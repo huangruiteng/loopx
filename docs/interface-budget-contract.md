@@ -48,6 +48,13 @@ TurnEnvelope output, status task-graph detail, the full review packet, and the
 brief/compact/full heartbeat prompt modes. These remain opt-in cold paths, but
 their exact stdout size and semantic anchors are regression contracts too.
 
+The start and daily command groups in the public help surface, plus
+`heartbeat-prompt`, are fail-closed inventory inputs. Each command must map to
+a default qualified surface or carry an explicit cold-path exception with a
+rationale. The canary planner selects the output-budget profile for CLI command,
+help, implementation, fixture, workflow, or budget-contract changes, and PR CI
+runs the matrix as a named step.
+
 Both budget layers are intentionally about projections, not the full archival
 facts. When a surface needs more detail, put that detail behind a queryable
 cold-path command or a linked run-history artifact instead of making the
@@ -77,6 +84,7 @@ Regression entrypoints:
 
 ```bash
 pytest -q tests/control_plane/test_cli_output_budget.py
+python3 examples/control_plane/cli-output-budget-regression-smoke.py
 python3 examples/control_plane/hot-path-interface-budget-smoke.py
 python3 examples/control_plane/status-quota-perf-budget-smoke.py
 ```

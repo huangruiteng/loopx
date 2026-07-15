@@ -52,6 +52,9 @@ jobs:
       - name: Type-check kernel contracts
         run: python -m mypy
 
+      - name: Qualify agent-facing CLI output
+        run: python -m pytest -q tests/control_plane/test_cli_output_budget.py
+
       - name: Run fast tests
         run: >-
           python -m pytest -q -n 2
