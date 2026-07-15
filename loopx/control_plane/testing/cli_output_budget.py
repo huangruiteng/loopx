@@ -14,6 +14,10 @@ QualificationPolicy = Literal[
     "baseline_and_growth",
     "explicit_limit_cold_path",
 ]
+CommandQualification = Literal[
+    "qualified_default",
+    "explicit_cold_path_exception",
+]
 
 
 @dataclass(frozen=True)
@@ -42,6 +46,14 @@ class CliOutputModeVariantSpec:
     markdown_anchor: str
     max_chars: dict[OutputFormat, int]
     max_lines: dict[OutputFormat, int]
+
+
+@dataclass(frozen=True)
+class CliOutputCommandClassification:
+    command_id: str
+    qualification: CommandQualification
+    surface_id: str | None
+    rationale: str
 
 
 # These ceilings characterize the emitted CLI text on public fixtures. They are
@@ -366,6 +378,115 @@ CLI_OUTPUT_MODE_VARIANT_BY_ID = {
 }
 
 
+# The public help surface is the authority for recurring agent-facing commands.
+# Every command in its start/daily groups, plus heartbeat-prompt, must resolve
+# here. Tests fail closed when help adds a command without a budget or a named
+# cold-path exception.
+CLI_OUTPUT_COMMAND_CLASSIFICATIONS: tuple[CliOutputCommandClassification, ...] = (
+    CliOutputCommandClassification(
+        command_id="doctor",
+        qualification="explicit_cold_path_exception",
+        surface_id=None,
+        rationale="installation diagnostic invoked on demand, not a recurring decision payload",
+    ),
+    CliOutputCommandClassification(
+        command_id="slash-commands",
+        qualification="explicit_cold_path_exception",
+        surface_id=None,
+        rationale="installation and discovery command invoked explicitly",
+    ),
+    CliOutputCommandClassification(
+        command_id="preset",
+        qualification="explicit_cold_path_exception",
+        surface_id=None,
+        rationale="configuration discovery command invoked explicitly",
+    ),
+    CliOutputCommandClassification(
+        command_id="ready-score",
+        qualification="explicit_cold_path_exception",
+        surface_id=None,
+        rationale="operator readiness diagnostic invoked explicitly",
+    ),
+    CliOutputCommandClassification(
+        command_id="start-goal",
+        qualification="qualified_default",
+        surface_id="start_goal_guided",
+        rationale="guided goal-start packet is a recurring agent bootstrap surface",
+    ),
+    CliOutputCommandClassification(
+        command_id="agent-onboard",
+        qualification="explicit_cold_path_exception",
+        surface_id=None,
+        rationale="one-time host activation packet with its own activation smokes",
+    ),
+    CliOutputCommandClassification(
+        command_id="bootstrap-command-pack",
+        qualification="qualified_default",
+        surface_id="bootstrap_command_pack",
+        rationale="lower-level host handoff packet is consumed by agent bootstrap",
+    ),
+    CliOutputCommandClassification(
+        command_id="status",
+        qualification="qualified_default",
+        surface_id="status",
+        rationale="first-screen agent and operator status read",
+    ),
+    CliOutputCommandClassification(
+        command_id="diagnose",
+        qualification="qualified_default",
+        surface_id="diagnose",
+        rationale="agent self-repair packet",
+    ),
+    CliOutputCommandClassification(
+        command_id="review-packet",
+        qualification="qualified_default",
+        surface_id="review_packet_handoff_only",
+        rationale="agent handoff and review packet",
+    ),
+    CliOutputCommandClassification(
+        command_id="evidence-log",
+        qualification="qualified_default",
+        surface_id="evidence_log_thin",
+        rationale="bounded evidence read before replan or handoff",
+    ),
+    CliOutputCommandClassification(
+        command_id="todo",
+        qualification="qualified_default",
+        surface_id="todo_list",
+        rationale="agent work-queue read path",
+    ),
+    CliOutputCommandClassification(
+        command_id="task-lease",
+        qualification="explicit_cold_path_exception",
+        surface_id=None,
+        rationale="explicit per-todo lease lifecycle command family",
+    ),
+    CliOutputCommandClassification(
+        command_id="quota",
+        qualification="qualified_default",
+        surface_id="quota_should_run",
+        rationale="recurring next-turn execution guard",
+    ),
+    CliOutputCommandClassification(
+        command_id="history",
+        qualification="qualified_default",
+        surface_id="history_limited",
+        rationale="bounded run-history read path",
+    ),
+    CliOutputCommandClassification(
+        command_id="heartbeat-prompt",
+        qualification="qualified_default",
+        surface_id="heartbeat_prompt_thin",
+        rationale="recurring host automation body",
+    ),
+)
+
+
+CLI_OUTPUT_COMMAND_CLASSIFICATION_BY_ID = {
+    spec.command_id: spec for spec in CLI_OUTPUT_COMMAND_CLASSIFICATIONS
+}
+
+
 def measure_cli_output(
     text: str,
     *,
@@ -482,6 +603,7 @@ def public_manifest() -> dict[str, Any]:
         "schema_version": CLI_OUTPUT_BUDGET_SCHEMA_VERSION,
         "surface_count": len(CLI_OUTPUT_BUDGET_SPECS),
         "mode_variant_count": len(CLI_OUTPUT_MODE_VARIANT_SPECS),
+        "command_classification_count": len(CLI_OUTPUT_COMMAND_CLASSIFICATIONS),
         "surfaces": [
             {
                 "surface_id": spec.surface_id,
@@ -505,5 +627,14 @@ def public_manifest() -> dict[str, Any]:
                 "formats": list(spec.output_formats),
             }
             for spec in CLI_OUTPUT_MODE_VARIANT_SPECS
+        ],
+        "command_classifications": [
+            {
+                "command_id": spec.command_id,
+                "qualification": spec.qualification,
+                "surface_id": spec.surface_id,
+                "rationale": spec.rationale,
+            }
+            for spec in CLI_OUTPUT_COMMAND_CLASSIFICATIONS
         ],
     }

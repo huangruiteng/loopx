@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +13,8 @@ from loopx.cli import main as cli_main
 from loopx.control_plane.testing.cli_output_budget import (
     CLI_OUTPUT_BUDGET_BY_ID,
     CLI_OUTPUT_BUDGET_SPECS,
+    CLI_OUTPUT_COMMAND_CLASSIFICATION_BY_ID,
+    CLI_OUTPUT_COMMAND_CLASSIFICATIONS,
     CLI_OUTPUT_MODE_VARIANT_BY_ID,
     CLI_OUTPUT_MODE_VARIANT_SPECS,
     assert_cli_output_baseline,
@@ -19,6 +22,7 @@ from loopx.control_plane.testing.cli_output_budget import (
     measure_cli_output,
     public_manifest,
 )
+from loopx.help_surface import COMMAND_GROUPS
 from loopx.rollout_event_log import rollout_event_log_path
 
 
@@ -434,6 +438,24 @@ def _mode_variant_commands(
     }
 
 
+def _agent_facing_help_command_ids() -> set[str]:
+    command_ids: set[str] = set()
+    for group in COMMAND_GROUPS:
+        title = str(group.get("title") or "")
+        for row in group.get("commands", []):
+            if not isinstance(row, dict):
+                continue
+            command = str(row.get("command") or "")
+            selected = title in {"Start here", "Daily operator commands"}
+            selected = selected or command == "loopx heartbeat-prompt"
+            if not selected or not command.startswith("loopx "):
+                continue
+            parts = shlex.split(command)
+            assert len(parts) >= 2, command
+            command_ids.add(parts[1])
+    return command_ids
+
+
 def test_manifest_covers_the_declared_agent_facing_surface_set() -> None:
     expected = {
         "start_goal_guided",
@@ -468,6 +490,19 @@ def test_manifest_covers_the_declared_agent_facing_surface_set() -> None:
     assert all(
         spec.parent_surface_id in expected for spec in CLI_OUTPUT_MODE_VARIANT_SPECS
     )
+    help_command_ids = _agent_facing_help_command_ids()
+    assert set(CLI_OUTPUT_COMMAND_CLASSIFICATION_BY_ID) == help_command_ids
+    assert manifest["command_classification_count"] == len(help_command_ids)
+    assert {
+        row["command_id"] for row in manifest["command_classifications"]
+    } == help_command_ids
+    for classification in CLI_OUTPUT_COMMAND_CLASSIFICATIONS:
+        assert classification.rationale
+        if classification.qualification == "qualified_default":
+            assert classification.surface_id in expected
+        else:
+            assert classification.qualification == "explicit_cold_path_exception"
+            assert classification.surface_id is None
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda scenario: scenario.name)
