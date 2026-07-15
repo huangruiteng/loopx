@@ -1580,11 +1580,11 @@ It mirrors the compact run index, but strips local artifact paths. UIs should
 show artifact availability with `json_exists` and `markdown_exists` instead of
 linking directly to local files.
 
-Relative `common_runtime_root` values, relative `--runtime-root` overrides, and
-relative run-index artifact paths are resolved against the project root that
-owns the selected registry, not the caller's current working directory. This
-keeps `status`, `quota should-run`, and `history` stable when they are invoked
-from an independent worktree.
+On the `status`, `quota should-run`, and `history` read paths, relative
+`common_runtime_root` values, relative `--runtime-root` overrides, and relative
+run-index artifact paths are resolved against the project root that owns the
+selected registry, not the caller's current working directory. This keeps
+those read surfaces stable when they are invoked from an independent worktree.
 
 Goal shape:
 
