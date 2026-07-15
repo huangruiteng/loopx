@@ -18,6 +18,10 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.control_plane.runtime.local_state_write_correctness import (  # noqa: E402
     shadow_validate_local_state_write_correctness_packet,
 )
+from loopx.control_plane.testing.canary_harness import (  # noqa: E402
+    run_json_cli,
+    write_fixture_registry,
+)
 
 GOAL_ID = "todo-write-correctness-goal"
 AGENT_ID = "codex-product-capability"
@@ -41,39 +45,26 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
         "  <!-- loopx:todo todo_id=todo_existing status=open task_class=advancement_task -->\n",
         encoding="utf-8",
     )
-    registry_path.parent.mkdir(parents=True)
-    registry_path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "updated_at": "2026-01-01T00:00:00+00:00",
-                "common_runtime_root": str(runtime),
-                "goals": [
-                    {
-                        "id": GOAL_ID,
-                        "domain": "todo-write-correctness-fixture",
-                        "status": "active",
-                        "repo": str(project),
-                        "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
-                        "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
-                        "authority_sources": [],
-                        "coordination": {
-                            "registered_agents": ["codex-main-control", AGENT_ID],
-                            "agent_model": "peer_v1",
-                        },
-                    }
-                ],
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
+    write_fixture_registry(
+        project=project,
+        runtime_root=runtime,
+        registry_path=registry_path,
+        goal_id=GOAL_ID,
+        domain="todo-write-correctness-fixture",
+        adapter_kind="generic_project_goal_v0",
+        registered_agents=("codex-main-control", AGENT_ID),
+        quota_allowed_slots=None,
     )
     return registry_path, state_file, project
 
 
 def run_cli(registry_path: Path, *args: str, as_json: bool = True) -> dict | str:
+    if as_json:
+        return run_json_cli(
+            *args,
+            registry_path=registry_path,
+            include_returncode=False,
+        )
     command = [
         sys.executable,
         "-m",
@@ -81,8 +72,6 @@ def run_cli(registry_path: Path, *args: str, as_json: bool = True) -> dict | str
         "--registry",
         str(registry_path),
     ]
-    if as_json:
-        command.extend(["--format", "json"])
     command.extend(args)
     result = subprocess.run(
         command,
@@ -91,7 +80,7 @@ def run_cli(registry_path: Path, *args: str, as_json: bool = True) -> dict | str
         text=True,
         capture_output=True,
     )
-    return json.loads(result.stdout) if as_json else result.stdout
+    return result.stdout
 
 
 def assert_packet(

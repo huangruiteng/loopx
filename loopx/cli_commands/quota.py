@@ -20,6 +20,10 @@ from ..quota import (
 from ..status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, collect_status
 from ..upgrade import resolve_codex_app_automation_rrule
 from ..control_plane.quota.turn_envelope import build_turn_envelope
+from ..control_plane.quota.scheduler_ack import (
+    record_quota_scheduler_failure_for_decision,
+)
+from ..control_plane.quota.markdown import render_quota_scheduler_failure_markdown
 from ..control_plane.runtime.status_projection_cache import (
     load_status_projection_cache,
     resolve_status_projection_cache_runtime_root,
@@ -35,7 +39,7 @@ PrintPayload = Callable[
 RolloutEventAppender = Callable[..., dict[str, object]]
 
 
-def _bind_scheduler_ack_cli_route(
+def _bind_scheduler_followup_cli_routes(
     payload: dict[str, object],
     *,
     registry_path: Path,
@@ -49,27 +53,30 @@ def _bind_scheduler_ack_cli_route(
     codex_app = scheduler_hint.get("codex_app")
     if not isinstance(codex_app, dict):
         return
-    ack_hint = codex_app.get("ack_hint")
-    if not isinstance(ack_hint, dict):
-        return
-    cli_args = ack_hint.get("cli_args")
-    if not isinstance(cli_args, list) or not cli_args:
-        return
-    if cli_args[0] == "--registry":
-        return
-    ack_hint["cli_args"] = [
-        "--registry",
-        str(registry_path.expanduser().resolve()),
-        "--runtime-root",
-        str(runtime_root.expanduser().resolve()),
-        *cli_args,
-    ]
-    ack_hint["route_binding"] = {
-        "schema_version": "scheduler_ack_cli_route_v0",
-        "source": "quota_cli_invocation",
-        "registry_bound": True,
-        "runtime_root_bound": True,
-    }
+    for hint_name in ("ack_hint", "failure_hint"):
+        followup_hint = codex_app.get(hint_name)
+        if not isinstance(followup_hint, dict):
+            continue
+        cli_args = followup_hint.get("cli_args")
+        if not isinstance(cli_args, list) or not cli_args or cli_args[0] == "--registry":
+            continue
+        followup_hint["cli_args"] = [
+            "--registry",
+            str(registry_path.expanduser().resolve()),
+            "--runtime-root",
+            str(runtime_root.expanduser().resolve()),
+            *cli_args,
+        ]
+        followup_hint["route_binding"] = {
+            "schema_version": (
+                "scheduler_ack_cli_route_v0"
+                if hint_name == "ack_hint"
+                else "scheduler_failure_cli_route_v0"
+            ),
+            "source": "quota_cli_invocation",
+            "registry_bound": True,
+            "runtime_root_bound": True,
+        }
 
 
 def default_public_scan_root() -> str:
@@ -91,13 +98,14 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
             "monitor-poll",
             "scheduler-ack",
             "scheduler-ack-current",
+            "scheduler-fail-current",
             "spend-slot",
             "void-slot",
         ],
         default="status",
-        help="Use status for all groups, plan for next-turn groups, should-run for one goal, monitor-poll for no-spend quiet poll evidence, scheduler-ack for no-spend Codex App RRULE state, scheduler-ack-current to ack from the latest scheduler hint, spend-slot for accounting, or void-slot for a non-destructive accounting correction.",
+        help="Use status for all groups, plan for next-turn groups, should-run for one goal, monitor-poll for no-spend quiet poll evidence, scheduler-ack for successful Codex App RRULE state, scheduler-fail-current to suppress a repeated failed host update pair, spend-slot for accounting, or void-slot for a non-destructive accounting correction.",
     )
-    quota_parser.add_argument("--goal-id", help="Goal id to check. Required for `quota should-run`, `quota monitor-poll`, `quota scheduler-ack`, `quota scheduler-ack-current`, `quota spend-slot`, and `quota void-slot`.")
+    quota_parser.add_argument("--goal-id", help="Goal id to check. Required for one-goal quota commands, including should-run, scheduler ACK/failure, spend, and void.")
     quota_parser.add_argument(
         "--agent-id",
         help=(
@@ -155,9 +163,16 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
     quota_parser.add_argument("--next-agent-todo", help="Agent follow-up todo to add when `--material-change` is set.")
     quota_parser.add_argument("--next-user-todo", help="User gate todo to add when `--material-change` is set.")
     quota_parser.add_argument("--next-claimed-by", help="Registered agent id to claim the `--next-agent-todo` follow-up.")
-    quota_parser.add_argument("--surface", default="codex_app", help="Scheduler surface for `quota scheduler-ack`; defaults to codex_app.")
-    quota_parser.add_argument("--state-key", default="scheduler_hint.codex_app.stateful_backoff", help="Scheduler state key for `quota scheduler-ack`.")
+    quota_parser.add_argument("--surface", default="codex_app", help="Scheduler surface for scheduler ACK/failure commands; defaults to codex_app.")
+    quota_parser.add_argument("--state-key", default="scheduler_hint.codex_app.stateful_backoff", help="Scheduler state key for scheduler ACK/failure commands.")
     quota_parser.add_argument("--applied-rrule", help="RRULE successfully applied by the host before `quota scheduler-ack --execute`.")
+    quota_parser.add_argument("--failed-rrule", help="RRULE whose host update failed before `quota scheduler-fail-current --execute`.")
+    quota_parser.add_argument(
+        "--failure-kind",
+        choices=["host_tool_failure", "timeout", "rejected", "unavailable"],
+        default="host_tool_failure",
+        help="Bounded public-safe failure category for scheduler-fail-current.",
+    )
     quota_parser.add_argument("--reset-token", help="Optional reset token to validate before scheduler ack.")
     quota_parser.add_argument("--identity-signature", help="Optional identity signature to validate before scheduler ack.")
     quota_parser.add_argument(
@@ -228,7 +243,7 @@ def handle_quota_command(
         if not scan_roots:
             scan_roots = [Path(args.scan_root).expanduser()]
         status_limit = max(0, args.limit)
-        if args.quota_command in {"should-run", "monitor-poll", "scheduler-ack", "scheduler-ack-current"}:
+        if args.quota_command in {"should-run", "monitor-poll", "scheduler-ack", "scheduler-ack-current", "scheduler-fail-current"}:
             status_limit = max(status_limit, AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK)
         runtime_root = resolve_status_projection_cache_runtime_root(
             registry_path=registry_path,
@@ -288,7 +303,7 @@ def handle_quota_command(
                 include_scheduler_detail=bool(args.include_scheduler_detail),
                 codex_app_current_rrule=codex_app_rrule,
             )
-            _bind_scheduler_ack_cli_route(
+            _bind_scheduler_followup_cli_routes(
                 payload,
                 registry_path=registry_path,
                 runtime_root=runtime_root,
@@ -339,6 +354,40 @@ def handle_quota_command(
                 use_current_hint=bool(args.use_current_hint or args.quota_command == "scheduler-ack-current"),
                 host_match_observed=bool(getattr(args, "host_match_observed", False)),
             )
+        elif args.quota_command == "scheduler-fail-current":
+            if not args.goal_id:
+                raise ValueError("`loopx quota scheduler-fail-current` requires --goal-id")
+            if not args.agent_id:
+                raise ValueError("`loopx quota scheduler-fail-current` requires --agent-id")
+            if args.dry_run and args.execute:
+                raise ValueError("`loopx quota scheduler-fail-current` accepts only one of --dry-run or --execute")
+            observed_rrule = str(args.codex_app_current_rrule or "").strip()
+            if not observed_rrule:
+                host_observation = resolve_codex_app_automation_rrule(
+                    goal_id=args.goal_id,
+                    agent_id=args.agent_id,
+                )
+                if host_observation.get("available") is True:
+                    observed_rrule = str(host_observation.get("rrule") or "")
+            failure_decision = build_quota_should_run(
+                status_payload,
+                goal_id=args.goal_id,
+                agent_id=args.agent_id,
+                available_capabilities=args.available_capabilities,
+                codex_app_current_rrule=observed_rrule,
+            )
+            payload = record_quota_scheduler_failure_for_decision(
+                failure_decision,
+                runtime_root=runtime_root,
+                goal_id=args.goal_id,
+                agent_id=args.agent_id,
+                execute=bool(args.execute),
+                surface=args.surface,
+                state_key=args.state_key,
+                failed_rrule=args.failed_rrule,
+                observed_host_rrule=observed_rrule,
+                failure_kind=args.failure_kind,
+            )
         elif args.quota_command == "spend-slot":
             if not args.goal_id:
                 raise ValueError("`loopx quota spend-slot` requires --goal-id")
@@ -374,7 +423,7 @@ def handle_quota_command(
         if cache_metadata:
             payload["status_projection_cache"] = cache_metadata
     except Exception as exc:
-        if args.quota_command in {"should-run", "monitor-poll", "scheduler-ack", "scheduler-ack-current", "spend-slot", "void-slot"}:
+        if args.quota_command in {"should-run", "monitor-poll", "scheduler-ack", "scheduler-ack-current", "scheduler-fail-current", "spend-slot", "void-slot"}:
             payload = {
                 "ok": False,
                 "mode": args.quota_command,
@@ -408,6 +457,16 @@ def handle_quota_command(
                         "applied_rrule": args.applied_rrule,
                     }
                 )
+            if args.quota_command == "scheduler-fail-current":
+                payload.update(
+                    {
+                        "agent_id": args.agent_id,
+                        "surface": args.surface,
+                        "state_key": args.state_key,
+                        "failed_rrule": args.failed_rrule,
+                        "failure_kind": args.failure_kind,
+                    }
+                )
         else:
             payload = {
                 "ok": False,
@@ -438,6 +497,7 @@ def handle_quota_command(
         "monitor-poll": "quota_monitor_poll",
         "scheduler-ack": "quota_scheduler_ack",
         "scheduler-ack-current": "quota_scheduler_ack",
+        "scheduler-fail-current": "quota_scheduler_failure",
         "spend-slot": "quota_spend",
         "void-slot": "quota_void",
     }
@@ -491,6 +551,8 @@ def handle_quota_command(
         if args.quota_command == "monitor-poll"
         else render_quota_scheduler_ack_markdown
         if args.quota_command in {"scheduler-ack", "scheduler-ack-current"}
+        else render_quota_scheduler_failure_markdown
+        if args.quota_command == "scheduler-fail-current"
         else render_quota_slot_preview_markdown
         if args.quota_command in {"spend-slot", "void-slot"}
         else render_quota_markdown

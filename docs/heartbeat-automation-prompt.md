@@ -311,8 +311,10 @@ If the result says should_run=false:
   waiting_on=external_evidence, where a short user/owner answer can unlock a
   quiet project or stop meaningless repeated polling. If the payload explicitly
   includes open_todo_notification_policy=repeat_until_resolved, return
-  heartbeat NOTIFY on every such poll until the user todo is done, deferred, or
-  replaced. Otherwise, if the same blocker ask has not already been surfaced in
+  heartbeat NOTIFY until the user todo is done, deferred, or replaced. When
+  user_gate_notification_cooldown.notification_suppressed=true, preserve the
+  pending gate but return quiet DONT_NOTIFY until its bounded reminder window
+  or a material gate/host change. Otherwise, if the same blocker ask has not already been surfaced in
   the recent visible thread, return heartbeat NOTIFY with one concise Chinese
   ask listing at most three first_open_items, the open_todo_notify_reason, and
   the expected reply format: done, defer/not now, or a new evidence
@@ -500,7 +502,12 @@ heartbeats should search/use `automation_update` when available, but only when
 RRULE update, run `loopx` with
 `scheduler_hint.codex_app.ack_hint.cli_args`; current payloads use
 `quota scheduler-ack-current` so LoopX re-reads the latest hint and owns the
-progression/reset state. When the desired RRULE is already applied, skip
+progression/reset state. Attempt the host update at most once per hint and
+turn. If it fails or times out, do not retry or ACK; run
+`scheduler_hint.codex_app.failure_hint.cli_args` once to persist the failed
+target and observed host RRULE without spending quota. Exact repeats are then
+suppressed until either value changes. Continue any allowed delivery under the
+observed host cadence. When the desired RRULE is already applied, skip
 `automation_update`; if `stateful_backoff.ack_needed=true`, run the bound ack
 hint directly, otherwise do nothing. For the uniquely matched current heartbeat,
 `quota should-run` reconciles the installed RRULE with the ACK ledger; a
@@ -509,8 +516,9 @@ hint directly, otherwise do nothing. For the uniquely matched current heartbeat,
 ```text
 Create a heartbeat automation starting at 3 minutes for the current thread;
 then apply `quota should-run.scheduler_hint`: update RRULE only when
-`apply_needed=true`, then ack the applied RRULE with the provided
-`ack_hint.cli_args`.
+`apply_needed=true`, trying once per hint and turn; ack with the provided
+`ack_hint.cli_args` only after the host update succeeds, or run the provided
+`failure_hint.cli_args` once if that update fails or times out.
 
 Task:
 Advance <GOAL_ID> using <ACTIVE_GOAL_STATE_PATH>. Before any delivery work,
@@ -585,9 +593,11 @@ For every automatic heartbeat turn, the agent-facing checklist is:
    `execution_obligation.must_attempt_work=true`.
 3. If `notify_user_on_open_todo=true`, ask up to three open user todos as a
    blocker-push notification and do not spend quota for that blocker-push turn.
-   If `open_todo_notification_policy=repeat_until_resolved`,
-   repeat the notification every poll until the todo is done, deferred, or
-   replaced; do not suppress it as a recently surfaced blocker. Otherwise,
+   If `open_todo_notification_policy=repeat_until_resolved`, repeat the
+   notification until the todo is done, deferred, or replaced. If
+   `user_gate_notification_cooldown.notification_suppressed=true`, keep the gate
+   pending but return quiet `DONT_NOTIFY` until its bounded reminder window or
+   a material gate/host change. Otherwise,
    ordinary blocker-push asks may be de-duplicated when the same blocker was
    surfaced recently.
 4. If `effective_action=outcome_floor_recovery` or

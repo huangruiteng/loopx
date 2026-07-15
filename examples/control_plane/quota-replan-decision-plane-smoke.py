@@ -21,7 +21,7 @@ from loopx.control_plane.goals.goal_frontier import (  # noqa: E402
 from loopx.control_plane.todos.quota_summary import (  # noqa: E402
     select_quota_todo_summary,
 )
-from loopx.status import compact_todo_group  # noqa: E402
+from loopx.status import build_autonomous_replan_obligation, compact_todo_group  # noqa: E402
 
 
 GOAL_ID = "replan-decision-plane-fixture"
@@ -1259,6 +1259,47 @@ def assert_unscoped_peer_replan_has_one_deterministic_owner() -> None:
     ), reversed_guard
 
 
+def assert_state_replan_follows_claimed_frontier_not_monitor_peer() -> None:
+    items = [primary_claimed_advancement(), monitor_item()]
+    agent_todos = compact_todo_group(
+        items,
+        source_section="Agent Todo",
+        role="agent",
+    )
+    obligation = build_autonomous_replan_obligation(
+        [
+            {
+                "kind": "no_progress_streak",
+                "section": "Next Action",
+                "text": "Keep the primary peer's blocked action fail-closed.",
+            }
+        ],
+        agent_todos=agent_todos,
+    )
+    assert obligation is not None, obligation
+    assert obligation["agent_id"] == PRIMARY_AGENT, obligation
+
+    payload = status_payload(items, replan_obligation=obligation)
+    primary_guard = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id=PRIMARY_AGENT,
+    )
+    assert primary_guard["effective_action"] == "autonomous_replan_required", primary_guard
+    assert primary_guard["autonomous_replan_scope"]["scope"] == (
+        "explicit_agent_owner"
+    ), primary_guard
+
+    monitor_guard = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert monitor_guard.get("autonomous_replan_obligation") is None, monitor_guard
+    assert monitor_guard["effective_action"] == "monitor_quiet_skip", monitor_guard
+    assert monitor_guard["interaction_contract"]["mode"] == "monitor_quiet_skip", monitor_guard
+
+
 def assert_monitor_schedule_gap_requires_bounded_repair() -> None:
     guard = build_quota_should_run(
         status_payload([monitor_item(cadence=None, next_due_at=None)], replan_obligation=None),
@@ -1495,6 +1536,7 @@ def main() -> None:
     assert_satisfied_vision_checkpoint_supersedes_older_missing_but_not_empty_frontier()
     assert_agent_scoped_replan_beats_agent_scope_wait()
     assert_unscoped_peer_replan_has_one_deterministic_owner()
+    assert_state_replan_follows_claimed_frontier_not_monitor_peer()
     assert_monitor_schedule_gap_requires_bounded_repair()
     assert_agent_ack_survives_other_agent_run_and_monitor_poll()
     assert_non_frontier_replan_ack_does_not_clear_monitor_replan()

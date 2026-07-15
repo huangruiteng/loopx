@@ -130,10 +130,9 @@ def register_benchmark_run_ledger_commands(
         default=SKILLSBENCH_DEFAULT_ROUTE,
         help=(
             "SkillsBench route for the no-run compact adapter skeleton. "
-            "Default is loopx-blind-loop-treatment: ordinary Codex "
-            "inside the case, no /goal mode, and no official reward/pass-fail "
-            "or verifier output returned during the loop. Official verifier "
-            "feedback routes are not exposed here."
+            "Defaults to the Codex CLI /goal baseline. Use "
+            "loopx-goal-start-product-mode for the real LoopX treatment; "
+            "retired prompt-polling routes are not launchable."
         ),
     )
     benchmark_run_parser.add_argument(

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .benchmark_core import (
+    LEGACY_NONPRODUCT_PROMPT_POLLING_ROUTES,
     classify_benchmark_artifact_path,
     classify_product_mode_main_table_pair,
 )
@@ -968,6 +969,21 @@ def _infer_arm_id_from_job_name(job_name: str) -> str:
 
 def _infer_arm_id(benchmark_run: dict[str, Any]) -> str:
     mode = _compact_text(benchmark_run.get("mode"), limit=120)
+    route = _compact_text(benchmark_run.get("route"), limit=120)
+    if (
+        route in LEGACY_NONPRODUCT_PROMPT_POLLING_ROUTES
+        or mode in {
+            "skillsbench_loopx_blind_loop_treatment",
+            "skillsbench_loopx_prompt_polling_test",
+            "loopx_prompt_polling_test",
+        }
+        or benchmark_run.get("historical_route_read_only") is True
+        or _compact_text(
+            benchmark_run.get("skillsbench_route_semantics"), limit=120
+        )
+        == "historical_nonproduct_invalid_for_comparison"
+    ):
+        return "historical_nonproduct_invalid_for_comparison"
     if mode == "skillsbench_codex_app_server_goal_baseline":
         return "codex_app_server_goal_baseline"
     if mode == "codex_goal_mode_baseline":
@@ -992,6 +1008,8 @@ def _infer_arm_id(benchmark_run: dict[str, Any]) -> str:
 
 def _resolved_arm_id(benchmark_run: dict[str, Any], arm_id: str | None) -> str:
     inferred = _infer_arm_id(benchmark_run)
+    if inferred == "historical_nonproduct_invalid_for_comparison":
+        return inferred
     explicit = _compact_text(arm_id, limit=120)
     if explicit in {"baseline", "treatment"} and inferred not in {"", "unknown_arm"}:
         return inferred

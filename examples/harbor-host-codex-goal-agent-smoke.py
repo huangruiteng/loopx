@@ -60,7 +60,7 @@ def main() -> int:
     )
     assert disabled_packet == ""
 
-    treatment_packet = module.build_loopx_access_packet(
+    packet = module.build_loopx_access_packet(
         mode="codex_loopx",
         packet_mode="compact",
         goal_id="loopx-meta",
@@ -71,63 +71,51 @@ def main() -> int:
         scan_path="/workspace/loopx/benchmark.py",
         classification="swe_marathon_rust_c_compiler_treatment",
     )
-    assert "LoopX Access Packet V0" in treatment_packet
-    assert "benchmark_family: harbor" in treatment_packet
-    assert "mode: codex_loopx" in treatment_packet
-    assert "loopx_cli_bridge_available: true" in treatment_packet
-    assert "loopx_product_path_primary_route: prompt_driven_case_local_loopx_cli" in treatment_packet
-    assert "loopx_case_local_cli_installed_before_agent: true" in treatment_packet
-    assert "loopx_case_cli_path: /app/.local/bin/loopx" in treatment_packet
-    assert f"loopx_case_todo_id: {module.BENCHMARK_CASE_LOOPX_TODO_ID}" in treatment_packet
-    assert "loopx_case_command_quota_should_run:" in treatment_packet
+    assert "LoopX Access Packet V0" in packet
+    assert "benchmark_family: harbor" in packet
+    assert "mode: codex_loopx" in packet
+    assert "loopx_cli_bridge_available: true" in packet
+    assert "loopx_product_path_primary_route: prompt_driven_case_local_loopx_cli" in packet
+    assert "loopx_case_local_cli_installed_before_agent: true" in packet
+    assert "loopx_case_cli_path: /app/.local/bin/loopx" in packet
+    assert f"loopx_case_todo_id: {module.BENCHMARK_CASE_LOOPX_TODO_ID}" in packet
+    assert "loopx_case_command_quota_should_run:" in packet
     assert (
         "/app/.local/bin/loopx --registry /app/.loopx/registry.json "
         "--runtime-root /app/.loopx/runtime --format json quota should-run"
-    ) in treatment_packet
-    assert "loopx_case_command_claim_todo:" in treatment_packet
-    assert "loopx_case_command_mark_todo_done_when_complete:" in treatment_packet
-    assert "loopx_completion_source_of_truth: case_local_active_todo" in treatment_packet
-    assert "when_task_complete_mark_case_todo_done: true" in treatment_packet
-    assert "separate_completion_file_required: false" in treatment_packet
-    assert "host_exit_condition: confirmed_no_active_loopx_todo" in treatment_packet
-    assert "completion_marker_exit_condition" not in treatment_packet
-    assert "loopx_global_command_check_optional_context:" in treatment_packet
-    assert "do_not_upload_or_submit_to_leaderboard: true" in treatment_packet
-    assert "benchmark_loop_contract:" in treatment_packet
-    assert "protocol_id: max5_blind_loop_no_feedback" in treatment_packet
-    assert "route: loopx-prompt-polling-test" in treatment_packet
-    assert "benchmark_case_lifecycle_contract:" in treatment_packet
-    assert "case_isolation_scope: per_benchmark_case_arm" in treatment_packet
-    assert "benchmark_case_goal_id: swe-marathon-current-case-codex-loopx-treatment-case" in treatment_packet
-    assert "case_state_path: /app/.codex/goals/swe-marathon-current-case-codex-loopx-treatment-case/ACTIVE_GOAL_STATE.md" in treatment_packet
-    assert "required_lifecycle_steps: quota_should_run,todo_claim_or_update,bounded_agent_turn,validation_or_case_result,refresh_state,quota_spend" in treatment_packet
-    assert "required_rollout_event_kinds: quota_should_run,todo_claim,todo_update,validation,refresh_state,quota_spend,compact_case_result,failure_attribution" in treatment_packet
-    assert "strict_loopx_treatment_claim_allowed: false" in treatment_packet
-    assert "controller_trace_absent" in treatment_packet
+    ) in packet
+    assert "loopx_case_command_claim_todo:" in packet
+    assert "loopx_case_command_mark_todo_done_when_complete:" in packet
+    assert "loopx_completion_source_of_truth: case_local_active_todo" in packet
+    assert "when_task_complete_mark_case_todo_done: true" in packet
+    assert "separate_completion_file_required: false" in packet
+    assert "host_exit_condition: confirmed_no_active_loopx_todo" in packet
+    assert "completion_marker_exit_condition" not in packet
+    assert "loopx_global_command_check_optional_context:" in packet
+    assert "do_not_upload_or_submit_to_leaderboard: true" in packet
+    assert "benchmark_loop_contract:" in packet
+    assert "protocol_id: packet_only_observation" in packet
+    assert "route: loopx-packet-only-observation" in packet
+    assert "benchmark_case_lifecycle_contract:" in packet
+    assert "case_isolation_scope: per_benchmark_case_arm" in packet
+    assert "benchmark_case_goal_id: swe-marathon-current-case-codex-loopx-packet-observation-case" in packet
+    assert "case_state_path: /app/.codex/goals/swe-marathon-current-case-codex-loopx-packet-observation-case/ACTIVE_GOAL_STATE.md" in packet
+    assert "required_lifecycle_steps: quota_should_run,todo_claim_or_update,bounded_agent_turn,validation_or_case_result,refresh_state,quota_spend" in packet
+    assert "required_rollout_event_kinds: quota_should_run,todo_claim,todo_update,validation,refresh_state,quota_spend,compact_case_result,failure_attribution" in packet
+    assert "strict_loopx_treatment_claim_allowed: false" in packet
+    assert "packet_only_no_max5_controller" in packet
     packet_only_observation = module.build_loopx_access_packet(
         mode="codex_loopx",
         packet_mode="compact",
         cli_bridge_enabled=True,
         goal_id="loopx-meta",
         experiment_protocol="packet_only_observation",
-        max_rounds=5,
+        max_rounds=1,
     )
     assert "protocol_id: packet_only_observation" in packet_only_observation
     assert "route: loopx-packet-only-observation" in packet_only_observation
     assert "packet_only_no_max5_controller" in packet_only_observation
-    polling_packet = module.build_loopx_access_packet(
-        mode="codex_loopx",
-        packet_mode="compact",
-        cli_bridge_enabled=True,
-        goal_id="loopx-meta",
-        experiment_protocol="max5_blind_loop_no_feedback",
-        max_rounds=5,
-    )
-    assert "protocol_id: max5_blind_loop_no_feedback" in polling_packet
-    assert "route: loopx-prompt-polling-test" in polling_packet
-    assert "strict_loopx_treatment_claim_allowed: false" in polling_packet
-    assert "controller_trace_absent" in polling_packet
-    missing_prompt_lifecycle_claim = (
+    historical_claim = (
         module.classify_loopx_treatment_claim(
             {
                 "benchmark_loop_contract": {
@@ -145,17 +133,11 @@ def main() -> int:
             }
         )
     )
-    assert (
-        missing_prompt_lifecycle_claim[
-            "strict_loopx_treatment_claim_allowed"
-        ]
-        is False
-    ), missing_prompt_lifecycle_claim
-    assert (
-        "prompt_driven_loopx_lifecycle_absent"
-        in missing_prompt_lifecycle_claim["loopx_treatment_claim_blocker"]
-    ), missing_prompt_lifecycle_claim
-    observed_prompt_lifecycle_claim = (
+    assert historical_claim["strict_loopx_treatment_claim_allowed"] is False
+    assert historical_claim["loopx_treatment_claim_blocker"] == (
+        "historical_nonproduct_invalid_for_comparison"
+    )
+    historical_claim_with_lifecycle = (
         module.classify_loopx_treatment_claim(
             {
                 "benchmark_loop_contract": {
@@ -175,22 +157,23 @@ def main() -> int:
         )
     )
     assert (
-        observed_prompt_lifecycle_claim[
-            "strict_loopx_treatment_claim_allowed"
-        ]
-        is True
-    ), observed_prompt_lifecycle_claim
+        historical_claim_with_lifecycle["strict_loopx_treatment_claim_allowed"]
+        is False
+    )
+    assert historical_claim_with_lifecycle["loopx_treatment_claim_blocker"] == (
+        "historical_nonproduct_invalid_for_comparison"
+    )
     init_payload = module.build_case_goal_state_init_payload(
         benchmark_id="swe-marathon",
         case_id="find-network-alignments",
-        arm_id="loopx_prompt_polling_test",
-        route="loopx-prompt-polling-test",
-        max_rounds=5,
+        arm_id="loopx_packet_observation",
+        route="loopx-packet-only-observation",
+        max_rounds=1,
     )
     assert init_payload["schema_version"] == "loopx_benchmark_case_active_state_v1", init_payload
     assert (
         init_payload["benchmark_case_goal_id"]
-        == "swe-marathon-find-network-alignments-loopx-prompt-polling-test-case"
+        == "swe-marathon-find-network-alignments-loopx-packet-observation-case"
     ), init_payload
     assert init_payload["case_state_path"].startswith("/app/.codex/goals/"), init_payload
     assert init_payload["case_state_path"].endswith("/ACTIVE_GOAL_STATE.md"), init_payload
@@ -207,7 +190,7 @@ def main() -> int:
     assert " bootstrap " in init_command, init_command
     assert " configure-goal " in init_command, init_command
     assert " todo add " in init_command, init_command
-    assert "loopx-prompt-polling-test" in init_command, init_command
+    assert "loopx-packet-only-observation" in init_command, init_command
     assert "find-network-alignments" in init_command, init_command
     assert "/app/.local/bin/loopx" in init_command, init_command
     assert " quota should-run " in init_command, init_command
@@ -443,7 +426,7 @@ def main() -> int:
         instruction="Synthetic Harbor instruction placeholder.",
         bridge_command=Path("/tmp/gh-harbor/bin/harbor-env-exec"),
         task_workdir="/workspace",
-        loopx_access_packet=treatment_packet,
+        loopx_access_packet=packet,
     )
     assert "LoopX treatment access packet:" in treatment_prompt
     assert "case-local LoopX CLI" in treatment_prompt
@@ -569,8 +552,8 @@ def main() -> int:
         assert agent.app_server_response_timeout_sec == 4.0
         assert agent.loopx_mode == "codex_goal_mode_baseline"
         assert agent.loopx_access_packet_mode == "none"
-        assert agent.loopx_experiment_protocol == "max5_blind_loop_no_feedback"
-        assert agent.loopx_max_rounds == 5
+        assert agent.loopx_experiment_protocol == "packet_only_observation"
+        assert agent.loopx_max_rounds == 1
 
         no_wait_agent = module.HarborHostCodexGoalAgent(
             logs_dir=Path(tmp) / "no-wait-logs",
@@ -580,21 +563,21 @@ def main() -> int:
         assert no_wait_agent.app_server_wait_for_completion is False
         assert no_wait_agent.goal_timeout_sec == 21600.0
 
-        treatment_agent = module.HarborHostCodexGoalAgent(
-            logs_dir=Path(tmp) / "treatment-logs",
+        packet_agent = module.HarborHostCodexGoalAgent(
+            logs_dir=Path(tmp) / "packet-logs",
             goal_surface="app_server",
             loopx_mode="codex_loopx",
             loopx_access_packet_mode="compact",
             loopx_cli_bridge_enabled="true",
         )
-        assert treatment_agent.loopx_mode == "codex_loopx"
-        assert treatment_agent.loopx_access_packet_mode == "compact"
-        assert treatment_agent.loopx_cli_bridge_enabled is True
-        assert treatment_agent.loopx_experiment_protocol == "max5_blind_loop_no_feedback"
-        assert treatment_agent.loopx_prompt_polling_rounds == 5
-        assert treatment_agent.loopx_benchmark_id == "swe-marathon"
-        assert treatment_agent.loopx_case_id == "current-case"
-        assert treatment_agent.loopx_arm_id == "codex_loopx_treatment"
+        assert packet_agent.loopx_mode == "codex_loopx"
+        assert packet_agent.loopx_access_packet_mode == "compact"
+        assert packet_agent.loopx_cli_bridge_enabled is True
+        assert packet_agent.loopx_experiment_protocol == "packet_only_observation"
+        assert packet_agent.loopx_max_rounds == 1
+        assert packet_agent.loopx_benchmark_id == "swe-marathon"
+        assert packet_agent.loopx_case_id == "current-case"
+        assert packet_agent.loopx_arm_id == "codex_loopx_packet_observation"
         legacy_prefix = "goal_" + "harness_"
         try:
             module.HarborHostCodexGoalAgent(
@@ -613,37 +596,26 @@ def main() -> int:
             assert "count=3" in message, message
         else:
             raise AssertionError("legacy benchmark kwargs must fail closed")
-        polling_agent = module.HarborHostCodexGoalAgent(
-            logs_dir=Path(tmp) / "polling-logs",
-            goal_surface="app_server",
-            loopx_mode="codex_loopx",
-            loopx_access_packet_mode="compact",
-            loopx_experiment_protocol="max5_blind_loop_no_feedback",
-            loopx_max_rounds=5,
-            loopx_case_id="find-network-alignments",
-        )
-        assert polling_agent.loopx_prompt_polling_rounds == 5
-        assert polling_agent.loopx_prompt_polling_round_timeout_sec == 21600.0
-        assert polling_agent.loopx_case_id == "find-network-alignments"
-        long_polling_agent = module.HarborHostCodexGoalAgent(
-            logs_dir=Path(tmp) / "long-polling-logs",
-            goal_surface="app_server",
-            goal_timeout_sec=18000,
-            loopx_mode="codex_loopx",
-            loopx_access_packet_mode="compact",
-            loopx_experiment_protocol="max5_blind_loop_no_feedback",
-            loopx_max_rounds=5,
-        )
-        assert long_polling_agent.loopx_prompt_polling_round_timeout_sec == 18000.0
-        explicit_timeout_agent = module.HarborHostCodexGoalAgent(
-            logs_dir=Path(tmp) / "explicit-timeout-logs",
-            goal_surface="app_server",
-            loopx_mode="codex_loopx",
-            loopx_access_packet_mode="compact",
-            loopx_experiment_protocol="max5_blind_loop_no_feedback",
-            loopx_prompt_polling_round_timeout_sec=120,
-        )
-        assert explicit_timeout_agent.loopx_prompt_polling_round_timeout_sec == 120.0
+        for retired_kwargs in (
+            {"loopx_prompt_polling_rounds": 5},
+            {"loopx_prompt_polling_round_timeout_sec": 120},
+            {
+                "loopx_prompt_polling_rounds": 5,
+                "loopx_prompt_polling_round_timeout_sec": 120,
+            },
+        ):
+            try:
+                module.HarborHostCodexGoalAgent(
+                    logs_dir=Path(tmp) / "retired-polling-logs",
+                    **retired_kwargs,
+                )
+            except ValueError as exc:
+                message = str(exc)
+                assert "legacy_prompt_polling_route_removed" in message, message
+                assert "real LoopX product-mode adapter" in message, message
+                assert f"count={len(retired_kwargs)}" in message, message
+            else:
+                raise AssertionError("retired prompt-polling kwargs must fail closed")
 
         class _FakeTurn:
             thread_id = "thread_demo"
@@ -744,159 +716,6 @@ def main() -> int:
                     '{"ok":true,"goal_id":"demo","should_run":true,'
                     '"raw_logs_recorded":false}'
                 )
-
-        original_start = module.start_codex_app_server_goal_turn
-        original_followup = module.start_codex_app_server_goal_followup_turn
-
-        def _fake_start(*args, **kwargs):
-            del args, kwargs
-            return _FakeTurn()
-
-        def _fake_followup(*args, **kwargs):
-            del args, kwargs
-            raise module.CodexAppServerGoalDriverError("synthetic follow-up failure")
-
-        module.start_codex_app_server_goal_turn = _fake_start
-        module.start_codex_app_server_goal_followup_turn = _fake_followup
-        try:
-            no_active_agent = module.HarborHostCodexGoalAgent(
-                logs_dir=Path(tmp) / "no-active-stop-logs",
-                goal_surface="app_server",
-                goal_timeout_sec=60,
-                startup_delay_sec=0,
-                poll_interval_sec=0.01,
-                task_workdir="/workspace",
-                loopx_mode="codex_loopx",
-                loopx_access_packet_mode="compact",
-                loopx_cli_bridge_enabled=True,
-                loopx_experiment_protocol="max5_blind_loop_no_feedback",
-                loopx_max_rounds=5,
-            )
-            no_active_context = _FakeContext()
-            asyncio.run(
-                no_active_agent.run(
-                    "Synthetic Harbor instruction placeholder.",
-                    _DoneAfterFirstRoundEnvironment(),
-                    no_active_context,
-                )
-            )
-        finally:
-            module.start_codex_app_server_goal_turn = original_start
-            module.start_codex_app_server_goal_followup_turn = original_followup
-
-        no_active_compact_paths = sorted(
-            (Path(tmp) / "no-active-stop-logs").glob(
-                "host-codex-goal-*/app_server_goal_turn.compact.json"
-            )
-        )
-        assert no_active_compact_paths, "no-active stop should write compact closeout"
-        no_active_compact = json.loads(
-            no_active_compact_paths[-1].read_text(encoding="utf-8")
-        )
-        assert no_active_compact["loopx_controller_trace"]["last_decision"] == (
-            "stop_after_confirmed_no_active_loopx_todo"
-        ), no_active_compact
-        assert no_active_compact["loopx_controller_trace"][
-            "followup_prompt_count"
-        ] == 0, no_active_compact
-        assert no_active_compact["loopx_controller_trace"][
-            "no_active_todo_confirmed_count"
-        ] == 1, no_active_compact
-        assert "completion_marker_observed" not in no_active_compact, (
-            no_active_compact
-        )
-        assert no_active_compact["loopx_case_active_todo_exit_state"][
-            "no_active_todo"
-        ] is True, no_active_compact
-        assert no_active_compact["loopx_case_closeout_summary"][
-            "case_todo_status"
-        ] == "done", no_active_compact
-        no_active_phase = no_active_compact["loopx_solution_phase_counters"]
-        assert no_active_phase["result_kind"] == "case_result", no_active_phase
-        assert no_active_phase["self_declared_done_count"] == 1, no_active_phase
-        assert no_active_phase["final_active_todo_count"] == 0, no_active_phase
-        assert no_active_phase["final_no_active_todo"] is True, no_active_phase
-        assert no_active_phase["raw_commands_recorded"] is False, no_active_phase
-        assert no_active_phase["raw_verifier_output_recorded"] is False, no_active_phase
-        assert no_active_context.metadata["first_blocker"] == "", (
-            no_active_context.metadata
-        )
-        assert (
-            no_active_context.metadata["loopx_solution_phase_counters"][
-                "final_active_todo_count"
-            ]
-            == 0
-        ), no_active_context.metadata
-
-        module.start_codex_app_server_goal_turn = _fake_start
-        module.start_codex_app_server_goal_followup_turn = _fake_followup
-        try:
-            followup_failure_agent = module.HarborHostCodexGoalAgent(
-                logs_dir=Path(tmp) / "followup-failure-logs",
-                goal_surface="app_server",
-                goal_timeout_sec=60,
-                startup_delay_sec=0,
-                poll_interval_sec=0.01,
-                task_workdir="/workspace",
-                loopx_mode="codex_loopx",
-                loopx_access_packet_mode="compact",
-                loopx_cli_bridge_enabled=True,
-                loopx_experiment_protocol="max5_blind_loop_no_feedback",
-                loopx_max_rounds=2,
-            )
-            context = _FakeContext()
-            asyncio.run(
-                followup_failure_agent.run(
-                    "Synthetic Harbor instruction placeholder.",
-                    _FakeEnvironment(),
-                    context,
-                )
-            )
-        finally:
-            module.start_codex_app_server_goal_turn = original_start
-            module.start_codex_app_server_goal_followup_turn = original_followup
-
-        compact_paths = sorted(
-            (Path(tmp) / "followup-failure-logs").glob(
-                "host-codex-goal-*/app_server_goal_turn.compact.json"
-            )
-        )
-        assert compact_paths, "follow-up failure should still write compact closeout"
-        followup_compact = json.loads(compact_paths[-1].read_text(encoding="utf-8"))
-        assert followup_compact["first_blocker"] == (
-            "codex_app_server_goal_followup_turn_failed"
-        ), followup_compact
-        assert followup_compact["loopx_controller_trace_present"] is True
-        assert followup_compact["loopx_controller_trace"]["last_decision"] == (
-            "codex_app_server_goal_followup_turn_failed"
-        )
-        assert followup_compact["loopx_controller_trace"]["raw_error_recorded"] is False
-        assert followup_compact["loopx_case_closeout_summary"][
-            "result_kind"
-        ] == "runtime_exception_blocker"
-        assert followup_compact["loopx_case_closeout_summary"][
-            "status_observed"
-        ] is True
-        assert followup_compact["loopx_case_closeout_summary"][
-            "refresh_state_observed"
-        ] is True
-        assert followup_compact["loopx_case_closeout_summary"][
-            "quota_spend_observed"
-        ] is True
-        assert followup_compact["loopx_case_closeout_summary"][
-            "timeout_preserves_open_todo"
-        ] is False
-        followup_phase = followup_compact["loopx_solution_phase_counters"]
-        assert followup_phase["result_kind"] == "runtime_exception_blocker", (
-            followup_phase
-        )
-        assert followup_phase["first_blocker_present"] is True, followup_phase
-        assert followup_phase["raw_agent_trajectory_recorded"] is False, (
-            followup_phase
-        )
-        assert context.metadata["first_blocker"] == (
-            "codex_app_server_goal_followup_turn_failed"
-        )
 
     print("harbor host Codex Goal agent smoke passed")
     return 0

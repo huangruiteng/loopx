@@ -101,12 +101,7 @@ def main() -> None:
         assert "--no-rebuild" in baseline_tb_args
         assert "goal_surface=app_server" in baseline_tb_args
         assert "HostCodexGoalAgent" in baseline_tb_text
-        treatment_tb_args = host_goal["recommended_loopx_prompt_polling_tb_args"]
-        assert "loopx_mode=codex_loopx" in treatment_tb_args
-        assert "loopx_access_packet_mode=compact" in treatment_tb_args
-        assert "loopx_case_id=<case-id>" in treatment_tb_args
-        assert "loopx_arm_id=loopx_prompt_polling_test" in treatment_tb_args
-        assert "loopx_max_rounds=5" in treatment_tb_args
+        assert "recommended_loopx_prompt_polling_tb_args" not in host_goal
         proof_gate = host_goal["official_hello_world_proof_gate"]
         assert proof_gate["case_id"] == "hello-world"
         assert "terminal_bench_safe_run_id.py" in proof_gate["safe_run_id_command"]
@@ -159,28 +154,7 @@ def main() -> None:
         assert swe_host_goal["recommended_goal_baseline_harbor_args"] == (
             swe_host_goal["recommended_harbor_args"]
         )
-        swe_treatment_args = swe_host_goal[
-            "recommended_loopx_prompt_polling_harbor_args"
-        ]
-        swe_treatment_text = " ".join(swe_treatment_args)
-        assert "goal_surface=app_server" in swe_treatment_args
-        assert "reasoning_effort=high" in swe_treatment_args
-        assert "loopx_mode=codex_loopx" in swe_treatment_args
-        assert "loopx_access_packet_mode=compact" in swe_treatment_args
-        assert "loopx_cli_bridge_enabled=true" in swe_treatment_args
-        assert (
-            "loopx_experiment_protocol=max5_blind_loop_no_feedback"
-            in swe_treatment_args
-        )
-        assert "loopx_prompt_polling_rounds=5" in swe_treatment_args
-        assert (
-            "loopx_prompt_polling_round_timeout_sec=<seconds>"
-            in swe_treatment_args
-        )
-        assert "loopx_case_id=<case-id>" in swe_treatment_args
-        assert "loopx_arm_id=loopx_prompt_polling_test" in swe_treatment_args
-        assert "goal_harness" not in swe_treatment_text
-        assert "goal-harness" not in swe_treatment_text
+        assert "recommended_loopx_prompt_polling_harbor_args" not in swe_host_goal
         assert "thread/goal/get" in swe_host_goal["preflight_gate"]
         assert "--mounts" in terminal_args, terminal_args
         assert "--agent-env" in terminal_args, terminal_args

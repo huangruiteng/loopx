@@ -31,16 +31,17 @@ USER_TODO_FINAL_MESSAGE_RULE = (
     "Only notify=DONT_NOTIFY + false/0: quiet."
 )
 SCHEDULER_HINT_APPLICATION_RULE = (
-    "Use `scheduler_hint` for backoff/final-check; no spend. Codex App: "
-    "apply_needed -> update recommended RRULE then `ack_hint.cli_args`; "
-    "else ack_needed -> bound ack; else skip. LoopX owns progression."
+    "Use `scheduler_hint`; no spend. App apply_needed -> update RRULE, then "
+    "ack_hint on success or failure_hint once on failure; else ack_needed -> ack; "
+    "else skip. LoopX owns progression."
 )
 SCHEDULER_HINT_COMPACT_RULE = (
-    "Scheduler: no spend. App apply_needed -> update+ack; else ack_needed -> bound ack; else skip."
+    "Scheduler no-spend: apply -> update then ack or failure_hint; "
+    "ack_needed -> ack; else skip."
 )
 SCHEDULER_HINT_THIN_RULE = (
-    "Scheduler: apply_needed -> RRULE+ack; else ack_needed -> ack; "
-    "final-check CLI/Claude; no spend."
+    "Scheduler: apply -> RRULE + ack/failure_hint; ack_needed -> ack; "
+    "final-check; no spend."
 )
 RUNTIME_CAPABILITY_PROJECTION_THIN_RULE = (
     "Observed capabilities -> `--available-capability`; never user gates."
@@ -585,9 +586,10 @@ If the result says `should_run=false`:
 - If `notify_user_on_open_todo=true`, existing open `user_todo_summary` is a
   blocker-push opportunity, not a silent skip. For focus/wait/evidence lanes,
   a user/owner answer can unlock progress. If the payload explicitly includes
-  `open_todo_notification_policy=repeat_until_resolved`, `NOTIFY` every poll
-  until done/deferred/replaced. Other blockers may de-dupe if surfaced
-  recently; otherwise `NOTIFY` in Chinese with up to three
+  `open_todo_notification_policy=repeat_until_resolved`, repeat until resolved,
+  except `user_gate_notification_cooldown.notification_suppressed=true`: keep
+  the gate pending and `DONT_NOTIFY` until its reminder window/change.
+  Else `NOTIFY` in Chinese with up to three
   `first_open_items`, `open_todo_notify_reason`, and reply format: `done`,
   `defer/not now`, or evidence link/date/conclusion. No delivery/spend.
 - If the payload also says `safe_bypass_allowed=true` and the same gate has
@@ -642,9 +644,11 @@ If the result says `should_run=true`:
    `notify=DONT_NOTIFY`; quiet no-op needs `must_attempt_work=false` and no
    `notify_user_on_open_todo=true` blocker-push notification. Use
    `scheduler_hint` for wakeup and unchanged-loop limits. For Codex App:
-   `apply_needed=true` -> update `recommended_rrule`, then run
-   `ack_hint.cli_args`; else `ack_needed=true` -> run that bound ack directly;
-   else skip.
+   `apply_needed=true` -> update `recommended_rrule` once; on success run
+   `ack_hint.cli_args`; on failure/timeout do not retry or ack, run
+   `failure_hint.cli_args` once. LoopX suppresses that target/host pair until
+   either changes; continue under the observed host cadence. Else
+   `ack_needed=true` -> run that bound ack directly; else skip.
    LoopX owns reset/progression state. It is scheduling only, not delivery
    permission. Then use
    `heartbeat_recommendation`: `recommended_mode=run_first_read_only_map` means
@@ -847,8 +851,9 @@ If `should_run=false`: `monitor_quiet_skip` appends at most one no-spend
 `autonomous_replan_required` / `must_attempt_work=true`; no edits/spend;
 unchanged monitor-only polls are not self-stop signals.
 `state=operator_gate` / `notify_user_on_open_todo=true` /
-`user_channel.notify=NOTIFY`: blocker-push with actions, including
+`user_channel.notify=NOTIFY`: blocker-push including
 non_blocking; `open_todo_notification_policy=repeat_until_resolved`: repeat;
+cooldown:quiet;
 never only "owner gate"; no delivery/spend. `safe_bypass_allowed=true`: one
 gate-independent safe-bypass, validate/writeback/spend. External/wait monitor:
 one read-only status/log/metric/marker poll; unchanged quiet, new evidence

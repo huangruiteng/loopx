@@ -13,6 +13,7 @@ from ..benchmark_case_state import (
 )
 from ..benchmark_core import (
     BenchmarkFailureClass,
+    LEGACY_NONPRODUCT_PROMPT_POLLING_ROUTES,
     RunPermissionAction,
     build_benchmark_attempt_accounting,
     build_run_permission_policy,
@@ -54,15 +55,13 @@ SKILLSBENCH_LOOPX_PRODUCT_MODE_TREATMENT_ROUTES = frozenset(
 SKILLSBENCH_ROUTES = (
     "codex-acp-blind-loop-baseline",
     "codex-cli-goal-baseline",
-    "loopx-blind-loop-treatment",
-    "loopx-prompt-polling-test",
     "codex-app-server-goal-baseline",
     "curated-skills-baseline",
     SKILLSBENCH_RAW_CODEX_AUTONOMOUS_ROUTE,
     SKILLSBENCH_LOOPX_PRODUCT_MODE_ROUTE,
     SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
 )
-SKILLSBENCH_DEFAULT_ROUTE = "loopx-blind-loop-treatment"
+SKILLSBENCH_DEFAULT_ROUTE = "codex-cli-goal-baseline"
 
 
 BENCHMARK_MODEL_CONTROL_SCHEMA_VERSION = "benchmark_model_control_v0"
@@ -156,6 +155,33 @@ def _skillsbench_rollout_reward_artifact(
 
 
 def skillsbench_route_contract(route: str) -> dict[str, Any]:
+    if route in LEGACY_NONPRODUCT_PROMPT_POLLING_ROUTES:
+        return {
+            "mode": "skillsbench_historical_nonproduct_prompt_polling",
+            "arm_id": route.replace("-", "_"),
+            "source_runner": "historical_compact_result_read_only",
+            "inner_codex_goal_mode": False,
+            "native_goal_mode_requested": False,
+            "native_goal_mode_invoked": False,
+            "native_goal_mode_confirmation_status": "not_requested",
+            "codex_acp_protocol_used": True,
+            "skillsbench_route_semantics": (
+                "historical_nonproduct_invalid_for_comparison"
+            ),
+            "curated_skills_visible": False,
+            "loopx_automation_loop": False,
+            "loopx_inside_case": False,
+            "product_mode": False,
+            "blind_loop": True,
+            "official_feedback_blinded": True,
+            "reward_feedback_forwarded": False,
+            "case_semantics_changed_by_harness": True,
+            "official_score_comparable_to_native_codex": False,
+            "official_score_comparable_to_loopx_treatment": False,
+            "historical_route_read_only": True,
+            "first_blocker": "historical_nonproduct_invalid_for_comparison",
+            "next_action": "retain as read-only historical evidence",
+        }
     if route == "codex-acp-blind-loop-baseline":
         return {
             "mode": "skillsbench_codex_acp_blind_loop_baseline",
@@ -181,49 +207,6 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
                 "run ordinary Codex ACP/CLI with the same fixed blind loop budget "
                 "as treatment, with no /goal mode and no official reward/pass-fail "
                 "or verifier output returned to the agent"
-            ),
-        }
-    if route in {
-        "loopx-blind-loop-treatment",
-        "loopx-prompt-polling-test",
-    }:
-        current_name = route == "loopx-prompt-polling-test"
-        return {
-            "mode": (
-                "skillsbench_loopx_prompt_polling_test"
-                if current_name
-                else "skillsbench_loopx_blind_loop_treatment"
-            ),
-            "arm_id": (
-                "loopx_prompt_polling_test"
-                if current_name
-                else "loopx_blind_loop_treatment"
-            ),
-            "source_runner": "loopx_skillsbench_blind_loop_treatment_skeleton",
-            "inner_codex_goal_mode": False,
-            "native_goal_mode_requested": False,
-            "native_goal_mode_invoked": False,
-            "native_goal_mode_confirmation_status": "not_requested",
-            "codex_acp_protocol_used": True,
-            "skillsbench_route_semantics": (
-                "codex_acp_ordinary_agent_with_outer_loopx_prompt_polling_no_reward_feedback"
-                if current_name
-                else "codex_acp_ordinary_agent_with_outer_loopx_blind_loop_no_reward_feedback"
-            ),
-            "curated_skills_visible": False,
-            "loopx_automation_loop": True,
-            "loopx_inside_case": False,
-            "blind_loop": True,
-            "official_feedback_blinded": True,
-            "reward_feedback_forwarded": False,
-            "case_semantics_changed_by_harness": False,
-            "official_score_comparable_to_native_codex": True,
-            "official_score_comparable_to_loopx_treatment": True,
-            "first_blocker": "skillsbench_adapter_skeleton_no_real_case",
-            "next_action": (
-                "run LoopX outer automation with a fixed blind loop budget; "
-                "do not return official reward, pass/fail, verifier error, or "
-                "verifier output to the in-case agent during the loop"
             ),
         }
     if route == "codex-cli-goal-baseline":
@@ -1866,24 +1849,6 @@ def build_skillsbench_benchmark_run(
                 ]
                 if is_product_mode_treatment
                 else [
-                    "ordinary_codex_cli_actor",
-                    "loopx_prompt_polling_test",
-                    "official_feedback_withheld",
-                    "fixture_only",
-                    "no_upload",
-                    "single_task_planned",
-                ]
-                if route == "loopx-prompt-polling-test"
-                else [
-                    "ordinary_codex_cli_actor",
-                    "loopx_blind_loop",
-                    "official_feedback_withheld",
-                    "fixture_only",
-                    "no_upload",
-                    "single_task_planned",
-                ]
-                if route == "loopx-blind-loop-treatment"
-                else [
                     "skillsbench_curated_skills_visible",
                     "fixture_only",
                     "no_upload",
@@ -1960,11 +1925,7 @@ def build_skillsbench_benchmark_run(
             "schema_version": "skillsbench_episode_policy_v0",
             "route": route,
             "outer_controller": (
-                "loopx_prompt_polling_loop"
-                if route == "loopx-prompt-polling-test"
-                else "loopx_blind_automation_loop"
-                if route == "loopx-blind-loop-treatment"
-                else _skillsbench_product_mode_outer_controller(route)
+                _skillsbench_product_mode_outer_controller(route)
                 if is_product_mode_treatment
                 else "raw_codex_autonomous_max5"
                 if route == "raw-codex-autonomous-max5"
@@ -1980,8 +1941,6 @@ def build_skillsbench_benchmark_run(
                 "ordinary_codex_acp_agent"
                 if route
                 in {
-                    "loopx-blind-loop-treatment",
-                    "loopx-prompt-polling-test",
                     "codex-acp-blind-loop-baseline",
                     "raw-codex-autonomous-max5",
                     *SKILLSBENCH_LOOPX_PRODUCT_MODE_TREATMENT_ROUTES,
@@ -2059,6 +2018,9 @@ def build_skillsbench_benchmark_run(
             "official_score_comparable_to_loopx_treatment": contract[
                 "official_score_comparable_to_loopx_treatment"
             ],
+            "historical_route_read_only": contract.get(
+                "historical_route_read_only", False
+            ),
             "leaderboard_evidence": False,
         },
         "evidence_files": [
@@ -2105,6 +2067,9 @@ def build_skillsbench_benchmark_run(
         "official_score_comparable_to_loopx_treatment": contract[
             "official_score_comparable_to_loopx_treatment"
         ],
+        "historical_route_read_only": contract.get(
+            "historical_route_read_only", False
+        ),
         "leaderboard_evidence": False,
         "trace_publicness": "public_skillsbench_adapter_skeleton",
         "first_blocker": contract["first_blocker"],
@@ -3449,10 +3414,6 @@ def build_skillsbench_benchflow_result_benchmark_run(
     outer_controller = (
         "official_skillsbench_oracle_validation"
         if is_oracle_runner
-        else "loopx_blind_automation_loop"
-        if route == "loopx-blind-loop-treatment"
-        else "loopx_prompt_polling_loop"
-        if route == "loopx-prompt-polling-test"
         else _skillsbench_product_mode_outer_controller(route)
         if _is_skillsbench_loopx_product_mode_treatment_route(route)
         else "raw_codex_autonomous_max5"
@@ -3469,8 +3430,6 @@ def build_skillsbench_benchflow_result_benchmark_run(
         else "ordinary_codex_acp_agent"
         if route
         in {
-            "loopx-blind-loop-treatment",
-            "loopx-prompt-polling-test",
             "codex-acp-blind-loop-baseline",
             "raw-codex-autonomous-max5",
             *SKILLSBENCH_LOOPX_PRODUCT_MODE_TREATMENT_ROUTES,
@@ -5894,6 +5853,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "reward_feedback_forwarded": contract_reward_feedback_forwarded,
             "official_score_comparable_to_native_codex": contract_official_score_comparable_to_native_codex,
             "official_score_comparable_to_loopx_treatment": contract_official_score_comparable_to_loopx_treatment,
+            "historical_route_read_only": contract.get(
+                "historical_route_read_only", False
+            ),
             "product_mode_lifecycle": product_mode_lifecycle_contract,
             "native_goal_worker": native_goal_worker_contract,
             "leaderboard_evidence": False,
@@ -5936,6 +5898,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
         "reward_feedback_forwarded": contract_reward_feedback_forwarded,
         "official_score_comparable_to_native_codex": contract_official_score_comparable_to_native_codex,
         "official_score_comparable_to_loopx_treatment": contract_official_score_comparable_to_loopx_treatment,
+        "historical_route_read_only": contract.get(
+            "historical_route_read_only", False
+        ),
         "leaderboard_evidence": False,
         "trace_publicness": "public_skillsbench_official_compact_result_only",
         "failure_attribution_labels": failure_labels,

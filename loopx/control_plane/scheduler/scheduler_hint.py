@@ -5,10 +5,10 @@ import json
 import math
 import re
 from collections.abc import Collection
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
-from ..runtime.time import now_utc
+from ..runtime.time import now_utc, utc_isoformat
 from ..work_items.delivery_outcome import DeliveryOutcome
 from .state import (
     CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
@@ -24,8 +24,11 @@ SCHEDULER_RESET_POLICY_SCHEMA_VERSION = "scheduler_reset_policy_v0"
 SCHEDULER_HINT_DETAIL_SCHEMA_VERSION = "scheduler_hint_detail_v0"
 CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION = "codex_app_stateful_backoff_v0"
 CODEX_APP_SCHEDULER_ACK_HINT_SCHEMA_VERSION = "codex_app_scheduler_ack_hint_v0"
+CODEX_APP_SCHEDULER_FAILURE_HINT_SCHEMA_VERSION = "codex_app_scheduler_failure_hint_v0"
+USER_GATE_NOTIFICATION_COOLDOWN_SCHEMA_VERSION = "user_gate_notification_cooldown_v0"
 MONITOR_CADENCE_PATTERN = re.compile(r"^\s*(\d+)\s*([mhd])\s*$", re.IGNORECASE)
 MONITOR_WAIT_PROGRESSION_MINUTES = [15, 30, 60]
+CODEX_APP_MAX_INTERVAL_MINUTES = 60
 DEFAULT_ACK_CAPABILITIES = {"shell", "filesystem_read", "filesystem_write"}
 MONITOR_WAIT_HOST_FLOOR_MINUTES = 15
 MONITOR_WAIT_NEAR_WINDOW_LEAD_MINUTES = 60
@@ -59,6 +62,51 @@ def _scheduler_rrule_interval_minutes(value: Any) -> int | None:
     except ValueError:
         return None
     return interval if interval > 0 else None
+
+
+def _user_gate_notification_cooldown(
+    *,
+    cadence_class: str,
+    host_failure_suppressed: bool,
+    current_interval_minutes: int,
+    effective_host_rrule: str,
+    recorded_host_failure: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Bound repeat gate notices when a failed host update leaves a tight poll."""
+
+    if cadence_class != "human_gate" or not host_failure_suppressed:
+        return None
+    failed_at = parse_scheduler_timestamp((recorded_host_failure or {}).get("failed_at"))
+    host_interval = _scheduler_rrule_interval_minutes(effective_host_rrule)
+    target_interval = max(1, int(current_interval_minutes))
+    if failed_at is None or host_interval is None or host_interval >= target_interval:
+        return None
+    current_time = now_utc()
+    elapsed_seconds = max(0.0, (current_time - failed_at).total_seconds())
+    cooldown_seconds = target_interval * 60
+    window_seconds = host_interval * 60
+    cycle_index = int(elapsed_seconds // cooldown_seconds)
+    cycle_position = elapsed_seconds - cycle_index * cooldown_seconds
+    notification_due = cycle_index >= 1 and cycle_position < window_seconds
+    next_reminder_at = failed_at + timedelta(
+        seconds=(cycle_index + 1) * cooldown_seconds
+    )
+    return {
+        "schema_version": USER_GATE_NOTIFICATION_COOLDOWN_SCHEMA_VERSION,
+        "active": True,
+        "notification_due": notification_due,
+        "notification_suppressed": not notification_due,
+        "policy": "failed_host_update_bounded_reminder_window",
+        "cooldown_minutes": target_interval,
+        "reminder_window_minutes": host_interval,
+        "failed_at": utc_isoformat(failed_at),
+        "next_reminder_at": utc_isoformat(next_reminder_at),
+        "reason": (
+            "the user gate is still pending, but the failed host cadence update "
+            "left a tighter poll; suppress duplicate notices outside the bounded "
+            "human-gate reminder window"
+        ),
+    }
 
 
 def _accepts_stale_monitor_ack_rrule(
@@ -265,6 +313,53 @@ def build_codex_app_scheduler_ack_hint(
         "args": args,
         "uses_current_hint": True,
         "no_spend": True,
+    }
+
+
+def build_codex_app_scheduler_failure_hint(
+    *,
+    goal_id: Any,
+    agent_id: Any,
+    failed_rrule: Any,
+    observed_host_rrule: Any = None,
+    available_capabilities: Any = None,
+) -> dict[str, Any]:
+    safe_goal_id = str(goal_id or "").strip()
+    safe_agent_id = str(agent_id or "").strip()
+    safe_rrule = normalize_scheduler_rrule(failed_rrule)
+    safe_observed_rrule = normalize_scheduler_rrule(observed_host_rrule)
+    safe_capabilities: list[str] = []
+    if isinstance(available_capabilities, (list, tuple, set)):
+        for capability in available_capabilities:
+            safe_capability = str(capability or "").strip()
+            if (
+                safe_capability
+                and safe_capability not in DEFAULT_ACK_CAPABILITIES
+                and safe_capability not in safe_capabilities
+            ):
+                safe_capabilities.append(safe_capability)
+    cli_args = [
+        "quota",
+        "scheduler-fail-current",
+        "--goal-id",
+        safe_goal_id,
+        "--agent-id",
+        safe_agent_id,
+    ]
+    for capability in safe_capabilities:
+        cli_args.extend(["--available-capability", capability])
+    cli_args.extend(
+        [
+            "--failed-rrule",
+            safe_rrule,
+        ]
+    )
+    if safe_observed_rrule:
+        cli_args.extend(["--codex-app-current-rrule", safe_observed_rrule])
+    cli_args.append("--execute")
+    return {
+        "schema_version": CODEX_APP_SCHEDULER_FAILURE_HINT_SCHEMA_VERSION,
+        "cli_args": cli_args,
     }
 
 
@@ -587,6 +682,18 @@ def build_codex_app_scheduler_ack_event(
         else codex_progression
     )
     progression_index = max(0, _int_number(stateful_backoff.get("progression_index"), default=0))
+    prior_failure = (
+        stateful_backoff.get("host_update_failure")
+        if isinstance(stateful_backoff.get("host_update_failure"), dict)
+        else None
+    )
+    preserved_failure = (
+        prior_failure
+        if prior_failure
+        and normalize_scheduler_rrule(prior_failure.get("target_rrule"))
+        != acknowledged_rrule
+        else None
+    )
     safe_generated_at = generated_at or ""
     scheduler_state = build_scheduler_state(
         goal_id=before.get("goal_id"),
@@ -600,6 +707,7 @@ def build_codex_app_scheduler_ack_event(
         last_applied_rrule=acknowledged_rrule,
         updated_at=safe_generated_at,
         source=classification,
+        host_update_failure=preserved_failure,
     )
     reason = str(reason_summary or "").strip() or (
         f"acknowledged Codex App scheduler RRULE {acknowledged_rrule}; no quota spend"
@@ -734,11 +842,29 @@ def build_scheduler_hint(
         cadence_context_detail: dict[str, Any] | None = None,
         advance_same_identity: bool = True,
     ) -> dict[str, Any]:
-        cadence_progression = cadence_progression_override or [
+        local_cadence_progression = cadence_progression_override or [
             min(codex_interval * (multiplier**step), codex_max)
             for step in range(3)
         ]
-        codex_initial_interval = cadence_progression[0] if cadence_progression else codex_interval
+        codex_host_max = min(max(1, codex_max), CODEX_APP_MAX_INTERVAL_MINUTES)
+        codex_cadence_progression: list[int] = []
+        for interval in local_cadence_progression:
+            bounded_interval = min(max(1, int(interval)), codex_host_max)
+            if (
+                not codex_cadence_progression
+                or codex_cadence_progression[-1] != bounded_interval
+            ):
+                codex_cadence_progression.append(bounded_interval)
+        codex_initial_interval = (
+            codex_cadence_progression[0]
+            if codex_cadence_progression
+            else min(codex_interval, codex_host_max)
+        )
+        local_initial_interval = (
+            local_cadence_progression[0]
+            if local_cadence_progression
+            else codex_interval
+        )
         final_replan_check = {
             "enabled": cli_limit is not None or claude_limit is not None,
             "trigger": "before_unchanged_poll_after_limit",
@@ -759,8 +885,8 @@ def build_scheduler_hint(
             "cadence_class": cadence_class,
             "codex_app_initial_interval_minutes": codex_initial_interval,
             "codex_app_initial_rrule": codex_rrule,
-            "codex_app_max_interval_minutes": codex_max,
-            "codex_app_progression_minutes": cadence_progression,
+            "codex_app_max_interval_minutes": codex_host_max,
+            "codex_app_progression_minutes": codex_cadence_progression,
             "unchanged_poll_backoff_multiplier": multiplier,
             "local_scheduler_unchanged_poll_limit": cli_limit,
             "claude_code_loop_unchanged_poll_limit": claude_limit,
@@ -812,7 +938,7 @@ def build_scheduler_hint(
             "host_state_key": "scheduler_hint.reset_policy.reset_token",
             "codex_app_initial_interval_minutes": codex_initial_interval,
             "codex_app_initial_rrule": codex_rrule,
-            "local_scheduler_initial_interval_minutes": codex_initial_interval,
+            "local_scheduler_initial_interval_minutes": local_initial_interval,
             "clear_unchanged_poll_state": True,
             "identity_key_count": len(identity_keys),
             "identity_signature": identity_signature,
@@ -832,10 +958,10 @@ def build_scheduler_hint(
             "identity_signature": identity_signature,
         }
         local_scheduler = {
-            "recommended_interval_minutes": codex_initial_interval,
+            "recommended_interval_minutes": local_initial_interval,
             "max_interval_minutes": codex_max,
             "unchanged_poll_backoff_multiplier": multiplier,
-            "example_progression_minutes": cadence_progression,
+            "example_progression_minutes": local_cadence_progression,
             "unchanged_poll_limit": cli_limit,
             "after_limit": "stop_tick_loop" if cli_limit is not None else "continue",
             "final_quota_replan_check": final_replan_check,
@@ -860,6 +986,12 @@ def build_scheduler_hint(
             if isinstance(codex_app_scheduler_state, dict)
             else {}
         )
+        recorded_host_failure = (
+            scheduler_state.get("host_update_failure")
+            if isinstance(scheduler_state.get("host_update_failure"), dict)
+            else None
+        )
+        same_identity = False
         if scheduler_state:
             same_identity = (
                 scheduler_state.get("reset_token") == reset_token
@@ -871,11 +1003,20 @@ def build_scheduler_hint(
                     applied_index = int(scheduler_state.get("progression_index"))
                 except (TypeError, ValueError):
                     applied_index = -1
-                next_index = applied_index + 1 if advance_same_identity else 0
-                current_index = min(max(next_index, 0), len(cadence_progression) - 1)
+                next_index = (
+                    applied_index
+                    if recorded_host_failure
+                    else applied_index + 1
+                    if advance_same_identity
+                    else 0
+                )
+                current_index = min(
+                    max(next_index, 0), len(codex_cadence_progression) - 1
+                )
             else:
                 state_status = "reset_required"
-        current_interval = cadence_progression[current_index]
+                recorded_host_failure = None
+        current_interval = codex_cadence_progression[current_index]
         current_rrule = rrule_for_minutes(current_interval)
         last_applied_rrule = str(scheduler_state.get("last_applied_rrule") or "").strip()
         observed_host_rrule = normalize_scheduler_rrule(codex_app_current_rrule)
@@ -892,21 +1033,38 @@ def build_scheduler_hint(
                 current_rrule=current_rrule,
             )
         host_match_ack_needed = (
-            state_status != "same_identity"
-            and bool(observed_host_rrule)
+            bool(observed_host_rrule)
             and current_rrule_already_applied
+            and (state_status != "same_identity" or recorded_host_failure is not None)
         )
-        apply_needed = (
+        base_apply_needed = (
             not current_rrule_already_applied
             or (state_status != "same_identity" and not host_match_ack_needed)
         )
+        failed_target_rrule = normalize_scheduler_rrule(
+            (recorded_host_failure or {}).get("target_rrule")
+        )
+        failed_observed_host_rrule = normalize_scheduler_rrule(
+            (recorded_host_failure or {}).get("observed_host_rrule")
+        )
+        host_failure_suppressed = bool(
+            base_apply_needed
+            and failed_target_rrule == current_rrule
+            and failed_observed_host_rrule == effective_host_rrule
+        )
+        apply_needed = base_apply_needed and not host_failure_suppressed
         ack_needed = apply_needed or host_match_ack_needed
+        if host_failure_suppressed:
+            state_status = "host_update_failure_suppressed"
         stateful_backoff_detail = {
-            "progression_minutes": cadence_progression,
+            "progression_minutes": codex_cadence_progression,
             "current_interval_minutes": current_interval,
+            "host_max_interval_minutes": codex_host_max,
+            "coarser_wait_fallback": "local_scheduler_only",
+            "host_update_failure": "record_failed_target_and_observed_host_pair_then_suppress_exact_repeat_until_target_or_host_changes",
             "ack_required_after_apply": apply_needed,
             "ack_required_from_host_match": host_match_ack_needed,
-            "persist": "reset_token|identity_signature|progression_index|last_applied_rrule",
+            "persist": "reset_token|identity_signature|progression_index|last_applied_rrule|host_update_failure",
             "same_identity_action": (
                 "advance_index_after_scheduler_ack"
                 if advance_same_identity
@@ -917,19 +1075,26 @@ def build_scheduler_hint(
         }
         codex_app = {
             "recommended_interval_minutes": current_interval,
-            "max_interval_minutes": codex_max,
+            "max_interval_minutes": codex_host_max,
             "unchanged_poll_backoff_multiplier": multiplier,
-            "example_progression_minutes": cadence_progression,
+            "example_progression_minutes": codex_cadence_progression,
             "apply": (
                 "update_automation_cadence_if_possible"
                 if apply_needed
-                else "none_already_applied"
+                else (
+                    "none_recorded_host_failure"
+                    if host_failure_suppressed
+                    else "none_already_applied"
+                )
             ),
             "host_tool": "automation_update",
             "host_action": (
                 "update_current_heartbeat_rrule"
                 if apply_needed
                 else (
+                    "none_recorded_host_failure"
+                    if host_failure_suppressed
+                    else
                     "ack_observed_rrule_without_update"
                     if host_match_ack_needed
                     else "none"
@@ -939,6 +1104,9 @@ def build_scheduler_hint(
                 "automation_update_rrule_then_quota_scheduler_ack"
                 if apply_needed
                 else (
+                    "skip_automation_update_for_recorded_host_failure"
+                    if host_failure_suppressed
+                    else
                     "quota_scheduler_ack_from_matching_host_observation"
                     if host_match_ack_needed
                     else "skip_automation_update_when_apply_needed_false"
@@ -962,6 +1130,10 @@ def build_scheduler_hint(
             },
             "no_spend_for_cadence_change": True,
         }
+        if recorded_host_failure:
+            codex_app["stateful_backoff"]["host_update_failure"] = dict(
+                recorded_host_failure
+            )
         if observed_host_rrule:
             codex_app["stateful_backoff"]["host_observation"] = {
                 "source": "quota_should_run_host_observation",
@@ -974,6 +1146,14 @@ def build_scheduler_hint(
             }
         if apply_needed:
             codex_app["recommended_rrule"] = current_rrule
+            if payload.get("goal_id") and identity_value("agent_identity.agent_id"):
+                codex_app["failure_hint"] = build_codex_app_scheduler_failure_hint(
+                    goal_id=payload.get("goal_id"),
+                    agent_id=identity_value("agent_identity.agent_id"),
+                    failed_rrule=current_rrule,
+                    observed_host_rrule=effective_host_rrule,
+                    available_capabilities=scheduler_ack_capabilities,
+                )
         if ack_needed:
             if payload.get("goal_id") and identity_value("agent_identity.agent_id"):
                 codex_app["ack_hint"] = build_codex_app_scheduler_ack_hint(
@@ -1037,6 +1217,15 @@ def build_scheduler_hint(
                 ],
             },
         }
+        notification_cooldown = _user_gate_notification_cooldown(
+            cadence_class=cadence_class,
+            host_failure_suppressed=host_failure_suppressed,
+            current_interval_minutes=current_interval,
+            effective_host_rrule=effective_host_rrule,
+            recorded_host_failure=recorded_host_failure,
+        )
+        if notification_cooldown:
+            scheduler_hint["user_gate_notification_cooldown"] = notification_cooldown
         if include_detail:
             scheduler_hint["cold_path_detail"] = {
                 "schema_version": SCHEDULER_HINT_DETAIL_SCHEMA_VERSION,

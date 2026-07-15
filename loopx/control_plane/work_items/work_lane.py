@@ -108,6 +108,51 @@ def work_lane_contract_is_due_monitor_attempt(
     )
 
 
+def scoped_user_gate_due_monitor_contract(
+    fallback: dict[str, Any] | None,
+    *,
+    current_contract: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Project a selected monitor fallback as the executable work lane."""
+
+    if not isinstance(fallback, dict):
+        return None
+    selected = fallback.get("selected_executable")
+    if not isinstance(selected, dict):
+        return None
+    if str(selected.get("task_class") or "") != "continuous_monitor":
+        return None
+    todo_id = str(selected.get("todo_id") or "").strip()
+    if not todo_id:
+        return None
+    next_lane = (
+        "advancement_task"
+        if isinstance(current_contract, dict)
+        and current_contract.get("lane") == "advancement_task"
+        else "continuous_monitor"
+    )
+    return {
+        "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
+        "lane": "continuous_monitor",
+        "monitor_kind": WORK_LANE_TODO_MONITOR_DUE_KIND,
+        "next_lane": next_lane,
+        "obligation": "attempt_due_monitor",
+        "must_attempt_work": True,
+        "reason_codes": ["monitor_due", "scoped_user_gate_fallback"],
+        "monitor_policy": (
+            "attempt_due_monitor_once_then_writeback_or_no_spend_if_unchanged"
+        ),
+        "monitor_due_count": 1,
+        "monitor_due_items": [_compact_work_lane_todo_item(selected)],
+        "selected_todo_id": todo_id,
+        "selected_next_due_at": selected.get("next_due_at"),
+        "action": (
+            "attempt the selected due continuous_monitor todo because the open "
+            "user gate blocks only a different action scope"
+        ),
+    }
+
+
 def _compact_work_lane_todo_item(item: dict[str, Any]) -> dict[str, Any]:
     return {
         key: item.get(key)

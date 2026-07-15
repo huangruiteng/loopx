@@ -1223,7 +1223,11 @@ three open todos, include
 that blocker-push turn. When the payload also includes
 `open_todo_notification_policy=repeat_until_resolved`, the
 executor should repeat the notification until the todo is done, deferred, or
-replaced; do not suppress it as a recently surfaced blocker. Other blocker-push
+replaced. A `user_gate_notification_cooldown_v0` packet with
+`notification_suppressed=true` is the narrow exception: the gate and open-count
+remain visible, while `interaction_contract.user_channel` becomes
+`action_required=false`, `notify=DONT_NOTIFY` until the bounded reminder window
+or a material gate/host change. Other blocker-push
 cases may still be de-duplicated when the same blocker was surfaced recently.
 Eligible monitor-only no-transition polls keep open user todos in
 `user_todo_summary`, but do not force repeated notification or set

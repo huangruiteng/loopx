@@ -9,6 +9,7 @@ Codex, Claude Code, Cursor, and other runtimes: objectives, gates, todos,
 quota, scheduler hints, evidence, and typed continuation in one reviewable loop.</sub>
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/huangruiteng/loopx?display_name=tag)](https://github.com/huangruiteng/loopx/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Local first](https://img.shields.io/badge/control--plane-local--first-brightgreen.svg)](docs/public-private-boundary.md)
 [![Loop Agents](https://img.shields.io/badge/status-loop%20agents%20early-orange.svg)](docs/product/release-readiness.md)
@@ -29,11 +30,11 @@ Registered agents are peers. Claims and leases, task boundaries, capabilities,
 and typed continuation decide who acts next; no durable leader identity is
 required.
 
-Start with a useful loop instead of designing a whole agent platform. LoopX
-ships safe preset cards for daily triage, changelog drafts, PR watching, CI
-sweeping, and dependency sweeping. Beginner presets are report/draft/watch
-only; advanced fixers stay opt-in behind isolated worktrees, verifier checks,
-quota/cost limits, and human review.
+Start with the agent runtime you already use and one useful loop. Safe presets
+cover daily triage, changelog drafts, and PR watching. Advanced fixers are also
+ready for public use, with explicit activation, isolated worktrees, verifier
+checks, quota/cost limits, and human review. No optional capability is required
+for the first run.
 
 [Quick Start](#quick-start) · [User Manual](https://my.feishu.cn/wiki/CaL5wMk9ui17ngkWzeUcMlAYnZg) · [How It Works](#how-it-works) · [See It In Action](#see-it-in-action) ·
 [Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) · [Architecture](docs/architecture.md) ·
@@ -135,6 +136,14 @@ evidence branches and decisions preserved across agent turns.
 <a href="docs/assets/openviking-issue-fix-explore.png">
   <img src="docs/assets/openviking-issue-fix-explore.png" alt="Open-source issue-fix Explore graph linking focused PR delivery with reusable LoopX capabilities">
 </a>
+
+LoopX's creator uses this path as an
+[OpenViking contributor](https://github.com/volcengine/OpenViking/pulls?q=is%3Apr+author%3Ahuangruiteng)
+for a recurring issue-to-PR fix loop. The
+[Issue-Fix capability](docs/capabilities/issue-fix/README.md) keeps rolling
+repository context, revision-stamped fix knowledge, and reviewer-facing
+semantic preferences separate; current checkout source and tests remain
+authoritative.
 
 **Auto ML Experiment: hypotheses, matched evidence, invalid lineages, running
 replicates, and promote/stop gates remain visible in one graph.**
@@ -389,14 +398,15 @@ manual, then use the short proof surfaces:
   external tools without hiding ownership or scope.
 
 For more cases, open the [showcase catalog](docs/showcases/README.md). For a
-full presenter material, see the optional and emerging features below.
+full presentation, see the optional capabilities below.
 
-## Optional And Emerging Features
+## Optional Capabilities
 
 These paths stay below the core onboarding path so the first run remains small.
-Some, including Explore Graph and Explore Harness, are supported opt-in
-features that remain default-off; newer adapters are still settling their UX,
-safety defaults, and evidence contracts across more repositories.
+Explore Graph and Explore Harness are supported opt-in features that remain
+default-off. Auto Research and newer adapters are opt-in paths whose UX, safety
+defaults, and evidence contracts continue to mature across more repositories.
+None is required to start a useful loop.
 
 The first useful loop requires no optional configuration. When a concrete task
 would benefit from bounded child agents, Explore Graph, or Explore Harness,
@@ -466,6 +476,12 @@ an opt-in Explore Harness. The result layer records public-safe
 them into summaries, blocked-frontier views, Mermaid graphs, and optional
 operator sinks. The harness path reads that graph plus open todos and produces
 read-only branch or worker-lane plans.
+
+Board layout is independent from evidence truth: use `auto_flow` for generic
+topologies and `semantic_lane_columns` for operator boards with meaningful
+parallel lanes. Both render the same canonical Nodes, Edges, and Findings;
+visual and Lark sinks remain opt-in. See the
+[Explore presentation contract](docs/capabilities/explore/README.md#presentation-sink-lark-mapping).
 
 ```bash
 loopx explore node --goal-id <goal-id> --title "Map the next frontier"
@@ -870,15 +886,16 @@ loopx check \
 LoopX is early. It is not a full agent platform and not an autonomous
 production controller.
 
-The current milestone is a useful local substrate for goal state, run history,
-operator gates, human reward, structured todos, scoped claims, quota-aware
-heartbeats, read-only project maps, benchmark control-plane evidence, runtime
-bridges, collaboration projections, and a small multi-project dashboard.
+The current v0.2.x milestone is a useful local substrate for goal state, run
+history, operator gates, structured todos, peer claims and leases, quota-aware
+host loops, evidence-backed Issue-Fix outcomes, supported default-off Explore
+Graph and Harness, runtime and collaboration projections, and a read-first
+multi-project dashboard.
 
-The next milestones are a clearer maintainer workflow for issue/PR loops,
-stronger project and domain adapters, safer peer task coordination,
-better benchmark-runner ergonomics, and a more polished management surface that
-maps kernel state into the five user questions above.
+The next milestones are simpler host packaging, stronger terminal acceptance
+across repeated public issue-fix and research loops, measured knowledge and
+reward usefulness across independent tasks, better benchmark-runner ergonomics,
+and a more polished management surface around the five user questions above.
 
 ## License
 

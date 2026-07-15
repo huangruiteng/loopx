@@ -18,8 +18,6 @@ PACKET_ONLY_OBSERVATION_PROTOCOL_ID = "packet_only_observation"
 BLIND_LOOP_DEFAULT_MAX_ROUNDS = 5
 CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE = "codex-acp-blind-loop-baseline"
 CODEX_CLI_GOAL_BASELINE_ROUTE = "codex-cli-goal-baseline"
-LOOPX_BLIND_LOOP_TREATMENT_ROUTE = "loopx-blind-loop-treatment"
-LOOPX_PROMPT_POLLING_TEST_ROUTE = "loopx-prompt-polling-test"
 RAW_CODEX_AUTONOMOUS_MAX5_ROUTE = "raw-codex-autonomous-max5"
 LOOPX_PRODUCT_MODE_ROUTE = "loopx-product-mode"
 LOOPX_GOAL_START_PRODUCT_MODE_ROUTE = "loopx-goal-start-product-mode"
@@ -27,20 +25,24 @@ CODEX_APP_SERVER_GOAL_BASELINE_ROUTE = "codex-app-server-goal-baseline"
 LOOPX_PACKET_ONLY_OBSERVATION_ROUTE = (
     "loopx-packet-only-observation"
 )
+LEGACY_NONPRODUCT_PROMPT_POLLING_ROUTES = frozenset(
+    {
+        "loopx-blind-loop-treatment",
+        "loopx-prompt-polling-test",
+    }
+)
 
 BLIND_LOOP_ROUTES = frozenset(
     {
         CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
         CODEX_CLI_GOAL_BASELINE_ROUTE,
-        LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
-        LOOPX_PROMPT_POLLING_TEST_ROUTE,
+        *LEGACY_NONPRODUCT_PROMPT_POLLING_ROUTES,
     }
 )
 NO_REWARD_FEEDBACK_ROUTES = frozenset(
     {
         CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
-        LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
-        LOOPX_PROMPT_POLLING_TEST_ROUTE,
+        *LEGACY_NONPRODUCT_PROMPT_POLLING_ROUTES,
         RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
         LOOPX_PRODUCT_MODE_ROUTE,
         LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
@@ -113,24 +115,11 @@ def build_benchmark_loop_contract(
         else "custom_or_legacy_loop"
     )
     claim_blocker = ""
-    strict_allowed = bool(
-        route
-        in {
-            LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
-            LOOPX_PROMPT_POLLING_TEST_ROUTE,
-        }
-        and resolved_protocol == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
-        and blind_loop
-        and budget == BLIND_LOOP_DEFAULT_MAX_ROUNDS
-        and not feedback_forwarded
-    )
-    if route == LOOPX_PACKET_ONLY_OBSERVATION_ROUTE:
+    strict_allowed = False
+    if route in LEGACY_NONPRODUCT_PROMPT_POLLING_ROUTES:
+        claim_blocker = "historical_nonproduct_invalid_for_comparison"
+    elif route == LOOPX_PACKET_ONLY_OBSERVATION_ROUTE:
         claim_blocker = "packet_only_no_max5_controller"
-    elif route in {
-        LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
-        LOOPX_PROMPT_POLLING_TEST_ROUTE,
-    } and not strict_allowed:
-        claim_blocker = "not_strict_max5_no_feedback_treatment"
 
     return BenchmarkLoopContract(
         route=route,
@@ -544,31 +533,14 @@ def build_blind_loop_initial_prompt(
     *,
     route: str,
     instruction: str,
-    treatment_prompt_style: str = "structured",
     benchmark_surface: str = "official benchmark sandbox",
 ) -> str:
-    treatment = route in {
-        LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
-        LOOPX_PROMPT_POLLING_TEST_ROUTE,
-    }
-    if treatment and treatment_prompt_style == "baseline-safe":
-        prefix = "Codex blind-loop baseline-compatible round 1. "
-        control_clause = "Use ordinary Codex CLI behavior without goal mode. "
-    else:
-        prefix = (
-            "Structured prompt-polling test round 1. "
-            if route == LOOPX_PROMPT_POLLING_TEST_ROUTE
-            else "Structured blind-loop treatment round 1. "
-            if route == LOOPX_BLIND_LOOP_TREATMENT_ROUTE
-            else "Codex blind-loop baseline round 1. "
+    if route in LEGACY_NONPRODUCT_PROMPT_POLLING_ROUTES:
+        raise ValueError(
+            "legacy LoopX prompt-polling routes are read-only historical labels"
         )
-        control_clause = (
-            "Use a disciplined execution style: keep the scope narrow, "
-            "track your own plan, inspect evidence before editing, and "
-            "validate locally before finishing. "
-            if treatment
-            else "Use ordinary Codex CLI behavior without goal mode. "
-        )
+    prefix = "Codex blind-loop baseline round 1. "
+    control_clause = "Use ordinary Codex CLI behavior without goal mode. "
     return (
         prefix
         + f"You are running inside the {benchmark_surface}. "
@@ -624,12 +596,7 @@ def render_loop_contract_packet_lines(contract: dict[str, Any]) -> list[str]:
 
 
 def classify_loopx_treatment_claim(run: dict[str, Any]) -> dict[str, Any]:
-    """Classify whether a compact run is strict treatment evidence.
-
-    This is intentionally conservative. A LoopX access packet alone is a
-    route-safety observation; the original treatment claim requires a public-safe
-    controller trace for the max-5 no-feedback loop.
-    """
+    """Reject legacy pseudo-treatments and classify incomplete packet evidence."""
 
     contract = run.get("benchmark_loop_contract")
     if not isinstance(contract, dict):
@@ -657,6 +624,27 @@ def classify_loopx_treatment_claim(run: dict[str, Any]) -> dict[str, Any]:
         run.get("loopx_prompt_driven_lifecycle_observed")
     )
 
+    legacy_nonproduct_routes = {
+        *LEGACY_NONPRODUCT_PROMPT_POLLING_ROUTES,
+        "skillsbench_loopx_blind_loop_treatment",
+        "skillsbench_loopx_prompt_polling_test",
+        "loopx_prompt_polling_test",
+    }
+    historical_nonproduct = route in legacy_nonproduct_routes
+    if historical_nonproduct:
+        return {
+            "schema_version": "loopx_treatment_claim_classification_v0",
+            "strict_loopx_treatment_claim_allowed": False,
+            "loopx_treatment_evidence_tier": (
+                "historical_nonproduct_invalid_for_comparison"
+            ),
+            "loopx_treatment_claim_blocker": (
+                "historical_nonproduct_invalid_for_comparison"
+            ),
+            "controller_trace_present": controller_trace_present,
+            "round_reward_count": round_count,
+        }
+
     blockers: list[str] = []
     if protocol_id != MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID:
         blockers.append("missing_max5_blind_loop_protocol")
@@ -670,22 +658,13 @@ def classify_loopx_treatment_claim(run: dict[str, Any]) -> dict[str, Any]:
         blockers.append("controller_trace_absent")
     if prompt_driven_required and not prompt_driven_lifecycle_observed:
         blockers.append("prompt_driven_loopx_lifecycle_absent")
-    if route not in {
-        LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
-        LOOPX_PROMPT_POLLING_TEST_ROUTE,
-        "skillsbench_loopx_blind_loop_treatment",
-        "skillsbench_loopx_prompt_polling_test",
-        "loopx_prompt_polling_test",
-    }:
-        blockers.append("route_not_prompt_polling_test")
+    blockers.append("route_not_supported_loopx_treatment")
 
     allowed = not blockers
     return {
         "schema_version": "loopx_treatment_claim_classification_v0",
         "strict_loopx_treatment_claim_allowed": allowed,
-        "loopx_treatment_evidence_tier": (
-            "strict_max5_prompt_polling_test" if allowed else "packet_or_incomplete"
-        ),
+        "loopx_treatment_evidence_tier": "packet_or_incomplete",
         "loopx_treatment_claim_blocker": (
             "none" if allowed else ",".join(blockers)
         ),

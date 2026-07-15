@@ -790,7 +790,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--loopx-max-rounds",
         type=int,
         default=5,
-        help="Maximum public prompt-polling round budget for treatment metadata.",
+        help="Maximum public case lifecycle round budget for treatment metadata.",
     )
     parser.add_argument(
         "--contract-only",

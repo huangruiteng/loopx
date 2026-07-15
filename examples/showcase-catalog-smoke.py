@@ -240,7 +240,7 @@ def main() -> int:
         "A lightweight state kernel and agent-agnostic local control plane for",
         "https://huangruiteng.github.io/loopx/frontstage/",
         "docs/outreach/frontstage-demo-script.md",
-        "## Optional And Emerging Features",
+        "## Optional Capabilities",
         "docs/assets/openviking-issue-fix-explore.png",
         "docs/assets/auto-ml-experiment-explore.jpg",
         "### Auto Research One-Click Start",

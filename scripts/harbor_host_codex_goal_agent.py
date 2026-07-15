@@ -31,7 +31,6 @@ from codex_app_server_goal_driver import (
     CodexAppServerGoalDriverError,
     compact_turn_metadata,
     observe_codex_app_server_goal_turn,
-    start_codex_app_server_goal_followup_turn,
     start_codex_app_server_goal_turn,
 )
 from harbor_host_bridge import BRIDGE_SCRIPT_TEMPLATE
@@ -50,14 +49,9 @@ from loopx.benchmark_case_state import (
     benchmark_case_lifecycle_contract,
 )
 from loopx.benchmark_core.loop_protocol import (
-    BLIND_LOOP_DEFAULT_MAX_ROUNDS,
     LOOPX_PACKET_ONLY_OBSERVATION_ROUTE,
-    LOOPX_PROMPT_POLLING_TEST_ROUTE,
-    MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID,
     PACKET_ONLY_OBSERVATION_PROTOCOL_ID,
     build_benchmark_loop_contract,
-    build_benchmark_loop_controller_trace,
-    build_blind_loop_continuation_prompt,
     classify_loopx_treatment_claim,
     render_loop_contract_packet_lines,
 )
@@ -116,6 +110,12 @@ def _coerce_bool(value: str | bool) -> bool:
 
 
 LEGACY_PRE_RENAME_KWARG_PREFIX = "goal_" + "harness_"
+RETIRED_PROMPT_POLLING_KWARGS = frozenset(
+    {
+        "loopx_prompt_polling_rounds",
+        "loopx_prompt_polling_round_timeout_sec",
+    }
+)
 
 
 def _reject_pre_rename_kwargs(kwargs: dict[str, Any]) -> None:
@@ -132,6 +132,15 @@ def _reject_pre_rename_kwargs(kwargs: dict[str, Any]) -> None:
         f"use loopx_* kwargs before worker start; first_key={first_key}; "
         f"count={len(legacy_keys)}"
     )
+
+
+def _reject_retired_prompt_polling_kwargs(kwargs: dict[str, Any]) -> None:
+    retired_keys = sorted(RETIRED_PROMPT_POLLING_KWARGS.intersection(kwargs))
+    if retired_keys:
+        raise ValueError(
+            "legacy_prompt_polling_route_removed: use a real LoopX product-mode "
+            f"adapter; first_key={retired_keys[0]}; count={len(retired_keys)}"
+        )
 
 
 def _compact_todo_summary(value: Any, *, todo_id: str = "") -> dict[str, Any]:
@@ -848,12 +857,12 @@ def build_loopx_access_packet(
     registry_arg: str = "",
     runtime_root_arg: str = "",
     scan_path: str = "",
-    classification: str = "swe_marathon_codex_loopx_treatment",
-    experiment_protocol: str = MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID,
-    max_rounds: int = BLIND_LOOP_DEFAULT_MAX_ROUNDS,
+    classification: str = "swe_marathon_loopx_packet_observation",
+    experiment_protocol: str = PACKET_ONLY_OBSERVATION_PROTOCOL_ID,
+    max_rounds: int = 1,
     benchmark_id: str = "swe-marathon",
     case_id: str = "current-case",
-    arm_id: str = "codex_loopx_treatment",
+    arm_id: str = "codex_loopx_packet_observation",
 ) -> str:
     """Build a public-safe LoopX access packet for Harbor/SWE tasks."""
 
@@ -869,11 +878,7 @@ def build_loopx_access_packet(
     base += " --format json"
     goal_id_arg = shlex.quote(goal_id)
     scan_path_arg = shlex.quote(scan_path) if scan_path else "<public-scan-path>"
-    route = (
-        LOOPX_PROMPT_POLLING_TEST_ROUTE
-        if experiment_protocol == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
-        else LOOPX_PACKET_ONLY_OBSERVATION_ROUTE
-    )
+    route = LOOPX_PACKET_ONLY_OBSERVATION_ROUTE
     loop_contract = build_benchmark_loop_contract(
         route=route,
         max_rounds=max_rounds,
@@ -1043,20 +1048,19 @@ class HarborHostCodexGoalAgent(BaseAgent):
         loopx_runtime_root_arg: str = "",
         loopx_scan_path: str = "",
         loopx_classification: str = (
-            "swe_marathon_codex_loopx_treatment"
+            "swe_marathon_loopx_packet_observation"
         ),
-        loopx_experiment_protocol: str = MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID,
-        loopx_max_rounds: str | int = BLIND_LOOP_DEFAULT_MAX_ROUNDS,
-        loopx_prompt_polling_rounds: str | int = "auto",
-        loopx_prompt_polling_round_timeout_sec: str | int | float = "auto",
+        loopx_experiment_protocol: str = PACKET_ONLY_OBSERVATION_PROTOCOL_ID,
+        loopx_max_rounds: str | int = 1,
         loopx_benchmark_id: str = "swe-marathon",
         loopx_case_id: str = "current-case",
-        loopx_arm_id: str = "codex_loopx_treatment",
+        loopx_arm_id: str = "codex_loopx_packet_observation",
         startup_delay_sec: str | int | float = 5,
         poll_interval_sec: str | int | float = 5,
         **kwargs: Any,
     ) -> None:
         _reject_pre_rename_kwargs(kwargs)
+        _reject_retired_prompt_polling_kwargs(kwargs)
         super().__init__(logs_dir=logs_dir, model_name=model_name, **kwargs)
         self.goal_timeout_sec = float(goal_timeout_sec)
         self.codex_bin = codex_bin
@@ -1081,28 +1085,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
         self.loopx_benchmark_id = loopx_benchmark_id
         self.loopx_case_id = loopx_case_id
         self.loopx_arm_id = loopx_arm_id
-        if str(loopx_prompt_polling_rounds).strip().lower() == "auto":
-            self.loopx_prompt_polling_rounds = (
-                self.loopx_max_rounds
-                if loopx_experiment_protocol
-                == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
-                else 1
-            )
-        else:
-            self.loopx_prompt_polling_rounds = max(
-                1,
-                int(loopx_prompt_polling_rounds),
-            )
-        if str(loopx_prompt_polling_round_timeout_sec).strip().lower() == "auto":
-            self.loopx_prompt_polling_round_timeout_sec = max(
-                30.0,
-                self.goal_timeout_sec,
-            )
-        else:
-            self.loopx_prompt_polling_round_timeout_sec = max(
-                30.0,
-                float(loopx_prompt_polling_round_timeout_sec),
-            )
         self.startup_delay_sec = float(startup_delay_sec)
         self.poll_interval_sec = float(poll_interval_sec)
         self._served_request_count = 0
@@ -1267,12 +1249,7 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 arm_id=self.loopx_arm_id,
                 max_rounds=self.loopx_max_rounds,
             )
-            loop_route = (
-                LOOPX_PROMPT_POLLING_TEST_ROUTE
-                if self.loopx_experiment_protocol
-                == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
-                else LOOPX_PACKET_ONLY_OBSERVATION_ROUTE
-            )
+            loop_route = LOOPX_PACKET_ONLY_OBSERVATION_ROUTE
             loop_contract = build_benchmark_loop_contract(
                 route=loop_route,
                 max_rounds=self.loopx_max_rounds,
@@ -1491,29 +1468,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 return
             await self._serve_bridge_requests(environment, request_dir)
 
-            prompt_polling_enabled = bool(
-                loopx_access_packet
-                and self.loopx_experiment_protocol
-                == MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID
-                and self.loopx_prompt_polling_rounds > 1
-            )
-            controller_trace: dict[str, Any] = {}
-            if prompt_polling_enabled:
-                controller_trace = build_benchmark_loop_controller_trace(
-                    route=LOOPX_PROMPT_POLLING_TEST_ROUTE,
-                    max_rounds=self.loopx_max_rounds,
-                    schema_version="harbor_host_prompt_polling_controller_trace_v0",
-                )
-                controller_trace["initial_prompt_count"] = 1
-                controller_trace["controller_action_decisions"] = 1
-                controller_trace["last_decision"] = "start_initial_app_server_goal_turn"
-                treatment_claim = classify_loopx_treatment_claim(
-                    {
-                        "benchmark_loop_contract": loop_contract,
-                        "controller_trace_present": True,
-                    }
-                )
-
             def write_compact(
                 first_blocker: str = "",
                 *,
@@ -1530,7 +1484,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
                 current_treatment_claim = classify_loopx_treatment_claim(
                     {
                         "benchmark_loop_contract": loop_contract,
-                        "controller_trace_present": bool(controller_trace),
                         "loopx_product_path_primary_route": (
                             case_state_init_payload.get("product_path_primary_route")
                             or ""
@@ -1561,13 +1514,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         ),
                         "loopx_cli_bridge_enabled": (
                             self.loopx_cli_bridge_enabled
-                        ),
-                        "prompt_polling_enabled": prompt_polling_enabled,
-                        "prompt_polling_rounds_requested": (
-                            self.loopx_prompt_polling_rounds
-                        ),
-                        "prompt_polling_round_timeout_sec": (
-                            self.loopx_prompt_polling_round_timeout_sec
                         ),
                         "benchmark_loop_contract": loop_contract,
                         "benchmark_case_lifecycle_contract": case_lifecycle_contract,
@@ -1627,13 +1573,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
                         json.dumps(prompt_driven_trace, sort_keys=True) + "\n",
                         encoding="utf-8",
                     )
-                if controller_trace:
-                    compact["loopx_controller_trace_present"] = True
-                    compact["loopx_controller_trace"] = controller_trace
-                    (work_dir / "loopx_controller_trace.public.json").write_text(
-                        json.dumps(controller_trace, sort_keys=True) + "\n",
-                        encoding="utf-8",
-                    )
                 if case_scheduler_trace:
                     (work_dir / "loopx_case_rollout_trace.public.json").write_text(
                         json.dumps(case_scheduler_trace, sort_keys=True) + "\n",
@@ -1644,72 +1583,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     encoding="utf-8",
                 )
                 return compact
-
-            async def run_case_scheduler_round(
-                *,
-                round_index: int,
-                stage: str,
-            ) -> dict[str, Any]:
-                if not case_scheduler_trace or not case_state_init_payload:
-                    return {}
-                case_goal_id = str(
-                    case_state_init_payload.get("benchmark_case_goal_id") or ""
-                )
-                case_agent_id = str(
-                    case_state_init_payload.get("case_agent_id") or ""
-                )
-                case_todo_id = str(case_state_init_payload.get("case_todo_id") or "")
-                await _run_case_loopx_cli(
-                    environment,
-                    payload=case_state_init_payload,
-                    trace=case_scheduler_trace,
-                    action=f"{stage}_round_{round_index}_quota_should_run",
-                    args=[
-                        "quota",
-                        "should-run",
-                        "--goal-id",
-                        case_goal_id,
-                        "--agent-id",
-                        case_agent_id,
-                    ],
-                    cwd=self.task_workdir,
-                )
-                await _run_case_loopx_cli(
-                    environment,
-                    payload=case_state_init_payload,
-                    trace=case_scheduler_trace,
-                    action=f"{stage}_round_{round_index}_todo_update",
-                    args=[
-                        "todo",
-                        "update",
-                        "--goal-id",
-                        case_goal_id,
-                        "--todo-id",
-                        case_todo_id,
-                        "--claimed-by",
-                        case_agent_id,
-                    ],
-                    cwd=self.task_workdir,
-                )
-                await _run_case_loopx_cli(
-                    environment,
-                    payload=case_state_init_payload,
-                    trace=case_scheduler_trace,
-                    action=f"{stage}_round_{round_index}_status",
-                    args=["status", "--goal-id", case_goal_id, "--limit", "5"],
-                    cwd=self.task_workdir,
-                )
-                exit_state = _case_scheduler_active_todo_exit_state(
-                    case_scheduler_trace
-                )
-                case_scheduler_trace["active_todo_exit_state"] = exit_state
-                await _collect_case_rollout_event_counts(
-                    environment,
-                    payload=case_state_init_payload,
-                    trace=case_scheduler_trace,
-                    cwd=self.task_workdir,
-                )
-                return exit_state
 
             async def run_case_scheduler_closeout(*, result_kind: str) -> None:
                 if not case_scheduler_trace or not case_state_init_payload:
@@ -1762,205 +1635,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
                     trace=case_scheduler_trace,
                     cwd=self.task_workdir,
                 )
-
-            if prompt_polling_enabled:
-                deadline = time.time() + self.goal_timeout_sec
-                current_round = 1
-                timeout_blocker = ""
-                runtime_blocker = ""
-                try:
-                    while current_round <= self.loopx_prompt_polling_rounds:
-                        active_todo_exit_state: dict[str, Any] = {}
-                        round_deadline = min(
-                            deadline,
-                            time.time() + self.loopx_prompt_polling_round_timeout_sec,
-                        )
-                        while time.time() < round_deadline:
-                            observe_codex_app_server_goal_turn(turn)
-                            await self._serve_bridge_requests(environment, request_dir)
-                            if turn.turn_completed_observed:
-                                break
-                            await asyncio.sleep(self.poll_interval_sec)
-                        controller_trace["max_round_observed"] = max(
-                            int(controller_trace.get("max_round_observed", -1)),
-                            current_round,
-                        )
-                        controller_trace["round_timeout_sec"] = (
-                            self.loopx_prompt_polling_round_timeout_sec
-                        )
-                        active_todo_exit_state = await run_case_scheduler_round(
-                            round_index=current_round,
-                            stage="post_turn",
-                        )
-                        if active_todo_exit_state:
-                            controller_trace["active_todo_exit_state"] = (
-                                active_todo_exit_state
-                            )
-                        if active_todo_exit_state.get("no_active_todo") is True:
-                            await self._serve_bridge_requests(
-                                environment,
-                                request_dir,
-                            )
-                            await asyncio.sleep(
-                                min(max(self.poll_interval_sec, 0.01), 1.0)
-                            )
-                            case_goal_id = str(
-                                case_state_init_payload.get(
-                                    "benchmark_case_goal_id"
-                                )
-                                or ""
-                            )
-                            await _run_case_loopx_cli(
-                                environment,
-                                payload=case_state_init_payload,
-                                trace=case_scheduler_trace,
-                                action=(
-                                    f"post_turn_round_{current_round}"
-                                    "_status_confirm"
-                                ),
-                                args=[
-                                    "status",
-                                    "--goal-id",
-                                    case_goal_id,
-                                    "--limit",
-                                    "5",
-                                ],
-                                cwd=self.task_workdir,
-                            )
-                            active_todo_exit_state = (
-                                _case_scheduler_active_todo_exit_state(
-                                    case_scheduler_trace
-                                )
-                            )
-                            case_scheduler_trace["active_todo_exit_state"] = (
-                                active_todo_exit_state
-                            )
-                            controller_trace["active_todo_exit_state"] = (
-                                active_todo_exit_state
-                            )
-                            if (
-                                active_todo_exit_state.get("no_active_todo")
-                                is True
-                            ):
-                                controller_trace[
-                                    "no_active_todo_confirmed_count"
-                                ] = (
-                                    int(
-                                        controller_trace.get(
-                                            "no_active_todo_confirmed_count", 0
-                                        )
-                                    )
-                                    + 1
-                                )
-                                controller_trace["last_decision"] = (
-                                    "stop_after_confirmed_no_active_loopx_todo"
-                                )
-                                break
-                        if (
-                            time.time() >= round_deadline
-                            and not turn.turn_completed_observed
-                        ):
-                            timeout_blocker = (
-                                "harbor_prompt_polling_round_timeout_before_completion"
-                            )
-                            controller_trace["last_decision"] = timeout_blocker
-                            break
-                        if current_round >= self.loopx_prompt_polling_rounds:
-                            controller_trace["last_decision"] = (
-                                "stop_at_prompt_polling_round_budget"
-                            )
-                            break
-                        next_round = current_round + 1
-                        continuation_prompt = "\n\n".join(
-                            part
-                            for part in (
-                                loopx_access_packet,
-                                build_blind_loop_continuation_prompt(
-                                    scheduled_round=next_round,
-                                    max_rounds=self.loopx_prompt_polling_rounds,
-                                    persistent_constraint_clause=(
-                                        " Use harbor-env-exec for task-environment "
-                                        "commands; do not upload or submit."
-                                    ),
-                                ),
-                            )
-                            if part
-                        )
-                        (work_dir / f"prompt_round_{next_round}.txt").write_text(
-                            continuation_prompt,
-                            encoding="utf-8",
-                        )
-                        controller_trace["followup_prompt_count"] = int(
-                            controller_trace.get("followup_prompt_count", 0)
-                        ) + 1
-                        controller_trace["controller_action_decisions"] = int(
-                            controller_trace.get("controller_action_decisions", 0)
-                        ) + 1
-                        controller_trace["last_decision"] = (
-                            "send_prompt_polling_continuation"
-                        )
-                        try:
-                            turn = await asyncio.to_thread(
-                                start_codex_app_server_goal_followup_turn,
-                                turn,
-                                work_dir=work_dir,
-                                prompt=continuation_prompt,
-                                model_name=self.model_name,
-                                reasoning_effort=self.reasoning_effort,
-                                response_timeout_sec=(
-                                    self.app_server_response_timeout_sec
-                                ),
-                                wait_for_completion=False,
-                            )
-                        except CodexAppServerGoalDriverError as exc:
-                            runtime_blocker = (
-                                "codex_app_server_goal_followup_turn_failed"
-                            )
-                            controller_trace["last_decision"] = runtime_blocker
-                            controller_trace["runtime_error_type"] = type(exc).__name__
-                            controller_trace["raw_error_recorded"] = False
-                            break
-                        current_round = next_round
-                    observe_codex_app_server_goal_turn(turn)
-                    await self._serve_bridge_requests(environment, request_dir)
-                    result_kind = (
-                        "runtime_exception_blocker"
-                        if runtime_blocker
-                        else ("timeout_blocker" if timeout_blocker else "case_result")
-                    )
-                    await run_case_scheduler_closeout(result_kind=result_kind)
-                    first_blocker = runtime_blocker or timeout_blocker
-                    written_compact = write_compact(
-                        first_blocker,
-                        result_kind=result_kind,
-                    )
-                finally:
-                    turn.terminate()
-                context.metadata = {
-                    "loopx_agent": self.name(),
-                    "completion_source_of_truth": "case_local_active_todo",
-                    "bridge_request_count": self._served_request_count,
-                    "goal_surface": "app_server",
-                    "turn_completed_observed": bool(turn.turn_completed_observed),
-                    "first_blocker": runtime_blocker or timeout_blocker,
-                    "loopx_mode": self.loopx_mode,
-                    "loopx_access_packet_injected": bool(
-                        loopx_access_packet
-                    ),
-                    "prompt_polling_enabled": True,
-                    "prompt_polling_rounds_completed": current_round,
-                    "prompt_polling_round_timeout_sec": (
-                        self.loopx_prompt_polling_round_timeout_sec
-                    ),
-                    "benchmark_loop_contract": loop_contract,
-                    "benchmark_case_lifecycle_contract": case_lifecycle_contract,
-                    "loopx_solution_phase_counters": written_compact.get(
-                        "loopx_solution_phase_counters", {}
-                    ),
-                    **case_state_init_compact,
-                    **treatment_claim,
-                }
-                return
 
             deadline = time.time() + self.goal_timeout_sec
             try:

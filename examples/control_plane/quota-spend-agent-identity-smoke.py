@@ -105,6 +105,45 @@ def assert_monitor_poll_next_cli_action_preserves_agent_id(agent_id: str) -> Non
     ], actions
 
 
+def assert_interaction_cli_actions_preserve_agent_id(agent_id: str) -> None:
+    scoped_payload = {
+        "goal_id": "scoped-delivery-goal",
+        "agent_identity": {"agent_id": agent_id},
+    }
+    command_modes = [
+        "external_evidence_observation",
+        "autonomous_replan",
+        "bounded_delivery",
+        "outcome_floor_recovery",
+        "capability_bridge_repair",
+        "control_plane_self_repair",
+        "boundary_projection_repair",
+        "scoped_user_gate_fallback",
+        "bounded_delivery_with_user_notice",
+        "successor_replan_required",
+    ]
+    for mode in command_modes:
+        actions = interaction_next_cli_actions(scoped_payload, mode=mode)
+        state_or_accounting_commands = [
+            action
+            for action in actions
+            if "loopx refresh-state" in action
+            or "loopx quota monitor-poll" in action
+            or "loopx quota spend-slot" in action
+        ]
+        assert state_or_accounting_commands, (mode, actions)
+        assert all(
+            f"--agent-id {agent_id}" in action
+            for action in state_or_accounting_commands
+        ), (mode, actions)
+
+    unscoped_actions = interaction_next_cli_actions(
+        {"goal_id": "unscoped-delivery-goal"},
+        mode="bounded_delivery",
+    )
+    assert all("--agent-id" not in action for action in unscoped_actions), unscoped_actions
+
+
 def assert_delivery_completion_spend_preserves_requested_agent_id(agent_id: str) -> None:
     before = {
         "goal_id": "delivery-completion-goal",
@@ -222,6 +261,7 @@ def main() -> int:
 
     assert_monitor_poll_event_carries_agent_id(agent_id)
     assert_monitor_poll_next_cli_action_preserves_agent_id(agent_id)
+    assert_interaction_cli_actions_preserve_agent_id(agent_id)
     assert_delivery_completion_spend_preserves_requested_agent_id(agent_id)
     assert_quota_neutral_events_do_not_hide_same_agent_delivery(agent_id)
 

@@ -104,7 +104,7 @@ def main() -> int:
         raise AssertionError(skillsbench_payload)
     if skillsbench_payload["benchmark_cli"].get("benchmark") != "skillsbench":
         raise AssertionError(skillsbench_payload)
-    if skillsbench_payload["benchmark_cli"].get("skillsbench_route") != "loopx-blind-loop-treatment":
+    if skillsbench_payload["benchmark_cli"].get("skillsbench_route") != "codex-cli-goal-baseline":
         raise AssertionError(skillsbench_payload)
 
     with tempfile.TemporaryDirectory() as temp_dir:

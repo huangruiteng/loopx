@@ -7,21 +7,11 @@ official result/timing files into ``benchmark_run_v0``.
 
 The ``codex-cli-goal-baseline`` route is the canonical Codex Goal baseline:
 it drives the Codex CLI TUI slash-command surface with a real ``/goal`` command.
-The comparable LoopX test route is
-``loopx-prompt-polling-test``: it uses BenchFlow's ``BaseUser``
-progressive-disclosure hook as the outer LoopX polling controller
-without forwarding official reward, pass/fail, verifier errors, or verifier
-output back to the agent:
-
-- round 0 sends the task instruction with a LoopX controller header;
-- later rounds are scheduled continuations that explicitly say they are not
-  evidence of verifier success or failure;
-- public closeout reads only official ``result.json`` and ``timing.json``.
-
-The historical ``loopx-blind-loop-treatment`` route is kept as an alias
-for existing SkillsBench rows that used the same no-feedback polling semantics.
-The ``codex-acp-blind-loop-baseline`` route uses the same no-reward loop budget
-with an ordinary Codex prompt and no LoopX controller semantics.
+The comparable LoopX route is ``loopx-goal-start-product-mode``. It runs the
+actual guided ``/loopx <task objective>`` contract, requires the agent-authored
+plan and selected-P0 lifecycle, and records a compact control score. Historical
+prompt-polling routes are intentionally not launchable because they measured an
+outer prompt/controller treatment rather than the LoopX product lifecycle.
 
 Routes that forward official verifier reward, pass/fail status, verifier
 errors, or verifier output back to the agent are intentionally unsupported for
@@ -156,10 +146,8 @@ from loopx.benchmark_core.loop_protocol import (  # noqa: E402
     CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
     CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
     CODEX_CLI_GOAL_BASELINE_ROUTE,
-    LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
     LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
     LOOPX_PRODUCT_MODE_ROUTE,
-    LOOPX_PROMPT_POLLING_TEST_ROUTE,
     RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
     build_benchmark_loop_controller_trace,
     build_blind_loop_continuation_prompt,
@@ -8110,11 +8098,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     job_name = args.job_name or (
         f"skillsbench-{task_id}-{route}-{_now_stamp()}"
     )
-    if route == LOOPX_PROMPT_POLLING_TEST_ROUTE:
-        rollout_suffix = "loopx_prompt_polling_test"
-    elif route == LOOPX_BLIND_LOOP_TREATMENT_ROUTE:
-        rollout_suffix = "loopx_blind_loop"
-    elif route == LOOPX_GOAL_START_PRODUCT_MODE_ROUTE:
+    if route == LOOPX_GOAL_START_PRODUCT_MODE_ROUTE:
         rollout_suffix = "loopx_goal_start_product_mode"
     elif route == LOOPX_PRODUCT_MODE_ROUTE:
         rollout_suffix = "loopx_product_mode"
@@ -8352,7 +8336,6 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "raw_trajectory_read_into_public_state": False,
             "raw_verifier_output_read_into_public_state": False,
         },
-        "treatment_prompt_style": args.treatment_prompt_style,
         "outer_timeout_sec": args.outer_timeout_sec,
         "sandbox_setup_timeout_sec": args.sandbox_setup_timeout,
         "agent_idle_timeout_sec": args.agent_idle_timeout,
@@ -8663,7 +8646,11 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "host_local_acp_codex_exec_preflight_first_blocker": "",
             "container_codex_acp_install_skipped": (
                 True
-                if is_app_server_goal_route or is_codex_cli_goal_route
+                if (
+                    is_app_server_goal_route
+                    or is_codex_cli_goal_route
+                    or args.host_local_acp_launch
+                )
                 else requires_preinstalled_runtime
             ),
             "benchflow_agent_install_skipped_by_runtime_layer": (
@@ -8899,7 +8886,6 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "run_group_id",
         "job_name",
         "rollout_name",
-        "treatment_prompt_style",
         "ledger_scope",
     )
     for field in string_fields:
@@ -12121,7 +12107,6 @@ def _build_blind_loop_user(
     route: str,
     max_rounds: int,
     trace: dict[str, Any],
-    treatment_prompt_style: str = "structured",
 ):
     from benchflow.sandbox.user import BaseUser, RoundResult
 
@@ -12182,7 +12167,6 @@ def _build_blind_loop_user(
                 return build_blind_loop_initial_prompt(
                     route=route,
                     instruction=instruction,
-                    treatment_prompt_style=treatment_prompt_style,
                     benchmark_surface="official SkillsBench sandbox",
                 )
 
@@ -14023,15 +14007,12 @@ async def run_benchflow_case(
         )
     if not setup_only_public_preflight and args.route in {
         CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
-        LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
-        LOOPX_PROMPT_POLLING_TEST_ROUTE,
     }:
         controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
         controller_user = _build_blind_loop_user(
             route=args.route,
             max_rounds=args.max_rounds,
             trace=controller_trace,
-            treatment_prompt_style=args.treatment_prompt_style,
         )
     elif not setup_only_public_preflight and args.route in PRODUCT_MODE_CONTROLLER_ROUTES:
         controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
@@ -15317,11 +15298,7 @@ def update_ledger(
     )
 
     note_route = (
-        "LoopX prompt-driven polling test"
-        if args.route == LOOPX_PROMPT_POLLING_TEST_ROUTE
-        else "LoopX blind-loop treatment"
-        if args.route == LOOPX_BLIND_LOOP_TREATMENT_ROUTE
-        else "Codex ACP blind-loop baseline"
+        "Codex ACP blind-loop baseline"
         if args.route == "codex-acp-blind-loop-baseline"
         else "Codex CLI /goal baseline"
         if args.route == CODEX_CLI_GOAL_BASELINE_ROUTE
@@ -15436,8 +15413,6 @@ def append_history(args: argparse.Namespace, compact_path: Path) -> dict[str, An
             "appended": False,
         }
     classification_by_route = {
-        "loopx-blind-loop-treatment": "skillsbench_loopx_blind_loop_treatment_result_v0",
-        "loopx-prompt-polling-test": "skillsbench_loopx_prompt_polling_test_result_v0",
         "codex-acp-blind-loop-baseline": "skillsbench_codex_acp_blind_loop_baseline_result_v0",
         "codex-cli-goal-baseline": "skillsbench_codex_cli_goal_baseline_result_v0",
         "loopx-product-mode": "skillsbench_loopx_product_mode_result_v0",
@@ -15588,16 +15563,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--dataset", default="skillsbench@1.1")
     parser.add_argument(
         "--route",
-        choices=SUPPORTED_ROUTES,
         default=DEFAULT_ROUTE,
         help=(
             "codex-cli-goal-baseline is the canonical Codex Goal baseline "
             "using the host Codex CLI TUI /goal slash command; "
-            "loopx-prompt-polling-test is the current no-reward-feedback "
-            "test route with scheduled continuation prompts; "
-            "loopx-blind-loop-treatment is the historical SkillsBench "
-            "alias for the same polling semantics; codex-acp-blind-loop-baseline "
-            "is the ordinary Codex no-goal baseline with the same loop budget; "
+            "codex-acp-blind-loop-baseline is the ordinary Codex no-goal "
+            "baseline with a fixed no-feedback loop budget; "
             "raw-codex-autonomous-max5 and loopx-goal-start-product-mode are "
             "the main-table raw/new comparison routes; "
             "loopx-goal-start-product-mode adds /loopx goal-start planning "
@@ -15659,17 +15630,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "job/rollout/thread; official verifier reward is observed only by "
             "the runner to decide whether to stop before the retry budget, and "
             "is never forwarded to the worker."
-        ),
-    )
-    parser.add_argument(
-        "--treatment-prompt-style",
-        choices=("structured", "baseline-safe"),
-        default="structured",
-        help=(
-            "Diagnostic prompt wrapper for loopx-blind-loop-treatment. "
-            "Also applies to loopx-prompt-polling-test. "
-            "baseline-safe keeps treatment routing/ledger metadata while using "
-            "the baseline-style first prompt to isolate ACP prompt-wrapper issues."
         ),
     )
     parser.add_argument(
@@ -16249,6 +16209,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     apt_fail_fast_explicit = "--fail-fast-on-apt-risk" in raw_argv
     verifier_fail_fast_explicit = "--fail-fast-on-verifier-bootstrap-risk" in raw_argv
     args = parser.parse_args(raw_argv)
+    if args.route in HISTORICAL_REDUCER_ROUTES:
+        if not args.reduce_only:
+            parser.error(
+                "historical prompt-polling routes are read-only and require "
+                "--reduce-only"
+            )
+    elif args.route not in SUPPORTED_ROUTES:
+        parser.error(
+            f"unsupported --route {args.route!r}; choose one of "
+            + ", ".join(SUPPORTED_ROUTES)
+        )
     if args.setup_only_public_preflight and (args.plan_only or args.reduce_only):
         parser.error(
             "--setup-only-public-preflight is incompatible with --plan-only "

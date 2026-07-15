@@ -504,12 +504,18 @@ search/use `automation_update` when available, but only when
 RRULE update, run `loopx` with
 `scheduler_hint.codex_app.ack_hint.cli_args` (normally `quota scheduler-ack-current`,
 which re-reads the latest scheduler hint instead of hand-copying short-lived
-reset tokens). If `apply_needed=false` but `ack_needed=true`, a matching host
+reset tokens). Attempt the host update at most once per hint and turn. If it
+fails or times out, do not retry or ACK; run
+`scheduler_hint.codex_app.failure_hint.cli_args` once. That no-spend writeback
+records the failed target/observed-host pair so later heartbeats suppress the
+exact repeat until either value changes. Continue allowed delivery under the
+observed host cadence. If
+`apply_needed=false` but `ack_needed=true`, a matching host
 readback already proves the RRULE; skip `automation_update` and run the bound
 ack hint directly. LoopX owns reset/progression state
-and omits `recommended_rrule` when the
-desired RRULE is already applied. Cadence changes, reset-to-initial updates,
-final checks, and self-stop changes do not spend quota. Read
+and omits `recommended_rrule` when the desired RRULE is already applied.
+Cadence changes, reset-to-initial updates, final checks, and self-stop changes
+do not spend quota.
 For a uniquely matched active Codex App heartbeat, `quota should-run`
 automatically reconciles the installed RRULE with LoopX's ACK ledger. Treat
 `stateful_backoff.host_observation.status=drift_detected` as authoritative for
@@ -556,9 +562,11 @@ It also respects `notify_user_on_open_todo=true`: open user todos in
 focus-wait, waiting, or external-evidence lanes should become a compact
 blocker-push `NOTIFY` with at most three items, while skipping delivery work
 and quota spend for that blocker-push turn. If the payload includes
-`open_todo_notification_policy=repeat_until_resolved`, repeat
-that `NOTIFY` on every such poll until the todo is done, deferred, or replaced;
-do not suppress it as a recently surfaced blocker. Other blocker-push cases may
+`open_todo_notification_policy=repeat_until_resolved`, repeat that `NOTIFY`
+until the todo is done, deferred, or replaced. When
+`user_gate_notification_cooldown.notification_suppressed=true`, preserve the
+pending gate but return quiet `DONT_NOTIFY`; the bounded reminder window or a
+material gate/host change reopens the notification. Other blocker-push cases may
 still be de-duplicated when the same blocker was already surfaced recently.
 Eligible monitor-only no-transition polls keep user todos visible in the
 payload but should stay quiet unless a material transition appears.

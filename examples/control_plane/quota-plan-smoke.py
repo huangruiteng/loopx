@@ -987,7 +987,7 @@ def assert_heartbeat_recommendation_lifecycle() -> None:
     assert scheduler["action"] == "backoff_until_fresh_evidence", mapped_decision
     assert scheduler["codex_app"]["recommended_interval_minutes"] == 60, mapped_decision
     assert scheduler["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=60", mapped_decision
-    assert scheduler["codex_app"]["example_progression_minutes"] == [60, 120, 240], mapped_decision
+    assert scheduler["codex_app"]["example_progression_minutes"] == [60], mapped_decision
     assert scheduler["unchanged_poll"]["limits"]["codex_cli_tui"] == 3, mapped_decision
     assert scheduler["unchanged_poll"]["final_quota_replan_check_enabled"] is True, mapped_decision
     assert "local_scheduler" not in scheduler, scheduler
@@ -1008,7 +1008,7 @@ def assert_heartbeat_recommendation_lifecycle() -> None:
     profile_snapshot = scheduler_reset_profile_snapshot(scheduler)
     assert profile_snapshot["cadence_class"] == "unchanged_noop", profile_snapshot
     assert profile_snapshot["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=60", profile_snapshot
-    assert profile_snapshot["codex_app_max_interval_minutes"] == 240, profile_snapshot
+    assert profile_snapshot["codex_app_max_interval_minutes"] == 60, profile_snapshot
     assert profile_snapshot["unchanged_poll_backoff_multiplier"] == 2, profile_snapshot
     identity_snapshot = {
         key: _nested_value(mapped_decision, key)
@@ -1023,7 +1023,7 @@ def assert_heartbeat_recommendation_lifecycle() -> None:
     assert "heartbeat_stop_if_unchanged: `True`" in mapped_markdown, mapped_markdown
     assert "scheduler_hint: action=backoff_until_fresh_evidence" in mapped_markdown, mapped_markdown
     assert "codex_app_rrule=FREQ=MINUTELY;INTERVAL=60" in mapped_markdown, mapped_markdown
-    assert "codex_app_progression=[60, 120, 240]" in mapped_markdown, mapped_markdown
+    assert "codex_app_progression=[60]" in mapped_markdown, mapped_markdown
     assert "scheduler_reset: initial_interval=60" in mapped_markdown, mapped_markdown
     assert "initial_rrule=FREQ=MINUTELY;INTERVAL=60" in mapped_markdown, mapped_markdown
     assert "reset_generation=" in mapped_markdown, mapped_markdown
@@ -1031,6 +1031,23 @@ def assert_heartbeat_recommendation_lifecycle() -> None:
         "execution_obligation: must_attempt_work=False kind=quiet_noop_if_unchanged notify_is_execution_gate=False"
         in mapped_markdown
     ), mapped_markdown
+
+    mapped_detailed = build_quota_should_run(
+        payload,
+        goal_id="mapped-quiet",
+        include_scheduler_detail=True,
+    )
+    detailed_scheduler = mapped_detailed["scheduler_hint"]
+    local_scheduler = detailed_scheduler["cold_path_detail"]["local_scheduler"]
+    stateful_detail = detailed_scheduler["cold_path_detail"]["stateful_backoff_detail"]
+    assert local_scheduler["example_progression_minutes"] == [60, 120, 240], local_scheduler
+    assert local_scheduler["max_interval_minutes"] == 240, local_scheduler
+    assert stateful_detail["host_max_interval_minutes"] == 60, stateful_detail
+    assert stateful_detail["coarser_wait_fallback"] == "local_scheduler_only", stateful_detail
+    assert "suppress_exact_repeat" in stateful_detail["host_update_failure"], stateful_detail
+    assert stateful_detail["ack_required_after_apply"] is True, stateful_detail
+    assert stateful_detail["ack_required_from_host_match"] is False, stateful_detail
+    assert "host_update_failure" in stateful_detail["persist"].split("|"), stateful_detail
 
 
 def assert_goal_boundary_in_should_run() -> None:

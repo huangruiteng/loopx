@@ -66,7 +66,6 @@ LEGACY_OVERSIZED_LIMITS = {
     "loopx/quota.py": 2455,
     "loopx/status.py": 6736,
     "loopx/terminal_bench_agent.py": 2056,
-    "scripts/harbor_host_codex_goal_agent.py": 2091,
     "scripts/skillsbench_automation_loop.py": 17631,
 }
 

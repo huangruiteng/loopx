@@ -58,6 +58,7 @@ BENCHMARK_RUN_BOOL_FIELDS = (
     "loopx_worker_cli_bridge_trace_observed",
     "loopx_prompt_driven_trace_observed",
     "loopx_prompt_driven_lifecycle_observed",
+    "historical_route_read_only",
     "loopx_controller_trace_present",
     "loopx_controller_trace_public_safe",
     "controller_turn_completed_observed",

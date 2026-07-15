@@ -121,10 +121,10 @@ completion file.
         prompt += (
             "\n\nLoopX case lifecycle packet:\n"
             f"{packet}\n\n"
-            "Use this packet as the canonical LoopX product-mode lifecycle contract. "
+            "Use this packet only as a LoopX lifecycle diagnostic. "
             "Keep the official Terminal-Bench scorer authoritative, do not expose reward "
-            "or verifier output during the agent loop, and do not rely on runner-internal "
-            "polling or marker files as LoopX treatment evidence."
+            "or verifier output during the agent loop, and do not present this packet-only "
+            "run as LoopX treatment evidence."
         )
     return prompt
 
@@ -135,8 +135,8 @@ def build_loopx_case_lifecycle_packet(
     packet_mode: str = "none",
     benchmark_id: str = "terminal-bench",
     case_id: str = "current-case",
-    arm_id: str = "codex_loopx_treatment",
-    max_rounds: int = 5,
+    arm_id: str = "codex_loopx_packet_observation",
+    max_rounds: int = 1,
 ) -> tuple[str, dict[str, object] | None]:
     if mode != "codex_loopx" or packet_mode == "none":
         return "", None
@@ -175,8 +175,8 @@ class HostCodexGoalAgent(BaseAgent):
         loopx_access_packet_mode: str = "none",
         loopx_benchmark_id: str = "terminal-bench",
         loopx_case_id: str = "current-case",
-        loopx_arm_id: str = "codex_loopx_treatment",
-        loopx_max_rounds: str | int = 5,
+        loopx_arm_id: str = "codex_loopx_packet_observation",
+        loopx_max_rounds: str | int = 1,
         *args: Any,
         **kwargs: Any,
     ):

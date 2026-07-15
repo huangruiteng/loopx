@@ -126,37 +126,6 @@ def _harbor_profile(
             "recommended_goal_baseline_harbor_args": (
                 recommended_goal_baseline_args
             ),
-            "recommended_loopx_prompt_polling_harbor_args": [
-                *recommended_goal_baseline_args,
-                "--agent-kwarg",
-                "loopx_mode=codex_loopx",
-                "--agent-kwarg",
-                "loopx_access_packet_mode=compact",
-                "--agent-kwarg",
-                "loopx_cli_bridge_enabled=true",
-                "--agent-kwarg",
-                "loopx_goal_id=<goal-id>",
-                "--agent-kwarg",
-                "loopx_registry_arg=<registry.global.json>",
-                "--agent-kwarg",
-                "loopx_runtime_root_arg=<runtime-root>",
-                "--agent-kwarg",
-                "loopx_scan_path=<public-scan-path>",
-                "--agent-kwarg",
-                "loopx_classification=<public-classification>",
-                "--agent-kwarg",
-                "loopx_experiment_protocol=max5_blind_loop_no_feedback",
-                "--agent-kwarg",
-                "loopx_max_rounds=5",
-                "--agent-kwarg",
-                "loopx_prompt_polling_rounds=5",
-                "--agent-kwarg",
-                "loopx_prompt_polling_round_timeout_sec=<seconds>",
-                "--agent-kwarg",
-                "loopx_case_id=<case-id>",
-                "--agent-kwarg",
-                "loopx_arm_id=loopx_prompt_polling_test",
-            ],
             "pre_rename_agent_kwargs_allowed": False,
             "command_bridge": "harbor-env-exec",
             "goal_surface": "app_server",
@@ -193,19 +162,6 @@ def _harbor_profile(
             "--agent-kwarg",
             "goal_timeout_sec=<seconds>",
         ]
-        recommended_loopx_prompt_polling_tb_args = [
-            *recommended_goal_baseline_tb_args,
-            "--agent-kwarg",
-            "loopx_mode=codex_loopx",
-            "--agent-kwarg",
-            "loopx_access_packet_mode=compact",
-            "--agent-kwarg",
-            "loopx_case_id=<case-id>",
-            "--agent-kwarg",
-            "loopx_arm_id=loopx_prompt_polling_test",
-            "--agent-kwarg",
-            "loopx_max_rounds=5",
-        ]
         runner_fragments["terminal_bench_no_rebuild_guard_command"] = (
             "python3 scripts/terminal_bench_no_rebuild_guard.py "
             "--terminal-bench-root <terminal-bench-checkout> --apply --pretty"
@@ -236,9 +192,6 @@ def _harbor_profile(
                 "goal_timeout_sec=<seconds>",
             ],
             "recommended_goal_baseline_tb_args": recommended_goal_baseline_tb_args,
-            "recommended_loopx_prompt_polling_tb_args": (
-                recommended_loopx_prompt_polling_tb_args
-            ),
             "official_hello_world_proof_gate": {
                 "case_id": "hello-world",
                 "safe_run_id_command": (

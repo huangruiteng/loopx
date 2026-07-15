@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import json
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -14,6 +12,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from loopx.control_plane.testing.canary_harness import (  # noqa: E402
+    run_json_cli,
+    run_json_cli_result,
+    write_fixture_registry,
+)
 from loopx.status import parse_active_state_todos  # noqa: E402
 from loopx.quota import build_quota_should_run  # noqa: E402
 
@@ -47,77 +50,34 @@ def write_fixture(root: Path, *, register_agents: bool = True) -> tuple[Path, Pa
         "- Choose the next bounded step.\n",
         encoding="utf-8",
     )
-    registry_path.parent.mkdir(parents=True)
-    goal = {
-        "id": GOAL_ID,
-        "domain": "todo-cli-fixture",
-        "status": "active",
-        "repo": str(project),
-        "state_file": ".codex/goals/todo-cli-goal/ACTIVE_GOAL_STATE.md",
-        "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
-        "authority_sources": [],
-    }
-    if register_agents:
-        goal["coordination"] = {
-            "registered_agents": ["codex-main-control", "codex-side-bypass"],
-            "agent_model": "peer_v1",
-        }
-    registry_path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "updated_at": "2026-01-01T00:00:00+00:00",
-                "common_runtime_root": str(runtime),
-                "goals": [goal],
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
+    write_fixture_registry(
+        project=project,
+        runtime_root=runtime,
+        registry_path=registry_path,
+        goal_id=GOAL_ID,
+        domain="todo-cli-fixture",
+        adapter_kind="generic_project_goal_v0",
+        registered_agents=("codex-main-control", "codex-side-bypass")
+        if register_agents
+        else None,
+        quota_allowed_slots=None,
     )
     return registry_path, state_file
 
 
 def run_cli(registry_path: Path, *args: str) -> dict:
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "loopx.cli",
-            "--registry",
-            str(registry_path),
-            "--format",
-            "json",
-            *args,
-        ],
-        cwd=REPO_ROOT,
-        check=True,
-        text=True,
-        capture_output=True,
+    return run_json_cli(
+        *args,
+        registry_path=registry_path,
+        include_returncode=False,
     )
-    return json.loads(result.stdout)
 
 
 def run_cli_error(registry_path: Path, *args: str) -> dict:
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "loopx.cli",
-            "--registry",
-            str(registry_path),
-            "--format",
-            "json",
-            *args,
-        ],
-        cwd=REPO_ROOT,
-        check=False,
-        text=True,
-        capture_output=True,
-    )
-    assert result.returncode != 0, result.stdout
-    return json.loads(result.stdout)
+    returncode, payload = run_json_cli_result(*args, registry_path=registry_path)
+    assert returncode != 0, payload
+    payload.pop("_returncode", None)
+    return payload
 
 
 def main() -> int:

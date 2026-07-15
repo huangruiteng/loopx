@@ -854,7 +854,7 @@ def main() -> int:
         text=True,
     )
     assert feedback_result.returncode != 0, feedback_result
-    assert "invalid choice" in feedback_result.stderr, feedback_result.stderr
+    assert "unsupported --route" in feedback_result.stderr, feedback_result.stderr
     _assert_adapter_route_contract_surface()
     _assert_agent_authored_goal_start_bootstrap()
     _assert_bridge_tracks_guided_start_without_task_text()

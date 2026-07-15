@@ -4231,75 +4231,18 @@ def _terminal_bench_prompt_driven_loopx_observation(
     first_blocker = "none"
     treatment_claim_blocker = "none"
     strict_claim_allowed = False
-    controller_trace_observed = False
-    controller_trace_public_safe = False
-    controller_max_round_observed = -1
-    controller_max_rounds_budget = 0
-    controller_initial_prompt_count = 0
-    controller_followup_prompt_count = 0
-    controller_action_decisions = 0
-    controller_no_active_todo_confirmed_count = 0
-    controller_round_timeout_sec: float | None = None
-    controller_last_decision = "none"
+    historical_prompt_polling_trace_observed = False
     controller_turn_completed_observed = False
 
     def observe_controller_trace(payload: Any) -> None:
-        nonlocal controller_trace_observed
-        nonlocal controller_trace_public_safe
-        nonlocal controller_max_round_observed
-        nonlocal controller_max_rounds_budget
-        nonlocal controller_initial_prompt_count
-        nonlocal controller_followup_prompt_count
-        nonlocal controller_action_decisions
-        nonlocal controller_no_active_todo_confirmed_count
-        nonlocal controller_round_timeout_sec
-        nonlocal controller_last_decision
+        nonlocal historical_prompt_polling_trace_observed
         if not isinstance(payload, dict):
             return
-        controller_trace_observed = True
-        publicness = str(payload.get("trace_publicness") or "")
-        controller_trace_public_safe = controller_trace_public_safe or (
-            "public" in publicness
-            and payload.get("raw_task_text_recorded") is not True
-            and payload.get("raw_verifier_output_recorded") is not True
-            and payload.get("raw_agent_trajectory_recorded") is not True
+        historical_prompt_polling_trace_observed = (
+            historical_prompt_polling_trace_observed
+            or payload.get("schema_version")
+            == "harbor_host_prompt_polling_controller_trace_v0"
         )
-        for field, current in (
-            ("max_round_observed", controller_max_round_observed),
-            ("max_rounds_budget", controller_max_rounds_budget),
-            ("initial_prompt_count", controller_initial_prompt_count),
-            ("followup_prompt_count", controller_followup_prompt_count),
-            ("controller_action_decisions", controller_action_decisions),
-            (
-                "no_active_todo_confirmed_count",
-                controller_no_active_todo_confirmed_count,
-            ),
-        ):
-            raw = payload.get(field)
-            if not isinstance(raw, int) or isinstance(raw, bool):
-                continue
-            value = max(current, raw)
-            if field == "max_round_observed":
-                controller_max_round_observed = value
-            elif field == "max_rounds_budget":
-                controller_max_rounds_budget = value
-            elif field == "initial_prompt_count":
-                controller_initial_prompt_count = value
-            elif field == "followup_prompt_count":
-                controller_followup_prompt_count = value
-            elif field == "controller_action_decisions":
-                controller_action_decisions = value
-            elif field == "no_active_todo_confirmed_count":
-                controller_no_active_todo_confirmed_count = value
-        timeout_raw = payload.get("round_timeout_sec")
-        if isinstance(timeout_raw, (int, float)) and not isinstance(timeout_raw, bool):
-            controller_round_timeout_sec = max(
-                float(controller_round_timeout_sec or 0.0),
-                float(timeout_raw),
-            )
-        decision = _public_safe_benchmark_label(payload.get("last_decision"))
-        if decision and decision != "none":
-            controller_last_decision = decision
 
     for path in trace_paths:
         payload = _load_json_object(path)
@@ -4345,9 +4288,6 @@ def _terminal_bench_prompt_driven_loopx_observation(
             "strict_loopx_treatment_claim_allowed"
         ) is True
         observe_controller_trace(payload.get("loopx_controller_trace"))
-        controller_trace_observed = controller_trace_observed or payload.get(
-            "loopx_controller_trace_present"
-        ) is True
         controller_turn_completed_observed = (
             controller_turn_completed_observed
             or payload.get("turn_completed_observed") is True
@@ -4370,6 +4310,11 @@ def _terminal_bench_prompt_driven_loopx_observation(
         "quota_spend",
         "spend_slot",
     }
+    if historical_prompt_polling_trace_observed:
+        strict_claim_allowed = False
+        treatment_claim_blocker = (
+            "historical_nonproduct_invalid_for_comparison"
+        )
     return {
         "trace_file_count": len(trace_paths),
         "compact_file_count": len(compact_paths),
@@ -4386,18 +4331,7 @@ def _terminal_bench_prompt_driven_loopx_observation(
         "first_blocker": first_blocker,
         "strict_loopx_treatment_claim_allowed": strict_claim_allowed,
         "loopx_treatment_claim_blocker": treatment_claim_blocker,
-        "controller_trace_observed": controller_trace_observed,
-        "controller_trace_public_safe": controller_trace_public_safe,
-        "controller_max_round_observed": controller_max_round_observed,
-        "controller_max_rounds_budget": controller_max_rounds_budget,
-        "controller_initial_prompt_count": controller_initial_prompt_count,
-        "controller_followup_prompt_count": controller_followup_prompt_count,
-        "controller_action_decisions": controller_action_decisions,
-        "controller_no_active_todo_confirmed_count": (
-            controller_no_active_todo_confirmed_count
-        ),
-        "controller_round_timeout_sec": controller_round_timeout_sec,
-        "controller_last_decision": controller_last_decision,
+        "historical_route_read_only": historical_prompt_polling_trace_observed,
         "controller_turn_completed_observed": controller_turn_completed_observed,
     }
 
@@ -5555,31 +5489,45 @@ def build_terminal_bench_harbor_result_benchmark_run(
         if official_score is not None
         else {"kind": "harbor_verifier_reward_missing"}
     )
+    historical_prompt_polling_route = bool(
+        prompt_driven_loopx.get("historical_route_read_only")
+    )
+    raw_prompt_driven_claim_blocker = prompt_driven_loopx.get(
+        "loopx_treatment_claim_blocker"
+    )
+    observed_prompt_driven_claim_blocker = (
+        raw_prompt_driven_claim_blocker
+        if isinstance(raw_prompt_driven_claim_blocker, str)
+        else ""
+    )
     prompt_driven_claim_blocker = "none"
-    if not prompt_driven_lifecycle_observed and worker_bridge_required:
-        raw_claim_blocker = prompt_driven_loopx.get(
-            "loopx_treatment_claim_blocker"
-        )
+    if historical_prompt_polling_route:
         prompt_driven_claim_blocker = (
-            raw_claim_blocker if isinstance(raw_claim_blocker, str) else ""
-        ) or "prompt_driven_loopx_lifecycle_absent"
-        if prompt_driven_claim_blocker in {"", "none"}:
-            prompt_driven_claim_blocker = (
-                "prompt_driven_loopx_lifecycle_absent"
-            )
+            "historical_nonproduct_invalid_for_comparison"
+        )
+    elif observed_prompt_driven_claim_blocker not in {"", "none"}:
+        prompt_driven_claim_blocker = observed_prompt_driven_claim_blocker
+    elif not prompt_driven_lifecycle_observed and worker_bridge_required:
+        prompt_driven_claim_blocker = "prompt_driven_loopx_lifecycle_absent"
     prompt_driven_evidence_tier = "not_applicable"
-    if worker_bridge_required:
+    if historical_prompt_polling_route:
+        prompt_driven_evidence_tier = (
+            "historical_nonproduct_invalid_for_comparison"
+        )
+    elif worker_bridge_required:
         prompt_driven_evidence_tier = (
             "prompt_driven_case_local_loopx_cli_lifecycle"
             if prompt_driven_lifecycle_observed
             else "prompt_driven_case_local_loopx_cli_not_observed"
         )
     strict_loopx_treatment_claim_allowed = bool(
-        prompt_driven_lifecycle_observed
-        or prompt_driven_loopx.get(
+        not historical_prompt_polling_route
+        and prompt_driven_lifecycle_observed
+        and prompt_driven_loopx.get(
             "strict_loopx_treatment_claim_allowed"
         )
         is True
+        and prompt_driven_claim_blocker == "none"
     )
     raw_prompt_driven_first_blocker = prompt_driven_loopx.get(
         "first_blocker"
@@ -5808,6 +5756,7 @@ def build_terminal_bench_harbor_result_benchmark_run(
         "strict_loopx_treatment_claim_allowed": (
             strict_loopx_treatment_claim_allowed
         ),
+        "historical_route_read_only": historical_prompt_polling_route,
         "loopx_treatment_claim_blocker": prompt_driven_claim_blocker,
         "loopx_treatment_evidence_tier": prompt_driven_evidence_tier,
         "worker_loopx_cli_call_total": worker_cli_total,

@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import json
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -14,6 +12,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from loopx.control_plane.testing.canary_harness import (  # noqa: E402
+    run_json_cli,
+    write_fixture_registry,
+)
 from loopx.event_sourced_state import (  # noqa: E402
     AppendOnlyStateEventStore,
     TODO_ADDED,
@@ -55,36 +57,23 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
         f"task_class=advancement_task resume_when=todo_done:{GATE_TODO_ID} -->\n",
         encoding="utf-8",
     )
-    registry_path.parent.mkdir(parents=True)
-    registry_path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "updated_at": "2026-01-01T00:00:00+00:00",
-                "common_runtime_root": str(runtime),
-                "goals": [
-                    {
-                        "id": GOAL_ID,
-                        "domain": "todo-list-fixture",
-                        "status": "active",
-                        "repo": str(project),
-                        "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
-                        "state_event_log": f".codex/goals/{GOAL_ID}/events.jsonl",
-                        "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
-                        "coordination": {
-                            "registered_agents": [PRIMARY_AGENT, SIDE_AGENT],
-                            "agent_model": "peer_v1",
-                            "side_agent_handoff_agent": SIDE_AGENT,
-                        },
-                        "authority_sources": [],
-                    }
-                ],
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
+    write_fixture_registry(
+        project=project,
+        runtime_root=runtime,
+        registry_path=registry_path,
+        goal_id=GOAL_ID,
+        domain="todo-list-fixture",
+        adapter_kind="generic_project_goal_v0",
+        state_event_log=f".codex/goals/{GOAL_ID}/events.jsonl",
+        registered_agents=(PRIMARY_AGENT, SIDE_AGENT),
+        quota_allowed_slots=None,
+        extra_goal_fields={
+            "coordination": {
+                "registered_agents": [PRIMARY_AGENT, SIDE_AGENT],
+                "agent_model": "peer_v1",
+                "side_agent_handoff_agent": SIDE_AGENT,
+            }
+        },
     )
     return registry_path, state_file, event_log
 
@@ -102,23 +91,11 @@ def event(event_id: str, event_type: str, todo_id: str, payload: dict) -> dict:
 
 
 def run_cli(registry_path: Path, *args: str) -> dict:
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "loopx.cli",
-            "--registry",
-            str(registry_path),
-            "--format",
-            "json",
-            *args,
-        ],
-        cwd=REPO_ROOT,
-        check=True,
-        text=True,
-        capture_output=True,
+    return run_json_cli(
+        *args,
+        registry_path=registry_path,
+        include_returncode=False,
     )
-    return json.loads(result.stdout)
 
 
 def write_events(event_log: Path) -> None:

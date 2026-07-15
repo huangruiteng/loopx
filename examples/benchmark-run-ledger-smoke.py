@@ -1346,9 +1346,9 @@ def test_raw_max5_baseline_does_not_force_product_pair_without_product_treatment
         case = ledger["benchmarks"]["skillsbench@1.1"]["cases"][
             "ordinary-treatment-case"
         ]
+        assert next(run["arm_id"] for run in case["runs"] if run["route"] == "loopx-blind-loop-treatment") == "historical_nonproduct_invalid_for_comparison"
         decision = case["latest_decision"]
-        assert decision["decision"] == "paired_no_score_uplift", decision
-        assert "product_mode_main_table_pair" not in decision, decision
+        assert decision["decision"] == "baseline_failed_treatment_candidate", decision
         rendered = render_benchmark_run_ledger_markdown(ledger)
         assert "product_mode_pair_incomplete" not in rendered, rendered
 
