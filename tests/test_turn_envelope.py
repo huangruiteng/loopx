@@ -305,6 +305,83 @@ def test_turn_envelope_preserves_action_boundary_and_writeback() -> None:
     )
 
 
+def test_turn_envelope_preserves_exact_scheduler_ack_argv() -> None:
+    source = _full_decision()
+    capabilities = [
+        "network",
+        "github",
+        "github_cli",
+        "external_evidence_poll",
+        "external_write",
+        "lark_user",
+        "lark_bot",
+        "browser",
+    ]
+    cli_args = [
+        "--registry",
+        "/tmp/registry.global.json",
+        "--runtime-root",
+        "/tmp/runtime",
+        "quota",
+        "scheduler-ack-current",
+        "--goal-id",
+        "fixture-goal",
+        "--agent-id",
+        "codex-fixture",
+    ]
+    for capability in capabilities:
+        cli_args.extend(["--available-capability", capability])
+    cli_args.extend(
+        [
+            "--surface",
+            "codex_app",
+            "--state-key",
+            "scheduler_hint.codex_app.stateful_backoff",
+            "--applied-rrule",
+            "FREQ=MINUTELY;INTERVAL=3",
+            "--host-match-observed",
+            "--reset-token",
+            "reset-token",
+            "--identity-signature",
+            "identity-signature",
+            "--execute",
+        ]
+    )
+    source["scheduler_hint"]["codex_app"]["ack_hint"]["cli_args"] = cli_args
+
+    envelope = build_turn_envelope(source)
+    compact_args = envelope["scheduler"]["codex_app"]["ack_cli_args"]
+
+    assert compact_args == cli_args
+    assert compact_args.count("--available-capability") == len(capabilities)
+    assert compact_args[-6:] == [
+        "--host-match-observed",
+        "--reset-token",
+        "reset-token",
+        "--identity-signature",
+        "identity-signature",
+        "--execute",
+    ]
+
+
+def test_turn_envelope_omits_oversized_scheduler_argv_instead_of_truncating() -> None:
+    source = _full_decision()
+    source["scheduler_hint"]["codex_app"]["ack_hint"]["cli_args"] = [
+        "quota",
+        "x" * 513,
+        "--execute",
+    ]
+
+    envelope = build_turn_envelope(source)
+    codex_app = envelope["scheduler"]["codex_app"]
+
+    assert "ack_cli_args" not in codex_app
+    assert codex_app["ack_cli_args_detail_ref"] == {
+        "reason": "omitted_to_preserve_executable_argv",
+        "request": "loopx quota should-run --include-scheduler-detail",
+    }
+
+
 def test_turn_envelope_keeps_concrete_user_gate() -> None:
     source = _full_decision()
     source["action_required"] = True

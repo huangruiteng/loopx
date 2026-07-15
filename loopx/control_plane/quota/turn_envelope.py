@@ -15,6 +15,10 @@ from ..work_items.primary_action import protocol_action_text
 
 TURN_ENVELOPE_SCHEMA_VERSION = "loopx_turn_envelope_v0"
 TURN_ENVELOPE_BUDGET_BYTES = 8_192
+EXECUTABLE_CLI_ARGS_MAX_ITEMS = 64
+EXECUTABLE_CLI_ARGS_MAX_ITEM_CHARS = 512
+EXECUTABLE_CLI_ARGS_MAX_TOTAL_CHARS = 2_048
+SCHEDULER_DETAIL_REQUEST = "loopx quota should-run --include-scheduler-detail"
 CONTRACT_CAPSULE_SCHEMA_VERSION = "loopx_contract_capsule_v0"
 ACTION_SIGNATURE_SCHEMA_VERSION = "loopx_action_signature_v0"
 ACTION_SIGNATURE_COVERAGE = "turn_envelope_action_dimensions_v0"
@@ -143,6 +147,32 @@ def _text_list(value: Any, *, limit: int, item_limit: int = 240) -> list[str]:
         result.append(text)
         if len(result) >= limit:
             break
+    return result
+
+
+def _executable_cli_args(value: Any) -> list[str]:
+    """Return one exact CLI argv vector or omit it entirely.
+
+    General compact text lists intentionally deduplicate and truncate. Both
+    behaviors corrupt argv because flags such as ``--available-capability``
+    are repeated and a partial vector is not executable.
+    """
+
+    if not isinstance(value, list) or not value:
+        return []
+    if len(value) > EXECUTABLE_CLI_ARGS_MAX_ITEMS:
+        return []
+    result: list[str] = []
+    total_chars = 0
+    for item in value:
+        if not isinstance(item, str) or not item:
+            return []
+        if len(item) > EXECUTABLE_CLI_ARGS_MAX_ITEM_CHARS:
+            return []
+        total_chars += len(item) + 1
+        if total_chars > EXECUTABLE_CLI_ARGS_MAX_TOTAL_CHARS:
+            return []
+        result.append(item)
     return result
 
 
@@ -331,17 +361,23 @@ def _scheduler(payload: Mapping[str, Any]) -> dict[str, Any]:
                 if failure.get(field) is not None
             }
     ack = _mapping(codex_app.get("ack_hint"))
-    cli_args = _text_list(ack.get("cli_args"), limit=20, item_limit=180)
+    cli_args = _executable_cli_args(ack.get("cli_args"))
     if cli_args:
         app["ack_cli_args"] = cli_args
+    elif ack.get("cli_args"):
+        app["ack_cli_args_detail_ref"] = {
+            "reason": "omitted_to_preserve_executable_argv",
+            "request": SCHEDULER_DETAIL_REQUEST,
+        }
     failure_hint = _mapping(codex_app.get("failure_hint"))
-    failure_cli_args = _text_list(
-        failure_hint.get("cli_args"),
-        limit=20,
-        item_limit=180,
-    )
+    failure_cli_args = _executable_cli_args(failure_hint.get("cli_args"))
     if failure_cli_args:
         app["failure_cli_args"] = failure_cli_args
+    elif failure_hint.get("cli_args"):
+        app["failure_cli_args_detail_ref"] = {
+            "reason": "omitted_to_preserve_executable_argv",
+            "request": SCHEDULER_DETAIL_REQUEST,
+        }
     if app:
         scheduler["codex_app"] = app
     return scheduler

@@ -94,24 +94,29 @@ def main() -> None:
             GOAL_ID,
             "--agent-id",
             AGENT_ID,
+            "--available-capability",
+            "network",
+            "--available-capability",
+            "external_write",
+            "--codex-app-current-rrule",
+            "FREQ=MINUTELY;INTERVAL=3",
+            "--turn-envelope",
             "--scan-path",
             str(project),
             cwd=project,
         )
-        ack_hint = decision["scheduler_hint"]["codex_app"]["ack_hint"]
-        ack_cli_args = ack_hint["cli_args"]
+        ack_cli_args = decision["scheduler"]["codex_app"]["ack_cli_args"]
         assert ack_cli_args[:4] == [
             "--registry",
             str(global_registry.resolve()),
             "--runtime-root",
             str(global_runtime.resolve()),
-        ], ack_hint
-        assert ack_hint["route_binding"] == {
-            "schema_version": "scheduler_ack_cli_route_v0",
-            "source": "quota_cli_invocation",
-            "registry_bound": True,
-            "runtime_root_bound": True,
-        }, ack_hint
+        ], decision
+        assert ack_cli_args.count("--available-capability") == 2, decision
+        assert "--host-match-observed" in ack_cli_args, decision
+        assert "--reset-token" in ack_cli_args, decision
+        assert "--identity-signature" in ack_cli_args, decision
+        assert ack_cli_args[-1] == "--execute", decision
 
         ack = run_cli(*ack_cli_args, "--scan-path", str(project), cwd=project)
         state_path = Path(ack["scheduler_state_path"])
