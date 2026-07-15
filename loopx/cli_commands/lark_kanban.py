@@ -481,7 +481,11 @@ def handle_lark_kanban_command(
                     "appended_event_count": projection_result.get("appended_event_count"),
                     "semantic_digest": projection_result.get("semantic_digest"),
                     "counts": projection_result.get("counts"),
+                    "source_runtime_route": projection_result.get(
+                        "source_runtime_route"
+                    ),
                 }
+                explore_status = str(explore_sync.get("status") or "")
                 payload["issue_fix_explore_lark_sync"] = {
                     "ok": explore_sync.get("ok"),
                     "status": explore_sync.get("status"),
@@ -489,19 +493,45 @@ def handle_lark_kanban_command(
                     "needs_row_sync": explore_sync.get("needs_row_sync"),
                     "needs_visual_sync": explore_sync.get("needs_visual_sync"),
                     "semantic_digest": explore_sync.get("semantic_digest"),
-                    "canonical_rows_status": "synced"
-                    if lark_sync.get("ok")
-                    else "unchanged"
-                    if not explore_sync.get("needs_row_sync")
-                    else "sync_failed",
+                    "canonical_rows_status": (
+                        "source_projection_regression_blocked"
+                        if explore_status == "source_projection_regression_blocked"
+                        else "synced"
+                        if lark_sync.get("ok")
+                        else "unchanged"
+                        if not explore_sync.get("needs_row_sync")
+                        else "sync_failed"
+                    ),
                     "written_rows": lark_sync.get("written_rows"),
                     "skipped_rows": lark_sync.get("skipped_rows"),
                     "duplicate_remote_rows": lark_sync.get("duplicate_remote_rows"),
-                    "visual_status": visual_sync.get("status")
-                    or ("unchanged" if not explore_sync.get("needs_visual_sync") else "publish_failed"),
+                    "visual_status": (
+                        "source_projection_regression_blocked"
+                        if explore_status == "source_projection_regression_blocked"
+                        else visual_sync.get("status")
+                        or (
+                            "unchanged"
+                            if not explore_sync.get("needs_visual_sync")
+                            else "publish_failed"
+                        )
+                    ),
                     "visual_published": visual_sync.get("published"),
                     "visual_graph_counts": visual_sync.get("graph_counts"),
-                    "error": lark_sync.get("error") or visual_sync.get("error"),
+                    "source_runtime_route": explore_sync.get(
+                        "source_runtime_route"
+                    ),
+                    "source_projection_guard": explore_sync.get(
+                        "source_projection_guard"
+                    ),
+                    "external_write_performed": explore_sync.get(
+                        "external_write_performed"
+                    ),
+                    "required_action": explore_sync.get("required_action"),
+                    "error": (
+                        explore_sync.get("error")
+                        or lark_sync.get("error")
+                        or visual_sync.get("error")
+                    ),
                 }
                 payload["ok"] = bool(payload.get("ok")) and bool(explore_sync.get("ok"))
             except Exception as exc:

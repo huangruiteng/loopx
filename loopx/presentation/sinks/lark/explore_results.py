@@ -1605,15 +1605,24 @@ def sync_issue_fix_explore_on_material_change(
         build_issue_fix_executive_visual_projection,
         project_issue_fix_explore_graph,
     )
+    from .explore_source_guard import (
+        resolve_explore_source_registry,
+        source_projection_coverage_guard,
+    )
 
-    projection_result = project_issue_fix_explore_graph(
+    source_registry_path, compact_source_runtime_route = resolve_explore_source_registry(
         registry_path=registry_path,
+        goal_id=goal_id,
+    )
+    projection_result = project_issue_fix_explore_graph(
+        registry_path=source_registry_path,
         goal_id=goal_id,
         agent_id=agent_id,
         project=project,
         state_file=state_file,
         execute=execute,
     )
+    projection_result["source_runtime_route"] = compact_source_runtime_route
     config_path = default_lark_explore_config_path(registry_path)
     local = read_lark_explore_local_config(config_path)
     config = lark_explore_config_from_payload(local) if local.get("ok") else None
@@ -1624,6 +1633,13 @@ def sync_issue_fix_explore_on_material_change(
     digest = str(projection_result.get("semantic_digest") or "")
     prior_digest = str(prior.get("canonical_rows_semantic_digest") or prior.get("semantic_digest") or "")
     prior_row_readback_digest = str(prior.get("canonical_rows_readback_semantic_digest") or "")
+    source_projection_guard = source_projection_coverage_guard(
+        local=local,
+        projection=projection_result.get("projection")
+        if isinstance(projection_result.get("projection"), Mapping)
+        else {},
+        goal_id=goal_id,
+    )
     visual_sinks = (
         local.get("visual_sinks")
         if isinstance(local.get("visual_sinks"), dict) and local.get("visual_sinks")
@@ -1678,6 +1694,36 @@ def sync_issue_fix_explore_on_material_change(
             "prior_semantic_digest": prior_digest or None,
             "projection": projection_result,
             "lark_sync": None,
+            "config_path": str(config_path),
+        }
+    if not source_projection_guard["ok"]:
+        return {
+            "ok": False,
+            "schema_version": "issue_fix_explore_lark_material_sync_v0",
+            "status": "source_projection_regression_blocked",
+            "execute": execute,
+            "needs_sync": True,
+            "needs_row_sync": needs_row_sync,
+            "needs_visual_sync": needs_visual_sync,
+            "row_readback_verified": False,
+            "semantic_digest": digest,
+            "prior_semantic_digest": prior_digest or None,
+            "source_runtime_route": compact_source_runtime_route,
+            "source_projection_guard": source_projection_guard,
+            "projection": projection_result,
+            "lark_sync": None,
+            "canonical_rows_sync": None,
+            "visual_preview": None,
+            "visual_sync": None,
+            "external_write_performed": False,
+            "retryable": True,
+            "required_action": (
+                "reconcile the registry-declared Explore source runtime before retry"
+            ),
+            "error": (
+                "registry-declared Explore source omits result ids already registered "
+                "by the sink; refusing a regressive remote write"
+            ),
             "config_path": str(config_path),
         }
     if visual_sinks:
