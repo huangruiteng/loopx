@@ -382,6 +382,16 @@ todo in `capability_gate.runnable_candidates` or `agent_lane_next_action`; it
 may continue with a lower-priority executable fallback when the interaction
 contract allows safe scoped fallback work.
 
+If an active per-agent vision has no other selectable advancement and its
+existing current-agent or unclaimed successor is blocked by an exact supported
+`resume_when`, quota projects `vision_wait_state.state=waiting` and
+`agent_scope_wait` instead of deriving another autonomous vision replan. The
+wait payload preserves the todo id, condition, and automatic-resume contract.
+Once `resume_ready=true`, the wait disappears and ordinary open-todo or
+deferred-successor selection runs again. Missing vision checkpoints, closed
+stage succession, unsupported conditions, and continuous-monitor-as-gate
+repairs remain fail-closed and are not hidden by this wait path.
+
 For completed handoff gates, record that rationale structurally as
 `no_followup=true`; status projects the gate as `cleared_no_followup` instead
 of waking the blocked agent with `successor_replan_required`.

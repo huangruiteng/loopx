@@ -256,6 +256,24 @@ choose the explicit terminal lane semantics `retired`, `superseded`, or
 vision. This keeps stage completion from silently terminating a long-horizon
 goal.
 
+### Exact blocked-successor wait
+
+An open agent vision does not need another replan when the lane already has an
+exact current-agent or unclaimed advancement successor whose supported
+`resume_when` condition is projected as `resume_ready=false`. When there is no
+other selectable advancement, quota/status expose
+`goal_vision_wait_state_v0` with the waiting todo id, `resume_when`, compact
+`resume_condition`, and `automatic_resume=true`. The ordinary
+`vision_acceptance_gap` is deferred while that read model is active, so the
+agent can remain quiet instead of inventing duplicate successor work.
+
+This is a read model, not a stored vision or todo lifecycle state. When the
+condition becomes ready, normal open-todo or deferred-successor routing resumes
+automatically and the active vision remains available for acceptance auditing.
+It cannot suppress `vision_checkpoint_missing`, `vision_successor_required`, a
+resume condition that lacks exact projected evidence, or the dedicated repair
+for an advancement todo incorrectly gated by a standing continuous monitor.
+
 ## Replan Triggers
 
 A replan trigger is goal-level and should be evaluated before lane-local quiet
