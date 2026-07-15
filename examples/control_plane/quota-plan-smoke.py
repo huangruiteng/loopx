@@ -1044,9 +1044,10 @@ def assert_heartbeat_recommendation_lifecycle() -> None:
     assert local_scheduler["max_interval_minutes"] == 240, local_scheduler
     assert stateful_detail["host_max_interval_minutes"] == 60, stateful_detail
     assert stateful_detail["coarser_wait_fallback"] == "local_scheduler_only", stateful_detail
-    assert stateful_detail["host_update_failure"] == (
-        "no_retry_same_turn_do_not_ack_keep_observed_rrule"
-    ), stateful_detail
+    assert "suppress_exact_repeat" in stateful_detail["host_update_failure"], stateful_detail
+    assert stateful_detail["ack_required_after_apply"] is True, stateful_detail
+    assert stateful_detail["ack_required_from_host_match"] is False, stateful_detail
+    assert "host_update_failure" in stateful_detail["persist"].split("|"), stateful_detail
 
 
 def assert_goal_boundary_in_should_run() -> None:
