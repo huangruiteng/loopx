@@ -16,6 +16,7 @@ CHECKS = (
     "examples/control_plane/todo-continuation-policy-smoke.py",
     "examples/control_plane/peer-agent-migration-smoke.py",
     "examples/control_plane/peer-agent-workspace-guard-smoke.py",
+    "examples/control_plane/quota-spend-workspace-causality-smoke.py",
     "examples/control_plane/peer-agent-continuation-state-machine-smoke.py",
     "examples/control_plane/task-orchestration-smoke.py",
     "examples/control_plane/agent-onboard-host-loop-activation-smoke.py",

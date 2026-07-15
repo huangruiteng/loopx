@@ -1212,6 +1212,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "excluded_agents",
             "task_orchestration_contract",
             "agent_workspace_guard",
+            "loopx/control_plane/quota/slot_accounting.py",
             "loopx/control_plane/agents",
             "loopx/control_plane/todos/completion_policy.py",
             "loopx/control_plane/quota/task_orchestration.py",
@@ -1248,6 +1249,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "command": "python3 examples/control_plane/peer-agent-workspace-guard-smoke.py",
                 "tier": "deep",
                 "reason": "guards symmetric write-aware worktree isolation in real git worktrees",
+            },
+            {
+                "command": "python3 examples/control_plane/quota-spend-workspace-causality-smoke.py",
+                "tier": "deep",
+                "reason": "binds post-completion quota spend to the accountable delivery repository without weakening cross-repo isolation",
             },
             {
                 "command": "python3 examples/control_plane/task-orchestration-smoke.py",
