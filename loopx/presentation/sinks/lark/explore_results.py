@@ -71,6 +71,10 @@ from .explore_visual_readback import (
     settle_visual_stage_readbacks,
     structured_command_error,
 )
+from .explore_visual_integrity import (
+    cross_role_stage_token_conflict_delivery,
+    finalize_visual_role_results,
+)
 from .message_card import build_lark_markdown_reply_card
 
 LARK_EXPLORE_SCHEMA_VERSION = "loopx_lark_explore_result_board_v0"
@@ -834,7 +838,15 @@ def sync_explore_visuals_to_lark(
     active_roles = ["canonical"]
     if bundle["presentation_mode"] == PRESENTATION_MODE_DUAL_VIEW:
         active_roles.append("executive")
+    conflict = cross_role_stage_token_conflict_delivery(
+        bundle=bundle, visual_sinks=visual_sinks, requested_roles=requested_roles,
+        active_roles=active_roles, execute=execute,
+        schema_version=LARK_EXPLORE_VISUALS_SYNC_VERSION,
+    )
+    if conflict:
+        return conflict
     results: dict[str, Any] = {}
+    stage_readback_targets: list[tuple[dict[str, Any], str]] = []
     for role in requested_roles:
         if role not in active_roles:
             results[role] = {
@@ -896,7 +908,6 @@ def sync_explore_visuals_to_lark(
             }
             continue
         stage_results = []
-        stage_readback_targets: list[tuple[dict[str, Any], str]] = []
         role_nodes = {
             str(node.get("node_id") or ""): node
             for node in role_view.get("nodes") or []
@@ -949,13 +960,6 @@ def sync_explore_visuals_to_lark(
                 stage_readback_targets.append(
                     (stage_result, str(stage_sink["whiteboard_token"]))
                 )
-        if stage_readback_targets:
-            settle_visual_stage_readbacks(
-                cli_bin=config.cli_bin,
-                identity=config.identity,
-                stage_targets=stage_readback_targets,
-                runner=runner,
-            )
         role_ok = all(bool(item.get("ok")) for item in stage_results)
         role_retryable = any(bool(item.get("retryable")) for item in stage_results)
         role_delivery_material = "|".join(
@@ -995,6 +999,12 @@ def sync_explore_visuals_to_lark(
             "section_commands": section_commands,
             "reconciliation": reconciliation,
         }
+    if stage_readback_targets:
+        settle_visual_stage_readbacks(
+            cli_bin=config.cli_bin, identity=config.identity,
+            stage_targets=stage_readback_targets, runner=runner,
+        )
+    finalize_visual_role_results(results, execute=execute)
     delivery = summarize_explore_visual_sync(
         views=results,
         configured_roles=requested_roles,
