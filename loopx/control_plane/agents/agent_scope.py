@@ -311,23 +311,42 @@ def _scoped_user_gate_fallback(
     if not gates or not isinstance(agent_todo_summary, dict):
         return None
 
-    # An empty projected list is authoritative; falling back would bypass the gate.
+    due_monitor_candidates = (
+        agent_todo_summary.get("monitor_due_items")
+        if isinstance(agent_todo_summary.get("monitor_due_items"), list)
+        else []
+    )
+
+    # An empty capability projection is authoritative for advancement work.
+    # Due monitors are projected separately from advancement candidates and are
+    # already current-agent scoped, due, and capability-runnable here.
     capability_candidates = (
         capability_gate.get("runnable_candidates")
         if isinstance(capability_gate, dict)
         else None
     )
     if isinstance(capability_candidates, list):
-        executable_items = capability_candidates
+        executable_items = [*due_monitor_candidates, *capability_candidates]
     else:
-        executable_items = (
+        advancement_items = (
             agent_todo_summary.get("executable_backlog_items")
             if isinstance(agent_todo_summary.get("executable_backlog_items"), list)
             else agent_todo_summary.get("first_executable_items")
             if isinstance(agent_todo_summary.get("first_executable_items"), list)
             else []
         )
+        executable_items = [*due_monitor_candidates, *advancement_items]
     executable_items = [item for item in executable_items if isinstance(item, dict)]
+    deduped_executable_items: list[dict[str, Any]] = []
+    seen_todo_ids: set[str] = set()
+    for item in executable_items:
+        todo_id = normalize_todo_id(item.get("todo_id"))
+        if todo_id and todo_id in seen_todo_ids:
+            continue
+        if todo_id:
+            seen_todo_ids.add(todo_id)
+        deduped_executable_items.append(item)
+    executable_items = sorted(deduped_executable_items, key=_todo_projection_sort_key)
     claim_scope = (
         agent_todo_summary.get("claim_scope")
         if isinstance(agent_todo_summary.get("claim_scope"), dict)
