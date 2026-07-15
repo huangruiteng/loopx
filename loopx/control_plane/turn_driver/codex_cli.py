@@ -23,7 +23,7 @@ from .executor import (
 from .transaction import LOOPX_TURN_RESULT_SCHEMA_VERSION, TRANSACTION_PHASES
 
 
-CODEX_CLI_SESSION_SCHEMA_VERSION = "loopx_codex_cli_session_v0"
+CODEX_CLI_SESSION_SCHEMA_VERSION = "loopx_codex_cli_session_v1"
 CODEX_CLI_RESULT_KINDS = (
     "validated_progress",
     "repair_required",
@@ -33,6 +33,13 @@ CODEX_CLI_RESULT_KINDS = (
 )
 CODEX_CLI_SANDBOXES = ("read-only", "workspace-write")
 SESSION_ID_MAX_CHARS = 256
+SESSION_INVALIDATING_FAILURE_CATEGORIES = frozenset(
+    {
+        "model_requires_newer_codex",
+        "output_schema_rejected",
+        "session_missing",
+    }
+)
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -154,6 +161,14 @@ def _store_codex_cli_session(
         path.chmod(0o600)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _discard_codex_cli_session(
+    runtime_root: Path,
+    *,
+    lineage: Mapping[str, str],
+) -> None:
+    _session_path(runtime_root, lineage).unlink(missing_ok=True)
 
 
 def codex_cli_result_schema() -> dict[str, Any]:
@@ -417,24 +432,37 @@ def run_codex_cli_host(
         reader.start()
         stderr_reader.start()
         assert proc.stdin is not None
+        timed_out = False
         try:
             proc.stdin.write(_prompt(request))
             proc.stdin.close()
             returncode = proc.wait(timeout=max(1.0, timeout_seconds))
-        except subprocess.TimeoutExpired as exc:
+        except subprocess.TimeoutExpired:
             _terminate_process(proc)
-            raise BuiltInHostError("codex_cli_timeout") from exc
+            timed_out = True
+            returncode = proc.returncode
         finally:
             reader.join(timeout=2)
             stderr_reader.join(timeout=2)
+        if timed_out:
+            if observed_session:
+                _store_codex_cli_session(
+                    runtime_root,
+                    lineage=lineage,
+                    session_id=observed_session[0],
+                )
+            raise BuiltInHostError("codex_cli_timeout")
+        category = failure_categories[0] if failure_categories else "exit_nonzero"
+        if returncode != 0 and category in SESSION_INVALIDATING_FAILURE_CATEGORIES:
+            _discard_codex_cli_session(runtime_root, lineage=lineage)
         if observed_session:
-            _store_codex_cli_session(
-                runtime_root,
-                lineage=lineage,
-                session_id=observed_session[0],
-            )
+            if returncode == 0 or category not in SESSION_INVALIDATING_FAILURE_CATEGORIES:
+                _store_codex_cli_session(
+                    runtime_root,
+                    lineage=lineage,
+                    session_id=observed_session[0],
+                )
         if returncode != 0:
-            category = failure_categories[0] if failure_categories else "exit_nonzero"
             raise BuiltInHostError(f"codex_cli_{category}")
         try:
             result = json.loads(output_path.read_text(encoding="utf-8"))

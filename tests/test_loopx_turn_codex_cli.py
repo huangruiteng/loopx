@@ -56,6 +56,7 @@ import os
 import pathlib
 import re
 import sys
+import time
 
 args = sys.argv[1:]
 prompt = sys.stdin.read()
@@ -72,7 +73,11 @@ print(json.dumps({
 if os.environ.get("FAKE_CODEX_FAIL") == "1":
     if os.environ.get("FAKE_CODEX_FAILURE_CATEGORY") == "model":
         print("This model requires a newer version of Codex.", file=sys.stderr)
+    if os.environ.get("FAKE_CODEX_FAILURE_CATEGORY") == "session":
+        print("Session not found.", file=sys.stderr)
     raise SystemExit(9)
+if os.environ.get("FAKE_CODEX_SLEEP"):
+    time.sleep(float(os.environ["FAKE_CODEX_SLEEP"]))
 output_path = pathlib.Path(args[args.index("--output-last-message") + 1])
 output_path.write_text(json.dumps({
     "schema_version": "loopx_turn_result_v0",
@@ -195,6 +200,33 @@ def test_codex_cli_host_starts_then_resumes_opaque_session(
     assert "private_material" not in persisted
 
 
+def test_codex_cli_host_ignores_legacy_session_eligibility(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    runtime_root = tmp_path / "runtime"
+    project = tmp_path / "project"
+    project.mkdir()
+    request = _request()
+    run_codex_cli_host(
+        request,
+        runtime_root=runtime_root,
+        project=project,
+        codex_bin=str(executable),
+        timeout_seconds=5,
+    )
+    session_path = next(runtime_root.glob("goals/*/turn-sessions/*.json"))
+    legacy = json.loads(session_path.read_text(encoding="utf-8"))
+    legacy["schema_version"] = "loopx_codex_cli_session_v0"
+    session_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+    envelope = request["turn_envelope"]
+    assert isinstance(envelope, dict)
+    assert codex_cli_session_binding(runtime_root, envelope) is None
+
+
 def test_codex_cli_host_preserves_session_after_failed_turn(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -214,6 +246,32 @@ def test_codex_cli_host_preserves_session_after_failed_turn(
             project=project,
             codex_bin=str(executable),
             timeout_seconds=5,
+        )
+
+    envelope = request["turn_envelope"]
+    assert isinstance(envelope, dict)
+    assert codex_cli_session_binding(runtime_root, envelope) is not None
+
+
+def test_codex_cli_host_preserves_observed_session_after_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_SLEEP", "2")
+    runtime_root = tmp_path / "runtime"
+    project = tmp_path / "project"
+    project.mkdir()
+    request = _request()
+
+    with pytest.raises(RuntimeError, match="codex_cli_timeout"):
+        run_codex_cli_host(
+            request,
+            runtime_root=runtime_root,
+            project=project,
+            codex_bin=str(executable),
+            timeout_seconds=0.1,
         )
 
     envelope = request["turn_envelope"]
@@ -249,3 +307,58 @@ def test_codex_cli_host_classifies_failure_without_persisting_stderr(
         path.read_text(encoding="utf-8") for path in runtime_root.rglob("*.json")
     )
     assert "requires a newer version" not in persisted
+    envelope = _request()["turn_envelope"]
+    assert isinstance(envelope, dict)
+    assert codex_cli_session_binding(runtime_root, envelope) is None
+
+    monkeypatch.delenv("FAKE_CODEX_FAIL")
+    monkeypatch.delenv("FAKE_CODEX_FAILURE_CATEGORY")
+    recovered = run_codex_cli_host(
+        _request(turn_key="sha256:" + "d" * 64),
+        runtime_root=runtime_root,
+        project=project,
+        codex_bin=str(executable),
+        timeout_seconds=5,
+    )
+    assert recovered["result_kind"] == "validated_progress"
+    argv_rows = [
+        json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert "resume" not in argv_rows[1]
+
+
+def test_codex_cli_host_discards_missing_resume_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    runtime_root = tmp_path / "runtime"
+    project = tmp_path / "project"
+    project.mkdir()
+    first_request = _request()
+    run_codex_cli_host(
+        first_request,
+        runtime_root=runtime_root,
+        project=project,
+        codex_bin=str(executable),
+        timeout_seconds=5,
+    )
+
+    monkeypatch.setenv("FAKE_CODEX_FAIL", "1")
+    monkeypatch.setenv("FAKE_CODEX_FAILURE_CATEGORY", "session")
+    with pytest.raises(RuntimeError, match="codex_cli_session_missing"):
+        run_codex_cli_host(
+            _request(
+                turn_key="sha256:" + "f" * 64,
+                session_action="resume",
+            ),
+            runtime_root=runtime_root,
+            project=project,
+            codex_bin=str(executable),
+            timeout_seconds=5,
+        )
+
+    envelope = first_request["turn_envelope"]
+    assert isinstance(envelope, dict)
+    assert codex_cli_session_binding(runtime_root, envelope) is None
