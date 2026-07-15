@@ -19,6 +19,7 @@ from .health import (
     reward_memory_health_case,
 )
 from .evaluation import run_reward_memory_evaluation
+from ..issue_fix.reward_memory import ingest_issue_fix_reward_memory_event
 from .dogfood import (
     build_reward_memory_dogfood_batch,
     build_reward_memory_dogfood_receipt,
@@ -120,6 +121,29 @@ def register_reward_memory_commands(
         choices=["accept", "edit", "reject", "retire", "no_write"],
         default="accept",
         help="Apply one review decision without persisting provider state.",
+    )
+
+    ingest = sub.add_parser(
+        "ingest-event",
+        help=(
+            "Plan or execute one compact standing-policy write, exact readback, "
+            "and receipt."
+        ),
+    )
+    add_subcommand_format(ingest)
+    ingest.add_argument(
+        "--input",
+        required=True,
+        help=(
+            "JSON object with adapter, event, corpus, standing_policy, "
+            "provider_binding, and the immutable event observed_at used again "
+            "on retries; raw comments are rejected."
+        ),
+    )
+    ingest.add_argument(
+        "--execute",
+        action="store_true",
+        help="Perform the configured provider write and exact readback.",
     )
 
     evaluate = sub.add_parser(
@@ -228,6 +252,38 @@ def handle_reward_memory_command(
                 )
             payload = review_reward_memory_candidate(candidate, review)
             payload["adapter"] = adapter
+        elif args.reward_memory_command == "ingest-event":
+            source = _load_json_object(args.input)
+            allowed = {
+                "adapter",
+                "event",
+                "corpus",
+                "standing_policy",
+                "provider_binding",
+                "observed_at",
+            }
+            unexpected = sorted(set(source) - allowed)
+            if unexpected:
+                raise ValueError(
+                    "ingest input contains unsupported fields: "
+                    + ", ".join(unexpected)
+                )
+            if source.get("adapter") != "issue_fix_maintainer_feedback":
+                raise ValueError(
+                    "adapter must be issue_fix_maintainer_feedback; semantic "
+                    "routing is intentionally not inferred"
+                )
+            for key in ("event", "corpus", "standing_policy", "provider_binding"):
+                if not isinstance(source.get(key), Mapping):
+                    raise ValueError(f"{key} must be an object")
+            payload = ingest_issue_fix_reward_memory_event(
+                source["event"],
+                corpus=source["corpus"],
+                standing_policy=source["standing_policy"],
+                provider_binding=source["provider_binding"],
+                observed_at=str(source.get("observed_at") or ""),
+                execute=args.execute,
+            )
         elif args.reward_memory_command == "evaluate":
             payload = run_reward_memory_evaluation()
         elif args.reward_memory_command == "dogfood-evaluate":

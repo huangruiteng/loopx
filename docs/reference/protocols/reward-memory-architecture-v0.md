@@ -12,15 +12,18 @@ authorized to permit.
 
 This contract defines five memory classes, guarded precedence, and the
 pilot/meta delegation boundary. Stage 1 adds the corpus registry and health
-read model. Stage 2 adds one stateless candidate/review seam. These stages add
-no second memory store, candidate scheduler, provider write, cross-module
-recall, evaluation harness, or rollout.
+read model. Stage 2 adds the stateless candidate/review seam. Stage 3 adds
+explicit recall/application. The minimal ingest loop only composes those seams
+into one corpus-owner-authorized provider write and exact readback. It adds no
+second memory store, candidate scheduler, automatic recall, semantic router,
+evaluation harness, or rollout.
 
 The machine-readable contract is available through:
 
 ```bash
 loopx reward-memory architecture --format json
 loopx reward-memory candidate-review --case issue-fix-verified-contributor --decision accept --format json
+loopx reward-memory ingest-event --input compact-event.json --execute --format json
 ```
 
 ## Five first-class classes
@@ -181,6 +184,41 @@ surface, contributor evidence, and model reasoning into
 shared core. This is the first reuse proof, not an Issue Fix-specific memory
 implementation.
 
+## Minimal ingest loop
+
+`loopx reward-memory ingest-event` is a thin atomic orchestration, not another
+memory product layer. The caller explicitly selects an adapter; the first one
+is `issue_fix_maintainer_feedback`. LoopX neither retains raw comment bodies nor
+uses keywords to decide which feedback deserves memory. The model or calling
+module first distils an `issue_fix_reward_memory_event_v0` containing only a
+source reference, verified actor/role, exact workspace/repository/surface/
+revision, compact summary, reasoning, and current-artifact evidence.
+
+A `reward_memory_standing_policy_v0` predeclares the corpus owner, reviewer,
+authority source, exact project/surfaces, one memory class, source kinds,
+verified actor roles, and action scopes. This replaces per-comment approval
+with one approval of an exact boundary. It cannot create credentials,
+repository write authority, publish/production scope, or cross-project
+authority. Out-of-scope, conflicted, stale, raw, or unmodelled input is
+`guard_blocked` before any provider call.
+
+The command then composes deterministic `candidate_ref` deduplication, standing
+policy acceptance, active-envelope construction, declared-provider `sync`, and
+one exact-corpus/surface function-boundary recall. A
+`reward_memory_ingest_receipt_v0` reports `activated` and
+`memory_available_for_recall=true` only when resource ref, candidate ref, and
+canonical content digest all match. Provider unavailability, pending commit,
+or readback mismatch fails open and does not block normal Issue Fix work.
+`observed_at` is the immutable first-observed event timestamp and must be reused
+on retries. The provider target binds both standing-policy and candidate
+digests so a policy revision cannot silently reuse an older activation.
+`--execute` is off by default; dry-run returns only `planned`.
+
+The next patch-planning turn still explicitly calls the existing
+`run_issue_fix_patch_planning_reward_memory`. The model decides apply, ignore,
+or refute and reuses the Stage-3 application receipt. The ingest seam adds no
+deterministic semantic routing or background scheduler.
+
 ## OpenViking alignment
 
 The five classes are provider-neutral, but the Stage-0 boundary was checked
@@ -283,7 +321,10 @@ loopx reward-memory route-check --case pr-3237 --format json
 - Stage 3: the implemented opt-in cross-module recall/application seam. Model
   reasoning stays inside deterministic scope, authority, privacy, freshness,
   and conflict guards; Issue Fix patch planning and the non-Issue-Fix semantic
-  preference module share the same core and compact application receipt.
+  preference module share the same core and compact application receipt. The
+  minimal ingest seam reuses Stages 2/3 and the declared provider to atomically
+  write and exactly read back compact events inside a standing-policy boundary;
+  it does not choose the event, corpus, or consumer module.
 - Stage 4: evaluation harness and release gate.
 - Stage 5: bounded cross-module dogfood and operator edit/retire controls.
 
