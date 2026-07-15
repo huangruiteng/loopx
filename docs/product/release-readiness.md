@@ -259,6 +259,22 @@ path, and canary route rather than as a user-facing release baseline.
   (#2002, #2005-#2006, #2018-#2021, #2027-#2028, #2032, #2036, #2052-#2061).
   No persisted-state migration is required; Explore and its Lark visual sinks
   remain opt-in.
+- `v0.2.5` on 2026-07-15: reward-memory and cross-runtime reliability release
+  at the matching `v0.2.5` tag. LoopX now ships a provider-neutral Reward
+  Memory path from reviewed corpus and health contracts through candidate
+  review, opt-in recall/application, evaluation, dogfood controls, and explicit
+  actor-peer routing at the Issue-Fix planning boundary (#2076-#2085, #2096,
+  #2100, #2103, #2128). Runtime projection routes become a first-class source
+  of truth for material events, refreshes, and Explore commands across shared
+  runtimes, with source-mirror ambiguity and compact diagnostics repaired
+  (#2091, #2094, #2097, #2099, #2102, #2129). Issue-Fix gains stronger commit
+  evidence, evidence-backed close counts, candidate dedupe, reviewer fallback,
+  and delivery-window queuing (#2071, #2087, #2098, #2105, #2107, #2111).
+  Monitor, scheduler, peer-replan, Lark inbox, Explore readback, and long-running
+  SkillsBench paths are hardened against repeated host failures, scoped gates,
+  transport loss, setup drift, and countability ambiguity (#2101, #2104,
+  #2108-#2127, #2130-#2131). No persisted-state migration is required; Reward
+  Memory and advanced fixer execution remain explicitly activated and bounded.
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.
