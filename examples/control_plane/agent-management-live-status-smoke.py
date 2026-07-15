@@ -302,6 +302,33 @@ def assert_advancement_current_todo_beats_standing_monitor() -> None:
     assert side_row["current_todo"]["todo_id"] == "todo_side_advancement", side_row
     assert side_row["next_action"] == "Continue projected todo todo_side_advancement.", side_row
 
+    payload["attention_queue"]["items"][-1]["agent_lane_next_action"] = {
+        "index": 0,
+        "done": False,
+        "text": "Repair a stale maintenance blocker.",
+        "schema_version": "agent_lane_next_action_v0",
+        "todo_id": "todo_stale_maintenance_blocker",
+        "role": "agent",
+        "status": "blocked",
+        "priority": "P0",
+        "title": "Repair a stale maintenance blocker.",
+        "task_class": "blocker",
+        "action_kind": "repair_stale_maintenance_blocker",
+        "claimed_by": "agent-side",
+        "agent_id": "agent-side",
+        "selected_by": "current_agent_claimed_todo",
+        "updated_at": "2026-07-04T00:00:00Z",
+    }
+    stale_blocker = build_agent_management_projection(payload)
+    stale_blocker_row = next(
+        row
+        for row in stale_blocker.get("agents", [])
+        if isinstance(row, dict) and row.get("agent_id") == "agent-side"
+    )
+    assert stale_blocker_row["state"] == "running", stale_blocker_row
+    assert stale_blocker_row["current_todo"]["todo_id"] == "todo_side_advancement", stale_blocker_row
+    assert stale_blocker_row["blocked_on"]["todo_id"] == "todo_stale_maintenance_blocker", stale_blocker_row
+
     payload["attention_queue"]["items"][-1].pop("agent_lane_next_action")
     lane_only = build_agent_management_projection(payload)
     lane_only_row = next(

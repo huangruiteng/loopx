@@ -111,6 +111,12 @@ Optional fields:
 - `recent_events`;
 - `display_tone`.
 
+When runnable advancement work exists alongside blocked maintenance, the
+projection keeps the runnable todo in `current_todo` and may expose the
+highest-priority blocked maintenance todo as a separate `blocked_on`
+`todo_row_v0`. The blocker remains visible without changing todo ownership or
+making the whole peer appear blocked.
+
 ## Todo Row
 
 `todo_row_v0` is the dashboard/review-packet representation of an existing

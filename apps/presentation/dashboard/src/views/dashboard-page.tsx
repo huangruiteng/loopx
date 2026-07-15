@@ -1546,9 +1546,9 @@ function buildAgentManagementRows(
       primaryGoalId,
       quotaHints,
       staleClaimHint,
-      status: claimedTodos.length > 0
-        ? agentManagementStatus(openTodos, claimedTodos)
-        : agentManagementProjectionStatus(projected?.state),
+      status: projected?.state
+        ? agentManagementProjectionStatus(projected.state)
+        : agentManagementStatus(openTodos, claimedTodos),
       workspaceRef,
     };
   }).sort((left, right) => {

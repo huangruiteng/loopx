@@ -36,6 +36,8 @@ _PRIORITY_RANK = {
     "P1": 1,
     "P2": 2,
 }
+
+
 def _compact(value: Any, *, limit: int = 220) -> str | None:
     return public_safe_compact_text(value, limit=limit)
 
@@ -106,6 +108,14 @@ def _is_agent_lane_next_action(todo: dict[str, Any]) -> bool:
     )
 
 
+def _is_runnable_advancement_todo(todo: dict[str, Any]) -> bool:
+    return (
+        _todo_status(todo) == "open"
+        and todo.get("task_class") != "blocker"
+        and not _is_monitor_todo(todo)
+    )
+
+
 def _current_todo_execution_rank(todo: dict[str, Any]) -> int:
     if todo.get("task_class") == "blocker":
         return 0
@@ -116,9 +126,11 @@ def _current_todo_execution_rank(todo: dict[str, Any]) -> int:
     return 1
 
 
-def _current_todo_sort_key(todo: dict[str, Any]) -> tuple[int, int, int, int, str]:
+def _current_todo_sort_key(todo: dict[str, Any]) -> tuple[int, int, int, int, int, str]:
+    runnable_advancement_rank = 0 if _is_runnable_advancement_todo(todo) else 1
     selected_rank = 0 if _is_agent_lane_next_action(todo) else 1
     return (
+        runnable_advancement_rank,
         selected_rank,
         _current_todo_execution_rank(todo),
         _priority_rank(todo),
@@ -132,6 +144,18 @@ def _select_current_todo(todos: list[dict[str, Any]]) -> dict[str, Any] | None:
     if not open_todos:
         return None
     return sorted(open_todos, key=_current_todo_sort_key)[0]
+
+
+def _select_blocked_todo(todos: list[dict[str, Any]]) -> dict[str, Any] | None:
+    blocked_todos = [
+        todo
+        for todo in todos
+        if not _is_done(todo)
+        and (_todo_status(todo) == "blocked" or todo.get("task_class") == "blocker")
+    ]
+    if not blocked_todos:
+        return None
+    return sorted(blocked_todos, key=_todo_sort_key)[0]
 
 
 def _registered_agents(status_payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -454,6 +478,7 @@ def build_agent_management_projection(status_payload: dict[str, Any]) -> dict[st
     for agent_id, raw_row in sorted(rows_by_agent.items()):
         all_todos = _as_list(raw_row.get("_todos"))
         current = _select_current_todo(all_todos)
+        blocked = _select_blocked_todo(all_todos)
         todos = sorted(all_todos, key=_todo_sort_key)
         if current:
             current_identity = _todo_identity(current)
@@ -486,6 +511,8 @@ def build_agent_management_projection(status_payload: dict[str, Any]) -> dict[st
         workspace_ref = _workspace_ref_from_todo(current)
         if workspace_ref:
             agent_row["workspace_ref"] = workspace_ref
+        if blocked and (not current or _todo_identity(blocked) != _todo_identity(current)):
+            agent_row["blocked_on"] = _todo_row(blocked)
         stale_claim_hint = _stale_claim_hint(current, agent_id=agent_id)
         if stale_claim_hint:
             agent_row["stale_claim_hint"] = stale_claim_hint

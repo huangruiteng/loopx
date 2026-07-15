@@ -164,6 +164,7 @@ export const agentManagementRowSchema = z.object({
   handoff_note: agentManagementHandoffNoteSchema.optional().nullable(),
   workspace_ref: agentManagementWorkspaceRefSchema.optional().nullable(),
   stale_claim_hint: agentManagementStaleClaimHintSchema.optional().nullable(),
+  blocked_on: agentManagementTodoRowSchema.optional().nullable(),
   goal_ids: z.array(z.string()).optional().default([]),
 }).passthrough();
 
