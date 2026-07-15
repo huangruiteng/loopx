@@ -653,7 +653,10 @@ This prompt is intentionally a lifecycle template. Scheduling policy lives in
 `quota should-run.scheduler_hint`, so per-project heartbeats, a shared
 controller loop, Codex CLI TUI, Claude Code loop, or future Codex goal-mode
 automations can all share the same LoopX quota guard without hard-coding
-different wait loops. Host implementations should read the compact
+different wait loops. Host implementations should first honor a terminal
+`codex_app.host_action=pause_or_delete_current_heartbeat` by stopping the
+current heartbeat once, verifying the result, and ending without scheduler ACK
+or quota spend. Otherwise they should read the compact
 `codex_app.stateful_backoff` packet, call `automation_update` only when
 `apply_needed=true`, and then let `quota scheduler-ack-current` persist the
 applied RRULE state from the latest scheduler hint without spending quota. A
