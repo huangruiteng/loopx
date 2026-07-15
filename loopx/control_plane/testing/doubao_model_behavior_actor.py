@@ -364,7 +364,6 @@ normal_delivery_allowed, user_action_required."""
 def _onboarding_provider_input(request: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": "onboarding_model_behavior_provider_input_v0",
-        "arm": request["arm"],
         "phase": request["phase"],
         "packet": request["packet"],
     }

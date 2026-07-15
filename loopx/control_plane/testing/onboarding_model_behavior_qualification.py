@@ -24,14 +24,19 @@ ONBOARDING_MODEL_BEHAVIOR_DECISION_SCHEMA_VERSION = (
 ONBOARDING_MODEL_BEHAVIOR_RECEIPT_SCHEMA_VERSION = (
     "onboarding_model_behavior_receipt_v0"
 )
-ONBOARDING_MODEL_BEHAVIOR_PAIR_SCHEMA_VERSION = (
-    "onboarding_model_behavior_pair_result_v0"
+ONBOARDING_ACTUAL_BEHAVIOR_QUALIFICATION_SCHEMA_VERSION = (
+    "onboarding_actual_behavior_qualification_v0"
 )
 ONBOARDING_POSTCONDITION_SCHEMA_VERSION = "onboarding_postcondition_observation_v0"
 START_GOAL_PACKET_SCHEMA_VERSION = "loopx_start_goal_guided_v0"
 
-ONBOARDING_MODEL_BEHAVIOR_ARMS = ("full_detail", "guided_default")
 ONBOARDING_MODEL_BEHAVIOR_PHASES = ("entry", "postcondition")
+ONBOARDING_REQUIRED_CONNECT_COMMAND_IDS = (
+    "goal_start_connect_if_needed",
+    "goal_start_refresh_state",
+    "goal_start_host_loop_activation",
+    "goal_start_quota_should_run",
+)
 
 _ENTRY_CONTRACT_FIELDS = (
     "route",
@@ -77,8 +82,8 @@ class OnboardingModelBehaviorActor(Protocol):
     def __call__(self, request: Mapping[str, Any]) -> Mapping[str, Any]: ...
 
 
-class OnboardingModelBehaviorPairValidationError(ValueError):
-    """The paired onboarding inputs diverged before live actor execution."""
+class OnboardingActualBehaviorValidationError(ValueError):
+    """The actual onboarding input violates a stable behavior invariant."""
 
 
 def _canonical_json(value: Any) -> str:
@@ -93,6 +98,12 @@ def _mapping(value: Any, *, field: str) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError(f"{field} must be an object")
     return dict(value)
+
+
+def _optional_mapping(value: Any, *, field: str) -> dict[str, Any]:
+    if value is None:
+        return {}
+    return _mapping(value, field=field)
 
 
 def _nullable_token(value: Any, *, field: str) -> str | None:
@@ -136,20 +147,16 @@ def onboarding_entry_semantic_contract(
     if packet.get("schema_version") != START_GOAL_PACKET_SCHEMA_VERSION:
         raise ValueError("entry packet must use loopx_start_goal_guided_v0")
     transaction = _mapping(packet.get("guided_transaction"), field="guided_transaction")
-    commands = _mapping(_command_pack_value(packet, "commands"), field="commands")
-    activation = _mapping(
+    commands = _optional_mapping(
+        _command_pack_value(packet, "commands"), field="commands"
+    )
+    activation = _optional_mapping(
         _command_pack_value(packet, "host_loop_activation"),
         field="host_loop_activation",
     )
-    canonical_command_ids = (
-        "goal_start_connect_if_needed",
-        "goal_start_refresh_state",
-        "goal_start_host_loop_activation",
-        "goal_start_quota_should_run",
-    )
     command_ids = [
         command_id
-        for command_id in canonical_command_ids
+        for command_id in ONBOARDING_REQUIRED_CONNECT_COMMAND_IDS
         if isinstance(commands.get(command_id), str) and commands[command_id].strip()
     ]
     return {
@@ -167,6 +174,35 @@ def onboarding_entry_semantic_contract(
         "writes_now": bool(transaction.get("writes_now")),
         "spends_quota_now": bool(transaction.get("spends_quota_now")),
     }
+
+
+def onboarding_entry_contract_violations(
+    contract: Mapping[str, Any],
+) -> list[str]:
+    """Validate stable onboarding behavior without deriving it from the packet."""
+    violations: list[str] = []
+    route = str(contract.get("route") or "")
+    if route not in _ENTRY_ROUTES:
+        violations.append("entry_route_invalid")
+    if contract.get("writes_now") is not False:
+        violations.append("entry_must_not_write")
+    if contract.get("spends_quota_now") is not False:
+        violations.append("entry_must_not_spend_quota")
+    if route == "connect_if_needed":
+        if contract.get("goal_id") is None:
+            violations.append("connect_route_requires_goal_id")
+        if contract.get("agent_id") is None:
+            violations.append("connect_route_requires_agent_id")
+        if (
+            tuple(contract.get("action_command_ids") or ())
+            != ONBOARDING_REQUIRED_CONNECT_COMMAND_IDS
+        ):
+            violations.append("connect_route_missing_required_commands")
+        if contract.get("host_loop_activation_available") is not True:
+            violations.append("connect_route_requires_host_loop_activation")
+        if contract.get("host_loop_activation_after_todo_write") is not True:
+            violations.append("host_loop_must_activate_after_todo_write")
+    return violations
 
 
 def build_onboarding_postcondition_observation(
@@ -239,6 +275,38 @@ def onboarding_postcondition_semantic_contract(
     }
 
 
+def onboarding_postcondition_contract_violations(
+    contract: Mapping[str, Any],
+) -> list[str]:
+    """Check route invariants independently from the observation reducer."""
+    violations: list[str] = []
+    route = str(contract.get("route") or "")
+    if route not in _POSTCONDITION_ROUTES:
+        return ["postcondition_route_invalid"]
+    if route == "continue_validation":
+        if contract.get("state_projection_gap") is not False:
+            violations.append("continue_route_forbids_projection_gap")
+        if contract.get("executable_todo_present") is not True:
+            violations.append("continue_route_requires_executable_todo")
+        if contract.get("normal_delivery_allowed") is not True:
+            violations.append("continue_route_requires_delivery")
+        if contract.get("user_action_required") is not False:
+            violations.append("continue_route_forbids_user_gate")
+    elif route == "repair_projection":
+        if contract.get("state_projection_gap") is not True:
+            violations.append("repair_route_requires_projection_gap")
+        if contract.get("executable_todo_present") is not False:
+            violations.append("repair_route_forbids_executable_todo")
+        if contract.get("normal_delivery_allowed") is not False:
+            violations.append("repair_route_forbids_normal_delivery")
+    elif route == "ask_user":
+        if contract.get("user_action_required") is not True:
+            violations.append("ask_user_route_requires_user_gate")
+    elif contract.get("normal_delivery_allowed") is True:
+        violations.append("stop_route_forbids_normal_delivery")
+    return violations
+
+
 def _semantic_contract(
     packet: Mapping[str, Any],
     *,
@@ -251,24 +319,36 @@ def _semantic_contract(
     raise ValueError("phase must be entry or postcondition")
 
 
+def _behavior_contract_violations(
+    contract: Mapping[str, Any],
+    *,
+    phase: str,
+) -> list[str]:
+    if phase == "entry":
+        return onboarding_entry_contract_violations(contract)
+    return onboarding_postcondition_contract_violations(contract)
+
+
 def build_onboarding_model_behavior_actor_request(
     packet: Mapping[str, Any],
     *,
     qualification_id: str,
-    arm: str,
     phase: str,
 ) -> dict[str, Any]:
-    if arm not in ONBOARDING_MODEL_BEHAVIOR_ARMS:
-        raise ValueError("arm must be full_detail or guided_default")
     if phase not in ONBOARDING_MODEL_BEHAVIOR_PHASES:
         raise ValueError("phase must be entry or postcondition")
     normalized_packet = dict(packet)
-    _semantic_contract(normalized_packet, phase=phase)
+    contract = _semantic_contract(normalized_packet, phase=phase)
+    violations = _behavior_contract_violations(contract, phase=phase)
+    if violations:
+        raise OnboardingActualBehaviorValidationError(
+            "actual onboarding behavior violates stable invariants: "
+            + ", ".join(violations)
+        )
     _reject_private_or_secret_material(normalized_packet)
     return {
         "schema_version": ONBOARDING_MODEL_BEHAVIOR_REQUEST_SCHEMA_VERSION,
         "qualification_id": _token(qualification_id, field="qualification_id"),
-        "arm": arm,
         "phase": phase,
         "packet": normalized_packet,
         "sandbox": {
@@ -304,7 +384,6 @@ def normalize_onboarding_model_behavior_actor_request(
     canonical = build_onboarding_model_behavior_actor_request(
         packet,
         qualification_id=str(raw.get("qualification_id") or ""),
-        arm=str(raw.get("arm") or ""),
         phase=str(raw.get("phase") or ""),
     )
     if dict(raw) != canonical:
@@ -368,18 +447,16 @@ def normalize_onboarding_model_behavior_actor_result(
     }
 
 
-def run_onboarding_model_behavior_arm(
+def run_onboarding_model_behavior_phase(
     packet: Mapping[str, Any],
     *,
     qualification_id: str,
-    arm: str,
     phase: str,
     actor: OnboardingModelBehaviorActor,
 ) -> dict[str, Any]:
     request = build_onboarding_model_behavior_actor_request(
         packet,
         qualification_id=qualification_id,
-        arm=arm,
         phase=phase,
     )
     result = normalize_onboarding_model_behavior_actor_result(
@@ -400,13 +477,13 @@ def run_onboarding_model_behavior_arm(
     return {
         "schema_version": ONBOARDING_MODEL_BEHAVIOR_RECEIPT_SCHEMA_VERSION,
         "qualification_id": request["qualification_id"],
-        "arm": arm,
         "phase": phase,
         "actor_ref": result["actor_ref"],
         "packet_digest": _digest(request["packet"]),
         "decision_digest": _digest(decision),
         "next_action": decision["next_action"],
         "source_aligned": not violations,
+        "behavior_contract_valid": True,
         "semantic_contract_complete": all(alignment.values()),
         "semantic_contract_alignment": alignment,
         "semantic_contract_digests": {
@@ -424,116 +501,92 @@ def run_onboarding_model_behavior_arm(
     }
 
 
-def _compare_phase_receipts(
-    receipts: Mapping[str, Mapping[str, Any]],
-) -> dict[str, Any]:
-    full = receipts["full_detail"]
-    guided = receipts["guided_default"]
-    fields = ("next_action", "semantic_contract_digests")
-    drift = {
-        field: {
-            "full_detail": full.get(field),
-            "guided_default": guided.get(field),
-        }
-        for field in fields
-        if full.get(field) != guided.get(field)
-    }
+def _receipt_summary(receipt: Mapping[str, Any]) -> dict[str, Any]:
     return {
-        "equivalent": not drift,
-        "drift": drift,
-        "source_aligned": all(
-            receipt.get("source_aligned") is True for receipt in receipts.values()
-        ),
-        "receipt_digests": {
-            arm: _digest(dict(receipt)) for arm, receipt in receipts.items()
-        },
+        "next_action": receipt["next_action"],
+        "source_aligned": receipt["source_aligned"],
+        "behavior_contract_valid": receipt["behavior_contract_valid"],
+        "safety_violations": list(receipt["safety_violations"]),
+        "receipt_digest": _digest(dict(receipt)),
     }
 
 
-def run_onboarding_closed_loop_pair(
-    full_detail_packet: Mapping[str, Any],
-    guided_default_packet: Mapping[str, Any],
+def run_onboarding_actual_behavior_qualification(
+    actual_packet: Mapping[str, Any],
     *,
     qualification_id: str,
     actor: OnboardingModelBehaviorActor,
-    transition_runner: Callable[[str], Mapping[str, Any]],
-    arm_order: Sequence[str] = ONBOARDING_MODEL_BEHAVIOR_ARMS,
+    transition_runner: Callable[[], Mapping[str, Any]],
+    repair_observation: Mapping[str, Any],
 ) -> dict[str, Any]:
-    if tuple(sorted(arm_order)) != tuple(sorted(ONBOARDING_MODEL_BEHAVIOR_ARMS)):
-        raise ValueError("arm_order must contain full_detail and guided_default once")
-    packets = {
-        "full_detail": dict(full_detail_packet),
-        "guided_default": dict(guided_default_packet),
-    }
-    entry_contracts = {
-        arm: onboarding_entry_semantic_contract(packet)
-        for arm, packet in packets.items()
-    }
-    if entry_contracts["full_detail"] != entry_contracts["guided_default"]:
-        raise OnboardingModelBehaviorPairValidationError(
-            "paired onboarding entry packets are not semantically equivalent"
+    entry_contract = onboarding_entry_semantic_contract(actual_packet)
+    entry_violations = onboarding_entry_contract_violations(entry_contract)
+    if entry_violations:
+        raise OnboardingActualBehaviorValidationError(
+            "actual onboarding behavior violates stable invariants: "
+            + ", ".join(entry_violations)
         )
-    if entry_contracts["full_detail"]["route"] != "connect_if_needed":
-        raise OnboardingModelBehaviorPairValidationError(
+    if entry_contract["route"] != "connect_if_needed":
+        raise OnboardingActualBehaviorValidationError(
             "closed-loop qualification requires the connect_if_needed route"
         )
 
-    entry_receipts = {
-        arm: run_onboarding_model_behavior_arm(
-            packets[arm],
-            qualification_id=qualification_id,
-            arm=arm,
-            phase="entry",
-            actor=actor,
-        )
-        for arm in arm_order
-    }
-    entry_comparison = _compare_phase_receipts(entry_receipts)
-    if not entry_comparison["source_aligned"]:
+    entry_receipt = run_onboarding_model_behavior_phase(
+        actual_packet,
+        qualification_id=qualification_id,
+        phase="entry",
+        actor=actor,
+    )
+    if entry_receipt["source_aligned"] is not True:
         return {
-            "schema_version": ONBOARDING_MODEL_BEHAVIOR_PAIR_SCHEMA_VERSION,
+            "schema_version": ONBOARDING_ACTUAL_BEHAVIOR_QUALIFICATION_SCHEMA_VERSION,
             "qualification_id": qualification_id,
             "closed_loop_complete": False,
             "qualification_passed": False,
             "automatic_release_promotion_allowed": False,
-            "entry": entry_comparison,
-            "postcondition": None,
+            "entry": _receipt_summary(entry_receipt),
+            "healthy_postcondition": None,
+            "repair_calibration": None,
             "failure_code": "entry_source_alignment_failed",
         }
 
-    observations = {arm: dict(transition_runner(arm)) for arm in arm_order}
-    post_contracts = {
-        arm: onboarding_postcondition_semantic_contract(observation)
-        for arm, observation in observations.items()
-    }
-    if post_contracts["full_detail"] != post_contracts["guided_default"]:
-        raise OnboardingModelBehaviorPairValidationError(
-            "paired transition runners produced different postconditions"
-        )
-    post_receipts = {
-        arm: run_onboarding_model_behavior_arm(
-            observations[arm],
-            qualification_id=qualification_id,
-            arm=arm,
-            phase="postcondition",
-            actor=actor,
-        )
-        for arm in arm_order
-    }
-    post_comparison = _compare_phase_receipts(post_receipts)
-    passed = bool(
-        entry_comparison["equivalent"]
-        and entry_comparison["source_aligned"]
-        and post_comparison["equivalent"]
-        and post_comparison["source_aligned"]
+    healthy_observation = dict(transition_runner())
+    healthy_receipt = run_onboarding_model_behavior_phase(
+        healthy_observation,
+        qualification_id=qualification_id,
+        phase="postcondition",
+        actor=actor,
     )
+    repair_receipt = run_onboarding_model_behavior_phase(
+        repair_observation,
+        qualification_id=qualification_id,
+        phase="postcondition",
+        actor=actor,
+    )
+    healthy_expected = healthy_receipt["next_action"] == "continue_validation"
+    repair_expected = repair_receipt["next_action"] == "repair_projection"
+    passed = bool(
+        healthy_expected
+        and repair_expected
+        and healthy_receipt["source_aligned"]
+        and repair_receipt["source_aligned"]
+    )
+    if not healthy_expected:
+        failure_code = "actual_postcondition_not_healthy"
+    elif not repair_expected:
+        failure_code = "projection_gap_repair_calibration_failed"
+    elif not passed:
+        failure_code = "model_source_alignment_failed"
+    else:
+        failure_code = None
     return {
-        "schema_version": ONBOARDING_MODEL_BEHAVIOR_PAIR_SCHEMA_VERSION,
+        "schema_version": ONBOARDING_ACTUAL_BEHAVIOR_QUALIFICATION_SCHEMA_VERSION,
         "qualification_id": qualification_id,
         "closed_loop_complete": True,
         "qualification_passed": passed,
         "automatic_release_promotion_allowed": False,
-        "entry": entry_comparison,
-        "postcondition": post_comparison,
-        "failure_code": None if passed else "behavior_drift_or_source_misalignment",
+        "entry": _receipt_summary(entry_receipt),
+        "healthy_postcondition": _receipt_summary(healthy_receipt),
+        "repair_calibration": _receipt_summary(repair_receipt),
+        "failure_code": failure_code,
     }

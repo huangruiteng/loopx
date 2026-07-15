@@ -7,15 +7,17 @@ from typing import Any
 import pytest
 
 from loopx.control_plane.testing.onboarding_model_behavior_qualification import (
+    ONBOARDING_ACTUAL_BEHAVIOR_QUALIFICATION_SCHEMA_VERSION,
     ONBOARDING_MODEL_BEHAVIOR_DECISION_SCHEMA_VERSION,
-    ONBOARDING_MODEL_BEHAVIOR_PAIR_SCHEMA_VERSION,
     ONBOARDING_MODEL_BEHAVIOR_RESULT_SCHEMA_VERSION,
-    OnboardingModelBehaviorPairValidationError,
+    ONBOARDING_REQUIRED_CONNECT_COMMAND_IDS,
+    OnboardingActualBehaviorValidationError,
     build_onboarding_model_behavior_actor_request,
     build_onboarding_postcondition_observation,
+    normalize_onboarding_model_behavior_actor_request,
     onboarding_entry_semantic_contract,
     onboarding_postcondition_semantic_contract,
-    run_onboarding_closed_loop_pair,
+    run_onboarding_actual_behavior_qualification,
 )
 
 
@@ -48,8 +50,8 @@ TRANSACTION = {
 }
 
 
-def _entry_packet(*, compact: bool) -> dict[str, Any]:
-    packet: dict[str, Any] = {
+def _actual_entry_packet() -> dict[str, Any]:
+    return {
         "schema_version": "loopx_start_goal_guided_v0",
         "goal_id": "fixture-goal",
         "agent_id": "codex-fixture",
@@ -59,19 +61,12 @@ def _entry_packet(*, compact: bool) -> dict[str, Any]:
             "writes_state_file": False,
             "spends_quota": False,
         },
-    }
-    if compact:
-        packet.update(
-            commands=dict(COMMANDS),
-            host_loop_activation=dict(ACTIVATION),
-        )
-    else:
-        packet["command_pack"] = {
+        "command_pack": {
             "commands": dict(COMMANDS),
             "host_loop_activation": dict(ACTIVATION),
-            "message": "Detailed diagnostic material stays in the cold path.",
-        }
-    return packet
+            "message": "Current default command-pack detail.",
+        },
+    }
 
 
 def _decision_for_request(request: Mapping[str, Any]) -> dict[str, Any]:
@@ -111,35 +106,89 @@ def _healthy_observation() -> dict[str, Any]:
     )
 
 
-def test_closed_loop_pair_checks_entry_and_2134_postcondition_without_raw_retention() -> None:
-    transitions: list[str] = []
-
-    result = run_onboarding_closed_loop_pair(
-        _entry_packet(compact=False),
-        _entry_packet(compact=True),
-        qualification_id="onboarding-2134-healthy-001",
-        actor=_actor,
-        transition_runner=lambda arm: transitions.append(arm) or _healthy_observation(),
-        arm_order=("guided_default", "full_detail"),
+def _projection_gap_observation() -> dict[str, Any]:
+    return build_onboarding_postcondition_observation(
+        check_warning_codes=["state_projection_gap"],
+        executable_todo_count=0,
+        selected_action_kind=None,
+        normal_delivery_allowed=False,
+        user_action_required=False,
+        next_action_actionable=True,
     )
 
-    assert result["schema_version"] == ONBOARDING_MODEL_BEHAVIOR_PAIR_SCHEMA_VERSION
+
+def test_actual_default_closed_loop_checks_healthy_and_2134_repair_behavior() -> None:
+    transitions = 0
+
+    def transition() -> Mapping[str, Any]:
+        nonlocal transitions
+        transitions += 1
+        return _healthy_observation()
+
+    result = run_onboarding_actual_behavior_qualification(
+        _actual_entry_packet(),
+        qualification_id="onboarding-actual-2134-001",
+        actor=_actor,
+        transition_runner=transition,
+        repair_observation=_projection_gap_observation(),
+    )
+
+    assert (
+        result["schema_version"]
+        == ONBOARDING_ACTUAL_BEHAVIOR_QUALIFICATION_SCHEMA_VERSION
+    )
     assert result["closed_loop_complete"] is True
     assert result["qualification_passed"] is True
     assert result["automatic_release_promotion_allowed"] is False
-    assert result["entry"]["equivalent"] is True
-    assert result["postcondition"]["equivalent"] is True
-    assert transitions == ["guided_default", "full_detail"]
+    assert result["entry"]["next_action"] == "connect_if_needed"
+    assert (
+        result["healthy_postcondition"]["next_action"] == "continue_validation"
+    )
+    assert result["repair_calibration"]["next_action"] == "repair_projection"
+    assert transitions == 1
     encoded = json.dumps(result, sort_keys=True)
-    assert "Detailed diagnostic material" not in encoded
+    assert "arm" not in encoded
     assert "onboarding_connection_validation" not in encoded
     assert "$PROJECT" not in encoded
 
 
-def test_pair_rejects_missing_candidate_commands_before_provider_or_transition() -> None:
+def test_independent_oracle_rejects_command_loss_before_model_or_transition() -> None:
     calls = 0
-    candidate = _entry_packet(compact=True)
-    del candidate["commands"]["goal_start_host_loop_activation"]
+    transitions = 0
+    packet = _actual_entry_packet()
+    del packet["command_pack"]["commands"]["goal_start_host_loop_activation"]
+
+    def actor(_: Mapping[str, Any]) -> Mapping[str, Any]:
+        nonlocal calls
+        calls += 1
+        return {}
+
+    def transition() -> Mapping[str, Any]:
+        nonlocal transitions
+        transitions += 1
+        return _healthy_observation()
+
+    with pytest.raises(
+        OnboardingActualBehaviorValidationError,
+        match="connect_route_missing_required_commands",
+    ):
+        run_onboarding_actual_behavior_qualification(
+            packet,
+            qualification_id="onboarding-command-gap-001",
+            actor=actor,
+            transition_runner=transition,
+            repair_observation=_projection_gap_observation(),
+        )
+
+    assert tuple(COMMANDS) == ONBOARDING_REQUIRED_CONNECT_COMMAND_IDS
+    assert calls == 0
+    assert transitions == 0
+
+
+def test_independent_oracle_rejects_host_activation_loss_before_model() -> None:
+    calls = 0
+    packet = _actual_entry_packet()
+    del packet["command_pack"]["host_loop_activation"]
 
     def actor(_: Mapping[str, Any]) -> Mapping[str, Any]:
         nonlocal calls
@@ -147,16 +196,17 @@ def test_pair_rejects_missing_candidate_commands_before_provider_or_transition()
         return {}
 
     with pytest.raises(
-        OnboardingModelBehaviorPairValidationError,
-        match="not semantically equivalent",
+        OnboardingActualBehaviorValidationError,
+        match="connect_route_requires_host_loop_activation",
     ):
-        run_onboarding_closed_loop_pair(
-            _entry_packet(compact=False),
-            candidate,
-            qualification_id="onboarding-command-gap-001",
+        run_onboarding_actual_behavior_qualification(
+            packet,
+            qualification_id="onboarding-activation-gap-001",
             actor=actor,
-            transition_runner=lambda _: _healthy_observation(),
+            transition_runner=_healthy_observation,
+            repair_observation=_projection_gap_observation(),
         )
+
     assert calls == 0
 
 
@@ -169,17 +219,17 @@ def test_entry_source_misalignment_stops_before_allowlisted_transition() -> None
         result["decision"]["next_action"] = "stop"
         return result
 
-    def transition(_: str) -> Mapping[str, Any]:
+    def transition() -> Mapping[str, Any]:
         nonlocal transitions
         transitions += 1
         return _healthy_observation()
 
-    result = run_onboarding_closed_loop_pair(
-        _entry_packet(compact=False),
-        _entry_packet(compact=True),
+    result = run_onboarding_actual_behavior_qualification(
+        _actual_entry_packet(),
         qualification_id="onboarding-stop-before-transition-001",
         actor=wrong_actor,
         transition_runner=transition,
+        repair_observation=_projection_gap_observation(),
     )
 
     assert result["closed_loop_complete"] is False
@@ -188,17 +238,24 @@ def test_entry_source_misalignment_stops_before_allowlisted_transition() -> None
     assert transitions == 0
 
 
-def test_postcondition_builder_calibrates_known_2134_projection_gap() -> None:
-    observation = build_onboarding_postcondition_observation(
-        check_warning_codes=["state_projection_gap"],
-        executable_todo_count=0,
-        selected_action_kind=None,
-        normal_delivery_allowed=False,
-        user_action_required=False,
-        next_action_actionable=True,
+def test_actual_projection_gap_fails_the_healthy_postcondition() -> None:
+    result = run_onboarding_actual_behavior_qualification(
+        _actual_entry_packet(),
+        qualification_id="onboarding-actual-gap-001",
+        actor=_actor,
+        transition_runner=_projection_gap_observation,
+        repair_observation=_projection_gap_observation(),
     )
 
-    contract = onboarding_postcondition_semantic_contract(observation)
+    assert result["closed_loop_complete"] is True
+    assert result["qualification_passed"] is False
+    assert result["failure_code"] == "actual_postcondition_not_healthy"
+
+
+def test_postcondition_builder_calibrates_known_2134_projection_gap() -> None:
+    contract = onboarding_postcondition_semantic_contract(
+        _projection_gap_observation()
+    )
 
     assert contract == {
         "route": "repair_projection",
@@ -211,26 +268,21 @@ def test_postcondition_builder_calibrates_known_2134_projection_gap() -> None:
 
 
 def test_actor_request_rejects_local_paths_and_tool_boundary_changes() -> None:
-    packet = _entry_packet(compact=True)
+    packet = _actual_entry_packet()
     packet["project"] = "/Users/example/private-project"
     with pytest.raises(ValueError, match="local absolute path"):
         build_onboarding_model_behavior_actor_request(
             packet,
             qualification_id="onboarding-private-path-001",
-            arm="guided_default",
             phase="entry",
         )
 
     request = build_onboarding_model_behavior_actor_request(
-        _entry_packet(compact=True),
+        _actual_entry_packet(),
         qualification_id="onboarding-boundary-001",
-        arm="guided_default",
         phase="entry",
     )
     request["sandbox"] = {**request["sandbox"], "tools_enabled": True}
-    from loopx.control_plane.testing.onboarding_model_behavior_qualification import (
-        normalize_onboarding_model_behavior_actor_request,
-    )
 
     with pytest.raises(ValueError, match="canonical no-write contract"):
         normalize_onboarding_model_behavior_actor_request(request)

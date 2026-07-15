@@ -75,7 +75,6 @@ def test_direct_onboarding_actor_uses_no_tool_provider_boundary() -> None:
     request = build_onboarding_model_behavior_actor_request(
         _packet(),
         qualification_id="onboarding-direct-doubao-001",
-        arm="guided_default",
         phase="entry",
     )
     result = normalize_onboarding_model_behavior_actor_result(
@@ -89,7 +88,7 @@ def test_direct_onboarding_actor_uses_no_tool_provider_boundary() -> None:
     assert captured["body"]["response_format"] == {"type": "json_object"}
     assert "tools" not in captured["body"]
     provider_input = json.loads(captured["body"]["messages"][1]["content"])
-    assert set(provider_input) == {"schema_version", "arm", "phase", "packet"}
+    assert set(provider_input) == {"schema_version", "phase", "packet"}
     assert "qualification_id" not in provider_input
     assert "sandbox" not in provider_input
     assert result["schema_version"] == ONBOARDING_MODEL_BEHAVIOR_RESULT_SCHEMA_VERSION
