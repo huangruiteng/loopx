@@ -4,7 +4,7 @@ import argparse
 from collections.abc import Callable
 from pathlib import Path
 
-from ..control_plane.agent_loop import build_agent_loop_shadow_tick
+from ..control_plane.turn_driver import build_loopx_turn_plan
 from ..control_plane.quota.live_decision import build_live_quota_should_run_decision
 from ..control_plane.quota.turn_envelope import build_turn_envelope
 from ..control_plane.runtime.status_projection_cache import (
@@ -25,60 +25,60 @@ def _default_public_scan_root() -> str:
     return str(Path(__file__).resolve().parents[2])
 
 
-def register_agent_loop_commands(
+def register_turn_commands(
     subparsers: argparse._SubParsersAction,
     add_subcommand_format: AddFormat,
 ) -> None:
     parser = subparsers.add_parser(
-        "agent-loop",
-        help="Preview host-neutral agent-loop routing from a live LoopX decision.",
+        "turn",
+        help="Plan one governed external-host turn from a live LoopX decision.",
     )
-    command_sub = parser.add_subparsers(dest="agent_loop_command", required=True)
-    shadow_tick = command_sub.add_parser(
-        "shadow-tick",
+    command_sub = parser.add_subparsers(dest="turn_command", required=True)
+    plan = command_sub.add_parser(
+        "plan",
         help="Build one typed read-only host decision without launching or writing.",
     )
-    add_subcommand_format(shadow_tick)
-    shadow_tick.add_argument("--goal-id", required=True)
-    shadow_tick.add_argument("--agent-id", required=True)
-    shadow_tick.add_argument(
+    add_subcommand_format(plan)
+    plan.add_argument("--goal-id", required=True)
+    plan.add_argument("--agent-id", required=True)
+    plan.add_argument(
         "--host",
         choices=["codex-cli", "claude-code", "generic-cli"],
         default="codex-cli",
     )
-    shadow_tick.add_argument(
+    plan.add_argument(
         "--execution-mode",
         choices=["interactive-visible", "isolated-headless"],
         default="interactive-visible",
     )
-    shadow_tick.add_argument(
+    plan.add_argument(
         "--available-capability",
         dest="available_capabilities",
         action="append",
     )
-    shadow_tick.add_argument(
+    plan.add_argument(
         "--scan-root",
         default=_default_public_scan_root(),
         help="Public files to scan for obvious private material.",
     )
-    shadow_tick.add_argument(
+    plan.add_argument(
         "--scan-path",
         action="append",
         default=[],
         help="Specific public file or directory to scan. Repeatable.",
     )
-    shadow_tick.add_argument("--limit", type=int, default=5)
+    plan.add_argument("--limit", type=int, default=5)
 
 
-def _render_agent_loop_shadow_markdown(payload: dict[str, object]) -> str:
+def _render_loopx_turn_plan_markdown(payload: dict[str, object]) -> str:
     if not payload.get("ok"):
         error = payload.get("error") or "invalid TurnEnvelope contract"
-        return f"LoopX agent-loop shadow tick failed: {error}"
+        return f"LoopX Turn plan failed: {error}"
     host = payload.get("host") if isinstance(payload.get("host"), dict) else {}
     route = payload.get("route") if isinstance(payload.get("route"), dict) else {}
     return "\n".join(
         [
-            "# LoopX Agent-Loop Shadow Tick",
+            "# LoopX Turn Plan",
             f"- host: {host.get('kind')}",
             f"- execution_mode: {host.get('execution_mode')}",
             f"- route: {route.get('kind')}",
@@ -88,7 +88,7 @@ def _render_agent_loop_shadow_markdown(payload: dict[str, object]) -> str:
     )
 
 
-def handle_agent_loop_command(
+def handle_turn_command(
     args: argparse.Namespace,
     *,
     registry_path: Path,
@@ -96,11 +96,11 @@ def handle_agent_loop_command(
     output_format: FormatSelector,
     print_payload: PrintPayload,
 ) -> int | None:
-    if args.command != "agent-loop":
+    if args.command != "turn":
         return None
     try:
-        if args.agent_loop_command != "shadow-tick":
-            raise ValueError("agent-loop requires the `shadow-tick` subcommand")
+        if args.turn_command != "plan":
+            raise ValueError("turn requires the `plan` subcommand")
         scan_roots = [Path(item).expanduser() for item in args.scan_path]
         if not scan_roots:
             scan_roots = [Path(args.scan_root).expanduser()]
@@ -123,9 +123,9 @@ def handle_agent_loop_command(
             codex_app_current_rrule=None,
             registry_path=registry_path,
             runtime_root=runtime_root,
-            route_source="agent_loop_shadow_tick",
+            route_source="loopx_turn_plan",
         )
-        payload = build_agent_loop_shadow_tick(
+        payload = build_loopx_turn_plan(
             build_turn_envelope(decision),
             host=args.host,
             execution_mode=args.execution_mode,
@@ -133,8 +133,8 @@ def handle_agent_loop_command(
     except Exception as exc:
         payload = {
             "ok": False,
-            "schema_version": "agent_loop_shadow_tick_v0",
-            "mode": "shadow",
+            "schema_version": "loopx_turn_plan_v0",
+            "mode": "plan",
             "error": str(exc),
             "effects": {
                 "host_invoked": False,
@@ -143,5 +143,5 @@ def handle_agent_loop_command(
                 "quota_spent": False,
             },
         }
-    print_payload(payload, output_format(args), _render_agent_loop_shadow_markdown)
+    print_payload(payload, output_format(args), _render_loopx_turn_plan_markdown)
     return 0 if payload.get("ok") else 1

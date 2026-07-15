@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from loopx.cli import main as cli_main
-from loopx.control_plane.agent_loop import AgentLoopRoute, build_agent_loop_shadow_tick
+from loopx.control_plane.turn_driver import LoopXTurnRoute, build_loopx_turn_plan
 from loopx.control_plane.quota.live_decision import bind_scheduler_followup_cli_routes
 
 
@@ -51,17 +51,19 @@ def _envelope(
     }
 
 
-def test_shadow_tick_projects_ready_route_without_side_effects() -> None:
+def test_turn_plan_projects_ready_route_without_side_effects() -> None:
     envelope = _envelope()
 
-    payload = build_agent_loop_shadow_tick(
+    payload = build_loopx_turn_plan(
         envelope,
         host="codex-cli",
         execution_mode="interactive-visible",
     )
 
     assert payload["ok"] is True
-    assert payload["route"]["kind"] == AgentLoopRoute.READY_FOR_HOST.value
+    assert payload["schema_version"] == "loopx_turn_plan_v0"
+    assert payload["mode"] == "plan"
+    assert payload["route"]["kind"] == LoopXTurnRoute.READY_FOR_HOST.value
     assert payload["route"]["would_invoke_host"] is True
     assert payload["route"]["host_invocation_allowed"] is False
     assert payload["turn_envelope"] == envelope
@@ -71,21 +73,33 @@ def test_shadow_tick_projects_ready_route_without_side_effects() -> None:
         "scheduler_acknowledged": False,
         "quota_spent": False,
     }
+    assert payload["boundary"]["read_only"] is True
+
+
+def test_turn_help_omits_legacy_agent_loop_entrypoint() -> None:
+    output = io.StringIO()
+
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(["--help"])
+
+    assert exit_code == 0
+    assert "agent-loop" not in output.getvalue()
+    assert "turn" in output.getvalue()
 
 
 @pytest.mark.parametrize(
     ("effective_action", "expected"),
     [
-        ("capability_repair", AgentLoopRoute.REPAIR_REQUIRED),
-        ("autonomous_replan", AgentLoopRoute.REPLAN_REQUIRED),
-        ("successor_replan_required", AgentLoopRoute.REPLAN_REQUIRED),
+        ("capability_repair", LoopXTurnRoute.REPAIR_REQUIRED),
+        ("autonomous_replan", LoopXTurnRoute.REPLAN_REQUIRED),
+        ("successor_replan_required", LoopXTurnRoute.REPLAN_REQUIRED),
     ],
 )
-def test_shadow_tick_projects_typed_recovery_routes(
+def test_turn_plan_projects_typed_recovery_routes(
     effective_action: str,
-    expected: AgentLoopRoute,
+    expected: LoopXTurnRoute,
 ) -> None:
-    payload = build_agent_loop_shadow_tick(
+    payload = build_loopx_turn_plan(
         _envelope(effective_action=effective_action),
         host="generic-cli",
         execution_mode="isolated-headless",
@@ -95,30 +109,30 @@ def test_shadow_tick_projects_typed_recovery_routes(
     assert payload["host"]["explicit_isolation"] is True
 
 
-def test_shadow_tick_preserves_safe_bypass_when_user_action_is_visible() -> None:
-    payload = build_agent_loop_shadow_tick(
+def test_turn_plan_preserves_safe_bypass_when_user_action_is_visible() -> None:
+    payload = build_loopx_turn_plan(
         _envelope(action_required=True),
         host="codex-cli",
         execution_mode="interactive-visible",
     )
 
-    assert payload["route"]["kind"] == AgentLoopRoute.READY_FOR_HOST.value
+    assert payload["route"]["kind"] == LoopXTurnRoute.READY_FOR_HOST.value
 
 
 @pytest.mark.parametrize(
     ("action_required", "quiet_noop_allowed", "expected"),
     [
-        (True, False, AgentLoopRoute.USER_ACTION_REQUIRED),
-        (False, True, AgentLoopRoute.WAIT),
-        (False, False, AgentLoopRoute.BLOCKED),
+        (True, False, LoopXTurnRoute.USER_ACTION_REQUIRED),
+        (False, True, LoopXTurnRoute.WAIT),
+        (False, False, LoopXTurnRoute.BLOCKED),
     ],
 )
-def test_shadow_tick_projects_non_run_routes(
+def test_turn_plan_projects_non_run_routes(
     action_required: bool,
     quiet_noop_allowed: bool,
-    expected: AgentLoopRoute,
+    expected: LoopXTurnRoute,
 ) -> None:
-    payload = build_agent_loop_shadow_tick(
+    payload = build_loopx_turn_plan(
         _envelope(
             should_run=False,
             action_required=action_required,
@@ -132,36 +146,36 @@ def test_shadow_tick_projects_non_run_routes(
     assert payload["route"]["would_invoke_host"] is False
 
 
-def test_shadow_tick_fails_closed_on_action_signature_drift() -> None:
+def test_turn_plan_fails_closed_on_action_signature_drift() -> None:
     envelope = _envelope()
     envelope["action_signature"] = {"matches": False}
 
-    payload = build_agent_loop_shadow_tick(
+    payload = build_loopx_turn_plan(
         envelope,
         host="codex-cli",
         execution_mode="interactive-visible",
     )
 
     assert payload["ok"] is False
-    assert payload["route"]["kind"] == AgentLoopRoute.CONTRACT_ERROR.value
+    assert payload["route"]["kind"] == LoopXTurnRoute.CONTRACT_ERROR.value
     assert payload["route"]["would_invoke_host"] is False
 
 
-def test_shadow_tick_fails_closed_on_oversized_turn_envelope() -> None:
+def test_turn_plan_fails_closed_on_oversized_turn_envelope() -> None:
     envelope = _envelope()
     envelope["compaction"] = {"within_budget": False}
 
-    payload = build_agent_loop_shadow_tick(
+    payload = build_loopx_turn_plan(
         envelope,
         host="codex-cli",
         execution_mode="interactive-visible",
     )
 
     assert payload["ok"] is False
-    assert payload["route"]["kind"] == AgentLoopRoute.CONTRACT_ERROR.value
+    assert payload["route"]["kind"] == LoopXTurnRoute.CONTRACT_ERROR.value
 
 
-def test_scheduler_followup_binding_preserves_agent_loop_lineage(
+def test_scheduler_followup_binding_preserves_turn_lineage(
     tmp_path: Path,
 ) -> None:
     payload = {
@@ -176,19 +190,19 @@ def test_scheduler_followup_binding_preserves_agent_loop_lineage(
         payload,
         registry_path=tmp_path / "registry.json",
         runtime_root=tmp_path / "runtime",
-        source="agent_loop_shadow_tick",
+        source="loopx_turn_plan",
     )
 
     ack_hint = payload["scheduler_hint"]["codex_app"]["ack_hint"]
     assert ack_hint["cli_args"][:2] == ["--registry", str(tmp_path / "registry.json")]
-    assert ack_hint["route_binding"]["source"] == "agent_loop_shadow_tick"
+    assert ack_hint["route_binding"]["source"] == "loopx_turn_plan"
 
 
 def _write_live_fixture(root: Path) -> tuple[Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     runtime.mkdir(parents=True)
-    state = project / ".codex" / "goals" / "agent-loop-fixture" / "ACTIVE_GOAL_STATE.md"
+    state = project / ".codex" / "goals" / "loopx-turn-fixture" / "ACTIVE_GOAL_STATE.md"
     state.parent.mkdir(parents=True)
     state.write_text(
         "\n".join(
@@ -198,7 +212,7 @@ def _write_live_fixture(root: Path) -> tuple[Path, Path, Path]:
                 "updated_at: 2026-01-01T00:00:00+00:00",
                 "---",
                 "",
-                "# Agent Loop Fixture",
+                "# LoopX Turn Fixture",
                 "",
                 "## Agent Todo",
                 "",
@@ -218,8 +232,8 @@ def _write_live_fixture(root: Path) -> tuple[Path, Path, Path]:
                 "common_runtime_root": str(runtime),
                 "goals": [
                     {
-                        "id": "agent-loop-fixture",
-                        "domain": "agent-loop-public-fixture",
+                        "id": "loopx-turn-fixture",
+                        "domain": "loopx-turn-public-fixture",
                         "status": "active",
                         "repo": str(project),
                         "state_file": str(state.relative_to(project)),
@@ -248,7 +262,7 @@ def _write_live_fixture(root: Path) -> tuple[Path, Path, Path]:
     return project, runtime, registry
 
 
-def test_agent_loop_cli_consumes_live_state_without_writes(
+def test_turn_cli_consumes_live_state_without_writes(
     tmp_path: Path,
 ) -> None:
     project, runtime, registry = _write_live_fixture(tmp_path)
@@ -264,10 +278,10 @@ def test_agent_loop_cli_consumes_live_state_without_writes(
                 str(runtime),
                 "--format",
                 "json",
-                "agent-loop",
-                "shadow-tick",
+                "turn",
+                "plan",
                 "--goal-id",
-                "agent-loop-fixture",
+                "loopx-turn-fixture",
                 "--agent-id",
                 "codex-fixture",
                 "--scan-root",
@@ -278,7 +292,7 @@ def test_agent_loop_cli_consumes_live_state_without_writes(
     payload = json.loads(output.getvalue())
     after = sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))
     assert exit_code == 0
-    assert payload["route"]["kind"] == AgentLoopRoute.READY_FOR_HOST.value
+    assert payload["route"]["kind"] == LoopXTurnRoute.READY_FOR_HOST.value
     assert payload["turn_envelope"]["action_signature"]["matches"] is True
     assert payload["effects"]["state_written"] is False
     assert before == after

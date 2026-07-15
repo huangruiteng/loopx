@@ -36,7 +36,7 @@ from .capabilities.value_connectors.cli import (
     register_value_connector_commands,
 )
 from .cli_commands import (
-    handle_agent_loop_command,
+    handle_turn_command,
     handle_benchmark_command,
     handle_bootstrap_connect_command,
     handle_canary_command,
@@ -69,7 +69,7 @@ from .cli_commands import (
     handle_version_command,
     handle_worker_bridge_command,
     register_benchmark_command_group,
-    register_agent_loop_commands,
+    register_turn_commands,
     register_bootstrap_connect_command,
     register_canary_commands,
     register_capability_commands,
@@ -202,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     register_auto_research_commands(sub, add_subcommand_format)
 
     register_multi_agent_commands(sub, add_subcommand_format)
-    register_agent_loop_commands(sub, add_subcommand_format)
+    register_turn_commands(sub, add_subcommand_format)
     register_preset_commands(sub, add_subcommand_format)
     register_ready_score_command(sub, add_subcommand_format)
 
@@ -356,15 +356,15 @@ def main(argv: list[str] | None = None) -> int:
     if multi_agent_result is not None:
         return multi_agent_result
 
-    agent_loop_result = handle_agent_loop_command(
+    turn_result = handle_turn_command(
         args,
         registry_path=registry_path,
         runtime_root_arg=args.runtime_root,
         output_format=output_format,
         print_payload=print_payload,
     )
-    if agent_loop_result is not None:
-        return agent_loop_result
+    if turn_result is not None:
+        return turn_result
 
     preset_result = handle_preset_command(
         args,
