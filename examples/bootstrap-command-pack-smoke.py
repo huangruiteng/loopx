@@ -35,6 +35,7 @@ def assert_packet_summary_refs(
     payload: dict[str, object],
     *,
     packet_kind: str,
+    compact_projection_default: bool = False,
 ) -> dict[str, object]:
     summary = payload["packet_summary"]
     assert isinstance(summary, dict)
@@ -43,8 +44,8 @@ def assert_packet_summary_refs(
     compatibility = summary["compatibility"]
     assert isinstance(compatibility, dict)
     assert compatibility == {
-        "legacy_fields_retained": True,
-        "compact_projection_default": False,
+        "legacy_fields_retained": not compact_projection_default,
+        "compact_projection_default": compact_projection_default,
         "removal_gate": "explicit_host_shadow_parity",
     }
     detail_refs = summary["detail_refs"]
@@ -278,7 +279,11 @@ def test_start_goal_guided_previews_transaction_without_mutation() -> None:
         assert payload["guided"] is True
         assert payload["goal_text"] == "Connect this repo and start an auto research lane"
         assert payload["goal_id"] == "guided-goal"
-        summary = assert_packet_summary_refs(payload, packet_kind="guided_start_goal")
+        summary = assert_packet_summary_refs(
+            payload,
+            packet_kind="guided_start_goal",
+            compact_projection_default=True,
+        )
         assert summary["objective"] == "Connect this repo and start an auto research lane"
         assert summary["next_step_kind"] == "goal_plan_write_and_activate"
         detail_refs = summary["detail_refs"]
@@ -328,6 +333,9 @@ def test_start_goal_guided_previews_transaction_without_mutation() -> None:
         command_pack = payload["command_pack"]
         assert isinstance(command_pack, dict)
         assert command_pack["schema_version"] == "loopx_bootstrap_command_pack_v0"
+        assert command_pack["projection_schema_version"] == "loopx_guided_command_pack_projection_v0"
+        assert command_pack["projection_mode"] == "guided_start_compatibility"
+        assert "--include-command-pack-detail" in str(command_pack["detail_command"])
         assert command_pack["goal_start_contract"]["planner"]["required_before_todo_write"] is True
         assert not (project / ".loopx").exists()
         assert not (project / ".codex").exists()
@@ -396,7 +404,11 @@ def test_start_goal_guided_requires_explicit_goal_for_multi_goal_project() -> No
             ], choice
         assert payload["safety_contract"]["writes_registry"] is False, payload
         assert payload["safety_contract"]["creates_heartbeat"] is False, payload
-        assert_packet_summary_refs(payload, packet_kind="guided_start_goal")
+        assert_packet_summary_refs(
+            payload,
+            packet_kind="guided_start_goal",
+            compact_projection_default=True,
+        )
 
 
 def test_connected_project_reuses_existing_state() -> None:

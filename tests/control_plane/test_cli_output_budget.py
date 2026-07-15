@@ -378,6 +378,21 @@ def _mode_variant_commands(
         "Public CLI output qualification.",
     ]
     return {
+        "start_goal_guided_command_pack_detail": [
+            "--format",
+            output_format,
+            "start-goal",
+            "--guided",
+            "--project",
+            str(project),
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--goal-text",
+            GOAL_TEXT,
+            "--include-command-pack-detail",
+        ],
         "bootstrap_command_pack_message_only": [
             "--format",
             output_format,
@@ -513,6 +528,7 @@ def test_manifest_covers_the_declared_agent_facing_surface_set() -> None:
     assert {row["surface_id"] for row in manifest["surfaces"]} == expected
     assert all(spec.owner and spec.consumer_action and spec.cold_path for spec in CLI_OUTPUT_BUDGET_SPECS)
     expected_variants = {
+        "start_goal_guided_command_pack_detail",
         "bootstrap_command_pack_message_only",
         "quota_should_run_scheduler_detail",
         "quota_should_run_turn_envelope",
@@ -583,8 +599,8 @@ def test_collection_growth_and_bootstrap_duplication_are_explicit(tmp_path: Path
     bootstrap_payload = small["bootstrap_command_pack"]["json"]["payload"]
     start_duplication = start_payload["packet_summary"]["duplication_measurement"]
     bootstrap_duplication = bootstrap_payload["packet_summary"]["duplication_measurement"]
-    assert start_duplication["objective_content"]["duplicate_occurrences"] <= 15
-    assert start_duplication["command_content"]["duplicate_occurrences"] <= 17
+    assert start_duplication["objective_content"]["duplicate_occurrences"] <= 11
+    assert start_duplication["command_content"]["duplicate_occurrences"] <= 13
     assert bootstrap_duplication["objective_content"]["duplicate_occurrences"] <= 8
     assert bootstrap_duplication["command_content"]["duplicate_occurrences"] <= 9
     assert start_duplication["objective_content"]["duplicate_occurrences"] > 0

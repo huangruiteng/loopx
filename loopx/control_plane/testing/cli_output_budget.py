@@ -72,7 +72,7 @@ CLI_OUTPUT_BUDGET_SPECS: tuple[CliOutputBudgetSpec, ...] = (
         owner="goal bootstrap",
         consumer_action="plan a goal start before any mutation",
         qualification_policy="baseline_and_growth",
-        cold_path="packet_summary detail_refs and bootstrap-command-pack",
+        cold_path="--include-command-pack-detail and bootstrap-command-pack",
         semantic_json_keys=(
             "guided_transaction",
             "command_pack",
@@ -81,14 +81,14 @@ CLI_OUTPUT_BUDGET_SPECS: tuple[CliOutputBudgetSpec, ...] = (
         ),
         markdown_anchor="# Guided Start Goal",
         max_chars={
-            "small": {"json": 64_000, "markdown": 3_200},
-            "crowded": {"json": 64_000, "markdown": 3_200},
-            "multi_agent": {"json": 64_000, "markdown": 3_200},
+            "small": {"json": 40_000, "markdown": 3_200},
+            "crowded": {"json": 40_000, "markdown": 3_200},
+            "multi_agent": {"json": 40_000, "markdown": 3_200},
         },
         max_lines={
-            "small": {"json": 650, "markdown": 55},
-            "crowded": {"json": 650, "markdown": 55},
-            "multi_agent": {"json": 650, "markdown": 55},
+            "small": {"json": 450, "markdown": 55},
+            "crowded": {"json": 450, "markdown": 55},
+            "multi_agent": {"json": 450, "markdown": 55},
         },
         scale_axis="todo_count",
         max_json_growth_chars_per_unit=8,
@@ -335,6 +335,21 @@ CLI_OUTPUT_BUDGET_BY_ID = {spec.surface_id: spec for spec in CLI_OUTPUT_BUDGET_S
 # characterization. This prevents a compact default from hiding unbounded
 # growth in the exact diagnostic mode an agent uses during repair.
 CLI_OUTPUT_MODE_VARIANT_SPECS: tuple[CliOutputModeVariantSpec, ...] = (
+    CliOutputModeVariantSpec(
+        variant_id="start_goal_guided_command_pack_detail",
+        parent_surface_id="start_goal_guided",
+        command="start-goal --guided --include-command-pack-detail",
+        output_formats=("json", "markdown"),
+        semantic_json_keys=(
+            "guided_transaction",
+            "command_pack",
+            "safety_contract",
+            "packet_summary",
+        ),
+        markdown_anchor="# Guided Start Goal",
+        max_chars={"json": 64_000, "markdown": 3_200},
+        max_lines={"json": 650, "markdown": 55},
+    ),
     CliOutputModeVariantSpec(
         variant_id="bootstrap_command_pack_message_only",
         parent_surface_id="bootstrap_command_pack",

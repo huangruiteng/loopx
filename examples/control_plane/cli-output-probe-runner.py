@@ -152,7 +152,11 @@ def _variant_rows(
             output_format=output_format,
         )
         for variant_id, command in commands.items():
-            variant = probe.CLI_OUTPUT_MODE_VARIANT_BY_ID[variant_id]
+            variant = probe.CLI_OUTPUT_MODE_VARIANT_BY_ID.get(variant_id)
+            if variant is None:
+                # The shared candidate fixture may name a mode introduced after
+                # the detached base. Candidate-only rows are qualified later.
+                continue
             if output_format not in variant.output_formats:
                 continue
             exit_code, text = probe._invoke_cli(command)

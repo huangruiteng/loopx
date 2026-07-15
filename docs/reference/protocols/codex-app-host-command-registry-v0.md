@@ -155,6 +155,16 @@ The packet may be rendered to the agent prompt, passed to a tool call, or used
 to run the CLI directly. It must not contain raw transcripts, credentials,
 private document bodies, or local absolute paths in user-visible output.
 
+`loopx start-goal --guided` defaults to a compact command-pack projection. The
+hot path keeps the ordered transaction, planning contract, safety contract,
+goal and agent identity, action commands, host activation contract, and an
+executable cold-path command. It does not nest the complete bootstrap message,
+slash-command discovery catalog, or repeated connection and next-step
+diagnostics a second time. Consumers that genuinely need those lower-level
+fields can rerun the advertised command or pass
+`--include-command-pack-detail`. Both modes must produce the same host-action
+projection before a compact default is promoted.
+
 ## Permission Boundary
 
 Host command parsing does not grant new LoopX authority. It only converts
@@ -190,6 +200,7 @@ loopx agent-onboard --list-agent-types
 loopx agent-onboard --agent-type codex-cli --project .
 loopx bootstrap-command-pack --project .
 loopx start-goal --guided --project . --goal-text "<goal text>"
+loopx --format json start-goal --guided --project . --goal-text "<goal text>" --include-command-pack-detail
 loopx bootstrap-command-pack --project . --goal-text "<goal text>"
 loopx pr-review
 loopx global-summary
