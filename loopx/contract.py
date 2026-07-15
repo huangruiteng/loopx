@@ -650,7 +650,11 @@ def check_contract(
     errors.extend(user_gate_scope_errors)
     warnings.extend(_active_state_projection_gap_warnings(registry))
 
-    runtime_root = resolve_runtime_root(registry, runtime_root_override)
+    runtime_root = resolve_runtime_root(
+        registry,
+        runtime_root_override,
+        registry_path=registry_path,
+    )
     if runtime_root == DEFAULT_RUNTIME_ROOT or runtime_root.exists():
         checks.append(f"runtime root resolved: {runtime_root}")
     else:

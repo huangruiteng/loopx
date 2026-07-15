@@ -169,7 +169,11 @@ def handle_history_command(
             if not args.goal_id:
                 raise ValueError("history trajectory-hygiene requires --goal-id")
             registry = load_registry(registry_path)
-            runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+            runtime_root = resolve_runtime_root(
+                registry,
+                runtime_root_arg,
+                registry_path=registry_path,
+            )
             history = collect_history(
                 registry_path=registry_path,
                 runtime_root=runtime_root,
@@ -200,7 +204,11 @@ def handle_history_command(
             )
         except Exception as exc:
             registry = load_registry(registry_path)
-            runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+            runtime_root = resolve_runtime_root(
+                registry,
+                runtime_root_arg,
+                registry_path=registry_path,
+            )
             payload = {
                 "ok": False,
                 "registry": str(registry_path),
@@ -222,7 +230,11 @@ def handle_history_command(
             )
         except Exception as exc:
             registry = load_registry(registry_path)
-            runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+            runtime_root = resolve_runtime_root(
+                registry,
+                runtime_root_arg,
+                registry_path=registry_path,
+            )
             payload = {
                 "ok": False,
                 "dry_run": not bool(args.execute),
@@ -697,7 +709,11 @@ def handle_history_command(
 
     try:
         registry = load_registry(registry_path)
-        runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+        runtime_root = resolve_runtime_root(
+            registry,
+            runtime_root_arg,
+            registry_path=registry_path,
+        )
         payload = collect_history(
             registry_path=registry_path,
             runtime_root=runtime_root,

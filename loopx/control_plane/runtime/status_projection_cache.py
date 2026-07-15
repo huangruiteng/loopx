@@ -32,7 +32,11 @@ def resolve_status_projection_cache_runtime_root(
     runtime_root_override: str | None,
 ) -> Path:
     registry = load_registry(registry_path)
-    return resolve_runtime_root(registry, runtime_root_override)
+    return resolve_runtime_root(
+        registry,
+        runtime_root_override,
+        registry_path=registry_path,
+    )
 
 
 def status_projection_cache_dir(runtime_root: Path) -> Path:

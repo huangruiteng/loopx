@@ -124,9 +124,15 @@ def assert_context_orchestration() -> None:
     def load_registry(path: Path) -> dict[str, Any]:
         return record("load_registry", {"common_runtime_root": str(runtime_root), "path": str(path)})
 
-    def resolve_runtime_root(registry: dict[str, Any], override: str | None) -> Path:
+    def resolve_runtime_root(
+        registry: dict[str, Any],
+        override: str | None,
+        *,
+        registry_path: Path | None = None,
+    ) -> Path:
         assert registry["common_runtime_root"] == str(runtime_root), registry
         assert override == "runtime-override", override
+        assert registry_path == Path("registry.json"), registry_path
         return runtime_root
 
     def collect_history(**kwargs: Any) -> dict[str, Any]:
