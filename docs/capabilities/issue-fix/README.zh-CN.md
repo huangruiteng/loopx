@@ -928,7 +928,9 @@ focused validation 已通过。
 默认的 `loopx lark-kanban sync-loopx-todos` 还会从目标已有的 feasibility 与 PR
 lifecycle domain state 推导全部 issue outcome，并与 todo 行一起 upsert。因而 feasibility
 一经落盘，即使还没有 PR，也会作为 issue work 出现在看板；只有 lifecycle observation
-带有相同 `repo` 和显式 `issue_ref` 时，PR 才会补充到该行。数字 issue 别名
+带有相同 `repo` 和显式 `issue_ref` 时，PR 才会补充到该行。暂时没有匹配 feasibility
+的 lifecycle observation 不再被静默丢弃，而是以不补造复现、验证或 issue 关联的
+PR-only outcome 展示；终态 PR 因而仍会进入 merged/closed 产出统计。数字 issue 别名
 （`#123`、`issue_123`、`issues/123`）会在写入和读取旧行时统一为 `issues_123`，
 避免等价的显式关联静默落入 unlinked 计数。命令的 `--limit` 只限制 active todo
 行；所有推导出的 outcome 行仍在同步范围内，receipt 通过 `limit_policy` 显式说明

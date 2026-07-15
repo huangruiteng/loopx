@@ -894,6 +894,77 @@ def _lifecycle_recency(packet: Mapping[str, Any]) -> tuple[str, str]:
     )
 
 
+def _build_lifecycle_only_outcome(
+    *,
+    goal_id: str,
+    pr_lifecycle_packet: Mapping[str, Any],
+    agent_id: str | None = None,
+) -> dict[str, Any]:
+    """Project a PR lifecycle row that has no feasibility inventory row.
+
+    The PR lifecycle ledger is already compact source state. Dropping one of
+    its rows from the collection makes terminal delivery counts incorrect, so
+    this adapter keeps the lifecycle fact visible without inventing
+    reproduction, validation, or issue association evidence.
+    """
+
+    if (
+        pr_lifecycle_packet.get("schema_version")
+        != "issue_fix_pr_lifecycle_monitor_v0"
+    ):
+        raise ValueError(
+            "PR lifecycle packet must use issue_fix_pr_lifecycle_monitor_v0"
+        )
+    observation = _mapping(pr_lifecycle_packet.get("observation"))
+    repo = _safe_text(observation.get("repo"), field="repo", limit=180)
+    pr_ref = _safe_text(observation.get("pr_ref"), field="pr_ref", limit=180)
+    if not repo or not pr_ref:
+        raise ValueError("PR lifecycle packet must identify repo and pr_ref")
+    raw_issue_ref = str(observation.get("issue_ref") or "").strip()
+    issue_ref = (
+        normalise_github_issue_link_reference(raw_issue_ref)
+        if raw_issue_ref
+        else ""
+    )
+    issue_number = None
+    if issue_ref:
+        match = re.fullmatch(r"issues_(\d+)", issue_ref)
+        issue_number = int(match.group(1)) if match else None
+    issue_url = (
+        f"https://github.com/{repo}/issues/{issue_number}"
+        if issue_number is not None
+        else ""
+    )
+    synthetic_issue_ref = issue_ref or f"pr_lifecycle_{pr_ref}"
+    synthetic_feasibility = {
+        "schema_version": "issue_fix_feasibility_v0",
+        "observation": {
+            "repo": repo,
+            "issue_ref": synthetic_issue_ref,
+            "number": issue_number,
+            "permalink": issue_url,
+            "reproduction_status": "missing",
+            "repository_context": {},
+        },
+        "decision": {"route": "fix_pr"},
+        "transition": {"decision": "pr_lifecycle_only"},
+        "repository_context_effect": {},
+    }
+    projection = build_issue_fix_outcome_projection(
+        goal_id=goal_id,
+        feasibility_packet=synthetic_feasibility,
+        pr_lifecycle_packet=pr_lifecycle_packet,
+        agent_id=agent_id,
+    )
+    case = _mapping((projection.get("issue_fix_outcomes") or [{}])[0])
+    case["outcome_id"] = f"{repo}:{issue_ref or pr_ref}"
+    case["title"] = f"[fix_pr] {repo} PR #{observation.get('number') or pr_ref}"
+    case["issue_ref"] = issue_ref or None
+    case["issue"] = {"number": issue_number, "url": issue_url}
+    case["evidence"] = _evidence_summary(case)
+    return case
+
+
 def build_issue_fix_outcome_collection_from_domain_state(
     *,
     goal_id: str,
@@ -904,9 +975,10 @@ def build_issue_fix_outcome_collection_from_domain_state(
     """Derive all goal issue outcomes from existing compact domain state.
 
     Feasibility rows are the issue inventory. A PR lifecycle row enriches an
-    issue only when its observation carries the same explicit ``issue_ref``;
-    branch names, titles, and issue numbers are never guessed. No source state
-    or parallel outcome ledger is written.
+    issue only when its observation carries the same explicit ``issue_ref``.
+    Lifecycle rows without a matching feasibility row remain visible as
+    PR-only outcomes; branch names, titles, and issue numbers are never
+    guessed. No source state or parallel outcome ledger is written.
     """
 
     from ...domain_packs.issue_fix import (
@@ -982,9 +1054,53 @@ def build_issue_fix_outcome_collection_from_domain_state(
         if projection.get("ok") is True:
             outcomes.extend(list(projection.get("issue_fix_outcomes") or []))
 
-    unlinked_lifecycle_count = sum(
-        1 for packet in lifecycle_packets if id(packet) not in linked_lifecycle_ids
-    )
+    unlinked_lifecycle_packets = [
+        packet for packet in lifecycle_packets if id(packet) not in linked_lifecycle_ids
+    ]
+    lifecycle_only_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    lifecycle_only_without_key: list[dict[str, Any]] = []
+    for lifecycle_packet in unlinked_lifecycle_packets:
+        observation = _mapping(lifecycle_packet.get("observation"))
+        repo = str(observation.get("repo") or "").strip()
+        raw_issue_ref = str(observation.get("issue_ref") or "").strip()
+        issue_ref = (
+            normalise_github_issue_link_reference(raw_issue_ref)
+            if raw_issue_ref
+            else ""
+        )
+        pr_ref = str(observation.get("pr_ref") or "").strip()
+        identity = issue_ref or pr_ref
+        if not repo or not identity:
+            lifecycle_only_without_key.append(lifecycle_packet)
+            continue
+        key = (repo, identity)
+        current = lifecycle_only_by_key.get(key)
+        if current is None or _lifecycle_recency(lifecycle_packet) > _lifecycle_recency(
+            current
+        ):
+            lifecycle_only_by_key[key] = lifecycle_packet
+    lifecycle_only_outcome_count = 0
+    unprojected_lifecycle_count = len(lifecycle_only_without_key)
+    for lifecycle_packet in lifecycle_only_by_key.values():
+        try:
+            outcomes.append(
+                _build_lifecycle_only_outcome(
+                    goal_id=goal_id,
+                    pr_lifecycle_packet=lifecycle_packet,
+                    agent_id=agent_id,
+                )
+            )
+            lifecycle_only_outcome_count += 1
+        except ValueError as exc:
+            observation = _mapping(lifecycle_packet.get("observation"))
+            safe_identity = public_safe_compact_text(
+                f"{observation.get('repo')}:{observation.get('pr_ref')}",
+                limit=220,
+            ) or "unknown PR"
+            safe_error = public_safe_compact_text(exc, limit=260) or "invalid row"
+            warnings.append(f"skipped {safe_identity}: {safe_error}")
+            unprojected_lifecycle_count += 1
+    unlinked_lifecycle_count = len(unlinked_lifecycle_packets)
     collection: dict[str, Any] = {
         "ok": True,
         "schema_version": ISSUE_FIX_OUTCOME_COLLECTION_PROJECTION_SCHEMA_VERSION,
@@ -999,7 +1115,7 @@ def build_issue_fix_outcome_collection_from_domain_state(
             "pr_lifecycle": "issue_fix_pr_lifecycle_monitor_v0",
             "delivery_evidence": "embedded_in_feasibility_row",
             "repository_commit_evidence": "embedded_in_delivery_evidence",
-            "association": "explicit_repo_and_issue_ref_only",
+            "association": "explicit_repo_and_issue_ref_or_pr_lifecycle_only",
             "writes_source_state": False,
             "creates_parallel_state_machine": False,
         },
@@ -1008,6 +1124,13 @@ def build_issue_fix_outcome_collection_from_domain_state(
             "pr_lifecycle": len(lifecycle_packets),
             "outcomes": len(outcomes),
             "unlinked_pr_lifecycle": unlinked_lifecycle_count,
+            "lifecycle_only_outcomes": lifecycle_only_outcome_count,
+            "coalesced_pr_lifecycle": (
+                unlinked_lifecycle_count
+                - len(lifecycle_only_by_key)
+                - len(lifecycle_only_without_key)
+            ),
+            "unprojected_pr_lifecycle": unprojected_lifecycle_count,
         },
         "warnings": warnings,
         "external_reads_performed": False,

@@ -305,8 +305,11 @@ def assert_default_goal_sync_composes_outcomes() -> None:
         assert collection["source_counts"] == {
             "feasibility": 2,
             "pr_lifecycle": 2,
-            "outcomes": 2,
+            "outcomes": 3,
             "unlinked_pr_lifecycle": 1,
+            "lifecycle_only_outcomes": 1,
+            "coalesced_pr_lifecycle": 0,
+            "unprojected_pr_lifecycle": 0,
         }, collection
         collection_by_issue = {
             item["issue_ref"]: item for item in collection["issue_fix_outcomes"]
@@ -314,8 +317,16 @@ def assert_default_goal_sync_composes_outcomes() -> None:
         assert collection_by_issue["issues_42"]["pull_request"]["number"] == 77
         assert collection_by_issue["issues_43"]["pull_request"] is None
         assert collection_by_issue["issues_42"]["validation"]["status"] == "declared"
+        lifecycle_only = next(
+            item
+            for item in collection["issue_fix_outcomes"]
+            if item["pull_request"] and item["pull_request"]["number"] == 78
+        )
+        assert lifecycle_only["issue_ref"] is None
+        assert lifecycle_only["stage"] == "review_wait"
+        assert lifecycle_only["validation"]["status"] == "unknown"
         assert collection["source_contract"]["association"] == (
-            "explicit_repo_and_issue_ref_only"
+            "explicit_repo_and_issue_ref_or_pr_lifecycle_only"
         )
         assert collection["source_contract"]["creates_parallel_state_machine"] is False
 
@@ -503,13 +514,13 @@ def assert_default_goal_sync_composes_outcomes() -> None:
         )
         assert sync["ok"] is True, sync
         assert sync["todo_count"] == 1, sync
-        assert sync["issue_fix_outcome_count"] == 2, sync
+        assert sync["issue_fix_outcome_count"] == 3, sync
         outcome_records = [
             item
             for item in sync["records"]
             if item["values"].get("Work Item Type") == "Issue Fix"
         ]
-        assert len(outcome_records) == 2, sync
+        assert len(outcome_records) == 3, sync
         linked_record = next(
             item
             for item in outcome_records
@@ -523,6 +534,13 @@ def assert_default_goal_sync_composes_outcomes() -> None:
             if item["values"]["Issue"].endswith("/issues/43")
         )
         assert unlinked_record["values"]["Pull Request"] == ""
+        lifecycle_only_record = next(
+            item
+            for item in outcome_records
+            if item["values"]["Pull Request"].endswith("/pull/78")
+        )
+        assert lifecycle_only_record["values"]["Issue"] == ""
+        assert lifecycle_only_record["values"]["Stage"] == "review_wait"
         assert str(project) not in json.dumps(sync["records"], ensure_ascii=False)
 
         bounded_todo_sync = sync_loopx_todos_to_lark_kanban(
@@ -537,12 +555,12 @@ def assert_default_goal_sync_composes_outcomes() -> None:
             execute=False,
         )
         assert bounded_todo_sync["todo_count"] == 1, bounded_todo_sync
-        assert bounded_todo_sync["issue_fix_outcome_count"] == 2, bounded_todo_sync
+        assert bounded_todo_sync["issue_fix_outcome_count"] == 3, bounded_todo_sync
         assert bounded_todo_sync["limit_policy"] == {
             "todo_rows": 1,
             "issue_fix_outcomes": "complete_source_projection",
         }, bounded_todo_sync
-        assert bounded_todo_sync["issue_fix_source_counts"]["outcomes"] == 2
+        assert bounded_todo_sync["issue_fix_source_counts"]["outcomes"] == 3
 
 
 def main() -> None:
