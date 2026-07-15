@@ -109,6 +109,65 @@ def _assert_bridge_tracks_guided_start_without_task_text() -> None:
     assert completed[1]["loopx_todo_id"] == todo_id
 
 
+def _assert_bridge_tracks_generated_todo_id_without_raw_output() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    from loopx.benchmark_adapters.skillsbench_acp_relay import (
+        CodexExecConfig,
+        SkillsBenchLocalAcpRelay,
+    )
+
+    private_stdout = "PRIVATE_STDOUT_SENTINEL do not publish"
+    generated_todo_id = "todo_generated_solver_plan"
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        fake_bridge = temp_path / "fake-bridge.py"
+        fake_bridge.write_text(
+            "import json, sys\n"
+            "request = json.loads(sys.stdin.read() or '{}')\n"
+            f"cli_payload = {{'ok': True, 'todo_id': {generated_todo_id!r}, "
+            f"'detail': {private_stdout!r}}}\n"
+            "print(json.dumps({'ok': True, 'exit_code': 0, "
+            "'stdout': json.dumps(cli_payload), 'stderr': ''}))\n",
+            encoding="utf-8",
+        )
+        summary_path = temp_path / "agent-operations.jsonl"
+        relay = SkillsBenchLocalAcpRelay(
+            CodexExecConfig(
+                remote_command_file_bridge_command=(
+                    f"{shlex.quote(sys.executable)} {shlex.quote(str(fake_bridge))}"
+                )
+            )
+        )
+        wrapper = relay._write_instrumented_bridge_wrapper(
+            tmp_path=temp_path,
+            summary_path=summary_path,
+        )
+        request = {
+            "operation": "exec",
+            "cwd": "/app",
+            "command": (
+                "/app/.local/bin/loopx --format json todo add "
+                "--goal-id skillsbench-case --role agent "
+                "--text 'public safe solver todo'"
+            ),
+        }
+        result = subprocess.run(
+            [str(wrapper)],
+            input=json.dumps(request),
+            text=True,
+            check=True,
+            capture_output=True,
+        )
+        summary_text = summary_path.read_text(encoding="utf-8")
+        records = [json.loads(line) for line in summary_text.splitlines()]
+
+    assert private_stdout in result.stdout, result.stdout
+    assert private_stdout not in summary_text, summary_text
+    completed = [record for record in records if record.get("record_phase") == "complete"]
+    assert completed[-1]["loopx_todo_id"] == generated_todo_id, completed
+    assert completed[-1]["raw_stdout_recorded"] is False, completed
+
+
 def _assert_bridge_rejects_batched_loopx_commands() -> None:
     sys.path.insert(0, str(REPO_ROOT))
     from loopx.benchmark_adapters.skillsbench_acp_relay import (
@@ -858,6 +917,7 @@ def main() -> int:
     _assert_adapter_route_contract_surface()
     _assert_agent_authored_goal_start_bootstrap()
     _assert_bridge_tracks_guided_start_without_task_text()
+    _assert_bridge_tracks_generated_todo_id_without_raw_output()
     _assert_bridge_rejects_batched_loopx_commands()
     _assert_generated_prompt_requires_agent_authored_separate_requests()
     _assert_control_score_surface()

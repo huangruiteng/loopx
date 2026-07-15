@@ -152,3 +152,55 @@ def enforce_single_loopx_invocation(count, record, append_record) -> None:
     sys.stderr.write(stderr_text)
     raise SystemExit(2)
 '''.strip()
+
+
+LOOPX_TODO_OUTPUT_INSTRUMENTATION_SOURCE = r'''
+def successful_todo_add_id_from_bridge_stdout(
+    subcommands: list[str],
+    bridge_stdout: str,
+) -> str:
+    if subcommands[:2] != ["todo", "add"]:
+        return ""
+    try:
+        response = json.loads(bridge_stdout or "")
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return ""
+    if not isinstance(response, dict):
+        return ""
+    if response.get("ok") is False or response.get("success") is False:
+        return ""
+    for field in ("exit_code", "returncode"):
+        value = response.get(field)
+        if isinstance(value, int) and not isinstance(value, bool) and value != 0:
+            return ""
+
+    candidates = [response]
+    nested_stdout = response.get("stdout")
+    if isinstance(nested_stdout, str):
+        try:
+            nested_response = json.loads(nested_stdout)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            nested_response = None
+        if isinstance(nested_response, dict):
+            candidates.append(nested_response)
+
+    todo_ids = {
+        str(candidate.get("todo_id") or "")
+        for candidate in candidates
+        if re.fullmatch(
+            r"todo_[A-Za-z0-9_-]{6,80}",
+            str(candidate.get("todo_id") or ""),
+        )
+    }
+    return next(iter(todo_ids)) if len(todo_ids) == 1 else ""
+
+def attach_successful_todo_add_id(record, subcommands, bridge_stdout) -> None:
+    if record.get("returncode") != 0 or record.get("loopx_todo_id"):
+        return
+    todo_id = successful_todo_add_id_from_bridge_stdout(
+        subcommands,
+        bridge_stdout,
+    )
+    if todo_id:
+        record["loopx_todo_id"] = todo_id
+'''.strip()

@@ -41,6 +41,7 @@ from loopx.benchmark_adapters.skillsbench_bridge_summary import (
 )
 from loopx.benchmark_adapters.skillsbench_bridge_guard import (
     LOOPX_COMMAND_INSTRUMENTATION_SOURCE,
+    LOOPX_TODO_OUTPUT_INSTRUMENTATION_SOURCE,
 )
 from loopx.benchmark_adapters.skillsbench_acp_failure_policy import (
     RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES,
@@ -2334,6 +2335,7 @@ PROBE_OPERATION_LABELS = {{
 PROBE_PATH_LABELS = {{"bridge_probe_marker"}}
 
 {LOOPX_COMMAND_INSTRUMENTATION_SOURCE}
+{LOOPX_TODO_OUTPUT_INSTRUMENTATION_SOURCE}
 
 SAFE_LOOPX_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{{6,80}}$")
 SAFE_LOOPX_GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{{0,120}}$")
@@ -2447,6 +2449,7 @@ complete_record["returncode"] = int(proc.returncode)
 complete_record["success"] = proc.returncode == 0
 complete_record["stdout_bytes"] = len((proc.stdout or "").encode("utf-8"))
 complete_record["stderr_bytes"] = len((proc.stderr or "").encode("utf-8"))
+attach_successful_todo_add_id(complete_record, subcommands, proc.stdout or "")
 if proc.returncode != 0:
     stderr_text = proc.stderr or ""
     if int(proc.returncode) < 0:
