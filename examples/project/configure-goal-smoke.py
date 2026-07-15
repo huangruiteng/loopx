@@ -154,6 +154,10 @@ def main() -> int:
             ".loopx/config/issue-fix/reviewer-notification-sinks.json",
             "--lark-event-inbox-config",
             ".loopx/config/lark/event-inbox.json",
+            "--reward-memory-config",
+            ".loopx/config/reward-memory/experiment.json",
+            "--reward-memory-agent",
+            "codex-side-bypass",
         ))
         assert dry["ok"] is True, dry
         assert dry["dry_run"] is True, dry
@@ -165,6 +169,7 @@ def main() -> int:
         assert "write_scope" in dry["changed_fields"], dry
         assert "issue_fix_reviewer_notification" in dry["changed_fields"], dry
         assert "lark_event_inbox" in dry["changed_fields"], dry
+        assert "reward_memory" in dry["changed_fields"], dry
         assert dry["after"]["waiting_on"] == "user_or_controller", dry
         assert dry["after"]["write_scope"] == ["docs/**", "tests/**"], dry
         assert dry["after"]["checkpointed_boundary_authority"]["active_write_scope"] == ["docs/**"], dry
@@ -178,6 +183,12 @@ def main() -> int:
             "enabled": True,
             "config_pointer_registered": True,
         }, dry
+        assert dry["after"]["reward_memory"] == {
+            "enabled": True,
+            "experimental": True,
+            "config_pointer_registered": True,
+            "enabled_agents": ["codex-side-bypass"],
+        }, dry
         assert dry["feature_summary"]["multi_subagent"] == "enabled", dry
         catalog = dry["configuration_catalog"]
         assert catalog["schema_version"] == "loopx_goal_configuration_catalog_v0", catalog
@@ -188,6 +199,7 @@ def main() -> int:
             "multi_subagent",
             "explore_graph",
             "explore_harness",
+            "reward_memory",
             "lark_event_inbox",
         }
         assert features["multi_subagent"]["current"]["enabled"] is True
@@ -199,6 +211,12 @@ def main() -> int:
         assert features["lark_event_inbox"]["current"]["enabled"] is True
         assert "--execute" not in features["lark_event_inbox"]["commands"]["preview_enable"]
         assert "--execute" in features["lark_event_inbox"]["commands"]["apply_enable"]
+        assert features["reward_memory"]["availability"] == "experimental_opt_in"
+        assert features["reward_memory"]["current"]["enabled_agents"] == [
+            "codex-side-bypass"
+        ]
+        assert "--execute" not in features["reward_memory"]["commands"]["preview_enable"]
+        assert "--execute" in features["reward_memory"]["commands"]["apply_enable"]
         migration = dry["heartbeat_prompt_migration"]
         assert migration["schema_version"] == "heartbeat_prompt_migration_v1", migration
         assert "agent identity changed" in migration["reason"], migration
@@ -249,6 +267,10 @@ def main() -> int:
             ".loopx/config/issue-fix/reviewer-notification-sinks.json",
             "--lark-event-inbox-config",
             ".loopx/config/lark/event-inbox.json",
+            "--reward-memory-config",
+            ".loopx/config/reward-memory/experiment.json",
+            "--reward-memory-agent",
+            "codex-side-bypass",
             "--execute",
         ))
         assert applied["ok"] is True, applied
@@ -283,6 +305,12 @@ def main() -> int:
             "enabled": True,
             "config_path": ".loopx/config/lark/event-inbox.json",
         }, goal
+        assert goal["control_plane"]["reward_memory"] == {
+            "enabled": True,
+            "experimental": True,
+            "config_path": ".loopx/config/reward-memory/experiment.json",
+            "enabled_agents": ["codex-side-bypass"],
+        }, goal
         boundary = goal_boundary(goal)
         assert boundary["capabilities"]["issue_fix_reviewer_notification"] == {
             "enabled": True,
@@ -301,6 +329,13 @@ def main() -> int:
                 "local_private_content_returned": False,
             },
         }, boundary
+        allowed_boundary = goal_boundary(goal, agent_id="codex-side-bypass")
+        assert allowed_boundary["capabilities"]["reward_memory"]["enabled"] is True
+        assert allowed_boundary["capabilities"]["reward_memory"][
+            "configured_for_agent"
+        ] is True
+        denied_boundary = goal_boundary(goal, agent_id="codex-main-control")
+        assert "reward_memory" not in denied_boundary.get("capabilities", {})
         authority = goal["coordination"]["checkpointed_boundary_authority"][0]
         assert authority["schema_version"] == "checkpointed_boundary_authority_v0", authority
         assert authority["write_scope"] == ["docs/**"], authority
@@ -437,6 +472,30 @@ def main() -> int:
         assert profile_cleared["ok"] is True, profile_cleared
         assert "agent_profiles" in profile_cleared["changed_fields"], profile_cleared
         assert "agent_profiles" not in goal_from_registry(registry_path)["coordination"]
+
+        invalid_reward_agent = payload(run_cli(
+            registry_path,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--reward-memory-agent",
+            "codex-not-registered",
+            check=False,
+        ))
+        assert invalid_reward_agent["ok"] is False, invalid_reward_agent
+        assert "must already be registered" in invalid_reward_agent["error"]
+
+        reward_memory_cleared = payload(run_cli(
+            registry_path,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--clear-reward-memory-config",
+            "--execute",
+        ))
+        assert reward_memory_cleared["ok"] is True, reward_memory_cleared
+        assert "reward_memory" in reward_memory_cleared["changed_fields"]
+        assert "reward_memory" not in goal_from_registry(registry_path)["control_plane"]
 
         agents_cleared = payload(run_cli(
             registry_path,

@@ -634,6 +634,7 @@ agent, operator, and domain-specific surfaces.
 | Operator surfaces | Renders compact project status for humans without making the browser the source of truth. | `loopx serve-status`, [dashboard](apps/presentation/dashboard/README.md), [frontstage](https://huangruiteng.github.io/loopx/frontstage/) |
 | External projections | Projects LoopX todos and gates into collaboration surfaces while LoopX remains the state authority. | `loopx lark-kanban`, [Lark Kanban adapter](docs/lark-kanban-control-plane-adapter.md) |
 | Domain adapters | Packages repeatable work lanes such as issue fixing, content operations, value connector planning, ML experiment advice, and benchmark evidence. | `loopx issue-fix`, `loopx content-ops`, `loopx value-connectors`, `loopx ml-experiment`, `loopx benchmark` |
+| Experimental context learning | Lets named registered agents trial provider-neutral Reward Memory with an ignored local provider binding; it is default-off, explicit, and fail-open. OpenViking is one provider option, not a global dependency. | `loopx configure-goal --reward-memory-config ... --reward-memory-agent ...`, `loopx reward-memory experiment-status`, [architecture](docs/reference/protocols/reward-memory-architecture-v0.md) |
 | Governance patterns | Captures recurring good/bad interaction shapes so new capabilities do not become one-off prompt branches. | [pattern catalog](docs/interaction-pattern-catalog.md), [state model](docs/state-interaction-model.md) |
 
 Every surface should answer the same core questions: what is current, who owns

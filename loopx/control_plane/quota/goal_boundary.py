@@ -5,6 +5,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from ..reward_memory import reward_memory_goal_policy
+
 from ...benchmark_core import compact_run_permission_policy_for_quota
 from ...boundary_authority import checkpointed_boundary_authority_summary
 from ...execution_profile import execution_profile_outcome_floor
@@ -74,6 +76,7 @@ def goal_boundary(
     goal: dict[str, Any],
     item: dict[str, Any] | None = None,
     *,
+    agent_id: str | None = None,
     lark_event_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     boundary: dict[str, Any] = {}
@@ -183,6 +186,49 @@ def goal_boundary(
                 "local_private_content_returned": False,
             }
         boundary.setdefault("capabilities", {})["lark_event_inbox"] = inbox_capability
+    reward_memory = reward_memory_goal_policy(goal)
+    if reward_memory["enabled"] and (
+        agent_id is None or agent_id in reward_memory["enabled_agents"]
+    ):
+        reward_capability: dict[str, Any] = {
+            "enabled": True,
+            "experimental": True,
+            "config_pointer_registered": bool(reward_memory["config_path"]),
+            "enabled_agents": list(reward_memory["enabled_agents"]),
+            "automatic_ingest": False,
+            "automatic_recall": False,
+        }
+        if agent_id is not None:
+            reward_capability.update(
+                {
+                    "configured_for_agent": True,
+                    "status_command": shlex.join(
+                        [
+                            "loopx",
+                            "reward-memory",
+                            "experiment-status",
+                            "--goal-id",
+                            str(goal.get("id") or ""),
+                            "--agent-id",
+                            agent_id,
+                        ]
+                    ),
+                    "ingest_command": shlex.join(
+                        [
+                            "loopx",
+                            "reward-memory",
+                            "ingest-event",
+                            "--goal-id",
+                            str(goal.get("id") or ""),
+                            "--agent-id",
+                            agent_id,
+                            "--input",
+                            "<compact-event.json>",
+                        ]
+                    ),
+                }
+            )
+        boundary.setdefault("capabilities", {})["reward_memory"] = reward_capability
     if goal.get("next_probe"):
         boundary["next_probe"] = str(goal.get("next_probe"))
     if isinstance(goal.get("explore_graph"), dict):

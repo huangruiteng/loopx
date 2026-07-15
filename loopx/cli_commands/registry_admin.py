@@ -442,6 +442,28 @@ def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> 
         help="Remove the goal's generic Lark event inbox config pointer.",
     )
     configure_goal_parser.add_argument(
+        "--reward-memory-config",
+        help=(
+            "Register a repo-relative ignored provider-neutral Reward Memory "
+            "experiment config under .loopx/config/."
+        ),
+    )
+    configure_goal_parser.add_argument(
+        "--reward-memory-agent",
+        dest="reward_memory_agents",
+        action="append",
+        default=None,
+        help=(
+            "Registered agent id allowed to use the Reward Memory experiment. "
+            "Repeatable; comma-separated values are also accepted."
+        ),
+    )
+    configure_goal_parser.add_argument(
+        "--clear-reward-memory-config",
+        action="store_true",
+        help="Disable the Reward Memory experiment and clear its agent allowlist.",
+    )
+    configure_goal_parser.add_argument(
         "--execute",
         action="store_true",
         help="Write the registry. Without this flag, configure-goal is a dry-run preview.",
@@ -670,6 +692,11 @@ def handle_registry_admin_command(
                 lark_event_inbox_config=args.lark_event_inbox_config,
                 clear_lark_event_inbox_config=bool(
                     args.clear_lark_event_inbox_config
+                ),
+                reward_memory_config=args.reward_memory_config,
+                reward_memory_agents=args.reward_memory_agents,
+                clear_reward_memory_config=bool(
+                    args.clear_reward_memory_config
                 ),
                 execute=bool(args.execute),
             )

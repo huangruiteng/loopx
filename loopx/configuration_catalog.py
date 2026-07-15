@@ -46,6 +46,11 @@ def build_goal_configuration_catalog(
         if isinstance(feature_summary.get("lark_event_inbox"), Mapping)
         else {}
     )
+    reward_memory = (
+        feature_summary.get("reward_memory")
+        if isinstance(feature_summary.get("reward_memory"), Mapping)
+        else {}
+    )
     inspect_command = _configure_command(goal_id)
     multi_enable_args = (
         "--multi-subagent-feature",
@@ -228,6 +233,89 @@ def build_goal_configuration_catalog(
                     "url": (
                         "https://github.com/huangruiteng/loopx/blob/main/"
                         "docs/capabilities/explore/README.md"
+                    ),
+                },
+            },
+            {
+                "feature_id": "reward_memory",
+                "display_name": "Reward Memory experiment",
+                "availability": "experimental_opt_in",
+                "default": {"enabled": False},
+                "current": {
+                    "enabled": reward_memory.get("enabled") is True,
+                    "experimental": reward_memory.get("experimental") is True,
+                    "config_pointer_registered": reward_memory.get(
+                        "config_pointer_registered"
+                    )
+                    is True,
+                    "enabled_agents": list(reward_memory.get("enabled_agents") or []),
+                },
+                "required_inputs": {
+                    "ignored-reward-memory-config": (
+                        "Replace the placeholder with a repo-relative ignored JSON "
+                        "config under .loopx/config/."
+                    ),
+                    "agent-id": (
+                        "Replace the placeholder with one registered agent lane. "
+                        "Repeat --reward-memory-agent for another explicit lane."
+                    ),
+                },
+                "consider_when": (
+                    "A named agent lane should trial reviewed, scoped operating "
+                    "lessons through a configured context provider."
+                ),
+                "effect": (
+                    "Allows only the named agent lanes to resolve the ignored "
+                    "provider binding for explicit Reward Memory ingest and recall."
+                ),
+                "does_not": [
+                    "make any provider a global LoopX feature or dependency",
+                    "install, authenticate, or configure the selected provider",
+                    "enable every agent, automatically ingest feedback, or automatically recall",
+                    "bypass scope, authority, freshness, conflict, or exact-readback guards",
+                ],
+                "commands": {
+                    "preview_enable": _configure_command(
+                        goal_id,
+                        "--reward-memory-config",
+                        "<ignored-reward-memory-config>",
+                        "--reward-memory-agent",
+                        "<agent-id>",
+                    ),
+                    "apply_enable": _configure_command(
+                        goal_id,
+                        "--reward-memory-config",
+                        "<ignored-reward-memory-config>",
+                        "--reward-memory-agent",
+                        "<agent-id>",
+                        execute=True,
+                    ),
+                    "preview_disable": _configure_command(
+                        goal_id, "--clear-reward-memory-config"
+                    ),
+                    "apply_disable": _configure_command(
+                        goal_id, "--clear-reward-memory-config", execute=True
+                    ),
+                    "verify": [
+                        inspect_command,
+                        shlex.join(
+                            [
+                                "loopx",
+                                "reward-memory",
+                                "experiment-status",
+                                "--goal-id",
+                                goal_id,
+                                "--agent-id",
+                                "<agent-id>",
+                            ]
+                        ),
+                    ],
+                },
+                "documentation": {
+                    "path": "docs/reference/protocols/reward-memory-architecture-v0.md",
+                    "url": (
+                        "https://github.com/huangruiteng/loopx/blob/main/"
+                        "docs/reference/protocols/reward-memory-architecture-v0.md"
                     ),
                 },
             },

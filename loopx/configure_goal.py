@@ -28,6 +28,10 @@ from .orchestration import (
 )
 from .quota import goal_quota_config
 from .registry import read_json, registry_goals
+from .control_plane.reward_memory import (
+    reward_memory_goal_policy,
+    reward_memory_goal_policy_summary,
+)
 from .control_plane.todos.contract import normalize_todo_claimed_by
 from .control_plane.agents.legacy_migration import (
     completed_peer_agent_runtime_migration,
@@ -194,6 +198,7 @@ def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
             goal
         ),
         "lark_event_inbox": _lark_event_inbox_config_summary(goal),
+        "reward_memory": reward_memory_goal_policy_summary(goal),
         "explore_graph": compact_explore_graph_policy(goal.get("explore_graph")),
         "orchestration": orchestration,
         "waiting_on": goal.get("waiting_on"),
@@ -407,6 +412,9 @@ def configure_goal(
     clear_issue_fix_reviewer_notification_config: bool = False,
     lark_event_inbox_config: str | None = None,
     clear_lark_event_inbox_config: bool = False,
+    reward_memory_config: str | None = None,
+    reward_memory_agents: list[str] | None = None,
+    clear_reward_memory_config: bool = False,
     execute: bool = False,
 ) -> dict[str, Any]:
     if not registry_path.exists():
@@ -474,6 +482,13 @@ def configure_goal(
             "--clear-lark-event-inbox-config cannot be combined with "
             "--lark-event-inbox-config"
         )
+    if clear_reward_memory_config and (
+        reward_memory_config or reward_memory_agents
+    ):
+        raise ValueError(
+            "--clear-reward-memory-config cannot be combined with "
+            "--reward-memory-config or --reward-memory-agent"
+        )
     if waiting_on and waiting_on not in WAITING_ON_CHOICES:
         raise ValueError("--waiting-on must be one of: " + ", ".join(WAITING_ON_CHOICES))
     if multi_subagent_feature is not None and multi_subagent_feature not in MULTI_SUBAGENT_FEATURE_CHOICES:
@@ -501,6 +516,7 @@ def configure_goal(
         if allowed_domains:
             raise ValueError("--multi-subagent-feature off cannot be combined with --allowed-domain")
     registered_agents = _clean_registered_agents(registered_agents)
+    reward_memory_agents = _clean_registered_agents(reward_memory_agents)
     clear_agent_profiles = _clean_registered_agents(clear_agent_profiles)
     supervised_agents = _clean_registered_agents(supervised_agents)
     write_scope = _clean_write_scope(write_scope)
@@ -511,6 +527,10 @@ def configure_goal(
     lark_event_inbox_config = _local_private_config_path(
         lark_event_inbox_config,
         label="lark event inbox config",
+    )
+    reward_memory_config = _local_private_config_path(
+        reward_memory_config,
+        label="reward memory experiment config",
     )
 
     payload = read_json(registry_path)
@@ -531,6 +551,42 @@ def configure_goal(
         if registered_agents is not None
         else normalize_registered_agents(existing_coordination.get("registered_agents"))
     )
+    existing_reward_memory = reward_memory_goal_policy(goal)
+    effective_reward_memory_agents = (
+        reward_memory_agents
+        if reward_memory_agents is not None
+        else existing_reward_memory["enabled_agents"]
+    )
+    if reward_memory_config is not None or reward_memory_agents is not None:
+        effective_reward_memory_config = (
+            reward_memory_config or existing_reward_memory["config_path"]
+        )
+        if not effective_reward_memory_config:
+            raise ValueError(
+                "--reward-memory-agent requires an existing or supplied "
+                "--reward-memory-config"
+            )
+        if not effective_reward_memory_agents:
+            raise ValueError(
+                "enabling Reward Memory requires at least one "
+                "--reward-memory-agent"
+            )
+    unknown_reward_memory_agents = sorted(
+        set(effective_reward_memory_agents) - set(effective_registered_agents)
+    )
+    reward_memory_remains_enabled = (
+        not clear_reward_memory_config
+        and (
+            existing_reward_memory["enabled"]
+            or reward_memory_config is not None
+            or reward_memory_agents is not None
+        )
+    )
+    if reward_memory_remains_enabled and unknown_reward_memory_agents:
+        raise ValueError(
+            "Reward Memory agents must already be registered for this goal: "
+            + ", ".join(unknown_reward_memory_agents)
+        )
     normalized_agent_profiles: dict[str, dict[str, Any]] = {}
     for raw_profile in agent_profiles or []:
         if not isinstance(raw_profile, Mapping):
@@ -651,6 +707,30 @@ def configure_goal(
             control_plane["lark_event_inbox"] = {
                 "enabled": True,
                 "config_path": lark_event_inbox_config,
+            }
+        goal["control_plane"] = control_plane
+
+    if (
+        reward_memory_config is not None
+        or reward_memory_agents is not None
+        or clear_reward_memory_config
+    ):
+        control_plane = (
+            goal.get("control_plane")
+            if isinstance(goal.get("control_plane"), dict)
+            else {}
+        )
+        if clear_reward_memory_config:
+            control_plane.pop("reward_memory", None)
+        else:
+            current_reward_memory = reward_memory_goal_policy(goal)
+            control_plane["reward_memory"] = {
+                "enabled": True,
+                "experimental": True,
+                "config_path": (
+                    reward_memory_config or current_reward_memory["config_path"]
+                ),
+                "enabled_agents": list(effective_reward_memory_agents),
             }
         goal["control_plane"] = control_plane
 
@@ -853,6 +933,7 @@ def configure_goal(
         ),
         "peer_supervisor": deepcopy(after.get("supervisor") or {"enabled": False}),
         "lark_event_inbox": _lark_event_inbox_config_summary(goal),
+        "reward_memory": reward_memory_goal_policy_summary(goal),
         "default": "off",
         "configuration_entry": "multi_subagent_feature",
     }

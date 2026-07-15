@@ -398,6 +398,7 @@ def main(argv: list[str] | None = None) -> int:
 
     reward_memory_result = handle_reward_memory_command(
         args,
+        registry_path=registry_path,
         output_format=output_format,
         print_payload=print_payload,
     )

@@ -1353,7 +1353,7 @@ def build_quota_should_run(
             }
             recovery_allowed = False
             reason = str(quota["reason"])
-        goal_boundary = _goal_boundary(registry_goal or item, item=item, lark_event_inbox_urgency_projector=_project_lark_event_inbox_urgency)
+        goal_boundary = _goal_boundary(registry_goal or item, item=item, agent_id=normalize_todo_claimed_by((agent_identity or {}).get("agent_id")), lark_event_inbox_urgency_projector=_project_lark_event_inbox_urgency)
         workspace_guard = build_agent_workspace_guard(
             item,
             agent_identity,

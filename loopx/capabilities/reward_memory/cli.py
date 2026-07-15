@@ -5,6 +5,7 @@ import json
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
+from ..issue_fix.reward_memory import ingest_issue_fix_reward_memory_event
 from .architecture import (
     build_reward_memory_architecture_packet,
     build_reward_memory_route_packet,
@@ -18,13 +19,13 @@ from .health import (
     build_reward_memory_corpus_health_packet,
     reward_memory_health_case,
 )
-from .evaluation import run_reward_memory_evaluation
-from ..issue_fix.reward_memory import ingest_issue_fix_reward_memory_event
 from .dogfood import (
     build_reward_memory_dogfood_batch,
     build_reward_memory_dogfood_receipt,
     build_reward_memory_operator_control,
 )
+from .evaluation import run_reward_memory_evaluation
+from .experiment import resolve_reward_memory_experiment
 from .registry import build_reward_memory_corpus_registry_packet
 
 
@@ -135,9 +136,23 @@ def register_reward_memory_commands(
         "--input",
         required=True,
         help=(
-            "JSON object with adapter, event, corpus, standing_policy, "
-            "provider_binding, and the immutable event observed_at used again "
-            "on retries; raw comments are rejected."
+            "With --goal-id/--agent-id: compact JSON containing event and the "
+            "immutable observed_at (adapter is optional). Without them: a "
+            "full public fixture for no-write evaluation. Raw comments are rejected."
+        ),
+    )
+    ingest.add_argument(
+        "--goal-id",
+        help=(
+            "Resolve the goal's default-off experiment config. Must be paired "
+            "with --agent-id."
+        ),
+    )
+    ingest.add_argument(
+        "--agent-id",
+        help=(
+            "Use one registered, explicitly enabled agent lane. Must be paired "
+            "with --goal-id."
         ),
     )
     ingest.add_argument(
@@ -145,6 +160,14 @@ def register_reward_memory_commands(
         action="store_true",
         help="Perform the configured provider write and exact readback.",
     )
+
+    status = sub.add_parser(
+        "experiment-status",
+        help="Inspect one agent-scoped experimental route without provider access.",
+    )
+    add_subcommand_format(status)
+    status.add_argument("--goal-id", required=True)
+    status.add_argument("--agent-id", required=True)
 
     evaluate = sub.add_parser(
         "evaluate",
@@ -214,6 +237,7 @@ def register_reward_memory_commands(
 def handle_reward_memory_command(
     args: argparse.Namespace,
     *,
+    registry_path: Path,
     output_format: Callable[..., str],
     print_payload: Callable[[dict[str, object], str, Callable], None],
 ) -> int | None:
@@ -252,38 +276,95 @@ def handle_reward_memory_command(
                 )
             payload = review_reward_memory_candidate(candidate, review)
             payload["adapter"] = adapter
+        elif args.reward_memory_command == "experiment-status":
+            payload, _ = resolve_reward_memory_experiment(
+                registry_path=registry_path,
+                goal_id=args.goal_id,
+                agent_id=args.agent_id,
+            )
         elif args.reward_memory_command == "ingest-event":
             source = _load_json_object(args.input)
-            allowed = {
-                "adapter",
-                "event",
-                "corpus",
-                "standing_policy",
-                "provider_binding",
-                "observed_at",
-            }
+            configured_route = bool(args.goal_id or args.agent_id)
+            if configured_route and not (args.goal_id and args.agent_id):
+                raise ValueError("--goal-id and --agent-id must be supplied together")
+            if args.execute and not configured_route:
+                raise ValueError(
+                    "--execute requires an enabled experiment route via "
+                    "--goal-id and --agent-id"
+                )
+            allowed = (
+                {"adapter", "event", "observed_at"}
+                if configured_route
+                else {
+                    "adapter",
+                    "event",
+                    "corpus",
+                    "standing_policy",
+                    "provider_binding",
+                    "observed_at",
+                }
+            )
             unexpected = sorted(set(source) - allowed)
             if unexpected:
                 raise ValueError(
-                    "ingest input contains unsupported fields: "
-                    + ", ".join(unexpected)
+                    "ingest input contains unsupported fields: " + ", ".join(unexpected)
                 )
-            if source.get("adapter") != "issue_fix_maintainer_feedback":
+            experiment_status: dict[str, object] | None = None
+            experiment_config: dict[str, object] | None = None
+            if configured_route:
+                experiment_status, experiment_config = resolve_reward_memory_experiment(
+                    registry_path=registry_path,
+                    goal_id=args.goal_id,
+                    agent_id=args.agent_id,
+                )
+                if experiment_config is None:
+                    raise ValueError(
+                        "Reward Memory experiment is unavailable for this agent: "
+                        + str(experiment_status.get("status") or "unavailable")
+                    )
+            adapter = source.get("adapter") or (
+                experiment_config.get("adapter") if experiment_config else None
+            )
+            if adapter != "issue_fix_maintainer_feedback":
                 raise ValueError(
                     "adapter must be issue_fix_maintainer_feedback; semantic "
                     "routing is intentionally not inferred"
                 )
-            for key in ("event", "corpus", "standing_policy", "provider_binding"):
+            for key in ("event",):
                 if not isinstance(source.get(key), Mapping):
+                    raise ValueError(f"{key} must be an object")
+            corpus = (
+                experiment_config["corpus"]
+                if experiment_config
+                else source.get("corpus")
+            )
+            standing_policy = (
+                experiment_config["standing_policy"]
+                if experiment_config
+                else source.get("standing_policy")
+            )
+            provider_binding = (
+                experiment_config["provider_binding"]
+                if experiment_config
+                else source.get("provider_binding")
+            )
+            for key, value in (
+                ("corpus", corpus),
+                ("standing_policy", standing_policy),
+                ("provider_binding", provider_binding),
+            ):
+                if not isinstance(value, Mapping):
                     raise ValueError(f"{key} must be an object")
             payload = ingest_issue_fix_reward_memory_event(
                 source["event"],
-                corpus=source["corpus"],
-                standing_policy=source["standing_policy"],
-                provider_binding=source["provider_binding"],
+                corpus=corpus,
+                standing_policy=standing_policy,
+                provider_binding=provider_binding,
                 observed_at=str(source.get("observed_at") or ""),
                 execute=args.execute,
             )
+            if experiment_status is not None:
+                payload["experiment"] = experiment_status
         elif args.reward_memory_command == "evaluate":
             payload = run_reward_memory_evaluation()
         elif args.reward_memory_command == "dogfood-evaluate":

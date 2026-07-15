@@ -1,0 +1,194 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from loopx.capabilities.reward_memory.experiment import (
+    resolve_reward_memory_experiment,
+)
+from loopx.cli import main
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+PUBLIC_FIXTURE = REPO_ROOT / "examples/fixtures/reward-memory-ingest-event.public.json"
+
+
+def _fixture() -> dict[str, object]:
+    return json.loads(PUBLIC_FIXTURE.read_text(encoding="utf-8"))
+
+
+def _experiment(tmp_path: Path) -> tuple[Path, Path, Path]:
+    fixture = _fixture()
+    project = tmp_path / "project"
+    config_path = project / ".loopx/config/reward-memory/experiment.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "reward_memory_experiment_config_v0",
+                "adapter": fixture["adapter"],
+                "corpus": fixture["corpus"],
+                "standing_policy": fixture["standing_policy"],
+                "provider_binding": fixture["provider_binding"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "goals": [
+                    {
+                        "id": "reward-memory-goal",
+                        "repo": str(project),
+                        "coordination": {
+                            "registered_agents": ["pilot", "meta"],
+                        },
+                        "control_plane": {
+                            "reward_memory": {
+                                "enabled": True,
+                                "experimental": True,
+                                "config_path": (
+                                    ".loopx/config/reward-memory/experiment.json"
+                                ),
+                                "enabled_agents": ["pilot"],
+                            }
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    event_path = tmp_path / "event.json"
+    event_path.write_text(
+        json.dumps(
+            {
+                "adapter": fixture["adapter"],
+                "event": fixture["event"],
+                "observed_at": fixture["observed_at"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return registry_path, event_path, PUBLIC_FIXTURE
+
+
+def _run(capsys, registry_path: Path, *args: str) -> tuple[int, dict[str, object]]:
+    result = main(
+        [
+            "--registry",
+            str(registry_path),
+            "--format",
+            "json",
+            *args,
+        ]
+    )
+    output = capsys.readouterr().out
+    return result, json.loads(output)
+
+
+def test_status_is_agent_scoped_and_public_safe(tmp_path: Path) -> None:
+    registry_path, _, _ = _experiment(tmp_path)
+
+    allowed, config = resolve_reward_memory_experiment(
+        registry_path=registry_path,
+        goal_id="reward-memory-goal",
+        agent_id="pilot",
+    )
+    denied, denied_config = resolve_reward_memory_experiment(
+        registry_path=registry_path,
+        goal_id="reward-memory-goal",
+        agent_id="meta",
+    )
+
+    assert allowed["status"] == "available"
+    assert allowed["automatic_ingest"] is False
+    assert allowed["automatic_recall"] is False
+    assert "config_path" not in allowed
+    assert config is not None
+    assert denied["status"] == "agent_not_enabled"
+    assert denied_config is None
+
+
+def test_registry_cannot_enable_experiment_without_explicit_marker(
+    tmp_path: Path,
+) -> None:
+    registry_path, _, _ = _experiment(tmp_path)
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry["goals"][0]["control_plane"]["reward_memory"].pop("experimental")
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    status, config = resolve_reward_memory_experiment(
+        registry_path=registry_path,
+        goal_id="reward-memory-goal",
+        agent_id="pilot",
+    )
+
+    assert status["status"] == "disabled"
+    assert status["experimental"] is False
+    assert config is None
+
+
+def test_configured_ingest_accepts_only_compact_event_and_stays_dry_run(
+    tmp_path: Path, capsys
+) -> None:
+    registry_path, event_path, _ = _experiment(tmp_path)
+
+    result, receipt = _run(
+        capsys,
+        registry_path,
+        "reward-memory",
+        "ingest-event",
+        "--goal-id",
+        "reward-memory-goal",
+        "--agent-id",
+        "pilot",
+        "--input",
+        str(event_path),
+    )
+
+    assert result == 0
+    assert receipt["status"] == "planned"
+    assert receipt["external_writes_performed"] is False
+    assert receipt["experiment"]["available"] is True
+    assert "provider_binding" not in receipt["experiment"]
+
+
+def test_execute_cannot_bypass_experiment_route(tmp_path: Path, capsys) -> None:
+    registry_path, _, full_fixture = _experiment(tmp_path)
+
+    result, receipt = _run(
+        capsys,
+        registry_path,
+        "reward-memory",
+        "ingest-event",
+        "--input",
+        str(full_fixture),
+        "--execute",
+    )
+
+    assert result == 2
+    assert receipt["status"] == "invalid_request"
+    assert "requires an enabled experiment route" in receipt["error"]
+
+
+def test_legacy_full_packet_remains_available_for_no_write_evaluation(
+    tmp_path: Path, capsys
+) -> None:
+    registry_path, _, full_fixture = _experiment(tmp_path)
+
+    result, receipt = _run(
+        capsys,
+        registry_path,
+        "reward-memory",
+        "ingest-event",
+        "--input",
+        str(full_fixture),
+    )
+
+    assert result == 0
+    assert receipt["status"] == "planned"
+    assert receipt["external_writes_performed"] is False

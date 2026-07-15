@@ -23,8 +23,44 @@ The machine-readable contract is available through:
 ```bash
 loopx reward-memory architecture --format json
 loopx reward-memory candidate-review --case issue-fix-verified-contributor --decision accept --format json
-loopx reward-memory ingest-event --input compact-event.json --execute --format json
+loopx reward-memory ingest-event --input full-public-fixture.json --format json
 ```
+
+## Experimental activation
+
+Reward Memory is a provider-neutral, default-off experimental goal capability.
+It is enabled for named registered agent lanes, not for a whole LoopX install:
+
+```bash
+# Preview first; add --execute only after checking the boundary change.
+loopx configure-goal --goal-id <goal> \
+  --reward-memory-config .loopx/config/reward-memory/experiment.json \
+  --reward-memory-agent <registered-agent>
+
+loopx reward-memory experiment-status \
+  --goal-id <goal> --agent-id <registered-agent> --format json
+```
+
+The registry retains only `enabled`, `experimental`, an ignored repo-relative
+config pointer, and the explicit agent allowlist. The ignored config contains
+the adapter, corpus, standing policy, and provider binding. Provider-specific
+choices therefore stay local and private. OpenViking is the first provider
+used by the Issue Fix pilot, but it is not a global LoopX feature flag or
+mandatory dependency; another provider can satisfy the same binding contract.
+
+An allowlisted agent supplies only the compact event at runtime:
+
+```bash
+loopx reward-memory ingest-event \
+  --goal-id <goal> --agent-id <registered-agent> \
+  --input compact-event.json --execute --format json
+```
+
+Real provider writes require this configured goal-and-agent route. The legacy
+full-packet form remains available only as a no-write evaluation fixture.
+Activation does not enable automatic feedback capture, ingest, recall, or
+provider authentication. Issue Fix continues normally when the experiment is
+disabled, unavailable, rejected by guards, or fails exact readback.
 
 ## Five first-class classes
 
@@ -187,12 +223,13 @@ implementation.
 ## Minimal ingest loop
 
 `loopx reward-memory ingest-event` is a thin atomic orchestration, not another
-memory product layer. The caller explicitly selects an adapter; the first one
-is `issue_fix_maintainer_feedback`. LoopX neither retains raw comment bodies nor
-uses keywords to decide which feedback deserves memory. The model or calling
-module first distils an `issue_fix_reward_memory_event_v0` containing only a
-source reference, verified actor/role, exact workspace/repository/surface/
-revision, compact summary, reasoning, and current-artifact evidence.
+memory product layer. The configured experiment explicitly selects an adapter;
+the first one is `issue_fix_maintainer_feedback`. LoopX neither retains raw
+comment bodies nor uses keywords to decide which feedback deserves memory. The
+model or calling module first distils an `issue_fix_reward_memory_event_v0`
+containing only a source reference, verified actor/role, exact workspace/
+repository/surface/revision, compact summary, reasoning, and current-artifact
+evidence.
 
 A `reward_memory_standing_policy_v0` predeclares the corpus owner, reviewer,
 authority source, exact project/surfaces, one memory class, source kinds,
@@ -212,7 +249,9 @@ or readback mismatch fails open and does not block normal Issue Fix work.
 `observed_at` is the immutable first-observed event timestamp and must be reused
 on retries. The provider target binds both standing-policy and candidate
 digests so a policy revision cannot silently reuse an older activation.
-`--execute` is off by default; dry-run returns only `planned`.
+`--execute` is off by default; dry-run returns only `planned`. Execute also
+requires the goal id and allowlisted agent id, so a caller cannot bypass the
+default-off experiment policy by supplying a provider binding directly.
 
 The next patch-planning turn still explicitly calls the existing
 `run_issue_fix_patch_planning_reward_memory`. The model decides apply, ignore,

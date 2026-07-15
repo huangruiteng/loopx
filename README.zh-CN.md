@@ -244,6 +244,10 @@ flowchart LR
   agent lane、user gate、证据和 review 信号。
 - **Performance review**：用产出数量、产出质量、token cost 和 user attention cost
   评价长期 Loop Agent 的项目级价值。
+- **实验性上下文学习**：Reward Memory 默认关闭，只给明确登记的 agent lane 开启；
+  provider binding 留在 repo 内 ignored config，写入与召回保持显式并 fail open。
+  OpenViking 是当前可用 provider，而不是 LoopX 的全局开关或强制依赖。详见
+  [Reward Memory 架构](docs/reference/protocols/reward-memory-architecture-v0.zh-CN.md)。
 
 ## 适合什么场景
 
