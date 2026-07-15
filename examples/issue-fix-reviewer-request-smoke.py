@@ -397,6 +397,36 @@ def main() -> int:
         assert len(combined.lark_calls) == 3
         assert_public_safe(with_secondary)
 
+        windowed_sinks_input = json.loads(json.dumps(sinks_input))
+        windowed_sinks_input["delivery_policy"] = {
+            "timezone": "Asia/Shanghai",
+            "allowed_local_time": {"start": "09:00", "end": "21:00"},
+            "outside_window": "queue_without_send",
+        }
+        trusted_clock_runner = FakeCombinedRunner(
+            FakeGitHubRunner(
+                before=metadata(),
+                after=metadata(requested=["service-owner"]),
+            )
+        )
+        trusted_clock = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            notification_sinks_input=windowed_sinks_input,
+            execute=True,
+            generated_at="2026-07-10T02:30:00Z",
+            notification_delivery_observed_at="2026-07-10T14:30:00Z",
+            runner=trusted_clock_runner,
+        )
+        assert trusted_clock["generated_at"] == "2026-07-10T02:30:00Z"
+        assert trusted_clock["secondary_notification_status"] == (
+            "queued_until_window"
+        )
+        assert trusted_clock["secondary_notifications"]["queued_receipts"]
+        assert trusted_clock_runner.lark_calls == []
+        assert_public_safe(trusted_clock)
+
         fallback_sink_input = json.loads(json.dumps(sinks_input))
         fallback_sink_input["sinks"][0]["reviewer_identities"] = {
             "@history-owner": {
@@ -1317,6 +1347,14 @@ def main() -> int:
             reviewer_notification_queue_from_state(stored_with_queue),
         )
         assert restored_config["queued_receipts"] == [queued_receipt]
+        repeated_queue_write = persist_issue_fix_reviewer_notification_state(
+            lifecycle_path,
+            stored_with_queue,
+            receipts=[],
+            queued_receipts=[queued_receipt],
+        )
+        assert repeated_queue_write["status"] == "unchanged"
+        assert repeated_queue_write["write_performed"] is False
 
         queue_clear = persist_issue_fix_reviewer_notification_state(
             lifecycle_path,

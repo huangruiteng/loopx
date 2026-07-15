@@ -269,23 +269,25 @@ def _idempotency_key(
     return f"sha256:{hashlib.sha256(logical_effect.encode('utf-8')).hexdigest()}"
 
 
-def _parse_generated_at(value: str | None) -> datetime:
-    text = str(value or "").strip()
+def _parse_delivery_observed_at(value: str | None) -> datetime:
+    if value is None:
+        return datetime.now(timezone.utc)
+    text = str(value).strip()
     if not text:
-        raise ValueError("generated_at is required by delivery policy")
+        raise ValueError("delivery_observed_at must not be empty")
     try:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError as exc:
-        raise ValueError("generated_at must be an ISO timestamp") from exc
+        raise ValueError("delivery_observed_at must be an ISO timestamp") from exc
     if parsed.tzinfo is None:
-        raise ValueError("generated_at must include a timezone")
+        raise ValueError("delivery_observed_at must include a timezone")
     return parsed
 
 
 def _delivery_window_decision(
     policy: Any,
     *,
-    generated_at: str | None,
+    delivery_observed_at: str | None,
 ) -> dict[str, Any]:
     if policy is None:
         return {"configured": False, "allowed": True}
@@ -309,7 +311,7 @@ def _delivery_window_decision(
     except ZoneInfoNotFoundError as exc:
         raise ValueError("delivery_policy timezone is invalid") from exc
 
-    observed = _parse_generated_at(generated_at)
+    observed = _parse_delivery_observed_at(delivery_observed_at)
     local = observed.astimezone(location)
     start = time.fromisoformat(start_text)
     end = time.fromisoformat(end_text)
@@ -1036,7 +1038,7 @@ def build_issue_fix_reviewer_notification_sinks_result(
     reviewer_handles: Sequence[str],
     sinks_input: Mapping[str, Any],
     execute: bool = False,
-    generated_at: str | None = None,
+    delivery_observed_at: str | None = None,
     runner: CommandRunner = _default_runner,
     sink_adapters: Mapping[str, NotificationSinkAdapter] | None = None,
 ) -> dict[str, Any]:
@@ -1104,10 +1106,16 @@ def build_issue_fix_reviewer_notification_sinks_result(
         for value in (raw_receipts if isinstance(raw_receipts, list) else [])
         if re.fullmatch(r"sha256:[a-f0-9]{64}", str(value))
     }
+    queued_receipts_by_key = {
+        str(value["idempotency_key"]): value
+        for value in reviewer_notification_queue_from_state(
+            {"reviewer_notification_queue": sinks_input.get("queued_receipts")}
+        )
+    }
     try:
         delivery_window = _delivery_window_decision(
             sinks_input.get("delivery_policy"),
-            generated_at=generated_at,
+            delivery_observed_at=delivery_observed_at,
         )
     except ValueError:
         base["blocker"] = "reviewer_notification_delivery_policy_invalid"
@@ -1144,6 +1152,16 @@ def build_issue_fix_reviewer_notification_sinks_result(
                     external_write_authority_asserted=execute,
                     notification_verified=True,
                 )
+            elif queued_key and queued_key in queued_receipts_by_key:
+                result = _public_result(
+                    sink_kind=sink_kind,
+                    reviewer_handles=reviewers,
+                    idempotency_key=queued_key,
+                    status="already_queued",
+                    ok=True,
+                    external_write_authority_asserted=execute,
+                )
+                result["queue_receipt"] = dict(queued_receipts_by_key[queued_key])
             else:
                 result = _queued_result(
                     repo=repo,

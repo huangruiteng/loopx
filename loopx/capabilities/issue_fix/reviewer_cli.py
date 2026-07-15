@@ -342,6 +342,7 @@ def handle_issue_fix_reviewer_command(
     *,
     registry_path: Path | None,
     generated_at: str,
+    delivery_observed_at: str,
 ) -> tuple[dict[str, Any], Renderer] | None:
     if args.issue_fix_command == "reviewer-plan":
         payload = build_issue_fix_reviewer_recommendation_packet(
@@ -525,6 +526,7 @@ def handle_issue_fix_reviewer_command(
         ),
         execute=args.execute,
         generated_at=generated_at,
+        notification_delivery_observed_at=delivery_observed_at,
     )
     payload["secondary_notification_source"] = notification_sinks_source
     payload["secondary_notification_lifecycle_materialized"] = (

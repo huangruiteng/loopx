@@ -473,6 +473,7 @@ def build_issue_fix_reviewer_request_packet(
     provider_payload: Mapping[str, Any] | None = None,
     execute: bool = False,
     generated_at: str | None = "2026-07-10T00:00:00Z",
+    notification_delivery_observed_at: str | None = None,
     runner: CommandRunner = _default_runner,
 ) -> dict[str, Any]:
     """Select and optionally notify the top repository-native reviewer."""
@@ -927,7 +928,7 @@ def build_issue_fix_reviewer_request_packet(
                 reviewer_handles=notification_targets,
                 sinks_input=notification_sinks_input,
                 execute=execute,
-                generated_at=generated_at,
+                delivery_observed_at=notification_delivery_observed_at,
                 runner=runner,
                 sink_adapters=notification_sink_adapters,
             )

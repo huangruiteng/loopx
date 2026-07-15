@@ -75,7 +75,9 @@ mode sends only while the current local time is inside the half-open
 LoopX performs no provider call and returns `queued_until_window` with a
 compact `issue_fix_reviewer_notification_queue_receipt_v0`. Invalid timezone,
 time, or outside-window policy fails closed. Preview remains read-only and is
-never converted into a queued execution.
+never converted into a queued execution. The execute path uses the trusted
+invocation clock for this decision; the public `--generated-at` artifact field
+cannot move a send into or out of the delivery window.
 
 Profile names, `destination_id`, and `member_id` are execution inputs. They are
 never copied into the result, domain state, todo, Kanban, PR, or public log.
@@ -120,7 +122,9 @@ external notification, merges verified hashed receipts into the private
 input, and writes new verified receipts or compact queued delivery metadata
 back to that same row. A restart preserves a queued item; a later verified send
 removes the matching queue entry while retaining the stable receipt. Retry
-therefore remains idempotent without a second ledger. Goal boundary/status
+outside the window returns `already_queued` with the original queue receipt,
+so neither the provider nor local state changes. Retry therefore remains
+idempotent without a second ledger. Goal boundary/status
 projections expose only that the capability and pointer are configured; they
 never expose the pointer value or profiles
 (`config_pointer_registered=true`).
@@ -128,8 +132,8 @@ never expose the pointer value or profiles
 A zero exit status is insufficient. The adapter requires a message id from the
 send response, fetches that message with the same dedicated bot profile, and
 verifies both the id and PR URL. Results distinguish `preview_ready`,
-`queued_until_window`, `sent_verified`, `already_notified`, `sent_unverified`,
-and `gate_required`.
+`queued_until_window`, `already_queued`, `sent_verified`, `already_notified`,
+`sent_unverified`, and `gate_required`.
 Permission or group-membership errors become the concrete
 `lark_bot_group_access_required` gate.
 

@@ -18,6 +18,7 @@ from loopx.capabilities.issue_fix.reviewer_notification import (  # noqa: E402
     ISSUE_FIX_REVIEWER_NOTIFICATION_SINKS_INPUT_SCHEMA_VERSION,
     ISSUE_FIX_REVIEWER_NOTIFICATION_SINKS_RESULT_SCHEMA_VERSION,
     build_issue_fix_reviewer_notification_sinks_result,
+    with_reviewer_notification_state,
 )
 
 
@@ -261,7 +262,7 @@ def main() -> int:
         reviewer_handles=["@service-owner"],
         sinks_input=outside_window_config,
         execute=True,
-        generated_at="2026-07-10T14:30:00Z",
+        delivery_observed_at="2026-07-10T14:30:00Z",
         runner=outside_window_runner,
     )
     assert queued["ok"] is True, queued
@@ -274,6 +275,29 @@ def main() -> int:
     assert outside_window_runner.calls == []
     assert_public_safe(queued)
 
+    queued_retry_config = with_reviewer_notification_state(
+        outside_window_config,
+        (),
+        queued["queued_receipts"],
+    )
+    queued_retry_runner = FakeSinkRunner()
+    queued_retry = build_issue_fix_reviewer_notification_sinks_result(
+        repo="owner/repo",
+        pr_number=42,
+        pr_url="https://github.com/owner/repo/pull/42",
+        author_handle="@current-author",
+        reviewer_handles=["@service-owner"],
+        sinks_input=queued_retry_config,
+        execute=True,
+        delivery_observed_at="2026-07-10T14:35:00Z",
+        runner=queued_retry_runner,
+    )
+    assert queued_retry["ok"] is True, queued_retry
+    assert queued_retry["status"] == "already_queued"
+    assert queued_retry["queued_receipts"] == queued["queued_receipts"]
+    assert queued_retry_runner.calls == []
+    assert_public_safe(queued_retry)
+
     inside_window_runner = FakeSinkRunner()
     inside_window = build_issue_fix_reviewer_notification_sinks_result(
         repo="owner/repo",
@@ -283,7 +307,7 @@ def main() -> int:
         reviewer_handles=["@service-owner"],
         sinks_input=outside_window_config,
         execute=True,
-        generated_at="2026-07-10T02:30:00Z",
+        delivery_observed_at="2026-07-10T02:30:00Z",
         runner=inside_window_runner,
     )
     assert inside_window["status"] == "sent_verified", inside_window
@@ -304,7 +328,7 @@ def main() -> int:
         reviewer_handles=["@service-owner"],
         sinks_input=overnight_config,
         execute=True,
-        generated_at="2026-07-10T15:30:00Z",
+        delivery_observed_at="2026-07-10T15:30:00Z",
         runner=overnight_runner,
     )
     assert overnight["status"] == "sent_verified", overnight
@@ -325,7 +349,7 @@ def main() -> int:
         reviewer_handles=["@service-owner"],
         sinks_input=invalid_window_config,
         execute=True,
-        generated_at="2026-07-10T14:30:00Z",
+        delivery_observed_at="2026-07-10T14:30:00Z",
         runner=invalid_window_runner,
     )
     assert invalid_window["ok"] is False

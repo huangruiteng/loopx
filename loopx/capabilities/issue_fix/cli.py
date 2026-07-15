@@ -867,11 +867,13 @@ def handle_issue_fix_command(
     print_payload: PrintPayload,
 ) -> int:
     try:
-        generated_at = str(args.generated_at or now_utc_iso()).strip()
+        invocation_at = now_utc_iso()
+        generated_at = str(args.generated_at or invocation_at).strip()
         reviewer_result = handle_issue_fix_reviewer_command(
             args,
             registry_path=registry_path,
             generated_at=generated_at,
+            delivery_observed_at=invocation_at,
         )
         if reviewer_result is not None:
             payload, renderer = reviewer_result
