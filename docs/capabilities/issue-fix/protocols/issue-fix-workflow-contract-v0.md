@@ -24,7 +24,11 @@ open PRs, merge, publish, or run destructive git without an explicit gate.
    The provider-neutral seam performs no searches itself. It returns
    `proceed`, `reuse_existing_pr`, `comment_only`, or `skip`; non-proceed routes
    suppress new classification/feasibility todos and preserve any existing
-   agentic-recall receipt instead of opening another recall window.
+   agentic-recall receipt instead of opening another recall window. Terminal
+   domain state or a matching merged implementation takes precedence over a
+   simultaneous open implementation. Non-proceed routes also suppress
+   unrelated body/comment read gates because no new candidate classification
+   will consume that provider content.
 2. **Metadata preview:** build `github_issue_metadata_preview_v0` from a public
    URL, compact reference, mocked metadata, or caller-approved metadata fetch.
    Allowed fields are repo, issue or PR number, state, title summary, labels,

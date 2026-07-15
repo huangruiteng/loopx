@@ -345,7 +345,7 @@ def build_issue_fix_workflow_plan_packet(
             )
         ]
     user_gates: list[dict[str, Any]] = []
-    if gated_fields:
+    if gated_fields and preflight_route == "proceed":
         user_gates.append(
             _todo_preview(
                 planner_order=3,
@@ -496,7 +496,7 @@ def build_issue_fix_workflow_plan_packet(
         "user_action_required": False,
         "agent_can_continue": True,
         "top_agent_todo": agent_todos[0],
-        "top_gate": user_gates[0] if gated_fields else None,
+        "top_gate": user_gates[0] if user_gates else None,
         "next_safe_action": preflight_next_action or (
             (
                 "inspect current repository evidence for "

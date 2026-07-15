@@ -100,6 +100,51 @@ def main() -> int:
     assert "agentic recall" in todos[0]["text"], todos
     assert plan["first_screen"]["top_agent_todo"] == todos[0], plan
 
+    gated_non_proceed = build_issue_fix_workflow_plan_packet(
+        repo="volcengine/OpenViking",
+        issue_ref="#3005",
+        provider_payload={
+            "number": 3005,
+            "state": "open",
+            "title": "Existing implementation candidate",
+            "body": "body remains behind the provider-content gate",
+            "comments": ["comment remains behind the provider-content gate"],
+        },
+        candidate_preflight_input=fixture(),
+        generated_at=generated_at,
+    )
+    gated_non_proceed_todos = gated_non_proceed[
+        "ordered_loopx_todo_writeback_preview"
+    ]
+    assert [todo["action_kind"] for todo in gated_non_proceed_todos] == [
+        "issue_fix_reuse_existing_pr"
+    ], gated_non_proceed_todos
+    assert gated_non_proceed["first_screen"]["top_gate"] is None, gated_non_proceed
+
+    merged_and_open = fixture()
+    merged_and_open["domain_state"] = None
+    merged_and_open["numeric_pr_evidence"] = [
+        {
+            "repo": "volcengine/OpenViking",
+            "pr_ref": "pull_2998",
+            "state": "MERGED",
+            "url": "https://github.com/volcengine/OpenViking/pull/2998",
+            "closing_issue_refs": ["#3005"],
+        }
+    ]
+    terminal_implementation = build_issue_fix_candidate_preflight_packet(
+        repo="volcengine/OpenViking",
+        issue_ref="#3005",
+        input_payload=merged_and_open,
+        generated_at=generated_at,
+    )
+    assert terminal_implementation["decision"]["route"] == "skip", (
+        terminal_implementation
+    )
+    assert terminal_implementation["decision"]["reason_codes"] == [
+        "merged_implementation_pr"
+    ], terminal_implementation
+
     unverified = fixture()
     unverified["domain_state"] = None
     unverified["semantic_pr_evidence"][0]["current_revision_verified"] = False

@@ -176,12 +176,12 @@ def build_issue_fix_candidate_preflight_packet(
         open_prs = [row for row in existing_prs if row["state"] == "OPEN"]
         merged_prs = [row for row in existing_prs if row["state"] == "MERGED"]
         closed_prs = [row for row in existing_prs if row["state"] == "CLOSED"]
-        if open_prs:
-            route = "reuse_existing_pr"
-            reason_codes.append("open_implementation_pr")
-        elif merged_prs:
+        if merged_prs:
             route = "skip"
             reason_codes.append("merged_implementation_pr")
+        elif open_prs:
+            route = "reuse_existing_pr"
+            reason_codes.append("open_implementation_pr")
         elif closed_prs:
             route = "comment_only"
             reason_codes.append("closed_implementation_pr_requires_disposition")
