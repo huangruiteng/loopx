@@ -288,7 +288,7 @@ def assert_monitor_scheduler_near_window_caps_without_breaking_floor() -> None:
     assert context["phase"] == "near_window", context
     assert context["host_floor_minutes"] == 15, context
     assert context["cap_minutes"] == 37, context
-    assert codex_app["example_progression_minutes"] == [15, 30, 37], scheduler
+    assert codex_app["example_progression_minutes"] == [15, 30], scheduler
 
 
 def assert_monitor_scheduler_near_window_reset_identity_is_stable() -> None:
@@ -302,29 +302,46 @@ def assert_monitor_scheduler_near_window_reset_identity_is_stable() -> None:
         target_key="near-window-stable-watch",
     )
     first = guard_for([item], include_scheduler_detail=True)
-    later = guard_for(
+    same_bucket = guard_for(
         [item],
         include_scheduler_detail=True,
-        now=FROZEN_NOW + timedelta(minutes=10),
+        now=FROZEN_NOW + timedelta(minutes=1),
+    )
+    next_bucket = guard_for(
+        [item],
+        include_scheduler_detail=True,
+        now=FROZEN_NOW + timedelta(minutes=8),
     )
     first_scheduler = first["scheduler_hint"]
-    later_scheduler = later["scheduler_hint"]
+    same_bucket_scheduler = same_bucket["scheduler_hint"]
+    next_bucket_scheduler = next_bucket["scheduler_hint"]
     first_context = first_scheduler["cold_path_detail"]["cadence_context"]
-    later_context = later_scheduler["cold_path_detail"]["cadence_context"]
+    same_bucket_context = same_bucket_scheduler["cold_path_detail"]["cadence_context"]
+    next_bucket_context = next_bucket_scheduler["cold_path_detail"]["cadence_context"]
     assert first_context["phase"] == "near_window", first_context
-    assert later_context["phase"] == "near_window", later_context
+    assert same_bucket_context["phase"] == "near_window", same_bucket_context
+    assert next_bucket_context["phase"] == "near_window", next_bucket_context
     assert first_context["cap_minutes"] == 37, first_context
-    assert later_context["cap_minutes"] == 27, later_context
-    assert first_scheduler["reset_policy"]["reset_token"] == later_scheduler["reset_policy"]["reset_token"], (
+    assert same_bucket_context["cap_minutes"] == 36, same_bucket_context
+    assert next_bucket_context["cap_minutes"] == 29, next_bucket_context
+    assert first_scheduler["codex_app"]["example_progression_minutes"] == [15, 30], first_scheduler
+    assert same_bucket_scheduler["codex_app"]["example_progression_minutes"] == [15, 30], (
+        same_bucket_scheduler
+    )
+    assert next_bucket_scheduler["codex_app"]["example_progression_minutes"] == [15], (
+        next_bucket_scheduler
+    )
+    assert first_scheduler["reset_policy"]["reset_token"] == same_bucket_scheduler[
+        "reset_policy"
+    ]["reset_token"], (
         first_scheduler,
-        later_scheduler,
+        same_bucket_scheduler,
     )
     assert first_scheduler["cold_path_detail"]["reset_policy_detail"][
         "reset_profile_signature"
-    ] == later_scheduler["cold_path_detail"]["reset_policy_detail"]["reset_profile_signature"], later_scheduler
-    assert first_scheduler["codex_app"]["example_progression_minutes"] != later_scheduler["codex_app"][
-        "example_progression_minutes"
-    ], later_scheduler
+    ] == same_bucket_scheduler["cold_path_detail"]["reset_policy_detail"][
+        "reset_profile_signature"
+    ], same_bucket_scheduler
 
 
 def assert_monitor_scheduler_active_window_respects_host_floor() -> None:
@@ -352,7 +369,7 @@ def assert_monitor_scheduler_active_window_respects_host_floor() -> None:
     assert context["host_floor_minutes"] == 15, context
     assert codex_app["example_progression_minutes"] == [15], scheduler
     local_scheduler = scheduler["cold_path_detail"]["local_scheduler"]
-    assert local_scheduler["example_progression_minutes"] == [15, 15, 15], scheduler
+    assert local_scheduler["example_progression_minutes"] == [15], scheduler
     assert codex_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
 
 

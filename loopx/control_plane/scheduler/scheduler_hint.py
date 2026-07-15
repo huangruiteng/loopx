@@ -506,10 +506,13 @@ def _minutes_until(value: datetime, current_time: datetime) -> int:
 def _cap_monitor_progression(*, cap_minutes: int, host_floor_minutes: int) -> list[int]:
     safe_cap = max(1, int(cap_minutes))
     safe_floor = max(1, int(host_floor_minutes))
-    return [
-        max(safe_floor, min(interval, safe_cap))
+    # Keep host RRULEs on stable buckets; the exact due horizon still gates routing.
+    progression = [
+        max(safe_floor, interval)
         for interval in MONITOR_WAIT_PROGRESSION_MINUTES
+        if interval <= safe_cap
     ]
+    return progression or [safe_floor]
 
 
 def _monitor_wait_item_plan(

@@ -553,70 +553,70 @@ def assert_normal_run_ack_preserves_runtime_capabilities() -> None:
         assert cli_args[capability_index - 1] == "--available-capability", ack_hint
 
 
-def assert_monitor_wait_stale_ack_hint_is_accepted() -> None:
+def assert_monitor_wait_fixed_due_bucket_does_not_churn() -> None:
     base = monitor_window_payload(minutes_until_due=59)
     first = build_hint_at(base, now=FROZEN_NOW)
     second = build_hint_at(base, now=FROZEN_NOW, scheduler_state=state_from(first))
-    previous_state = state_from(second)
-
-    stale_hint_source = build_hint_at(
-        base,
-        now=FROZEN_NOW,
-        scheduler_state=previous_state,
-    )
-    stale_app = stale_hint_source["codex_app"]
-    stale_ack_args = stale_app["ack_hint"]["args"]
-    assert stale_hint_source["cadence_class"] == "monitor_wait", stale_hint_source
-    assert stale_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=59", stale_hint_source
-
-    current_hint = build_hint_at(
+    applied_state = state_from(second)
+    steady = build_hint_at(
         base,
         now=FROZEN_NOW + timedelta(minutes=1),
-        scheduler_state=previous_state,
+        scheduler_state=applied_state,
+        codex_app_current_rrule="FREQ=MINUTELY;INTERVAL=30",
+    )
+    steady_app = steady["codex_app"]
+    assert first["codex_app"]["example_progression_minutes"] == [15, 30], first
+    assert second["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=30", second
+    assert steady_app["example_progression_minutes"] == [15, 30], steady
+    assert steady_app["stateful_backoff"]["current_rrule"] == (
+        "FREQ=MINUTELY;INTERVAL=30"
+    ), steady
+    assert steady_app["stateful_backoff"]["apply_needed"] is False, steady
+    assert steady_app["stateful_backoff"]["ack_needed"] is False, steady
+    assert steady_app["host_action"] == "none", steady
+    assert "recommended_rrule" not in steady_app, steady
+
+
+def assert_monitor_wait_stale_ack_hint_is_accepted() -> None:
+    base = monitor_window_payload(minutes_until_due=59)
+    first = build_hint_at(base, now=FROZEN_NOW)
+    current_hint = build_hint_at(
+        base,
+        now=FROZEN_NOW,
+        scheduler_state=state_from(first),
     )
     current_app = current_hint["codex_app"]
-    assert current_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=58", current_hint
-    assert (
-        current_app["stateful_backoff"]["reset_token"]
-        == stale_ack_args["reset_token"]
-    ), current_hint
-    assert (
-        current_app["stateful_backoff"]["identity_signature"]
-        == stale_ack_args["identity_signature"]
-    ), current_hint
+    ack_args = current_app["ack_hint"]["args"]
+    assert current_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=30", current_hint
 
     plan = build_scheduler_ack_plan(
         {"scheduler_hint": current_hint},
-        agent_id=stale_ack_args["agent_id"],
-        state_key=stale_ack_args["state_key"],
-        applied_rrule=stale_ack_args["applied_rrule"],
-        reset_token=stale_ack_args["reset_token"],
-        identity_signature=stale_ack_args["identity_signature"],
+        agent_id=ack_args["agent_id"],
+        state_key=ack_args["state_key"],
+        applied_rrule="FREQ=MINUTELY;INTERVAL=31",
+        reset_token=ack_args["reset_token"],
+        identity_signature=ack_args["identity_signature"],
     )
     assert plan == {
         "ok": True,
         "already_applied": False,
-        "applied_rrule": "FREQ=MINUTELY;INTERVAL=59",
-        "expected_rrule": "FREQ=MINUTELY;INTERVAL=58",
+        "applied_rrule": "FREQ=MINUTELY;INTERVAL=31",
+        "expected_rrule": "FREQ=MINUTELY;INTERVAL=30",
         "stale_hint_accepted": True,
         "stale_hint_tolerance_minutes": 2,
     }, plan
 
     event = build_codex_app_scheduler_ack_event(
         {"goal_id": "scheduler-state-ack-smoke", "scheduler_hint": current_hint},
-        agent_id=stale_ack_args["agent_id"],
-        applied_rrule=stale_ack_args["applied_rrule"],
-        reset_token=stale_ack_args["reset_token"],
-        identity_signature=stale_ack_args["identity_signature"],
+        agent_id=ack_args["agent_id"],
+        applied_rrule="FREQ=MINUTELY;INTERVAL=31",
+        reset_token=ack_args["reset_token"],
+        identity_signature=ack_args["identity_signature"],
     )
     ack_event = event["scheduler_ack_event"]
-    assert ack_event["applied_rrule"] == "FREQ=MINUTELY;INTERVAL=59", event
-    assert ack_event["expected_rrule"] == "FREQ=MINUTELY;INTERVAL=58", event
+    assert ack_event["applied_rrule"] == "FREQ=MINUTELY;INTERVAL=31", event
+    assert ack_event["expected_rrule"] == "FREQ=MINUTELY;INTERVAL=30", event
     assert ack_event["stale_hint_accepted"] is True, event
-    assert (
-        ack_event["scheduler_state"]["last_applied_rrule"]
-        == "FREQ=MINUTELY;INTERVAL=59"
-    ), event
     quiet_after_stale_ack = build_hint_at(
         base,
         now=FROZEN_NOW + timedelta(minutes=1),
@@ -625,42 +625,24 @@ def assert_monitor_wait_stale_ack_hint_is_accepted() -> None:
     quiet_app = quiet_after_stale_ack["codex_app"]
     assert quiet_app["stateful_backoff"]["apply_needed"] is False, quiet_after_stale_ack
     assert quiet_app["host_action"] == "none", quiet_after_stale_ack
-    assert "recommended_rrule" not in quiet_app, quiet_after_stale_ack
 
     observed_stale_host = build_hint_at(
         base,
         now=FROZEN_NOW + timedelta(minutes=1),
         scheduler_state=ack_event["scheduler_state"],
-        codex_app_current_rrule="FREQ=MINUTELY;INTERVAL=59",
+        codex_app_current_rrule="FREQ=MINUTELY;INTERVAL=31",
     )
     observed_app = observed_stale_host["codex_app"]
     assert observed_app["stateful_backoff"]["apply_needed"] is True, observed_stale_host
-    assert observed_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=58", observed_stale_host
-    assert (
-        observed_app["stateful_backoff"]["host_observation"]["status"]
-        == "drift_detected"
-    ), observed_stale_host
-
-    outside_state_tolerance = build_hint_at(
-        base,
-        now=FROZEN_NOW + timedelta(minutes=3),
-        scheduler_state=ack_event["scheduler_state"],
-    )
-    outside_app = outside_state_tolerance["codex_app"]
-    assert outside_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=56", (
-        outside_state_tolerance
-    )
-    assert outside_app["stateful_backoff"]["apply_needed"] is True, (
-        outside_state_tolerance
-    )
+    assert observed_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=30", observed_stale_host
 
     outside_tolerance = build_scheduler_ack_plan(
         {"scheduler_hint": current_hint},
-        agent_id=stale_ack_args["agent_id"],
-        state_key=stale_ack_args["state_key"],
-        applied_rrule="FREQ=MINUTELY;INTERVAL=61",
-        reset_token=stale_ack_args["reset_token"],
-        identity_signature=stale_ack_args["identity_signature"],
+        agent_id=ack_args["agent_id"],
+        state_key=ack_args["state_key"],
+        applied_rrule="FREQ=MINUTELY;INTERVAL=33",
+        reset_token=ack_args["reset_token"],
+        identity_signature=ack_args["identity_signature"],
     )
     assert outside_tolerance["ok"] is False, outside_tolerance
     assert "does not match expected" in outside_tolerance["reason"], outside_tolerance
@@ -1464,6 +1446,7 @@ def main() -> int:
     assert_active_work_keeps_initial_cadence()
     assert_scheduler_ack_plan_validation()
     assert_normal_run_ack_preserves_runtime_capabilities()
+    assert_monitor_wait_fixed_due_bucket_does_not_churn()
     assert_monitor_wait_stale_ack_hint_is_accepted()
     assert_scheduler_state_scope_validation()
     assert_cli_scheduler_ack_progression()
