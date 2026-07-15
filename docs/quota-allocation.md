@@ -787,8 +787,11 @@ post-update ack protocol instead of requiring them to own or diff the whole
 quota state. If `apply_needed=false` and `ack_needed=true`, the same command
 records an exact matching host readback without calling `automation_update`.
 If `automation_update` fails or times out, the agent must not ACK. LoopX keeps
-the observed host RRULE authoritative, does not retry the same hint in that
-turn, and retries only on a later eligible heartbeat; it never treats an
+the observed host RRULE authoritative. The agent runs
+`codex_app.failure_hint.cli_args` once to persist the failed target/observed-host
+pair without quota spend. Later heartbeats expose `apply_needed=false` and
+`state_status=host_update_failure_suppressed` for that exact pair; a changed
+target or host observation reopens one host attempt. LoopX never treats an
 intended cadence as an applied cadence.
 `scheduler-ack` is not a second `should-run`: it confirms the host update or
 matching readback and does not emit a successor RRULE in the same turn. User
