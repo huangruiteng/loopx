@@ -34,6 +34,9 @@ from loopx.capabilities.context_providers.base import (  # noqa: E402
 from loopx.capabilities.context_providers.openviking import (  # noqa: E402
     OpenVikingContextProvider,
 )
+from loopx.capabilities.context_providers.factory import (  # noqa: E402
+    build_context_provider,
+)
 
 REVISION = "9cf42405a8bb0a8a17a66d4f953515f5a2c82620"
 ISSUE_URL = "https://github.com/volcengine/OpenViking/issues/3124"
@@ -123,11 +126,14 @@ class OpenVikingContractRunner:
         self, command: list[str], **_kwargs: Any
     ) -> subprocess.CompletedProcess[str]:
         self.calls.append(command)
-        if command[1:] == ["--version"]:
+        args = command[1:]
+        if args[:2] == ["--actor-peer-id", "project-example"]:
+            args = args[2:]
+        if args == ["--version"]:
             stdout = "openviking 0.4.9.dev11\n"
-        elif command[1:3] == ["status", "-o"]:
+        elif args[:2] == ["status", "-o"]:
             stdout = json.dumps({"status": "healthy"})
-        elif command[1] == "search":
+        elif args[0] == "search":
             stdout = json.dumps(
                 {
                     "result": {
@@ -141,7 +147,7 @@ class OpenVikingContractRunner:
                     }
                 }
             )
-        elif command[1] == "read":
+        elif args[0] == "read":
             stdout = json.dumps(
                 {"result": {"content": "private-to-call transient provider body"}}
             )
@@ -402,6 +408,36 @@ def main() -> int:
     assert "private-to-call transient provider body" not in json.dumps(ov_public)
     assert ov_scope not in json.dumps(ov_public)
     assert_boundary(ov_public)
+
+    peer_runner = OpenVikingContractRunner(scope_ref=ov_scope)
+    peer_retrieval = OpenVikingContextProvider(
+        executable="ov-contract",
+        actor_peer_id="project-example",
+        runner=peer_runner,
+    ).retrieve(
+        namespace="public-repository",
+        scope_ref=ov_scope,
+        query="worker contract",
+        query_summary="Current peer-scoped worker contract evidence.",
+        max_results=2,
+        timeout_seconds=5,
+        observed_at="2026-07-11T03:30:00+08:00",
+    )
+    assert peer_retrieval.status == "completed", peer_retrieval
+    scoped_calls = [
+        call
+        for call in peer_runner.calls
+        if len(call) > 3 and call[3] in {"search", "read"}
+    ]
+    assert scoped_calls
+    assert all(
+        call[1:3] == ["--actor-peer-id", "project-example"]
+        for call in scoped_calls
+    ), scoped_calls
+    factory_peer_provider = build_context_provider(
+        {"provider": "openviking", "actor_peer_id": "project-example"}
+    )
+    assert factory_peer_provider.actor_peer_id == "project-example"
 
     with tempfile.TemporaryDirectory(prefix="loopx-memory-provider-") as tmpdir:
         checkout = Path(tmpdir)

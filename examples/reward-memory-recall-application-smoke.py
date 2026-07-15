@@ -182,6 +182,7 @@ def binding(corpus_id: str) -> dict[str, Any]:
     return {
         "corpus_id": corpus_id,
         "provider_id": "fake_provider",
+        "actor_peer_id": "project-example",
         "namespace": "reward_memory",
         "scope_ref": SCOPE_REF,
         "timeout_seconds": 5,
@@ -211,6 +212,49 @@ def main() -> None:
         class_id="hard_policy",
         surface=issue_surface,
     )
+    peer_scope = "viking://user/example/peers/project-example/memories"
+    peer_corpus = issue_corpus | {
+        "provider_scope_ref_digest": hashlib.sha256(
+            peer_scope.encode("utf-8")
+        ).hexdigest()[:16]
+    }
+    peer_request = build_reward_memory_recall_request(
+        peer_corpus,
+        {
+            "workspace_ref": WORKSPACE,
+            "project_ref": PROJECT,
+            "surface_id": issue_surface,
+            "revision_ref": REVISION,
+            "mode": "function_boundary",
+            "queries": [{"query": "policy", "query_summary": "policy"}],
+            "limit": 1,
+            "observed_at": OBSERVED_AT,
+            "freshness_context": {
+                "source_truth_current": True,
+                "source_revision": REVISION,
+            },
+            "conflict_state": "clear",
+            "raw_content_captured": False,
+        },
+        read_authority_checkpoint=checkpoint(
+            "openviking_patch_policy", issue_surface
+        ),
+    )
+    for invalid_actor in (None, "project-other"):
+        invalid_binding = binding("openviking_patch_policy") | {
+            "scope_ref": peer_scope,
+            "actor_peer_id": invalid_actor,
+        }
+        try:
+            execute_reward_memory_recall(
+                peer_request,
+                provider_binding=invalid_binding,
+                provider=FakeProvider(()),
+            )
+        except ValueError as exc:
+            assert "actor_peer_id" in str(exc)
+        else:
+            raise AssertionError("peer-scoped recall must reject an invalid actor")
     issue_review = reviewed_candidate(
         target_class="hard_policy",
         surface=issue_surface,

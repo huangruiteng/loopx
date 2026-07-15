@@ -23,6 +23,7 @@ OPENVIKING_PROVIDER_ID = "openviking"
 MAX_OPENVIKING_RESULTS = 6
 MAX_OPENVIKING_SYNC_RESOURCES = 24
 DEFAULT_MINIMUM_VERSION = "0.4.9"
+ACTOR_PEER_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -123,11 +124,18 @@ class OpenVikingContextProvider:
         *,
         executable: str = "ov",
         minimum_version: str = DEFAULT_MINIMUM_VERSION,
+        actor_peer_id: str | None = None,
         env: Mapping[str, str] | None = None,
         runner: CommandRunner = subprocess.run,
     ) -> None:
+        normalized_actor_peer_id = str(actor_peer_id or "").strip()
+        if normalized_actor_peer_id and not ACTOR_PEER_ID_RE.fullmatch(
+            normalized_actor_peer_id
+        ):
+            raise ValueError("actor_peer_id must be a compact public-safe token")
         self.executable = executable
         self.minimum_version = minimum_version
+        self.actor_peer_id = normalized_actor_peer_id or None
         self.env = dict(env) if env is not None else dict(os.environ)
         self.runner = runner
 
@@ -137,8 +145,12 @@ class OpenVikingContextProvider:
         *,
         timeout_seconds: float,
     ) -> subprocess.CompletedProcess[str]:
+        command = [self.executable]
+        if self.actor_peer_id and args and args[0] not in {"--version", "status"}:
+            command.extend(["--actor-peer-id", self.actor_peer_id])
+        command.extend(args)
         return self.runner(
-            [self.executable, *args],
+            command,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

@@ -321,6 +321,9 @@ application also preserves the base output. An `applied` receipt requires both
 attribution to an item returned by this recall and current-artifact
 verification. Issue Fix uses the fixed `issue_fix.patch_planning` surface;
 `semantic_preference` is the second, non-Issue-Fix module consumer.
+An OpenViking binding whose scope is under `/peers/<peer>/` must carry that
+exact `actor_peer_id`. LoopX forwards it only to scoped provider operations and
+never infers an actor identity from an arbitrary target URI.
 
 ## Stage 4 evaluation and release gate
 

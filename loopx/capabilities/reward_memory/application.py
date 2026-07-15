@@ -406,6 +406,17 @@ def _provider_binding(
     for key in ("provider_binary", "minimum_provider_version"):
         if raw.get(key):
             binding[key] = str(raw[key])
+    actor_peer_id = _optional_token(
+        raw.get("actor_peer_id"), "provider_binding.actor_peer_id"
+    )
+    if "/peers/" in binding["scope_ref"]:
+        peer_scope_id = binding["scope_ref"].split("/peers/", 1)[1].split("/", 1)[0]
+        if not actor_peer_id:
+            raise ValueError("peer-scoped provider binding requires actor_peer_id")
+        if actor_peer_id != peer_scope_id:
+            raise ValueError("actor_peer_id must match the peer-scoped provider URI")
+    if actor_peer_id:
+        binding["actor_peer_id"] = actor_peer_id
     return binding
 
 
@@ -495,6 +506,7 @@ def execute_reward_memory_recall(
             "provider": binding["provider_id"],
             "provider_binary": binding.get("provider_binary"),
             "minimum_provider_version": binding.get("minimum_provider_version"),
+            "actor_peer_id": binding.get("actor_peer_id"),
         }
     )
     results: list[RewardMemoryRecallItem] = []

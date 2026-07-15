@@ -271,6 +271,9 @@ Provider 不可用时，seam 返回 setup guidance 并保留原输出；这是 a
 不会自动变成 user gate。模型 application 无效或异常也 fail open。只有同时归因到本次
 召回项并验证当前 artifact，才能产生 `applied` receipt。Issue Fix 使用固定的
 `issue_fix.patch_planning` surface；`semantic_preference` 是第二个非 Issue-Fix consumer。
+当 OpenViking binding 的 scope 位于 `/peers/<peer>/` 下时，必须显式携带完全一致的
+`actor_peer_id`。LoopX 只将它传给 scoped provider 操作，不会从任意目标 URI 推导或冒用
+actor 身份。
 
 ## Stage 4 评估与发布门禁
 
