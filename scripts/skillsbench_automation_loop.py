@@ -8646,7 +8646,11 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "host_local_acp_codex_exec_preflight_first_blocker": "",
             "container_codex_acp_install_skipped": (
                 True
-                if is_app_server_goal_route or is_codex_cli_goal_route
+                if (
+                    is_app_server_goal_route
+                    or is_codex_cli_goal_route
+                    or args.host_local_acp_launch
+                )
                 else requires_preinstalled_runtime
             ),
             "benchflow_agent_install_skipped_by_runtime_layer": (

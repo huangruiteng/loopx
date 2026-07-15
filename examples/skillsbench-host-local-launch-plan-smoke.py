@@ -817,9 +817,9 @@ if out:
                 "launch_plan"
             ]["runner_prerequisites"]
             assert (
-                auto_wiring_prereqs["remote_command_file_bridge_consumption_status"]
-                == "sandbox_bridge_auto_wiring_pending"
-            ), auto_wiring_prereqs
+                auto_wiring_prereqs["remote_command_file_bridge_consumption_status"],
+                auto_wiring_prereqs["container_codex_acp_install_skipped"],
+            ) == ("sandbox_bridge_auto_wiring_pending", True), auto_wiring_prereqs
             source = SCRIPT.read_text(encoding="utf-8")
             assert "_host_local_acp_docker_bridge_command(" in source
             assert 'prerequisites["remote_command_file_bridge_command_configured"] = True' in source
