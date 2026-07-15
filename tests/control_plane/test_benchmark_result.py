@@ -40,9 +40,13 @@ def test_compact_benchmark_result_preserves_public_score_contract() -> None:
                 },
                 "step_count": "3",
                 "wall_time_ms": 120,
+                "cost_usd": 0.25,
+                "erroneous_write_count": 0,
+                "human_intervention_count": 1,
                 "validation_pass_count": 2,
                 "open_todo_preserved": True,
                 "state_reconstructable": False,
+                "stop_policy_correct": True,
                 "failure_attribution_labels": [
                     "one",
                     "two",
@@ -76,10 +80,14 @@ def test_compact_benchmark_result_preserves_public_score_contract() -> None:
     assert compact["counts"] == {
         "step_count": 3,
         "wall_time_ms": 120,
+        "cost_usd": 0.25,
+        "erroneous_write_count": 0,
+        "human_intervention_count": 1,
         "validation_pass_count": 2,
     }
     assert compact["open_todo_preserved"] is True
     assert compact["state_reconstructable"] is False
+    assert compact["stop_policy_correct"] is True
     assert compact["failure_attribution_labels"] == [
         "one",
         "two",
@@ -88,6 +96,7 @@ def test_compact_benchmark_result_preserves_public_score_contract() -> None:
         "five",
     ]
     assert "private_detail" not in compact
+    assert compact_benchmark_result(compact) == compact
 
 
 def test_result_accepts_direct_rows_and_rejects_unrelated_payloads() -> None:

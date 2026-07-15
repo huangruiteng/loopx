@@ -16,6 +16,10 @@ from .benchmark_boundary import (
     handle_benchmark_boundary_command,
     register_benchmark_boundary_commands,
 )
+from .benchmark_release_outcome import (
+    handle_benchmark_release_outcome_command,
+    register_benchmark_release_outcome_commands,
+)
 from .benchmark_review_lifecycle import (
     handle_benchmark_review_lifecycle_command,
     register_benchmark_review_lifecycle_commands,
@@ -54,6 +58,7 @@ def register_benchmark_command_group(
 
     register_agentissue_runner_flow_commands(benchmark_sub, add_subcommand_format)
     register_benchmark_boundary_commands(benchmark_sub, add_subcommand_format)
+    register_benchmark_release_outcome_commands(benchmark_sub, add_subcommand_format)
     register_terminal_bench_adapter_commands(benchmark_sub, add_subcommand_format)
 
     register_agents_last_exam_commands(benchmark_sub, add_subcommand_format)
@@ -88,6 +93,14 @@ def handle_benchmark_command(
     )
     if benchmark_boundary_result is not None:
         return benchmark_boundary_result
+
+    release_outcome_result = handle_benchmark_release_outcome_command(
+        args,
+        print_payload=print_payload,
+        output_format=output_format,
+    )
+    if release_outcome_result is not None:
+        return release_outcome_result
 
     terminal_bench_adapter_result = handle_terminal_bench_adapter_command(
         args,

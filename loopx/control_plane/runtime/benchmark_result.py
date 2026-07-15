@@ -98,22 +98,29 @@ def compact_benchmark_result(run: dict[str, Any]) -> dict[str, Any] | None:
     if control_score:
         compact["control_plane_score"] = control_score
 
-    counts = compact_numeric_map(
-        source,
-        keys=(
-            "step_count",
-            "wall_time_ms",
-            "validation_pass_count",
-            "validation_fail_count",
-            "changed_file_count",
-            "forbidden_access_count",
-            "stale_state_error_count",
-            "writeback_count",
-            "spend_count",
-            "spend_before_validation_count",
-            "goal_tick_phase_coverage",
-        ),
+    count_fields = (
+        "step_count",
+        "wall_time_ms",
+        "validation_pass_count",
+        "validation_fail_count",
+        "changed_file_count",
+        "forbidden_access_count",
+        "stale_state_error_count",
+        "writeback_count",
+        "erroneous_write_count",
+        "human_intervention_count",
+        "spend_count",
+        "spend_before_validation_count",
+        "goal_tick_phase_coverage",
+        "cost_usd",
     )
+    count_source = (
+        dict(source.get("counts")) if isinstance(source.get("counts"), dict) else {}
+    )
+    for field in count_fields:
+        if field in source:
+            count_source[field] = source[field]
+    counts = compact_numeric_map(count_source, keys=count_fields)
     if counts:
         compact["counts"] = counts
 
@@ -122,6 +129,7 @@ def compact_benchmark_result(run: dict[str, Any]) -> dict[str, Any] | None:
         "archive_hygiene_passed",
         "queue_contract_passed",
         "state_reconstructable",
+        "stop_policy_correct",
     ):
         if isinstance(source.get(field), bool):
             compact[field] = source[field]
