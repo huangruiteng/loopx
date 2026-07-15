@@ -445,9 +445,9 @@ if out:
         assert prerequisites["remote_command_file_bridge_consumed_by_solver"] is False
         assert (
             prerequisites["remote_command_file_bridge_consumption_status"]
-            == "probe_only_not_solver_wired"
+            == "sandbox_bridge_auto_wiring_pending"
         )
-        assert prerequisites["container_codex_acp_install_skipped"] is False
+        assert prerequisites["container_codex_acp_install_skipped"] is True
         assert plan["public_boundary"]["leaderboard_upload"] is False
         assert plan["public_boundary"]["public_submission"] is False
         app_trace_dir = Path(tmp) / "app-server-goal-trace"
