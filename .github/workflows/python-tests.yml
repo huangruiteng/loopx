@@ -30,6 +30,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -53,7 +55,7 @@ jobs:
         run: python -m mypy
 
       - name: Qualify agent-facing CLI output
-        run: python -m pytest -q tests/control_plane/test_cli_output_budget.py
+        run: python examples/control_plane/cli-output-budget-regression-smoke.py
 
       - name: Run fast tests
         run: >-

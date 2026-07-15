@@ -11,6 +11,12 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEST_PATH = REPO_ROOT / "tests" / "control_plane" / "test_cli_output_budget.py"
+DIFFERENTIAL_SMOKE = (
+    REPO_ROOT
+    / "examples"
+    / "control_plane"
+    / "cli-output-base-head-differential-smoke.py"
+)
 
 
 def _pytest_command() -> list[str]:
@@ -29,7 +35,9 @@ def _pytest_command() -> list[str]:
 
 def main() -> int:
     if not TEST_PATH.is_file():
-        raise RuntimeError(f"missing CLI output budget test: {TEST_PATH.relative_to(REPO_ROOT)}")
+        raise RuntimeError(
+            f"missing CLI output budget test: {TEST_PATH.relative_to(REPO_ROOT)}"
+        )
     completed = subprocess.run(
         [*_pytest_command(), "-q", str(TEST_PATH.relative_to(REPO_ROOT))],
         cwd=REPO_ROOT,
@@ -42,6 +50,21 @@ def main() -> int:
     if completed.returncode != 0:
         raise AssertionError(
             "agent-facing CLI output qualification failed\n"
+            f"stdout:\n{completed.stdout[-3000:]}\n"
+            f"stderr:\n{completed.stderr[-3000:]}"
+        )
+    completed = subprocess.run(
+        [sys.executable, str(DIFFERENTIAL_SMOKE.relative_to(REPO_ROOT))],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=300,
+    )
+    if completed.returncode != 0:
+        raise AssertionError(
+            "agent-facing CLI base/head differential failed\n"
             f"stdout:\n{completed.stdout[-3000:]}\n"
             f"stderr:\n{completed.stderr[-3000:]}"
         )

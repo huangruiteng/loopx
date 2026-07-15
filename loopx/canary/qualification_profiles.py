@@ -11,7 +11,11 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
             "Run a bounded cross-state-machine canary when interaction, work-lane, "
             "scheduler, frontier, writeback, or quota-spend transitions change together."
         ),
-        "catalog_families": ["Work Routing", "State And Boundary", "Planning Governance"],
+        "catalog_families": [
+            "Work Routing",
+            "State And Boundary",
+            "Planning Governance",
+        ],
         "trigger_hints": (
             "state-machine",
             "state machine",
@@ -87,7 +91,11 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
             "Run exact stdout budgets and fail-closed command classification when "
             "recurring agent-facing CLI surfaces or their qualification contract change."
         ),
-        "catalog_families": ["Work Routing", "State And Boundary", "Planning Governance"],
+        "catalog_families": [
+            "Work Routing",
+            "State And Boundary",
+            "Planning Governance",
+        ],
         "trigger_hints": (
             "agent-facing cli",
             "cli output budget",
@@ -105,6 +113,11 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
             "loopx/evidence_log.py",
             "loopx/control_plane/testing/cli_output_budget.py",
             "tests/control_plane/test_cli_output_budget.py",
+            "tests/control_plane/test_cli_output_differential.py",
+            "loopx/control_plane/testing/cli_output_differential.py",
+            "loopx/control_plane/testing/cli_output_semantics.py",
+            "examples/control_plane/cli-output-probe-runner.py",
+            "examples/control_plane/cli-output-base-head-differential-smoke.py",
             "examples/control_plane/cli-output-budget-regression-smoke.py",
             ".github/workflows/python-tests.yml",
             "docs/interface-budget-contract.md",
@@ -115,7 +128,8 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
                 "tier": "default",
                 "reason": (
                     "invokes the real CLI across declared JSON/Markdown surfaces, modes, "
-                    "fixture scales, semantic anchors, and command classifications"
+                    "fixture scales, semantic anchors, command classifications, and a "
+                    "same-fixture base/head structural and growth differential"
                 ),
             },
             {

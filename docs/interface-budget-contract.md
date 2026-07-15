@@ -55,6 +55,19 @@ rationale. The canary planner selects the output-budget profile for CLI command,
 help, implementation, fixture, workflow, or budget-contract changes, and PR CI
 runs the matrix as a named step.
 
+The qualification also runs the same public fixture against `origin/main` and
+the candidate checkout. It allows only policy-sized growth for each surface and
+format, rather than treating one global percentage as safe. A smaller candidate
+still fails when it removes a declared semantic key or changes an existing
+`action_signature` semantic contract. Removed observed nested JSON paths or
+Markdown headings are reported as review signals: sensitive output reductions
+must account for them in human review, while an intentional presentation or
+structural refactor does not become a permanent CI red light.
+The receipts contain counts, shape paths, headings, and digests only; they do
+not persist raw CLI output. Candidate-only surfaces are allowed after their
+absolute characterization passes, while removing a qualified base row fails
+closed.
+
 Both budget layers are intentionally about projections, not the full archival
 facts. When a surface needs more detail, put that detail behind a queryable
 cold-path command or a linked run-history artifact instead of making the
@@ -84,6 +97,8 @@ Regression entrypoints:
 
 ```bash
 pytest -q tests/control_plane/test_cli_output_budget.py
+pytest -q tests/control_plane/test_cli_output_differential.py
+python3 examples/control_plane/cli-output-base-head-differential-smoke.py
 python3 examples/control_plane/cli-output-budget-regression-smoke.py
 python3 examples/control_plane/hot-path-interface-budget-smoke.py
 python3 examples/control_plane/status-quota-perf-budget-smoke.py
