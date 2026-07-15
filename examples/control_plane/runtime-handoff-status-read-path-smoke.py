@@ -85,8 +85,6 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
             "delivery_batch_scale": "multi_surface",
             "delivery_outcome": "outcome_progress",
             "recommended_action": "Handoff ready.",
-            "json_exists": True,
-            "markdown_exists": True,
         },
         {
             "goal_id": GOAL_ID,
@@ -96,10 +94,18 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
             "delivery_batch_scale": "implementation",
             "delivery_outcome": "outcome_progress",
             "recommended_action": POST_HANDOFF_ACTION,
-            "json_exists": True,
-            "markdown_exists": True,
         },
     ]
+    artifact_dir = project / "artifacts" / GOAL_ID
+    artifact_dir.mkdir(parents=True)
+    for row in run_rows:
+        run_id = row["run_id"]
+        json_path = artifact_dir / f"{run_id}.json"
+        markdown_path = artifact_dir / f"{run_id}.md"
+        row["json_path"] = str(json_path.relative_to(project))
+        row["markdown_path"] = str(markdown_path.relative_to(project))
+        json_path.write_text(json.dumps(row, sort_keys=True) + "\n", encoding="utf-8")
+        markdown_path.write_text(f"# {row['classification']}\n", encoding="utf-8")
     run_index.write_text(
         "".join(json.dumps(row, sort_keys=True) + "\n" for row in run_rows),
         encoding="utf-8",
