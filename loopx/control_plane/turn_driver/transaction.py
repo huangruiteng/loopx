@@ -34,6 +34,7 @@ class LoopXTurnResultKind(str, Enum):
     HOST_FAILURE = "host_failure"
     VALIDATION_FAILED = "validation_failed"
     WRITEBACK_FAILED = "writeback_failed"
+    QUOTA_SPEND_FAILED = "quota_spend_failed"
 
 
 MATERIAL_RESULT_KINDS = {
@@ -48,6 +49,7 @@ NO_SPEND_RESULT_KINDS = {
     LoopXTurnResultKind.HOST_FAILURE,
     LoopXTurnResultKind.VALIDATION_FAILED,
     LoopXTurnResultKind.WRITEBACK_FAILED,
+    LoopXTurnResultKind.QUOTA_SPEND_FAILED,
 }
 STOP_RESULT_KINDS = {
     LoopXTurnResultKind.USER_ACTION_REQUIRED,
@@ -57,6 +59,7 @@ FAILURE_PHASES = {
     LoopXTurnResultKind.HOST_FAILURE: "host_execute",
     LoopXTurnResultKind.VALIDATION_FAILED: "validation",
     LoopXTurnResultKind.WRITEBACK_FAILED: "durable_writeback",
+    LoopXTurnResultKind.QUOTA_SPEND_FAILED: "quota_spend",
 }
 
 
