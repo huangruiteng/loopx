@@ -36,6 +36,23 @@ def build_automation_liveness(payload: dict[str, Any]) -> dict[str, Any]:
             "stuck for two more eligible turns"
         ),
     }
+    if effective_action == "terminal_no_followup":
+        return {
+            **base,
+            "keep_active": False,
+            "pause_allowed": True,
+            "pause_policy": (
+                "pause or delete the recurring automation now; only an explicit "
+                "goal resume or new projected work should recreate it"
+            ),
+            "automation_action": "stop_terminal_no_followup",
+            "reason": (
+                "the owner-authored terminal no-follow-up state is confirmed by an "
+                "empty normalized frontier"
+            ),
+            "next_trigger": "explicit goal resume or newly projected work",
+            "spend_policy": "no quota spend for terminal automation shutdown",
+        }
     if (
         effective_action == "monitor_quiet_skip"
         or recommended_mode == "monitor_quiet_until_material_transition"

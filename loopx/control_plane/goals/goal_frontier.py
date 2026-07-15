@@ -31,6 +31,7 @@ AUTONOMOUS_REPLAN_DECISION_SCHEMA_VERSION = "autonomous_replan_decision_v0"
 AUTONOMOUS_REPLAN_SCOPE_SCHEMA_VERSION = "autonomous_replan_scope_v0"
 AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION = "autonomous_replan_obligation_v0"
 AUTONOMOUS_REPLAN_REQUIRED_MODE = "autonomous_replan_required"
+TERMINAL_NO_FOLLOWUP_STATUS = "terminal_no_followup"
 FRONTIER_EXHAUSTED_MONITOR_TRIGGER = "frontier_exhausted_monitor_lane"
 LONG_TODO_CHAIN_TRIGGER = "long_todo_chain"
 VISION_ACCEPTANCE_GAP_TRIGGER = "vision_acceptance_gap"
@@ -53,6 +54,63 @@ def safe_non_negative_int(value: Any) -> int:
         return max(0, int(value or 0))
     except (TypeError, ValueError):
         return 0
+
+
+def goal_frontier_is_terminal_no_followup(
+    *,
+    status: Any,
+    projection: dict[str, Any] | None,
+) -> bool:
+    """Return whether an explicit no-follow-up terminal state has no frontier.
+
+    The status marker is an owner-authored stop decision.  It only becomes an
+    execution/scheduler terminal when the normalized projection independently
+    confirms that no user gate, agent work, monitor, successor, acceptance gap,
+    or replan obligation remains.
+    """
+
+    if str(status or "").strip().lower() != TERMINAL_NO_FOLLOWUP_STATUS:
+        return False
+    if not isinstance(projection, dict):
+        return False
+
+    normalized = projection.get("normalized_progress")
+    frontier = projection.get("remaining_advancement_frontier")
+    monitors = projection.get("monitor_only_lanes")
+    successors = projection.get("deferred_successors")
+    if not all(isinstance(value, dict) for value in (normalized, frontier, monitors, successors)):
+        return False
+
+    required_keys = (
+        (normalized, {"user_open_count", "agent_open_count", "agent_advancement_open_count", "agent_monitor_open_count", "agent_monitor_due_count"}),
+        (frontier, {"current_agent_claimed_advancement_count", "unclaimed_advancement_count", "other_agent_claimed_advancement_count"}),
+        (monitors, {"present", "quiet_until_material_transition"}),
+        (successors, {"ready_count", "blocked_count", "current_agent_ready_count"}),
+    )
+    if any(not keys.issubset(values) for values, keys in required_keys):
+        return False
+
+    projected_counts = (
+        normalized.get("user_open_count"),
+        normalized.get("agent_open_count"),
+        normalized.get("agent_advancement_open_count"),
+        normalized.get("agent_monitor_open_count"),
+        normalized.get("agent_monitor_due_count"),
+        frontier.get("current_agent_claimed_advancement_count"),
+        frontier.get("unclaimed_advancement_count"),
+        frontier.get("other_agent_claimed_advancement_count"),
+        successors.get("ready_count"),
+        successors.get("blocked_count"),
+        successors.get("current_agent_ready_count"),
+    )
+    return bool(
+        all(safe_non_negative_int(value) == 0 for value in projected_counts)
+        and monitors.get("present") is not True
+        and monitors.get("quiet_until_material_transition") is not True
+        and not projection.get("acceptance_gaps")
+        and not projection.get("autonomy_blockers")
+        and projection.get("replan_required") is not True
+    )
 
 
 def select_autonomous_replan_obligation(

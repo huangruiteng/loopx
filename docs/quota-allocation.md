@@ -448,10 +448,15 @@ concrete blocker appears.
 The same guard exposes `automation_liveness`. For
 `monitor_quiet_skip`, it must say `automation_action=keep_active_quiet`,
 `keep_active=true`, and `pause_allowed=false`: unchanged monitor-only polls are
-not a reason to cancel recurring automation. Pausing/deleting is reserved for a
-bounded self-repair or replan path that is itself stuck for two more eligible
-turns. This keeps recurring controllers alive while still preventing quota
-spend on empty monitor checks.
+not a reason to cancel recurring automation. Pausing/deleting is reserved for
+either an explicit `terminal_no_followup` state whose normalized frontier is
+empty, or a bounded self-repair/replan path that is itself stuck for two more
+eligible turns. The terminal case projects
+`automation_action=stop_terminal_no_followup`, `keep_active=false`, and
+`pause_allowed=true`; the marker alone cannot hide an open todo, monitor,
+successor, acceptance gap, or replan obligation. This keeps recurring
+controllers alive during ordinary waits while honoring an explicit completed
+goal shutdown without another quota-spending turn.
 
 `automation_liveness` deliberately does not set the polling cadence. The guard
 also exposes `scheduler_hint`, which is the host-runtime scheduling contract:

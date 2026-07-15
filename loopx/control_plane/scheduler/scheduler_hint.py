@@ -830,6 +830,34 @@ def build_scheduler_hint(
             current = current.get(part)
         return current
 
+    if automation_action == "stop_terminal_no_followup":
+        return {
+            "schema_version": SCHEDULER_HINT_SCHEMA_VERSION,
+            "source": "quota.should-run",
+            "action": "stop_until_explicit_resume",
+            "cadence_class": "terminal_no_followup",
+            "reason": (
+                "the goal explicitly records no follow-up and has no remaining "
+                "frontier; recurring polling must stop until the goal is resumed"
+            ),
+            "spend_policy": "no quota spend for terminal automation shutdown",
+            "codex_app": {
+                "apply": "pause_or_delete_current_heartbeat_if_possible",
+                "host_tool": "automation_update",
+                "host_action": "pause_or_delete_current_heartbeat",
+                "resume_trigger": "explicit goal resume or newly projected work",
+                "no_spend_for_host_action": True,
+            },
+            "unchanged_poll": {
+                "local_scheduler": "stop",
+                "codex_cli_tui": "exit",
+                "claude_code_loop": "stop",
+                "final_quota_replan_check_enabled": False,
+                "spend_policy": "no quota spend for terminal loop stop",
+            },
+            "unchanged_identity_keys": base_identity_keys,
+        }
+
     def hint(
         *,
         action: str,

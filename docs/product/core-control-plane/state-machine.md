@@ -282,6 +282,7 @@ stateDiagram-v2
   Tick --> WaitMaterial: action=backoff_until_material_transition
   Tick --> WaitEvidence: action=backoff_until_fresh_evidence
   Tick --> QuietWait: action=backoff_until_state_change
+  Tick --> TerminalStop: action=stop_until_explicit_resume
   Tick --> DefaultCadence: action=keep_default_cadence
 
   RunNow --> ActiveCadence
@@ -290,6 +291,7 @@ stateDiagram-v2
   WaitMaterial --> MonitorCadence
   WaitEvidence --> EvidenceCadence
   QuietWait --> WiderCadence
+  TerminalStop --> [*]
   DefaultCadence --> Tick
 
   WiderCadence --> FinalCheck: unchanged limit reached
@@ -311,6 +313,7 @@ stateDiagram-v2
 | `backoff_until_material_transition` | `monitor_wait` | 15 / 60 minutes | Monitor-only liveness without compute spend. |
 | `backoff_until_fresh_evidence` | `unchanged_noop` | 60 / 240 minutes | Wait for fresh mapped or post-handoff evidence. |
 | `backoff_until_state_change` | `quiet_wait` | 30 / 120 minutes | No specific user/monitor path is projected. |
+| `stop_until_explicit_resume` | `terminal_no_followup` | stopped | An explicit no-follow-up terminal marker and empty normalized frontier stop recurring automation until resume or new work. |
 | `keep_default_cadence` | `default` | 3 / 30 minutes | No backoff condition is projected. |
 
 The reset token is part of the machine. When identity, selected action,

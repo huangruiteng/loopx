@@ -48,6 +48,7 @@ from .control_plane.goals.goal_frontier import (
     AUTONOMOUS_REPLAN_REQUIRED_MODE,
     autonomous_replan_decision_allowed,
     build_goal_frontier_projection_context_from_status,
+    goal_frontier_is_terminal_no_followup,
 )
 from .control_plane.quota.heartbeat_recommendation import (
     HEARTBEAT_HANDOFF_READINESS_COMPACT_FIELDS as HANDOFF_READINESS_COMPACT_FIELDS,
@@ -1500,30 +1501,19 @@ def build_quota_should_run(
                 automation_prompt_upgrade.get("reason")
                 or "identity-aware automation prompt upgrade is required"
             )
-        should_run = bool(
-            normal_delivery_allowed
-            or recovery_allowed
-            or self_repair_allowed
-            or capability_repair_allowed
-            or workspace_repair_allowed
-        )
+        should_run = bool(normal_delivery_allowed or recovery_allowed or self_repair_allowed
+                          or capability_repair_allowed or workspace_repair_allowed)
         effective_action = _effective_action(
-            normal_delivery_allowed=normal_delivery_allowed,
-            recovery_delivery_allowed=recovery_allowed,
-            self_repair_allowed=self_repair_allowed,
-            capability_repair_allowed=capability_repair_allowed,
-            workspace_repair_allowed=workspace_repair_allowed,
-            stall_self_repair=stall_self_repair,
-            state=state,
-            quota=quota,
+            normal_delivery_allowed=normal_delivery_allowed, recovery_delivery_allowed=recovery_allowed,
+            self_repair_allowed=self_repair_allowed, capability_repair_allowed=capability_repair_allowed,
+            workspace_repair_allowed=workspace_repair_allowed, stall_self_repair=stall_self_repair,
+            state=state, quota=quota,
         )
         replan_decision_allowed = not inbox_reply_due and autonomous_replan_decision_allowed(
-            replan_obligation=replan_obligation,
-            plan_ok=bool(plan.get("ok")),
+            replan_obligation=replan_obligation, plan_ok=bool(plan.get("ok")),
             workspace_blocked=bool(workspace_guard),
             automation_prompt_upgrade_required=automation_prompt_upgrade_required,
-            agent_id=agent_frontier_id,
-            registered_agent_ids=registered_agent_ids,
+            agent_id=agent_frontier_id, registered_agent_ids=registered_agent_ids,
         )
         if replan_decision_allowed:
             normal_delivery_allowed = False
@@ -1534,7 +1524,17 @@ def build_quota_should_run(
                 "autonomous replan obligation is selected before monitor quiet "
                 "or agent-scope wait classification"
             )
-        if automation_prompt_upgrade_required:
+        terminal_no_followup = goal_frontier_is_terminal_no_followup(status=item.get("status"), projection=goal_frontier_projection)
+        if terminal_no_followup and not inbox_reply_due:
+            quota = {**quota, "state": "terminal_no_followup", "reason": (
+                "explicit terminal no-follow-up is confirmed by an empty normalized frontier")}
+            state = "terminal_no_followup"
+            normal_delivery_allowed = recovery_allowed = self_repair_allowed = False
+            capability_repair_allowed = workspace_repair_allowed = should_run = False
+            effective_action = "terminal_no_followup"
+            reason = ("the goal explicitly records terminal no-follow-up and its normalized frontier "
+                      "is empty; stop recurring automation until an explicit resume")
+        if automation_prompt_upgrade_required and not terminal_no_followup:
             should_run = False
             effective_action = "automation_prompt_upgrade_required"
         elif inbox_reply_due:
