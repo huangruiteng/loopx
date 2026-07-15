@@ -3,13 +3,17 @@
 
 from __future__ import annotations
 
-import shutil
+import runpy
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 TEST_PATH = REPO_ROOT / "tests" / "control_plane" / "test_cli_output_budget.py"
 DIFFERENTIAL_SMOKE = (
     REPO_ROOT
@@ -19,18 +23,20 @@ DIFFERENTIAL_SMOKE = (
 )
 
 
-def _pytest_command() -> list[str]:
-    try:
-        import pytest  # noqa: F401
-    except Exception:
-        uvx = shutil.which("uvx")
-        if uvx:
-            return [uvx, "--with", "pytest>=8,<9", "pytest"]
-        raise RuntimeError(
-            "cli-output-budget-regression-smoke requires pytest or uvx; "
-            "qualification fails closed when neither runner is available"
-        ) from None
-    return [sys.executable, "-m", "pytest"]
+def _run_budget_checks() -> None:
+    tests = runpy.run_path(str(TEST_PATH))
+    tests["test_manifest_covers_the_declared_agent_facing_surface_set"]()
+    with tempfile.TemporaryDirectory(prefix="loopx-cli-output-budget-") as temp_dir:
+        root = Path(temp_dir)
+        tests["test_real_cli_output_stays_inside_the_characterized_baseline"](
+            root / "scenarios"
+        )
+        tests["test_collection_growth_and_bootstrap_duplication_are_explicit"](
+            root / "growth"
+        )
+        tests["test_explicit_compact_and_detail_modes_are_characterized"](
+            root / "mode-variants"
+        )
 
 
 def main() -> int:
@@ -38,21 +44,7 @@ def main() -> int:
         raise RuntimeError(
             f"missing CLI output budget test: {TEST_PATH.relative_to(REPO_ROOT)}"
         )
-    completed = subprocess.run(
-        [*_pytest_command(), "-q", str(TEST_PATH.relative_to(REPO_ROOT))],
-        cwd=REPO_ROOT,
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        timeout=180,
-    )
-    if completed.returncode != 0:
-        raise AssertionError(
-            "agent-facing CLI output qualification failed\n"
-            f"stdout:\n{completed.stdout[-3000:]}\n"
-            f"stderr:\n{completed.stderr[-3000:]}"
-        )
+    _run_budget_checks()
     completed = subprocess.run(
         [sys.executable, str(DIFFERENTIAL_SMOKE.relative_to(REPO_ROOT))],
         cwd=REPO_ROOT,

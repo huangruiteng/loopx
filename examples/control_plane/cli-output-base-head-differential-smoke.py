@@ -12,12 +12,16 @@ import sys
 import tempfile
 from pathlib import Path
 
-from loopx.control_plane.testing.cli_output_differential import (
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.control_plane.testing.cli_output_differential import (  # noqa: E402
     compare_cli_output_receipts,
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
 PROBE_TEST = REPO_ROOT / "tests" / "control_plane" / "test_cli_output_budget.py"
 PROBE_RUNNER = REPO_ROOT / "examples" / "control_plane" / "cli-output-probe-runner.py"
 SEMANTICS_SOURCE = (

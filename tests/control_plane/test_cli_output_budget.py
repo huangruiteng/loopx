@@ -7,8 +7,6 @@ import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
-import pytest
-
 from loopx.cli import main as cli_main
 from loopx.control_plane.testing.cli_output_budget import (
     CLI_OUTPUT_BUDGET_BY_ID,
@@ -505,16 +503,15 @@ def test_manifest_covers_the_declared_agent_facing_surface_set() -> None:
             assert classification.surface_id is None
 
 
-@pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda scenario: scenario.name)
 def test_real_cli_output_stays_inside_the_characterized_baseline(
     tmp_path: Path,
-    scenario: Scenario,
 ) -> None:
-    results = _measure_scenario(tmp_path, scenario)
-    for formats in results.values():
-        assert formats["json"]["json_parseable"] is True
-        assert formats["json"]["pretty_print_overhead_chars"] > 0
-        assert formats["markdown"]["json_parseable"] is False
+    for scenario in SCENARIOS:
+        results = _measure_scenario(tmp_path / scenario.name, scenario)
+        for formats in results.values():
+            assert formats["json"]["json_parseable"] is True
+            assert formats["json"]["pretty_print_overhead_chars"] > 0
+            assert formats["markdown"]["json_parseable"] is False
 
 
 def test_collection_growth_and_bootstrap_duplication_are_explicit(tmp_path: Path) -> None:
