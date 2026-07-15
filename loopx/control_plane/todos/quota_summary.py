@@ -135,6 +135,55 @@ class _QuotaTodoLanes:
     open_count: Any
 
 
+def _strict_non_negative_int(value: Any) -> int | None:
+    if type(value) is not int or value < 0:
+        return None
+    return value
+
+
+def _validated_todo_source_contract(
+    value: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    proof = value.get("source_proof")
+    counts = {
+        key: _strict_non_negative_int(value.get(key))
+        for key in ("total_count", "open_count", "done_count", "deferred_count")
+    }
+    valid_counts = (
+        all(count is not None for count in counts.values())
+        and bool(counts["total_count"])
+        and counts["total_count"]
+        == counts["open_count"] + counts["done_count"] + counts["deferred_count"]
+    )
+    valid_proof = bool(
+        isinstance(proof, dict)
+        and proof.get("schema_version") == "todo_source_proof_v0"
+        and proof.get("role") in {"user", "agent"}
+        and proof.get("derived") is True
+        and bool(str(value.get("source_section") or "").strip())
+        and type(proof.get("item_count")) is int
+        and proof.get("item_count") == counts["total_count"]
+    )
+    completeness = {
+        "schema_version": "todo_source_completeness_v0",
+        "status": "valid" if valid_counts and valid_proof else "invalid",
+        "source": "structured_todo_projection",
+        "role": proof.get("role") if isinstance(proof, dict) else None,
+    }
+
+    intent = value.get("closure_intent")
+    valid_intent = bool(
+        valid_counts
+        and isinstance(intent, dict)
+        and intent.get("schema_version") == "todo_closure_intent_v0"
+        and intent.get("kind") == "no_followup"
+        and intent.get("derived") is True
+        and type(intent.get("count")) is int
+        and 0 < intent.get("count") <= counts["done_count"]
+    )
+    return completeness, {**intent, "source": "todo_no_followup"} if valid_intent else None
+
+
 def _build_quota_todo_lanes(
     value: dict[str, Any],
     *,
@@ -266,6 +315,7 @@ def summarize_user_todos_for_quota(
 ) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
+    source_completeness, closure_intent = _validated_todo_source_contract(value)
     all_open_items = sorted(
         todo_summary_source_items(value),
         key=todo_projection_sort_key,
@@ -295,6 +345,8 @@ def summarize_user_todos_for_quota(
         "total_count": value.get("total_count"),
         "open_count": lanes.open_count,
         "done_count": value.get("done_count"),
+        "deferred_count": value.get("deferred_count"),
+        "source_completeness": source_completeness,
         "first_open_items": lanes.display_open_items[:3],
         "first_executable_items": lanes.executable_items[:3],
         "gate_open_items": gate_items[:3],
@@ -314,6 +366,8 @@ def summarize_user_todos_for_quota(
         "backlog_items": lanes.display_open_items[:TODO_BACKLOG_ITEM_LIMIT],
         "executable_backlog_items": lanes.executable_items[:TODO_BACKLOG_ITEM_LIMIT],
     }
+    if closure_intent:
+        summary["closure_intent"] = closure_intent
     monitor_writeback = todo_summary_monitor_writeback_contract(value)
     if monitor_writeback:
         summary["monitor_writeback"] = monitor_writeback
@@ -465,6 +519,8 @@ def compact_quota_todo_summary_for_payload(summary: dict[str, Any]) -> dict[str,
     compact: dict[str, Any] = {}
     compacted_lanes: dict[str, dict[str, int]] = {}
     for key, value in summary.items():
+        if key in {"source_completeness", "closure_intent"}:
+            continue
         if isinstance(value, list):
             limit = QUOTA_PAYLOAD_LANE_LIMITS.get(key, QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT)
             compact[key] = _compact_quota_payload_item_list(value, limit=limit)

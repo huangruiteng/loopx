@@ -64,6 +64,8 @@ MAX_COMPLETED_SUCCESSION_WARNING_ITEMS = 5
 
 TODO_ITEM_SCHEMA_VERSION = "todo_item_v0"
 TODO_SUCCESSION_WARNING_SCHEMA_VERSION = "todo_succession_warning_v0"
+TODO_SOURCE_PROOF_SCHEMA_VERSION = "todo_source_proof_v0"
+TODO_CLOSURE_INTENT_SCHEMA_VERSION = "todo_closure_intent_v0"
 TODO_ARCHIVE_STATE_ACTIVE = "active"
 AttentionItemBuilder = Callable[..., dict[str, Any]]
 GoalLifecycleFields = Callable[[dict[str, Any], Optional[dict[str, Any]]], dict[str, Any]]
@@ -1052,6 +1054,13 @@ def compact_todo_group(
         rollout_events=rollout_events,
     )
     lanes = _todo_group_lanes(items, preferred_todo_ids=preferred_todo_ids)
+    source_valid = role in {"user", "agent"} and bool(str(source_section or "").strip())
+    no_followup_items = [
+        item
+        for item in items
+        if todo_done_for_status(item.get("status"))
+        and normalize_todo_no_followup(item.get("no_followup")) is True
+    ]
     successor_gap_items = completed_without_successor_items(
         lanes.done_items,
         all_items=items,
@@ -1126,6 +1135,20 @@ def compact_todo_group(
         ][:MAX_DEFERRED_TODO_VISIBILITY_ITEMS],
         "items": lanes.budgeted_items if item_limit is None else lanes.budgeted_items[:item_limit],
     }
+    if not lanes.open_items and not lanes.deferred_items:
+        summary["source_proof"] = {
+            "schema_version": TODO_SOURCE_PROOF_SCHEMA_VERSION,
+            "role": role,
+            "item_count": len(items),
+            "derived": source_valid,
+        }
+    if no_followup_items:
+        summary["closure_intent"] = {
+            "schema_version": TODO_CLOSURE_INTENT_SCHEMA_VERSION,
+            "kind": "no_followup",
+            "derived": True,
+            "count": len(no_followup_items),
+        }
     if lanes.resume_blocked_items:
         summary["resume_blocked_count"] = len(lanes.resume_blocked_items)
         summary["resume_blocked_items"] = [

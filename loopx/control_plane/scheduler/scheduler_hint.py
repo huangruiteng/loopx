@@ -837,14 +837,18 @@ def build_scheduler_hint(
             "action": "stop_until_explicit_resume",
             "cadence_class": "terminal_no_followup",
             "reason": (
-                "the goal explicitly records no follow-up and has no remaining "
-                "frontier; recurring polling must stop until the goal is resumed"
+                "validated closure evidence derives no-follow-up and confirms no "
+                "remaining frontier; recurring polling must stop until resume"
             ),
             "spend_policy": "no quota spend for terminal automation shutdown",
             "codex_app": {
                 "apply": "pause_or_delete_current_heartbeat_if_possible",
                 "host_tool": "automation_update",
                 "host_action": "pause_or_delete_current_heartbeat",
+                "host_action_required": True,
+                "attempt_limit": 1,
+                "verify_host_result": True,
+                "ack_required": False,
                 "resume_trigger": "explicit goal resume or newly projected work",
                 "no_spend_for_host_action": True,
             },

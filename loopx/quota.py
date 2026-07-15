@@ -1524,16 +1524,16 @@ def build_quota_should_run(
                 "autonomous replan obligation is selected before monitor quiet "
                 "or agent-scope wait classification"
             )
-        terminal_no_followup = goal_frontier_is_terminal_no_followup(status=item.get("status"), projection=goal_frontier_projection)
+        terminal_no_followup = goal_frontier_is_terminal_no_followup(projection=goal_frontier_projection)
         if terminal_no_followup and not inbox_reply_due:
             quota = {**quota, "state": "terminal_no_followup", "reason": (
-                "explicit terminal no-follow-up is confirmed by an empty normalized frontier")}
+                "derived terminal no-follow-up is confirmed by complete todo sources and an empty frontier")}
             state = "terminal_no_followup"
             normal_delivery_allowed = recovery_allowed = self_repair_allowed = False
             capability_repair_allowed = workspace_repair_allowed = should_run = False
             effective_action = "terminal_no_followup"
-            reason = ("the goal explicitly records terminal no-follow-up and its normalized frontier "
-                      "is empty; stop recurring automation until an explicit resume")
+            reason = ("validated closure evidence derives terminal no-follow-up from complete todo sources "
+                      "and an empty frontier; stop recurring automation until an explicit resume")
         if automation_prompt_upgrade_required and not terminal_no_followup:
             should_run = False
             effective_action = "automation_prompt_upgrade_required"

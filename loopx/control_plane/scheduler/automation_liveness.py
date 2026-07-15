@@ -47,8 +47,8 @@ def build_automation_liveness(payload: dict[str, Any]) -> dict[str, Any]:
             ),
             "automation_action": "stop_terminal_no_followup",
             "reason": (
-                "the owner-authored terminal no-follow-up state is confirmed by an "
-                "empty normalized frontier"
+                "validated closure evidence derives no-follow-up from complete todo "
+                "sources and an empty normalized frontier"
             ),
             "next_trigger": "explicit goal resume or newly projected work",
             "spend_policy": "no quota spend for terminal automation shutdown",
