@@ -668,8 +668,9 @@ When `capability_gate.action=run`, the decision contract is:
 If no visible executable todo can run, the gate chooses:
 
 - `repair_bridge` for local bridge gaps such as `benchmark_runner`,
-  `external_evidence_poll`, `worker_bridge`, or `cli_bridge`;
-- `ask_owner` for owner-held capabilities such as `network`, `credentials`, or
+  `external_evidence_poll`, `worker_bridge`, or `cli_bridge`, and for observed
+  runtime provisioning gaps such as `network`;
+- `ask_owner` for owner-held capabilities such as `credentials` or
   `production_access`;
 - `skip` when the missing capability is unsupported and no safe repair or owner
   action is known.
@@ -677,9 +678,11 @@ If no visible executable todo can run, the gate chooses:
 For a mixed missing set, the gate projects `owner_missing`, `repair_missing`,
 and `resolution_steps` separately. An unresolved owner-held capability takes
 precedence for the interaction decision, so a local bridge repair cannot hide
-the concrete user action. Once the launcher truthfully declares that owner-held
-capability available, the user gate disappears and any remaining bridge repair
-returns to the agent lane.
+the concrete user action. Runtime capability gaps do not enter
+`owner_missing`: the agent observes or repairs the launcher bridge and then
+truthfully declares the capability available. Once an owner-held capability is
+provided through its concrete gate, the user gate disappears and any remaining
+bridge repair returns to the agent lane.
 
 Launchers that really have an extra capability should pass it to both
 `quota should-run` and `quota spend-slot` with `--available-capability`, so the

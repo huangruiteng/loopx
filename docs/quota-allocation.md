@@ -326,9 +326,16 @@ turn that ordering into an automatic final choice. Blocked higher-priority
 candidates stay visible in `blocked_candidates`. If every visible executable
 candidate is missing a capability, the gate returns
 `action=repair_bridge` for repairable local bridges such as
-`benchmark_runner`/`external_evidence_poll`, `action=ask_owner` for owner-held
-capabilities such as `network`/`credentials`/`production_access`, or
+`benchmark_runner`/`external_evidence_poll` and runtime provisioning such as
+`network`, `action=ask_owner` for owner-held capabilities such as
+`credentials`/`production_access`, or
 `action=skip` for unsupported capability classes.
+
+Runtime capability absence is not permission authority. A missing `network`
+declaration therefore remains in the agent repair lane: the agent should
+observe or repair the launcher/runtime bridge, truthfully pass
+`--available-capability network` once verified, or write a concrete runtime
+blocker. LoopX must not turn that condition into a user approval request.
 
 When a missing repairable bridge is itself the target of the todo, for example
 `required_capabilities=shell` plus `target_capabilities=benchmark_runner`, the
