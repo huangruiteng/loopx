@@ -33,3 +33,40 @@ Only the display side of software-exploration topology belongs here:
 That keeps topology cards, tables, and graph views close to the dashboard
 without turning presentation code into the source of evidence for vision and
 replan.
+
+## Static Site Delivery Contract
+
+`loopx presentation package` turns an already-built, public-safe site directory
+into a provider-neutral publish artifact. The artifact always remains usable
+locally and carries both a stable latest layout and an immutable
+`revisions/<revision>/` snapshot. The command writes a deterministic manifest
+and a deploy receipt into the artifact; identical content and publication
+parameters are a semantic no-op.
+
+Packaging requires caller-supplied `passed` receipts for desktop visual,
+mobile visual, and link checks. LoopX validates the file manifest and common
+public-boundary leaks, but it does not pretend to have run the caller's browser
+suite.
+
+```bash
+loopx --format json presentation package \
+  --site-dir output/site \
+  --output-dir output/publish \
+  --site-id public-frontstage \
+  --revision <public-revision> \
+  --publisher github-pages \
+  --base-url https://example.github.io/project/ \
+  --desktop-visual-check passed \
+  --mobile-visual-check passed \
+  --link-check passed \
+  --execute
+```
+
+`--publisher local` is the default and requires no network configuration.
+`github-pages` is the first optional URL adapter; it only maps the prepared
+artifact to stable latest and revision URLs, so repository credentials and
+Pages enablement stay in the host workflow. After the host deploys the
+artifact, `presentation verify-readback` compares the served deploy receipt
+with the local receipt and persists a compact verification event. Use
+`presentation rollback` to rebuild latest from a retained revision before the
+host republishes the artifact.
