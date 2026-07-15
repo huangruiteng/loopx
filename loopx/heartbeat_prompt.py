@@ -31,17 +31,17 @@ USER_TODO_FINAL_MESSAGE_RULE = (
     "Only notify=DONT_NOTIFY + false/0: quiet."
 )
 SCHEDULER_HINT_APPLICATION_RULE = (
-    "Use `scheduler_hint`; no spend. App apply_needed -> update RRULE, then "
-    "ack_hint on success or failure_hint once on failure; else ack_needed -> ack; "
-    "else skip. LoopX owns progression."
+    "`scheduler_hint` no-spend. host_action=pause_or_delete_current_heartbeat -> "
+    "automation_update stop once, verify, end; else apply_needed -> RRULE then "
+    "ack/failure_hint; ack_needed -> ack."
 )
 SCHEDULER_HINT_COMPACT_RULE = (
-    "Scheduler no-spend: apply -> update then ack or failure_hint; "
-    "ack_needed -> ack; else skip."
+    "host_action=pause_or_delete_current_heartbeat: automation_update stop; "
+    "else RRULE apply/ack/fail. No spend."
 )
 SCHEDULER_HINT_THIN_RULE = (
-    "Scheduler: apply -> RRULE + ack/failure_hint; ack_needed -> ack; "
-    "final-check; no spend."
+    "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend); "
+    "else RRULE/ack/fail."
 )
 RUNTIME_CAPABILITY_PROJECTION_THIN_RULE = (
     "Observed capabilities -> `--available-capability`; never user gates."
@@ -759,7 +759,7 @@ def render_brief_heartbeat_task_body(
     scope_block = f"\n{agent_scope_instruction}\n" if agent_scope_instruction else ""
     return f"""Advance `{goal_id}` using `{active_state}`.
 
-Brief installed LoopX heartbeat. Thin dispatcher; pull details on demand:
+Brief installed LoopX heartbeat. Thin dispatcher; detail:
 `{compact_prompt_command}`.
 {scope_block}
 
@@ -776,10 +776,10 @@ User NOTIFY: Chinese actions incl. non_blocking at false/0; never only "owner
 gate"; required missing -> "具体 user todo 未投影，需修复 LoopX 状态投影".
 Only DONT_NOTIFY+false/0: quiet.
 
-If `should_run=false`: no work/spend except `safe_bypass_allowed=true`.
-external/wait monitor -> one read-only status/log/metric/marker poll;
-new evidence -> writeback/spend once. Otherwise obey user channel.
-Apply `scheduler_hint` stateful backoff for RRULE/backoff/self-stop; no spend.
+If `should_run=false`: no work/spend except `safe_bypass_allowed=true`;
+external/wait monitor -> one read-only status/log/metric/marker poll; new
+evidence -> writeback/spend. Otherwise obey user channel.
+{SCHEDULER_HINT_THIN_RULE}
 `lark_event_inbox`: reply_due: drain_command -> effect/reply/readback/ACK.
 
 If `should_run=true`: fetch compact; read needed state priority slice + guard
@@ -828,12 +828,12 @@ def render_compact_heartbeat_task_body(
     scope_block = f"\n{agent_scope_instruction}\n" if agent_scope_instruction else ""
     return f"""Advance `{goal_id}` using `{active_state}`.
 
-This compact LoopX heartbeat body stays generic.
-Put local policy in registry/state/adapter/`goal_boundary`.
+This compact LoopX heartbeat body stays generic; local policy:
+registry/state/adapter/`goal_boundary`.
 Expanded lifecycle contract: `{expanded_prompt_command}`.
 {scope_block}
 
-Run CLI preflight/guard:
+Preflight/guard:
 
 ```bash
 {cli_preflight}
@@ -842,10 +842,12 @@ Run CLI preflight/guard:
 
 Preflight fail: quiet; no work/spend.
 
+{SCHEDULER_HINT_COMPACT_RULE}
+
 `lark_event_inbox`: reply_due: drain_command -> effect/reply/readback/ACK.
 
-If `should_run=false`: `monitor_quiet_skip` appends at most one no-spend
-`quota monitor-poll --execute`, reruns guard, then stays quiet unless
+If `should_run=false`: `monitor_quiet_skip` -> one no-spend
+`quota monitor-poll --execute`, rerun guard; quiet unless
 `autonomous_replan_required` / `must_attempt_work=true`; no edits/spend;
 unchanged monitor-only polls are not self-stop signals.
 `state=operator_gate` / `notify_user_on_open_todo=true` /
@@ -873,7 +875,6 @@ If `should_run=true`:
    `must_attempt_work=true` means one bounded segment even with
    `notify=DONT_NOTIFY`; quiet no-op needs `must_attempt_work=false` and no
    `notify_user_on_open_todo=true` blocker-push notification.
-   {SCHEDULER_HINT_COMPACT_RULE}
    Then follow `heartbeat_recommendation`:
    `run_first_read_only_map` means run exact real-map command, then
    validate/save/spend/refresh/`NOTIFY`; `mapped_noop_if_unchanged` plus
@@ -959,8 +960,8 @@ User NOTIFY: concrete Chinese actions even non_blocking false/0; never only
 Quiet only if DONT_NOTIFY+false/0.
 {RUNTIME_CAPABILITY_PROJECTION_THIN_RULE}
 {SCHEDULER_HINT_THIN_RULE}
-Bounded batch/no-op; spend post-writeback.
-Plans/done -> todo/rationale; 2 stalls -> self-repair.
+Batch/no-op; spend post-writeback.
+Plans/done->todo/rationale; 2 stalls->self-repair.
 `lark_event_inbox`: reply_due; drain_command/reply-readback/ACK.
 {EXPLORE_GRAPH_DELIVERY_THIN_RULE}
 

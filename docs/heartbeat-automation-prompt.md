@@ -496,7 +496,12 @@ put the lifecycle in the automation task body. The default onboarding cadence
 starts at 3 minutes; after the first guard, follow
 `quota should-run.scheduler_hint` to back off long waits and stop external loops
 after a final quota/replan check confirms repeated unchanged polls. Codex App
-heartbeats should search/use `automation_update` when available, but only when
+heartbeats should search/use `automation_update` when available. If
+`scheduler_hint.action=stop_until_explicit_resume` and
+`scheduler_hint.codex_app.host_action=pause_or_delete_current_heartbeat`: in
+that terminal case, call `automation_update` once to pause the current
+heartbeat (delete only if pause is unavailable), verify the host result, spend
+no quota, and end the turn without a scheduler ACK. Otherwise call it only when
 `scheduler_hint.codex_app.stateful_backoff.apply_needed=true` and
 `scheduler_hint.codex_app.recommended_rrule` is present. After a successful
 RRULE update, run `loopx` with

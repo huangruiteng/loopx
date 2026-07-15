@@ -156,6 +156,8 @@ def main() -> int:
     assert_no_project_specific_prompt_leaks("thin", str(thin_payload["task_body"]))
     for prompt_payload in (payload, default_payload, compact_payload, brief_payload, thin_payload):
         task_body = str(prompt_payload["task_body"])
+        assert "host_action=pause_or_delete_current_heartbeat" in task_body, task_body
+        assert "automation_update" in task_body and "stop" in task_body, task_body
         assert "lark_event_inbox" in task_body, task_body
         assert "drain" in task_body and "ACK" in task_body, task_body
         assert "Graph-on" in task_body and "sync" in task_body and "sinks" in task_body, task_body
@@ -312,10 +314,10 @@ def main() -> int:
         "具体 user todo 未投影，需修复 LoopX 状态投影",
         "Quiet only if DONT_NOTIFY+false/0",
         "Observed capabilities -> `--available-capability`; never user gates",
-        "Scheduler: apply -> RRULE + ack/failure_hint; ack_needed -> ack",
-        "final-check; no spend",
+        "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend)",
+        "else RRULE/ack/fail",
         "spend post-writeback",
-        "Plans/done -> todo/rationale; 2 stalls -> self-repair",
+        "Plans/done->todo/rationale; 2 stalls->self-repair",
         "`lark_event_inbox`: reply_due",
         "drain_command/reply-readback/ACK",
         "Graph-on: sync sinks",
@@ -363,7 +365,7 @@ def main() -> int:
     for phrase in (
         "Brief installed LoopX heartbeat",
         "Thin dispatcher",
-        "pull details on demand",
+        "Thin dispatcher; detail",
         "loopx heartbeat-prompt --compact --goal-id public-heartbeat-goal --active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
         "Preflight and quota guard",
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
@@ -409,10 +411,10 @@ def main() -> int:
         'never only "owner gate"',
         "Quiet only if DONT_NOTIFY+false/0",
         "具体 user todo 未投影，需修复 LoopX 状态投影",
-        "Scheduler: apply -> RRULE + ack/failure_hint; ack_needed -> ack",
-        "final-check; no spend",
-        "Bounded batch/no-op; spend post-writeback",
-        "Plans/done -> todo/rationale; 2 stalls -> self-repair",
+        "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend)",
+        "else RRULE/ack/fail",
+        "Batch/no-op; spend post-writeback",
+        "Plans/done->todo/rationale; 2 stalls->self-repair",
         "P0 blocked: safe P1/P2",
         "monitor-only quiet/no-spend",
         "No project branches",
@@ -726,6 +728,8 @@ def main() -> int:
     assert "quota should-run.scheduler_hint" in doc, doc
     assert "automation_update" in doc, doc
     assert "scheduler_hint.codex_app.stateful_backoff" in doc, doc
+    assert "scheduler_hint.action=stop_until_explicit_resume" in doc, doc
+    assert "host_action=pause_or_delete_current_heartbeat" in doc, doc
     assert "apply_needed=true" in doc, doc
     assert "codex_app.ack_hint.cli_args" in doc, doc
     assert "quota scheduler-ack-current" in doc, doc
@@ -789,6 +793,8 @@ def main() -> int:
     assert "scheduler_hint" in project_skill, project_skill
     assert "automation_update" in project_skill, project_skill
     assert "scheduler_hint.codex_app.stateful_backoff" in project_skill, project_skill
+    assert "scheduler_hint.action=stop_until_explicit_resume" in project_skill, project_skill
+    assert "host_action=pause_or_delete_current_heartbeat" in project_skill, project_skill
     assert "apply_needed=true" in project_skill, project_skill
     assert "codex_app.ack_hint.cli_args" in project_skill, project_skill
     assert "quota scheduler-ack-current" in project_skill, project_skill
