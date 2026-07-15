@@ -78,6 +78,69 @@ Turn request/result objects and that CLI's prompt, session, and output model.
 Raw transcript text, process exit zero, and the host's own completion claim are
 never sufficient validation.
 
+### Five Questions For Any Agent CLI
+
+Before wiring Trae CLI, Codex CLI, or another host, answer these five questions:
+
+1. **How does it run unattended?** Choose an explicit non-interactive command
+   and workspace. If the CLI is interactive-only, it is not an
+   `isolated-headless` adapter yet.
+2. **How does it return one typed result?** Prefer a native output schema or a
+   dedicated result file. Do not scrape arbitrary conversation text as the
+   completion contract.
+3. **What is its resume handle?** Keep the opaque handle in local adapter
+   state, keyed by `(goal_id, agent_id, todo_id)`. Never put it in LoopX state
+   or public evidence.
+4. **Which failures may resume?** A bounded timeout or lost transport may
+   preserve an observed session. A rejected startup contract, incompatible
+   host version, or missing session invalidates it so the next Turn starts
+   cleanly.
+5. **What proves the work independently?** Name a command that checks the real
+   repository, artifact, service readback, document revision, or other
+   postcondition without trusting the agent CLI's own claim.
+
+This yields one reusable integration shape:
+
+```text
+TurnEnvelope
+    -> host adapter -> agent CLI -> typed candidate result
+    -> independent validator -> pass | repair | replan
+    -> LoopX writeback -> one durable transition and one quota spend
+```
+
+A thin adapter can be implemented with this host-neutral algorithm:
+
+```text
+request = read_one_json(stdin)
+todo = request.turn_envelope.action.selected_todo
+session = load_local_session(goal_id, agent_id, todo.todo_id)
+prompt = render_bounded_prompt(todo, request.result_contract, temporary_result_path)
+invoke_agent_cli(prompt, workspace, session, explicit_timeout)
+candidate = read_and_shape_temporary_result(temporary_result_path)
+write_one_json(stdout, candidate with request.turn_key)
+```
+
+`render_bounded_prompt` should tell the agent CLI to work only on the selected
+todo and write its candidate result to a dedicated temporary path. The adapter
+must reject a missing or malformed result instead of guessing from prose. It may
+discard raw conversation output after extracting the host's opaque session
+handle. LoopX then passes the candidate to a separate validator; the adapter
+does not call the work complete itself.
+
+For a CLI with native structured output and resume support, the adapter is
+mostly field mapping. For a CLI such as a Trae installation whose selected
+command only returns conversational text, the wrapper must first establish a
+dedicated typed result channel; passing `trae chat` directly as the adapter is
+not sufficient. Check the installed CLI's help and pin the qualified command
+shape because flags and headless behavior may vary by version.
+
+For a coding collaboration, the validator may run focused tests and inspect the
+expected git diff. For operations, it may read back the declared resource
+state. For data work, it may check a schema and bounded quality assertions. For
+documents or knowledge maintenance, it may verify the target revision and
+required sections. These are different validators over the same Turn
+orchestration contract; they do not require different control loops.
+
 ## Authority Boundary
 
 | Concern | Authority |
@@ -109,9 +172,10 @@ One driver tick has exactly these ordered phases:
 4. **Prepare**: preserve the selected todo identity, claim or lease when the
    contract requires it, and satisfy the workspace guard before any repository
    write.
-5. **Execute**: resume the declared host session when possible, or create a new
-   session only when the execution mode permits it. Give the host the thin task
-   body plus the current envelope, and request one bounded work segment.
+5. **Execute**: resume the declared host session only when the adapter marked
+   it eligible, or create a new session when the execution mode permits it.
+   Give the host the thin task body plus the current envelope, and request one
+   bounded work segment.
 6. **Validate**: classify the host result and validate the claimed artifact or
    state transition. Host process exit zero is not validation.
 7. **Write back**: update or complete the current todo, create a repair or
@@ -218,6 +282,20 @@ state with a concrete projected action.
 | `validation_failed` | Preserve compact negative evidence and choose repair or replan. |
 | `writeback_failed` | Retry idempotent writeback; never spend first. |
 | `scheduler_apply_failed` | Preserve completed writeback, record cadence failure, and retry scheduler control without a delivery spend. |
+
+Session recovery is fail-closed:
+
+| Host observation | Session disposition | Next Turn |
+| --- | --- | --- |
+| Typed result returned | Keep the opaque session eligible. | Resume when the same todo remains selected. |
+| Timeout or transport loss after a session was observed | Keep it eligible, but do not infer progress. | Retry the side-effect-safe host phase. |
+| Incompatible host version or rejected startup/output contract | Invalidate it. | Start a fresh session after repair. |
+| Host reports the session is missing | Invalidate it. | Start a fresh session if policy still allows execution. |
+| Failure before any session was observed | Store nothing. | Re-decide, then start fresh only if allowed. |
+
+Session eligibility is recovery metadata, not evidence that work happened. It
+never bypasses a fresh Turn decision, task lease, independent validation, or
+writeback ordering.
 
 ## Adapter Requirements
 

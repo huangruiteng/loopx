@@ -86,7 +86,9 @@ def register_turn_commands(
             "A Trae, Codex, or other conversational CLI normally needs a thin "
             "adapter: read one typed request from stdin and emit one typed result "
             "to stdout. The validation command receives that normalized result "
-            "on stdin and must independently check the real postcondition."
+            "on stdin and must independently check the real postcondition. Only "
+            "eligible interrupted sessions resume; terminal startup or missing-session "
+            "failures start a fresh host session on the next Turn."
         ),
     )
     add_subcommand_format(run_once)
