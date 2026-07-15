@@ -89,14 +89,16 @@ def _secondary_notification_targets(
     primary_handles: Sequence[str],
     candidates: Sequence[Any],
     sinks_input: Mapping[str, Any],
+    allow_candidate_fallback: bool = True,
 ) -> tuple[list[str], list[str]]:
     """Choose sink-resolvable reviewers without changing GitHub coverage.
 
     The primary handles are reviewers already covered on GitHub or selected for
-    a new GitHub request.  Ranked recommendation candidates are fallback-only:
-    they are used when every configured secondary sink declares an identity for
-    the candidate.  Sink adapters still perform the authoritative provider and
-    membership verification before sending.
+    a new GitHub request. Ranked recommendation candidates are fallback-only for
+    a newly selected request. Existing GitHub coverage must stay bound to the
+    same reviewer across secondary sinks; an unresolved mapping skips the sink
+    instead of notifying another person. Sink adapters still perform the
+    authoritative provider and membership verification before sending.
     """
 
     primary = list(
@@ -140,6 +142,18 @@ def _secondary_notification_targets(
         return primary, pool
 
     target_count = len(primary)
+    if not allow_candidate_fallback:
+        return (
+            [
+                handle
+                for handle in primary
+                if all(
+                    isinstance(identities.get(handle), Mapping)
+                    for identities in identity_maps
+                )
+            ][:target_count],
+            pool,
+        )
     resolved = [
         handle
         for handle in pool
@@ -906,6 +920,7 @@ def build_issue_fix_reviewer_request_packet(
                 primary_handles=primary_notification_targets,
                 candidates=candidates,
                 sinks_input=notification_sinks_input,
+                allow_candidate_fallback=bool(packet.get("selected_reviewers")),
             )
         )
         packet["secondary_notification_primary_targets"] = (

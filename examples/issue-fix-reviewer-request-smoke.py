@@ -455,15 +455,37 @@ def main() -> int:
             "@service-owner",
             "@history-owner",
         ], secondary_fallback
-        assert secondary_fallback["secondary_notification_targets"] == [
-            "@history-owner"
-        ]
-        assert secondary_fallback["secondary_notification_fallback_used"] is True
-        assert secondary_fallback["secondary_notification_status"] == "sent_verified"
-        assert secondary_fallback["secondary_notification_verified"] is True
+        assert secondary_fallback["secondary_notification_targets"] == []
+        assert secondary_fallback["secondary_notification_fallback_used"] is False
+        assert secondary_fallback["secondary_notification_status"] == (
+            "skipped_reviewer_unavailable"
+        )
+        assert secondary_fallback["secondary_notification_verified"] is False
         assert fallback_combined.github.edits == 0
-        assert len(fallback_combined.lark_calls) == 3
+        assert fallback_combined.lark_calls == []
         assert_public_safe(secondary_fallback)
+
+        covered_same_runner = FakeCombinedRunner(
+            FakeGitHubRunner(before=metadata(requested=["service-owner"]))
+        )
+        covered_same = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            notification_sinks_input=sinks_input,
+            execute=True,
+            runner=covered_same_runner,
+        )
+        assert covered_same["ok"] is True, covered_same
+        assert covered_same["selected_reviewers"] == []
+        assert covered_same["secondary_notification_primary_targets"] == [
+            "@service-owner"
+        ]
+        assert covered_same["secondary_notification_targets"] == ["@service-owner"]
+        assert covered_same["secondary_notification_fallback_used"] is False
+        assert covered_same["secondary_notification_status"] == "sent_verified"
+        assert len(covered_same_runner.lark_calls) == 3
+        assert_public_safe(covered_same)
 
         provider_neutral_fallback = build_issue_fix_reviewer_request_packet(
             repo_path=path,
@@ -487,16 +509,12 @@ def main() -> int:
             provider_payload=metadata(requested=["service-owner"]),
         )
         assert provider_neutral_fallback["ok"] is True, provider_neutral_fallback
-        assert provider_neutral_fallback["secondary_notification_targets"] == [
-            "@history-owner"
-        ]
-        assert provider_neutral_fallback["secondary_notification_fallback_used"] is True
+        assert provider_neutral_fallback["secondary_notification_targets"] == []
+        assert provider_neutral_fallback["secondary_notification_fallback_used"] is False
         assert provider_neutral_fallback["secondary_notification_status"] == (
-            "preview_ready"
+            "skipped_reviewer_unavailable"
         )
-        assert provider_neutral_fallback["secondary_notifications"]["results"][0][
-            "sink_kind"
-        ] == "fixture_channel"
+        assert "secondary_notifications" not in provider_neutral_fallback
         assert_public_safe(provider_neutral_fallback)
 
         reviewed_combined = FakeCombinedRunner(
@@ -1368,6 +1386,55 @@ def main() -> int:
         )
         assert queued_key in stored_after_send["reviewer_notification_receipts"]
         assert stored_after_send["reviewer_notification_queue"] == []
+
+        replacement_a = {
+            **queued_receipt,
+            "idempotency_key": "sha256:" + "c" * 64,
+            "reviewer_handles": ["@service-owner"],
+        }
+        replacement_b = {
+            **queued_receipt,
+            "idempotency_key": "sha256:" + "d" * 64,
+            "reviewer_handles": ["@history-owner"],
+        }
+        persist_issue_fix_reviewer_notification_state(
+            lifecycle_path,
+            stored_after_send,
+            receipts=[],
+            queued_receipts=[replacement_a],
+        )
+        stored_with_replacement_a = json.loads(
+            lifecycle_path.read_text(encoding="utf-8").splitlines()[0]
+        )
+        queue_replace = persist_issue_fix_reviewer_notification_state(
+            lifecycle_path,
+            stored_with_replacement_a,
+            receipts=[],
+            queued_receipts=[replacement_b],
+            replace_queued_receipts=True,
+        )
+        assert queue_replace["write_performed"] is True, queue_replace
+        assert queue_replace["queue_reconciliation"]["mode"] == "replace_unsent"
+        assert queue_replace["queue_reconciliation"]["cancelled_count"] == 1
+        stored_with_replacement_b = json.loads(
+            lifecycle_path.read_text(encoding="utf-8").splitlines()[0]
+        )
+        assert reviewer_notification_queue_from_state(stored_with_replacement_b) == [
+            replacement_b
+        ]
+        queue_cancel = persist_issue_fix_reviewer_notification_state(
+            lifecycle_path,
+            stored_with_replacement_b,
+            receipts=[],
+            queued_receipts=[],
+            replace_queued_receipts=True,
+        )
+        assert queue_cancel["write_performed"] is True, queue_cancel
+        assert queue_cancel["queue_reconciliation"]["cancelled_count"] == 1
+        stored_after_cancel = json.loads(
+            lifecycle_path.read_text(encoding="utf-8").splitlines()[0]
+        )
+        assert stored_after_cancel["reviewer_notification_queue"] == []
     finally:
         for attempt in range(10):
             try:

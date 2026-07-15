@@ -298,6 +298,23 @@ def main() -> int:
     assert queued_retry_runner.calls == []
     assert_public_safe(queued_retry)
 
+    failed_queued_retry_runner = FakeSinkRunner(send_returncode=1)
+    failed_queued_retry = build_issue_fix_reviewer_notification_sinks_result(
+        repo="owner/repo",
+        pr_number=42,
+        pr_url="https://github.com/owner/repo/pull/42",
+        author_handle="@current-author",
+        reviewer_handles=["@service-owner"],
+        sinks_input=queued_retry_config,
+        execute=True,
+        delivery_observed_at="2026-07-10T02:30:00Z",
+        runner=failed_queued_retry_runner,
+    )
+    assert failed_queued_retry["ok"] is False, failed_queued_retry
+    assert failed_queued_retry["external_writes_performed"] is False
+    assert failed_queued_retry["queued_receipts"] == queued["queued_receipts"]
+    assert_public_safe(failed_queued_retry)
+
     inside_window_runner = FakeSinkRunner()
     inside_window = build_issue_fix_reviewer_notification_sinks_result(
         repo="owner/repo",

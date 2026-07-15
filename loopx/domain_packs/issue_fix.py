@@ -359,8 +359,14 @@ def persist_issue_fix_reviewer_notification_state(
     *,
     receipts: list[str],
     queued_receipts: list[dict[str, Any]],
+    replace_queued_receipts: bool = False,
 ) -> dict[str, Any]:
-    """Persist verified receipts and restart-safe queued delivery metadata."""
+    """Persist verified receipts and restart-safe queued delivery metadata.
+
+    The default preserves append-compatible callers. An authoritative reviewer
+    route may replace the unsent queue so stale targets are cancelled when live
+    GitHub coverage changes or the current target becomes unavailable.
+    """
 
     # Rows written before a capture-boundary field was introduced may omit it.
     # Receipt persistence is a metadata-only migration, so make that historical
@@ -391,19 +397,28 @@ def persist_issue_fix_reviewer_notification_state(
             merged_receipts.append(text)
 
     existing_queue = payload.get("reviewer_notification_queue")
-    merged_queue: dict[str, dict[str, Any]] = {}
+    prior_queue: dict[str, dict[str, Any]] = {}
     for value in existing_queue if isinstance(existing_queue, list) else []:
         try:
             queued = _validated_reviewer_notification_queue_receipt(value)
         except ValueError:
             continue
-        merged_queue[str(queued["idempotency_key"])] = queued
+        prior_queue[str(queued["idempotency_key"])] = queued
+    merged_queue = {} if replace_queued_receipts else dict(prior_queue)
     for value in queued_receipts:
         queued = _validated_reviewer_notification_queue_receipt(value)
         merged_queue[str(queued["idempotency_key"])] = queued
     for key in merged_receipts:
         merged_queue.pop(key, None)
     queue = list(merged_queue.values())
+    queue_reconciliation = {
+        "schema_version": "issue_fix_reviewer_notification_queue_reconciliation_v0",
+        "mode": "replace_unsent" if replace_queued_receipts else "merge",
+        "prior_count": len(prior_queue),
+        "requested_count": len(queued_receipts),
+        "result_count": len(queue),
+        "cancelled_count": len(set(prior_queue) - set(merged_queue)),
+    }
 
     prior_receipts = existing_receipts if isinstance(existing_receipts, list) else []
     prior_queue = existing_queue if isinstance(existing_queue, list) else []
@@ -413,10 +428,12 @@ def persist_issue_fix_reviewer_notification_state(
             "write_performed": False,
             "row_count": None,
             "path_recorded": False,
+            "queue_reconciliation": queue_reconciliation,
         }
     payload["reviewer_notification_receipts"] = merged_receipts
     payload["reviewer_notification_queue"] = queue
-    return upsert_issue_fix_pr_lifecycle_ledger_jsonl(ledger_path, payload)
+    result = upsert_issue_fix_pr_lifecycle_ledger_jsonl(ledger_path, payload)
+    return {**result, "queue_reconciliation": queue_reconciliation}
 
 
 def default_issue_fix_domain_state_ledger_path(

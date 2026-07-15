@@ -124,7 +124,15 @@ back to that same row. A restart preserves a queued item; a later verified send
 removes the matching queue entry while retaining the stable receipt. Retry
 outside the window returns `already_queued` with the original queue receipt,
 so neither the provider nor local state changes. Retry therefore remains
-idempotent without a second ledger. Goal boundary/status
+idempotent without a second ledger. The live reviewer route is authoritative
+for unsent work: an existing GitHub-covered reviewer may be notified only as
+that same reviewer, never replaced by a different mapped sink identity. Each
+execute reconciliation atomically replaces the PR's unsent queue, cancelling
+stale targets when coverage changes, a review completes, or no current sink
+identity remains. Verified receipts are append-only and are never cancelled by
+this queue replacement. A provider failure before any external write preserves
+the matching current queue entry for retry; an unverified post-write result does
+not requeue and risk a duplicate send. Goal boundary/status
 projections expose only that the capability and pointer are configured; they
 never expose the pointer value or profiles
 (`config_pointer_registered=true`).

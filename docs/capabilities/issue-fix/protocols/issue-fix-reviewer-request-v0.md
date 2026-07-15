@@ -140,6 +140,8 @@ The packet records:
   private destination, member, or bot-profile fields.
 - whether the sink came from an explicit input or the goal default, and whether
   verified hashed receipts were persisted in existing PR lifecycle state.
+- whether the authoritative execute path reconciled the unsent secondary queue
+  and how many stale entries it cancelled, without exposing destination data.
 
 Successful verified requests emit `issue_fix_reviewer_request_verified` with
 `monitor_continuation`. Confirmed permission denial followed by a verified
@@ -147,7 +149,11 @@ comment emits `issue_fix_reviewer_comment_fallback_verified`. If review is
 already covered by a request, completed review, marked fallback comment, or a
 live comment that explicitly mentions the reviewer and asks for review,
 execution is a quiet, no-write monitor continuation and returns the existing
-comment URL. Semantic comment matching normalizes handle case, requires a
+comment URL. Secondary sinks remain bound to that covered reviewer; an
+unresolved sink identity skips secondary delivery instead of substituting a
+different candidate. Any previously queued, unsent secondary target is
+atomically replaced or cancelled by the current execute reconciliation.
+Semantic comment matching normalizes handle case, requires a
 bounded review-request phrase near the mention, and ignores quoted text, code
 blocks, ordinary discussion, and marker-only metadata. Missing requestable
 identity produces a runnable identity-resolution successor. Closed PRs produce

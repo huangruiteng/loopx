@@ -441,6 +441,7 @@ def handle_issue_fix_reviewer_command(
     notification_lifecycle_packet: dict[str, Any] | None = None
     notification_lifecycle_path: Path | None = None
     notification_lifecycle_materialized = False
+    existing_queued_receipts: list[dict[str, Any]] = []
     if args.goal_id:
         goal, requested_project = _load_goal_for_project(
             registry_path=registry_path,
@@ -502,6 +503,9 @@ def handle_issue_fix_reviewer_command(
                     notification_lifecycle_packet
                 ),
             )
+            existing_queued_receipts = reviewer_notification_queue_from_state(
+                notification_lifecycle_packet
+            )
     payload = build_issue_fix_reviewer_request_packet(
         repo_path=args.repo_path,
         url=args.url,
@@ -534,6 +538,8 @@ def handle_issue_fix_reviewer_command(
     )
     payload["secondary_notification_receipts_persisted"] = False
     payload["secondary_notification_queue_persisted"] = False
+    payload["secondary_notification_queue_reconciled"] = False
+    payload["secondary_notification_queue_cancelled_count"] = 0
     payload["secondary_notification_state_persisted"] = False
     secondary = payload.get("secondary_notifications")
     secondary_receipts = secondary.get("receipts") if isinstance(secondary, dict) else []
@@ -555,7 +561,7 @@ def handle_issue_fix_reviewer_command(
         args.execute
         and notification_lifecycle_packet is not None
         and notification_lifecycle_path is not None
-        and (new_receipts or queued_receipts)
+        and (new_receipts or queued_receipts or existing_queued_receipts)
     ):
         try:
             write_result = persist_issue_fix_reviewer_notification_state(
@@ -563,6 +569,7 @@ def handle_issue_fix_reviewer_command(
                 notification_lifecycle_packet,
                 receipts=new_receipts,
                 queued_receipts=queued_receipts,
+                replace_queued_receipts=True,
             )
         except (OSError, ValueError):
             payload["ok"] = False
@@ -607,5 +614,11 @@ def handle_issue_fix_reviewer_command(
             payload["secondary_notification_queue_persisted"] = bool(
                 queued_receipts
             )
+            queue_reconciliation = write_result.get("queue_reconciliation")
+            if isinstance(queue_reconciliation, Mapping):
+                payload["secondary_notification_queue_reconciled"] = True
+                payload["secondary_notification_queue_cancelled_count"] = int(
+                    queue_reconciliation.get("cancelled_count") or 0
+                )
             payload["secondary_notification_state_persisted"] = True
     return payload, render_issue_fix_reviewer_request_markdown

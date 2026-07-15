@@ -1213,6 +1213,20 @@ def build_issue_fix_reviewer_notification_sinks_result(
             for receipt in [dict(result["queue_receipt"])]
         }.values()
     )
+    queued_receipts_by_result_key = {
+        str(receipt["idempotency_key"]): receipt for receipt in queued_receipts
+    }
+    for result in results:
+        key = str(result.get("idempotency_key") or "")
+        prior = queued_receipts_by_key.get(key)
+        if (
+            prior is not None
+            and result.get("ok") is False
+            and result.get("external_write_performed") is not True
+            and key not in queued_receipts_by_result_key
+        ):
+            queued_receipts.append(dict(prior))
+            queued_receipts_by_result_key[key] = dict(prior)
     statuses = {str(result.get("status")) for result in results}
     if len(statuses) == 1:
         status = statuses.pop()
