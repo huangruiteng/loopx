@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +12,7 @@ from ..lark.event_inbox import (
 )
 from ...domain_packs.issue_fix import (
     default_issue_fix_domain_state_ledger_path,
-    persist_issue_fix_reviewer_notification_receipts,
+    persist_issue_fix_reviewer_notification_state,
     upsert_issue_fix_pr_lifecycle_ledger_jsonl,
 )
 from .cli_input import load_json_object, load_jsonl_row
@@ -20,8 +20,9 @@ from .metadata_preview import normalise_github_issue_reference
 from .pr_lifecycle import build_issue_fix_pr_lifecycle_monitor_packet
 from .reviewer_notification import (
     load_goal_reviewer_notification_sinks_input,
+    reviewer_notification_queue_from_state,
     reviewer_notification_receipts_from_state,
-    with_reviewer_notification_receipts,
+    with_reviewer_notification_state,
 )
 from .reviewer_recommendation import (
     build_issue_fix_reviewer_recommendation_packet,
@@ -491,9 +492,12 @@ def handle_issue_fix_reviewer_command(
                             "external send"
                         ) from None
                     notification_lifecycle_materialized = True
-            notification_sinks_input = with_reviewer_notification_receipts(
+            notification_sinks_input = with_reviewer_notification_state(
                 notification_sinks_input,
                 reviewer_notification_receipts_from_state(
+                    notification_lifecycle_packet
+                ),
+                reviewer_notification_queue_from_state(
                     notification_lifecycle_packet
                 ),
             )
@@ -527,37 +531,79 @@ def handle_issue_fix_reviewer_command(
         notification_lifecycle_materialized
     )
     payload["secondary_notification_receipts_persisted"] = False
+    payload["secondary_notification_queue_persisted"] = False
+    payload["secondary_notification_state_persisted"] = False
     secondary = payload.get("secondary_notifications")
-    new_receipts = (
-        secondary.get("receipts")
-        if isinstance(secondary, dict) and isinstance(secondary.get("receipts"), list)
-        else []
+    secondary_receipts = secondary.get("receipts") if isinstance(secondary, dict) else []
+    new_receipts: list[str] = [
+        str(value)
+        for value in (
+            secondary_receipts if isinstance(secondary_receipts, list) else []
+        )
+    ]
+    secondary_queue = (
+        secondary.get("queued_receipts") if isinstance(secondary, dict) else []
     )
+    queued_receipts: list[dict[str, Any]] = [
+        dict(value)
+        for value in (secondary_queue if isinstance(secondary_queue, list) else [])
+        if isinstance(value, Mapping)
+    ]
     if (
         args.execute
         and notification_lifecycle_packet is not None
         and notification_lifecycle_path is not None
-        and new_receipts
+        and (new_receipts or queued_receipts)
     ):
         try:
-            write_result = persist_issue_fix_reviewer_notification_receipts(
+            write_result = persist_issue_fix_reviewer_notification_state(
                 notification_lifecycle_path,
                 notification_lifecycle_packet,
-                list(new_receipts),
+                receipts=new_receipts,
+                queued_receipts=queued_receipts,
             )
         except (OSError, ValueError):
             payload["ok"] = False
-            payload["secondary_notification_receipt_blocker"] = (
-                "reviewer_notification_receipt_persistence_failed"
+            payload["secondary_notification_state_blocker"] = (
+                "reviewer_notification_state_persistence_failed"
             )
+            if new_receipts:
+                payload["secondary_notification_receipt_blocker"] = (
+                    "reviewer_notification_receipt_persistence_failed"
+                )
+            if queued_receipts:
+                payload["secondary_notification_queue_blocker"] = (
+                    "reviewer_notification_queue_persistence_failed"
+                )
         else:
-            payload["secondary_notification_receipt_write"] = {
-                "schema_version": "issue_fix_reviewer_notification_receipt_write_v0",
+            write_summary = {
+                "schema_version": "issue_fix_reviewer_notification_state_write_v0",
                 "domain_pack": "issue_fix",
                 "stream": "pr_lifecycle",
                 "write_performed": write_result.get("write_performed") is True,
                 "status": write_result.get("status"),
                 "path_recorded": False,
             }
-            payload["secondary_notification_receipts_persisted"] = True
+            payload["secondary_notification_state_write"] = write_summary
+            if new_receipts:
+                payload["secondary_notification_receipt_write"] = {
+                    **write_summary,
+                    "schema_version": (
+                        "issue_fix_reviewer_notification_receipt_write_v0"
+                    ),
+                }
+            if queued_receipts:
+                payload["secondary_notification_queue_write"] = {
+                    **write_summary,
+                    "schema_version": (
+                        "issue_fix_reviewer_notification_queue_write_v0"
+                    ),
+                }
+            payload["secondary_notification_receipts_persisted"] = bool(
+                new_receipts
+            )
+            payload["secondary_notification_queue_persisted"] = bool(
+                queued_receipts
+            )
+            payload["secondary_notification_state_persisted"] = True
     return payload, render_issue_fix_reviewer_request_markdown
