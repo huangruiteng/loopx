@@ -473,8 +473,9 @@ def append_explore_result_event(path: Path, event: Mapping[str, Any]) -> dict[st
     validated = validate_explore_result_event(event)
     log_path = path.expanduser()
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    with log_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(validated, ensure_ascii=False, sort_keys=True) + "\n")
+    with exclusive_file_lock(log_path):
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(validated, ensure_ascii=False, sort_keys=True) + "\n")
     return {
         "ok": True,
         "schema_version": EXPLORE_RESULT_EVENT_SCHEMA_VERSION,
