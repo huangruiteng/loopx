@@ -57,6 +57,15 @@ HOST_RESULT_FIELDS = {
 Writeback = Callable[[dict[str, Any]], dict[str, Any]]
 Spend = Callable[[], dict[str, Any]]
 Scheduler = Callable[[dict[str, Any]], dict[str, Any]]
+HostRunner = Callable[[Mapping[str, Any]], dict[str, Any]]
+
+
+class BuiltInHostError(RuntimeError):
+    """A public-safe built-in host failure classification."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 def normalize_host_argv(value: Sequence[str]) -> list[str]:
@@ -330,6 +339,25 @@ def _run_host(
     return {"ok": True, "value": value, "returncode": 0}
 
 
+def _run_host_runner(
+    request: Mapping[str, Any],
+    *,
+    runner: HostRunner,
+) -> dict[str, Any]:
+    try:
+        value = runner(request)
+    except BuiltInHostError as exc:
+        return {"ok": False, "reason": exc.reason, "returncode": None}
+    except Exception as exc:
+        return {"ok": False, "reason": type(exc).__name__, "returncode": None}
+    if not isinstance(value, dict):
+        return {"ok": False, "reason": "built-in host result must be one JSON object"}
+    encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    if len(encoded) > HOST_RESULT_MAX_BYTES:
+        return {"ok": False, "reason": "built-in host result exceeded the result budget"}
+    return {"ok": True, "value": value, "returncode": 0}
+
+
 def _compact_callback(payload: Mapping[str, Any]) -> dict[str, Any]:
     return {
         key: payload.get(key)
@@ -374,19 +402,27 @@ def _execution_payload(
 def run_loopx_turn_once(
     plan: Mapping[str, Any],
     *,
-    host_argv: Sequence[str],
+    host_argv: Sequence[str] | None = None,
+    host_runner: HostRunner | None = None,
     project: Path,
     runtime_root: Path,
     goal_id: str,
     timeout_seconds: float,
     execute: bool,
+    retry_failed: bool = False,
     writeback: Writeback | None = None,
     spend: Spend | None = None,
     scheduler: Scheduler | None = None,
 ) -> dict[str, Any]:
-    argv = normalize_host_argv(host_argv)
+    if host_runner is not None and host_argv is not None:
+        raise ValueError("run-once accepts either host_argv or host_runner, not both")
+    if host_runner is None:
+        argv = normalize_host_argv(host_argv or [])
+        host_projection = {"executable": Path(argv[0]).name, "argv_count": len(argv)}
+    else:
+        argv = None
+        host_projection = {"executable": "built-in", "kind": "codex-cli"}
     request = build_loopx_turn_host_request(plan)
-    host_projection = {"executable": Path(argv[0]).name, "argv_count": len(argv)}
     empty_effects = {
         "host_invoked": False,
         "state_written": False,
@@ -416,11 +452,10 @@ def run_loopx_turn_once(
     journal_path = turn_journal_path(runtime_root, goal_id=goal_id, turn_key=turn_key)
     with exclusive_file_lock(journal_path):
         journal = _load_journal(journal_path)
-        if journal and journal.get("status") in {
-            "committed",
-            "stopped",
-            "failed",
-        }:
+        if journal and (
+            journal.get("status") in {"committed", "stopped"}
+            or journal.get("status") == "failed" and not retry_failed
+        ):
             return _execution_payload(
                 plan,
                 journal,
@@ -428,6 +463,16 @@ def run_loopx_turn_once(
                 replayed=True,
                 effects=empty_effects,
             )
+        if journal and journal.get("status") == "failed":
+            receipt = journal.get("receipt") if isinstance(journal.get("receipt"), dict) else {}
+            if receipt.get("failed_phase") == "validation":
+                journal.pop("host_result", None)
+                journal.pop("result_kind", None)
+                journal["completed_phases"] = []
+            journal.pop("reason", None)
+            journal.pop("receipt", None)
+            journal["status"] = "in_progress"
+            _write_journal(journal_path, journal)
         if journal is None:
             journal = {
                 "schema_version": LOOPX_TURN_JOURNAL_SCHEMA_VERSION,
@@ -444,11 +489,15 @@ def run_loopx_turn_once(
         completed_phases = list(journal.get("completed_phases") or [])
         result = journal.get("host_result") if isinstance(journal.get("host_result"), dict) else None
         if "typed_result" not in completed_phases:
-            host_observation = _run_host(
-                request,
-                argv=argv,
-                project=project,
-                timeout_seconds=timeout_seconds,
+            host_observation = (
+                _run_host_runner(request, runner=host_runner)
+                if host_runner is not None
+                else _run_host(
+                    request,
+                    argv=argv or [],
+                    project=project,
+                    timeout_seconds=timeout_seconds,
+                )
             )
             effects["host_invoked"] = True
             if not host_observation.get("ok"):

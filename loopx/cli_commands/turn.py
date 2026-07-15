@@ -9,7 +9,9 @@ from ..control_plane.turn_driver import (
     LOOPX_TURN_EXECUTION_SCHEMA_VERSION,
     LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
     build_loopx_turn_plan,
+    codex_cli_session_binding,
     load_loopx_turn_plan_from_journal,
+    run_codex_cli_host,
     run_loopx_turn_once,
 )
 from ..control_plane.quota.live_decision import build_live_quota_should_run_decision
@@ -20,6 +22,7 @@ from ..control_plane.runtime.status_projection_cache import (
 from ..quota import spend_quota_slot
 from ..state_refresh import refresh_state_run
 from ..status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, collect_status
+from ..todos import update_goal_todo
 
 
 PrintPayload = Callable[
@@ -78,17 +81,33 @@ def register_turn_commands(
     _add_turn_decision_arguments(
         run_once,
         default_host="generic-cli",
-        host_choices=["generic-cli"],
+        host_choices=["codex-cli", "generic-cli"],
         execution_mode_choices=["isolated-headless"],
         default_execution_mode="isolated-headless",
     )
     run_once.add_argument("--project", required=True)
     run_once.add_argument(
         "--host-command-json",
-        required=True,
-        help="JSON argv array for the explicit host process; shell parsing is never used.",
+        help="JSON argv array for generic-cli; shell parsing is never used.",
+    )
+    run_once.add_argument(
+        "--codex-bin",
+        default="codex",
+        help="Codex CLI executable used by the built-in codex-cli host.",
+    )
+    run_once.add_argument("--codex-model")
+    run_once.add_argument(
+        "--codex-sandbox",
+        choices=["read-only", "workspace-write"],
+        default="read-only",
+        help="Sandbox for a new Codex CLI session; resume preserves its original session policy.",
     )
     run_once.add_argument("--timeout-seconds", type=float, default=120.0)
+    run_once.add_argument(
+        "--retry-failed-turn",
+        action="store_true",
+        help="Retry a failed transaction from its last side-effect-safe phase.",
+    )
     run_once.add_argument(
         "--resume-turn-key",
         help="Resume the exact journaled transaction without recomputing its plan.",
@@ -241,8 +260,11 @@ def handle_turn_command(
                 "schema_version": LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
                 **resume_identity,
             }
+        turn_envelope = build_turn_envelope(decision)
+        if args.turn_command == "run-once" and args.host == "codex-cli" and not supplied_resume_fields:
+            session_binding = codex_cli_session_binding(runtime_root, turn_envelope)
         payload = build_loopx_turn_plan(
-            build_turn_envelope(decision),
+            turn_envelope,
             host=args.host,
             execution_mode=args.execution_mode,
             session_binding=session_binding,
@@ -274,14 +296,43 @@ def handle_turn_command(
                     raise ValueError(
                         "LoopX Turn resume journal belongs to another agent"
                     )
-            raw_argv = json.loads(args.host_command_json)
-            if not isinstance(raw_argv, list) or not all(
-                isinstance(item, str) for item in raw_argv
-            ):
-                raise ValueError("--host-command-json must be a JSON string array")
             project = Path(args.project).expanduser().resolve()
+            planned_host = payload.get("host") if isinstance(payload.get("host"), dict) else {}
+            if planned_host.get("kind") != args.host:
+                raise ValueError("--host must match the journaled LoopX Turn plan")
+            if args.host == "generic-cli":
+                if not args.host_command_json:
+                    raise ValueError("generic-cli requires --host-command-json")
+                raw_argv = json.loads(args.host_command_json)
+                if not isinstance(raw_argv, list) or not all(
+                    isinstance(item, str) for item in raw_argv
+                ):
+                    raise ValueError("--host-command-json must be a JSON string array")
+            else:
+                if args.host_command_json:
+                    raise ValueError("codex-cli does not accept --host-command-json")
+                raw_argv = None
+            envelope = payload.get("turn_envelope") if isinstance(payload.get("turn_envelope"), dict) else {}
+            action = envelope.get("action") if isinstance(envelope.get("action"), dict) else {}
+            selected_todo = action.get("selected_todo") if isinstance(action.get("selected_todo"), dict) else {}
 
             def writeback(result: dict[str, object]) -> dict[str, object]:
+                result_kind = str(result.get("result_kind") or "")
+                if result_kind in {"repair_required", "replan_required"}:
+                    todo_id = str(selected_todo.get("todo_id") or "")
+                    if not todo_id:
+                        raise ValueError(f"{result_kind} requires one selected todo for typed writeback")
+                    update_goal_todo(
+                        registry_path=registry_path,
+                        goal_id=args.goal_id,
+                        todo_id=todo_id,
+                        role="agent",
+                        note=str(result.get("summary") or result["classification"]),
+                        evidence=f"LoopX Turn {result_kind}: {result['next_action']}",
+                        agent_id=args.agent_id,
+                        project=project,
+                        dry_run=False,
+                    )
                 return refresh_state_run(
                     registry_path=registry_path,
                     runtime_root_override=runtime_root_arg,
@@ -295,6 +346,7 @@ def handle_turn_command(
                     delivery_outcome=str(result["delivery_outcome"]),
                     agent_id=args.agent_id,
                     progress_scope="goal",
+                    autonomous_replan_recorded=result_kind == "replan_required",
                     vision_unchanged_reason=str(result["vision_unchanged_reason"]),
                     dry_run=False,
                     sync_global=not bool(args.no_global_sync),
@@ -352,14 +404,31 @@ def handle_turn_command(
                     ),
                 }
 
+            host_runner = None
+            if args.host == "codex-cli":
+                def run_built_in_host(request: dict[str, object]) -> dict[str, object]:
+                    return run_codex_cli_host(
+                        request,
+                        runtime_root=runtime_root,
+                        project=project,
+                        codex_bin=args.codex_bin,
+                        sandbox=args.codex_sandbox,
+                        model=args.codex_model,
+                        timeout_seconds=max(1.0, args.timeout_seconds - 5.0),
+                    )
+
+                host_runner = run_built_in_host
+
             payload = run_loopx_turn_once(
                 payload,
                 host_argv=raw_argv,
+                host_runner=host_runner,
                 project=project,
                 runtime_root=runtime_root,
                 goal_id=args.goal_id,
                 timeout_seconds=args.timeout_seconds,
                 execute=bool(args.execute),
+                retry_failed=bool(args.retry_failed_turn),
                 writeback=writeback if args.execute else None,
                 spend=spend if args.execute else None,
                 scheduler=scheduler if args.execute else None,
