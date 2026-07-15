@@ -994,6 +994,40 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "new-user-onboarding-lifecycle",
+        "title": "New-user onboarding lifecycle",
+        "purpose": (
+            "Check fresh no-scan connection, structured todo projection, "
+            "state-gap detection, and domain-adapter routing ownership."
+        ),
+        "catalog_families": ["Work Routing", "State And Boundary"],
+        "trigger_hints": (
+            "new user onboarding",
+            "onboarding lifecycle",
+            "no-onboarding-scan",
+            "onboarding_connection_validation",
+            "state projection gap",
+            "start-goal",
+            "loopx/bootstrap.py",
+            "loopx/bootstrap_command_pack.py",
+            "loopx/contract.py",
+            "loopx/state_projection.py",
+            "loopx/cli_commands/bootstrap_connect.py",
+            "loopx/cli_commands/starter_bootstrap.py",
+            "loopx/cli_commands/starter_bootstrap_registration.py",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/project/onboarding-no-scan-projection-smoke.py",
+                "tier": "default",
+                "reason": (
+                    "guards fresh connection-to-todo parity, state-gap warnings, "
+                    "and domain-adapter routing ownership"
+                ),
+            },
+        ],
+    },
+    {
         "id": "runtime-connector-catalog",
         "title": "Runtime connector catalog",
         "purpose": (
