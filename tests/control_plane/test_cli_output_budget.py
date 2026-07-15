@@ -1,0 +1,402 @@
+from __future__ import annotations
+
+import contextlib
+import io
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+import pytest
+
+from loopx.cli import main as cli_main
+from loopx.control_plane.testing.cli_output_budget import (
+    CLI_OUTPUT_BUDGET_BY_ID,
+    CLI_OUTPUT_BUDGET_SPECS,
+    assert_cli_output_baseline,
+    measure_cli_output,
+    public_manifest,
+)
+from loopx.rollout_event_log import rollout_event_log_path
+
+
+GOAL_ID = "cli-output-budget-goal"
+AGENT_IDS = ("codex-alpha", "codex-beta", "codex-gamma")
+GOAL_TEXT = "Qualify agent-facing CLI output budgets before changing production output."
+
+
+@dataclass(frozen=True)
+class Scenario:
+    name: str
+    todo_count: int
+    agent_count: int
+    run_count: int
+
+
+SCENARIOS = (
+    Scenario("small", todo_count=1, agent_count=1, run_count=1),
+    Scenario("crowded", todo_count=36, agent_count=1, run_count=12),
+    Scenario("multi_agent", todo_count=18, agent_count=3, run_count=12),
+)
+
+
+def _write_fixture(root: Path, scenario: Scenario) -> tuple[Path, Path, Path, Path]:
+    project = root / "project"
+    runtime = root / "runtime"
+    state_relative = Path(".codex") / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
+    state_file = project / state_relative
+    state_file.parent.mkdir(parents=True)
+    agents = AGENT_IDS[: scenario.agent_count]
+    lines = [
+        "---",
+        "status: active",
+        "updated_at: 2026-01-01T00:00:00+00:00",
+        "---",
+        "",
+        "# CLI Output Budget Fixture",
+        "",
+        "## Agent Todo",
+        "",
+    ]
+    for index in range(scenario.todo_count):
+        agent_id = agents[index % len(agents)]
+        priority = f"P{index % 3}"
+        lines.extend(
+            [
+                f"- [ ] [{priority}] Validate public fixture lane {index:02d} without reading archival detail.",
+                (
+                    "  <!-- loopx:todo "
+                    f"todo_id=todo_fixture_{index:03d} status=open "
+                    "task_class=advancement_task "
+                    f"action_kind=fixture_{index % 4} claimed_by={agent_id} "
+                    f"priority={priority} -->"
+                ),
+            ]
+        )
+    state_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    registry_path = project / ".loopx" / "registry.json"
+    registry_path.parent.mkdir(parents=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "common_runtime_root": str(runtime),
+                "goals": [
+                    {
+                        "id": GOAL_ID,
+                        "domain": "cli-output-budget-fixture",
+                        "status": "active",
+                        "repo": str(project),
+                        "state_file": str(state_relative),
+                        "adapter": {
+                            "kind": "fixture_connected_delivery_v0",
+                            "status": "connected-delivery",
+                        },
+                        "quota": {"compute": 1.0, "window_hours": 24},
+                        "coordination": {
+                            "agent_model": "peer_v1",
+                            "registered_agents": list(agents),
+                            "agent_profiles": {
+                                agent_id: {
+                                    "schema_version": "agent_profile_v1",
+                                    "profile_role": "fixture",
+                                    "scope": "public qualification",
+                                }
+                                for agent_id in agents
+                            },
+                            "write_scope": ["docs/**"],
+                        },
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _write_run_history(runtime, agents=agents, run_count=scenario.run_count)
+    _write_rollout_event(runtime, agent_id=agents[0])
+    return project, runtime, registry_path, state_file
+
+
+def _write_run_history(runtime: Path, *, agents: tuple[str, ...], run_count: int) -> None:
+    runs_dir = runtime / "goals" / GOAL_ID / "runs"
+    runs_dir.mkdir(parents=True)
+    index_rows = []
+    for index in range(run_count):
+        json_path = runs_dir / f"fixture-run-{index:02d}.json"
+        markdown_path = json_path.with_suffix(".md")
+        record = {
+            "generated_at": f"2026-01-01T00:{index:02d}:00+00:00",
+            "goal_id": GOAL_ID,
+            "classification": "fixture_progress",
+            "recommended_action": f"Continue fixture step {index}.",
+            "health_check": "public fixture healthy",
+            "agent_id": agents[index % len(agents)],
+            "progress_scope": "agent_lane",
+        }
+        json_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+        markdown_path.write_text("# Public fixture run\n", encoding="utf-8")
+        index_rows.append(
+            {
+                **record,
+                "json_path": str(json_path),
+                "markdown_path": str(markdown_path),
+            }
+        )
+    (runs_dir / "index.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in index_rows),
+        encoding="utf-8",
+    )
+
+
+def _write_rollout_event(runtime: Path, *, agent_id: str) -> None:
+    path = rollout_event_log_path(runtime, GOAL_ID)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "loopx_rollout_event_v0",
+                "event_id": "fixture-event",
+                "event_kind": "todo_updated",
+                "recorded_at": "2026-01-01T01:00:00Z",
+                "goal_id": GOAL_ID,
+                "agent_id": agent_id,
+                "todo_id": "todo_fixture_000",
+                "status": "appended",
+                "summary": "Public fixture evidence.",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _invoke_cli(args: list[str]) -> tuple[int, str]:
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(args)
+    return exit_code, output.getvalue()
+
+
+def _surface_commands(
+    *,
+    project: Path,
+    runtime: Path,
+    registry_path: Path,
+    state_file: Path,
+    output_format: str,
+) -> dict[str, list[str]]:
+    common = [
+        "--registry",
+        str(registry_path),
+        "--runtime-root",
+        str(runtime),
+        "--format",
+        output_format,
+    ]
+    return {
+        "start_goal_guided": [
+            "--format",
+            output_format,
+            "start-goal",
+            "--guided",
+            "--project",
+            str(project),
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--goal-text",
+            GOAL_TEXT,
+        ],
+        "bootstrap_command_pack": [
+            "--format",
+            output_format,
+            "bootstrap-command-pack",
+            "--project",
+            str(project),
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--goal-text",
+            GOAL_TEXT,
+        ],
+        "quota_should_run": common
+        + [
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--scan-root",
+            str(project),
+        ],
+        "status": common
+        + [
+            "status",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--scan-root",
+            str(project),
+            "--limit",
+            "5",
+        ],
+        "diagnose": common
+        + [
+            "diagnose",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--scan-root",
+            str(project),
+            "--limit",
+            "5",
+        ],
+        "review_packet_handoff_only": common
+        + [
+            "review-packet",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--handoff-only",
+            "--scan-root",
+            str(project),
+            "--limit",
+            "5",
+        ],
+        "heartbeat_prompt_thin": common
+        + [
+            "heartbeat-prompt",
+            "--thin",
+            "--goal-id",
+            GOAL_ID,
+            "--active-state",
+            str(state_file),
+            "--agent-id",
+            AGENT_IDS[0],
+            "--agent-scope",
+            "Public CLI output qualification.",
+        ],
+        "todo_list": common
+        + ["todo", "list", "--goal-id", GOAL_ID, "--agent-id", AGENT_IDS[0]],
+        "history_limited": common
+        + ["history", "--goal-id", GOAL_ID, "--limit", "5"],
+        "evidence_log_thin": common
+        + [
+            "evidence-log",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--limit",
+            "5",
+            "--history-limit",
+            "10",
+            "--rollout-limit",
+            "20",
+            "--thin",
+        ],
+    }
+
+
+def _measure_scenario(root: Path, scenario: Scenario) -> dict[str, dict[str, dict]]:
+    project, runtime, registry_path, state_file = _write_fixture(root, scenario)
+    results: dict[str, dict[str, dict]] = {}
+    for output_format in ("json", "markdown"):
+        commands = _surface_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format=output_format,
+        )
+        for surface_id, command in commands.items():
+            exit_code, text = _invoke_cli(command)
+            assert exit_code == 0, (surface_id, output_format, text)
+            measurement = measure_cli_output(text, output_format=output_format)  # type: ignore[arg-type]
+            spec = CLI_OUTPUT_BUDGET_BY_ID[surface_id]
+            assert_cli_output_baseline(
+                spec,
+                scenario=scenario.name,
+                output_format=output_format,  # type: ignore[arg-type]
+                text=text,
+                measurement=measurement,
+            )
+            results.setdefault(surface_id, {})[output_format] = measurement
+    return results
+
+
+def test_manifest_covers_the_declared_agent_facing_surface_set() -> None:
+    expected = {
+        "start_goal_guided",
+        "bootstrap_command_pack",
+        "quota_should_run",
+        "status",
+        "diagnose",
+        "review_packet_handoff_only",
+        "heartbeat_prompt_thin",
+        "todo_list",
+        "history_limited",
+        "evidence_log_thin",
+    }
+    manifest = public_manifest()
+    assert set(CLI_OUTPUT_BUDGET_BY_ID) == expected
+    assert manifest["surface_count"] == len(expected)
+    assert {row["surface_id"] for row in manifest["surfaces"]} == expected
+    assert all(spec.owner and spec.consumer_action and spec.cold_path for spec in CLI_OUTPUT_BUDGET_SPECS)
+
+
+@pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda scenario: scenario.name)
+def test_real_cli_output_stays_inside_the_characterized_baseline(
+    tmp_path: Path,
+    scenario: Scenario,
+) -> None:
+    results = _measure_scenario(tmp_path, scenario)
+    for formats in results.values():
+        assert formats["json"]["json_parseable"] is True
+        assert formats["json"]["pretty_print_overhead_chars"] > 0
+        assert formats["markdown"]["json_parseable"] is False
+
+
+def test_collection_growth_and_bootstrap_duplication_are_explicit(tmp_path: Path) -> None:
+    small = _measure_scenario(tmp_path / "small", SCENARIOS[0])
+    crowded = _measure_scenario(tmp_path / "crowded", SCENARIOS[1])
+    added_todos = SCENARIOS[1].todo_count - SCENARIOS[0].todo_count
+    added_runs = SCENARIOS[1].run_count - SCENARIOS[0].run_count
+    for spec in CLI_OUTPUT_BUDGET_SPECS:
+        if spec.max_json_growth_chars_per_unit is None:
+            continue
+        units = (
+            added_runs
+            if spec.scale_axis in {"returned_run_count", "returned_evidence_count"}
+            else added_todos
+        )
+        growth = (
+            crowded[spec.surface_id]["json"]["chars"]
+            - small[spec.surface_id]["json"]["chars"]
+        )
+        assert growth <= spec.max_json_growth_chars_per_unit * units, (
+            spec.surface_id,
+            growth,
+            units,
+        )
+
+    start_payload = small["start_goal_guided"]["json"]["payload"]
+    bootstrap_payload = small["bootstrap_command_pack"]["json"]["payload"]
+    start_duplication = start_payload["packet_summary"]["duplication_measurement"]
+    bootstrap_duplication = bootstrap_payload["packet_summary"]["duplication_measurement"]
+    assert start_duplication["objective_content"]["duplicate_occurrences"] <= 15
+    assert start_duplication["command_content"]["duplicate_occurrences"] <= 17
+    assert bootstrap_duplication["objective_content"]["duplicate_occurrences"] <= 8
+    assert bootstrap_duplication["command_content"]["duplicate_occurrences"] <= 9
+    assert start_duplication["objective_content"]["duplicate_occurrences"] > 0
+    assert bootstrap_duplication["objective_content"]["duplicate_occurrences"] > 0
