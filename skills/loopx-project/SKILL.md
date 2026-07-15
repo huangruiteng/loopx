@@ -498,7 +498,13 @@ scheduling policy, not delivery permission. Codex CLI TUI and Claude Code loops
 should run the final quota/replan check from `scheduler_hint` before applying
 their `after_limit`; if the guard changes or returns `run_now`, follow the new
 quota contract instead of stopping. Codex App heartbeat workers should
-search/use `automation_update` when available, but only when
+search/use `automation_update` when available. If
+`scheduler_hint.action=stop_until_explicit_resume` and
+`scheduler_hint.codex_app.host_action=pause_or_delete_current_heartbeat`, call
+`automation_update` once to pause the current heartbeat (delete only when the
+host cannot pause), verify the host result, spend no quota, and end the turn.
+This terminal host action takes precedence over RRULE handling and requires no
+scheduler ACK. Otherwise use `automation_update` only when
 `scheduler_hint.codex_app.stateful_backoff.apply_needed=true` and
 `scheduler_hint.codex_app.recommended_rrule` is present. After a successful
 RRULE update, run `loopx` with

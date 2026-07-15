@@ -449,14 +449,24 @@ The same guard exposes `automation_liveness`. For
 `monitor_quiet_skip`, it must say `automation_action=keep_active_quiet`,
 `keep_active=true`, and `pause_allowed=false`: unchanged monitor-only polls are
 not a reason to cancel recurring automation. Pausing/deleting is reserved for
-either an explicit `terminal_no_followup` state whose normalized frontier is
-empty, or a bounded self-repair/replan path that is itself stuck for two more
-eligible turns. The terminal case projects
+either a read-only terminal state derived by LoopX from complete, valid todo
+sources, no-follow-up closure evidence, and an empty normalized frontier, or a
+bounded self-repair/replan path that is itself stuck for two more eligible
+turns. The terminal case projects
 `automation_action=stop_terminal_no_followup`, `keep_active=false`, and
-`pause_allowed=true`; the marker alone cannot hide an open todo, monitor,
-successor, acceptance gap, or replan obligation. This keeps recurring
+`pause_allowed=true`; raw status/attention fields are not terminal authority.
+Missing or malformed sources and any open todo, monitor, successor, acceptance
+gap, autonomy blocker, or replan obligation fail closed. This keeps recurring
 controllers alive during ordinary waits while honoring an explicit completed
 goal shutdown without another quota-spending turn.
+
+The read model exposes that derivation as
+`goal_frontier_projection.terminal_state={kind:no_followup, derived:true,
+source:validated_goal_closure}` plus
+`source_completeness.user_todos=valid` and
+`source_completeness.agent_todos=valid`. Producers derive the source proof and
+closure intent from structured todo items; callers cannot authorize shutdown by
+writing `attention_queue.status` or registry attention text.
 
 `automation_liveness` deliberately does not set the polling cadence. The guard
 also exposes `scheduler_hint`, which is the host-runtime scheduling contract:
