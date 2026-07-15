@@ -450,6 +450,24 @@ def main() -> int:
     assert (
         disabled["status"] == "disabled" and not disabled["external_writes_performed"]
     )
+    wrong_project_provider = WritebackContractProvider()
+    wrong_project = write_issue_fix_validated_outcome_memory(
+        config={
+            **provider_config(),
+            "repository_identity": "git:github.com/example/other",
+        },
+        outcome_packet=outcome,
+        repository_revision=REVISION,
+        repo_path=ROOT,
+        observed_at=OBSERVED_AT,
+        execute=True,
+        provider=wrong_project_provider,
+    )
+    assert wrong_project["status"] == "blocked", wrong_project
+    assert wrong_project["reason_code"] == "repository_identity_mismatch"
+    assert wrong_project["external_writes_performed"] is False
+    assert wrong_project_provider.contents == {}
+    assert_public_boundary(wrong_project)
     try:
         write_issue_fix_validated_outcome_memory(
             config=provider_config(),

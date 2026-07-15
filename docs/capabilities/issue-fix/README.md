@@ -782,6 +782,16 @@ Provider unavailability, empty retrieval, or a missing checkout is fail-open;
 raw memory bodies, automatic transcript capture, private namespaces,
 credentials, and provider config paths are never retained.
 
+Set `repository_identity` when the provider scope belongs to one canonical
+repository. LoopX normalises that identity and the checkout's Git `origin`
+before any provider call. A missing or different origin produces a compact
+`repository_identity_unavailable` or `repository_identity_mismatch` result:
+read-only Issue Fix delivery fails open without memory, while resource sync
+and validated-outcome writeback remain blocked with zero provider writes.
+Only identity digests enter provider receipts. A stale `pinned` revision is
+handled the same way for retrieval (`provider_revision_mismatch`) instead of
+turning the optional provider into a whole-workflow exception.
+
 The default long-running setup uses one stable provider-managed index for the
 public default branch. The current checkout revision is supplied by the
 issue-fix caller for verification; it is not encoded into the provider scope:
@@ -793,6 +803,7 @@ issue-fix caller for verification; it is not encoded into the provider scope:
   "provider": "openviking",
   "namespace": "public-repository",
   "visibility": "public",
+  "repository_identity": "git:github.com/owner/repo",
   "revision_policy": "rolling_default_branch",
   "scope_ref": "viking://resources/public-repository/owner-repo/main",
   "max_results": 3,
@@ -840,6 +851,7 @@ the revision must appear in `scope_ref`:
   "provider": "openviking",
   "namespace": "public-repository",
   "visibility": "public",
+  "repository_identity": "git:github.com/owner/repo",
   "revision_policy": "pinned",
   "scope_ref": "viking://resources/public-repository/owner-repo/<git-revision>",
   "repository_revision": "<full-git-revision>",

@@ -656,6 +656,117 @@ def main() -> int:
         )
         assert_boundary(rolling_retrieval)
 
+        subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+        subprocess.run(
+            ["git", "remote", "add", "origin", "https://github.com/example/repo.git"],
+            cwd=checkout,
+            check=True,
+        )
+        exact_project_config = {
+            **rolling_config,
+            "repository_identity": "git:github.com/example/repo",
+        }
+        exact_project_provider = RollingProvider(
+            resource_ref=f"{rolling_scope}/src/worker.py",
+            content=source.read_text(encoding="utf-8"),
+        )
+        exact_project_retrieval = retrieve_issue_fix_repository_memory(
+            config=exact_project_config,
+            repo_path=checkout,
+            repository_revision=REVISION,
+            query="current worker contract validation",
+            query_summary="Current worker contract evidence.",
+            supports=["change_scope", "validation"],
+            observed_at="2026-07-11T03:30:30+08:00",
+            provider=exact_project_provider,
+        )
+        exact_scope_check = exact_project_retrieval["provider_projection"][
+            "repository_scope_check"
+        ]
+        assert exact_scope_check["required"] is True, exact_scope_check
+        assert exact_scope_check["matched"] is True, exact_scope_check
+        assert exact_project_provider.retrieve_count == 1
+        assert "github.com/example/repo" not in json.dumps(exact_project_retrieval)
+
+        wrong_project_provider = RollingProvider(
+            resource_ref=f"{rolling_scope}/src/worker.py",
+            content=source.read_text(encoding="utf-8"),
+        )
+        wrong_project = retrieve_issue_fix_repository_memory(
+            config={
+                **rolling_config,
+                "repository_identity": "git:github.com/example/other",
+            },
+            repo_path=checkout,
+            repository_revision=REVISION,
+            query="current worker contract validation",
+            query_summary="Current worker contract evidence.",
+            supports=["change_scope", "validation"],
+            observed_at="2026-07-11T03:30:45+08:00",
+            provider=wrong_project_provider,
+        )
+        assert wrong_project["memory_input"]["status"] == "unavailable"
+        assert wrong_project["memory_input"]["reason_code"] == (
+            "repository_identity_mismatch"
+        )
+        assert wrong_project["provider_projection"]["fail_open"] is True
+        assert wrong_project_provider.retrieve_count == 0
+        assert_boundary(wrong_project)
+
+        wrong_project_sync = sync_issue_fix_repository_memory(
+            config={
+                **rolling_config,
+                "repository_identity": "git:github.com/example/other",
+            },
+            repo_path=checkout,
+            repository_revision=REVISION,
+            references=["src/worker.py"],
+            observed_at="2026-07-11T03:30:47+08:00",
+            execute=True,
+            provider=wrong_project_provider,
+        )
+        assert wrong_project_sync["status"] == "blocked", wrong_project_sync
+        assert wrong_project_sync["reason_code"] == "repository_identity_mismatch"
+        assert wrong_project_sync["external_writes_performed"] is False
+        assert wrong_project_provider.sync_count == 0
+        assert_boundary(wrong_project_sync)
+
+        stale_provider = RollingProvider(
+            resource_ref=f"{rolling_scope}/src/worker.py",
+            content=source.read_text(encoding="utf-8"),
+        )
+        stale_revision = retrieve_issue_fix_repository_memory(
+            config={
+                **rolling_config,
+                "revision_policy": "pinned",
+                "repository_revision": "aaaaaaaaaaaa",
+                "scope_ref": "viking://resources/public-repository/aaaaaaaaaaaa",
+            },
+            repo_path=checkout,
+            repository_revision=REVISION,
+            query="current worker contract validation",
+            query_summary="Current worker contract evidence.",
+            supports=["change_scope", "validation"],
+            observed_at="2026-07-11T03:30:50+08:00",
+            provider=stale_provider,
+        )
+        assert stale_revision["memory_input"]["status"] == "unavailable"
+        assert stale_revision["memory_input"]["reason_code"] == (
+            "provider_revision_mismatch"
+        )
+        assert stale_revision["provider_projection"]["fail_open"] is True
+        assert stale_provider.retrieve_count == 0
+        stale_context = build_issue_fix_repository_context_packet(
+            repo="example/repo",
+            issue_ref="issue_stale_provider",
+            context_input=context_input,
+            memory_retrieval_input=stale_revision["memory_input"],
+        )
+        assert stale_context["ok"] is True, stale_context
+        assert stale_context["context_status"] == "grounded", stale_context
+        assert stale_context["memory_projection"]["retrieval_hook"]["fail_open"] is True
+        assert_boundary(stale_revision)
+
         rolling_sync = sync_issue_fix_repository_memory(
             config=rolling_config,
             repo_path=checkout,

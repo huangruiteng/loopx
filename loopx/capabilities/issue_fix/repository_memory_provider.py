@@ -17,7 +17,12 @@ from ..context_providers import (
     context_provider_service_restarted,
     load_context_provider_service_ownership,
 )
-from ..context_providers.base import ContextProvider, opaque_provider_ref
+from ..context_providers.base import (
+    ContextProvider,
+    ContextProviderRetrieval,
+    opaque_provider_ref,
+)
+from ..semantic_preference.project_peer import resolve_project_identity
 from ...control_plane.runtime.public_safety import public_safe_compact_text
 from .repository_memory import (
     ISSUE_FIX_REPOSITORY_MEMORY_READ_RESULT_SCHEMA_VERSION,
@@ -45,6 +50,7 @@ _CONFIG_FIELDS = {
     "scope_ref",
     "revision_policy",
     "repository_revision",
+    "repository_identity",
     "max_results",
     "timeout_seconds",
     "sync_timeout_seconds",
@@ -201,10 +207,11 @@ def _normalise_config(
             raise ValueError(
                 "repository memory provider revision must be a git object id"
             )
-        if configured_revision != repository_revision:
-            raise ValueError(
-                "repository memory provider revision must match current checkout"
-            )
+        availability_reason_code = (
+            None
+            if configured_revision == repository_revision
+            else "provider_revision_mismatch"
+        )
         scope_ref = _compact(
             config.get("scope_ref"), field="scope_ref", limit=500
         ).rstrip("/")
@@ -215,12 +222,13 @@ def _normalise_config(
                 "the current checkout revision is supplied by the issue-fix caller"
             )
         configured_revision = repository_revision
+        availability_reason_code = None
         scope_ref = _compact(
             config.get("scope_ref"), field="scope_ref", limit=500
         ).rstrip("/")
     if not scope_ref.startswith("viking://"):
         raise ValueError("repository memory provider scope_ref must use viking://")
-    if revision_policy == "pinned" and repository_revision[:12] not in scope_ref:
+    if revision_policy == "pinned" and configured_revision[:12] not in scope_ref:
         raise ValueError("repository memory provider scope_ref must be revision-scoped")
     max_results = min(
         max(1, int(config.get("max_results") or 3)),
@@ -260,6 +268,11 @@ def _normalise_config(
     service_ownership_receipt_path = str(
         config.get("service_ownership_receipt_path") or ""
     ).strip()
+    repository_identity = str(config.get("repository_identity") or "").strip()
+    if repository_identity:
+        repository_identity = resolve_project_identity(
+            ".", remote_url=repository_identity
+        )
     if writeback_enabled:
         writeback_scope_ref = _compact(
             writeback_scope_ref,
@@ -293,16 +306,110 @@ def _normalise_config(
         "workspace_scope": workspace_scope,
         "peer_scope": peer_scope,
         "service_ownership_receipt_path": service_ownership_receipt_path,
+        "repository_identity": repository_identity,
+        "availability_reason_code": availability_reason_code,
     }
+
+
+def _repository_scope_check(
+    normalised: Mapping[str, Any], *, repo_path: str | Path
+) -> dict[str, Any]:
+    expected = str(normalised.get("repository_identity") or "").strip()
+    if not expected:
+        return {
+            "required": False,
+            "matched": None,
+            "reason_code": "repository_identity_not_configured",
+        }
+    try:
+        observed = resolve_project_identity(repo_path)
+    except ValueError:
+        observed = ""
+    return {
+        "required": True,
+        "matched": observed == expected,
+        "reason_code": (
+            "repository_identity_matched"
+            if observed == expected
+            else (
+                "repository_identity_mismatch"
+                if observed
+                else "repository_identity_unavailable"
+            )
+        ),
+        "expected_identity_digest": hashlib.sha256(
+            expected.encode("utf-8")
+        ).hexdigest()[:16],
+        "observed_identity_digest": (
+            hashlib.sha256(observed.encode("utf-8")).hexdigest()[:16]
+            if observed
+            else None
+        ),
+    }
+
+
+def _fail_open_provider_result(
+    *,
+    config: Mapping[str, Any],
+    query_summary: str,
+    observed_at: str,
+    repository_revision: str,
+    reason_code: str,
+    repository_scope_check: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    provider = _label(config.get("provider"), field="provider")
+    namespace = _label(config.get("namespace"), field="namespace")
+    memory_input = _unavailable_memory_input(
+        provider=provider,
+        namespace=namespace,
+        query_summary=query_summary,
+        observed_at=observed_at,
+        search_performed=False,
+        read_performed=False,
+        reason_code=reason_code,
+    )
+    memory_input.update(
+        {
+            "requested_limit": min(
+                max(1, int(config.get("max_results") or 3)), MAX_MEMORY_RESULTS
+            ),
+            "configured_resource_count": len(config.get("resource_references") or []),
+            "stale_or_unmapped_count": 0,
+            "verification_mode": "exact_project_current_checkout_required",
+        }
+    )
+    projection = ContextProviderRetrieval(
+        provider=provider,
+        namespace=namespace,
+        status="unavailable",
+        query_summary=query_summary,
+        observed_at=observed_at,
+        search_performed=False,
+        read_performed=False,
+        reason_code=reason_code,
+        requested_limit=int(memory_input["requested_limit"]),
+    ).public_packet()
+    projection["checkout_revision_digest"] = hashlib.sha256(
+        repository_revision.encode("utf-8")
+    ).hexdigest()[:16]
+    if repository_scope_check is not None:
+        projection["repository_scope_check"] = dict(repository_scope_check)
+    return {"memory_input": memory_input, "provider_projection": projection}
 
 
 def _repository_context_advisory_packet(
     normalised: Mapping[str, Any],
     *,
     repository_revision: str,
+    repository_scope_check: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Project a stable provider scope without turning it into patch authority."""
 
+    retrieval_allowed = bool(
+        normalised.get("enabled")
+        and not normalised.get("availability_reason_code")
+        and (repository_scope_check or {}).get("matched") is not False
+    )
     return {
         "schema_version": "repository_context_advisory_v0",
         "ok": True,
@@ -316,10 +423,11 @@ def _repository_context_advisory_packet(
             resource_ref=str(normalised["scope_ref"]),
         ),
         "current_checkout_revision": repository_revision,
-        "retrieval_allowed": True,
+        "retrieval_allowed": retrieval_allowed,
         "verification_required": True,
         "patch_authority": False,
         "provider_refresh_ownership": "external",
+        "repository_scope_check": dict(repository_scope_check or {}),
         "raw_provider_refs_captured": False,
     }
 
@@ -566,6 +674,14 @@ def write_issue_fix_validated_outcome_memory(
             "reason_code": "provider_disabled",
             "external_writes_performed": False,
         }
+    if normalised.get("availability_reason_code"):
+        return {
+            **base,
+            "ok": False,
+            "status": "blocked",
+            "reason_code": normalised["availability_reason_code"],
+            "external_writes_performed": False,
+        }
     if not normalised["writeback_enabled"]:
         return {
             **base,
@@ -600,6 +716,16 @@ def write_issue_fix_validated_outcome_memory(
             "status": "blocked",
             "reason_code": "repo_checkout_required",
             "checkout_verification": verification,
+            "external_writes_performed": False,
+        }
+    repository_scope_check = _repository_scope_check(normalised, repo_path=repo_path)
+    if repository_scope_check.get("matched") is False:
+        return {
+            **base,
+            "ok": False,
+            "status": "blocked",
+            "reason_code": repository_scope_check["reason_code"],
+            "repository_scope_check": repository_scope_check,
             "external_writes_performed": False,
         }
     if not commit_ref:
@@ -877,9 +1003,9 @@ def retrieve_issue_fix_repository_memory(
 ) -> dict[str, Any]:
     """Run a configured provider and convert it into issue-fix advisory evidence."""
 
-    normalised = _normalise_config(config, repository_revision=repository_revision)
     query = _compact(query, field="query", limit=500)
     query_summary = _compact(query_summary, field="query_summary", limit=220)
+    normalised = _normalise_config(config, repository_revision=repository_revision)
     support_values = sorted(
         {str(value).strip() for value in supports if str(value).strip()}
     )
@@ -889,9 +1015,11 @@ def retrieve_issue_fix_repository_memory(
         raise ValueError(f"supports must use {sorted(SUPPORT_ASPECTS)}")
     provider_id = str(normalised["provider"])
     namespace = str(normalised["namespace"])
+    repository_scope_check = _repository_scope_check(normalised, repo_path=repo_path)
     repository_context = _repository_context_advisory_packet(
         normalised,
         repository_revision=repository_revision,
+        repository_scope_check=repository_scope_check,
     )
     if not normalised["enabled"]:
         memory_input = _disabled_memory_input(
@@ -908,6 +1036,24 @@ def retrieve_issue_fix_repository_memory(
                 "result_count": 0,
             },
         }
+    availability_reason_code = normalised.get("availability_reason_code")
+    if availability_reason_code or repository_scope_check.get("matched") is False:
+        result = _fail_open_provider_result(
+            config=normalised,
+            query_summary=query_summary,
+            observed_at=observed_at,
+            repository_revision=repository_revision,
+            reason_code=str(
+                availability_reason_code or repository_scope_check["reason_code"]
+            ),
+            repository_scope_check=(
+                repository_scope_check
+                if repository_scope_check.get("required")
+                else None
+            ),
+        )
+        result["provider_projection"]["repository_context"] = repository_context
+        return result
 
     provider = provider or build_context_provider(normalised)
     retrieval = provider.retrieve(
@@ -921,6 +1067,7 @@ def retrieve_issue_fix_repository_memory(
     )
     provider_projection = retrieval.public_packet()
     provider_projection["repository_context"] = repository_context
+    provider_projection["repository_scope_check"] = repository_scope_check
     if retrieval.status != "completed":
         memory_input = _unavailable_memory_input(
             provider=provider_id,
@@ -1115,9 +1262,24 @@ def sync_issue_fix_repository_memory(
     """Bound an explicit provider resource refresh to approved checkout files."""
 
     normalised = _normalise_config(config, repository_revision=repository_revision)
+    if normalised.get("availability_reason_code"):
+        return {
+            "schema_version": "issue_fix_repository_memory_sync_v0",
+            "ok": False,
+            "status": "blocked",
+            "reason_code": normalised["availability_reason_code"],
+            "provider": normalised["provider"],
+            "namespace": normalised["namespace"],
+            "repository_revision": repository_revision,
+            "requested_reference_count": 0,
+            "external_writes_performed": False,
+            "fail_open": True,
+        }
+    repository_scope_check = _repository_scope_check(normalised, repo_path=repo_path)
     repository_context = _repository_context_advisory_packet(
         normalised,
         repository_revision=repository_revision,
+        repository_scope_check=repository_scope_check,
     )
     if not normalised["enabled"]:
         return {
@@ -1131,6 +1293,21 @@ def sync_issue_fix_repository_memory(
             "external_writes_performed": False,
             "fail_open": True,
             "repository_context": repository_context,
+        }
+    if repository_scope_check.get("matched") is False:
+        return {
+            "schema_version": "issue_fix_repository_memory_sync_v0",
+            "ok": False,
+            "status": "blocked",
+            "reason_code": repository_scope_check["reason_code"],
+            "provider": normalised["provider"],
+            "namespace": normalised["namespace"],
+            "repository_revision": repository_revision,
+            "requested_reference_count": 0,
+            "external_writes_performed": False,
+            "fail_open": True,
+            "repository_context": repository_context,
+            "repository_scope_check": repository_scope_check,
         }
     scope_ref = str(normalised["scope_ref"])
     if not scope_ref.startswith("viking://resources/"):
