@@ -1199,6 +1199,15 @@ def _append_project_asset_agent_lane_markdown(
                 f"done={vision_gap_judge.get('done')} "
                 f"decision={markdown_scalar(vision_gap_judge.get('decision') or '')}"
             )
+    vision_wait_state = as_dict(goal_frontier.get("vision_wait_state"))
+    if vision_wait_state:
+        lines.append(
+            "    - vision_wait_state: "
+            f"state={markdown_scalar(vision_wait_state.get('state') or '')} "
+            f"todo_id={markdown_scalar(vision_wait_state.get('selected_todo_id') or '')} "
+            f"resume_when={markdown_scalar(vision_wait_state.get('resume_when') or '')} "
+            f"automatic_resume={vision_wait_state.get('automatic_resume')}"
+        )
 
 
 def _append_project_asset_runtime_policy_markdown(

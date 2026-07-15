@@ -28,6 +28,7 @@ from ..todos.contract import (
     normalize_todo_task_class,
 )
 from ..todos.handoff_gate import HandoffGateState
+from ..todos.deferred_resume import todo_summary_blocked_successor_items
 from ..todos.projection import (
     todo_item_claimed_by_agent_or_unclaimed,
     todo_item_excludes_agent,
@@ -669,6 +670,17 @@ def _agent_lane_frontier_hint(
         AgentScopeFrontierAction.AGENT_SCOPE_WAIT,
         AgentScopeFrontierAction.REASSIGNMENT_REQUIRED,
     }:
+        blocked_successor_todo_id = _first_compact_todo_id(
+            frontier.get("blocked_successor_wait_candidates")
+        )
+        if blocked_successor_todo_id:
+            return build_hint(
+                AgentLaneFrontierHintDecision.QUIET_NOOP_BLOCKER,
+                source="agent_scope_frontier",
+                reason_code="blocked_successor_resume_pending",
+                target_todo_id=blocked_successor_todo_id,
+                quiet_noop_allowed=True,
+            )
         blocker_todo_id = _first_compact_todo_id(frontier.get("blocking_handoff_gates"))
         if not blocker_todo_id:
             blocker_todo_id = _first_compact_todo_id(frontier.get("other_agent_claimed_items"))
@@ -1123,6 +1135,47 @@ def _agent_scope_no_candidate_frontier(
                 "deferred_resume_candidate_count": len(deferred_resume_candidates),
             },
             extra_fields={"deferred_resume_candidates": deferred_resume_candidates[:3]},
+        )
+
+    blocked_successor_wait_candidates = todo_summary_blocked_successor_items(
+        agent_todo_summary,
+        agent_id=agent_id,
+    )
+    if blocked_successor_wait_candidates:
+        first_candidate = blocked_successor_wait_candidates[0]
+        candidate_todo_id = (
+            str(first_candidate.get("todo_id") or "").strip() or "<todo_id>"
+        )
+        resume_when = str(first_candidate.get("resume_when") or "").strip()
+        return build_agent_scope_frontier_payload(
+            agent_id=agent_id,
+            action=AgentScopeFrontierAction.AGENT_SCOPE_WAIT,
+            quiet_noop_allowed=True,
+            spend_policy=(
+                "no quota spend while an exact successor resume condition is pending"
+            ),
+            reason=(
+                f"current {agent_label} {agent_id} has exact blocked successor "
+                f"{candidate_todo_id} waiting on {resume_when}; another successor "
+                "replan would duplicate the existing route"
+            ),
+            recommended_action=(
+                f"Keep {agent_id} active but quiet until {resume_when} becomes ready; "
+                "then resume ordinary todo/deferred-successor routing automatically."
+            ),
+            requires_replan=False,
+            candidate_counts={
+                "current_agent_claimed_advancement_count": current_agent_count,
+                "unclaimed_advancement_count": unclaimed_count,
+                "blocked_successor_wait_count": len(
+                    blocked_successor_wait_candidates
+                ),
+            },
+            extra_fields={
+                "blocked_successor_wait_candidates": (
+                    blocked_successor_wait_candidates[:3]
+                ),
+            },
         )
 
     route_continuation_replan_candidates = _agent_scope_route_continuation_replan_candidates(

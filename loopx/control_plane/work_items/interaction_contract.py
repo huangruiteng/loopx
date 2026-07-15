@@ -822,6 +822,28 @@ def _attach_interaction_vision_continuation_audit(
         }
 
 
+def _attach_interaction_vision_wait_state(
+    contract: dict[str, Any],
+    payload: dict[str, Any],
+) -> None:
+    vision_wait_state = (
+        payload.get("vision_wait_state")
+        if isinstance(payload.get("vision_wait_state"), dict)
+        else {}
+    )
+    if vision_wait_state.get("state") != "waiting":
+        return
+    contract["agent_channel"]["vision_wait_state"] = vision_wait_state
+    contract["cli_channel"]["vision_wait_state"] = {
+        "state": "waiting",
+        "reason_code": vision_wait_state.get("reason_code"),
+        "selected_todo_id": vision_wait_state.get("selected_todo_id"),
+        "resume_when": vision_wait_state.get("resume_when"),
+        "automatic_resume": vision_wait_state.get("automatic_resume") is True,
+        "spend_policy": "no spend while the exact resume condition is pending",
+    }
+
+
 def _interaction_fallback_policy_required(payload: dict[str, Any], *, mode: str) -> bool:
     return mode in {
         "user_gate",
@@ -894,6 +916,7 @@ def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
     }
     _attach_interaction_required_reads(contract, required_reads)
     _attach_interaction_vision_continuation_audit(contract, payload)
+    _attach_interaction_vision_wait_state(contract, payload)
     if _interaction_fallback_policy_required(payload, mode=mode):
         contract["fallback_policy"] = {"do_not_cancel_on_block": True}
     return contract

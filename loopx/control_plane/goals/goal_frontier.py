@@ -22,6 +22,7 @@ from .goal_vision_state import (
     goal_vision_state_is_closed,
     goal_vision_state_requires_successor,
 )
+from .goal_vision_wait import build_goal_vision_wait_state
 
 
 GOAL_FRONTIER_PROJECTION_SCHEMA_VERSION = "goal_frontier_projection_v0"
@@ -1175,6 +1176,10 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         agent_id=agent_id,
     )
     total_frontier_advancement = sum(frontier_counts.values())
+    selectable_frontier_advancement = (
+        frontier_counts["current_agent_claimed_advancement_count"]
+        + frontier_counts["unclaimed_advancement_count"]
+    )
     compact_acceptance_gaps = [
         item for item in (acceptance_gaps or []) if isinstance(item, dict)
     ]
@@ -1265,7 +1270,9 @@ def derive_goal_frontier_replan_obligation_from_summaries(
             successor_vision_required
             or (
                 agent_counts.get("advancement", 0) == 0
-                and total_frontier_advancement == 0
+                # Another peer's claimed work cannot satisfy this agent's
+                # scoped vision or checkpoint acceptance gap.
+                and selectable_frontier_advancement == 0
             )
         )
         and not acceptance_allows_watch_lane_continuation
@@ -1444,6 +1451,7 @@ def build_goal_frontier_projection_from_summaries(
     work_lane_contract: dict[str, Any] | None,
     replan_obligation: dict[str, Any] | None,
     acceptance_gaps: list[dict[str, Any]] | None = None,
+    vision_wait_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     user_counts = _summary_task_counts(user_todo_summary)
     agent_counts = _summary_task_counts(agent_todo_summary)
@@ -1472,6 +1480,7 @@ def build_goal_frontier_projection_from_summaries(
         monitor_only_lane=monitor_only_lane,
         replan_obligation=replan_obligation,
         acceptance_gaps=acceptance_gaps,
+        vision_wait_state=vision_wait_state,
         deferred_successors=_deferred_successors(
             agent_todo_summary,
             agent_id=agent_id,
@@ -1534,13 +1543,27 @@ def build_goal_frontier_projection_context_from_status(
         goal_id=goal_id,
         agent_id=agent_id,
     )
-    acceptance_gaps = (
+    source_acceptance_gaps = (
         acceptance_gaps_from_agent_vision(
             latest_agent_vision,
             goal_status=goal_status,
         )
         + acceptance_gaps_from_vision_checkpoint(latest_missing_vision_checkpoint)
     )
+    frontier_counts = _frontier_advancement_counts(
+        agent_todo_summary=agent_todo_summary,
+        agent_id=agent_id,
+    )
+    vision_wait_state = build_goal_vision_wait_state(
+        agent_todo_summary=agent_todo_summary,
+        agent_id=agent_id,
+        acceptance_gaps=source_acceptance_gaps,
+        selectable_advancement_count=(
+            frontier_counts["current_agent_claimed_advancement_count"]
+            + frontier_counts["unclaimed_advancement_count"]
+        ),
+    )
+    acceptance_gaps = [] if vision_wait_state else source_acceptance_gaps
     projected_replan_ack = projected_autonomous_replan_ack_for_agent(
         item,
         project_asset,
@@ -1583,6 +1606,7 @@ def build_goal_frontier_projection_context_from_status(
         work_lane_contract=work_lane_contract,
         replan_obligation=replan_obligation,
         acceptance_gaps=acceptance_gaps,
+        vision_wait_state=vision_wait_state,
     )
     return {
         "schema_version": "goal_frontier_projection_context_v0",
@@ -1590,6 +1614,7 @@ def build_goal_frontier_projection_context_from_status(
         "replan_scope": replan_scope,
         "goal_frontier_projection": goal_frontier_projection,
         "acceptance_gaps": acceptance_gaps,
+        "vision_wait_state": vision_wait_state,
         "latest_replan_ack": latest_agent_replan_ack,
         "projected_replan_ack": projected_replan_ack,
     }
@@ -1664,6 +1689,7 @@ def build_goal_frontier_projection(
     replan_obligation: dict[str, Any] | None,
     acceptance_gaps: list[dict[str, Any]] | None = None,
     deferred_successors: dict[str, Any] | None = None,
+    vision_wait_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     replan_required = autonomous_replan_is_required(replan_obligation)
     blockers: list[str] = []
@@ -1677,6 +1703,8 @@ def build_goal_frontier_projection(
         blockers.append("other_agent_claimed_advancement")
     if replan_required:
         blockers.append("autonomous_replan_obligation")
+    if isinstance(vision_wait_state, dict):
+        blockers.append("vision_blocked_successor_wait")
 
     compact_acceptance_gaps = [
         item for item in (acceptance_gaps or []) if isinstance(item, dict)
@@ -1721,6 +1749,8 @@ def build_goal_frontier_projection(
     }
     if vision_continuation_audit:
         projection["vision_continuation_audit"] = vision_continuation_audit
+    if isinstance(vision_wait_state, dict):
+        projection["vision_wait_state"] = vision_wait_state
     if replan_required and isinstance(replan_obligation, dict):
         projection["autonomous_replan_decision"] = build_autonomous_replan_decision(
             replan_obligation

@@ -299,6 +299,59 @@ def todo_summary_monitor_blocked_resume_items(
     return sorted(_dedupe_todo_items(candidates), key=todo_projection_sort_key)
 
 
+def todo_summary_blocked_successor_items(
+    value: dict[str, Any],
+    *,
+    agent_id: str | None,
+) -> list[dict[str, Any]]:
+    """Return exact non-monitor successor waits selectable by one agent lane.
+
+    Open resume-gated todos and deferred todos share the same wait contract.
+    A standing continuous monitor is deliberately excluded because it has a
+    dedicated gate-repair route: an endless monitor must not become a hidden
+    ``todo_done`` prerequisite for ordinary advancement.
+    """
+
+    if not isinstance(value, dict) or not agent_id:
+        return []
+    candidates = [
+        *todo_summary_resume_blocked_items(value),
+        *[
+            item
+            for item in todo_summary_deferred_items(value, "deferred_items")
+            if item.get("resume_ready") is False
+        ],
+    ]
+    selected: list[dict[str, Any]] = []
+    for item in _dedupe_todo_items(candidates):
+        if _todo_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
+            continue
+        if todo_item_excludes_agent(item, agent_id=agent_id):
+            continue
+        claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+        if claimed_by and claimed_by != agent_id:
+            continue
+        resume_when = normalize_todo_resume_when(item.get("resume_when"))
+        condition = (
+            item.get("resume_condition")
+            if isinstance(item.get("resume_condition"), dict)
+            else {}
+        )
+        if not resume_when or condition.get("satisfied") is not False:
+            continue
+        target_task_class = normalize_todo_task_class(
+            condition.get("target_task_class"),
+            text="",
+        )
+        if target_task_class == TODO_TASK_CLASS_MONITOR:
+            continue
+        compact = dict(item)
+        compact["resume_when"] = resume_when
+        compact["resume_ready"] = False
+        selected.append(compact)
+    return sorted(_dedupe_todo_items(selected), key=todo_projection_sort_key)
+
+
 def _agent_claim_filtered_deferred_items(
     items: list[dict[str, Any]],
     *,

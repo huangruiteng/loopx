@@ -302,6 +302,15 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                     f"done={vision_gap_judge.get('done')} "
                     f"decision={vision_gap_judge.get('decision')}"
                 )
+        vision_wait_state = as_dict(goal_frontier.get("vision_wait_state"))
+        if vision_wait_state:
+            lines.append(
+                "- vision_wait_state: "
+                f"state={vision_wait_state.get('state')} "
+                f"todo_id={vision_wait_state.get('selected_todo_id')} "
+                f"resume_when={vision_wait_state.get('resume_when')} "
+                f"automatic_resume={vision_wait_state.get('automatic_resume')}"
+            )
     task_orchestration = as_dict(payload.get("task_orchestration_contract"))
     if task_orchestration:
         peer_lanes = as_list(task_orchestration.get("eligible_peer_lanes"))
