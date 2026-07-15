@@ -94,6 +94,14 @@ def _digest(value: Any) -> str:
     return "sha256:" + sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
+def _validate_actual_default_projection(packet: Mapping[str, Any]) -> None:
+    if packet.get("command_pack_detail_included") is True:
+        raise OnboardingActualBehaviorValidationError(
+            "regular onboarding model qualification excludes explicit "
+            "command-pack detail; validate cold-path restoration deterministically"
+        )
+
+
 def _mapping(value: Any, *, field: str) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError(f"{field} must be an object")
@@ -519,6 +527,7 @@ def run_onboarding_actual_behavior_qualification(
     transition_runner: Callable[[], Mapping[str, Any]],
     repair_observation: Mapping[str, Any],
 ) -> dict[str, Any]:
+    _validate_actual_default_projection(actual_packet)
     entry_contract = onboarding_entry_semantic_contract(actual_packet)
     entry_violations = onboarding_entry_contract_violations(entry_contract)
     if entry_violations:

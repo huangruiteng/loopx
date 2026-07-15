@@ -53,6 +53,7 @@ TRANSACTION = {
 def _actual_entry_packet() -> dict[str, Any]:
     return {
         "schema_version": "loopx_start_goal_guided_v0",
+        "command_pack_detail_included": False,
         "goal_id": "fixture-goal",
         "agent_id": "codex-fixture",
         "guided_transaction": TRANSACTION,
@@ -181,6 +182,38 @@ def test_independent_oracle_rejects_command_loss_before_model_or_transition() ->
         )
 
     assert tuple(COMMANDS) == ONBOARDING_REQUIRED_CONNECT_COMMAND_IDS
+    assert calls == 0
+    assert transitions == 0
+
+
+def test_regular_qualification_rejects_explicit_cold_path_before_model() -> None:
+    calls = 0
+    transitions = 0
+    packet = _actual_entry_packet()
+    packet["command_pack_detail_included"] = True
+
+    def actor(_: Mapping[str, Any]) -> Mapping[str, Any]:
+        nonlocal calls
+        calls += 1
+        return {}
+
+    def transition() -> Mapping[str, Any]:
+        nonlocal transitions
+        transitions += 1
+        return _healthy_observation()
+
+    with pytest.raises(
+        OnboardingActualBehaviorValidationError,
+        match="excludes explicit command-pack detail",
+    ):
+        run_onboarding_actual_behavior_qualification(
+            packet,
+            qualification_id="onboarding-cold-path-excluded-001",
+            actor=actor,
+            transition_runner=transition,
+            repair_observation=_projection_gap_observation(),
+        )
+
     assert calls == 0
     assert transitions == 0
 

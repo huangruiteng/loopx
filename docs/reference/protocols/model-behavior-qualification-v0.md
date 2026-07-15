@@ -171,6 +171,13 @@ the currently shipped default `start-goal --guided` packet. The qualification
 does not retain a retired full-detail implementation as a second product
 contract.
 
+The regular Doubao onboarding profile rejects packets with
+`command_pack_detail_included=true` before any provider call. The explicit
+`--include-command-pack-detail` recovery path remains a supported diagnostic
+contract, but its restoration and semantic parity are covered only by
+deterministic tests. It is not a regular Doubao scenario, corpus member, or
+repetition arm.
+
 The closed loop checks three decisions:
 
 1. the entry turn must select `connect_if_needed` from the actual default
@@ -202,10 +209,11 @@ receipt digests. Packets, observations, model responses, local paths, and
 credentials are not retained. It always sets
 `automatic_release_promotion_allowed=false`.
 
-For a sensitive behavior-changing pull request, maintainers may additionally
-run a temporary base/candidate differential evaluation. That comparison is PR
-evidence, not a merged API, fixture, or permanent test arm. Once the candidate
-becomes the default, the one-arm qualification follows the new actual packet;
+For a sensitive behavior-changing pull request, the one-arm qualification runs
+against the candidate checkout's actual default packet. A separate generic
+packet-ablation tool may still be used for targeted diagnosis, but the
+full-detail recovery path must not become its baseline arm. Once the candidate
+becomes the default, the same one-arm qualification follows that packet;
 changing the independent behavior invariants remains an explicit reviewable
 contract change.
 
@@ -220,7 +228,9 @@ stochastic output.
 
 This contract is one gate in a larger promotion process. Turning a candidate
 packet into the default requires deterministic state-matrix parity, a complete
-field-classification ledger, repeated paired model runs over representative and
-counterfactual states, zero safety drift, bounded behavioral drift, and explicit
-owner review. Missing provider access, an unknown schema, or incomplete
+field-classification ledger, repeated model evidence using the profile's
+declared topology, zero safety drift, bounded behavioral drift, and explicit
+owner review. The onboarding profile uses the actual-default one arm; generic
+packet projection evaluation may use paired or counterfactual cases. Missing
+provider access, an unknown schema, or incomplete
 evidence keeps the full packet as the default.
