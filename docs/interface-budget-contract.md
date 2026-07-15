@@ -13,12 +13,40 @@ and size/count budgets.
 | `quota_should_run_json` | quota guard | decide whether the selected goal may spend compute | `status`, `history`, or active state | `json_chars <= 12550` | `nested_keys <= 322` | `top_level_keys <= 50` |
 | `dashboard_status_json` | operator dashboard | render first-screen operator state | `history`, run artifacts, or project-local adapter output | `json_chars <= 18200` | `nested_keys <= 260` | `top_level_keys <= 25` |
 
-These budgets are intentionally about the machine payloads, not the full
-archival facts. When a surface needs more detail, put that detail behind a
-queryable cold-path command or a linked run-history artifact instead of making
-the recurring heartbeat prompt carry it. `nested_keys` counts dictionary keys
-through three payload levels and samples at most 20 list items per level; it is a
-hot-path structure budget, not an archival record-size budget.
+These four budgets measure compact in-memory machine payloads. They do not
+measure the exact text written to stdout: JSON indentation, compatibility
+projections, repeated commands, and Markdown wrappers can make emitted output
+materially larger. The emitted-output qualification matrix below measures that
+separate boundary through the real CLI entry point.
+
+| Emitted Surface | Default Qualification | Scale / Limit Contract | Cold Path |
+| --- | --- | --- | --- |
+| `start-goal --guided` | baseline and growth | small, crowded, and multi-agent goals; objective/command duplication | `packet_summary.detail_refs` and `bootstrap-command-pack` |
+| `bootstrap-command-pack` | baseline and growth | small, crowded, and multi-agent goals; objective/command duplication | `--message-only` and `packet_summary.detail_refs` |
+| `quota should-run` | absolute hot path | todo-count growth plus semantic anchors | `status`, `history`, active state, `--include-scheduler-detail` |
+| `status --goal-id` | absolute hot path | todo-count growth; task graph excluded by default | `--include-task-graph`, `history`, run artifacts |
+| `diagnose --goal-id` | explicit-limit cold path | `--limit 5` fixture matrix | status plus goal-specific quota/todo reads |
+| `review-packet --handoff-only` | absolute hot path | todo-count growth plus handoff semantic anchors | full `review-packet`, run artifacts |
+| `heartbeat-prompt --thin` | absolute hot path | agent scope and multi-agent fixture matrix | `--compact`, `--full` |
+| `todo list` | baseline and growth | todo-count growth and agent filtering semantics | role/status filters, direct todo-id lifecycle commands |
+| `history --limit 5` | explicit-limit cold path | returned-run bound | individual run JSON/Markdown artifacts |
+| `evidence-log --thin --limit 5` | explicit-limit cold path | returned-evidence bound | referenced run-history and rollout-event artifacts |
+
+The canonical emitted-output inventory and current characterization ceilings
+live in `loopx.control_plane.testing.cli_output_budget`. Those ceilings are
+regression baselines, not target sizes: preserving a large current value makes
+unreviewed growth fail while a later optimization lowers the ceiling. Tests
+also record UTF-8 bytes, line count, JSON parseability, pretty-print overhead,
+semantic anchors, collection-growth slope, and bootstrap duplication. Every
+declared agent-facing surface must name an owner, consumer action, and cold-path
+fallback.
+
+Both budget layers are intentionally about projections, not the full archival
+facts. When a surface needs more detail, put that detail behind a queryable
+cold-path command or a linked run-history artifact instead of making the
+recurring heartbeat prompt carry it. `nested_keys` counts dictionary keys
+through three payload levels and samples at most 20 list items per level; it is
+a hot-path structure budget, not an archival record-size budget.
 
 Restraint rules for new fields:
 
@@ -41,6 +69,7 @@ structured fields remain `interaction_contract.user_channel` and
 Regression entrypoints:
 
 ```bash
+pytest -q tests/control_plane/test_cli_output_budget.py
 python3 examples/control_plane/hot-path-interface-budget-smoke.py
 python3 examples/control_plane/status-quota-perf-budget-smoke.py
 ```
