@@ -5,10 +5,10 @@ import json
 import math
 import re
 from collections.abc import Collection
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
-from ..runtime.time import now_utc
+from ..runtime.time import now_utc, utc_isoformat
 from ..work_items.delivery_outcome import DeliveryOutcome
 from .state import (
     CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
@@ -25,6 +25,7 @@ SCHEDULER_HINT_DETAIL_SCHEMA_VERSION = "scheduler_hint_detail_v0"
 CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION = "codex_app_stateful_backoff_v0"
 CODEX_APP_SCHEDULER_ACK_HINT_SCHEMA_VERSION = "codex_app_scheduler_ack_hint_v0"
 CODEX_APP_SCHEDULER_FAILURE_HINT_SCHEMA_VERSION = "codex_app_scheduler_failure_hint_v0"
+USER_GATE_NOTIFICATION_COOLDOWN_SCHEMA_VERSION = "user_gate_notification_cooldown_v0"
 MONITOR_CADENCE_PATTERN = re.compile(r"^\s*(\d+)\s*([mhd])\s*$", re.IGNORECASE)
 MONITOR_WAIT_PROGRESSION_MINUTES = [15, 30, 60]
 CODEX_APP_MAX_INTERVAL_MINUTES = 60
@@ -61,6 +62,51 @@ def _scheduler_rrule_interval_minutes(value: Any) -> int | None:
     except ValueError:
         return None
     return interval if interval > 0 else None
+
+
+def _user_gate_notification_cooldown(
+    *,
+    cadence_class: str,
+    host_failure_suppressed: bool,
+    current_interval_minutes: int,
+    effective_host_rrule: str,
+    recorded_host_failure: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Bound repeat gate notices when a failed host update leaves a tight poll."""
+
+    if cadence_class != "human_gate" or not host_failure_suppressed:
+        return None
+    failed_at = parse_scheduler_timestamp((recorded_host_failure or {}).get("failed_at"))
+    host_interval = _scheduler_rrule_interval_minutes(effective_host_rrule)
+    target_interval = max(1, int(current_interval_minutes))
+    if failed_at is None or host_interval is None or host_interval >= target_interval:
+        return None
+    current_time = now_utc()
+    elapsed_seconds = max(0.0, (current_time - failed_at).total_seconds())
+    cooldown_seconds = target_interval * 60
+    window_seconds = host_interval * 60
+    cycle_index = int(elapsed_seconds // cooldown_seconds)
+    cycle_position = elapsed_seconds - cycle_index * cooldown_seconds
+    notification_due = cycle_index >= 1 and cycle_position < window_seconds
+    next_reminder_at = failed_at + timedelta(
+        seconds=(cycle_index + 1) * cooldown_seconds
+    )
+    return {
+        "schema_version": USER_GATE_NOTIFICATION_COOLDOWN_SCHEMA_VERSION,
+        "active": True,
+        "notification_due": notification_due,
+        "notification_suppressed": not notification_due,
+        "policy": "failed_host_update_bounded_reminder_window",
+        "cooldown_minutes": target_interval,
+        "reminder_window_minutes": host_interval,
+        "failed_at": utc_isoformat(failed_at),
+        "next_reminder_at": utc_isoformat(next_reminder_at),
+        "reason": (
+            "the user gate is still pending, but the failed host cadence update "
+            "left a tighter poll; suppress duplicate notices outside the bounded "
+            "human-gate reminder window"
+        ),
+    }
 
 
 def _accepts_stale_monitor_ack_rrule(
@@ -1171,6 +1217,15 @@ def build_scheduler_hint(
                 ],
             },
         }
+        notification_cooldown = _user_gate_notification_cooldown(
+            cadence_class=cadence_class,
+            host_failure_suppressed=host_failure_suppressed,
+            current_interval_minutes=current_interval,
+            effective_host_rrule=effective_host_rrule,
+            recorded_host_failure=recorded_host_failure,
+        )
+        if notification_cooldown:
+            scheduler_hint["user_gate_notification_cooldown"] = notification_cooldown
         if include_detail:
             scheduler_hint["cold_path_detail"] = {
                 "schema_version": SCHEDULER_HINT_DETAIL_SCHEMA_VERSION,

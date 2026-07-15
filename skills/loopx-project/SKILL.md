@@ -562,9 +562,11 @@ It also respects `notify_user_on_open_todo=true`: open user todos in
 focus-wait, waiting, or external-evidence lanes should become a compact
 blocker-push `NOTIFY` with at most three items, while skipping delivery work
 and quota spend for that blocker-push turn. If the payload includes
-`open_todo_notification_policy=repeat_until_resolved`, repeat
-that `NOTIFY` on every such poll until the todo is done, deferred, or replaced;
-do not suppress it as a recently surfaced blocker. Other blocker-push cases may
+`open_todo_notification_policy=repeat_until_resolved`, repeat that `NOTIFY`
+until the todo is done, deferred, or replaced. When
+`user_gate_notification_cooldown.notification_suppressed=true`, preserve the
+pending gate but return quiet `DONT_NOTIFY`; the bounded reminder window or a
+material gate/host change reopens the notification. Other blocker-push cases may
 still be de-duplicated when the same blocker was already surfaced recently.
 Eligible monitor-only no-transition polls keep user todos visible in the
 payload but should stay quiet unless a material transition appears.

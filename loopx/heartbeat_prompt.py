@@ -586,9 +586,10 @@ If the result says `should_run=false`:
 - If `notify_user_on_open_todo=true`, existing open `user_todo_summary` is a
   blocker-push opportunity, not a silent skip. For focus/wait/evidence lanes,
   a user/owner answer can unlock progress. If the payload explicitly includes
-  `open_todo_notification_policy=repeat_until_resolved`, `NOTIFY` every poll
-  until done/deferred/replaced. Other blockers may de-dupe if surfaced
-  recently; otherwise `NOTIFY` in Chinese with up to three
+  `open_todo_notification_policy=repeat_until_resolved`, repeat until resolved,
+  except `user_gate_notification_cooldown.notification_suppressed=true`: keep
+  the gate pending and `DONT_NOTIFY` until its reminder window/change.
+  Else `NOTIFY` in Chinese with up to three
   `first_open_items`, `open_todo_notify_reason`, and reply format: `done`,
   `defer/not now`, or evidence link/date/conclusion. No delivery/spend.
 - If the payload also says `safe_bypass_allowed=true` and the same gate has
@@ -850,8 +851,9 @@ If `should_run=false`: `monitor_quiet_skip` appends at most one no-spend
 `autonomous_replan_required` / `must_attempt_work=true`; no edits/spend;
 unchanged monitor-only polls are not self-stop signals.
 `state=operator_gate` / `notify_user_on_open_todo=true` /
-`user_channel.notify=NOTIFY`: blocker-push with actions, including
+`user_channel.notify=NOTIFY`: blocker-push including
 non_blocking; `open_todo_notification_policy=repeat_until_resolved`: repeat;
+cooldown:quiet;
 never only "owner gate"; no delivery/spend. `safe_bypass_allowed=true`: one
 gate-independent safe-bypass, validate/writeback/spend. External/wait monitor:
 one read-only status/log/metric/marker poll; unchanged quiet, new evidence

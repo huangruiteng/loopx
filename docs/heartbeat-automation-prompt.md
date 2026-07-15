@@ -311,8 +311,10 @@ If the result says should_run=false:
   waiting_on=external_evidence, where a short user/owner answer can unlock a
   quiet project or stop meaningless repeated polling. If the payload explicitly
   includes open_todo_notification_policy=repeat_until_resolved, return
-  heartbeat NOTIFY on every such poll until the user todo is done, deferred, or
-  replaced. Otherwise, if the same blocker ask has not already been surfaced in
+  heartbeat NOTIFY until the user todo is done, deferred, or replaced. When
+  user_gate_notification_cooldown.notification_suppressed=true, preserve the
+  pending gate but return quiet DONT_NOTIFY until its bounded reminder window
+  or a material gate/host change. Otherwise, if the same blocker ask has not already been surfaced in
   the recent visible thread, return heartbeat NOTIFY with one concise Chinese
   ask listing at most three first_open_items, the open_todo_notify_reason, and
   the expected reply format: done, defer/not now, or a new evidence
@@ -591,9 +593,11 @@ For every automatic heartbeat turn, the agent-facing checklist is:
    `execution_obligation.must_attempt_work=true`.
 3. If `notify_user_on_open_todo=true`, ask up to three open user todos as a
    blocker-push notification and do not spend quota for that blocker-push turn.
-   If `open_todo_notification_policy=repeat_until_resolved`,
-   repeat the notification every poll until the todo is done, deferred, or
-   replaced; do not suppress it as a recently surfaced blocker. Otherwise,
+   If `open_todo_notification_policy=repeat_until_resolved`, repeat the
+   notification until the todo is done, deferred, or replaced. If
+   `user_gate_notification_cooldown.notification_suppressed=true`, keep the gate
+   pending but return quiet `DONT_NOTIFY` until its bounded reminder window or
+   a material gate/host change. Otherwise,
    ordinary blocker-push asks may be de-duplicated when the same blocker was
    surfaced recently.
 4. If `effective_action=outcome_floor_recovery` or

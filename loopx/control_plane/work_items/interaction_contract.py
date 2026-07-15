@@ -88,9 +88,35 @@ def user_channel_notice_todo_actions(summary: Any, *, limit: int = 3) -> list[st
 
 
 def user_channel_action_required(payload: dict[str, Any]) -> bool:
+    if _user_gate_notification_suppressed(payload):
+        return False
     return bool(payload.get("requires_user_action")) or bool(
         user_channel_action_todo_actions(payload.get("user_todo_summary"))
     )
+
+
+def _user_gate_notification_suppressed(payload: dict[str, Any]) -> bool:
+    cooldown = payload.get("user_gate_notification_cooldown")
+    return isinstance(cooldown, dict) and cooldown.get("notification_suppressed") is True
+
+
+def finalize_user_gate_notification_cooldown(payload: dict[str, Any]) -> None:
+    scheduler_hint = payload.get("scheduler_hint")
+    cooldown = (
+        scheduler_hint.get("user_gate_notification_cooldown")
+        if isinstance(scheduler_hint, dict)
+        else None
+    )
+    if isinstance(cooldown, dict):
+        payload["user_gate_notification_cooldown"] = dict(cooldown)
+    if _user_gate_notification_suppressed(payload):
+        payload["pending_user_action"] = bool(
+            payload.get("requires_user_action")
+            or user_channel_action_todo_actions(payload.get("user_todo_summary"))
+        )
+        payload["requires_user_action"] = False
+    payload["interaction_contract"] = build_interaction_contract(payload)
+    attach_user_action_compat_fields(payload)
 
 
 def projected_user_channel_actions(
@@ -98,6 +124,8 @@ def projected_user_channel_actions(
     *,
     limit: int = 3,
 ) -> list[str]:
+    if _user_gate_notification_suppressed(payload):
+        return []
     actions = user_channel_action_todo_actions(
         payload.get("user_todo_summary"),
         limit=limit,
@@ -293,6 +321,8 @@ def _interaction_mode(payload: dict[str, Any]) -> str:
     state = str(payload.get("state") or "")
     if payload.get("scoped_user_gate_fallback"):
         return "scoped_user_gate_fallback"
+    if _user_gate_notification_suppressed(payload):
+        return "user_gate_cooldown_wait"
     if effective_action == "automation_prompt_upgrade_required":
         return "automation_prompt_upgrade"
     if user_channel_action_required(payload):
@@ -612,6 +642,7 @@ def _interaction_quiet_noop_allowed(
         "mapped_noop_if_unchanged",
         "quota_throttled",
         "blocked_wait",
+        "user_gate_cooldown_wait",
         "skip",
     }
 
@@ -634,7 +665,12 @@ def _interaction_spend_after_validation(mode: str) -> bool:
 
 def _interaction_user_reason(payload: dict[str, Any]) -> Any:
     return (
-        payload.get("open_todo_notify_reason")
+        (
+            payload.get("user_gate_notification_cooldown", {}).get("reason")
+            if _user_gate_notification_suppressed(payload)
+            else None
+        )
+        or payload.get("open_todo_notify_reason")
         or payload.get("gate_prompt")
         or payload.get("operator_question")
         or _blocked_priority_fallback_user_reason(payload)
@@ -700,6 +736,8 @@ def _build_interaction_user_channel(
         "action_required": user_required,
         "notify": "NOTIFY"
         if user_required or non_blocking_notice
+        else "DONT_NOTIFY"
+        if _user_gate_notification_suppressed(payload)
         else heartbeat_recommendation.get("notify", "DONT_NOTIFY"),
     }
     if actions:

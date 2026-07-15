@@ -36,9 +36,9 @@ from .execution_profile import (
 )
 from .control_plane.work_items.execution_obligation import build_execution_obligation
 from .control_plane.work_items.interaction_contract import (
-    attach_user_action_compat_fields,
     build_interaction_contract,
     build_protocol_action_packet,
+    finalize_user_gate_notification_cooldown,
     user_channel_action_required as _user_channel_action_required,
 )
 from .control_plane.work_items.primary_action import (
@@ -2169,7 +2169,6 @@ def build_quota_should_run(
                 }
         payload["automation_liveness"] = build_automation_liveness(payload)
         payload["interaction_contract"] = build_interaction_contract(payload)
-        attach_user_action_compat_fields(payload)
         payload["scheduler_hint"] = _scheduler_hint(
             payload,
             include_detail=include_scheduler_detail,
@@ -2180,6 +2179,7 @@ def build_quota_should_run(
                 agent_id=quota_decision_agent_id(payload) or agent_id,
             ), codex_app_current_rrule=codex_app_current_rrule,
         )
+        finalize_user_gate_notification_cooldown(payload)
         payload["protocol_action_packet"] = build_protocol_action_packet(payload)
         return payload
 

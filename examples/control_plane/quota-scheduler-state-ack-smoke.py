@@ -924,7 +924,7 @@ def assert_cli_scheduler_failure_circuit_breaker() -> None:
                 encoding="utf-8",
             )
 
-        write_host_rrule("FREQ=MINUTELY;INTERVAL=60")
+        write_host_rrule("FREQ=MINUTELY;INTERVAL=3")
         previous_codex_home = os.environ.get("CODEX_HOME")
         previous_thread_id = os.environ.get("CODEX_THREAD_ID")
         os.environ["CODEX_HOME"] = str(codex_home)
@@ -961,7 +961,7 @@ def assert_cli_scheduler_failure_circuit_breaker() -> None:
             assert failure["scheduler_state_mutated"] is True, failure
             assert persisted_failure["target_rrule"] == target_rrule, failure
             assert persisted_failure["observed_host_rrule"] == (
-                "FREQ=MINUTELY;INTERVAL=60"
+                "FREQ=MINUTELY;INTERVAL=3"
             ), failure
 
             suppressed = run_cli(
@@ -988,6 +988,92 @@ def assert_cli_scheduler_failure_circuit_breaker() -> None:
             assert "recommended_rrule" not in suppressed_app, suppressed
             assert "failure_hint" not in suppressed_app, suppressed
             assert "ack_hint" not in suppressed_app, suppressed
+            cooldown = suppressed["user_gate_notification_cooldown"]
+            assert cooldown["notification_suppressed"] is True, suppressed
+            assert cooldown["notification_due"] is False, suppressed
+            assert cooldown["cooldown_minutes"] == 30, suppressed
+            assert cooldown["reminder_window_minutes"] == 3, suppressed
+            assert suppressed["action_required"] is False, suppressed
+            assert suppressed["requires_user_action"] is False, suppressed
+            assert suppressed["pending_user_action"] is True, suppressed
+            assert suppressed["state"] == "operator_gate", suppressed
+            assert suppressed["interaction_contract"]["mode"] == (
+                "user_gate_cooldown_wait"
+            ), suppressed
+            assert suppressed["interaction_contract"]["user_channel"] == {
+                "action_required": False,
+                "notify": "DONT_NOTIFY",
+                "reason": cooldown["reason"],
+            }, suppressed
+            assert suppressed["interaction_contract"]["agent_channel"][
+                "quiet_noop_allowed"
+            ] is True, suppressed
+
+            reminder_state = load_scheduler_state(
+                runtime,
+                goal_id="needs-operator",
+                agent_id=agent_id,
+            )
+            assert reminder_state is not None, suppressed
+            reminder_state["host_update_failure"]["failed_at"] = (
+                datetime.now(timezone.utc) - timedelta(minutes=31)
+            ).isoformat()
+            write_scheduler_state(
+                runtime,
+                reminder_state,
+                goal_id="needs-operator",
+                agent_id=agent_id,
+            )
+            reminder_due = run_cli(
+                root,
+                "quota",
+                "should-run",
+                "--goal-id",
+                "needs-operator",
+                "--agent-id",
+                agent_id,
+                registry_path=registry_path,
+                runtime=runtime,
+                project=project,
+            )
+            assert reminder_due["user_gate_notification_cooldown"][
+                "notification_due"
+            ] is True, reminder_due
+            assert reminder_due["action_required"] is True, reminder_due
+            assert reminder_due["interaction_contract"]["mode"] == "user_gate", (
+                reminder_due
+            )
+            assert reminder_due["interaction_contract"]["user_channel"][
+                "notify"
+            ] == "NOTIFY", reminder_due
+
+            reminder_state["host_update_failure"]["failed_at"] = (
+                datetime.now(timezone.utc) - timedelta(minutes=34)
+            ).isoformat()
+            write_scheduler_state(
+                runtime,
+                reminder_state,
+                goal_id="needs-operator",
+                agent_id=agent_id,
+            )
+            after_window = run_cli(
+                root,
+                "quota",
+                "should-run",
+                "--goal-id",
+                "needs-operator",
+                "--agent-id",
+                agent_id,
+                registry_path=registry_path,
+                runtime=runtime,
+                project=project,
+            )
+            assert after_window["user_gate_notification_cooldown"][
+                "notification_suppressed"
+            ] is True, after_window
+            assert after_window["interaction_contract"]["user_channel"][
+                "notify"
+            ] == "DONT_NOTIFY", after_window
 
             repeated_rc, repeated = run_cli_result(
                 root,
