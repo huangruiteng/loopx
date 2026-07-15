@@ -154,6 +154,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
             {"command": "loopx register-agent", "purpose": "Register an automation agent."},
             {"command": "loopx lark-kanban", "purpose": "Project LoopX state into a Feishu/Lark Base board."},
             {
+                "command": "loopx presentation",
+                "purpose": "Package, roll back, and verify provider-neutral static presentation artifacts.",
+            },
+            {
                 "command": "loopx explore",
                 "purpose": "Record the exploration topology (nodes, edges, findings) and project it to a Feishu/Lark result board.",
             },

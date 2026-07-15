@@ -95,6 +95,7 @@ from .project_lifecycle import (
     register_project_lifecycle_commands,
 )
 from .preset import handle_preset_command, register_preset_commands
+from .presentation import handle_presentation_command, register_presentation_commands
 from .pr_review import handle_pr_review_command, register_pr_review_command
 from .quota import handle_quota_command, register_quota_command
 from .ready_score import handle_ready_score_command, register_ready_score_command
@@ -223,6 +224,7 @@ __all__ = [
     "handle_multi_agent_command",
     "handle_new_project_prompt_command",
     "handle_preset_command",
+    "handle_presentation_command",
     "handle_project_lifecycle_command",
     "handle_pr_review_command",
     "handle_quota_command",
@@ -277,6 +279,7 @@ __all__ = [
     "register_project_lifecycle_commands",
     "register_pr_review_command",
     "register_preset_commands",
+    "register_presentation_commands",
     "register_quota_command",
     "register_ready_score_command",
     "register_registry_admin_commands",

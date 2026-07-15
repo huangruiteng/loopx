@@ -53,6 +53,7 @@ from .cli_commands import (
     handle_ml_experiment_command,
     handle_multi_agent_command,
     handle_preset_command,
+    handle_presentation_command,
     handle_project_lifecycle_command,
     handle_pr_review_command,
     handle_quota_command,
@@ -83,6 +84,7 @@ from .cli_commands import (
     register_ml_experiment_commands,
     register_multi_agent_commands,
     register_preset_commands,
+    register_presentation_commands,
     register_project_lifecycle_commands,
     register_pr_review_command,
     register_quota_command,
@@ -204,6 +206,7 @@ def main(argv: list[str] | None = None) -> int:
     register_multi_agent_commands(sub, add_subcommand_format)
     register_turn_commands(sub, add_subcommand_format)
     register_preset_commands(sub, add_subcommand_format)
+    register_presentation_commands(sub, add_subcommand_format)
     register_ready_score_command(sub, add_subcommand_format)
 
     register_registry_admin_commands(sub)
@@ -373,6 +376,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     if preset_result is not None:
         return preset_result
+
+    presentation_result = handle_presentation_command(
+        args,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if presentation_result is not None:
+        return presentation_result
 
     ready_score_result = handle_ready_score_command(
         args,
