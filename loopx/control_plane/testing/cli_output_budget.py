@@ -4,6 +4,12 @@ import json
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from loopx.control_plane.testing.cli_output_semantics import (
+    action_signature_semantic_sha256,
+    json_shape_paths as collect_json_shape_paths,
+    markdown_headings,
+)
+
 
 CLI_OUTPUT_BUDGET_SCHEMA_VERSION = "loopx_cli_output_budget_v0"
 CLI_OUTPUT_MEASUREMENT_SCHEMA_VERSION = "loopx_cli_output_measurement_v0"
@@ -67,7 +73,12 @@ CLI_OUTPUT_BUDGET_SPECS: tuple[CliOutputBudgetSpec, ...] = (
         consumer_action="plan a goal start before any mutation",
         qualification_policy="baseline_and_growth",
         cold_path="packet_summary detail_refs and bootstrap-command-pack",
-        semantic_json_keys=("guided_transaction", "command_pack", "safety_contract", "packet_summary"),
+        semantic_json_keys=(
+            "guided_transaction",
+            "command_pack",
+            "safety_contract",
+            "packet_summary",
+        ),
         markdown_anchor="# Guided Start Goal",
         max_chars={
             "small": {"json": 64_000, "markdown": 3_200},
@@ -89,7 +100,12 @@ CLI_OUTPUT_BUDGET_SPECS: tuple[CliOutputBudgetSpec, ...] = (
         consumer_action="connect and activate one host loop",
         qualification_policy="baseline_and_growth",
         cold_path="message-only projection and packet_summary detail_refs",
-        semantic_json_keys=("commands", "goal_start_contract", "host_loop_activation", "packet_summary"),
+        semantic_json_keys=(
+            "commands",
+            "goal_start_contract",
+            "host_loop_activation",
+            "packet_summary",
+        ),
         markdown_anchor="# /loopx Bootstrap Command Pack",
         max_chars={
             "small": {"json": 45_000, "markdown": 14_500},
@@ -177,7 +193,11 @@ CLI_OUTPUT_BUDGET_SPECS: tuple[CliOutputBudgetSpec, ...] = (
         consumer_action="forward the smallest sufficient work packet",
         qualification_policy="absolute_hot_path",
         cold_path="full review-packet and run-history artifacts",
-        semantic_json_keys=("project_agent_handoff", "handoff_interface_budget", "within_budget"),
+        semantic_json_keys=(
+            "project_agent_handoff",
+            "handoff_interface_budget",
+            "within_budget",
+        ),
         markdown_anchor="quota should-run",
         max_chars={
             "small": {"json": 4_500, "markdown": 1_400},
@@ -335,7 +355,11 @@ CLI_OUTPUT_MODE_VARIANT_SPECS: tuple[CliOutputModeVariantSpec, ...] = (
         parent_surface_id="review_packet_handoff_only",
         command="review-packet",
         output_formats=("json", "markdown"),
-        semantic_json_keys=("goal_id", "project_agent_handoff", "handoff_interface_budget"),
+        semantic_json_keys=(
+            "goal_id",
+            "project_agent_handoff",
+            "handoff_interface_budget",
+        ),
         markdown_anchor="LoopX Review Packet",
         max_chars={"json": 11_000, "markdown": 2_000},
         max_lines={"json": 220, "markdown": 35},
@@ -494,6 +518,8 @@ def measure_cli_output(
 ) -> dict[str, Any]:
     payload: dict[str, Any] | None = None
     compact_payload_chars: int | None = None
+    json_shape_paths: list[str] = []
+    action_signature_sha256: str | None = None
     if output_format == "json":
         decoded = json.loads(text)
         if not isinstance(decoded, dict):
@@ -507,6 +533,8 @@ def measure_cli_output(
                 separators=(",", ":"),
             )
         )
+        json_shape_paths = collect_json_shape_paths(decoded)
+        action_signature_sha256 = action_signature_semantic_sha256(decoded)
     return {
         "schema_version": CLI_OUTPUT_MEASUREMENT_SCHEMA_VERSION,
         "format": output_format,
@@ -521,6 +549,9 @@ def measure_cli_output(
             if compact_payload_chars is not None
             else None
         ),
+        "json_shape_paths": json_shape_paths,
+        "markdown_headings": markdown_headings(text),
+        "action_signature_sha256": action_signature_sha256,
         "payload": payload,
     }
 
