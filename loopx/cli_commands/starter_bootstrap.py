@@ -129,6 +129,7 @@ def handle_start_goal_command(
         host_surface=args.host_surface,
         goal_text=args.goal_text,
         available_capabilities=args.available_capabilities,
+        include_command_pack_detail=bool(args.include_command_pack_detail),
     )
     print_payload(payload, args.format, render_start_goal_guided_markdown)
     return 0

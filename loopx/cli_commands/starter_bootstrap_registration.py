@@ -127,6 +127,14 @@ def register_starter_bootstrap_commands(subparsers: argparse._SubParsersAction) 
         required=True,
         help="Exact goal text to plan before todo writeback.",
     )
+    start_goal_parser.add_argument(
+        "--include-command-pack-detail",
+        action="store_true",
+        help=(
+            "Include the complete nested bootstrap command pack. The default guided "
+            "projection keeps the actionable transaction and advertises this cold path."
+        ),
+    )
 
     prompt_parser = subparsers.add_parser(
         "new-project-prompt",

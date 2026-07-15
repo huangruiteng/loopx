@@ -25,6 +25,9 @@ GOAL_START_SCHEMA_VERSION = "loopx_goal_start_command_v0"
 GUIDED_START_SCHEMA_VERSION = "loopx_start_goal_guided_v0"
 PACKET_SUMMARY_SCHEMA_VERSION = "loopx_start_goal_packet_summary_v0"
 PACKET_MEASUREMENT_SCHEMA_VERSION = "loopx_packet_duplication_measurement_v0"
+GUIDED_COMMAND_PACK_PROJECTION_SCHEMA_VERSION = (
+    "loopx_guided_command_pack_projection_v0"
+)
 
 
 def _iter_string_leaves(
@@ -118,6 +121,8 @@ def _build_packet_summary(
     *,
     packet_kind: str,
     detail_refs: dict[str, str],
+    legacy_fields_retained: bool = True,
+    compact_projection_default: bool = False,
 ) -> dict[str, Any]:
     next_step = payload.get("recommended_next_step")
     next_step = next_step if isinstance(next_step, dict) else {}
@@ -135,8 +140,8 @@ def _build_packet_summary(
             for name, pointer in detail_refs.items()
         },
         "compatibility": {
-            "legacy_fields_retained": True,
-            "compact_projection_default": False,
+            "legacy_fields_retained": legacy_fields_retained,
+            "compact_projection_default": compact_projection_default,
             "removal_gate": "explicit_host_shadow_parity",
         },
         "duplication_measurement": _measure_packet_duplication(
@@ -146,6 +151,68 @@ def _build_packet_summary(
             else None,
         ),
     }
+
+
+def _start_goal_detail_command(
+    *,
+    project: str,
+    goal_id: str | None,
+    agent_id: str | None,
+    cli_bin: str,
+    host_surface: str,
+    goal_text: str,
+    available_capabilities: list[str] | None,
+) -> str:
+    return (
+        f"{shell_arg(cli_bin)} --format json start-goal --guided "
+        f"--project {shell_arg(project)}"
+        + (f" --goal-id {shell_arg(goal_id)}" if goal_id else "")
+        + (f" --agent-id {shell_arg(agent_id)}" if agent_id else "")
+        + f" --host-surface {shell_arg(host_surface)}"
+        + render_available_capability_args(available_capabilities)
+        + f" --goal-text {shell_arg(goal_text)}"
+        + " --include-command-pack-detail"
+    )
+
+
+def _guided_command_pack_projection(
+    command_pack: dict[str, Any],
+    *,
+    detail_command: str,
+) -> dict[str, Any]:
+    """Keep the guided hot path actionable without nesting the full host packet."""
+
+    projection: dict[str, Any] = {
+        "ok": command_pack.get("ok"),
+        "schema_version": command_pack.get("schema_version"),
+        "projection_schema_version": GUIDED_COMMAND_PACK_PROJECTION_SCHEMA_VERSION,
+        "projection_mode": "guided_start_compatibility",
+        "read_only": command_pack.get("read_only"),
+        "project": command_pack.get("project"),
+        "goal_id": command_pack.get("goal_id"),
+        "agent_id": command_pack.get("agent_id"),
+        "host_surface": command_pack.get("host_surface"),
+        "goal_text": command_pack.get("goal_text"),
+        "goal_start_contract": command_pack.get("goal_start_contract"),
+        "commands": command_pack.get("commands"),
+        "host_loop_activation": command_pack.get("host_loop_activation"),
+        "safety_contract": command_pack.get("safety_contract"),
+        "detail_command": detail_command,
+    }
+    projection["packet_summary"] = _build_packet_summary(
+        projection,
+        packet_kind="bootstrap_command_pack_projection",
+        detail_refs={
+            "goal_start_contract": "#/goal_start_contract",
+            "commands": "#/commands",
+            "host_loop_activation": "#/host_loop_activation",
+            "safety_contract": "#/safety_contract",
+            "full_command_pack": "#/detail_command",
+        },
+        legacy_fields_retained=False,
+        compact_projection_default=True,
+    )
+    return projection
 
 
 def _resolve_project(project: Path) -> Path:
@@ -749,6 +816,7 @@ def _build_multi_goal_start_selection_packet(
     host_surface: str,
     goal_text: str,
     available_capabilities: list[str] | None,
+    include_command_pack_detail: bool,
 ) -> dict[str, Any] | None:
     inspection = inspect_bootstrap_connection(project)
     registry_path = Path(str(inspection.get("registry") or ""))
@@ -917,6 +985,23 @@ def _build_multi_goal_start_selection_packet(
             "preferred_scope_change": "use configure-goal incremental updates instead of force bootstrap when state already exists",
         },
     }
+    detail_command = _start_goal_detail_command(
+        project=resolved_project,
+        goal_id=None,
+        agent_id=agent_id,
+        cli_bin=cli_bin,
+        host_surface=host_surface,
+        goal_text=normalized_goal_text,
+        available_capabilities=available_capabilities,
+    )
+    selected_command_pack = (
+        command_pack
+        if include_command_pack_detail
+        else _guided_command_pack_projection(
+            command_pack,
+            detail_command=detail_command,
+        )
+    )
     payload: dict[str, Any] = {
         "ok": True,
         "schema_version": GUIDED_START_SCHEMA_VERSION,
@@ -931,7 +1016,8 @@ def _build_multi_goal_start_selection_packet(
         "goal_selection_gate": goal_selection_gate,
         "recommended_next_step": recommended_next_step,
         "guided_transaction": guided_transaction,
-        "command_pack": command_pack,
+        "command_pack": selected_command_pack,
+        "command_pack_detail_included": include_command_pack_detail,
         "safety_contract": {
             "writes_registry": False,
             "writes_state_file": False,
@@ -951,10 +1037,12 @@ def _build_multi_goal_start_selection_packet(
             "goal_selection_gate": "#/goal_selection_gate",
             "recommended_next_step": "#/recommended_next_step",
             "guided_transaction": "#/guided_transaction",
-            "commands": "#/command_pack/commands",
+            "commands": "#/guided_transaction/ordered_steps",
             "safety_contract": "#/safety_contract",
             "compatibility_message": "#/message",
         },
+        legacy_fields_retained=include_command_pack_detail,
+        compact_projection_default=not include_command_pack_detail,
     )
     return payload
 
@@ -968,6 +1056,7 @@ def build_start_goal_guided_packet(
     host_surface: str,
     goal_text: str,
     available_capabilities: list[str] | None = None,
+    include_command_pack_detail: bool = False,
 ) -> dict[str, Any]:
     if goal_id is None:
         selection_packet = _build_multi_goal_start_selection_packet(
@@ -977,6 +1066,7 @@ def build_start_goal_guided_packet(
             host_surface=host_surface,
             goal_text=goal_text,
             available_capabilities=available_capabilities,
+            include_command_pack_detail=include_command_pack_detail,
         )
         if selection_packet is not None:
             return selection_packet
@@ -1083,6 +1173,23 @@ def build_start_goal_guided_packet(
                 "purpose": "select one registered agent lane before generating heartbeat or quota commands",
             },
         )
+    detail_command = _start_goal_detail_command(
+        project=str(command_pack.get("project") or project),
+        goal_id=str(command_pack.get("goal_id") or "") or None,
+        agent_id=str(command_pack.get("agent_id") or "") or None,
+        cli_bin=cli_bin,
+        host_surface=host_surface,
+        goal_text=str(command_pack.get("goal_text") or goal_text),
+        available_capabilities=available_capabilities,
+    )
+    selected_command_pack = (
+        command_pack
+        if include_command_pack_detail
+        else _guided_command_pack_projection(
+            command_pack,
+            detail_command=detail_command,
+        )
+    )
     payload = {
         "ok": True,
         "schema_version": GUIDED_START_SCHEMA_VERSION,
@@ -1096,7 +1203,8 @@ def build_start_goal_guided_packet(
         "project_connection": command_pack.get("project_connection"),
         "recommended_next_step": command_pack.get("recommended_next_step"),
         "guided_transaction": guided_transaction,
-        "command_pack": command_pack,
+        "command_pack": selected_command_pack,
+        "command_pack_detail_included": include_command_pack_detail,
         "safety_contract": {
             "writes_registry": False,
             "writes_state_file": False,
@@ -1115,10 +1223,12 @@ def build_start_goal_guided_packet(
             "project_connection": "#/project_connection",
             "recommended_next_step": "#/recommended_next_step",
             "guided_transaction": "#/guided_transaction",
-            "commands": "#/command_pack/commands",
+            "commands": "#/guided_transaction/ordered_steps",
             "safety_contract": "#/safety_contract",
             "compatibility_message": "#/message",
         },
+        legacy_fields_retained=include_command_pack_detail,
+        compact_projection_default=not include_command_pack_detail,
     )
     return payload
 
