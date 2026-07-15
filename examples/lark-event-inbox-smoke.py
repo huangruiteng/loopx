@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,7 @@ from loopx.capabilities.lark.event_inbox import (  # noqa: E402
     acknowledge_lark_event_inbox,
     ingest_lark_event_inbox,
     inspect_lark_event_inbox,
+    project_lark_event_inbox_urgency,
 )
 from loopx.capabilities.lark.inbox_reply import reply_lark_event_inbox  # noqa: E402
 
@@ -158,6 +160,48 @@ def main() -> None:
                 }
             ),
             encoding="utf-8",
+        )
+
+        urgency_events = [
+            {
+                "schema_version": "lark_event_inbox_event_v0",
+                "event_id": "evt-direct-question",
+                "message_id": "om_direct_question",
+                "create_time": "2026-07-12T10:02:00Z",
+                "content": "@Project Review Bot 结论呢？",
+            },
+            {
+                "schema_version": "lark_event_inbox_event_v0",
+                "event_id": "evt-ordinary-chat",
+                "message_id": "om_ordinary_chat",
+                "create_time": "2026-07-12T10:03:00Z",
+                "content": "ordinary project discussion without a bot mention",
+            },
+        ]
+        ingest_lark_event_inbox(
+            project=project,
+            config_path=config,
+            events=urgency_events,
+            execute=True,
+        )
+        urgency = project_lark_event_inbox_urgency(
+            project=project,
+            config_path=config,
+            now=datetime(2026, 7, 12, 10, 12, tzinfo=timezone.utc),
+        )
+        assert urgency["pending_count"] == 2, urgency
+        assert urgency["direct_question_count"] == 1, urgency
+        assert urgency["direct_mention_count"] == 0, urgency
+        assert urgency["attention_required_count"] == 1, urgency
+        assert urgency["reply_due"] is True, urgency
+        assert urgency["oldest_pending_age_seconds"] == 600, urgency
+        assert urgency["local_private_content_returned"] is False, urgency
+        assert "items" not in urgency, urgency
+        acknowledge_lark_event_inbox(
+            project=project,
+            config_path=config,
+            message_ids=["om_direct_question", "om_ordinary_chat"],
+            execute=True,
         )
 
         calls: list[list[str]] = []

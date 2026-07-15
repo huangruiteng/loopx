@@ -294,6 +294,12 @@ def main() -> int:
             "drain_command": (
                 "loopx lark-inbox drain --goal-id configure-goal-fixture --project ."
             ),
+            "urgency": {
+                "schema_version": "lark_event_inbox_urgency_v0",
+                "enabled": True,
+                "projection_status": "unavailable",
+                "local_private_content_returned": False,
+            },
         }, boundary
         authority = goal["coordination"]["checkpointed_boundary_authority"][0]
         assert authority["schema_version"] == "checkpointed_boundary_authority_v0", authority

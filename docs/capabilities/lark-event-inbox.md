@@ -155,9 +155,13 @@ loopx configure-goal \
 ```
 
 The configuration catalog exposes this optional capability on demand. Quota
-projects only `enabled`, `config_pointer_registered`, and a public-safe command,
-never the private path. Generated heartbeat bodies conditionally run the actual
-goal-boundary `drain_command`; `loopx lark-inbox drain --goal-id <goal-id> --project .`
+projects `enabled`, `config_pointer_registered`, a public-safe command, and a
+content-free urgency summary; it never projects the private path, message ids,
+senders, or message bodies. The summary includes pending/direct-question/direct-
+mention counts and the oldest pending age. A configured direct reply becomes a
+high-priority `lark_event_inbox` work lane before ordinary monitor or advancement
+work. Generated heartbeat bodies run the actual goal-boundary `drain_command`;
+`loopx lark-inbox drain --goal-id <goal-id> --project .`
 resolves the ignored config from the goal registry. A disabled or empty inbox
 is a quiet zero-spend path, so projects without Lark keep the default behavior.
 
@@ -178,6 +182,11 @@ loopx lark-inbox ack \
 Drain is read-only and returns bounded local-private message content. A message
 must be acknowledged only after its effect is written back. Duplicate event
 files collapse by `message_id`; repeated acknowledgement is idempotent.
+
+Urgency classification stays local: explicit configured bot-name/LoopX mentions
+and bounded question signals produce counts only. The agent still drains and
+interprets the source event before deciding the durable effect or reply; the
+summary is a scheduling signal, not semantic authority.
 
 For a direct question or explicit bot mention, write the requested durable
 effect first, preview one concise source-thread reply, execute it, require
