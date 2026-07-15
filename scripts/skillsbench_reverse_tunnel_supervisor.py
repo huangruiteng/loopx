@@ -491,6 +491,8 @@ def _run_remote_probe(
         return True, "http_connect_ready"
     if " 407 " in f" {output} ":
         return False, "proxy_auth_required"
+    if proc.returncode == 255:
+        return False, "ssh_transport_unavailable"
     if proc.returncode != 0:
         return False, "probe_exit_nonzero"
     return False, "proxy_connect_rejected"
@@ -559,7 +561,9 @@ def _tunnel_liveness_public_contract(args: argparse.Namespace) -> dict[str, Any]
         "health_probe_attempt_count": 0,
         "health_probe_success_count": 0,
         "health_probe_failure_count": 0,
+        "health_probe_inconclusive_count": 0,
         "max_consecutive_failure_count": 0,
+        "max_consecutive_inconclusive_count": 0,
         "reconnect_attempt_count": 0,
         "reconnect_success_count": 0,
         "reconnect_failure_count": 0,
@@ -1032,6 +1036,7 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
             health_interval = max(0.0, float(args.tunnel_health_interval_sec))
             next_health_probe = time.monotonic() + health_interval
             consecutive_failures = 0
+            consecutive_inconclusive = 0
             if liveness["enabled"]:
                 liveness["state"] = "healthy"
 
@@ -1071,11 +1076,29 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                         int(liveness["health_probe_success_count"]) + 1
                     )
                     consecutive_failures = 0
+                    consecutive_inconclusive = 0
                     if liveness["state"] != "reconnected":
                         liveness["state"] = "healthy"
                     next_health_probe = time.monotonic() + health_interval
                     continue
 
+                if (
+                    health_status == "ssh_transport_unavailable"
+                    and tunnel_proc.poll() is None
+                ):
+                    liveness["health_probe_inconclusive_count"] = (
+                        int(liveness["health_probe_inconclusive_count"]) + 1
+                    )
+                    consecutive_inconclusive += 1
+                    liveness["max_consecutive_inconclusive_count"] = max(
+                        int(liveness["max_consecutive_inconclusive_count"]),
+                        consecutive_inconclusive,
+                    )
+                    liveness["state"] = "degraded"
+                    next_health_probe = time.monotonic() + health_interval
+                    continue
+
+                consecutive_inconclusive = 0
                 liveness["health_probe_failure_count"] = (
                     int(liveness["health_probe_failure_count"]) + 1
                 )
@@ -1147,6 +1170,7 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                         )
                         liveness["state"] = "reconnected"
                         consecutive_failures = 0
+                        consecutive_inconclusive = 0
                         recovered = True
                         break
                     liveness["reconnect_failure_count"] = (
