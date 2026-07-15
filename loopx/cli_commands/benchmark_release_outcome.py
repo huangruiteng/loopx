@@ -29,6 +29,7 @@ def render_release_outcome_baseline_markdown(payload: dict[str, Any]) -> str:
         "",
         f"- ok: `{payload.get('ok')}`",
         f"- decision: `{payload.get('decision')}`",
+        f"- comparison_kind: `{payload.get('comparison_kind')}`",
         f"- baseline_ref: `{payload.get('baseline_ref')}`",
         f"- candidate_ref: `{payload.get('candidate_ref')}`",
         f"- eligible_for_owner_review: `{payload.get('eligible_for_owner_review')}`",
@@ -65,7 +66,10 @@ def register_benchmark_release_outcome_commands(
     parser.add_argument(
         "--manifest-json",
         required=True,
-        help="Path to a release_outcome_pair_manifest_v0 JSON object.",
+        help=(
+            "Path to a release_outcome_pair_manifest_v0 JSON object comparing "
+            "a stable LoopX release with a distinct candidate revision."
+        ),
     )
     parser.add_argument(
         "--require-owner-review-ready",

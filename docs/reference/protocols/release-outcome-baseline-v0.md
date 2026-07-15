@@ -23,6 +23,7 @@ calls are slower, cost-bearing, and may depend on gated environments.
 
 `release_outcome_pair_manifest_v0` contains:
 
+- `comparison_kind=stable_release_vs_candidate`;
 - public-safe `baseline_ref` and `candidate_ref` identifiers;
 - an explicit evidence policy;
 - paired compact `benchmark_result_v0` rows.
@@ -34,6 +35,13 @@ all four parity checks:
 - same runner protocol;
 - same verifier contract;
 - same budget.
+
+The baseline and candidate references must be different immutable identities.
+Both arms run the same LoopX product mode; only the stable release and candidate
+revision differ. Native-agent-versus-LoopX uplift experiments, treatment-arm
+comparisons, and two labels pointing to the same revision are rejected. Their
+results may remain useful research evidence, but they are not release
+qualification evidence.
 
 Each result must already be an exact compact `benchmark_result_v0`. Unknown
 fields fail closed instead of being silently copied into the receipt. The
@@ -85,3 +93,17 @@ The command does not read raw task text, trajectories, or verifier output. It
 does not invoke a model, execute a benchmark, mutate a release, or persist local
 paths. Real runners remain responsible for producing compact result rows under
 their own authorization and privacy boundaries.
+
+## Staged Terminal-Bench Profile
+
+The first release profile reuses only the three public task identities from the
+existing official hard-case selection: `fix-code-vulnerability`,
+`modernize-scientific-stack`, and `llm-inference-batching-scheduler`. It does
+not reuse that document's native-agent-versus-LoopX arm semantics.
+
+Run `fix-code-vulnerability` first, twice per arm. Expand to the other two cases
+only after all four parity declarations are true and the pilot has no runner or
+verifier-contract blocker. The final release receipt requires all three cases
+with at least two repetitions per stable-release and candidate arm. A blocked
+pilot remains `insufficient_evidence`; it does not silently lower the case
+floor, replace the task, or block ordinary pull-request iteration.

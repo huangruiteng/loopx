@@ -11,10 +11,12 @@ from ..runtime.public_safety import public_safe_compact_text
 
 RELEASE_OUTCOME_PAIR_MANIFEST_SCHEMA_VERSION = "release_outcome_pair_manifest_v0"
 RELEASE_OUTCOME_BASELINE_SCHEMA_VERSION = "release_outcome_baseline_v0"
+RELEASE_OUTCOME_COMPARISON_KIND = "stable_release_vs_candidate"
 
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,159}$")
 _MANIFEST_FIELDS = {
     "schema_version",
+    "comparison_kind",
     "baseline_ref",
     "candidate_ref",
     "policy",
@@ -188,6 +190,10 @@ def _normalize_manifest(value: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("manifest contains unknown fields")
     if value.get("schema_version") != RELEASE_OUTCOME_PAIR_MANIFEST_SCHEMA_VERSION:
         raise ValueError("manifest must use release_outcome_pair_manifest_v0")
+    if value.get("comparison_kind") != RELEASE_OUTCOME_COMPARISON_KIND:
+        raise ValueError(
+            "manifest.comparison_kind must be stable_release_vs_candidate"
+        )
     raw_pairs = value.get("pairs")
     if not isinstance(raw_pairs, list) or not raw_pairs:
         raise ValueError("manifest.pairs must be a non-empty list")
@@ -204,12 +210,17 @@ def _normalize_manifest(value: Mapping[str, Any]) -> dict[str, Any]:
         if case_id in case_tasks and case_tasks[case_id] != task_id:
             raise ValueError("each case_id must keep the same task_id across repetitions")
         case_tasks[case_id] = task_id
+    baseline_ref = _token(value.get("baseline_ref"), field="manifest.baseline_ref")
+    candidate_ref = _token(
+        value.get("candidate_ref"), field="manifest.candidate_ref"
+    )
+    if baseline_ref == candidate_ref:
+        raise ValueError("manifest baseline_ref and candidate_ref must differ")
     return {
         "schema_version": RELEASE_OUTCOME_PAIR_MANIFEST_SCHEMA_VERSION,
-        "baseline_ref": _token(value.get("baseline_ref"), field="manifest.baseline_ref"),
-        "candidate_ref": _token(
-            value.get("candidate_ref"), field="manifest.candidate_ref"
-        ),
+        "comparison_kind": RELEASE_OUTCOME_COMPARISON_KIND,
+        "baseline_ref": baseline_ref,
+        "candidate_ref": candidate_ref,
         "policy": _normalized_policy(value.get("policy")),
         "pairs": pairs,
     }
@@ -319,6 +330,7 @@ def build_release_outcome_baseline(manifest: Mapping[str, Any]) -> dict[str, Any
 
     return {
         "schema_version": RELEASE_OUTCOME_BASELINE_SCHEMA_VERSION,
+        "comparison_kind": normalized["comparison_kind"],
         "baseline_ref": normalized["baseline_ref"],
         "candidate_ref": normalized["candidate_ref"],
         "decision": decision,

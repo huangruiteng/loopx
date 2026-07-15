@@ -78,6 +78,7 @@ def _manifest(*, case_count: int = 3, repeats: int = 2) -> dict[str, object]:
             )
     return {
         "schema_version": "release_outcome_pair_manifest_v0",
+        "comparison_kind": "stable_release_vs_candidate",
         "baseline_ref": "release:v0.2.5",
         "candidate_ref": "candidate:compact-guided",
         "policy": {
@@ -93,6 +94,7 @@ def _manifest(*, case_count: int = 3, repeats: int = 2) -> dict[str, object]:
 def test_release_outcome_baseline_routes_clean_pair_to_owner_review() -> None:
     receipt = build_release_outcome_baseline(_manifest())
 
+    assert receipt["comparison_kind"] == "stable_release_vs_candidate"
     assert receipt["decision"] == "owner_review_required"
     assert receipt["eligible_for_owner_review"] is True
     assert receipt["automatic_release_promotion_allowed"] is False
@@ -161,6 +163,20 @@ def test_release_outcome_baseline_fails_closed_on_noncompact_or_unpaired_input()
     unstable_case["pairs"][1]["candidate_result"]["task_id"] = "other-task"
     with pytest.raises(ValueError, match="same task_id across repetitions"):
         build_release_outcome_baseline(unstable_case)
+
+
+def test_release_outcome_baseline_rejects_uplift_or_identity_comparisons() -> None:
+    uplift = _manifest()
+    uplift["comparison_kind"] = "native_codex_vs_loopx"
+    with pytest.raises(
+        ValueError, match="comparison_kind must be stable_release_vs_candidate"
+    ):
+        build_release_outcome_baseline(uplift)
+
+    identity = _manifest()
+    identity["candidate_ref"] = identity["baseline_ref"]
+    with pytest.raises(ValueError, match="baseline_ref and candidate_ref must differ"):
+        build_release_outcome_baseline(identity)
 
 
 def test_release_outcome_cli_is_read_only_and_optionally_fails_closed(
