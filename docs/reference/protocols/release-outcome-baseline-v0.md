@@ -10,8 +10,9 @@ verifier contract, and budget. It never promotes a release automatically.
 LoopX uses three complementary layers:
 
 1. deterministic fixtures and catalog canaries run on normal pull requests;
-2. low-frequency paired model-behavior qualification checks whether an agent
-   interprets two control-plane projections equivalently;
+2. low-frequency model-behavior qualification checks whether an agent
+   interprets the shipped control-plane behavior correctly; sensitive packet
+   changes may add a temporary base/candidate differential run;
 3. release outcome baselines compare completed long-running attempts on a small
    representative case set.
 
@@ -19,12 +20,15 @@ The third layer measures what happened, not only whether a packet looked
 equivalent. It stays outside ordinary PR smoke because real tasks and model
 calls are slower, cost-bearing, and may depend on gated environments.
 
-The second layer follows the same CI boundary. Live provider calls are a
-low-frequency local/manual release gate for sensitive agent-facing changes,
-not a required status check on ordinary pull requests. CI owns deterministic
-fixtures and catalog canaries; the live gate adds repeated behavioral evidence
-when a maintainer is considering promotion. Provider unavailability yields
-insufficient qualification evidence, not a product-code failure.
+The second layer follows the same CI boundary. Its durable onboarding contract
+runs the current actual default path against an independent semantic oracle,
+then checks the healthy postcondition and known-bad repair calibration. Live
+provider calls are a low-frequency local/manual release gate for sensitive
+agent-facing changes, not a required status check on ordinary pull requests.
+CI owns deterministic fixtures and catalog canaries; the live gate adds
+repeated behavioral evidence when a maintainer is considering promotion.
+Provider unavailability yields insufficient qualification evidence, not a
+product-code failure.
 
 ## Pair Manifest
 
