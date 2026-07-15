@@ -41,6 +41,13 @@ semantic anchors, collection-growth slope, and bootstrap duplication. Every
 declared agent-facing surface must name an owner, consumer action, and cold-path
 fallback.
 
+The same matrix characterizes explicit mode switches instead of assuming that
+the default command represents them. Covered variants are
+`bootstrap-command-pack --message-only`, quota scheduler detail and
+TurnEnvelope output, status task-graph detail, the full review packet, and the
+brief/compact/full heartbeat prompt modes. These remain opt-in cold paths, but
+their exact stdout size and semantic anchors are regression contracts too.
+
 Both budget layers are intentionally about projections, not the full archival
 facts. When a surface needs more detail, put that detail behind a queryable
 cold-path command or a linked run-history artifact instead of making the
