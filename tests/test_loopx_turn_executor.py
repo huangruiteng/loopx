@@ -102,6 +102,17 @@ def _callbacks(calls: dict[str, int]):
     return writeback, spend, scheduler
 
 
+def _passing_validator(
+    _plan: dict[str, object],
+    _result: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "status": "passed",
+        "validator_kind": "fixture",
+        "summary": "independent fixture postconditions passed",
+    }
+
+
 def test_host_result_requires_bounded_public_material_fields() -> None:
     plan = _plan()
     result = _host_result(plan)
@@ -180,6 +191,7 @@ def test_run_once_explicitly_retries_failed_host_without_duplicate_effects(tmp_p
         "goal_id": "fixture-goal",
         "timeout_seconds": 5,
         "execute": True,
+        "task_validator": _passing_validator,
         "writeback": writeback,
         "spend": spend,
         "scheduler": scheduler,
@@ -208,6 +220,7 @@ def test_run_once_commits_once_and_replays_without_duplicate_effects(tmp_path: P
         "goal_id": "fixture-goal",
         "timeout_seconds": 5,
         "execute": True,
+        "task_validator": _passing_validator,
         "writeback": writeback,
         "spend": spend,
         "scheduler": scheduler,
@@ -246,6 +259,7 @@ def test_run_once_recovers_after_process_exit_before_writeback(tmp_path: Path) -
         "goal_id": "fixture-goal",
         "timeout_seconds": 5,
         "execute": True,
+        "task_validator": _passing_validator,
         "spend": spend,
         "scheduler": scheduler,
     }
@@ -277,6 +291,7 @@ def test_run_once_resumes_after_writeback_without_duplicate_effects(tmp_path: Pa
         "goal_id": "fixture-goal",
         "timeout_seconds": 5,
         "execute": True,
+        "task_validator": _passing_validator,
         "writeback": writeback,
         "scheduler": scheduler,
     }
@@ -295,6 +310,115 @@ def test_run_once_resumes_after_writeback_without_duplicate_effects(tmp_path: Pa
     assert recovered["status"] == "committed"
     assert count_path.read_text(encoding="utf-8") == "1"
     assert calls == {"writeback": 1, "spend": 1, "scheduler": 1}
+
+
+def test_run_once_fails_closed_without_independent_task_validator(
+    tmp_path: Path,
+) -> None:
+    plan = _plan()
+    calls = {"writeback": 0, "spend": 0, "scheduler": 0}
+    writeback, spend, scheduler = _callbacks(calls)
+
+    payload = run_loopx_turn_once(
+        plan,
+        host_runner=lambda _request: _host_result(plan),
+        project=tmp_path,
+        runtime_root=tmp_path / "runtime",
+        goal_id="fixture-goal",
+        timeout_seconds=5,
+        execute=True,
+        writeback=writeback,
+        spend=spend,
+        scheduler=scheduler,
+    )
+
+    assert payload["ok"] is False
+    assert payload["status"] == "failed"
+    assert payload["result_kind"] == "validation_failed"
+    assert payload["validation"]["status"] == "unavailable"
+    assert payload["validation"]["recovery_kind"] == "repair_required"
+    assert payload["receipt"]["failed_phase"] == "validation"
+    assert payload["receipt"]["completed_phases"] == ["host_execute", "typed_result"]
+    assert calls == {"writeback": 0, "spend": 0, "scheduler": 0}
+
+
+def test_run_once_retries_task_validation_without_reinvoking_host(
+    tmp_path: Path,
+) -> None:
+    plan = _plan()
+    calls = {"host": 0, "writeback": 0, "spend": 0, "scheduler": 0}
+    writeback, spend, scheduler = _callbacks(calls)
+
+    def host(_request: dict[str, object]) -> dict[str, object]:
+        calls["host"] += 1
+        return _host_result(plan)
+
+    def reject(
+        _plan: dict[str, object],
+        _result: dict[str, object],
+    ) -> dict[str, object]:
+        return {
+            "status": "failed",
+            "validator_kind": "fixture",
+            "summary": "independent fixture postcondition is absent",
+            "recovery_kind": "replan_required",
+        }
+
+    common = {
+        "host_runner": host,
+        "project": tmp_path,
+        "runtime_root": tmp_path / "runtime",
+        "goal_id": "fixture-goal",
+        "timeout_seconds": 5,
+        "execute": True,
+        "writeback": writeback,
+        "spend": spend,
+        "scheduler": scheduler,
+    }
+    failed = run_loopx_turn_once(plan, task_validator=reject, **common)
+    recovered = run_loopx_turn_once(
+        plan,
+        task_validator=_passing_validator,
+        retry_failed=True,
+        **common,
+    )
+
+    assert failed["result_kind"] == "validation_failed"
+    assert failed["validation"]["recovery_kind"] == "replan_required"
+    assert recovered["status"] == "committed"
+    assert recovered["effects"]["host_invoked"] is False
+    assert calls == {"host": 1, "writeback": 1, "spend": 1, "scheduler": 1}
+
+
+def test_material_result_cannot_use_not_required_validation_receipt(
+    tmp_path: Path,
+) -> None:
+    plan = _plan()
+    calls = {"writeback": 0, "spend": 0, "scheduler": 0}
+    writeback, spend, scheduler = _callbacks(calls)
+
+    payload = run_loopx_turn_once(
+        plan,
+        host_runner=lambda _request: _host_result(plan),
+        project=tmp_path,
+        runtime_root=tmp_path / "runtime",
+        goal_id="fixture-goal",
+        timeout_seconds=5,
+        execute=True,
+        task_validator=lambda _plan, _result: {
+            "status": "not_required",
+            "validator_kind": "fixture",
+            "summary": "skip validation",
+        },
+        writeback=writeback,
+        spend=spend,
+        scheduler=scheduler,
+    )
+
+    assert payload["result_kind"] == "validation_failed"
+    assert payload["validation"]["status"] == "inconclusive"
+    assert "cannot skip" in payload["validation"]["summary"]
+    assert calls == {"writeback": 0, "spend": 0, "scheduler": 0}
 
 
 def test_run_once_stops_without_writeback_or_spend(tmp_path: Path) -> None:
@@ -342,6 +466,7 @@ def test_run_once_projects_scheduler_action_without_false_ack(tmp_path: Path) ->
         goal_id="fixture-goal",
         timeout_seconds=5,
         execute=True,
+        task_validator=_passing_validator,
         writeback=writeback,
         spend=spend,
         scheduler=scheduler,
@@ -384,6 +509,7 @@ def test_run_once_resumes_scheduler_without_repeating_committed_effects(
         "goal_id": "fixture-goal",
         "timeout_seconds": 5,
         "execute": True,
+        "task_validator": _passing_validator,
         "writeback": writeback,
         "spend": spend,
         "scheduler": scheduler,

@@ -459,8 +459,10 @@ def test_turn_run_once_cli_commits_validated_result_and_one_quota_slot(
     host_project.mkdir()
     host_script = """
 import json
+import pathlib
 import sys
 request = json.load(sys.stdin)
+pathlib.Path("fixture-artifact.txt").write_text("validated", encoding="utf-8")
 json.dump({
     "schema_version": "loopx_turn_result_v0",
     "turn_key": request["turn_key"],
@@ -474,6 +476,14 @@ json.dump({
     "vision_unchanged_reason": "The fixture objective remains unchanged.",
     "summary": "One public fixture advanced."
 }, sys.stdout)
+"""
+    validation_script = """
+import json
+import pathlib
+import sys
+json.load(sys.stdin)
+artifact = pathlib.Path("fixture-artifact.txt")
+raise SystemExit(0 if artifact.read_text(encoding="utf-8") == "validated" else 7)
 """
     output = io.StringIO()
 
@@ -494,8 +504,10 @@ json.dump({
                 "codex-fixture",
                 "--project",
                 str(host_project),
-                "--host-command-json",
+                "--host-adapter-command-json",
                 json.dumps([sys.executable, "-c", host_script]),
+                "--validation-command-json",
+                json.dumps([sys.executable, "-c", validation_script]),
                 "--scan-root",
                 str(project),
                 "--no-global-sync",
@@ -508,6 +520,8 @@ json.dump({
     assert payload["status"] == "scheduler_action_required"
     assert payload["receipt"]["status"] == "validated"
     assert payload["receipt"]["next_phase"] == "scheduler_apply"
+    assert payload["validation"]["status"] == "passed"
+    assert payload["validation"]["validator_kind"] == "command"
     assert payload["resume_turn_key"].startswith("sha256:")
     assert payload["effects"] == {
         "host_invoked": True,
@@ -550,6 +564,8 @@ json.dump({
                 str(host_project),
                 "--host-command-json",
                 json.dumps([sys.executable, "-c", host_script]),
+                "--validation-command-json",
+                json.dumps([sys.executable, "-c", validation_script]),
                 "--scan-root",
                 str(project),
                 "--no-global-sync",
@@ -576,6 +592,91 @@ json.dump({
         "fixture_progress",
         "quota_slot_spent",
     ]
+
+
+def test_turn_run_once_cli_rejects_unproven_host_claim_before_writeback(
+    tmp_path: Path,
+) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    host_project = tmp_path / "isolated-host-workspace"
+    host_project.mkdir()
+    host_script = """
+import json
+import sys
+request = json.load(sys.stdin)
+json.dump({
+    "schema_version": "loopx_turn_result_v0",
+    "turn_key": request["turn_key"],
+    "result_kind": "validated_progress",
+    "completed_phases": ["host_execute", "typed_result"],
+    "classification": "unproven_fixture_progress",
+    "recommended_action": "Continue the public fixture",
+    "next_action": "Run the next public fixture check",
+    "delivery_batch_scale": "implementation",
+    "delivery_outcome": "outcome_progress",
+    "vision_unchanged_reason": "The fixture objective remains unchanged.",
+    "summary": "The host claims a missing artifact."
+}, sys.stdout)
+"""
+    validation_script = """
+import json
+import pathlib
+import sys
+json.load(sys.stdin)
+raise SystemExit(0 if pathlib.Path("claimed-artifact.txt").is_file() else 9)
+"""
+    state_path = (
+        project
+        / ".codex"
+        / "goals"
+        / "loopx-turn-fixture"
+        / "ACTIVE_GOAL_STATE.md"
+    )
+    before_state = state_path.read_text(encoding="utf-8")
+    output = io.StringIO()
+
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "turn",
+                "run-once",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                "--project",
+                str(host_project),
+                "--host-command-json",
+                json.dumps([sys.executable, "-c", host_script]),
+                "--validation-command-json",
+                json.dumps([sys.executable, "-c", validation_script]),
+                "--validation-failure-kind",
+                "replan_required",
+                "--scan-root",
+                str(project),
+                "--no-global-sync",
+                "--execute",
+            ]
+        )
+
+    payload = json.loads(output.getvalue())
+    assert exit_code == 1, payload
+    assert payload["status"] == "failed"
+    assert payload["result_kind"] == "validation_failed"
+    assert payload["validation"]["status"] == "failed"
+    assert payload["validation"]["recovery_kind"] == "replan_required"
+    assert payload["validation"]["exit_code"] == 9
+    assert payload["effects"]["host_invoked"] is True
+    assert payload["effects"]["state_written"] is False
+    assert payload["effects"]["quota_spent"] is False
+    assert state_path.read_text(encoding="utf-8") == before_state
+    assert not (runtime / "goals" / "loopx-turn-fixture" / "runs").exists()
 
 
 @pytest.mark.parametrize(
@@ -624,6 +725,14 @@ def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
                 "codex-cli",
                 "--project",
                 str(project),
+                "--validation-command-json",
+                json.dumps(
+                    [
+                        sys.executable,
+                        "-c",
+                        "import json, sys; json.load(sys.stdin)",
+                    ]
+                ),
                 "--scan-root",
                 str(project),
                 "--no-global-sync",

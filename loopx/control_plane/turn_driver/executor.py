@@ -26,6 +26,7 @@ from .transaction import (
 LOOPX_TURN_HOST_REQUEST_SCHEMA_VERSION = "loopx_turn_host_request_v0"
 LOOPX_TURN_EXECUTION_SCHEMA_VERSION = "loopx_turn_execution_v0"
 LOOPX_TURN_JOURNAL_SCHEMA_VERSION = "loopx_turn_journal_v0"
+LOOPX_TURN_TASK_VALIDATION_SCHEMA_VERSION = "loopx_turn_task_validation_v0"
 HOST_RESULT_MAX_BYTES = 12_000
 HOST_ARG_MAX_COUNT = 32
 HOST_ARG_MAX_CHARS = 1_024
@@ -65,6 +66,10 @@ Writeback = Callable[[dict[str, Any]], dict[str, Any]]
 Spend = Callable[[], dict[str, Any]]
 Scheduler = Callable[[dict[str, Any]], dict[str, Any]]
 HostRunner = Callable[[Mapping[str, Any]], dict[str, Any]]
+TaskValidator = Callable[
+    [Mapping[str, Any], Mapping[str, Any]],
+    Mapping[str, Any],
+]
 
 
 class BuiltInHostError(RuntimeError):
@@ -75,16 +80,26 @@ class BuiltInHostError(RuntimeError):
         self.reason = reason
 
 
-def normalize_host_argv(value: Sequence[str]) -> list[str]:
+def _normalize_argv(value: Sequence[str], *, label: str) -> list[str]:
     argv = [str(item) for item in value]
     if not argv:
-        raise ValueError("host command must contain at least one argv item")
+        raise ValueError(f"{label} command must contain at least one argv item")
     if len(argv) > HOST_ARG_MAX_COUNT:
-        raise ValueError(f"host command exceeds {HOST_ARG_MAX_COUNT} argv items")
+        raise ValueError(f"{label} command exceeds {HOST_ARG_MAX_COUNT} argv items")
     for item in argv:
         if not item or "\x00" in item or len(item) > HOST_ARG_MAX_CHARS:
-            raise ValueError("host command contains an empty, NUL, or oversized argv item")
+            raise ValueError(
+                f"{label} command contains an empty, NUL, or oversized argv item"
+            )
     return argv
+
+
+def normalize_host_argv(value: Sequence[str]) -> list[str]:
+    return _normalize_argv(value, label="host")
+
+
+def _normalize_task_validator_argv(value: Sequence[str]) -> list[str]:
+    return _normalize_argv(value, label="task validator")
 
 
 def build_loopx_turn_host_request(plan: Mapping[str, Any]) -> dict[str, Any]:
@@ -201,6 +216,191 @@ def validate_loopx_turn_host_result(
         "result": normalized,
         "errors": errors,
     }
+
+
+def _task_validation_receipt(
+    *,
+    status: str,
+    validator_kind: str,
+    summary: str,
+    recovery_kind: str | None = None,
+    exit_code: int | None = None,
+) -> dict[str, Any]:
+    errors: list[str] = []
+    if status not in {"passed", "failed", "inconclusive", "unavailable", "not_required"}:
+        errors.append("unsupported task validation status")
+    if not validator_kind or len(validator_kind) > 80:
+        errors.append("task validator kind must contain at most 80 characters")
+    if not summary or len(summary) > 240:
+        errors.append("task validation summary must contain at most 240 characters")
+    for field, text in (("validator_kind", validator_kind), ("summary", summary)):
+        if text:
+            try:
+                validate_public_safe_text(f"task_validation.{field}", text)
+            except ValueError as exc:
+                errors.append(str(exc))
+    if recovery_kind is not None and recovery_kind not in {
+        LoopXTurnResultKind.REPAIR_REQUIRED.value,
+        LoopXTurnResultKind.REPLAN_REQUIRED.value,
+    }:
+        errors.append("task validation recovery_kind must be repair_required or replan_required")
+    if status in {"failed", "inconclusive", "unavailable"} and recovery_kind is None:
+        errors.append("failed task validation requires a typed recovery_kind")
+    if status in {"passed", "not_required"} and recovery_kind is not None:
+        errors.append("successful task validation cannot declare recovery_kind")
+    if exit_code is not None and (not isinstance(exit_code, int) or exit_code < 0):
+        errors.append("task validation exit_code must be a non-negative integer")
+    if status == "passed" and exit_code not in {None, 0}:
+        errors.append("passed task validation cannot declare a non-zero exit_code")
+    effective_status = status if not errors else "inconclusive"
+    effective_recovery_kind = recovery_kind
+    if errors and effective_recovery_kind is None:
+        effective_recovery_kind = LoopXTurnResultKind.REPAIR_REQUIRED.value
+    return {
+        "ok": not errors and status in {"passed", "not_required"},
+        "schema_version": LOOPX_TURN_TASK_VALIDATION_SCHEMA_VERSION,
+        "status": effective_status,
+        "validator_kind": validator_kind or "invalid",
+        "summary": summary or "task validation receipt is invalid",
+        "recovery_kind": effective_recovery_kind,
+        "exit_code": exit_code,
+        "errors": errors,
+    }
+
+
+def _run_task_validator(
+    plan: Mapping[str, Any],
+    result: Mapping[str, Any],
+    *,
+    validator: TaskValidator | None,
+) -> dict[str, Any]:
+    if validator is None:
+        return _task_validation_receipt(
+            status="unavailable",
+            validator_kind="none",
+            summary="independent task validator is required for material host results",
+            recovery_kind=LoopXTurnResultKind.REPAIR_REQUIRED.value,
+        )
+    try:
+        value = validator(plan, result)
+    except Exception:
+        return _task_validation_receipt(
+            status="inconclusive",
+            validator_kind="callback",
+            summary="independent task validator did not produce a receipt",
+            recovery_kind=LoopXTurnResultKind.REPAIR_REQUIRED.value,
+        )
+    if not isinstance(value, Mapping):
+        return _task_validation_receipt(
+            status="inconclusive",
+            validator_kind="callback",
+            summary="independent task validator returned an invalid receipt",
+            recovery_kind=LoopXTurnResultKind.REPAIR_REQUIRED.value,
+        )
+    unknown = sorted(
+        set(value)
+        - {
+            "status",
+            "validator_kind",
+            "summary",
+            "recovery_kind",
+            "exit_code",
+        }
+    )
+    if unknown:
+        return _task_validation_receipt(
+            status="inconclusive",
+            validator_kind="callback",
+            summary="independent task validator returned unsupported receipt fields",
+            recovery_kind=LoopXTurnResultKind.REPAIR_REQUIRED.value,
+        )
+    status = str(value.get("status") or "")
+    if status == "not_required":
+        return _task_validation_receipt(
+            status="inconclusive",
+            validator_kind="callback",
+            summary="material host results cannot skip independent task validation",
+            recovery_kind=LoopXTurnResultKind.REPAIR_REQUIRED.value,
+        )
+    exit_code_value = value.get("exit_code")
+    if exit_code_value is not None and (
+        not isinstance(exit_code_value, int) or isinstance(exit_code_value, bool)
+    ):
+        return _task_validation_receipt(
+            status="inconclusive",
+            validator_kind="callback",
+            summary="independent task validator returned an invalid exit code",
+            recovery_kind=LoopXTurnResultKind.REPAIR_REQUIRED.value,
+        )
+    return _task_validation_receipt(
+        status=status,
+        validator_kind=str(value.get("validator_kind") or ""),
+        summary=str(value.get("summary") or ""),
+        recovery_kind=(
+            str(value["recovery_kind"])
+            if value.get("recovery_kind") is not None
+            else None
+        ),
+        exit_code=exit_code_value,
+    )
+
+
+def build_loopx_turn_command_validator(
+    argv: Sequence[str],
+    *,
+    project: Path,
+    timeout_seconds: float,
+    failure_recovery_kind: str = LoopXTurnResultKind.REPAIR_REQUIRED.value,
+) -> TaskValidator:
+    """Build a trusted argv-only postcondition validator for one Turn host workspace."""
+
+    normalized = _normalize_task_validator_argv(argv)
+    if failure_recovery_kind not in {
+        LoopXTurnResultKind.REPAIR_REQUIRED.value,
+        LoopXTurnResultKind.REPLAN_REQUIRED.value,
+    }:
+        raise ValueError(
+            "task validator failure recovery must be repair_required or replan_required"
+        )
+
+    def validate(
+        _plan: Mapping[str, Any],
+        result: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        try:
+            completed = subprocess.run(
+                normalized,
+                cwd=project,
+                input=json.dumps(result, ensure_ascii=False, separators=(",", ":")),
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=max(1.0, timeout_seconds),
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return {
+                "status": "inconclusive",
+                "validator_kind": "command",
+                "summary": "independent task validation command could not complete",
+                "recovery_kind": LoopXTurnResultKind.REPAIR_REQUIRED.value,
+            }
+        if completed.returncode != 0:
+            return {
+                "status": "failed",
+                "validator_kind": "command",
+                "summary": "independent task validation command returned non-zero",
+                "recovery_kind": failure_recovery_kind,
+                "exit_code": completed.returncode,
+            }
+        return {
+            "status": "passed",
+            "validator_kind": "command",
+            "summary": "independent task validation command passed",
+            "exit_code": 0,
+        }
+
+    return validate
 
 
 def turn_journal_path(runtime_root: Path, *, goal_id: str, turn_key: str) -> Path:
@@ -393,6 +593,7 @@ def _execution_payload(
         "status": journal.get("status"),
         "host": journal.get("host"),
         "result_kind": journal.get("result_kind"),
+        "validation": journal.get("task_validation"),
         "receipt": journal.get("receipt"),
         "scheduler": journal.get("scheduler"),
         "effects": dict(effects),
@@ -411,6 +612,7 @@ def run_loopx_turn_once(
     timeout_seconds: float,
     execute: bool,
     retry_failed: bool = False,
+    task_validator: TaskValidator | None = None,
     writeback: Writeback | None = None,
     spend: Spend | None = None,
     scheduler: Scheduler | None = None,
@@ -467,9 +669,16 @@ def run_loopx_turn_once(
         if journal and journal.get("status") == "failed":
             receipt = journal.get("receipt") if isinstance(journal.get("receipt"), dict) else {}
             if receipt.get("failed_phase") == "validation":
-                journal.pop("host_result", None)
+                if journal.get("validation_stage") != "task_postcondition":
+                    journal.pop("host_result", None)
                 journal.pop("result_kind", None)
-                journal["completed_phases"] = []
+                journal["completed_phases"] = (
+                    list(TRANSACTION_PHASES[:2])
+                    if isinstance(journal.get("host_result"), dict)
+                    else []
+                )
+                journal.pop("task_validation", None)
+                journal.pop("validation_stage", None)
             journal.pop("reason", None)
             journal.pop("receipt", None)
             journal["status"] = "in_progress"
@@ -534,12 +743,14 @@ def run_loopx_turn_once(
                 reason=failure["reason"],
                 receipt=failure["receipt"],
                 completed_phases=list(TRANSACTION_PHASES[:2]),
+                result_kind=LoopXTurnResultKind.VALIDATION_FAILED.value,
+                validation_stage="host_result_contract",
             )
             _write_journal(journal_path, journal)
             return _execution_payload(plan, journal, execute=True, replayed=False, effects=effects)
         result = dict(validation["result"])
-        if len(completed_phases) < 3:
-            completed_phases = list(TRANSACTION_PHASES[:3])
+        if len(completed_phases) < 2:
+            completed_phases = list(TRANSACTION_PHASES[:2])
         journal.update(
             host_result=result,
             result_kind=result.get("result_kind"),
@@ -549,13 +760,75 @@ def run_loopx_turn_once(
 
         kind = LoopXTurnResultKind(str(result["result_kind"]))
         if kind in STOP_HOST_RESULT_KINDS:
+            completed_phases = list(TRANSACTION_PHASES[:3])
             journal.update(
                 status="stopped",
+                completed_phases=completed_phases,
+                task_validation=_task_validation_receipt(
+                    status="not_required",
+                    validator_kind="stop_result",
+                    summary="task validation is not required for a typed stop result",
+                ),
                 receipt=_receipt(plan, result, completed_phases=completed_phases),
                 scheduler={"disposition": "not_applicable"},
             )
             _write_journal(journal_path, journal)
             return _execution_payload(plan, journal, execute=True, replayed=False, effects=effects)
+
+        stored_task_validation = (
+            journal.get("task_validation")
+            if isinstance(journal.get("task_validation"), dict)
+            else None
+        )
+        task_validation = (
+            stored_task_validation
+            if "validation" in completed_phases
+            and stored_task_validation is not None
+            and stored_task_validation.get("ok") is True
+            else _run_task_validator(
+                plan,
+                result,
+                validator=task_validator,
+            )
+        )
+        journal["task_validation"] = task_validation
+        if not task_validation.get("ok"):
+            reason = str(
+                task_validation.get("summary")
+                or "independent task validation failed"
+            )
+            failure = _host_failure(
+                plan,
+                kind=LoopXTurnResultKind.VALIDATION_FAILED,
+                completed_phases=list(TRANSACTION_PHASES[:2]),
+                failed_phase="validation",
+                reason=reason,
+            )
+            journal.update(
+                status="failed",
+                reason=reason,
+                receipt=failure["receipt"],
+                completed_phases=list(TRANSACTION_PHASES[:2]),
+                result_kind=LoopXTurnResultKind.VALIDATION_FAILED.value,
+                validation_stage="task_postcondition",
+            )
+            _write_journal(journal_path, journal)
+            return _execution_payload(
+                plan,
+                journal,
+                execute=True,
+                replayed=False,
+                effects=effects,
+            )
+
+        if "validation" not in completed_phases:
+            completed_phases = list(TRANSACTION_PHASES[:3])
+        journal.update(
+            result_kind=result.get("result_kind"),
+            completed_phases=completed_phases,
+            validation_stage="task_postcondition",
+        )
+        _write_journal(journal_path, journal)
 
         if "durable_writeback" not in completed_phases:
             writeback_payload = writeback(result)

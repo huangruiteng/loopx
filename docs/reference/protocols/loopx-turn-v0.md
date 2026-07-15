@@ -12,6 +12,72 @@ The protocol is host-neutral. A Codex CLI adapter is the first target, but the
 driver lifecycle must not depend on Codex-specific session files, transcript
 formats, or benchmark task schemas.
 
+## Mental Model
+
+LoopX Turn is a four-stage control loop, not another agent runtime:
+
+```text
+LoopX decides -> agent CLI executes -> validator proves -> LoopX commits
+```
+
+| Stage | Owner | Contract |
+| --- | --- | --- |
+| Decide | LoopX CLI | Select one allowed action from live goal, todo, gate, capability, quota, and cadence state. |
+| Execute | Host adapter plus an agent CLI such as Trae CLI or Codex CLI | Consume one typed request, run one bounded segment, and emit one typed candidate result. |
+| Validate | Independent task-specific command or callback | Check the real artifact, test, remote state, or declared read-only postcondition. |
+| Commit | LoopX CLI | Write durable state and spend one quota slot only after validation passes. |
+
+This separation lets the same Turn contract govern coding, operations, data,
+document, knowledge-maintenance, and other long-running workflows. The agent
+CLI remains responsible for model and tool execution; it does not become the
+authority for goal state or completion.
+
+## Generic Agent CLI Quick Start
+
+An agent CLI does not need native LoopX support. It needs a thin host adapter
+and an independent validator:
+
+1. Run `loopx turn plan` to inspect the live typed decision without launching
+   the host or changing state.
+2. The host adapter reads one `loopx_turn_host_request_v0` JSON object from
+   stdin, invokes the selected agent CLI in the governed workspace, and writes
+   exactly one `loopx_turn_host_result_v0` JSON object to stdout.
+3. The validator reads the normalized host result from stdin and independently
+   checks the claimed postcondition. Exit zero means passed; non-zero means the
+   result is rejected. A timeout or unavailable validator is inconclusive.
+4. `loopx turn run-once --execute` performs writeback and quota spend only when
+   the typed result and independent validation both pass.
+
+The adapter and validator executable names below are placeholders supplied by
+the integration. They are separate programs because the executor must not
+validate its own completion claim.
+
+```bash
+loopx turn plan \
+  --goal-id example-goal \
+  --agent-id example-worker \
+  --host generic-cli \
+  --execution-mode isolated-headless
+
+loopx turn run-once \
+  --goal-id example-goal \
+  --agent-id example-worker \
+  --host generic-cli \
+  --execution-mode isolated-headless \
+  --project "$PWD" \
+  --host-adapter-command-json '["./tools/turn-host-adapter","--agent-cli","trae","chat"]' \
+  --validation-command-json '["./tools/verify-turn-postcondition"]' \
+  --execute
+```
+
+Do not pass a free-form interactive command directly as
+`--host-adapter-command-json` unless it already implements the typed
+stdin/stdout contract. For Trae CLI,
+Codex CLI, or another conversational CLI, the adapter translates between the
+Turn request/result objects and that CLI's prompt, session, and output model.
+Raw transcript text, process exit zero, and the host's own completion claim are
+never sufficient validation.
+
 ## Authority Boundary
 
 | Concern | Authority |
@@ -57,6 +123,15 @@ One driver tick has exactly these ordered phases:
 
 The driver may stop after any phase. A stop must return a typed result and must
 not silently continue with a different execution mode.
+
+For material results, schema-valid host output is only candidate evidence. The
+caller or adapter must select an independent task/postcondition validator
+before host execution. The generic CLI accepts a trusted JSON argv array,
+passes the normalized host result on stdin, never invokes a shell, and discards
+validator stdout and stderr. A missing, failed, or inconclusive validator stops
+at `validation_failed`, records a typed `repair_required` or `replan_required`
+recovery disposition, and cannot write state or spend quota. Typed stop results
+do not require task validation because they produce no material writeback.
 
 ## Turn Input
 
@@ -155,6 +230,12 @@ An external host adapter must provide:
 - an opaque local session handle with no authority beyond host resume;
 - visibility and idle proof before injecting into an interactive session; and
 - deterministic failure mapping to the result and failure classes above.
+
+The smallest useful adapter has only three responsibilities: translate the
+typed request into one bounded agent-CLI invocation, preserve an opaque local
+resume handle when the host supports it, and translate the final outcome into
+one typed candidate result. It must not parse LoopX status prose, write LoopX
+state, spend quota, or validate its own work.
 
 The driver may discard raw stdout and stderr, but it must not mistake their
 absence for a typed result. Raw prompts, transcripts, benchmark task text,

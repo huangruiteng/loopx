@@ -8,6 +8,7 @@ from pathlib import Path
 from ..control_plane.turn_driver import (
     LOOPX_TURN_EXECUTION_SCHEMA_VERSION,
     LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
+    build_loopx_turn_command_validator,
     build_loopx_turn_plan,
     codex_cli_session_binding,
     load_loopx_turn_plan_from_journal,
@@ -76,6 +77,17 @@ def register_turn_commands(
             "Run one explicit isolated generic host command and commit only a "
             "validated public-safe result."
         ),
+        description=(
+            "Run one governed Turn: LoopX decides, a host adapter invokes an "
+            "agent CLI, an independent validator proves the postcondition, and "
+            "LoopX commits only a passing result."
+        ),
+        epilog=(
+            "A Trae, Codex, or other conversational CLI normally needs a thin "
+            "adapter: read one typed request from stdin and emit one typed result "
+            "to stdout. The validation command receives that normalized result "
+            "on stdin and must independently check the real postcondition."
+        ),
     )
     add_subcommand_format(run_once)
     _add_turn_decision_arguments(
@@ -88,7 +100,32 @@ def register_turn_commands(
     run_once.add_argument("--project", required=True)
     run_once.add_argument(
         "--host-command-json",
-        help="JSON argv array for generic-cli; shell parsing is never used.",
+        "--host-adapter-command-json",
+        dest="host_command_json",
+        help=(
+            "JSON argv array for a typed generic host adapter. The adapter reads "
+            "the Turn request from stdin and emits one result JSON object; shell "
+            "parsing is never used."
+        ),
+    )
+    run_once.add_argument(
+        "--validation-command-json",
+        help=(
+            "Trusted JSON argv array for independent task/postcondition validation. "
+            "The normalized host result is provided on stdin; shell parsing is never used."
+        ),
+    )
+    run_once.add_argument(
+        "--validation-timeout-seconds",
+        type=float,
+        default=30.0,
+        help="Timeout for the independent validation command.",
+    )
+    run_once.add_argument(
+        "--validation-failure-kind",
+        choices=["repair_required", "replan_required"],
+        default="repair_required",
+        help="Typed recovery disposition when the independent validator rejects the result.",
     )
     run_once.add_argument(
         "--codex-bin",
@@ -191,11 +228,18 @@ def _render_loopx_turn_plan_markdown(payload: dict[str, object]) -> str:
 def _render_loopx_turn_execution_markdown(payload: dict[str, object]) -> str:
     effects = payload.get("effects") if isinstance(payload.get("effects"), dict) else {}
     receipt = payload.get("receipt") if isinstance(payload.get("receipt"), dict) else {}
+    validation = (
+        payload.get("validation")
+        if isinstance(payload.get("validation"), dict)
+        else {}
+    )
     return "\n".join(
         [
             "# LoopX Turn Run Once",
             f"- status: {payload.get('status')}",
             f"- result_kind: {payload.get('result_kind')}",
+            f"- validation: {validation.get('status')}",
+            f"- recovery_kind: {validation.get('recovery_kind')}",
             f"- next_phase: {receipt.get('next_phase')}",
             f"- host_invoked: {effects.get('host_invoked')}",
             f"- state_written: {effects.get('state_written')}",
@@ -302,16 +346,37 @@ def handle_turn_command(
                 raise ValueError("--host must match the journaled LoopX Turn plan")
             if args.host == "generic-cli":
                 if not args.host_command_json:
-                    raise ValueError("generic-cli requires --host-command-json")
+                    raise ValueError(
+                        "generic-cli requires --host-adapter-command-json "
+                        "(alias --host-command-json)"
+                    )
                 raw_argv = json.loads(args.host_command_json)
                 if not isinstance(raw_argv, list) or not all(
                     isinstance(item, str) for item in raw_argv
                 ):
-                    raise ValueError("--host-command-json must be a JSON string array")
+                    raise ValueError(
+                        "--host-adapter-command-json must be a JSON string array"
+                    )
             else:
                 if args.host_command_json:
                     raise ValueError("codex-cli does not accept --host-command-json")
                 raw_argv = None
+            if args.validation_command_json:
+                raw_validation_argv = json.loads(args.validation_command_json)
+                if not isinstance(raw_validation_argv, list) or not all(
+                    isinstance(item, str) for item in raw_validation_argv
+                ):
+                    raise ValueError(
+                        "--validation-command-json must be a JSON string array"
+                    )
+                task_validator = build_loopx_turn_command_validator(
+                    raw_validation_argv,
+                    project=project,
+                    timeout_seconds=args.validation_timeout_seconds,
+                    failure_recovery_kind=args.validation_failure_kind,
+                )
+            else:
+                task_validator = None
             envelope = payload.get("turn_envelope") if isinstance(payload.get("turn_envelope"), dict) else {}
             action = envelope.get("action") if isinstance(envelope.get("action"), dict) else {}
             selected_todo = action.get("selected_todo") if isinstance(action.get("selected_todo"), dict) else {}
@@ -431,6 +496,7 @@ def handle_turn_command(
                 timeout_seconds=args.timeout_seconds,
                 execute=bool(args.execute),
                 retry_failed=bool(args.retry_failed_turn),
+                task_validator=task_validator,
                 writeback=writeback if args.execute else None,
                 spend=spend if args.execute else None,
                 scheduler=scheduler if args.execute else None,
