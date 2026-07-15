@@ -34,6 +34,11 @@ from .skillsbench_result_discovery import (
     SKILLSBENCH_RESULT_DISCOVERY_SCHEMA_VERSION,
     discover_skillsbench_benchflow_result_json,
 )
+from .skillsbench_typed_repair import (
+    compact_skillsbench_typed_repair_counters,
+    skillsbench_typed_repair_failure_labels,
+    skillsbench_typed_repair_round_trace_fields,
+)
 
 
 SKILLSBENCH_DEFAULT_DATASET = "skillsbench@1.1"
@@ -3064,6 +3069,7 @@ def _skillsbench_controller_trace_counters(
     )
     if declared_done_policy:
         counters["product_mode_declared_done_policy"] = declared_done_policy
+    counters.update(compact_skillsbench_typed_repair_counters(controller_trace))
     if reward_records:
         counters["round_rewards"] = reward_records
     trajectory_summary = (
@@ -4265,6 +4271,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
         ):
             if item not in failure_labels:
                 failure_labels.append(item)
+    for item in skillsbench_typed_repair_failure_labels(
+        controller_counters,
+        official_passed=official_passed,
+    ):
+        if item not in failure_labels:
+            failure_labels.append(item)
     user_loop_final_verify_recovery_triggered = bool(
         controller_counters.get("benchflow_user_loop_final_verify_recovery_triggered")
     )
@@ -4687,6 +4699,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
             round_reward_trace[
                 "product_mode_no_open_todo_below_passing_reward_score_status"
             ] = score_status
+        round_reward_trace.update(
+            skillsbench_typed_repair_round_trace_fields(controller_counters)
+        )
         declared_done_round = controller_counters.get("declared_done_round")
         if (
             isinstance(declared_done_round, int)
@@ -5140,6 +5155,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "product_mode_no_open_todo_below_passing_reward_stop": controller_counters.get(
                 "product_mode_no_open_todo_below_passing_reward_stop", False
             ),
+            **compact_skillsbench_typed_repair_counters(controller_counters),
             "product_mode_host_local_idle_no_task_output_progress": controller_counters.get(
                 "product_mode_host_local_idle_no_task_output_progress", False
             ),

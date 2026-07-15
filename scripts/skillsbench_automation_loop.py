@@ -133,6 +133,13 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
 from loopx.benchmark_adapters.skillsbench_setup_preflight import (  # noqa: E402
     run_setup_only_public_preflight,
 )
+from loopx.benchmark_adapters.skillsbench_typed_repair import (  # noqa: E402
+    begin_skillsbench_typed_repair,
+    build_skillsbench_typed_repair_prompt,
+    record_skillsbench_typed_repair_terminal,
+    resolve_skillsbench_typed_repair,
+    skillsbench_projected_open_todo_count,
+)
 from loopx.benchmark_core import (  # noqa: E402
     build_benchmark_launch_observable_handle,
     canonical_lifecycle,
@@ -5434,6 +5441,8 @@ def _build_case_event_timeline(
     controller_status = "not_observed"
     if counters.get("controller_official_success_observed") is True:
         controller_status = "official_success_observed"
+    elif counters.get("product_mode_typed_repair_terminal") is True:
+        controller_status = "typed_repair_terminal"
     elif (
         counters.get("product_mode_host_local_idle_no_task_output_progress_stop")
         is True
@@ -11609,62 +11618,6 @@ def _record_product_mode_declared_done_below_passing_reward(
     trace["product_mode_declared_done_below_passing_reward_count"] = current + 1
 
 
-def _record_product_mode_no_open_todo_below_passing_reward(
-    trace: dict[str, Any],
-    *,
-    agent_round: int,
-    reward: float | None,
-) -> bool:
-    current = trace.get("product_mode_no_open_todo_below_passing_reward_streak")
-    if not isinstance(current, int) or isinstance(current, bool):
-        current = 0
-    streak = current + 1
-    threshold = PRODUCT_MODE_NO_OPEN_TODO_STOP_STREAK_THRESHOLD
-    trace["open_todo_count"] = 0
-    trace["product_mode_no_open_todo_below_passing_reward_open_todo_count_public"] = 0
-    trace["product_mode_no_open_todo_below_passing_reward_streak"] = streak
-    trace["product_mode_no_open_todo_below_passing_reward_streak_threshold"] = (
-        threshold
-    )
-    trace.setdefault("product_mode_no_open_todo_below_passing_reward_stop", False)
-    trace["product_mode_no_open_todo_below_passing_reward_round"] = agent_round
-    if reward is None:
-        trace["product_mode_no_open_todo_below_passing_reward_score_status"] = (
-            "missing"
-        )
-    else:
-        trace["product_mode_no_open_todo_below_passing_reward_score"] = reward
-        trace["product_mode_no_open_todo_below_passing_reward_score_status"] = (
-            "observed_below_passing"
-        )
-    if streak < threshold:
-        return False
-    trace["product_mode_no_open_todo_below_passing_reward_stop"] = True
-    trace["product_mode_no_open_todo_below_passing_reward_stop_round"] = agent_round
-    trace["product_mode_declared_done_policy"] = (
-        "stop_after_two_no_open_todo_rounds_without_passing_reward"
-    )
-    stop_count = trace.get("product_mode_no_open_todo_below_passing_reward_stop_count")
-    if not isinstance(stop_count, int) or isinstance(stop_count, bool):
-        stop_count = 0
-    trace["product_mode_no_open_todo_below_passing_reward_stop_count"] = (
-        stop_count + 1
-    )
-    return True
-
-
-def _product_mode_no_open_todo_below_passing_reward_applicable(
-    trace: dict[str, Any],
-    *,
-    reward: float | None,
-) -> bool:
-    if not isinstance(reward, (int, float)) or isinstance(reward, bool):
-        return False
-    if reward >= 1.0:
-        return False
-    return _product_mode_agent_bridge_closeout_observed(trace)
-
-
 def _product_mode_depth_gate_satisfied(trace: dict[str, Any]) -> bool:
     if _product_mode_agent_lifecycle_gate_satisfied(trace):
         return True
@@ -12970,6 +12923,41 @@ def _build_product_mode_user(
                             scheduled_round=round + 1,
                             task_instruction=instruction,
                         )
+                    if trace.get("product_mode_typed_repair_pending") is True:
+                        repair_outcome = resolve_skillsbench_typed_repair(
+                            trace,
+                            agent_round=round,
+                        )
+                        _inc_counter(trace, "controller_action_decisions")
+                        if repair_outcome.get("delta_observed") is not True:
+                            record_skillsbench_typed_repair_terminal(
+                                trace,
+                                agent_round=round,
+                                reason="repair_round_without_todo_task_or_validation_delta",
+                            )
+                            _inc_counter(trace, "stop_decision_count")
+                            trace["last_decision"] = (
+                                "stop_after_product_mode_typed_repair_without_delta"
+                            )
+                            return None
+                        if round >= max_rounds:
+                            record_skillsbench_typed_repair_terminal(
+                                trace,
+                                agent_round=round,
+                                reason="repair_delta_observed_at_budget_boundary",
+                            )
+                            _inc_counter(trace, "stop_decision_count")
+                            trace["last_decision"] = (
+                                "stop_after_product_mode_typed_repair_budget"
+                            )
+                            return None
+                        _inc_counter(trace, "followup_prompt_count")
+                        trace["last_decision"] = (
+                            "continue_after_product_mode_typed_repair_delta"
+                        )
+                        return self._scheduled_continuation_prompt(
+                            scheduled_round=round + 1,
+                        )
                     if (
                         self._task_instruction_sent
                         and product_mode_entry_lifecycle_gate_satisfied()
@@ -13112,25 +13100,6 @@ def _build_product_mode_user(
                             ),
                         )
                         _inc_counter(trace, "controller_action_decisions")
-                        no_open_todo_stop = (
-                            _record_product_mode_no_open_todo_below_passing_reward(
-                                trace,
-                                agent_round=round,
-                                reward=(
-                                    float(reward)
-                                    if isinstance(reward, (int, float))
-                                    and not isinstance(reward, bool)
-                                    else None
-                                ),
-                            )
-                        )
-                        if no_open_todo_stop:
-                            _inc_counter(trace, "stop_decision_count")
-                            trace["last_decision"] = (
-                                "stop_after_product_mode_two_no_open_todo_rounds_"
-                                "without_passing_reward"
-                            )
-                            return None
                         if round >= max_rounds:
                             _inc_counter(trace, "stop_decision_count")
                             trace["last_decision"] = (
@@ -13138,49 +13107,57 @@ def _build_product_mode_user(
                                 "declared_done_below_passing_reward"
                             )
                             return None
+                        if not (
+                            isinstance(reward, (int, float))
+                            and not isinstance(reward, bool)
+                            and reward < 1.0
+                            and _product_mode_agent_bridge_closeout_observed(trace)
+                            and skillsbench_projected_open_todo_count(trace) == 0
+                        ):
+                            _inc_counter(trace, "followup_prompt_count")
+                            trace["last_decision"] = (
+                                "send_product_mode_success_or_budget_"
+                                "continuation_after_declared_done"
+                            )
+                            return self._scheduled_continuation_prompt(
+                                scheduled_round=round + 1,
+                                declared_done_continuation=True,
+                            )
+                        repair_started = begin_skillsbench_typed_repair(
+                            trace,
+                            trigger_round=round,
+                            scheduled_round=round + 1,
+                        )
+                        if not repair_started:
+                            record_skillsbench_typed_repair_terminal(
+                                trace,
+                                agent_round=round,
+                                reason="unchanged_frontier_already_repaired",
+                            )
+                            _inc_counter(trace, "stop_decision_count")
+                            trace["last_decision"] = (
+                                "stop_after_product_mode_typed_repair_repeated_frontier"
+                            )
+                            return None
                         _inc_counter(trace, "followup_prompt_count")
                         trace["last_decision"] = (
-                            "send_product_mode_success_or_budget_"
-                            "continuation_after_declared_done"
+                            "send_product_mode_typed_repair_after_declared_done"
                         )
-                        return self._scheduled_continuation_prompt(
+                        return build_skillsbench_typed_repair_prompt(
                             scheduled_round=round + 1,
-                            declared_done_continuation=True,
+                            max_rounds=max_rounds,
+                            case_state_path=case_state_path,
+                            loop_alignment_contract=(
+                                goal_start_loop_alignment_contract()
+                            ),
+                            persistent_constraint_clause=(
+                                self._persistent_constraint_clause
+                            ),
                         )
                     _inc_counter(trace, "controller_action_decisions")
                     _inc_counter(trace, "stop_decision_count")
                     _record_declared_done(trace, agent_round=round, reward=reward)
                     trace["last_decision"] = "stop_after_agent_declared_done"
-                    return None
-            observed_reward = (
-                float(reward)
-                if isinstance(reward, (int, float)) and not isinstance(reward, bool)
-                else None
-            )
-            if (
-                treatment
-                and round_result is not None
-                and self._task_instruction_sent
-                and product_mode_entry_lifecycle_gate_satisfied()
-                and _product_mode_no_open_todo_below_passing_reward_applicable(
-                    trace,
-                    reward=observed_reward,
-                )
-            ):
-                no_open_todo_stop = (
-                    _record_product_mode_no_open_todo_below_passing_reward(
-                        trace,
-                        agent_round=round,
-                        reward=observed_reward,
-                    )
-                )
-                if no_open_todo_stop:
-                    _inc_counter(trace, "controller_action_decisions")
-                    _inc_counter(trace, "stop_decision_count")
-                    trace["last_decision"] = (
-                        "stop_after_product_mode_two_no_open_todo_rounds_"
-                        "without_passing_reward"
-                    )
                     return None
             if reward is not None and reward >= 1.0:
                 _inc_counter(trace, "controller_action_decisions")
@@ -14818,6 +14795,25 @@ def _recover_runner_failure_score_from_controller_trace(
             counters.get("product_mode_no_open_todo_below_passing_reward_stop")
             is True
         ),
+        "product_mode_typed_repair_required": (
+            counters.get("product_mode_typed_repair_required") is True
+        ),
+        "product_mode_typed_repair_todo_identity_observed": (
+            counters.get("product_mode_typed_repair_todo_identity_observed") is True
+        ),
+        "product_mode_typed_repair_task_or_validation_delta": (
+            counters.get("product_mode_typed_repair_task_or_validation_delta") is True
+        ),
+        "product_mode_typed_repair_delta_observed": (
+            counters.get("product_mode_typed_repair_delta_observed") is True
+        ),
+        "product_mode_typed_repair_terminal": (
+            counters.get("product_mode_typed_repair_terminal") is True
+        ),
+        "product_mode_typed_repair_terminal_receipt_consistent": (
+            counters.get("product_mode_typed_repair_terminal_receipt_consistent")
+            is True
+        ),
         "official_score_policy": (
             "final_observed_controller_trace_reward_after_runner_interruption"
         ),
@@ -14830,6 +14826,13 @@ def _recover_runner_failure_score_from_controller_trace(
         "product_mode_no_open_todo_below_passing_reward_round",
         "product_mode_no_open_todo_below_passing_reward_stop_round",
         "product_mode_no_open_todo_below_passing_reward_open_todo_count_public",
+        "product_mode_typed_repair_trigger_round",
+        "product_mode_typed_repair_round_entered",
+        "product_mode_typed_repair_round_entered_count",
+        "product_mode_typed_repair_resolved_round",
+        "product_mode_typed_repair_task_facing_success_delta",
+        "product_mode_typed_repair_terminal_round",
+        "product_mode_typed_repair_open_todo_count_public",
     ):
         value = counters.get(source_key)
         if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
@@ -14848,6 +14851,13 @@ def _recover_runner_failure_score_from_controller_trace(
         round_reward_trace[
             "product_mode_no_open_todo_below_passing_reward_score"
         ] = no_open_todo_score
+    for source_key in (
+        "product_mode_typed_repair_policy_id",
+        "product_mode_typed_repair_terminal_reason",
+    ):
+        value = counters.get(source_key)
+        if isinstance(value, str) and value:
+            round_reward_trace[source_key] = value
     round_reward_trace.update(stats)
 
     interaction_counters = compact.get("interaction_counters")

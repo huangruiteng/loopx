@@ -28,6 +28,12 @@ def compact_benchmark_round_reward_trace(value: Any) -> dict[str, Any]:
         "agent_declared_done",
         "agent_declared_no_remaining_goals",
         "product_mode_no_open_todo_below_passing_reward_stop",
+        "product_mode_typed_repair_required",
+        "product_mode_typed_repair_todo_identity_observed",
+        "product_mode_typed_repair_task_or_validation_delta",
+        "product_mode_typed_repair_delta_observed",
+        "product_mode_typed_repair_terminal",
+        "product_mode_typed_repair_terminal_receipt_consistent",
         "official_score_recovered_from_controller_trace",
     ):
         if isinstance(value.get(field), bool):
@@ -44,6 +50,13 @@ def compact_benchmark_round_reward_trace(value: Any) -> dict[str, Any]:
         "product_mode_no_open_todo_below_passing_reward_round",
         "product_mode_no_open_todo_below_passing_reward_stop_round",
         "product_mode_no_open_todo_below_passing_reward_open_todo_count_public",
+        "product_mode_typed_repair_trigger_round",
+        "product_mode_typed_repair_round_entered",
+        "product_mode_typed_repair_round_entered_count",
+        "product_mode_typed_repair_resolved_round",
+        "product_mode_typed_repair_task_facing_success_delta",
+        "product_mode_typed_repair_terminal_round",
+        "product_mode_typed_repair_open_todo_count_public",
     ):
         raw = value.get(field)
         if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
@@ -65,6 +78,13 @@ def compact_benchmark_round_reward_trace(value: Any) -> dict[str, Any]:
         compact["product_mode_no_open_todo_below_passing_reward_score_status"] = (
             score_status
         )
+    for field in (
+        "product_mode_typed_repair_policy_id",
+        "product_mode_typed_repair_terminal_reason",
+    ):
+        text = public_safe_compact_text(value.get(field), limit=120)
+        if text:
+            compact[field] = text
     for field in ("final_round_passed", "best_round_passed", "best_round_is_final"):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]

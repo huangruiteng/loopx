@@ -612,6 +612,18 @@ def build_goal_start_product_mode_control_score(
         and "below_passing_reward" in last_decision
     ):
         premature_done_stop_reason = last_decision or "declared_done_below_passing_reward"
+    repair_round_entered = _max_int(
+        counters.get("product_mode_typed_repair_round_entered")
+    )
+    repair_todo_identity_observed = bool(
+        counters.get("product_mode_typed_repair_todo_identity_observed") is True
+    )
+    repair_task_or_validation_delta = bool(
+        counters.get("product_mode_typed_repair_task_or_validation_delta") is True
+    )
+    terminal_receipt_consistent = bool(
+        counters.get("product_mode_typed_repair_terminal_receipt_consistent") is True
+    )
 
     component_results = [
         {"name": "guided_start_goal_observed", "satisfied": goal_start_guided_observed},
@@ -678,6 +690,10 @@ def build_goal_start_product_mode_control_score(
         ),
         "premature_done_signal_count": premature_done_signal_count,
         "premature_done_stop_reason": premature_done_stop_reason,
+        "repair_round_entered": repair_round_entered,
+        "repair_todo_identity_observed": repair_todo_identity_observed,
+        "repair_task_or_validation_delta": repair_task_or_validation_delta,
+        "terminal_receipt_consistent": terminal_receipt_consistent,
         "agent_start_goal_count": agent_start_goal_count,
         "agent_todo_add_count": agent_todo_add_count,
         "agent_todo_claim_count": agent_claim_count,
@@ -785,6 +801,9 @@ def compact_goal_start_product_mode_control_score(value: Any) -> dict[str, Any]:
         "selected_todo_spend_observed",
         "non_selected_todos_preserved_open_or_deferred",
         "quota_spend_missing_after_repeated_complete",
+        "repair_todo_identity_observed",
+        "repair_task_or_validation_delta",
+        "terminal_receipt_consistent",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -808,6 +827,7 @@ def compact_goal_start_product_mode_control_score(value: Any) -> dict[str, Any]:
         "agent_quota_spend_slot_count",
         "driver_todo_claim_count",
         "driver_todo_update_count",
+        "repair_round_entered",
     ):
         raw = value.get(field)
         if isinstance(raw, int) and not isinstance(raw, bool):

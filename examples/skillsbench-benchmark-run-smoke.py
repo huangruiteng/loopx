@@ -3121,7 +3121,7 @@ def test_product_mode_declared_done_requires_solver_activity_after_driver_lifecy
         assert trace.get("agent_declared_done") is not True, trace
 
 
-def test_product_mode_declared_done_stops_after_two_no_open_todo_rounds() -> None:
+def test_product_mode_declared_done_runs_one_typed_repair_then_stops_without_delta() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-declared-done-score-zero-") as tmp:
         root = Path(tmp)
         jobs_dir = root / "jobs"
@@ -3152,6 +3152,13 @@ def test_product_mode_declared_done_stops_after_two_no_open_todo_rounds() -> Non
             "stop_decision_count": 0,
             "reward_observation_count": 0,
             "round_rewards": [],
+            "selected_p0_todo_id": "todo_fixture_primary",
+            "remote_command_file_bridge_agent_successful_loopx_command_records": [
+                {
+                    "subcommand": "todo complete",
+                    "todo_id": "todo_fixture_primary",
+                }
+            ],
             "remote_command_file_bridge_driver_lifecycle_execution_style": (
                 "orchestrated_agentloop_loopx_cli"
             ),
@@ -3244,12 +3251,13 @@ def test_product_mode_declared_done_stops_after_two_no_open_todo_rounds() -> Non
             )
         )
         assert prompt is not None, trace
-        assert "Scheduled product-mode continuation round 3 of 24" in prompt
-        assert "official verifier passed or failed" in prompt
-        assert "previous_reward" not in prompt
-        assert "previous_verifier_error" not in prompt
+        assert "Scheduled typed repair/replan round 3 of 24" in prompt
+        assert "create one scoped successor agent todo" in prompt
+        assert "successful task-facing/validation operation" in prompt
+        assert "reward" not in prompt.lower()
+        assert "verifier" not in prompt.lower()
         assert trace["last_decision"] == (
-            "send_product_mode_success_or_budget_continuation_after_declared_done"
+            "send_product_mode_typed_repair_after_declared_done"
         )
         assert trace["agent_declared_done"] is True, trace
         assert trace["declared_done_round"] == 2, trace
@@ -3259,22 +3267,13 @@ def test_product_mode_declared_done_stops_after_two_no_open_todo_rounds() -> Non
         assert trace["product_mode_declared_done_below_passing_reward_count"] == 1
         assert trace["product_mode_declared_done_below_passing_reward_score"] == 0.0
         assert trace["product_mode_declared_done_policy"] == (
-            "continue_until_official_success_or_budget"
+            "one_typed_repair_then_delta_gated_continue_or_terminal"
         )
-        assert trace[
-            "product_mode_no_open_todo_below_passing_reward_open_todo_count_public"
-        ] == 0
-        assert trace["product_mode_no_open_todo_below_passing_reward_streak"] == 1
-        assert (
-            trace[
-                "product_mode_no_open_todo_below_passing_reward_streak_threshold"
-            ]
-            == 2
-        )
-        assert (
-            trace["product_mode_no_open_todo_below_passing_reward_stop"]
-            is not True
-        )
+        assert trace["product_mode_typed_repair_pending"] is True
+        assert trace["product_mode_typed_repair_round_entered"] == 3
+        assert trace["product_mode_typed_repair_round_entered_count"] == 1
+        assert trace["product_mode_typed_repair_todo_identity_observed"] is False
+        assert trace["product_mode_typed_repair_task_or_validation_delta"] is False
         assert trace["followup_prompt_count"] == 1, trace
         assert trace["stop_decision_count"] == 0, trace
 
@@ -3287,29 +3286,30 @@ def test_product_mode_declared_done_stops_after_two_no_open_todo_rounds() -> Non
         )
         assert prompt is None, trace
         assert trace["last_decision"] == (
-            "stop_after_product_mode_two_no_open_todo_rounds_without_passing_reward"
+            "stop_after_product_mode_typed_repair_without_delta"
         )
         assert trace["agent_declared_done"] is True, trace
-        assert trace["declared_done_round"] == 3, trace
+        assert trace["declared_done_round"] == 2, trace
         assert trace["declared_done_score"] == 0.0, trace
-        assert trace["product_mode_declared_done_below_passing_reward_count"] == 2
-        assert trace["product_mode_declared_done_below_passing_reward_round"] == 3
-        assert trace["product_mode_no_open_todo_below_passing_reward_streak"] == 2
-        assert (
-            trace["product_mode_no_open_todo_below_passing_reward_stop"] is True
+        assert trace["product_mode_declared_done_below_passing_reward_count"] == 1
+        assert trace["product_mode_typed_repair_pending"] is False
+        assert trace["product_mode_typed_repair_delta_observed"] is False
+        assert trace["product_mode_typed_repair_terminal"] is True
+        assert trace["product_mode_typed_repair_terminal_round"] == 3
+        assert trace["product_mode_typed_repair_terminal_receipt_consistent"] is True
+        receipt = trace["product_mode_typed_repair_terminal_receipt"]
+        assert receipt["status"] == "terminal", receipt
+        assert receipt["reason"] == (
+            "repair_round_without_todo_task_or_validation_delta"
         )
-        assert trace["product_mode_no_open_todo_below_passing_reward_stop_round"] == 3
-        assert (
-            trace["product_mode_no_open_todo_below_passing_reward_stop_count"] == 1
-        )
-        assert trace["product_mode_declared_done_policy"] == (
-            "stop_after_two_no_open_todo_rounds_without_passing_reward"
-        )
+        assert receipt["repair_round_entered"] == 3, receipt
+        assert receipt["repair_todo_identity_observed"] is False, receipt
+        assert receipt["repair_task_or_validation_delta"] is False, receipt
         assert trace["followup_prompt_count"] == 1, trace
         assert trace["stop_decision_count"] == 1, trace
 
 
-def test_product_mode_closeout_without_done_stops_after_two_low_score_rounds() -> None:
+def test_product_mode_closeout_without_done_does_not_trigger_typed_repair() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-closeout-score-zero-") as tmp:
         root = Path(tmp)
         jobs_dir = root / "jobs"
@@ -3433,11 +3433,7 @@ def test_product_mode_closeout_without_done_stops_after_two_low_score_rounds() -
         )
         assert prompt is not None, trace
         assert trace.get("agent_declared_done") is not True, trace
-        assert trace["product_mode_no_open_todo_below_passing_reward_streak"] == 1
-        assert (
-            trace["product_mode_no_open_todo_below_passing_reward_stop"]
-            is not True
-        )
+        assert trace.get("product_mode_typed_repair_required") is not True, trace
         assert trace["stop_decision_count"] == 0, trace
 
         prompt = asyncio.run(
@@ -3447,21 +3443,12 @@ def test_product_mode_closeout_without_done_stops_after_two_low_score_rounds() -
                 round_result=FakeRoundResult(),
             )
         )
-        assert prompt is None, trace
+        assert prompt is not None, trace
         assert trace.get("agent_declared_done") is not True, trace
-        assert trace["last_decision"] == (
-            "stop_after_product_mode_two_no_open_todo_rounds_without_passing_reward"
-        )
-        assert trace["product_mode_no_open_todo_below_passing_reward_streak"] == 2
-        assert (
-            trace["product_mode_no_open_todo_below_passing_reward_stop"] is True
-        )
-        assert trace["product_mode_no_open_todo_below_passing_reward_stop_round"] == 3
-        assert (
-            trace["product_mode_no_open_todo_below_passing_reward_stop_count"] == 1
-        )
-        assert trace["followup_prompt_count"] == 1, trace
-        assert trace["stop_decision_count"] == 1, trace
+        assert trace.get("product_mode_typed_repair_required") is not True, trace
+        assert trace["last_decision"] == "send_product_mode_scheduled_continuation"
+        assert trace["followup_prompt_count"] == 2, trace
+        assert trace["stop_decision_count"] == 0, trace
 
 
 def test_product_mode_declared_done_missing_reward_continues() -> None:
@@ -3605,18 +3592,7 @@ def test_product_mode_declared_done_missing_reward_continues() -> None:
         assert trace["product_mode_declared_done_policy"] == (
             "continue_until_official_success_or_budget"
         )
-        assert trace[
-            "product_mode_no_open_todo_below_passing_reward_open_todo_count_public"
-        ] == 0
-        assert trace["product_mode_no_open_todo_below_passing_reward_streak"] == 1
-        assert (
-            trace["product_mode_no_open_todo_below_passing_reward_score_status"]
-            == "missing"
-        )
-        assert (
-            trace["product_mode_no_open_todo_below_passing_reward_stop"]
-            is not True
-        )
+        assert trace.get("product_mode_typed_repair_required") is not True
         assert trace["followup_prompt_count"] == 1, trace
         assert trace["stop_decision_count"] == 0, trace
 
@@ -14694,9 +14670,9 @@ if __name__ == "__main__":
     test_product_mode_case_state_seed_uses_active_goal_shape()
     test_product_mode_declared_done_requires_case_state_depth()
     test_product_mode_declared_done_requires_solver_activity_after_driver_lifecycle()
-    test_product_mode_declared_done_stops_after_two_no_open_todo_rounds()
+    test_product_mode_declared_done_runs_one_typed_repair_then_stops_without_delta()
     test_app_server_goal_round_semantics_survive_compact_and_ledger()
-    test_product_mode_closeout_without_done_stops_after_two_low_score_rounds()
+    test_product_mode_closeout_without_done_does_not_trigger_typed_repair()
     test_product_mode_declared_done_missing_reward_continues()
     test_product_mode_missing_lifecycle_prompts_exact_checkpoint()
     test_product_mode_no_tool_call_continues_before_checkpoint_loop()

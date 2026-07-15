@@ -382,6 +382,25 @@ def build_skillsbench_post_run_debug_gate(
                 "product_mode_no_open_todo_below_passing_reward_stop"
             )
             is True,
+            "typed_repair_round_entered": _benchmark_positive_int(
+                counters.get("product_mode_typed_repair_round_entered")
+            ),
+            "typed_repair_todo_identity_observed": counters.get(
+                "product_mode_typed_repair_todo_identity_observed"
+            )
+            is True,
+            "typed_repair_task_or_validation_delta": counters.get(
+                "product_mode_typed_repair_task_or_validation_delta"
+            )
+            is True,
+            "typed_repair_terminal": counters.get(
+                "product_mode_typed_repair_terminal"
+            )
+            is True,
+            "typed_repair_terminal_receipt_consistent": counters.get(
+                "product_mode_typed_repair_terminal_receipt_consistent"
+            )
+            is True,
         },
         "controller": {
             "status": (
