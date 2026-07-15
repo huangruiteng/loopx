@@ -36,10 +36,15 @@ def action_signature_semantic_sha256(value: Any) -> str | None:
                             "schema_version": child.get("schema_version"),
                             "coverage": child.get("coverage"),
                             "matches": child.get("matches"),
+                            "source_envelope_hashes_present": (
+                                "source_hash" in child and "envelope_hash" in child
+                            ),
                             "source_envelope_match": (
                                 child.get("source_hash") == child.get("envelope_hash")
                             ),
-                            "fields": sorted(child),
+                            "source_decision_hash_present": (
+                                "source_decision_hash" in child
+                            ),
                         }
                     signatures.append({"path": child_path, "value": normalized})
                 collect(child, path=child_path)

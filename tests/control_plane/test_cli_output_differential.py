@@ -69,6 +69,20 @@ def test_measurement_records_semantic_shape_without_runtime_hash_noise() -> None
     assert "$.action.todo_id" in first["json_shape_paths"]
     assert first["action_signature_sha256"] == second["action_signature_sha256"]
 
+    with_observability_field = json.loads(payload("third-runtime", "third-source"))
+    with_observability_field["action_signature"]["diagnostic_note"] = "new"
+    third = measure_cli_output(
+        json.dumps(with_observability_field),
+        output_format="json",
+    )
+    assert first["action_signature_sha256"] == third["action_signature_sha256"]
+
+    without_hash_pair = json.loads(payload("fourth-runtime", "fourth-source"))
+    del without_hash_pair["action_signature"]["source_hash"]
+    del without_hash_pair["action_signature"]["envelope_hash"]
+    fourth = measure_cli_output(json.dumps(without_hash_pair), output_format="json")
+    assert first["action_signature_sha256"] != fourth["action_signature_sha256"]
+
     markdown = measure_cli_output(
         "# LoopX Status\n\n## Attention Queue\n",
         output_format="markdown",
