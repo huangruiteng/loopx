@@ -19,7 +19,7 @@ from .control_plane.work_items.delivery_outcome import require_delivery_outcome
 from .doctor import PROMOTION_READINESS_CLASSIFICATIONS
 from .execution_profile import compact_execution_profile
 from .explore_graph import compact_explore_graph_policy
-from .paths import resolve_runtime_root
+from .paths import registry_project_root, resolve_runtime_root
 from .presentation.markdown import (
     markdown_code,
     markdown_table_row,
@@ -166,7 +166,21 @@ def discover_goal_ids(
     return sorted(ids)
 
 
-def load_index(path: Path) -> tuple[list[dict[str, Any]], int]:
+def _indexed_artifact_exists(value: Any, *, artifact_root: Path | None) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    path = Path(text).expanduser()
+    if not path.is_absolute() and artifact_root is not None:
+        path = artifact_root / path
+    return path.exists()
+
+
+def load_index(
+    path: Path,
+    *,
+    artifact_root: Path | None = None,
+) -> tuple[list[dict[str, Any]], int]:
     if not path.exists():
         return [], 0
 
@@ -191,10 +205,14 @@ def load_index(path: Path) -> tuple[list[dict[str, Any]], int]:
                 str(item.get("markdown_path") or ""),
             )
             item = dict(item)
-            json_path = Path(str(item.get("json_path") or ""))
-            markdown_path = Path(str(item.get("markdown_path") or ""))
-            item["json_exists"] = json_path.exists() if str(json_path) else False
-            item["markdown_exists"] = markdown_path.exists() if str(markdown_path) else False
+            item["json_exists"] = _indexed_artifact_exists(
+                item.get("json_path"),
+                artifact_root=artifact_root,
+            )
+            item["markdown_exists"] = _indexed_artifact_exists(
+                item.get("markdown_path"),
+                artifact_root=artifact_root,
+            )
             if key in positions:
                 records[positions[key]].update(item)
             else:
@@ -222,7 +240,11 @@ def append_benchmark_run(
     delivery_outcome = _normalize_optional_delivery_outcome(delivery_outcome)
 
     registry = load_registry(registry_path)
-    runtime_root = resolve_runtime_root(registry, runtime_root_override)
+    runtime_root = resolve_runtime_root(
+        registry,
+        runtime_root_override,
+        registry_path=registry_path,
+    )
     generated_at = now_local()
     action = recommended_action or "inspect benchmark_run_v0 summary and continue passive benchmark work"
     health_check = "benchmark_run_v0 compact event public-safe"
@@ -300,7 +322,11 @@ def append_benchmark_result(
     delivery_outcome = _normalize_optional_delivery_outcome(delivery_outcome)
 
     registry = load_registry(registry_path)
-    runtime_root = resolve_runtime_root(registry, runtime_root_override)
+    runtime_root = resolve_runtime_root(
+        registry,
+        runtime_root_override,
+        registry_path=registry_path,
+    )
     generated_at = now_local()
     action = recommended_action or "inspect benchmark_result_v0 summary and continue benchmark comparison work"
     health_check = "benchmark_result_v0 compact event public-safe"
@@ -378,7 +404,11 @@ def append_benchmark_comparison(
     delivery_outcome = _normalize_optional_delivery_outcome(delivery_outcome)
 
     registry = load_registry(registry_path)
-    runtime_root = resolve_runtime_root(registry, runtime_root_override)
+    runtime_root = resolve_runtime_root(
+        registry,
+        runtime_root_override,
+        registry_path=registry_path,
+    )
     generated_at = now_local()
     action = recommended_action or "inspect benchmark_comparison_v0 deltas and continue benchmark analysis"
     health_check = "benchmark_comparison_v0 compact event public-safe"
@@ -456,7 +486,11 @@ def append_benchmark_learning_ledger(
     delivery_outcome = _normalize_optional_delivery_outcome(delivery_outcome)
 
     registry = load_registry(registry_path)
-    runtime_root = resolve_runtime_root(registry, runtime_root_override)
+    runtime_root = resolve_runtime_root(
+        registry,
+        runtime_root_override,
+        registry_path=registry_path,
+    )
     generated_at = now_local()
     action = recommended_action or "route benchmark follow-up from benchmark_learning_ledger_v0"
     health_check = "benchmark_learning_ledger_v0 compact event public-safe"
@@ -534,7 +568,11 @@ def append_benchmark_experiment_report(
     delivery_outcome = _normalize_optional_delivery_outcome(delivery_outcome)
 
     registry = load_registry(registry_path)
-    runtime_root = resolve_runtime_root(registry, runtime_root_override)
+    runtime_root = resolve_runtime_root(
+        registry,
+        runtime_root_override,
+        registry_path=registry_path,
+    )
     generated_at = now_local()
     action = recommended_action or "inspect benchmark_experiment_report_v0 summary and continue report consumer work"
     health_check = "benchmark_experiment_report_v0 compact event public-safe"
@@ -612,7 +650,11 @@ def append_active_user_assisted_pilot(
     delivery_outcome = _normalize_optional_delivery_outcome(delivery_outcome)
 
     registry = load_registry(registry_path)
-    runtime_root = resolve_runtime_root(registry, runtime_root_override)
+    runtime_root = resolve_runtime_root(
+        registry,
+        runtime_root_override,
+        registry_path=registry_path,
+    )
     generated_at = now_local()
     action = recommended_action or "inspect active_user_assisted_pilot_v0 summary and decide assisted treatment next step"
     health_check = "active_user_assisted_pilot_v0 compact event public-safe"
@@ -749,7 +791,10 @@ def collect_history(
         include_runtime_goals=include_runtime_goals,
     ):
         index_path = runtime_root / "goals" / current_goal_id / "runs" / "index.jsonl"
-        runs, raw_count = load_index(index_path)
+        runs, raw_count = load_index(
+            index_path,
+            artifact_root=registry_project_root(registry_path),
+        )
         runs = [
             run
             for _, run in sorted(
@@ -821,7 +866,11 @@ def inspect_index_duplicates(
     limit: int,
 ) -> dict[str, Any]:
     registry = load_registry(registry_path)
-    runtime_root = resolve_runtime_root(registry, runtime_root_override)
+    runtime_root = resolve_runtime_root(
+        registry,
+        runtime_root_override,
+        registry_path=registry_path,
+    )
     groups: list[dict[str, Any]] = []
     checked_goal_count = 0
     raw_index_records = 0
@@ -868,8 +917,14 @@ def inspect_index_duplicates(
                     "generated_at": generated_at,
                     "json_path": json_path,
                     "markdown_path": markdown_path,
-                    "json_exists": Path(json_path).exists() if json_path else False,
-                    "markdown_exists": Path(markdown_path).exists() if markdown_path else False,
+                    "json_exists": _indexed_artifact_exists(
+                        json_path,
+                        artifact_root=registry_project_root(registry_path),
+                    ),
+                    "markdown_exists": _indexed_artifact_exists(
+                        markdown_path,
+                        artifact_root=registry_project_root(registry_path),
+                    ),
                     "line_numbers": [line_number for line_number, _ in records],
                     "raw_rows": len(records),
                     "duplicate_rows": len(records) - 1,
@@ -915,7 +970,11 @@ def repair_index_duplicates(
     execute: bool,
 ) -> dict[str, Any]:
     registry = load_registry(registry_path)
-    runtime_root = resolve_runtime_root(registry, runtime_root_override)
+    runtime_root = resolve_runtime_root(
+        registry,
+        runtime_root_override,
+        registry_path=registry_path,
+    )
     checked_goal_count = 0
     raw_index_records = 0
     removed_row_count = 0

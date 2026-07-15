@@ -43,7 +43,11 @@ def collect_status(
     control_plane_limit = max(display_limit, context.status_control_plane_context_limit)
     goal_filter = str(goal_id or "").strip() or None
     registry = context.load_registry(registry_path)
-    runtime_root = context.resolve_runtime_root(registry, runtime_root_override)
+    runtime_root = context.resolve_runtime_root(
+        registry,
+        runtime_root_override,
+        registry_path=registry_path,
+    )
     global_registry = context.collect_global_registry_health(
         registry_path=registry_path,
         runtime_root=runtime_root,
@@ -59,7 +63,7 @@ def collect_status(
     )
     contract = context.check_contract(
         registry_path=registry_path,
-        runtime_root_override=runtime_root_override,
+        runtime_root_override=str(runtime_root),
         scan_roots=scan_roots,
         limit=limit,
     )
