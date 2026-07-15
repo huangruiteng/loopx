@@ -333,6 +333,12 @@ DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN = (
 DOCKER_CODEX_ACP_RUNTIME_TOOLS_END = (
     "# END LOOPX_SKILLSBENCH_CODEX_ACP_RUNTIME_TOOLS"
 )
+DOCKER_LOOPX_CASE_PYTHON_RUNTIME_BEGIN = (
+    "# BEGIN LOOPX_SKILLSBENCH_LOOPX_CASE_PYTHON_RUNTIME"
+)
+DOCKER_LOOPX_CASE_PYTHON_RUNTIME_END = (
+    "# END LOOPX_SKILLSBENCH_LOOPX_CASE_PYTHON_RUNTIME"
+)
 DOCKER_PIP_BOOTSTRAP_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_PIP_BOOTSTRAP"
 DOCKER_PIP_BOOTSTRAP_END = "# END LOOPX_SKILLSBENCH_PIP_BOOTSTRAP"
 DOCKER_GCR_MIRROR_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_GCR_MIRROR"
@@ -5645,6 +5651,8 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "verifier_bootstrap_risk_preflight_blocked",
         "verifier_bootstrap_fail_fast_defaulted",
         "codex_acp_runtime_tools_patch_applied",
+        "loopx_case_python_runtime_patch_required",
+        "loopx_case_python_runtime_patch_applied",
         "task_skills_removed",
         "original_task_mutated",
     ):
@@ -5806,6 +5814,12 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         "dockerfile_maven_mirror_raw_url_recorded": False,
         "codex_acp_runtime_tools_patch_applied": (
             DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN in dockerfile_text
+        ),
+        "loopx_case_python_runtime_patch_required": (
+            DOCKER_LOOPX_CASE_PYTHON_RUNTIME_BEGIN in dockerfile_text
+        ),
+        "loopx_case_python_runtime_patch_applied": (
+            DOCKER_LOOPX_CASE_PYTHON_RUNTIME_BEGIN in dockerfile_text
         ),
         "benchmark_egress_proxy_dockerfile_env_patch_applied": (
             DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN in dockerfile_text
@@ -7553,6 +7567,70 @@ def patch_dockerfile_codex_acp_runtime_tools(dockerfile: Path) -> bool:
     return True
 
 
+def patch_dockerfile_loopx_case_python_runtime(dockerfile: Path) -> bool:
+    """Ensure the final task image can execute the case-local LoopX CLI."""
+
+    if not dockerfile.exists():
+        return False
+    original = dockerfile.read_text(encoding="utf-8")
+    text = _strip_marker_block(
+        original,
+        DOCKER_LOOPX_CASE_PYTHON_RUNTIME_BEGIN,
+        DOCKER_LOOPX_CASE_PYTHON_RUNTIME_END,
+    )
+    lines = text.splitlines()
+    from_indexes = [
+        index
+        for index, line in enumerate(lines)
+        if _is_dockerfile_from_instruction(line.strip())
+    ]
+    if not from_indexes:
+        return False
+    final_from_index = from_indexes[-1]
+    if " scratch" in f" {lines[final_from_index].strip().lower()} ":
+        return False
+    block = (
+        f"{DOCKER_LOOPX_CASE_PYTHON_RUNTIME_BEGIN}\n"
+        "RUN set -eux; \\\n"
+        "    if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then \\\n"
+        "      exit 0; \\\n"
+        "    fi; \\\n"
+        "    if command -v apt-get >/dev/null 2>&1; then \\\n"
+        "      DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 update -qq; \\\n"
+        "      DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 install -y -qq --no-install-recommends python3; \\\n"
+        "      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb; \\\n"
+        "    elif command -v apk >/dev/null 2>&1; then \\\n"
+        "      apk add --no-cache python3; \\\n"
+        "    elif command -v microdnf >/dev/null 2>&1; then \\\n"
+        "      microdnf install -y python3; \\\n"
+        "    elif command -v dnf >/dev/null 2>&1; then \\\n"
+        "      dnf -y install python3; \\\n"
+        "    elif command -v yum >/dev/null 2>&1; then \\\n"
+        "      yum install -y python3; \\\n"
+        "    else \\\n"
+        "      echo 'LoopX case lifecycle requires Python in the final benchmark image' >&2; \\\n"
+        "      exit 127; \\\n"
+        "    fi; \\\n"
+        "    command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1\n"
+        f"{DOCKER_LOOPX_CASE_PYTHON_RUNTIME_END}"
+    )
+    trailing_lines = lines[final_from_index + 1 :]
+    while trailing_lines and not trailing_lines[0].strip():
+        trailing_lines.pop(0)
+    patched_lines = [
+        *lines[: final_from_index + 1],
+        "",
+        *block.splitlines(),
+        "",
+        *trailing_lines,
+    ]
+    patched = "\n".join(patched_lines).rstrip() + "\n"
+    if patched == original:
+        return False
+    _write_text_atomic(dockerfile, patched)
+    return True
+
+
 def dockerfile_references_skills_build_context(dockerfile: Path) -> bool:
     """Return whether the Dockerfile copies the local ``skills`` build context."""
 
@@ -7604,6 +7682,7 @@ def stage_task_for_sandbox(
     benchmark_egress_proxy_env: Mapping[str, str] | None = None,
     docker_gcr_mirror_prefix: str = "",
     verifier_dependency_cache_enabled: bool = False,
+    loopx_case_runtime_required: bool = False,
 ) -> tuple[Path, dict[str, Any]]:
     """Return the task path to run, staging Docker tasks when setup needs it."""
 
@@ -7650,6 +7729,8 @@ def stage_task_for_sandbox(
         "dockerfile_maven_mirror_host": "",
         "dockerfile_maven_mirror_raw_url_recorded": False,
         "codex_acp_runtime_tools_patch_applied": False,
+        "loopx_case_python_runtime_patch_required": False,
+        "loopx_case_python_runtime_patch_applied": False,
         "empty_skills_build_context_required": False,
         "empty_skills_build_context_created": False,
         "verifier_uv_bootstrap_risk_detected": False,
@@ -7753,6 +7834,10 @@ def stage_task_for_sandbox(
         verifier_proxy_exports and (task_path / "environment" / "Dockerfile").exists()
     )
     needs_runtime_tools_patch = (task_path / "environment" / "Dockerfile").exists()
+    needs_loopx_case_python_runtime_patch = bool(
+        loopx_case_runtime_required
+        and (task_path / "environment" / "Dockerfile").exists()
+    )
     metadata["apt_setup_risk_detected"] = needs_apt_retry_patch
     metadata["apt_retry_patch_required"] = needs_apt_retry_patch
     metadata["apt_risk_preflight_blocked"] = False
@@ -7847,6 +7932,9 @@ def stage_task_for_sandbox(
             "verifier_uv_bootstrap_version"
         ]
     metadata["verifier_bootstrap_risk_preflight_blocked"] = False
+    metadata["loopx_case_python_runtime_patch_required"] = (
+        needs_loopx_case_python_runtime_patch
+    )
     if (
         not has_task_skills
         and not needs_resource_cap
@@ -7862,6 +7950,7 @@ def stage_task_for_sandbox(
         and not needs_apache_archive_mirror_patch
         and not needs_maven_mirror_patch
         and not needs_runtime_tools_patch
+        and not needs_loopx_case_python_runtime_patch
         and not needs_verifier_uv_mirror_patch
         and not verifier_script_present
         and not needs_verifier_proxy_env_patch
@@ -7901,6 +7990,13 @@ def stage_task_for_sandbox(
     patched = patch_dockerfile_app_skills_mount(
         staged_path / "environment" / "Dockerfile"
     )
+    loopx_case_python_runtime_patched = False
+    if needs_loopx_case_python_runtime_patch:
+        loopx_case_python_runtime_patched = (
+            patch_dockerfile_loopx_case_python_runtime(
+                staged_path / "environment" / "Dockerfile"
+            )
+        )
     dockerfile_proxy_metadata = patch_dockerfile_benchmark_egress_proxy_env(
         staged_path / "environment" / "Dockerfile",
         proxy_env=benchmark_egress_proxy_env,
@@ -8032,6 +8128,12 @@ def stage_task_for_sandbox(
             ),
             "dockerfile_maven_mirror_raw_url_recorded": False,
             "codex_acp_runtime_tools_patch_applied": runtime_tools_patched,
+            "loopx_case_python_runtime_patch_required": (
+                needs_loopx_case_python_runtime_patch
+            ),
+            "loopx_case_python_runtime_patch_applied": (
+                loopx_case_python_runtime_patched
+            ),
             "empty_skills_build_context_required": empty_skills_context_required,
             "empty_skills_build_context_created": empty_skills_context_created,
             "verifier_script_executable_ready": verifier_script_executable_ready,
@@ -13288,6 +13390,7 @@ async def run_benchflow_case(
         verifier_dependency_cache_enabled=(
             verifier_dependency_cache_policy_enabled
         ),
+        loopx_case_runtime_required=_is_loopx_product_mode_route(args.route),
     )
     plan["task_staging"] = staging_metadata
     plan["effective_task_path"] = str(effective_task_path)
