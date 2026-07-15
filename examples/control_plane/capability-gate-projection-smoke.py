@@ -68,7 +68,8 @@ def todo(
 def assert_missing_action_contract() -> None:
     assert _capability_missing_action([]) == "run"
     assert _capability_missing_action(["benchmark_runner"]) == "repair_bridge"
-    assert _capability_missing_action(["network"]) == "ask_owner"
+    assert _capability_missing_action(["network"]) == "repair_bridge"
+    assert _capability_missing_action(["credentials"]) == "ask_owner"
     assert _capability_missing_action(["custom_capability"]) == "skip"
 
 
@@ -193,7 +194,7 @@ def assert_target_capability_creates_repair_hint_not_hard_block() -> None:
     assert candidate["capability_action"] == "repair_bridge", gate
 
 
-def assert_all_blocked_owner_capability_stops_delivery() -> None:
+def assert_all_blocked_runtime_capability_routes_to_agent_repair() -> None:
     item = todo(
         "todo_live_fetch",
         4,
@@ -207,21 +208,41 @@ def assert_all_blocked_owner_capability_stops_delivery() -> None:
     )
     assert gate is not None
     assert gate["source"] == "agent_todo_summary.first_executable_items", gate
-    assert gate["action"] == "ask_owner", gate
-    assert gate["decision_owner"] == "user", gate
-    assert gate["owner_missing"] == ["network"], gate
-    assert gate["repair_missing"] == [], gate
+    assert gate["action"] == "repair_bridge", gate
+    assert gate["decision_owner"] == "agent", gate
+    assert gate["owner_missing"] == [], gate
+    assert gate["repair_missing"] == ["network"], gate
     assert gate["resolution_steps"] == [
         {
-            "owner": "user",
-            "action": "provide_or_authorize",
+            "owner": "agent",
+            "action": "repair_bridge",
             "capabilities": ["network"],
         }
     ], gate
     assert gate["blocks_delivery"] is True, gate
     assert gate["missing"] == ["network"], gate
+    assert gate["owner_action"] is None, gate
+
+
+def assert_all_blocked_owner_capability_stops_delivery() -> None:
+    item = todo(
+        "todo_credentials",
+        5,
+        "P0",
+        required_capabilities=["credentials"],
+    )
+    gate = build_capability_gate(
+        {"first_executable_items": [item]},
+        available_capabilities=["shell"],
+        agent_identity={"agent_id": AGENT_ID, "agent_model": "peer_v1"},
+    )
+    assert gate is not None
+    assert gate["action"] == "ask_owner", gate
+    assert gate["decision_owner"] == "user", gate
+    assert gate["owner_missing"] == ["credentials"], gate
+    assert gate["repair_missing"] == [], gate
     assert gate["owner_action"] == (
-        "provide or authorize the missing owner-held capability: network"
+        "provide or authorize the missing owner-held capability: credentials"
     ), gate
 
 
@@ -241,6 +262,7 @@ def main() -> int:
     assert_current_agent_candidate_order_contract()
     assert_gate_prefers_active_next_and_exposes_blocked_fallback()
     assert_target_capability_creates_repair_hint_not_hard_block()
+    assert_all_blocked_runtime_capability_routes_to_agent_repair()
     assert_all_blocked_owner_capability_stops_delivery()
     assert_requirement_free_advancement_does_not_create_gate()
     print("capability-gate-projection-smoke ok")

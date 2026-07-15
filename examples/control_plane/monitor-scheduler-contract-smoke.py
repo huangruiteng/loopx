@@ -549,7 +549,7 @@ def assert_capability_blocked_due_monitor_stays_quiet_with_external_signal() -> 
 
 
 def assert_due_monitor_capability_resolution_is_preserved() -> None:
-    owner_guard = guard_for(
+    network_guard = guard_for(
         [
             monitor_item(
                 index=1,
@@ -561,16 +561,37 @@ def assert_due_monitor_capability_resolution_is_preserved() -> None:
             )
         ]
     )
+    network_gate = network_guard["capability_gate"]
+    assert network_gate["action"] == "repair_bridge", network_guard
+    assert network_gate["owner_missing"] == [], network_gate
+    assert network_gate["repair_missing"] == ["network"], network_gate
+    assert network_guard["heartbeat_recommendation"]["notify"] == "DONT_NOTIFY", network_guard
+    assert network_guard["interaction_contract"]["user_channel"]["action_required"] is False
+    assert network_guard["interaction_contract"]["agent_channel"]["must_attempt"] is True
+    assert network_guard["requires_user_action"] is False, network_guard
+
+    owner_guard = guard_for(
+        [
+            monitor_item(
+                index=1,
+                todo_id="todo_credentials_monitor_due",
+                priority="P0",
+                next_due_at=PAST_DUE_AT,
+                target_key="protected-watch",
+                required_capabilities=["credentials"],
+            )
+        ]
+    )
     owner_gate = owner_guard["capability_gate"]
     assert owner_gate["action"] == "ask_owner", owner_guard
-    assert owner_gate["owner_missing"] == ["network"], owner_gate
+    assert owner_gate["owner_missing"] == ["credentials"], owner_gate
     assert owner_guard["heartbeat_recommendation"]["notify"] == "NOTIFY", owner_guard
     assert owner_guard["interaction_contract"]["user_channel"]["action_required"] is True, owner_guard
     assert owner_guard["interaction_contract"]["agent_channel"]["must_attempt"] is False, owner_guard
     assert owner_guard["requires_user_action"] is True, owner_guard
     owner_markdown = render_quota_should_run_markdown(owner_guard)
     assert "capability_gate: action=ask_owner" in owner_markdown, owner_markdown
-    assert "missing=['network']" in owner_markdown, owner_markdown
+    assert "missing=['credentials']" in owner_markdown, owner_markdown
 
     repair_guard = guard_for(
         [
@@ -623,10 +644,12 @@ def assert_due_monitor_capability_resolution_uses_full_lane() -> None:
         "shown": 2,
         "total": 3,
     }, compaction
-    assert gate["action"] == "ask_owner", gate
-    assert gate["owner_missing"] == ["network"], gate
+    assert gate["action"] == "repair_bridge", gate
+    assert gate["owner_missing"] == [], gate
+    assert gate["repair_missing"] == ["network"], gate
+    assert gate["unsupported_missing"] == ["private_read"], gate
     assert "network" in gate["missing"], gate
-    assert guard["heartbeat_recommendation"]["notify"] == "NOTIFY", guard
+    assert guard["heartbeat_recommendation"]["notify"] == "DONT_NOTIFY", guard
 
 
 def assert_expired_monitor_does_not_catch_up() -> None:

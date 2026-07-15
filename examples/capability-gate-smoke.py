@@ -270,8 +270,29 @@ def main() -> int:
         "[P0] Fetch external public data before drafting the packet.",
         ["shell", "network"],
     )
-    owner_gate = build_quota_should_run(
+    runtime_repair = build_quota_should_run(
         status_payload([network_todo]),
+        goal_id=GOAL_ID,
+        available_capabilities=["shell", "filesystem_write"],
+    )
+    assert runtime_repair["should_run"] is True, runtime_repair
+    assert runtime_repair["normal_delivery_allowed"] is False, runtime_repair
+    assert runtime_repair["capability_repair_allowed"] is True, runtime_repair
+    assert runtime_repair["effective_action"] == "capability_bridge_repair", runtime_repair
+    assert runtime_repair["requires_user_action"] is False, runtime_repair
+    assert runtime_repair["capability_gate"]["action"] == "repair_bridge", runtime_repair
+    assert runtime_repair["capability_gate"]["owner_missing"] == [], runtime_repair
+    assert runtime_repair["capability_gate"]["repair_missing"] == ["network"], runtime_repair
+    assert runtime_repair["interaction_contract"]["user_channel"]["action_required"] is False
+
+    credentials_todo = todo(
+        9,
+        "P0",
+        "[P0] Use owner-provided credentials for the protected integration.",
+        ["shell", "credentials"],
+    )
+    owner_gate = build_quota_should_run(
+        status_payload([credentials_todo]),
         goal_id=GOAL_ID,
         available_capabilities=["shell", "filesystem_write"],
     )
@@ -280,7 +301,7 @@ def main() -> int:
     assert owner_gate["capability_gate"]["action"] == "ask_owner", owner_gate
     assert owner_gate["interaction_contract"]["user_channel"]["action_required"] is True, owner_gate
     assert owner_gate["interaction_contract"]["user_channel"]["actions"] == [
-        "provide or authorize the missing owner-held capability: network"
+        "provide or authorize the missing owner-held capability: credentials"
     ], owner_gate
     assert owner_gate["heartbeat_recommendation"]["notify"] == "NOTIFY", owner_gate
 
@@ -288,7 +309,7 @@ def main() -> int:
         8,
         "P0",
         "[P0] Observe a public external lifecycle and write back the next action.",
-        ["shell", "network", "external_evidence_poll"],
+        ["shell", "credentials", "external_evidence_poll"],
     )
     mixed_owner_gate = build_quota_should_run(
         status_payload([mixed_capability_todo]),
@@ -298,13 +319,13 @@ def main() -> int:
     mixed_gate = mixed_owner_gate["capability_gate"]
     assert mixed_gate["action"] == "ask_owner", mixed_owner_gate
     assert mixed_gate["decision_owner"] == "user", mixed_owner_gate
-    assert mixed_gate["owner_missing"] == ["network"], mixed_owner_gate
+    assert mixed_gate["owner_missing"] == ["credentials"], mixed_owner_gate
     assert mixed_gate["repair_missing"] == ["external_evidence_poll"], mixed_owner_gate
     assert mixed_gate["resolution_steps"] == [
         {
             "owner": "user",
             "action": "provide_or_authorize",
-            "capabilities": ["network"],
+            "capabilities": ["credentials"],
         },
         {
             "owner": "agent",
@@ -313,7 +334,7 @@ def main() -> int:
         },
     ], mixed_owner_gate
     assert mixed_owner_gate["interaction_contract"]["user_channel"]["action_required"] is True
-    assert "network" in mixed_gate["owner_action"], mixed_owner_gate
+    assert "credentials" in mixed_gate["owner_action"], mixed_owner_gate
 
     mixed_ready = build_quota_should_run(
         status_payload([mixed_capability_todo]),
@@ -321,7 +342,7 @@ def main() -> int:
         available_capabilities=[
             "shell",
             "filesystem_write",
-            "network",
+            "credentials",
             "external_evidence_poll",
         ],
     )

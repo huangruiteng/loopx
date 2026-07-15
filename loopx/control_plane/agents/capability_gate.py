@@ -27,12 +27,12 @@ DEFAULT_AVAILABLE_CAPABILITIES = (
 )
 CAPABILITY_REPAIR_BRIDGE_HINTS = {
     "benchmark_runner",
+    "network",
     "external_evidence_poll",
     "worker_bridge",
     "cli_bridge",
 }
 CAPABILITY_OWNER_GATE_HINTS = {
-    "network",
     "credentials",
     "production_access",
 }
