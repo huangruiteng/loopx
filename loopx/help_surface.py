@@ -154,6 +154,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
                 "purpose": "Record the exploration topology (nodes, edges, findings) and project it to a Feishu/Lark result board.",
             },
             {"command": "loopx issue-fix", "purpose": "Build public-safe issue or PR fix workflow packets."},
+            {
+                "command": "loopx review-batch",
+                "purpose": "Compose provider-neutral bounded review packets and bind exact decisions.",
+            },
             {"command": "loopx auto-research", "purpose": "Project public-safe research frontiers."},
             {"command": "loopx multi-agent", "purpose": "Launch visible role-scoped Codex TUI agents."},
             {"command": "loopx canary", "purpose": "Plan or run catalog-informed smoke profiles."},

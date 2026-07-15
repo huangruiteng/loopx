@@ -18,6 +18,10 @@ from .capabilities.reward_memory.cli import (
     handle_reward_memory_command,
     register_reward_memory_commands,
 )
+from .capabilities.review_batch.cli import (
+    handle_review_batch_command,
+    register_review_batch_commands,
+)
 from .capabilities.semantic_preference.cli import (
     handle_semantic_preference_command,
     register_semantic_preference_commands,
@@ -184,6 +188,8 @@ def main(argv: list[str] | None = None) -> int:
     register_issue_fix_commands(sub, add_subcommand_format)
 
     register_reward_memory_commands(sub, add_subcommand_format)
+
+    register_review_batch_commands(sub, add_subcommand_format)
 
     register_semantic_preference_commands(sub, add_subcommand_format)
 
@@ -384,6 +390,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     if reward_memory_result is not None:
         return reward_memory_result
+
+    review_batch_result = handle_review_batch_command(
+        args,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if review_batch_result is not None:
+        return review_batch_result
 
     semantic_preference_result = handle_semantic_preference_command(
         args,
