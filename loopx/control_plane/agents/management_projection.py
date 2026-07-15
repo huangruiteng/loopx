@@ -245,7 +245,11 @@ def _iter_status_todos(status_payload: dict[str, Any]) -> Iterable[dict[str, Any
 
     todo_index = _as_dict(status_payload.get("todo_index"))
     for todo in _as_list(todo_index.get("items")):
-        if isinstance(todo, dict) and str(todo.get("role") or "") == "agent":
+        if (
+            isinstance(todo, dict)
+            and str(todo.get("role") or "") == "agent"
+            and str(todo.get("source") or "") != "rollout_event_log"
+        ):
             row = dict(todo)
             row.setdefault("source", "todo_index")
             yield row
@@ -541,7 +545,10 @@ def build_agent_management_projection(status_payload: dict[str, Any]) -> dict[st
         "source_summary": {
             "registered_agent_count": len(rows_by_agent),
             "projected_agent_count": len(agents),
-            "todo_source": "status.attention_queue + status.todo_index",
+            "todo_source": (
+                "status.attention_queue + authoritative status.todo_index rows; "
+                "event-only rollout receipts are evidence, not runtime work"
+            ),
         },
         "agents": agents,
     }
