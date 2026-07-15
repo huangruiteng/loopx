@@ -4947,6 +4947,23 @@ def _apply_codex_cli_goal_countability_guard_attribution(
         )
     )
     if not (missing_task_activity or goal_failed):
+        compact["codex_cli_goal_countability_contract"] = {
+            "schema_version": "skillsbench_codex_cli_goal_countability_contract_v0",
+            "required": True,
+            "countable_baseline": True,
+            "countability_source": (
+                "official_score_completed_with_task_facing_activity"
+            ),
+            "failure_category": "",
+            "first_blocker": "",
+            "trace_present": trace_present,
+            "ok_count": ok_count,
+            "goal_stage": goal_stage,
+            "request_count": request_count,
+            "task_facing_activity_count": task_facing_count,
+            "operation_trace_status": operation_trace_status,
+            "raw_material_recorded": False,
+        }
         return False
 
     label = "skillsbench_codex_cli_goal_uncountable_no_task_activity"
@@ -5010,6 +5027,7 @@ def _apply_codex_cli_goal_countability_guard_attribution(
         "schema_version": "skillsbench_codex_cli_goal_countability_contract_v0",
         "required": True,
         "countable_baseline": False,
+        "countability_source": "codex_cli_goal_countability_guard",
         "failure_category": label,
         "first_blocker": label,
         "trace_present": trace_present,

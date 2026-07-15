@@ -1274,7 +1274,14 @@ def _assert_cli_goal_active_timeout_is_public_countability_stage() -> None:
         "failure_attribution_labels": [],
     }
     assert _apply_codex_cli_goal_countability_guard_attribution(compact) is False
-    assert "codex_cli_goal_countability_contract" not in compact
+    contract = compact["codex_cli_goal_countability_contract"]
+    assert contract["countable_baseline"] is True, contract
+    assert contract["countability_source"] == (
+        "official_score_completed_with_task_facing_activity"
+    ), contract
+    assert contract["request_count"] == 4, contract
+    assert contract["task_facing_activity_count"] == 3, contract
+    assert contract["raw_material_recorded"] is False, contract
 
     post_bridge_timeout_trace = dict(completed_attempt_trace)
     post_bridge_timeout_trace.update(
@@ -1468,7 +1475,12 @@ def _assert_cli_goal_active_timeout_is_public_countability_stage() -> None:
         "failure_attribution_labels": ["official_score_zero_case_failure"],
     }
     assert _apply_codex_cli_goal_countability_guard_attribution(compact) is False
-    assert "codex_cli_goal_countability_contract" not in compact
+    contract = compact["codex_cli_goal_countability_contract"]
+    assert contract["countable_baseline"] is True, contract
+    assert contract["countability_source"] == (
+        "official_score_completed_with_task_facing_activity"
+    ), contract
+    assert contract["raw_material_recorded"] is False, contract
 
 
 def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> None:
