@@ -489,6 +489,23 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     commands = [check["command"] for check in cli_profile["checks"]]
     assert "python3 examples/cli-version-command-modularization-smoke.py" in commands, cli_profile
 
+    output_budget_payload = build_catalog_canary_plan(
+        changed_files=["loopx/cli_commands/status.py", "loopx/help_surface.py"],
+        surfaces=["agent-facing CLI output qualification"],
+    )
+    output_budget_profiles = {
+        profile["id"]: profile
+        for profile in output_budget_payload["domain_profiles"]
+    }
+    assert "agent-facing-cli-output-budget" in output_budget_profiles, output_budget_payload
+    output_budget_checks = [
+        check["command"]
+        for check in output_budget_profiles["agent-facing-cli-output-budget"]["checks"]
+    ]
+    assert output_budget_checks == [
+        "python3 examples/control_plane/cli-output-budget-regression-smoke.py"
+    ], output_budget_profiles["agent-facing-cli-output-budget"]
+
     todo_payload = build_catalog_canary_plan(
         changed_files=["loopx/todos.py", "loopx/control_plane/todos/contract.py"],
         surfaces=["todo lifecycle todo claim todo list"],

@@ -121,6 +121,17 @@ def assert_changed_python_gets_compile_check() -> None:
     assert "loopx/canary/premerge.py" in compile_check["display_argv"], payload
 
 
+def assert_agent_facing_cli_change_selects_output_qualification() -> None:
+    payload = build_premerge_validation_gate(
+        changed_files=["loopx/cli_commands/status.py"],
+        execute=False,
+    )
+    catalog_commands = commands_from(payload["catalog_run"])
+    expected = "python3 examples/control_plane/cli-output-budget-regression-smoke.py"
+    assert expected in catalog_commands, payload
+    assert expected in payload["validation_summary"]["selected_commands"], payload
+
+
 def assert_benchmark_sensitive_change_blocks_self_merge() -> None:
     payload = build_premerge_validation_gate(
         changed_files=["loopx/benchmark_adapters/skillsbench.py"],
@@ -353,6 +364,7 @@ def main() -> None:
     assert_quick_public_docs_change_skips_risk_profile_smokes()
     assert_public_boundary_scan_executes_in_process()
     assert_changed_python_gets_compile_check()
+    assert_agent_facing_cli_change_selects_output_qualification()
     assert_benchmark_sensitive_change_blocks_self_merge()
     assert_lark_kanban_change_keeps_surface_without_reviewer_hold()
     assert_cli_json_preview()

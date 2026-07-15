@@ -4,6 +4,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .qualification_profiles import CONTROL_PLANE_QUALIFICATION_PROFILES
+
 
 CANARY_PROFILE_SCHEMA_VERSION = "catalog_canary_profile_v0"
 CANARY_DOMAIN_PROFILE_SCHEMA_VERSION = "catalog_canary_domain_profile_v0"
@@ -408,82 +410,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             },
         ],
     },
-    {
-        "id": "control-plane-state-machine",
-        "title": "Control-plane state-machine composition",
-        "purpose": (
-            "Run a bounded cross-state-machine canary when interaction, work-lane, "
-            "scheduler, frontier, writeback, or quota-spend transitions change together."
-        ),
-        "catalog_families": ["Work Routing", "State And Boundary", "Planning Governance"],
-        "trigger_hints": (
-            "state-machine",
-            "state machine",
-            "interaction_contract",
-            "work_lane_contract",
-            "scheduler_hint",
-            "goal_frontier",
-            "automation_liveness",
-            "spend-slot",
-            "scheduler-ack",
-            "monitor_target",
-            "monitor_poll_writeback",
-            "interaction_contract.py",
-            "loopx/control_plane/scheduler/monitor_poll_writeback.py",
-            "loopx/control_plane/scheduler/monitor_target.py",
-            "loopx/control_plane/work_items/interaction_contract.py",
-            "loopx/control_plane/work_items/execution_obligation.py",
-            "loopx/control_plane/work_items/goal_route_hint.py",
-            "loopx/control_plane/work_items/outcome_followthrough.py",
-            "loopx/control_plane/work_items/work_lane.py",
-            "loopx/control_plane/runtime/event_store_migration_bridge.py",
-            "control-plane-integrated-canary-smoke.py",
-            "interaction-contract-state-machine-smoke.py",
-            "docs/product/core-control-plane/state-machine.md",
-        ),
-        "checks": [
-            {
-                "command": "python3 examples/control_plane/control-plane-integrated-canary-smoke.py",
-                "tier": "deep",
-                "reason": (
-                    "samples the full event-sourced todo projection, status, quota interaction contract, "
-                    "work-lane contract, scheduler ack, refresh-state, spend-slot, and review-packet handoff path; "
-                    "kept deep because it is a slow end-to-end fixture"
-                ),
-            },
-            {
-                "command": "python3 examples/control_plane/peer-agent-continuation-state-machine-smoke.py",
-                "tier": "default",
-                "reason": (
-                    "guards peer self-merge continuation through successor todo selection, "
-                    "agent-lane refresh, scheduler ack, quota spend, and preserved goal next action"
-                ),
-            },
-            {
-                "command": "python3 examples/control_plane/interaction-contract-state-machine-smoke.py",
-                "tier": "default",
-                "reason": (
-                    "guards interaction/protocol state-machine modes across active work, user notice, "
-                    "monitor quiet, autonomous replan, agent-scope wait, and successor replan"
-                ),
-            },
-            {
-                "command": "python3 examples/control_plane/heartbeat-quota-flow-smoke.py",
-                "tier": "default",
-                "reason": "guards the heartbeat writeback then spend lifecycle that the composition canary executes",
-            },
-            {
-                "command": "python3 examples/control_plane/quota-scheduler-state-ack-smoke.py",
-                "tier": "default",
-                "reason": "guards scheduler_hint stateful ack progression and no-spend cadence transitions",
-            },
-            {
-                "command": "python3 examples/control_plane/work-lane-contract-smoke.py",
-                "tier": "deep",
-                "reason": "covers additional work-lane policy branches outside the integrated active-work path",
-            },
-        ],
-    },
+    *CONTROL_PLANE_QUALIFICATION_PROFILES,
     {
         "id": "status-read-path",
         "title": "Status read-path contract",
