@@ -39,6 +39,7 @@ from loopx.capabilities.explore.worker_branch_plan import (  # noqa: E402
     build_explore_worker_branch_plan,
 )
 from loopx.presentation.sinks.lark import explore_results  # noqa: E402
+from loopx.presentation.sinks.lark import explore_visual_readback  # noqa: E402
 from loopx.presentation.sinks.lark import explore_visual_styles  # noqa: E402
 
 # Both exploration planners are deny-by-default behind the per-goal
@@ -459,17 +460,14 @@ def check_visual_marker_readback_retry_contract() -> None:
             "timed_out": False,
         }
 
-    original_delays = explore_results._VISUAL_READBACK_RETRY_DELAYS_SECONDS
-    explore_results._VISUAL_READBACK_RETRY_DELAYS_SECONDS = (0.0,)
-    try:
-        settled = explore_results._readback_visual_delivery_marker(
-            config,
-            whiteboard_token="wb_public_fixture",
-            marker=marker,
-            runner=settling_runner,
-        )
-    finally:
-        explore_results._VISUAL_READBACK_RETRY_DELAYS_SECONDS = original_delays
+    settled = explore_visual_readback.readback_visual_delivery_marker(
+        cli_bin=config.cli_bin,
+        identity=config.identity,
+        whiteboard_token="wb_public_fixture",
+        marker=marker,
+        runner=settling_runner,
+        retry_delays=(0.0,),
+    )
     assert settled["ok"] is True and settled["verified"] is True, settled
     assert settled["attempt_count"] == 2, settled
     assert settled["attempts"][0] == {
@@ -480,6 +478,71 @@ def check_visual_marker_readback_retry_contract() -> None:
         "retryable": True,
     }, settled
     assert settled["retryable"] is False, settled
+
+    stage_markers = {
+        "wb_stage_1": "LoopX delivery stage-1",
+        "wb_stage_2": "LoopX delivery stage-2",
+    }
+    stage_calls = {token: 0 for token in stage_markers}
+
+    def batch_settling_runner(
+        args: list[str], cwd: Path | None, timeout: float | None
+    ) -> dict[str, object]:
+        token = args[args.index("--whiteboard-token") + 1]
+        stage_calls[token] += 1
+        marker = stage_markers[token] if stage_calls[token] > 1 else "old marker"
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(
+                {"ok": True, "data": {"nodes": [{"text": {"text": marker}}]}}
+            ),
+            "stderr": "",
+            "timed_out": False,
+        }
+
+    stage_results = []
+    stage_targets = []
+    for token, marker in stage_markers.items():
+        result = {
+            "ok": False,
+            "status": "publish_unverified",
+            "published": False,
+            "command": {"ok": True},
+            "readback": {
+                "ok": False,
+                "performed": False,
+                "verified": False,
+                "source": "deferred_to_batch",
+                "expected_marker": marker,
+                "observed_marker": None,
+                "retryable": True,
+                "attempts": [],
+            },
+            "retryable": True,
+        }
+        stage_results.append(result)
+        stage_targets.append((result, token))
+
+    sleeps: list[float] = []
+    original_sleep = explore_visual_readback.time.sleep
+    explore_visual_readback.time.sleep = sleeps.append
+    try:
+        explore_visual_readback.settle_visual_stage_readbacks(
+            cli_bin=config.cli_bin,
+            identity=config.identity,
+            stage_targets=stage_targets,
+            runner=batch_settling_runner,
+            retry_delays=(0.0,),
+        )
+    finally:
+        explore_visual_readback.time.sleep = original_sleep
+    assert sleeps == [0.0], sleeps
+    assert stage_calls == {"wb_stage_1": 2, "wb_stage_2": 2}, stage_calls
+    assert all(result["ok"] is True for result in stage_results), stage_results
+    assert all(result["published"] is True for result in stage_results), stage_results
+    assert all(
+        result["readback"]["attempt_count"] == 2 for result in stage_results
+    ), stage_results
 
     summary = explore_visual_styles.summarize_explore_visual_sync(
         views={"canonical": {"ok": False, "retryable": True}},

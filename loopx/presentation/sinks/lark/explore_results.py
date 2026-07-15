@@ -67,9 +67,9 @@ from .explore_visual_styles import (
     summarize_explore_visual_sync,
 )
 from .explore_visual_readback import (
-    is_retryable_marker_readback_error,
+    readback_visual_delivery_marker,
+    settle_visual_stage_readbacks,
     structured_command_error,
-    whiteboard_raw_texts,
 )
 from .message_card import build_lark_markdown_reply_card
 
@@ -85,8 +85,6 @@ DEFAULT_EXPLORE_BASE_NAME = "LoopX Exploration Results"
 SINK_VISIBILITY_OWNER_ONLY = "owner-only"
 SINK_VISIBILITY_SHARED = "shared"
 SINK_VISIBILITIES = {SINK_VISIBILITY_OWNER_ONLY, SINK_VISIBILITY_SHARED}
-
-_VISUAL_READBACK_RETRY_DELAYS_SECONDS = (0.25, 0.5, 1.0, 2.0, 4.0)
 
 TABLE_NODES = "nodes"
 TABLE_EDGES = "edges"
@@ -563,93 +561,6 @@ def configure_lark_explore_visual_sink(
     }
 
 
-def _readback_visual_delivery_marker(
-    config: LarkExploreConfig,
-    *,
-    whiteboard_token: str,
-    marker: str,
-    runner: CommandRunner,
-) -> dict[str, Any]:
-    command = [
-        config.cli_bin,
-        "whiteboard",
-        "+query",
-        "--as",
-        config.identity,
-        "--whiteboard-token",
-        whiteboard_token,
-        "--output_as",
-        "raw",
-        "--format",
-        "json",
-    ]
-    attempts: list[dict[str, Any]] = []
-    result: dict[str, Any] = {}
-    texts: list[str] = []
-    marker_observed = False
-    for attempt_index in range(len(_VISUAL_READBACK_RETRY_DELAYS_SECONDS) + 1):
-        result = _run_command(command, execute=True, runner=runner)
-        texts = whiteboard_raw_texts(result.get("json"))
-        marker_observed = marker in texts
-        error = structured_command_error(result)
-        error_code = error.get("code")
-        error_message = str(error.get("message") or "")
-        is_query_settling = is_retryable_marker_readback_error(
-            error_code=error_code,
-            error_message=error_message,
-        )
-        is_marker_pending = bool(result.get("ok")) and not marker_observed
-        is_retryable = is_query_settling or is_marker_pending
-        attempts.append(
-            {
-                "attempt": attempt_index + 1,
-                "ok": bool(result.get("ok")),
-                "marker_observed": marker_observed,
-                "error_code": error_code,
-                "retryable": is_retryable,
-            }
-        )
-        if marker_observed or not is_retryable:
-            break
-        if attempt_index < len(_VISUAL_READBACK_RETRY_DELAYS_SECONDS):
-            time.sleep(_VISUAL_READBACK_RETRY_DELAYS_SECONDS[attempt_index])
-    command_receipt = {
-        key: result.get(key)
-        for key in (
-            "command",
-            "executed",
-            "ok",
-            "returncode",
-            "timed_out",
-            "stderr",
-        )
-        if result.get(key) not in (None, "")
-    }
-    return {
-        "ok": bool(result.get("ok") and marker_observed),
-        "schema_version": "loopx_lark_explore_visual_readback_v0",
-        "performed": True,
-        "verified": marker_observed,
-        "source": "whiteboard_raw_nodes",
-        "expected_marker": marker,
-        "observed_marker": marker if marker_observed else None,
-        "remote_text_node_count": len(texts),
-        "attempt_count": len(attempts),
-        "attempts": attempts,
-        "retryable": bool(
-            not marker_observed and attempts and attempts[-1].get("retryable")
-        ),
-        "command": command_receipt,
-        "error": (
-            None
-            if result.get("ok") and marker_observed
-            else _command_error(result)
-            if not result.get("ok")
-            else "remote whiteboard raw nodes do not contain the expected delivery marker"
-        ),
-    }
-
-
 def sync_explore_visual_to_lark(
     config: LarkExploreConfig,
     *,
@@ -661,6 +572,7 @@ def sync_explore_visual_to_lark(
     view_key: str | None = None,
     execute: bool = False,
     runner: CommandRunner = default_subprocess_runner,
+    defer_readback: bool = False,
 ) -> dict[str, Any]:
     """Publish a configured whiteboard without conflating it with Base rows."""
 
@@ -814,23 +726,30 @@ def sync_explore_visual_to_lark(
                 publish_attempts.append(result)
         finally:
             source_path.unlink(missing_ok=True)
+    readback_deferred = bool(
+        execute and result.get("ok") and delivery_marker and defer_readback
+    )
     readback: dict[str, Any] = {
-        "ok": True,
+        "ok": not readback_deferred,
         "schema_version": "loopx_lark_explore_visual_readback_v0",
         "performed": False,
         "verified": False,
         "source": (
             "not_required"
             if not delivery_marker
+            else "deferred_to_batch"
+            if readback_deferred
             else "would_query_whiteboard_raw_nodes"
         ),
         "expected_marker": delivery_marker,
         "observed_marker": None,
+        "retryable": readback_deferred,
         "error": None,
     }
-    if execute and result.get("ok") and delivery_marker:
-        readback = _readback_visual_delivery_marker(
-            config,
+    if execute and result.get("ok") and delivery_marker and not defer_readback:
+        readback = readback_visual_delivery_marker(
+            cli_bin=config.cli_bin,
+            identity=config.identity,
             whiteboard_token=whiteboard_token,
             marker=delivery_marker,
             runner=runner,
@@ -977,6 +896,7 @@ def sync_explore_visuals_to_lark(
             }
             continue
         stage_results = []
+        stage_readback_targets: list[tuple[dict[str, Any], str]] = []
         role_nodes = {
             str(node.get("node_id") or ""): node
             for node in role_view.get("nodes") or []
@@ -1017,8 +937,25 @@ def sync_explore_visuals_to_lark(
                 view_key=f"{role}_stage_{stage_index:02d}",
                 execute=execute,
                 runner=runner,
+                defer_readback=execute,
             )
-            stage_results.append(dict(stage_result, stage=dict(stage)))
+            stage_result = dict(stage_result, stage=dict(stage))
+            stage_results.append(stage_result)
+            if (
+                execute
+                and stage_result.get("retryable")
+                and str(stage_sink.get("whiteboard_token") or "").strip()
+            ):
+                stage_readback_targets.append(
+                    (stage_result, str(stage_sink["whiteboard_token"]))
+                )
+        if stage_readback_targets:
+            settle_visual_stage_readbacks(
+                cli_bin=config.cli_bin,
+                identity=config.identity,
+                stage_targets=stage_readback_targets,
+                runner=runner,
+            )
         role_ok = all(bool(item.get("ok")) for item in stage_results)
         role_retryable = any(bool(item.get("retryable")) for item in stage_results)
         role_delivery_material = "|".join(
