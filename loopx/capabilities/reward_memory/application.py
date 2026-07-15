@@ -13,6 +13,7 @@ from ..context_providers import build_context_provider
 from ..context_providers.base import (
     ContextProvider,
     ContextProviderItem,
+    canonical_context_text,
     opaque_provider_ref,
 )
 from .candidate_review import REWARD_MEMORY_REVIEW_SCHEMA_VERSION
@@ -56,6 +57,7 @@ class RewardMemoryRecallItem:
     candidate_ref: str
     target_class: str
     content_summary: str
+    content_digest: str = ""
 
 
 @dataclass(frozen=True)
@@ -366,9 +368,11 @@ def build_reward_memory_recall_request(
     }
 
 
-def _provider_binding(
+def normalize_reward_memory_provider_binding(
     raw: Mapping[str, Any], corpus: Mapping[str, Any]
 ) -> dict[str, Any]:
+    """Validate one exact corpus/provider binding for recall or writeback."""
+
     setup = raw.get("setup_hints") or {}
     if not isinstance(setup, Mapping):
         raise ValueError("provider_binding.setup_hints must be an object")
@@ -452,6 +456,9 @@ def _active_item(
         content_summary=_compact(
             envelope.get("content_summary"), "content_summary", limit=500
         ),
+        content_digest=hashlib.sha256(
+            canonical_context_text(item.content).encode("utf-8")
+        ).hexdigest(),
     )
 
 
@@ -473,7 +480,7 @@ def execute_reward_memory_recall(
     guard = recall_request.get("guard")
     if not all(isinstance(value, Mapping) for value in (corpus, request, guard)):
         raise ValueError("recall_request is incomplete")
-    binding = _provider_binding(provider_binding, corpus)
+    binding = normalize_reward_memory_provider_binding(provider_binding, corpus)
     base_packet: dict[str, Any] = {
         "ok": True,
         "schema_version": REWARD_MEMORY_RECALL_SCHEMA_VERSION,

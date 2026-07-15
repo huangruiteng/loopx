@@ -12,6 +12,7 @@ from .application import (
     build_active_reward_memory_record,
     build_reward_memory_recall_request,
     execute_reward_memory_recall,
+    normalize_reward_memory_provider_binding,
 )
 from .candidate_review import (
     build_issue_fix_reward_memory_candidate,
@@ -22,6 +23,10 @@ from .candidate_review import (
 from .health import (
     build_reward_memory_corpus_health_packet,
     reward_memory_health_case,
+)
+from .ingestion import (
+    ingest_reward_memory_candidate,
+    normalize_reward_memory_standing_policy,
 )
 from .evaluation import run_reward_memory_evaluation
 from .dogfood import (
@@ -51,6 +56,9 @@ __all__ = [
     "build_reward_memory_route_packet",
     "build_reward_memory_recall_request",
     "execute_reward_memory_recall",
+    "ingest_reward_memory_candidate",
+    "normalize_reward_memory_provider_binding",
+    "normalize_reward_memory_standing_policy",
     "normalize_reward_memory_corpus",
     "issue_fix_verified_contributor_candidate_fixture",
     "pr_3237_regression_observation",

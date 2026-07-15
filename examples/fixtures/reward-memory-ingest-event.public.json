@@ -1,0 +1,111 @@
+{
+  "adapter": "issue_fix_maintainer_feedback",
+  "observed_at": "2026-07-16T00:30:00+00:00",
+  "event": {
+    "schema_version": "issue_fix_reward_memory_event_v0",
+    "issue_ref": "github:example/repository#42",
+    "workspace_ref": "workspace:example",
+    "repository_ref": "repository:example",
+    "surface_id": "issue_fix.patch_planning",
+    "revision_ref": "revision:abc123",
+    "target_class": "hard_policy",
+    "content_summary": "Keep memory-core changes focused and validate material effects before PR.",
+    "source": {
+      "source_kind": "maintainer_correction",
+      "source_ref": "github:example/repository#42:comment:1",
+      "actor_ref": "github:user:maintainer",
+      "actor_role": "verified_repository_core_contributor"
+    },
+    "reasoning": {
+      "summary": "The verified correction is reusable at patch planning.",
+      "confidence": "high"
+    },
+    "guard_context": {
+      "source_freshness": "current",
+      "conflict_state": "clear",
+      "current_artifact_verified": true
+    },
+    "requested_action_scopes": [
+      "issue_fix:scope_selection"
+    ],
+    "raw_content_captured": false
+  },
+  "corpus": {
+    "corpus_id": "openviking_patch_policy",
+    "class_id": "hard_policy",
+    "provider_id": "openviking",
+    "owner_ref": "openviking_reward_memory_owner",
+    "source_of_truth": "reviewed_maintainer_feedback",
+    "read_authority": "module_scoped",
+    "write_authority": "provider_managed",
+    "scope": {
+      "workspace_ref": "workspace:example",
+      "project_ref": "repository:example",
+      "surface_ids": [
+        "issue_fix.patch_planning"
+      ]
+    },
+    "freshness": {
+      "mode": "revision_bound",
+      "source_revision": "revision:abc123"
+    },
+    "lifecycle": {
+      "state": "active",
+      "supersedes": []
+    },
+    "retrieval": {
+      "index_required": true,
+      "readback_required": true,
+      "application_receipt_required": true
+    },
+    "maintenance": {
+      "writeback_triggers": [
+        "reviewed_maintainer_feedback"
+      ],
+      "closure_policy": "write_exact_readback_then_recall",
+      "retirement_authority": "openviking_reward_memory_owner"
+    },
+    "privacy": {
+      "visibility": "private",
+      "raw_content_in_registry": false
+    },
+    "provider_scope_ref_digest": "0f998976780e6786"
+  },
+  "standing_policy": {
+    "schema_version": "reward_memory_standing_policy_v0",
+    "policy_id": "policy:openviking:issue-fix-maintainer-feedback",
+    "enabled": true,
+    "auto_activate": true,
+    "owner_ref": "openviking_reward_memory_owner",
+    "reviewer_ref": "agent:codex-openviking-meta",
+    "authority_source_ref": "policy:openviking:issue-fix",
+    "scope": {
+      "workspace_ref": "workspace:example",
+      "project_ref": "repository:example",
+      "surface_ids": [
+        "issue_fix.patch_planning"
+      ]
+    },
+    "allowed_target_classes": [
+      "hard_policy"
+    ],
+    "allowed_source_kinds": [
+      "maintainer_correction"
+    ],
+    "allowed_actor_roles": [
+      "verified_repository_core_contributor"
+    ],
+    "allowed_action_scopes": [
+      "issue_fix:scope_selection"
+    ],
+    "raw_content_captured": false
+  },
+  "provider_binding": {
+    "corpus_id": "openviking_patch_policy",
+    "provider_id": "openviking",
+    "namespace": "reward_memory",
+    "scope_ref": "viking://resources/reward-memory/openviking-issue-fix",
+    "timeout_seconds": 30,
+    "minimum_provider_version": "0.4.9"
+  }
+}
