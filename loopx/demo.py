@@ -62,7 +62,7 @@ def run_demo(
         parent_goal_id=None,
         state_file=None,
         goal_doc=Path("GOAL.md"),
-        adapter_kind="generic_project_goal_v0",
+        adapter_kind="demo_local_queue_v0",
         adapter_status="connected",
         next_probe=None,
         spawn_allowed=False,

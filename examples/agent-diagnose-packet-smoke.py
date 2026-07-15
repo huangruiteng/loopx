@@ -135,6 +135,8 @@ def bootstrap_project(project: Path, runtime: Path, goal_id: str, *, onboarding:
         "Exercise LoopX diagnosis packets.",
         "--goal-doc",
         "README.md",
+        "--adapter-kind",
+        "diagnose_fixture_v0",
         "--no-global-sync",
     ]
     if not onboarding:

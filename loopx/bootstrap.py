@@ -25,6 +25,9 @@ from .todos import add_todo_to_lines
 
 DEFAULT_OBJECTIVE = "Improve this project through bounded, verified goal segments."
 DEFAULT_DOMAIN = "project-goal-control-plane"
+GENERIC_ONBOARDING_ADAPTER_KINDS = frozenset(
+    {"generic_project_goal_v0", "read_only_project_map_v0"}
+)
 NO_CLONE_INSTALL_URL = "https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh"
 NO_CLONE_INSTALL_REPAIR_COMMAND = (
     f"curl -fsSL {NO_CLONE_INSTALL_URL} | bash\n"
@@ -257,7 +260,9 @@ def onboarding_agent_review_todo_text(
     return text
 
 
-def onboarding_connection_validation_action() -> dict[str, str]:
+def onboarding_connection_validation_action(adapter_kind: str) -> dict[str, str] | None:
+    if adapter_kind not in GENERIC_ONBOARDING_ADAPTER_KINDS:
+        return None
     return {
         "text": (
             "[P1] Run `loopx check` against the project registry and record the first "
@@ -270,13 +275,17 @@ def onboarding_connection_validation_action() -> dict[str, str]:
 
 def onboarding_next_action(
     *,
+    adapter_kind: str,
     onboarding_scan: dict[str, Any] | None,
     accept_onboarding_agent_todos: bool,
     begin_autonomous_advance: bool,
     codex_app_heartbeat: str,
 ) -> str:
     if not onboarding_scan:
-        return onboarding_connection_validation_action()["text"]
+        validation_action = onboarding_connection_validation_action(adapter_kind)
+        if validation_action:
+            return validation_action["text"]
+        return "Initial routing is owned by the connected domain adapter."
     need_heartbeat_choice = codex_app_heartbeat == "ask"
     if not accept_onboarding_agent_todos or not begin_autonomous_advance or need_heartbeat_choice:
         asks: list[str] = []
@@ -319,6 +328,7 @@ def onboarding_next_action(
 def apply_onboarding_todos_to_state(
     text: str,
     *,
+    adapter_kind: str,
     updated_at: str,
     onboarding_scan: dict[str, Any] | None,
     accept_onboarding_agent_todos: bool,
@@ -327,15 +337,16 @@ def apply_onboarding_todos_to_state(
 ) -> str:
     if not onboarding_scan:
         lines = text.splitlines()
-        action = onboarding_connection_validation_action()
-        add_todo_to_lines(
-            lines,
-            role="agent",
-            text=action["text"],
-            task_class=action["task_class"],
-            action_kind=action["action_kind"],
-            updated_at=updated_at,
-        )
+        action = onboarding_connection_validation_action(adapter_kind)
+        if action:
+            add_todo_to_lines(
+                lines,
+                role="agent",
+                text=action["text"],
+                task_class=action["task_class"],
+                action_kind=action["action_kind"],
+                updated_at=updated_at,
+            )
         return "\n".join(lines) + "\n"
     lines = text.splitlines()
     if accept_onboarding_agent_todos:
@@ -390,6 +401,7 @@ def render_state_markdown(
     *,
     project: Path,
     goal_id: str,
+    adapter_kind: str,
     objective: str,
     updated_at: str,
     goal_doc: Path | None,
@@ -409,6 +421,7 @@ def render_state_markdown(
     )
     onboarding_block = f"\n{onboarding_markdown}\n" if onboarding_markdown else ""
     next_action = onboarding_next_action(
+        adapter_kind=adapter_kind,
         onboarding_scan=onboarding_scan,
         accept_onboarding_agent_todos=accept_onboarding_agent_todos,
         begin_autonomous_advance=begin_autonomous_advance,
@@ -467,6 +480,7 @@ adapter_id: {goal_id}
 """
     return apply_onboarding_todos_to_state(
         state_text,
+        adapter_kind=adapter_kind,
         updated_at=updated_at,
         onboarding_scan=onboarding_scan,
         accept_onboarding_agent_todos=accept_onboarding_agent_todos,
@@ -820,6 +834,7 @@ def bootstrap_project(
                 render_state_markdown(
                     project=project,
                     goal_id=goal_id,
+                    adapter_kind=adapter_kind,
                     objective=objective,
                     updated_at=updated_at,
                     goal_doc=goal_doc,
