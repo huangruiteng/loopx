@@ -318,10 +318,30 @@ def _scheduler(payload: Mapping[str, Any]) -> dict[str, Any]:
             )
             if state.get(field) is not None
         }
+        failure = _mapping(state.get("host_update_failure"))
+        if failure:
+            app["stateful_backoff"]["host_update_failure"] = {
+                field: failure[field]
+                for field in (
+                    "target_rrule",
+                    "observed_host_rrule",
+                    "failure_kind",
+                    "failure_count",
+                )
+                if failure.get(field) is not None
+            }
     ack = _mapping(codex_app.get("ack_hint"))
     cli_args = _text_list(ack.get("cli_args"), limit=20, item_limit=180)
     if cli_args:
         app["ack_cli_args"] = cli_args
+    failure_hint = _mapping(codex_app.get("failure_hint"))
+    failure_cli_args = _text_list(
+        failure_hint.get("cli_args"),
+        limit=20,
+        item_limit=180,
+    )
+    if failure_cli_args:
+        app["failure_cli_args"] = failure_cli_args
     if app:
         scheduler["codex_app"] = app
     return scheduler

@@ -8,6 +8,7 @@ from typing import Any
 
 
 SCHEDULER_STATE_SCHEMA_VERSION = "loopx_scheduler_state_v0"
+SCHEDULER_HOST_UPDATE_FAILURE_SCHEMA_VERSION = "scheduler_host_update_failure_v0"
 CODEX_APP_STATEFUL_BACKOFF_STATE_KEY = "scheduler_hint.codex_app.stateful_backoff"
 CODEX_APP_SURFACE = "codex_app"
 
@@ -36,6 +37,33 @@ def _positive_int_list(value: Any) -> list[int] | None:
     return result or None
 
 
+def normalize_scheduler_host_update_failure(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    if str(value.get("schema_version") or "") != SCHEDULER_HOST_UPDATE_FAILURE_SCHEMA_VERSION:
+        return None
+    target_rrule = " ".join(str(value.get("target_rrule") or "").strip().split())
+    observed_host_rrule = " ".join(
+        str(value.get("observed_host_rrule") or "").strip().split()
+    )
+    failure_kind = str(value.get("failure_kind") or "").strip()
+    failed_at = str(value.get("failed_at") or "").strip()
+    try:
+        failure_count = int(value.get("failure_count"))
+    except (TypeError, ValueError):
+        return None
+    if not target_rrule or not failure_kind or not failed_at or failure_count < 1:
+        return None
+    return {
+        "schema_version": SCHEDULER_HOST_UPDATE_FAILURE_SCHEMA_VERSION,
+        "target_rrule": target_rrule,
+        "observed_host_rrule": observed_host_rrule,
+        "failure_kind": failure_kind,
+        "failure_count": failure_count,
+        "failed_at": failed_at,
+    }
+
+
 def normalize_scheduler_state(
     state: dict[str, Any],
     *,
@@ -59,7 +87,12 @@ def normalize_scheduler_state(
     reset_token = str(state.get("reset_token") or "").strip()
     identity_signature = str(state.get("identity_signature") or "").strip()
     last_applied_rrule = str(state.get("last_applied_rrule") or "").strip()
-    if not reset_token or not identity_signature or not last_applied_rrule:
+    host_update_failure = normalize_scheduler_host_update_failure(
+        state.get("host_update_failure")
+    )
+    if not reset_token or not identity_signature:
+        return None
+    if not last_applied_rrule and host_update_failure is None:
         return None
     try:
         progression_index = int(state.get("progression_index"))
@@ -77,6 +110,10 @@ def normalize_scheduler_state(
     normalized["progression_index"] = progression_index
     normalized["progression_minutes"] = progression_minutes
     normalized["last_applied_rrule"] = last_applied_rrule
+    if host_update_failure is not None:
+        normalized["host_update_failure"] = host_update_failure
+    else:
+        normalized.pop("host_update_failure", None)
     return normalized
 
 
@@ -93,6 +130,7 @@ def build_scheduler_state(
     last_applied_rrule: Any,
     updated_at: str,
     source: str | None = None,
+    host_update_failure: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     state = {
         "schema_version": SCHEDULER_STATE_SCHEMA_VERSION,
@@ -107,6 +145,8 @@ def build_scheduler_state(
         "last_applied_rrule": last_applied_rrule,
         "updated_at": str(updated_at or ""),
     }
+    if host_update_failure is not None:
+        state["host_update_failure"] = host_update_failure
     if source:
         state["source"] = str(source)
     normalized = normalize_scheduler_state(
