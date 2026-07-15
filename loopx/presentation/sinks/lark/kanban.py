@@ -2075,7 +2075,7 @@ def sync_loopx_todos_to_lark_kanban(
     from ....capabilities.issue_fix.outcome_projection import (
         build_issue_fix_outcome_collection_from_domain_state,
     )
-    from ....control_plane.todos.text import todo_priority_prefix
+    from ....control_plane.todos.projection import todo_priority_label
     from ....todos import resolve_todo_state_path, section_bounds, todo_blocks
 
     resolved_project, resolved_state_file = resolve_todo_state_path(
@@ -2144,7 +2144,7 @@ def sync_loopx_todos_to_lark_kanban(
             block,
             goal_id=goal_id,
             state_file=resolved_state_file,
-            priority=todo_priority_prefix(str(block.get("text") or "")) or "P2",
+            priority=todo_priority_label(block, text_mode="prefix") or "P2",
         )
         result = _run_command(
             build_record_upsert_command(config, record_id=record_map.get(key), values=values),

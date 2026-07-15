@@ -496,6 +496,8 @@ def main() -> int:
                     "  <!-- loopx: todo_id=todo_agent_sync status=open task_class=advancement_task action_kind=sync_board required_write_scopes=loopx claimed_by=codex-main-control -->",
                     "- [ ] [P1] Product capability scoped board sync",
                     "  <!-- loopx: todo_id=todo_product_scope status=open task_class=advancement_task action_kind=sync_board claimed_by=codex-product-capability -->",
+                    "- [ ] [P1][Reward Memory] Preserve adjacent qualifier priority",
+                    "  <!-- loopx: todo_id=todo_adjacent_priority status=open task_class=advancement_task action_kind=sync_board claimed_by=codex-main-control -->",
                     "",
                     "- [ ] [P1] Keep malformed metadata executable",
                     "  <!-- loopx: todo_id=todo_agent_malformed status=blocked_typo task_class=user_gate_typo action_kind=sync_board claimed_by=codex-main-control -->",
@@ -529,8 +531,12 @@ def main() -> int:
             execute=False,
         )
         assert sync_payload["ok"] is True, sync_payload
-        assert sync_payload["todo_count"] == 4, sync_payload
+        assert sync_payload["todo_count"] == 5, sync_payload
         assert any(item["values"]["Status"] == "User Gate" for item in sync_payload["records"]), sync_payload
+        adjacent_priority = next(
+            item for item in sync_payload["records"] if item["todo_id"] == "todo_adjacent_priority"
+        )
+        assert adjacent_priority["values"]["Priority"] == "P1", adjacent_priority
         malformed = next(
             item for item in sync_payload["records"] if item["todo_id"] == "todo_agent_malformed"
         )
@@ -553,8 +559,8 @@ def main() -> int:
             "goal_lark_sync_fixture",
         )
         assert compact_cli["detail_level"] == "compact", compact_cli
-        assert compact_cli["record_count"] == 4, compact_cli
-        assert compact_cli["record_success_count"] == 4, compact_cli
+        assert compact_cli["record_count"] == 5, compact_cli
+        assert compact_cli["record_success_count"] == 5, compact_cli
         assert compact_cli["record_failure_count"] == 0, compact_cli
         assert compact_cli["base_token"] == "base_public_fixture", compact_cli
         assert compact_cli["table_id"] == "tbl_public_fixture", compact_cli
@@ -563,7 +569,7 @@ def main() -> int:
         assert all("values" not in item for item in compact_cli["records"]), compact_cli
         compact_markdown = render_lark_kanban_markdown(compact_cli)
         assert "- detail_level: `compact`" in compact_markdown, compact_markdown
-        assert "- record_success_count: `4`" in compact_markdown, compact_markdown
+        assert "- record_success_count: `5`" in compact_markdown, compact_markdown
         assert "## Records" in compact_markdown, compact_markdown
         assert "## Commands" not in compact_markdown, compact_markdown
 
@@ -581,7 +587,7 @@ def main() -> int:
             "--include-command-details",
         )
         assert detailed_cli["detail_level"] == "full", detailed_cli
-        assert len(detailed_cli["commands"]) == 4, detailed_cli
+        assert len(detailed_cli["commands"]) == 5, detailed_cli
         assert all("command" in item for item in detailed_cli["records"]), detailed_cli
         assert all("values" in item for item in detailed_cli["records"]), detailed_cli
         compact_size = len(json.dumps(compact_cli, ensure_ascii=False))
@@ -599,10 +605,11 @@ def main() -> int:
             execute=False,
         )
         scoped_todo_ids = {item["todo_id"] for item in scoped_payload["records"]}
-        assert scoped_payload["todo_count"] == 3, scoped_payload
+        assert scoped_payload["todo_count"] == 4, scoped_payload
         assert scoped_todo_ids == {
             "todo_user_share",
             "todo_agent_sync",
+            "todo_adjacent_priority",
             "todo_agent_malformed",
         }, scoped_payload
 
@@ -654,9 +661,9 @@ def main() -> int:
             runner=todo_upsert_runner,
         )
         assert execute_todo_sync["ok"] is True, execute_todo_sync
-        assert execute_todo_sync["todo_count"] == 4, execute_todo_sync
+        assert execute_todo_sync["todo_count"] == 5, execute_todo_sync
         todo_upserts = [args for args in todo_sync_calls if "+record-upsert" in args]
-        assert len(todo_upserts) == 4, todo_sync_calls
+        assert len(todo_upserts) == 5, todo_sync_calls
         reused_todo_upsert = [args for args in todo_upserts if "recTodoSyncExisting" in args]
         assert len(reused_todo_upsert) == 1, todo_upserts
         reused_values = json.loads(reused_todo_upsert[0][reused_todo_upsert[0].index("--json") + 1])
