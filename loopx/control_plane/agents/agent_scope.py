@@ -529,6 +529,18 @@ def _count_advancement_items(items: Any, *, claimed_by: str | None = None) -> in
     return agent_scope_count_advancement_items(items, claimed_by=claimed_by)
 
 
+def _selectable_unclaimed_advancement_count(
+    agent_todo_summary: dict[str, Any],
+) -> int:
+    executable_items = agent_todo_summary.get("executable_backlog_items")
+    source_items = (
+        executable_items
+        if isinstance(executable_items, list)
+        else agent_todo_summary.get("unclaimed_priority_open_items")
+    )
+    return _count_advancement_items(source_items, claimed_by="__unclaimed__")
+
+
 def _first_compact_todo_id(items: Any) -> str | None:
     if not isinstance(items, list):
         return None
@@ -738,10 +750,7 @@ def _agent_lane_frontier_hint(
         agent_todo_summary.get("current_agent_claimed_advancement_count") or 0
     )
     current_monitor_count = int(agent_todo_summary.get("current_agent_claimed_monitor_count") or 0)
-    unclaimed_count = _count_advancement_items(
-        agent_todo_summary.get("unclaimed_priority_open_items"),
-        claimed_by="__unclaimed__",
-    )
+    unclaimed_count = _selectable_unclaimed_advancement_count(agent_todo_summary)
     lane = str(work_lane_contract.get("lane") or "") if isinstance(work_lane_contract, dict) else ""
     if current_advancement_count == 0 and unclaimed_count == 0 and current_monitor_count > 0:
         return build_hint(
@@ -1075,19 +1084,16 @@ def _agent_scope_no_candidate_frontier(
             claimed_by=agent_id,
         ),
     )
-    unclaimed_count = _count_advancement_items(
-        agent_todo_summary.get("unclaimed_priority_open_items"),
-        claimed_by="__unclaimed__",
-    )
+    unclaimed_count = _selectable_unclaimed_advancement_count(agent_todo_summary)
     executable_items = agent_todo_summary.get("executable_backlog_items")
     if isinstance(executable_items, list):
         current_agent_count = max(
             current_agent_count,
             _count_advancement_items(executable_items, claimed_by=agent_id),
         )
-        unclaimed_count = max(
-            unclaimed_count,
-            _count_advancement_items(executable_items, claimed_by="__unclaimed__"),
+        unclaimed_count = _count_advancement_items(
+            executable_items,
+            claimed_by="__unclaimed__",
         )
     if current_agent_count > 0 or unclaimed_count > 0:
         return None

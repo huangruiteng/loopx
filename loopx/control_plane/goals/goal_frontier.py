@@ -900,14 +900,7 @@ def _frontier_advancement_counts(
         if isinstance(agent_todo_summary, dict)
         else 0
     )
-    unclaimed_advancement_count = (
-        _count_advancement_items(
-            agent_todo_summary.get("unclaimed_priority_open_items"),
-            claimed_by="__unclaimed__",
-        )
-        if isinstance(agent_todo_summary, dict)
-        else 0
-    )
+    unclaimed_advancement_count = 0
     other_agent_claimed_items: Any = None
     if isinstance(agent_todo_summary, dict):
         executable_items = agent_todo_summary.get("executable_backlog_items")
@@ -917,9 +910,17 @@ def _frontier_advancement_counts(
                     current_agent_advancement_count,
                     _count_advancement_items(executable_items, claimed_by=agent_id),
                 )
-            unclaimed_advancement_count = max(
-                unclaimed_advancement_count,
-                _count_advancement_items(executable_items, claimed_by="__unclaimed__"),
+            unclaimed_advancement_count = _count_advancement_items(
+                executable_items,
+                claimed_by="__unclaimed__",
+            )
+        else:
+            # The unclaimed visibility lane is diagnostic and may contain work
+            # that excludes this agent. Prefer the scoped executable lane when
+            # available; retain this fallback for legacy summaries only.
+            unclaimed_advancement_count = _count_advancement_items(
+                agent_todo_summary.get("unclaimed_priority_open_items"),
+                claimed_by="__unclaimed__",
             )
         claim_scope = (
             agent_todo_summary.get("claim_scope")
@@ -1270,10 +1271,9 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         and (
             successor_vision_required
             or (
-                agent_counts.get("advancement", 0) == 0
                 # Another peer's claimed work cannot satisfy this agent's
                 # scoped vision or checkpoint acceptance gap.
-                and selectable_frontier_advancement == 0
+                selectable_frontier_advancement == 0
             )
         )
         and not acceptance_allows_watch_lane_continuation

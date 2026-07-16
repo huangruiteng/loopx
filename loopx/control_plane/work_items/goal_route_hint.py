@@ -219,15 +219,21 @@ def build_goal_route_hint(
             agent_id=agent_id,
             claim="other",
         )
+    executable_items = agent_summary.get("executable_backlog_items")
+    unclaimed_source = (
+        executable_items
+        if isinstance(executable_items, list)
+        else agent_summary.get("unclaimed_priority_open_items")
+    )
     unclaimed_actions = _todo_items(
-        agent_summary.get("unclaimed_priority_open_items"),
+        unclaimed_source,
         agent_id=agent_id,
         claim="unclaimed",
     )
     blocking_handoff_gates = _blocking_handoff_gates(agent_summary, agent_id=agent_id)
     current_count = _int_count(agent_summary.get("current_agent_claimed_advancement_count"))
     unclaimed_count = _count_advancement_items(
-        agent_summary.get("unclaimed_priority_open_items"),
+        unclaimed_source,
         agent_id=agent_id,
         claim="unclaimed",
     )
