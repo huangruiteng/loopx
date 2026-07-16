@@ -1926,7 +1926,7 @@ def build_quota_should_run(
             payload["work_lane_contract"] = payload_work_lane_contract
         if capability_gate:
             payload["capability_gate"] = capability_gate
-            if capability_gate.get("action") == "ask_owner":
+            if capability_gate.get("owner_missing"):
                 payload["notify_user_on_capability_gate"] = True
         if capability_monitor_fallback:
             payload["capability_monitor_fallback"] = capability_monitor_fallback

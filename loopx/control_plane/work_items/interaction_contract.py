@@ -11,6 +11,7 @@ from ..goals.goal_vision_wait import exact_blocked_successor_wait_state
 from ..todos.contract import TODO_TASK_CLASS_MONITOR, TODO_TASK_CLASS_USER_ACTION
 from ..todos.projection import todo_item_task_class
 from ..todos.user_gate import open_todo_count
+from ..todos.write_hint import build_capability_resolution_writeback_actions
 from .primary_action import (
     build_primary_action_projection,
     protocol_action_label as _protocol_action_label,
@@ -109,6 +110,18 @@ def _user_gate_notification_suppressed(payload: dict[str, Any]) -> bool:
     return isinstance(cooldown, dict) and cooldown.get("notification_suppressed") is True
 
 
+def _capability_resolution_user_actions(payload: dict[str, Any]) -> list[str]:
+    capability_gate = (
+        payload.get("capability_gate")
+        if isinstance(payload.get("capability_gate"), dict)
+        else {}
+    )
+    if not capability_gate.get("owner_missing"):
+        return []
+    owner_action = protocol_action_text(capability_gate.get("owner_action"))
+    return [owner_action] if owner_action else []
+
+
 def finalize_user_gate_notification_cooldown(payload: dict[str, Any]) -> None:
     scheduler_hint = payload.get("scheduler_hint")
     cooldown = (
@@ -145,14 +158,19 @@ def projected_user_channel_actions(
         payload.get("user_todo_summary"),
         limit=limit,
     )
-    if notices or not user_channel_action_required(payload):
+    if notices:
         return notices
+    capability_actions = _capability_resolution_user_actions(payload)
+    if capability_actions:
+        return capability_actions[:limit]
+    if not user_channel_action_required(payload):
+        return []
     capability_gate = (
         payload.get("capability_gate")
         if isinstance(payload.get("capability_gate"), dict)
         else {}
     )
-    if capability_gate.get("action") == "ask_owner":
+    if capability_gate.get("owner_missing"):
         owner_action = protocol_action_text(capability_gate.get("owner_action"))
         if owner_action:
             return [owner_action]
@@ -412,6 +430,15 @@ def interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[
         if agent_identity.get("agent_id")
         else ""
     )
+    capability_resolution_actions = build_capability_resolution_writeback_actions(
+        payload.get("capability_gate"),
+        goal_id=goal_id,
+        agent_id=(
+            str(agent_identity.get("agent_id"))
+            if agent_identity.get("agent_id")
+            else None
+        ),
+    )
     if mode == "terminal_no_followup":
         return ["no quota spend until explicit goal resume or newly projected work"]
     if mode == "automation_prompt_upgrade":
@@ -550,11 +577,15 @@ def interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[
         "bounded_delivery_with_user_notice",
     }:
         return [
+            *capability_resolution_actions,
             f"loopx refresh-state --goal-id {goal_id} --classification <validated_progress>{agent_arg}",
             f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{agent_arg}",
         ]
     if mode in {"user_gate", "user_todo_blocker_push", "user_action_required"}:
-        return ["no quota spend for blocker-push/gate-notification"]
+        return [
+            *capability_resolution_actions,
+            "no quota spend for blocker-push/gate-notification",
+        ]
     return ["no quota spend without validated transition/blocker writeback"]
 
 
