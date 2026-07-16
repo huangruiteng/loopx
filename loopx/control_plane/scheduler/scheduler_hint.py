@@ -777,7 +777,6 @@ def build_scheduler_hint(
         if isinstance(payload.get("automation_liveness"), dict)
         else {}
     )
-    automation_action = str(automation_liveness.get("automation_action") or "")
     spend_policy = (
         automation_liveness.get("spend_policy")
         or execution_obligation.get("spend_policy")
@@ -824,13 +823,13 @@ def build_scheduler_hint(
             current = current.get(part)
         return current
 
-    if automation_action == "stop_terminal_no_followup" and arbitration.ok:
+    if arbitration.disposition == SchedulerDisposition.TERMINAL_STOP:
         return {
             "schema_version": SCHEDULER_HINT_SCHEMA_VERSION,
             "source": "quota.should-run",
             "action": "stop_until_explicit_resume",
             "cadence_class": "terminal_no_followup",
-            "reason_code": "terminal_no_followup",
+            "reason_code": arbitration.reason_code,
             "reason": (
                 "validated closure evidence derives no-follow-up and confirms no "
                 "remaining frontier; recurring polling must stop until resume"

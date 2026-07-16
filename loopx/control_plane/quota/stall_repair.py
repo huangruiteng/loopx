@@ -51,11 +51,15 @@ def build_quota_stall_self_repair_hint(
     user_todo_summary: dict[str, Any] | None,
     agent_todo_summary: dict[str, Any] | None,
     agent_id: str | None,
+    user_todo_source_items: list[dict[str, Any]] | None = None,
+    agent_todo_source_items: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     decision_scope_consistency = build_required_decision_scope_consistency(
         agent_todo_summary,
         user_todo_summary,
         agent_id=agent_id,
+        agent_source_items=agent_todo_source_items,
+        user_source_items=user_todo_source_items,
     )
     decision_scope_repair = build_required_decision_scope_repair_hint(
         decision_scope_consistency

@@ -9,6 +9,9 @@ from loopx.control_plane.scheduler.arbitration import (
     build_scheduler_arbitration,
 )
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
+from loopx.control_plane.work_items.interaction_contract import (
+    build_interaction_contract,
+)
 
 
 AGENT_SCOPE_ACTIONS = {
@@ -129,6 +132,19 @@ def _payload(
             SchedulerDisposition.ACTIVE_WORK,
             "active_work",
         ),
+        (
+            "terminal-no-followup",
+            _payload(
+                mode="terminal_no_followup",
+                should_run=False,
+                user_required=False,
+                must_attempt=False,
+                delivery_allowed=False,
+                quiet_noop_allowed=True,
+            ),
+            SchedulerDisposition.TERMINAL_STOP,
+            "terminal_no_followup",
+        ),
     ],
 )
 def test_interaction_contract_drives_scheduler(
@@ -212,6 +228,73 @@ def test_branch_order_mutation_is_killed_by_final_contract() -> None:
 
     assert hint["cadence_class"] == "human_gate"
     assert hint["action"] != "run_now"
+
+
+def test_raw_terminal_liveness_cannot_override_active_final_contract() -> None:
+    payload = _payload(
+        mode="bounded_delivery",
+        should_run=True,
+        user_required=False,
+        must_attempt=True,
+        delivery_allowed=True,
+        quiet_noop_allowed=False,
+    )
+    payload["automation_liveness"]["automation_action"] = (
+        "stop_terminal_no_followup"
+    )
+
+    hint = build_scheduler_hint(
+        payload,
+        agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
+    )
+
+    assert hint["action"] == "run_now"
+    assert hint["cadence_class"] == "active_work"
+
+
+def test_terminal_state_is_projected_into_final_interaction_contract() -> None:
+    contract = build_interaction_contract(
+        {
+            "goal_id": "terminal-contract-test",
+            "state": "terminal_no_followup",
+            "effective_action": "terminal_no_followup",
+            "should_run": False,
+            "normal_delivery_allowed": False,
+            "recovery_delivery_allowed": False,
+            "self_repair_allowed": False,
+            "heartbeat_recommendation": {"notify": "DONT_NOTIFY"},
+            "execution_obligation": {"must_attempt_work": False},
+        }
+    )
+
+    assert contract["mode"] == "terminal_no_followup"
+    assert contract["user_channel"]["action_required"] is False
+    assert contract["agent_channel"]["must_attempt"] is False
+    assert contract["agent_channel"]["delivery_allowed"] is False
+    assert contract["agent_channel"]["quiet_noop_allowed"] is True
+    assert contract["cli_channel"]["spend_after_validation"] is False
+
+
+def test_terminal_contract_with_open_action_fails_closed() -> None:
+    payload = _payload(
+        mode="terminal_no_followup",
+        should_run=False,
+        user_required=True,
+        must_attempt=False,
+        delivery_allowed=False,
+        quiet_noop_allowed=False,
+    )
+
+    hint = build_scheduler_hint(
+        payload,
+        agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
+    )
+
+    assert hint["action"] == "repair_interaction_contract_projection"
+    assert (
+        "interaction_contract.terminal_conflicts_with_open_action"
+        in hint["consistency_error"]["errors"]
+    )
 
 
 def test_structurally_invalid_contract_fails_closed() -> None:

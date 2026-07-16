@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 
 from loopx.control_plane.testing.decision_replay import (
@@ -111,28 +112,19 @@ def _scope_collision_decision() -> dict:
     return build_quota_should_run(status, goal_id=GOAL_ID, agent_id=AGENT_ID)
 
 
-def test_checked_in_replay_matches_current_real_quota_shape() -> None:
-    replay = load_public_safe_decision_replay(FIXTURE)
-    generated = [
-        reduce_public_safe_decision(_decision(blocking=True), case_id="blocking-gate"),
-        reduce_public_safe_decision(
-            _decision(blocking=False),
-            case_id="nonblocking-action-with-runnable-work",
-        ),
-        reduce_public_safe_decision(
-            _scope_collision_decision(),
-            case_id="nonblocking-action-scope-collision",
-        ),
-    ]
-
-    assert replay["cases"] == generated
-
-
-def test_each_public_safe_case_replays_expected_scheduler_and_scope() -> None:
+def test_checked_in_replay_is_an_independent_reviewed_oracle() -> None:
     replay = load_public_safe_decision_replay(FIXTURE)
 
     for case in replay["cases"]:
-        assert replay_public_safe_decision_case(case) == case["expected"]
+        assert case["invariant_id"].startswith("INV-")
+        assert len(case["rationale"]) >= 20
+        observed = replay_public_safe_decision_case(case)
+        assert observed == {
+            "decision": case["decision"],
+            "selected_todo": case["selected_todo"],
+            "interaction_contract": case["interaction_contract"],
+            "expected": case["expected"],
+        }
 
 
 def test_reducer_strips_private_and_diagnostic_payloads() -> None:
@@ -142,11 +134,123 @@ def test_reducer_strips_private_and_diagnostic_payloads() -> None:
     decision["private_path"] = "/tmp/not-retained"
 
     reduced = reduce_public_safe_decision(decision, case_id="redaction-check")
+    reduced["invariant_id"] = "INV-REDACTION"
+    reduced["rationale"] = (
+        "Public replay evidence excludes private diagnostics and local paths."
+    )
 
     assert "raw_logs" not in reduced
     assert "trajectory" not in reduced
     assert "private_path" not in reduced
     validate_public_safe_decision_case(reduced)
+
+
+def test_other_agent_gate_is_semantically_inert_for_current_agent() -> None:
+    replay = load_public_safe_decision_replay(FIXTURE)
+    base = next(
+        case
+        for case in replay["cases"]
+        if case["case_id"] == "nonblocking-action-with-runnable-work"
+    )
+    mutated = {
+        **base,
+        "case_id": "nonblocking-action-with-unrelated-other-agent-gate",
+        "user_todos": [
+            *base["user_todos"],
+            {
+                "todo_id": "todo_other_agent_gate",
+                "status": "open",
+                "task_class": "user_gate",
+                "blocks_agent": "codex-other-agent",
+                "action_kind": "approve_other_agent_release",
+                "decision_scope": {
+                    "schema_version": "decision_scope_v0",
+                    "kind": "direction",
+                    "granularity": "action",
+                    "scope_key": "approve_other_agent_release",
+                },
+            },
+        ],
+    }
+
+    observed = replay_public_safe_decision_case(mutated)
+
+    assert observed == {
+        "decision": base["decision"],
+        "selected_todo": base["selected_todo"],
+        "interaction_contract": base["interaction_contract"],
+        "expected": base["expected"],
+    }
+
+
+def test_global_gate_has_authority_for_matching_required_scope() -> None:
+    replay = load_public_safe_decision_replay(FIXTURE)
+    blocking = next(
+        case for case in replay["cases"] if case["case_id"] == "blocking-gate"
+    )
+    global_gate = deepcopy(blocking)
+    global_gate["case_id"] = "matching-global-gate"
+    global_gate["invariant_id"] = "INV-MATCHED-GLOBAL-GATE"
+    global_gate["rationale"] = (
+        "An explicitly global gate with the matching scope blocks every agent lane."
+    )
+    global_gate["user_todos"][0].pop("blocks_agent")
+    global_gate["user_todos"][0]["global_gate"] = True
+
+    observed = replay_public_safe_decision_case(global_gate)
+
+    assert observed == {
+        "decision": blocking["decision"],
+        "selected_todo": blocking["selected_todo"],
+        "interaction_contract": blocking["interaction_contract"],
+        "expected": blocking["expected"],
+    }
+
+
+def test_other_agent_gate_cannot_inherit_global_operator_gate_authority() -> None:
+    replay = load_public_safe_decision_replay(FIXTURE)
+    runnable = next(
+        case
+        for case in replay["cases"]
+        if case["case_id"] == "nonblocking-action-with-runnable-work"
+    )
+    other_agent = deepcopy(runnable)
+    other_agent["case_id"] = "other-agent-gate-with-global-operator-state"
+    other_agent["invariant_id"] = "INV-OTHER-AGENT-GATE-ISOLATION"
+    other_agent["rationale"] = (
+        "A global operator_gate status caused by another agent cannot block or notify "
+        "the current agent when its independent todo remains runnable."
+    )
+    other_agent["scenario"] = {"quota_state": "operator_gate", "safe_bypass": True}
+    other_agent["user_todos"] = [
+        {
+            "todo_id": "todo_other_agent_gate",
+            "status": "open",
+            "task_class": "user_gate",
+            "blocks_agent": "codex-other-agent",
+            "action_kind": "approve_other_agent_release",
+            "decision_scope": {
+                "schema_version": "decision_scope_v0",
+                "kind": "direction",
+                "granularity": "action",
+                "scope_key": "approve_other_agent_release",
+            },
+        }
+    ]
+    expected_interaction = deepcopy(runnable["interaction_contract"])
+    expected_interaction["user_channel"] = {
+        "action_required": False,
+        "notify": "DONT_NOTIFY",
+    }
+
+    observed = replay_public_safe_decision_case(other_agent)
+
+    assert observed == {
+        "decision": runnable["decision"],
+        "selected_todo": runnable["selected_todo"],
+        "interaction_contract": expected_interaction,
+        "expected": runnable["expected"],
+    }
 
 
 def test_real_quota_repairs_nonblocking_action_scope_collision() -> None:

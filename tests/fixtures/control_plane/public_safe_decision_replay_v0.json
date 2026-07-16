@@ -20,6 +20,12 @@
         }
       ],
       "case_id": "blocking-gate",
+      "invariant_id": "INV-MATCHED-BLOCKING-GATE",
+      "rationale": "A matching blocking user gate owns the exact decision scope, so delivery must stop and the scheduler must wait for the user.",
+      "scenario": {
+        "quota_state": "operator_gate",
+        "safe_bypass": true
+      },
       "decision": {
         "effective_action": "operator_gate_notify",
         "normal_delivery_allowed": false,
@@ -83,6 +89,12 @@
         }
       ],
       "case_id": "nonblocking-action-with-runnable-work",
+      "invariant_id": "INV-NONBLOCKING-NOTICE-PRESERVES-WORK",
+      "rationale": "A non-blocking user action may be notified, but it cannot cancel independent runnable work owned by the current agent.",
+      "scenario": {
+        "quota_state": "eligible",
+        "safe_bypass": false
+      },
       "decision": {
         "effective_action": "normal_run",
         "normal_delivery_allowed": true,
@@ -154,6 +166,12 @@
         }
       ],
       "case_id": "nonblocking-action-scope-collision",
+      "invariant_id": "INV-NONBLOCKING-SCOPE-CANNOT-SATISFY-GATE",
+      "rationale": "A user_action with the same scope is not approval authority; the contradictory projection must fail closed into bounded repair.",
+      "scenario": {
+        "quota_state": "eligible",
+        "safe_bypass": false
+      },
       "decision": {
         "effective_action": "todo_decision_scope_projection_repair",
         "normal_delivery_allowed": false,

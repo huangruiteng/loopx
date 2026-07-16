@@ -30,7 +30,13 @@ def main() -> int:
     replay = load_public_safe_decision_replay(FIXTURE)
     assert len(replay["cases"]) >= 3, replay
     for case in replay["cases"]:
-        assert replay_public_safe_decision_case(case) == case["expected"], case
+        observed = replay_public_safe_decision_case(case)
+        assert observed == {
+            "decision": case["decision"],
+            "selected_todo": case["selected_todo"],
+            "interaction_contract": case["interaction_contract"],
+            "expected": case["expected"],
+        }, case
     print("interaction scheduler authority smoke ok")
     return 0
 

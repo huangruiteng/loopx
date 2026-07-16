@@ -768,3 +768,24 @@ def select_quota_todo_summary(
     if is_canonical_attention_todo_summary(canonical_value):
         return canonical_summary or project_asset_summary
     return project_asset_summary or canonical_summary
+
+
+def select_quota_todo_source_items(
+    canonical_value: Any,
+    project_asset_value: Any,
+) -> list[dict[str, Any]]:
+    """Return the authoritative pre-hot-path todo source for semantic checks."""
+
+    canonical_items = (
+        todo_summary_source_items(canonical_value)
+        if isinstance(canonical_value, dict)
+        else None
+    )
+    project_asset_items = (
+        todo_summary_source_items(project_asset_value)
+        if isinstance(project_asset_value, dict)
+        else None
+    )
+    if is_canonical_attention_todo_summary(canonical_value):
+        return canonical_items if canonical_items is not None else project_asset_items or []
+    return project_asset_items if project_asset_items is not None else canonical_items or []

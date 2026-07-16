@@ -170,6 +170,7 @@ from .control_plane.todos.projection import (
 )
 from .control_plane.todos.quota_summary import (
     compact_quota_todo_summary_for_payload,
+    select_quota_todo_source_items,
     select_quota_todo_summary,
     summarize_user_todos_for_quota,
 )
@@ -1238,6 +1239,14 @@ def build_quota_should_run(
             agent_identity=agent_identity,
             available_capabilities=effective_available_capabilities,
         )
+        user_todo_source_items = select_quota_todo_source_items(
+            item.get("user_todos"),
+            project_asset.get("user_todos") if project_asset else None,
+        )
+        agent_todo_source_items = select_quota_todo_source_items(
+            item.get("agent_todos"),
+            project_asset.get("agent_todos") if project_asset else None,
+        )
         agent_scoped_user_gate_override = _agent_scoped_user_gate_override(
             state=state,
             item=item,
@@ -1297,6 +1306,8 @@ def build_quota_should_run(
             user_todo_summary=user_todo_summary,
             agent_todo_summary=agent_todo_summary,
             agent_id=normalize_todo_claimed_by((agent_identity or {}).get("agent_id")),
+            user_todo_source_items=user_todo_source_items,
+            agent_todo_source_items=agent_todo_source_items,
         )
         self_repair_allowed = bool(stall_self_repair and stall_self_repair.get("allowed"))
         normal_delivery_allowed, recovery_allowed, reason = apply_stall_repair_delivery_guard(

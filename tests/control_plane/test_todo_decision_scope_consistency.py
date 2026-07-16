@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import pytest
 
+from loopx.control_plane.testing.quota_fixtures import (
+    quota_status_payload,
+    quota_todo_item,
+    quota_todo_summary,
+)
 from loopx.control_plane.todos.decision_scope import (
     build_required_decision_scope_consistency,
     build_required_decision_scope_repair_hint,
 )
+from loopx.quota import build_quota_should_run
 
 
 AGENT_ID = "codex-quality-qualification"
@@ -131,3 +137,86 @@ def test_unrelated_gate_has_no_authority_over_independent_agent_todo() -> None:
 
     assert result["ok"] is True
     assert result["checked_required_scope_count"] == 0
+
+
+def test_unscoped_diagnostic_uses_claimed_agent_as_effective_owner() -> None:
+    other_agent_gate = {
+        "todo_id": "todo_other_agent_gate",
+        "status": "open",
+        "task_class": "user_gate",
+        "blocks_agent": "codex-other-agent",
+        "decision_scope": SCOPE,
+    }
+
+    result = build_required_decision_scope_consistency(
+        _agent_summary(),
+        _user_summary(other_agent_gate),
+        agent_id=None,
+    )
+
+    assert result["ok"] is False
+    assert (
+        result["errors"][0]["reason_code"]
+        == "required_decision_scope_gate_owner_mismatch"
+    )
+
+
+def test_complete_source_items_take_precedence_over_hot_path_summary() -> None:
+    hidden_agent_item = {
+        "todo_id": "todo_hidden_scope",
+        "status": "open",
+        "task_class": "advancement_task",
+        "claimed_by": AGENT_ID,
+        "required_decision_scopes": [SCOPE],
+    }
+
+    result = build_required_decision_scope_consistency(
+        {"first_open_items": []},
+        {"first_open_items": []},
+        agent_id=AGENT_ID,
+        agent_source_items=[hidden_agent_item],
+        user_source_items=[],
+    )
+
+    assert result["ok"] is False
+    assert result["checked_agent_todo_count"] == 1
+    assert result["checked_required_scope_count"] == 1
+    assert result["errors"][0]["reason_code"] == "dangling_required_decision_scope"
+
+
+def test_quota_checks_scope_item_beyond_hot_path_backlog_limit() -> None:
+    items = [
+        quota_todo_item(
+            todo_id=f"todo_unclaimed_{index}",
+            index=index,
+            text=f"[P1] Independent item {index}.",
+            action_kind=f"independent_{index}",
+            required_decision_scopes=[SCOPE] if index == 9 else [],
+        )
+        for index in range(1, 10)
+    ]
+    status = quota_status_payload(
+        goal_id="scope-beyond-hot-path",
+        status="active",
+        recommended_action="Run the first independent item.",
+        agent_todos=quota_todo_summary(items, role="agent"),
+        user_todos=quota_todo_summary([], role="user"),
+        coordination={"agent_model": "peer_v1", "registered_agents": [AGENT_ID]},
+    )
+
+    decision = build_quota_should_run(
+        status,
+        goal_id="scope-beyond-hot-path",
+        agent_id=AGENT_ID,
+    )
+
+    assert decision["decision"] == "self_repair"
+    assert decision["effective_action"] == "todo_decision_scope_projection_repair"
+    assert decision["todo_decision_scope_consistency"]["errors"] == [
+        {
+            "reason_code": "dangling_required_decision_scope",
+            "agent_todo_id": "todo_unclaimed_9",
+            "required_scope": "direction:action:publish_quality_contract",
+            "related_user_todo_ids": [],
+        }
+    ]
