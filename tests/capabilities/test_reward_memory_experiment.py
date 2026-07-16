@@ -222,6 +222,35 @@ def test_registry_cannot_enable_experiment_without_explicit_marker(
     assert config is None
 
 
+def test_v0_migration_preserves_multiple_policy_surfaces(tmp_path: Path) -> None:
+    registry_path, _, _ = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    project = Path(registry["goals"][0]["repo"])
+    config_path = project / ".loopx/config/reward-memory/experiment.json"
+    source = json.loads(config_path.read_text(encoding="utf-8"))
+    surfaces = ["issue_fix.patch_planning", "reviewer_artifact.summary"]
+    source["corpus"]["scope"]["surface_ids"] = surfaces
+    source["standing_policy"]["scope"]["surface_ids"] = surfaces
+    config_path.write_text(json.dumps(source), encoding="utf-8")
+
+    status, config = resolve_reward_memory_experiment(
+        registry_path=registry_path,
+        goal_id="reward-memory-goal",
+        agent_id="pilot",
+    )
+
+    assert status["status"] == "available"
+    assert status["migration_applied"] is True
+    assert status["surface_ids"] == surfaces
+    assert config is not None
+    assert (
+        resolve_reward_memory_surface_config(
+            config, "issue_fix.patch_planning"
+        )["corpus"]["corpus_id"]
+        == source["corpus"]["corpus_id"]
+    )
+
+
 def test_configured_ingest_accepts_only_compact_event_and_stays_dry_run(
     tmp_path: Path, capsys
 ) -> None:
@@ -490,6 +519,30 @@ def test_v1_rejects_unknown_surface_and_adapter_override(tmp_path: Path) -> None
             "reviewer_artifact.summary",
             adapter="issue_fix_maintainer_feedback",
         )
+
+
+def test_v1_rejects_surface_not_authorized_by_selected_policy(
+    tmp_path: Path,
+) -> None:
+    registry_path, _, _ = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
+    config = _v1_config()
+    second = config["corpora"][1]
+    second["corpus"]["scope"]["surface_ids"].append("issue_fix.patch_planning")
+    second["standing_policy"]["scope"]["surface_ids"] = [
+        "issue_fix.patch_planning"
+    ]
+    _write_v1_config(registry_path, config)
+
+    status, normalized = resolve_reward_memory_experiment(
+        registry_path=registry_path,
+        goal_id="reward-memory-goal",
+        agent_id="pilot",
+    )
+
+    assert status["status"] == "config_invalid"
+    assert status["automatic_ingest"] is False
+    assert status["automatic_recall"] is False
+    assert normalized is None
 
 
 def test_v1_rejects_non_fail_open_automation(tmp_path: Path) -> None:

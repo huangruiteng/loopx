@@ -211,7 +211,9 @@ def _normalize_v1(raw: Mapping[str, Any], *, source_schema: str) -> dict[str, An
         if corpus_id in corpora:
             raise ValueError("corpora must not contain duplicate corpus ids")
         if not _policy_matches_corpus(policy, corpus):
-            raise ValueError("standing policy must exactly match its corpus authority and scope")
+            raise ValueError(
+                "standing policy authority and scope must stay inside its corpus"
+            )
         if corpus["provider_id"] != project_binding.get("provider_id"):
             raise ValueError("every corpus must use the project provider binding")
         corpora[corpus_id] = {
@@ -268,6 +270,12 @@ def _normalize_v1(raw: Mapping[str, Any], *, source_schema: str) -> dict[str, An
         for corpus_id in corpus_ids:
             if surface_id not in corpora[corpus_id]["corpus"]["scope"]["surface_ids"]:
                 raise ValueError("surface must be declared by every selected corpus")
+            if surface_id not in (
+                corpora[corpus_id]["standing_policy"]["scope"]["surface_ids"]
+            ):
+                raise ValueError(
+                    "surface must be authorized by every selected standing policy"
+                )
         signatures = {
             _compatibility_signature(
                 corpora[corpus_id]["corpus"],
@@ -361,9 +369,11 @@ def _migrate_v0(raw: Mapping[str, Any]) -> dict[str, Any]:
             raise ValueError(f"reward-memory experiment {key} must be an object")
     corpus = normalize_reward_memory_corpus(raw["corpus"])
     binding = normalize_reward_memory_provider_binding(raw["provider_binding"], corpus)
-    surfaces = list(corpus["scope"]["surface_ids"])
-    if len(surfaces) != 1:
-        raise ValueError("v0 experiment migration requires one exact surface")
+    surfaces = list(
+        normalize_reward_memory_standing_policy(raw["standing_policy"])["scope"][
+            "surface_ids"
+        ]
+    )
     common_binding = {
         key: binding[key]
         for key in (
@@ -391,17 +401,18 @@ def _migrate_v0(raw: Mapping[str, Any]) -> dict[str, Any]:
         ],
         "surfaces": [
             {
-                "surface_id": surfaces[0],
+                "surface_id": surface_id,
                 "adapter": _adapter(raw.get("adapter")),
                 "corpus_ids": [corpus["corpus_id"]],
                 "ingest_corpus_id": corpus["corpus_id"],
                 "recall_profile": {
-                    "profile_id": "v0_explicit_function_boundary",
+                    "profile_id": f"v0_explicit_{surface_id.replace('.', '_')}",
                     "mode": "function_boundary",
                     "max_queries": 1,
                     "limit": 5,
                 },
             }
+            for surface_id in surfaces
         ],
         "automation": {
             "automatic_recall": False,
