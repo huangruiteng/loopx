@@ -89,6 +89,7 @@ def assert_monitor_poll_event_carries_agent_id(agent_id: str) -> None:
 
 
 def assert_monitor_poll_next_cli_action_preserves_agent_id(agent_id: str) -> None:
+    available_capabilities = ["shell", "network", "github_cli"]
     actions = interaction_next_cli_actions(
         {
             "goal_id": "scoped-monitor-goal",
@@ -97,15 +98,24 @@ def assert_monitor_poll_next_cli_action_preserves_agent_id(agent_id: str) -> Non
             },
         },
         mode="monitor_quiet_skip",
+        available_capabilities=available_capabilities,
     )
 
     assert actions == [
-        f"loopx quota monitor-poll --goal-id scoped-monitor-goal --agent-id {agent_id} --execute",
-        f"loopx --format json quota should-run --goal-id scoped-monitor-goal --agent-id {agent_id}",
+        f"loopx quota monitor-poll --goal-id scoped-monitor-goal --agent-id {agent_id} --available-capability shell --available-capability network --available-capability github_cli --execute",
+        f"loopx --format json quota should-run --goal-id scoped-monitor-goal --agent-id {agent_id} --available-capability shell --available-capability network --available-capability github_cli",
     ], actions
 
 
 def assert_interaction_cli_actions_preserve_agent_id(agent_id: str) -> None:
+    available_capabilities = [
+        "shell",
+        "filesystem_write",
+        "benchmark_runner",
+        "credentials",
+        "production_access",
+    ]
+    projected_capabilities = ["shell", "filesystem_write", "benchmark_runner"]
     scoped_payload = {
         "goal_id": "scoped-delivery-goal",
         "agent_identity": {"agent_id": agent_id},
@@ -123,7 +133,11 @@ def assert_interaction_cli_actions_preserve_agent_id(agent_id: str) -> None:
         "successor_replan_required",
     ]
     for mode in command_modes:
-        actions = interaction_next_cli_actions(scoped_payload, mode=mode)
+        actions = interaction_next_cli_actions(
+            scoped_payload,
+            mode=mode,
+            available_capabilities=available_capabilities,
+        )
         state_or_accounting_commands = [
             action
             for action in actions
@@ -136,12 +150,28 @@ def assert_interaction_cli_actions_preserve_agent_id(agent_id: str) -> None:
             f"--agent-id {agent_id}" in action
             for action in state_or_accounting_commands
         ), (mode, actions)
+        assert all(
+            all(
+                f"--available-capability {capability}" in action
+                for capability in projected_capabilities
+            )
+            for action in state_or_accounting_commands
+        ), (mode, actions)
+        assert all(
+            "--available-capability credentials" not in action
+            and "--available-capability production_access" not in action
+            for action in state_or_accounting_commands
+        ), (mode, actions)
 
     unscoped_actions = interaction_next_cli_actions(
         {"goal_id": "unscoped-delivery-goal"},
         mode="bounded_delivery",
+        available_capabilities=available_capabilities,
     )
     assert all("--agent-id" not in action for action in unscoped_actions), unscoped_actions
+    assert all(
+        "--available-capability" not in action for action in unscoped_actions
+    ), unscoped_actions
 
 
 def assert_delivery_completion_spend_preserves_requested_agent_id(agent_id: str) -> None:
@@ -271,6 +301,42 @@ def main() -> int:
         index_path = runtime / "goals" / "near-limit-half" / "runs" / "index.jsonl"
         registry_before = registry_path.read_text(encoding="utf-8")
         index_before = index_path.read_text(encoding="utf-8")
+
+        quota_capabilities = ["network", "benchmark_runner"]
+        scoped_decision, scoped_decision_code = run_quota(
+            root,
+            registry_path,
+            runtime,
+            "should-run",
+            "--goal-id",
+            "near-limit-half",
+            "--agent-id",
+            agent_id,
+            *(
+                arg
+                for capability in quota_capabilities
+                for arg in ("--available-capability", capability)
+            ),
+        )
+        assert scoped_decision_code == 0, scoped_decision
+        assert scoped_decision["interaction_contract"]["mode"] == "bounded_delivery", scoped_decision
+        scoped_actions = scoped_decision["interaction_contract"]["cli_channel"][
+            "next_cli_actions"
+        ]
+        state_or_accounting_actions = [
+            action
+            for action in scoped_actions
+            if "loopx refresh-state" in action or "loopx quota spend-slot" in action
+        ]
+        assert state_or_accounting_actions, scoped_actions
+        assert all(
+            f"--agent-id {agent_id}" in action
+            and all(
+                f"--available-capability {capability}" in action
+                for capability in quota_capabilities
+            )
+            for action in state_or_accounting_actions
+        ), scoped_actions
 
         unscoped_payload, unscoped_code = run_quota(
             root,
