@@ -43,6 +43,20 @@ Optional env:
                                        Optional product-mode intermediate
                                        verifier policy: every-round or
                                        final-only; unset preserves runner default
+  SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_PROBE_COMMAND
+                                       Private task-free bridge probe command
+  SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_SOLVER_COMMAND
+                                       Private scored-workspace bridge command
+  SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_AGENT_COMMAND
+                                       Optional private agent bridge command;
+                                       defaults to the relay-generated wrapper
+  SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_AGENT_COMMAND_INSTRUMENTED
+                                       Set to 1 only when the explicit agent
+                                       command emits the public-safe operation
+                                       trace contract; default 0
+  SKILLSBENCH_LOOPX_TURN_VALIDATION_COMMAND
+                                       Independent scored-workspace validator
+                                       required by loopx-turn-agent-cli
   SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC  Setup stall timeout, default 3600;
                                        0 disables cap
   SKILLSBENCH_RUN_TIMEOUT_SEC          Supervisor timeout, default 28800
@@ -154,6 +168,11 @@ skip_current_aggregate_update="${SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE:-0}"
 allow_staged_bootstrap_repair_run="${SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN:-0}"
 setup_only_public_preflight="${SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT:-0}"
 product_mode_soft_verify_policy="${SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY:-}"
+remote_command_file_bridge_probe_command="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_PROBE_COMMAND:-}"
+remote_command_file_bridge_solver_command="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_SOLVER_COMMAND:-}"
+remote_command_file_bridge_agent_command="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_AGENT_COMMAND:-}"
+remote_command_file_bridge_agent_command_instrumented="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_AGENT_COMMAND_INSTRUMENTED:-0}"
+loopx_turn_validation_command="${SKILLSBENCH_LOOPX_TURN_VALIDATION_COMMAND:-}"
 validate_bool_toggle() {
   local env_name="$1"
   local value="$2"
@@ -169,6 +188,14 @@ validate_bool_toggle \
   SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN "$allow_staged_bootstrap_repair_run"
 validate_bool_toggle \
   SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT "$setup_only_public_preflight"
+validate_bool_toggle \
+  SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_AGENT_COMMAND_INSTRUMENTED \
+  "$remote_command_file_bridge_agent_command_instrumented"
+if [[ "$remote_command_file_bridge_agent_command_instrumented" == "1" ]] &&
+  [[ -z "$remote_command_file_bridge_agent_command" ]]; then
+  echo "SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_AGENT_COMMAND_INSTRUMENTED requires SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_AGENT_COMMAND" >&2
+  exit 2
+fi
 if [[ -n "$product_mode_soft_verify_policy" ]] &&
   [[ "$product_mode_soft_verify_policy" != "every-round" ]] &&
   [[ "$product_mode_soft_verify_policy" != "final-only" ]]; then
@@ -207,6 +234,11 @@ fi
 goal_id="${SKILLSBENCH_GOAL_ID:-loopx-meta}"
 local_run_ledger="${SKILLSBENCH_LOCAL_RUN_LEDGER_PATH:-.local/goals/${goal_id}/skillsbench-ledgers/live-standard-run-ledger.json}"
 route="${SKILLSBENCH_ROUTE:-codex-cli-goal-baseline}"
+if [[ "$route" == "loopx-turn-agent-cli" ]] &&
+  [[ -z "$loopx_turn_validation_command" ]]; then
+  echo "SKILLSBENCH_LOOPX_TURN_VALIDATION_COMMAND is required for loopx-turn-agent-cli" >&2
+  exit 2
+fi
 model="${SKILLSBENCH_MODEL:-gpt-5.5}"
 reasoning_effort="${SKILLSBENCH_REASONING_EFFORT:-xhigh}"
 build_stall_timeout="${SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC:-3600}"
@@ -320,6 +352,33 @@ fi
 if [[ -n "$product_mode_soft_verify_policy" ]]; then
   extra_runner_args+=(
     --product-mode-soft-verify-policy "$product_mode_soft_verify_policy"
+  )
+fi
+if [[ -n "$remote_command_file_bridge_probe_command" ]]; then
+  extra_runner_args+=(
+    --remote-command-file-bridge-probe-command
+    "$remote_command_file_bridge_probe_command"
+  )
+fi
+if [[ -n "$remote_command_file_bridge_solver_command" ]]; then
+  extra_runner_args+=(
+    --remote-command-file-bridge-solver-command
+    "$remote_command_file_bridge_solver_command"
+  )
+fi
+if [[ -n "$remote_command_file_bridge_agent_command" ]]; then
+  extra_runner_args+=(
+    --remote-command-file-bridge-agent-command
+    "$remote_command_file_bridge_agent_command"
+  )
+fi
+if [[ "$remote_command_file_bridge_agent_command_instrumented" == "1" ]]; then
+  extra_runner_args+=(--remote-command-file-bridge-agent-command-instrumented)
+fi
+if [[ -n "$loopx_turn_validation_command" ]]; then
+  extra_runner_args+=(
+    --loopx-turn-validation-command
+    "$loopx_turn_validation_command"
   )
 fi
 if [[ -n "${SKILLSBENCH_REGISTRY:-}" ]]; then
@@ -464,16 +523,48 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'setup_only_public_preflight=%s\n' "$setup_only_public_preflight"
   printf 'product_mode_soft_verify_policy=%s\n' \
     "${product_mode_soft_verify_policy:-runner-default}"
+  printf 'remote_command_file_bridge_probe_command_configured=%s\n' \
+    "$([[ -n "$remote_command_file_bridge_probe_command" ]] && echo 1 || echo 0)"
+  printf 'remote_command_file_bridge_solver_command_configured=%s\n' \
+    "$([[ -n "$remote_command_file_bridge_solver_command" ]] && echo 1 || echo 0)"
+  printf 'remote_command_file_bridge_agent_command_configured=%s\n' \
+    "$([[ -n "$remote_command_file_bridge_agent_command" ]] && echo 1 || echo 0)"
+  printf 'remote_command_file_bridge_agent_command_instrumented=%s\n' \
+    "$remote_command_file_bridge_agent_command_instrumented"
+  printf 'loopx_turn_validation_command_configured=%s\n' \
+    "$([[ -n "$loopx_turn_validation_command" ]] && echo 1 || echo 0)"
   printf 'skip_global_ledger_sync=%s\n' "$skip_global_ledger_sync"
   printf 'skip_current_aggregate_update=%s\n' "$skip_current_aggregate_update"
   printf 'local_run_ledger=%s\n' "$local_run_ledger"
   if [[ -n "${standard_aggregate:-}" ]]; then
     printf 'standard_aggregate=%s\n' "$standard_aggregate"
   fi
-  printf 'remote_command=%s\n' "$remote_command"
-  printf 'supervisor_command='
-  printf '%q ' "${supervisor_cmd[@]}"
-  printf '\n'
+  if [[ -n "$remote_command_file_bridge_probe_command" ]] ||
+    [[ -n "$remote_command_file_bridge_solver_command" ]] ||
+    [[ -n "$remote_command_file_bridge_agent_command" ]] ||
+    [[ -n "$loopx_turn_validation_command" ]]; then
+    printf 'private_runner_command_values_redacted=true\n'
+    printf 'private_runner_arg_names='
+    [[ -n "$remote_command_file_bridge_probe_command" ]] &&
+      printf '%s ' --remote-command-file-bridge-probe-command
+    [[ -n "$remote_command_file_bridge_solver_command" ]] &&
+      printf '%s ' --remote-command-file-bridge-solver-command
+    [[ -n "$remote_command_file_bridge_agent_command" ]] &&
+      printf '%s ' --remote-command-file-bridge-agent-command
+    [[ "$remote_command_file_bridge_agent_command_instrumented" == "1" ]] &&
+      printf '%s ' --remote-command-file-bridge-agent-command-instrumented
+    [[ -n "$loopx_turn_validation_command" ]] &&
+      printf '%s ' --loopx-turn-validation-command
+    printf '\n'
+    printf 'remote_command=<redacted-private-runner-command-values>\n'
+    printf 'supervisor_command=<redacted-private-runner-command-values>\n'
+  else
+    printf 'private_runner_command_values_redacted=false\n'
+    printf 'remote_command=%s\n' "$remote_command"
+    printf 'supervisor_command='
+    printf '%q ' "${supervisor_cmd[@]}"
+    printf '\n'
+  fi
   exit 0
 fi
 
