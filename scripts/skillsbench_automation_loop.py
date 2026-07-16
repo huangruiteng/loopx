@@ -134,10 +134,10 @@ from loopx.benchmark_adapters.skillsbench_setup_preflight import (  # noqa: E402
     run_setup_only_public_preflight,
 )
 from loopx.benchmark_adapters.skillsbench_typed_repair import (  # noqa: E402
-    advance_skillsbench_typed_repair_controller,
     begin_skillsbench_typed_repair,
     build_skillsbench_typed_repair_prompt,
     record_skillsbench_typed_repair_terminal,
+    resolve_skillsbench_typed_repair_response,
     skillsbench_projected_open_todo_count,
 )
 from loopx.benchmark_adapters.skillsbench_turn_route import (  # noqa: E402
@@ -12256,6 +12256,7 @@ def _build_blind_loop_user(
     route: str,
     max_rounds: int,
     trace: dict[str, Any],
+    plan: dict[str, Any] | None = None,
 ):
     from benchflow.sandbox.user import BaseUser, RoundResult
 
@@ -12294,6 +12295,23 @@ def _build_blind_loop_user(
                     "stop_after_blind_loop_official_success_observed_without_feedback"
                 )
                 return None
+            if round_result is not None and _is_loopx_turn_agent_cli_route(route):
+                _merge_host_local_acp_relay_trace_summary(plan or {}, trace)
+                handled, response = resolve_skillsbench_typed_repair_response(
+                    trace,
+                    agent_round=round,
+                    max_rounds=max_rounds,
+                    continuation_prompt=build_blind_loop_continuation_prompt(
+                        scheduled_round=round + 1,
+                        max_rounds=max_rounds,
+                        persistent_constraint_clause=self._persistent_constraint_clause,
+                        route=route,
+                    ),
+                    case_state_path=PRODUCT_MODE_CASE_STATE_PATH,
+                    persistent_constraint_clause=self._persistent_constraint_clause,
+                )
+                if handled:
+                    return response
             if round >= max_rounds:
                 _inc_counter(trace, "controller_action_decisions")
                 _inc_counter(trace, "stop_decision_count")
@@ -13000,34 +13018,20 @@ def _build_product_mode_user(
                             scheduled_round=round + 1,
                             task_instruction=instruction,
                         )
-                    repair_decision = advance_skillsbench_typed_repair_controller(
+                    handled, response = resolve_skillsbench_typed_repair_response(
                         trace,
                         agent_round=round,
-                        scheduled_round=round + 1,
                         max_rounds=max_rounds,
                         task_instruction_sent=self._task_instruction_sent,
-                    )
-                    if repair_decision:
-                        _inc_counter(trace, "controller_action_decisions")
-                        trace["last_decision"] = repair_decision["last_decision"]
-                        if repair_decision["action"] == "stop":
-                            _inc_counter(trace, "stop_decision_count")
-                            return None
-                        _inc_counter(trace, "followup_prompt_count")
-                        if repair_decision["action"] == "continue":
-                            return self._scheduled_continuation_prompt(
-                                scheduled_round=round + 1,
-                            )
-                        return build_skillsbench_typed_repair_prompt(
+                        continuation_prompt=self._scheduled_continuation_prompt(
                             scheduled_round=round + 1,
-                            max_rounds=max_rounds,
-                            case_state_path=case_state_path,
-                            loop_alignment_contract=goal_start_loop_alignment_contract(),
-                            persistent_constraint_clause=(
-                                self._persistent_constraint_clause
-                            ),
-                            trigger_kind=repair_decision.get("trigger_kind", ""),
-                        )
+                        ),
+                        case_state_path=case_state_path,
+                        loop_alignment_contract=goal_start_loop_alignment_contract(),
+                        persistent_constraint_clause=self._persistent_constraint_clause,
+                    )
+                    if handled:
+                        return response
                     if (
                         self._task_instruction_sent
                         and product_mode_entry_lifecycle_gate_satisfied()
@@ -14181,7 +14185,7 @@ async def run_benchflow_case(
         controller_user = _build_blind_loop_user(
             route=args.route,
             max_rounds=args.max_rounds,
-            trace=controller_trace,
+            trace=controller_trace, plan=plan,
         )
     elif not setup_only_public_preflight and args.route in PRODUCT_MODE_CONTROLLER_ROUTES:
         controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)

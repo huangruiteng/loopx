@@ -509,6 +509,52 @@ def build_skillsbench_typed_repair_prompt(
     )
 
 
+def _increment_trace_counter(trace: dict[str, Any], key: str) -> None:
+    value = trace.get(key)
+    current = value if isinstance(value, int) and not isinstance(value, bool) else 0
+    trace[key] = current + 1
+
+
+def resolve_skillsbench_typed_repair_response(
+    trace: dict[str, Any],
+    *,
+    agent_round: int,
+    max_rounds: int,
+    task_instruction_sent: bool = True,
+    continuation_prompt: str,
+    case_state_path: str,
+    loop_alignment_contract: str = "",
+    persistent_constraint_clause: str,
+) -> tuple[bool, str | None]:
+    """Resolve one controller action into a public prompt or typed stop."""
+
+    decision = advance_skillsbench_typed_repair_controller(
+        trace,
+        agent_round=agent_round,
+        scheduled_round=agent_round + 1,
+        max_rounds=max_rounds,
+        task_instruction_sent=task_instruction_sent,
+    )
+    if not decision:
+        return False, None
+    _increment_trace_counter(trace, "controller_action_decisions")
+    trace["last_decision"] = decision["last_decision"]
+    if decision["action"] == "stop":
+        _increment_trace_counter(trace, "stop_decision_count")
+        return True, None
+    _increment_trace_counter(trace, "followup_prompt_count")
+    if decision["action"] == "continue":
+        return True, continuation_prompt
+    return True, build_skillsbench_typed_repair_prompt(
+        scheduled_round=agent_round + 1,
+        max_rounds=max_rounds,
+        case_state_path=case_state_path,
+        loop_alignment_contract=loop_alignment_contract,
+        persistent_constraint_clause=persistent_constraint_clause,
+        trigger_kind=decision.get("trigger_kind", ""),
+    )
+
+
 def record_skillsbench_typed_repair_terminal(
     trace: dict[str, Any],
     *,

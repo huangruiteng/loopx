@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 
+import asyncio
+import json
 import sys
 import tempfile
+import types
 from pathlib import Path
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -24,6 +28,7 @@ from loopx.control_plane.runtime.goal_start_control_score import (
 )
 from loopx.status import compact_benchmark_run
 from examples.skillsbench_fixtures import write_official_skillsbench_result
+from scripts.skillsbench_automation_loop import _build_blind_loop_user
 
 
 def base_trace() -> dict[str, object]:
@@ -67,6 +72,29 @@ def committed_turn_execution() -> dict[str, object]:
             "quota_spent": True,
         },
     }
+
+
+def write_failed_turn_trace(trace_dir: Path, index: int) -> None:
+    payload = {
+        "schema_version": "skillsbench_host_local_acp_relay_public_trace_v0",
+        "trace_kind": "loopx_turn_execution",
+        "loopx_turn_execution": failed_turn_execution(),
+        "boundary": {
+            key: False
+            for key in (
+                "raw_task_text_recorded",
+                "raw_trajectory_recorded",
+                "raw_stdout_recorded",
+                "raw_stderr_recorded",
+                "credential_values_recorded",
+                "host_paths_recorded",
+                "remote_paths_recorded",
+            )
+        },
+    }
+    (trace_dir / f"turn-{index}.compact.json").write_text(
+        json.dumps(payload), encoding="utf-8"
+    )
 
 
 def test_one_attempt_per_unchanged_frontier_and_reward_blind_prompt() -> None:
@@ -275,6 +303,52 @@ def test_turn_recovery_controller_stops_or_continues_from_receipts() -> None:
     )
 
 
+def test_turn_blind_controller_consumes_recovery_receipts() -> None:
+    trace = {
+        "schema_version": "skillsbench_loopx_controller_trace_v0",
+        "route": "loopx-turn-agent-cli",
+        "round_rewards": [],
+    }
+    fake_user = types.ModuleType("benchflow.sandbox.user")
+    fake_user.BaseUser = type("BaseUser", (), {})
+    fake_user.RoundResult = type("RoundResult", (), {})
+    fake_modules = {
+        "benchflow": types.ModuleType("benchflow"),
+        "benchflow.sandbox": types.ModuleType("benchflow.sandbox"),
+        "benchflow.sandbox.user": fake_user,
+    }
+    round_result = types.SimpleNamespace(
+        rewards={}, n_tool_calls=1, trajectory=[]
+    )
+    with patch.dict(sys.modules, fake_modules):
+        with tempfile.TemporaryDirectory(prefix="turn-recovery-controller-") as tmp:
+            trace_dir = Path(tmp)
+            user = _build_blind_loop_user(
+                route="loopx-turn-agent-cli",
+                max_rounds=8,
+                trace=trace,
+                plan={
+                    "route": "loopx-turn-agent-cli",
+                    "host_local_acp_relay_trace_dir": str(trace_dir),
+                    "runner_prerequisites": {},
+                },
+            )
+            assert asyncio.run(user.run(0, "Fix the workbook.")) is not None
+            write_failed_turn_trace(trace_dir, 1)
+            repair_prompt = asyncio.run(
+                user.run(1, "Fix the workbook.", round_result)
+            )
+            assert "later Turn receipt commits" in repair_prompt, repair_prompt
+            assert trace["product_mode_typed_repair_pending"] is True, trace
+            write_failed_turn_trace(trace_dir, 2)
+            assert asyncio.run(
+                user.run(2, "Fix the workbook.", round_result)
+            ) is None
+            assert trace["product_mode_typed_repair_terminal_reason"] == (
+                "turn_repair_round_without_todo_or_committed_validation_delta"
+            ), trace
+
+
 def test_unchanged_frontier_has_typed_terminal_receipt() -> None:
     trace = base_trace()
     assert begin_skillsbench_typed_repair(
@@ -381,6 +455,7 @@ if __name__ == "__main__":
     test_todo_identity_or_task_validation_delta_allows_continuation()
     test_turn_recovery_requires_todo_or_committed_validation_delta()
     test_turn_recovery_controller_stops_or_continues_from_receipts()
+    test_turn_blind_controller_consumes_recovery_receipts()
     test_unchanged_frontier_has_typed_terminal_receipt()
     test_goal_start_control_score_preserves_typed_repair_fields()
     test_typed_repair_projection_survives_result_compaction()
