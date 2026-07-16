@@ -94,6 +94,40 @@ def assert_installer_manpage_surface() -> None:
             "SHELL": "/bin/zsh",
         }
 
+        help_result = subprocess.run(
+            [str(script), "--help"],
+            cwd=REPO_ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+        )
+        assert help_result.returncode == 0, help_result
+        assert "Usage: install-local.sh [--help]" in help_result.stdout, help_result.stdout
+        assert "positional arguments are not supported" in help_result.stdout, help_result.stdout
+        assert help_result.stderr == "", help_result.stderr
+        assert not bin_dir.exists(), bin_dir
+        assert not man_root.exists(), man_root
+        assert not profile.exists(), profile
+        assert not Path(env["CODEX_HOME"]).exists(), env["CODEX_HOME"]
+        assert not Path(env["LOOPX_RELEASES_DIR"]).exists(), env["LOOPX_RELEASES_DIR"]
+
+        unknown_result = subprocess.run(
+            [str(script), "--unknown"],
+            cwd=REPO_ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+        )
+        assert unknown_result.returncode == 2, unknown_result
+        assert unknown_result.stdout == "", unknown_result.stdout
+        assert "loopx installer error: unknown argument: --unknown" in unknown_result.stderr
+        assert "Usage: install-local.sh [--help]" in unknown_result.stderr
+        assert not bin_dir.exists(), bin_dir
+        assert not man_root.exists(), man_root
+        assert not profile.exists(), profile
+        assert not Path(env["CODEX_HOME"]).exists(), env["CODEX_HOME"]
+        assert not Path(env["LOOPX_RELEASES_DIR"]).exists(), env["LOOPX_RELEASES_DIR"]
+
         install = subprocess.run(
             [str(script)],
             cwd=REPO_ROOT,

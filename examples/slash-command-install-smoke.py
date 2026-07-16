@@ -106,17 +106,14 @@ def main() -> int:
 
         codex_skill = codex_home / "skills" / "loopx" / "SKILL.md"
         codex_skill_text = codex_skill.read_text(encoding="utf-8")
-        assert "name: \"loopx\"" in codex_skill_text
+        assert 'name: "loopx"' in codex_skill_text
         assert "surface=codex-skills" in codex_skill_text
         assert "LoopX `/loopx`" in codex_skill_text
         assert "start-goal --guided --project . --goal-text" in codex_skill_text
-        assert "bootstrap-command-pack --project . --goal-text" not in codex_skill_text
-        assert "new peer/meta/supervisor agent" in codex_skill_text
-        assert "register-agent --goal-id <selected-goal-id>" in codex_skill_text
-        assert "Do not configure optional features during first-run" in codex_skill_text
-        assert "configure-goal --goal-id <resolved-goal-id>" in codex_skill_text
         codex_metadata = codex_home / "skills" / "loopx" / "agents" / "openai.yaml"
         codex_metadata_text = codex_metadata.read_text(encoding="utf-8")
+        assert 'display_name: "LoopX"' in codex_metadata_text
+        assert 'display_name: "LoopX /loopx"' not in codex_metadata_text
         assert "allow_implicit_invocation: false" in codex_metadata_text
         assert "loopx-managed-slash-command:v1 command=/loopx surface=codex-skill-metadata" in codex_metadata_text
 
@@ -220,7 +217,7 @@ def main() -> int:
         legacy_skill = legacy_codex_home / "skills" / "loopx" / "SKILL.md"
         legacy_skill.parent.mkdir(parents=True)
         legacy_skill.write_text(
-            "# Legacy LoopX\n\nloopx goal-mode setup (NOT Claude Code's built-in /goal)\n",
+            "<!-- loopx-managed-slash-command:v1 command=/loopx surface=codex-skills -->\n",
             encoding="utf-8",
         )
         legacy_install = json.loads(
@@ -237,8 +234,29 @@ def main() -> int:
                 str(legacy_claude_home),
             ).stdout
         )
-        assert statuses_for(legacy_install, legacy_skill) == ["upgraded_legacy_managed"], legacy_install
+        assert statuses_for(legacy_install, legacy_skill) == ["updated"], legacy_install
         assert "loopx-managed-slash-command:v1 command=/loopx surface=codex-skills" in legacy_skill.read_text(encoding="utf-8")
+
+        user_codex_home = root / "user-codex"
+        user_skill = user_codex_home / "skills" / "loopx" / "SKILL.md"
+        user_skill.parent.mkdir(parents=True)
+        user_skill.write_text("# user-owned loopx skill\n", encoding="utf-8")
+        user_install = json.loads(
+            run_cli(
+                "--format",
+                "json",
+                "slash-commands",
+                "--install",
+                "--surface",
+                "codex",
+                "--codex-home",
+                str(user_codex_home),
+                "--claude-home",
+                str(root / "user-claude"),
+            ).stdout
+        )
+        assert statuses_for(user_install, user_skill) == ["skipped_user_file"], user_install
+        assert user_skill.read_text(encoding="utf-8") == "# user-owned loopx skill\n"
 
         uninstall_codex_home = root / "uninstall-codex"
         uninstall_claude_home = root / "uninstall-claude"

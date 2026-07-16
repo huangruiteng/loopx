@@ -71,9 +71,10 @@ can discover user-installed skills:
 
 - Codex CLI / IDE / App: explicit LoopX command-facade skills under
   `~/.codex/skills/loopx*`. Codex does not currently support user-defined
-  native top-level `/loopx` slash commands, so invoke these through `$loopx` or
-  `/skills`. Only these command facades include `agents/openai.yaml` with
-  `allow_implicit_invocation: false`; richer workflow skills such as
+  native top-level `/loopx` slash commands, so invoke the project command
+  through `$loopx` or `/skills`. The primary `LoopX` command facade and
+  `LoopX Project` workflow skill are separate entries: command facades set
+  `allow_implicit_invocation: false`, while richer workflow skills such as
   `loopx-project` and `loopx-pr-review` keep their normal implicit behavior.
 - Claude Code: lightweight user skills under `~/.claude/skills/loopx*`, so the
   command family can appear as Claude Code slash commands without enabling the
@@ -84,7 +85,7 @@ entry point is different:
 
 | Command family | Host entry | CLI fallback |
 | --- | --- | --- |
-| Project goal start | `/loopx <goal text>` where the host exposes native slash commands; `$loopx <goal text>` or the `loopx` skill in Codex surfaces that use explicit skills. | `loopx start-goal --guided --project . --goal-text "<goal text>"` |
+| Project goal start | `/loopx <goal text>` where the host exposes native slash commands; `$loopx <goal text>` or the `LoopX` command skill in Codex surfaces that use explicit skills. | `loopx start-goal --guided --project . --goal-text "<goal text>"` |
 | Global manager views | `/loopx-global-summary`, `/loopx-global-gates`, `/loopx-global-todos`, `/loopx-global-risks`. | `loopx slash-commands`, then run the listed global manager command for the view you need. |
 | PR review queue | `/loopx-pr-review`. | `loopx pr-review` |
 

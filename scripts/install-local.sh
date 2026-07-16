@@ -1,6 +1,44 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+usage() {
+  cat <<'EOF'
+Usage: install-local.sh [--help]
+
+Install LoopX from the current checkout. Installation behavior is configured
+through environment variables; positional arguments are not supported.
+
+Options:
+  -h, --help  Show this help and exit.
+
+Common environment variables:
+  LOOPX_PROMOTE_DEFAULT=1          Promote this checkout as the default loopx.
+  LOOPX_INSTALL_CANARY=0           Skip the loopx-canary executable.
+  LOOPX_INSTALL_SKILL=0            Skip packaged Codex workflow skills.
+  LOOPX_INSTALL_SLASH_COMMANDS=0   Skip Codex and Claude command skills.
+  CODEX_HOME=/path                 Override the Codex home directory.
+EOF
+}
+
+case "${1:-}" in
+  -h|--help)
+    if [[ "$#" -ne 1 ]]; then
+      echo "loopx installer error: --help does not accept additional arguments" >&2
+      usage >&2
+      exit 2
+    fi
+    usage
+    exit 0
+    ;;
+  "")
+    ;;
+  *)
+    echo "loopx installer error: unknown argument: $1" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
 

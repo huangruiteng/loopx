@@ -345,9 +345,12 @@ def install_slash_commands(
                 }
             )
             if skill_status not in {"skipped_user_file", "preserved_existing_loopx_skill"}:
+                display_name = (
+                    "LoopX" if spec["command"] == "/loopx" else f"LoopX {spec['command']}"
+                )
                 metadata = _openai_skill_metadata(
                     command=str(spec["command"]),
-                    display_name=f"LoopX {spec['command']}",
+                    display_name=display_name,
                     short_description=str(spec["description"]),
                 )
                 metadata_status = _target_status(metadata_path, metadata, execute=execute)
@@ -392,7 +395,12 @@ def install_slash_commands(
                     ),
                     "native_registry_supported": False,
                     "failure_policy": "fail_closed_to_explicit_skill",
-                    "fallback": "Use `$loopx` or `/skills` to explicitly invoke the LoopX skill; for the visible TUI loop, run `loopx codex-cli-bootstrap-message --project .`, paste the setup message, then set `/goal <thin task_body>`.",
+                    "fallback": (
+                        f"Use `${spec['name']}` or `/skills` to explicitly invoke the LoopX "
+                        "command skill; for the visible TUI loop, run "
+                        "`loopx codex-cli-bootstrap-message --project .`, paste the setup "
+                        "message, then set `/goal <thin task_body>`."
+                    ),
                 }
             )
 
@@ -464,7 +472,7 @@ def install_slash_commands(
         "installed": installed,
         "notes": [
             "Codex does not currently support user-defined native top-level slash commands; use explicit skill invocation through `$loopx` or `/skills`.",
-            "Only explicit LoopX command-facade skills are installed with agents/openai.yaml policy allow_implicit_invocation=false; richer workflow skills stay implicit.",
+            "Explicit LoopX command-facade skills use agents/openai.yaml policy allow_implicit_invocation=false and remain distinct from richer workflow skills such as loopx-project.",
             "Claude Code discovers user skills from CLAUDE_HOME/skills and exposes each skill name as a slash command.",
             "Uninstall is fail-closed: it retires only files carrying the LoopX managed marker and leaves user-owned files in place.",
         ],

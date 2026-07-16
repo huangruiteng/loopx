@@ -1,0 +1,4 @@
+interface:
+  display_name: "LoopX Project"
+  short_description: "Connect projects and advance LoopX goals"
+  default_prompt: "Use the LoopX project workflow to inspect or advance the current project goal from authoritative LoopX state."

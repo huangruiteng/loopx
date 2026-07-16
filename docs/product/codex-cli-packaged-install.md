@@ -31,6 +31,8 @@ facades:
 
 - `~/.codex/skills/loopx*/SKILL.md` for explicit Codex command-facade
   invocation through `$loopx` or `/skills`;
+- `~/.codex/skills/loopx-project/SKILL.md` for the distinct project workflow
+  skill shown as `LoopX Project` in `/skills`;
 - `~/.claude/skills/loopx*/SKILL.md` for Claude Code slash-command discovery.
 
 Current verified Codex CLI builds still reject user-installed `/loopx` and

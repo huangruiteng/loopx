@@ -30,6 +30,8 @@ def main() -> int:
     dashboard_source = DASHBOARD_DEMO_SMOKE.read_text(encoding="utf-8")
 
     assert_contains(canary_source, "--no-write-evidence", "canary no-write flag")
+    assert_contains(canary_source, "--goal-id", "canary refresh-state goal id flag")
+    assert_contains(canary_source, "DEFAULT_READINESS_GOAL_ID", "canary default writeback goal")
     assert_contains(canary_source, "--agent-id", "canary refresh-state agent id flag")
     assert_contains(canary_source, "DEFAULT_READINESS_AGENT_ID", "canary default writeback agent")
     assert_contains(canary_source, "DEFAULT_READINESS_AGENT_LANE", "canary default writeback lane")

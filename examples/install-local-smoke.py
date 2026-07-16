@@ -164,6 +164,18 @@ def main() -> int:
         stale_canary_target.mkdir()
         (bin_dir / "loopx-canary").symlink_to(stale_canary_target)
         codex_home = home / ".codex"
+        stale_command_skill = codex_home / "skills" / "loopx" / "SKILL.md"
+        stale_command_skill.parent.mkdir(parents=True)
+        stale_command_skill.write_text(
+            "<!-- loopx-managed-slash-command:v1 command=/loopx surface=codex-skills -->\n",
+            encoding="utf-8",
+        )
+        stale_command_metadata = stale_command_skill.parent / "agents" / "openai.yaml"
+        stale_command_metadata.parent.mkdir(parents=True)
+        stale_command_metadata.write_text(
+            "# <!-- loopx-managed-slash-command:v1 command=/loopx surface=codex-skill-metadata -->\n",
+            encoding="utf-8",
+        )
         profile = home / ".zshrc"
         assert_release_snapshot_source_fallback(root)
         env = {
@@ -293,6 +305,13 @@ def main() -> int:
             "Do not use this skill to approve",
         ):
             assert phrase in pr_review_text, phrase
+        pr_review_metadata = pr_review_skill.parent / "agents" / "openai.yaml"
+        pr_review_metadata_text = pr_review_metadata.read_text(encoding="utf-8")
+        assert (
+            'short_description: "Guide AgentLoop through LoopX PR review queues"'
+            in pr_review_metadata_text
+        ), pr_review_metadata_text
+        assert "Guide agentloop" not in pr_review_metadata_text, pr_review_metadata_text
         auto_research_skill = codex_home / "skills" / "loopx-auto-research" / "SKILL.md"
         assert not auto_research_skill.exists(), auto_research_skill
         loopx_prompt = codex_home / "prompts" / "loopx.md"
@@ -300,9 +319,15 @@ def main() -> int:
         loopx_command_skill = codex_home / "skills" / "loopx" / "SKILL.md"
         loopx_command_skill_text = loopx_command_skill.read_text(encoding="utf-8")
         assert "surface=codex-skills" in loopx_command_skill_text, loopx_command_skill_text
-        loopx_openai_metadata = codex_home / "skills" / "loopx" / "agents" / "openai.yaml"
+        loopx_openai_metadata = loopx_command_skill.parent / "agents" / "openai.yaml"
         loopx_openai_metadata_text = loopx_openai_metadata.read_text(encoding="utf-8")
+        assert 'display_name: "LoopX"' in loopx_openai_metadata_text, loopx_openai_metadata_text
+        assert 'display_name: "LoopX /loopx"' not in loopx_openai_metadata_text, loopx_openai_metadata_text
         assert "allow_implicit_invocation: false" in loopx_openai_metadata_text, loopx_openai_metadata_text
+        loopx_project_metadata = codex_home / "skills" / "loopx-project" / "agents" / "openai.yaml"
+        loopx_project_metadata_text = loopx_project_metadata.read_text(encoding="utf-8")
+        assert 'display_name: "LoopX Project"' in loopx_project_metadata_text, loopx_project_metadata_text
+        assert 'display_name: "LoopX"' not in loopx_project_metadata_text, loopx_project_metadata_text
         claude_loopx_skill = home / ".claude" / "skills" / "loopx" / "SKILL.md"
         claude_loopx_skill_text = claude_loopx_skill.read_text(encoding="utf-8")
         assert "surface=claude-skills" in claude_loopx_skill_text, claude_loopx_skill_text
@@ -314,6 +339,10 @@ def main() -> int:
         )
         doc_registry_skill = codex_home / "skills" / "loopx-doc-registry" / "SKILL.md"
         doc_registry_text = " ".join(doc_registry_skill.read_text(encoding="utf-8").split())
+        doc_registry_metadata = doc_registry_skill.parent / "agents" / "openai.yaml"
+        doc_registry_metadata_text = doc_registry_metadata.read_text(encoding="utf-8")
+        assert 'display_name: "LoopX Doc Registry"' in doc_registry_metadata_text
+        assert 'display_name: "Loopx' not in doc_registry_metadata_text
         for phrase in (
             "Use even when the user does not mention LoopX or doc registry",
             "use `.loopx/registry.json` as the project-local doc registry",

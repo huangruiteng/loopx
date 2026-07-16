@@ -1,0 +1,4 @@
+interface:
+  display_name: "LoopX Doc Registry"
+  short_description: "Register durable project materials in LoopX"
+  default_prompt: "Use the LoopX doc registry workflow to register or retrieve durable project materials from the authoritative project state."
