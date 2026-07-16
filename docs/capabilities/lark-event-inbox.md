@@ -235,6 +235,13 @@ the same configured profile. Ordinary chatter remains a no-reply path;
 enabling this capability does not grant reviewer-notification or other
 outbound authority.
 
+For text replies containing Lark `<at user_id="...">...</at>` mentions, provider
+readback may replace the markup with tokens such as `@_user_1`. Verification
+therefore compares the normalized visible-text template and requires every
+mention token to resolve to the identity requested at send time. A missing,
+extra, or differently resolved mention remains `sent_unverified`; display-name
+or raw-markup similarity alone is not accepted.
+
 ## Bounded history reconciliation
 
 Real-time event subscriptions do not backfill messages sent before a collector

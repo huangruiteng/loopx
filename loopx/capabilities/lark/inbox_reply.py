@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
@@ -15,6 +16,13 @@ from .event_inbox import (
 
 
 CommandRunner = Callable[[Sequence[str]], Mapping[str, Any]]
+
+AT_MENTION_PATTERN = re.compile(
+    r'<at\s+(?P<kind>user_id|open_id|union_id)="(?P<identity>[^"<>]+)">'
+    r"(?P<name>.*?)</at>",
+    re.IGNORECASE,
+)
+MENTION_ID_KEYS = ("open_id", "user_id", "union_id")
 
 
 def _default_runner(args: Sequence[str]) -> Mapping[str, Any]:
@@ -62,6 +70,110 @@ def _message_id(value: Any) -> str | None:
             None,
         )
     return None
+
+
+def _message(value: Any, message_id: str) -> Mapping[str, Any] | None:
+    if isinstance(value, Mapping):
+        if str(value.get("message_id") or "") == message_id:
+            return value
+        return next(
+            (found for child in value.values() if (found := _message(child, message_id))),
+            None,
+        )
+    if isinstance(value, list):
+        return next(
+            (found for child in value if (found := _message(child, message_id))),
+            None,
+        )
+    return None
+
+
+def _content_text(value: Any) -> str:
+    if isinstance(value, Mapping):
+        text = value.get("text")
+        if isinstance(text, str):
+            return text
+        content = value.get("content")
+        if content is not None:
+            return _content_text(content)
+        return ""
+    if not isinstance(value, str):
+        return ""
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError:
+        return value
+    return _content_text(decoded) if isinstance(decoded, Mapping) else value
+
+
+def _message_text(message: Mapping[str, Any]) -> str:
+    body = message.get("body")
+    if isinstance(body, Mapping):
+        text = _content_text(body)
+        if text:
+            return text
+    return _content_text(message.get("content"))
+
+
+def _mention_identities(mention: Mapping[str, Any]) -> set[str]:
+    identities = {
+        str(mention.get(key) or "").strip()
+        for key in MENTION_ID_KEYS
+        if str(mention.get(key) or "").strip()
+    }
+    mention_id = mention.get("id")
+    if isinstance(mention_id, Mapping):
+        identities.update(
+            str(mention_id.get(key) or "").strip()
+            for key in MENTION_ID_KEYS
+            if str(mention_id.get(key) or "").strip()
+        )
+    elif isinstance(mention_id, str) and mention_id.strip():
+        identities.add(mention_id.strip())
+    return identities
+
+
+def _canonical_expected_text(text: str) -> tuple[str, dict[str, str]]:
+    identity_tokens: dict[str, str] = {}
+
+    def replace(match: re.Match[str]) -> str:
+        identity = match.group("identity").strip()
+        token = identity_tokens.setdefault(
+            identity, f"\x1fmention:{len(identity_tokens)}\x1f"
+        )
+        return token
+
+    return " ".join(AT_MENTION_PATTERN.sub(replace, text).split()), identity_tokens
+
+
+def _readback_matches_reply(
+    *, reply_text: str, message: Mapping[str, Any]
+) -> bool:
+    expected_text, identity_tokens = _canonical_expected_text(reply_text)
+    actual_text = _message_text(message)
+    if not actual_text:
+        return False
+    if not identity_tokens:
+        return " ".join(actual_text.split()) == expected_text
+
+    mentions = message.get("mentions")
+    if not isinstance(mentions, list):
+        return False
+    matched_identities: set[str] = set()
+    for mention in mentions:
+        if not isinstance(mention, Mapping):
+            return False
+        key = str(mention.get("key") or "")
+        matches = _mention_identities(mention).intersection(identity_tokens)
+        if not key or len(matches) != 1:
+            return False
+        identity = next(iter(matches))
+        actual_text = actual_text.replace(key, identity_tokens[identity])
+        matched_identities.add(identity)
+    return (
+        matched_identities == set(identity_tokens)
+        and " ".join(actual_text.split()) == expected_text
+    )
 
 
 def _result(
@@ -263,13 +375,15 @@ def reply_lark_event_inbox(
             "json",
         ],
     )
-    readback_text = json.dumps(
-        _json_object(readback.get("stdout")), ensure_ascii=False, sort_keys=True
-    )
+    readback_payload = _json_object(readback.get("stdout"))
+    readback_message = _message(readback_payload, reply_message_id)
     verified = bool(
         readback.get("returncode") == 0
-        and reply_message_id in readback_text
-        and reply_text in readback_text
+        and readback_message is not None
+        and _readback_matches_reply(
+            reply_text=reply_text,
+            message=readback_message,
+        )
     )
     return _result(
         status="sent_verified" if verified else "sent_unverified",

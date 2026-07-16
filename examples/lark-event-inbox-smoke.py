@@ -293,10 +293,86 @@ def main() -> None:
             for call in calls
         ), calls
         assert any("+messages-reply" in call for call in calls), calls
+        reply_call = next(call for call in calls if "+messages-reply" in call)
+        assert reply_call[reply_call.index("--message-id") + 1] == "om_review_2"
+        assert "--reply-in-thread" in reply_call
         assert all(
             "--as" in call and call[call.index("--as") + 1] == "bot"
             for call in calls[1:]
         ), calls
+
+        def mention_runner(*, readback_open_id: str):
+            def run(args):
+                if args[3:6] == ["auth", "status", "--verify"]:
+                    return successful_runner(args)
+                if args[3:6] == ["im", "chats", "get"]:
+                    return {"returncode": 0, "stdout": "{}", "stderr": ""}
+                if "+messages-reply" in args:
+                    return {
+                        "returncode": 0,
+                        "stdout": json.dumps({"message_id": "om_reply_mention"}),
+                        "stderr": "",
+                    }
+                if "+messages-mget" in args:
+                    return {
+                        "returncode": 0,
+                        "stdout": json.dumps(
+                            {
+                                "items": [
+                                    {
+                                        "message_id": "om_reply_mention",
+                                        "body": {
+                                            "content": json.dumps(
+                                                {"text": "@_user_1 已记录并修正。"},
+                                                ensure_ascii=False,
+                                            )
+                                        },
+                                        "mentions": [
+                                            {
+                                                "key": "@_user_1",
+                                                "id": {
+                                                    "open_id": readback_open_id,
+                                                    "user_id": "fixture-user-id",
+                                                },
+                                                "name": "Reviewer",
+                                            }
+                                        ],
+                                    }
+                                ]
+                            },
+                            ensure_ascii=False,
+                        ),
+                        "stderr": "",
+                    }
+                raise AssertionError(args)
+
+            return run
+
+        mention_reply = (
+            '<at user_id="ou_reviewer_fixture">Reviewer</at> 已记录并修正。'
+        )
+        normalized_mention = reply_lark_event_inbox(
+            project=project,
+            config_path=config,
+            message_id="om_review_2",
+            text=mention_reply,
+            execute=True,
+            runner=mention_runner(readback_open_id="ou_reviewer_fixture"),
+        )
+        assert normalized_mention["status"] == "sent_verified", normalized_mention
+
+        wrong_mention = reply_lark_event_inbox(
+            project=project,
+            config_path=config,
+            message_id="om_review_2",
+            text=mention_reply,
+            execute=True,
+            runner=mention_runner(readback_open_id="ou_different_fixture"),
+        )
+        assert wrong_mention["status"] == "sent_unverified", wrong_mention
+        assert wrong_mention["blocker"] == "lark_inbox_reply_not_verified", (
+            wrong_mention
+        )
 
         membership_calls: list[list[str]] = []
 
