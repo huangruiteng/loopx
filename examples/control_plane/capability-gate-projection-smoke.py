@@ -204,7 +204,58 @@ def assert_gate_prefers_active_next_and_exposes_blocked_fallback() -> None:
         "todo_needs_network"
     ], gate
     assert gate["blocked_missing"] == ["network"], gate
+    assert gate["repair_missing"] == ["network"], gate
+    assert gate["resolution_bindings"] == [
+        {
+            "owner": "agent",
+            "action": "repair_bridge",
+            "capability": "network",
+            "priority": "P0",
+            "primary_blocked_todo_id": "todo_needs_network",
+            "blocked_todo_ids": ["todo_needs_network"],
+        }
+    ], gate
     assert gate["available"] == ["shell", "filesystem_read", "filesystem_write"], gate
+
+
+def assert_runnable_fallback_preserves_owner_resolution() -> None:
+    blocked = todo(
+        "todo_needs_credentials",
+        1,
+        "P0",
+        claimed_by=AGENT_ID,
+        required_capabilities=["credentials"],
+    )
+    runnable = todo(
+        "todo_local_docs",
+        2,
+        "P1",
+        claimed_by=AGENT_ID,
+        required_capabilities=["shell"],
+    )
+    gate = build_capability_gate(
+        {"executable_backlog_items": [blocked, runnable]},
+        available_capabilities=["shell"],
+        agent_identity={"agent_id": AGENT_ID, "agent_model": "peer_v1"},
+    )
+    assert gate is not None
+    assert gate["action"] == "run", gate
+    assert gate["owner_missing"] == ["credentials"], gate
+    assert gate["owner_action"] == (
+        "provide or authorize the missing owner-held capability: credentials "
+        "for todo_needs_credentials"
+    ), gate
+    assert gate["resolution_bindings"] == [
+        {
+            "owner": "user",
+            "action": "provide_or_authorize",
+            "capability": "credentials",
+            "priority": "P0",
+            "primary_blocked_todo_id": "todo_needs_credentials",
+            "blocked_todo_ids": ["todo_needs_credentials"],
+        }
+    ], gate
+    assert gate["runnable_candidates"][0]["todo_id"] == "todo_local_docs", gate
 
 
 def assert_target_capability_creates_repair_hint_not_hard_block() -> None:
@@ -279,7 +330,8 @@ def assert_all_blocked_owner_capability_stops_delivery() -> None:
     assert gate["owner_missing"] == ["credentials"], gate
     assert gate["repair_missing"] == [], gate
     assert gate["owner_action"] == (
-        "provide or authorize the missing owner-held capability: credentials"
+        "provide or authorize the missing owner-held capability: credentials "
+        "for todo_credentials"
     ), gate
 
 
@@ -299,6 +351,7 @@ def main() -> int:
     assert_current_agent_candidate_order_contract()
     assert_stale_active_next_does_not_override_ready_p0()
     assert_gate_prefers_active_next_and_exposes_blocked_fallback()
+    assert_runnable_fallback_preserves_owner_resolution()
     assert_target_capability_creates_repair_hint_not_hard_block()
     assert_all_blocked_runtime_capability_routes_to_agent_repair()
     assert_all_blocked_owner_capability_stops_delivery()

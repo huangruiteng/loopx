@@ -681,8 +681,21 @@ precedence for the interaction decision, so a local bridge repair cannot hide
 the concrete user action. Runtime capability gaps do not enter
 `owner_missing`: the agent observes or repairs the launcher bridge and then
 truthfully declares the capability available. Once an owner-held capability is
-provided through its concrete gate, the user gate disappears and any remaining
-bridge repair returns to the agent lane.
+provided and its concrete gate is resolved, any remaining bridge repair returns
+to the agent lane.
+
+The same resolution information must survive when a non-dependent fallback is
+runnable. `resolution_bindings` groups each missing capability with its owner
+and exact `blocked_todo_ids`. The interaction CLI channel projects idempotent
+todo writes: owner-held gaps become scoped `user_gate` todos linked with
+`unblocks_todo_id`; repairable gaps become agent advancement todos whose
+`target_capabilities` name the bridge being materialized. The user channel is
+notified for the owner-held gap while the agent channel continues an unrelated
+runnable todo. Unsupported gaps remain explicit but do not invent user work.
+
+These todos record responsibility and lineage, not capability truth. A launcher
+must verify the real callsite and declare `--available-capability` again for the
+current preflight and spend; todo completion alone never grants a capability.
 
 Launchers that really have an extra capability should pass it to both
 `quota should-run` and `quota spend-slot` with `--available-capability`, so the

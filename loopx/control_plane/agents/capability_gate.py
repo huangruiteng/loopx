@@ -105,6 +105,81 @@ def _capability_resolution(missing: list[str]) -> dict[str, Any]:
     }
 
 
+def _capability_priority(value: Any) -> str:
+    priority = str(value or "").strip().upper()
+    for prefix in ("P0", "P1", "P2"):
+        if priority.startswith(prefix):
+            return prefix
+    return "P1"
+
+
+def _blocked_capability_resolution_bindings(
+    blocked: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    bindings: dict[tuple[str, str], dict[str, Any]] = {}
+    for item in blocked:
+        todo_id = str(item.get("todo_id") or "").strip()
+        for capability in normalize_required_capabilities(
+            item.get("missing_capabilities")
+        ):
+            action = _capability_missing_action([capability])
+            if action == "ask_owner":
+                owner = "user"
+                resolution_action = "provide_or_authorize"
+            elif action == "repair_bridge":
+                owner = "agent"
+                resolution_action = "repair_bridge"
+            else:
+                owner = "capability_gate"
+                resolution_action = "unsupported"
+            key = (owner, capability)
+            binding = bindings.get(key)
+            if binding is None:
+                binding = {
+                    "owner": owner,
+                    "action": resolution_action,
+                    "capability": capability,
+                    "priority": _capability_priority(item.get("priority")),
+                    "primary_blocked_todo_id": todo_id or None,
+                    "blocked_todo_ids": [],
+                }
+                bindings[key] = binding
+            if todo_id and todo_id not in binding["blocked_todo_ids"]:
+                binding["blocked_todo_ids"].append(todo_id)
+    return list(bindings.values())
+
+
+def _binding_capabilities(
+    bindings: list[dict[str, Any]],
+    *,
+    owner: str,
+) -> list[str]:
+    result: list[str] = []
+    for binding in bindings:
+        if binding.get("owner") != owner:
+            continue
+        capability = str(binding.get("capability") or "").strip()
+        if capability and capability not in result:
+            result.append(capability)
+    return result
+
+
+def _owner_capability_action(bindings: list[dict[str, Any]]) -> str | None:
+    actions: list[str] = []
+    for binding in bindings:
+        if binding.get("owner") != "user":
+            continue
+        capability = str(binding.get("capability") or "").strip()
+        todo_id = str(binding.get("primary_blocked_todo_id") or "").strip()
+        if capability:
+            actions.append(f"{capability} for {todo_id}" if todo_id else capability)
+    if not actions:
+        return None
+    return "provide or authorize the missing owner-held capability: " + ", ".join(
+        actions
+    )
+
+
 def available_capabilities_with_defaults(value: Any) -> list[str]:
     capabilities = list(DEFAULT_AVAILABLE_CAPABILITIES)
     for capability in normalize_required_capabilities(value):
@@ -347,6 +422,15 @@ def build_capability_gate(
             for capability in item.get("missing_capabilities") or []:
                 if capability not in blocked_missing:
                     blocked_missing.append(str(capability))
+        resolution_bindings = _blocked_capability_resolution_bindings(blocked)
+        owner_missing = _binding_capabilities(resolution_bindings, owner="user")
+        for capability in _binding_capabilities(resolution_bindings, owner="agent"):
+            if capability not in repair_missing:
+                repair_missing.append(capability)
+        unsupported_missing = _binding_capabilities(
+            resolution_bindings,
+            owner="capability_gate",
+        )
         return {
             "schema_version": CAPABILITY_GATE_SCHEMA_VERSION,
             "source": source,
@@ -361,11 +445,15 @@ def build_capability_gate(
             "runnable_candidates": runnable,
             "blocked_candidates": blocked,
             "blocked_missing": blocked_missing,
+            "owner_missing": owner_missing,
             "repair_missing": repair_missing,
+            "unsupported_missing": unsupported_missing,
+            "resolution_bindings": resolution_bindings,
             "repair_candidate_count": sum(
                 1 for item in runnable if item.get("capability_repair_mode") is True
             ),
             "reason": "capability gate projected runnable candidate set; agent chooses the actual todo",
+            "owner_action": _owner_capability_action(resolution_bindings),
         }
 
     missing_all: list[str] = []
@@ -378,6 +466,7 @@ def build_capability_gate(
             if capability not in missing_all:
                 missing_all.append(str(capability))
     resolution = _capability_resolution(missing_all)
+    resolution_bindings = _blocked_capability_resolution_bindings(blocked)
     action = str(resolution["action"])
     owner_missing = list(resolution["owner_missing"])
     repair_missing = list(resolution["repair_missing"])
@@ -393,21 +482,12 @@ def build_capability_gate(
         "repair_missing": repair_missing,
         "unsupported_missing": resolution["unsupported_missing"],
         "resolution_steps": resolution["resolution_steps"],
+        "resolution_bindings": resolution_bindings,
         "selection_policy": "no_runnable_candidate",
         "runnable_count": 0,
         "runnable_candidates": [],
         "blocked_candidates": blocked,
         "blocks_delivery": True,
         "reason": "all visible executable todo candidates require unavailable capabilities",
-        "owner_action": (
-            "provide or authorize the missing owner-held capability: "
-            + ", ".join(owner_missing)
-            + (
-                "; after that, the agent can repair: " + ", ".join(repair_missing)
-                if repair_missing
-                else ""
-            )
-        )
-        if action == "ask_owner"
-        else None,
+        "owner_action": _owner_capability_action(resolution_bindings),
     }

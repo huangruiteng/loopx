@@ -16,6 +16,7 @@ from loopx.quota import build_quota_should_run, build_quota_slot_preview  # noqa
 
 
 GOAL_ID = "capability-gate-goal"
+AGENT_ID = "codex-main-control"
 
 
 def todo(
@@ -50,6 +51,7 @@ def status_payload(
     items: list[dict[str, Any]],
     *,
     available_capabilities: list[str] | None = None,
+    registered_agent: str | None = None,
 ) -> dict[str, Any]:
     summary = {
         "schema_version": "todo_summary_v0",
@@ -72,6 +74,16 @@ def status_payload(
         "state": "eligible",
         "reason": "fixture eligible quota",
     }
+    coordination: dict[str, Any] = {
+        "available_capabilities": available_capabilities or [],
+    }
+    if registered_agent:
+        coordination.update(
+            {
+                "agent_model": "peer_v1",
+                "registered_agents": [registered_agent],
+            }
+        )
     return {
         "ok": True,
         "attention_queue": {
@@ -82,9 +94,7 @@ def status_payload(
                     "waiting_on": "codex",
                     "severity": "info",
                     "source": "project_asset",
-                    "coordination": {
-                        "available_capabilities": available_capabilities or [],
-                    },
+                    "coordination": coordination,
                     "quota": quota,
                     "project_asset": {
                         "next_action": items[0]["text"] if items else "",
@@ -98,9 +108,7 @@ def status_payload(
                 {
                     "id": GOAL_ID,
                     "registry_member": True,
-                    "coordination": {
-                        "available_capabilities": available_capabilities or [],
-                    },
+                    "coordination": coordination,
                     "quota": quota,
                     "latest_runs": [],
                 }
@@ -163,6 +171,13 @@ def main() -> int:
         for item in p0_fallback["capability_gate"]["runnable_candidates"]
     ] == ["todo_capability_2", "todo_capability_5"], p0_fallback
     assert p0_fallback["capability_gate"]["blocked_candidates"][0]["todo_id"] == "todo_capability_1", p0_fallback
+    assert p0_fallback["capability_gate"]["repair_missing"] == ["benchmark_runner"], p0_fallback
+    assert any(
+        "--action-kind materialize_capability" in action
+        and "--target-capability benchmark_runner" in action
+        and "--unblocks-todo-id todo_capability_1" in action
+        for action in p0_fallback["interaction_contract"]["cli_channel"]["next_cli_actions"]
+    ), p0_fallback
     assert p0_fallback["recommended_action"] == p0_validate["text"], p0_fallback
     assert "choose one of 2 capability-runnable todo(s)" in p0_fallback["protocol_action_packet"]["summary"], p0_fallback
 
@@ -212,6 +227,10 @@ def main() -> int:
         item["todo_id"]
         for item in repair_candidate["capability_gate"]["blocked_candidates"]
     ] == ["todo_capability_1"], repair_candidate
+    assert not any(
+        "--action-kind materialize_capability" in action
+        for action in repair_candidate["interaction_contract"]["cli_channel"]["next_cli_actions"]
+    ), repair_candidate
 
     benchmark_ready = build_quota_should_run(
         status_payload([p0_benchmark, p0_validate, p1_docs]),
@@ -301,9 +320,53 @@ def main() -> int:
     assert owner_gate["capability_gate"]["action"] == "ask_owner", owner_gate
     assert owner_gate["interaction_contract"]["user_channel"]["action_required"] is True, owner_gate
     assert owner_gate["interaction_contract"]["user_channel"]["actions"] == [
-        "provide or authorize the missing owner-held capability: credentials"
+        "provide or authorize the missing owner-held capability: credentials "
+        "for todo_capability_9"
     ], owner_gate
+    assert any(
+        "--task-class user_gate" in action
+        and "--action-kind provide_capability" in action
+        and "--target-capability credentials" in action
+        and "--unblocks-todo-id todo_capability_9" in action
+        for action in owner_gate["interaction_contract"]["cli_channel"]["next_cli_actions"]
+    ), owner_gate
     assert owner_gate["heartbeat_recommendation"]["notify"] == "NOTIFY", owner_gate
+
+    owner_with_fallback = build_quota_should_run(
+        status_payload(
+            [credentials_todo, p1_docs],
+            registered_agent=AGENT_ID,
+        ),
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        available_capabilities=["shell", "filesystem_write"],
+    )
+    assert owner_with_fallback["should_run"] is True, owner_with_fallback
+    assert owner_with_fallback["normal_delivery_allowed"] is True, owner_with_fallback
+    assert owner_with_fallback["requires_user_action"] is True, owner_with_fallback
+    assert owner_with_fallback["capability_gate"]["action"] == "run", owner_with_fallback
+    assert owner_with_fallback["capability_gate"]["owner_missing"] == [
+        "credentials"
+    ], owner_with_fallback
+    assert owner_with_fallback["interaction_contract"]["mode"] == (
+        "bounded_delivery_with_user_notice"
+    ), owner_with_fallback
+    assert owner_with_fallback["interaction_contract"]["agent_channel"][
+        "must_attempt"
+    ] is True, owner_with_fallback
+    assert owner_with_fallback["interaction_contract"]["user_channel"]["actions"] == [
+        "provide or authorize the missing owner-held capability: credentials "
+        "for todo_capability_9"
+    ], owner_with_fallback
+    assert any(
+        "--task-class user_gate" in action
+        and "--target-capability credentials" in action
+        and f"--blocks-agent {AGENT_ID}" in action
+        and "--unblocks-todo-id todo_capability_9" in action
+        for action in owner_with_fallback["interaction_contract"]["cli_channel"][
+            "next_cli_actions"
+        ]
+    ), owner_with_fallback
 
     mixed_capability_todo = todo(
         8,

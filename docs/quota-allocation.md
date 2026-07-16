@@ -331,6 +331,20 @@ candidate is missing a capability, the gate returns
 `credentials`/`production_access`, or
 `action=skip` for unsupported capability classes.
 
+Blocked candidates retain typed `resolution_bindings` even when another todo is
+runnable. Each binding names the capability, its resolution owner, and the
+exact `blocked_todo_ids`. The interaction contract turns an owner-held binding
+into an idempotent scoped `user_gate` write linked by `unblocks_todo_id`, while
+an agent-repairable binding becomes an idempotent advancement todo with the
+capability in `target_capabilities`. The user gate does not block unrelated
+runnable todos. `quota should-run` remains read-only; the agent or host executes
+the projected todo write before normal writeback.
+
+Completing a repair or owner todo is not proof that the runtime capability is
+available. The current host must still verify the real callsite and pass the
+capability through `--available-capability` on both preflight and spend. This
+keeps capability truth session-scoped and prevents stale persistent grants.
+
 Runtime capability absence is not permission authority. A missing `network`
 declaration therefore remains in the agent repair lane: the agent should
 observe or repair the launcher/runtime bridge, truthfully pass
