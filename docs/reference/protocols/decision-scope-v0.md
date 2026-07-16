@@ -128,6 +128,26 @@ repair proposals. It may suggest a structured decision scope, but it must not
 decide delivery gates, spend policy, write permission, or safe fallback at
 runtime.
 
+## Approval Consumption Lifecycle
+
+`loopx todo complete` resolves authority only for an explicitly linked
+`user_gate`:
+
+1. the completed todo has `task_class=user_gate`, a normalized
+   `decision_scope`, and `unblocks_todo_id=<target>`;
+2. the target is an agent todo whose `required_decision_scopes` contain scopes
+   covered by that gate;
+3. completion removes only the covered requirements and preserves every
+   uncovered scope;
+4. the transition returns a public-safe `todo_decision_scope_resolution_v0`
+   receipt with resolved and remaining scopes.
+
+This consumption also applies when the target todo is already `open`, such as
+publication performed immediately after approval. A completed `user_action`
+may still use the exact unblock relation for compatibility, but it does not
+consume decision authority. `todo supersede` records replacement or rejection;
+it never implies approval and therefore never consumes a required scope.
+
 ## Migration Phases
 
 1. **Contract only:** document this schema and keep current behavior unchanged.
@@ -161,5 +181,7 @@ A decision-scope implementation is acceptable when:
 3. explicit fields outrank title/body regex inference;
 4. ambiguous scope fails closed instead of guessing;
 5. safe fallback continues only when its required scopes are independent; and
-6. legacy regex/LLM assistance remains a cold-path repair signal, not runtime
+6. completing an exactly linked user gate consumes only its covered required
+   scopes while superseding it consumes none; and
+7. legacy regex/LLM assistance remains a cold-path repair signal, not runtime
    gate truth.

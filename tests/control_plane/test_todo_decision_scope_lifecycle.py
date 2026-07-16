@@ -1,0 +1,210 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from loopx.quota import build_quota_should_run
+from loopx.status import collect_status, parse_active_state_todos
+from loopx.todos import add_goal_todo, complete_goal_todo, supersede_goal_todo
+
+
+GOAL_ID = "decision-scope-lifecycle"
+AGENT_ID = "codex-delivery"
+OTHER_AGENT_ID = "codex-review"
+PUBLISH_SCOPE = "direction:action:publish_release"
+ANNOUNCE_SCOPE = "direction:action:announce_release"
+
+
+def _write_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state = repo / "ACTIVE_GOAL_STATE.md"
+    state.write_text(
+        "\n".join(
+            [
+                "---",
+                f"goal_id: {GOAL_ID}",
+                "updated_at: 2026-07-16T00:00:00+00:00",
+                "---",
+                "",
+                "## Agent Todo",
+                "",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    registry = tmp_path / "registry.global.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "goals": [
+                    {
+                        "id": GOAL_ID,
+                        "domain": "harness_self_improvement",
+                        "status": "active",
+                        "repo": str(repo),
+                        "state_file": "ACTIVE_GOAL_STATE.md",
+                        "adapter": {"kind": "harness_self_improvement"},
+                        "coordination": {
+                            "agent_model": "peer_v1",
+                            "registered_agents": [AGENT_ID, OTHER_AGENT_ID],
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    return repo, state, registry
+
+
+def _todo(state: Path, todo_id: str) -> dict:
+    todos = parse_active_state_todos(state.read_text(encoding="utf-8"))
+    return next(
+        item
+        for role in ("agent_todos", "user_todos")
+        for item in todos[role]["items"]
+        if item["todo_id"] == todo_id
+    )
+
+
+def _add_target_and_gate(
+    registry: Path,
+    *,
+    required_scopes: list[str],
+    target_status: str = "open",
+) -> tuple[dict, dict]:
+    target = add_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        role="agent",
+        text="Publish the approved release artifact.",
+        status=target_status,
+        task_class="advancement_task",
+        claimed_by=AGENT_ID,
+        required_decision_scopes=required_scopes,
+    )
+    gate = add_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        role="user",
+        text="Approve publishing the release artifact.",
+        task_class="user_gate",
+        blocks_agent=AGENT_ID,
+        decision_scope=PUBLISH_SCOPE,
+        unblocks_todo_id=target["todo_id"],
+    )
+    return target, gate
+
+
+def test_completed_gate_consumes_scope_for_already_open_publication(
+    tmp_path: Path,
+) -> None:
+    repo, state, registry = _write_fixture(tmp_path)
+    target, gate = _add_target_and_gate(
+        registry,
+        required_scopes=[PUBLISH_SCOPE],
+    )
+
+    result = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=gate["todo_id"],
+        role="user",
+        evidence="owner approved the exact release publication",
+    )
+
+    assert result["decision_scope_resolution"] == {
+        "schema_version": "todo_decision_scope_resolution_v0",
+        "state": "resolved",
+        "source_todo_id": gate["todo_id"],
+        "target_todo_id": target["todo_id"],
+        "decision_scope": {
+            "schema_version": "decision_scope_v0",
+            "kind": "direction",
+            "granularity": "action",
+            "scope_key": "publish_release",
+        },
+        "resolved_required_decision_scopes": [
+            {
+                "schema_version": "decision_scope_v0",
+                "kind": "direction",
+                "granularity": "action",
+                "scope_key": "publish_release",
+            }
+        ],
+        "remaining_required_decision_scopes": [],
+        "changed": True,
+        "target_status": "open",
+    }
+    assert result["unblock_resume"]["state"] == "target_not_blocked"
+    updated_target = _todo(state, target["todo_id"])
+    assert updated_target["status"] == "open"
+    assert updated_target.get("required_decision_scopes", []) == []
+
+    status = collect_status(
+        registry_path=registry,
+        runtime_root_override=str(tmp_path / "runtime"),
+        scan_roots=[repo],
+        limit=1,
+        goal_id=GOAL_ID,
+    )
+    quota = build_quota_should_run(status, goal_id=GOAL_ID, agent_id=AGENT_ID)
+    assert quota["effective_action"] != "todo_decision_scope_projection_repair"
+    consistency = quota.get("todo_decision_scope_consistency")
+    assert consistency is None or consistency["ok"] is True
+
+
+def test_completed_gate_consumes_only_covered_scope(tmp_path: Path) -> None:
+    _repo, state, registry = _write_fixture(tmp_path)
+    target, gate = _add_target_and_gate(
+        registry,
+        required_scopes=[PUBLISH_SCOPE, ANNOUNCE_SCOPE],
+    )
+
+    result = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=gate["todo_id"],
+        role="user",
+        evidence="owner approved publication only",
+    )
+
+    resolution = result["decision_scope_resolution"]
+    assert [
+        item["scope_key"]
+        for item in resolution["resolved_required_decision_scopes"]
+    ] == ["publish_release"]
+    assert [
+        item["scope_key"]
+        for item in resolution["remaining_required_decision_scopes"]
+    ] == ["announce_release"]
+    updated_target = _todo(state, target["todo_id"])
+    assert [
+        item["scope_key"] for item in updated_target["required_decision_scopes"]
+    ] == ["announce_release"]
+
+
+def test_superseded_gate_does_not_consume_required_scope(tmp_path: Path) -> None:
+    _repo, state, registry = _write_fixture(tmp_path)
+    target, gate = _add_target_and_gate(
+        registry,
+        required_scopes=[PUBLISH_SCOPE],
+        target_status="blocked",
+    )
+
+    result = supersede_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=gate["todo_id"],
+        role="user",
+        reason="approval request replaced without granting authority",
+    )
+
+    assert "decision_scope_resolution" not in result
+    updated_target = _todo(state, target["todo_id"])
+    assert updated_target["status"] == "blocked"
+    assert [
+        item["scope_key"] for item in updated_target["required_decision_scopes"]
+    ] == ["publish_release"]

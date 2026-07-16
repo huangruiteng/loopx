@@ -168,7 +168,8 @@ flowchart TD
   Scope -->|"yes"| Ask["ask concrete user/controller question"]
   Scope -->|"no"| Fallback["keep gate visible; run independent fallback"]
   Scope -->|"ambiguous"| Repair["repair projection or ask controller"]
-  Ask -->|"approve"| Unblock["unblock gated todo"]
+  Ask -->|"approve"| Consume["consume covered required scopes"]
+  Consume --> Unblock["unblock gated todo when otherwise ready"]
   Ask -->|"reject"| Supersede["supersede or compensation todo"]
   Ask -->|"defer"| Defer["deferred resume_when"]
   Fallback --> Write["write fallback evidence"]
@@ -180,7 +181,9 @@ flowchart TD
 | Open gate -> Ask | Concrete payload todo/question, not only "owner gate". |
 | Open gate -> Fallback | Proof that selected fallback is independent of the gate scope. |
 | Open gate -> Repair | Explanation of missing or contradictory scope fields. |
-| Approve/reject/defer | Decision event, todo update, or operator gate record. |
+| Approve | Completed, exactly linked `user_gate`; consume only covered target scopes and preserve the rest. |
+| Reject | Supersede or compensation record; never consume decision authority. |
+| Defer | Decision event with a supported `resume_when`. |
 | Fallback complete | Artifact/blocker/evidence linked to the independent todo. |
 
 This machine is why user and agent channels can intentionally disagree:

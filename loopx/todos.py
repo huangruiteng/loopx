@@ -79,7 +79,7 @@ from .control_plane.todos.text import (
     inherit_todo_priority,
     normalize_new_todo,
 )
-from .control_plane.todos.unblock_resume import plan_completed_user_unblock_resume
+from .control_plane.todos.unblock_resume import apply_completed_user_todo_lifecycle
 from .control_plane.todos.write_policy import require_user_gate_scope, require_user_todo_task_class
 
 
@@ -1652,45 +1652,16 @@ def complete_goal_todo(
             successor_todo_ids=normalized_successor_todo_ids if successor_todo_ids is not None else None,
             updated_at=updated_at,
         )
-        unblock_resume = None
-        completion_role = str((completion_todo or {}).get("role") or "")
-        completion_task_class = str((completion_todo or {}).get("task_class") or "")
-        linked_unblocks_todo_id = normalize_todo_id(update_result.get("unblocks_todo_id"))
-        if (
-            completion_role == "user"
-            and completion_task_class in {"user_action", TODO_TASK_CLASS_USER_GATE}
-            and linked_unblocks_todo_id
-        ):
-            unblock_resume = plan_completed_user_unblock_resume(
+        unblock_resume, decision_scope_resolution = (
+            apply_completed_user_todo_lifecycle(
                 lines,
-                source_todo_id=str(update_result.get("todo_id") or todo_id),
-                target_todo_id=linked_unblocks_todo_id,
+                completion_todo=completion_todo,
+                update_result=update_result,
+                fallback_todo_id=todo_id,
+                updated_at=updated_at,
+                apply_update=apply_todo_update_to_lines,
             )
-            if unblock_resume.get("state") == "resume_ready":
-                resumed = apply_todo_update_to_lines(
-                    lines,
-                    todo_id=linked_unblocks_todo_id,
-                    role="agent",
-                    status=TODO_STATUS_OPEN,
-                    reason=(
-                        "authorization satisfied by completed user todo "
-                        f"{update_result.get('todo_id') or todo_id}"
-                    ),
-                    updated_at=updated_at,
-                )
-                unblock_resume.update(
-                    {
-                        "state": "resumed",
-                        "status": resumed.get("status"),
-                        "changed": bool(resumed.get("changed")),
-                        "claimed_by": resumed.get("claimed_by"),
-                    }
-                )
-                unblock_resume = {
-                    key: value
-                    for key, value in unblock_resume.items()
-                    if value not in (None, "", [], {})
-                }
+        )
         next_unblocks_todo_id = (
             normalize_todo_id(str(update_result.get("todo_id") or todo_id))
             if next_agent_todo
@@ -1753,6 +1724,7 @@ def complete_goal_todo(
             or next_changed
             or successor_metadata_updated
             or (unblock_resume or {}).get("changed")
+            or (decision_scope_resolution or {}).get("changed")
         )
         new_text = "\n".join(lines) + ("\n" if original.endswith("\n") else "")
         if changed:
@@ -1774,6 +1746,8 @@ def complete_goal_todo(
     }
     if unblock_resume:
         result["unblock_resume"] = unblock_resume
+    if decision_scope_resolution:
+        result["decision_scope_resolution"] = decision_scope_resolution
     result["self_merged"] = effective_self_merged
     return result
 

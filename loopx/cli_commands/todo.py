@@ -224,7 +224,8 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         "--unblocks-todo-id",
         help=(
             "For todo add/update, link this todo to the blocked todo it unblocks, "
-            "for example todo_ab12cd34ef56."
+            "for example todo_ab12cd34ef56. Completing an exactly linked user_gate "
+            "also consumes the target required decision scopes covered by that gate."
         ),
     )
     todo_parser.add_argument(
