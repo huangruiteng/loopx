@@ -1010,6 +1010,26 @@ def render_configure_goal_markdown(payload: dict[str, Any]) -> str:
         return "\n".join(lines)
     fields = payload.get("changed_fields") or []
     lines.append(f"- changed_fields: `{', '.join(fields) if fields else 'none'}`")
+    global_sync = payload.get("global_sync")
+    if isinstance(global_sync, dict):
+        selected_target = (
+            global_sync.get("selected_target")
+            if isinstance(global_sync.get("selected_target"), dict)
+            else {}
+        )
+        readback = (
+            global_sync.get("readback")
+            if isinstance(global_sync.get("readback"), dict)
+            else {}
+        )
+        lines.extend(
+            [
+                f"- global_sync_enabled: \`{global_sync.get('enabled')}\`",
+                f"- global_sync_executed: \`{global_sync.get('executed')}\`",
+                f"- global_sync_target: \`{selected_target.get('global_registry')}\`",
+                f"- global_sync_readback: \`{readback.get('status')}\`",
+            ]
+        )
     if payload.get("control_plane_summary"):
         lines.append(f"- control_plane: {payload.get('control_plane_summary')}")
     if payload.get("orchestration_summary"):

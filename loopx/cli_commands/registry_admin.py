@@ -7,6 +7,9 @@ from pathlib import Path
 
 from ..agent_registry import normalize_registered_agents
 from ..configure_goal import configure_goal, render_configure_goal_markdown
+from ..control_plane.goals.configure_goal_service import (
+    configure_goal_with_global_sync,
+)
 from ..global_registry import (
     render_global_goal_retirement_markdown,
     render_global_sync_markdown,
@@ -645,9 +648,10 @@ def handle_registry_admin_command(
                 json.loads(raw_profile)
                 for raw_profile in (args.agent_profile_jsons or [])
             ]
-            payload = configure_goal(
+            payload = configure_goal_with_global_sync(
                 registry_path=registry_path,
                 goal_id=args.goal_id,
+                runtime_root_override=args.runtime_root,
                 quota_compute=args.quota_compute,
                 quota_window_hours=args.quota_window_hours,
                 self_repair_enabled=args.self_repair_enabled,

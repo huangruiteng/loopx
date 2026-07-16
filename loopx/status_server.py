@@ -7,7 +7,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from .configure_goal import configure_goal
+from .control_plane.goals.configure_goal_service import (
+    configure_goal_with_global_sync,
+)
 from .feedback import append_human_reward, compact_reward
 from .history import load_registry
 from .materials import read_review_material
@@ -407,9 +409,10 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
 
     def _configure_goal_payload(self, body: dict[str, Any], *, apply: bool, execute: bool) -> dict[str, Any]:
         values = self._parse_configure_goal_body(body, apply=apply)
-        return configure_goal(
+        return configure_goal_with_global_sync(
             registry_path=self.server.registry_path,
             goal_id=values["goal_id"],
+            runtime_root_override=self.server.runtime_root_override,
             quota_compute=values["quota_compute"],
             quota_window_hours=values["quota_window_hours"],
             self_repair_enabled=values["self_repair_enabled"],
@@ -458,6 +461,7 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             "feature_summary": payload.get("feature_summary"),
             "heartbeat_prompt_migration": payload.get("heartbeat_prompt_migration"),
             "supervisor_prompt": payload.get("supervisor_prompt"),
+            "global_sync": payload.get("global_sync"),
         }
 
     def _handle_configure_goal_dry_run(self) -> None:
