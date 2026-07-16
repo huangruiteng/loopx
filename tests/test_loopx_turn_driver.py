@@ -191,6 +191,30 @@ def test_turn_plan_projects_typed_recovery_routes(
 
     assert payload["route"]["kind"] == expected.value
     assert payload["host"]["explicit_isolation"] is True
+    assert payload["host"]["scheduler_owner"] == "outer_controller"
+    assert payload["scheduler_execution_context"] == {
+        "schema_version": "scheduler_execution_context_v0",
+        "host_surface": "generic_cli",
+        "scheduler_owner": "outer_controller",
+        "execution_mode": "isolated_headless",
+        "source": "loopx_turn",
+        "valid": True,
+        "codex_app_applicability": "not_applicable",
+    }
+
+
+def test_turn_plan_rejects_contradictory_scheduler_owner() -> None:
+    payload = build_loopx_turn_plan(
+        _envelope(),
+        host="generic-cli",
+        execution_mode="isolated-headless",
+        scheduler_owner="host_automation",
+    )
+
+    assert payload["ok"] is False
+    assert payload["route"]["kind"] == LoopXTurnRoute.CONTRACT_ERROR.value
+    assert payload["route"]["would_invoke_host"] is False
+    assert "cannot be owned by host_automation" in payload["error"]
 
 
 def test_turn_plan_preserves_safe_bypass_when_user_action_is_visible() -> None:
@@ -348,6 +372,50 @@ def _write_live_fixture(root: Path) -> tuple[Path, Path, Path]:
         encoding="utf-8",
     )
     return project, runtime, registry
+
+
+def test_quota_cli_projects_outer_controller_without_codex_app_action(
+    tmp_path: Path,
+) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    output = io.StringIO()
+
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "quota",
+                "should-run",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                "--host-surface",
+                "generic_cli",
+                "--scheduler-owner",
+                "outer_controller",
+                "--execution-mode",
+                "isolated_headless",
+                "--scan-root",
+                str(project),
+            ]
+        )
+
+    payload = json.loads(output.getvalue())
+    hint = payload["scheduler_hint"]
+    assert exit_code == 0, payload
+    assert hint["execution_context"]["codex_app_applicability"] == "not_applicable"
+    assert hint["codex_app"]["applicability"] == "not_applicable"
+    assert "stateful_backoff" not in hint["codex_app"]
+    assert hint["execution_phase"]["scheduler_owner"] == "outer_controller"
+    assert hint["execution_phase"]["completed"] is True
+    assert hint["execution_phase"]["apply_needed"] is False
+    assert hint["execution_phase"]["ack_needed"] is False
 
 
 def test_turn_cli_consumes_live_state_without_writes(
@@ -517,12 +585,23 @@ raise SystemExit(0 if artifact.read_text(encoding="utf-8") == "validated" else 7
 
     payload = json.loads(output.getvalue())
     assert exit_code == 0, payload
-    assert payload["status"] == "scheduler_action_required"
-    assert payload["receipt"]["status"] == "validated"
-    assert payload["receipt"]["next_phase"] == "scheduler_apply"
+    assert payload["status"] == "committed"
+    assert payload["receipt"]["status"] == "committed"
+    assert payload["receipt"]["next_phase"] is None
     assert payload["validation"]["status"] == "passed"
     assert payload["validation"]["validator_kind"] == "command"
     assert payload["resume_turn_key"].startswith("sha256:")
+    assert payload["scheduler"] == {
+        "schema_version": "scheduler_execution_phase_v0",
+        "host_surface": "generic_cli",
+        "scheduler_owner": "outer_controller",
+        "disposition": "outer_controller_owned",
+        "completed": True,
+        "apply_needed": False,
+        "ack_needed": False,
+        "acknowledged": False,
+        "completion_reason": "selected scheduler owner requires no Codex App apply or ACK",
+    }
     assert payload["effects"] == {
         "host_invoked": True,
         "state_written": True,
@@ -577,7 +656,7 @@ raise SystemExit(0 if artifact.read_text(encoding="utf-8") == "validated" else 7
 
     resumed = json.loads(resumed_output.getvalue())
     assert resumed_exit_code == 0, resumed
-    assert resumed["status"] == "scheduler_action_required"
+    assert resumed["status"] == "committed"
     assert resumed["effects"] == {
         "host_invoked": False,
         "state_written": False,
