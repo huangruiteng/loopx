@@ -361,8 +361,11 @@ merged/closed state still takes precedence over late feedback.
 When a connected lifecycle writeback observes `MERGED`, LoopX also appends one
 repository-qualified, public-safe, idempotent `pr_merge` rollout event. This is
 the event consumed by todo resume projection. A dependent todo such as
-`resume_when=pr_merged:#123` then becomes `resume_ready=true`; the next
-`status` / `quota should-run` pass can select it as ordinary runnable work.
+`resume_when=pr_merged:#123` then becomes `resume_ready=true` when its GitHub
+`task_repository` matches the event repository; a cross-repository dependency
+must use `resume_when=pr_merged:owner/repo#123`. Missing repository identity
+fails closed with an ambiguity diagnostic. The next `status` / `quota
+should-run` pass can select a matched todo as ordinary runnable work.
 Replaying the same merged observation reuses the stable event id and creates no
 second transition.
 

@@ -358,9 +358,11 @@ state 仍优先于迟到反馈。
 
 当 connected lifecycle writeback 观察到 `MERGED`，LoopX 还会追加一条带 repository
 scope、public-safe 且幂等的 `pr_merge` rollout event。Todo resume 投影消费这条事件：例如
-`resume_when=pr_merged:#123` 会变成 `resume_ready=true`，后续一次
-`status` / `quota should-run` 就能把它当作普通 runnable work 选中。相同 merged
-observation 重放时复用稳定 event id，不会制造第二次 transition。
+`resume_when=pr_merged:#123` 只会在 todo 的 GitHub `task_repository` 与事件仓库匹配时
+变成 `resume_ready=true`；跨仓库依赖必须写成
+`resume_when=pr_merged:owner/repo#123`。缺少仓库身份时会 fail closed 并给出歧义诊断。
+后续一次 `status` / `quota should-run` 就能把已匹配的 todo 当作普通 runnable work
+选中。相同 merged observation 重放时复用稳定 event id，不会制造第二次 transition。
 
 这是一条事件驱动链，而不是 webhook 与业务代码硬耦合：
 

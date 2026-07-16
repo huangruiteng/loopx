@@ -221,7 +221,12 @@ Deferred todos may carry a machine-readable resume condition with
   replan candidate after the referenced todo reaches `status=done`.
 - `resume_when=pr_merged:#532` or
   `resume_when=pr_merged:owner/repo#532`: the deferred todo becomes a successor
-  candidate after a structured rollout event records that PR merge.
+  candidate after a structured rollout event records that PR merge. An
+  unqualified `#532` is bound only to the todo's GitHub `task_repository`; use
+  the qualified form for cross-repository dependencies. If LoopX cannot derive
+  that binding, it keeps the todo deferred and exposes a machine-readable
+  repository ambiguity instead of matching the same PR number in another
+  repository.
 
 Open todos may also carry `resume_when` when they are visible but not yet
 executable. Until the parsed `resume_condition.satisfied` value is true, status

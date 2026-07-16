@@ -275,8 +275,10 @@ Not yet aligned:
 - PR lifecycle resume conditions are limited to structured rollout-event
   evidence: `resume_when=pr_merged:#532` and
   `resume_when=pr_merged:owner/repo#532` can wake deferred todos after the
-  matching `pr_merge` event appears in the local rollout log. LoopX does not
-  infer this from prose.
+  matching `pr_merge` event appears in the local rollout log. Unqualified refs
+  bind to the todo's GitHub `task_repository`; cross-repository dependencies
+  must use a qualified ref. Missing repository identity fails closed with an
+  explicit ambiguity diagnostic. LoopX does not infer this from prose.
 - `global_manager_command_v0` is specified and smoke-tested, but no host
   integration or CLI command emits it yet.
 - Historical human-gate impact must be inferred from public-safe evidence.
