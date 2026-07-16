@@ -6,8 +6,14 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.benchmark_adapters.skillsbench_runner_profile import (
     SKILLSBENCH_RUNNER_PROFILE_SCHEMA_VERSION,
@@ -20,7 +26,6 @@ from loopx.benchmark_adapters.skillsbench_runner_profile import (
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = REPO_ROOT / "scripts" / "skillsbench-launch-goal-xhigh.sh"
 PROFILE_MODULE = (
     REPO_ROOT
