@@ -75,7 +75,7 @@ def assert_policy_case(
     expected_action: str,
     expected_rrule: str,
     expected_progression: list[int] | None = None,
-    expected_same_identity_action: str = "advance_index_after_scheduler_ack",
+    expected_same_identity_action: str = "advance_index_after_applied_interval_elapsed",
 ) -> None:
     quota_wrapper = _scheduler_hint(deepcopy(base_payload))
     extracted = build_scheduler_hint(

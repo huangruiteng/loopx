@@ -840,6 +840,7 @@ def assert_cli_scheduler_ack_progression() -> None:
         assert "scheduler_hint" not in ack["before"], ack
         assert ack["after"] is None, ack
         assert ack["post_ack_contract"]["do_not_apply_successor_rrule_from_ack_response"] is True, ack
+        scheduler_state_path = Path(ack["scheduler_state_path"])
 
         second = run_cli(
             root,
@@ -855,10 +856,34 @@ def assert_cli_scheduler_ack_progression() -> None:
         )
         second_app = second["scheduler_hint"]["codex_app"]
         assert second_app["stateful_backoff"]["state_status"] == "same_identity", second
-        assert second_app["recommended_rrule"] != first_rrule, second
-        assert second_app["stateful_backoff"]["apply_needed"] is True, second
+        assert second_app["stateful_backoff"]["current_rrule"] == first_rrule, second
+        assert second_app["stateful_backoff"]["apply_needed"] is False, second
+        assert second_app["host_action"] == "none", second
+        assert "recommended_rrule" not in second_app, second
 
-        current = second
+        def age_applied_interval() -> None:
+            persisted = json.loads(scheduler_state_path.read_text(encoding="utf-8"))
+            persisted["updated_at"] = "2000-01-01T00:00:00+00:00"
+            scheduler_state_path.write_text(
+                json.dumps(persisted, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+
+        age_applied_interval()
+        current = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            "needs-operator",
+            "--agent-id",
+            agent_id,
+            registry_path=registry_path,
+            runtime=runtime,
+            project=project,
+        )
+        assert current["scheduler_hint"]["codex_app"]["recommended_rrule"] != first_rrule, current
+
         while current["scheduler_hint"]["codex_app"]["stateful_backoff"]["apply_needed"]:
             current_app = current["scheduler_hint"]["codex_app"]
             current_rrule = current_app["recommended_rrule"]
@@ -877,6 +902,23 @@ def assert_cli_scheduler_ack_progression() -> None:
                 project=project,
             )
             assert ack["ok"] is True, ack
+            settled = run_cli(
+                root,
+                "quota",
+                "should-run",
+                "--goal-id",
+                "needs-operator",
+                "--agent-id",
+                agent_id,
+                registry_path=registry_path,
+                runtime=runtime,
+                project=project,
+            )
+            settled_app = settled["scheduler_hint"]["codex_app"]
+            assert settled_app["stateful_backoff"]["current_rrule"] == current_rrule, settled
+            assert settled_app["stateful_backoff"]["apply_needed"] is False, settled
+            assert "recommended_rrule" not in settled_app, settled
+            age_applied_interval()
             current = run_cli(
                 root,
                 "quota",
@@ -1152,6 +1194,13 @@ def assert_cli_host_rrule_repairs_false_ack() -> None:
                 project=project,
             )
             assert ack["scheduler_state_mutated"] is True, ack
+            scheduler_state_path = Path(ack["scheduler_state_path"])
+            persisted = json.loads(scheduler_state_path.read_text(encoding="utf-8"))
+            persisted["updated_at"] = "2000-01-01T00:00:00+00:00"
+            scheduler_state_path.write_text(
+                json.dumps(persisted, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
             ledger_only = run_cli(
                 root,
                 "quota",
@@ -1298,6 +1347,33 @@ def assert_cli_host_match_ack_after_ambiguous_update() -> None:
         assert ack["ok"] is True, ack
         assert ack["scheduler_state_mutated"] is True, ack
         assert ack["host_match_ack"] is True, ack
+
+        settled = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            "needs-operator",
+            "--agent-id",
+            agent_id,
+            "--codex-app-current-rrule",
+            first_rrule,
+            registry_path=registry_path,
+            runtime=runtime,
+            project=project,
+        )
+        settled_app = settled["scheduler_hint"]["codex_app"]
+        assert settled_app["stateful_backoff"]["apply_needed"] is False, settled
+        assert "recommended_rrule" not in settled_app, settled
+        assert settled_app["stateful_backoff"]["host_observation"]["status"] == "matches_recommended", settled
+
+        scheduler_state_path = Path(ack["scheduler_state_path"])
+        persisted = json.loads(scheduler_state_path.read_text(encoding="utf-8"))
+        persisted["updated_at"] = "2000-01-01T00:00:00+00:00"
+        scheduler_state_path.write_text(
+            json.dumps(persisted, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
         advanced = run_cli(
             root,

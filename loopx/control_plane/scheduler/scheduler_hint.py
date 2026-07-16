@@ -69,6 +69,24 @@ def _scheduler_rrule_interval_minutes(value: Any) -> int | None:
     return interval if interval > 0 else None
 
 
+def _scheduler_progression_interval_elapsed(
+    scheduler_state: Mapping[str, Any],
+    *,
+    current_time: datetime,
+) -> bool:
+    """Advance only after the applied host cadence has had one real interval."""
+
+    updated_at = parse_scheduler_timestamp(scheduler_state.get("updated_at"))
+    applied_interval = _scheduler_rrule_interval_minutes(
+        scheduler_state.get("last_applied_rrule")
+    )
+    if updated_at is None or applied_interval is None:
+        # Legacy or partial state has no trustworthy settlement clock. Preserve
+        # the historical progression behavior instead of pinning it forever.
+        return True
+    return current_time >= updated_at + timedelta(minutes=applied_interval)
+
+
 def _user_gate_notification_cooldown(
     *,
     cadence_class: str,
@@ -1072,13 +1090,20 @@ def build_scheduler_hint(
                     applied_index = int(scheduler_state.get("progression_index"))
                 except (TypeError, ValueError):
                     applied_index = -1
-                next_index = (
-                    applied_index
-                    if all_host_update_failures
-                    else applied_index + 1
-                    if advance_same_identity
-                    else 0
-                )
+                if all_host_update_failures:
+                    next_index = applied_index
+                elif not advance_same_identity:
+                    next_index = 0
+                elif _scheduler_progression_interval_elapsed(
+                    scheduler_state,
+                    current_time=scheduler_now,
+                ):
+                    next_index = applied_index + 1
+                else:
+                    # An ACK settles the current target. A same-turn or early
+                    # reconciliation must verify convergence, not manufacture
+                    # the next backoff target before that cadence has elapsed.
+                    next_index = applied_index
                 current_index = min(
                     max(next_index, 0), len(codex_cadence_progression) - 1
                 )
@@ -1148,7 +1173,7 @@ def build_scheduler_hint(
             "ack_required_from_host_match": host_match_ack_needed,
             "persist": "reset_token|identity_signature|progression_index|last_applied_rrule|host_update_failures|host_update_failure_compat",
             "same_identity_action": (
-                "advance_index_after_scheduler_ack"
+                "advance_index_after_applied_interval_elapsed"
                 if advance_same_identity
                 else "keep_initial_interval_while_active_work"
             ),

@@ -815,7 +815,10 @@ the agent must run `codex_app.ack_hint.cli_args`. Current payloads use
 `quota scheduler-ack-current`, so LoopX then persists `reset_token`,
 `identity_signature`, `progression_index`, and
 `last_applied_rrule` under the runtime root. Repeated unchanged identity
-advances through `progression_minutes`; a changed `reset_policy.reset_token`
+advances through `progression_minutes` only after the applied RRULE has had one
+real interval to run. An immediate post-ACK reconciliation therefore verifies
+the settled target instead of manufacturing the next backoff target in the
+same turn. A changed `reset_policy.reset_token`
 returns to the current profile's initial interval. This gives hosts a compact
 post-update ack protocol instead of requiring them to own or diff the whole
 quota state. If `apply_needed=false` and `ack_needed=true`, the same command
@@ -838,7 +841,8 @@ notice is preserved; short host polls are quiet, one host-sized window opens at
 each target cadence, and a changed gate identity or host RRULE bypasses the old
 cooldown. This changes notification delivery only, not the underlying user todo.
 `scheduler-ack` is not a second `should-run`: it confirms the host update or
-matching readback and does not emit a successor RRULE in the same turn. User
+matching readback and does not emit or make immediately due a successor RRULE
+in the same turn. User
 feedback, newly runnable work, reassignment, or material evidence therefore
 restores the automation to the current profile's initial interval before
 backoff resumes.
