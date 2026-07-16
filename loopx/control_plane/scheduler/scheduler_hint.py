@@ -709,6 +709,19 @@ def build_codex_app_scheduler_ack_event(
     )
     progression_index = max(0, _int_number(stateful_backoff.get("progression_index"), default=0))
     safe_generated_at = generated_at or ""
+    retained_host_update_failures = [
+        failure
+        for failure in retained_scheduler_host_update_failures(
+            normalize_scheduler_host_update_failures(
+                stateful_backoff.get("host_update_failures"),
+                legacy_failure=stateful_backoff.get("host_update_failure"),
+            ),
+            reference_time=safe_generated_at,
+            observed_host_rrule=acknowledged_rrule,
+        )
+        if normalize_scheduler_rrule(failure.get("target_rrule"))
+        != acknowledged_rrule
+    ]
     scheduler_state = build_scheduler_state(
         goal_id=before.get("goal_id"),
         agent_id=safe_agent_id,
@@ -721,6 +734,12 @@ def build_codex_app_scheduler_ack_event(
         last_applied_rrule=acknowledged_rrule,
         updated_at=safe_generated_at,
         source=classification,
+        host_update_failure=(
+            retained_host_update_failures[-1]
+            if retained_host_update_failures
+            else None
+        ),
+        host_update_failures=retained_host_update_failures or None,
     )
     reason = str(reason_summary or "").strip() or (
         f"acknowledged Codex App scheduler RRULE {acknowledged_rrule}; no quota spend"
