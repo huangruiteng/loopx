@@ -1,15 +1,18 @@
-"""Small parsing helpers for Explore visual marker readback."""
+"""Explore visual marker readback and idempotent delivery reconciliation."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
+from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from .kanban import CommandRunner, _command_error, _run_command
 
 
 VISUAL_READBACK_RETRY_DELAYS_SECONDS = (0.25, 0.5, 1.0, 2.0, 4.0)
+VISUAL_READBACK_COMMAND_TIMEOUT_SECONDS = 10.0
 
 
 def whiteboard_raw_texts(payload: Any) -> list[str]:
@@ -58,6 +61,7 @@ def readback_visual_delivery_marker(
     marker: str,
     runner: CommandRunner,
     retry_delays: Sequence[float] | None = None,
+    command_timeout_seconds: float | None = VISUAL_READBACK_COMMAND_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     command = [
         cli_bin,
@@ -82,25 +86,38 @@ def readback_visual_delivery_marker(
         else retry_delays
     )
     for attempt_index in range(len(effective_retry_delays) + 1):
-        result = _run_command(command, execute=True, runner=runner)
+        result = _run_command(
+            command,
+            execute=True,
+            runner=runner,
+            timeout_seconds=command_timeout_seconds,
+        )
         texts = whiteboard_raw_texts(result.get("json"))
         marker_observed = marker in texts
         error = structured_command_error(result)
         error_code = error.get("code")
-        is_retryable = is_retryable_marker_readback_error(
-            error_code=error_code,
-            error_message=str(error.get("message") or ""),
-        ) or bool(result.get("ok") and not marker_observed)
+        is_retryable = (
+            bool(result.get("timed_out"))
+            or is_retryable_marker_readback_error(
+                error_code=error_code,
+                error_message=str(error.get("message") or ""),
+            )
+            or bool(result.get("ok") and not marker_observed)
+        )
         attempts.append(
             {
                 "attempt": attempt_index + 1,
                 "ok": bool(result.get("ok")),
                 "marker_observed": marker_observed,
                 "error_code": error_code,
+                "timed_out": bool(result.get("timed_out")),
                 "retryable": is_retryable,
             }
         )
-        if marker_observed or not is_retryable:
+        # A host timeout already consumed the bounded wait for this batch.
+        # Retrying here would multiply that wait by the visibility schedule
+        # and can again stall the whole refresh.
+        if marker_observed or result.get("timed_out") or not is_retryable:
             break
         if attempt_index < len(effective_retry_delays):
             time.sleep(effective_retry_delays[attempt_index])
@@ -130,6 +147,7 @@ def readback_visual_delivery_marker(
         "retryable": bool(
             not marker_observed and attempts and attempts[-1].get("retryable")
         ),
+        "host_wait_exhausted": bool(result.get("timed_out")),
         "command": command_receipt,
         "error": (
             None
@@ -138,6 +156,145 @@ def readback_visual_delivery_marker(
             if not result.get("ok")
             else "remote whiteboard raw nodes do not contain the expected delivery marker"
         ),
+    }
+
+
+def publish_visual_with_readback(
+    *,
+    cli_bin: str,
+    identity: str,
+    whiteboard_token: str,
+    marker: str,
+    command: list[str],
+    published_source: str,
+    source_path: Path,
+    execute: bool,
+    runner: CommandRunner,
+    defer_readback: bool,
+) -> dict[str, Any]:
+    """Reconcile a deterministic marker, publish once, then verify delivery."""
+
+    prepublish_readback = None
+    reconciled_existing_delivery = False
+    prepublish_readback_blocked = False
+    if execute:
+        prepublish_readback = readback_visual_delivery_marker(
+            cli_bin=cli_bin,
+            identity=identity,
+            whiteboard_token=whiteboard_token,
+            marker=marker,
+            runner=runner,
+            retry_delays=(),
+        )
+        prepublish_command = prepublish_readback.get("command")
+        prepublish_command = (
+            prepublish_command if isinstance(prepublish_command, Mapping) else {}
+        )
+        reconciled_existing_delivery = bool(prepublish_readback.get("verified"))
+        prepublish_readback_blocked = bool(
+            not reconciled_existing_delivery and not prepublish_command.get("ok")
+        )
+    if not execute:
+        result = _run_command(command, execute=False, runner=runner)
+        publish_attempts = [result]
+    elif reconciled_existing_delivery or prepublish_readback_blocked:
+        result = _run_command(command, execute=False, runner=runner)
+        publish_attempts = []
+    else:
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_text(published_source, encoding="utf-8")
+        try:
+            result = _run_command(
+                command,
+                execute=True,
+                runner=runner,
+                cwd=source_path.parent,
+            )
+            publish_attempts = [result]
+            error = structured_command_error(result)
+            if (
+                not result.get("ok")
+                and error.get("code") == 2891001
+                and "not iterable" in str(error.get("message") or "")
+            ):
+                retry_command = list(command)
+                token_index = retry_command.index("--idempotent-token") + 1
+                retry_material = (
+                    f"{retry_command[token_index]}:{time.time_ns()}".encode("utf-8")
+                )
+                retry_command[token_index] = (
+                    "loopx-retry-" + hashlib.sha256(retry_material).hexdigest()[:32]
+                )
+                result = _run_command(
+                    retry_command,
+                    execute=True,
+                    runner=runner,
+                    cwd=source_path.parent,
+                )
+                publish_attempts.append(result)
+        finally:
+            source_path.unlink(missing_ok=True)
+    readback_deferred = bool(
+        execute
+        and not reconciled_existing_delivery
+        and not prepublish_readback_blocked
+        and result.get("ok")
+        and marker
+        and defer_readback
+    )
+    readback: dict[str, Any] = dict(prepublish_readback or {}) if (
+        reconciled_existing_delivery or prepublish_readback_blocked
+    ) else {
+        "ok": not readback_deferred,
+        "schema_version": "loopx_lark_explore_visual_readback_v0",
+        "performed": False,
+        "verified": False,
+        "source": (
+            "not_required"
+            if not marker
+            else "deferred_to_batch"
+            if readback_deferred
+            else "would_query_whiteboard_raw_nodes"
+        ),
+        "expected_marker": marker,
+        "observed_marker": None,
+        "retryable": readback_deferred,
+        "error": None,
+    }
+    if (
+        execute
+        and not reconciled_existing_delivery
+        and not prepublish_readback_blocked
+        and result.get("ok")
+        and marker
+        and not defer_readback
+    ):
+        readback = readback_visual_delivery_marker(
+            cli_bin=cli_bin,
+            identity=identity,
+            whiteboard_token=whiteboard_token,
+            marker=marker,
+            runner=runner,
+        )
+    delivery_ok = bool(
+        not prepublish_readback_blocked
+        and result.get("ok")
+        and (not marker or readback.get("ok"))
+    )
+    retryable = bool(
+        execute and result.get("ok") and marker and readback.get("retryable")
+    )
+    return {
+        "ok": delivery_ok,
+        "retryable": retryable,
+        "command": result,
+        "publish_attempts": publish_attempts,
+        "readback": readback,
+        "external_write_performed": any(
+            bool(item.get("executed")) for item in publish_attempts
+        ),
+        "reconciled_existing_delivery": reconciled_existing_delivery,
+        "prepublish_readback": prepublish_readback,
     }
 
 
@@ -184,6 +341,42 @@ def _apply_stage_readback(
     )
 
 
+def defer_visual_stage_after_host_timeout(stage_result: dict[str, Any]) -> None:
+    """Leave a retryable receipt without issuing another remote stage call."""
+
+    readback = stage_result.get("readback")
+    readback = readback if isinstance(readback, Mapping) else {}
+    error = (
+        "visual marker readback deferred after the bounded batch host wait "
+        "was exhausted"
+    )
+    stage_result.update(
+        {
+            "ok": False,
+            "status": "readback_deferred_after_timeout",
+            "execute": True,
+            "published": False,
+            "external_write_performed": False,
+            "retryable": True,
+            "required_action": (
+                "reconcile Explore visual markers after the bounded host "
+                "readback timeout; do not repeat the full publish"
+            ),
+            "readback": {
+                **readback,
+                "ok": False,
+                "performed": False,
+                "verified": False,
+                "source": "batch_host_wait_exhausted",
+                "retryable": True,
+                "host_wait_exhausted": True,
+                "error": error,
+            },
+            "error": error,
+        }
+    )
+
+
 def settle_visual_stage_readbacks(
     *,
     cli_bin: str,
@@ -191,6 +384,7 @@ def settle_visual_stage_readbacks(
     stage_targets: Sequence[tuple[dict[str, Any], str]],
     runner: CommandRunner,
     retry_delays: Sequence[float] | None = None,
+    command_timeout_seconds: float | None = VISUAL_READBACK_COMMAND_TIMEOUT_SECONDS,
 ) -> None:
     """Verify every published stage within one shared settling window."""
 
@@ -202,7 +396,7 @@ def settle_visual_stage_readbacks(
     pending = list(stage_targets)
     for attempt_index in range(len(effective_retry_delays) + 1):
         next_pending: list[tuple[dict[str, Any], str]] = []
-        for stage_result, whiteboard_token in pending:
+        for target_index, (stage_result, whiteboard_token) in enumerate(pending):
             previous = stage_result.get("readback")
             previous = previous if isinstance(previous, Mapping) else {}
             readback = readback_visual_delivery_marker(
@@ -212,11 +406,45 @@ def settle_visual_stage_readbacks(
                 marker=str(previous.get("expected_marker") or ""),
                 runner=runner,
                 retry_delays=(),
+                command_timeout_seconds=command_timeout_seconds,
             )
             merged = _merge_readback_attempts(previous, readback)
             _apply_stage_readback(stage_result, merged)
             if merged.get("retryable"):
                 next_pending.append((stage_result, whiteboard_token))
+            if merged.get("host_wait_exhausted"):
+                for deferred_result, deferred_token in pending[target_index + 1 :]:
+                    deferred_previous = deferred_result.get("readback")
+                    deferred_previous = (
+                        deferred_previous
+                        if isinstance(deferred_previous, Mapping)
+                        else {}
+                    )
+                    deferred = _merge_readback_attempts(
+                        deferred_previous,
+                        {
+                            "ok": False,
+                            "schema_version": "loopx_lark_explore_visual_readback_v0",
+                            "performed": False,
+                            "verified": False,
+                            "source": "batch_host_wait_exhausted",
+                            "expected_marker": str(
+                                deferred_previous.get("expected_marker") or ""
+                            ),
+                            "observed_marker": None,
+                            "remote_text_node_count": 0,
+                            "attempts": [],
+                            "retryable": True,
+                            "host_wait_exhausted": True,
+                            "error": (
+                                "visual marker readback deferred after the bounded "
+                                "batch host wait was exhausted"
+                            ),
+                        },
+                    )
+                    _apply_stage_readback(deferred_result, deferred)
+                    next_pending.append((deferred_result, deferred_token))
+                return
         pending = next_pending
         if not pending:
             break
