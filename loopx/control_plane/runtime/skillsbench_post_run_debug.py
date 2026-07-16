@@ -36,6 +36,115 @@ def _benchmark_positive_int(value: Any) -> int:
     return 0
 
 
+def _skillsbench_turn_transaction_outcome(run: dict[str, Any]) -> dict[str, Any]:
+    executions = run.get("loopx_turn_executions")
+    if not isinstance(executions, list):
+        execution = run.get("loopx_turn_execution")
+        executions = [execution] if isinstance(execution, dict) else []
+    executions = [item for item in executions if isinstance(item, dict)]
+    if not executions:
+        return {}
+
+    committed_count = 0
+    validation_failed_count = 0
+    repair_required_count = 0
+    replan_required_count = 0
+    state_written_count = 0
+    quota_spent_count = 0
+    failed_transaction_with_durable_effect_count = 0
+    for execution in executions:
+        validation = (
+            execution.get("validation")
+            if isinstance(execution.get("validation"), dict)
+            else {}
+        )
+        receipt = (
+            execution.get("receipt")
+            if isinstance(execution.get("receipt"), dict)
+            else {}
+        )
+        effects = (
+            execution.get("effects")
+            if isinstance(execution.get("effects"), dict)
+            else {}
+        )
+        state_written = effects.get("state_written") is True
+        quota_spent = effects.get("quota_spent") is True
+        committed = bool(
+            execution.get("status") == "committed"
+            and receipt.get("status") == "committed"
+            and validation.get("status") == "passed"
+            and state_written
+            and quota_spent
+        )
+        validation_failed = bool(
+            validation.get("status") == "failed"
+            or receipt.get("failed_phase") == "validation"
+            or execution.get("status") == "validation_failed"
+        )
+        recovery_kind = public_safe_compact_text(
+            validation.get("recovery_kind"),
+            limit=80,
+        )
+        committed_count += int(committed)
+        validation_failed_count += int(validation_failed)
+        repair_required_count += int(recovery_kind == "repair_required")
+        replan_required_count += int(recovery_kind == "replan_required")
+        state_written_count += int(state_written)
+        quota_spent_count += int(quota_spent)
+        failed_transaction_with_durable_effect_count += int(
+            validation_failed and (state_written or quota_spent)
+        )
+
+    execution_count = len(executions)
+    if failed_transaction_with_durable_effect_count:
+        status = "inconsistent_failed_transaction_has_durable_effects"
+        causal_consistency = "violated"
+        first_blocker = "failed_turn_transaction_has_durable_effects"
+    elif committed_count == execution_count:
+        status = "committed"
+        causal_consistency = "committed_effects_observed"
+        first_blocker = "none"
+    elif validation_failed_count:
+        status = "validation_failed"
+        causal_consistency = "validation_failure_effects_not_committed"
+        first_blocker = "loopx_turn_validation_failed"
+    else:
+        status = "uncommitted"
+        causal_consistency = "uncommitted_result_requires_recovery"
+        first_blocker = "loopx_turn_uncommitted"
+
+    if repair_required_count:
+        recovery_status = "repair_required"
+    elif replan_required_count:
+        recovery_status = "replan_required"
+    elif committed_count == execution_count:
+        recovery_status = "not_required"
+    else:
+        recovery_status = "missing"
+
+    return {
+        "schema_version": "skillsbench_loopx_turn_transaction_outcome_v0",
+        "observed": True,
+        "status": status,
+        "causal_consistency": causal_consistency,
+        "recovery_status": recovery_status,
+        "progress_blocked": committed_count != execution_count,
+        "first_blocker": first_blocker,
+        "execution_count": execution_count,
+        "committed_count": committed_count,
+        "uncommitted_count": execution_count - committed_count,
+        "validation_failed_count": validation_failed_count,
+        "repair_required_count": repair_required_count,
+        "replan_required_count": replan_required_count,
+        "state_written_count": state_written_count,
+        "quota_spent_count": quota_spent_count,
+        "failed_transaction_with_durable_effect_count": (
+            failed_transaction_with_durable_effect_count
+        ),
+    }
+
+
 def build_skillsbench_post_run_debug_gate(
     run: dict[str, Any],
 ) -> dict[str, Any]:
@@ -170,6 +279,18 @@ def build_skillsbench_post_run_debug_gate(
     effective_lifecycle_satisfied = bool(
         lifecycle_satisfied is True or timeline_lifecycle_satisfied
     )
+    turn_transaction = _skillsbench_turn_transaction_outcome(run)
+    turn_transaction_blocks_progress = bool(
+        turn_transaction.get("progress_blocked") is True
+    )
+    qualified_lifecycle_satisfied = bool(
+        effective_lifecycle_satisfied and not turn_transaction_blocks_progress
+    )
+    qualified_closeout_status = (
+        "turn_transaction_repair_required"
+        if turn_transaction_blocks_progress
+        else closeout_status
+    )
     case_closeout_complete = bool(
         (not missing_fields and official_passed is True and verifier_artifact_success)
         or (
@@ -186,6 +307,15 @@ def build_skillsbench_post_run_debug_gate(
     if missing_fields:
         attribution_layer = "incomplete_public_debug_packet"
         first_blocker = missing_fields[0]
+    elif turn_transaction_blocks_progress:
+        attribution_layer = "loopx_turn_transaction"
+        first_blocker = (
+            public_safe_compact_text(
+                turn_transaction.get("first_blocker"),
+                limit=140,
+            )
+            or "loopx_turn_transaction_repair_required"
+        )
     elif (
         lifecycle_required
         and not verifier_artifact_success
@@ -247,6 +377,9 @@ def build_skillsbench_post_run_debug_gate(
     elif not case_closeout_complete:
         next_case_gate = "blocked_incomplete_case_closeout"
         next_action = "record_or_repair_case_closeout_before_next_case"
+    elif turn_transaction_blocks_progress:
+        next_case_gate = "blocked_turn_transaction_repair"
+        next_action = "repair_loopx_turn_transaction_before_next_matched_case"
     elif attribution_layer == "clean_pass":
         next_case_gate = "open"
         next_action = "upsert_ledger_and_continue_or_compare_pair"
@@ -265,7 +398,11 @@ def build_skillsbench_post_run_debug_gate(
         "packet_complete": packet_complete,
         "case_closeout_complete": case_closeout_complete,
         "next_case_gate": next_case_gate,
-        "normal_progress_allowed": bool(packet_complete and case_closeout_complete),
+        "normal_progress_allowed": bool(
+            packet_complete
+            and case_closeout_complete
+            and not turn_transaction_blocks_progress
+        ),
         "first_blocker": first_blocker,
         "next_action": next_action,
         "attribution_layer": attribution_layer,
@@ -294,8 +431,10 @@ def build_skillsbench_post_run_debug_gate(
         },
         "loopx_lifecycle": {
             "required": lifecycle_required,
-            "satisfied": effective_lifecycle_satisfied,
-            "closeout_status": closeout_status,
+            "satisfied": qualified_lifecycle_satisfied,
+            "direct_lifecycle_satisfied": effective_lifecycle_satisfied,
+            "closeout_status": qualified_closeout_status,
+            "direct_closeout_status": closeout_status,
             "state_read_count": lifecycle_state_read_count,
             "state_write_count": lifecycle_state_write_count,
             "todo_closeout_count": _benchmark_positive_int(
@@ -452,6 +591,8 @@ def build_skillsbench_post_run_debug_gate(
     }
     if solution_quality:
         gate["solution_quality"] = solution_quality
+    if turn_transaction:
+        gate["loopx_turn_transaction"] = turn_transaction
     if labels:
         gate["failure_attribution_labels"] = labels
     if runner_failure:
