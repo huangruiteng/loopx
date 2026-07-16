@@ -823,10 +823,15 @@ records an exact matching host readback without calling `automation_update`.
 If `automation_update` fails or times out, the agent must not ACK. LoopX keeps
 the observed host RRULE authoritative. The agent runs
 `codex_app.failure_hint.cli_args` once to persist the failed target/observed-host
-pair without quota spend. Later heartbeats expose `apply_needed=false` and
-`state_status=host_update_failure_suppressed` for that exact pair; a changed
-target or host observation reopens one host attempt. LoopX never treats an
-intended cadence as an applied cadence.
+pair without quota spend. LoopX retains up to four distinct pairs for 24 hours,
+so active-work and monitor-wait targets cannot overwrite one another while the
+host RRULE remains unchanged. Later heartbeats expose `apply_needed=false` and
+`state_status=host_update_failure_suppressed` for every retained exact pair.
+A changed host observation invalidates failures recorded against the old host,
+and a successful scheduler ACK clears the cache. The legacy
+`host_update_failure` scalar remains as the latest compatibility projection;
+new hosts should consume `host_update_failures`. LoopX never treats an intended
+cadence as an applied cadence.
 For a human gate whose observed host interval is tighter than the failed target,
 the same packet also projects `user_gate_notification_cooldown_v0`. The first
 notice is preserved; short host polls are quiet, one host-sized window opens at
