@@ -79,20 +79,20 @@ def main() -> int:
         assert payload["summary"]["status_counts"]["created"] >= 20, payload
         assert payload["summary"]["status_counts"]["unsupported_host_surface"] >= 1, payload
         assert "skipped_user_file" not in payload["summary"]["status_counts"], payload
-        codex_skill_rows = [
+        retired_codex_project_rows = [
             item
             for item in payload["installed"]
-            if item.get("mechanism") == "codex_explicit_skills" and item.get("command") == "/loopx"
+            if item.get("mechanism") == "retired_codex_project_command_facade"
         ]
-        assert codex_skill_rows, payload
-        assert codex_skill_rows[0]["invoke_as"] == ["$loopx", "/skills"], codex_skill_rows
-        assert "/loopx" not in codex_skill_rows[0]["invoke_as"], codex_skill_rows
-        codex_metadata_rows = [
+        assert retired_codex_project_rows, payload
+        assert retired_codex_project_rows[0]["status"] == "absent", retired_codex_project_rows
+        retired_codex_project_metadata_rows = [
             item
             for item in payload["installed"]
-            if item.get("mechanism") == "codex_skill_openai_metadata" and item.get("command") == "/loopx"
+            if item.get("mechanism") == "retired_codex_project_command_metadata"
         ]
-        assert codex_metadata_rows, payload
+        assert retired_codex_project_metadata_rows, payload
+        assert retired_codex_project_metadata_rows[0]["status"] == "absent", retired_codex_project_metadata_rows
         codex_cli_rows = [
             item
             for item in payload["installed"]
@@ -102,23 +102,11 @@ def main() -> int:
         assert codex_cli_rows[0]["status"] == "unsupported_host_surface", codex_cli_rows
         assert codex_cli_rows[0]["native_registry_supported"] is False, codex_cli_rows
         assert codex_cli_rows[0]["failure_policy"] == "fail_closed_to_explicit_skill", codex_cli_rows
-        assert "$loopx" in codex_cli_rows[0]["fallback"], codex_cli_rows
+        assert "`LoopX` workflow skill in `/skills`" in codex_cli_rows[0]["fallback"], codex_cli_rows
+        assert "$loopx" not in codex_cli_rows[0]["fallback"], codex_cli_rows
 
-        codex_skill = codex_home / "skills" / "loopx" / "SKILL.md"
-        codex_skill_text = codex_skill.read_text(encoding="utf-8")
-        assert "name: \"loopx\"" in codex_skill_text
-        assert "surface=codex-skills" in codex_skill_text
-        assert "LoopX `/loopx`" in codex_skill_text
-        assert "start-goal --guided --project . --goal-text" in codex_skill_text
-        assert "bootstrap-command-pack --project . --goal-text" not in codex_skill_text
-        assert "new peer/meta/supervisor agent" in codex_skill_text
-        assert "register-agent --goal-id <selected-goal-id>" in codex_skill_text
-        assert "Do not configure optional features during first-run" in codex_skill_text
-        assert "configure-goal --goal-id <resolved-goal-id>" in codex_skill_text
-        codex_metadata = codex_home / "skills" / "loopx" / "agents" / "openai.yaml"
-        codex_metadata_text = codex_metadata.read_text(encoding="utf-8")
-        assert "allow_implicit_invocation: false" in codex_metadata_text
-        assert "loopx-managed-slash-command:v1 command=/loopx surface=codex-skill-metadata" in codex_metadata_text
+        assert not (codex_home / "skills" / "loopx" / "SKILL.md").exists()
+        assert not (codex_home / "skills" / "loopx" / "agents" / "openai.yaml").exists()
 
         assert not (codex_home / "prompts" / "loopx-pr-review.md").exists()
 
@@ -193,7 +181,7 @@ def main() -> int:
         assert "codex skills:" in markdown, markdown
         assert "claude skills:" in markdown, markdown
         assert "Skipped user-owned files:" in markdown, markdown
-        assert "$loopx" in markdown and "command-facade skills" in markdown, markdown
+        assert "older managed $loopx command facade" in markdown, markdown
 
         codex_only = json.loads(
             run_cli(
@@ -220,7 +208,7 @@ def main() -> int:
         legacy_skill = legacy_codex_home / "skills" / "loopx" / "SKILL.md"
         legacy_skill.parent.mkdir(parents=True)
         legacy_skill.write_text(
-            "# Legacy LoopX\n\nloopx goal-mode setup (NOT Claude Code's built-in /goal)\n",
+            "<!-- loopx-managed-slash-command:v1 command=/loopx surface=codex-skills -->\n",
             encoding="utf-8",
         )
         legacy_install = json.loads(
@@ -237,8 +225,29 @@ def main() -> int:
                 str(legacy_claude_home),
             ).stdout
         )
-        assert statuses_for(legacy_install, legacy_skill) == ["upgraded_legacy_managed"], legacy_install
-        assert "loopx-managed-slash-command:v1 command=/loopx surface=codex-skills" in legacy_skill.read_text(encoding="utf-8")
+        assert statuses_for(legacy_install, legacy_skill) == ["retired_managed_file"], legacy_install
+        assert not legacy_skill.exists(), legacy_install
+
+        user_codex_home = root / "user-codex"
+        user_skill = user_codex_home / "skills" / "loopx" / "SKILL.md"
+        user_skill.parent.mkdir(parents=True)
+        user_skill.write_text("# user-owned loopx skill\n", encoding="utf-8")
+        user_install = json.loads(
+            run_cli(
+                "--format",
+                "json",
+                "slash-commands",
+                "--install",
+                "--surface",
+                "codex",
+                "--codex-home",
+                str(user_codex_home),
+                "--claude-home",
+                str(root / "user-claude"),
+            ).stdout
+        )
+        assert statuses_for(user_install, user_skill) == ["skipped_user_file"], user_install
+        assert user_skill.read_text(encoding="utf-8") == "# user-owned loopx skill\n"
 
         uninstall_codex_home = root / "uninstall-codex"
         uninstall_claude_home = root / "uninstall-claude"
