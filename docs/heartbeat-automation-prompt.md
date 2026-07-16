@@ -507,7 +507,9 @@ no quota, and end the turn without a scheduler ACK. Otherwise call it only when
 RRULE update, run `loopx` with
 `scheduler_hint.codex_app.ack_hint.cli_args`; current payloads use
 `quota scheduler-ack-current` so LoopX re-reads the latest hint and owns the
-progression/reset state. Attempt the host update at most once per hint and
+progression/reset state. The ACK settles that RRULE; an immediate final guard
+may verify the same target but must not be treated as another elapsed poll.
+Attempt the host update at most once per hint and
 turn. If it fails or times out, do not retry or ACK; run
 `scheduler_hint.codex_app.failure_hint.cli_args` once to persist the failed
 target and observed host RRULE without spending quota. Exact repeats are then

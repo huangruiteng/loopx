@@ -1360,7 +1360,9 @@ must run `codex_app.ack_hint.cli_args`;
 current payloads use `quota scheduler-ack-current` so LoopX re-reads the latest
 hint, then persists `reset_token`, `identity_signature`, `progression_index`,
 and `last_applied_rrule` under the runtime root. When the same identity repeats,
-LoopX advances the progression until the max interval; when the reset token
+LoopX advances the progression after the applied interval has elapsed, until
+the max interval. An immediate post-ACK readback remains on the acknowledged
+RRULE so repeated reconciliation converges rather than oscillates. When the reset token
 changes, the next projected RRULE returns to
 `reset_policy.codex_app_initial_rrule`. If the current desired RRULE is already
 applied, `recommended_rrule` is omitted and the host update should be skipped.

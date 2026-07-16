@@ -265,7 +265,7 @@ def assert_compact_scheduler(name: str, source_payload: dict) -> None:
     expected_same_identity_action = (
         "keep_initial_interval_while_active_work"
         if compact["cadence_class"] == "active_work"
-        else "advance_index_after_scheduler_ack"
+        else "advance_index_after_applied_interval_elapsed"
     )
     assert stateful_detail["same_identity_action"] == expected_same_identity_action, (
         name,
