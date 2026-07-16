@@ -1484,7 +1484,10 @@ def build_quota_should_run(
         elif inbox_reply_due:
             should_run, normal_delivery_allowed = True, True
             recovery_allowed = self_repair_allowed = capability_repair_allowed = workspace_repair_allowed = False
-            effective_action, reason = "lark_inbox_reply_due", "a direct Lark question or bot mention is pending reply"
+            effective_action, reason = "lark_inbox_reply_due", (
+                "a direct Lark question, bot mention, or verified reply to the bot "
+                "is pending reply"
+            )
         effective_action, reason = task_orchestration_effective_action(
             task_orchestration_contract,
             should_run=should_run,

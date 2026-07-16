@@ -652,6 +652,7 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                 f"pending={work_lane_contract.get('pending_count')} "
                 f"questions={work_lane_contract.get('direct_question_count')} "
                 f"mentions={work_lane_contract.get('direct_mention_count')} "
+                f"bot_replies={work_lane_contract.get('reply_to_bot_count')} "
                 f"oldest_age_seconds={work_lane_contract.get('oldest_pending_age_seconds')}"
             )
         if work_lane_contract.get("action"):
@@ -1211,6 +1212,7 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                 f"pending={urgency.get('pending_count')} "
                 f"questions={urgency.get('direct_question_count')} "
                 f"mentions={urgency.get('direct_mention_count')} "
+                f"bot_replies={urgency.get('reply_to_bot_count')} "
                 f"reply_due={urgency.get('reply_due')} "
                 f"oldest_age_seconds={urgency.get('oldest_pending_age_seconds')}"
             )

@@ -16,21 +16,26 @@ Lark event stream
 The collector is host infrastructure. LoopX can validate a local-private
 collector config, preview or explicitly install a macOS `launchd` / Linux
 `systemd` user service, and report supervisor plus event-bus health. The
-installed service runs `lark-cli --profile <configured-profile> event consume`
-directly with a bounded timeout,
+installed service runs a small LoopX collector runtime around
+`lark-cli --profile <configured-profile> event consume` with a bounded timeout,
 so stdin EOF under a supervisor cannot terminate an otherwise unbounded
 consumer. When the official npm package exposes a Node wrapper, LoopX records
 absolute paths for both Node and the wrapper so launchd does not depend on an
-interactive-shell PATH. It filters before persistence and writes one compact event per Lark
-`event_id`/`message_id`. The agent does not need to keep a websocket open.
+interactive-shell PATH. It filters before persistence and writes one compact
+event per Lark `event_id`/`message_id`. Direct mentions are persisted
+immediately. For a message without a direct mention, the runtime reads back the
+current message and its direct parent, then marks it actionable only when the
+parent sender is the app id of the configured profile. A reply to a person,
+another app, or an unverifiable parent remains captured but does not wake the
+agent. The agent does not need to keep a websocket open.
 
 Use `addressed_only` only when direct bot mentions are the entire feedback
-contract. Lark's real-time `im.message.receive_v1` projection does not expose a
-thread id, so it cannot recognize later replies in a bot-started thread. A
-review or collaboration inbox that must learn from the whole discussion should
-use `configured_chat_all`: the host collector filters by its local-private chat
-id, persists every message from that chat, and lets the domain binding group or
-ignore messages during durable writeback.
+contract. A review or collaboration inbox that accepts non-mention replies to
+bot messages should use `configured_chat_all`: the host collector filters by
+its local-private chat id, persists every message from that chat, and verifies
+the reply relation through message readback before scheduling a reply. Full-chat
+capture is not full-chat activation; unrelated conversation remains available
+to domain interpretation without being treated as addressed to the bot.
 
 ## Local-private configuration
 
@@ -114,10 +119,11 @@ output never returns the chat id, local paths, generated jq, or credentials.
 An enabled collector must bind an explicit non-default Lark CLI profile. When
 `profile` is omitted, LoopX may reuse the enabled inbox reply
 `sender_profile`; when both are present they must match. The generated service
-places `--profile` before `event consume`, so collection and optional replies
-cannot silently use different app identities. Public plan/status packets expose
-only whether a profile is bound and where the binding came from, never its
-value.
+passes the profile-bound collector config to the LoopX runtime, which places
+`--profile` before both `event consume` and message readback calls. Collection,
+reply-target verification, and optional replies therefore cannot silently use
+different app identities. Public plan/status packets expose only whether a
+profile is bound and where the binding came from, never its value.
 
 ```bash
 loopx lark-inbox collector-plan \
@@ -142,8 +148,10 @@ loopx lark-inbox collector-status \
   --probe-event-bus
 ```
 
-Missing `lark-cli` produces a non-blocking install hint. Missing scopes or bot
-configuration still belong to `lark-cli`; LoopX does not authenticate a bot,
+Missing `lark-cli` produces a non-blocking install hint. Reply-target
+verification also requires the configured bot to read messages in the selected
+chat. Missing scopes or bot configuration still belong to `lark-cli`; LoopX
+does not authenticate a bot,
 copy app credentials, or silently install packages. Service installation is a
 local host write and therefore requires explicit `--execute`. Status separates
 `healthy` from `real_event_evidence_present`: a running subscriber can be
@@ -167,10 +175,12 @@ loopx configure-goal \
 The configuration catalog exposes this optional capability on demand. Quota
 projects `enabled`, `config_pointer_registered`, a public-safe command, and a
 content-free urgency summary; it never projects the private path, message ids,
-senders, or message bodies. The summary includes pending/direct-question/direct-
-mention counts and the oldest pending age. A configured direct reply becomes a
-high-priority `lark_event_inbox` work lane before ordinary monitor or advancement
-work. Generated heartbeat bodies run the actual goal-boundary `drain_command`;
+senders, or message bodies. The summary includes
+pending/direct-question/direct-mention/verified-bot-reply counts and the oldest
+pending age. A configured direct mention or verified reply to a message authored
+by the configured bot becomes a high-priority `lark_event_inbox` work lane
+before ordinary monitor or advancement work. Generated heartbeat bodies run the
+actual goal-boundary `drain_command`;
 `loopx lark-inbox drain --goal-id <goal-id> --project .`
 resolves the ignored config from the goal registry. A disabled or empty inbox
 is a quiet zero-spend path, so projects without Lark keep the default behavior.
@@ -193,14 +203,16 @@ Drain is read-only and returns bounded local-private message content. A message
 must be acknowledged only after its effect is written back. Duplicate event
 files collapse by `message_id`; repeated acknowledgement is idempotent.
 
-Urgency classification stays local: explicit configured bot-name/LoopX mentions
-and bounded question signals produce counts only. The agent still drains and
-interprets the source event before deciding the durable effect or reply; the
+Urgency classification stays local: explicit `@` mentions of the configured
+bot/LoopX, bounded question signals on addressed events, and provider-verified
+direct replies to the configured bot produce counts only. A question elsewhere in the
+group or a reply to a human does not become `reply_due`. The agent still drains
+and interprets the source event before deciding the durable effect or reply; the
 summary is a scheduling signal, not semantic authority.
 
-For a direct question or explicit bot mention, write the requested durable
-effect first, preview one concise source-thread reply, execute it, require
-readback, and only then ACK:
+For a direct question, explicit bot mention, or verified reply to the configured
+bot, write the requested durable effect first, preview one concise source-thread
+reply, execute it, require readback, and only then ACK:
 
 ```bash
 loopx lark-inbox reply \

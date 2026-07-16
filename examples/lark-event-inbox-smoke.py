@@ -175,7 +175,27 @@ def main() -> None:
                 "event_id": "evt-ordinary-chat",
                 "message_id": "om_ordinary_chat",
                 "create_time": "2026-07-12T10:03:00Z",
-                "content": "ordinary project discussion without a bot mention",
+                "content": "Project Review Bot 这个普通项目问题为什么会这样？",
+            },
+            {
+                "schema_version": "lark_event_inbox_event_v0",
+                "event_id": "evt-reply-to-bot",
+                "message_id": "om_reply_to_bot",
+                "parent_id": "om_bot_parent",
+                "create_time": "2026-07-12T10:04:00Z",
+                "content": "收到，继续按这个方向处理",
+                "reply_context_verified": True,
+                "reply_to_bot": True,
+            },
+            {
+                "schema_version": "lark_event_inbox_event_v0",
+                "event_id": "evt-reply-to-human",
+                "message_id": "om_reply_to_human",
+                "parent_id": "om_human_parent",
+                "create_time": "2026-07-12T10:05:00Z",
+                "content": "这是回复群成员，不是回复机器人",
+                "reply_context_verified": True,
+                "reply_to_bot": False,
             },
         ]
         ingest_lark_event_inbox(
@@ -189,10 +209,11 @@ def main() -> None:
             config_path=config,
             now=datetime(2026, 7, 12, 10, 12, tzinfo=timezone.utc),
         )
-        assert urgency["pending_count"] == 2, urgency
+        assert urgency["pending_count"] == 4, urgency
         assert urgency["direct_question_count"] == 1, urgency
         assert urgency["direct_mention_count"] == 0, urgency
-        assert urgency["attention_required_count"] == 1, urgency
+        assert urgency["reply_to_bot_count"] == 1, urgency
+        assert urgency["attention_required_count"] == 2, urgency
         assert urgency["reply_due"] is True, urgency
         assert urgency["oldest_pending_age_seconds"] == 600, urgency
         assert urgency["local_private_content_returned"] is False, urgency
@@ -200,7 +221,12 @@ def main() -> None:
         acknowledge_lark_event_inbox(
             project=project,
             config_path=config,
-            message_ids=["om_direct_question", "om_ordinary_chat"],
+            message_ids=[
+                "om_direct_question",
+                "om_ordinary_chat",
+                "om_reply_to_bot",
+                "om_reply_to_human",
+            ],
             execute=True,
         )
 

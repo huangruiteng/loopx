@@ -189,25 +189,28 @@ def _executable_prefix(executable: str) -> list[str]:
 
 
 def _collector_argv(config: Mapping[str, Any], executable: str) -> list[str]:
-    inbox_path = Path(config["inbox"]["inbox_path"])
-    relative_inbox = inbox_path.relative_to(Path(config["project"]))
     prefix = _executable_prefix(executable)
-    if config.get("profile"):
-        prefix.extend(["--profile", str(config["profile"])])
-    return [
-        *prefix,
-        "event",
-        "consume",
-        str(config["event_key"]),
-        "--as",
-        str(config["identity"]),
-        "--timeout",
-        str(config["consume_timeout"]),
-        "--jq",
-        _jq_projection(str(config["chat_id"])),
-        "--output-dir",
-        relative_inbox.as_posix(),
+    repo_root = Path(__file__).resolve().parents[3]
+    discovered = shutil.which("loopx")
+    loopx_executable = (
+        Path(discovered) if discovered else repo_root / "scripts" / "loopx"
+    )
+    if not loopx_executable.is_file():
+        raise ValueError("loopx executable is unavailable for collector runtime")
+    argv = [
+        str(loopx_executable),
+        "lark-inbox",
+        "collector-run",
+        "--project",
+        str(config["project"]),
+        "--config",
+        str(config["config_path"]),
+        "--lark-cli-executable",
+        executable,
     ]
+    if len(prefix) == 2:
+        argv.extend(["--node-executable", prefix[0]])
+    return argv
 
 
 def _service_file(config: Mapping[str, Any]) -> Path:
