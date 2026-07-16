@@ -687,7 +687,23 @@ def rollout_event_pr_refs(event: dict[str, Any]) -> list[dict[str, Any]]:
     return unique
 
 
-def pr_merged_condition(target: str, rollout_events: list[dict[str, Any]]) -> dict[str, Any]:
+def _github_pr_repo_from_task_repository(value: Any) -> str | None:
+    repository = normalize_todo_task_repository(value)
+    prefix = "git:github.com/"
+    if not repository or not repository.casefold().startswith(prefix):
+        return None
+    path = repository[len(prefix) :].strip("/")
+    if len(path.split("/")) != 2:
+        return None
+    return path.casefold()
+
+
+def pr_merged_condition(
+    target: str,
+    rollout_events: list[dict[str, Any]],
+    *,
+    task_repository: Any = None,
+) -> dict[str, Any]:
     condition: dict[str, Any] = {
         "pr_number": None,
         "pr_repo": None,
@@ -698,8 +714,40 @@ def pr_merged_condition(target: str, rollout_events: list[dict[str, Any]]) -> di
         condition["invalid_target"] = True
         return condition
     condition["pr_number"] = target_ref["number"]
-    if target_ref.get("repo"):
-        condition["pr_repo"] = target_ref["repo"]
+    target_repo = target_ref.get("repo")
+    if target_repo:
+        condition["pr_repo"] = target_repo
+        condition["repository_binding_source"] = "qualified_resume_when"
+    else:
+        target_repo = _github_pr_repo_from_task_repository(task_repository)
+        if target_repo:
+            condition["pr_repo"] = target_repo
+            condition["repository_binding_source"] = "task_repository"
+        else:
+            candidate_pr_refs = sorted(
+                {
+                    str(event_ref.get("normalized") or "")
+                    for event in rollout_events
+                    if isinstance(event, dict)
+                    and str(event.get("event_kind") or "").strip().lower()
+                    in PR_MERGED_EVENT_KINDS
+                    for event_ref in rollout_event_pr_refs(event)
+                    if int(event_ref.get("number") or 0) == int(target_ref["number"])
+                    and event_ref.get("repo")
+                }
+            )
+            condition.update(
+                {
+                    "repository_binding_state": "ambiguous",
+                    "repository_binding_reason": (
+                        "task_repository_missing"
+                        if not normalize_todo_task_repository(task_repository)
+                        else "task_repository_not_github"
+                    ),
+                    "candidate_pr_refs": candidate_pr_refs[:8],
+                }
+            )
+            return condition
     for event in rollout_events:
         if not isinstance(event, dict):
             continue
@@ -708,7 +756,7 @@ def pr_merged_condition(target: str, rollout_events: list[dict[str, Any]]) -> di
         for event_ref in rollout_event_pr_refs(event):
             if int(event_ref.get("number") or 0) != int(target_ref["number"]):
                 continue
-            if target_ref.get("repo") and event_ref.get("repo") != target_ref.get("repo"):
+            if event_ref.get("repo") != target_repo:
                 continue
             condition.update(
                 {
@@ -764,7 +812,13 @@ def apply_resume_conditions(
                     condition["target_claimed_by"] = target_claimed_by
             condition["satisfied"] = condition["target_status"] == "done"
         elif kind == TODO_RESUME_KIND_PR_MERGED and target:
-            condition.update(pr_merged_condition(target, rollout_events or []))
+            condition.update(
+                pr_merged_condition(
+                    target,
+                    rollout_events or [],
+                    task_repository=item.get("task_repository"),
+                )
+            )
         elif kind == TODO_RESUME_KIND_CAPACITY_AVAILABLE and target:
             condition.update(
                 {

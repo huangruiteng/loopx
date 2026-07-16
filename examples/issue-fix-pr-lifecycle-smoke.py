@@ -551,7 +551,9 @@ def main() -> int:
             "## Agent Todo\n\n"
             "- [ ] Resume after merge.\n"
             "  <!-- loopx:todo todo_id=todo_resume status=open "
-            "task_class=advancement_task resume_when=pr_merged:#1715 -->\n",
+            "task_class=advancement_task "
+            "task_repository=git:github.com/huangruiteng/loopx "
+            "resume_when=pr_merged:#1715 -->\n",
             rollout_events=rollout_events,
         )
         resume_item = parsed["agent_todos"]["items"][0]

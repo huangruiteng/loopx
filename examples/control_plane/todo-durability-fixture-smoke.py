@@ -75,7 +75,7 @@ def state_text() -> str:
         f"- [-] {DEFERRED_TODO}\n"
         "  <!-- loopx:todo todo_id=todo_deferred_surface status=deferred task_class=advancement_task claimed_by=codex-product-capability resume_when=todo_done:todo_done_cli -->\n"
         f"- [-] {PR_DEFERRED_TODO}\n"
-        "  <!-- loopx:todo todo_id=todo_pr_deferred status=deferred task_class=advancement_task claimed_by=codex-side-bypass resume_when=pr_merged:#532 -->\n"
+        "  <!-- loopx:todo todo_id=todo_pr_deferred status=deferred task_class=advancement_task claimed_by=codex-side-bypass task_repository=git:github.com/huangruiteng/loopx resume_when=pr_merged:#532 -->\n"
         f"- [ ] {SECOND_OPEN_TODO}\n"
         "  <!-- loopx:todo todo_id=todo_handoff_review status=open task_class=advancement_task action_kind=review_pr continuation_policy=independent_handoff claimed_by=codex-reviewer excluded_agents=codex-builder evidence=smoke_handoff_note -->\n\n"
         "## Completed Work Archive\n\n"
@@ -181,7 +181,10 @@ def assert_parseable_agent_todos(agent_todos: dict, *, hot_path: bool = False) -
     assert pr_deferred["resume_ready"] is True, pr_deferred
     assert pr_deferred["resume_condition"]["kind"] == "pr_merged", pr_deferred
     assert pr_deferred["resume_condition"]["pr_number"] == 532, pr_deferred
-    assert pr_deferred["resume_condition"]["pr_repo"] is None, pr_deferred
+    assert pr_deferred["resume_condition"]["pr_repo"] == "huangruiteng/loopx", pr_deferred
+    assert pr_deferred["resume_condition"]["repository_binding_source"] == (
+        "task_repository"
+    ), pr_deferred
     assert pr_deferred["resume_condition"]["matched_pr_ref"] == "huangruiteng/loopx#532", pr_deferred
     resume_candidate_ids = {item["todo_id"] for item in agent_todos["deferred_resume_candidates"]}
     assert {"todo_deferred_surface", "todo_pr_deferred"} <= resume_candidate_ids, agent_todos
@@ -206,7 +209,62 @@ def pr_merged_event() -> dict:
     )
 
 
+def assert_pr_resume_repository_binding() -> None:
+    events = [
+        pr_merged_event(),
+        build_rollout_event(
+            goal_id=GOAL_ID,
+            event_kind="pr_merge",
+            pr_ref="example/another-repo#532",
+            status="ready",
+            summary="A different repository merged the same PR number.",
+        ),
+    ]
+    parsed = parse_active_state_todos(
+        "## Agent Todo\n\n"
+        "- [-] Bind an unqualified PR to the task repository.\n"
+        "  <!-- loopx:todo todo_id=todo_bound status=deferred "
+        "task_class=advancement_task task_repository=git:github.com/huangruiteng/loopx "
+        "resume_when=pr_merged:#532 -->\n"
+        "- [-] Honor an explicitly qualified cross-repository dependency.\n"
+        "  <!-- loopx:todo todo_id=todo_qualified status=deferred "
+        "task_class=advancement_task task_repository=git:github.com/huangruiteng/loopx "
+        "resume_when=pr_merged:example/another-repo#532 -->\n"
+        "- [-] Fail closed when an unqualified dependency has no repository binding.\n"
+        "  <!-- loopx:todo todo_id=todo_ambiguous status=deferred "
+        "task_class=advancement_task resume_when=pr_merged:#532 -->\n",
+        rollout_events=events,
+    )
+    items = {
+        item["todo_id"]: item for item in parsed["agent_todos"]["deferred_items"]
+    }
+
+    bound = items["todo_bound"]
+    assert bound["resume_ready"] is True, bound
+    assert bound["resume_condition"]["matched_pr_ref"] == "huangruiteng/loopx#532", bound
+    assert bound["resume_condition"]["repository_binding_source"] == "task_repository", bound
+
+    qualified = items["todo_qualified"]
+    assert qualified["resume_ready"] is True, qualified
+    assert qualified["resume_condition"]["matched_pr_ref"] == "example/another-repo#532", qualified
+    assert qualified["resume_condition"]["repository_binding_source"] == (
+        "qualified_resume_when"
+    ), qualified
+
+    ambiguous = items["todo_ambiguous"]
+    assert ambiguous["resume_ready"] is False, ambiguous
+    assert ambiguous["resume_condition"]["repository_binding_state"] == "ambiguous", ambiguous
+    assert ambiguous["resume_condition"]["repository_binding_reason"] == (
+        "task_repository_missing"
+    ), ambiguous
+    assert ambiguous["resume_condition"]["candidate_pr_refs"] == [
+        "example/another-repo#532",
+        "huangruiteng/loopx#532",
+    ], ambiguous
+
+
 def main() -> int:
+    assert_pr_resume_repository_binding()
     parsed = parse_active_state_todos(state_text(), rollout_events=[pr_merged_event()])
     assert_parseable_agent_todos(parsed["agent_todos"])
 
