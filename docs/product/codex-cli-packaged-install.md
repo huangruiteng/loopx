@@ -29,8 +29,10 @@ snapshot under `~/.local/share/loopx/releases/`, installs the
 skills under `~/.codex/skills`. It also refreshes the lightweight slash-command
 facades:
 
-- `~/.codex/skills/loopx*/SKILL.md` for explicit Codex command-facade
-  invocation through `$loopx` or `/skills`;
+- `~/.codex/skills/loopx-project/SKILL.md` for the Codex project-command
+  fallback shown as `LoopX` in `/skills`;
+- `~/.codex/skills/loopx*/SKILL.md` for the remaining explicit Codex command
+  facades, while upgrades retire the older managed `$loopx` facade;
 - `~/.claude/skills/loopx*/SKILL.md` for Claude Code slash-command discovery.
 
 Current verified Codex CLI builds still reject user-installed `/loopx` and
