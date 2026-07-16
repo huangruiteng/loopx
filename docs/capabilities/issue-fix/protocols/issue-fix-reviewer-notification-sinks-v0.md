@@ -24,6 +24,30 @@ the selected reviewer. In execute mode, a secondary send is skipped unless the
 canonical GitHub notification is already verified. A secondary failure is
 reported separately and does not erase a successful GitHub request.
 
+## Optional Reward Memory Gate
+
+Reward Memory is a default-off, agent-scoped experiment. If the connected goal
+enables it and the registered caller's experiment includes the exact
+`reviewer_artifact.summary` surface, configured secondary notifications require
+an `issue_fix_reviewer_artifact_reward_memory_application_v0` packet whose
+notification gate passes. The caller supplies its own `--agent-id`, a concise
+model-authored Chinese `--reviewer-summary`, and compact
+`--reviewer-summary-reasoning`; LoopX never infers or impersonates another peer.
+
+The adapter reuses the provider-neutral Reward Memory core and the goal's local
+provider binding. OpenViking may back that binding, but it is not a protocol
+dependency or hard-coded repository. Before external delivery, the gate checks
+the exact surface, current PR identity and permalink, current-artifact
+verification, memory readback, attribution digests, application state, and a
+non-empty summary. A receipt for a different PR cannot be replayed.
+
+This stricter behavior is bounded to the configured secondary effect. The
+canonical GitHub review request or permission-only fallback executes first and
+remains fail-open with respect to Reward Memory. Missing, stale, or unavailable
+memory blocks only the secondary notification with
+`reward_memory_reviewer_artifact_unverified`; it does not turn ordinary Issue
+Fix work into a user gate or suppress the GitHub request.
+
 ## Local-Private Input
 
 `--notification-sinks-json` consumes

@@ -12,6 +12,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ...control_plane.runtime.public_safety import public_safe_compact_text
+from .reward_memory import reviewer_artifact_notification_gate
 
 
 ISSUE_FIX_REVIEWER_NOTIFICATION_SINKS_INPUT_SCHEMA_VERSION = (
@@ -1037,6 +1038,8 @@ def build_issue_fix_reviewer_notification_sinks_result(
     author_handle: str | None,
     reviewer_handles: Sequence[str],
     sinks_input: Mapping[str, Any],
+    reviewer_artifact_application: Mapping[str, Any] | None = None,
+    reviewer_artifact_required: bool = False,
     execute: bool = False,
     delivery_observed_at: str | None = None,
     runner: CommandRunner = _default_runner,
@@ -1046,6 +1049,29 @@ def build_issue_fix_reviewer_notification_sinks_result(
 
     author = _normalise_handle(author_handle)
     title = _humanize_pr_title(pr_title)
+    artifact_gate = reviewer_artifact_notification_gate(
+        reviewer_artifact_application
+    )
+    artifact = (
+        reviewer_artifact_application.get("reviewer_artifact")
+        if isinstance(reviewer_artifact_application, Mapping)
+        else None
+    )
+    artifact = artifact if isinstance(artifact, Mapping) else {}
+    if artifact_gate["passed"] is True and not (
+        artifact.get("repo") == public_safe_compact_text(repo, limit=200)
+        and artifact.get("pr_ref") == f"#{int(pr_number)}"
+        and artifact.get("permalink")
+        == public_safe_compact_text(pr_url, limit=300)
+    ):
+        artifact_gate = {
+            **artifact_gate,
+            "passed": False,
+            "status": "blocked",
+            "reason_codes": ["current_artifact_identity_mismatch"],
+        }
+    if artifact_gate["passed"] is True:
+        title = str(artifact_gate["summary"])
     issue_refs = _normalise_issue_refs(linked_issue_refs)
     reviewers = list(
         dict.fromkeys(
@@ -1075,7 +1101,12 @@ def build_issue_fix_reviewer_notification_sinks_result(
         "private_member_ids_captured": False,
         "private_bot_profile_captured": False,
         "raw_provider_payload_captured": False,
+        "reward_memory_reviewer_artifact_required": reviewer_artifact_required,
+        "reward_memory_reviewer_artifact_gate": artifact_gate,
     }
+    if reviewer_artifact_required and artifact_gate["passed"] is not True:
+        base["blocker"] = "reward_memory_reviewer_artifact_unverified"
+        return _finalize_result(base)
     if sinks_input.get("schema_version") != (
         ISSUE_FIX_REVIEWER_NOTIFICATION_SINKS_INPUT_SCHEMA_VERSION
     ):
