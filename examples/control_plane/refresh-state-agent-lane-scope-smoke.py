@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -111,6 +112,48 @@ def main() -> None:
         with tempfile.TemporaryDirectory(prefix="loopx-agent-lane-refresh-") as raw_tmp:
             registry_path, runtime, project = write_fixture(Path(raw_tmp))
             state_path = project / f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+
+            cli_preview = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "loopx.cli",
+                    "--registry",
+                    str(registry_path),
+                    "--runtime-root",
+                    str(runtime),
+                    "--format",
+                    "json",
+                    "refresh-state",
+                    "--goal-id",
+                    GOAL_ID,
+                    "--project",
+                    str(project),
+                    "--classification",
+                    "scoped_capability_preview",
+                    "--agent-id",
+                    "codex-side-bypass",
+                    "--available-capability",
+                    "network",
+                    "--available-capability",
+                    "benchmark_runner",
+                    "--available-capability",
+                    "credentials",
+                    "--dry-run",
+                    "--no-global-sync",
+                ],
+                cwd=Path(__file__).resolve().parents[2],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            assert cli_preview.returncode == 0, cli_preview.stderr
+            cli_preview_payload = json.loads(cli_preview.stdout)
+            assert cli_preview_payload["available_capabilities"] == [
+                "network",
+                "benchmark_runner",
+            ], cli_preview_payload
+            assert cli_preview_payload["dry_run"] is True, cli_preview_payload
 
             state_refresh.now_local = lambda: "2026-06-20T00:00:00+00:00"
             primary_payload = state_refresh.refresh_state_run(

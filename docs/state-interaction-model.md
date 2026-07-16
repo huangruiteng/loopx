@@ -164,6 +164,13 @@ the single action entrypoint for the current turn. If it carries a
 signal the primary action matched and whether `Next Action` / latest-run drift
 exists; it is not a second action source and does not authorize state sync by
 itself.
+For a registered agent, scoped state and accounting commands in
+`interaction_contract.cli_channel.next_cli_actions` preserve the normalized
+effective `--available-capability` envelope from the same quota decision.
+Capabilities describe observed execution support; they do not grant authority
+or replace user, repository-policy, or production gates. Owner-held authority
+labels such as credentials and production access are excluded from this CLI
+projection.
 Legacy Markdown parsing is even lower authority: it is a deterministic lint for
 unprojected prose in `Next Action`, not a source of gate truth. The hot path
 should not call an LLM to decide whether the user is gated, because that adds

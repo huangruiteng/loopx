@@ -5,11 +5,14 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 
-from ..control_plane.goals.goal_vision_policy import (
-    GOAL_VISION_ADVANCEMENT_POLICY_CHOICES,
-)
 from ..capabilities.explore.activation import (
     sync_explore_graph_after_material_refresh,
+)
+from ..control_plane.agents.capability_gate import (
+    runtime_capabilities_for_cli_projection,
+)
+from ..control_plane.goals.goal_vision_policy import (
+    GOAL_VISION_ADVANCEMENT_POLICY_CHOICES,
 )
 from ..control_plane.work_items.delivery_batch_scale import (
     DELIVERY_BATCH_SCALE_INPUT_CHOICES,
@@ -233,6 +236,16 @@ def register_project_lifecycle_commands(
         help=(
             "Registered agent id for agent-lane state refreshes. When set, the "
             "refresh is visible in run history but does not replace goal-level status."
+        ),
+    )
+    refresh_state_parser.add_argument(
+        "--available-capability",
+        dest="available_capabilities",
+        action="append",
+        help=(
+            "Preserve one observed public-safe runtime capability from the scoped "
+            "quota decision. Repeatable; this context does not grant authority or "
+            "change refresh-state write scope."
         ),
     )
     refresh_state_parser.add_argument(
@@ -478,6 +491,11 @@ def handle_project_lifecycle_command(
                 "dry_run": bool(args.dry_run),
                 "error": str(exc),
             }
+        projected_capabilities = runtime_capabilities_for_cli_projection(
+            args.available_capabilities
+        )
+        if projected_capabilities:
+            payload["available_capabilities"] = projected_capabilities
         payload["external_sink_delivery_authorized"] = not bool(
             args.suppress_external_sinks
         )
