@@ -1,6 +1,6 @@
 # Codex CLI Adapter for LoopX Turn
 
-Status: experimental product route and implementation audit.
+Status: experimental product route with a shipped isolated-headless driver.
 
 The product goal is one reusable mechanism: LoopX CLI decides what may run,
 Codex CLI performs one bounded agent turn, and LoopX validates and records the
@@ -14,49 +14,47 @@ the Codex CLI adapter policy and the current parity gap.
 
 ## Current Verdict
 
-The repository has useful Codex CLI probes and wrappers, but they are not yet a
-complete LoopX Turn adapter.
+`loopx turn plan` and `loopx turn run-once` now provide the host-neutral driver
+for explicit `isolated-headless` work. The built-in `codex-cli` host and the
+typed `generic-cli` adapter route both consume a live TurnEnvelope. A material
+result commits only after independent task validation, durable state writeback,
+one quota spend, and a final scheduler check.
 
-Reusable pieces include:
+The Codex host keeps its resume id in private local runtime state keyed by goal,
+agent, and todo. Bounded interruption may preserve an observed session;
+incompatible host versions, rejected output contracts, missing sessions, and
+legacy eligibility records start cleanly instead. Session recovery never counts
+as task evidence.
 
-- `codex-cli-session-probe` for help-only capability discovery;
-- visible-session proof and runtime-idle checks;
-- `codex-cli-local-scheduler-tick` for a no-execution candidate/blocker packet;
-- `codex-cli-local-scheduler-exec` for explicit prefix-gated command execution;
-  and
-- strong transcript, credential, session-file, and hidden-fallback boundaries.
+The remaining parity gaps are narrower:
 
-The outer orchestration is incomplete. A current dry-run scheduler tick can
-route visible-session proof blockers, but it does not itself:
+- `interactive-visible` still needs attach, idle, interruption, and takeover
+  proof before it can become a supported Turn execution mode;
+- a non-Codex conversational CLI such as Trae still needs a thin adapter that
+  supplies a deterministic typed result channel;
+- recurring external scheduling must compose the existing `run-once` receipt
+  and scheduler hint without overlapping a live host turn; and
+- benchmark promotion still requires matched, countable comparative evidence.
 
-- read a live `quota should-run --turn-envelope` decision;
-- pass observed tool capabilities into that decision;
-- preserve the selected todo and claim/continuation contract;
-- enforce the workspace guard before host execution;
-- receive a typed task result and validate it;
-- perform idempotent todo/state writeback followed by one quota spend; or
-- apply and acknowledge the resulting scheduler state.
-
-Therefore the existing `codex-cli-local-scheduler-*` commands should be treated
-as adapter probes, not advertised as App-parity automation. Their session proof,
-idle, prefix, and privacy checks should be reused behind a smaller host-neutral
-driver.
+The older `codex-cli-local-scheduler-*` commands remain diagnostics and
+compatibility probes. They are not the default orchestration narrative and must
+not be composed manually as a second control plane.
 
 ## Codex App Parity Matrix
 
 | Capability | Codex App baseline | Current Codex CLI route | v0 driver requirement |
 | --- | --- | --- | --- |
-| Persistent identity | Automation thread plus registered LoopX agent | Goal and agent ids exist; resume handle is only a host candidate | Keep `(goal, agent, todo)` authoritative and session handle opaque/local |
-| Wake and resume | Heartbeat wakes the existing thread | External scheduler can emit a resume candidate after proof | Start or resume one bounded turn with typed timeout/failure |
-| Fresh control decision | Agent runs live `quota should-run` and follows `interaction_contract` | Tick accepts an optional quota fixture and otherwise has no live decision | Run live TurnEnvelope decision on every tick; fixtures only for tests |
-| User gate | Concrete projected action is shown; host work stops | Proof blocker is modeled, but current LoopX user gate is not routed by the tick | Route exact user action without invoking Codex or spending |
-| Todo continuation | Selected todo, claim, continuation, and successor policy survive turns | Not part of scheduler tick | Preserve todo id and apply claim/complete/successor transitions |
-| Tool capability | Observed capabilities are passed to quota routing | Codex help probe is not projected into capability routing | Declare observed capabilities; use capability repair rather than user gates |
-| Workspace isolation | Agent obeys workspace guard and repository policy | Not enforced by scheduler tick | Stop or relocate before repository writes |
-| Bounded execution | Heartbeat prompt asks for one validated segment | Candidate command execution exists, but no task result contract | Require typed result with bounded timeout and no silent mode fallback |
-| Validation and writeback | Validate, refresh, then spend one slot | Wrapper intentionally does not validate or spend | Validate artifact, write idempotently, then spend exactly once |
-| Scheduler/backoff | App RRULE is applied and acknowledged without spend | Tick can render cadence only when a quota fixture supplies it | Apply and ack live scheduler hint, including failure recovery |
-| Repair/replan | Typed control state can preserve, repair, or replace the current route | Existing decisions describe session proof only | Distinguish `repair_required` from `replan_required`; terminate only on acceptance or explicit stop |
+| Persistent identity | Automation thread plus registered LoopX agent | Goal, agent, and todo are authoritative; the resume id stays in private runtime state | Keep the session handle opaque, local, and non-authoritative |
+| Wake and resume | Heartbeat wakes the existing thread | `run-once` starts or resumes only an eligible local session | Add a non-overlapping recurring wake host and interactive attach proof |
+| Fresh control decision | Agent runs live `quota should-run` and follows `interaction_contract` | `turn plan` and `run-once` use a live TurnEnvelope | Keep fixtures test-only and re-decide before every host attempt |
+| User gate | Concrete projected action is shown; host work stops | Routed before host invocation | Preserve exact projected action and no-spend behavior |
+| Todo continuation | Selected todo, claim, continuation, and successor policy survive turns | Todo identity is preserved through plan, host request, writeback, and receipt | Add broader scheduled and interactive continuation qualification |
+| Tool capability | Observed capabilities are passed to quota routing | `--available-capability` feeds the live decision | Add host-specific discovery helpers without creating user gates |
+| Workspace isolation | Agent obeys workspace guard and repository policy | Caller supplies an explicit project; repository worktree policy remains external | Integrate a first-class workspace guard before write-capable hosts |
+| Bounded execution | Heartbeat prompt asks for one validated segment | Built-in and generic hosts require typed results and explicit timeout | Qualify longer repository turns and interactive interruption |
+| Validation and writeback | Validate, refresh, then spend one slot | Independent command validation gates durable writeback and one spend | Keep validators task-specific and outside the host |
+| Scheduler/backoff | App RRULE is applied and acknowledged without spend | Final live scheduler check is part of the Turn receipt | External recurring hosts must apply required host actions without overlap |
+| Repair/replan | Typed control state can preserve, repair, or replace the current route | Host and validation failures route to typed repair/replan; two stalls require a todo or vision delta | Expand real-host negative-path qualification |
 | Privacy | Raw host material stays outside LoopX state | Existing boundaries are strong | Preserve current boundary and add a typed result channel |
 
 This matrix is an implementation checklist, not evidence that the capabilities
@@ -64,35 +62,45 @@ already match.
 
 ## Product Shape
 
-The experimental user-facing surface should converge on one command group:
+The shipped experimental command group is:
 
 ```bash
-loopx turn diagnose \
-  --project . \
+loopx turn plan \
   --goal-id <goal-id> \
   --agent-id <agent-id> \
-  --host codex-cli
+  --host codex-cli \
+  --execution-mode isolated-headless
 
 loopx turn run-once \
   --project . \
   --goal-id <goal-id> \
   --agent-id <agent-id> \
   --host codex-cli \
-  --execution-mode interactive-visible
+  --execution-mode isolated-headless \
+  --validation-command-json '["./verify-postcondition"]' \
+  --execute
 ```
 
-This is an implementation target, not a shipped command. The first command
-should report host capability and parity gaps without execution. The second
-should compose a live LoopX decision, one Codex turn, typed closeout,
-validation, writeback, spend, and scheduler acknowledgement.
+`plan` is read-only. `run-once` composes a live decision, one host attempt,
+typed closeout, independent validation, writeback, spend, and scheduler final
+check. Use `--host generic-cli --host-adapter-command-json ...` for Trae or
+another CLI after its wrapper implements the typed stdin/stdout contract in the
+host-neutral protocol.
+
+That wrapper is deliberately thin: it translates one Turn request into one
+bounded Agent CLI invocation, preserves only an opaque local resume handle, and
+returns one typed candidate result. LoopX remains responsible for the control
+decision, todo continuation, independent validation, durable writeback, quota,
+and scheduler state.
 
 Codex CLI policy supports two explicit modes:
 
-- `interactive-visible` is the normal product route. The user can see,
-  interrupt, and take over the turn. Missing idle or attach proof stops the
-  tick.
-- `isolated-headless` is an explicit experimental worker or benchmark route.
-  It uses an isolated workspace and never claims to preserve the visible TUI.
+- `isolated-headless` is the currently supported experimental worker and
+  benchmark route. It uses an isolated workspace and never claims to preserve
+  a visible TUI.
+- `interactive-visible` remains the intended user-visible route. It is not a
+  supported `run-once` mode until attach, idle, interruption, and takeover proof
+  are integrated.
 
 The driver must never switch from `interactive-visible` to
 `isolated-headless` as a fallback. This preserves the existing `/goal`
@@ -137,19 +145,21 @@ polling indefinitely.
 
 ## Experimental Stages
 
-1. **Contract**: land the host-neutral lifecycle and this parity matrix.
-2. **Shadow**: feed real TurnEnvelope decisions through a no-execution adapter
-   and compare action signatures and typed routes.
-3. **One turn**: run a real Codex CLI turn in an explicit mode, require typed
-   result, validate, write back, and prove spend ordering.
-4. **Scheduled continuation**: prove resume/new-session policy, stateful
-   backoff, acknowledgement, retries, and no duplicate spend.
-5. **Benchmark dogfood**: compare the driver with Codex App and the canonical
-   countable `/goal` baseline under matched source, budget, concurrency,
-   no-feedback, no-sync, no-upload, and no-submit boundaries.
-6. **Promotion review**: decide whether to keep the adapter experimental,
-   replace old probe entry points, or generalize LoopX Turn to another CLI
-   host.
+1. **Contract - complete**: the host-neutral lifecycle, typed result, and
+   independent validator gate are shipped.
+2. **Shadow - complete for the current matrix**: state fixtures preserve action
+   signatures and typed routes without host execution.
+3. **One turn - complete for isolated Codex CLI**: a real resumed host session
+   returned a typed result, passed independent tests, wrote state, spent once,
+   and completed the scheduler final check.
+4. **Scheduled continuation - partial**: resume/new-session eligibility and
+   timeout recovery are proven; a generic non-overlapping recurring host loop
+   and `interactive-visible` mode remain open.
+5. **Benchmark dogfood - active**: compare the driver with Codex App and the
+   canonical countable `/goal` baseline under matched source, budget,
+   concurrency, no-feedback, no-sync, no-upload, and no-submit boundaries.
+6. **Promotion review - pending**: decide whether to keep the adapter
+   experimental, retire older probes, or promote another CLI host.
 
 Benchmark dogfood records compact parity, trajectory, and closeout evidence. It
 must not commit raw task text, raw trajectories, verifier output, credentials,
