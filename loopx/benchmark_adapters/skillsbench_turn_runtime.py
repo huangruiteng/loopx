@@ -248,25 +248,23 @@ def run_skillsbench_loopx_turn(
         command = (
             f"{prefix} quota should-run "
             f"--goal-id {shlex.quote(config.goal_id)} "
-            f"--agent-id {shlex.quote(config.agent_id)}"
+            f"--agent-id {shlex.quote(config.agent_id)} "
+            "--host-surface generic_cli "
+            "--scheduler-owner outer_controller "
+            "--execution-mode isolated_headless"
         )
         payload = bridge.loopx_json(command)
         hint = payload.get("scheduler_hint")
         hint = hint if isinstance(hint, dict) else {}
-        codex_app = hint.get("codex_app")
-        codex_app = codex_app if isinstance(codex_app, dict) else {}
-        backoff = codex_app.get("stateful_backoff")
-        backoff = backoff if isinstance(backoff, dict) else {}
-        codex_app_apply_needed = backoff.get("apply_needed") is True
-        # BenchFlow owns the next prompt; a case-local Codex App cadence hint is
-        # observational and must not strand a generic Agent CLI Turn receipt.
-        return {
-            "disposition": "outer_benchmark_controller",
-            "completed": True,
-            "acknowledged": False,
-            "apply_needed": False,
-            "codex_app_apply_needed_observed": codex_app_apply_needed,
-        }
+        phase = hint.get("execution_phase")
+        if not isinstance(phase, dict):
+            return {
+                "disposition": "contract_error",
+                "completed": False,
+                "acknowledged": False,
+                "apply_needed": False,
+            }
+        return dict(phase)
 
     execution = run_loopx_turn_once(
         plan,

@@ -104,6 +104,21 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     quota_parser.add_argument(
+        "--host-surface",
+        choices=["codex_app", "codex_cli", "generic_cli", "claude_code", "local_scheduler"],
+        help="Host surface that will consume this scheduler projection.",
+    )
+    quota_parser.add_argument(
+        "--scheduler-owner",
+        choices=["host_automation", "agent_cli_loop", "outer_controller", "none"],
+        help="Runtime that owns the next cadence decision.",
+    )
+    quota_parser.add_argument(
+        "--execution-mode",
+        choices=["interactive", "isolated_headless", "hosted_automation"],
+        help="Execution mode paired with --host-surface and --scheduler-owner.",
+    )
+    quota_parser.add_argument(
         "--turn-envelope",
         action="store_true",
         help=(
@@ -248,6 +263,16 @@ def handle_quota_command(
         if args.quota_command == "should-run":
             if not args.goal_id:
                 raise ValueError("`loopx quota should-run` requires --goal-id")
+            scheduler_context = (
+                {
+                    "host_surface": args.host_surface,
+                    "scheduler_owner": args.scheduler_owner,
+                    "execution_mode": args.execution_mode,
+                    "source": "quota_cli_invocation",
+                }
+                if any((args.host_surface, args.scheduler_owner, args.execution_mode))
+                else None
+            )
             payload = build_live_quota_should_run_decision(
                 status_payload,
                 goal_id=args.goal_id,
@@ -258,6 +283,7 @@ def handle_quota_command(
                 registry_path=registry_path,
                 runtime_root=runtime_root,
                 host_observation_resolver=resolve_codex_app_automation_rrule,
+                scheduler_execution_context=scheduler_context,
             )
         elif args.quota_command == "monitor-poll":
             if not args.goal_id:

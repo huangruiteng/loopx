@@ -84,12 +84,14 @@ def build_loopx_turn_transaction_plan(
     host: str,
     execution_mode: str,
     session_action: str,
+    scheduler_owner: str = "none",
 ) -> dict[str, Any]:
     turn_key = _canonical_hash(
         {
             "lineage": dict(lineage),
             "host": host,
             "execution_mode": execution_mode,
+            "scheduler_owner": scheduler_owner,
             "session_action": session_action,
         }
     )

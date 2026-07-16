@@ -15,6 +15,9 @@ from ..control_plane.turn_driver import (
     run_codex_cli_host,
     run_loopx_turn_once,
 )
+from ..control_plane.scheduler.execution_context import (
+    scheduler_execution_context_for_turn,
+)
 from ..control_plane.quota.live_decision import build_live_quota_should_run_decision
 from ..control_plane.quota.turn_envelope import build_turn_envelope
 from ..control_plane.runtime.status_projection_cache import (
@@ -191,6 +194,14 @@ def _add_turn_decision_arguments(
         default=default_execution_mode,
     )
     parser.add_argument(
+        "--scheduler-owner",
+        choices=["host_automation", "agent_cli_loop", "outer_controller", "none"],
+        help=(
+            "Cadence owner; defaults to outer_controller for generic-cli and "
+            "agent_cli_loop otherwise."
+        ),
+    )
+    parser.add_argument(
         "--resume-goal-id",
         help="Goal identity bound to an available opaque host session.",
     )
@@ -274,6 +285,11 @@ def handle_turn_command(
             scan_roots=scan_roots,
             limit=max(max(0, args.limit), AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK),
         )
+        scheduler_context = scheduler_execution_context_for_turn(
+            host=args.host,
+            execution_mode=args.execution_mode,
+            scheduler_owner=args.scheduler_owner,
+        )
         decision = build_live_quota_should_run_decision(
             status_payload,
             goal_id=args.goal_id,
@@ -284,6 +300,7 @@ def handle_turn_command(
             registry_path=registry_path,
             runtime_root=runtime_root,
             route_source="loopx_turn_plan",
+            scheduler_execution_context=scheduler_context,
         )
         resume_identity = {
             "goal_id": args.resume_goal_id,
@@ -313,6 +330,7 @@ def handle_turn_command(
             turn_envelope,
             host=args.host,
             execution_mode=args.execution_mode,
+            scheduler_owner=args.scheduler_owner,
             session_binding=session_binding,
         )
         if args.turn_command == "plan":
@@ -441,6 +459,11 @@ def handle_turn_command(
                 )
 
             def scheduler(_spend_payload: dict[str, object]) -> dict[str, object]:
+                turn_scheduler_context = (
+                    payload.get("scheduler_execution_context")
+                    if isinstance(payload.get("scheduler_execution_context"), dict)
+                    else None
+                )
                 latest = build_live_quota_should_run_decision(
                     current_status(),
                     goal_id=args.goal_id,
@@ -451,26 +474,15 @@ def handle_turn_command(
                     registry_path=registry_path,
                     runtime_root=runtime_root,
                     route_source="loopx_turn_run_once",
+                    scheduler_execution_context=turn_scheduler_context,
                 )
                 hint = latest.get("scheduler_hint") if isinstance(latest.get("scheduler_hint"), dict) else {}
-                codex_app = hint.get("codex_app") if isinstance(hint.get("codex_app"), dict) else {}
-                backoff = codex_app.get("stateful_backoff") if isinstance(codex_app.get("stateful_backoff"), dict) else {}
-                apply_needed = backoff.get("apply_needed") is True
-                return {
-                    "disposition": "host_action_required" if apply_needed else "not_required",
-                    "completed": not apply_needed,
+                phase = hint.get("execution_phase")
+                return dict(phase) if isinstance(phase, dict) else {
+                    "disposition": "contract_error",
+                    "completed": False,
                     "acknowledged": False,
-                    "apply_needed": apply_needed,
-                    **(
-                        {
-                            "recommended_interval_minutes": codex_app.get(
-                                "recommended_interval_minutes"
-                            ),
-                            "ack_hint": codex_app.get("ack_hint"),
-                        }
-                        if apply_needed
-                        else {}
-                    ),
+                    "apply_needed": False,
                 }
 
             host_runner = None

@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from enum import Enum
 from typing import Any
 
+from ..scheduler.execution_context import scheduler_execution_context_for_turn
 from .transaction import build_loopx_turn_transaction_plan
 
 
@@ -149,6 +150,7 @@ def build_loopx_turn_plan(
     *,
     host: str,
     execution_mode: str,
+    scheduler_owner: str | None = None,
     session_binding: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Project a TurnEnvelope into a typed, side-effect-free host decision."""
@@ -158,8 +160,17 @@ def build_loopx_turn_plan(
     if execution_mode not in SUPPORTED_EXECUTION_MODES:
         raise ValueError(f"unsupported LoopX Turn execution mode: {execution_mode}")
 
+    execution_context = scheduler_execution_context_for_turn(
+        host=host,
+        execution_mode=execution_mode,
+        scheduler_owner=scheduler_owner,
+    )
     envelope = dict(turn_envelope)
-    route = _typed_route(envelope)
+    route = (
+        _typed_route(envelope)
+        if execution_context.ok
+        else LoopXTurnRoute.CONTRACT_ERROR
+    )
     lineage = _turn_lineage(envelope)
     session, session_error = _session_plan(
         route=route,
@@ -175,6 +186,7 @@ def build_loopx_turn_plan(
         LoopXTurnRoute.REPAIR_REQUIRED,
         LoopXTurnRoute.REPLAN_REQUIRED,
     }
+    context_projection = execution_context.projection()
     return {
         "ok": route is not LoopXTurnRoute.CONTRACT_ERROR,
         "schema_version": LOOPX_TURN_PLAN_SCHEMA_VERSION,
@@ -182,8 +194,10 @@ def build_loopx_turn_plan(
         "host": {
             "kind": host,
             "execution_mode": execution_mode,
+            "scheduler_owner": context_projection.get("scheduler_owner"),
             "explicit_isolation": execution_mode == "isolated-headless",
         },
+        "scheduler_execution_context": context_projection,
         "session": session,
         "route": {
             "schema_version": "loopx_turn_route_v0",
@@ -199,6 +213,7 @@ def build_loopx_turn_plan(
             lineage=lineage,
             host=host,
             execution_mode=execution_mode,
+            scheduler_owner=str(context_projection.get("scheduler_owner") or ""),
             session_action=str(session.get("action") or "none"),
         ),
         "effects": {
@@ -213,5 +228,9 @@ def build_loopx_turn_plan(
             "preserves_turn_envelope": True,
             "opaque_session_handle_omitted": True,
         },
-        **({"error": session_error} if session_error else {}),
+        **(
+            {"error": session_error or "; ".join(execution_context.errors)}
+            if session_error or not execution_context.ok
+            else {}
+        ),
     }

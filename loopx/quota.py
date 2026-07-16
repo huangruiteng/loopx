@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -131,6 +132,10 @@ from .control_plane.work_items.goal_route_hint import build_goal_route_hint
 from .control_plane.work_items.capability_monitor_fallback import build_capability_gate_with_monitor_fallback
 from .control_plane.work_items.work_lane import lark_inbox_reply_due_work_lane_contract, scoped_user_gate_due_monitor_contract, work_lane_contract_is_due_monitor_attempt, work_lane_contract_is_lark_inbox_reply_due
 from .control_plane.scheduler.scheduler_hint import build_scheduler_hint
+from .control_plane.scheduler.execution_context import (
+    SchedulerExecutionContextResolution,
+    resolve_scheduler_execution_context,
+)
 from .control_plane.scheduler.external_evidence_observation import build_external_evidence_observation_obligation
 from .control_plane.scheduler.automation_liveness import build_automation_liveness
 from .control_plane.scheduler.state import (
@@ -720,6 +725,7 @@ def _compact_autonomous_candidate_context(
 def _scheduler_hint(
     payload: dict[str, Any], *, include_detail: bool = False,
     codex_app_scheduler_state: dict[str, Any] | None = None, available_capabilities: Any = None, codex_app_current_rrule: Any = None,
+    scheduler_execution_context: Mapping[str, Any] | SchedulerExecutionContextResolution | None = None,
 ) -> dict[str, Any]:
     return build_scheduler_hint(
         payload,
@@ -728,6 +734,7 @@ def _scheduler_hint(
         include_detail=include_detail,
         codex_app_scheduler_state=codex_app_scheduler_state,
         available_capabilities=available_capabilities, codex_app_current_rrule=codex_app_current_rrule,
+        scheduler_execution_context=scheduler_execution_context,
     )
 
 
@@ -1196,8 +1203,12 @@ def build_quota_should_run(
     agent_id: str | None = None,
     available_capabilities: Any = None,
     include_scheduler_detail: bool = False, codex_app_current_rrule: Any = None,
+    scheduler_execution_context: Mapping[str, Any] | SchedulerExecutionContextResolution | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
+    resolved_scheduler_context = resolve_scheduler_execution_context(
+        scheduler_execution_context
+    )
     registry_goal = _registry_goal_by_id(status_payload).get(safe_goal_id) or {}
     plan = build_quota_plan(status_payload, mode="should-run")
     item = next((candidate for candidate in _quota_plan_items(plan) if candidate.get("goal_id") == safe_goal_id), None)
@@ -2120,11 +2131,18 @@ def build_quota_should_run(
             payload,
             include_detail=include_scheduler_detail,
             available_capabilities=effective_available_capabilities,
-            codex_app_scheduler_state=_load_codex_app_scheduler_state(
-                status_payload,
-                goal_id=safe_goal_id,
-                agent_id=quota_decision_agent_id(payload) or agent_id,
+            codex_app_scheduler_state=(
+                _load_codex_app_scheduler_state(
+                    status_payload,
+                    goal_id=safe_goal_id,
+                    agent_id=quota_decision_agent_id(payload) or agent_id,
+                )
+                if resolved_scheduler_context.ok
+                and resolved_scheduler_context.context is not None
+                and resolved_scheduler_context.context.codex_app_applicable
+                else None
             ), codex_app_current_rrule=codex_app_current_rrule,
+            scheduler_execution_context=resolved_scheduler_context,
         )
         finalize_user_gate_notification_cooldown(payload)
         payload["protocol_action_packet"] = build_protocol_action_packet(payload)

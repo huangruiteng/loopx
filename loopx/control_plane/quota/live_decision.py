@@ -5,6 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from ...quota import build_quota_should_run
+from ..scheduler.execution_context import (
+    SchedulerExecutionContextResolution,
+    resolve_scheduler_execution_context,
+)
 
 
 HostObservationResolver = Callable[..., Mapping[str, Any]]
@@ -63,11 +67,22 @@ def build_live_quota_should_run_decision(
     runtime_root: Path,
     host_observation_resolver: HostObservationResolver | None = None,
     route_source: str = "quota_cli_invocation",
+    scheduler_execution_context: Mapping[str, Any] | SchedulerExecutionContextResolution | None = None,
 ) -> dict[str, Any]:
     """Build one live CLI decision while keeping host observation injectable."""
 
+    resolved_context = resolve_scheduler_execution_context(scheduler_execution_context)
+    codex_app_applicable = (
+        resolved_context.ok
+        and resolved_context.context is not None
+        and resolved_context.context.codex_app_applicable
+    )
     observed_rrule = str(codex_app_current_rrule or "").strip()
-    if not observed_rrule and host_observation_resolver is not None:
+    if (
+        codex_app_applicable
+        and not observed_rrule
+        and host_observation_resolver is not None
+    ):
         observation = host_observation_resolver(goal_id=goal_id, agent_id=agent_id)
         if observation.get("available") is True:
             observed_rrule = str(observation.get("rrule") or "")
@@ -78,6 +93,7 @@ def build_live_quota_should_run_decision(
         available_capabilities=available_capabilities,
         include_scheduler_detail=include_scheduler_detail,
         codex_app_current_rrule=observed_rrule,
+        scheduler_execution_context=resolved_context,
     )
     bind_scheduler_followup_cli_routes(
         payload,

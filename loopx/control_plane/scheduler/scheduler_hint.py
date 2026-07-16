@@ -4,7 +4,7 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -13,6 +13,11 @@ from ..work_items.delivery_outcome import DeliveryOutcome
 from .arbitration import (
     SchedulerDisposition,
     build_scheduler_arbitration,
+)
+from .execution_context import (
+    SchedulerExecutionContextResolution,
+    apply_scheduler_execution_context,
+    resolve_scheduler_execution_context,
 )
 from .state import (
     CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
@@ -754,6 +759,9 @@ def build_scheduler_hint(
     codex_app_scheduler_state: dict[str, Any] | None = None,
     available_capabilities: Any = None,
     codex_app_current_rrule: Any = None,
+    scheduler_execution_context: (
+        Mapping[str, Any] | SchedulerExecutionContextResolution | None
+    ) = None,
 ) -> dict[str, Any]:
     """Project host-runtime cadence/backoff policy from a quota decision.
 
@@ -761,6 +769,52 @@ def build_scheduler_hint(
     classification facts it needs, and it returns the public scheduler contract
     without reading files, mutating state, or depending on the full quota module.
     """
+
+    execution_context = resolve_scheduler_execution_context(
+        scheduler_execution_context
+    )
+    if not execution_context.ok:
+        return {
+            "schema_version": SCHEDULER_HINT_SCHEMA_VERSION,
+            "source": "quota.should-run",
+            "action": "repair_scheduler_execution_context",
+            "cadence_class": "control_plane_repair",
+            "reason_code": "invalid_scheduler_execution_context",
+            "reason": (
+                "scheduler ownership is missing or contradictory; repair the "
+                "typed execution context before applying cadence"
+            ),
+            "spend_policy": "no quota spend for scheduler context repair",
+            "execution_context": execution_context.projection(),
+            "execution_phase": {
+                "schema_version": "scheduler_execution_phase_v0",
+                "disposition": "contract_error",
+                "completed": False,
+                "apply_needed": False,
+                "ack_needed": False,
+                "acknowledged": False,
+            },
+            "codex_app": {
+                "applicability": "blocked_invalid_context",
+                "apply": "none",
+                "host_action": "none",
+                "ack_required": False,
+            },
+            "unchanged_poll": {
+                "local_scheduler": "stop_until_context_repaired",
+                "codex_cli_tui": "stop_until_context_repaired",
+                "claude_code_loop": "stop_until_context_repaired",
+                "final_quota_replan_check_enabled": False,
+                "spend_policy": "no quota spend for scheduler context repair",
+            },
+            "consistency_error": {
+                "source": "scheduler_execution_context",
+                "errors": list(execution_context.errors),
+            },
+        }
+
+    def contextualize(result: dict[str, Any]) -> dict[str, Any]:
+        return apply_scheduler_execution_context(result, execution_context)
 
     heartbeat_recommendation = (
         payload.get("heartbeat_recommendation")
@@ -824,7 +878,7 @@ def build_scheduler_hint(
         return current
 
     if arbitration.disposition == SchedulerDisposition.TERMINAL_STOP:
-        return {
+        return contextualize({
             "schema_version": SCHEDULER_HINT_SCHEMA_VERSION,
             "source": "quota.should-run",
             "action": "stop_until_explicit_resume",
@@ -854,7 +908,7 @@ def build_scheduler_hint(
                 "spend_policy": "no quota spend for terminal loop stop",
             },
             "unchanged_identity_keys": base_identity_keys,
-        }
+        })
 
     def hint(
         *,
@@ -1269,7 +1323,7 @@ def build_scheduler_hint(
             }
             if cadence_context_detail:
                 scheduler_hint["cold_path_detail"]["cadence_context"] = cadence_context_detail
-        return scheduler_hint
+        return contextualize(scheduler_hint)
 
     if arbitration.disposition == SchedulerDisposition.CONSISTENCY_REPAIR:
         result = hint(
