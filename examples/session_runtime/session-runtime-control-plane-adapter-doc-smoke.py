@@ -55,7 +55,7 @@ def main() -> int:
         contributor_tasks,
         [
             "GH-C35",
-            "session-runtime control-plane adapter",
+            "provider-neutral external-host adapter",
             "raw transcripts, credentials, billing, permissions",
         ],
         source=CONTRIBUTOR_TASKS,
