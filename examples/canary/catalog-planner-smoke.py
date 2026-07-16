@@ -713,6 +713,23 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert "python3 examples/explore-worker-plan-gate-smoke.py" in explore_commands
     assert explore_profile["deep_checks_available"] is True, explore_profile
 
+    configure_sync_payload = build_catalog_canary_plan(
+        changed_files=["loopx/control_plane/goals/configure_goal_service.py"],
+        surfaces=["configure-goal authoritative shared runtime sync readback"],
+    )
+    configure_sync_profiles = {
+        profile["id"]: profile
+        for profile in configure_sync_payload["domain_profiles"]
+    }
+    configure_sync_profile = configure_sync_profiles["peer-agent-runtime"]
+    configure_sync_commands = [
+        check["command"] for check in configure_sync_profile["checks"]
+    ]
+    assert (
+        "python3 examples/project/configure-goal-global-sync-smoke.py"
+        in configure_sync_commands
+    ), configure_sync_profile
+
 
 def assert_explicit_profile_can_include_deep_checks() -> None:
     payload = build_catalog_canary_plan(

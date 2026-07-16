@@ -1220,10 +1220,17 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "loopx/control_plane/agents",
             "loopx/control_plane/todos/completion_policy.py",
             "loopx/control_plane/quota/task_orchestration.py",
+            "loopx/control_plane/goals/configure_goal_service.py",
             "loopx/heartbeat_prompt.py",
             "loopx/configure_goal.py",
+            "examples/project/configure-goal-global-sync-smoke.py",
         ),
         "checks": [
+            {
+                "command": "python3 examples/project/configure-goal-global-sync-smoke.py",
+                "tier": "default",
+                "reason": "guards authoritative split-runtime configure-goal sync, explicit overrides, and exact readback",
+            },
             {
                 "command": "python3 examples/control_plane/peer-agent-runtime-v1-smoke.py",
                 "tier": "default",

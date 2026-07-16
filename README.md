@@ -422,6 +422,13 @@ templates. Use `loopx configure-goal --help` for the complete settings surface.
 Preview changes without `--execute`; do not enable a feature only because it is
 available.
 
+An applied `configure-goal` change also refreshes the registry-declared shared
+read model. Without `--runtime-root`, LoopX resolves the authoritative shared
+runtime from the goal's existing global `source_registry` route; an explicit
+runtime override remains authoritative. JSON and Markdown responses name the
+selected global registry and report exact goal-digest readback, so a project
+runtime and its heartbeat runtime cannot silently diverge.
+
 ### Start With A Useful Loop
 
 Use a preset to see LoopX's value before wiring up a full automation:
