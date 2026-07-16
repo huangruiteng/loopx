@@ -119,6 +119,12 @@ from .split_control import (
     build_split_control_remote_executor_readiness,
     build_split_control_remote_executor_runner_batch,
 )
+from .turn_fidelity import (
+    LOOPX_TURN_BENCHMARK_FIDELITY_SCHEMA_VERSION,
+    LOOPX_TURN_MATCHED_PAIR_SCHEMA_VERSION,
+    build_loopx_turn_benchmark_fidelity_check,
+    build_loopx_turn_goal_matched_pair_check,
+)
 
 __all__ = [
     "AdapterClassification",
@@ -156,6 +162,8 @@ __all__ = [
     "build_blind_loop_initial_prompt",
     "build_product_mode_main_table_comparison_contract",
     "build_codex_app_parity_posthoc_check",
+    "build_loopx_turn_benchmark_fidelity_check",
+    "build_loopx_turn_goal_matched_pair_check",
     "build_run_permission_policy",
     "build_benchmark_route_profile",
     "build_split_control_remote_executor_execution_seam",
@@ -177,6 +185,8 @@ __all__ = [
     "DEFAULT_SPLIT_CONTROL_BENCHMARK_IDS",
     "LEGACY_NONPRODUCT_PROMPT_POLLING_ROUTES",
     "LOOPX_PACKET_ONLY_OBSERVATION_ROUTE",
+    "LOOPX_TURN_BENCHMARK_FIDELITY_SCHEMA_VERSION",
+    "LOOPX_TURN_MATCHED_PAIR_SCHEMA_VERSION",
     "IngestResult",
     "filter_public_benchmark_artifact_paths",
     "materialize_public_benchmark_artifacts",
