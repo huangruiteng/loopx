@@ -146,6 +146,11 @@ section, or abstraction, pass a scope-fit review:
   benchmark-specific builder, arm constants, or wide field-level smoke. Do not
   split so narrowly that reviewers must reconstruct one logical behavior from
   several dependent PRs.
+- Design tests from semantics, not observed output. Independently review the
+  intended invariant and legal or illegal transitions before testing the
+  implementation. Never derive expected results from the implementation under
+  test or its current output; characterization fixtures are non-authoritative,
+  and contradictions require rule repair plus negative or mutation coverage.
 - Characterize before moving code. For status, quota, review-packet, scheduler,
   monitor, and handoff behavior, add or extend parity fixtures first, then
   extract the proven rule or cohesive rule group.

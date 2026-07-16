@@ -29,6 +29,18 @@ that names the broken rule.
 这些层次互补：模型通过不能覆盖确定性合同失败；大规模 smoke 也不能代替明确指出
 错误规则的聚焦回归测试。
 
+Tests first judge whether the state and rule are correct, then whether the
+implementation conforms. Expected outcomes come from an independently reviewed
+invariant, never the implementation under test or its current output.
+Characterization fixtures document legacy behavior but do not authorize it;
+contradictions require rule repair and negative or mutation coverage, not a
+refreshed golden.
+
+测试先判断状态和规则是否正确，再验证实现是否符合。预期结果必须来自独立审阅的
+不变量，不能由被测实现或当前输出生成。Characterization fixture 只记录历史
+行为，不授予其正确性；发现矛盾时应修复规则并增加反例或 mutation 覆盖，不得刷新
+golden 来让测试通过。
+
 ## Pull-Request Baseline / PR 基线
 
 Install the test dependencies once:
