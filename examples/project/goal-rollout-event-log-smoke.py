@@ -69,8 +69,11 @@ def run_loopx_cli(*args: str, allow_failure: bool = False) -> dict:
             f"loopx.cli failed rc={result.returncode}\n"
             f"stdout={result.stdout}\nstderr={result.stderr}"
         )
-    assert_public_safe_text(result.stdout)
-    return json.loads(result.stdout)
+    payload = json.loads(result.stdout)
+    assert_public_safe_text(
+        json.dumps(payload.get("rollout_event") or {}, ensure_ascii=True, sort_keys=True)
+    )
+    return payload
 
 
 def write_smoke_project(tmp_root: Path) -> tuple[Path, Path, Path, str]:

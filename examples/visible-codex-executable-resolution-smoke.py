@@ -30,6 +30,12 @@ def write_codex(path: Path, version: str) -> None:
     path.chmod(0o755)
 
 
+def version_order(version: str) -> tuple[int, int, int, int, str]:
+    release, separator, prerelease = version.partition("-")
+    major, minor, patch = (int(part) for part in release.split("."))
+    return major, minor, patch, 1 if not separator else 0, prerelease
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="loopx-codex-resolution-smoke.") as tmp:
         temp = Path(tmp)
@@ -47,12 +53,28 @@ def main() -> int:
         }
 
         selected, packet = resolve_codex_executable("codex", env=env)
-        assert Path(selected) == new_codex, (selected, packet)
         assert packet["selection_policy"] == (
             "newest_version_across_host_candidates"
         ), packet
-        assert packet["selected_source"] == "user_npm_global", packet
-        assert packet["selected_version"] == "0.144.1", packet
+        candidates = [
+            item for item in packet["candidate_versions"] if item["version"]
+        ]
+        expected = max(candidates, key=lambda item: version_order(item["version"]))
+        assert packet["selected_source"] == expected["source"], packet
+        assert packet["selected_version"] == expected["version"], packet
+        expected_paths = {
+            "path": old_codex,
+            "user_npm_global": new_codex,
+            "chatgpt_app_bundle": Path(
+                "/Applications/ChatGPT.app/Contents/Resources/codex"
+            ),
+        }
+        assert Path(selected) == expected_paths[expected["source"]], (selected, packet)
+        candidate_versions = {
+            item["source"]: item["version"] for item in candidates
+        }
+        assert candidate_versions["path"] == "0.142.0-alpha.7", packet
+        assert candidate_versions["user_npm_global"] == "0.144.1", packet
         assert packet["path_default_bypassed"] is True, packet
         assert packet["path_frozen"] is True, packet
         assert packet["candidate_count"] >= 2, packet

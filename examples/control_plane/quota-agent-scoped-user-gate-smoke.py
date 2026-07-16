@@ -566,14 +566,6 @@ def decision_scope_status_payload() -> dict:
         claimed_by="codex-main-control",
         action_kind="benchmark_run",
     )
-    independent_helper["required_decision_scopes"] = [
-        {
-            "schema_version": "decision_scope_v0",
-            "kind": "direction",
-            "granularity": "action",
-            "scope_key": "helper_ledger_cleanup",
-        }
-    ]
     return status_fixture_payload(
         status="active_state_user_todo",
         waiting_on="controller",

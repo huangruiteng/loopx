@@ -387,10 +387,10 @@ def _interaction_mode(payload: dict[str, Any]) -> str:
         return "boundary_projection_repair"
     if payload.get("self_repair_allowed"):
         return "control_plane_self_repair"
-    if payload.get("normal_delivery_allowed") or payload.get("should_run"):
-        return "bounded_delivery"
     if heartbeat_recommendation.get("stop_if_unchanged"):
         return "mapped_noop_if_unchanged"
+    if payload.get("normal_delivery_allowed") or payload.get("should_run"):
+        return "bounded_delivery"
     if state == "blocked_health":
         return "health_blocked"
     if state == "throttled":
@@ -644,10 +644,13 @@ def _interaction_delivery_allowed(
     payload: dict[str, Any],
     execution_obligation: dict[str, Any],
     *,
+    mode: str,
     user_required: bool,
     scoped_user_gate_fallback: bool,
     bounded_delivery_with_user_notice: bool,
 ) -> bool:
+    if mode == "mapped_noop_if_unchanged":
+        return False
     if user_required and not (
         scoped_user_gate_fallback or bounded_delivery_with_user_notice
     ):
@@ -923,6 +926,7 @@ def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
     delivery_allowed = _interaction_delivery_allowed(
         payload,
         execution_obligation,
+        mode=mode,
         user_required=user_required,
         scoped_user_gate_fallback=scoped_user_gate_fallback,
         bounded_delivery_with_user_notice=bounded_delivery_with_user_notice,
