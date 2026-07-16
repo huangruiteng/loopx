@@ -2501,7 +2501,7 @@ def _loopx_source_mount_contract(args: argparse.Namespace) -> dict[str, Any]:
     source_dir = Path(str(source_arg)).expanduser() if source_arg else None
     disabled = bool(getattr(args, "no_loopx_source_mount", False))
     requested = (
-        _is_loopx_product_mode_route(args.route)
+        _is_case_loopx_route(args.route)
         and args.sandbox == "docker"
         and not disabled
         and source_dir is not None
@@ -15958,9 +15958,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--max-verifier-output-chars", type=int, default=0)
     parser.add_argument("--skillsbench-root", default=str(DEFAULT_SKILLSBENCH_ROOT))
-    parser.add_argument("--loopx-source-dir", default=str(REPO_ROOT), help="Local LoopX checkout for product-mode source mount/upload; the path is not recorded.")
+    parser.add_argument("--loopx-source-dir", default=str(REPO_ROOT), help="Local LoopX checkout for case-runtime source mount/upload; the path is not recorded.")
     parser.add_argument("--expected-loopx-git-head", default="", help="Fail before task execution unless runner LoopX checkout HEAD starts with this public commit prefix.")
-    parser.add_argument("--no-loopx-source-mount", action="store_true", help="Disable product-mode LoopX source mount/upload and use the public installer path.")
+    parser.add_argument("--no-loopx-source-mount", action="store_true", help="Disable case-runtime LoopX source mount/upload and use the public installer path.")
     parser.add_argument(
         "--jobs-dir",
         default=str(REPO_ROOT / ".local/private-benchmark-jobs"),

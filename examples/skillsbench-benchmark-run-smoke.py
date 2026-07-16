@@ -7135,34 +7135,38 @@ def test_loopx_source_mount_contract_uses_real_cli_source_not_local_installer() 
         source_dir = Path(tmp)
         (source_dir / "loopx").mkdir()
         (source_dir / "loopx" / "cli.py").write_text("# source fixture\n")
-        args = parse_args(
-            [
-                "--route",
-                "loopx-product-mode",
-                "--loopx-source-dir",
-                str(source_dir),
-            ]
-        )
-        contract = _loopx_source_mount_contract(args)
-        assert contract["requested"] is True
-        assert contract["ready"] is True
-        assert contract["status"] == "ready"
+        for route in ("loopx-product-mode", "loopx-turn-agent-cli"):
+            args = parse_args(
+                [
+                    "--route",
+                    route,
+                    "--loopx-source-dir",
+                    str(source_dir),
+                ]
+            )
+            contract = _loopx_source_mount_contract(args)
+            assert contract["requested"] is True, (route, contract)
+            assert contract["ready"] is True, (route, contract)
+            assert contract["status"] == "ready", (route, contract)
 
 
 def test_host_local_product_mode_uses_source_upload_not_docker_bind_mount() -> None:
-    args = parse_args(
-        [
-            "--route",
-            "loopx-product-mode",
-            "--host-local-acp-launch",
-            "--remote-command-file-bridge-ready",
-            "--loopx-source-dir",
-            str(REPO_ROOT),
-        ]
-    )
-    assert _loopx_source_mount_contract(args)["ready"] is True
-    assert _loopx_source_mounts(args) == []
-    assert _loopx_case_source_path_for_container(args) == "/app/.loopx-source"
+    for route in ("loopx-product-mode", "loopx-turn-agent-cli"):
+        args = parse_args(
+            [
+                "--route",
+                route,
+                "--host-local-acp-launch",
+                "--remote-command-file-bridge-ready",
+                "--loopx-source-dir",
+                str(REPO_ROOT),
+            ]
+        )
+        assert _loopx_source_mount_contract(args)["ready"] is True, route
+        assert _loopx_source_mounts(args) == [], route
+        assert _loopx_case_source_path_for_container(args) == (
+            "/app/.loopx-source"
+        ), route
 
 
 def test_host_local_product_mode_auto_bridge_keeps_lifecycle_checkpoint_args() -> None:
