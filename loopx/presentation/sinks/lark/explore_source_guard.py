@@ -19,6 +19,20 @@ _RESULT_COLLECTIONS = (
 )
 
 
+def _is_projection_derived_result_key(key: str, *, goal_id: str) -> bool:
+    """Return whether a sink row is derived from a mutable display relation.
+
+    ``parent_*`` edges are synthesized from the latest node ``parent_id`` and
+    do not exist in the append-only Explore result log. Reparenting or
+    detaching a node can therefore retire one without shrinking canonical
+    source history. They must not turn the source-history guard into a false
+    regression blocker; connector reconciliation may retain or clean up the
+    stale display row independently.
+    """
+
+    return key.startswith(f"{goal_id}:edges:parent_")
+
+
 def resolve_explore_source_registry(
     *, registry_path: Path, goal_id: str
 ) -> tuple[Path, dict[str, Any]]:
@@ -52,14 +66,14 @@ def source_projection_coverage_guard(
     projection: Mapping[str, Any],
     goal_id: str,
 ) -> dict[str, Any]:
-    """Fail closed when an append-only source drops registered sink rows."""
+    """Fail closed when append-only source results drop registered sink rows."""
 
     record_map = (
         local.get("result_records")
         if isinstance(local.get("result_records"), Mapping)
         else {}
     )
-    registered = {
+    all_registered = {
         str(key)
         for key in record_map
         if any(
@@ -67,8 +81,15 @@ def source_projection_coverage_guard(
             for table_key, _, _ in _RESULT_COLLECTIONS
         )
     }
+    projection_derived_registered = {
+        key
+        for key in all_registered
+        if _is_projection_derived_result_key(key, goal_id=goal_id)
+    }
+    registered = all_registered - projection_derived_registered
     candidate = _projection_result_keys(projection, goal_id=goal_id)
     missing = sorted(registered - candidate)
+    retired_projection_derived = sorted(projection_derived_registered - candidate)
     missing_digest = None
     if missing:
         encoded = json.dumps(missing, ensure_ascii=True, separators=(",", ":"))
@@ -78,13 +99,22 @@ def source_projection_coverage_guard(
         "ok": not missing,
         "status": (
             "no_registered_baseline"
-            if not registered
+            if not all_registered
             else "covered"
+            if not missing and not retired_projection_derived
+            else "covered_with_projection_derived_omissions"
             if not missing
             else "registered_results_missing"
         ),
         "candidate_result_count": len(candidate),
-        "registered_result_count": len(registered),
+        "registered_result_count": len(all_registered),
+        "append_only_registered_result_count": len(registered),
+        "projection_derived_registered_result_count": len(
+            projection_derived_registered
+        ),
+        "retired_projection_derived_result_count": len(
+            retired_projection_derived
+        ),
         "missing_result_count": len(missing),
         "missing_result_ids_sha256_16": missing_digest,
         "append_only_contract": True,

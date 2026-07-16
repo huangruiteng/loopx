@@ -34,6 +34,9 @@ from loopx.presentation.sinks.lark.explore_results import (  # noqa: E402
 from loopx.presentation.sinks.lark.explore_singleflight import (  # noqa: E402
     explore_feishu_sync_singleflight,
 )
+from loopx.presentation.sinks.lark.explore_source_guard import (  # noqa: E402
+    source_projection_coverage_guard,
+)
 
 
 GOAL_ID = "public-route-fixture"
@@ -223,6 +226,30 @@ def main() -> None:
         assert reentrant["status"] == "unchanged", reentrant
         assert reentrant["row_readback_verified"] is True, reentrant
         assert not stale_config_path.exists()
+
+        derived_edge_guard = source_projection_coverage_guard(
+            local={
+                "result_records": {
+                    f"{GOAL_ID}:nodes:source_node": "rec_source",
+                    f"{GOAL_ID}:edges:parent_retired": "rec_parent",
+                }
+            },
+            projection={
+                "nodes": [{"node_id": "source_node"}],
+                "edges": [],
+                "findings": [],
+            },
+            goal_id=GOAL_ID,
+        )
+        assert derived_edge_guard["ok"] is True, derived_edge_guard
+        assert (
+            derived_edge_guard["status"]
+            == "covered_with_projection_derived_omissions"
+        ), derived_edge_guard
+        assert derived_edge_guard["missing_result_count"] == 0, derived_edge_guard
+        assert (
+            derived_edge_guard["retired_projection_derived_result_count"] == 1
+        ), derived_edge_guard
 
         divergent_config = json.loads(config_path.read_text(encoding="utf-8"))
         divergent_config["result_records"][
