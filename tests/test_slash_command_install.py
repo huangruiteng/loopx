@@ -40,7 +40,8 @@ def test_codex_install_upgrades_managed_loopx_facade(tmp_path: Path) -> None:
         encoding="utf-8"
     )
     metadata_text = metadata.read_text(encoding="utf-8")
-    assert 'display_name: "LoopX /loopx"' in metadata_text
+    assert 'display_name: "LoopX"' in metadata_text
+    assert 'display_name: "LoopX /loopx"' not in metadata_text
     assert "allow_implicit_invocation: false" in metadata_text
     assert _row(payload, "codex_explicit_skills")["status"] == "updated"
     assert _row(payload, "codex_skill_openai_metadata")["status"] == "updated"

@@ -112,7 +112,8 @@ def main() -> int:
         assert "start-goal --guided --project . --goal-text" in codex_skill_text
         codex_metadata = codex_home / "skills" / "loopx" / "agents" / "openai.yaml"
         codex_metadata_text = codex_metadata.read_text(encoding="utf-8")
-        assert 'display_name: "LoopX /loopx"' in codex_metadata_text
+        assert 'display_name: "LoopX"' in codex_metadata_text
+        assert 'display_name: "LoopX /loopx"' not in codex_metadata_text
         assert "allow_implicit_invocation: false" in codex_metadata_text
         assert "loopx-managed-slash-command:v1 command=/loopx surface=codex-skill-metadata" in codex_metadata_text
 

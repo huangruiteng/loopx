@@ -220,7 +220,7 @@ facades into the user-level discovery locations that current hosts already
 support:
 
 - `~/.codex/skills/loopx*/SKILL.md` for explicit Codex command-facade
-  invocation through `$loopx` or `/skills`; the `LoopX /loopx` command facade
+  invocation through `$loopx` or `/skills`; the primary `LoopX` command facade
   remains distinct from the `LoopX Project` workflow skill;
 - `~/.claude/skills/loopx*/SKILL.md` for Claude Code skill-based slash
   commands.

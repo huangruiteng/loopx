@@ -345,9 +345,12 @@ def install_slash_commands(
                 }
             )
             if skill_status not in {"skipped_user_file", "preserved_existing_loopx_skill"}:
+                display_name = (
+                    "LoopX" if spec["command"] == "/loopx" else f"LoopX {spec['command']}"
+                )
                 metadata = _openai_skill_metadata(
                     command=str(spec["command"]),
-                    display_name=f"LoopX {spec['command']}",
+                    display_name=display_name,
                     short_description=str(spec["description"]),
                 )
                 metadata_status = _target_status(metadata_path, metadata, execute=execute)
