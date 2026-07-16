@@ -86,6 +86,7 @@ def main() -> int:
             "ok": False,
             "status": "publish_unverified",
             "published": False,
+            "external_write_performed": True,
             "retryable": True,
             "delivery_digest": view_key,
             "board_style": "semantic_lane_columns",
