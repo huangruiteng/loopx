@@ -29,8 +29,12 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
             "monitor_target",
             "monitor_poll_writeback",
             "interaction_contract.py",
+            "loopx/control_plane/quota/stall_repair.py",
+            "loopx/control_plane/scheduler/arbitration.py",
             "loopx/control_plane/scheduler/monitor_poll_writeback.py",
             "loopx/control_plane/scheduler/monitor_target.py",
+            "loopx/control_plane/todos/decision_scope.py",
+            "loopx/control_plane/testing/decision_replay.py",
             "loopx/control_plane/work_items/interaction_contract.py",
             "loopx/control_plane/work_items/execution_obligation.py",
             "loopx/control_plane/work_items/goal_route_hint.py",
@@ -39,6 +43,7 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
             "loopx/control_plane/runtime/event_store_migration_bridge.py",
             "control-plane-integrated-canary-smoke.py",
             "interaction-contract-state-machine-smoke.py",
+            "interaction-scheduler-authority-smoke.py",
             "docs/product/core-control-plane/state-machine.md",
         ),
         "checks": [
@@ -65,6 +70,14 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": (
                     "guards interaction/protocol state-machine modes across active work, user notice, "
                     "monitor quiet, autonomous replan, agent-scope wait, and successor replan"
+                ),
+            },
+            {
+                "command": "python3 examples/control_plane/interaction-scheduler-authority-smoke.py",
+                "tier": "default",
+                "reason": (
+                    "replays compact real quota shapes so blocking gates, non-blocking "
+                    "user actions, decision scopes, and scheduler cadence stay aligned"
                 ),
             },
             {

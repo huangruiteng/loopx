@@ -10,6 +10,10 @@ from typing import Any
 
 from ..runtime.time import now_utc, utc_isoformat
 from ..work_items.delivery_outcome import DeliveryOutcome
+from .arbitration import (
+    SchedulerDisposition,
+    build_scheduler_arbitration,
+)
 from .state import (
     CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
     CODEX_APP_SURFACE,
@@ -773,28 +777,6 @@ def build_scheduler_hint(
         if isinstance(payload.get("automation_liveness"), dict)
         else {}
     )
-    interaction_contract = (
-        payload.get("interaction_contract")
-        if isinstance(payload.get("interaction_contract"), dict)
-        else {}
-    )
-    user_channel = (
-        interaction_contract.get("user_channel")
-        if isinstance(interaction_contract.get("user_channel"), dict)
-        else {}
-    )
-    agent_channel = (
-        interaction_contract.get("agent_channel")
-        if isinstance(interaction_contract.get("agent_channel"), dict)
-        else {}
-    )
-    effective_action = str(payload.get("effective_action") or "")
-    recommended_mode = str(heartbeat_recommendation.get("recommended_mode") or "")
-    must_attempt_work = bool(execution_obligation.get("must_attempt_work"))
-    user_required = user_action_required or bool(user_channel.get("action_required"))
-    agent_delivery_during_user_gate = bool(agent_channel.get("must_attempt")) and bool(
-        agent_channel.get("delivery_allowed")
-    )
     automation_action = str(automation_liveness.get("automation_action") or "")
     spend_policy = (
         automation_liveness.get("spend_policy")
@@ -829,6 +811,10 @@ def build_scheduler_hint(
         "interaction_contract.mode",
     ]
     agent_scope_action_set = {str(value) for value in agent_scope_frontier_actions}
+    arbitration = build_scheduler_arbitration(
+        payload,
+        agent_scope_frontier_actions=agent_scope_action_set,
+    )
 
     def identity_value(path: str) -> Any:
         current: Any = payload
@@ -838,12 +824,13 @@ def build_scheduler_hint(
             current = current.get(part)
         return current
 
-    if automation_action == "stop_terminal_no_followup":
+    if automation_action == "stop_terminal_no_followup" and arbitration.ok:
         return {
             "schema_version": SCHEDULER_HINT_SCHEMA_VERSION,
             "source": "quota.should-run",
             "action": "stop_until_explicit_resume",
             "cadence_class": "terminal_no_followup",
+            "reason_code": "terminal_no_followup",
             "reason": (
                 "validated closure evidence derives no-follow-up and confirms no "
                 "remaining frontier; recurring polling must stop until resume"
@@ -1218,6 +1205,7 @@ def build_scheduler_hint(
             "source": "quota.should-run",
             "action": action,
             "cadence_class": cadence_class,
+            "reason_code": arbitration.reason_code,
             "reason": reason,
             "spend_policy": spend_policy,
             "codex_app": codex_app,
@@ -1284,11 +1272,53 @@ def build_scheduler_hint(
                 scheduler_hint["cold_path_detail"]["cadence_context"] = cadence_context_detail
         return scheduler_hint
 
-    if (
-        recommended_mode in {"mapped_noop_if_unchanged", "post_handoff_observe_if_unchanged"}
-        or heartbeat_recommendation.get("stop_if_unchanged")
-        or automation_action == "keep_active_noop_if_unchanged"
-    ):
+    if arbitration.disposition == SchedulerDisposition.CONSISTENCY_REPAIR:
+        result = hint(
+            action="repair_interaction_contract_projection",
+            cadence_class="control_plane_repair",
+            reason=(
+                "scheduler inputs disagree with the final interaction contract; "
+                "repair the projection before applying delivery or wait cadence"
+            ),
+            codex_interval=3,
+            codex_max=10,
+            cli_limit=None,
+            claude_limit=None,
+            advance_same_identity=False,
+        )
+        result["consistency_error"] = arbitration.consistency_error()
+        return result
+
+    if arbitration.disposition == SchedulerDisposition.HUMAN_GATE:
+        return hint(
+            action="backoff_waiting_for_user",
+            cadence_class="human_gate",
+            reason=(
+                "user/controller action is the next unlock; surface the concrete "
+                "gate once, then stop repeating the same quiet poll"
+            ),
+            codex_interval=30,
+            codex_max=120,
+            cli_limit=3,
+            claude_limit=3,
+        )
+
+    if arbitration.disposition == SchedulerDisposition.ACTIVE_WORK:
+        return hint(
+            action="run_now",
+            cadence_class="active_work",
+            reason=(
+                "the interaction contract requires an agent attempt; keep the active "
+                "scheduler cadence until the turn validates or blocks"
+            ),
+            codex_interval=3,
+            codex_max=10,
+            cli_limit=None,
+            claude_limit=None,
+            advance_same_identity=False,
+        )
+
+    if arbitration.disposition == SchedulerDisposition.UNCHANGED_WAIT:
         return hint(
             action="backoff_until_fresh_evidence",
             cadence_class="unchanged_noop",
@@ -1302,60 +1332,7 @@ def build_scheduler_hint(
             claude_limit=3,
         )
 
-    if user_required and not agent_delivery_during_user_gate:
-        return hint(
-            action="backoff_waiting_for_user",
-            cadence_class="human_gate",
-            reason=(
-                "user/controller action is the next unlock; after surfacing the "
-                "concrete todo or gate, external loops should stop repeating the "
-                "same quiet poll"
-            ),
-            codex_interval=30,
-            codex_max=120,
-            cli_limit=3,
-            claude_limit=3,
-        )
-
-    if (
-        payload.get("should_run") is True
-        or must_attempt_work
-        or automation_action
-        in {
-            "execute_bounded_work",
-            "repair_automation_prompt_identity",
-        }
-    ):
-        return hint(
-            action="run_now",
-            cadence_class="active_work",
-            reason=(
-                "quota projects runnable work or a required repair; keep the active "
-                "scheduler cadence until the turn validates or blocks"
-            ),
-            codex_interval=3,
-            codex_max=10,
-            cli_limit=None,
-            claude_limit=None,
-            advance_same_identity=False,
-        )
-
-    if recommended_mode in {"ask_operator_gate", "blocker_push_notify"}:
-        return hint(
-            action="backoff_waiting_for_user",
-            cadence_class="human_gate",
-            reason=(
-                "user/controller action is the next unlock; after surfacing the "
-                "concrete todo or gate, external loops should stop repeating the "
-                "same quiet poll"
-            ),
-            codex_interval=30,
-            codex_max=120,
-            cli_limit=3,
-            claude_limit=3,
-        )
-
-    if effective_action in agent_scope_action_set:
+    if arbitration.disposition == SchedulerDisposition.AGENT_SCOPE_WAIT:
         return hint(
             action="backoff_until_reassigned",
             cadence_class="agent_scope_wait",
@@ -1372,10 +1349,7 @@ def build_scheduler_hint(
             cadence_progression_override=[10, 20, 30, 60],
         )
 
-    if (
-        effective_action == "monitor_quiet_skip"
-        or recommended_mode == "monitor_quiet_until_material_transition"
-    ):
+    if arbitration.disposition == SchedulerDisposition.MONITOR_WAIT:
         monitor_plan = _monitor_wait_cadence_plan(payload)
         monitor_progression = (
             monitor_plan.get("progression_minutes")
@@ -1415,7 +1389,7 @@ def build_scheduler_hint(
             cadence_context_detail=monitor_plan,
         )
 
-    if payload.get("should_run") is False:
+    if arbitration.disposition == SchedulerDisposition.QUIET_WAIT:
         return hint(
             action="backoff_until_state_change",
             cadence_class="quiet_wait",
@@ -1429,12 +1403,4 @@ def build_scheduler_hint(
             claude_limit=3,
         )
 
-    return hint(
-        action="keep_default_cadence",
-        cadence_class="default",
-        reason="no scheduler backoff condition is projected",
-        codex_interval=3,
-        codex_max=30,
-        cli_limit=None,
-        claude_limit=None,
-    )
+    raise AssertionError(f"unhandled scheduler disposition: {arbitration.disposition}")

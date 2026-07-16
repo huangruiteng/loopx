@@ -53,9 +53,15 @@ def payload(*, should_run: bool, recommended_mode: str = "", user_required: bool
             "spend_policy": "automation liveness spend policy",
         },
         "interaction_contract": {
+            "schema_version": "loopx_interaction_contract_v0",
             "mode": recommended_mode or "normal_run",
             "user_channel": {
                 "action_required": user_required,
+            },
+            "agent_channel": {
+                "must_attempt": should_run,
+                "delivery_allowed": should_run,
+                "quiet_noop_allowed": not user_required and not should_run,
             },
         },
     }

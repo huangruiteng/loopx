@@ -28,6 +28,12 @@ def payload(
     user_required: bool = False,
     stop_if_unchanged: bool = False,
 ) -> dict:
+    mode = (
+        effective_action
+        if effective_action == "monitor_quiet_skip"
+        else recommended_mode or effective_action
+    )
+    must_attempt = bool(should_run and mode != "mapped_noop_if_unchanged")
     return {
         "goal_id": "scheduler-policy-smoke",
         "should_run": should_run,
@@ -48,9 +54,15 @@ def payload(
             "spend_policy": "automation liveness spend policy",
         },
         "interaction_contract": {
-            "mode": recommended_mode or effective_action,
+            "schema_version": "loopx_interaction_contract_v0",
+            "mode": mode,
             "user_channel": {
                 "action_required": user_required,
+            },
+            "agent_channel": {
+                "must_attempt": must_attempt,
+                "delivery_allowed": must_attempt,
+                "quiet_noop_allowed": not user_required and not must_attempt,
             },
         },
     }

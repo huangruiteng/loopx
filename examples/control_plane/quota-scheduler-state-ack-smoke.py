@@ -75,8 +75,14 @@ def payload(*, recommended_action: str = "Wait for reassignment.") -> dict:
             "spend_policy": "automation liveness spend policy",
         },
         "interaction_contract": {
+            "schema_version": "loopx_interaction_contract_v0",
             "mode": AgentScopeFrontierAction.AGENT_SCOPE_WAIT.value,
             "user_channel": {"action_required": False},
+            "agent_channel": {
+                "must_attempt": False,
+                "delivery_allowed": False,
+                "quiet_noop_allowed": True,
+            },
         },
     }
 
@@ -102,8 +108,14 @@ def monitor_payload(*, recommended_action: str = "Wait for material monitor evid
             "spend_policy": "no quota spend for unchanged monitor-only polls",
         },
         "interaction_contract": {
+            "schema_version": "loopx_interaction_contract_v0",
             "mode": "monitor_quiet_skip",
             "user_channel": {"action_required": False},
+            "agent_channel": {
+                "must_attempt": False,
+                "delivery_allowed": False,
+                "quiet_noop_allowed": True,
+            },
         },
     }
 
@@ -150,8 +162,14 @@ def active_payload() -> dict:
             "spend_policy": "spend after validation",
         },
         "interaction_contract": {
+            "schema_version": "loopx_interaction_contract_v0",
             "mode": "bounded_delivery",
             "user_channel": {"action_required": False},
+            "agent_channel": {
+                "must_attempt": True,
+                "delivery_allowed": True,
+                "quiet_noop_allowed": False,
+            },
         },
     }
 

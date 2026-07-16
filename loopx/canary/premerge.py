@@ -677,7 +677,7 @@ def _tier_limits(tier: str) -> dict[str, int | bool]:
         return {"catalog_limit": 3, "profile_limit": 0, "deep": False}
     if normalized == "deep":
         return {"catalog_limit": 0, "profile_limit": 0, "deep": True}
-    return {"catalog_limit": 8, "profile_limit": 8, "deep": False}
+    return {"catalog_limit": 9, "profile_limit": 8, "deep": False}
 
 
 def build_premerge_validation_gate(

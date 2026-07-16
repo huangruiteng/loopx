@@ -26,10 +26,7 @@ from .control_plane.agents.identity import (
     build_quota_agent_identity,
     quota_registered_agents,
 )
-from .control_plane import (
-    compact_control_plane_policy,
-    control_plane_self_repair_allows,
-)
+from .control_plane import compact_control_plane_policy
 from .execution_profile import (
     execution_profile_outcome_floor,
     outcome_floor_threshold,
@@ -60,6 +57,12 @@ from .control_plane.quota.projection_repair import (
     build_boundary_projection_repair_hint,
     build_state_projection_gap,
     build_state_projection_gap_repair_hint,
+)
+from .control_plane.quota.stall_repair import (
+    apply_stall_repair_delivery_guard,
+    build_quota_stall_self_repair_hint,
+    stall_repair_blocked_action_scope,
+    stall_repair_payload,
 )
 from .control_plane.quota.decision_summary import (
     quota_decision_agent_id,
@@ -209,15 +212,8 @@ SELF_REPAIR_SPEND_ACTIONS = {
     "control_plane_projection_repair",
     "state_projection_gap_repair",
     "boundary_projection_repair",
+    "todo_decision_scope_projection_repair",
 }
-STALL_HEALTH_ITEM_COMPACT_FIELDS = (
-    "goal_id",
-    "status",
-    "waiting_on",
-    "severity",
-    "source",
-    "recommended_action",
-)
 MONITOR_DUE_ITEM_LIMIT = 1
 
 def _validate_goal_id_path_segment(goal_id: str) -> str:
@@ -840,78 +836,6 @@ def _outcome_floor_blocker_already_projected(
     )
 
 
-def _compact_health_items(items: list[Any], *, limit: int = 3) -> list[dict[str, Any]]:
-    compact: list[dict[str, Any]] = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        payload = {field: item.get(field) for field in STALL_HEALTH_ITEM_COMPACT_FIELDS if item.get(field)}
-        if payload:
-            compact.append(payload)
-        if len(compact) >= limit:
-            break
-    return compact
-
-
-def _stall_self_repair_hint(
-    item: dict[str, Any],
-    *,
-    state: str,
-    plan_ok: bool,
-    health_items: list[Any],
-    user_todo_summary: dict[str, Any] | None,
-    agent_todo_summary: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    control_plane = compact_control_plane_policy(item.get("control_plane"))
-    if not control_plane:
-        return None
-
-    if not plan_ok and control_plane_self_repair_allows(control_plane, "health_blocker_repair"):
-        blockers = _compact_health_items(health_items)
-        if blockers:
-            return {
-                "source": "quota.should-run",
-                "trigger": "health_blocker",
-                "recommended_mode": "repair_control_plane_health",
-                "effective_action": "control_plane_health_repair",
-                "allowed": True,
-                "notify": "DONT_NOTIFY",
-                "reason": "status or contract health blocks normal delivery; spend one bounded turn on control-plane repair instead of quiet spinning",
-                "repair_focus": "inspect the compact health blocker, repair registry/status/contract projection or public-boundary scan scope, validate, write a durable event, then spend once",
-                "spend_policy": "append exactly one heartbeat spend only after the health blocker is repaired, validated, and written back",
-                "control_plane": control_plane,
-                "blocking_health_items": blockers,
-            }
-
-    waiting_on = str(item.get("waiting_on") or "")
-    has_user_todos = _open_todo_count(user_todo_summary) > 0
-    has_agent_todos = _open_todo_count(agent_todo_summary) > 0
-    has_next_action = bool(str(item.get("recommended_action") or "").strip())
-    has_project_asset = isinstance(item.get("project_asset"), dict)
-    unknown_waiting_owner = waiting_on in {"", "none", "unknown", "null"}
-    if (
-        control_plane_self_repair_allows(control_plane, "waiting_projection_repair")
-        and state == "waiting"
-        and unknown_waiting_owner
-        and not has_user_todos
-        and (has_next_action or has_agent_todos or has_project_asset)
-    ):
-        return {
-            "source": "quota.should-run",
-            "trigger": "waiting_without_owner_projection",
-            "recommended_mode": "repair_waiting_projection",
-            "effective_action": "control_plane_projection_repair",
-            "allowed": True,
-            "notify": "DONT_NOTIFY",
-            "reason": "goal is waiting without a concrete owner/evidence gate while current action or agent backlog exists",
-            "repair_focus": "rebase from registry, active state, status, and run history; either project waiting_on=codex for safe agent work or write the concrete user/controller/evidence blocker",
-            "spend_policy": "append exactly one heartbeat spend only after the projection or blocker writeback is validated",
-            "control_plane": control_plane,
-        }
-
-    return None
-
-
 def _execution_obligation(
     *,
     should_run: bool,
@@ -1365,15 +1289,22 @@ def build_quota_should_run(
             and automation_prompt_upgrade.get("blocks_should_run") is True
         )
         blocked_priority_fallback = _blocked_priority_fallback(agent_todo_summary)
-        stall_self_repair = _stall_self_repair_hint(
+        stall_self_repair = build_quota_stall_self_repair_hint(
             item,
             state=state,
             plan_ok=bool(plan.get("ok")),
             health_items=health_items,
             user_todo_summary=user_todo_summary,
             agent_todo_summary=agent_todo_summary,
+            agent_id=normalize_todo_claimed_by((agent_identity or {}).get("agent_id")),
         )
         self_repair_allowed = bool(stall_self_repair and stall_self_repair.get("allowed"))
+        normal_delivery_allowed, recovery_allowed, reason = apply_stall_repair_delivery_guard(
+            stall_self_repair,
+            normal_delivery_allowed=normal_delivery_allowed,
+            recovery_allowed=recovery_allowed,
+            reason=reason,
+        )
         work_lane_contract = build_quota_work_lane_contract(
             item,
             status_payload=status_payload,
@@ -1893,7 +1824,8 @@ def build_quota_should_run(
             "blocked_action_scope": (
                 boundary_projection_repair.get("blocked_action_scope")
                 if boundary_projection_repair
-                else quota.get("blocked_action_scope")
+                else stall_repair_blocked_action_scope(stall_self_repair)
+                or quota.get("blocked_action_scope")
             ),
             "safe_bypass_allowed": bool(quota.get("safe_bypass_allowed")),
             "safe_bypass_kind": quota.get("safe_bypass_kind"),
@@ -1982,6 +1914,7 @@ def build_quota_should_run(
             payload["control_plane"] = control_plane
         if stall_self_repair:
             payload["stall_self_repair"] = stall_self_repair
+            payload.update(stall_repair_payload(stall_self_repair))
         if projection_gap:
             payload["state_projection_gap"] = projection_gap
         if boundary_projection_repair:

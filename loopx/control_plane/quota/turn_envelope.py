@@ -350,7 +350,7 @@ def _scheduler(payload: Mapping[str, Any]) -> dict[str, Any]:
     source = _mapping(payload.get("scheduler_hint"))
     scheduler: dict[str, Any] = {
         field: source[field]
-        for field in ("action", "cadence_class", "spend_policy")
+        for field in ("action", "cadence_class", "reason_code", "spend_policy")
         if source.get(field) is not None
     }
     codex_app = _mapping(source.get("codex_app"))

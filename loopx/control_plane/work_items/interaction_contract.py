@@ -909,6 +909,8 @@ def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
         scoped_user_gate_fallback=scoped_user_gate_fallback,
         bounded_delivery_with_user_notice=bounded_delivery_with_user_notice,
     )
+    if mode == "automation_prompt_upgrade":
+        must_attempt = True
     if _blocked_successor_wait_observation_required(payload):
         must_attempt = True
     delivery_allowed = _interaction_delivery_allowed(

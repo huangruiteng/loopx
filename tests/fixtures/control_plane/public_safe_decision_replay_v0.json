@@ -1,0 +1,210 @@
+{
+  "cases": [
+    {
+      "agent_id": "replay-agent",
+      "agent_todos": [
+        {
+          "action_kind": "publish_quality_contract",
+          "claimed_by": "replay-agent",
+          "required_decision_scopes": [
+            {
+              "granularity": "action",
+              "kind": "direction",
+              "schema_version": "decision_scope_v0",
+              "scope_key": "publish_quality_contract"
+            }
+          ],
+          "status": "open",
+          "task_class": "advancement_task",
+          "todo_id": "todo_agent_delivery"
+        }
+      ],
+      "case_id": "blocking-gate",
+      "decision": {
+        "effective_action": "operator_gate_notify",
+        "normal_delivery_allowed": false,
+        "recovery_delivery_allowed": false,
+        "self_repair_allowed": false,
+        "should_run": false
+      },
+      "expected": {
+        "decision_scope_status": "consistent",
+        "scheduler_action": "backoff_waiting_for_user",
+        "scheduler_cadence_class": "human_gate",
+        "scheduler_interval_minutes": 30,
+        "scheduler_reason_code": "interaction_blocking_user_gate"
+      },
+      "interaction_contract": {
+        "agent_channel": {
+          "delivery_allowed": false,
+          "must_attempt": false,
+          "quiet_noop_allowed": false
+        },
+        "mode": "user_gate",
+        "schema_version": "loopx_interaction_contract_v0",
+        "user_channel": {
+          "action_required": true,
+          "notify": "NOTIFY"
+        }
+      },
+      "schema_version": "public_safe_decision_case_v0",
+      "selected_todo": {
+        "action_kind": "publish_quality_contract",
+        "claimed_by": "replay-agent",
+        "status": "open",
+        "task_class": "advancement_task",
+        "todo_id": "todo_agent_delivery"
+      },
+      "user_todos": [
+        {
+          "action_kind": "publish_quality_contract",
+          "blocks_agent": "replay-agent",
+          "decision_scope": {
+            "granularity": "action",
+            "kind": "direction",
+            "schema_version": "decision_scope_v0",
+            "scope_key": "publish_quality_contract"
+          },
+          "status": "open",
+          "task_class": "user_gate",
+          "todo_id": "todo_user_gate"
+        }
+      ]
+    },
+    {
+      "agent_id": "replay-agent",
+      "agent_todos": [
+        {
+          "action_kind": "publish_quality_contract",
+          "claimed_by": "replay-agent",
+          "status": "open",
+          "task_class": "advancement_task",
+          "todo_id": "todo_agent_delivery"
+        }
+      ],
+      "case_id": "nonblocking-action-with-runnable-work",
+      "decision": {
+        "effective_action": "normal_run",
+        "normal_delivery_allowed": true,
+        "recovery_delivery_allowed": false,
+        "self_repair_allowed": false,
+        "should_run": true
+      },
+      "expected": {
+        "decision_scope_status": "consistent",
+        "scheduler_action": "run_now",
+        "scheduler_cadence_class": "active_work",
+        "scheduler_interval_minutes": 3,
+        "scheduler_reason_code": "interaction_agent_attempt_required"
+      },
+      "interaction_contract": {
+        "agent_channel": {
+          "delivery_allowed": true,
+          "must_attempt": true,
+          "quiet_noop_allowed": false
+        },
+        "mode": "bounded_delivery",
+        "schema_version": "loopx_interaction_contract_v0",
+        "user_channel": {
+          "action_required": false,
+          "non_blocking": true,
+          "notify": "NOTIFY"
+        }
+      },
+      "schema_version": "public_safe_decision_case_v0",
+      "selected_todo": {
+        "action_kind": "publish_quality_contract",
+        "claimed_by": "replay-agent",
+        "status": "open",
+        "task_class": "advancement_task",
+        "todo_id": "todo_agent_delivery"
+      },
+      "user_todos": [
+        {
+          "action_kind": "review_optional_wording",
+          "decision_scope": {
+            "granularity": "action",
+            "kind": "direction",
+            "schema_version": "decision_scope_v0",
+            "scope_key": "review_optional_wording"
+          },
+          "status": "open",
+          "task_class": "user_action",
+          "todo_id": "todo_user_notice"
+        }
+      ]
+    },
+    {
+      "agent_id": "replay-agent",
+      "agent_todos": [
+        {
+          "action_kind": "publish_quality_contract",
+          "claimed_by": "replay-agent",
+          "required_decision_scopes": [
+            {
+              "granularity": "action",
+              "kind": "direction",
+              "schema_version": "decision_scope_v0",
+              "scope_key": "publish_quality_contract"
+            }
+          ],
+          "status": "open",
+          "task_class": "advancement_task",
+          "todo_id": "todo_agent_delivery"
+        }
+      ],
+      "case_id": "nonblocking-action-scope-collision",
+      "decision": {
+        "effective_action": "todo_decision_scope_projection_repair",
+        "normal_delivery_allowed": false,
+        "recovery_delivery_allowed": false,
+        "self_repair_allowed": true,
+        "should_run": true
+      },
+      "expected": {
+        "decision_scope_status": "projection_repair_required",
+        "scheduler_action": "run_now",
+        "scheduler_cadence_class": "active_work",
+        "scheduler_interval_minutes": 3,
+        "scheduler_reason_code": "interaction_agent_attempt_required"
+      },
+      "interaction_contract": {
+        "agent_channel": {
+          "delivery_allowed": true,
+          "must_attempt": true,
+          "quiet_noop_allowed": false
+        },
+        "mode": "control_plane_self_repair",
+        "schema_version": "loopx_interaction_contract_v0",
+        "user_channel": {
+          "action_required": false,
+          "non_blocking": true,
+          "notify": "NOTIFY"
+        }
+      },
+      "schema_version": "public_safe_decision_case_v0",
+      "selected_todo": {
+        "action_kind": "publish_quality_contract",
+        "claimed_by": "replay-agent",
+        "status": "open",
+        "task_class": "advancement_task",
+        "todo_id": "todo_agent_delivery"
+      },
+      "user_todos": [
+        {
+          "action_kind": "review_optional_wording",
+          "decision_scope": {
+            "granularity": "action",
+            "kind": "direction",
+            "schema_version": "decision_scope_v0",
+            "scope_key": "publish_quality_contract"
+          },
+          "status": "open",
+          "task_class": "user_action",
+          "todo_id": "todo_user_notice"
+        }
+      ]
+    }
+  ],
+  "schema_version": "public_safe_decision_replay_v0"
+}
