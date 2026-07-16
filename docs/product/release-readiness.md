@@ -275,6 +275,42 @@ path, and canary route rather than as a user-facing release baseline.
   transport loss, setup drift, and countability ambiguity (#2101, #2104,
   #2108-#2127, #2130-#2131). No persisted-state migration is required; Reward
   Memory and advanced fixer execution remain explicitly activated and bounded.
+- `v0.2.6` on 2026-07-16: typed interaction authority and isolated Turn runtime
+  release at the matching `v0.2.6` tag. Scheduler decisions now follow the
+  typed interaction contract, exact blocked successors can trigger bounded
+  autonomous replanning, and user gates no longer deadlock unrelated agent
+  lanes ([#2136](https://github.com/huangruiteng/loopx/pull/2136),
+  [#2177](https://github.com/huangruiteng/loopx/pull/2177),
+  [#2187](https://github.com/huangruiteng/loopx/pull/2187),
+  [#2188](https://github.com/huangruiteng/loopx/pull/2188),
+  [#2198](https://github.com/huangruiteng/loopx/pull/2198),
+  [#2203](https://github.com/huangruiteng/loopx/pull/2203),
+  [#2204](https://github.com/huangruiteng/loopx/pull/2204)). LoopX Turn becomes
+  a shipped isolated-headless route with executable envelopes, session
+  recovery, independent validation, real CLI qualification, and a SkillsBench
+  integration ([#2158](https://github.com/huangruiteng/loopx/pull/2158),
+  [#2166](https://github.com/huangruiteng/loopx/pull/2166),
+  [#2169](https://github.com/huangruiteng/loopx/pull/2169),
+  [#2171](https://github.com/huangruiteng/loopx/pull/2171),
+  [#2173](https://github.com/huangruiteng/loopx/pull/2173),
+  [#2193](https://github.com/huangruiteng/loopx/pull/2193),
+  [#2199](https://github.com/huangruiteng/loopx/pull/2199),
+  [#2202](https://github.com/huangruiteng/loopx/pull/2202)). New-user
+  onboarding is protected by deterministic lifecycle canaries and repeated
+  one-arm Doubao qualification of the actual default packet, while CLI output
+  budgets and release outcome contracts make semantic regressions visible
+  before promotion ([#2144](https://github.com/huangruiteng/loopx/pull/2144),
+  [#2148](https://github.com/huangruiteng/loopx/pull/2148),
+  [#2153](https://github.com/huangruiteng/loopx/pull/2153),
+  [#2157](https://github.com/huangruiteng/loopx/pull/2157),
+  [#2159](https://github.com/huangruiteng/loopx/pull/2159),
+  [#2167](https://github.com/huangruiteng/loopx/pull/2167),
+  [#2168](https://github.com/huangruiteng/loopx/pull/2168),
+  [#2201](https://github.com/huangruiteng/loopx/pull/2201)). Explore source
+  reconciliation, optional Reward Memory experiments and reviewer gates, and
+  Lark delivery are also hardened without making them first-run requirements
+  ([#2200](https://github.com/huangruiteng/loopx/pull/2200)). No persisted-state
+  migration is required; advanced capabilities remain explicitly activated.
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.
@@ -444,7 +480,28 @@ Treat these as experimental until their contract docs say otherwise:
 
 ## Release Note Checklist
 
-Every public release note or update note should answer:
+Organize every public release note into the following stable groups. Omit an
+empty group instead of inventing filler:
+
+1. **State Kernel & Control Plane** for state, todo, quota, scheduler, gate,
+   peer-routing, and runtime authority changes.
+2. **Capabilities & Workflows** for shipped user workflows such as Issue-Fix,
+   Explore, Reward Memory, onboarding, and LoopX Turn.
+3. **Quality & Testing** for deterministic tests, canaries, output budgets,
+   model-behavior qualification, and release gates.
+4. **Benchmarks & Integrations** for benchmark adapters, Lark, host runtimes,
+   and other external boundaries.
+5. **Documentation & Compatibility** for public contracts, install/update
+   guidance, migrations, defaults, and intentional exclusions.
+
+Within each non-empty group, every material claim must carry one or more direct
+GitHub pull-request links such as
+`[#2051](https://github.com/huangruiteng/loopx/pull/2051)`. A compare link is
+still useful at the end, but it does not replace per-claim PR attribution.
+Avoid bare PR ranges as the only evidence because ranges can hide omitted or
+unrelated changes.
+
+Every public release note or update note should also answer:
 
 - What user-visible capability became more dependable?
 - What package version and public tag name this stable release uses?
@@ -454,14 +511,27 @@ Every public release note or update note should answer:
 - Which surfaces are still experimental or intentionally excluded?
 - Did the public/private scan run on the changed docs, examples, and workflow
   files?
+- Did full `pytest`, focused release/install contracts, risk-based canary, and
+  promotion-readiness/public-boundary checks pass on the exact release commit?
+- Did the low-frequency live model gate run against the actual default
+  agent-facing packet with at least two repeats? Record the model id, behavior
+  decisions checked, call count, failures, and skips, but never retain raw
+  prompts, packets, responses, credentials, or local paths. This remains a
+  local/manual release gate rather than ordinary CI.
+- If the release claims benchmark or long-horizon outcome improvement, did a
+  matched stable-versus-candidate outcome baseline pass? If no outcome claim is
+  made, state that this expensive gate was not required rather than implying it
+  ran.
 - For Chinese-speaking operators, include a compact `## 中文摘要` section that
   mirrors the release highlights in neutral product language. Keep it shorter
   than the full English notes, avoid overfitting the release to one feature
   area, and name both the user-visible improvement and the control-plane
   reliability work when both shipped.
 
-The note should link to durable docs or PRs when useful, but public git history
-and shipped CLI behavior remain the source of truth.
+The release PR and final GitHub release body must use the same grouping and
+validation receipt. Re-run the gates after rebasing or merging any additional
+runtime change; results from an earlier commit do not qualify a later tag.
+Public git history and shipped CLI behavior remain the source of truth.
 
 ## Related Docs
 

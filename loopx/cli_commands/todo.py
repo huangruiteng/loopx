@@ -410,6 +410,7 @@ def handle_todo_command(
                 agent_id=args.agent_id,
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
+                runtime_root_arg=runtime_root_arg,
             )
         elif args.todo_command == "add":
             if args.followups:

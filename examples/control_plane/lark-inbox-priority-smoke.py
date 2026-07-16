@@ -121,6 +121,7 @@ def main() -> None:
         assert lane["obligation"] == "drain_lark_inbox_reply_due", lane
         assert lane["priority_preemption"] is True, lane
         assert lane["direct_question_count"] == 1, lane
+        assert lane["reply_to_bot_count"] == 0, lane
         assert lane["pending_count"] == 1, lane
         assert decision["execution_obligation"]["contract_obligation"] == lane["obligation"]
         assert "durable effect" in decision["recommended_action"], decision
@@ -131,11 +132,42 @@ def main() -> None:
         markdown = render_quota_should_run_markdown(decision)
         assert "lane=lark_event_inbox" in markdown, markdown
         assert "questions=1" in markdown, markdown
+        assert "bot_replies=0" in markdown, markdown
 
         acknowledge_lark_event_inbox(
             project=project,
             config_path=config,
             message_ids=["om_direct_question"],
+            execute=True,
+        )
+        (inbox / "om_verified_bot_reply.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "lark_event_inbox_event_v0",
+                    "event_id": "evt-verified-bot-reply",
+                    "message_id": "om_verified_bot_reply",
+                    "parent_id": "om_bot_parent",
+                    "create_time": "2026-07-15T00:01:00Z",
+                    "content": "不带 at 的直接回复",
+                    "reply_context_verified": True,
+                    "reply_to_bot": True,
+                }
+            ),
+            encoding="utf-8",
+        )
+        reply_decision = build_quota_should_run(
+            status_payload(project), goal_id=GOAL_ID
+        )
+        reply_lane = reply_decision["work_lane_contract"]
+        assert reply_decision["effective_action"] == "lark_inbox_reply_due", (
+            reply_decision
+        )
+        assert reply_lane["reply_to_bot_count"] == 1, reply_lane
+        assert reply_lane["direct_question_count"] == 0, reply_lane
+        acknowledge_lark_event_inbox(
+            project=project,
+            config_path=config,
+            message_ids=["om_verified_bot_reply"],
             execute=True,
         )
         after_ack = build_quota_should_run(status_payload(project), goal_id=GOAL_ID)

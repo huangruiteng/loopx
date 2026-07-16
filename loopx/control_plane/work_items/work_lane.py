@@ -149,7 +149,10 @@ def lark_inbox_reply_due_work_lane_contract(
         "obligation": WORK_LANE_LARK_INBOX_REPLY_DUE_OBLIGATION,
         "must_attempt_work": True,
         "priority_preemption": True,
-        "reason_codes": ["lark_inbox_reply_due", "direct_question_or_mention"],
+        "reason_codes": [
+            "lark_inbox_reply_due",
+            "direct_question_mention_or_bot_reply",
+        ],
         "pending_count": max(0, int(urgency.get("pending_count") or 0)),
         "direct_question_count": max(
             0, int(urgency.get("direct_question_count") or 0)
@@ -157,12 +160,16 @@ def lark_inbox_reply_due_work_lane_contract(
         "direct_mention_count": max(
             0, int(urgency.get("direct_mention_count") or 0)
         ),
+        "reply_to_bot_count": max(
+            0, int(urgency.get("reply_to_bot_count") or 0)
+        ),
         "oldest_pending_age_seconds": urgency.get("oldest_pending_age_seconds"),
         "drain_command": inbox.get("drain_command"),
         "monitor_policy": "durable_effect_then_one_verified_reply_then_ack",
         "action": (
             "drain the configured Lark inbox before ordinary work; translate the "
-            "direct question or mention into a durable effect, send exactly one "
+            "direct question, mention, or verified bot reply into a durable effect, "
+            "send exactly one "
             "source-thread reply with idempotency and readback, then ACK"
         ),
     }

@@ -17,6 +17,7 @@ from ..capabilities.lark.event_collector import (
     install_lark_event_collector,
     plan_lark_event_collector,
 )
+from ..capabilities.lark.event_collector_runtime import run_lark_event_collector
 from ..registry import read_json, registry_goals
 
 
@@ -126,6 +127,12 @@ def register_lark_inbox_commands(
     collector_status.add_argument("--project", default=".")
     collector_status.add_argument("--config", required=True)
     collector_status.add_argument("--probe-event-bus", action="store_true")
+    collector_run = sub.add_parser("collector-run", help=argparse.SUPPRESS)
+    add_subcommand_format(collector_run)
+    collector_run.add_argument("--project", required=True)
+    collector_run.add_argument("--config", required=True)
+    collector_run.add_argument("--lark-cli-executable", required=True)
+    collector_run.add_argument("--node-executable")
 
 
 def _read_stdin_events() -> list[object]:
@@ -229,6 +236,13 @@ def handle_lark_inbox_command(
                 project=args.project,
                 config_path=args.config,
                 execute=args.execute,
+            )
+        elif args.lark_inbox_command == "collector-run":
+            payload = run_lark_event_collector(
+                project=args.project,
+                config_path=args.config,
+                lark_cli_executable=args.lark_cli_executable,
+                node_executable=args.node_executable,
             )
         else:
             payload = inspect_lark_event_collector(

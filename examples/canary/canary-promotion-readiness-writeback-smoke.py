@@ -206,7 +206,8 @@ def main() -> int:
         global_registry = runtime / "registry.global.json"
         assert global_registry.is_file(), global_registry
         global_payload = json.loads(global_registry.read_text(encoding="utf-8"))
-        assert Path(global_payload["common_runtime_root"]).resolve() == runtime.resolve(), global_payload
+        projected_runtime = Path(global_payload["common_runtime_root"])
+        assert projected_runtime.resolve() == runtime.resolve(), global_payload
         assert any(goal.get("id") == GOAL_ID for goal in global_payload.get("goals") or []), global_payload
 
         ready_gate = run_promotion_gate(env, runtime)

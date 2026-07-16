@@ -18,6 +18,14 @@ from loopx.capabilities.lark.event_collector import (  # noqa: E402
     install_lark_event_collector,
     plan_lark_event_collector,
 )
+from loopx.capabilities.lark.event_collector_runtime import (  # noqa: E402
+    enrich_lark_event_reply_context,
+    lark_event_requires_reply_context_lookup,
+    run_lark_event_collector,
+)
+from loopx.capabilities.lark.event_inbox import (  # noqa: E402
+    project_lark_event_inbox_urgency,
+)
 
 
 def completed(argv: list[str], returncode: int = 0) -> subprocess.CompletedProcess[str]:
@@ -130,14 +138,92 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-collector-") as raw:
         assert str(node) in plist_text, plist_text
         assert str(lark_cli) in plist_text, plist_text
         service_argv = plistlib.loads(plist.read_bytes())["ProgramArguments"]
-        assert service_argv[:6] == [
-            str(node),
-            str(lark_cli),
-            "--profile",
-            "project-review-bot",
-            "event",
-            "consume",
-        ], service_argv
+        assert Path(service_argv[0]).name == "loopx", service_argv
+        assert service_argv[1:3] == ["lark-inbox", "collector-run"], service_argv
+        assert service_argv[service_argv.index("--lark-cli-executable") + 1] == str(
+            lark_cli
+        ), service_argv
+        assert service_argv[service_argv.index("--node-executable") + 1] == str(
+            node
+        ), service_argv
+        assert "event" not in service_argv and "consume" not in service_argv, service_argv
+
+        direct_event = {
+            "message_id": "om_direct_fixture",
+            "content": "@Project Review Bot 请处理这个问题",
+        }
+        assert not lark_event_requires_reply_context_lookup(
+            direct_event,
+            bot_display_name="Project Review Bot",
+        )
+        assert lark_event_requires_reply_context_lookup(
+            {"message_id": "om_plain_fixture", "content": "普通群聊消息"},
+            bot_display_name="Project Review Bot",
+        )
+
+        messages = {
+            "om_reply_fixture": {
+                "message_id": "om_reply_fixture",
+                "parent_id": "om_bot_parent",
+                "root_id": "om_bot_parent",
+                "chat_id": "oc_private_fixture_chat",
+                "sender": {"sender_type": "user", "id": "ou_fixture_user"},
+            },
+            "om_bot_parent": {
+                "message_id": "om_bot_parent",
+                "chat_id": "oc_private_fixture_chat",
+                "sender": {"sender_type": "app", "id": "cli_fixture_app"},
+            },
+            "om_human_reply": {
+                "message_id": "om_human_reply",
+                "parent_id": "om_human_parent",
+                "chat_id": "oc_private_fixture_chat",
+                "sender": {"sender_type": "user", "id": "ou_fixture_user"},
+            },
+            "om_human_parent": {
+                "message_id": "om_human_parent",
+                "chat_id": "oc_private_fixture_chat",
+                "sender": {"sender_type": "user", "id": "ou_fixture_other"},
+            },
+        }
+        lookup_calls: list[list[str]] = []
+
+        def lookup_runner(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            lookup_calls.append(list(argv))
+            message_id = argv[argv.index("--message-ids") + 1]
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout=json.dumps({"items": [messages[message_id]]}),
+                stderr="",
+            )
+
+        bot_reply = enrich_lark_event_reply_context(
+            {"message_id": "om_reply_fixture", "content": "继续"},
+            runner=lookup_runner,
+            command_prefix=["lark-cli"],
+            profile="project-review-bot",
+            profile_app_id="cli_fixture_app",
+            configured_chat_id="oc_private_fixture_chat",
+            sleeper=lambda _: None,
+        )
+        assert bot_reply["reply_context_verified"] is True, bot_reply
+        assert bot_reply["reply_to_bot"] is True, bot_reply
+        human_reply = enrich_lark_event_reply_context(
+            {"message_id": "om_human_reply", "content": "继续"},
+            runner=lookup_runner,
+            command_prefix=["lark-cli"],
+            profile="project-review-bot",
+            profile_app_id="cli_fixture_app",
+            configured_chat_id="oc_private_fixture_chat",
+            sleeper=lambda _: None,
+        )
+        assert human_reply["reply_context_verified"] is True, human_reply
+        assert human_reply["reply_to_bot"] is False, human_reply
+        assert all(
+            call[:3] == ["lark-cli", "--profile", "project-review-bot"]
+            for call in lookup_calls
+        ), lookup_calls
 
         inbox = project / ".loopx" / "inbox" / "team-feedback"
         inbox.mkdir(parents=True)
@@ -168,6 +254,85 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-collector-") as raw:
         assert "project-review-bot" not in json.dumps(status), status
         assert status["local_paths_returned"] is False, status
         assert status["chat_id_returned"] is False, status
+
+        runtime_cli = bin_dir / "runtime-lark-cli"
+        runtime_cli.write_text(
+            """#!/usr/bin/env python3
+import json
+import sys
+
+args = sys.argv[1:]
+messages = {
+    "om_runtime_ordinary": {
+        "message_id": "om_runtime_ordinary",
+        "chat_id": "oc_private_fixture_chat",
+        "sender": {"sender_type": "user", "id": "ou_fixture_user"},
+    },
+    "om_runtime_reply": {
+        "message_id": "om_runtime_reply",
+        "parent_id": "om_runtime_bot_parent",
+        "chat_id": "oc_private_fixture_chat",
+        "sender": {"sender_type": "user", "id": "ou_fixture_user"},
+    },
+    "om_runtime_bot_parent": {
+        "message_id": "om_runtime_bot_parent",
+        "chat_id": "oc_private_fixture_chat",
+        "sender": {"sender_type": "app", "id": "cli_fixture_app"},
+    },
+}
+if "event" in args and "consume" in args:
+    events = [
+        {
+            "schema_version": "lark_event_inbox_event_v0",
+            "event_id": "evt-runtime-direct",
+            "message_id": "om_runtime_direct",
+            "create_time": "2026-07-16T00:00:00Z",
+            "content": "@Project Review Bot 能处理吗？",
+        },
+        {
+            "schema_version": "lark_event_inbox_event_v0",
+            "event_id": "evt-runtime-ordinary",
+            "message_id": "om_runtime_ordinary",
+            "create_time": "2026-07-16T00:01:00Z",
+            "content": "Project Review Bot 群里的普通问题为什么会这样？",
+        },
+        {
+            "schema_version": "lark_event_inbox_event_v0",
+            "event_id": "evt-runtime-reply",
+            "message_id": "om_runtime_reply",
+            "create_time": "2026-07-16T00:02:00Z",
+            "content": "这是不带 at 的回复",
+        },
+    ]
+    for event in events:
+        print(json.dumps(event), flush=True)
+elif "whoami" in args:
+    print(json.dumps({"appId": "cli_fixture_app"}))
+elif "+messages-mget" in args:
+    message_id = args[args.index("--message-ids") + 1]
+    print(json.dumps({"items": [messages[message_id]]}))
+else:
+    raise SystemExit(2)
+""",
+            encoding="utf-8",
+        )
+        runtime_cli.chmod(0o755)
+        runtime_result = run_lark_event_collector(
+            project=project,
+            config_path=collector_config,
+            lark_cli_executable=str(runtime_cli),
+        )
+        assert runtime_result["ok"] is True, runtime_result
+        assert runtime_result["captured_count"] == 3, runtime_result
+        assert runtime_result["reply_context_verified_count"] == 2, runtime_result
+        assert runtime_result["reply_to_bot_count"] == 1, runtime_result
+        runtime_urgency = project_lark_event_inbox_urgency(
+            project=project,
+            config_path=inbox_config,
+        )
+        assert runtime_urgency["direct_question_count"] == 1, runtime_urgency
+        assert runtime_urgency["reply_to_bot_count"] == 1, runtime_urgency
+        assert runtime_urgency["attention_required_count"] == 2, runtime_urgency
 
         unsupported = json.loads(collector_config.read_text())
         unsupported["event_key"] = "im.message.reaction.created_v1"

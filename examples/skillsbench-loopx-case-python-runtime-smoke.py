@@ -105,7 +105,7 @@ def _assert_staging_is_route_scoped_and_public() -> None:
 def _assert_product_route_wiring() -> None:
     source = RUNNER.read_text(encoding="utf-8")
     assert (
-        "loopx_case_runtime_required=_is_loopx_product_mode_route(args.route)"
+        "loopx_case_runtime_required=_is_case_loopx_route(args.route)"
         in source
     )
 

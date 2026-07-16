@@ -135,12 +135,26 @@ def _event_from_payload(payload: object) -> dict[str, Any] | None:
     content = " ".join(str(payload.get("content") or "").split())[:1200]
     if not content:
         return None
-    return {
+    event = {
         "event_id": event_id,
         "message_id": message_id,
         "create_time": str(payload.get("create_time") or "")[:40],
         "content": content,
     }
+    parent_id = str(payload.get("parent_id") or "").strip()
+    root_id = str(payload.get("root_id") or "").strip()
+    if MESSAGE_ID_PATTERN.fullmatch(parent_id):
+        event["parent_id"] = parent_id
+    if MESSAGE_ID_PATTERN.fullmatch(root_id):
+        event["root_id"] = root_id
+    reply_context_verified = payload.get("reply_context_verified") is True
+    event["reply_context_verified"] = reply_context_verified
+    event["reply_to_bot"] = bool(
+        reply_context_verified
+        and "parent_id" in event
+        and payload.get("reply_to_bot") is True
+    )
+    return event
 
 
 def _event_from_file(path: Path) -> dict[str, Any] | None:
@@ -199,9 +213,14 @@ def _event_attention_kind(
     content = " ".join(str(event.get("content") or "").split())
     if not content:
         return None
+    if (
+        event.get("reply_context_verified") is True
+        and event.get("reply_to_bot") is True
+    ):
+        return "reply_to_bot"
     folded = content.casefold()
     bot_name = " ".join(str(bot_display_name or "").split()).casefold()
-    explicit_bot_mention = bool(bot_name and bot_name in folded)
+    explicit_bot_mention = bool(bot_name and "@" in content and bot_name in folded)
     generic_loopx_mention = "@" in content and "loopx" in folded
     addressed = bool(
         capture_scope == "addressed_only"
@@ -233,6 +252,7 @@ def project_lark_event_inbox_urgency(
             "pending_count": 0,
             "direct_question_count": 0,
             "direct_mention_count": 0,
+            "reply_to_bot_count": 0,
             "attention_required_count": 0,
             "reply_due": False,
             "local_private_content_returned": False,
@@ -248,7 +268,10 @@ def project_lark_event_inbox_urgency(
     ]
     direct_question_count = kinds.count("direct_question")
     direct_mention_count = kinds.count("direct_mention")
-    attention_required_count = direct_question_count + direct_mention_count
+    reply_to_bot_count = kinds.count("reply_to_bot")
+    attention_required_count = (
+        direct_question_count + direct_mention_count + reply_to_bot_count
+    )
     parsed_times = [
         parsed
         for event in pending
@@ -266,6 +289,7 @@ def project_lark_event_inbox_urgency(
         "pending_count": len(pending),
         "direct_question_count": direct_question_count,
         "direct_mention_count": direct_mention_count,
+        "reply_to_bot_count": reply_to_bot_count,
         "attention_required_count": attention_required_count,
         "oldest_pending_at": oldest.isoformat() if oldest else None,
         "oldest_pending_age_seconds": oldest_age_seconds,

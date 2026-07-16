@@ -39,6 +39,13 @@ REVISION = subprocess.run(
     stdout=subprocess.PIPE,
     check=True,
 ).stdout.strip()
+RECOVERY_REF = subprocess.run(
+    ["git", "symbolic-ref", "--quiet", "HEAD"],
+    cwd=ROOT,
+    text=True,
+    stdout=subprocess.PIPE,
+    check=False,
+).stdout.strip() or "refs/remotes/origin/main"
 OBSERVED_AT = "2026-07-11T08:40:00+08:00"
 
 
@@ -709,7 +716,7 @@ def main() -> int:
             "--repo-path",
             str(ROOT),
             "--repository-ref",
-            "refs/remotes/origin/main",
+            RECOVERY_REF,
             "--generated-at",
             OBSERVED_AT,
         ]
