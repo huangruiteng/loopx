@@ -16,6 +16,9 @@ Required env:
   SKILLSBENCH_EXPECTED_LOOPX_GIT_HEAD  Expected LoopX git head in remote root
 
 Optional env:
+  SKILLSBENCH_RUNNER_PROFILE           Owner-only local JSON profile captured
+                                       by skillsbench_runner_profile; explicit
+                                       env values override profile values
   SKILLSBENCH_LOCAL_CODEX_PROXY_HOST   Local proxy host, default 127.0.0.1
   SKILLSBENCH_LOCAL_CODEX_PROXY_PORT   Local proxy port, default 18180
   SKILLSBENCH_DOCKER_PROXY_HOST        Remote Docker bridge host for benchmark
@@ -124,6 +127,23 @@ task_count="${#task_ids[@]}"
 tag="${2:-${SKILLSBENCH_RUN_TAG:-manual}}"
 remote_proxy_port="${3:-${SKILLSBENCH_REMOTE_CODEX_PROXY_PORT:-18180}}"
 
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+runner_profile="${SKILLSBENCH_RUNNER_PROFILE:-}"
+runner_profile_loaded=false
+if [[ -n "$runner_profile" ]]; then
+  if ! runner_profile_exports="$(
+    PYTHONPATH="${repo_root}${PYTHONPATH:+:${PYTHONPATH}}" \
+      python3 -m loopx.benchmark_adapters.skillsbench_runner_profile \
+      export-shell --profile "$runner_profile"
+  )"; then
+    exit 2
+  fi
+  # The helper emits only whitelisted variable names with shlex-quoted values.
+  eval "$runner_profile_exports"
+  unset runner_profile_exports
+  runner_profile_loaded=true
+fi
+
 required_env=(
   SKILLSBENCH_SSH_DESTINATION
   SKILLSBENCH_REMOTE_ROOT
@@ -142,7 +162,6 @@ if [[ -n "${SKILLSBENCH_STANDARD_AGGREGATE_PATH:-}" ]] &&
   exit 2
 fi
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 ssh_command_options=(-o BatchMode=yes -o ConnectTimeout=10)
@@ -517,6 +536,9 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'docker_proxy_endpoint_mode=%s\n' "$docker_proxy_endpoint_mode"
   printf 'docker_api_version=%s\n' "$docker_api_version"
   printf 'remote_codex_bin_mode=%s\n' "$remote_codex_bin_mode"
+  printf 'runner_profile_loaded=%s\n' "$runner_profile_loaded"
+  printf 'runner_profile_path_recorded=false\n'
+  printf 'runner_profile_values_recorded=false\n'
   printf 'local_codex_sandbox=%s\n' "$local_codex_sandbox"
   printf 'codex_cli_goal_thread_prewarm=%s\n' "$codex_cli_goal_thread_prewarm"
   printf 'allow_staged_bootstrap_repair_run=%s\n' "$allow_staged_bootstrap_repair_run"
@@ -539,7 +561,8 @@ if [[ "$dry_run" == "true" ]]; then
   if [[ -n "${standard_aggregate:-}" ]]; then
     printf 'standard_aggregate=%s\n' "$standard_aggregate"
   fi
-  if [[ -n "$remote_command_file_bridge_probe_command" ]] ||
+  if [[ "$runner_profile_loaded" == "true" ]] ||
+    [[ -n "$remote_command_file_bridge_probe_command" ]] ||
     [[ -n "$remote_command_file_bridge_solver_command" ]] ||
     [[ -n "$remote_command_file_bridge_agent_command" ]] ||
     [[ -n "$loopx_turn_validation_command" ]]; then
