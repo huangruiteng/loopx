@@ -62,7 +62,9 @@ def main() -> int:
 
         encoded = json.dumps(public, sort_keys=True)
         assert str(receipt) not in encoded
-        assert str(os.getpid()) not in encoded
+        assert "pid" not in public
+        assert all(value != os.getpid() for value in public.values())
+        assert public["process_id_captured"] is False
         assert "public-index-service" not in encoded
 
         write_receipt(receipt, generation="generation-2", pid=os.getpid())
