@@ -71,14 +71,19 @@ def _scheduler_rrule_interval_minutes(value: Any) -> int | None:
 def _user_gate_notification_cooldown(
     *,
     cadence_class: str,
+    notification_pending: bool,
     host_failure_suppressed: bool,
     current_interval_minutes: int,
     effective_host_rrule: str,
     recorded_host_failure: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    """Bound repeat gate notices when a failed host update leaves a tight poll."""
+    """Bound repeat user notices when a failed host update leaves a tight poll."""
 
-    if cadence_class != "human_gate" or not host_failure_suppressed:
+    if cadence_class not in {"human_gate", "monitor_wait"}:
+        return None
+    if cadence_class == "monitor_wait" and not notification_pending:
+        return None
+    if not host_failure_suppressed:
         return None
     failed_at = parse_scheduler_timestamp((recorded_host_failure or {}).get("failed_at"))
     host_interval = _scheduler_rrule_interval_minutes(effective_host_rrule)
@@ -100,17 +105,36 @@ def _user_gate_notification_cooldown(
         "active": True,
         "notification_due": notification_due,
         "notification_suppressed": not notification_due,
+        "notification_scope": (
+            "blocking_user_gate"
+            if cadence_class == "human_gate"
+            else "nonblocking_user_action"
+        ),
         "policy": "failed_host_update_bounded_reminder_window",
         "cooldown_minutes": target_interval,
         "reminder_window_minutes": host_interval,
         "failed_at": utc_isoformat(failed_at),
         "next_reminder_at": utc_isoformat(next_reminder_at),
         "reason": (
-            "the user gate is still pending, but the failed host cadence update "
+            "the user notice is still pending, but the failed host cadence update "
             "left a tighter poll; suppress duplicate notices outside the bounded "
-            "human-gate reminder window"
+            "user reminder window"
         ),
     }
+
+
+def _interaction_user_notification_pending(payload: dict[str, Any]) -> bool:
+    interaction = payload.get("interaction_contract")
+    if not isinstance(interaction, dict):
+        return False
+    user_channel = interaction.get("user_channel")
+    if not isinstance(user_channel, dict) or user_channel.get("notify") != "NOTIFY":
+        return False
+    return bool(
+        user_channel.get("action_required") is True
+        or user_channel.get("non_blocking") is True
+        or user_channel.get("actions")
+    )
 
 
 def _accepts_stale_monitor_ack_rrule(
@@ -1249,6 +1273,7 @@ def build_scheduler_hint(
         }
         notification_cooldown = _user_gate_notification_cooldown(
             cadence_class=cadence_class,
+            notification_pending=_interaction_user_notification_pending(payload),
             host_failure_suppressed=host_failure_suppressed,
             current_interval_minutes=current_interval,
             effective_host_rrule=effective_host_rrule,

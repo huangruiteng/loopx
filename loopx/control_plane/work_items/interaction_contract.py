@@ -122,6 +122,7 @@ def finalize_user_gate_notification_cooldown(payload: dict[str, Any]) -> None:
         payload["pending_user_action"] = bool(
             payload.get("requires_user_action")
             or user_channel_action_todo_actions(payload.get("user_todo_summary"))
+            or user_channel_notice_todo_actions(payload.get("user_todo_summary"))
         )
         payload["requires_user_action"] = False
     payload["interaction_contract"] = build_interaction_contract(payload)
@@ -774,11 +775,13 @@ def _build_interaction_user_channel(
     )
     channel: dict[str, Any] = {
         "action_required": user_required,
-        "notify": "NOTIFY"
-        if user_required or non_blocking_notice
-        else "DONT_NOTIFY"
-        if _user_gate_notification_suppressed(payload)
-        else heartbeat_recommendation.get("notify", "DONT_NOTIFY"),
+        "notify": (
+            "DONT_NOTIFY"
+            if _user_gate_notification_suppressed(payload)
+            else "NOTIFY"
+            if user_required or non_blocking_notice
+            else heartbeat_recommendation.get("notify", "DONT_NOTIFY")
+        ),
     }
     if actions:
         channel["max_items"] = 3
