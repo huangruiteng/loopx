@@ -1,0 +1,26 @@
+{
+  "schema_version": "public_safe_notification_cooldown_replay_v0",
+  "goal_id": "notification-cooldown-replay",
+  "agent_id": "replay-agent",
+  "observed_at": "2026-07-16T07:47:17+00:00",
+  "user_todo": {
+    "todo_id": "todo_restore_runner",
+    "status": "open",
+    "task_class": "user_action",
+    "text": "[P1-user] Restore the benchmark runner substrate."
+  },
+  "scheduler": {
+    "recommended_rrule": "FREQ=MINUTELY;INTERVAL=15",
+    "observed_host_rrule": "FREQ=MINUTELY;INTERVAL=3",
+    "failure_age_minutes": 1
+  },
+  "expected": {
+    "cadence_class": "monitor_wait",
+    "notification_scope": "nonblocking_user_action",
+    "notification_suppressed": true,
+    "interaction_mode": "user_gate_cooldown_wait",
+    "user_notify": "DONT_NOTIFY",
+    "pending_user_action": true,
+    "todo_status": "open"
+  }
+}

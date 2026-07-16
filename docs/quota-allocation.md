@@ -670,12 +670,15 @@ blocker-push turn. If quota also sets
 `open_todo_notification_policy=repeat_until_resolved`, repeat that notification
 until the todo is done, deferred, or replaced. If a failed host cadence update
 leaves a tighter poll, `user_gate_notification_cooldown_v0` keeps the gate open
-but suppresses duplicate notices outside a bounded reminder window. Otherwise,
-blocker-push cases may still be de-duplicated when the same blocker was already
-surfaced recently. Eligible monitor-only polls with no material transition keep
-the open user todo visible in `user_todo_summary`, but do not force a repeated
-notification, make the turn a user-action gate, or leave the top-level
-`should_run` set for an otherwise quiet no-op.
+but suppresses duplicate notices outside a bounded reminder window.
+The compatibility packet also applies to a non-blocking `user_action` notice
+during `monitor_wait`: the todo remains open and visible, but a failed host
+backoff must not turn the tighter scheduler poll into repeated chat noise.
+Otherwise, blocker-push cases may still be de-duplicated when the same blocker
+was already surfaced recently. Eligible monitor-only polls with no material
+transition keep the open user todo visible in `user_todo_summary`, but do not
+force a repeated notification, make the turn a user-action gate, or leave the
+top-level `should_run` set for an otherwise quiet no-op.
 For every registered goal, `quota should-run` also includes a `todo_write_hint`
 so agent executors know to write newly discovered user/owner work with
 `loopx todo add --role user --task-class user_gate|user_action` instead of
