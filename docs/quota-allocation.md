@@ -845,7 +845,10 @@ so active-work and monitor-wait targets cannot overwrite one another while the
 host RRULE remains unchanged. Later heartbeats expose `apply_needed=false` and
 `state_status=host_update_failure_suppressed` for every retained exact pair.
 A changed host observation invalidates failures recorded against the old host,
-and a successful scheduler ACK clears the cache. The legacy
+and a successful scheduler ACK clears only failures whose target is the
+acknowledged RRULE. A fallback ACK therefore preserves failures for other
+targets observed against the same unchanged host, preventing the next turn
+from retrying a known-bad target/host pair. The legacy
 `host_update_failure` scalar remains as the latest compatibility projection;
 new hosts should consume `host_update_failures`. LoopX never treats an intended
 cadence as an applied cadence.

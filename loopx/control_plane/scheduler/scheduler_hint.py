@@ -734,7 +734,12 @@ def build_codex_app_scheduler_ack_event(
         last_applied_rrule=acknowledged_rrule,
         updated_at=safe_generated_at,
         source=classification,
-        host_update_failures=retained_host_update_failures,
+        host_update_failure=(
+            retained_host_update_failures[-1]
+            if retained_host_update_failures
+            else None
+        ),
+        host_update_failures=retained_host_update_failures or None,
     )
     reason = str(reason_summary or "").strip() or (
         f"acknowledged Codex App scheduler RRULE {acknowledged_rrule}; no quota spend"

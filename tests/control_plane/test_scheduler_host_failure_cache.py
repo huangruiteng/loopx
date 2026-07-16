@@ -83,6 +83,7 @@ def _record_failure(
     *,
     runtime_root: Path,
     generated_at: str,
+    observed_host_rrule: str = HOST_30,
 ) -> dict:
     app = decision["scheduler_hint"]["codex_app"]
     target_rrule = app["recommended_rrule"]
@@ -92,7 +93,7 @@ def _record_failure(
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
         failed_rrule=target_rrule,
-        observed_host_rrule=HOST_30,
+        observed_host_rrule=observed_host_rrule,
         generated_at=generated_at,
     )
     assert result["ok"] is True
@@ -203,6 +204,59 @@ def test_matching_host_ack_clears_the_failure_cache(tmp_path: Path) -> None:
     scheduler_state = ack["scheduler_ack_event"]["scheduler_state"]
     assert "host_update_failures" not in scheduler_state
     assert "host_update_failure" not in scheduler_state
+
+
+def test_fallback_ack_retains_other_failed_target_for_same_host(
+    tmp_path: Path,
+) -> None:
+    generated_at = datetime.now(timezone.utc)
+    active = _with_scheduler_hint(
+        _active_decision(),
+        scheduler_state=None,
+        host_rrule=MONITOR_15,
+    )
+    failure_state = _record_failure(
+        active,
+        runtime_root=tmp_path,
+        generated_at=generated_at.isoformat(),
+        observed_host_rrule=MONITOR_15,
+    )
+
+    fallback = _with_scheduler_hint(
+        _monitor_decision(),
+        scheduler_state=failure_state,
+        host_rrule=MONITOR_15,
+    )
+    fallback_app = fallback["scheduler_hint"]["codex_app"]
+    assert fallback_app["stateful_backoff"]["current_rrule"] == MONITOR_15
+    assert fallback_app["stateful_backoff"]["apply_needed"] is False
+    assert fallback_app["stateful_backoff"]["ack_needed"] is True
+
+    fallback_ack = build_codex_app_scheduler_ack_event(
+        fallback,
+        agent_id=AGENT_ID,
+        applied_rrule=MONITOR_15,
+        generated_at=(generated_at + timedelta(seconds=1)).isoformat(),
+    )
+    fallback_state = fallback_ack["scheduler_ack_event"]["scheduler_state"]
+    assert [
+        failure["target_rrule"] for failure in fallback_state["host_update_failures"]
+    ] == [ACTIVE_3]
+
+    active_replay = _with_scheduler_hint(
+        _active_decision(),
+        scheduler_state=fallback_state,
+        host_rrule=MONITOR_15,
+    )
+    replay_app = active_replay["scheduler_hint"]["codex_app"]
+    assert replay_app["stateful_backoff"]["apply_needed"] is False
+    assert replay_app["stateful_backoff"]["ack_needed"] is False
+    assert replay_app["stateful_backoff"]["state_status"] == (
+        "host_update_failure_suppressed"
+    )
+    assert replay_app["host_action"] == "none_recorded_host_failure"
+    assert "recommended_rrule" not in replay_app
+    assert "failure_hint" not in replay_app
 
 
 def test_failure_cache_is_bounded_expires_and_reads_legacy_scalar_state() -> None:
