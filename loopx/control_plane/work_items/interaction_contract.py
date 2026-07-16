@@ -339,6 +339,8 @@ def _interaction_mode(payload: dict[str, Any]) -> str:
     kind = str(execution_obligation.get("kind") or "")
     effective_action = str(payload.get("effective_action") or "")
     state = str(payload.get("state") or "")
+    if effective_action == "terminal_no_followup" or state == "terminal_no_followup":
+        return "terminal_no_followup"
     if payload.get("scoped_user_gate_fallback"):
         return "scoped_user_gate_fallback"
     if _user_gate_notification_suppressed(payload):
@@ -410,6 +412,8 @@ def interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[
         if agent_identity.get("agent_id")
         else ""
     )
+    if mode == "terminal_no_followup":
+        return ["no quota spend until explicit goal resume or newly projected work"]
     if mode == "automation_prompt_upgrade":
         automation_prompt_upgrade = (
             payload.get("automation_prompt_upgrade")
@@ -576,6 +580,8 @@ def _interaction_spend_policy(
     mode: str,
     spend_after_validation: bool,
 ) -> str | None:
+    if mode == "terminal_no_followup":
+        return "no spend for terminal automation shutdown"
     if mode in {"user_gate", "user_todo_blocker_push", "user_action_required"}:
         return "no spend for gate or blocker push"
     if mode == "monitor_quiet_skip":
@@ -671,6 +677,7 @@ def _interaction_quiet_noop_allowed(
         "quota_throttled",
         "blocked_wait",
         "user_gate_cooldown_wait",
+        "terminal_no_followup",
         "skip",
     }
 

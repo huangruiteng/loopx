@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from ..scheduler.scheduler_hint import build_scheduler_hint
-from ..todos.decision_scope import build_required_decision_scope_consistency
+from ...quota import build_quota_should_run
+from .quota_fixtures import quota_status_payload, quota_todo_item, quota_todo_summary
 
 
 PUBLIC_SAFE_DECISION_REPLAY_SCHEMA_VERSION = "public_safe_decision_replay_v0"
@@ -135,7 +135,7 @@ def reduce_public_safe_decision(
     return reduced
 
 
-def _walk(value: Any):
+def _walk(value: Any) -> Iterator[tuple[str, Any]]:
     if isinstance(value, Mapping):
         for key, child in value.items():
             yield str(key), child
@@ -148,6 +148,11 @@ def _walk(value: Any):
 def validate_public_safe_decision_case(case: Mapping[str, Any]) -> None:
     if case.get("schema_version") != PUBLIC_SAFE_DECISION_CASE_SCHEMA_VERSION:
         raise ValueError("decision replay case schema_version mismatch")
+    if case.get("scenario") is not None:
+        if not str(case.get("invariant_id") or "").strip():
+            raise ValueError("decision replay case requires invariant_id")
+        if not str(case.get("rationale") or "").strip():
+            raise ValueError("decision replay case requires rationale")
     for key, value in _walk(case):
         if key.lower() in _BANNED_KEYS:
             raise ValueError(f"decision replay contains banned key: {key}")
@@ -156,7 +161,10 @@ def validate_public_safe_decision_case(case: Mapping[str, Any]) -> None:
 
 
 def load_public_safe_decision_replay(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload_raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload_raw, dict):
+        raise ValueError("decision replay root must be an object")
+    payload: dict[str, Any] = payload_raw
     if payload.get("schema_version") != PUBLIC_SAFE_DECISION_REPLAY_SCHEMA_VERSION:
         raise ValueError("decision replay schema_version mismatch")
     cases = payload.get("cases")
@@ -169,53 +177,79 @@ def load_public_safe_decision_replay(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _source_todo_item(
+    value: Mapping[str, Any],
+    *,
+    role: str,
+    index: int,
+) -> dict[str, Any]:
+    metadata = dict(value)
+    todo_id = str(metadata.pop("todo_id", "") or f"todo_{role}_{index}")
+    status = str(metadata.pop("status", "open") or "open")
+    task_class = str(
+        metadata.pop(
+            "task_class",
+            "user_action" if role == "user" else "advancement_task",
+        )
+    )
+    claimed_by = metadata.pop("claimed_by", None)
+    blocks_agent = metadata.pop("blocks_agent", None)
+    action_kind = metadata.pop("action_kind", None)
+    return cast(
+        dict[str, Any],
+        quota_todo_item(
+            todo_id=todo_id,
+            index=index,
+            role=role,
+            status=status,
+            task_class=task_class,
+            text=f"[P1] Public-safe replay item {todo_id}.",
+            claimed_by=str(claimed_by) if claimed_by else None,
+            blocks_agent=str(blocks_agent) if blocks_agent else None,
+            action_kind=str(action_kind) if action_kind else None,
+            **metadata,
+        ),
+    )
+
+
 def replay_public_safe_decision_case(case: Mapping[str, Any]) -> dict[str, Any]:
     validate_public_safe_decision_case(case)
-    decision = _mapping(case.get("decision"))
-    interaction = _mapping(case.get("interaction_contract"))
     agent_id = str(case.get("agent_id") or "replay-agent")
-    payload = {
-        "goal_id": str(case.get("case_id") or "decision-replay"),
-        "agent_identity": {"agent_id": agent_id},
-        "should_run": decision.get("should_run") is True,
-        "effective_action": decision.get("effective_action"),
-        "recommended_action": "Replay the compact public-safe decision.",
-        "heartbeat_recommendation": {
-            "recommended_mode": interaction.get("mode"),
-            "notify": _mapping(interaction.get("user_channel")).get("notify", "DONT_NOTIFY"),
-            "spend_policy": "spend only after validated writeback",
-        },
-        "execution_obligation": {
-            "must_attempt_work": _mapping(interaction.get("agent_channel")).get("must_attempt")
-            is True,
-            "spend_policy": "spend only after validated writeback",
-        },
-        "automation_liveness": {
-            "automation_action": "",
-            "spend_policy": "spend only after validated writeback",
-        },
-        "interaction_contract": interaction,
-    }
-    scheduler = build_scheduler_hint(
-        payload,
-        agent_scope_frontier_actions={
-            "agent_scope_exhausted",
-            "agent_scope_wait",
-            "reassignment_required",
-            "successor_replan_required",
-        },
+    goal_id = str(case.get("case_id") or "decision-replay")
+    scenario = _mapping(case.get("scenario"))
+    agent_items = [
+        _source_todo_item(item, role="agent", index=index)
+        for index, item in enumerate(case.get("agent_todos") or [], start=1)
+        if isinstance(item, Mapping)
+    ]
+    user_items = [
+        _source_todo_item(item, role="user", index=index)
+        for index, item in enumerate(case.get("user_todos") or [], start=1)
+        if isinstance(item, Mapping)
+    ]
+    status = quota_status_payload(
+        goal_id=goal_id,
+        status="active",
+        recommended_action="Replay the reviewed public-safe decision invariant.",
+        agent_todos=quota_todo_summary(
+            agent_items,
+            role="agent",
+            claim_scope_agent_id=agent_id,
+        ),
+        user_todos=quota_todo_summary(user_items, role="user"),
+        quota_state=str(scenario.get("quota_state") or "eligible"),
+        safe_bypass=scenario.get("safe_bypass") is True,
+        coordination={"agent_model": "peer_v1", "registered_agents": [agent_id]},
     )
-    scope_consistency = build_required_decision_scope_consistency(
-        {"first_open_items": list(case.get("agent_todos") or [])},
-        {"first_open_items": list(case.get("user_todos") or [])},
+    payload = build_quota_should_run(
+        status,
+        goal_id=goal_id,
         agent_id=agent_id,
     )
+    reduced = reduce_public_safe_decision(payload, case_id=goal_id)
     return {
-        "scheduler_action": scheduler.get("action"),
-        "scheduler_cadence_class": scheduler.get("cadence_class"),
-        "scheduler_reason_code": scheduler.get("reason_code"),
-        "scheduler_interval_minutes": _mapping(scheduler.get("codex_app")).get(
-            "recommended_interval_minutes"
-        ),
-        "decision_scope_status": scope_consistency.get("status"),
+        "decision": reduced["decision"],
+        "selected_todo": reduced["selected_todo"],
+        "interaction_contract": reduced["interaction_contract"],
+        "expected": reduced["expected"],
     }

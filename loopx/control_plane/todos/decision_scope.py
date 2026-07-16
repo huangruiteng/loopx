@@ -78,16 +78,28 @@ def _summary_open_items(
     return items
 
 
+def _source_open_items(items: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if items is None:
+        return []
+    return [
+        item
+        for item in items
+        if isinstance(item, dict)
+        and item.get("done") is not True
+        and str(item.get("status") or "open") in {"open", "blocked"}
+    ]
+
+
 def _gate_owner_compatible(gate: dict[str, Any], *, agent_id: str | None) -> bool:
     if normalize_todo_global_gate(gate.get("global_gate")):
         return True
     normalized_agent_id = normalize_todo_claimed_by(agent_id)
-    if not normalized_agent_id:
-        return True
     blocks_agent = normalize_todo_blocks_agent(gate.get("blocks_agent"))
+    claimed_by = normalize_todo_claimed_by(gate.get("claimed_by"))
+    if not normalized_agent_id:
+        return not blocks_agent and not claimed_by
     if blocks_agent and blocks_agent != normalized_agent_id:
         return False
-    claimed_by = normalize_todo_claimed_by(gate.get("claimed_by"))
     return not claimed_by or claimed_by == normalized_agent_id
 
 
@@ -100,16 +112,20 @@ def build_required_decision_scope_consistency(
     user_todo_summary: dict[str, Any] | None,
     *,
     agent_id: str | None,
+    agent_source_items: list[dict[str, Any]] | None = None,
+    user_source_items: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Validate that blocking decision dependencies resolve to live user gates."""
 
-    agent_items = _summary_open_items(
-        agent_todo_summary,
-        keys=_AGENT_SUMMARY_ITEM_KEYS,
+    agent_items = (
+        _source_open_items(agent_source_items)
+        if agent_source_items is not None
+        else _summary_open_items(agent_todo_summary, keys=_AGENT_SUMMARY_ITEM_KEYS)
     )
-    user_items = _summary_open_items(
-        user_todo_summary,
-        keys=_USER_SUMMARY_ITEM_KEYS,
+    user_items = (
+        _source_open_items(user_source_items)
+        if user_source_items is not None
+        else _summary_open_items(user_todo_summary, keys=_USER_SUMMARY_ITEM_KEYS)
     )
     gates = [item for item in user_items if is_user_gate_todo_item(item)]
     user_actions = [item for item in user_items if not is_user_gate_todo_item(item)]
@@ -121,6 +137,7 @@ def build_required_decision_scope_consistency(
         normalized_agent_id = normalize_todo_claimed_by(agent_id)
         if claimed_by and normalized_agent_id and claimed_by != normalized_agent_id:
             continue
+        effective_owner = normalized_agent_id or claimed_by
         required_scopes = normalize_todo_required_decision_scopes(
             agent_item.get("required_decision_scopes")
         )
@@ -134,7 +151,7 @@ def build_required_decision_scope_consistency(
             compatible_gates = [
                 gate
                 for gate in matching_gates
-                if _gate_owner_compatible(gate, agent_id=agent_id)
+                if _gate_owner_compatible(gate, agent_id=effective_owner)
             ]
             if compatible_gates:
                 continue
@@ -200,7 +217,7 @@ def build_required_decision_scope_repair_hint(
     }
 
 
-def decision_scope_covers(gate_scope: dict[str, Any], required_scope: dict[str, Any]) -> bool:
+def decision_scope_covers(gate_scope: Any, required_scope: Any) -> bool:
     gate = normalize_todo_decision_scope(gate_scope)
     required = normalize_todo_decision_scope(required_scope)
     if not gate or not required:
