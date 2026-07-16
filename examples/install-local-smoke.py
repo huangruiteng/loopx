@@ -305,6 +305,13 @@ def main() -> int:
             "Do not use this skill to approve",
         ):
             assert phrase in pr_review_text, phrase
+        pr_review_metadata = pr_review_skill.parent / "agents" / "openai.yaml"
+        pr_review_metadata_text = pr_review_metadata.read_text(encoding="utf-8")
+        assert (
+            'short_description: "Guide AgentLoop through LoopX PR review queues"'
+            in pr_review_metadata_text
+        ), pr_review_metadata_text
+        assert "Guide agentloop" not in pr_review_metadata_text, pr_review_metadata_text
         auto_research_skill = codex_home / "skills" / "loopx-auto-research" / "SKILL.md"
         assert not auto_research_skill.exists(), auto_research_skill
         loopx_prompt = codex_home / "prompts" / "loopx.md"
