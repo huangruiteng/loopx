@@ -39,7 +39,7 @@ matches the surface you already use:
 | Codex App | `$loopx <task text>` or `/skills` -> `loopx` in the project thread | The app heartbeat automation. Let the agent install or refresh the generated LoopX heartbeat body; start at the bootstrap cadence, then follow `quota should-run.scheduler_hint`. |
 | Codex CLI | `codex` from the project root, then paste `loopx codex-cli-bootstrap-message --project .` output | Current verified Codex CLI builds do not load user-installed `/loopx` or `/prompts:loopx` commands. Keep the executor visible, then set the generated `/goal <thin task_body>`. |
 | Claude Code | Install LoopX, then `/loopx <task text>` | The installer registers lightweight slash-command skills. Enable the opt-in adapter only when Claude Code's native `/loop` should be gated by LoopX `should_run`. |
-| Other agent or shell | `loopx start-goal --guided --project . --goal-text "<task text>"` | The guided packet previews the same transaction an agent should execute: inspect or connect state, plan todos, refresh status, activate a host loop, run quota, and ack scheduler hints when needed. If the surface has no runner hook, LoopX can track state but the user drives it manually. |
+| Other agent or shell | `loopx start-goal --guided --project . --goal-text "<task text>" --host-surface <exact-host>` | The guided packet previews the same transaction an agent should execute: inspect or connect state, plan todos, refresh status, activate a host loop, run quota, and ack scheduler hints when needed. If the surface has no runner hook, LoopX can track state but the user drives it manually. |
 
 ## One CLI Quickstart
 
@@ -52,13 +52,17 @@ export PATH="$HOME/.local/bin:$PATH"
 loopx doctor
 loopx slash-commands --install
 loopx bootstrap-command-pack --project .
-loopx start-goal --guided --project . --goal-text "<your first long-running task>"
+loopx start-goal --guided --project . --goal-text "<your first long-running task>" \
+  --host-surface codex-cli-tui
 ```
 
 The command pack checks the host-facing recovery packet. The guided start
 packet is the first task path: paste the generated transaction into Codex,
 Claude Code, or another compatible agent that can run shell commands from the
-project root.
+project root. Replace `codex-cli-tui` with `codex-app`, `codex-ide`,
+`claude-code`, or `shell` when that is the actual host. When the host is
+unclear, omit the flag once and follow the returned read-only selection gate;
+that preview does not write project state.
 
 ## Multi-Project Manager Commands
 

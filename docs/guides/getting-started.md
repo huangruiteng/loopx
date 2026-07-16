@@ -85,7 +85,7 @@ entry point is different:
 
 | Command family | Host entry | CLI fallback |
 | --- | --- | --- |
-| Project goal start | `/loopx <goal text>` where the host exposes native slash commands; `$loopx <goal text>` or the `LoopX` command skill in Codex surfaces that use explicit skills. | `loopx start-goal --guided --project . --goal-text "<goal text>"` |
+| Project goal start | `/loopx <goal text>` where the host exposes native slash commands; `$loopx <goal text>` or the `LoopX` command skill in Codex surfaces that use explicit skills. | `loopx start-goal --guided --project . --goal-text "<goal text>" --host-surface <exact-host>` |
 | Global manager views | `/loopx-global-summary`, `/loopx-global-gates`, `/loopx-global-todos`, `/loopx-global-risks`. | `loopx slash-commands`, then run the listed global manager command for the view you need. |
 | PR review queue | `/loopx-pr-review`. | `loopx pr-review` |
 
@@ -110,7 +110,8 @@ If a project-local goal command still cannot be invoked through the host, run
 the equivalent guided start preview from the project root:
 
 ```bash
-loopx start-goal --guided --project . --goal-text "<goal text>"
+loopx start-goal --guided --project . --goal-text "<goal text>" \
+  --host-surface codex-cli-tui
 ```
 
 That preserves the `/loopx <goal text>` semantics while keeping mutation under
@@ -121,6 +122,12 @@ integrations that need the lower-level handoff packet can use
 `loopx bootstrap-command-pack --project . --goal-text "<goal text>"`. For global
 manager or PR review commands, use `loopx slash-commands` to print the current
 canonical command list and fallback CLI shapes.
+
+Use `codex-app`, `codex-ide`, or `codex-cli-tui` for the corresponding Codex
+host. If the exact host is not known, omit `--host-surface` once: LoopX returns
+a read-only selection gate with exact rerun commands and does not write project
+state. This prevents an upgrade from silently routing an IDE or terminal start
+to a desktop-app heartbeat.
 
 ## Local State Backup
 
