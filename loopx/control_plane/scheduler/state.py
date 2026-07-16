@@ -3,18 +3,30 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+from .time import parse_scheduler_timestamp
 
 
 SCHEDULER_STATE_SCHEMA_VERSION = "loopx_scheduler_state_v0"
 SCHEDULER_HOST_UPDATE_FAILURE_SCHEMA_VERSION = "scheduler_host_update_failure_v0"
+SCHEDULER_HOST_UPDATE_FAILURE_CACHE_LIMIT = 4
+SCHEDULER_HOST_UPDATE_FAILURE_TTL = timedelta(hours=24)
 CODEX_APP_STATEFUL_BACKOFF_STATE_KEY = "scheduler_hint.codex_app.stateful_backoff"
 CODEX_APP_SURFACE = "codex_app"
 
 
 def rrule_for_minutes(minutes: int) -> str:
     return f"FREQ=MINUTELY;INTERVAL={max(1, int(minutes))}"
+
+
+def normalize_scheduler_rrule(value: Any) -> str:
+    text = " ".join(str(value or "").strip().split())
+    if text.upper().startswith("RRULE:"):
+        text = text[6:].strip()
+    return text
 
 
 def _safe_segment(value: str) -> str:
@@ -42,10 +54,8 @@ def normalize_scheduler_host_update_failure(value: Any) -> dict[str, Any] | None
         return None
     if str(value.get("schema_version") or "") != SCHEDULER_HOST_UPDATE_FAILURE_SCHEMA_VERSION:
         return None
-    target_rrule = " ".join(str(value.get("target_rrule") or "").strip().split())
-    observed_host_rrule = " ".join(
-        str(value.get("observed_host_rrule") or "").strip().split()
-    )
+    target_rrule = normalize_scheduler_rrule(value.get("target_rrule"))
+    observed_host_rrule = normalize_scheduler_rrule(value.get("observed_host_rrule"))
     failure_kind = str(value.get("failure_kind") or "").strip()
     failed_at = str(value.get("failed_at") or "").strip()
     try:
@@ -62,6 +72,83 @@ def normalize_scheduler_host_update_failure(value: Any) -> dict[str, Any] | None
         "failure_count": failure_count,
         "failed_at": failed_at,
     }
+
+
+def _scheduler_host_update_failure_pair(value: dict[str, Any]) -> tuple[str, str]:
+    return (
+        normalize_scheduler_rrule(value.get("target_rrule")),
+        normalize_scheduler_rrule(value.get("observed_host_rrule")),
+    )
+
+
+def normalize_scheduler_host_update_failures(
+    value: Any,
+    *,
+    legacy_failure: Any = None,
+) -> list[dict[str, Any]]:
+    candidates = value if isinstance(value, list) else []
+    normalized: list[dict[str, Any]] = []
+    for candidate in [*candidates, legacy_failure]:
+        failure = normalize_scheduler_host_update_failure(candidate)
+        if failure is None:
+            continue
+        pair = _scheduler_host_update_failure_pair(failure)
+        normalized = [
+            item
+            for item in normalized
+            if _scheduler_host_update_failure_pair(item) != pair
+        ]
+        normalized.append(failure)
+    return normalized[-SCHEDULER_HOST_UPDATE_FAILURE_CACHE_LIMIT:]
+
+
+def retained_scheduler_host_update_failures(
+    value: Any,
+    *,
+    reference_time: datetime | str | None = None,
+    observed_host_rrule: Any = None,
+) -> list[dict[str, Any]]:
+    failures = normalize_scheduler_host_update_failures(value)
+    if isinstance(reference_time, datetime):
+        current_time = reference_time
+    else:
+        current_time = parse_scheduler_timestamp(reference_time)
+    if current_time is None:
+        current_time = datetime.now(timezone.utc)
+    elif current_time.tzinfo is None:
+        current_time = current_time.replace(tzinfo=timezone.utc)
+    cutoff = current_time - SCHEDULER_HOST_UPDATE_FAILURE_TTL
+    expected_host_rrule = normalize_scheduler_rrule(observed_host_rrule)
+    retained: list[dict[str, Any]] = []
+    for failure in failures:
+        failed_at = parse_scheduler_timestamp(failure.get("failed_at"))
+        if failed_at is None or failed_at < cutoff:
+            continue
+        if (
+            expected_host_rrule
+            and normalize_scheduler_rrule(failure.get("observed_host_rrule"))
+            != expected_host_rrule
+        ):
+            continue
+        retained.append(failure)
+    return retained
+
+
+def merge_scheduler_host_update_failure(
+    value: Any,
+    failure: dict[str, Any],
+    *,
+    reference_time: datetime | str | None = None,
+) -> list[dict[str, Any]]:
+    normalized_failure = normalize_scheduler_host_update_failure(failure)
+    if normalized_failure is None:
+        raise ValueError("scheduler host update failure is invalid")
+    retained = retained_scheduler_host_update_failures(
+        value,
+        reference_time=reference_time,
+        observed_host_rrule=normalized_failure.get("observed_host_rrule"),
+    )
+    return normalize_scheduler_host_update_failures([*retained, normalized_failure])
 
 
 def normalize_scheduler_state(
@@ -87,12 +174,13 @@ def normalize_scheduler_state(
     reset_token = str(state.get("reset_token") or "").strip()
     identity_signature = str(state.get("identity_signature") or "").strip()
     last_applied_rrule = str(state.get("last_applied_rrule") or "").strip()
-    host_update_failure = normalize_scheduler_host_update_failure(
-        state.get("host_update_failure")
+    host_update_failures = normalize_scheduler_host_update_failures(
+        state.get("host_update_failures"),
+        legacy_failure=state.get("host_update_failure"),
     )
     if not reset_token or not identity_signature:
         return None
-    if not last_applied_rrule and host_update_failure is None:
+    if not last_applied_rrule and not host_update_failures:
         return None
     try:
         progression_index = int(state.get("progression_index"))
@@ -110,9 +198,11 @@ def normalize_scheduler_state(
     normalized["progression_index"] = progression_index
     normalized["progression_minutes"] = progression_minutes
     normalized["last_applied_rrule"] = last_applied_rrule
-    if host_update_failure is not None:
-        normalized["host_update_failure"] = host_update_failure
+    if host_update_failures:
+        normalized["host_update_failures"] = host_update_failures
+        normalized["host_update_failure"] = host_update_failures[-1]
     else:
+        normalized.pop("host_update_failures", None)
         normalized.pop("host_update_failure", None)
     return normalized
 
@@ -131,6 +221,7 @@ def build_scheduler_state(
     updated_at: str,
     source: str | None = None,
     host_update_failure: dict[str, Any] | None = None,
+    host_update_failures: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     state = {
         "schema_version": SCHEDULER_STATE_SCHEMA_VERSION,
@@ -147,6 +238,8 @@ def build_scheduler_state(
     }
     if host_update_failure is not None:
         state["host_update_failure"] = host_update_failure
+    if host_update_failures is not None:
+        state["host_update_failures"] = host_update_failures
     if source:
         state["source"] = str(source)
     normalized = normalize_scheduler_state(

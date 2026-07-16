@@ -18,6 +18,9 @@ from .state import (
     CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
     CODEX_APP_SURFACE,
     build_scheduler_state,
+    normalize_scheduler_host_update_failures,
+    normalize_scheduler_rrule,
+    retained_scheduler_host_update_failures,
     rrule_for_minutes,
 )
 from .time import parse_scheduler_timestamp
@@ -43,13 +46,6 @@ MONITOR_WAIT_PHASE_RANK = {
     "cadence_only": 2,
     "far_window": 3,
 }
-
-
-def normalize_scheduler_rrule(value: Any) -> str:
-    text = " ".join(str(value or "").strip().split())
-    if text.upper().startswith("RRULE:"):
-        text = text[6:].strip()
-    return text
 
 
 def _scheduler_rrule_interval_minutes(value: Any) -> int | None:
@@ -689,18 +685,6 @@ def build_codex_app_scheduler_ack_event(
         else codex_progression
     )
     progression_index = max(0, _int_number(stateful_backoff.get("progression_index"), default=0))
-    prior_failure = (
-        stateful_backoff.get("host_update_failure")
-        if isinstance(stateful_backoff.get("host_update_failure"), dict)
-        else None
-    )
-    preserved_failure = (
-        prior_failure
-        if prior_failure
-        and normalize_scheduler_rrule(prior_failure.get("target_rrule"))
-        != acknowledged_rrule
-        else None
-    )
     safe_generated_at = generated_at or ""
     scheduler_state = build_scheduler_state(
         goal_id=before.get("goal_id"),
@@ -714,7 +698,6 @@ def build_codex_app_scheduler_ack_event(
         last_applied_rrule=acknowledged_rrule,
         updated_at=safe_generated_at,
         source=classification,
-        host_update_failure=preserved_failure,
     )
     reason = str(reason_summary or "").strip() or (
         f"acknowledged Codex App scheduler RRULE {acknowledged_rrule}; no quota spend"
@@ -1015,10 +998,13 @@ def build_scheduler_hint(
             if isinstance(codex_app_scheduler_state, dict)
             else {}
         )
-        recorded_host_failure = (
-            scheduler_state.get("host_update_failure")
-            if isinstance(scheduler_state.get("host_update_failure"), dict)
-            else None
+        scheduler_now = now_utc()
+        all_host_update_failures = retained_scheduler_host_update_failures(
+            normalize_scheduler_host_update_failures(
+                scheduler_state.get("host_update_failures"),
+                legacy_failure=scheduler_state.get("host_update_failure"),
+            ),
+            reference_time=scheduler_now,
         )
         same_identity = False
         if scheduler_state:
@@ -1034,7 +1020,7 @@ def build_scheduler_hint(
                     applied_index = -1
                 next_index = (
                     applied_index
-                    if recorded_host_failure
+                    if all_host_update_failures
                     else applied_index + 1
                     if advance_same_identity
                     else 0
@@ -1044,12 +1030,25 @@ def build_scheduler_hint(
                 )
             else:
                 state_status = "reset_required"
-                recorded_host_failure = None
         current_interval = codex_cadence_progression[current_index]
         current_rrule = rrule_for_minutes(current_interval)
         last_applied_rrule = str(scheduler_state.get("last_applied_rrule") or "").strip()
         observed_host_rrule = normalize_scheduler_rrule(codex_app_current_rrule)
         effective_host_rrule = observed_host_rrule or last_applied_rrule
+        host_update_failures = retained_scheduler_host_update_failures(
+            all_host_update_failures,
+            reference_time=scheduler_now,
+            observed_host_rrule=effective_host_rrule,
+        )
+        recorded_host_failure = next(
+            (
+                failure
+                for failure in reversed(host_update_failures)
+                if normalize_scheduler_rrule(failure.get("target_rrule"))
+                == current_rrule
+            ),
+            host_update_failures[-1] if host_update_failures else None,
+        )
         current_rrule_already_applied = effective_host_rrule == current_rrule
         if (
             not current_rrule_already_applied
@@ -1064,7 +1063,7 @@ def build_scheduler_hint(
         host_match_ack_needed = (
             bool(observed_host_rrule)
             and current_rrule_already_applied
-            and (state_status != "same_identity" or recorded_host_failure is not None)
+            and (state_status != "same_identity" or bool(all_host_update_failures))
         )
         base_apply_needed = (
             not current_rrule_already_applied
@@ -1090,10 +1089,10 @@ def build_scheduler_hint(
             "current_interval_minutes": current_interval,
             "host_max_interval_minutes": codex_host_max,
             "coarser_wait_fallback": "local_scheduler_only",
-            "host_update_failure": "record_failed_target_and_observed_host_pair_then_suppress_exact_repeat_until_target_or_host_changes",
+            "host_update_failure": "cache_recent_failed_target_and_observed_host_pairs_then_suppress_each_exact_repeat_until_host_changes_ack_or_expiry",
             "ack_required_after_apply": apply_needed,
             "ack_required_from_host_match": host_match_ack_needed,
-            "persist": "reset_token|identity_signature|progression_index|last_applied_rrule|host_update_failure",
+            "persist": "reset_token|identity_signature|progression_index|last_applied_rrule|host_update_failures|host_update_failure_compat",
             "same_identity_action": (
                 "advance_index_after_scheduler_ack"
                 if advance_same_identity
@@ -1159,6 +1158,10 @@ def build_scheduler_hint(
             },
             "no_spend_for_cadence_change": True,
         }
+        if host_update_failures:
+            codex_app["stateful_backoff"]["host_update_failures"] = [
+                dict(failure) for failure in host_update_failures
+            ]
         if recorded_host_failure:
             codex_app["stateful_backoff"]["host_update_failure"] = dict(
                 recorded_host_failure

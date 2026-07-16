@@ -16,6 +16,9 @@ from ..scheduler.state import (
     CODEX_APP_SURFACE,
     SCHEDULER_HOST_UPDATE_FAILURE_SCHEMA_VERSION,
     build_scheduler_state,
+    merge_scheduler_host_update_failure,
+    normalize_scheduler_host_update_failures,
+    retained_scheduler_host_update_failures,
     scheduler_state_path,
     write_scheduler_state,
 )
@@ -380,22 +383,29 @@ def record_quota_scheduler_failure_for_decision(
         payload["failed_rrule"] = target_rrule
         return payload
 
-    prior_failure = (
-        stateful_backoff.get("host_update_failure")
-        if isinstance(stateful_backoff.get("host_update_failure"), dict)
-        else {}
+    safe_generated_at = generated_at or _now_local()
+    prior_failures = retained_scheduler_host_update_failures(
+        normalize_scheduler_host_update_failures(
+            stateful_backoff.get("host_update_failures"),
+            legacy_failure=stateful_backoff.get("host_update_failure"),
+        ),
+        reference_time=safe_generated_at,
+        observed_host_rrule=observed_rrule,
     )
-    same_pair = (
-        normalize_scheduler_rrule(prior_failure.get("target_rrule")) == target_rrule
-        and normalize_scheduler_rrule(prior_failure.get("observed_host_rrule"))
-        == observed_rrule
+    prior_failure = next(
+        (
+            failure
+            for failure in reversed(prior_failures)
+            if normalize_scheduler_rrule(failure.get("target_rrule")) == target_rrule
+        ),
+        {},
     )
+    same_pair = bool(prior_failure)
     try:
         prior_failure_count = int(prior_failure.get("failure_count") or 0)
     except (TypeError, ValueError):
         prior_failure_count = 0
     failure_count = prior_failure_count + 1 if same_pair else 1
-    safe_generated_at = generated_at or _now_local()
     host_update_failure = {
         "schema_version": SCHEDULER_HOST_UPDATE_FAILURE_SCHEMA_VERSION,
         "target_rrule": target_rrule,
@@ -404,6 +414,11 @@ def record_quota_scheduler_failure_for_decision(
         "failure_count": failure_count,
         "failed_at": safe_generated_at,
     }
+    host_update_failures = merge_scheduler_host_update_failure(
+        prior_failures,
+        host_update_failure,
+        reference_time=safe_generated_at,
+    )
     progression_minutes = (
         codex_app.get("example_progression_minutes")
         if isinstance(codex_app.get("example_progression_minutes"), list)
@@ -422,6 +437,7 @@ def record_quota_scheduler_failure_for_decision(
         updated_at=safe_generated_at,
         source=QUOTA_SCHEDULER_FAILURE_CLASSIFICATION,
         host_update_failure=host_update_failure,
+        host_update_failures=host_update_failures,
     )
     state_path = scheduler_state_path(
         runtime_root,
@@ -463,7 +479,7 @@ def record_quota_scheduler_failure_for_decision(
             "scheduler_state": scheduler_state,
         },
         "scheduler_state_path": str(state_path),
-        "health_check": "scheduler host update failure recorded; repeated target/host pair suppressed; no quota spend",
+        "health_check": "scheduler host update failure cached; repeated retained target/host pairs suppressed; no quota spend",
         "delivery_outcome": "surface_only",
         "before": compact_quota_decision(before) if execute else before,
         "after": None,
