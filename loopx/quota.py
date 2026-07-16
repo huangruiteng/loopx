@@ -2143,7 +2143,10 @@ def build_quota_should_run(
                     "required_reads": required_reads,
                 }
         payload["automation_liveness"] = build_automation_liveness(payload)
-        payload["interaction_contract"] = build_interaction_contract(payload)
+        payload["interaction_contract"] = build_interaction_contract(
+            payload,
+            available_capabilities=effective_available_capabilities,
+        )
         payload["scheduler_hint"] = _scheduler_hint(
             payload,
             include_detail=include_scheduler_detail,
@@ -2161,7 +2164,10 @@ def build_quota_should_run(
             ), codex_app_current_rrule=codex_app_current_rrule,
             scheduler_execution_context=resolved_scheduler_context,
         )
-        finalize_user_gate_notification_cooldown(payload)
+        finalize_user_gate_notification_cooldown(
+            payload,
+            available_capabilities=effective_available_capabilities,
+        )
         payload["protocol_action_packet"] = build_protocol_action_packet(payload)
         return payload
 

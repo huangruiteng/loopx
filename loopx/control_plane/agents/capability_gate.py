@@ -38,6 +38,16 @@ CAPABILITY_OWNER_GATE_HINTS = {
 }
 
 
+def runtime_capabilities_for_cli_projection(value: Any) -> list[str]:
+    """Return observed runtime capabilities, never owner-held authority gates."""
+
+    return [
+        capability
+        for capability in normalize_required_capabilities(value)
+        if capability not in CAPABILITY_OWNER_GATE_HINTS
+    ]
+
+
 def _capability_missing_action(missing: list[str]) -> str:
     missing_set = set(missing)
     if not missing_set:

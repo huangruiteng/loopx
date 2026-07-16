@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import shlex
 from typing import Any
 
 from ..agents.agent_scope_frontier import (
     AgentScopeFrontierAction,
     agent_scope_frontier_action as _agent_scope_frontier_action,
 )
+from ..agents.capability_gate import runtime_capabilities_for_cli_projection
 from ..goals.goal_frontier import AUTONOMOUS_REPLAN_REQUIRED_MODE
 from ..goals.goal_vision_wait import exact_blocked_successor_wait_state
-from ..todos.contract import TODO_TASK_CLASS_MONITOR, TODO_TASK_CLASS_USER_ACTION
+from ..todos.contract import (
+    TODO_TASK_CLASS_MONITOR,
+    TODO_TASK_CLASS_USER_ACTION,
+)
 from ..todos.projection import todo_item_task_class
 from ..todos.user_gate import open_todo_count
 from ..todos.write_hint import build_capability_resolution_writeback_actions
@@ -122,7 +127,11 @@ def _capability_resolution_user_actions(payload: dict[str, Any]) -> list[str]:
     return [owner_action] if owner_action else []
 
 
-def finalize_user_gate_notification_cooldown(payload: dict[str, Any]) -> None:
+def finalize_user_gate_notification_cooldown(
+    payload: dict[str, Any],
+    *,
+    available_capabilities: Any = None,
+) -> None:
     scheduler_hint = payload.get("scheduler_hint")
     cooldown = (
         scheduler_hint.get("user_gate_notification_cooldown")
@@ -137,7 +146,10 @@ def finalize_user_gate_notification_cooldown(payload: dict[str, Any]) -> None:
             or user_channel_action_todo_actions(payload.get("user_todo_summary"))
         )
         payload["requires_user_action"] = False
-    payload["interaction_contract"] = build_interaction_contract(payload)
+    payload["interaction_contract"] = build_interaction_contract(
+        payload,
+        available_capabilities=available_capabilities,
+    )
     attach_user_action_compat_fields(payload)
 
 
@@ -418,17 +430,38 @@ def _interaction_mode(payload: dict[str, Any]) -> str:
     return "skip"
 
 
-def interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[str]:
+def _scoped_cli_args(
+    agent_identity: dict[str, Any],
+    *,
+    available_capabilities: Any,
+) -> str:
+    agent_id = str(agent_identity.get("agent_id") or "").strip()
+    if not agent_id:
+        return ""
+    capability_args = "".join(
+        f" --available-capability {shlex.quote(capability)}"
+        for capability in runtime_capabilities_for_cli_projection(
+            available_capabilities
+        )
+    )
+    return f" --agent-id {agent_id}{capability_args}"
+
+
+def interaction_next_cli_actions(
+    payload: dict[str, Any],
+    *,
+    mode: str,
+    available_capabilities: Any = None,
+) -> list[str]:
     goal_id = str(payload.get("goal_id") or "<GOAL_ID>")
     agent_identity = (
         payload.get("agent_identity")
         if isinstance(payload.get("agent_identity"), dict)
         else {}
     )
-    agent_arg = (
-        f" --agent-id {agent_identity.get('agent_id')}"
-        if agent_identity.get("agent_id")
-        else ""
+    scoped_cli_args = _scoped_cli_args(
+        agent_identity,
+        available_capabilities=available_capabilities,
     )
     capability_resolution_actions = build_capability_resolution_writeback_actions(
         payload.get("capability_gate"),
@@ -462,8 +495,8 @@ def interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[
         ]
     if mode == "monitor_quiet_skip":
         return [
-            f"loopx quota monitor-poll --goal-id {goal_id}{agent_arg} --execute",
-            f"loopx --format json quota should-run --goal-id {goal_id}{agent_arg}",
+            f"loopx quota monitor-poll --goal-id {goal_id}{scoped_cli_args} --execute",
+            f"loopx --format json quota should-run --goal-id {goal_id}{scoped_cli_args}",
         ]
     if mode == AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value:
         agent_scope_frontier = (
@@ -489,8 +522,8 @@ def interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[
             return [
                 f"loopx todo complete --goal-id {goal_id} --todo-id {monitor_todo_id} --evidence '<validated gate evidence>'",
                 f"loopx todo update --goal-id {goal_id} --todo-id {gated_todo_id} --note '<public-safe gate repair reason>'",
-                f"loopx refresh-state --goal-id {goal_id} --classification standing_monitor_gate_repair_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress{agent_arg}",
-                f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{agent_arg}",
+                f"loopx refresh-state --goal-id {goal_id} --classification standing_monitor_gate_repair_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress{scoped_cli_args}",
+                f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{scoped_cli_args}",
             ]
         route_candidates = (
             agent_scope_frontier.get("route_continuation_replan_candidates")
@@ -500,8 +533,8 @@ def interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[
         if route_candidates:
             return [
                 f"loopx todo add --goal-id {goal_id} --role agent --text '<public-safe route continuation advancement todo>'",
-                f"loopx refresh-state --goal-id {goal_id} --classification route_continuation_replan_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress{agent_arg}",
-                f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{agent_arg}",
+                f"loopx refresh-state --goal-id {goal_id} --classification route_continuation_replan_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress{scoped_cli_args}",
+                f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{scoped_cli_args}",
             ]
         candidates = (
             agent_scope_frontier.get("deferred_resume_candidates")
@@ -512,42 +545,32 @@ def interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[
         todo_id = str(first_candidate.get("todo_id") or "<todo_id>")
         return [
             f"loopx todo update --goal-id {goal_id} --todo-id {todo_id} --status open --note '<public-safe successor replan reason>'",
-            f"loopx refresh-state --goal-id {goal_id} --classification successor_replan_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress{agent_arg}",
-            f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{agent_arg}",
+            f"loopx refresh-state --goal-id {goal_id} --classification successor_replan_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress{scoped_cli_args}",
+            f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{scoped_cli_args}",
         ]
     if (
         mode == AgentScopeFrontierAction.AGENT_SCOPE_WAIT.value
         and _blocked_successor_wait_observation_required(payload)
     ):
         return [
-            f"loopx quota monitor-poll --goal-id {goal_id}{agent_arg} --execute",
-            f"loopx --format json quota should-run --goal-id {goal_id}{agent_arg}",
+            f"loopx quota monitor-poll --goal-id {goal_id}{scoped_cli_args} --execute",
+            f"loopx --format json quota should-run --goal-id {goal_id}{scoped_cli_args}",
         ]
     if _agent_scope_frontier_action(mode) is not None:
         return [
             "no quota spend while this agent has no in-scope runnable candidate",
-            f"loopx --format json quota should-run --goal-id {goal_id}{agent_arg}",
+            f"loopx --format json quota should-run --goal-id {goal_id}{scoped_cli_args}",
         ]
     if mode == "external_evidence_observation":
         return [
             "read approved controller/job/marker/writeback surfaces only",
-            f"loopx refresh-state --goal-id {goal_id} --classification <compact_blocker_or_transition>{agent_arg}",
-            f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{agent_arg}",
+            f"loopx refresh-state --goal-id {goal_id} --classification <compact_blocker_or_transition>{scoped_cli_args}",
+            f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{scoped_cli_args}",
         ]
     if mode == "agent_workspace_repair":
-        agent_identity = (
-            payload.get("agent_identity")
-            if isinstance(payload.get("agent_identity"), dict)
-            else {}
-        )
-        agent_arg = (
-            f" --agent-id {agent_identity.get('agent_id')}"
-            if agent_identity.get("agent_id")
-            else ""
-        )
         return [
             "create or switch to an independent git worktree/branch",
-            f"loopx --format json quota should-run --goal-id {goal_id}{agent_arg}",
+            f"loopx --format json quota should-run --goal-id {goal_id}{scoped_cli_args}",
         ]
     if mode == "autonomous_replan":
         lane_action = _protocol_first_candidate_action(payload)
@@ -559,11 +582,11 @@ def interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[
         )
         return [
             first_action,
-            f"loopx refresh-state --goal-id {goal_id} --classification autonomous_replan_recorded --autonomous-replan-recorded --repair-delta-kind <delta_kind> --delivery-batch-scale <scale> --delivery-outcome <outcome>{agent_arg}",
+            f"loopx refresh-state --goal-id {goal_id} --classification autonomous_replan_recorded --autonomous-replan-recorded --repair-delta-kind <delta_kind> --delivery-batch-scale <scale> --delivery-outcome <outcome>{scoped_cli_args}",
             (
                 "if the replan writeback records an accountable delta such as "
                 "outcome_progress or primary_goal_outcome, run "
-                f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{agent_arg}; "
+                f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{scoped_cli_args}; "
                 "otherwise do not spend for surface_only watch-lane continuation/no-followup"
             ),
         ]
@@ -578,8 +601,8 @@ def interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[
     }:
         return [
             *capability_resolution_actions,
-            f"loopx refresh-state --goal-id {goal_id} --classification <validated_progress>{agent_arg}",
-            f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{agent_arg}",
+            f"loopx refresh-state --goal-id {goal_id} --classification <validated_progress>{scoped_cli_args}",
+            f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{scoped_cli_args}",
         ]
     if mode in {"user_gate", "user_todo_blocker_push", "user_action_required"}:
         return [
@@ -832,9 +855,14 @@ def _build_interaction_cli_channel(
     *,
     mode: str,
     spend_after_validation: bool,
+    available_capabilities: Any = None,
 ) -> dict[str, Any]:
     return {
-        "next_cli_actions": interaction_next_cli_actions(payload, mode=mode),
+        "next_cli_actions": interaction_next_cli_actions(
+            payload,
+            mode=mode,
+            available_capabilities=available_capabilities,
+        ),
         "spend_allowed_now": False,
         "spend_after_validation": spend_after_validation,
         "spend_policy": _interaction_spend_policy(
@@ -929,7 +957,11 @@ def _interaction_fallback_policy_required(payload: dict[str, Any], *, mode: str)
     } or bool(payload.get("blocked_priority_fallback"))
 
 
-def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
+def build_interaction_contract(
+    payload: dict[str, Any],
+    *,
+    available_capabilities: Any = None,
+) -> dict[str, Any]:
     execution_obligation = (
         payload.get("execution_obligation")
         if isinstance(payload.get("execution_obligation"), dict)
@@ -991,6 +1023,7 @@ def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
             heartbeat_recommendation,
             mode=mode,
             spend_after_validation=spend_after_validation,
+            available_capabilities=available_capabilities,
         ),
     }
     _attach_interaction_required_reads(contract, required_reads)
