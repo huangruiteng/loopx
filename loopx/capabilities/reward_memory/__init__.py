@@ -39,6 +39,10 @@ from .registry import (
     normalize_reward_memory_corpus,
     semantic_preference_inventory_to_reward_corpora,
 )
+from .runtime_hooks import (
+    run_reward_memory_automatic_ingest_hook,
+    run_reward_memory_automatic_recall_hook,
+)
 
 __all__ = [
     "build_reward_memory_architecture_packet",
@@ -65,5 +69,7 @@ __all__ = [
     "reward_memory_health_case",
     "review_reward_memory_candidate",
     "run_reward_memory_evaluation",
+    "run_reward_memory_automatic_ingest_hook",
+    "run_reward_memory_automatic_recall_hook",
     "semantic_preference_inventory_to_reward_corpora",
 ]

@@ -263,8 +263,10 @@ profile, destination, member mapping, or raw provider response into public
 state. A stable hashed receipt prevents duplicate sends across retries.
 
 When a connected goal explicitly enables the agent-scoped Reward Memory
-experiment for `reviewer_artifact.summary`, `reviewer-request` resolves and
-previews the application independently of secondary-sink availability. This
+experiment for `reviewer_artifact.summary` and its v1 config sets
+`automation.automatic_recall=true`, `reviewer-request` invokes the shared
+automatic hook and previews the application independently of secondary-sink
+availability. With the flag off it performs zero provider calls. This
 lets a fixer verify recall, current-artifact identity, and the proposed concise
 Chinese summary with zero external writes while per-PR secondary notifications
 are paused. A configured secondary notification additionally requires that
@@ -290,7 +292,10 @@ current-artifact check, memory readback, attribution digests, and non-empty
 summary before the secondary send. It never infers another peer's agent id and
 does not hard-code OpenViking: the experiment resolves the surface's explicit
 corpus set from the goal's ignored project provider config and uses that
-surface's recall profile. It never scans unrelated project corpora. Read
+surface's recall profile. Compatible corpora are attempted in declared order
+until the first exact hit, with one query per corpus at this function boundary;
+telemetry records the bounded provider calls. It never scans unrelated project
+corpora. Read
 authority combines the normalized corpus read-authority
 kind with `standing_policy.authority_source_ref`; it is never inferred from a
 provider or repository name. A successful no-sink preview is returned as

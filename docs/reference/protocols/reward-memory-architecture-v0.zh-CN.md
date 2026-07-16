@@ -10,8 +10,9 @@ Reward Memory 的核心边界是把反馈证据、策略内容和动作 authorit
 这份合同定义五类一等记忆、带护栏的优先级和 pilot/meta 分工；Stage 1 增加 corpus
 registry 与健康状态 read model；Stage 2 增加无状态 candidate/review 薄缝；Stage 3 增加
 显式 recall/application。最简 ingest 闭环只把这些既有薄缝串成一次 corpus-owner 授权的
-provider 写入与精确读回；它不新增第二套 memory store、候选调度器、automatic recall、
-语义路由器、评测框架或 rollout。
+provider 写入与精确读回；它不新增第二套 memory store、候选调度器、后台 recall、
+语义路由器、评测框架或 rollout。可选 runtime hook 只在模块自有边界复用这些薄缝，
+不会变成后台学习器。
 
 机器可读合同通过下面的命令查看：
 
@@ -90,6 +91,19 @@ automatic policy，但不会泄露 scope ref。运行时只接受
 flag 只授权兼容的 runtime hook；它不会新建 scheduler、替模型推导 query、扩大 authority
 或绕过精确 surface/corpus guard。
 
+`automatic_recall=true` 允许已声明的模块边界调用通用 runtime hook。Surface query、当前
+artifact 校验和推理回调仍由模块提供。Hook 按配置的 corpus 顺序读取，遇到第一个精确
+读回命中即停止；`function_boundary` 必须只有一个 query，bounded-agentic 边界最多三个，
+并输出 provider call telemetry 与 application receipt。Provider 或 application 失败时保留
+模块原始输出，而且永远不形成 user gate。
+
+`automatic_ingest=true` 允许模块把一条已经提炼好的紧凑事件交给已配置 adapter 与 ingest
+corpus。精确 actor/project/surface/action scope 仍由 adapter 和 standing policy 校验；通用
+hook 只复用确定性的 candidate identity、activation、provider sync、精确读回与 ingest
+receipt。它不采集聊天、不解析 tool log、不保存 raw content，也不推导新 authority；重复
+事件保持幂等。两个 flag 默认都是 false；显式 `ingest-event` 命令继续是调用方主动路径，
+不是旧配置兼容 fallback。
+
 Allowlist 内的 agent 在运行时只提交紧凑事件：
 
 ```bash
@@ -99,9 +113,11 @@ loopx reward-memory ingest-event \
 ```
 
 真实 provider 写入必须经过这条 goal + agent 配置路由。原有 full-packet 形式只保留为
-no-write 评测夹具。配置加载不会自动采集反馈、自动 ingest、自动 recall，也不会代替
-provider 认证；实验关闭、provider 不可用、guard 拒绝或精确读回失败时，Issue Fix 都继续
-正常工作。非 v1 或无效配置会以 unavailable fail-open，并把两个 automatic flag 置为 false。
+no-write 评测夹具。仅加载配置不会采集反馈或代替 provider 认证；只有 flag 已开且存在经过
+验证的模块真实调用点时，automatic hook 才运行。Issue Fix 的
+`reviewer_artifact.summary` 是首个自动 recall 调用点，其他 surface 在分别接线和验证前仍走
+显式调用。实验关闭、provider 不可用、guard 拒绝或精确读回失败时，Issue Fix 都继续正常
+工作。非 v1 或无效配置会以 unavailable fail-open，并把两个 automatic flag 置为 false。
 
 ## 五类一等记忆
 

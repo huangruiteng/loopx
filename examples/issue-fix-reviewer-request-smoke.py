@@ -1054,7 +1054,7 @@ def main() -> int:
                         }
                     ],
                     "automation": {
-                        "automatic_recall": False,
+                        "automatic_recall": True,
                         "automatic_ingest": False,
                         "fail_open": True,
                     },
@@ -1151,13 +1151,9 @@ def main() -> int:
             base_artifact: dict[str, Any], **kwargs: Any
         ) -> dict[str, Any]:
             reward_application_calls.append(dict(kwargs))
-            checkpoint = kwargs["read_authority_checkpoint"]
-            assert checkpoint["verified"] is True
-            assert (
-                checkpoint["source_ref"]
-                == (reward_fixture["standing_policy"]["authority_source_ref"])
-            )
-            assert "source_ref" not in kwargs["corpus"]
+            config = kwargs["experiment_config"]
+            assert config["automation"]["automatic_recall"] is True
+            assert config["schema_version"] == "reward_memory_experiment_config_v1"
             summary = str(kwargs["reviewer_summary"])
             artifact = {
                 "schema_version": "issue_fix_reviewer_artifact_v0",
@@ -1220,7 +1216,7 @@ def main() -> int:
         )
         with patch(
             "loopx.capabilities.issue_fix.reviewer_request."
-            "run_issue_fix_reviewer_artifact_reward_memory",
+            "run_issue_fix_reviewer_artifact_automatic_reward_memory",
             side_effect=fake_reward_application,
         ):
             handled = handle_issue_fix_reviewer_command(
@@ -1245,6 +1241,27 @@ def main() -> int:
         )
         assert reward_preview["external_writes_performed"] is False
         assert_public_safe(reward_preview)
+
+        disabled_reward_config = json.loads(
+            reward_config_path.read_text(encoding="utf-8")
+        )
+        disabled_reward_config["automation"]["automatic_recall"] = False
+        write(reward_config_path, json.dumps(disabled_reward_config))
+        disabled_handled = handle_issue_fix_reviewer_command(
+            reward_args,
+            registry_path=registry,
+            generated_at="2026-07-16T08:01:00Z",
+            delivery_observed_at="2026-07-16T08:01:00Z",
+        )
+        assert disabled_handled is not None
+        disabled_preview, _ = disabled_handled
+        disabled_application = disabled_preview[
+            "reviewer_artifact_reward_memory_preview"
+        ]
+        assert disabled_preview["reviewer_artifact_reward_memory_status"] == "blocked"
+        assert disabled_application["automatic_recall"] is False
+        assert disabled_application["recall"]["status"] == "disabled"
+        assert disabled_application["telemetry"]["provider_call_count"] == 0
 
         lifecycle_path = default_issue_fix_domain_state_ledger_path(
             project=path,

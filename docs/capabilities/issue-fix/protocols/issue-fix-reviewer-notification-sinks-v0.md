@@ -28,7 +28,8 @@ reported separately and does not erase a successful GitHub request.
 
 Reward Memory is a default-off, agent-scoped experiment. If the connected goal
 enables it and the registered caller's experiment includes the exact
-`reviewer_artifact.summary` surface, reviewer request planning may produce a
+`reviewer_artifact.summary` surface with `automatic_recall=true`, reviewer
+request planning runs the shared bounded hook and may produce a
 read-only `reviewer_artifact_reward_memory_preview` even when secondary sinks
 are absent or intentionally paused. Configured secondary notifications require
 the same `issue_fix_reviewer_artifact_reward_memory_application_v0` packet to
@@ -48,7 +49,8 @@ routing. The normalized corpus supplies the read-authority kind, while the
 normalized standing policy supplies `authority_source_ref`. A no-sink preview
 may read the configured provider but never sends a notification, materializes a
 notification lifecycle row, or performs an external write. Sink configuration
-only changes whether the application receipt is mandatory for delivery.
+only changes whether the application receipt is mandatory for delivery. With
+automatic recall disabled, this boundary performs zero provider calls.
 
 This stricter behavior is bounded to the configured secondary effect. The
 canonical GitHub review request or permission-only fallback executes first and

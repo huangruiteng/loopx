@@ -580,7 +580,7 @@ def handle_issue_fix_reviewer_command(
                         reviewer_route = None
                     if reviewer_route is not None:
                         reviewer_artifact_reward_memory = {
-                            "config": reviewer_route,
+                            "config": experiment_config,
                             "reviewer_summary": args.reviewer_summary,
                             "reasoning_summary": args.reviewer_summary_reasoning,
                             "observed_at": generated_at,

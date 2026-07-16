@@ -4,12 +4,20 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from loopx.capabilities.context_providers.base import (
+    ContextProviderItem,
+    ContextProviderRetrieval,
+)
 from loopx.capabilities.reward_memory.experiment import (
     resolve_reward_memory_experiment,
     resolve_reward_memory_surface_config,
+)
+from loopx.capabilities.reward_memory.runtime_hooks import (
+    run_reward_memory_automatic_recall_hook,
 )
 from loopx.cli import main
 
@@ -19,6 +27,50 @@ PUBLIC_FIXTURE = REPO_ROOT / "examples/fixtures/reward-memory-ingest-event.publi
 SCOPED_PUBLIC_FIXTURE = (
     REPO_ROOT / "examples/fixtures/reward-memory-scoped-feedback-ingest.public.json"
 )
+
+
+class _RecallProvider:
+    provider_id = "openviking"
+
+    def __init__(
+        self,
+        *,
+        content_by_scope: dict[str, str] | None = None,
+        unavailable: bool = False,
+    ) -> None:
+        self.content_by_scope = content_by_scope or {}
+        self.unavailable = unavailable
+        self.retrieve_calls = 0
+
+    def retrieve(self, **kwargs: Any) -> ContextProviderRetrieval:
+        self.retrieve_calls += 1
+        if self.unavailable:
+            raise RuntimeError("provider unavailable")
+        scope_ref = str(kwargs["scope_ref"])
+        content = self.content_by_scope.get(scope_ref)
+        items = (
+            (
+                ContextProviderItem(
+                    resource_ref=f"{scope_ref}/memory.json",
+                    summary="Reviewed reward memory.",
+                    content=content,
+                    score=0.95,
+                ),
+            )
+            if content
+            else ()
+        )
+        return ContextProviderRetrieval(
+            provider=self.provider_id,
+            namespace=str(kwargs["namespace"]),
+            status="completed",
+            query_summary=str(kwargs["query_summary"]),
+            observed_at=str(kwargs["observed_at"]),
+            search_performed=True,
+            read_performed=True,
+            items=items,
+            requested_limit=int(kwargs["max_results"]),
+        )
 
 
 def _experiment(
@@ -591,3 +643,154 @@ def test_v1_rejects_non_fail_open_automation(tmp_path: Path) -> None:
     assert status["automatic_ingest"] is False
     assert status["automatic_recall"] is False
     assert normalized is None
+
+
+def _automatic_recall_context(
+    config: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    route = resolve_reward_memory_surface_config(
+        config,
+        "reviewer_artifact.summary",
+    )
+    checkpoints = {
+        item["corpus"]["corpus_id"]: {
+            "verified": True,
+            "corpus_id": item["corpus"]["corpus_id"],
+            "workspace_ref": item["corpus"]["scope"]["workspace_ref"],
+            "project_ref": item["corpus"]["scope"]["project_ref"],
+            "surface_id": "reviewer_artifact.summary",
+            "read_authority": item["corpus"]["read_authority"],
+            "source_ref": item["standing_policy"]["authority_source_ref"],
+        }
+        for item in route["recall_corpora"]
+    }
+    return route, checkpoints
+
+
+def _run_automatic_recall(
+    config: dict[str, Any],
+    provider: _RecallProvider,
+    *,
+    queries: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    route, checkpoints = _automatic_recall_context(config)
+    scope = route["corpus"]["scope"]
+    return run_reward_memory_automatic_recall_hook(
+        config,
+        surface_id="reviewer_artifact.summary",
+        base_output={"summary": "base"},
+        workspace_ref=scope["workspace_ref"],
+        project_ref=scope["project_ref"],
+        revision_ref="revision:abc123",
+        queries=queries
+        or [
+            {
+                "query": "Which reviewed summary policy applies?",
+                "query_summary": "reviewed summary policy",
+            }
+        ],
+        observed_at="2026-07-17T03:00:00+08:00",
+        freshness_context={
+            "source_truth_current": True,
+            "source_revision": "revision:abc123",
+        },
+        conflict_state="clear",
+        read_authority_checkpoints=checkpoints,
+        application_id="test:automatic-recall",
+        apply_memory=lambda base, items: {
+            "outcome": "applied",
+            "output": {"summary": "memory applied"},
+            "memory_refs": [item.memory_ref for item in items],
+            "reasoning_summary": "Applied exact reviewed policy.",
+            "current_artifact_verified": True,
+        },
+        provider=provider,
+    )
+
+
+def test_automatic_recall_is_zero_call_when_flag_is_off(tmp_path: Path) -> None:
+    registry_path, _, _ = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
+    _, config = resolve_reward_memory_experiment(
+        registry_path=registry_path,
+        goal_id="reward-memory-goal",
+        agent_id="pilot",
+    )
+    assert config is not None
+    provider = _RecallProvider()
+
+    result = _run_automatic_recall(config, provider)
+
+    assert result["status"] == "disabled"
+    assert result["output"] == {"summary": "base"}
+    assert result["telemetry"]["provider_call_count"] == 0
+    assert provider.retrieve_calls == 0
+
+
+def test_automatic_recall_uses_ordered_corpora_and_applies_once(
+    tmp_path: Path,
+) -> None:
+    registry_path, _, _ = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
+    _write_v1_config(registry_path, _v1_config())
+    _, config = resolve_reward_memory_experiment(
+        registry_path=registry_path,
+        goal_id="reward-memory-goal",
+        agent_id="pilot",
+    )
+    assert config is not None
+    route, _ = _automatic_recall_context(config)
+    overlay = route["recall_corpora"][1]
+    corpus = overlay["corpus"]
+    scope_ref = overlay["provider_binding"]["scope_ref"]
+    active_record = {
+        "schema_version": "reward_memory_active_record_v0",
+        "corpus_id": corpus["corpus_id"],
+        "candidate_ref": "candidate:reviewer-summary",
+        "target_class": corpus["class_id"],
+        "content_summary": "Reviewer-facing summaries use concise Chinese.",
+        "scope": {
+            **corpus["scope"],
+            "revision_ref": "revision:abc123",
+        },
+        "lifecycle": {"state": "active"},
+    }
+    provider = _RecallProvider(content_by_scope={scope_ref: json.dumps(active_record)})
+
+    result = _run_automatic_recall(config, provider)
+
+    assert result["status"] == "applied"
+    assert result["output"] == {"summary": "memory applied"}
+    assert result["application"]["receipt"]["result_readback_verified"] is True
+    assert result["telemetry"]["attempted_corpus_count"] == 2
+    assert result["telemetry"]["provider_call_count"] == 2
+    assert result["telemetry"]["result_readback_verified"] is True
+    assert provider.retrieve_calls == 2
+
+
+def test_automatic_recall_caps_queries_and_provider_failure_fails_open(
+    tmp_path: Path,
+) -> None:
+    registry_path, _, _ = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
+    _write_v1_config(registry_path, _v1_config())
+    _, config = resolve_reward_memory_experiment(
+        registry_path=registry_path,
+        goal_id="reward-memory-goal",
+        agent_id="pilot",
+    )
+    assert config is not None
+    provider = _RecallProvider()
+    two_queries = [
+        {"query": "one", "query_summary": "one"},
+        {"query": "two", "query_summary": "two"},
+    ]
+
+    rejected = _run_automatic_recall(config, provider, queries=two_queries)
+    unavailable_provider = _RecallProvider(unavailable=True)
+    unavailable = _run_automatic_recall(config, unavailable_provider)
+
+    assert rejected["status"] == "guard_rejected"
+    assert rejected["telemetry"]["provider_call_count"] == 0
+    assert provider.retrieve_calls == 0
+    assert unavailable["status"] == "provider_unavailable"
+    assert unavailable["output"] == {"summary": "base"}
+    assert unavailable["provider_failure_is_user_gate"] is False
+    assert unavailable_provider.retrieve_calls == 1

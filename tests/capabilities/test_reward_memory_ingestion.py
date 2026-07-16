@@ -16,6 +16,9 @@ from loopx.capabilities.context_providers.base import (
 from loopx.capabilities.issue_fix.reward_memory import (
     ingest_issue_fix_reward_memory_event,
 )
+from loopx.capabilities.reward_memory.runtime_hooks import (
+    run_reward_memory_automatic_ingest_hook,
+)
 
 
 OBSERVED_AT = "2026-07-16T00:30:00+00:00"
@@ -215,6 +218,55 @@ def ingest(provider: FakeProvider, *, execute: bool = True) -> dict[str, Any]:
     )
 
 
+def runtime_config(*, automatic_ingest: bool) -> dict[str, Any]:
+    return {
+        "automation": {
+            "automatic_recall": False,
+            "automatic_ingest": automatic_ingest,
+            "fail_open": True,
+        },
+        "corpora": {
+            corpus()["corpus_id"]: {
+                "corpus": corpus(),
+                "standing_policy": policy(),
+                "provider_binding": binding(),
+            }
+        },
+        "surfaces": {
+            SURFACE: {
+                "surface_id": SURFACE,
+                "adapter": "issue_fix_maintainer_feedback",
+                "corpus_ids": [corpus()["corpus_id"]],
+                "ingest_corpus_id": corpus()["corpus_id"],
+                "recall_profile": {
+                    "profile_id": "issue_fix_patch_planning_v1",
+                    "mode": "function_boundary",
+                    "max_queries": 1,
+                    "limit": 5,
+                },
+            }
+        },
+    }
+
+
+def automatic_ingest(
+    provider: FakeProvider,
+    *,
+    automatic: bool = True,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return run_reward_memory_automatic_ingest_hook(
+        runtime_config(automatic_ingest=automatic),
+        surface_id=SURFACE,
+        adapter="issue_fix_maintainer_feedback",
+        event=payload or event(),
+        observed_at=OBSERVED_AT,
+        ingest_event=ingest_issue_fix_reward_memory_event,
+        execute=True,
+        provider=provider,
+    )
+
+
 def test_atomic_ingest_writes_reads_back_and_deduplicates() -> None:
     provider = FakeProvider()
 
@@ -294,3 +346,36 @@ def test_raw_or_unmodelled_comment_fields_are_rejected() -> None:
             provider_binding=binding(),
             observed_at=OBSERVED_AT,
         )
+
+
+def test_automatic_ingest_is_opt_in_and_reuses_atomic_deduplication() -> None:
+    disabled_provider = FakeProvider()
+    disabled = automatic_ingest(disabled_provider, automatic=False)
+    provider = FakeProvider()
+
+    first = automatic_ingest(provider)
+    second = automatic_ingest(provider)
+
+    assert disabled["status"] == "disabled"
+    assert disabled_provider.sync_calls == 0
+    assert first["status"] == "activated"
+    assert first["telemetry"]["exact_readback_verified"] is True
+    assert second["status"] == "activated"
+    assert second["telemetry"]["deduplicated"] is True
+    assert provider.sync_calls == 2
+    assert provider.retrieve_calls == 2
+
+
+def test_automatic_ingest_scope_mismatch_stops_before_provider() -> None:
+    provider = FakeProvider()
+    mismatched = event() | {"repository_ref": "repository:different"}
+
+    result = automatic_ingest(provider, payload=mismatched)
+
+    assert result["status"] == "guard_blocked"
+    assert (
+        "candidate_project_policy_mismatch"
+        in result["receipt"]["guard"]["reason_codes"]
+    )
+    assert result["telemetry"]["provider_sync_count"] == 0
+    assert provider.sync_calls == 0

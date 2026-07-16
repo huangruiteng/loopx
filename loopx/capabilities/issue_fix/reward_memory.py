@@ -12,6 +12,10 @@ from ..reward_memory.ingestion import (
     ingest_reward_memory_candidate,
     normalize_reward_memory_standing_policy,
 )
+from ..reward_memory.experiment import resolve_reward_memory_surface_config
+from ..reward_memory.runtime_hooks import (
+    run_reward_memory_automatic_recall_hook,
+)
 from ..semantic_preference.reward_memory import run_semantic_preference_reward_memory
 
 
@@ -217,6 +221,36 @@ def _reviewer_artifact(value: Mapping[str, Any]) -> dict[str, Any]:
     return artifact
 
 
+def _reviewer_artifact_applier(
+    base: Mapping[str, Any],
+    *,
+    reviewer_summary: str | None,
+    reasoning_summary: str | None,
+) -> RewardMemoryApplier | None:
+    proposed_summary = public_safe_compact_text(reviewer_summary, limit=220)
+    proposed_reasoning = public_safe_compact_text(reasoning_summary, limit=500)
+    if not proposed_summary or not proposed_reasoning:
+        return None
+
+    def apply_memory(current: Any, items: Any) -> Mapping[str, Any]:
+        if not isinstance(current, Mapping):
+            raise ValueError("reviewer artifact base must be an object")
+        verified = _reviewer_artifact(current)
+        output = {**verified, "summary": proposed_summary}
+        return {
+            "outcome": "applied",
+            "output": output,
+            "memory_refs": [item.memory_ref for item in items],
+            "reasoning_summary": proposed_reasoning,
+            "current_artifact_verified": all(
+                output[key] == base[key]
+                for key in ("repo", "pr_ref", "permalink", "source_title")
+            ),
+        }
+
+    return apply_memory
+
+
 def reviewer_artifact_notification_gate(
     application: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
@@ -292,27 +326,11 @@ def run_issue_fix_reviewer_artifact_reward_memory(
     """
 
     base = _reviewer_artifact(base_artifact)
-    proposed_summary = public_safe_compact_text(reviewer_summary, limit=220)
-    proposed_reasoning = public_safe_compact_text(reasoning_summary, limit=500)
-
-    apply_memory: RewardMemoryApplier | None = None
-    if proposed_summary and proposed_reasoning:
-
-        def apply_memory(current: Any, items: Any) -> Mapping[str, Any]:
-            if not isinstance(current, Mapping):
-                raise ValueError("reviewer artifact base must be an object")
-            verified = _reviewer_artifact(current)
-            output = {**verified, "summary": proposed_summary}
-            return {
-                "outcome": "applied",
-                "output": output,
-                "memory_refs": [item.memory_ref for item in items],
-                "reasoning_summary": proposed_reasoning,
-                "current_artifact_verified": all(
-                    output[key] == base[key]
-                    for key in ("repo", "pr_ref", "permalink", "source_title")
-                ),
-            }
+    apply_memory = _reviewer_artifact_applier(
+        base,
+        reviewer_summary=reviewer_summary,
+        reasoning_summary=reasoning_summary,
+    )
 
     shared = run_semantic_preference_reward_memory(
         base,
@@ -326,8 +344,7 @@ def run_issue_fix_reviewer_artifact_reward_memory(
             "queries": [
                 {
                     "query": (
-                        "Which reviewed policy governs this reviewer-facing PR "
-                        "summary?"
+                        "Which reviewed policy governs this reviewer-facing PR summary?"
                     ),
                     "query_summary": "reviewer-facing PR summary policy",
                 }
@@ -359,6 +376,100 @@ def run_issue_fix_reviewer_artifact_reward_memory(
         "adapter_role": "identity_guard_only_model_owns_summary_reasoning",
         "automatic_recall": False,
         "provider_failure_is_user_gate": False,
+    }
+    result["notification_gate"] = reviewer_artifact_notification_gate(result)
+    return result
+
+
+def run_issue_fix_reviewer_artifact_automatic_reward_memory(
+    base_artifact: Mapping[str, Any],
+    *,
+    reviewer_summary: str | None,
+    reasoning_summary: str | None,
+    experiment_config: Mapping[str, Any],
+    revision_ref: str,
+    observed_at: str,
+    freshness_context: Mapping[str, Any],
+    conflict_state: str,
+    application_id: str,
+    artifact_ref: str | None = None,
+    provider: ContextProvider | None = None,
+) -> dict[str, Any]:
+    """Run the opt-in automatic hook at the reviewer-artifact boundary."""
+
+    base = _reviewer_artifact(base_artifact)
+    route = resolve_reward_memory_surface_config(
+        experiment_config,
+        ISSUE_FIX_REVIEWER_ARTIFACT_SURFACE,
+    )
+    scope = route["corpus"]["scope"]
+    workspace_ref = str(scope["workspace_ref"])
+    repository_ref = str(scope["project_ref"])
+    checkpoints = {
+        item["corpus"]["corpus_id"]: {
+            "verified": item["standing_policy"]["enabled"] is True,
+            "corpus_id": item["corpus"]["corpus_id"],
+            "workspace_ref": workspace_ref,
+            "project_ref": repository_ref,
+            "surface_id": ISSUE_FIX_REVIEWER_ARTIFACT_SURFACE,
+            "read_authority": item["corpus"]["read_authority"],
+            "source_ref": item["standing_policy"]["authority_source_ref"],
+        }
+        for item in route["recall_corpora"]
+    }
+    automatic = run_reward_memory_automatic_recall_hook(
+        experiment_config,
+        surface_id=ISSUE_FIX_REVIEWER_ARTIFACT_SURFACE,
+        base_output=base,
+        workspace_ref=workspace_ref,
+        project_ref=repository_ref,
+        revision_ref=revision_ref,
+        queries=[
+            {
+                "query": (
+                    "Which reviewed policy governs this reviewer-facing PR summary?"
+                ),
+                "query_summary": "reviewer-facing PR summary policy",
+            }
+        ],
+        observed_at=observed_at,
+        freshness_context=dict(freshness_context),
+        conflict_state=conflict_state,
+        read_authority_checkpoints=checkpoints,
+        application_id=application_id,
+        artifact_ref=artifact_ref,
+        apply_memory=_reviewer_artifact_applier(
+            base,
+            reviewer_summary=reviewer_summary,
+            reasoning_summary=reasoning_summary,
+        ),
+        provider=provider,
+    )
+    output = automatic.get("output")
+    if not isinstance(output, Mapping):
+        raise AssertionError("automatic reviewer artifact fail-open was violated")
+    attempts = automatic.get("recall_attempts")
+    attempts = attempts if isinstance(attempts, list) else []
+    application = automatic.get("application")
+    application = (
+        dict(application)
+        if isinstance(application, Mapping)
+        else {"status": automatic.get("status")}
+    )
+    result = {
+        "ok": True,
+        "schema_version": ISSUE_FIX_REVIEWER_ARTIFACT_APPLICATION_SCHEMA_VERSION,
+        "surface_id": ISSUE_FIX_REVIEWER_ARTIFACT_SURFACE,
+        "reviewer_artifact": _reviewer_artifact(output),
+        "recall": attempts[-1] if attempts else {"status": automatic["status"]},
+        "recall_attempts": attempts,
+        "application": application,
+        "telemetry": automatic["telemetry"],
+        "shared_core": "loopx.capabilities.reward_memory.runtime_hooks",
+        "adapter_role": "identity_guard_only_model_owns_summary_reasoning",
+        "automatic_recall": automatic["automatic_recall"],
+        "provider_failure_is_user_gate": False,
+        "external_writes_performed": False,
     }
     result["notification_gate"] = reviewer_artifact_notification_gate(result)
     return result

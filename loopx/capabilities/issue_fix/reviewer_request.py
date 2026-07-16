@@ -13,7 +13,9 @@ from .reviewer_notification import (
     NotificationSinkAdapter,
     build_issue_fix_reviewer_notification_sinks_result,
 )
-from .reward_memory import run_issue_fix_reviewer_artifact_reward_memory
+from .reward_memory import (
+    run_issue_fix_reviewer_artifact_automatic_reward_memory,
+)
 from .reviewer_recommendation import build_issue_fix_reviewer_recommendation_packet
 
 
@@ -908,22 +910,9 @@ def build_issue_fix_reviewer_request_packet(
     ):
         config = reviewer_artifact_reward_memory.get("config")
         config = config if isinstance(config, Mapping) else {}
-        corpus = config.get("corpus")
-        corpus = corpus if isinstance(corpus, Mapping) else {}
-        standing_policy = config.get("standing_policy")
-        standing_policy = (
-            standing_policy if isinstance(standing_policy, Mapping) else {}
-        )
-        binding = config.get("provider_binding")
-        binding = binding if isinstance(binding, Mapping) else {}
-        scope = corpus.get("scope")
-        scope = scope if isinstance(scope, Mapping) else {}
-        workspace_ref = str(scope.get("workspace_ref") or "")
-        repository_ref = str(scope.get("project_ref") or "")
-        surface_id = "reviewer_artifact.summary"
         try:
             reviewer_artifact_application = (
-                run_issue_fix_reviewer_artifact_reward_memory(
+                run_issue_fix_reviewer_artifact_automatic_reward_memory(
                     {
                         "repo": repo,
                         "pr_ref": f"#{number}",
@@ -937,9 +926,7 @@ def build_issue_fix_reviewer_request_packet(
                     reasoning_summary=str(
                         reviewer_artifact_reward_memory.get("reasoning_summary") or ""
                     ),
-                    corpus=corpus,
-                    workspace_ref=workspace_ref,
-                    repository_ref=repository_ref,
+                    experiment_config=config,
                     revision_ref=f"pr:{number}:{identities['state'].lower()}",
                     observed_at=str(
                         reviewer_artifact_reward_memory.get("observed_at")
@@ -952,16 +939,6 @@ def build_issue_fix_reviewer_request_packet(
                         ),
                     },
                     conflict_state="clear",
-                    read_authority_checkpoint={
-                        "verified": standing_policy.get("enabled") is True,
-                        "corpus_id": corpus.get("corpus_id"),
-                        "workspace_ref": workspace_ref,
-                        "project_ref": repository_ref,
-                        "surface_id": surface_id,
-                        "read_authority": corpus.get("read_authority"),
-                        "source_ref": standing_policy.get("authority_source_ref"),
-                    },
-                    provider_binding=binding,
                     application_id=f"issue-fix:reviewer-artifact:{repo}:{number}",
                     artifact_ref=f"github:{repo}#pr-{number}",
                     provider=reviewer_artifact_reward_memory.get("provider"),

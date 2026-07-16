@@ -15,8 +15,9 @@ pilot/meta delegation boundary. Stage 1 adds the corpus registry and health
 read model. Stage 2 adds the stateless candidate/review seam. Stage 3 adds
 explicit recall/application. The minimal ingest loop only composes those seams
 into one corpus-owner-authorized provider write and exact readback. It adds no
-second memory store, candidate scheduler, automatic recall, semantic router,
-evaluation harness, or rollout.
+second memory store, candidate scheduler, semantic router, evaluation harness,
+or rollout. The opt-in runtime hooks reuse these seams at module-owned
+boundaries; they do not create a background learner.
 
 The machine-readable contract is available through:
 
@@ -99,6 +100,23 @@ explicitly before rollout. Setting a flag only authorizes a compatible runtime
 hook; it does not create a scheduler, infer a query, widen authority, or bypass
 the exact surface/corpus guards.
 
+`automatic_recall=true` lets a predeclared module boundary call the shared
+runtime hook. The module still supplies its surface query, current-artifact
+checks, and reasoning callback. The hook follows the configured corpus order,
+stops at the first exact readback hit, allows exactly one query at a
+`function_boundary` or at most three at a bounded-agentic boundary, and emits
+provider-call telemetry plus an application receipt. A provider or application
+failure preserves the module's base output and is never a user gate.
+
+`automatic_ingest=true` lets a module pass one already-distilled compact event
+to the configured adapter and ingest corpus. The adapter and standing policy
+remain responsible for exact actor/project/surface/action scope. The shared
+hook reuses deterministic candidate identity, activation, provider sync, exact
+readback, and an ingest receipt. It does not collect chats, parse tool logs,
+store raw content, or infer new authority. Repeated events remain idempotent.
+Both flags default to false, and the explicit `ingest-event` command remains an
+explicit operator/caller path rather than a compatibility fallback.
+
 An allowlisted agent supplies only the compact event at runtime:
 
 ```bash
@@ -109,10 +127,13 @@ loopx reward-memory ingest-event \
 
 Real provider writes require this configured goal-and-agent route. The legacy
 full-packet form remains available only as a no-write evaluation fixture.
-Config loading does not enable automatic feedback capture, ingest, recall, or
-provider authentication. Issue Fix continues normally when the experiment is
-disabled, unavailable, rejected by guards, or fails exact readback. Invalid or
-non-v1 configuration resolves unavailable with both automatic flags false.
+Config loading alone does not capture feedback or authenticate a provider.
+Automatic hooks run only when both the flag and a real module-owned callsite
+are present. Issue Fix `reviewer_artifact.summary` is the first recall callsite;
+other surfaces remain explicit until separately wired and verified. Issue Fix
+continues normally when the experiment is disabled, unavailable, rejected by
+guards, or fails exact readback. Invalid or non-v1 configuration resolves
+unavailable with both automatic flags false.
 
 ## Five first-class classes
 

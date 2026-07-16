@@ -19,6 +19,7 @@ from loopx.capabilities.context_providers.base import (  # noqa: E402
 )
 from loopx.capabilities.issue_fix.reward_memory import (  # noqa: E402
     run_issue_fix_patch_planning_reward_memory,
+    run_issue_fix_reviewer_artifact_automatic_reward_memory,
     run_issue_fix_reviewer_artifact_reward_memory,
 )
 from loopx.capabilities.reward_memory import (  # noqa: E402
@@ -237,9 +238,7 @@ def main() -> None:
             "conflict_state": "clear",
             "raw_content_captured": False,
         },
-        read_authority_checkpoint=checkpoint(
-            "openviking_patch_policy", issue_surface
-        ),
+        read_authority_checkpoint=checkpoint("openviking_patch_policy", issue_surface),
     )
     for invalid_actor in (None, "project-other"):
         invalid_binding = binding("openviking_patch_policy") | {
@@ -362,9 +361,7 @@ def main() -> None:
             "summary": "",
         },
         reviewer_summary="修复当前产物身份校验，并补充精确回读测试",
-        reasoning_summary=(
-            "当前 PR 产物身份已核验，中文摘要准确覆盖改动与验证范围。"
-        ),
+        reasoning_summary=("当前 PR 产物身份已核验，中文摘要准确覆盖改动与验证范围。"),
         corpus=reviewer_corpus,
         workspace_ref=WORKSPACE,
         repository_ref=PROJECT,
@@ -388,6 +385,64 @@ def main() -> None:
     assert reviewer_result["reviewer_artifact"]["pr_ref"] == "#42"
     assert reviewer_result["reviewer_artifact"]["summary"].startswith("修复")
     assert reviewer_result["adapter_role"].startswith("identity_guard_only")
+
+    automatic_provider = FakeProvider(reviewer_provider.items)
+    automatic_result = run_issue_fix_reviewer_artifact_automatic_reward_memory(
+        {
+            "repo": "example/project",
+            "pr_ref": "#42",
+            "permalink": "https://github.com/example/project/pull/42",
+            "source_title": "fix: preserve current artifact identity",
+            "summary": "",
+        },
+        reviewer_summary="修复当前产物身份校验，并补充精确回读测试",
+        reasoning_summary=("当前 PR 产物身份已核验，中文摘要准确覆盖改动与验证范围。"),
+        experiment_config={
+            "automation": {
+                "automatic_recall": True,
+                "automatic_ingest": False,
+                "fail_open": True,
+            },
+            "corpora": {
+                "reviewer_summary_policy": {
+                    "corpus": reviewer_corpus,
+                    "standing_policy": {
+                        "enabled": True,
+                        "authority_source_ref": "policy:example:reviewer-artifact",
+                    },
+                    "provider_binding": binding("reviewer_summary_policy"),
+                }
+            },
+            "surfaces": {
+                reviewer_surface: {
+                    "surface_id": reviewer_surface,
+                    "adapter": "scoped_feedback",
+                    "corpus_ids": ["reviewer_summary_policy"],
+                    "ingest_corpus_id": "reviewer_summary_policy",
+                    "recall_profile": {
+                        "profile_id": "reviewer_summary_v1",
+                        "mode": "function_boundary",
+                        "max_queries": 1,
+                        "limit": 3,
+                    },
+                }
+            },
+        },
+        revision_ref=REVISION,
+        observed_at=OBSERVED_AT,
+        freshness_context={
+            "source_truth_current": True,
+            "source_revision": REVISION,
+        },
+        conflict_state="clear",
+        application_id="issue-fix:reviewer-artifact:example:42:auto",
+        artifact_ref="github:example/project#pr-42",
+        provider=automatic_provider,
+    )
+    assert automatic_result["automatic_recall"] is True
+    assert automatic_result["notification_gate"]["passed"] is True
+    assert automatic_result["telemetry"]["provider_call_count"] == 1
+    assert automatic_result["application"]["status"] == "applied"
 
     missing_summary = run_issue_fix_reviewer_artifact_reward_memory(
         {
@@ -417,9 +472,10 @@ def main() -> None:
         provider=reviewer_provider,
     )
     assert missing_summary["notification_gate"]["passed"] is False
-    assert "concise_chinese_summary_missing" in missing_summary[
-        "notification_gate"
-    ]["reason_codes"]
+    assert (
+        "concise_chinese_summary_missing"
+        in missing_summary["notification_gate"]["reason_codes"]
+    )
 
     review_surface = "pr_review.reply"
     preference_corpus = corpus(
