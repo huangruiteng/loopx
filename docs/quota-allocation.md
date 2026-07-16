@@ -668,9 +668,10 @@ user todos and the expected reply (`done`, `defer/not now`, or new evidence
 link/date/conclusion), while skipping delivery work and quota spend for that
 blocker-push turn. If quota also sets
 `open_todo_notification_policy=repeat_until_resolved`, repeat that notification
-until the todo is done, deferred, or replaced. If a failed host cadence update
-leaves a tighter poll, `user_gate_notification_cooldown_v0` keeps the gate open
-but suppresses duplicate notices outside a bounded reminder window. Otherwise,
+until the todo is done, deferred, or replaced. Whether the host cadence is
+healthy or a failed update leaves a tighter poll,
+`user_gate_notification_cooldown_v0` keeps the gate open but suppresses
+duplicate notices outside a bounded reminder window. Otherwise,
 blocker-push cases may still be de-duplicated when the same blocker was already
 surfaced recently. Eligible monitor-only polls with no material transition keep
 the open user todo visible in `user_todo_summary`, but do not force a repeated
@@ -827,11 +828,13 @@ pair without quota spend. Later heartbeats expose `apply_needed=false` and
 `state_status=host_update_failure_suppressed` for that exact pair; a changed
 target or host observation reopens one host attempt. LoopX never treats an
 intended cadence as an applied cadence.
-For a human gate whose observed host interval is tighter than the failed target,
-the same packet also projects `user_gate_notification_cooldown_v0`. The first
-notice is preserved; short host polls are quiet, one host-sized window opens at
-each target cadence, and a changed gate identity or host RRULE bypasses the old
-cooldown. This changes notification delivery only, not the underlying user todo.
+For a pending user gate, the same packet also projects
+`user_gate_notification_cooldown_v0`. The first notice persists a content-free
+gate signature, notification timestamp, and observed host RRULE through the
+scheduler ACK. Unchanged short polls are quiet for at least 30 minutes; the next
+bounded reminder window, a material gate change, or a host RRULE change reopens
+delivery. The failed-host path retains its target-cadence window. This changes
+notification delivery only, not the underlying user todo or safe-bypass work.
 `scheduler-ack` is not a second `should-run`: it confirms the host update or
 matching readback and does not emit a successor RRULE in the same turn. User
 feedback, newly runnable work, reassignment, or material evidence therefore

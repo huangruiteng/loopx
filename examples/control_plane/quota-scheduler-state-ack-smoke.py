@@ -174,6 +174,35 @@ def active_payload() -> dict:
     }
 
 
+def active_user_gate_payload() -> dict:
+    base = active_payload()
+    base["recommended_action"] = "Continue safe work while awaiting one user decision."
+    base["requires_user_action"] = True
+    base["user_todo_summary"] = {
+        "first_open_items": [
+            {
+                "todo_id": "todo_user_gate_cooldown",
+                "status": "open",
+                "task_class": "operator_gate",
+                "action_kind": "approve_cleanup",
+                "updated_at": "2026-01-01T11:55:00+00:00",
+                "text": "Approve deletion of seven orphan rows.",
+            }
+        ]
+    }
+    base["interaction_contract"] = {
+        "schema_version": "loopx_interaction_contract_v0",
+        "mode": "bounded_delivery_with_user_notice",
+        "user_channel": {"action_required": True, "notify": "NOTIFY"},
+        "agent_channel": {
+            "must_attempt": True,
+            "delivery_allowed": True,
+            "quiet_noop_allowed": False,
+        },
+    }
+    return base
+
+
 def state_from(hint: dict) -> dict:
     stateful = hint["codex_app"]["stateful_backoff"]
     return {
@@ -204,12 +233,14 @@ def build_hint_at(
     now: datetime,
     scheduler_state: dict | None = None,
     codex_app_current_rrule: str | None = None,
+    user_action_required: bool = False,
 ) -> dict:
     original_now_utc = scheduler_hint_module.now_utc
     try:
         scheduler_hint_module.now_utc = lambda: now
         return build_scheduler_hint(
             deepcopy(payload),
+            user_action_required=user_action_required,
             agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
             codex_app_scheduler_state=scheduler_state,
             codex_app_current_rrule=codex_app_current_rrule,
@@ -378,6 +409,99 @@ def assert_active_work_keeps_initial_cadence() -> None:
     assert steady["codex_app"]["stateful_backoff"]["progression_index"] == 0, steady
     assert steady["codex_app"]["stateful_backoff"]["apply_needed"] is False, steady
     assert "recommended_rrule" not in steady["codex_app"], steady
+
+
+def assert_healthy_host_user_gate_notification_cooldown() -> None:
+    base = active_user_gate_payload()
+    host_rrule = "FREQ=MINUTELY;INTERVAL=3"
+    first = build_hint_at(
+        base,
+        now=FROZEN_NOW,
+        codex_app_current_rrule=host_rrule,
+        user_action_required=True,
+    )
+    first_cooldown = first["user_gate_notification_cooldown"]
+    first_backoff = first["codex_app"]["stateful_backoff"]
+    assert first_cooldown["first_notice"] is True, first
+    assert first_cooldown["notification_due"] is True, first
+    assert first_backoff["ack_needed"] is True, first
+    assert first["codex_app"]["ack_hint"]["after"] == (
+        "matching_host_rrule_observed"
+    ), first
+
+    first_decision = deepcopy(base)
+    first_decision["scheduler_hint"] = first
+    first_ack = build_codex_app_scheduler_ack_event(
+        first_decision,
+        agent_id="codex-side-agent",
+        applied_rrule=host_rrule,
+        reset_token=first_backoff["reset_token"],
+        identity_signature=first_backoff["identity_signature"],
+        generated_at=FROZEN_NOW.isoformat(),
+    )
+    first_state = first_ack["scheduler_ack_event"]["scheduler_state"]
+    notice = first_state["user_gate_notification"]
+    assert notice["gate_signature"] == first_cooldown["gate_signature"], first_ack
+    assert notice["notified_at"] == FROZEN_NOW.isoformat(), first_ack
+
+    second = build_hint_at(
+        base,
+        now=FROZEN_NOW + timedelta(minutes=3),
+        scheduler_state=first_state,
+        codex_app_current_rrule=host_rrule,
+        user_action_required=True,
+    )
+    assert second["user_gate_notification_cooldown"][
+        "notification_suppressed"
+    ] is True, second
+    assert second["codex_app"]["stateful_backoff"]["ack_needed"] is False, second
+
+    reminder_at = FROZEN_NOW + timedelta(minutes=31)
+    reminder = build_hint_at(
+        base,
+        now=reminder_at,
+        scheduler_state=first_state,
+        codex_app_current_rrule=host_rrule,
+        user_action_required=True,
+    )
+    reminder_backoff = reminder["codex_app"]["stateful_backoff"]
+    assert reminder["user_gate_notification_cooldown"]["notification_due"] is True, (
+        reminder
+    )
+    assert reminder_backoff["ack_needed"] is True, reminder
+
+    reminder_decision = deepcopy(base)
+    reminder_decision["scheduler_hint"] = reminder
+    reminder_ack = build_codex_app_scheduler_ack_event(
+        reminder_decision,
+        agent_id="codex-side-agent",
+        applied_rrule=host_rrule,
+        reset_token=reminder_backoff["reset_token"],
+        identity_signature=reminder_backoff["identity_signature"],
+        generated_at=reminder_at.isoformat(),
+    )
+    reminder_state = reminder_ack["scheduler_ack_event"]["scheduler_state"]
+    assert reminder_state["user_gate_notification"]["notified_at"] == (
+        reminder_at.isoformat()
+    ), reminder_ack
+
+    changed = active_user_gate_payload()
+    changed["user_todo_summary"]["first_open_items"][0]["updated_at"] = (
+        "2026-01-01T12:34:00+00:00"
+    )
+    changed_hint = build_hint_at(
+        changed,
+        now=FROZEN_NOW + timedelta(minutes=34),
+        scheduler_state=reminder_state,
+        codex_app_current_rrule=host_rrule,
+        user_action_required=True,
+    )
+    assert changed_hint["user_gate_notification_cooldown"]["first_notice"] is True, (
+        changed_hint
+    )
+    assert changed_hint["user_gate_notification_cooldown"][
+        "notification_due"
+    ] is True, changed_hint
 
 
 def assert_scheduler_ack_plan_validation() -> None:
@@ -1462,6 +1586,7 @@ def main() -> int:
     assert_monitor_wait_progression_caps_at_60()
     assert_monitor_wait_ignores_goal_recommended_action_identity_noise()
     assert_active_work_keeps_initial_cadence()
+    assert_healthy_host_user_gate_notification_cooldown()
     assert_scheduler_ack_plan_validation()
     assert_normal_run_ack_preserves_runtime_capabilities()
     assert_monitor_wait_fixed_due_bucket_does_not_churn()

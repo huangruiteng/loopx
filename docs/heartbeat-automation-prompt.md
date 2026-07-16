@@ -314,7 +314,9 @@ If the result says should_run=false:
   heartbeat NOTIFY until the user todo is done, deferred, or replaced. When
   user_gate_notification_cooldown.notification_suppressed=true, preserve the
   pending gate but return quiet DONT_NOTIFY until its bounded reminder window
-  or a material gate/host change. Otherwise, if the same blocker ask has not already been surfaced in
+  or a material gate/host change. This applies even when the host cadence is
+  healthy and the agent continues independent safe-bypass work. Otherwise, if
+  the same blocker ask has not already been surfaced in
   the recent visible thread, return heartbeat NOTIFY with one concise Chinese
   ask listing at most three first_open_items, the open_todo_notify_reason, and
   the expected reply format: done, defer/not now, or a new evidence

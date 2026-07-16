@@ -1232,7 +1232,9 @@ replaced. A `user_gate_notification_cooldown_v0` packet with
 `notification_suppressed=true` is the narrow exception: the gate and open-count
 remain visible, while `interaction_contract.user_channel` becomes
 `action_required=false`, `notify=DONT_NOTIFY` until the bounded reminder window
-or a material gate/host change. Other blocker-push
+or a material gate/host change. The cooldown applies to healthy and failed host
+cadences; a content-free scheduler receipt prevents unrelated safe-bypass work
+from resetting the same gate notice. Other blocker-push
 cases may still be de-duplicated when the same blocker was surfaced recently.
 Eligible monitor-only no-transition polls keep open user todos in
 `user_todo_summary`, but do not force repeated notification or set

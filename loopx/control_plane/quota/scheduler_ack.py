@@ -422,6 +422,11 @@ def record_quota_scheduler_failure_for_decision(
         updated_at=safe_generated_at,
         source=QUOTA_SCHEDULER_FAILURE_CLASSIFICATION,
         host_update_failure=host_update_failure,
+        user_gate_notification=(
+            stateful_backoff.get("user_gate_notification")
+            if isinstance(stateful_backoff.get("user_gate_notification"), dict)
+            else None
+        ),
     )
     state_path = scheduler_state_path(
         runtime_root,

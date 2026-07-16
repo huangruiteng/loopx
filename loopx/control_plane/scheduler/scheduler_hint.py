@@ -17,6 +17,7 @@ from .arbitration import (
 from .state import (
     CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
     CODEX_APP_SURFACE,
+    SCHEDULER_USER_GATE_NOTIFICATION_SCHEMA_VERSION,
     build_scheduler_state,
     rrule_for_minutes,
 )
@@ -30,6 +31,7 @@ CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION = "codex_app_stateful_backoff_v0"
 CODEX_APP_SCHEDULER_ACK_HINT_SCHEMA_VERSION = "codex_app_scheduler_ack_hint_v0"
 CODEX_APP_SCHEDULER_FAILURE_HINT_SCHEMA_VERSION = "codex_app_scheduler_failure_hint_v0"
 USER_GATE_NOTIFICATION_COOLDOWN_SCHEMA_VERSION = "user_gate_notification_cooldown_v0"
+USER_GATE_NOTIFICATION_DEFAULT_COOLDOWN_MINUTES = 30
 MONITOR_CADENCE_PATTERN = re.compile(r"^\s*(\d+)\s*([mhd])\s*$", re.IGNORECASE)
 MONITOR_WAIT_PROGRESSION_MINUTES = [15, 30, 60]
 CODEX_APP_MAX_INTERVAL_MINUTES = 60
@@ -68,49 +70,213 @@ def _scheduler_rrule_interval_minutes(value: Any) -> int | None:
     return interval if interval > 0 else None
 
 
+def _user_gate_signature(payload: dict[str, Any], *, required: bool) -> str | None:
+    if not required:
+        return None
+    summary = payload.get("user_todo_summary")
+    if not isinstance(summary, dict):
+        summary = {}
+    raw_items = summary.get("gate_open_items")
+    if not isinstance(raw_items, list) or not raw_items:
+        raw_items = summary.get("first_open_items")
+    compact_items: list[dict[str, Any]] = []
+    if isinstance(raw_items, list):
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            compact = {
+                key: item.get(key)
+                for key in (
+                    "todo_id",
+                    "status",
+                    "task_class",
+                    "action_kind",
+                    "updated_at",
+                    "decision_scope",
+                    "text",
+                )
+                if item.get(key) is not None
+            }
+            if compact:
+                compact_items.append(compact)
+    source: Any = compact_items or {
+        "gate_prompt": payload.get("gate_prompt"),
+        "operator_question": payload.get("operator_question"),
+        "requires_user_action": payload.get("requires_user_action"),
+    }
+    if (isinstance(source, dict) and not any(source.values())) or not source:
+        return None
+    return hashlib.sha256(
+        json.dumps(source, ensure_ascii=True, sort_keys=True, default=str).encode(
+            "utf-8"
+        )
+    ).hexdigest()[:16]
+
+
+def _bounded_notification_window(
+    *,
+    anchor: datetime,
+    current_time: datetime,
+    cooldown_minutes: int,
+    reminder_window_minutes: int,
+) -> tuple[bool, datetime]:
+    elapsed_seconds = max(0.0, (current_time - anchor).total_seconds())
+    cooldown_seconds = max(1, cooldown_minutes) * 60
+    window_seconds = max(1, reminder_window_minutes) * 60
+    cycle_index = int(elapsed_seconds // cooldown_seconds)
+    cycle_position = elapsed_seconds - cycle_index * cooldown_seconds
+    notification_due = cycle_index >= 1 and cycle_position < window_seconds
+    next_reminder_at = anchor + timedelta(
+        seconds=(cycle_index + 1) * cooldown_seconds
+    )
+    return notification_due, next_reminder_at
+
+
 def _user_gate_notification_cooldown(
     *,
+    user_action_required: bool,
+    gate_signature: str | None,
     cadence_class: str,
     host_failure_suppressed: bool,
     current_interval_minutes: int,
     effective_host_rrule: str,
     recorded_host_failure: dict[str, Any] | None,
+    recorded_gate_notification: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    """Bound repeat gate notices when a failed host update leaves a tight poll."""
+    """Bound repeated gate notices independently from the agent work cadence."""
 
-    if cadence_class != "human_gate" or not host_failure_suppressed:
+    if not user_action_required or not gate_signature:
         return None
-    failed_at = parse_scheduler_timestamp((recorded_host_failure or {}).get("failed_at"))
     host_interval = _scheduler_rrule_interval_minutes(effective_host_rrule)
-    target_interval = max(1, int(current_interval_minutes))
-    if failed_at is None or host_interval is None or host_interval >= target_interval:
-        return None
+    if cadence_class == "human_gate" and host_failure_suppressed:
+        failed_at = parse_scheduler_timestamp(
+            (recorded_host_failure or {}).get("failed_at")
+        )
+        target_interval = max(1, int(current_interval_minutes))
+        if (
+            failed_at is None
+            or host_interval is None
+            or host_interval >= target_interval
+        ):
+            return None
+        current_time = now_utc()
+        notification_due, next_reminder_at = _bounded_notification_window(
+            anchor=failed_at,
+            current_time=current_time,
+            cooldown_minutes=target_interval,
+            reminder_window_minutes=host_interval,
+        )
+        return {
+            "schema_version": USER_GATE_NOTIFICATION_COOLDOWN_SCHEMA_VERSION,
+            "active": True,
+            "notification_due": notification_due,
+            "notification_suppressed": not notification_due,
+            "policy": "failed_host_update_bounded_reminder_window",
+            "gate_signature": gate_signature,
+            "cooldown_minutes": target_interval,
+            "reminder_window_minutes": host_interval,
+            "failed_at": utc_isoformat(failed_at),
+            "next_reminder_at": utc_isoformat(next_reminder_at),
+            "reason": (
+                "the user gate is still pending, but the failed host cadence update "
+                "left a tighter poll; suppress duplicate notices outside the bounded "
+                "human-gate reminder window"
+            ),
+        }
+
+    recorded_signature = str(
+        (recorded_gate_notification or {}).get("gate_signature") or ""
+    ).strip()
+    notified_at = parse_scheduler_timestamp(
+        (recorded_gate_notification or {}).get("notified_at")
+    )
+    recorded_host_rrule = normalize_scheduler_rrule(
+        (recorded_gate_notification or {}).get("host_rrule")
+    )
+    effective_rrule = normalize_scheduler_rrule(effective_host_rrule)
+    reminder_window = host_interval or max(1, int(current_interval_minutes))
+    cooldown_minutes = max(
+        USER_GATE_NOTIFICATION_DEFAULT_COOLDOWN_MINUTES,
+        int(current_interval_minutes),
+        reminder_window,
+    )
     current_time = now_utc()
-    elapsed_seconds = max(0.0, (current_time - failed_at).total_seconds())
-    cooldown_seconds = target_interval * 60
-    window_seconds = host_interval * 60
-    cycle_index = int(elapsed_seconds // cooldown_seconds)
-    cycle_position = elapsed_seconds - cycle_index * cooldown_seconds
-    notification_due = cycle_index >= 1 and cycle_position < window_seconds
-    next_reminder_at = failed_at + timedelta(
-        seconds=(cycle_index + 1) * cooldown_seconds
+    if (
+        recorded_signature != gate_signature
+        or notified_at is None
+        or not recorded_host_rrule
+        or recorded_host_rrule != effective_rrule
+    ):
+        return {
+            "schema_version": USER_GATE_NOTIFICATION_COOLDOWN_SCHEMA_VERSION,
+            "active": True,
+            "notification_due": True,
+            "notification_suppressed": False,
+            "first_notice": True,
+            "policy": "unchanged_gate_bounded_reminder_window",
+            "gate_signature": gate_signature,
+            "cooldown_minutes": cooldown_minutes,
+            "reminder_window_minutes": reminder_window,
+            "next_reminder_at": utc_isoformat(
+                current_time + timedelta(minutes=cooldown_minutes)
+            ),
+            "reason": (
+                "the user gate is new or materially changed; surface one concrete "
+                "notice before applying the unchanged-gate reminder cooldown"
+            ),
+        }
+    notification_due, next_reminder_at = _bounded_notification_window(
+        anchor=notified_at,
+        current_time=current_time,
+        cooldown_minutes=cooldown_minutes,
+        reminder_window_minutes=reminder_window,
     )
     return {
         "schema_version": USER_GATE_NOTIFICATION_COOLDOWN_SCHEMA_VERSION,
         "active": True,
         "notification_due": notification_due,
         "notification_suppressed": not notification_due,
-        "policy": "failed_host_update_bounded_reminder_window",
-        "cooldown_minutes": target_interval,
-        "reminder_window_minutes": host_interval,
-        "failed_at": utc_isoformat(failed_at),
+        "policy": "unchanged_gate_bounded_reminder_window",
+        "gate_signature": gate_signature,
+        "cooldown_minutes": cooldown_minutes,
+        "reminder_window_minutes": reminder_window,
+        "notified_at": utc_isoformat(notified_at),
         "next_reminder_at": utc_isoformat(next_reminder_at),
         "reason": (
-            "the user gate is still pending, but the failed host cadence update "
-            "left a tighter poll; suppress duplicate notices outside the bounded "
-            "human-gate reminder window"
+            "the same user gate was already surfaced recently; keep the concrete "
+            "todo projected while suppressing duplicate notices until the bounded "
+            "reminder window or a material gate/host change"
         ),
     }
+
+
+def _scheduler_user_gate_notification_state(
+    *,
+    scheduler_hint: dict[str, Any],
+    stateful_backoff: dict[str, Any],
+    generated_at: str,
+    acknowledged_rrule: str,
+) -> dict[str, Any] | None:
+    cooldown = scheduler_hint.get("user_gate_notification_cooldown")
+    prior = stateful_backoff.get("user_gate_notification")
+    if not isinstance(cooldown, dict):
+        return prior if isinstance(prior, dict) else None
+    gate_signature = str(cooldown.get("gate_signature") or "").strip()
+    if not gate_signature:
+        return prior if isinstance(prior, dict) else None
+    if cooldown.get("notification_due") is True:
+        return {
+            "schema_version": SCHEDULER_USER_GATE_NOTIFICATION_SCHEMA_VERSION,
+            "gate_signature": gate_signature,
+            "notified_at": generated_at,
+            "host_rrule": acknowledged_rrule,
+        }
+    if (
+        isinstance(prior, dict)
+        and str(prior.get("gate_signature") or "").strip() == gate_signature
+    ):
+        return dict(prior)
+    return None
 
 
 def _accepts_stale_monitor_ack_rrule(
@@ -715,6 +881,12 @@ def build_codex_app_scheduler_ack_event(
         updated_at=safe_generated_at,
         source=classification,
         host_update_failure=preserved_failure,
+        user_gate_notification=_scheduler_user_gate_notification_state(
+            scheduler_hint=scheduler_hint,
+            stateful_backoff=stateful_backoff,
+            generated_at=safe_generated_at,
+            acknowledged_rrule=acknowledged_rrule,
+        ),
     )
     reason = str(reason_summary or "").strip() or (
         f"acknowledged Codex App scheduler RRULE {acknowledged_rrule}; no quota spend"
@@ -1020,6 +1192,11 @@ def build_scheduler_hint(
             if isinstance(scheduler_state.get("host_update_failure"), dict)
             else None
         )
+        recorded_gate_notification = (
+            scheduler_state.get("user_gate_notification")
+            if isinstance(scheduler_state.get("user_gate_notification"), dict)
+            else None
+        )
         same_identity = False
         if scheduler_state:
             same_identity = (
@@ -1061,14 +1238,9 @@ def build_scheduler_hint(
                 last_applied_rrule=effective_host_rrule,
                 current_rrule=current_rrule,
             )
-        host_match_ack_needed = (
-            bool(observed_host_rrule)
-            and current_rrule_already_applied
-            and (state_status != "same_identity" or recorded_host_failure is not None)
-        )
         base_apply_needed = (
             not current_rrule_already_applied
-            or (state_status != "same_identity" and not host_match_ack_needed)
+            or (state_status != "same_identity" and not observed_host_rrule)
         )
         failed_target_rrule = normalize_scheduler_rrule(
             (recorded_host_failure or {}).get("target_rrule")
@@ -1080,6 +1252,36 @@ def build_scheduler_hint(
             base_apply_needed
             and failed_target_rrule == current_rrule
             and failed_observed_host_rrule == effective_host_rrule
+        )
+        notification_cooldown = _user_gate_notification_cooldown(
+            user_action_required=user_action_required,
+            gate_signature=_user_gate_signature(
+                payload,
+                required=user_action_required,
+            ),
+            cadence_class=cadence_class,
+            host_failure_suppressed=host_failure_suppressed,
+            current_interval_minutes=current_interval,
+            effective_host_rrule=effective_host_rrule,
+            recorded_host_failure=recorded_host_failure,
+            recorded_gate_notification=recorded_gate_notification,
+        )
+        notification_ack_needed = bool(
+            isinstance(notification_cooldown, dict)
+            and notification_cooldown.get("policy")
+            == "unchanged_gate_bounded_reminder_window"
+            and notification_cooldown.get("notification_due") is True
+            and observed_host_rrule
+            and current_rrule_already_applied
+        )
+        host_match_ack_needed = bool(
+            observed_host_rrule
+            and current_rrule_already_applied
+            and (
+                state_status != "same_identity"
+                or recorded_host_failure is not None
+                or notification_ack_needed
+            )
         )
         apply_needed = base_apply_needed and not host_failure_suppressed
         ack_needed = apply_needed or host_match_ack_needed
@@ -1093,7 +1295,8 @@ def build_scheduler_hint(
             "host_update_failure": "record_failed_target_and_observed_host_pair_then_suppress_exact_repeat_until_target_or_host_changes",
             "ack_required_after_apply": apply_needed,
             "ack_required_from_host_match": host_match_ack_needed,
-            "persist": "reset_token|identity_signature|progression_index|last_applied_rrule|host_update_failure",
+            "ack_required_from_gate_notification": notification_ack_needed,
+            "persist": "reset_token|identity_signature|progression_index|last_applied_rrule|host_update_failure|user_gate_notification",
             "same_identity_action": (
                 "advance_index_after_scheduler_ack"
                 if advance_same_identity
@@ -1162,6 +1365,10 @@ def build_scheduler_hint(
         if recorded_host_failure:
             codex_app["stateful_backoff"]["host_update_failure"] = dict(
                 recorded_host_failure
+            )
+        if recorded_gate_notification:
+            codex_app["stateful_backoff"]["user_gate_notification"] = dict(
+                recorded_gate_notification
             )
         if observed_host_rrule:
             codex_app["stateful_backoff"]["host_observation"] = {
@@ -1247,13 +1454,6 @@ def build_scheduler_hint(
                 ],
             },
         }
-        notification_cooldown = _user_gate_notification_cooldown(
-            cadence_class=cadence_class,
-            host_failure_suppressed=host_failure_suppressed,
-            current_interval_minutes=current_interval,
-            effective_host_rrule=effective_host_rrule,
-            recorded_host_failure=recorded_host_failure,
-        )
         if notification_cooldown:
             scheduler_hint["user_gate_notification_cooldown"] = notification_cooldown
         if include_detail:

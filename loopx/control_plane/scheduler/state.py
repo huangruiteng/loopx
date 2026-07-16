@@ -9,6 +9,9 @@ from typing import Any
 
 SCHEDULER_STATE_SCHEMA_VERSION = "loopx_scheduler_state_v0"
 SCHEDULER_HOST_UPDATE_FAILURE_SCHEMA_VERSION = "scheduler_host_update_failure_v0"
+SCHEDULER_USER_GATE_NOTIFICATION_SCHEMA_VERSION = (
+    "scheduler_user_gate_notification_v0"
+)
 CODEX_APP_STATEFUL_BACKOFF_STATE_KEY = "scheduler_hint.codex_app.stateful_backoff"
 CODEX_APP_SURFACE = "codex_app"
 
@@ -64,6 +67,29 @@ def normalize_scheduler_host_update_failure(value: Any) -> dict[str, Any] | None
     }
 
 
+def normalize_scheduler_user_gate_notification(
+    value: Any,
+) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    if (
+        str(value.get("schema_version") or "")
+        != SCHEDULER_USER_GATE_NOTIFICATION_SCHEMA_VERSION
+    ):
+        return None
+    gate_signature = str(value.get("gate_signature") or "").strip()
+    notified_at = str(value.get("notified_at") or "").strip()
+    host_rrule = " ".join(str(value.get("host_rrule") or "").strip().split())
+    if not gate_signature or not notified_at or not host_rrule:
+        return None
+    return {
+        "schema_version": SCHEDULER_USER_GATE_NOTIFICATION_SCHEMA_VERSION,
+        "gate_signature": gate_signature,
+        "notified_at": notified_at,
+        "host_rrule": host_rrule,
+    }
+
+
 def normalize_scheduler_state(
     state: dict[str, Any],
     *,
@@ -90,6 +116,9 @@ def normalize_scheduler_state(
     host_update_failure = normalize_scheduler_host_update_failure(
         state.get("host_update_failure")
     )
+    user_gate_notification = normalize_scheduler_user_gate_notification(
+        state.get("user_gate_notification")
+    )
     if not reset_token or not identity_signature:
         return None
     if not last_applied_rrule and host_update_failure is None:
@@ -114,6 +143,10 @@ def normalize_scheduler_state(
         normalized["host_update_failure"] = host_update_failure
     else:
         normalized.pop("host_update_failure", None)
+    if user_gate_notification is not None:
+        normalized["user_gate_notification"] = user_gate_notification
+    else:
+        normalized.pop("user_gate_notification", None)
     return normalized
 
 
@@ -131,6 +164,7 @@ def build_scheduler_state(
     updated_at: str,
     source: str | None = None,
     host_update_failure: dict[str, Any] | None = None,
+    user_gate_notification: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     state = {
         "schema_version": SCHEDULER_STATE_SCHEMA_VERSION,
@@ -147,6 +181,8 @@ def build_scheduler_state(
     }
     if host_update_failure is not None:
         state["host_update_failure"] = host_update_failure
+    if user_gate_notification is not None:
+        state["user_gate_notification"] = user_gate_notification
     if source:
         state["source"] = str(source)
     normalized = normalize_scheduler_state(
