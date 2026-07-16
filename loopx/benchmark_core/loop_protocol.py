@@ -21,6 +21,7 @@ CODEX_CLI_GOAL_BASELINE_ROUTE = "codex-cli-goal-baseline"
 RAW_CODEX_AUTONOMOUS_MAX5_ROUTE = "raw-codex-autonomous-max5"
 LOOPX_PRODUCT_MODE_ROUTE = "loopx-product-mode"
 LOOPX_GOAL_START_PRODUCT_MODE_ROUTE = "loopx-goal-start-product-mode"
+LOOPX_TURN_AGENT_CLI_ROUTE = "loopx-turn-agent-cli"
 CODEX_APP_SERVER_GOAL_BASELINE_ROUTE = "codex-app-server-goal-baseline"
 LOOPX_PACKET_ONLY_OBSERVATION_ROUTE = (
     "loopx-packet-only-observation"
@@ -46,6 +47,7 @@ NO_REWARD_FEEDBACK_ROUTES = frozenset(
         RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
         LOOPX_PRODUCT_MODE_ROUTE,
         LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
+        LOOPX_TURN_AGENT_CLI_ROUTE,
         CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
     }
 )
@@ -54,6 +56,7 @@ PRODUCT_MODE_ROUTES = frozenset(
         RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
         LOOPX_PRODUCT_MODE_ROUTE,
         LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
+        LOOPX_TURN_AGENT_CLI_ROUTE,
     }
 )
 LOOPX_PRODUCT_MODE_TREATMENT_ROUTES = frozenset(
@@ -539,8 +542,15 @@ def build_blind_loop_initial_prompt(
         raise ValueError(
             "legacy LoopX prompt-polling routes are read-only historical labels"
         )
-    prefix = "Codex blind-loop baseline round 1. "
-    control_clause = "Use ordinary Codex CLI behavior without goal mode. "
+    if route == LOOPX_TURN_AGENT_CLI_ROUTE:
+        prefix = "LoopX Turn Agent CLI treatment round 1. "
+        control_clause = (
+            "The outer controller wraps this prompt in one typed LoopX Turn; "
+            "perform only task-facing Agent CLI work inside that transaction. "
+        )
+    else:
+        prefix = "Codex blind-loop baseline round 1. "
+        control_clause = "Use ordinary Codex CLI behavior without goal mode. "
     return (
         prefix
         + f"You are running inside the {benchmark_surface}. "
@@ -559,9 +569,15 @@ def build_blind_loop_continuation_prompt(
     scheduled_round: int,
     max_rounds: int,
     persistent_constraint_clause: str = "",
+    route: str | None = None,
 ) -> str:
+    round_label = (
+        "LoopX Turn continuation"
+        if route == LOOPX_TURN_AGENT_CLI_ROUTE
+        else "blind-loop continuation"
+    )
     return (
-        f"Scheduled blind-loop continuation round {scheduled_round} of "
+        f"Scheduled {round_label} round {scheduled_round} of "
         f"{max_rounds}. This continuation is part of the pre-set loop "
         "budget and is not evidence that the official verifier passed "
         "or failed. You are not being shown official reward, pass/fail "

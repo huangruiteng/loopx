@@ -140,6 +140,13 @@ from loopx.benchmark_adapters.skillsbench_typed_repair import (  # noqa: E402
     resolve_skillsbench_typed_repair,
     skillsbench_projected_open_todo_count,
 )
+from loopx.benchmark_adapters.skillsbench_turn_route import (  # noqa: E402
+    SkillsBenchTurnTraceSummary,
+    add_skillsbench_loopx_turn_arguments,
+    skillsbench_loopx_turn_launch_error,
+    skillsbench_loopx_turn_runner_prerequisites,
+    sync_skillsbench_loopx_turn_trace_into_compact,
+)
 from loopx.benchmark_core import (  # noqa: E402
     build_benchmark_launch_observable_handle,
     canonical_lifecycle,
@@ -155,6 +162,7 @@ from loopx.benchmark_core.loop_protocol import (  # noqa: E402
     CODEX_CLI_GOAL_BASELINE_ROUTE,
     LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
     LOOPX_PRODUCT_MODE_ROUTE,
+    LOOPX_TURN_AGENT_CLI_ROUTE,
     RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
     build_benchmark_loop_controller_trace,
     build_blind_loop_continuation_prompt,
@@ -205,10 +213,24 @@ def _is_goal_start_product_mode_route(route: str) -> bool:
     return route == LOOPX_GOAL_START_PRODUCT_MODE_ROUTE
 
 
+def _is_loopx_turn_agent_cli_route(route: str) -> bool:
+    return route == LOOPX_TURN_AGENT_CLI_ROUTE
+
+
+def _is_case_loopx_route(route: str) -> bool:
+    return route in LOOPX_CASE_RUNTIME_ROUTES
+
+
 def _product_mode_arm_id_for_route(route: str) -> str:
     if _is_goal_start_product_mode_route(route):
         return "loopx_goal_start_product_mode"
     return "loopx_product_mode"
+
+
+def _loopx_case_arm_id_for_route(route: str) -> str:
+    if _is_loopx_turn_agent_cli_route(route):
+        return "loopx_turn_agent_cli"
+    return _product_mode_arm_id_for_route(route)
 
 
 def product_mode_soft_verify_policy_for_route(
@@ -916,7 +938,7 @@ def _host_local_acp_launch_command(
         command.extend(["--stream-heartbeat-interval-sec", str(heartbeat_interval)])
     if args.model:
         command.extend(["--model", args.model])
-    bridge_enabled_route = args.route in PRODUCT_MODE_CONTROLLER_ROUTES or (
+    bridge_enabled_route = args.route in HOST_LOCAL_BRIDGE_ROUTES or (
         args.route
         in {CODEX_APP_SERVER_GOAL_BASELINE_ROUTE, CODEX_CLI_GOAL_BASELINE_ROUTE}
     )
@@ -979,6 +1001,46 @@ def _host_local_acp_launch_command(
                         or BENCHMARK_CASE_LOOPX_RUNTIME_ROOT
                     ),
                 ]
+            )
+    if _is_loopx_turn_agent_cli_route(args.route):
+        payload = benchmark_case_loopx_install_payload(
+            benchmark_id="skillsbench",
+            case_id=args.task_id,
+            arm_id=_loopx_case_arm_id_for_route(args.route),
+            route=args.route,
+            max_rounds=args.max_rounds,
+            case_loopx_source_path=_loopx_case_source_path_for_container(args),
+            goal_start_product_mode=False,
+        )
+        command.extend(
+            [
+                "--loopx-turn-agent-cli",
+                "--loopx-case-goal-id",
+                str(payload.get("benchmark_case_goal_id") or ""),
+                "--loopx-case-agent-id",
+                str(payload.get("case_agent_id") or BENCHMARK_CASE_LOOPX_AGENT_ID),
+                "--loopx-case-todo-id",
+                str(payload.get("case_todo_id") or BENCHMARK_CASE_LOOPX_TODO_ID),
+                "--loopx-case-cli-path",
+                str(payload.get("case_cli_path") or BENCHMARK_CASE_LOOPX_CLI_PATH),
+                "--loopx-case-registry-path",
+                str(
+                    payload.get("case_registry_path")
+                    or BENCHMARK_CASE_LOOPX_REGISTRY_PATH
+                ),
+                "--loopx-case-runtime-root",
+                str(
+                    payload.get("case_runtime_root")
+                    or BENCHMARK_CASE_LOOPX_RUNTIME_ROOT
+                ),
+            ]
+        )
+        validation_command = str(
+            getattr(args, "loopx_turn_validation_command", "") or ""
+        ).strip()
+        if validation_command:
+            command.extend(
+                ["--loopx-turn-validation-command", validation_command]
             )
     if (
         _is_loopx_product_mode_route(args.route)
@@ -2024,7 +2086,7 @@ def _host_local_acp_codex_exec_preflight_requires_bridge_action(
     return bool(
         getattr(args, "host_local_acp_launch", False)
         and str(getattr(args, "route", "") or "")
-        in PRODUCT_MODE_CONTROLLER_ROUTES
+        in HOST_LOCAL_BRIDGE_ROUTES
         and str(getattr(args, "remote_command_file_bridge_solver_command", "") or "")
         and (
             bool(getattr(args, "remote_command_file_bridge_ready", False))
@@ -8309,7 +8371,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     remote_command_file_bridge_solver_wiring_configured = bool(
         args.host_local_acp_launch
         and (
-            route in PRODUCT_MODE_CONTROLLER_ROUTES
+            route in HOST_LOCAL_BRIDGE_ROUTES
             or route == CODEX_CLI_GOAL_BASELINE_ROUTE
         )
         and remote_command_file_bridge_materialized
@@ -8318,14 +8380,14 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     remote_command_file_bridge_sandbox_auto_wiring_pending = bool(
         args.host_local_acp_launch
         and (
-            route in PRODUCT_MODE_CONTROLLER_ROUTES
+            route in HOST_LOCAL_BRIDGE_ROUTES
             or route == CODEX_CLI_GOAL_BASELINE_ROUTE
         )
         and remote_command_file_bridge_materialized
         and not remote_command_file_bridge_solver_command_configured
     )
     remote_command_file_bridge_agent_operation_trace_required = bool(
-        (_is_loopx_product_mode_route(route) or route == CODEX_CLI_GOAL_BASELINE_ROUTE)
+        (_is_case_loopx_route(route) or route == CODEX_CLI_GOAL_BASELINE_ROUTE)
         and (
             remote_command_file_bridge_solver_wiring_configured
             or remote_command_file_bridge_sandbox_auto_wiring_pending
@@ -8731,6 +8793,10 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 _is_loopx_product_mode_route(args.route)
                 and not _is_goal_start_product_mode_route(args.route)
                 and args.host_local_acp_launch
+            ),
+            **skillsbench_loopx_turn_runner_prerequisites(
+                args.route,
+                getattr(args, "loopx_turn_validation_command", None),
             ),
             "loopx_product_mode_lifecycle_driver_kind": (
                 BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE
@@ -9782,21 +9848,22 @@ def _new_controller_trace(route: str, *, max_rounds: int | None = None) -> dict[
         schema_version="skillsbench_loopx_controller_trace_v0",
     )
     loopx_product_mode = _is_loopx_product_mode_route(route)
+    loopx_case_runtime = _is_case_loopx_route(route)
     goal_start_product_mode = _is_goal_start_product_mode_route(route)
     trace.update(
         {
         "case_goal_state_packet_present": False,
-        "case_goal_state_init_required": loopx_product_mode,
+        "case_goal_state_init_required": loopx_case_runtime,
         "case_goal_state_initialized_before_agent": False,
         "case_goal_state_init_status": "not_applicable",
         "case_goal_state_path": (
             PRODUCT_MODE_CASE_STATE_PATH
-            if loopx_product_mode
+            if loopx_case_runtime
             else ""
         ),
         "case_goal_state_schema_version": (
             PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION
-            if loopx_product_mode
+            if loopx_case_runtime
             else ""
         ),
         "declared_done_requires_no_remaining_goals": loopx_product_mode,
@@ -10494,6 +10561,7 @@ def _merge_host_local_acp_relay_trace_summary(
     codex_cli_goal_recovery_summary = new_codex_cli_goal_recovery_summary()
     codex_cli_goal_stages: list[str] = []
     codex_cli_goal_reasoning_efforts: list[str] = []
+    loopx_turn_summary = SkillsBenchTurnTraceSummary()
     raw_material_recorded = False
     payloads: list[dict[str, Any]] = []
     for path in files:
@@ -10804,6 +10872,8 @@ def _merge_host_local_acp_relay_trace_summary(
                     "credential_values_recorded",
                 )
             )
+        elif trace_kind == "loopx_turn_execution":
+            loopx_turn_summary.merge(payload, boundary)
         else:
             continue
     consumed_by_solver = solver_trace_count > 0 and probe_ready_count > 0
@@ -11065,6 +11135,7 @@ def _merge_host_local_acp_relay_trace_summary(
         else ""
     )
     trace["codex_cli_goal_tui_raw_material_recorded"] = raw_material_recorded
+    loopx_turn_summary.apply(trace)
     prerequisites["remote_command_file_bridge_solver_trace_dir_present"] = (
         trace_dir.exists()
     )
@@ -12250,6 +12321,7 @@ def _build_blind_loop_user(
                 scheduled_round=round + 1,
                 max_rounds=max_rounds,
                 persistent_constraint_clause=self._persistent_constraint_clause,
+                route=route,
             )
 
     return BlindLoopUser()
@@ -13385,7 +13457,7 @@ async def run_benchflow_case(
         verifier_dependency_cache_enabled=(
             verifier_dependency_cache_policy_enabled
         ),
-        loopx_case_runtime_required=_is_loopx_product_mode_route(args.route),
+        loopx_case_runtime_required=_is_case_loopx_route(args.route),
     )
     plan["task_staging"] = staging_metadata
     plan["effective_task_path"] = str(effective_task_path)
@@ -13516,7 +13588,7 @@ async def run_benchflow_case(
             prerequisites["remote_command_file_bridge_consumption_status"] = (
                 "solver_wiring_configured_pending_prompt"
             )
-            if _is_loopx_product_mode_route(args.route):
+            if _is_case_loopx_route(args.route):
                 prerequisites[
                     "remote_command_file_bridge_agent_operation_trace_required"
                 ] = True
@@ -13654,12 +13726,12 @@ async def run_benchflow_case(
         prerequisites["codex_acp_runtime_launch_preflight_status"] = "passed"
 
     async def seed_product_mode_case_state(env: Any) -> None:
-        if not _is_loopx_product_mode_route(args.route):
+        if not _is_case_loopx_route(args.route):
             return
         payload = benchmark_case_loopx_install_payload(
             benchmark_id="skillsbench",
             case_id=args.task_id,
-            arm_id=_product_mode_arm_id_for_route(args.route),
+            arm_id=_loopx_case_arm_id_for_route(args.route),
             route=args.route,
             max_rounds=args.max_rounds,
             case_loopx_source_path=_loopx_case_source_path_for_container(args),
@@ -13730,7 +13802,7 @@ async def run_benchflow_case(
         trace["loopx_case_cli_installed_before_agent"] = True
 
     async def ensure_loopx_source_available(env: Any) -> None:
-        if not _is_loopx_product_mode_route(args.route):
+        if not _is_case_loopx_route(args.route):
             return
         prerequisites = plan.setdefault("runner_prerequisites", {})
         source_contract = _loopx_source_mount_contract(args)
@@ -14003,7 +14075,7 @@ async def run_benchflow_case(
                     getattr(self, "_task", None),
                     include_task_skills=cfg.include_task_skills,
                 )
-            if _is_loopx_product_mode_route(args.route):
+            if _is_case_loopx_route(args.route):
                 prerequisites["host_local_acp_install_stage"] = (
                     "loopx_source_upload_fallback"
                 )
@@ -14027,7 +14099,7 @@ async def run_benchflow_case(
                 await benchflow_rollout_module.lockdown_paths(
                     self._env, self._effective_locked
                 )
-            if _is_loopx_product_mode_route(args.route):
+            if _is_case_loopx_route(args.route):
                 prerequisites["host_local_acp_install_stage"] = "seed_loopx_case_state"
                 if isinstance(controller_trace, dict):
                     controller_trace["case_goal_state_init_invocation_stage"] = (
@@ -14105,6 +14177,7 @@ async def run_benchflow_case(
         )
     if not setup_only_public_preflight and args.route in {
         CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
+        LOOPX_TURN_AGENT_CLI_ROUTE,
     }:
         controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
         controller_user = _build_blind_loop_user(
@@ -14162,7 +14235,7 @@ async def run_benchflow_case(
         or args.require_preinstalled_benchflow_agent_runtime
         else [ensure_codex_acp_runtime_deps]
     )
-    if _is_loopx_product_mode_route(args.route) and not args.host_local_acp_launch:
+    if _is_case_loopx_route(args.route) and not args.host_local_acp_launch:
         if not setup_only_public_preflight:
             pre_agent_hooks.append(seed_product_mode_case_state)
 
@@ -14408,6 +14481,7 @@ def reduce_result(
     compact = compact_benchmark_run(benchmark_run)
     if compact is None:
         raise RuntimeError("SkillsBench treatment reducer produced non-compact run")
+    sync_skillsbench_loopx_turn_trace_into_compact(compact, controller_trace)
     if runner_prerequisites:
         compact["runner_prerequisites"] = runner_prerequisites
         _sync_relay_closeout_counts_into_compact(compact, runner_prerequisites)
@@ -15548,6 +15622,7 @@ def append_history(args: argparse.Namespace, compact_path: Path) -> dict[str, An
         "codex-cli-goal-baseline": "skillsbench_codex_cli_goal_baseline_result_v0",
         "loopx-product-mode": "skillsbench_loopx_product_mode_result_v0",
         "loopx-goal-start-product-mode": "skillsbench_loopx_goal_start_product_mode_result_v0",
+        "loopx-turn-agent-cli": "skillsbench_loopx_turn_agent_cli_result_v0",
         "raw-codex-autonomous-max5": "skillsbench_raw_codex_autonomous_max5_result_v0",
         "codex-app-server-goal-baseline": "skillsbench_codex_app_server_goal_baseline_result_v0",
     }
@@ -16301,6 +16376,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "requests, not only driver checkpoints."
         ),
     )
+    add_skillsbench_loopx_turn_arguments(parser)
     parser.add_argument(
         "--remote-command-file-bridge-probe-timeout-sec",
         type=float,
@@ -17268,7 +17344,7 @@ def main(argv: list[str] | None = None) -> int:
         args.remote_command_file_bridge_solver_command
     )
     product_host_local_bridge_sandbox_auto_wiring_pending = bool(
-        args.route in PRODUCT_MODE_CONTROLLER_ROUTES
+        args.route in HOST_LOCAL_BRIDGE_ROUTES
         and args.host_local_acp_launch
         and product_host_local_bridge_materialized
         and not product_host_local_bridge_command_configured
@@ -17305,13 +17381,16 @@ def main(argv: list[str] | None = None) -> int:
         }
         print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
         return 2
+    if payload := skillsbench_loopx_turn_launch_error(args):
+        print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+        return 2
     product_host_local_bridge_fixture_solver = (
         skillsbench_remote_command_file_bridge_command_is_fixture_probe(
             args.remote_command_file_bridge_solver_command
         )
     )
     if (
-        args.route in PRODUCT_MODE_CONTROLLER_ROUTES
+        args.route in HOST_LOCAL_BRIDGE_ROUTES
         and args.host_local_acp_launch
         and product_host_local_bridge_fixture_solver
         and not args.local_driver_worker_handshake_preflight
@@ -17349,7 +17428,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
         return 2
     if (
-        args.route in PRODUCT_MODE_CONTROLLER_ROUTES
+        args.route in HOST_LOCAL_BRIDGE_ROUTES
         and args.host_local_acp_launch
         and not (
             product_host_local_bridge_materialized

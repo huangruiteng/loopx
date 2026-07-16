@@ -12,7 +12,6 @@ import signal
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -31,6 +30,9 @@ from loopx.benchmark_case_state import (
 from loopx.benchmark_adapters.skillsbench_remote_bridge import (
     run_skillsbench_remote_command_file_bridge_probe,
 )
+from loopx.benchmark_adapters.skillsbench_turn_runtime import (
+    run_skillsbench_loopx_turn_relay,
+)
 from loopx.benchmark_adapters.skillsbench_bridge_summary import (
     bridge_summary_has_inflight_operation as _bridge_summary_has_inflight_operation,
     bridge_summary_has_meaningful_agent_progress as _bridge_summary_has_meaningful_agent_progress,
@@ -45,6 +47,10 @@ from loopx.benchmark_adapters.skillsbench_bridge_guard import (
 )
 from loopx.benchmark_adapters.skillsbench_acp_failure_policy import (
     RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES,
+    recoverable_codex_turn_failure_message as _recoverable_codex_turn_failure_message,
+)
+from loopx.benchmark_adapters.skillsbench_acp_process import (
+    write_process_stdin_async as _write_process_stdin_async,
 )
 from loopx.benchmark_adapters.skillsbench_codex_goal_recovery import (
     CODEX_CLI_GOAL_POST_BRIDGE_CONTINUE_PROMPT,
@@ -384,39 +390,6 @@ def _normalized_app_server_goal_prompt_style(style: str | None) -> str:
     return "bridge-only"
 
 
-def _recoverable_codex_turn_failure_message(category: str) -> str:
-    return (
-        "LoopX recoverable Codex turn failure: "
-        f"{category}. Continue with the next scheduled product-mode round; "
-        "raw task text, logs, and trajectory material were not recorded."
-    )
-
-
-def _write_process_stdin_async(
-    proc: subprocess.Popen[str],
-    stdin_text: str | None,
-) -> None:
-    """Feed stdin without letting a full pipe bypass timeout watchdogs."""
-
-    if stdin_text is None or proc.stdin is None:
-        return
-    stdin_pipe = proc.stdin
-    proc.stdin = None
-
-    def _writer() -> None:
-        try:
-            stdin_pipe.write(stdin_text)
-            stdin_pipe.close()
-        except (BrokenPipeError, ValueError, OSError):
-            pass
-
-    threading.Thread(
-        target=_writer,
-        name="loopx-skillsbench-acp-stdin-writer",
-        daemon=True,
-    ).start()
-
-
 @dataclass(frozen=True)
 class CodexExecConfig:
     codex_bin: str = "codex"
@@ -450,6 +423,8 @@ class CodexExecConfig:
     remote_command_file_bridge_agent_command: str | None = None
     remote_command_file_bridge_timeout_sec: float = 10.0
     loopx_workflow_lifecycle_checkpoint: bool = False
+    loopx_turn_agent_cli: bool = False
+    loopx_turn_validation_command: str | None = None
     loopx_case_goal_id: str = "skillsbench-case"
     loopx_case_agent_id: str = BENCHMARK_CASE_LOOPX_AGENT_ID
     loopx_case_todo_id: str = BENCHMARK_CASE_LOOPX_TODO_ID
@@ -597,9 +572,24 @@ class SkillsBenchLocalAcpRelay:
         session: dict[str, Any],
         session_id: str,
         stdout: TextIO,
+        _bypass_loopx_turn: bool = False,
     ) -> str:
         if self._config.dry_run_response is not None:
             return self._config.dry_run_response
+        if self._config.loopx_turn_agent_cli and not _bypass_loopx_turn:
+            return run_skillsbench_loopx_turn_relay(
+                prompt=prompt_text,
+                session_id=session_id,
+                relay_config=self._config,
+                agent_runner=lambda turn_prompt: self._run_codex(
+                    turn_prompt,
+                    session=session,
+                    session_id=session_id,
+                    stdout=stdout,
+                    _bypass_loopx_turn=True,
+                ),
+                trace_writer=self._write_worker_public_trace,
+            )
         if self._config.app_server_goal_worker:
             return self._run_app_server_goal_worker(
                 prompt_text,

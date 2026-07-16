@@ -19,6 +19,7 @@ RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES = frozenset(
         "codex_exec_bridge_idle_timeout",
     }
 ) | RECOVERABLE_CODEX_TRANSPORT_FAILURE_CATEGORIES
+RECOVERABLE_CODEX_TURN_FAILURE_PREFIX = "LoopX recoverable Codex turn failure:"
 
 RECOVERABLE_TRANSPORT_INFRA_FAILURE_LABELS = frozenset(
     {
@@ -32,6 +33,14 @@ RECOVERABLE_TRANSPORT_INFRA_FAILURE_LABELS = frozenset(
         "official_verifier_solution_failure",
     }
 )
+
+
+def recoverable_codex_turn_failure_message(category: str) -> str:
+    return (
+        RECOVERABLE_CODEX_TURN_FAILURE_PREFIX + " "
+        f"{category}. Continue with the next scheduled product-mode round; "
+        "raw task text, logs, and trajectory material were not recorded."
+    )
 
 
 def recoverable_transport_after_bridge_attempt(

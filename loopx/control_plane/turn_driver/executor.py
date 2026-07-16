@@ -577,6 +577,10 @@ def _execution_payload(
 ) -> dict[str, Any]:
     transaction = plan.get("transaction") if isinstance(plan.get("transaction"), dict) else {}
     turn_key = str(transaction.get("turn_key") or "")
+    planned_host = plan.get("host") if isinstance(plan.get("host"), dict) else {}
+    quota_spent = effects.get("quota_spent") is True or "quota_spend" in list(
+        journal.get("completed_phases") or []
+    )
     return {
         "ok": journal.get("status") in {
             "preview",
@@ -591,12 +595,14 @@ def _execution_payload(
         "resume_turn_key": turn_key,
         "journal_ref": f"turn:{turn_key.removeprefix('sha256:')[:16]}",
         "status": journal.get("status"),
+        "execution_mode": planned_host.get("execution_mode"),
         "host": journal.get("host"),
         "result_kind": journal.get("result_kind"),
         "validation": journal.get("task_validation"),
         "receipt": journal.get("receipt"),
         "scheduler": journal.get("scheduler"),
         "effects": dict(effects),
+        "quota_slot_spend_count": 1 if quota_spent else 0,
         **({"reason": journal.get("reason")} if journal.get("reason") else {}),
     }
 
@@ -624,7 +630,11 @@ def run_loopx_turn_once(
         host_projection = {"executable": Path(argv[0]).name, "argv_count": len(argv)}
     else:
         argv = None
-        host_projection = {"executable": "built-in", "kind": "codex-cli"}
+        planned_host = plan.get("host") if isinstance(plan.get("host"), dict) else {}
+        host_projection = {
+            "executable": "built-in",
+            "kind": str(planned_host.get("kind") or "codex-cli"),
+        }
     request = build_loopx_turn_host_request(plan)
     empty_effects = {
         "host_invoked": False,

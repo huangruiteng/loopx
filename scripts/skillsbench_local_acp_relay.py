@@ -228,6 +228,23 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "through the remote bridge before each Codex prompt."
         ),
     )
+    parser.add_argument(
+        "--loopx-turn-agent-cli",
+        action="store_true",
+        help=(
+            "Wrap each solver prompt in one real LoopX Turn transaction. The "
+            "case-local registry stays behind the scored-workspace bridge and "
+            "the host Agent CLI is committed only after independent validation."
+        ),
+    )
+    parser.add_argument(
+        "--loopx-turn-validation-command",
+        default=None,
+        help=(
+            "Private scored-workspace postcondition command for LoopX Turn. "
+            "Its output is never copied into public traces."
+        ),
+    )
     parser.add_argument("--loopx-case-goal-id", default="skillsbench-case")
     parser.add_argument("--loopx-case-agent-id", default="codex-benchmark-agent")
     parser.add_argument("--loopx-case-todo-id", default=BENCHMARK_CASE_LOOPX_TODO_ID)
@@ -280,6 +297,8 @@ def main(argv: list[str] | None = None) -> int:
             loopx_workflow_lifecycle_checkpoint=(
                 args.loopx_workflow_lifecycle_checkpoint
             ),
+            loopx_turn_agent_cli=args.loopx_turn_agent_cli,
+            loopx_turn_validation_command=args.loopx_turn_validation_command,
             loopx_case_goal_id=args.loopx_case_goal_id,
             loopx_case_agent_id=args.loopx_case_agent_id,
             loopx_case_todo_id=args.loopx_case_todo_id,

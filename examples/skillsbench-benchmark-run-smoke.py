@@ -7100,7 +7100,7 @@ def test_loopx_case_init_failure_blocker_is_public_safe() -> None:
     )
 
 
-def test_product_mode_case_state_seed_runs_after_host_local_sandbox_install() -> None:
+def test_loopx_case_state_seed_runs_after_host_local_sandbox_install() -> None:
     source = (REPO_ROOT / "scripts" / "skillsbench_automation_loop.py").read_text(
         encoding="utf-8"
     )
@@ -7113,7 +7113,7 @@ def test_product_mode_case_state_seed_runs_after_host_local_sandbox_install() ->
     assert "benchflow_rollout_module._snapshot_build_config" in source
     assert "benchflow_rollout_module.deploy_skills" in source
     assert (
-        "if _is_loopx_product_mode_route(args.route) and not args.host_local_acp_launch:"
+        "if _is_case_loopx_route(args.route) and not args.host_local_acp_launch:"
         in source
     )
 
@@ -14718,7 +14718,7 @@ if __name__ == "__main__":
     test_skillsbench_runner_plan_supports_product_mode_routes()
     test_loopx_product_mode_full_run_requires_canonical_driver()
     test_loopx_case_init_failure_blocker_is_public_safe()
-    test_product_mode_case_state_seed_runs_after_host_local_sandbox_install()
+    test_loopx_case_state_seed_runs_after_host_local_sandbox_install()
     test_loopx_source_mount_contract_uses_real_cli_source_not_local_installer()
     test_host_local_product_mode_uses_source_upload_not_docker_bind_mount()
     test_host_local_product_mode_auto_bridge_keeps_lifecycle_checkpoint_args()
