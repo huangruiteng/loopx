@@ -46,6 +46,11 @@ loopx check \
 
 ## Local Development
 
+Use the [developer guide](docs/development/README.md) as the stable entry point.
+Before changing scheduler, quota, todo/gate, onboarding, agent-facing output,
+or release behavior, read the bilingual
+[testing and quality guide](docs/development/testing-and-quality.md).
+
 Install and verify the checkout:
 
 ```bash
@@ -59,16 +64,19 @@ loopx demo
 Common focused checks:
 
 ```bash
-python3 -m py_compile loopx/*.py
-python3 examples/demo-cli-smoke.py
-python3 examples/fresh-clone-quickstart-smoke.py
-python3 examples/control_plane/todo-cli-smoke.py
-python3 examples/control_plane/todo-lifecycle-cli-smoke.py
-python3 examples/control_plane/quota-contract-smoke.py
-python3 examples/control_plane/review-packet-cli-smoke.py
-loopx check --scan-root .
+python -m pip install -e ".[test]"
+python -m ruff check tests loopx/canary loopx/control_plane loopx/domain_packs loopx/presentation
+python -m mypy
+python examples/control_plane/cli-output-budget-regression-smoke.py
+python -m pytest -q
+loopx canary premerge --from-git-diff
+loopx check --scan-path loopx/ --scan-path tests/ --scan-path examples/ --scan-path docs/
 git diff --check
 ```
+
+Choose focused smokes and broader canaries by change risk; do not run every
+public smoke or a live model call for every patch. The quality guide explains
+the CI, local/manual, and release-only boundaries.
 
 ## Governance And Attribution
 

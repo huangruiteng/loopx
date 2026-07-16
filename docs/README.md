@@ -50,6 +50,12 @@ incident report, or launch draft.
   surfaces.
 - [Benchmark developer workflow](benchmark-developer-workflow.md): how to run,
   observe, and ingest benchmark slices as a developer-facing product workflow.
+- [Developer guide](development/README.md): the contributor entry point for
+  architecture, validation, public boundaries, and release contracts.
+- [Testing and quality](development/testing-and-quality.md): the bilingual
+  quality stack from unit contracts and public smokes through canary, CLI
+  output budgets, decision replay, low-frequency model behavior, and release
+  outcome baselines.
 - [State interaction model](state-interaction-model.md): user, agent, and state
   channel flow.
 - [Heartbeat automation prompt](heartbeat-automation-prompt.md): current
@@ -96,6 +102,15 @@ incident report, or launch draft.
 - [Lark Kanban control-plane adapter](lark-kanban-control-plane-adapter.md)
 - [Authority source registration](authority-source-registration.md)
 - [New-project Codex prompt](new-project-codex-prompt.md)
+
+### Developer Workflows
+
+- [Developer guide](development/README.md)
+- [Testing and quality](development/testing-and-quality.md)
+- [Benchmark developer workflow](benchmark-developer-workflow.md)
+- [Release readiness](product/release-readiness.md)
+- [Interface budget contract](interface-budget-contract.md)
+- [Public/private boundary](public-private-boundary.md)
 
 ### Contracts
 
@@ -170,6 +185,8 @@ incident report, or launch draft.
 - Put public launch, narrative, demo, and PR copy drafts under `docs/outreach/`.
 - Put stable product-direction notes that cross individual contracts under
   `docs/product/`.
+- Put stable contributor workflows and quality-system guidance under
+  `docs/development/`.
 - Put machine-facing protocol contracts under `docs/reference/`.
 - Every new doc should be linked from this index or from a subdirectory
   `README.md`. If it is not worth indexing, it probably belongs in local notes
