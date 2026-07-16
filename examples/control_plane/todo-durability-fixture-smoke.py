@@ -288,6 +288,23 @@ def main() -> int:
         ), item
         assert item["project_asset"]["agent_todos"]["next"] == FIRST_OPEN_TODO, item
         assert item["project_asset"]["agent_todos"]["next_index"] == 1, item
+        todo_list_payload = run_cli(
+            "todo",
+            "list",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--todo-id",
+            "todo_pr_deferred",
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        listed_pr_deferred = todo_list_payload["todo"]
+        assert listed_pr_deferred["resume_ready"] is True, todo_list_payload
+        assert listed_pr_deferred["resume_condition"]["matched_pr_ref"] == (
+            "huangruiteng/loopx#532"
+        ), todo_list_payload
         indexed_handoff = next(
             row
             for row in status_payload["todo_index"]["items"]

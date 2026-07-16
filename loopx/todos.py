@@ -7,6 +7,8 @@ from typing import Any
 from .agent_registry import registered_agent_ids_from_registry, require_registered_agent_id
 from .file_lock import exclusive_file_lock
 from .history import load_registry
+from .paths import resolve_runtime_root
+from .rollout_event_log import load_rollout_events, rollout_event_log_path
 from .control_plane.runtime.local_state_write_correctness import build_todo_write_correctness_dry_run_packet
 from .state_refresh import now_local, resolve_goal_state
 from .status import (
@@ -72,6 +74,7 @@ from .control_plane.todos.event_writeback import (
 )
 from .control_plane.todos.monitor_metadata import require_monitor_metadata_scope
 from .control_plane.todos.succession_warning import build_open_parent_successor_advisory
+from .control_plane.todos.todo_index import MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL
 from .control_plane.todos.text import (
     inherit_todo_priority,
     normalize_new_todo,
@@ -179,6 +182,7 @@ def filtered_todo_summary(
     todo_id: str | None = None,
     agent_id: str | None = None,
     resume_source_items: list[dict[str, Any]] | None = None,
+    rollout_events: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     items = list((summary or {}).get("items") or [])
     normalized_status = normalize_todo_status(status)
@@ -220,6 +224,7 @@ def filtered_todo_summary(
             source_section=source_section,
             role=role,
             resume_source_items=resume_source_items,
+            rollout_events=rollout_events,
             item_limit=None,
         )
         or empty_todo_summary(role=role)
@@ -349,6 +354,7 @@ def list_goal_todos(
     agent_id: str | None = None,
     project: Path | None = None,
     state_file: Path | None = None,
+    runtime_root_arg: str | None = None,
 ) -> dict[str, Any]:
     normalized_todo_id = normalize_todo_id(todo_id) if todo_id else None
     if todo_id and not normalized_todo_id:
@@ -368,10 +374,17 @@ def list_goal_todos(
     if not resolved_state_file.exists():
         raise ValueError(f"active state file does not exist: {resolved_state_file}")
 
+    runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+    rollout_events = load_rollout_events(
+        rollout_event_log_path(runtime_root, goal_id),
+        limit=MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL,
+    )
+
     projection_fields = active_state_event_projection_fields(
         goal,
         state_path=resolved_state_file,
         item_limit=None,
+        rollout_events=rollout_events,
     )
     projection_has_todos = bool(
         projection_fields.get("user_todos") or projection_fields.get("agent_todos")
@@ -381,6 +394,7 @@ def list_goal_todos(
         goal=goal,
         state_path=resolved_state_file,
         item_limit=None,
+        rollout_events=rollout_events,
     )
     markdown_has_todos = bool(
         markdown_fields.get("user_todos") or markdown_fields.get("agent_todos")
@@ -418,6 +432,7 @@ def list_goal_todos(
             todo_id=normalized_todo_id,
             agent_id=normalized_agent_id,
             resume_source_items=resume_source_items,
+            rollout_events=rollout_events,
         )
         summaries[key] = summary
         todos.extend(summary.get("items") or [])
