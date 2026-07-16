@@ -2,6 +2,10 @@
 
 Status: experimental protocol and implementation target.
 
+Integrators using the built-in Codex CLI host should start with the
+[one-Turn quickstart](../../product/loopx-turn-codex-cli-quickstart.md). This
+document is the protocol and maintainer reference, not required onboarding.
+
 `loopx_turn_v0` defines how LoopX can govern one bounded turn executed by an
 external agent-loop host, such as Codex CLI, without turning that host into a
 second control plane. LoopX remains authoritative for goal state, todos,
