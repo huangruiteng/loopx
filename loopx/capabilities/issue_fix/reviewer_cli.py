@@ -16,7 +16,10 @@ from ..lark.event_inbox import (
     acknowledge_lark_event_inbox,
     inspect_lark_event_inbox,
 )
-from ..reward_memory.experiment import resolve_reward_memory_experiment
+from ..reward_memory.experiment import (
+    resolve_reward_memory_experiment,
+    resolve_reward_memory_surface_config,
+)
 from .cli_input import load_json_object, load_jsonl_row
 from .metadata_preview import normalise_github_issue_reference
 from .pr_lifecycle import build_issue_fix_pr_lifecycle_monitor_packet
@@ -567,20 +570,21 @@ def handle_issue_fix_reviewer_command(
                 reward_memory_experiment_status = str(
                     (experiment_status or {}).get("status") or "unavailable"
                 )
-                surfaces = set(
-                    str(value)
-                    for value in (experiment_status or {}).get("surface_ids") or []
-                )
-                if (
-                    experiment_config is not None
-                    and "reviewer_artifact.summary" in surfaces
-                ):
-                    reviewer_artifact_reward_memory = {
-                        "config": experiment_config,
-                        "reviewer_summary": args.reviewer_summary,
-                        "reasoning_summary": args.reviewer_summary_reasoning,
-                        "observed_at": generated_at,
-                    }
+                if experiment_config is not None:
+                    try:
+                        reviewer_route = resolve_reward_memory_surface_config(
+                            experiment_config,
+                            "reviewer_artifact.summary",
+                        )
+                    except ValueError:
+                        reviewer_route = None
+                    if reviewer_route is not None:
+                        reviewer_artifact_reward_memory = {
+                            "config": reviewer_route,
+                            "reviewer_summary": args.reviewer_summary,
+                            "reasoning_summary": args.reviewer_summary_reasoning,
+                            "observed_at": generated_at,
+                        }
     payload = build_issue_fix_reviewer_request_packet(
         repo_path=args.repo_path,
         url=args.url,

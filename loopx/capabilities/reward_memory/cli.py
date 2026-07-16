@@ -25,7 +25,10 @@ from .dogfood import (
     build_reward_memory_operator_control,
 )
 from .evaluation import run_reward_memory_evaluation
-from .experiment import resolve_reward_memory_experiment
+from .experiment import (
+    resolve_reward_memory_experiment,
+    resolve_reward_memory_surface_config,
+)
 from .registry import build_reward_memory_corpus_registry_packet
 from .scoped_feedback import (
     SCOPED_FEEDBACK_ADAPTER,
@@ -326,33 +329,35 @@ def handle_reward_memory_command(
                         "Reward Memory experiment is unavailable for this agent: "
                         + str(experiment_status.get("status") or "unavailable")
                     )
-            configured_adapter = (
-                experiment_config.get("adapter") if experiment_config else None
-            )
-            supplied_adapter = source.get("adapter")
-            if (
-                configured_adapter
-                and supplied_adapter
-                and supplied_adapter != configured_adapter
-            ):
-                raise ValueError("input adapter does not match the configured route")
-            adapter = configured_adapter or supplied_adapter
             for key in ("event",):
                 if not isinstance(source.get(key), Mapping):
                     raise ValueError(f"{key} must be an object")
+            supplied_adapter = source.get("adapter")
+            experiment_route: dict[str, object] | None = None
+            if experiment_config is not None:
+                surface_id = str(source["event"].get("surface_id") or "")
+                experiment_route = resolve_reward_memory_surface_config(
+                    experiment_config,
+                    surface_id,
+                    adapter=(str(supplied_adapter) if supplied_adapter else None),
+                )
+            configured_adapter = (
+                experiment_route.get("adapter") if experiment_route else None
+            )
+            adapter = configured_adapter or supplied_adapter
             corpus = (
-                experiment_config["corpus"]
-                if experiment_config
+                experiment_route["corpus"]
+                if experiment_route
                 else source.get("corpus")
             )
             standing_policy = (
-                experiment_config["standing_policy"]
-                if experiment_config
+                experiment_route["standing_policy"]
+                if experiment_route
                 else source.get("standing_policy")
             )
             provider_binding = (
-                experiment_config["provider_binding"]
-                if experiment_config
+                experiment_route["provider_binding"]
+                if experiment_route
                 else source.get("provider_binding")
             )
             for key, value in (

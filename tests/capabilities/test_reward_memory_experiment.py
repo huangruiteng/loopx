@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from loopx.capabilities.reward_memory.experiment import (
     resolve_reward_memory_experiment,
+    resolve_reward_memory_surface_config,
 )
 from loopx.cli import main
 
@@ -93,6 +98,81 @@ def _run(capsys, registry_path: Path, *args: str) -> tuple[int, dict[str, object
     return result, json.loads(output)
 
 
+def _v1_config() -> dict[str, object]:
+    fixture = json.loads(SCOPED_PUBLIC_FIXTURE.read_text(encoding="utf-8"))
+    entries: list[dict[str, object]] = []
+    scopes: list[dict[str, str]] = []
+    for corpus_id, surface_id in (
+        ("reviewer_policy_primary", "reviewer_artifact.summary"),
+        ("reviewer_policy_overlay", "reviewer_artifact.summary"),
+        ("patch_policy_separate", "issue_fix.patch_planning"),
+    ):
+        corpus = copy.deepcopy(fixture["corpus"])
+        policy = copy.deepcopy(fixture["standing_policy"])
+        scope_ref = f"viking://resources/reward-memory/{corpus_id}"
+        corpus["corpus_id"] = corpus_id
+        corpus["scope"]["surface_ids"] = [surface_id]
+        corpus["provider_scope_ref_digest"] = hashlib.sha256(
+            scope_ref.encode("utf-8")
+        ).hexdigest()[:16]
+        policy["policy_id"] = f"policy:example:{corpus_id}"
+        policy["scope"]["surface_ids"] = [surface_id]
+        entries.append({"corpus": corpus, "standing_policy": policy})
+        scopes.append({"corpus_id": corpus_id, "scope_ref": scope_ref})
+    return {
+        "schema_version": "reward_memory_experiment_config_v1",
+        "project_provider_binding": {
+            "provider_id": "openviking",
+            "namespace": "reward_memory",
+            "timeout_seconds": 30,
+            "minimum_provider_version": "0.4.9",
+            "corpus_scopes": scopes,
+        },
+        "corpora": entries,
+        "surfaces": [
+            {
+                "surface_id": "reviewer_artifact.summary",
+                "adapter": "scoped_feedback",
+                "corpus_ids": [
+                    "reviewer_policy_primary",
+                    "reviewer_policy_overlay",
+                ],
+                "ingest_corpus_id": "reviewer_policy_primary",
+                "recall_profile": {
+                    "profile_id": "reviewer_summary_v1",
+                    "mode": "function_boundary",
+                    "max_queries": 1,
+                    "limit": 4,
+                },
+            },
+            {
+                "surface_id": "issue_fix.patch_planning",
+                "adapter": "issue_fix_maintainer_feedback",
+                "corpus_ids": ["patch_policy_separate"],
+                "ingest_corpus_id": "patch_policy_separate",
+                "recall_profile": {
+                    "profile_id": "patch_planning_v1",
+                    "mode": "bounded_agentic_search",
+                    "max_queries": 2,
+                    "limit": 5,
+                },
+            },
+        ],
+        "automation": {
+            "automatic_recall": True,
+            "automatic_ingest": True,
+            "fail_open": True,
+        },
+    }
+
+
+def _write_v1_config(registry_path: Path, config: dict[str, object]) -> None:
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    project = Path(registry["goals"][0]["repo"])
+    config_path = project / ".loopx/config/reward-memory/experiment.json"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+
 def test_status_is_agent_scoped_and_public_safe(tmp_path: Path) -> None:
     registry_path, _, _ = _experiment(tmp_path)
 
@@ -110,6 +190,13 @@ def test_status_is_agent_scoped_and_public_safe(tmp_path: Path) -> None:
     assert allowed["status"] == "available"
     assert allowed["automatic_ingest"] is False
     assert allowed["automatic_recall"] is False
+    assert allowed["source_config_schema_version"] == (
+        "reward_memory_experiment_config_v0"
+    )
+    assert allowed["effective_config_schema_version"] == (
+        "reward_memory_experiment_config_v1"
+    )
+    assert allowed["migration_applied"] is True
     assert "config_path" not in allowed
     assert config is not None
     assert denied["status"] == "agent_not_enabled"
@@ -280,3 +367,144 @@ def test_scoped_feedback_rejects_unmodelled_event_fields(
     assert result == 2
     assert receipt["status"] == "invalid_request"
     assert "raw_comment" in receipt["error"]
+
+
+def test_v1_uses_one_project_provider_and_explicit_surface_corpus_sets(
+    tmp_path: Path,
+) -> None:
+    registry_path, _, _ = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
+    _write_v1_config(registry_path, _v1_config())
+
+    status, config = resolve_reward_memory_experiment(
+        registry_path=registry_path,
+        goal_id="reward-memory-goal",
+        agent_id="pilot",
+    )
+    assert config is not None
+    route = resolve_reward_memory_surface_config(
+        config, "reviewer_artifact.summary"
+    )
+
+    assert status["automatic_ingest"] is True
+    assert status["automatic_recall"] is True
+    assert status["provider_id"] == "openviking"
+    assert status["corpus_count"] == 3
+    assert route["selection"] == {
+        "mode": "explicit_surface_corpus_ids",
+        "global_corpus_scan": False,
+        "corpus_ids": ["reviewer_policy_primary", "reviewer_policy_overlay"],
+    }
+    assert [
+        item["corpus"]["corpus_id"] for item in route["recall_corpora"]
+    ] == ["reviewer_policy_primary", "reviewer_policy_overlay"]
+    assert route["corpus"]["corpus_id"] == "reviewer_policy_primary"
+    assert route["recall_profile"]["profile_id"] == "reviewer_summary_v1"
+    assert "scope_ref" not in json.dumps(status)
+
+
+def test_v1_configured_ingest_selects_the_event_surface(
+    tmp_path: Path, capsys
+) -> None:
+    registry_path, event_path, _ = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
+    _write_v1_config(registry_path, _v1_config())
+
+    result, receipt = _run(
+        capsys,
+        registry_path,
+        "reward-memory",
+        "ingest-event",
+        "--goal-id",
+        "reward-memory-goal",
+        "--agent-id",
+        "pilot",
+        "--input",
+        str(event_path),
+    )
+
+    assert result == 0
+    assert receipt["status"] == "planned"
+    assert receipt["experiment"]["automatic_ingest"] is True
+    assert receipt["experiment"]["automatic_recall"] is True
+    assert receipt["experiment"]["corpus_count"] == 3
+    assert "scope_ref" not in json.dumps(receipt["experiment"])
+
+
+@pytest.mark.parametrize(
+    "dimension",
+    ["class", "authority", "privacy", "freshness", "lifecycle"],
+)
+def test_v1_rejects_incompatible_surface_corpus_before_provider(
+    tmp_path: Path,
+    dimension: str,
+) -> None:
+    registry_path, _, _ = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
+    config = _v1_config()
+    second = config["corpora"][1]
+    corpus = second["corpus"]
+    policy = second["standing_policy"]
+    if dimension == "class":
+        corpus["class_id"] = "soft_preference"
+        policy["allowed_target_classes"] = ["soft_preference"]
+    elif dimension == "authority":
+        corpus["read_authority"] = "authority_scoped"
+    elif dimension == "privacy":
+        corpus["privacy"]["visibility"] = "workspace"
+    elif dimension == "freshness":
+        corpus["freshness"] = {"mode": "time_bound", "max_age_seconds": 300}
+    else:
+        corpus["lifecycle"] = {
+            "state": "retired",
+            "supersedes": [],
+            "retirement_reason": "fixture",
+        }
+    _write_v1_config(registry_path, config)
+
+    status, normalized = resolve_reward_memory_experiment(
+        registry_path=registry_path,
+        goal_id="reward-memory-goal",
+        agent_id="pilot",
+    )
+
+    assert status["status"] == "config_invalid"
+    assert status["automatic_ingest"] is False
+    assert status["automatic_recall"] is False
+    assert status["fail_open"] is True
+    assert normalized is None
+
+
+def test_v1_rejects_unknown_surface_and_adapter_override(tmp_path: Path) -> None:
+    registry_path, _, _ = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
+    _write_v1_config(registry_path, _v1_config())
+    _, config = resolve_reward_memory_experiment(
+        registry_path=registry_path,
+        goal_id="reward-memory-goal",
+        agent_id="pilot",
+    )
+    assert config is not None
+
+    with pytest.raises(ValueError, match="surface is not configured"):
+        resolve_reward_memory_surface_config(config, "unknown.surface")
+    with pytest.raises(ValueError, match="does not match the configured route"):
+        resolve_reward_memory_surface_config(
+            config,
+            "reviewer_artifact.summary",
+            adapter="issue_fix_maintainer_feedback",
+        )
+
+
+def test_v1_rejects_non_fail_open_automation(tmp_path: Path) -> None:
+    registry_path, _, _ = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
+    config = _v1_config()
+    config["automation"]["fail_open"] = False
+    _write_v1_config(registry_path, config)
+
+    status, normalized = resolve_reward_memory_experiment(
+        registry_path=registry_path,
+        goal_id="reward-memory-goal",
+        agent_id="pilot",
+    )
+
+    assert status["status"] == "config_invalid"
+    assert status["automatic_ingest"] is False
+    assert status["automatic_recall"] is False
+    assert normalized is None
