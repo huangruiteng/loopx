@@ -515,6 +515,11 @@ Every public release note or update note should also answer:
 - Which commands, docs, or smokes prove the claim?
 - Are there compatibility or migration notes for existing local state?
 - Which surfaces are still experimental or intentionally excluded?
+- For every new or materially changed experimental, default-off, or opt-in
+  capability, include an **Optional capability activation** entry in both
+  languages: name its scope, read-only preview, exact enable and disable
+  commands, prerequisites or safety gates, and canonical docs. If no persistent
+  switch exists, say that opt-in is per command or preset instead.
 - Did the public/private scan run on the changed docs, examples, and workflow
   files?
 - Did full `pytest`, focused release/install contracts, risk-based canary, and

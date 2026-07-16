@@ -77,9 +77,12 @@ def main() -> None:
         "/loopx-global-summary",
         "benchmark runner behavior, scoring, upload",
         "## Release Note Checklist",
+        "Optional capability activation",
+        "If no persistent switch exists",
         "public/private scan",
         "## 中文摘要",
-        "avoid overfitting the release to one feature area",
+        "Bilingual releases must preserve these same group boundaries",
+        "mirrors the English group structure and material claims",
     ]:
         assert_contains(doc, required, "release-readiness doc")
 
