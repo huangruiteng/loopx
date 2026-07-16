@@ -41,17 +41,28 @@ def run_cli(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
 def main() -> int:
     catalog = build_agent_type_catalog()
     agent_types = {item["agent_type"] for item in catalog["canonical_agent_types"]}
-    assert {"codex-app", "codex-cli", "claude-code", "manual", "other-agent"} <= agent_types
+    assert {
+        "codex-app",
+        "codex-ide",
+        "codex-cli",
+        "claude-code",
+        "manual",
+        "other-agent",
+    } <= agent_types
     ambiguous = {item["input"]: item["use_one_of"] for item in catalog["ambiguous_inputs"]}
-    assert ambiguous["codex"] == ["codex-app", "codex-cli"], ambiguous
+    assert ambiguous["codex"] == ["codex-app", "codex-ide", "codex-cli"], ambiguous
 
     assert agent_type_for_host_surface("chat-box") == "codex-app"
+    assert agent_type_for_host_surface("codex-ide") == "codex-ide"
     assert agent_type_for_host_surface("codex-cli-tui") == "codex-cli"
 
     codex_app = build_host_loop_activation_packet(agent_type="codex-app", goal_id="demo")
+    codex_ide = build_host_loop_activation_packet(agent_type="codex-ide", goal_id="demo")
     codex_cli = build_host_loop_activation_packet(agent_type="codex-cli", goal_id="demo")
     claude_code = build_host_loop_activation_packet(agent_type="claude-code", goal_id="demo")
     assert codex_app["activation_method"] == "create_or_update_codex_app_automation", codex_app
+    assert codex_ide["activation_method"] == "set_visible_goal", codex_ide
+    assert codex_ide["host_mutation"]["host_command"] == "/goal <task_body>", codex_ide
     assert codex_cli["host_mutation"]["host_command"] == "/goal <task_body>", codex_cli
     assert claude_code["host_mutation"]["host_command"] == "/loop", claude_code
     gated_activation = build_host_loop_activation_packet(
@@ -99,7 +110,11 @@ def main() -> int:
     assert ambiguous_result.returncode == 2, ambiguous_result.stdout
     ambiguous_payload = json.loads(ambiguous_result.stdout)
     assert ambiguous_payload["ok"] is False, ambiguous_payload
-    assert ambiguous_payload["suggestions"] == ["codex-app", "codex-cli"], ambiguous_payload
+    assert ambiguous_payload["suggestions"] == [
+        "codex-app",
+        "codex-ide",
+        "codex-cli",
+    ], ambiguous_payload
 
     with tempfile.TemporaryDirectory(prefix="loopx-agent-onboard-smoke-") as tmp:
         project = Path(tmp) / "project"

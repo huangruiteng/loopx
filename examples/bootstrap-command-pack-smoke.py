@@ -261,7 +261,7 @@ def test_start_goal_guided_previews_transaction_without_mutation() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         project = Path(tmp) / "guided-project"
         project.mkdir()
-        payload = run_json(
+        start_args = (
             "start-goal",
             "--guided",
             "--project",
@@ -273,6 +273,16 @@ def test_start_goal_guided_previews_transaction_without_mutation() -> None:
             "--goal-text",
             "Connect this repo and start an auto research lane",
         )
+        selection = run_json(*start_args)
+        selection_summary = assert_packet_summary_refs(
+            selection,
+            packet_kind="guided_start_host_surface_selection",
+        )
+        assert selection_summary["next_step_kind"] == "select_host_surface"
+        assert selection["guided_transaction"]["blocked_by"] == "host_surface_selection"
+        assert selection["safety_contract"]["writes_registry"] is False
+
+        payload = run_json(*start_args, "--host-surface", "codex-app")
 
         assert payload["schema_version"] == "loopx_start_goal_guided_v0"
         assert payload["read_only"] is True
@@ -377,6 +387,8 @@ def test_start_goal_guided_requires_explicit_goal_for_multi_goal_project() -> No
             "--guided",
             "--project",
             str(project),
+            "--host-surface",
+            "codex-app",
             "--goal-text",
             "Add a new meta agent without reusing an old lane",
         )
