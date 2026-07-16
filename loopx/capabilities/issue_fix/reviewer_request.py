@@ -159,8 +159,7 @@ def _secondary_notification_targets(
         handle
         for handle in pool
         if all(
-            isinstance(identities.get(handle), Mapping)
-            for identities in identity_maps
+            isinstance(identities.get(handle), Mapping) for identities in identity_maps
         )
     ][:target_count]
     return (resolved or primary), pool
@@ -215,7 +214,9 @@ def _semantic_review_request_mentions(body: str) -> list[str]:
         window = visible_body[
             mention.end() : min(next_mention_start, mention.end() + 160)
         ]
-        if not any(pattern.search(window) for pattern in REVIEWER_COMMENT_INTENT_PATTERNS):
+        if not any(
+            pattern.search(window) for pattern in REVIEWER_COMMENT_INTENT_PATTERNS
+        ):
             continue
         handle = _normalise_login(mention.group(1))
         if handle and handle not in handles:
@@ -615,9 +616,7 @@ def build_issue_fix_reviewer_request_packet(
         "pr_state_verified": pr_state_verified,
         "existing_requested_reviewers": identities["requested_reviewers"],
         "existing_reviewed_by": identities["reviewed_by"],
-        "existing_comment_notified_reviewers": identities[
-            "comment_notified_reviewers"
-        ],
+        "existing_comment_notified_reviewers": identities["comment_notified_reviewers"],
         "existing_marker_comment_notified_reviewers": identities[
             "marker_comment_notified_reviewers"
         ],
@@ -636,9 +635,7 @@ def build_issue_fix_reviewer_request_packet(
         "review_request_performed": False,
         "review_request_verified": False,
         "reviewer_notification_mode": existing_notification_mode,
-        "reviewer_notification_verified": bool(
-            execute and existing_notified_reviewers
-        ),
+        "reviewer_notification_verified": bool(execute and existing_notified_reviewers),
         "comment_fallback_performed": False,
         "comment_fallback_verified": bool(
             execute and identities["marker_comment_notified_reviewers"]
@@ -877,9 +874,7 @@ def build_issue_fix_reviewer_request_packet(
             packet["review_request_verified"] = len(requested) == len(selected)
             packet["notified_reviewers"] = requested
             packet["reviewer_notification_mode"] = "formal_request"
-            packet["reviewer_notification_verified"] = packet[
-                "review_request_verified"
-            ]
+            packet["reviewer_notification_verified"] = packet["review_request_verified"]
             if verify_error or not packet["review_request_verified"]:
                 packet["ok"] = False
                 packet["blocker"] = "github_review_request_not_verified"
@@ -906,6 +901,88 @@ def build_issue_fix_reviewer_request_packet(
     packet["secondary_notification_configured"] = bool(notification_sinks_input)
     packet["secondary_notification_status"] = "not_configured"
     packet["secondary_notification_verified"] = False
+    reviewer_artifact_application: dict[str, Any] | None = None
+    reward_memory_error: str | None = None
+    if reviewer_artifact_reward_memory and (
+        packet.get("selected_reviewers") or packet.get("notified_reviewers")
+    ):
+        config = reviewer_artifact_reward_memory.get("config")
+        config = config if isinstance(config, Mapping) else {}
+        corpus = config.get("corpus")
+        corpus = corpus if isinstance(corpus, Mapping) else {}
+        standing_policy = config.get("standing_policy")
+        standing_policy = (
+            standing_policy if isinstance(standing_policy, Mapping) else {}
+        )
+        binding = config.get("provider_binding")
+        binding = binding if isinstance(binding, Mapping) else {}
+        scope = corpus.get("scope")
+        scope = scope if isinstance(scope, Mapping) else {}
+        workspace_ref = str(scope.get("workspace_ref") or "")
+        repository_ref = str(scope.get("project_ref") or "")
+        surface_id = "reviewer_artifact.summary"
+        try:
+            reviewer_artifact_application = (
+                run_issue_fix_reviewer_artifact_reward_memory(
+                    {
+                        "repo": repo,
+                        "pr_ref": f"#{number}",
+                        "permalink": str(reference["permalink"]),
+                        "source_title": identities["pr_title"],
+                        "summary": "",
+                    },
+                    reviewer_summary=str(
+                        reviewer_artifact_reward_memory.get("reviewer_summary") or ""
+                    ),
+                    reasoning_summary=str(
+                        reviewer_artifact_reward_memory.get("reasoning_summary") or ""
+                    ),
+                    corpus=corpus,
+                    workspace_ref=workspace_ref,
+                    repository_ref=repository_ref,
+                    revision_ref=f"pr:{number}:{identities['state'].lower()}",
+                    observed_at=str(
+                        reviewer_artifact_reward_memory.get("observed_at")
+                        or generated_at
+                    ),
+                    freshness_context={
+                        "source_truth_current": pr_state_verified,
+                        "source_revision": (
+                            f"pr:{number}:{identities['state'].lower()}"
+                        ),
+                    },
+                    conflict_state="clear",
+                    read_authority_checkpoint={
+                        "verified": standing_policy.get("enabled") is True,
+                        "corpus_id": corpus.get("corpus_id"),
+                        "workspace_ref": workspace_ref,
+                        "project_ref": repository_ref,
+                        "surface_id": surface_id,
+                        "read_authority": corpus.get("read_authority"),
+                        "source_ref": standing_policy.get("authority_source_ref"),
+                    },
+                    provider_binding=binding,
+                    application_id=f"issue-fix:reviewer-artifact:{repo}:{number}",
+                    artifact_ref=f"github:{repo}#pr-{number}",
+                    provider=reviewer_artifact_reward_memory.get("provider"),
+                )
+            )
+        except (OSError, RuntimeError, ValueError):
+            reward_memory_error = "reward_memory_application_unavailable"
+    packet["reviewer_artifact_reward_memory_required"] = reviewer_artifact_required
+    packet["reviewer_artifact_reward_memory_status"] = (
+        (reviewer_artifact_application or {}).get("notification_gate", {}).get("status")
+        if reviewer_artifact_application
+        else "unavailable"
+        if reviewer_artifact_reward_memory
+        else "not_configured"
+    )
+    if reviewer_artifact_application is not None:
+        packet["reviewer_artifact_reward_memory_preview"] = (
+            reviewer_artifact_application
+        )
+    if reward_memory_error:
+        packet["reviewer_artifact_reward_memory_blocker"] = reward_memory_error
     if notification_sinks_input:
         notification_targets = list(packet.get("selected_reviewers") or [])
         if packet.get("notified_reviewers"):
@@ -926,9 +1003,7 @@ def build_issue_fix_reviewer_request_packet(
                 allow_candidate_fallback=bool(packet.get("selected_reviewers")),
             )
         )
-        packet["secondary_notification_primary_targets"] = (
-            primary_notification_targets
-        )
+        packet["secondary_notification_primary_targets"] = primary_notification_targets
         packet["secondary_notification_candidate_pool"] = notification_candidate_pool
         packet["secondary_notification_targets"] = notification_targets
         packet["secondary_notification_fallback_used"] = bool(
@@ -936,96 +1011,6 @@ def build_issue_fix_reviewer_request_packet(
             and notification_targets != primary_notification_targets
         )
         if notification_targets:
-            reviewer_artifact_application: dict[str, Any] | None = None
-            reward_memory_error: str | None = None
-            if reviewer_artifact_reward_memory:
-                config = reviewer_artifact_reward_memory.get("config")
-                config = config if isinstance(config, Mapping) else {}
-                corpus = config.get("corpus")
-                corpus = corpus if isinstance(corpus, Mapping) else {}
-                binding = config.get("provider_binding")
-                binding = binding if isinstance(binding, Mapping) else {}
-                workspace_ref = str(
-                    (corpus.get("scope") or {}).get("workspace_ref")
-                    if isinstance(corpus.get("scope"), Mapping)
-                    else ""
-                )
-                repository_ref = str(
-                    (corpus.get("scope") or {}).get("project_ref")
-                    if isinstance(corpus.get("scope"), Mapping)
-                    else ""
-                )
-                surface_id = "reviewer_artifact.summary"
-                try:
-                    reviewer_artifact_application = (
-                        run_issue_fix_reviewer_artifact_reward_memory(
-                            {
-                                "repo": repo,
-                                "pr_ref": f"#{number}",
-                                "permalink": str(reference["permalink"]),
-                                "source_title": identities["pr_title"],
-                                "summary": "",
-                            },
-                            reviewer_summary=str(
-                                reviewer_artifact_reward_memory.get(
-                                    "reviewer_summary"
-                                )
-                                or ""
-                            ),
-                            reasoning_summary=str(
-                                reviewer_artifact_reward_memory.get(
-                                    "reasoning_summary"
-                                )
-                                or ""
-                            ),
-                            corpus=corpus,
-                            workspace_ref=workspace_ref,
-                            repository_ref=repository_ref,
-                            revision_ref=f"pr:{number}:{identities['state'].lower()}",
-                            observed_at=str(
-                                reviewer_artifact_reward_memory.get("observed_at")
-                                or generated_at
-                            ),
-                            freshness_context={
-                                "source_truth_current": pr_state_verified,
-                                "source_revision": (
-                                    f"pr:{number}:{identities['state'].lower()}"
-                                ),
-                            },
-                            conflict_state="clear",
-                            read_authority_checkpoint={
-                                "verified": True,
-                                "corpus_id": corpus.get("corpus_id"),
-                                "workspace_ref": workspace_ref,
-                                "project_ref": repository_ref,
-                                "surface_id": surface_id,
-                                "read_authority": corpus.get("read_authority"),
-                                "source_ref": corpus.get("source_ref"),
-                            },
-                            provider_binding=binding,
-                            application_id=(
-                                f"issue-fix:reviewer-artifact:{repo}:{number}"
-                            ),
-                            artifact_ref=f"github:{repo}#pr-{number}",
-                            provider=reviewer_artifact_reward_memory.get("provider"),
-                        )
-                    )
-                except (OSError, RuntimeError, ValueError):
-                    reward_memory_error = "reward_memory_application_unavailable"
-            packet["reviewer_artifact_reward_memory_required"] = (
-                reviewer_artifact_required
-            )
-            packet["reviewer_artifact_reward_memory_status"] = (
-                (reviewer_artifact_application or {}).get("notification_gate", {}).get(
-                    "status"
-                )
-                if reviewer_artifact_application
-                else "unavailable"
-            )
-            if reward_memory_error:
-                packet["reviewer_artifact_reward_memory_blocker"] = (
-                    reward_memory_error
-                )
             secondary = build_issue_fix_reviewer_notification_sinks_result(
                 repo=repo,
                 pr_number=number,
@@ -1120,9 +1105,7 @@ def validate_issue_fix_reviewer_request_packet(
     if fallback_verified and not comment_url:
         errors.append("verified comment fallback requires reviewer_comment_url")
     if fallback_verified and set(notified) != set(selected):
-        existing_comment_notified = packet.get(
-            "existing_comment_notified_reviewers"
-        )
+        existing_comment_notified = packet.get("existing_comment_notified_reviewers")
         existing_comment_notified = (
             existing_comment_notified
             if isinstance(existing_comment_notified, list)

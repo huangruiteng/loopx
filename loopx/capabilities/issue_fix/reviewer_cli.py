@@ -349,15 +349,18 @@ def reviewer_renderer(command: str | None) -> Renderer:
 def render_issue_fix_reviewer_feedback_inbox_markdown(
     packet: dict[str, object],
 ) -> str:
-    return "\n".join(
-        [
-            "# Issue-fix Reviewer Feedback Inbox",
-            "",
-            f"- enabled: {packet.get('enabled')}",
-            f"- pending_count: {packet.get('pending_count')}",
-            f"- write_performed: {packet.get('write_performed')}",
-        ]
-    ).rstrip() + "\n"
+    return (
+        "\n".join(
+            [
+                "# Issue-fix Reviewer Feedback Inbox",
+                "",
+                f"- enabled: {packet.get('enabled')}",
+                f"- pending_count: {packet.get('pending_count')}",
+                f"- write_performed: {packet.get('write_performed')}",
+            ]
+        ).rstrip()
+        + "\n"
+    )
 
 
 def handle_issue_fix_reviewer_command(
@@ -525,59 +528,59 @@ def handle_issue_fix_reviewer_command(
                 reviewer_notification_receipts_from_state(
                     notification_lifecycle_packet
                 ),
-                reviewer_notification_queue_from_state(
-                    notification_lifecycle_packet
-                ),
+                reviewer_notification_queue_from_state(notification_lifecycle_packet),
             )
             existing_queued_receipts = reviewer_notification_queue_from_state(
                 notification_lifecycle_packet
             )
-            reward_policy = reward_memory_goal_policy(goal)
-            reviewer_artifact_required = reward_policy["enabled"] is True
-            if reviewer_artifact_required:
-                reward_memory_experiment_status = "agent_id_required"
-                if args.agent_id:
-                    candidate_registries = list(
-                        dict.fromkeys(
-                            path
-                            for path in (
-                                registry_path,
-                                requested_project / ".loopx" / "registry.json",
-                            )
-                            if path is not None
+        reward_policy = reward_memory_goal_policy(goal)
+        reviewer_artifact_required = bool(notification_sinks_input) and (
+            reward_policy["enabled"] is True
+        )
+        if reward_policy["enabled"] is True:
+            reward_memory_experiment_status = "agent_id_required"
+            if args.agent_id:
+                candidate_registries = list(
+                    dict.fromkeys(
+                        path
+                        for path in (
+                            registry_path,
+                            requested_project / ".loopx" / "registry.json",
                         )
+                        if path is not None
                     )
-                    experiment_status: dict[str, Any] | None = None
-                    experiment_config: dict[str, Any] | None = None
-                    for candidate_registry in candidate_registries:
-                        try:
-                            experiment_status, experiment_config = (
-                                resolve_reward_memory_experiment(
-                                    registry_path=candidate_registry,
-                                    goal_id=args.goal_id,
-                                    agent_id=args.agent_id,
-                                )
+                )
+                experiment_status: dict[str, Any] | None = None
+                experiment_config: dict[str, Any] | None = None
+                for candidate_registry in candidate_registries:
+                    try:
+                        experiment_status, experiment_config = (
+                            resolve_reward_memory_experiment(
+                                registry_path=candidate_registry,
+                                goal_id=args.goal_id,
+                                agent_id=args.agent_id,
                             )
-                        except (OSError, ValueError):
-                            continue
-                        break
-                    reward_memory_experiment_status = str(
-                        (experiment_status or {}).get("status") or "unavailable"
-                    )
-                    surfaces = set(
-                        str(value)
-                        for value in (experiment_status or {}).get("surface_ids") or []
-                    )
-                    if (
-                        experiment_config is not None
-                        and "reviewer_artifact.summary" in surfaces
-                    ):
-                        reviewer_artifact_reward_memory = {
-                            "config": experiment_config,
-                            "reviewer_summary": args.reviewer_summary,
-                            "reasoning_summary": args.reviewer_summary_reasoning,
-                            "observed_at": generated_at,
-                        }
+                        )
+                    except (OSError, ValueError):
+                        continue
+                    break
+                reward_memory_experiment_status = str(
+                    (experiment_status or {}).get("status") or "unavailable"
+                )
+                surfaces = set(
+                    str(value)
+                    for value in (experiment_status or {}).get("surface_ids") or []
+                )
+                if (
+                    experiment_config is not None
+                    and "reviewer_artifact.summary" in surfaces
+                ):
+                    reviewer_artifact_reward_memory = {
+                        "config": experiment_config,
+                        "reviewer_summary": args.reviewer_summary,
+                        "reasoning_summary": args.reviewer_summary_reasoning,
+                        "observed_at": generated_at,
+                    }
     payload = build_issue_fix_reviewer_request_packet(
         repo_path=args.repo_path,
         url=args.url,
@@ -607,9 +610,7 @@ def handle_issue_fix_reviewer_command(
         notification_delivery_observed_at=delivery_observed_at,
     )
     payload["secondary_notification_source"] = notification_sinks_source
-    payload["reward_memory_reviewer_artifact_required"] = (
-        reviewer_artifact_required
-    )
+    payload["reward_memory_reviewer_artifact_required"] = reviewer_artifact_required
     payload["reward_memory_experiment_status"] = reward_memory_experiment_status
     payload["secondary_notification_lifecycle_materialized"] = (
         notification_lifecycle_materialized
@@ -620,7 +621,9 @@ def handle_issue_fix_reviewer_command(
     payload["secondary_notification_queue_cancelled_count"] = 0
     payload["secondary_notification_state_persisted"] = False
     secondary = payload.get("secondary_notifications")
-    secondary_receipts = secondary.get("receipts") if isinstance(secondary, dict) else []
+    secondary_receipts = (
+        secondary.get("receipts") if isinstance(secondary, dict) else []
+    )
     new_receipts: list[str] = [
         str(value)
         for value in (
@@ -686,12 +689,8 @@ def handle_issue_fix_reviewer_command(
                         "issue_fix_reviewer_notification_queue_write_v0"
                     ),
                 }
-            payload["secondary_notification_receipts_persisted"] = bool(
-                new_receipts
-            )
-            payload["secondary_notification_queue_persisted"] = bool(
-                queued_receipts
-            )
+            payload["secondary_notification_receipts_persisted"] = bool(new_receipts)
+            payload["secondary_notification_queue_persisted"] = bool(queued_receipts)
             queue_reconciliation = write_result.get("queue_reconciliation")
             if isinstance(queue_reconciliation, Mapping):
                 payload["secondary_notification_queue_reconciled"] = True
