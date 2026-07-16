@@ -44,6 +44,15 @@ fields, and warning collections stay on the referenced full-decision/status
 cold paths. The envelope has an 8 KiB JSON budget and reports its measured
 source/envelope byte counts.
 
+Hot-path fields may use explicit references when the inline value would only
+repeat another authoritative field. In particular,
+`action.selected_todo.text_ref = action.recommended_action` means the selected
+todo text is already present as the recommended action. Scheduler reset plans
+keep the exact acknowledgement argv inline; the failure argv stays behind
+`failure_cli_args_detail_ref` until the host update actually fails. Consumers
+must follow these references instead of treating the omitted duplicate as
+missing state.
+
 This contract is a projection only. It does not change quota selection, todo
 routing, scheduler state, history writes, or state transitions. Promoting it to
 the default agent view requires separate parity evidence across delivery,
