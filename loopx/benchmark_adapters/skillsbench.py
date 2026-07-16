@@ -14,10 +14,15 @@ from ..benchmark_case_state import (
 from ..benchmark_core import (
     BenchmarkFailureClass,
     LEGACY_NONPRODUCT_PROMPT_POLLING_ROUTES,
+    LOOPX_TURN_AGENT_CLI_ROUTE,
     RunPermissionAction,
     build_benchmark_attempt_accounting,
     build_run_permission_policy,
     canonical_lifecycle,
+)
+from .skillsbench_turn_route import (
+    skillsbench_loopx_turn_route_contract,
+    skillsbench_loopx_turn_validation_signals,
 )
 from ..codex_goal_baseline import build_codex_app_server_goal_worker_plan
 from .skillsbench_failure_signals import (
@@ -65,6 +70,7 @@ SKILLSBENCH_ROUTES = (
     SKILLSBENCH_RAW_CODEX_AUTONOMOUS_ROUTE,
     SKILLSBENCH_LOOPX_PRODUCT_MODE_ROUTE,
     SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
+    LOOPX_TURN_AGENT_CLI_ROUTE,
 )
 SKILLSBENCH_DEFAULT_ROUTE = "codex-cli-goal-baseline"
 
@@ -113,6 +119,10 @@ def _is_skillsbench_loopx_product_mode_treatment_route(route: str) -> bool:
 
 def _is_skillsbench_goal_start_product_mode_route(route: str) -> bool:
     return route == SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE
+
+
+def _is_skillsbench_loopx_turn_agent_cli_route(route: str) -> bool:
+    return route == LOOPX_TURN_AGENT_CLI_ROUTE
 
 
 def _skillsbench_product_mode_arm_id(route: str) -> str:
@@ -273,6 +283,8 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
                 "returned during execution"
             ),
         }
+    if _is_skillsbench_loopx_turn_agent_cli_route(route):
+        return skillsbench_loopx_turn_route_contract()
     if _is_skillsbench_loopx_product_mode_treatment_route(route):
         goal_start_product_mode = _is_skillsbench_goal_start_product_mode_route(route)
         return {
@@ -1775,6 +1787,7 @@ def build_skillsbench_benchmark_run(
         route
     )
     is_goal_start_product_mode = _is_skillsbench_goal_start_product_mode_route(route)
+    is_loopx_turn_agent_cli = _is_skillsbench_loopx_turn_agent_cli_route(route)
     validation: dict[str, Any] = {
         "cli_skeleton_present": True,
         "skillsbench_route_declared": True,
@@ -1839,6 +1852,8 @@ def build_skillsbench_benchmark_run(
                     "single_task_planned",
                 ]
                 if route == "raw-codex-autonomous-max5"
+                else skillsbench_loopx_turn_validation_signals()
+                if is_loopx_turn_agent_cli
                 else [
                     "ordinary_codex_cli_actor",
                     "loopx_goal_start_product_mode"

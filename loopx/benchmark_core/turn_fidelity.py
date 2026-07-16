@@ -7,6 +7,8 @@ import re
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from .loop_protocol import LOOPX_TURN_AGENT_CLI_ROUTE
+
 
 LOOPX_TURN_BENCHMARK_FIDELITY_SCHEMA_VERSION = (
     "skillsbench_loopx_turn_benchmark_fidelity_v0"
@@ -14,7 +16,6 @@ LOOPX_TURN_BENCHMARK_FIDELITY_SCHEMA_VERSION = (
 LOOPX_TURN_MATCHED_PAIR_SCHEMA_VERSION = (
     "skillsbench_loopx_turn_goal_matched_pair_v0"
 )
-LOOPX_TURN_AGENT_CLI_ROUTE = "loopx-turn-agent-cli"
 CODEX_CLI_GOAL_BASELINE_ROUTE = "codex-cli-goal-baseline"
 COUNTABLE_ATTEMPT_FIELDS = (
     "launcher_attempt_countable",
