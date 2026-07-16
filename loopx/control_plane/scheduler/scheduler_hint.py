@@ -783,10 +783,18 @@ def build_scheduler_hint(
         if isinstance(interaction_contract.get("user_channel"), dict)
         else {}
     )
+    agent_channel = (
+        interaction_contract.get("agent_channel")
+        if isinstance(interaction_contract.get("agent_channel"), dict)
+        else {}
+    )
     effective_action = str(payload.get("effective_action") or "")
     recommended_mode = str(heartbeat_recommendation.get("recommended_mode") or "")
     must_attempt_work = bool(execution_obligation.get("must_attempt_work"))
     user_required = user_action_required or bool(user_channel.get("action_required"))
+    agent_delivery_during_user_gate = bool(agent_channel.get("must_attempt")) and bool(
+        agent_channel.get("delivery_allowed")
+    )
     automation_action = str(automation_liveness.get("automation_action") or "")
     spend_policy = (
         automation_liveness.get("spend_policy")
@@ -1294,6 +1302,21 @@ def build_scheduler_hint(
             claude_limit=3,
         )
 
+    if user_required and not agent_delivery_during_user_gate:
+        return hint(
+            action="backoff_waiting_for_user",
+            cadence_class="human_gate",
+            reason=(
+                "user/controller action is the next unlock; after surfacing the "
+                "concrete todo or gate, external loops should stop repeating the "
+                "same quiet poll"
+            ),
+            codex_interval=30,
+            codex_max=120,
+            cli_limit=3,
+            claude_limit=3,
+        )
+
     if (
         payload.get("should_run") is True
         or must_attempt_work
@@ -1317,7 +1340,7 @@ def build_scheduler_hint(
             advance_same_identity=False,
         )
 
-    if user_required or recommended_mode in {"ask_operator_gate", "blocker_push_notify"}:
+    if recommended_mode in {"ask_operator_gate", "blocker_push_notify"}:
         return hint(
             action="backoff_waiting_for_user",
             cadence_class="human_gate",

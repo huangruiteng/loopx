@@ -70,6 +70,10 @@ def protocol_first_candidate_action(payload: dict[str, Any]) -> str | None:
     )
     text = protocol_action_label(selected.get("text"))
     if text:
+        if selected.get("fallback_kind") == "deferred_successor_replan":
+            todo_id = str(selected.get("todo_id") or "").strip()
+            action = f"replan ready deferred successor {text}"
+            return f"{todo_id}: {action}" if todo_id else action
         return text
 
     work_lane = (

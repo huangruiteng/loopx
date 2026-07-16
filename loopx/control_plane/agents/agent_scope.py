@@ -317,6 +317,11 @@ def _scoped_user_gate_fallback(
         if isinstance(agent_todo_summary.get("monitor_due_items"), list)
         else []
     )
+    ready_deferred_candidates = (
+        agent_todo_summary.get("deferred_resume_candidates")
+        if isinstance(agent_todo_summary.get("deferred_resume_candidates"), list)
+        else []
+    )
 
     # An empty capability projection is authoritative for advancement work.
     # Due monitors are projected separately from advancement candidates and are
@@ -327,7 +332,11 @@ def _scoped_user_gate_fallback(
         else None
     )
     if isinstance(capability_candidates, list):
-        executable_items = [*due_monitor_candidates, *capability_candidates]
+        executable_items = [
+            *due_monitor_candidates,
+            *capability_candidates,
+            *ready_deferred_candidates,
+        ]
     else:
         advancement_items = (
             agent_todo_summary.get("executable_backlog_items")
@@ -336,7 +345,11 @@ def _scoped_user_gate_fallback(
             if isinstance(agent_todo_summary.get("first_executable_items"), list)
             else []
         )
-        executable_items = [*due_monitor_candidates, *advancement_items]
+        executable_items = [
+            *due_monitor_candidates,
+            *advancement_items,
+            *ready_deferred_candidates,
+        ]
     executable_items = [item for item in executable_items if isinstance(item, dict)]
     deduped_executable_items: list[dict[str, Any]] = []
     seen_todo_ids: set[str] = set()
@@ -388,6 +401,11 @@ def _scoped_user_gate_fallback(
     selected_text = str(selected.get("text") or "").strip()
     gate_to_surface = blocking_gate or gates[0]
     selected_item = compact_todo_summary_item(selected, text=selected_text)
+    selected_is_deferred_replan = (
+        todo_item_is_deferred(selected) and selected.get("resume_ready") is True
+    )
+    if selected_is_deferred_replan:
+        selected_item["fallback_kind"] = "deferred_successor_replan"
     selected_relation = _todo_gate_relation(gate_to_surface, selected)
     if selected_relation:
         selected_item["todo_gate_relation"] = selected_relation
@@ -397,7 +415,10 @@ def _scoped_user_gate_fallback(
         "executable fallback remains available"
         if blocking_gate
         else (
-            "an open user_gate blocks a different action scope, but the selected "
+            "an open user_gate blocks a different action scope, but the ready "
+            "deferred successor can be replanned independently"
+            if selected_is_deferred_replan
+            else "an open user_gate blocks a different action scope, but the selected "
             "executable agent todo is non-dependent and safe to advance"
         )
     )
@@ -411,7 +432,11 @@ def _scoped_user_gate_fallback(
         "blocked_agent_items": blocked_items[:3],
         "selected_executable": selected_item,
         "recommended_action": (
-            "Notify the user about the scoped gate; then execute the selected "
+            "Notify the user about the scoped gate; then reopen, supersede, or "
+            "record a no-follow-up rationale for the selected ready deferred "
+            "successor, spending only after validated writeback."
+            if selected_is_deferred_replan
+            else "Notify the user about the scoped gate; then execute the selected "
             "non-gated fallback and spend only after validated writeback."
         ),
     }
