@@ -84,6 +84,20 @@ def primary_claimed_advancement() -> dict:
     }
 
 
+def primary_excluded_unclaimed_advancement() -> dict:
+    item = primary_claimed_advancement()
+    item.pop("claimed_by")
+    item["excluded_agents"] = [SIDE_AGENT]
+    return item
+
+
+def primary_owned_lifecycle_monitor() -> dict:
+    item = monitor_item()
+    item["claimed_by"] = PRIMARY_AGENT
+    item["excluded_agents"] = [SIDE_AGENT]
+    return item
+
+
 def side_agent_claimed_advancement(
     *,
     index: int = 2,
@@ -1011,6 +1025,40 @@ def assert_repeat_advancement_vision_beats_watch_lane_continuation_ack() -> None
     ), guard
 
 
+def assert_repeat_advancement_vision_replans_past_peer_only_work() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            [
+                primary_owned_lifecycle_monitor(),
+                primary_excluded_unclaimed_advancement(),
+            ],
+            replan_obligation=None,
+            latest_runs=[
+                agent_vision_acceptance_only_run(
+                    advancement_policy="repeat_until_closed"
+                ),
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    frontier = guard["goal_frontier_projection"]["remaining_advancement_frontier"]
+    assert frontier["current_agent_claimed_advancement_count"] == 0, guard
+    assert frontier["unclaimed_advancement_count"] == 0, guard
+    assert guard["agent_todo_summary"]["claim_scope"]["executor_excluded_self_count"] == 2, guard
+    monitors = guard["agent_todo_summary"]["claimed_monitor_open_items"]
+    assert monitors[0]["todo_id"] == "todo_monitor_wait", guard
+    route_hint = guard["goal_route_hint"]
+    assert route_hint["counts"]["unclaimed_advancement_count"] == 0, guard
+    assert "unclaimed_next_actions" not in route_hint, guard
+    action = guard["autonomous_replan_obligation"]["todo_actions"][0]
+    assert action["action"] == "add", guard
+    assert "next runnable" in action["text"], guard
+
+
 def assert_repeat_advancement_vision_accepts_runnable_successor() -> None:
     guard = build_quota_should_run(
         status_payload(
@@ -1528,6 +1576,7 @@ def main() -> None:
     assert_open_agent_vision_uses_watch_lane_continuation_ack()
     assert_due_monitor_runs_under_watched_open_agent_vision()
     assert_repeat_advancement_vision_beats_watch_lane_continuation_ack()
+    assert_repeat_advancement_vision_replans_past_peer_only_work()
     assert_repeat_advancement_vision_accepts_runnable_successor()
     assert_non_watch_replan_ack_does_not_suppress_open_agent_vision()
     assert_open_agent_vision_with_runnable_frontier_uses_neutral_gap_trigger()

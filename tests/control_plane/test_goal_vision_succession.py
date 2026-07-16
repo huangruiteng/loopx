@@ -110,3 +110,36 @@ def test_user_gate_still_precedes_successor_vision_replan() -> None:
     )
 
     assert obligation is None
+
+
+def test_other_agent_work_does_not_satisfy_scoped_repeat_vision() -> None:
+    active_vision = vision("vision_active")
+    active_vision["vision_patch"]["advancement_policy"] = "repeat_until_closed"
+    gaps = acceptance_gaps_from_agent_vision(active_vision, goal_status="active")
+    other_agent_todo = {
+        "todo_id": "todo_other_agent",
+        "status": "open",
+        "task_class": "advancement_task",
+        "claimed_by": "fixture-other-agent",
+    }
+
+    obligation = derive_goal_frontier_replan_obligation_from_summaries(
+        user_todo_summary={"open_count": 0},
+        agent_todo_summary={
+            "open_count": 1,
+            "claimed_advancement_open_count": 1,
+            "current_agent_claimed_advancement_count": 0,
+            "unclaimed_priority_open_items": [],
+            "executable_backlog_items": [],
+            "claim_scope": {"other_agent_claimed_items": [other_agent_todo]},
+        },
+        work_lane_contract=None,
+        agent_id=AGENT_ID,
+        existing_replan_obligation=None,
+        acceptance_gaps=gaps,
+    )
+
+    assert obligation is not None
+    assert obligation["agent_id"] == AGENT_ID
+    assert obligation["triggers"][0]["kind"] == "vision_acceptance_gap"
+    assert obligation["todo_actions"][0]["action"] == "add"
