@@ -11,10 +11,15 @@ from ...control_plane.todos.contract import normalize_todo_claimed_by
 from .application import normalize_reward_memory_provider_binding
 from .ingestion import normalize_reward_memory_standing_policy
 from .registry import normalize_reward_memory_corpus
+from .scoped_feedback import SCOPED_FEEDBACK_ADAPTER
 
 
 REWARD_MEMORY_EXPERIMENT_SCHEMA_VERSION = "reward_memory_experiment_config_v0"
 ISSUE_FIX_MAINTAINER_FEEDBACK_ADAPTER = "issue_fix_maintainer_feedback"
+SUPPORTED_REWARD_MEMORY_EXPERIMENT_ADAPTERS = {
+    ISSUE_FIX_MAINTAINER_FEEDBACK_ADAPTER,
+    SCOPED_FEEDBACK_ADAPTER,
+}
 
 _CONFIG_FIELDS = {
     "schema_version",
@@ -54,10 +59,11 @@ def load_reward_memory_experiment_config(
             "reward-memory experiment config must use "
             f"{REWARD_MEMORY_EXPERIMENT_SCHEMA_VERSION}"
         )
-    if raw.get("adapter") != ISSUE_FIX_MAINTAINER_FEEDBACK_ADAPTER:
+    adapter = str(raw.get("adapter") or "").strip()
+    if adapter not in SUPPORTED_REWARD_MEMORY_EXPERIMENT_ADAPTERS:
         raise ValueError(
-            "reward-memory experiment adapter must be "
-            f"{ISSUE_FIX_MAINTAINER_FEEDBACK_ADAPTER}"
+            "reward-memory experiment adapter must be one of: "
+            + ", ".join(sorted(SUPPORTED_REWARD_MEMORY_EXPERIMENT_ADAPTERS))
         )
     for key in ("corpus", "standing_policy", "provider_binding"):
         if not isinstance(raw.get(key), Mapping):
@@ -67,7 +73,7 @@ def load_reward_memory_experiment_config(
     binding = normalize_reward_memory_provider_binding(raw["provider_binding"], corpus)
     return {
         "schema_version": REWARD_MEMORY_EXPERIMENT_SCHEMA_VERSION,
-        "adapter": ISSUE_FIX_MAINTAINER_FEEDBACK_ADAPTER,
+        "adapter": adapter,
         "corpus": corpus,
         "standing_policy": policy,
         "provider_binding": binding,

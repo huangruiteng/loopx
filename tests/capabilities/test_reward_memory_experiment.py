@@ -11,14 +11,17 @@ from loopx.cli import main
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_FIXTURE = REPO_ROOT / "examples/fixtures/reward-memory-ingest-event.public.json"
+SCOPED_PUBLIC_FIXTURE = (
+    REPO_ROOT
+    / "examples/fixtures/reward-memory-scoped-feedback-ingest.public.json"
+)
 
 
-def _fixture() -> dict[str, object]:
-    return json.loads(PUBLIC_FIXTURE.read_text(encoding="utf-8"))
-
-
-def _experiment(tmp_path: Path) -> tuple[Path, Path, Path]:
-    fixture = _fixture()
+def _experiment(
+    tmp_path: Path,
+    fixture_path: Path = PUBLIC_FIXTURE,
+) -> tuple[Path, Path, Path]:
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
     project = tmp_path / "project"
     config_path = project / ".loopx/config/reward-memory/experiment.json"
     config_path.parent.mkdir(parents=True)
@@ -73,7 +76,7 @@ def _experiment(tmp_path: Path) -> tuple[Path, Path, Path]:
         ),
         encoding="utf-8",
     )
-    return registry_path, event_path, PUBLIC_FIXTURE
+    return registry_path, event_path, fixture_path
 
 
 def _run(capsys, registry_path: Path, *args: str) -> tuple[int, dict[str, object]]:
@@ -192,3 +195,88 @@ def test_legacy_full_packet_remains_available_for_no_write_evaluation(
     assert result == 0
     assert receipt["status"] == "planned"
     assert receipt["external_writes_performed"] is False
+
+
+def test_scoped_feedback_uses_the_shared_ingest_core(tmp_path: Path, capsys) -> None:
+    registry_path, event_path, _ = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
+
+    status, config = resolve_reward_memory_experiment(
+        registry_path=registry_path,
+        goal_id="reward-memory-goal",
+        agent_id="pilot",
+    )
+    result, receipt = _run(
+        capsys,
+        registry_path,
+        "reward-memory",
+        "ingest-event",
+        "--goal-id",
+        "reward-memory-goal",
+        "--agent-id",
+        "pilot",
+        "--input",
+        str(event_path),
+    )
+
+    assert status["status"] == "available"
+    assert status["adapter"] == "scoped_feedback"
+    assert config is not None
+    assert result == 0
+    assert receipt["status"] == "planned"
+    assert receipt["guard"]["passed"] is True
+    assert receipt["adapter_schema_version"] == (
+        "scoped_feedback_reward_memory_candidate_adapter_v0"
+    )
+    assert receipt["next_reward_memory_call"] == "explicit_function_boundary_recall"
+    assert "issue_ref" not in receipt
+    assert receipt["external_writes_performed"] is False
+
+
+def test_configured_route_rejects_adapter_override(tmp_path: Path, capsys) -> None:
+    registry_path, event_path, _ = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
+    source = json.loads(event_path.read_text(encoding="utf-8"))
+    source["adapter"] = "issue_fix_maintainer_feedback"
+    event_path.write_text(json.dumps(source), encoding="utf-8")
+
+    result, receipt = _run(
+        capsys,
+        registry_path,
+        "reward-memory",
+        "ingest-event",
+        "--goal-id",
+        "reward-memory-goal",
+        "--agent-id",
+        "pilot",
+        "--input",
+        str(event_path),
+    )
+
+    assert result == 2
+    assert receipt["status"] == "invalid_request"
+    assert "does not match the configured route" in receipt["error"]
+
+
+def test_scoped_feedback_rejects_unmodelled_event_fields(
+    tmp_path: Path, capsys
+) -> None:
+    registry_path, event_path, _ = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
+    source = json.loads(event_path.read_text(encoding="utf-8"))
+    source["event"]["raw_comment"] = "not accepted"
+    event_path.write_text(json.dumps(source), encoding="utf-8")
+
+    result, receipt = _run(
+        capsys,
+        registry_path,
+        "reward-memory",
+        "ingest-event",
+        "--goal-id",
+        "reward-memory-goal",
+        "--agent-id",
+        "pilot",
+        "--input",
+        str(event_path),
+    )
+
+    assert result == 2
+    assert receipt["status"] == "invalid_request"
+    assert "raw_comment" in receipt["error"]

@@ -471,7 +471,10 @@ def ingest_reward_memory_candidate(
         provider=configured_provider,
     )
     exact = any(
-        item.memory_ref == target_ref
+        (
+            item.memory_ref == target_ref
+            or item.memory_ref.startswith(target_ref.rstrip("/") + "/")
+        )
         and item.candidate_ref == candidate_ref
         and item.content_digest == expected_digest
         for item in recall.items

@@ -223,13 +223,16 @@ implementation.
 ## Minimal ingest loop
 
 `loopx reward-memory ingest-event` is a thin atomic orchestration, not another
-memory product layer. The configured experiment explicitly selects an adapter;
-the first one is `issue_fix_maintainer_feedback`. LoopX neither retains raw
-comment bodies nor uses keywords to decide which feedback deserves memory. The
-model or calling module first distils an `issue_fix_reward_memory_event_v0`
-containing only a source reference, verified actor/role, exact workspace/
-repository/surface/revision, compact summary, reasoning, and current-artifact
-evidence.
+memory product layer. The configured experiment explicitly selects an adapter.
+`issue_fix_maintainer_feedback` remains the Issue Fix compatibility adapter;
+`scoped_feedback` accepts a generic `scoped_feedback_reward_memory_event_v0`
+for any module-qualified surface. Both adapters only map strict compact fields
+into the same `reward_memory_candidate_v0`; neither owns a second lifecycle,
+store, scheduler, recall path, or semantic router. LoopX neither retains raw
+feedback bodies nor uses keywords to decide which feedback deserves memory.
+The model or calling module first distils an event containing only a source
+reference, verified actor/role, exact workspace/project/surface/revision,
+compact summary, reasoning, and current-artifact evidence.
 
 A `reward_memory_standing_policy_v0` predeclares the corpus owner, reviewer,
 authority source, exact project/surfaces, one memory class, source kinds,
@@ -245,7 +248,7 @@ one exact-corpus/surface function-boundary recall. A
 `reward_memory_ingest_receipt_v0` reports `activated` and
 `memory_available_for_recall=true` only when resource ref, candidate ref, and
 canonical content digest all match. Provider unavailability, pending commit,
-or readback mismatch fails open and does not block normal Issue Fix work.
+or readback mismatch fails open and does not block the caller's normal work.
 `observed_at` is the immutable first-observed event timestamp and must be reused
 on retries. The provider target binds both standing-policy and candidate
 digests so a policy revision cannot silently reuse an older activation.
@@ -253,9 +256,10 @@ digests so a policy revision cannot silently reuse an older activation.
 requires the goal id and allowlisted agent id, so a caller cannot bypass the
 default-off experiment policy by supplying a provider binding directly.
 
-The next patch-planning turn still explicitly calls the existing
-`run_issue_fix_patch_planning_reward_memory`. The model decides apply, ignore,
-or refute and reuses the Stage-3 application receipt. The ingest seam adds no
+The caller still explicitly invokes its existing Stage-3 function-boundary
+recall hook. Issue Fix keeps `run_issue_fix_patch_planning_reward_memory`; other
+modules use their own surface-owned hook. The model decides apply, ignore, or
+refute and reuses the shared application receipt. The ingest seam adds no
 deterministic semantic routing or background scheduler.
 
 ## OpenViking alignment

@@ -27,6 +27,10 @@ from .dogfood import (
 from .evaluation import run_reward_memory_evaluation
 from .experiment import resolve_reward_memory_experiment
 from .registry import build_reward_memory_corpus_registry_packet
+from .scoped_feedback import (
+    SCOPED_FEEDBACK_ADAPTER,
+    ingest_scoped_feedback_reward_memory_event,
+)
 
 
 def _render(payload: dict[str, object]) -> str:
@@ -322,14 +326,17 @@ def handle_reward_memory_command(
                         "Reward Memory experiment is unavailable for this agent: "
                         + str(experiment_status.get("status") or "unavailable")
                     )
-            adapter = source.get("adapter") or (
+            configured_adapter = (
                 experiment_config.get("adapter") if experiment_config else None
             )
-            if adapter != "issue_fix_maintainer_feedback":
-                raise ValueError(
-                    "adapter must be issue_fix_maintainer_feedback; semantic "
-                    "routing is intentionally not inferred"
-                )
+            supplied_adapter = source.get("adapter")
+            if (
+                configured_adapter
+                and supplied_adapter
+                and supplied_adapter != configured_adapter
+            ):
+                raise ValueError("input adapter does not match the configured route")
+            adapter = configured_adapter or supplied_adapter
             for key in ("event",):
                 if not isinstance(source.get(key), Mapping):
                     raise ValueError(f"{key} must be an object")
@@ -355,7 +362,15 @@ def handle_reward_memory_command(
             ):
                 if not isinstance(value, Mapping):
                     raise ValueError(f"{key} must be an object")
-            payload = ingest_issue_fix_reward_memory_event(
+            ingest_adapter = {
+                "issue_fix_maintainer_feedback": ingest_issue_fix_reward_memory_event,
+                SCOPED_FEEDBACK_ADAPTER: ingest_scoped_feedback_reward_memory_event,
+            }.get(str(adapter or ""))
+            if ingest_adapter is None:
+                raise ValueError(
+                    "adapter is unsupported; semantic routing is intentionally not inferred"
+                )
+            payload = ingest_adapter(
                 source["event"],
                 corpus=corpus,
                 standing_policy=standing_policy,

@@ -29,8 +29,14 @@ SCOPE_REF = "viking://resources/reward-memory/example"
 class FakeProvider:
     provider_id = "fake_provider"
 
-    def __init__(self, *, alter_readback: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        alter_readback: bool = False,
+        materialize_descendant: bool = False,
+    ) -> None:
         self.alter_readback = alter_readback
+        self.materialize_descendant = materialize_descendant
         self.resources: dict[str, str] = {}
         self.sync_calls = 0
         self.retrieve_calls = 0
@@ -74,7 +80,11 @@ class FakeProvider:
                 )
             items.append(
                 ContextProviderItem(
-                    resource_ref=target,
+                    resource_ref=(
+                        f"{target}/materialized.md"
+                        if self.materialize_descendant
+                        else target
+                    ),
                     summary="Compact reviewed reward memory.",
                     content=content,
                     score=0.95,
@@ -223,6 +233,14 @@ def test_atomic_ingest_writes_reads_back_and_deduplicates() -> None:
     assert second["write"]["write_count"] == 0
     assert provider.sync_calls == 2
     assert provider.retrieve_calls == 2
+
+
+def test_atomic_ingest_accepts_exact_descendant_materialization() -> None:
+    receipt = ingest(FakeProvider(materialize_descendant=True))
+
+    assert receipt["status"] == "activated"
+    assert receipt["exact_readback_verified"] is True
+    assert receipt["memory_available_for_recall"] is True
 
 
 def test_dry_run_needs_no_provider_call() -> None:

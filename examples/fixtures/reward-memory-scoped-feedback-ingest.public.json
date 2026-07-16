@@ -1,0 +1,111 @@
+{
+  "adapter": "scoped_feedback",
+  "observed_at": "2026-07-16T00:30:00+00:00",
+  "event": {
+    "schema_version": "scoped_feedback_reward_memory_event_v0",
+    "feedback_ref": "user:example:reviewer-summary-language",
+    "workspace_ref": "workspace:example",
+    "project_ref": "repository:example",
+    "surface_id": "reviewer_artifact.summary",
+    "revision_ref": "revision:abc123",
+    "target_class": "hard_policy",
+    "content_summary": "Reviewer-facing artifacts include a concise Chinese summary.",
+    "source": {
+      "source_kind": "explicit_user_instruction",
+      "source_ref": "user:instruction:reviewer-summary-language",
+      "actor_ref": "user:project-owner",
+      "actor_role": "verified_project_owner_or_operator"
+    },
+    "reasoning": {
+      "summary": "The project owner explicitly set the required reviewer-facing language boundary.",
+      "confidence": "high"
+    },
+    "guard_context": {
+      "source_freshness": "current",
+      "conflict_state": "clear",
+      "current_artifact_verified": true
+    },
+    "requested_action_scopes": [
+      "reviewer_artifact:required_summary_language"
+    ],
+    "raw_content_captured": false
+  },
+  "corpus": {
+    "corpus_id": "example_reviewer_artifact_policy",
+    "class_id": "hard_policy",
+    "provider_id": "openviking",
+    "owner_ref": "example_reward_memory_owner",
+    "source_of_truth": "reviewed_scoped_feedback",
+    "read_authority": "module_scoped",
+    "write_authority": "provider_managed",
+    "scope": {
+      "workspace_ref": "workspace:example",
+      "project_ref": "repository:example",
+      "surface_ids": [
+        "reviewer_artifact.summary"
+      ]
+    },
+    "freshness": {
+      "mode": "revision_bound",
+      "source_revision": "revision:abc123"
+    },
+    "lifecycle": {
+      "state": "active",
+      "supersedes": []
+    },
+    "retrieval": {
+      "index_required": true,
+      "readback_required": true,
+      "application_receipt_required": true
+    },
+    "maintenance": {
+      "writeback_triggers": [
+        "reviewed_scoped_feedback"
+      ],
+      "closure_policy": "write_exact_readback_then_recall",
+      "retirement_authority": "example_reward_memory_owner"
+    },
+    "privacy": {
+      "visibility": "private",
+      "raw_content_in_registry": false
+    },
+    "provider_scope_ref_digest": "40bcd5f2e37a46db"
+  },
+  "standing_policy": {
+    "schema_version": "reward_memory_standing_policy_v0",
+    "policy_id": "policy:example:reviewer-summary-language",
+    "enabled": true,
+    "auto_activate": true,
+    "owner_ref": "example_reward_memory_owner",
+    "reviewer_ref": "agent:example-reviewer",
+    "authority_source_ref": "policy:example:reviewer-artifacts",
+    "scope": {
+      "workspace_ref": "workspace:example",
+      "project_ref": "repository:example",
+      "surface_ids": [
+        "reviewer_artifact.summary"
+      ]
+    },
+    "allowed_target_classes": [
+      "hard_policy"
+    ],
+    "allowed_source_kinds": [
+      "explicit_user_instruction"
+    ],
+    "allowed_actor_roles": [
+      "verified_project_owner_or_operator"
+    ],
+    "allowed_action_scopes": [
+      "reviewer_artifact:required_summary_language"
+    ],
+    "raw_content_captured": false
+  },
+  "provider_binding": {
+    "corpus_id": "example_reviewer_artifact_policy",
+    "provider_id": "openviking",
+    "namespace": "reward_memory",
+    "scope_ref": "viking://resources/reward-memory/example-reviewer-artifacts",
+    "timeout_seconds": 30,
+    "minimum_provider_version": "0.4.9"
+  }
+}

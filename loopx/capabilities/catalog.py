@@ -377,6 +377,18 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
             },
             {
+                "schema_version": "scoped_feedback_reward_memory_event_v0",
+                "module": "loopx.capabilities.reward_memory.scoped_feedback",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
+            {
+                "schema_version": (
+                    "scoped_feedback_reward_memory_candidate_adapter_v0"
+                ),
+                "module": "loopx.capabilities.reward_memory.scoped_feedback",
+                "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
+            },
+            {
                 "schema_version": "reward_memory_active_record_v0",
                 "module": "loopx.capabilities.reward_memory.application",
                 "doc": "docs/reference/protocols/reward-memory-architecture-v0.md",
@@ -455,7 +467,7 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "Project or surface mismatch fails closed before provider availability can influence application.",
             "Stages 0-1 write no corpus, candidate, provider memory, evaluation result, or external artifact.",
             "Stage 2 returns inspectable candidate/review decisions only; accept or retire still requires the caller to use the corpus owner's declared write authority and verify readback.",
-            "The Issue Fix Stage-2 adapter maps compact domain evidence into the shared core and owns no parallel lifecycle, store, scheduler, or recall path.",
+            "Issue Fix and generic scoped-feedback adapters map compact domain evidence into the shared core and own no parallel lifecycle, store, scheduler, or recall path.",
             "Stage 3 recalls only after an explicit exact-corpus, module-surface request and a matching read-authority checkpoint; it never scans every corpus automatically.",
             "Function-boundary recall permits one caller-owned query; bounded agentic search permits at most three caller/model-owned queries and contains no semantic router.",
             "Provider and application failures preserve the base output, emit compact receipts or setup hints, and never become user gates automatically.",
