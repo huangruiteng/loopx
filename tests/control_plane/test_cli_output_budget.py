@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import json
 import shlex
@@ -186,6 +187,24 @@ def _invoke_cli(args: list[str]) -> tuple[int, str]:
     return exit_code, output.getvalue()
 
 
+@contextlib.contextmanager
+def _stable_budget_fixture_root(root: Path):
+    """Keep absolute-path fields stable across pytest and xdist temp layouts."""
+
+    root.mkdir(parents=True, exist_ok=True)
+    suffix = hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:12]
+    alias = Path("/tmp") / f"loopx-cli-budget-{suffix}"
+    if alias.exists() or alias.is_symlink():
+        if not alias.is_symlink():
+            raise RuntimeError(f"refusing to replace non-symlink fixture root: {alias}")
+        alias.unlink()
+    alias.symlink_to(root, target_is_directory=True)
+    try:
+        yield alias
+    finally:
+        alias.unlink(missing_ok=True)
+
+
 def _surface_commands(
     *,
     project: Path,
@@ -325,29 +344,36 @@ def _surface_commands(
 
 
 def _measure_scenario(root: Path, scenario: Scenario) -> dict[str, dict[str, dict]]:
-    project, runtime, registry_path, state_file = _write_fixture(root, scenario)
-    results: dict[str, dict[str, dict]] = {}
-    for output_format in ("json", "markdown"):
-        commands = _surface_commands(
-            project=project,
-            runtime=runtime,
-            registry_path=registry_path,
-            state_file=state_file,
-            output_format=output_format,
+    with _stable_budget_fixture_root(root) as stable_root:
+        project, runtime, registry_path, state_file = _write_fixture(
+            stable_root,
+            scenario,
         )
-        for surface_id, command in commands.items():
-            exit_code, text = _invoke_cli(command)
-            assert exit_code == 0, (surface_id, output_format, text)
-            measurement = measure_cli_output(text, output_format=output_format)  # type: ignore[arg-type]
-            spec = CLI_OUTPUT_BUDGET_BY_ID[surface_id]
-            assert_cli_output_baseline(
-                spec,
-                scenario=scenario.name,
-                output_format=output_format,  # type: ignore[arg-type]
-                text=text,
-                measurement=measurement,
+        results: dict[str, dict[str, dict]] = {}
+        for output_format in ("json", "markdown"):
+            commands = _surface_commands(
+                project=project,
+                runtime=runtime,
+                registry_path=registry_path,
+                state_file=state_file,
+                output_format=output_format,
             )
-            results.setdefault(surface_id, {})[output_format] = measurement
+            for surface_id, command in commands.items():
+                exit_code, text = _invoke_cli(command)
+                assert exit_code == 0, (surface_id, output_format, text)
+                measurement = measure_cli_output(  # type: ignore[arg-type]
+                    text,
+                    output_format=output_format,
+                )
+                spec = CLI_OUTPUT_BUDGET_BY_ID[surface_id]
+                assert_cli_output_baseline(
+                    spec,
+                    scenario=scenario.name,
+                    output_format=output_format,  # type: ignore[arg-type]
+                    text=text,
+                    measurement=measurement,
+                )
+                results.setdefault(surface_id, {})[output_format] = measurement
     return results
 
 
