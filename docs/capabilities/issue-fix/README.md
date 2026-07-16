@@ -288,8 +288,10 @@ This is a thin consumer of the shared Reward Memory core, not an Issue Fix
 memory implementation. It verifies the exact surface, current PR identity,
 current-artifact check, memory readback, attribution digests, and non-empty
 summary before the secondary send. It never infers another peer's agent id and
-does not hard-code OpenViking: the experiment still resolves the goal's ignored
-provider binding. Read authority combines the normalized corpus read-authority
+does not hard-code OpenViking: the experiment resolves the surface's explicit
+corpus set from the goal's ignored project provider config and uses that
+surface's recall profile. It never scans unrelated project corpora. Read
+authority combines the normalized corpus read-authority
 kind with `standing_policy.authority_source_ref`; it is never inferred from a
 provider or repository name. A successful no-sink preview is returned as
 `reviewer_artifact_reward_memory_preview` and remains read-only. The canonical

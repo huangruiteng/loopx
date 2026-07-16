@@ -304,7 +304,8 @@ loopx issue-fix reviewer-request \
 这里复用通用 Reward Memory core，只做很薄的 Issue Fix 适配，不再造一套 memory。发送前
 校验精确 surface、当前 PR 身份、current-artifact check、memory readback、归因 digest 和
 非空摘要；不会借用其他 peer 的 agent id，也没有写死 OpenViking，而是解析 goal 登记的
-本地 provider binding。读 authority 由规范化 corpus 的 read-authority 类型与
+本地项目级 provider config，再按当前 surface 显式选择兼容 corpus 集合和该 surface 自有的
+recall profile，不扫描项目内无关 corpus。读 authority 由规范化 corpus 的 read-authority 类型与
 `standing_policy.authority_source_ref` 共同构成，不从 provider 或仓库名推导。成功的无 sink
 预览通过 `reviewer_artifact_reward_memory_preview` 返回，且保持只读。普通 GitHub reviewer
 request 仍先执行且保持 fail-open；只有显式配置的二级通知在 receipt 缺失或陈旧时

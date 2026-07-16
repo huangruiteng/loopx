@@ -42,11 +42,61 @@ loopx reward-memory experiment-status \
 ```
 
 The registry retains only `enabled`, `experimental`, an ignored repo-relative
-config pointer, and the explicit agent allowlist. The ignored config contains
-the adapter, corpus, standing policy, and provider binding. Provider-specific
-choices therefore stay local and private. OpenViking is the first provider
-used by the Issue Fix pilot, but it is not a global LoopX feature flag or
-mandatory dependency; another provider can satisfy the same binding contract.
+config pointer, and the explicit agent allowlist. Provider-specific choices
+therefore stay local and private. OpenViking is the first provider used by the
+Issue Fix pilot, but it is not a global LoopX feature flag or mandatory
+dependency; another provider can satisfy the same binding contract.
+
+Config v1 declares one `project_provider_binding`, its exact per-corpus scope
+references, the project corpus set, module-owned surfaces, and an automation
+policy. A surface explicitly lists its compatible `corpus_ids`, selects one
+`ingest_corpus_id`, and owns its `recall_profile`. LoopX never discovers routes
+by scanning all corpora. Corpora assigned to one surface must have the same
+memory class, authority, privacy, freshness, and lifecycle. Scope digests and
+provider/corpus identity are still checked independently for every corpus.
+
+```json
+{
+  "schema_version": "reward_memory_experiment_config_v1",
+  "project_provider_binding": {
+    "provider_id": "openviking",
+    "namespace": "reward_memory",
+    "corpus_scopes": [
+      {"corpus_id": "review_policy", "scope_ref": "viking://.../review-policy"}
+    ]
+  },
+  "corpora": [
+    {"corpus": {"corpus_id": "review_policy"}, "standing_policy": {}}
+  ],
+  "surfaces": [
+    {
+      "surface_id": "reviewer_artifact.summary",
+      "adapter": "scoped_feedback",
+      "corpus_ids": ["review_policy"],
+      "ingest_corpus_id": "review_policy",
+      "recall_profile": {
+        "profile_id": "review_summary_v1",
+        "mode": "function_boundary",
+        "max_queries": 1,
+        "limit": 4
+      }
+    }
+  ],
+  "automation": {
+    "automatic_recall": false,
+    "automatic_ingest": false,
+    "fail_open": true
+  }
+}
+```
+
+The abbreviated corpus and standing-policy objects above represent the full
+existing v0 contracts. `experiment-status` reports the source/effective schema,
+migration state, corpus/surface counts, recall-profile ids, and the effective
+automatic policy without exposing scope refs. Existing single-corpus config v0
+files migrate in memory to one surface with both automatic flags off. Setting a
+flag only authorizes a compatible runtime hook; it does not create a scheduler,
+infer a query, widen authority, or bypass the exact surface/corpus guards.
 
 An allowlisted agent supplies only the compact event at runtime:
 
@@ -58,9 +108,11 @@ loopx reward-memory ingest-event \
 
 Real provider writes require this configured goal-and-agent route. The legacy
 full-packet form remains available only as a no-write evaluation fixture.
-Activation does not enable automatic feedback capture, ingest, recall, or
-provider authentication. Issue Fix continues normally when the experiment is
-disabled, unavailable, rejected by guards, or fails exact readback.
+The default v0 migration does not enable automatic feedback capture, ingest,
+recall, or provider authentication. Issue Fix continues normally when the
+experiment is disabled, unavailable, rejected by guards, or fails exact
+readback. Invalid v1 configuration also resolves unavailable with both
+automatic flags false.
 
 ## Five first-class classes
 

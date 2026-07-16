@@ -37,10 +37,58 @@ loopx reward-memory experiment-status \
 ```
 
 Registry 只保存 `enabled`、`experimental`、一个指向 repo 内 ignored config 的相对路径，
-以及显式 agent allowlist。Ignored config 才保存 adapter、corpus、standing policy 和
-provider binding，因此 provider 选择留在本地私有配置里。OpenViking 是 Issue Fix pilot
-当前使用的首个 provider，但不是 LoopX 的全局 feature flag 或强制依赖；任何满足同一
-binding contract 的 provider 都可以替换它。
+以及显式 agent allowlist，因此 provider 选择留在本地私有配置里。OpenViking 是 Issue Fix
+pilot 当前使用的首个 provider，但不是 LoopX 的全局 feature flag 或强制依赖；任何满足
+同一 binding contract 的 provider 都可以替换它。
+
+Config v1 只登记一次 `project_provider_binding`，同时列出每个 corpus 的精确 provider
+scope、项目 corpus 集合、模块自有 surface 和 automation policy。每个 surface 显式列出
+兼容的 `corpus_ids`，指定唯一 `ingest_corpus_id`，并拥有自己的 `recall_profile`。LoopX
+不会通过扫描全部 corpus 猜路由。同一 surface 下的 corpus 必须具有相同 memory class、
+authority、privacy、freshness 和 lifecycle；每个 corpus 的 scope digest、provider identity
+和 corpus identity 仍逐一精确校验。
+
+```json
+{
+  "schema_version": "reward_memory_experiment_config_v1",
+  "project_provider_binding": {
+    "provider_id": "openviking",
+    "namespace": "reward_memory",
+    "corpus_scopes": [
+      {"corpus_id": "review_policy", "scope_ref": "viking://.../review-policy"}
+    ]
+  },
+  "corpora": [
+    {"corpus": {"corpus_id": "review_policy"}, "standing_policy": {}}
+  ],
+  "surfaces": [
+    {
+      "surface_id": "reviewer_artifact.summary",
+      "adapter": "scoped_feedback",
+      "corpus_ids": ["review_policy"],
+      "ingest_corpus_id": "review_policy",
+      "recall_profile": {
+        "profile_id": "review_summary_v1",
+        "mode": "function_boundary",
+        "max_queries": 1,
+        "limit": 4
+      }
+    }
+  ],
+  "automation": {
+    "automatic_recall": false,
+    "automatic_ingest": false,
+    "fail_open": true
+  }
+}
+```
+
+上例省略的 corpus 和 standing policy 字段仍使用既有完整 v0 contract。
+`experiment-status` 会报告源/生效 schema、是否发生迁移、corpus/surface 数量、recall profile
+id 和生效的 automatic policy，但不会泄露 scope ref。旧的单 corpus config v0 会在内存中
+迁移成单 surface，两个 automatic flag 默认都为 false。打开 flag 只授权兼容的 runtime
+hook；它不会新建 scheduler、替模型推导 query、扩大 authority 或绕过精确 surface/corpus
+guard。
 
 Allowlist 内的 agent 在运行时只提交紧凑事件：
 
@@ -51,9 +99,9 @@ loopx reward-memory ingest-event \
 ```
 
 真实 provider 写入必须经过这条 goal + agent 配置路由。原有 full-packet 形式只保留为
-no-write 评测夹具。开启实验不会自动采集反馈、自动 ingest、自动 recall，也不会代替
+no-write 评测夹具。v0 迁移默认不会自动采集反馈、自动 ingest、自动 recall，也不会代替
 provider 认证；实验关闭、provider 不可用、guard 拒绝或精确读回失败时，Issue Fix 都继续
-正常工作。
+正常工作。v1 配置无效时也会以 unavailable fail-open，并把两个 automatic flag 置为 false。
 
 ## 五类一等记忆
 
