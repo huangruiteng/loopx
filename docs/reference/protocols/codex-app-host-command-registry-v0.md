@@ -219,9 +219,9 @@ Until every host exposes a native command registry, LoopX installs slash-command
 facades into the user-level discovery locations that current hosts already
 support:
 
-- `~/.codex/skills/loopx-project/SKILL.md` for the Codex project command
-  fallback shown as `LoopX` in `/skills`; other `loopx*` command facades cover
-  manager commands, while upgrades retire the older managed `$loopx` facade;
+- `~/.codex/skills/loopx*/SKILL.md` for explicit Codex command-facade
+  invocation through `$loopx` or `/skills`; the `LoopX /loopx` command facade
+  remains distinct from the `LoopX Project` workflow skill;
 - `~/.claude/skills/loopx*/SKILL.md` for Claude Code skill-based slash
   commands.
 

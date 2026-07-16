@@ -316,11 +316,17 @@ def main() -> int:
         assert not auto_research_skill.exists(), auto_research_skill
         loopx_prompt = codex_home / "prompts" / "loopx.md"
         assert not loopx_prompt.exists(), loopx_prompt
-        assert not (codex_home / "skills" / "loopx" / "SKILL.md").exists()
-        assert not (codex_home / "skills" / "loopx" / "agents" / "openai.yaml").exists()
+        loopx_command_skill = codex_home / "skills" / "loopx" / "SKILL.md"
+        loopx_command_skill_text = loopx_command_skill.read_text(encoding="utf-8")
+        assert "surface=codex-skills" in loopx_command_skill_text, loopx_command_skill_text
+        loopx_openai_metadata = loopx_command_skill.parent / "agents" / "openai.yaml"
+        loopx_openai_metadata_text = loopx_openai_metadata.read_text(encoding="utf-8")
+        assert 'display_name: "LoopX /loopx"' in loopx_openai_metadata_text, loopx_openai_metadata_text
+        assert "allow_implicit_invocation: false" in loopx_openai_metadata_text, loopx_openai_metadata_text
         loopx_project_metadata = codex_home / "skills" / "loopx-project" / "agents" / "openai.yaml"
         loopx_project_metadata_text = loopx_project_metadata.read_text(encoding="utf-8")
-        assert 'display_name: "LoopX"' in loopx_project_metadata_text, loopx_project_metadata_text
+        assert 'display_name: "LoopX Project"' in loopx_project_metadata_text, loopx_project_metadata_text
+        assert 'display_name: "LoopX /loopx"' not in loopx_project_metadata_text, loopx_project_metadata_text
         claude_loopx_skill = home / ".claude" / "skills" / "loopx" / "SKILL.md"
         claude_loopx_skill_text = claude_loopx_skill.read_text(encoding="utf-8")
         assert "surface=claude-skills" in claude_loopx_skill_text, claude_loopx_skill_text

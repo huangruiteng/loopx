@@ -21,7 +21,7 @@ def _loopx_paths(codex_home: Path) -> tuple[Path, Path]:
     return skill, skill.parent / "agents" / "openai.yaml"
 
 
-def test_codex_install_retires_managed_loopx_facade(tmp_path: Path) -> None:
+def test_codex_install_upgrades_managed_loopx_facade(tmp_path: Path) -> None:
     codex_home = tmp_path / "codex"
     skill, metadata = _loopx_paths(codex_home)
     skill.parent.mkdir(parents=True)
@@ -36,22 +36,21 @@ def test_codex_install_retires_managed_loopx_facade(tmp_path: Path) -> None:
         claude_home=str(tmp_path / "claude"),
     )
 
-    assert not skill.exists()
-    assert not metadata.exists()
-    assert _row(payload, "retired_codex_project_command_facade")["status"] == (
-        "retired_managed_file"
+    assert "Treat this as the LoopX `/loopx` explicit LoopX command skill." in skill.read_text(
+        encoding="utf-8"
     )
-    assert _row(payload, "retired_codex_project_command_metadata")["status"] == (
-        "retired_managed_file"
-    )
+    metadata_text = metadata.read_text(encoding="utf-8")
+    assert 'display_name: "LoopX /loopx"' in metadata_text
+    assert "allow_implicit_invocation: false" in metadata_text
+    assert _row(payload, "codex_explicit_skills")["status"] == "updated"
+    assert _row(payload, "codex_skill_openai_metadata")["status"] == "updated"
     fallback = next(
         item["fallback"]
         for item in payload["installed"]
         if item.get("mechanism") == "unsupported_native_slash_registry"
         and item.get("command") == "/loopx"
     )
-    assert "$loopx" not in fallback
-    assert "`LoopX` workflow skill in `/skills`" in fallback
+    assert "$loopx" in fallback
 
 
 def test_codex_install_preserves_user_owned_loopx_facade(tmp_path: Path) -> None:
@@ -71,9 +70,4 @@ def test_codex_install_preserves_user_owned_loopx_facade(tmp_path: Path) -> None
 
     assert skill.read_text(encoding="utf-8") == "# user-owned loopx skill\n"
     assert metadata.read_text(encoding="utf-8") == "# user-owned metadata\n"
-    assert _row(payload, "retired_codex_project_command_facade")["status"] == (
-        "skipped_user_file"
-    )
-    assert _row(payload, "retired_codex_project_command_metadata")["status"] == (
-        "skipped_user_file"
-    )
+    assert _row(payload, "codex_explicit_skills")["status"] == "skipped_user_file"
