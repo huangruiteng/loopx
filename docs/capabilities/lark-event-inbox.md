@@ -16,7 +16,8 @@ Lark event stream
 The collector is host infrastructure. LoopX can validate a local-private
 collector config, preview or explicitly install a macOS `launchd` / Linux
 `systemd` user service, and report supervisor plus event-bus health. The
-installed service runs `lark-cli event consume` directly with a bounded timeout,
+installed service runs `lark-cli --profile <configured-profile> event consume`
+directly with a bounded timeout,
 so stdin EOF under a supervisor cannot terminate an otherwise unbounded
 consumer. When the official npm package exposes a Node wrapper, LoopX records
 absolute paths for both Node and the wrapper so launchd does not depend on an
@@ -94,6 +95,7 @@ inbox config but owns host-only details such as the chat id and supervisor:
   "service_name": "loopx-lark-feedback",
   "event_key": "im.message.receive_v1",
   "identity": "bot",
+  "profile": "project-review-bot",
   "supervisor": "launchd",
   "chat_id": "oc_<local-private-chat-id>",
   "consume_timeout": "30m",
@@ -108,6 +110,14 @@ match the canonical inbox schema, avoid collisions with unrelated user services,
 and make thread completeness explicit instead of pretending that an
 `addressed_only` consumer sees later unaddressed replies. Plan and install
 output never returns the chat id, local paths, generated jq, or credentials.
+
+An enabled collector must bind an explicit non-default Lark CLI profile. When
+`profile` is omitted, LoopX may reuse the enabled inbox reply
+`sender_profile`; when both are present they must match. The generated service
+places `--profile` before `event consume`, so collection and optional replies
+cannot silently use different app identities. Public plan/status packets expose
+only whether a profile is bound and where the binding came from, never its
+value.
 
 ```bash
 loopx lark-inbox collector-plan \
