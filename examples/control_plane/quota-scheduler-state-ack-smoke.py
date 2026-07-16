@@ -29,6 +29,7 @@ from loopx.control_plane.scheduler.scheduler_hint import (  # noqa: E402
     build_scheduler_hint,
 )
 from loopx.control_plane.scheduler.state import (  # noqa: E402
+    SCHEDULER_HOST_UPDATE_FAILURE_SCHEMA_VERSION,
     SCHEDULER_STATE_SCHEMA_VERSION,
     load_scheduler_state,
     write_scheduler_state,
@@ -529,6 +530,86 @@ def assert_scheduler_ack_plan_validation() -> None:
         "already_applied": True,
         "applied_rrule": "",
     }, already_applied
+
+
+def assert_scheduler_ack_preserves_other_failed_target_for_same_host() -> None:
+    host_rrule = "FREQ=MINUTELY;INTERVAL=15"
+    active_rrule = "FREQ=MINUTELY;INTERVAL=3"
+    active = build_hint_at(
+        active_payload(),
+        now=FROZEN_NOW,
+        codex_app_current_rrule=host_rrule,
+    )
+    failure_state = state_from(active)
+    failure_state["last_applied_rrule"] = host_rrule
+    failure_state["host_update_failures"] = [
+        {
+            "schema_version": SCHEDULER_HOST_UPDATE_FAILURE_SCHEMA_VERSION,
+            "target_rrule": active_rrule,
+            "observed_host_rrule": host_rrule,
+            "failure_kind": "automation_update_failed",
+            "failure_count": 1,
+            "failed_at": FROZEN_NOW.isoformat(),
+        }
+    ]
+
+    monitor = build_hint_at(
+        monitor_payload(),
+        now=FROZEN_NOW + timedelta(minutes=1),
+        scheduler_state=failure_state,
+        codex_app_current_rrule=host_rrule,
+    )
+    monitor_app = monitor["codex_app"]
+    assert monitor_app["stateful_backoff"]["ack_needed"] is True, monitor
+    ack_args = monitor_app["ack_hint"]["args"]
+    ack = build_codex_app_scheduler_ack_event(
+        {"goal_id": "scheduler-state-ack-smoke", "scheduler_hint": monitor},
+        agent_id=ack_args["agent_id"],
+        applied_rrule=host_rrule,
+        reset_token=ack_args["reset_token"],
+        identity_signature=ack_args["identity_signature"],
+        generated_at=(FROZEN_NOW + timedelta(minutes=1)).isoformat(),
+    )
+    acknowledged_state = ack["scheduler_ack_event"]["scheduler_state"]
+    assert acknowledged_state["host_update_failures"] == (
+        failure_state["host_update_failures"]
+    ), ack
+
+    active_again = build_hint_at(
+        active_payload(),
+        now=FROZEN_NOW + timedelta(minutes=2),
+        scheduler_state=acknowledged_state,
+        codex_app_current_rrule=host_rrule,
+    )
+    active_app = active_again["codex_app"]
+    assert active_app["stateful_backoff"]["state_status"] == (
+        "host_update_failure_suppressed"
+    ), active_again
+    assert active_app["stateful_backoff"]["apply_needed"] is False, active_again
+    assert "recommended_rrule" not in active_app, active_again
+    assert "ack_hint" not in active_app, active_again
+    assert "failure_hint" not in active_app, active_again
+
+    changed_host = build_hint_at(
+        active_payload(),
+        now=FROZEN_NOW + timedelta(minutes=3),
+        scheduler_state=acknowledged_state,
+        codex_app_current_rrule=active_rrule,
+    )
+    changed_app = changed_host["codex_app"]
+    assert changed_app["stateful_backoff"]["ack_needed"] is True, changed_host
+    changed_ack_args = changed_app["ack_hint"]["args"]
+    changed_ack = build_codex_app_scheduler_ack_event(
+        {"goal_id": "scheduler-state-ack-smoke", "scheduler_hint": changed_host},
+        agent_id=changed_ack_args["agent_id"],
+        applied_rrule=active_rrule,
+        reset_token=changed_ack_args["reset_token"],
+        identity_signature=changed_ack_args["identity_signature"],
+        generated_at=(FROZEN_NOW + timedelta(minutes=3)).isoformat(),
+    )
+    changed_state = changed_ack["scheduler_ack_event"]["scheduler_state"]
+    assert "host_update_failures" not in changed_state, changed_ack
+    assert "host_update_failure" not in changed_state, changed_ack
 
 
 def assert_normal_run_ack_preserves_runtime_capabilities() -> None:
@@ -1539,6 +1620,7 @@ def main() -> int:
     assert_monitor_wait_ignores_goal_recommended_action_identity_noise()
     assert_active_work_keeps_initial_cadence()
     assert_scheduler_ack_plan_validation()
+    assert_scheduler_ack_preserves_other_failed_target_for_same_host()
     assert_normal_run_ack_preserves_runtime_capabilities()
     assert_monitor_wait_fixed_due_bucket_does_not_churn()
     assert_monitor_wait_stale_ack_hint_is_accepted()
