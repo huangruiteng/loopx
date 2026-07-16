@@ -13,6 +13,7 @@ from .reviewer_notification import (
     NotificationSinkAdapter,
     build_issue_fix_reviewer_notification_sinks_result,
 )
+from .reward_memory import run_issue_fix_reviewer_artifact_reward_memory
 from .reviewer_recommendation import build_issue_fix_reviewer_recommendation_packet
 
 
@@ -484,6 +485,8 @@ def build_issue_fix_reviewer_request_packet(
     reviewer_sources_input: Mapping[str, Any] | None = None,
     notification_sinks_input: Mapping[str, Any] | None = None,
     notification_sink_adapters: Mapping[str, NotificationSinkAdapter] | None = None,
+    reviewer_artifact_reward_memory: Mapping[str, Any] | None = None,
+    reviewer_artifact_required: bool = False,
     provider_payload: Mapping[str, Any] | None = None,
     execute: bool = False,
     generated_at: str | None = "2026-07-10T00:00:00Z",
@@ -933,6 +936,96 @@ def build_issue_fix_reviewer_request_packet(
             and notification_targets != primary_notification_targets
         )
         if notification_targets:
+            reviewer_artifact_application: dict[str, Any] | None = None
+            reward_memory_error: str | None = None
+            if reviewer_artifact_reward_memory:
+                config = reviewer_artifact_reward_memory.get("config")
+                config = config if isinstance(config, Mapping) else {}
+                corpus = config.get("corpus")
+                corpus = corpus if isinstance(corpus, Mapping) else {}
+                binding = config.get("provider_binding")
+                binding = binding if isinstance(binding, Mapping) else {}
+                workspace_ref = str(
+                    (corpus.get("scope") or {}).get("workspace_ref")
+                    if isinstance(corpus.get("scope"), Mapping)
+                    else ""
+                )
+                repository_ref = str(
+                    (corpus.get("scope") or {}).get("project_ref")
+                    if isinstance(corpus.get("scope"), Mapping)
+                    else ""
+                )
+                surface_id = "reviewer_artifact.summary"
+                try:
+                    reviewer_artifact_application = (
+                        run_issue_fix_reviewer_artifact_reward_memory(
+                            {
+                                "repo": repo,
+                                "pr_ref": f"#{number}",
+                                "permalink": str(reference["permalink"]),
+                                "source_title": identities["pr_title"],
+                                "summary": "",
+                            },
+                            reviewer_summary=str(
+                                reviewer_artifact_reward_memory.get(
+                                    "reviewer_summary"
+                                )
+                                or ""
+                            ),
+                            reasoning_summary=str(
+                                reviewer_artifact_reward_memory.get(
+                                    "reasoning_summary"
+                                )
+                                or ""
+                            ),
+                            corpus=corpus,
+                            workspace_ref=workspace_ref,
+                            repository_ref=repository_ref,
+                            revision_ref=f"pr:{number}:{identities['state'].lower()}",
+                            observed_at=str(
+                                reviewer_artifact_reward_memory.get("observed_at")
+                                or generated_at
+                            ),
+                            freshness_context={
+                                "source_truth_current": pr_state_verified,
+                                "source_revision": (
+                                    f"pr:{number}:{identities['state'].lower()}"
+                                ),
+                            },
+                            conflict_state="clear",
+                            read_authority_checkpoint={
+                                "verified": True,
+                                "corpus_id": corpus.get("corpus_id"),
+                                "workspace_ref": workspace_ref,
+                                "project_ref": repository_ref,
+                                "surface_id": surface_id,
+                                "read_authority": corpus.get("read_authority"),
+                                "source_ref": corpus.get("source_ref"),
+                            },
+                            provider_binding=binding,
+                            application_id=(
+                                f"issue-fix:reviewer-artifact:{repo}:{number}"
+                            ),
+                            artifact_ref=f"github:{repo}#pr-{number}",
+                            provider=reviewer_artifact_reward_memory.get("provider"),
+                        )
+                    )
+                except (OSError, RuntimeError, ValueError):
+                    reward_memory_error = "reward_memory_application_unavailable"
+            packet["reviewer_artifact_reward_memory_required"] = (
+                reviewer_artifact_required
+            )
+            packet["reviewer_artifact_reward_memory_status"] = (
+                (reviewer_artifact_application or {}).get("notification_gate", {}).get(
+                    "status"
+                )
+                if reviewer_artifact_application
+                else "unavailable"
+            )
+            if reward_memory_error:
+                packet["reviewer_artifact_reward_memory_blocker"] = (
+                    reward_memory_error
+                )
             secondary = build_issue_fix_reviewer_notification_sinks_result(
                 repo=repo,
                 pr_number=number,
@@ -942,6 +1035,8 @@ def build_issue_fix_reviewer_request_packet(
                 author_handle=identities["author_handle"],
                 reviewer_handles=notification_targets,
                 sinks_input=notification_sinks_input,
+                reviewer_artifact_application=reviewer_artifact_application,
+                reviewer_artifact_required=reviewer_artifact_required,
                 execute=execute,
                 delivery_observed_at=notification_delivery_observed_at,
                 runner=runner,

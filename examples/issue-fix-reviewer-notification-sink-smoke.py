@@ -172,6 +172,44 @@ def fixture(
     }
 
 
+def reviewer_artifact_application() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "schema_version": (
+            "issue_fix_reviewer_artifact_reward_memory_application_v0"
+        ),
+        "surface_id": "reviewer_artifact.summary",
+        "reviewer_artifact": {
+            "schema_version": "issue_fix_reviewer_artifact_v0",
+            "repo": "owner/repo",
+            "pr_ref": "#42",
+            "permalink": "https://github.com/owner/repo/pull/42",
+            "source_title": "fix: reject file URI for consistency check",
+            "summary": "修复文件 URI 校验，并补充一致性回归测试",
+        },
+        "application": {
+            "status": "applied",
+            "receipt": {
+                "schema_version": "reward_memory_application_receipt_v0",
+                "application_id": "issue-fix:reviewer-artifact:owner/repo:42",
+                "artifact_ref": "github:owner/repo#pr-42",
+                "corpus_id": "reviewer_summary_policy",
+                "surface_id": "reviewer_artifact.summary",
+                "mode": "function_boundary",
+                "outcome": "applied",
+                "memory_ref_digests": ["0123456789abcdef"],
+                "reasoning_summary": "当前 PR 已核验，摘要覆盖改动与验证。",
+                "current_artifact_verified": True,
+                "result_readback_verified": True,
+                "model_reasoning_preserved": True,
+                "grants_new_action_authority": False,
+                "external_writes_performed": False,
+                "raw_content_captured": False,
+            },
+        },
+    }
+
+
 def assert_public_safe(packet: dict[str, Any]) -> None:
     text = json.dumps(packet, ensure_ascii=False, sort_keys=True)
     for pattern in PRIVATE_PATTERNS:
@@ -246,6 +284,67 @@ def main() -> int:
     assert preview["external_writes_performed"] is False
     assert preview_runner.calls == []
     assert_public_safe(preview)
+
+    missing_memory_runner = FakeSinkRunner()
+    missing_memory = build_issue_fix_reviewer_notification_sinks_result(
+        repo="owner/repo",
+        pr_number=42,
+        pr_url="https://github.com/owner/repo/pull/42",
+        author_handle="@current-author",
+        reviewer_handles=["@service-owner"],
+        sinks_input=fixture(),
+        reviewer_artifact_required=True,
+        execute=True,
+        runner=missing_memory_runner,
+    )
+    assert missing_memory["ok"] is False
+    assert missing_memory["blocker"] == (
+        "reward_memory_reviewer_artifact_unverified"
+    )
+    assert missing_memory["external_writes_performed"] is False
+    assert missing_memory_runner.calls == []
+
+    replayed_application = reviewer_artifact_application()
+    replayed_application["reviewer_artifact"]["pr_ref"] = "#41"
+    replay_runner = FakeSinkRunner()
+    replayed = build_issue_fix_reviewer_notification_sinks_result(
+        repo="owner/repo",
+        pr_number=42,
+        pr_url="https://github.com/owner/repo/pull/42",
+        author_handle="@current-author",
+        reviewer_handles=["@service-owner"],
+        sinks_input=fixture(),
+        reviewer_artifact_application=replayed_application,
+        reviewer_artifact_required=True,
+        execute=True,
+        runner=replay_runner,
+    )
+    assert replayed["ok"] is False
+    assert replayed["reward_memory_reviewer_artifact_gate"]["reason_codes"] == [
+        "current_artifact_identity_mismatch"
+    ]
+    assert replay_runner.calls == []
+
+    gated_runner = FakeSinkRunner()
+    gated = build_issue_fix_reviewer_notification_sinks_result(
+        repo="owner/repo",
+        pr_number=42,
+        pr_url="https://github.com/owner/repo/pull/42",
+        pr_title="fix: reject file URI for consistency check",
+        author_handle="@current-author",
+        reviewer_handles=["@service-owner"],
+        sinks_input=fixture(),
+        reviewer_artifact_application=reviewer_artifact_application(),
+        reviewer_artifact_required=True,
+        execute=True,
+        runner=gated_runner,
+    )
+    assert gated["status"] == "sent_verified", gated
+    send_call = next(call for call in gated_runner.calls if "+messages-send" in call)
+    sent_content = send_call[send_call.index("--content") + 1]
+    assert "修复文件 URI 校验" in sent_content
+    assert gated["reward_memory_reviewer_artifact_gate"]["passed"] is True
+    assert_public_safe(gated)
 
     outside_window_config = fixture()
     outside_window_config["delivery_policy"] = {

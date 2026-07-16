@@ -6,15 +6,17 @@ from pathlib import Path
 from typing import Any
 
 from ...agent_registry import load_goal_from_registry
-from ..lark.event_inbox import (
-    acknowledge_lark_event_inbox,
-    inspect_lark_event_inbox,
-)
+from ...control_plane.reward_memory import reward_memory_goal_policy
 from ...domain_packs.issue_fix import (
     default_issue_fix_domain_state_ledger_path,
     persist_issue_fix_reviewer_notification_state,
     upsert_issue_fix_pr_lifecycle_ledger_jsonl,
 )
+from ..lark.event_inbox import (
+    acknowledge_lark_event_inbox,
+    inspect_lark_event_inbox,
+)
+from ..reward_memory.experiment import resolve_reward_memory_experiment
 from .cli_input import load_json_object, load_jsonl_row
 from .metadata_preview import normalise_github_issue_reference
 from .pr_lifecycle import build_issue_fix_pr_lifecycle_monitor_packet
@@ -214,6 +216,27 @@ def register_issue_fix_reviewer_commands(
         help=(
             "Optional connected goal whose registered local-private default sink "
             "and existing PR lifecycle receipts should be reused."
+        ),
+    )
+    reviewer_request_parser.add_argument(
+        "--agent-id",
+        help=(
+            "Registered caller agent used to resolve an agent-scoped Reward "
+            "Memory experiment; never inferred from another peer."
+        ),
+    )
+    reviewer_request_parser.add_argument(
+        "--reviewer-summary",
+        help=(
+            "Caller/model-authored concise Chinese PR summary. A configured "
+            "Reward Memory reviewer-artifact gate verifies it before secondary send."
+        ),
+    )
+    reviewer_request_parser.add_argument(
+        "--reviewer-summary-reasoning",
+        help=(
+            "Compact caller/model reasoning for applying the recalled reviewer "
+            "artifact policy to the current PR."
         ),
     )
     reviewer_request_parser.add_argument(
@@ -442,6 +465,9 @@ def handle_issue_fix_reviewer_command(
     notification_lifecycle_path: Path | None = None
     notification_lifecycle_materialized = False
     existing_queued_receipts: list[dict[str, Any]] = []
+    reviewer_artifact_required = False
+    reviewer_artifact_reward_memory: dict[str, Any] | None = None
+    reward_memory_experiment_status = "not_configured"
     if args.goal_id:
         goal, requested_project = _load_goal_for_project(
             registry_path=registry_path,
@@ -506,6 +532,52 @@ def handle_issue_fix_reviewer_command(
             existing_queued_receipts = reviewer_notification_queue_from_state(
                 notification_lifecycle_packet
             )
+            reward_policy = reward_memory_goal_policy(goal)
+            reviewer_artifact_required = reward_policy["enabled"] is True
+            if reviewer_artifact_required:
+                reward_memory_experiment_status = "agent_id_required"
+                if args.agent_id:
+                    candidate_registries = list(
+                        dict.fromkeys(
+                            path
+                            for path in (
+                                registry_path,
+                                requested_project / ".loopx" / "registry.json",
+                            )
+                            if path is not None
+                        )
+                    )
+                    experiment_status: dict[str, Any] | None = None
+                    experiment_config: dict[str, Any] | None = None
+                    for candidate_registry in candidate_registries:
+                        try:
+                            experiment_status, experiment_config = (
+                                resolve_reward_memory_experiment(
+                                    registry_path=candidate_registry,
+                                    goal_id=args.goal_id,
+                                    agent_id=args.agent_id,
+                                )
+                            )
+                        except (OSError, ValueError):
+                            continue
+                        break
+                    reward_memory_experiment_status = str(
+                        (experiment_status or {}).get("status") or "unavailable"
+                    )
+                    surfaces = set(
+                        str(value)
+                        for value in (experiment_status or {}).get("surface_ids") or []
+                    )
+                    if (
+                        experiment_config is not None
+                        and "reviewer_artifact.summary" in surfaces
+                    ):
+                        reviewer_artifact_reward_memory = {
+                            "config": experiment_config,
+                            "reviewer_summary": args.reviewer_summary,
+                            "reasoning_summary": args.reviewer_summary_reasoning,
+                            "observed_at": generated_at,
+                        }
     payload = build_issue_fix_reviewer_request_packet(
         repo_path=args.repo_path,
         url=args.url,
@@ -525,6 +597,8 @@ def handle_issue_fix_reviewer_command(
             else None
         ),
         notification_sinks_input=notification_sinks_input,
+        reviewer_artifact_reward_memory=reviewer_artifact_reward_memory,
+        reviewer_artifact_required=reviewer_artifact_required,
         provider_payload=(
             load_json_object(args.metadata_json) if args.metadata_json else None
         ),
@@ -533,6 +607,10 @@ def handle_issue_fix_reviewer_command(
         notification_delivery_observed_at=delivery_observed_at,
     )
     payload["secondary_notification_source"] = notification_sinks_source
+    payload["reward_memory_reviewer_artifact_required"] = (
+        reviewer_artifact_required
+    )
+    payload["reward_memory_experiment_status"] = reward_memory_experiment_status
     payload["secondary_notification_lifecycle_materialized"] = (
         notification_lifecycle_materialized
     )
