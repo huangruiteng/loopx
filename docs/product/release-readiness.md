@@ -494,6 +494,12 @@ empty group instead of inventing filler:
 5. **Documentation & Compatibility** for public contracts, install/update
    guidance, migrations, defaults, and intentional exclusions.
 
+Bilingual releases must preserve these same group boundaries in both
+languages. Under `## 中文摘要`, use the matching headings **状态内核与控制面**,
+**能力与工作流**, **质量与测试**, **基准与集成**, and **文档与兼容性**. The Chinese
+copy may be shorter, but it must not collapse several groups into a generic
+highlights list or omit a non-empty English group.
+
 Within each non-empty group, every material claim must carry one or more direct
 GitHub pull-request links such as
 `[#2051](https://github.com/huangruiteng/loopx/pull/2051)`. A compare link is
@@ -523,10 +529,9 @@ Every public release note or update note should also answer:
   made, state that this expensive gate was not required rather than implying it
   ran.
 - For Chinese-speaking operators, include a compact `## 中文摘要` section that
-  mirrors the release highlights in neutral product language. Keep it shorter
-  than the full English notes, avoid overfitting the release to one feature
-  area, and name both the user-visible improvement and the control-plane
-  reliability work when both shipped.
+  mirrors the English group structure and material claims in neutral product
+  language. Keep each group shorter than its English counterpart while
+  preserving direct PR attribution and compatibility boundaries.
 
 The release PR and final GitHub release body must use the same grouping and
 validation receipt. Re-run the gates after rebasing or merging any additional
