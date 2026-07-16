@@ -6,6 +6,9 @@ from loopx.control_plane.turn_driver import (
     LOOPX_TURN_RESULT_SCHEMA_VERSION,
     LoopXTurnResultKind,
     build_loopx_turn_transaction_plan,
+    loopx_turn_execution_committed,
+    loopx_turn_execution_has_durable_effects,
+    loopx_turn_execution_recovery_required,
     validate_loopx_turn_receipt,
 )
 
@@ -233,3 +236,31 @@ def test_non_executable_plan_rejects_a_result() -> None:
 
     assert receipt["ok"] is False
     assert "not executable" in " ".join(receipt["errors"])
+
+
+def test_public_execution_outcome_predicates_share_transaction_semantics() -> None:
+    committed = {
+        "status": "committed",
+        "validation": {"status": "passed"},
+        "receipt": {"status": "committed"},
+        "effects": {"state_written": True, "quota_spent": True},
+    }
+    repair = {
+        "status": "failed",
+        "validation": {
+            "status": "failed",
+            "recovery_kind": "repair_required",
+        },
+        "receipt": {"status": "failed", "failed_phase": "validation"},
+        "effects": {"state_written": False, "quota_spent": False},
+    }
+
+    assert loopx_turn_execution_committed(committed) is True
+    assert loopx_turn_execution_recovery_required(committed) is False
+    assert loopx_turn_execution_has_durable_effects(committed) is True
+    assert loopx_turn_execution_committed(repair) is False
+    assert loopx_turn_execution_recovery_required(repair) is True
+    assert loopx_turn_execution_has_durable_effects(repair) is False
+
+    repair["effects"] = {"state_written": True, "quota_spent": False}
+    assert loopx_turn_execution_has_durable_effects(repair) is True

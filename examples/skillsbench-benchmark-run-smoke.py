@@ -981,6 +981,18 @@ def test_skillsbench_product_mode_soft_verify_default_is_every_round() -> None:
     )
 
 
+def test_skillsbench_turn_uses_final_only_soft_verify() -> None:
+    args = parse_args(["--route", "loopx-turn-agent-cli"])
+    assert args.product_mode_soft_verify_policy == "every-round"
+    assert (
+        product_mode_soft_verify_policy_for_route(
+            "loopx-turn-agent-cli",
+            args.product_mode_soft_verify_policy,
+        )
+        == "final-only"
+    )
+
+
 def test_reverse_channel_first_action_timeout_stops_codex_process() -> None:
     start = time.monotonic()
     response = _run_codex_payload(
@@ -14628,6 +14640,7 @@ if __name__ == "__main__":
     test_skillsbench_batch_case_cli_filters_internal_aggregate_flag()
     test_skillsbench_formal_product_mode_rejects_tiny_round_budget()
     test_skillsbench_product_mode_soft_verify_default_is_every_round()
+    test_skillsbench_turn_uses_final_only_soft_verify()
     test_reverse_channel_first_action_timeout_stops_codex_process()
     test_reverse_channel_timeout_survives_blocked_stdin_write()
     test_reverse_channel_raw_prompt_does_not_require_bridge_first_action()

@@ -77,6 +77,49 @@ def _canonical_hash(value: Any) -> str:
     return "sha256:" + sha256(encoded).hexdigest()
 
 
+def loopx_turn_execution_committed(execution: Mapping[str, Any]) -> bool:
+    """Return whether one public execution completed its durable transaction."""
+
+    validation = _mapping(execution.get("validation"))
+    receipt = _mapping(execution.get("receipt"))
+    effects = _mapping(execution.get("effects"))
+    return bool(
+        execution.get("status") == "committed"
+        and receipt.get("status") == "committed"
+        and validation.get("status") == "passed"
+        and effects.get("state_written") is True
+        and effects.get("quota_spent") is True
+    )
+
+
+def loopx_turn_execution_recovery_required(
+    execution: Mapping[str, Any],
+) -> bool:
+    """Return whether a failed public execution requests repair or replan."""
+
+    validation = _mapping(execution.get("validation"))
+    receipt = _mapping(execution.get("receipt"))
+    return bool(
+        validation.get("recovery_kind") in {"repair_required", "replan_required"}
+        and (
+            validation.get("status") == "failed"
+            or receipt.get("failed_phase") == "validation"
+            or execution.get("status") in {"failed", "validation_failed"}
+        )
+    )
+
+
+def loopx_turn_execution_has_durable_effects(
+    execution: Mapping[str, Any],
+) -> bool:
+    """Return whether an execution wrote state or spent quota."""
+
+    effects = _mapping(execution.get("effects"))
+    return bool(
+        effects.get("state_written") is True or effects.get("quota_spent") is True
+    )
+
+
 def build_loopx_turn_transaction_plan(
     *,
     planned: bool,

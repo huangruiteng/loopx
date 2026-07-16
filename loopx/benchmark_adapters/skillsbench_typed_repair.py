@@ -4,6 +4,11 @@ from typing import Any, Mapping
 
 from loopx.control_plane.runtime.public_safety import compact_loopx_command_records
 from loopx.control_plane.runtime.public_safety import public_safe_compact_text
+from loopx.control_plane.turn_driver.transaction import (
+    loopx_turn_execution_committed,
+    loopx_turn_execution_has_durable_effects,
+    loopx_turn_execution_recovery_required,
+)
 
 
 SKILLSBENCH_TYPED_REPAIR_POLICY_ID = "one_typed_repair_per_frontier_v0"
@@ -21,6 +26,7 @@ _TYPED_REPAIR_BOOL_FIELDS = (
     "product_mode_typed_repair_pending",
     "product_mode_typed_repair_todo_identity_observed",
     "product_mode_typed_repair_task_or_validation_delta",
+    "product_mode_typed_repair_turn_validation_delta",
     "product_mode_typed_repair_delta_observed",
     "product_mode_typed_repair_terminal",
     "product_mode_typed_repair_terminal_receipt_consistent",
@@ -31,11 +37,15 @@ _TYPED_REPAIR_COUNT_FIELDS = (
     "product_mode_typed_repair_round_entered_count",
     "product_mode_typed_repair_resolved_round",
     "product_mode_typed_repair_task_facing_success_delta",
+    "product_mode_typed_repair_turn_execution_count_delta",
+    "product_mode_typed_repair_turn_committed_count_delta",
+    "product_mode_typed_repair_turn_recovery_required_count_delta",
     "product_mode_typed_repair_terminal_round",
     "product_mode_typed_repair_open_todo_count_public",
 )
 _TYPED_REPAIR_TEXT_FIELDS = (
     "product_mode_typed_repair_policy_id",
+    "product_mode_typed_repair_trigger_kind",
     "product_mode_typed_repair_terminal_reason",
 )
 
@@ -52,6 +62,64 @@ def _command_records(trace: Mapping[str, Any]) -> list[dict[str, str]]:
         trace.get("remote_command_file_bridge_agent_successful_loopx_command_records"),
         limit=_COMMAND_RECORD_LIMIT,
     )
+
+
+def _turn_executions(trace: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    executions = trace.get("loopx_turn_executions")
+    if not isinstance(executions, list):
+        return []
+    return [item for item in executions if isinstance(item, Mapping)]
+
+
+def _turn_outcome_counts(trace: Mapping[str, Any]) -> dict[str, int]:
+    executions = _turn_executions(trace)
+    return {
+        "execution_count": len(executions),
+        "committed_count": sum(
+            loopx_turn_execution_committed(item) for item in executions
+        ),
+        "recovery_required_count": sum(
+            loopx_turn_execution_recovery_required(item) for item in executions
+        ),
+    }
+
+
+def skillsbench_turn_recovery_checkpoint(
+    trace: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the public Turn receipt that should steer one typed repair."""
+
+    executions = _turn_executions(trace)
+    latest = executions[-1] if executions else {}
+    recovery_required = bool(
+        latest
+        and loopx_turn_execution_recovery_required(latest)
+        and not loopx_turn_execution_has_durable_effects(latest)
+    )
+    failed_transaction_with_durable_effects = bool(
+        latest
+        and loopx_turn_execution_recovery_required(latest)
+        and loopx_turn_execution_has_durable_effects(latest)
+    )
+    validation = (
+        latest.get("validation")
+        if isinstance(latest.get("validation"), Mapping)
+        else {}
+    )
+    counts = _turn_outcome_counts(trace)
+    return {
+        "schema_version": "skillsbench_turn_recovery_checkpoint_v0",
+        "observed": bool(latest),
+        "repair_required": recovery_required,
+        "failed_transaction_with_durable_effects": (
+            failed_transaction_with_durable_effects
+        ),
+        "recovery_kind": public_safe_compact_text(
+            validation.get("recovery_kind"), limit=80
+        ),
+        **counts,
+        "raw_material_recorded": False,
+    }
 
 
 def compact_skillsbench_typed_repair_counters(
@@ -139,6 +207,7 @@ def capture_skillsbench_typed_repair_frontier(
             and todo_id not in todo_ids
         ):
             todo_ids.append(todo_id)
+    turn_counts = _turn_outcome_counts(trace)
     return {
         "schema_version": SKILLSBENCH_TYPED_REPAIR_SNAPSHOT_SCHEMA_VERSION,
         "successful_command_record_count": len(records),
@@ -148,6 +217,9 @@ def capture_skillsbench_typed_repair_frontier(
         ),
         "todo_identity_count": len(todo_ids),
         "todo_ids": todo_ids[:16],
+        "turn_execution_count": turn_counts["execution_count"],
+        "turn_committed_count": turn_counts["committed_count"],
+        "turn_recovery_required_count": turn_counts["recovery_required_count"],
         "raw_material_recorded": False,
     }
 
@@ -166,6 +238,9 @@ def skillsbench_typed_repair_frontier_signature(
             selected_todo_id[:100] or "no_selected_todo",
             str(_count(snapshot, "successful_command_record_count")),
             str(_count(snapshot, "task_facing_success_count")),
+            str(_count(snapshot, "turn_execution_count")),
+            str(_count(snapshot, "turn_committed_count")),
+            str(_count(snapshot, "turn_recovery_required_count")),
             ",".join(safe_todo_ids) or "no_todo_identity",
         )
     )[:420]
@@ -176,6 +251,7 @@ def begin_skillsbench_typed_repair(
     *,
     trigger_round: int,
     scheduled_round: int,
+    trigger_kind: str = "declared_done_below_passing_reward",
 ) -> bool:
     snapshot = capture_skillsbench_typed_repair_frontier(trace)
     signature = skillsbench_typed_repair_frontier_signature(
@@ -194,6 +270,10 @@ def begin_skillsbench_typed_repair(
     trace["product_mode_typed_repair_pending"] = True
     trace["product_mode_typed_repair_policy_id"] = (
         SKILLSBENCH_TYPED_REPAIR_POLICY_ID
+    )
+    trace["product_mode_typed_repair_trigger_kind"] = (
+        public_safe_compact_text(trigger_kind, limit=120)
+        or "declared_done_below_passing_reward"
     )
     trace["product_mode_typed_repair_trigger_round"] = trigger_round
     trace["product_mode_typed_repair_round_entered"] = scheduled_round
@@ -246,7 +326,28 @@ def resolve_skillsbench_typed_repair(
         - _count(snapshot, "task_facing_success_count"),
     )
     todo_identity_observed = bool(todo_ids)
-    task_or_validation_delta = task_success_delta > 0
+    baseline_turn_count = _count(snapshot, "turn_execution_count")
+    current_turns = _turn_executions(trace)
+    new_turns = (
+        current_turns[baseline_turn_count:]
+        if baseline_turn_count <= len(current_turns)
+        else []
+    )
+    turn_execution_count_delta = len(new_turns)
+    turn_committed_count_delta = sum(
+        loopx_turn_execution_committed(item) for item in new_turns
+    )
+    turn_recovery_required_count_delta = sum(
+        loopx_turn_execution_recovery_required(item) for item in new_turns
+    )
+    turn_validation_delta = turn_committed_count_delta > 0
+    trigger_kind = public_safe_compact_text(
+        trace.get("product_mode_typed_repair_trigger_kind"), limit=120
+    )
+    if trigger_kind == "turn_transaction_recovery":
+        task_or_validation_delta = turn_validation_delta
+    else:
+        task_or_validation_delta = task_success_delta > 0 or turn_validation_delta
     delta_observed = todo_identity_observed or task_or_validation_delta
     outcome = {
         "schema_version": "skillsbench_typed_repair_delta_v0",
@@ -255,6 +356,12 @@ def resolve_skillsbench_typed_repair(
         "todo_ids": todo_ids[:16],
         "task_or_validation_delta": task_or_validation_delta,
         "task_facing_success_delta": task_success_delta,
+        "turn_execution_count_delta": turn_execution_count_delta,
+        "turn_committed_count_delta": turn_committed_count_delta,
+        "turn_recovery_required_count_delta": (
+            turn_recovery_required_count_delta
+        ),
+        "turn_validation_delta": turn_validation_delta,
         "delta_observed": delta_observed,
         "raw_material_recorded": False,
     }
@@ -270,9 +377,104 @@ def resolve_skillsbench_typed_repair(
     trace["product_mode_typed_repair_task_facing_success_delta"] = (
         task_success_delta
     )
+    trace["product_mode_typed_repair_turn_execution_count_delta"] = (
+        turn_execution_count_delta
+    )
+    trace["product_mode_typed_repair_turn_committed_count_delta"] = (
+        turn_committed_count_delta
+    )
+    trace["product_mode_typed_repair_turn_recovery_required_count_delta"] = (
+        turn_recovery_required_count_delta
+    )
+    trace["product_mode_typed_repair_turn_validation_delta"] = turn_validation_delta
     trace["product_mode_typed_repair_delta_observed"] = delta_observed
     trace["product_mode_typed_repair_delta"] = outcome
     return outcome
+
+
+def advance_skillsbench_typed_repair_controller(
+    trace: dict[str, Any],
+    *,
+    agent_round: int,
+    scheduled_round: int,
+    max_rounds: int,
+    task_instruction_sent: bool,
+) -> dict[str, str]:
+    """Advance the typed-repair state machine from public controller evidence."""
+
+    if trace.get("product_mode_typed_repair_pending") is True:
+        trigger_kind = public_safe_compact_text(
+            trace.get("product_mode_typed_repair_trigger_kind"), limit=120
+        )
+        outcome = resolve_skillsbench_typed_repair(trace, agent_round=agent_round)
+        if outcome.get("delta_observed") is not True:
+            reason = (
+                "turn_repair_round_without_todo_or_committed_validation_delta"
+                if trigger_kind == "turn_transaction_recovery"
+                else "repair_round_without_todo_task_or_validation_delta"
+            )
+            record_skillsbench_typed_repair_terminal(
+                trace,
+                agent_round=agent_round,
+                reason=reason,
+            )
+            return {
+                "action": "stop",
+                "last_decision": "stop_after_product_mode_typed_repair_without_delta",
+            }
+        if agent_round >= max_rounds:
+            record_skillsbench_typed_repair_terminal(
+                trace,
+                agent_round=agent_round,
+                reason="repair_delta_observed_at_budget_boundary",
+            )
+            return {
+                "action": "stop",
+                "last_decision": "stop_after_product_mode_typed_repair_budget",
+            }
+        return {
+            "action": "continue",
+            "last_decision": "continue_after_product_mode_typed_repair_delta",
+        }
+
+    if not task_instruction_sent:
+        return {}
+    checkpoint = skillsbench_turn_recovery_checkpoint(trace)
+    trace["product_mode_turn_recovery_checkpoint"] = checkpoint
+    if checkpoint.get("failed_transaction_with_durable_effects") is True:
+        record_skillsbench_typed_repair_terminal(
+            trace,
+            agent_round=agent_round,
+            reason="failed_turn_transaction_has_durable_effects",
+        )
+        return {
+            "action": "stop",
+            "last_decision": "stop_after_failed_turn_transaction_with_durable_effects",
+        }
+    if checkpoint.get("repair_required") is not True:
+        return {}
+    if not begin_skillsbench_typed_repair(
+        trace,
+        trigger_round=agent_round,
+        scheduled_round=scheduled_round,
+        trigger_kind="turn_transaction_recovery",
+    ):
+        record_skillsbench_typed_repair_terminal(
+            trace,
+            agent_round=agent_round,
+            reason="unchanged_turn_recovery_frontier_already_repaired",
+        )
+        return {
+            "action": "stop",
+            "last_decision": "stop_after_repeated_turn_recovery_frontier",
+        }
+    return {
+        "action": "send_repair_prompt",
+        "last_decision": (
+            "send_product_mode_typed_repair_after_turn_validation_failure"
+        ),
+        "trigger_kind": "turn_transaction_recovery",
+    }
 
 
 def build_skillsbench_typed_repair_prompt(
@@ -282,7 +484,15 @@ def build_skillsbench_typed_repair_prompt(
     case_state_path: str,
     loop_alignment_contract: str,
     persistent_constraint_clause: str = "",
+    trigger_kind: str = "declared_done_below_passing_reward",
 ) -> str:
+    turn_recovery_clause = (
+        " The previous public Turn receipt requires recovery. This round counts "
+        "as validation progress only if a later Turn receipt commits, or if a "
+        "new scoped todo identity records a genuinely changed frontier."
+        if trigger_kind == "turn_transaction_recovery"
+        else ""
+    )
     return (
         f"Scheduled typed repair/replan round {scheduled_round} of {max_rounds}. "
         "This checkpoint is selected only from the public LoopX frontier. "
@@ -293,6 +503,7 @@ def build_skillsbench_typed_repair_prompt(
         "The fixed loop may continue only when this round adds a todo identity or "
         "a successful task-facing/validation operation; otherwise the controller "
         "will close the unchanged frontier with a typed terminal receipt. "
+        f"{turn_recovery_clause} "
         f"{loop_alignment_contract}"
         f"{persistent_constraint_clause}"
     )

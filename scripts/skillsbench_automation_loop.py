@@ -134,10 +134,10 @@ from loopx.benchmark_adapters.skillsbench_setup_preflight import (  # noqa: E402
     run_setup_only_public_preflight,
 )
 from loopx.benchmark_adapters.skillsbench_typed_repair import (  # noqa: E402
+    advance_skillsbench_typed_repair_controller,
     begin_skillsbench_typed_repair,
     build_skillsbench_typed_repair_prompt,
     record_skillsbench_typed_repair_terminal,
-    resolve_skillsbench_typed_repair,
     skillsbench_projected_open_todo_count,
 )
 from loopx.benchmark_adapters.skillsbench_turn_route import (  # noqa: E402
@@ -237,6 +237,11 @@ def product_mode_soft_verify_policy_for_route(
     route: str,
     requested_policy: str,
 ) -> str:
+    if route == LOOPX_TURN_AGENT_CLI_ROUTE:
+        # Turn owns a separate public workspace validator and recovery receipt.
+        # Re-running the private official verifier every round duplicates that
+        # control signal and can exhaust the agent timeout before final scoring.
+        return "final-only"
     if route in PRODUCT_MODE_CONTROLLER_ROUTES:
         return requested_policy
     return "every-round"
@@ -12995,40 +13000,33 @@ def _build_product_mode_user(
                             scheduled_round=round + 1,
                             task_instruction=instruction,
                         )
-                    if trace.get("product_mode_typed_repair_pending") is True:
-                        repair_outcome = resolve_skillsbench_typed_repair(
-                            trace,
-                            agent_round=round,
-                        )
+                    repair_decision = advance_skillsbench_typed_repair_controller(
+                        trace,
+                        agent_round=round,
+                        scheduled_round=round + 1,
+                        max_rounds=max_rounds,
+                        task_instruction_sent=self._task_instruction_sent,
+                    )
+                    if repair_decision:
                         _inc_counter(trace, "controller_action_decisions")
-                        if repair_outcome.get("delta_observed") is not True:
-                            record_skillsbench_typed_repair_terminal(
-                                trace,
-                                agent_round=round,
-                                reason="repair_round_without_todo_task_or_validation_delta",
-                            )
+                        trace["last_decision"] = repair_decision["last_decision"]
+                        if repair_decision["action"] == "stop":
                             _inc_counter(trace, "stop_decision_count")
-                            trace["last_decision"] = (
-                                "stop_after_product_mode_typed_repair_without_delta"
-                            )
-                            return None
-                        if round >= max_rounds:
-                            record_skillsbench_typed_repair_terminal(
-                                trace,
-                                agent_round=round,
-                                reason="repair_delta_observed_at_budget_boundary",
-                            )
-                            _inc_counter(trace, "stop_decision_count")
-                            trace["last_decision"] = (
-                                "stop_after_product_mode_typed_repair_budget"
-                            )
                             return None
                         _inc_counter(trace, "followup_prompt_count")
-                        trace["last_decision"] = (
-                            "continue_after_product_mode_typed_repair_delta"
-                        )
-                        return self._scheduled_continuation_prompt(
+                        if repair_decision["action"] == "continue":
+                            return self._scheduled_continuation_prompt(
+                                scheduled_round=round + 1,
+                            )
+                        return build_skillsbench_typed_repair_prompt(
                             scheduled_round=round + 1,
+                            max_rounds=max_rounds,
+                            case_state_path=case_state_path,
+                            loop_alignment_contract=goal_start_loop_alignment_contract(),
+                            persistent_constraint_clause=(
+                                self._persistent_constraint_clause
+                            ),
+                            trigger_kind=repair_decision.get("trigger_kind", ""),
                         )
                     if (
                         self._task_instruction_sent

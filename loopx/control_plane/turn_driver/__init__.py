@@ -27,6 +27,9 @@ from .transaction import (
     LOOPX_TURN_RESULT_SCHEMA_VERSION,
     LoopXTurnResultKind,
     build_loopx_turn_transaction_plan,
+    loopx_turn_execution_committed,
+    loopx_turn_execution_has_durable_effects,
+    loopx_turn_execution_recovery_required,
     validate_loopx_turn_receipt,
 )
 
@@ -43,6 +46,9 @@ __all__ = [
     "build_loopx_turn_host_request",
     "build_loopx_turn_command_validator",
     "build_loopx_turn_transaction_plan",
+    "loopx_turn_execution_committed",
+    "loopx_turn_execution_has_durable_effects",
+    "loopx_turn_execution_recovery_required",
     "load_loopx_turn_plan_from_journal",
     "load_codex_cli_session",
     "normalize_host_argv",

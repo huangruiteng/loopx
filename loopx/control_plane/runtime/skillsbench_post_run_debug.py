@@ -12,6 +12,10 @@ from .public_safety import (
     public_safe_compact_list,
     public_safe_compact_text,
 )
+from ..turn_driver.transaction import (
+    loopx_turn_execution_committed,
+    loopx_turn_execution_has_durable_effects,
+)
 
 MAX_SKILLSBENCH_DEBUG_LIST_ITEMS = 5
 
@@ -70,13 +74,7 @@ def _skillsbench_turn_transaction_outcome(run: dict[str, Any]) -> dict[str, Any]
         )
         state_written = effects.get("state_written") is True
         quota_spent = effects.get("quota_spent") is True
-        committed = bool(
-            execution.get("status") == "committed"
-            and receipt.get("status") == "committed"
-            and validation.get("status") == "passed"
-            and state_written
-            and quota_spent
-        )
+        committed = loopx_turn_execution_committed(execution)
         validation_failed = bool(
             validation.get("status") == "failed"
             or receipt.get("failed_phase") == "validation"
@@ -93,7 +91,7 @@ def _skillsbench_turn_transaction_outcome(run: dict[str, Any]) -> dict[str, Any]
         state_written_count += int(state_written)
         quota_spent_count += int(quota_spent)
         failed_transaction_with_durable_effect_count += int(
-            validation_failed and (state_written or quota_spent)
+            validation_failed and loopx_turn_execution_has_durable_effects(execution)
         )
 
     execution_count = len(executions)
