@@ -17,6 +17,9 @@ from loopx.control_plane.agents.capability_gate import (  # noqa: E402
     _sort_capability_runnable_candidates,
     build_capability_gate,
 )
+from loopx.control_plane.agents.agent_lane_recommendation import (  # noqa: E402
+    build_agent_lane_next_action,
+)
 
 
 AGENT_ID = "codex-product-capability"
@@ -124,7 +127,7 @@ def assert_current_agent_candidate_order_contract() -> None:
             "agent_model": "peer_v1",
         },
     )
-    assert policy == "active_next_then_claim_then_priority_then_repair"
+    assert policy == "claim_then_priority_then_active_next_then_repair"
     assert [item["todo_id"] for item in ordered] == [
         "todo_current_p2",
         "todo_current_unblock_p2",
@@ -132,6 +135,40 @@ def assert_current_agent_candidate_order_contract() -> None:
         "todo_unclaimed_p0",
         "todo_other_p0",
     ], ordered
+
+
+def assert_stale_active_next_does_not_override_ready_p0() -> None:
+    ready_p0 = todo("todo_ready_p0", 2, "P0", claimed_by=AGENT_ID)
+    ready_p0.update(
+        {
+            "resume_when": "todo_done:todo_dependency",
+            "resume_ready": True,
+            "resume_condition": {
+                "schema_version": "todo_resume_condition_v0",
+                "resume_when": "todo_done:todo_dependency",
+                "kind": "todo_done",
+                "target_todo_id": "todo_dependency",
+                "target_status": "done",
+                "satisfied": True,
+            },
+        }
+    )
+    stale_p1 = todo("todo_stale_p1", 3, "P1", claimed_by=AGENT_ID)
+    other_peer_p0 = todo("todo_other_peer_p0", 1, "P0", claimed_by=PRIMARY_AGENT)
+    selected = build_agent_lane_next_action(
+        agent_identity={"agent_id": AGENT_ID, "agent_model": "peer_v1"},
+        agent_todo_summary={
+            "active_next_action_executable_items": [stale_p1],
+        },
+        capability_gate={
+            "runnable_candidates": [stale_p1, other_peer_p0, ready_p0],
+        },
+        active_next_action="Continue todo_stale_p1 after the resumed P0.",
+    )
+    assert selected is not None
+    assert selected["todo_id"] == "todo_ready_p0", selected
+    assert selected["selected_by"] == "current_agent_claimed_todo", selected
+    assert selected["source"] == "capability_gate.runnable_candidates", selected
 
 
 def assert_gate_prefers_active_next_and_exposes_blocked_fallback() -> None:
@@ -260,6 +297,7 @@ def main() -> int:
     assert_missing_action_contract()
     assert_candidate_compaction_contract()
     assert_current_agent_candidate_order_contract()
+    assert_stale_active_next_does_not_override_ready_p0()
     assert_gate_prefers_active_next_and_exposes_blocked_fallback()
     assert_target_capability_creates_repair_hint_not_hard_block()
     assert_all_blocked_runtime_capability_routes_to_agent_repair()

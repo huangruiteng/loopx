@@ -1927,7 +1927,7 @@ def assert_peer_handoff_uses_ordinary_priority_order() -> None:
     next_action = guard["agent_lane_next_action"]
     assert next_action["todo_id"] == "todo_current_suite", guard
     assert guard["capability_gate"]["candidate_order_policy"] == (
-        "active_next_then_claim_then_priority_then_repair"
+        "claim_then_priority_then_active_next_then_repair"
     ), guard
     assert guard["capability_gate"]["runnable_candidates"][0]["todo_id"] == "todo_current_suite", guard
     assert next_action["selected_by"] == "current_agent_claimed_todo", next_action
