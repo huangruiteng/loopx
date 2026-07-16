@@ -17,15 +17,17 @@ def main() -> int:
 
     required_contracts = [
         "loopx_turn_v0",
-        "loopx turn diagnose",
+        "loopx turn plan",
         "loopx turn run-once",
         "interactive-visible",
         "isolated-headless",
         "must never switch",
-        "live `quota should-run --turn-envelope`",
-        "Require a typed result",
-        "Spend once only for validated delivery",
-        "apply and ack scheduler state",
+        "independent validation",
+        "durable writeback",
+        "quota",
+        "scheduler state",
+        "generic-cli",
+        "typed candidate result",
     ]
     for phrase in required_contracts:
         assert phrase in doc, phrase
@@ -38,6 +40,15 @@ def main() -> int:
         "local artifact paths",
     ]
     for phrase in boundary_terms:
+        assert phrase in doc, phrase
+
+    unfinished_boundaries = [
+        "interactive-visible` still needs",
+        "Trae still needs a thin adapter",
+        "recurring external scheduling must compose",
+        "benchmark promotion still requires",
+    ]
+    for phrase in unfinished_boundaries:
         assert phrase in doc, phrase
 
     assert "codex-cli-automation-driver.md" in index, "product index link"
