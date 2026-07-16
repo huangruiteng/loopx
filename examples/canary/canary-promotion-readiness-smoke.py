@@ -26,7 +26,7 @@ COMMON_NODE_PATHS = [
     "/opt/homebrew/bin",
     "/usr/local/bin",
 ]
-READINESS_GOAL_ID = "loopx-meta"
+DEFAULT_READINESS_GOAL_ID = "loopx-meta"
 DEFAULT_READINESS_AGENT_ID = "codex-product-capability"
 DEFAULT_READINESS_AGENT_LANE = "product_capability_catalog_canary"
 READINESS_CLASSIFICATION = "canary_promotion_readiness_smoke_group"
@@ -72,6 +72,14 @@ def parse_args() -> argparse.Namespace:
         help="Run checks only; do not append the promotion-readiness evidence event.",
     )
     parser.add_argument(
+        "--goal-id",
+        default=os.environ.get("LOOPX_GOAL_ID") or DEFAULT_READINESS_GOAL_ID,
+        help=(
+            "Registered goal id used for the readiness evidence writeback. "
+            "Defaults to LOOPX_GOAL_ID or loopx-meta."
+        ),
+    )
+    parser.add_argument(
         "--agent-id",
         default=os.environ.get("LOOPX_AGENT_ID") or DEFAULT_READINESS_AGENT_ID,
         help=(
@@ -109,6 +117,7 @@ def write_readiness_evidence(
     env: dict[str, str],
     *,
     dashboard_skipped: bool,
+    goal_id: str | None = None,
     agent_id: str | None = None,
     agent_lane: str | None = None,
 ) -> None:
@@ -120,6 +129,9 @@ def write_readiness_evidence(
     resolved_agent_id = (
         agent_id or os.environ.get("LOOPX_AGENT_ID") or DEFAULT_READINESS_AGENT_ID
     ).strip()
+    resolved_goal_id = (
+        goal_id or os.environ.get("LOOPX_GOAL_ID") or DEFAULT_READINESS_GOAL_ID
+    ).strip()
     resolved_agent_lane = (
         agent_lane or os.environ.get("LOOPX_AGENT_LANE") or DEFAULT_READINESS_AGENT_LANE
     ).strip()
@@ -129,7 +141,7 @@ def write_readiness_evidence(
         "loopx.cli",
         "refresh-state",
         "--goal-id",
-        READINESS_GOAL_ID,
+        resolved_goal_id,
         "--classification",
         READINESS_CLASSIFICATION,
         "--recommended-action",
@@ -217,6 +229,7 @@ def main() -> int:
         write_readiness_evidence(
             env,
             dashboard_skipped=dashboard_plan["status"] == "skip",
+            goal_id=args.goal_id,
             agent_id=args.agent_id,
             agent_lane=args.agent_lane,
         )

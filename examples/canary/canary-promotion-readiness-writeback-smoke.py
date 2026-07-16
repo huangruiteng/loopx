@@ -19,7 +19,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install-local.sh"
-GOAL_ID = "loopx-meta"
+GOAL_ID = "loopx-product"
 
 
 def load_canary_smoke_module():
@@ -159,7 +159,11 @@ def main() -> int:
         assert "promotion-readiness evidence is missing" in preflight_install.stderr, preflight_install.stderr
         assert "non-blocking" in preflight_install.stderr, preflight_install.stderr
 
-        module.write_readiness_evidence(env, dashboard_skipped=False)
+        module.write_readiness_evidence(
+            env,
+            dashboard_skipped=False,
+            goal_id=GOAL_ID,
+        )
 
         index_path = runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
         assert index_path.is_file(), index_path
@@ -202,7 +206,7 @@ def main() -> int:
         global_registry = runtime / "registry.global.json"
         assert global_registry.is_file(), global_registry
         global_payload = json.loads(global_registry.read_text(encoding="utf-8"))
-        assert global_payload["common_runtime_root"] == str(runtime), global_payload
+        assert Path(global_payload["common_runtime_root"]).resolve() == runtime.resolve(), global_payload
         assert any(goal.get("id") == GOAL_ID for goal in global_payload.get("goals") or []), global_payload
 
         ready_gate = run_promotion_gate(env, runtime)
