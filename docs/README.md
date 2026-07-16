@@ -138,6 +138,7 @@ incident report, or launch draft.
 
 - [Product vision](product/vision.md)
 - [Release readiness](product/release-readiness.md)
+- [LoopX Turn Codex CLI quickstart](product/loopx-turn-codex-cli-quickstart.md)
 - [Public adoption loop](product/public-adoption-loop.md)
 - [Codex CLI TUI-first loop](product/codex-cli-tui-loop.md)
 - [Reward-style replanning hints](product/reward-style-replanning.md)

@@ -2,6 +2,11 @@
 
 Status: experimental product route with a shipped isolated-headless driver.
 
+For the partner-facing path, start with
+[Run One LoopX Turn With Codex CLI](loopx-turn-codex-cli-quickstart.md). It
+reduces this maintenance reference to the built-in adapter, one independent
+validator, and one command.
+
 The product goal is one reusable mechanism: LoopX CLI decides what may run,
 Codex CLI performs one bounded agent turn, and LoopX validates and records the
 outcome. It should approach the control-plane behavior available in Codex App

@@ -76,6 +76,9 @@ runtime contract, benchmark route, or launch draft.
   driver planner that keeps TUI bootstrap primary, composes quota/idle/fallback
   checks, validates visible-session proof fixtures, and treats `codex exec` as
   an explicit fallback.
+- [LoopX Turn Codex CLI quickstart](loopx-turn-codex-cli-quickstart.md): the
+  partner-facing isolated-headless path reduced to the built-in Agent CLI
+  adapter, one independent validator, one command, and five typed outcomes.
 - [Codex CLI visible proof capture protocol](codex-cli-visible-proof-capture-protocol.md):
   the opt-in public-safe procedure for turning `resume` / `remote-control`
   signals into evidence, with stop conditions that keep one-message TUI
