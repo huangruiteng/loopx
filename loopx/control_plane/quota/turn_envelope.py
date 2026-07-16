@@ -221,6 +221,8 @@ def _same_action_text(left: Any, right: Any) -> bool:
     right_folded = right_text.casefold()
     if left_folded == right_folded:
         return True
+    # Upstream todo projections may already be ellipsized; require a substantial
+    # shared prefix before treating that compact text as the same action.
     if left_folded.endswith("..."):
         prefix = left_folded[:-3].rstrip()
         return len(prefix) >= 80 and right_folded.startswith(prefix)
