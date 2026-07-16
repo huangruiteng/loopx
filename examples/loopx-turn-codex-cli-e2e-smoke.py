@@ -326,7 +326,8 @@ def main() -> int:
     }
     return 0 if (
         summary["first_exit_code"] == 0
-        and summary["receipt_status"] == "validated"
+        and summary["status"] == "committed"
+        and summary["receipt_status"] == "committed"
         and summary["validation_status"] == "passed"
         and summary["effects"] == expected_effects
         and summary["marker_valid"] is True

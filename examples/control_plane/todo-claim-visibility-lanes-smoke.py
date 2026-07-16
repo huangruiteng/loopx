@@ -225,7 +225,8 @@ def assert_agent_profile_ranks_only_within_claim_buckets() -> None:
         preferred_todo_ids={"todo_current_avoided"},
         agent_profile=profile,
     )
-    assert active_avoided_key < preferred_key
+    # Profile and explicit priority buckets are resolved before active-next hints.
+    assert preferred_key < active_avoided_key
 
 
 def assert_executor_exclusion_filters_only_the_named_peer() -> None:
