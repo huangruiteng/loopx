@@ -67,7 +67,7 @@ NEXT_ACTION_USER_WAIT_PATTERN = re.compile(
     r"(?i)\b(?:wait(?:ing)? for|await(?:ing)?|blocked by|gated by|"
     r"need(?:s|ed)?|requires?|request(?:s|ed)?|ask(?:ing)? for|pending)"
     r"\b.{0,120}\b(?:owner|user|operator|controller|human|approval|approve|"
-    r"decision|gate|permission|choice)\b|"
+    r"decision|permission|choice)\b|"
     r"\b(?:owner|user|operator|controller|human)\s+"
     r"(?:gate|todo|action|decision|approval|permission|choice)\b|"
     r"\b(?:approval|permission)\s+(?:required|needed|pending)\b|"

@@ -114,6 +114,15 @@ def test_projection_gap_warning() -> dict:
     )
     assert technical_gate_no_gap is None, technical_gate_no_gap
 
+    benchmark_acceptance_no_gap = state_projection_gap_warning(
+        "## Agent Todo\n\n"
+        "- [ ] Run the second matched LoopX Turn versus Codex Goal pair.\n\n"
+        "## Next Action\n\n"
+        "- Run the second matched pair; require both arms to be official and "
+        "verify committed receipts leave the next-case gate open.\n"
+    )
+    assert benchmark_acceptance_no_gap is None, benchmark_acceptance_no_gap
+
     decision_result_input_no_gap = state_projection_gap_warning(
         "## Agent Todo\n\n"
         "- [ ] Build a read-only projection adapter from compact session facts.\n\n"
