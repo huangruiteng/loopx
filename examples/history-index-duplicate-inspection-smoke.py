@@ -148,6 +148,29 @@ def write_index_fixture(root: Path, goal_id: str, duplicate_kind: str) -> None:
             },
             {**base, "classification": "state_refreshed"},
         ]
+    elif duplicate_kind == "distinct_monitor_event_collision":
+        rows = [
+            {
+                **base,
+                "classification": "quota_monitor_poll",
+                "todo_id": "todo-monitor-a",
+                "target_key": "monitor:fixture:a",
+                "monitor_target": {
+                    "target_id": "fixture-a",
+                    "target_kind": "external_evidence",
+                },
+            },
+            {
+                **base,
+                "classification": "quota_monitor_poll",
+                "todo_id": "todo-monitor-b",
+                "target_key": "monitor:fixture:b",
+                "monitor_target": {
+                    "target_id": "fixture-b",
+                    "target_kind": "external_evidence",
+                },
+            },
+        ]
     else:
         raise ValueError(duplicate_kind)
     (runs_dir / "index.jsonl").write_text(
@@ -173,6 +196,7 @@ def write_registry(root: Path) -> Path:
         ("structured-artifact-goal", "structured_artifact_collision"),
         ("structured-bundle-goal", "structured_artifact_bundle"),
         ("artifact-collision-goal", "artifact_identity_collision"),
+        ("monitor-collision-goal", "distinct_monitor_event_collision"),
     ):
         state_file = project / ".codex" / "goals" / goal_id / "ACTIVE_GOAL_STATE.md"
         state_file.parent.mkdir(parents=True, exist_ok=True)
@@ -234,8 +258,8 @@ def main() -> None:
             registry_path, "history", "inspect-index-duplicates", "--limit", "10"
         )
         assert payload["ok"] is True, payload
-        assert payload["duplicate_group_count"] == 7, payload
-        assert payload["duplicate_row_count"] == 8, payload
+        assert payload["duplicate_group_count"] == 8, payload
+        assert payload["duplicate_row_count"] == 9, payload
         by_goal = {group["goal_id"]: group for group in payload["groups"]}
         assert by_goal["reward-overlay-goal"]["duplicate_kind"] == "reward_overlay", (
             payload
@@ -278,6 +302,11 @@ def main() -> None:
             "benchmark_run_v0",
             "state_refreshed",
         ], payload
+        assert (
+            by_goal["monitor-collision-goal"]["action"]
+            == "rebuild_distinct_monitor_event_artifacts"
+        ), payload
+        assert by_goal["monitor-collision-goal"]["repairable"] is True, payload
         assert payload["groups"][0]["severity"] == "warning", payload
 
         repair_preview = run_cli(
@@ -292,6 +321,8 @@ def main() -> None:
             repair_preview
         )
         assert repair_preview["unrepaired_group_count"] == 2, repair_preview
+        assert repair_preview["planned_rebuild_artifact_count"] == 2, repair_preview
+        assert repair_preview["rebuilt_artifact_count"] == 0, repair_preview
         repair_actions = {
             group["goal_id"]: group["action"] for group in repair_preview["groups"]
         }
@@ -319,6 +350,10 @@ def main() -> None:
             repair_actions["artifact-collision-goal"]
             == "blocked_artifact_identity_collision"
         ), repair_preview
+        assert (
+            repair_actions["monitor-collision-goal"]
+            == "rebuild_distinct_monitor_event_artifacts"
+        ), repair_preview
 
         repair_execute = run_cli(
             registry_path,
@@ -332,6 +367,8 @@ def main() -> None:
         assert repair_execute["dry_run"] is False, repair_execute
         assert repair_execute["repaired"] is True, repair_execute
         assert repair_execute["removed_row_count"] == 2, repair_execute
+        assert repair_execute["planned_rebuild_artifact_count"] == 2, repair_execute
+        assert repair_execute["rebuilt_artifact_count"] == 2, repair_execute
 
         after_repair = run_cli(
             registry_path, "history", "inspect-index-duplicates", "--limit", "10"
@@ -360,6 +397,34 @@ def main() -> None:
             after_by_goal["artifact-collision-goal"]["duplicate_kind"]
             == "artifact_identity_collision"
         ), after_repair
+        assert "monitor-collision-goal" not in after_by_goal, after_repair
+
+        monitor_runs_dir = (
+            Path(registry_path).parents[2]
+            / "runtime"
+            / "goals"
+            / "monitor-collision-goal"
+            / "runs"
+        )
+        monitor_rows = [
+            json.loads(line)
+            for line in (monitor_runs_dir / "index.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+            if line.strip()
+        ]
+        assert len(monitor_rows) == 2, monitor_rows
+        assert {row["todo_id"] for row in monitor_rows} == {
+            "todo-monitor-a",
+            "todo-monitor-b",
+        }, monitor_rows
+        assert len({row["json_path"] for row in monitor_rows}) == 2, monitor_rows
+        assert all(Path(row["json_path"]).exists() for row in monitor_rows), monitor_rows
+        assert all(Path(row["markdown_path"]).exists() for row in monitor_rows), (
+            monitor_rows
+        )
+        assert (monitor_runs_dir / "run.json").exists(), monitor_rows
+        assert (monitor_runs_dir / "run.md").exists(), monitor_rows
 
         filtered = run_cli(
             registry_path,

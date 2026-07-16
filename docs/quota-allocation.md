@@ -466,6 +466,24 @@ consecutive public stalled monitor records with the same target feed
 watch-lane expiry, concrete blocker, todo supersede, or successor runnable todo
 instead of another quiet skip.
 
+Execute-mode quota monitor/spend/void writers reserve each JSON/Markdown pair
+atomically and lock the compact index append, so concurrent processes with the
+same timestamp retain distinct artifact identities. For historical collisions,
+inspect before repair:
+
+```bash
+loopx history --goal-id <GOAL_ID> inspect-index-duplicates
+loopx history --goal-id <GOAL_ID> repair-index-duplicates          # preview
+loopx history --goal-id <GOAL_ID> repair-index-duplicates --execute
+```
+
+The repair path only rebuilds a collision automatically when every row is a
+`quota_monitor_poll` and the compact index proves distinct todo/target event
+identities. It creates one public-safe artifact pair per event, preserves every
+index row and leaves the original shared artifacts in place. Ambiguous artifact
+identity collisions remain blocked for reviewed merge semantics; they are
+never deleted by this command.
+
 After that bounded replan slice is acknowledged by a compact state run carrying
 `autonomous_replan_ack_v0` and `repair_delta_contract_v0` with
 `delta_present=true`, later empty monitor polls for the same acknowledged wait

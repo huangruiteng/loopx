@@ -19,6 +19,7 @@ REWARD_OVERLAY_IDENTITY_KEYS = (
     "json_path",
     "markdown_path",
 )
+QUOTA_MONITOR_POLL_CLASSIFICATION = "quota_monitor_poll"
 
 
 def index_identity(record: dict[str, Any]) -> tuple[str, str, str]:
@@ -111,6 +112,32 @@ def is_structured_artifact_bundle(records: list[dict[str, Any]]) -> bool:
     return len(payload_fingerprints) == len(records)
 
 
+def monitor_event_identity(record: dict[str, Any]) -> tuple[str, str] | None:
+    """Return the compact public identity retained by monitor index rows."""
+
+    if str(record.get("classification") or "") != QUOTA_MONITOR_POLL_CLASSIFICATION:
+        return None
+    todo_id = str(record.get("todo_id") or "").strip()
+    target_key = str(record.get("target_key") or "").strip()
+    if not (todo_id or target_key):
+        return None
+    return todo_id, target_key
+
+
+def is_rebuildable_distinct_monitor_event_collision(
+    records: list[dict[str, Any]],
+) -> bool:
+    """Recognize overwritten artifacts whose distinct events survive in index rows."""
+
+    identities = [monitor_event_identity(record) for record in records]
+    return (
+        len(records) > 1
+        and not any(isinstance(record.get("human_reward"), dict) for record in records)
+        and all(identity is not None for identity in identities)
+        and len(set(identities)) == len(records)
+    )
+
+
 def classify_index_duplicate_records(records: list[dict[str, Any]]) -> dict[str, Any]:
     normalized_keys = {
         _normalized_key(_normalized_index_record(record)) for record in records
@@ -156,6 +183,22 @@ def classify_index_duplicate_records(records: list[dict[str, Any]]) -> dict[str,
             "action": "keep_structured_artifact_row",
             "repairable": True,
             "reason": "one row carries the compact structured artifact payload and siblings only repeat the artifact identity",
+        }
+
+    if is_rebuildable_distinct_monitor_event_collision(records):
+        return {
+            "duplicate_kind": "artifact_identity_collision",
+            "severity": "warning",
+            "repair_hint": (
+                "rebuild one compact artifact pair per distinct monitor event; "
+                "preserve every index row and the original shared artifacts"
+            ),
+            "action": "rebuild_distinct_monitor_event_artifacts",
+            "repairable": True,
+            "reason": (
+                "all collided rows are quota monitor events with distinct retained "
+                "todo/target identities"
+            ),
         }
 
     return {

@@ -3,22 +3,25 @@ from __future__ import annotations
 import json
 import os
 import re
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, Callable
 
 from .authority import goal_authority_registry_summary
 from .control_plane import compact_control_plane_policy
-from .control_plane.runtime.time import now_local_iso
 from .control_plane.runtime.run_index_duplicates import (
     classify_index_duplicate_records,
     duplicate_repair_decision,
     index_identity,
 )
+from .control_plane.runtime.run_artifacts import reserve_unique_run_artifact_paths
+from .control_plane.runtime.time import now_local_iso
 from .control_plane.work_items.delivery_batch_scale import require_delivery_batch_scale
 from .control_plane.work_items.delivery_outcome import require_delivery_outcome
 from .doctor import PROMOTION_READINESS_CLASSIFICATIONS
 from .execution_profile import compact_execution_profile
 from .explore_graph import compact_explore_graph_policy
+from .file_lock import exclusive_file_lock
 from .paths import registry_project_root, resolve_runtime_root
 from .presentation.markdown import (
     markdown_code,
@@ -934,6 +937,8 @@ def inspect_index_duplicates(
                     "health_checks": health_checks,
                     "reward_overlay_rows": reward_records,
                     "repair_hint": duplicate_classification.get("repair_hint"),
+                    "action": duplicate_classification.get("action"),
+                    "repairable": duplicate_classification.get("repairable"),
                 }
             )
 
@@ -961,6 +966,84 @@ def inspect_index_duplicates(
     }
 
 
+def _rebuild_monitor_event_artifact(
+    *,
+    runs_dir: Path,
+    source_line_number: int,
+    source_record: dict[str, Any],
+) -> tuple[dict[str, Any], Path, Path]:
+    generated_at = str(source_record.get("generated_at") or now_local())
+    source_identity = {
+        "generated_at": source_record.get("generated_at"),
+        "json_path": source_record.get("json_path"),
+        "markdown_path": source_record.get("markdown_path"),
+    }
+    rebuild = {
+        "schema_version": "run_artifact_rebuild_v0",
+        "source_identity": source_identity,
+        "source_line_number": source_line_number,
+        "preserved_original_artifacts": True,
+    }
+    record = {
+        key: source_record[key]
+        for key in (
+            "generated_at",
+            "goal_id",
+            "classification",
+            "recommended_action",
+            "health_check",
+            "delivery_outcome",
+            "monitor_target",
+            "agent_id",
+        )
+        if key in source_record
+    }
+    record["monitor_event"] = {
+        "event_type": QUOTA_MONITOR_POLL_CLASSIFICATION,
+        "todo_id": source_record.get("todo_id"),
+        "target_key": source_record.get("target_key"),
+        "material_change": source_record.get("material_change") is True,
+        "recovered_from_index": True,
+    }
+    record["artifact_rebuild"] = rebuild
+    json_path, markdown_path = reserve_unique_run_artifact_paths(
+        runs_dir,
+        run_file_stem(generated_at),
+        "quota-monitor-poll-rebuilt",
+    )
+    try:
+        json_path.write_text(
+            json.dumps(record, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        markdown_path.write_text(
+            "\n".join(
+                [
+                    "# LoopX Rebuilt Monitor Run Artifact",
+                    "",
+                    f"- goal_id: `{source_record.get('goal_id') or ''}`",
+                    f"- generated_at: `{generated_at}`",
+                    f"- todo_id: `{source_record.get('todo_id') or ''}`",
+                    f"- target_key: `{source_record.get('target_key') or ''}`",
+                    f"- source_index_line: `{source_line_number}`",
+                    "- original_artifacts_preserved: `True`",
+                    "- recovered_from: compact public-safe index row",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    except Exception:
+        json_path.unlink(missing_ok=True)
+        markdown_path.unlink(missing_ok=True)
+        raise
+    rebuilt_index_record = dict(source_record)
+    rebuilt_index_record["json_path"] = str(json_path)
+    rebuilt_index_record["markdown_path"] = str(markdown_path)
+    rebuilt_index_record["artifact_rebuild"] = rebuild
+    return rebuilt_index_record, json_path, markdown_path
+
+
 def repair_index_duplicates(
     *,
     registry_path: Path,
@@ -980,6 +1063,8 @@ def repair_index_duplicates(
     removed_row_count = 0
     preserved_reward_overlay_rows = 0
     preserved_structured_artifact_bundle_rows = 0
+    planned_rebuild_artifact_count = 0
+    rebuilt_artifact_count = 0
     unrepaired_group_count = 0
     groups: list[dict[str, Any]] = []
 
@@ -989,68 +1074,103 @@ def repair_index_duplicates(
         if not index_path.exists():
             continue
 
-        raw_lines = index_path.read_text(encoding="utf-8").splitlines()
-        grouped: dict[tuple[str, str, str], list[tuple[int, dict[str, Any]]]] = {}
-        for line_number, line in enumerate(raw_lines, start=1):
-            if not line.strip():
-                continue
-            raw_index_records += 1
-            try:
-                item = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(item, dict):
-                continue
-            grouped.setdefault(index_identity(item), []).append((line_number, item))
+        lock = exclusive_file_lock(index_path) if execute else nullcontext()
+        with lock:
+            raw_lines = index_path.read_text(encoding="utf-8").splitlines()
+            grouped: dict[tuple[str, str, str], list[tuple[int, dict[str, Any]]]] = {}
+            for line_number, line in enumerate(raw_lines, start=1):
+                if not line.strip():
+                    continue
+                raw_index_records += 1
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(item, dict):
+                    continue
+                grouped.setdefault(index_identity(item), []).append((line_number, item))
 
-        remove_lines: set[int] = set()
-        for records in grouped.values():
-            if len(records) <= 1:
-                continue
-            decision = duplicate_repair_decision(records)
-            removed_lines = list(decision.get("removed_line_numbers") or [])
-            if decision.get("action") == "preserve_reward_overlay":
-                preserved_reward_overlay_rows += len(records) - 1
-            elif decision.get("action") == "preserve_structured_artifact_bundle":
-                preserved_structured_artifact_bundle_rows += len(records) - 1
-            elif decision.get("repairable"):
-                remove_lines.update(int(line_number) for line_number in removed_lines)
-                removed_row_count += len(removed_lines)
-            else:
-                unrepaired_group_count += 1
+            remove_lines: set[int] = set()
+            rebuilt_lines: dict[int, dict[str, Any]] = {}
+            for records in grouped.values():
+                if len(records) <= 1:
+                    continue
+                decision = duplicate_repair_decision(records)
+                action = decision.get("action")
+                removed_lines = list(decision.get("removed_line_numbers") or [])
+                rebuilt_paths: list[dict[str, str]] = []
+                if action == "preserve_reward_overlay":
+                    preserved_reward_overlay_rows += len(records) - 1
+                elif action == "preserve_structured_artifact_bundle":
+                    preserved_structured_artifact_bundle_rows += len(records) - 1
+                elif action == "rebuild_distinct_monitor_event_artifacts":
+                    planned_rebuild_artifact_count += len(records)
+                    if execute:
+                        for line_number, source_record in records:
+                            rebuilt, rebuilt_json, rebuilt_markdown = (
+                                _rebuild_monitor_event_artifact(
+                                    runs_dir=index_path.parent,
+                                    source_line_number=line_number,
+                                    source_record=source_record,
+                                )
+                            )
+                            rebuilt_lines[line_number] = rebuilt
+                            rebuilt_paths.append(
+                                {
+                                    "json_path": str(rebuilt_json),
+                                    "markdown_path": str(rebuilt_markdown),
+                                }
+                            )
+                            rebuilt_artifact_count += 1
+                elif decision.get("repairable"):
+                    remove_lines.update(int(line_number) for line_number in removed_lines)
+                    removed_row_count += len(removed_lines)
+                else:
+                    unrepaired_group_count += 1
 
-            first_record = records[0][1]
-            groups.append(
-                {
-                    "goal_id": current_goal_id,
-                    "index_path": str(index_path),
-                    "generated_at": first_record.get("generated_at"),
-                    "json_path": first_record.get("json_path"),
-                    "markdown_path": first_record.get("markdown_path"),
-                    "action": decision.get("action"),
-                    "repairable": decision.get("repairable"),
-                    "line_numbers": decision.get("line_numbers"),
-                    "kept_line_numbers": decision.get("kept_line_numbers"),
-                    "removed_line_numbers": removed_lines,
-                    "reason": decision.get("reason"),
-                }
-            )
+                first_record = records[0][1]
+                groups.append(
+                    {
+                        "goal_id": current_goal_id,
+                        "index_path": str(index_path),
+                        "generated_at": first_record.get("generated_at"),
+                        "json_path": first_record.get("json_path"),
+                        "markdown_path": first_record.get("markdown_path"),
+                        "action": action,
+                        "repairable": decision.get("repairable"),
+                        "line_numbers": decision.get("line_numbers"),
+                        "kept_line_numbers": decision.get("kept_line_numbers"),
+                        "removed_line_numbers": removed_lines,
+                        "planned_rebuild_artifacts": (
+                            len(records)
+                            if action == "rebuild_distinct_monitor_event_artifacts"
+                            else 0
+                        ),
+                        "rebuilt_paths": rebuilt_paths,
+                        "reason": decision.get("reason"),
+                    }
+                )
 
-        if execute and remove_lines:
-            rewritten = [
-                line
-                for line_number, line in enumerate(raw_lines, start=1)
-                if line_number not in remove_lines
-            ]
-            tmp_path = index_path.with_suffix(index_path.suffix + ".tmp")
-            tmp_path.write_text("".join(line + "\n" for line in rewritten), encoding="utf-8")
-            tmp_path.replace(index_path)
+            if execute and (remove_lines or rebuilt_lines):
+                rewritten: list[str] = []
+                for line_number, line in enumerate(raw_lines, start=1):
+                    if line_number in remove_lines:
+                        continue
+                    if line_number in rebuilt_lines:
+                        line = json.dumps(rebuilt_lines[line_number], ensure_ascii=False)
+                    rewritten.append(line)
+                tmp_path = index_path.with_suffix(index_path.suffix + ".tmp")
+                tmp_path.write_text(
+                    "".join(line + "\n" for line in rewritten),
+                    encoding="utf-8",
+                )
+                tmp_path.replace(index_path)
 
     limited_groups = groups[: max(0, limit)]
     return {
         "ok": True,
         "dry_run": not execute,
-        "repaired": bool(execute and removed_row_count),
+        "repaired": bool(execute and (removed_row_count or rebuilt_artifact_count)),
         "registry": str(registry_path),
         "runtime_root": str(runtime_root),
         "goal_filter": goal_id,
@@ -1059,6 +1179,8 @@ def repair_index_duplicates(
         "removed_row_count": removed_row_count,
         "preserved_reward_overlay_rows": preserved_reward_overlay_rows,
         "preserved_structured_artifact_bundle_rows": preserved_structured_artifact_bundle_rows,
+        "planned_rebuild_artifact_count": planned_rebuild_artifact_count,
+        "rebuilt_artifact_count": rebuilt_artifact_count,
         "unrepaired_group_count": unrepaired_group_count,
         "groups": limited_groups,
         "truncated": len(groups) > len(limited_groups),
@@ -1083,6 +1205,8 @@ def render_index_duplicate_repair_markdown(payload: dict[str, Any]) -> str:
         f"- removed_rows: `{payload.get('removed_row_count')}`",
         f"- preserved_reward_overlay_rows: `{payload.get('preserved_reward_overlay_rows')}`",
         f"- preserved_structured_artifact_bundle_rows: `{payload.get('preserved_structured_artifact_bundle_rows')}`",
+        f"- planned_rebuild_artifacts: `{payload.get('planned_rebuild_artifact_count')}`",
+        f"- rebuilt_artifacts: `{payload.get('rebuilt_artifact_count')}`",
         f"- unrepaired_groups: `{payload.get('unrepaired_group_count')}`",
         f"- truncated: `{payload.get('truncated')}`",
         "",

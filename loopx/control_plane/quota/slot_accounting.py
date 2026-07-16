@@ -10,7 +10,11 @@ from .monitor_poll import QUOTA_MONITOR_POLL_CLASSIFICATION
 from .scheduler_ack import QUOTA_SCHEDULER_ACK_CLASSIFICATION
 from .spend_sources import DEFAULT_SLOT_SPEND_SOURCE, VALID_SLOT_SPEND_SOURCES
 from ..runtime.time import now_local_iso
-from ..runtime.run_artifacts import run_file_stem, unique_run_artifact_paths
+from ..runtime.run_artifacts import (
+    run_file_stem,
+    unique_run_artifact_paths,
+    write_unique_run_artifacts,
+)
 from ..agents.workspace_guard import (
     build_delivery_workspace_guard,
     delivery_workspace_repository,
@@ -721,11 +725,17 @@ def record_quota_slot_void_from_preview(
         payload["before"] = record["quota_event"]["before"]
         payload["after"] = record["quota_event"]["after"]
     if execute:
-        runs_dir.mkdir(parents=True, exist_ok=True)
-        json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        markdown_path.write_text(render_quota_slot_preview_markdown(payload) + "\n", encoding="utf-8")
-        with index_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(index_record, ensure_ascii=False) + "\n")
+        json_path, markdown_path, index_path = write_unique_run_artifacts(
+            runs_dir=runs_dir,
+            stem=stem,
+            suffix="quota-slot-voided",
+            record=record,
+            markdown=render_quota_slot_preview_markdown(payload),
+            index_record=index_record,
+        )
+        payload["json_path"] = str(json_path)
+        payload["markdown_path"] = str(markdown_path)
+        payload["index_path"] = str(index_path)
     return payload
 
 
@@ -792,11 +802,17 @@ def record_quota_slot_spend_from_preview(
         payload["before"] = record["quota_event"]["before"]
         payload["after"] = record["quota_event"]["after"]
     if execute:
-        runs_dir.mkdir(parents=True, exist_ok=True)
-        json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        markdown_path.write_text(render_quota_slot_preview_markdown(payload) + "\n", encoding="utf-8")
-        with index_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(index_record, ensure_ascii=False) + "\n")
+        json_path, markdown_path, index_path = write_unique_run_artifacts(
+            runs_dir=runs_dir,
+            stem=stem,
+            suffix="quota-slot-spent",
+            record=record,
+            markdown=render_quota_slot_preview_markdown(payload),
+            index_record=index_record,
+        )
+        payload["json_path"] = str(json_path)
+        payload["markdown_path"] = str(markdown_path)
+        payload["index_path"] = str(index_path)
     return payload
 
 

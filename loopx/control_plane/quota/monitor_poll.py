@@ -2,14 +2,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from copy import deepcopy
-import json
 from pathlib import Path
 from typing import Any
 
 from .decision_summary import compact_quota_decision, quota_decision_agent_id
 from .spend_sources import DEFAULT_SLOT_SPEND_SOURCE, VALID_SLOT_SPEND_SOURCES
 from ..runtime.time import now_local_iso
-from ..runtime.run_artifacts import run_file_stem, unique_run_artifact_paths
+from ..runtime.run_artifacts import (
+    run_file_stem,
+    unique_run_artifact_paths,
+    write_unique_run_artifacts,
+)
 from ..scheduler.monitor_poll_policy import (
     allows_no_spend_blocked_successor_wait_poll,
     allows_due_monitor_poll,
@@ -422,11 +425,14 @@ def record_quota_monitor_poll_for_decision(
 
     after_status = deepcopy(status_payload)
     if execute:
-        runs_dir.mkdir(parents=True, exist_ok=True)
-        json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        markdown_path.write_text(render_quota_monitor_poll_markdown(record) + "\n", encoding="utf-8")
-        with index_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(index_record, ensure_ascii=False) + "\n")
+        json_path, markdown_path, index_path = write_unique_run_artifacts(
+            runs_dir=runs_dir,
+            stem=stem,
+            suffix="quota-monitor-poll",
+            record=record,
+            markdown=render_quota_monitor_poll_markdown(record),
+            index_record=index_record,
+        )
         run_history = after_status.get("run_history") if isinstance(after_status.get("run_history"), dict) else {}
         for goal in run_history.get("goals") if isinstance(run_history.get("goals"), list) else []:
             if isinstance(goal, dict) and str(goal.get("id") or "") == goal_id:
