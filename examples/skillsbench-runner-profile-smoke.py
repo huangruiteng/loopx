@@ -13,6 +13,7 @@ from loopx.benchmark_adapters.skillsbench_runner_profile import (
     SKILLSBENCH_RUNNER_PROFILE_SCHEMA_VERSION,
     SkillsBenchRunnerProfileError,
     capture_skillsbench_runner_profile,
+    default_skillsbench_runner_profile_path,
     load_skillsbench_runner_profile,
     skillsbench_runner_profile_shell_exports,
     skillsbench_runner_profile_summary,
@@ -72,6 +73,12 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-runner-profile-") as value:
         root = Path(value)
         profile_path = root / "private" / "runner-profile.json"
+        default_profile_path = default_skillsbench_runner_profile_path(
+            {"XDG_STATE_HOME": str(root / "state")}
+        )
+        assert default_profile_path == (
+            root / "state" / "loopx" / "skillsbench" / "runner-profile.json"
+        )
         source_environment = _environment()
         _expect_error(
             "required_runner_environment_missing",
@@ -147,13 +154,15 @@ def main() -> None:
         }
         launch_environment.update(
             {
-                "SKILLSBENCH_RUNNER_PROFILE": str(profile_path),
                 "SKILLSBENCH_ROUTE": "loopx-turn-agent-cli",
                 "SKILLSBENCH_RUN_STAMP": "runnerprofile-smoke",
                 "SKILLSBENCH_DOCKER_PROXY_HOST": "docker-proxy.example.invalid",
                 "SKILLSBENCH_DOCKER_API_VERSION": "1.43",
+                "XDG_STATE_HOME": str(root / "state"),
             }
         )
+        default_profile_path.parent.mkdir(parents=True)
+        shutil.copy2(profile_path, default_profile_path)
         completed = subprocess.run(
             [
                 "bash",

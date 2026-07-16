@@ -18,7 +18,10 @@ Required env:
 Optional env:
   SKILLSBENCH_RUNNER_PROFILE           Owner-only local JSON profile captured
                                        by skillsbench_runner_profile; explicit
-                                       env values override profile values
+                                       env values override profile values. If
+                                       unset, the owner-local default is used
+                                       when present. Capture the default with:
+                                       python3 -m loopx.benchmark_adapters.skillsbench_runner_profile capture
   SKILLSBENCH_LOCAL_CODEX_PROXY_HOST   Local proxy host, default 127.0.0.1
   SKILLSBENCH_LOCAL_CODEX_PROXY_PORT   Local proxy port, default 18180
   SKILLSBENCH_DOCKER_PROXY_HOST        Remote Docker bridge host for benchmark
@@ -130,19 +133,28 @@ remote_proxy_port="${3:-${SKILLSBENCH_REMOTE_CODEX_PROXY_PORT:-18180}}"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 runner_profile="${SKILLSBENCH_RUNNER_PROFILE:-}"
 runner_profile_loaded=false
+runner_profile_args=(export-shell)
+unset SKILLSBENCH_RUNNER_PROFILE_DISCOVERED
 if [[ -n "$runner_profile" ]]; then
-  if ! runner_profile_exports="$(
-    PYTHONPATH="${repo_root}${PYTHONPATH:+:${PYTHONPATH}}" \
-      python3 -m loopx.benchmark_adapters.skillsbench_runner_profile \
-      export-shell --profile "$runner_profile"
-  )"; then
-    exit 2
-  fi
+  runner_profile_args+=(--profile "$runner_profile")
+else
+  runner_profile_args+=(--if-present)
+fi
+if ! runner_profile_exports="$(
+  PYTHONPATH="${repo_root}${PYTHONPATH:+:${PYTHONPATH}}" \
+    python3 -m loopx.benchmark_adapters.skillsbench_runner_profile \
+    "${runner_profile_args[@]}"
+)"; then
+  exit 2
+fi
+if [[ -n "$runner_profile_exports" ]]; then
   # The helper emits only whitelisted variable names with shlex-quoted values.
   eval "$runner_profile_exports"
-  unset runner_profile_exports
+fi
+if [[ "${SKILLSBENCH_RUNNER_PROFILE_DISCOVERED:-}" == "1" ]]; then
   runner_profile_loaded=true
 fi
+unset runner_profile_exports SKILLSBENCH_RUNNER_PROFILE_DISCOVERED
 
 required_env=(
   SKILLSBENCH_SSH_DESTINATION

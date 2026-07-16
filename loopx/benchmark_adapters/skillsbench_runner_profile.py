@@ -12,6 +12,9 @@ from typing import Any
 
 
 SKILLSBENCH_RUNNER_PROFILE_SCHEMA_VERSION = "skillsbench_runner_profile_v0"
+SKILLSBENCH_RUNNER_PROFILE_RELATIVE_PATH = Path(
+    "loopx/skillsbench/runner-profile.json"
+)
 REQUIRED_RUNNER_ENV = (
     "SKILLSBENCH_SSH_DESTINATION",
     "SKILLSBENCH_REMOTE_ROOT",
@@ -36,6 +39,23 @@ class SkillsBenchRunnerProfileError(ValueError):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
+
+
+def default_skillsbench_runner_profile_path(
+    environment: Mapping[str, str] | None = None,
+) -> Path:
+    source = environment if environment is not None else os.environ
+    state_home = str(source.get("XDG_STATE_HOME") or "")
+    if state_home:
+        root = Path(state_home).expanduser()
+    else:
+        home = str(source.get("HOME") or "")
+        if not home:
+            raise SkillsBenchRunnerProfileError("profile_default_path_unavailable")
+        root = Path(home).expanduser() / ".local" / "state"
+    if not root.is_absolute():
+        raise SkillsBenchRunnerProfileError("profile_default_path_invalid")
+    return root / SKILLSBENCH_RUNNER_PROFILE_RELATIVE_PATH
 
 
 def _profile_file(path: Path) -> Path:
@@ -165,9 +185,11 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("export-shell", "inspect"):
         command = commands.add_parser(name)
-        command.add_argument("--profile", type=Path, required=True)
+        command.add_argument("--profile", type=Path)
+        if name == "export-shell":
+            command.add_argument("--if-present", action="store_true")
     capture = commands.add_parser("capture")
-    capture.add_argument("--profile", type=Path, required=True)
+    capture.add_argument("--profile", type=Path)
     capture.add_argument("--force", action="store_true")
     return parser
 
@@ -175,20 +197,29 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        profile_path = args.profile or default_skillsbench_runner_profile_path()
         if args.command == "capture":
             summary = capture_skillsbench_runner_profile(
-                args.profile,
+                profile_path,
                 force=args.force,
             )
             print(json.dumps(summary, sort_keys=True))
             return 0
-        profile = load_skillsbench_runner_profile(args.profile)
+        if (
+            args.command == "export-shell"
+            and args.if_present
+            and not profile_path.exists()
+            and not profile_path.is_symlink()
+        ):
+            return 0
+        profile = load_skillsbench_runner_profile(profile_path)
         if args.command == "inspect":
             print(json.dumps(skillsbench_runner_profile_summary(profile), sort_keys=True))
             return 0
         exports = skillsbench_runner_profile_shell_exports(profile)
         if exports:
             print(exports)
+        print("export SKILLSBENCH_RUNNER_PROFILE_DISCOVERED=1")
         return 0
     except SkillsBenchRunnerProfileError as error:
         print(
