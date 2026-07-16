@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import errno
+import argparse
 import json
 import os
 import re
@@ -14,6 +15,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +25,9 @@ if str(ROOT) not in sys.path:
 from loopx.capabilities.issue_fix.reviewer_request import (  # noqa: E402
     ISSUE_FIX_REVIEWER_REQUEST_SCHEMA_VERSION,
     build_issue_fix_reviewer_request_packet,
+)
+from loopx.capabilities.issue_fix.reviewer_cli import (  # noqa: E402
+    handle_issue_fix_reviewer_command,
 )
 from loopx.capabilities.issue_fix.cli import (  # noqa: E402
     _materialize_goal_reviewer_notification_lifecycle,
@@ -138,9 +143,7 @@ def metadata(
         "comments": comments or [],
         "isDraft": False,
         "reviewRequests": [{"login": login} for login in (requested or [])],
-        "reviews": [
-            {"author": {"login": login}} for login in (reviewed or [])
-        ],
+        "reviews": [{"author": {"login": login}} for login in (reviewed or [])],
         "state": "OPEN",
         "title": "fix: reject file URI for consistency check",
         "url": "https://github.com/owner/repo/pull/42",
@@ -208,11 +211,7 @@ class FakeCombinedRunner:
                 return {
                     "returncode": 0,
                     "stdout": json.dumps(
-                        {
-                            "identities": {
-                                "user": {"available": True, "verified": True}
-                            }
-                        }
+                        {"identities": {"user": {"available": True, "verified": True}}}
                     ),
                     "stderr": "",
                 }
@@ -235,9 +234,7 @@ class FakeCombinedRunner:
             self.lark_calls.append(command)
             return {
                 "returncode": 0,
-                "stdout": json.dumps(
-                    {"items": [{"member_id": "ou_private_member"}]}
-                ),
+                "stdout": json.dumps({"items": [{"member_id": "ou_private_member"}]}),
                 "stderr": "",
             }
         if "+messages-send" in command:
@@ -420,9 +417,7 @@ def main() -> int:
             runner=trusted_clock_runner,
         )
         assert trusted_clock["generated_at"] == "2026-07-10T02:30:00Z"
-        assert trusted_clock["secondary_notification_status"] == (
-            "queued_until_window"
-        )
+        assert trusted_clock["secondary_notification_status"] == ("queued_until_window")
         assert trusted_clock["secondary_notifications"]["queued_receipts"]
         assert trusted_clock_runner.lark_calls == []
         assert_public_safe(trusted_clock)
@@ -503,14 +498,14 @@ def main() -> int:
                     }
                 ],
             },
-            notification_sink_adapters={
-                "fixture_channel": fake_notification_adapter
-            },
+            notification_sink_adapters={"fixture_channel": fake_notification_adapter},
             provider_payload=metadata(requested=["service-owner"]),
         )
         assert provider_neutral_fallback["ok"] is True, provider_neutral_fallback
         assert provider_neutral_fallback["secondary_notification_targets"] == []
-        assert provider_neutral_fallback["secondary_notification_fallback_used"] is False
+        assert (
+            provider_neutral_fallback["secondary_notification_fallback_used"] is False
+        )
         assert provider_neutral_fallback["secondary_notification_status"] == (
             "skipped_reviewer_unavailable"
         )
@@ -608,9 +603,7 @@ def main() -> int:
         assert "issue-fix-reviewer-notification" not in comment_body
         assert_public_safe(fallback)
 
-        fallback_retry_runner = FakeGitHubRunner(
-            before=permission_runner.after
-        )
+        fallback_retry_runner = FakeGitHubRunner(before=permission_runner.after)
         fallback_retry = build_issue_fix_reviewer_request_packet(
             repo_path=path,
             url="https://github.com/owner/repo/pull/42",
@@ -640,9 +633,7 @@ def main() -> int:
 
         semantic_url = "https://github.com/owner/repo/pull/42#issuecomment-1002"
         semantic_retry_runner = FakeGitHubRunner(
-            before=metadata(
-                comments=[semantic_reviewer_comment(url=semantic_url)]
-            )
+            before=metadata(comments=[semantic_reviewer_comment(url=semantic_url)])
         )
         semantic_retry = build_issue_fix_reviewer_request_packet(
             repo_path=path,
@@ -670,12 +661,11 @@ def main() -> int:
         assert semantic_retry["comment_fallback_verified"] is False
         assert semantic_retry["reviewer_comment_url"] == semantic_url
         assert semantic_retry["external_writes_performed"] is False
-        assert semantic_retry["transition"]["action_kind"].endswith(
-            "already_covered"
+        assert semantic_retry["transition"]["action_kind"].endswith("already_covered")
+        assert (
+            "existing explicit review-request comment"
+            in semantic_retry["transition"]["reason"]
         )
-        assert "existing explicit review-request comment" in semantic_retry[
-            "transition"
-        ]["reason"]
         assert semantic_retry_runner.edits == 0
         assert semantic_retry_runner.comments == 0
         assert_public_safe(semantic_retry)
@@ -752,9 +742,7 @@ def main() -> int:
         )
         discussion_runner = FakeGitHubRunner(
             before=metadata(comments=[discussion_comment]),
-            after=metadata(
-                requested=["service-owner"], comments=[discussion_comment]
-            ),
+            after=metadata(requested=["service-owner"], comments=[discussion_comment]),
         )
         discussion = build_issue_fix_reviewer_request_packet(
             repo_path=path,
@@ -987,9 +975,12 @@ def main() -> int:
         assert cli_packet["reviewer_source_count"] == 1
         assert cli_packet["external_writes_performed"] is False
         assert cli_packet["secondary_notification_status"] == "preview_ready"
-        assert cli_packet["secondary_notifications"]["results"][0][
-            "private_destination_captured"
-        ] is False
+        assert (
+            cli_packet["secondary_notifications"]["results"][0][
+                "private_destination_captured"
+            ]
+            is False
+        )
         assert_public_safe(cli_packet)
 
         goal_id = "reviewer-request-default-fixture"
@@ -1005,10 +996,36 @@ def main() -> int:
             }
         )
         goal_config_path = (
-            path
-            / ".loopx/config/issue-fix/reviewer-notification-sinks.json"
+            path / ".loopx/config/issue-fix/reviewer-notification-sinks.json"
         )
         write(goal_config_path, json.dumps(goal_config))
+        reward_goal_id = "reviewer-request-reward-preview-fixture"
+        reward_config_path = path / ".loopx/config/reward-memory/experiment.json"
+        reward_fixture = json.loads(
+            (
+                ROOT / "examples/fixtures/reward-memory-ingest-event.public.json"
+            ).read_text(encoding="utf-8")
+        )
+        reward_fixture["corpus"]["scope"]["surface_ids"] = ["reviewer_artifact.summary"]
+        reward_fixture["corpus"]["freshness"] = {
+            "mode": "source_truth_bound",
+            "source_revision": None,
+        }
+        reward_fixture["standing_policy"]["scope"]["surface_ids"] = [
+            "reviewer_artifact.summary"
+        ]
+        write(
+            reward_config_path,
+            json.dumps(
+                {
+                    "schema_version": "reward_memory_experiment_config_v0",
+                    "adapter": reward_fixture["adapter"],
+                    "corpus": reward_fixture["corpus"],
+                    "standing_policy": reward_fixture["standing_policy"],
+                    "provider_binding": reward_fixture["provider_binding"],
+                }
+            ),
+        )
         registry = path / ".loopx/registry.json"
         write(
             registry,
@@ -1030,7 +1047,24 @@ def main() -> int:
                                     }
                                 }
                             },
-                        }
+                        },
+                        {
+                            "id": reward_goal_id,
+                            "repo": str(path),
+                            "coordination": {
+                                "registered_agents": ["fixture-review-agent"]
+                            },
+                            "control_plane": {
+                                "reward_memory": {
+                                    "enabled": True,
+                                    "experimental": True,
+                                    "config_path": (
+                                        ".loopx/config/reward-memory/experiment.json"
+                                    ),
+                                    "enabled_agents": ["fixture-review-agent"],
+                                }
+                            },
+                        },
                     ],
                 }
             ),
@@ -1075,6 +1109,107 @@ def main() -> int:
         assert goal_default_packet["secondary_notification_source"] == "goal_default"
         assert goal_default_packet["secondary_notification_status"] == "preview_ready"
         assert_public_safe(goal_default_packet)
+
+        reward_application_calls: list[dict[str, Any]] = []
+
+        def fake_reward_application(
+            base_artifact: dict[str, Any], **kwargs: Any
+        ) -> dict[str, Any]:
+            reward_application_calls.append(dict(kwargs))
+            checkpoint = kwargs["read_authority_checkpoint"]
+            assert checkpoint["verified"] is True
+            assert (
+                checkpoint["source_ref"]
+                == (reward_fixture["standing_policy"]["authority_source_ref"])
+            )
+            assert "source_ref" not in kwargs["corpus"]
+            summary = str(kwargs["reviewer_summary"])
+            artifact = {
+                "schema_version": "issue_fix_reviewer_artifact_v0",
+                **base_artifact,
+                "summary": summary,
+            }
+            return {
+                "ok": True,
+                "schema_version": (
+                    "issue_fix_reviewer_artifact_reward_memory_application_v0"
+                ),
+                "surface_id": "reviewer_artifact.summary",
+                "reviewer_artifact": artifact,
+                "recall": {
+                    "status": "completed",
+                    "provider_call_count": 1,
+                    "result_readback_verified": True,
+                    "external_writes_performed": False,
+                },
+                "application": {
+                    "status": "applied",
+                    "receipt": {
+                        "schema_version": "reward_memory_application_receipt_v0",
+                        "current_artifact_verified": True,
+                        "result_readback_verified": True,
+                        "memory_ref_digests": ["sha256:" + "a" * 64],
+                    },
+                },
+                "shared_core": "loopx.capabilities.reward_memory.application",
+                "notification_gate": {
+                    "status": "ready",
+                    "passed": True,
+                    "summary": summary,
+                    "external_writes_performed": False,
+                },
+                "external_writes_performed": False,
+            }
+
+        reward_args = argparse.Namespace(
+            issue_fix_command="reviewer-request",
+            execute=False,
+            metadata_json=str(metadata_path),
+            notification_sinks_json=None,
+            goal_id=reward_goal_id,
+            project=str(path),
+            url="https://github.com/owner/repo/pull/42",
+            repo_path=str(path),
+            changed_file=["src/map_only.py"],
+            base_ref="main",
+            history_limit=40,
+            max_candidates=5,
+            max_reviewers=1,
+            exclude_reviewer=["@fallback-owner"],
+            exclude_author_name=[],
+            identity_map_json=None,
+            reviewer_sources_json=str(reviewer_sources_path),
+            agent_id="fixture-review-agent",
+            reviewer_summary="修复文件 URI 校验并保留精确回读证据",
+            reviewer_summary_reasoning=("当前 PR 身份、摘要语义和验证范围均已核对。"),
+        )
+        with patch(
+            "loopx.capabilities.issue_fix.reviewer_request."
+            "run_issue_fix_reviewer_artifact_reward_memory",
+            side_effect=fake_reward_application,
+        ):
+            handled = handle_issue_fix_reviewer_command(
+                reward_args,
+                registry_path=registry,
+                generated_at="2026-07-16T08:00:00Z",
+                delivery_observed_at="2026-07-16T08:00:00Z",
+            )
+        assert handled is not None
+        reward_preview, _ = handled
+        assert len(reward_application_calls) == 1
+        assert reward_preview["reward_memory_experiment_status"] == "available"
+        assert reward_preview["secondary_notification_source"] == "not_configured"
+        assert reward_preview["secondary_notification_status"] == "not_configured"
+        assert reward_preview["reviewer_artifact_reward_memory_required"] is False
+        assert reward_preview["reviewer_artifact_reward_memory_status"] == "ready"
+        assert (
+            reward_preview["reviewer_artifact_reward_memory_preview"][
+                "notification_gate"
+            ]["passed"]
+            is True
+        )
+        assert reward_preview["external_writes_performed"] is False
+        assert_public_safe(reward_preview)
 
         lifecycle_path = default_issue_fix_domain_state_ledger_path(
             project=path,
@@ -1187,9 +1322,9 @@ def main() -> int:
                 "closingIssuesReferences": [{"number": 40}],
             },
         )
-        assert repeated_materialize["domain_state_projection"][
-            "write_performed"
-        ] is False
+        assert (
+            repeated_materialize["domain_state_projection"]["write_performed"] is False
+        )
         legacy_lifecycle = json.loads(
             lifecycle_path.read_text(encoding="utf-8").splitlines()[0]
         )
@@ -1294,9 +1429,7 @@ def main() -> int:
                 "state": "OPEN",
                 "reviewDecision": "REVIEW_REQUIRED",
                 "mergeStateStatus": "BLOCKED",
-                "statusCheckRollup": [
-                    {"name": "focused", "conclusion": "SUCCESS"}
-                ],
+                "statusCheckRollup": [{"name": "focused", "conclusion": "SUCCESS"}],
             },
         )
         upsert_issue_fix_pr_lifecycle_ledger_jsonl(lifecycle_path, later_monitor)

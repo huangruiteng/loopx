@@ -28,10 +28,12 @@ reported separately and does not erase a successful GitHub request.
 
 Reward Memory is a default-off, agent-scoped experiment. If the connected goal
 enables it and the registered caller's experiment includes the exact
-`reviewer_artifact.summary` surface, configured secondary notifications require
-an `issue_fix_reviewer_artifact_reward_memory_application_v0` packet whose
-notification gate passes. The caller supplies its own `--agent-id`, a concise
-model-authored Chinese `--reviewer-summary`, and compact
+`reviewer_artifact.summary` surface, reviewer request planning may produce a
+read-only `reviewer_artifact_reward_memory_preview` even when secondary sinks
+are absent or intentionally paused. Configured secondary notifications require
+the same `issue_fix_reviewer_artifact_reward_memory_application_v0` packet to
+pass its notification gate before sending. The caller supplies its own
+`--agent-id`, a concise model-authored Chinese `--reviewer-summary`, and compact
 `--reviewer-summary-reasoning`; LoopX never infers or impersonates another peer.
 
 The adapter reuses the provider-neutral Reward Memory core and the goal's local
@@ -40,6 +42,13 @@ dependency or hard-coded repository. Before external delivery, the gate checks
 the exact surface, current PR identity and permalink, current-artifact
 verification, memory readback, attribution digests, application state, and a
 non-empty summary. A receipt for a different PR cannot be replayed.
+
+Experiment resolution and read-authority construction happen before sink
+routing. The normalized corpus supplies the read-authority kind, while the
+normalized standing policy supplies `authority_source_ref`. A no-sink preview
+may read the configured provider but never sends a notification, materializes a
+notification lifecycle row, or performs an external write. Sink configuration
+only changes whether the application receipt is mandatory for delivery.
 
 This stricter behavior is bounded to the configured secondary effect. The
 canonical GitHub review request or permission-only fallback executes first and

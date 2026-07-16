@@ -263,10 +263,13 @@ profile, destination, member mapping, or raw provider response into public
 state. A stable hashed receipt prevents duplicate sends across retries.
 
 When a connected goal explicitly enables the agent-scoped Reward Memory
-experiment for `reviewer_artifact.summary`, a configured secondary notification
-also requires a verified application receipt for the current PR. The caller
-must identify itself with `--agent-id` and supply a concise model-authored
-Chinese summary plus its application reasoning:
+experiment for `reviewer_artifact.summary`, `reviewer-request` resolves and
+previews the application independently of secondary-sink availability. This
+lets a fixer verify recall, current-artifact identity, and the proposed concise
+Chinese summary with zero external writes while per-PR secondary notifications
+are paused. A configured secondary notification additionally requires that
+verified application receipt before sending. The caller must identify itself
+with `--agent-id` and supply the summary plus its application reasoning:
 
 ```bash
 loopx issue-fix reviewer-request \
@@ -286,9 +289,13 @@ memory implementation. It verifies the exact surface, current PR identity,
 current-artifact check, memory readback, attribution digests, and non-empty
 summary before the secondary send. It never infers another peer's agent id and
 does not hard-code OpenViking: the experiment still resolves the goal's ignored
-provider binding. The canonical GitHub reviewer request remains fail-open and
-runs first; only the explicitly configured secondary notification fails closed
-when this receipt is missing or stale.
+provider binding. Read authority combines the normalized corpus read-authority
+kind with `standing_policy.authority_source_ref`; it is never inferred from a
+provider or repository name. A successful no-sink preview is returned as
+`reviewer_artifact_reward_memory_preview` and remains read-only. The canonical
+GitHub reviewer request remains fail-open and runs first; only the explicitly
+configured secondary notification fails closed when this receipt is missing or
+stale.
 
 Long-running goals can register the local-private sink pointer once with
 `configure-goal --issue-fix-reviewer-notification-config`. Subsequent
@@ -433,7 +440,7 @@ tests whether the system is a durable employee rather than a scripted demo.
 | State kernel | `loopx todo`, `quota`, `refresh-state`, scheduler/monitor | Persist ownership, authority, bounded compute, replan, wait/resume, and terminal closeout. |
 | OpenViking memory hook | `--repository-memory-*`, `repository-memory-sync` | Retrieve bounded advisory evidence from a stable rolling default-branch index; allow decision influence only after current-checkout verification, and authorize manual resource sync and reusable-knowledge writeback separately. |
 | Semantic preference hook | `loopx semantic-preference recall`, stateless receipt | Optionally recall workspace-scoped user/reviewer preferences before a configured surface; the domain applies them, while LoopX retains only compact application evidence rather than raw memory. |
-| Reward-memory experiment | `loopx configure-goal --reward-memory-config ... --reward-memory-agent ...`, `loopx reward-memory experiment-status`, `run_issue_fix_patch_planning_reward_memory`, `run_issue_fix_reviewer_artifact_reward_memory` | Default off. Allow one registered fixer lane to use an ignored provider binding and exact reviewed surfaces such as `issue_fix.patch_planning` and `reviewer_artifact.summary`; OpenViking is the current provider, not a global dependency. Planning stays fail-open. A configured secondary reviewer notification instead requires a compact applied/readback/current-artifact receipt, while the canonical GitHub request remains unaffected. |
+| Reward-memory experiment | `loopx configure-goal --reward-memory-config ... --reward-memory-agent ...`, `loopx reward-memory experiment-status`, `run_issue_fix_patch_planning_reward_memory`, `run_issue_fix_reviewer_artifact_reward_memory` | Default off. Allow one registered fixer lane to use an ignored provider binding and exact reviewed surfaces such as `issue_fix.patch_planning` and `reviewer_artifact.summary`; OpenViking is the current provider, not a global dependency. Planning stays fail-open. Reviewer-artifact application remains previewable with no sink and zero external writes; a configured secondary reviewer notification requires its compact applied/readback/current-artifact receipt, while the canonical GitHub request remains unaffected. |
 | Generic inbound feedback | `loopx lark-inbox` collector/install/status/drain | Run a project-configured host collector independently of the agent process, durably project bounded inbound events, and require domain writeback before ACK; outbound messages remain a separate configured authority. |
 | Issue-fix domain state | `loopx/domain_packs/issue_fix.py`, `issue-fix outcome` | Retain feasibility, PR lifecycle, compact delivery evidence, and stable outcomes inside the existing goal rather than a parallel workflow ledger. |
 | Candidate preflight | `loopx issue-fix workflow-plan --candidate-preflight-json ...` | Before new patch planning, reconcile compact prior domain state, all-state numeric PR references, and current-revision-verified semantic implementation PR evidence; reuse/comment/skip performs no provider call and preserves an existing recall receipt. |

@@ -246,6 +246,8 @@ flowchart LR
   评价长期 Loop Agent 的项目级价值。
 - **实验性上下文学习**：Reward Memory 默认关闭，只给明确登记的 agent lane 开启；
   provider binding 留在 repo 内 ignored config，写入与召回保持显式并 fail open。
+  即使二级通知 sink 暂停，reviewer artifact 仍可执行零外部写的应用预览；只有实际发送
+  二级通知时才要求已验证的 current-artifact receipt。
   OpenViking 是当前可用 provider，而不是 LoopX 的全局开关或强制依赖。详见
   [Reward Memory 架构](docs/reference/protocols/reward-memory-architecture-v0.zh-CN.md)。
 
