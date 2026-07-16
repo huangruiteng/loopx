@@ -1024,10 +1024,10 @@ def render_configure_goal_markdown(payload: dict[str, Any]) -> str:
         )
         lines.extend(
             [
-                f"- global_sync_enabled: \`{global_sync.get('enabled')}\`",
-                f"- global_sync_executed: \`{global_sync.get('executed')}\`",
-                f"- global_sync_target: \`{selected_target.get('global_registry')}\`",
-                f"- global_sync_readback: \`{readback.get('status')}\`",
+                f"- global_sync_enabled: `{global_sync.get('enabled')}`",
+                f"- global_sync_executed: `{global_sync.get('executed')}`",
+                f"- global_sync_target: `{selected_target.get('global_registry')}`",
+                f"- global_sync_readback: `{readback.get('status')}`",
             ]
         )
     if payload.get("control_plane_summary"):
