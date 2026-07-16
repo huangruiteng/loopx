@@ -15,20 +15,12 @@ from .scoped_feedback import SCOPED_FEEDBACK_ADAPTER
 
 
 REWARD_MEMORY_EXPERIMENT_SCHEMA_VERSION = "reward_memory_experiment_config_v1"
-REWARD_MEMORY_EXPERIMENT_V0_SCHEMA_VERSION = "reward_memory_experiment_config_v0"
 ISSUE_FIX_MAINTAINER_FEEDBACK_ADAPTER = "issue_fix_maintainer_feedback"
 SUPPORTED_REWARD_MEMORY_EXPERIMENT_ADAPTERS = {
     ISSUE_FIX_MAINTAINER_FEEDBACK_ADAPTER,
     SCOPED_FEEDBACK_ADAPTER,
 }
 
-_V0_CONFIG_FIELDS = {
-    "schema_version",
-    "adapter",
-    "corpus",
-    "standing_policy",
-    "provider_binding",
-}
 _V1_CONFIG_FIELDS = {
     "schema_version",
     "project_provider_binding",
@@ -75,11 +67,15 @@ def _strict_object(
         raise ValueError(f"{label} must be an object")
     unexpected = sorted(set(value) - allowed)
     if unexpected:
-        raise ValueError(f"{label} contains unsupported fields: {', '.join(unexpected)}")
+        raise ValueError(
+            f"{label} contains unsupported fields: {', '.join(unexpected)}"
+        )
     return value
 
 
-def _bounded_objects(value: object, *, label: str, maximum: int) -> list[Mapping[str, Any]]:
+def _bounded_objects(
+    value: object, *, label: str, maximum: int
+) -> list[Mapping[str, Any]]:
     if (
         not isinstance(value, Sequence)
         or isinstance(value, (str, bytes))
@@ -97,7 +93,11 @@ def _boolean(value: object, label: str) -> bool:
 
 
 def _positive_int(value: object, label: str, *, maximum: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= maximum:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 1 <= value <= maximum
+    ):
         raise ValueError(f"{label} must be an integer between 1 and {maximum}")
     return value
 
@@ -166,8 +166,10 @@ def _materialize_provider_binding(
     return normalize_reward_memory_provider_binding(raw, corpus)
 
 
-def _normalize_v1(raw: Mapping[str, Any], *, source_schema: str) -> dict[str, Any]:
-    _strict_object(raw, label="reward-memory experiment config", allowed=_V1_CONFIG_FIELDS)
+def _normalize_v1(raw: Mapping[str, Any]) -> dict[str, Any]:
+    _strict_object(
+        raw, label="reward-memory experiment config", allowed=_V1_CONFIG_FIELDS
+    )
     project_binding = _strict_object(
         raw.get("project_provider_binding"),
         label="project_provider_binding",
@@ -190,7 +192,9 @@ def _normalize_v1(raw: Mapping[str, Any], *, source_schema: str) -> dict[str, An
         if not corpus_id or not scope_ref:
             raise ValueError("each project provider corpus scope must be exact")
         if corpus_id in scope_refs:
-            raise ValueError("project provider corpus scopes must not contain duplicates")
+            raise ValueError(
+                "project provider corpus scopes must not contain duplicates"
+            )
         scope_refs[corpus_id] = scope_ref
 
     raw_corpora = _bounded_objects(
@@ -222,7 +226,9 @@ def _normalize_v1(raw: Mapping[str, Any], *, source_schema: str) -> dict[str, An
         }
 
     if set(scope_refs) != set(corpora):
-        raise ValueError("project provider corpus scopes must exactly match declared corpora")
+        raise ValueError(
+            "project provider corpus scopes must exactly match declared corpora"
+        )
     workspace_projects = {
         (
             entry["corpus"]["scope"]["workspace_ref"],
@@ -239,9 +245,7 @@ def _normalize_v1(raw: Mapping[str, Any], *, source_schema: str) -> dict[str, An
             scope_ref=scope_refs[corpus_id],
         )
 
-    raw_surfaces = _bounded_objects(
-        raw.get("surfaces"), label="surfaces", maximum=20
-    )
+    raw_surfaces = _bounded_objects(raw.get("surfaces"), label="surfaces", maximum=20)
     surfaces: dict[str, dict[str, Any]] = {}
     referenced_corpora: set[str] = set()
     for index, item in enumerate(raw_surfaces):
@@ -259,19 +263,24 @@ def _normalize_v1(raw: Mapping[str, Any], *, source_schema: str) -> dict[str, An
         ):
             raise ValueError("surface.corpus_ids must be a bounded non-empty list")
         corpus_ids = [str(value or "").strip() for value in corpus_ids_raw]
-        if any(not value for value in corpus_ids) or len(corpus_ids) != len(set(corpus_ids)):
+        if any(not value for value in corpus_ids) or len(corpus_ids) != len(
+            set(corpus_ids)
+        ):
             raise ValueError("surface.corpus_ids must contain unique corpus ids")
         unknown = sorted(set(corpus_ids) - set(corpora))
         if unknown:
-            raise ValueError("surface selects an undeclared corpus: " + ", ".join(unknown))
+            raise ValueError(
+                "surface selects an undeclared corpus: " + ", ".join(unknown)
+            )
         ingest_corpus_id = str(surface.get("ingest_corpus_id") or "").strip()
         if ingest_corpus_id not in corpus_ids:
             raise ValueError("surface.ingest_corpus_id must be one selected corpus")
         for corpus_id in corpus_ids:
             if surface_id not in corpora[corpus_id]["corpus"]["scope"]["surface_ids"]:
                 raise ValueError("surface must be declared by every selected corpus")
-            if surface_id not in (
-                corpora[corpus_id]["standing_policy"]["scope"]["surface_ids"]
+            if (
+                surface_id
+                not in (corpora[corpus_id]["standing_policy"]["scope"]["surface_ids"])
             ):
                 raise ValueError(
                     "surface must be authorized by every selected standing policy"
@@ -318,7 +327,9 @@ def _normalize_v1(raw: Mapping[str, Any], *, source_schema: str) -> dict[str, An
         }
         referenced_corpora.update(corpus_ids)
     if referenced_corpora != set(corpora):
-        raise ValueError("every declared corpus must be assigned to an explicit surface")
+        raise ValueError(
+            "every declared corpus must be assigned to an explicit surface"
+        )
 
     automation = _strict_object(
         raw.get("automation"), label="automation", allowed=_AUTOMATION_FIELDS
@@ -328,8 +339,6 @@ def _normalize_v1(raw: Mapping[str, Any], *, source_schema: str) -> dict[str, An
         raise ValueError("reward-memory automation must be fail-open")
     normalized = {
         "schema_version": REWARD_MEMORY_EXPERIMENT_SCHEMA_VERSION,
-        "source_schema_version": source_schema,
-        "migration_applied": source_schema == REWARD_MEMORY_EXPERIMENT_V0_SCHEMA_VERSION,
         "project_provider_binding": {
             key: value
             for key, value in project_binding.items()
@@ -347,82 +356,7 @@ def _normalize_v1(raw: Mapping[str, Any], *, source_schema: str) -> dict[str, An
             "fail_open": True,
         },
     }
-    if len(surfaces) == 1:
-        route = resolve_reward_memory_surface_config(
-            normalized, next(iter(surfaces))
-        )
-        normalized.update(
-            {
-                "adapter": route["adapter"],
-                "corpus": route["corpus"],
-                "standing_policy": route["standing_policy"],
-                "provider_binding": route["provider_binding"],
-            }
-        )
     return normalized
-
-
-def _migrate_v0(raw: Mapping[str, Any]) -> dict[str, Any]:
-    _strict_object(raw, label="reward-memory experiment config", allowed=_V0_CONFIG_FIELDS)
-    for key in ("corpus", "standing_policy", "provider_binding"):
-        if not isinstance(raw.get(key), Mapping):
-            raise ValueError(f"reward-memory experiment {key} must be an object")
-    corpus = normalize_reward_memory_corpus(raw["corpus"])
-    binding = normalize_reward_memory_provider_binding(raw["provider_binding"], corpus)
-    surfaces = list(
-        normalize_reward_memory_standing_policy(raw["standing_policy"])["scope"][
-            "surface_ids"
-        ]
-    )
-    common_binding = {
-        key: binding[key]
-        for key in (
-            "provider_id",
-            "namespace",
-            "timeout_seconds",
-            "setup_hints",
-            "provider_binary",
-            "minimum_provider_version",
-            "actor_peer_id",
-        )
-        if key in binding
-    }
-    common_binding["corpus_scopes"] = [
-        {"corpus_id": corpus["corpus_id"], "scope_ref": binding["scope_ref"]}
-    ]
-    migrated = {
-        "schema_version": REWARD_MEMORY_EXPERIMENT_SCHEMA_VERSION,
-        "project_provider_binding": common_binding,
-        "corpora": [
-            {
-                "corpus": raw["corpus"],
-                "standing_policy": raw["standing_policy"],
-            }
-        ],
-        "surfaces": [
-            {
-                "surface_id": surface_id,
-                "adapter": _adapter(raw.get("adapter")),
-                "corpus_ids": [corpus["corpus_id"]],
-                "ingest_corpus_id": corpus["corpus_id"],
-                "recall_profile": {
-                    "profile_id": f"v0_explicit_{surface_id.replace('.', '_')}",
-                    "mode": "function_boundary",
-                    "max_queries": 1,
-                    "limit": 5,
-                },
-            }
-            for surface_id in surfaces
-        ],
-        "automation": {
-            "automatic_recall": False,
-            "automatic_ingest": False,
-            "fail_open": True,
-        },
-    }
-    return _normalize_v1(
-        migrated, source_schema=REWARD_MEMORY_EXPERIMENT_V0_SCHEMA_VERSION
-    )
 
 
 def load_reward_memory_experiment_config(
@@ -433,14 +367,11 @@ def load_reward_memory_experiment_config(
         raw = _read_json_object(path)
     except (OSError, ValueError) as exc:
         raise ValueError("reward-memory experiment config is unavailable") from exc
-    schema_version = raw.get("schema_version")
-    if schema_version == REWARD_MEMORY_EXPERIMENT_V0_SCHEMA_VERSION:
-        return _migrate_v0(raw)
-    if schema_version == REWARD_MEMORY_EXPERIMENT_SCHEMA_VERSION:
-        return _normalize_v1(raw, source_schema=REWARD_MEMORY_EXPERIMENT_SCHEMA_VERSION)
-    raise ValueError(
-        "reward-memory experiment config must use reward_memory_experiment_config_v0 or v1"
-    )
+    if raw.get("schema_version") != REWARD_MEMORY_EXPERIMENT_SCHEMA_VERSION:
+        raise ValueError(
+            "reward-memory experiment config must use reward_memory_experiment_config_v1"
+        )
+    return _normalize_v1(raw)
 
 
 def resolve_reward_memory_surface_config(
@@ -563,9 +494,7 @@ def resolve_reward_memory_experiment(
     result = base | {
         "status": "available",
         "available": True,
-        "source_config_schema_version": config["source_schema_version"],
-        "effective_config_schema_version": config["schema_version"],
-        "migration_applied": config["migration_applied"],
+        "config_schema_version": config["schema_version"],
         "provider_id": config["project_provider_binding"]["provider_id"],
         "corpus_count": len(corpora),
         "corpus_ids": sorted(corpora),

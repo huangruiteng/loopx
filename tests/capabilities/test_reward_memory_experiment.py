@@ -17,8 +17,7 @@ from loopx.cli import main
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_FIXTURE = REPO_ROOT / "examples/fixtures/reward-memory-ingest-event.public.json"
 SCOPED_PUBLIC_FIXTURE = (
-    REPO_ROOT
-    / "examples/fixtures/reward-memory-scoped-feedback-ingest.public.json"
+    REPO_ROOT / "examples/fixtures/reward-memory-scoped-feedback-ingest.public.json"
 )
 
 
@@ -30,14 +29,47 @@ def _experiment(
     project = tmp_path / "project"
     config_path = project / ".loopx/config/reward-memory/experiment.json"
     config_path.parent.mkdir(parents=True)
+    corpus_id = fixture["corpus"]["corpus_id"]
+    surface_id = fixture["standing_policy"]["scope"]["surface_ids"][0]
+    provider_binding = fixture["provider_binding"]
+    project_provider_binding = {
+        key: value
+        for key, value in provider_binding.items()
+        if key not in {"corpus_id", "scope_ref"}
+    }
+    project_provider_binding["corpus_scopes"] = [
+        {"corpus_id": corpus_id, "scope_ref": provider_binding["scope_ref"]}
+    ]
     config_path.write_text(
         json.dumps(
             {
-                "schema_version": "reward_memory_experiment_config_v0",
-                "adapter": fixture["adapter"],
-                "corpus": fixture["corpus"],
-                "standing_policy": fixture["standing_policy"],
-                "provider_binding": fixture["provider_binding"],
+                "schema_version": "reward_memory_experiment_config_v1",
+                "project_provider_binding": project_provider_binding,
+                "corpora": [
+                    {
+                        "corpus": fixture["corpus"],
+                        "standing_policy": fixture["standing_policy"],
+                    }
+                ],
+                "surfaces": [
+                    {
+                        "surface_id": surface_id,
+                        "adapter": fixture["adapter"],
+                        "corpus_ids": [corpus_id],
+                        "ingest_corpus_id": corpus_id,
+                        "recall_profile": {
+                            "profile_id": "fixture_function_boundary_v1",
+                            "mode": "function_boundary",
+                            "max_queries": 1,
+                            "limit": 5,
+                        },
+                    }
+                ],
+                "automation": {
+                    "automatic_recall": False,
+                    "automatic_ingest": False,
+                    "fail_open": True,
+                },
             }
         ),
         encoding="utf-8",
@@ -190,15 +222,15 @@ def test_status_is_agent_scoped_and_public_safe(tmp_path: Path) -> None:
     assert allowed["status"] == "available"
     assert allowed["automatic_ingest"] is False
     assert allowed["automatic_recall"] is False
-    assert allowed["source_config_schema_version"] == (
-        "reward_memory_experiment_config_v0"
-    )
-    assert allowed["effective_config_schema_version"] == (
-        "reward_memory_experiment_config_v1"
-    )
-    assert allowed["migration_applied"] is True
+    assert allowed["config_schema_version"] == ("reward_memory_experiment_config_v1")
     assert "config_path" not in allowed
     assert config is not None
+    assert not {
+        "adapter",
+        "corpus",
+        "standing_policy",
+        "provider_binding",
+    }.intersection(config)
     assert denied["status"] == "agent_not_enabled"
     assert denied_config is None
 
@@ -222,16 +254,24 @@ def test_registry_cannot_enable_experiment_without_explicit_marker(
     assert config is None
 
 
-def test_v0_migration_preserves_multiple_policy_surfaces(tmp_path: Path) -> None:
-    registry_path, _, _ = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
+def test_v0_config_is_rejected_fail_open(tmp_path: Path) -> None:
+    registry_path, _, fixture_path = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
     project = Path(registry["goals"][0]["repo"])
     config_path = project / ".loopx/config/reward-memory/experiment.json"
-    source = json.loads(config_path.read_text(encoding="utf-8"))
-    surfaces = ["issue_fix.patch_planning", "reviewer_artifact.summary"]
-    source["corpus"]["scope"]["surface_ids"] = surfaces
-    source["standing_policy"]["scope"]["surface_ids"] = surfaces
-    config_path.write_text(json.dumps(source), encoding="utf-8")
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    config_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "reward_memory_experiment_config_v0",
+                "adapter": fixture["adapter"],
+                "corpus": fixture["corpus"],
+                "standing_policy": fixture["standing_policy"],
+                "provider_binding": fixture["provider_binding"],
+            }
+        ),
+        encoding="utf-8",
+    )
 
     status, config = resolve_reward_memory_experiment(
         registry_path=registry_path,
@@ -239,16 +279,11 @@ def test_v0_migration_preserves_multiple_policy_surfaces(tmp_path: Path) -> None
         agent_id="pilot",
     )
 
-    assert status["status"] == "available"
-    assert status["migration_applied"] is True
-    assert status["surface_ids"] == surfaces
-    assert config is not None
-    assert (
-        resolve_reward_memory_surface_config(
-            config, "issue_fix.patch_planning"
-        )["corpus"]["corpus_id"]
-        == source["corpus"]["corpus_id"]
-    )
+    assert status["status"] == "config_invalid"
+    assert status["automatic_ingest"] is False
+    assert status["automatic_recall"] is False
+    assert status["fail_open"] is True
+    assert config is None
 
 
 def test_configured_ingest_accepts_only_compact_event_and_stays_dry_run(
@@ -410,9 +445,7 @@ def test_v1_uses_one_project_provider_and_explicit_surface_corpus_sets(
         agent_id="pilot",
     )
     assert config is not None
-    route = resolve_reward_memory_surface_config(
-        config, "reviewer_artifact.summary"
-    )
+    route = resolve_reward_memory_surface_config(config, "reviewer_artifact.summary")
 
     assert status["automatic_ingest"] is True
     assert status["automatic_recall"] is True
@@ -423,17 +456,16 @@ def test_v1_uses_one_project_provider_and_explicit_surface_corpus_sets(
         "global_corpus_scan": False,
         "corpus_ids": ["reviewer_policy_primary", "reviewer_policy_overlay"],
     }
-    assert [
-        item["corpus"]["corpus_id"] for item in route["recall_corpora"]
-    ] == ["reviewer_policy_primary", "reviewer_policy_overlay"]
+    assert [item["corpus"]["corpus_id"] for item in route["recall_corpora"]] == [
+        "reviewer_policy_primary",
+        "reviewer_policy_overlay",
+    ]
     assert route["corpus"]["corpus_id"] == "reviewer_policy_primary"
     assert route["recall_profile"]["profile_id"] == "reviewer_summary_v1"
     assert "scope_ref" not in json.dumps(status)
 
 
-def test_v1_configured_ingest_selects_the_event_surface(
-    tmp_path: Path, capsys
-) -> None:
+def test_v1_configured_ingest_selects_the_event_surface(tmp_path: Path, capsys) -> None:
     registry_path, event_path, _ = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
     _write_v1_config(registry_path, _v1_config())
 
@@ -528,9 +560,7 @@ def test_v1_rejects_surface_not_authorized_by_selected_policy(
     config = _v1_config()
     second = config["corpora"][1]
     second["corpus"]["scope"]["surface_ids"].append("issue_fix.patch_planning")
-    second["standing_policy"]["scope"]["surface_ids"] = [
-        "issue_fix.patch_planning"
-    ]
+    second["standing_policy"]["scope"]["surface_ids"] = ["issue_fix.patch_planning"]
     _write_v1_config(registry_path, config)
 
     status, normalized = resolve_reward_memory_experiment(

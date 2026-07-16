@@ -1014,15 +1014,50 @@ def main() -> int:
         reward_fixture["standing_policy"]["scope"]["surface_ids"] = [
             "reviewer_artifact.summary"
         ]
+        reward_corpus_id = reward_fixture["corpus"]["corpus_id"]
+        reward_binding = reward_fixture["provider_binding"]
+        reward_project_binding = {
+            key: value
+            for key, value in reward_binding.items()
+            if key not in {"corpus_id", "scope_ref"}
+        }
+        reward_project_binding["corpus_scopes"] = [
+            {
+                "corpus_id": reward_corpus_id,
+                "scope_ref": reward_binding["scope_ref"],
+            }
+        ]
         write(
             reward_config_path,
             json.dumps(
                 {
-                    "schema_version": "reward_memory_experiment_config_v0",
-                    "adapter": reward_fixture["adapter"],
-                    "corpus": reward_fixture["corpus"],
-                    "standing_policy": reward_fixture["standing_policy"],
-                    "provider_binding": reward_fixture["provider_binding"],
+                    "schema_version": "reward_memory_experiment_config_v1",
+                    "project_provider_binding": reward_project_binding,
+                    "corpora": [
+                        {
+                            "corpus": reward_fixture["corpus"],
+                            "standing_policy": reward_fixture["standing_policy"],
+                        }
+                    ],
+                    "surfaces": [
+                        {
+                            "surface_id": "reviewer_artifact.summary",
+                            "adapter": reward_fixture["adapter"],
+                            "corpus_ids": [reward_corpus_id],
+                            "ingest_corpus_id": reward_corpus_id,
+                            "recall_profile": {
+                                "profile_id": "reviewer_summary_fixture_v1",
+                                "mode": "function_boundary",
+                                "max_queries": 1,
+                                "limit": 5,
+                            },
+                        }
+                    ],
+                    "automation": {
+                        "automatic_recall": False,
+                        "automatic_ingest": False,
+                        "fail_open": True,
+                    },
                 }
             ),
         )
