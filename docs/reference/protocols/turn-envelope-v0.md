@@ -29,6 +29,13 @@ envelope; matching hashes prove the covered action dimensions agree for that
 projection. They do not prove that every possible quota state has test
 coverage.
 
+Action-signature coverage is versioned independently from the envelope schema.
+`turn_envelope_action_dimensions_v0` covers the original action projection;
+`turn_envelope_action_dimensions_v1` additionally covers a blocking user
+gate's `response_plan`. Base/head qualification accepts that declared v0-to-v1
+migration as a review signal, while a digest change without a supported
+coverage migration still fails closed.
+
 `protocol_action_packet` remains in the full decision/cold path. The envelope
 reconstructs its ordered semantic fields from `action`, `user`, work-lane,
 automation, and scheduler contracts, while carrying the explicit
