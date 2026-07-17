@@ -690,6 +690,15 @@ surfaced recently. Eligible monitor-only polls with no material transition keep
 the open user todo visible in `user_todo_summary`, but do not force a repeated
 notification, make the turn a user-action gate, or leave the top-level
 `should_run` set for an otherwise quiet no-op.
+
+Monitor catch-up is also bounded across runnable lanes. After two consecutive
+unchanged monitor-only work turns, `monitor_debt_arbitration_v0` prefers a
+same- or higher-priority advancement todo over another overdue monitor,
+including inside scoped user-gate fallback selection. Scheduler/accounting and
+state-refresh rows do not break the streak; real advancement or a material
+monitor transition does. Direct Lark inbox `reply_due` work remains a stronger
+preemption and is never delayed by this fairness backoff.
+
 For every registered goal, `quota should-run` also includes a `todo_write_hint`
 so agent executors know to write newly discovered user/owner work with
 `loopx todo add --role user --task-class user_gate|user_action` instead of

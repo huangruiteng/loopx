@@ -257,6 +257,7 @@ def build_work_lane_contract(
     resume_blocked_by_monitor_count: int = 0,
     resume_blocked_by_monitor_items: list[dict[str, Any]] | None = None,
     monitor_attempt_already_recorded: bool = False,
+    monitor_debt_backoff_active: bool = False,
 ) -> dict[str, Any] | None:
     """Return the work-lane execution contract from precomputed quota facts.
 
@@ -277,8 +278,15 @@ def build_work_lane_contract(
     blocked_by_monitor_items = resume_blocked_by_monitor_items or []
     schedule_gap_items = monitor_schedule_gap_items or []
     first_schedule_gap = schedule_gap_items[0] if schedule_gap_items else None
+    monitor_debt_backoff_applies = bool(
+        monitor_debt_backoff_active
+        and first_due_monitor
+        and first_advancement
+        and todo_priority_rank(first_advancement) <= todo_priority_rank(first_due_monitor)
+    )
     effective_due_monitor_preemption = due_monitor_preempts_advancement and not (
-        has_advancement_todos and monitor_attempt_already_recorded
+        has_advancement_todos
+        and (monitor_attempt_already_recorded or monitor_debt_backoff_applies)
     )
 
     def due_monitor_contract(*, reason_codes: list[str]) -> dict[str, Any]:
@@ -316,6 +324,8 @@ def build_work_lane_contract(
                 reason_codes.append("due_monitor_context")
             if first_due_monitor and monitor_attempt_already_recorded:
                 reason_codes.append("monitor_attempt_already_recorded")
+            if monitor_debt_backoff_applies:
+                reason_codes.append("monitor_debt_backoff")
             if external_poll_signal:
                 reason_codes.append("external_monitor_context")
             if outcome_followthrough:
