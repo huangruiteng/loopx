@@ -13,6 +13,10 @@ from loopx.control_plane.quota.turn_envelope import (
     quota_action_signature_document,
     turn_envelope_action_signature_document,
 )
+from loopx.control_plane.scheduler.execution_context import (
+    SchedulerRuntimeProfile,
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.control_plane.work_items.interaction_contract import (
     build_protocol_action_packet,
 )
@@ -312,6 +316,31 @@ def test_turn_envelope_preserves_action_boundary_and_writeback() -> None:
     assert envelope["compaction"]["envelope_json_bytes"] == len(
         json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
     )
+
+
+def test_turn_envelope_full_decision_preserves_codex_app_profile() -> None:
+    envelope = build_turn_envelope(
+        _full_decision(),
+        scheduler_execution_context=scheduler_execution_context_for_runtime_profile(
+            SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT
+        ),
+    )
+
+    assert envelope["detail_ref"]["full_decision"] == (
+        "loopx --format json quota should-run --goal-id fixture-goal "
+        "--agent-id codex-fixture --codex-app"
+    )
+
+
+def test_turn_envelope_unbound_full_decision_is_not_executable() -> None:
+    full_decision = build_turn_envelope(_full_decision())["detail_ref"][
+        "full_decision"
+    ]
+
+    assert full_decision == (
+        "rerun the typed quota_guard from the current host packet"
+    )
+    assert "quota should-run" not in full_decision
 
 
 def test_turn_envelope_preserves_exact_scheduler_ack_argv() -> None:

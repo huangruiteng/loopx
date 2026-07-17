@@ -662,3 +662,28 @@ def test_explicit_compact_and_detail_modes_are_characterized(tmp_path: Path) -> 
                 text=text,
                 measurement=measurement,
             )
+
+
+def test_turn_envelope_cli_preserves_codex_app_scheduler_binding(
+    tmp_path: Path,
+) -> None:
+    project, runtime, registry_path, state_file = _write_fixture(
+        tmp_path,
+        SCENARIOS[0],
+    )
+    command = _mode_variant_commands(
+        project=project,
+        runtime=runtime,
+        registry_path=registry_path,
+        state_file=state_file,
+        output_format="json",
+    )["quota_should_run_turn_envelope"]
+
+    exit_code, text = _invoke_cli([*command, "--codex-app"])
+
+    assert exit_code == 0, text
+    payload = json.loads(text)
+    assert payload["detail_ref"]["full_decision"] == (
+        "loopx --format json quota should-run "
+        f"--goal-id {GOAL_ID} --agent-id {AGENT_IDS[0]} --codex-app"
+    )
