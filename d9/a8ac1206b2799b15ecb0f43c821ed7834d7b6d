@@ -1,0 +1,43 @@
+examples/control_plane/cli-output-probe-runner.py
+  s_9a5a2bd944fdcb::t_20c37618d47058 82-86,195-252,269
+loopx/control_plane/quota/turn_envelope.py
+  s_76ee28abb3c3a4::t_e1a3314133da4c 24-25,667-672,675,678-679,731
+loopx/control_plane/testing/cli_output_differential.py
+  s_76ee28abb3c3a4::t_d136cd5282145d 11-12,118-129,181-185
+loopx/control_plane/testing/cli_output_semantics.py
+  s_76ee28abb3c3a4::t_f1676c5f39935b 67-85
+tests/control_plane/test_cli_output_differential.py
+  s_9a5a2bd944fdcb::t_860cfd979e45d6 14-16,36,57,75-77,143-172
+tests/control_plane/test_user_gate_lane_progress.py
+  s_76ee28abb3c3a4::t_3134978e980a51 104-106
+tests/fixtures/turn_envelope_state_matrix.json
+  s_9a5a2bd944fdcb::t_301baa44fc17af 103
+tests/test_turn_envelope.py
+  s_9a5a2bd944fdcb::t_5995e6fe2f4d34 210-213,528-530
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d9a8ac1206b2799b15ecb0f43c821ed7834d7b6d",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
