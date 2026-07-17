@@ -241,6 +241,16 @@ def test_fallback_ack_retains_other_failed_target_for_same_host(
         failure["target_rrule"] for failure in fallback_state["host_update_failures"]
     ] == [ACTIVE_3]
 
+    fallback_replay = _with_scheduler_hint(
+        _monitor_decision(),
+        scheduler_state=fallback_state,
+        host_rrule=MONITOR_15,
+    )
+    fallback_replay_app = fallback_replay["scheduler_hint"]["codex_app"]
+    assert fallback_replay_app["stateful_backoff"]["apply_needed"] is False
+    assert fallback_replay_app["stateful_backoff"]["ack_needed"] is False
+    assert fallback_replay_app["host_action"] == "none"
+
     active_replay = _with_scheduler_hint(
         _active_decision(),
         scheduler_state=fallback_state,
