@@ -1,0 +1,45 @@
+docs/capabilities/issue-fix/protocols/issue-fix-reviewer-notification-sinks-v0.md
+  s_76ee28abb3c3a4::t_37ebb70ff14721 144-167
+examples/issue-fix-reviewer-request-smoke.py
+  s_76ee28abb3c3a4::t_a524407c8cd1f3 36,42-44,151,249,1536,1540-1541,1637-1771
+loopx/capabilities/catalog.py
+  s_76ee28abb3c3a4::t_ee0360a06f21be 53-57,149-153
+loopx/capabilities/issue_fix/cli.py
+  s_76ee28abb3c3a4::t_4e89aec2da4047 1582
+loopx/capabilities/issue_fix/reviewer_cli.py
+  s_76ee28abb3c3a4::t_633f8c44c15d55 32-34,50-55,270-293,361-362,383-401,488-526,631,635,735
+loopx/capabilities/issue_fix/reviewer_notification.py
+  s_e3f612788718c1::t_193c79328c395f 31,127,182,275-300,349,366,378-379,415-418,565,799,880,923-925,1107-1109,1169,1185,1356-1361
+loopx/capabilities/issue_fix/reviewer_notification_drain.py
+  s_76ee28abb3c3a4::t_49cb71839ef621 1-405
+loopx/capabilities/issue_fix/reviewer_request.py
+  s_76ee28abb3c3a4::t_23bb7b77bf42af 331-333,355-356,374-398,1062
+loopx/domain_packs/issue_fix.py
+  s_76ee28abb3c3a4::t_cb5fa36dd9d847 24,26,339-342,389
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "eb40da28d8368da669c1c1ed996ce73b2eae3984",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
