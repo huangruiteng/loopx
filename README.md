@@ -715,7 +715,8 @@ loopx history rebuild-index-collisions --goal-id your-project-goal \
 ```
 
 The execute path keeps a pre-rebuild index backup and does not claim that an
-ambiguous legacy artifact belongs to any recovered row.
+ambiguous legacy artifact belongs to any recovered row. A truncated plan is
+not executable; increase `--limit` and review the complete digest first.
 
 Common operator actions:
 

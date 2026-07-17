@@ -95,11 +95,15 @@ def build_collision_rebuild_plan(
     groups: list[dict[str, Any]],
     *,
     goal_filter: str | None,
+    total_collision_group_count: int,
+    truncated: bool,
 ) -> dict[str, Any]:
     plan_body = {
         "schema_version": COLLISION_REBUILD_PLAN_SCHEMA,
         "goal_filter": goal_filter,
         "groups": groups,
+        "total_collision_group_count": total_collision_group_count,
+        "truncated": truncated,
         "destructive_row_deletion": False,
     }
     return {**plan_body, "plan_sha256": _sha256(plan_body)}
@@ -119,6 +123,8 @@ def validate_reviewed_collision_plan(
             "schema_version",
             "goal_filter",
             "groups",
+            "total_collision_group_count",
+            "truncated",
             "destructive_row_deletion",
         )
     }
@@ -131,6 +137,10 @@ def validate_reviewed_collision_plan(
         )
     if reviewed_plan.get("destructive_row_deletion") is not False:
         raise ValueError("review plan must explicitly keep destructive_row_deletion=false")
+    if reviewed_plan.get("truncated") is not False:
+        raise ValueError(
+            "review plan is truncated; increase --limit until truncated=false before execution"
+        )
     return reviewed_digest
 
 

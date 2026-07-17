@@ -387,10 +387,13 @@ def main() -> None:
         )
         assert rebuild_preview["dry_run"] is True, rebuild_preview
         assert rebuild_preview["collision_group_count"] == 1, rebuild_preview
+        assert rebuild_preview["total_collision_group_count"] == 1, rebuild_preview
+        assert rebuild_preview["truncated"] is False, rebuild_preview
         assert rebuild_preview["review_required"] is True, rebuild_preview
         assert rebuild_preview["destructive_row_deletion"] is False, rebuild_preview
         review_plan = rebuild_preview["review_plan"]
         assert review_plan["destructive_row_deletion"] is False, review_plan
+        assert review_plan["truncated"] is False, review_plan
         assert len(review_plan["groups"][0]["rows"]) == 2, review_plan
         assert {
             row["event_identity"]["todo_id"]

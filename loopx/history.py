@@ -1056,16 +1056,22 @@ def rebuild_index_artifact_collisions(
         runtime_root_override,
         registry_path=registry_path,
     )
-    groups: list[dict[str, Any]] = []
+    all_groups: list[dict[str, Any]] = []
     checked_goal_count = 0
     for current_goal_id in discover_goal_ids(runtime_root, registry, goal_id):
         checked_goal_count += 1
         index_path = runtime_root / "goals" / current_goal_id / "runs" / "index.jsonl"
         if index_path.exists():
-            groups.extend(collision_review_groups(index_path, current_goal_id))
+            all_groups.extend(collision_review_groups(index_path, current_goal_id))
 
-    groups = groups[: max(0, limit)]
-    current_plan = build_collision_rebuild_plan(groups, goal_filter=goal_id)
+    groups = all_groups[: max(0, limit)]
+    truncated = len(groups) < len(all_groups)
+    current_plan = build_collision_rebuild_plan(
+        groups,
+        goal_filter=goal_id,
+        total_collision_group_count=len(all_groups),
+        truncated=truncated,
+    )
     if execute:
         if reviewed_plan is None:
             raise ValueError(
@@ -1088,6 +1094,8 @@ def rebuild_index_artifact_collisions(
         "goal_filter": goal_id,
         "checked_goal_count": checked_goal_count,
         "collision_group_count": len(groups),
+        "total_collision_group_count": len(all_groups),
+        "truncated": truncated,
         "review_required": not execute and bool(groups),
         "review_plan": current_plan,
         "rebuilt_indexes": rebuilt_indexes,
@@ -1106,6 +1114,8 @@ def render_index_collision_rebuild_markdown(payload: dict[str, Any]) -> str:
             f"- dry_run: `{payload.get('dry_run')}`",
             f"- rebuilt: `{payload.get('rebuilt')}`",
             f"- collision_groups: `{payload.get('collision_group_count')}`",
+            f"- total_collision_groups: `{payload.get('total_collision_group_count')}`",
+            f"- truncated: `{payload.get('truncated')}`",
             f"- review_required: `{payload.get('review_required')}`",
             f"- plan_sha256: `{plan.get('plan_sha256')}`",
             "- destructive_row_deletion: `False`",
