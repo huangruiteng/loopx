@@ -34,8 +34,10 @@ Translate user filters only into these CLI options:
 - `--repo owner/repo` for an explicit repository;
 - `--since ISO` for an explicit time window;
 - `--state open`, `--state merged`, or `--state all` for state filters.
+- `--limit N` when the user explicitly requests a bounded batch.
 
-Default to the current `gh` repository and `--state all`. Treat words like
+Default to the current `gh` repository, `--state all`, and the CLI's normal
+100-PR group limit. Treat words like
 `today`, `open`, `closed`, or `merged` as review-queue filters. They do not
 mean "stats only" unless the user explicitly says `只统计`, `只列出`,
 `stats only`, `list only`, `不要 review`, or `不用分析`.
@@ -45,6 +47,7 @@ mean "stats only" unless the user explicitly says `只统计`, `只列出`,
 Keep these fields in model context from the first CLI packet:
 
 - `agent_response_contract`;
+- `result_completeness`;
 - `review_groups`;
 - `pull_requests[].review_template`;
 - `pull_requests[].evidence_commands`.
@@ -62,6 +65,7 @@ import sys
 p = json.load(open(sys.argv[1]))
 print(json.dumps({
   "agent_response_contract": p.get("agent_response_contract"),
+  "result_completeness": p.get("result_completeness"),
   "review_groups": p.get("review_groups"),
   "pull_requests": [
     {
@@ -76,6 +80,16 @@ print(json.dumps({
 PY
 rm -f "$packet"
 ```
+
+## Require Complete Exhaustive Queues
+
+When the user asks for `all`, `every`, `全部`, `每个`, or an exhaustive time
+window, do not start reviewing until `result_completeness.complete=true`.
+When it is false, rerun the same first command with
+`--limit <result_completeness.recommended_limit>`. Repeat until complete,
+preserving the latest full packet as the queue source of truth. Never infer
+completeness from `summary.total_pr_count`, a count equal to the limit, or the
+absence of a pagination error.
 
 ## Review Flow
 
