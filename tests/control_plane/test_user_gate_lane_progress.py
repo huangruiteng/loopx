@@ -93,6 +93,7 @@ def test_blocking_user_gate_backs_off_instead_of_polling_as_active_work() -> Non
     expected_response_plan = {
         "schema_version": "interaction_response_plan_v0",
         "kind": "surface_user_gate",
+        "decision": "ask_user",
         "action_sequence": ["notify", "wait"],
         "silent_wait_allowed": False,
     }

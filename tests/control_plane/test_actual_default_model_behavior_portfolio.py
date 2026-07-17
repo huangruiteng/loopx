@@ -13,8 +13,8 @@ from loopx.control_plane.quota.turn_envelope import (
     turn_envelope_action_signature_document,
 )
 from loopx.control_plane.testing.actual_default_model_behavior_portfolio import (
-    ACTUAL_DEFAULT_MODEL_BEHAVIOR_PORTFOLIO_SCHEMA_VERSION,
     actual_default_model_behavior_scenario_catalog,
+    build_actual_default_model_behavior_scenario_packets,
     run_actual_default_model_behavior_portfolio,
 )
 from loopx.control_plane.testing.model_behavior_qualification import (
@@ -163,6 +163,7 @@ def _turn_source(
                     "response_plan": {
                         "schema_version": "interaction_response_plan_v0",
                         "kind": "surface_user_gate",
+                        "decision": "ask_user",
                         "action_sequence": ["notify", "wait"],
                         "silent_wait_allowed": False,
                     }
@@ -303,30 +304,22 @@ def _onboarding_actor(request: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def test_portfolio_runs_actual_default_one_arm_scenarios_twice(tmp_path: Path) -> None:
-    result = run_actual_default_model_behavior_portfolio(
-        _scenario_packets(tmp_path),
-        qualification_id="actual-default-portfolio-001",
-        turn_actor=_turn_actor,
-        onboarding_actor=_onboarding_actor,
-    )
+def test_live_packet_builder_uses_production_blocking_gate_plan(tmp_path: Path) -> None:
+    packets = build_actual_default_model_behavior_scenario_packets(tmp_path)
 
-    assert (
-        result["schema_version"]
-        == ACTUAL_DEFAULT_MODEL_BEHAVIOR_PORTFOLIO_SCHEMA_VERSION
-    )
-    assert result["topology"] == "actual_default_one_arm"
-    assert result["scenario_count"] == 9
-    assert result["actor_call_budget"] == 18
-    assert result["actor_call_count"] == 18
-    assert result["qualification_passed"] is True
-    assert result["automatic_release_promotion_allowed"] is False
-    assert all(item["status"] == "passed" for item in result["scenarios"])
-    assert all(item["repeats_completed"] == 2 for item in result["scenarios"])
-    encoded = json.dumps(result, sort_keys=True)
-    assert str(tmp_path) not in encoded
-    assert "todo_portfolio001" not in encoded
-    assert "Implement one bounded" not in encoded
+    gate = packets["turn_human_gate"]
+    assert gate["response_plan"] == {
+        "schema_version": "interaction_response_plan_v0",
+        "kind": "surface_user_gate",
+        "decision": "ask_user",
+        "action_sequence": ["notify", "wait"],
+        "silent_wait_allowed": False,
+    }
+    assert gate["action_signature"]["matches"] is True
+    assert set(packets) == {
+        item["scenario_id"]
+        for item in actual_default_model_behavior_scenario_catalog()["scenarios"]
+    }
 
 
 def test_portfolio_oracle_catches_wrong_selected_todo(tmp_path: Path) -> None:

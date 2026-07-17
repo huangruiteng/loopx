@@ -115,6 +115,7 @@
         "response_plan": {
           "schema_version": "interaction_response_plan_v0",
           "kind": "surface_user_gate",
+          "decision": "ask_user",
           "action_sequence": [
             "notify",
             "wait"
@@ -172,6 +173,7 @@
       "user.action_required": true,
       "user.open_count": 1,
       "response_plan.kind": "surface_user_gate",
+      "response_plan.decision": "ask_user",
       "response_plan.action_sequence": [
         "notify",
         "wait"
