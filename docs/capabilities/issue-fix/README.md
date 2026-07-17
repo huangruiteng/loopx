@@ -304,6 +304,17 @@ GitHub reviewer request remains fail-open and runs first; only the explicitly
 configured secondary notification fails closed when this receipt is missing or
 stale.
 
+A second, independent surface can be enabled at
+`reviewer_notification.before_send`. Immediately before the configured Lark
+CLI adapter would send, LoopX performs one bounded recall and accepts only one
+exact, structured `hard_policy` delivery window. A passed application receipt
+feeds that policy into the existing send-or-queue path; the sink continues to
+own deduplication, restart-safe queue receipts, provider execution, and remote
+readback. Disabled or unavailable recall, no compatible memory, and conflicting
+policies all fail open to the caller's current sink policy. If neither source
+provides a policy, delivery is unrestricted. This surface does not create a
+generic preflight router or grant notification authority.
+
 Long-running goals can register the local-private sink pointer once with
 `configure-goal --issue-fix-reviewer-notification-config`. Subsequent
 `reviewer-request --goal-id ... --project ...` calls discover it automatically,
@@ -447,7 +458,7 @@ tests whether the system is a durable employee rather than a scripted demo.
 | State kernel | `loopx todo`, `quota`, `refresh-state`, scheduler/monitor | Persist ownership, authority, bounded compute, replan, wait/resume, and terminal closeout. |
 | OpenViking memory hook | `--repository-memory-*`, `repository-memory-sync` | Retrieve bounded advisory evidence from a stable rolling default-branch index; allow decision influence only after current-checkout verification, and authorize manual resource sync and reusable-knowledge writeback separately. |
 | Semantic preference hook | `loopx semantic-preference recall`, stateless receipt | Optionally recall workspace-scoped user/reviewer preferences before a configured surface; the domain applies them, while LoopX retains only compact application evidence rather than raw memory. |
-| Reward-memory experiment | `loopx configure-goal --reward-memory-config ... --reward-memory-agent ...`, `loopx reward-memory experiment-status`, `run_issue_fix_patch_planning_reward_memory`, `run_issue_fix_reviewer_artifact_reward_memory` | Default off. Allow one registered fixer lane to use an ignored provider binding and exact reviewed surfaces such as `issue_fix.patch_planning` and `reviewer_artifact.summary`; OpenViking is the current provider, not a global dependency. Planning stays fail-open. Reviewer-artifact application remains previewable with no sink and zero external writes; a configured secondary reviewer notification requires its compact applied/readback/current-artifact receipt, while the canonical GitHub request remains unaffected. |
+| Reward-memory experiment | `loopx configure-goal --reward-memory-config ... --reward-memory-agent ...`, `loopx reward-memory experiment-status`, `run_issue_fix_patch_planning_reward_memory`, `run_issue_fix_reviewer_artifact_reward_memory`, `run_issue_fix_reviewer_notification_automatic_reward_memory` | Default off. Allow one registered fixer lane to use an ignored provider binding and exact reviewed surfaces such as `issue_fix.patch_planning`, `reviewer_artifact.summary`, and `reviewer_notification.before_send`; OpenViking is the current provider, not a global dependency. Planning stays fail-open. Reviewer-artifact application remains previewable with no sink and zero external writes. The pre-send surface accepts only a verified structured hard-policy receipt and reuses the existing send/queue/readback path; disabled, unavailable, or empty recall adds no time restriction. The canonical GitHub request remains unaffected. |
 | Generic inbound feedback | `loopx lark-inbox` collector/install/status/drain | Run a project-configured host collector independently of the agent process, durably project bounded inbound events, and require domain writeback before ACK; outbound messages remain a separate configured authority. |
 | Issue-fix domain state | `loopx/domain_packs/issue_fix.py`, `issue-fix outcome` | Retain feasibility, PR lifecycle, compact delivery evidence, and stable outcomes inside the existing goal rather than a parallel workflow ledger. |
 | Candidate preflight | `loopx issue-fix workflow-plan --candidate-preflight-json ...` | Before new patch planning, reconcile compact prior domain state, all-state numeric PR references, and current-revision-verified semantic implementation PR evidence; reuse/comment/skip performs no provider call and preserves an existing recall receipt. |

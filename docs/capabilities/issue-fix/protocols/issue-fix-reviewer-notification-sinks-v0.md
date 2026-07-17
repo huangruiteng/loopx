@@ -59,6 +59,19 @@ memory blocks only the secondary notification with
 `reward_memory_reviewer_artifact_unverified`; it does not turn ordinary Issue
 Fix work into a user gate or suppress the GitHub request.
 
+The independent `reviewer_notification.before_send` surface may supply a
+delivery policy immediately before a configured secondary adapter runs. It
+performs one bounded automatic recall and accepts only a single distinct active
+`hard_policy` whose `content_summary` is a compact JSON object with schema
+`issue_fix_reviewer_notification_delivery_policy_v0` and a valid
+`delivery_policy`. The application gate verifies the exact surface, current PR
+identity, current-artifact check, result readback, and non-empty memory
+attribution. A passed receipt has precedence over the explicit sink policy;
+otherwise the explicit sink policy remains the fallback. With neither source,
+delivery is unrestricted. Provider failure, no match, invalid content, or
+conflicting policies fail open and never become a user gate. The existing sink
+still owns queue receipts, idempotency, external send, and readback.
+
 ## Local-Private Input
 
 `--notification-sinks-json` consumes
@@ -113,7 +126,9 @@ authority boundary: if that user profile lacks `search:message`, LoopX records
 than projecting a user gate. A successful remote match is written back as the
 same stable receipt; non-permission provider failures remain fail-closed.
 
-`delivery_policy` is optional and provider-neutral. When configured, execute
+`delivery_policy` is optional and provider-neutral. Its effective source order
+is a verified `reviewer_notification.before_send` application, then this
+explicit sink value, then the unrestricted default. When configured, execute
 mode sends only while the current local time is inside the half-open
 `[start, end)` window; overnight windows are supported. Outside the window,
 LoopX performs no provider call and returns `queued_until_window` with a

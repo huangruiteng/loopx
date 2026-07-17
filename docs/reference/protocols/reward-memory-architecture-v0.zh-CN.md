@@ -117,8 +117,11 @@ loopx reward-memory ingest-event \
 
 真实 provider 写入必须经过这条 goal + agent 配置路由。原有 full-packet 形式只保留为
 no-write 评测夹具。仅加载配置不会采集反馈或代替 provider 认证；只有 flag 已开且存在经过
-验证的模块真实调用点时，automatic hook 才运行。Issue Fix 的
-`reviewer_artifact.summary` 是首个自动 recall 调用点，其他 surface 在分别接线和验证前仍走
+验证的模块真实调用点时，automatic hook 才运行。Issue Fix 当前有两个彼此独立配置的
+recall 调用点：`reviewer_artifact.summary` 应用简短 reviewer-facing 摘要；
+`reviewer_notification.before_send` 在现有二级 sink 即将执行前，只允许应用一条经过验证的
+结构化 hard-policy 发送时窗。后者复用 sink 的 queue、去重和读回路径；召回策略与显式 sink
+策略都不存在时默认不限制时间，也不是通用路由器。其他 surface 在分别接线和验证前仍走
 显式调用。实验关闭、provider 不可用、guard 拒绝或精确读回失败时，Issue Fix 都继续正常
 工作。非 v1 或无效配置会以 unavailable fail-open，并把两个 automatic flag 置为 false。
 

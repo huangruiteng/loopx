@@ -133,11 +133,16 @@ Real provider writes require this configured goal-and-agent route. The legacy
 full-packet form remains available only as a no-write evaluation fixture.
 Config loading alone does not capture feedback or authenticate a provider.
 Automatic hooks run only when both the flag and a real module-owned callsite
-are present. Issue Fix `reviewer_artifact.summary` is the first recall callsite;
-other surfaces remain explicit until separately wired and verified. Issue Fix
-continues normally when the experiment is disabled, unavailable, rejected by
-guards, or fails exact readback. Invalid or non-v1 configuration resolves
-unavailable with both automatic flags false.
+are present. Issue Fix currently has two independently configured recall
+callsites: `reviewer_artifact.summary` applies a concise reviewer-facing
+summary, while `reviewer_notification.before_send` may apply one verified
+structured hard-policy delivery window immediately before the existing
+secondary sink. The latter reuses the sink's queue/dedupe/readback path and is
+unrestricted when neither recalled nor explicit sink policy exists; it is not
+a generic router. Other surfaces remain explicit until separately wired and
+verified. Issue Fix continues normally when the experiment is disabled,
+unavailable, rejected by guards, or fails exact readback. Invalid or non-v1
+configuration resolves unavailable with both automatic flags false.
 
 ## Five first-class classes
 
