@@ -52,6 +52,9 @@ incident report, or launch draft.
   observe, and ingest benchmark slices as a developer-facing product workflow.
 - [Developer guide](development/README.md): the contributor entry point for
   architecture, validation, public boundaries, and release contracts.
+- [Control-plane developer course](development/control-plane-course/README.md):
+  eight Chinese lectures that follow the real CLI, state transitions, core
+  functions, smokes, and extension seams from first loop to multi-agent use.
 - [Testing and quality](development/testing-and-quality.md): the bilingual
   quality stack from unit contracts and public smokes through canary, CLI
   output budgets, decision replay, low-frequency model behavior, and release
@@ -106,6 +109,7 @@ incident report, or launch draft.
 ### Developer Workflows
 
 - [Developer guide](development/README.md)
+- [Control-plane developer course](development/control-plane-course/README.md)
 - [Testing and quality](development/testing-and-quality.md)
 - [Benchmark developer workflow](benchmark-developer-workflow.md)
 - [Release readiness](product/release-readiness.md)

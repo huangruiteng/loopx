@@ -11,28 +11,33 @@ not need these documents to start LoopX.
 
 1. Read [Contributing](../../CONTRIBUTING.md) for repository boundaries and the
    pull-request checklist.
-2. Read [Testing and quality](testing-and-quality.md) before changing agent-facing
+2. Follow the [control-plane developer course](control-plane-course/README.md)
+   for an eight-lecture, code-led path through the real CLI and state machine.
+3. Read [Testing and quality](testing-and-quality.md) before changing agent-facing
    output, scheduler decisions, todo/gate semantics, onboarding, or release
    promotion.
-3. Use [Architecture](../architecture.md) and the
+4. Use [Architecture](../architecture.md) and the
    [core control-plane graphs](../product/core-control-plane/README.md) to find
    the bounded context that owns the behavior.
-4. Check [Public/private boundaries](../public-private-boundary.md) before adding
+5. Check [Public/private boundaries](../public-private-boundary.md) before adding
    fixtures, examples, evidence, or provider-backed evaluation.
 
 1. 先阅读[贡献指南](../../CONTRIBUTING.md)，了解仓库边界和 PR 检查项。
-2. 修改 agent-facing 输出、调度决策、todo/gate 语义、新用户接入或发布流程前，
+2. 按顺序学习[控制面开发者 8 讲](control-plane-course/README.md)，沿真实 CLI、
+   状态机和核心函数建立代码心智模型。
+3. 修改 agent-facing 输出、调度决策、todo/gate 语义、新用户接入或发布流程前，
    阅读[测试与质量体系](testing-and-quality.md)。
-3. 通过[架构文档](../architecture.md)和
+4. 通过[架构文档](../architecture.md)和
    [控制面核心图](../product/core-control-plane/README.md)定位真正拥有该行为的
    bounded context。
-4. 添加 fixture、示例、证据或模型测试前，检查
+5. 添加 fixture、示例、证据或模型测试前，检查
    [公开/私有边界](../public-private-boundary.md)。
 
 ## Core References / 核心参考
 
 | Area / 领域 | Reference / 文档 |
 | --- | --- |
+| Control-plane code reading / 控制面代码领读 | [Eight-lecture developer course](control-plane-course/README.md) |
 | Quality layers and commands / 质量分层与命令 | [Testing and quality](testing-and-quality.md) |
 | Agent-facing size budgets / Agent 输出体积预算 | [Interface budget contract](../interface-budget-contract.md) |
 | Status and decision payloads / 状态与决策载荷 | [Status data contract](../status-data-contract.md) |
