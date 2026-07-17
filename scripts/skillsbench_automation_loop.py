@@ -80,6 +80,7 @@ from loopx.benchmark_case_state import (  # noqa: E402
     BENCHMARK_CASE_LOOPX_TODO_ID,
     benchmark_case_loopx_command_prefix,
     benchmark_case_loopx_install_payload,
+    benchmark_case_outer_controller_quota_guard_command,
     benchmark_case_active_state_path,
     benchmark_case_active_state_seed_text,
     benchmark_case_active_state_write_command,
@@ -12375,6 +12376,10 @@ def _build_product_mode_user(
         case_registry_path=str(payload.get("case_registry_path") or "/app/.loopx/registry.json"),
         case_runtime_root=str(payload.get("case_runtime_root") or "/app/.loopx/runtime"),
     )
+    case_quota_guard = benchmark_case_outer_controller_quota_guard_command(
+        cli_prefix=case_cli_prefix,
+        goal_id=case_goal_id, agent_id=case_agent_id,
+    )
     plan_prerequisites = (
         (plan or {}).get("runner_prerequisites")
         if isinstance(plan, dict)
@@ -12447,10 +12452,7 @@ def _build_product_mode_user(
                     "--delivery-batch-scale single_surface "
                     "--delivery-outcome surface_only --no-global-sync"
                 ),
-                (
-                    f"{case_cli_prefix} quota should-run --goal-id {case_goal_id} "
-                    f"--agent-id {case_agent_id}"
-                ),
+                case_quota_guard,
                 (
                     f"{case_cli_prefix} todo claim --goal-id {case_goal_id} "
                     f"--todo-id <SELECTED_TODO_ID> --claimed-by {case_agent_id}"
@@ -12566,8 +12568,7 @@ def _build_product_mode_user(
             "invoke that private JSON bridge from your shell tool and send each "
             "command as an `operation=exec` request with `cwd=/app`; do not try "
             "to run `/app/...` commands directly in the host-local temp cwd. "
-            f"`{case_cli_prefix} quota should-run --goal-id {case_goal_id} "
-            f"--agent-id {case_agent_id}` and claim the selected case todo "
+            f"`{case_quota_guard}` and claim the selected case todo "
             f"with `{case_cli_prefix} todo claim --goal-id {case_goal_id} "
             f"--todo-id {case_todo_id} --claimed-by {case_agent_id}`. "
             "After meaningful local task evidence or validation, update the "
@@ -12620,8 +12621,7 @@ def _build_product_mode_user(
         classification = shlex.quote("benchmark_case_lifecycle_checkpoint")
         return (
             "```bash\n"
-            f"{case_cli_prefix} quota should-run --goal-id {case_goal_id} "
-            f"--agent-id {case_agent_id}\n"
+            f"{case_quota_guard}\n"
             f"{case_cli_prefix} todo claim --goal-id {case_goal_id} "
             f"--todo-id {case_todo_id} --claimed-by {case_agent_id}\n"
             f"{case_cli_prefix} todo update --goal-id {case_goal_id} "

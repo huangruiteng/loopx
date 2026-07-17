@@ -4,14 +4,17 @@ import shlex
 from pathlib import Path
 from typing import Any
 
+from .control_plane.scheduler.execution_context import (
+    GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
+    render_scheduler_execution_args,
+)
+from .control_plane.todos.contract import normalize_required_capabilities
 from .presentation.markdown import as_dict as _as_dict
 from .presentation.markdown import as_list as _as_list
 from .presentation.markdown import markdown_scalar
 from .project_prompt import render_available_capability_args
 from .quota import build_quota_should_run
 from .status import collect_status
-from .control_plane.todos.contract import normalize_required_capabilities
-
 
 DIAGNOSIS_SCHEMA_VERSION = "loopx_agent_diagnosis_packet_v0"
 PACKET_KIND = "agent_reasoning_evidence_packet"
@@ -121,6 +124,9 @@ def _quota_for_goal(
             goal_id=goal_id,
             agent_id=agent_id,
             available_capabilities=available_capabilities,
+            scheduler_execution_context=(
+                GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT
+            ),
         )
     except Exception as exc:  # noqa: BLE001 - diagnosis packets should preserve compact failure context.
         return {
@@ -210,6 +216,9 @@ def _agent_commands(
     status = f"loopx --registry {registry_arg} status"
     agent_arg = f" --agent-id {shlex.quote(agent_id)}" if agent_id else ""
     capability_args = render_available_capability_args(available_capabilities)
+    scheduler_args = render_scheduler_execution_args(
+        scheduler_execution_context=GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
+    )
     goal_arg = f" --goal-id {shlex.quote(goal_id)}" if goal_id else ""
     if scan_args:
         diagnose = f"{diagnose} {scan_args}"
@@ -222,7 +231,7 @@ def _agent_commands(
         quoted_goal = shlex.quote(goal_id)
         commands.append(
             f"loopx --registry {registry_arg} --format json quota should-run "
-            f"--goal-id {quoted_goal}{agent_arg}{capability_args}"
+            f"--goal-id {quoted_goal}{agent_arg}{capability_args}{scheduler_args}"
         )
         commands.append(f"loopx --registry {registry_arg} history --goal-id {quoted_goal} --limit {max(1, limit)}")
     return commands

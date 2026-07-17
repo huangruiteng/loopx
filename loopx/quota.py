@@ -2157,7 +2157,7 @@ def build_quota_should_run(
         payload["automation_liveness"] = build_automation_liveness(payload)
         payload["interaction_contract"] = build_interaction_contract(
             payload,
-            available_capabilities=effective_available_capabilities,
+            available_capabilities=effective_available_capabilities, scheduler_execution_context=resolved_scheduler_context,
         )
         payload["scheduler_hint"] = _scheduler_hint(
             payload,
@@ -2178,7 +2178,7 @@ def build_quota_should_run(
         )
         finalize_user_gate_notification_cooldown(
             payload,
-            available_capabilities=effective_available_capabilities,
+            available_capabilities=effective_available_capabilities, scheduler_execution_context=resolved_scheduler_context,
         )
         payload["protocol_action_packet"] = build_protocol_action_packet(payload)
         return payload

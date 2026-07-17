@@ -6,11 +6,10 @@ from typing import Any
 
 from .bootstrap import default_goal_id
 from .control_plane.scheduler.execution_context import (
-    SchedulerRuntimeProfile,
-    resolve_scheduler_execution_context,
+    GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
+    render_scheduler_execution_args,
 )
 from .control_plane.todos.contract import normalize_required_capabilities
-
 
 DEFAULT_HANDOFF_OBJECTIVE = "<OBJECTIVE_FROM_GOAL_DOC>"
 DEFAULT_HANDOFF_DOMAIN = "<DOMAIN>"
@@ -41,42 +40,6 @@ def render_available_capability_args(values: Any) -> str:
     return "".join(
         f" --available-capability {shell_arg(capability)}"
         for capability in normalize_required_capabilities(values)
-    )
-
-
-def render_scheduler_execution_args(
-    *,
-    runtime_profile: str | None = None,
-    scheduler_execution_context: dict[str, Any] | None = None,
-) -> str:
-    if runtime_profile and scheduler_execution_context:
-        raise ValueError(
-            "runtime_profile and scheduler_execution_context are mutually exclusive"
-        )
-    if runtime_profile:
-        try:
-            normalized_profile = SchedulerRuntimeProfile(runtime_profile).value
-        except ValueError as exc:
-            raise ValueError(
-                f"unsupported scheduler runtime profile: {runtime_profile}"
-            ) from exc
-        if normalized_profile == SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT.value:
-            return " --codex-app"
-        return f" --runtime-profile {shell_arg(normalized_profile)}"
-    if scheduler_execution_context is None:
-        return ""
-    resolution = resolve_scheduler_execution_context(scheduler_execution_context)
-    if not resolution.ok or resolution.context is None:
-        raise ValueError(
-            "invalid scheduler_execution_context: " + "; ".join(resolution.errors)
-        )
-    context = resolution.context
-    return "".join(
-        (
-            f" -H {shell_arg(context.host_surface.value)}",
-            f" -O {shell_arg(context.scheduler_owner.value)}",
-            f" -M {shell_arg(context.execution_mode.value)}",
-        )
     )
 
 
@@ -312,7 +275,12 @@ def build_new_project_prompt(
         write_scope=write_scope,
         cli_bin="loopx",
     )
-    quota_guard_command = render_quota_guard_command(resolved_goal_id)
+    quota_guard_command = render_quota_guard_command(
+        resolved_goal_id,
+        scheduler_execution_context=(
+            GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT
+        ),
+    )
     quota_spend_command = render_quota_spend_command(resolved_goal_id)
     refresh_command = render_refresh_state_command(resolved_goal_id)
     prompt = render_prompt_text(

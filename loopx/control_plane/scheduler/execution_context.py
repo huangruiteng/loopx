@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
-
 
 SCHEDULER_EXECUTION_CONTEXT_SCHEMA_VERSION = "scheduler_execution_context_v0"
 
@@ -32,6 +32,13 @@ class ExecutionMode(str, Enum):
 
 class SchedulerRuntimeProfile(str, Enum):
     CODEX_APP_HEARTBEAT = "codex_app_heartbeat"
+
+
+GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT = {
+    "host_surface": HostSurface.GENERIC_CLI.value,
+    "scheduler_owner": SchedulerOwner.OUTER_CONTROLLER.value,
+    "execution_mode": ExecutionMode.ISOLATED_HEADLESS.value,
+}
 
 
 @dataclass(frozen=True)
@@ -218,6 +225,44 @@ def scheduler_execution_context_for_runtime_profile(
         )
 
     raise AssertionError(f"unhandled scheduler runtime profile: {profile.value}")
+
+
+def render_scheduler_execution_args(
+    *,
+    runtime_profile: str | None = None,
+    scheduler_execution_context: (
+        Mapping[str, Any] | SchedulerExecutionContextResolution | None
+    ) = None,
+) -> str:
+    if runtime_profile and scheduler_execution_context:
+        raise ValueError(
+            "runtime_profile and scheduler_execution_context are mutually exclusive"
+        )
+    if runtime_profile:
+        try:
+            normalized_profile = SchedulerRuntimeProfile(runtime_profile).value
+        except ValueError as exc:
+            raise ValueError(
+                f"unsupported scheduler runtime profile: {runtime_profile}"
+            ) from exc
+        if normalized_profile == SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT.value:
+            return " --codex-app"
+        return f" --runtime-profile {shlex.quote(normalized_profile)}"
+    if scheduler_execution_context is None:
+        return ""
+    resolution = resolve_scheduler_execution_context(scheduler_execution_context)
+    if not resolution.ok or resolution.context is None:
+        raise ValueError(
+            "invalid scheduler_execution_context: " + "; ".join(resolution.errors)
+        )
+    context = resolution.context
+    return "".join(
+        (
+            f" -H {shlex.quote(context.host_surface.value)}",
+            f" -O {shlex.quote(context.scheduler_owner.value)}",
+            f" -M {shlex.quote(context.execution_mode.value)}",
+        )
+    )
 
 
 def scheduler_execution_context_for_turn(
