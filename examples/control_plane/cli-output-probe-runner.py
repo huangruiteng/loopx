@@ -79,6 +79,11 @@ def _receipt_row(
             if isinstance(payload, dict)
             else None
         ),
+        "action_signature_coverages": (
+            semantics.action_signature_coverages(payload)
+            if isinstance(payload, dict)
+            else []
+        ),
     }
 
 
@@ -187,6 +192,64 @@ def _variant_rows(
     return rows
 
 
+def _blocking_gate_rows(
+    probe: ModuleType,
+    semantics: ModuleType,
+    fixture_root: Path,
+) -> list[dict]:
+    project, runtime, registry_path, state_file = probe._write_fixture(
+        fixture_root / "blocking_user_gate",
+        probe.SCENARIOS[0],
+    )
+    with state_file.open("a", encoding="utf-8") as stream:
+        stream.write(
+            "\n## User Todo\n\n"
+            "- [ ] [P0 user gate] Approve the blocked public fixture action.\n"
+            "  <!-- loopx:todo todo_id=todo_fixture_gate status=open "
+            "task_class=user_gate action_kind=fixture_0 priority=P0 "
+            f"blocks_agent={probe.AGENT_IDS[0]} "
+            "unblocks_todo_id=todo_fixture_000 -->\n"
+        )
+    command = probe._mode_variant_commands(
+        project=project,
+        runtime=runtime,
+        registry_path=registry_path,
+        state_file=state_file,
+        output_format="json",
+    )["quota_should_run_turn_envelope"]
+    exit_code, output = probe._invoke_cli(command)
+    if exit_code != 0:
+        raise AssertionError("blocking user-gate turn envelope failed")
+    measurement = probe.measure_cli_output(output, output_format="json")
+    variant = probe.CLI_OUTPUT_MODE_VARIANT_BY_ID[
+        "quota_should_run_turn_envelope"
+    ]
+    probe.assert_cli_output_mode_variant(
+        variant,
+        output_format="json",
+        text=output,
+        measurement=measurement,
+    )
+    return [
+        _receipt_row(
+            semantics=semantics,
+            row_id=(
+                "variant/quota_should_run_turn_envelope_blocking_user_gate/"
+                "small/json"
+            ),
+            surface_id=variant.parent_surface_id,
+            variant_id="quota_should_run_turn_envelope_blocking_user_gate",
+            scenario="small",
+            output_format="json",
+            qualification_policy="explicit_opt_in_cold_path",
+            semantic_json_keys=variant.semantic_json_keys,
+            markdown_anchor=variant.markdown_anchor,
+            measurement=measurement,
+            text=output,
+        )
+    ]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--test-source", type=Path, required=True)
@@ -203,6 +266,7 @@ def main() -> int:
     rows = [
         *_default_rows(probe, semantics, args.fixture_root),
         *_variant_rows(probe, semantics, args.fixture_root),
+        *_blocking_gate_rows(probe, semantics, args.fixture_root),
     ]
     args.receipt.parent.mkdir(parents=True, exist_ok=True)
     args.receipt.write_text(

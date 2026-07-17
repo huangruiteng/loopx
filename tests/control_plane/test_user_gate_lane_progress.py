@@ -101,6 +101,9 @@ def test_blocking_user_gate_backs_off_instead_of_polling_as_active_work() -> Non
     envelope = build_turn_envelope(payload)
     assert envelope["response_plan"] == expected_response_plan
     assert envelope["action_signature"]["matches"] is True
+    assert envelope["action_signature"]["coverage"] == (
+        "turn_envelope_action_dimensions_v1"
+    )
     assert payload["scheduler_hint"]["cadence_class"] == "human_gate"
     assert payload["scheduler_hint"]["codex_app"]["recommended_interval_minutes"] == 30
 

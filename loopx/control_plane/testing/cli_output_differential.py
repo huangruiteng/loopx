@@ -8,6 +8,8 @@ from typing import Any, Literal
 CLI_OUTPUT_PROBE_SCHEMA_VERSION = "loopx_cli_output_probe_v0"
 CLI_OUTPUT_FIXTURE_CONTRACT_VERSION = "loopx_cli_output_public_fixture_v0"
 CLI_OUTPUT_DIFFERENTIAL_SCHEMA_VERSION = "loopx_cli_output_differential_v0"
+ACTION_SIGNATURE_COVERAGE_V0 = "turn_envelope_action_dimensions_v0"
+ACTION_SIGNATURE_COVERAGE_V1 = "turn_envelope_action_dimensions_v1"
 
 Metric = Literal["chars", "utf8_bytes", "lines", "compact_payload_chars"]
 
@@ -113,6 +115,18 @@ def _removed(base: dict[str, Any], candidate: dict[str, Any], field: str) -> lis
     return sorted(base_values - candidate_values)
 
 
+def _action_signature_migration(
+    base: dict[str, Any], candidate: dict[str, Any]
+) -> str | None:
+    base_coverages = base.get("action_signature_coverages")
+    candidate_coverages = candidate.get("action_signature_coverages")
+    if base_coverages != [ACTION_SIGNATURE_COVERAGE_V0]:
+        return None
+    if candidate_coverages != [ACTION_SIGNATURE_COVERAGE_V1]:
+        return None
+    return f"{ACTION_SIGNATURE_COVERAGE_V0} -> {ACTION_SIGNATURE_COVERAGE_V1}"
+
+
 def _compare_row(base: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     row_id = str(base["row_id"])
     failures: list[str] = []
@@ -164,7 +178,11 @@ def _compare_row(base: dict[str, Any], candidate: dict[str, Any]) -> dict[str, A
         failures.append("markdown_anchor changed")
     base_signature = base.get("action_signature_sha256")
     if base_signature and candidate.get("action_signature_sha256") != base_signature:
-        failures.append("action_signature semantic digest changed")
+        migration = _action_signature_migration(base, candidate)
+        if migration is None:
+            failures.append("action_signature semantic digest changed")
+        else:
+            review_signals.append(f"action_signature coverage migrated: {migration}")
 
     return {
         "row_id": row_id,

@@ -11,6 +11,9 @@ from loopx.control_plane.testing.cli_output_differential import (
     CLI_OUTPUT_PROBE_SCHEMA_VERSION,
     compare_cli_output_receipts,
 )
+from loopx.control_plane.testing.cli_output_semantics import (
+    action_signature_coverages,
+)
 
 
 def _row(**overrides: object) -> dict[str, object]:
@@ -30,6 +33,7 @@ def _row(**overrides: object) -> dict[str, object]:
         "markdown_headings": [],
         "markdown_anchor": "# LoopX Status",
         "action_signature_sha256": "semantic-signature",
+        "action_signature_coverages": ["turn_envelope_action_dimensions_v0"],
     }
     row.update(overrides)
     return row
@@ -50,7 +54,7 @@ def test_measurement_records_semantic_shape_without_runtime_hash_noise() -> None
                 "action": {"todo_id": "todo_fixture"},
                 "action_signature": {
                     "schema_version": "loopx_action_signature_v0",
-                    "coverage": ["action", "writeback"],
+                    "coverage": "turn_envelope_action_dimensions_v0",
                     "source_hash": runtime_hash,
                     "envelope_hash": runtime_hash,
                     "source_decision_hash": source_hash,
@@ -68,6 +72,9 @@ def test_measurement_records_semantic_shape_without_runtime_hash_noise() -> None
     )
     assert "$.action.todo_id" in first["json_shape_paths"]
     assert first["action_signature_sha256"] == second["action_signature_sha256"]
+    assert action_signature_coverages(json.loads(payload("first", "source"))) == [
+        "turn_envelope_action_dimensions_v0",
+    ]
 
     with_observability_field = json.loads(payload("third-runtime", "third-source"))
     with_observability_field["action_signature"]["diagnostic_note"] = "new"
@@ -131,6 +138,36 @@ def test_smaller_candidate_still_fails_when_semantics_are_removed(
     result = compare_cli_output_receipts(_receipt(_row()), _receipt(candidate))
     assert result["ok"] is False
     assert any(failure_fragment in failure for failure in result["rows"][0]["failures"])
+
+
+def test_declared_action_signature_coverage_migration_requires_review() -> None:
+    candidate = _row(
+        action_signature_sha256="versioned-semantic-signature",
+        action_signature_coverages=["turn_envelope_action_dimensions_v1"],
+    )
+
+    result = compare_cli_output_receipts(_receipt(_row()), _receipt(candidate))
+
+    assert result["ok"] is True
+    assert result["review_required"] is True
+    assert result["rows"][0]["review_signals"] == [
+        "action_signature coverage migrated: "
+        "turn_envelope_action_dimensions_v0 -> turn_envelope_action_dimensions_v1"
+    ]
+
+
+def test_unknown_action_signature_coverage_migration_fails_closed() -> None:
+    candidate = _row(
+        action_signature_sha256="unknown-semantic-signature",
+        action_signature_coverages=["turn_envelope_action_dimensions_v2"],
+    )
+
+    result = compare_cli_output_receipts(_receipt(_row()), _receipt(candidate))
+
+    assert result["ok"] is False
+    assert result["rows"][0]["failures"] == [
+        "action_signature semantic digest changed"
+    ]
 
 
 def test_observed_shape_removal_is_a_review_signal_not_a_permanent_red_light() -> None:

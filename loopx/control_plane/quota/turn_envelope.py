@@ -21,7 +21,8 @@ EXECUTABLE_CLI_ARGS_MAX_TOTAL_CHARS = 2_048
 SCHEDULER_DETAIL_REQUEST = "loopx quota should-run --include-scheduler-detail"
 CONTRACT_CAPSULE_SCHEMA_VERSION = "loopx_contract_capsule_v0"
 ACTION_SIGNATURE_SCHEMA_VERSION = "loopx_action_signature_v0"
-ACTION_SIGNATURE_COVERAGE = "turn_envelope_action_dimensions_v0"
+ACTION_SIGNATURE_COVERAGE_V0 = "turn_envelope_action_dimensions_v0"
+ACTION_SIGNATURE_COVERAGE_V1 = "turn_envelope_action_dimensions_v1"
 ACTIONABLE_WARNING_FIELDS = (
     "state_projection_gap",
     "boundary_projection_gap",
@@ -663,13 +664,19 @@ def turn_envelope_action_signature_document(envelope: Mapping[str, Any]) -> dict
         "scheduler",
         "contract_capsule",
     )
+    response_plan = envelope.get("response_plan")
+    coverage = (
+        ACTION_SIGNATURE_COVERAGE_V1
+        if isinstance(response_plan, Mapping)
+        else ACTION_SIGNATURE_COVERAGE_V0
+    )
     signature = {
         "schema_version": ACTION_SIGNATURE_SCHEMA_VERSION,
-        "coverage": ACTION_SIGNATURE_COVERAGE,
+        "coverage": coverage,
         **{field: envelope.get(field) for field in fields},
     }
-    if isinstance(envelope.get("response_plan"), Mapping):
-        signature["response_plan"] = dict(envelope["response_plan"])
+    if isinstance(response_plan, Mapping):
+        signature["response_plan"] = dict(response_plan)
     return signature
 
 
@@ -721,7 +728,7 @@ def build_turn_envelope(payload: Mapping[str, Any]) -> dict[str, Any]:
     envelope_signature = turn_envelope_action_signature_document(envelope)
     envelope["action_signature"] = {
         "schema_version": ACTION_SIGNATURE_SCHEMA_VERSION,
-        "coverage": ACTION_SIGNATURE_COVERAGE,
+        "coverage": envelope_signature["coverage"],
         "source_hash": _canonical_hash(source_signature),
         "envelope_hash": _canonical_hash(envelope_signature),
         "matches": source_signature == envelope_signature,

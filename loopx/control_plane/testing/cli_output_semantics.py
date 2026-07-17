@@ -64,5 +64,24 @@ def action_signature_semantic_sha256(value: Any) -> str | None:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def action_signature_coverages(value: Any) -> list[str]:
+    coverages: set[str] = set()
+
+    def collect(current: Any) -> None:
+        if isinstance(current, dict):
+            for key, child in current.items():
+                if key == "action_signature" and isinstance(child, dict):
+                    coverage = child.get("coverage")
+                    if isinstance(coverage, str) and coverage:
+                        coverages.add(coverage)
+                collect(child)
+        elif isinstance(current, list):
+            for child in current:
+                collect(child)
+
+    collect(value)
+    return sorted(coverages)
+
+
 def markdown_headings(text: str) -> list[str]:
     return [line.strip() for line in text.splitlines() if _MARKDOWN_HEADING.match(line)]

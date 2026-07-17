@@ -207,6 +207,10 @@ def test_turn_envelope_state_matrix_preserves_parity_and_budget(
         source
     ) == turn_envelope_action_signature_document(envelope)
     assert envelope["action_signature"]["matches"] is True
+    assert envelope["action_signature"]["coverage"] == case.get(
+        "expected_action_signature_coverage",
+        "turn_envelope_action_dimensions_v0",
+    )
     assert (
         envelope["contract_capsule"]["protocol_action_packet"][
             "reconstruction_verified"
@@ -521,6 +525,9 @@ def test_turn_envelope_keeps_concrete_user_gate() -> None:
     assert envelope["action_required"] is True
     assert envelope["open_count"] == 1
     assert envelope["action_signature"]["matches"] is True
+    assert envelope["action_signature"]["coverage"] == (
+        "turn_envelope_action_dimensions_v0"
+    )
 
 
 def test_action_signature_detects_semantic_drift() -> None:
