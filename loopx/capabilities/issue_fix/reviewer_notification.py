@@ -679,7 +679,7 @@ def _lark_result(
                 status="gate_required",
                 ok=False,
                 external_write_authority_asserted=True,
-                blocker="reviewer_notification_reader_identity_mismatch",
+                blocker="reviewer_notification_reader_auth_required",
             )
         try:
             members = runner(

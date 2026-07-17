@@ -117,6 +117,15 @@ binding depends on the machine's active/default Lark profile. The legacy
 `bot_profile` field remains accepted for explicit manual configs, but a
 goal-default config requires both bindings.
 
+Execute mode verifies the configured reader's user credential before any
+destination read or send. An unavailable or unverified user credential returns
+the content-free blocker `reviewer_notification_reader_auth_required` and
+performs zero external writes. This is an authentication gate for the existing
+reader binding, not evidence that the reader and sender profiles should be
+collapsed or rewritten. The operator restores the configured reader user login
+with `lark-cli auth login`; LoopX keeps profile names and credential details out
+of the public result.
+
 Before sending, LoopX deduplicates one PR notification through three bounded
 evidence layers: the durable PR-lifecycle receipt, an exact PR-link match in
 the persisted `configured_chat_all` inbox, and a user-identity search of the
