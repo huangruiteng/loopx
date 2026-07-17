@@ -4,7 +4,7 @@
 
 ## 本讲在课程中的位置
 
-这套课一共 8 讲，每讲只增加一个主要抽象：
+这套课一共 9 讲，每讲只增加一个主要抽象：
 
 | 讲次 | 新增的主要抽象 | 学完后能回答的问题 |
 | --- | --- | --- |
@@ -15,7 +15,8 @@
 | 5 | 宿主调度 | Codex App heartbeat 如何唤醒、退避和停止？ |
 | 6 | 证据与自修复 | 为什么“做过了”不等于“控制面已推进”？ |
 | 7 | 内核扩展方法 | 如何安全地给 control plane 增加一条规则？ |
-| 8 | 可选扩展 | Explore、multi-agent、supervisor、Auto Research 如何接入？ |
+| 8 | 分层质量门禁 | Agent 如何证明改动可交付，而不是只证明测试会通过？ |
+| 9 | 可选扩展 | Explore、multi-agent、supervisor、Auto Research 如何接入？ |
 
 建议时长：90 分钟，其中讲解 50 分钟、代码路径 20 分钟、实验 20 分钟。
 
@@ -530,7 +531,7 @@ effective_action = _effective_action(...)
 
 ### “Supervisor 就是主 agent”
 
-不是。当前 peer 模型没有 primary/side 的运行时层级。可选 supervisor 是 equal peer 上的观察和 proposal overlay，第 8 讲再展开。
+不是。当前 peer 模型没有 primary/side 的运行时层级。可选 supervisor 是 equal peer 上的观察和 proposal overlay，第 9 讲再展开。
 
 ## 本讲源码与 smoke 地图
 
@@ -550,7 +551,7 @@ effective_action = _effective_action(...)
 课程可以用自身作为一个公开可复现的贯穿案例。下面只保留稳定的状态转换，不依赖任何真实线程、todo id 或本机目录：
 
 ```text
-用户在 Codex App 调用 $loopx，要求编写 8 讲开发者课程
+用户在 Codex App 调用 $loopx，要求编写 9 讲开发者课程
   -> start-goal --guided 发现多个候选 goal
   -> 用户将任务显式路由到 <goal-id>
   -> guided packet 要求选择 registered peer identity
@@ -570,8 +571,8 @@ effective_action = _effective_action(...)
 
 ```text
 <todo-evidence>  [P0] 取证机制地图
-<todo-design>    [P0] 设计 8 讲认知梯度
-<todo-writing>   [P1] 撰写 8 份 lecture Markdown
+<todo-design>    [P0] 设计 9 讲认知梯度
+<todo-writing>   [P1] 撰写 9 份 lecture Markdown
 <todo-verify>    [P1] 交叉校验与公开交付
 ```
 

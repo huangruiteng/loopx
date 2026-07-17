@@ -12,7 +12,8 @@ not need these documents to start LoopX.
 1. Read [Contributing](../../CONTRIBUTING.md) for repository boundaries and the
    pull-request checklist.
 2. Follow the [control-plane developer course](control-plane-course/README.md)
-   for an eight-lecture, code-led path through the real CLI and state machine.
+   for a nine-lecture, code-led path through the real CLI, state machine, and
+   layered quality gates.
 3. Read [Testing and quality](testing-and-quality.md) before changing agent-facing
    output, scheduler decisions, todo/gate semantics, onboarding, or release
    promotion.
@@ -23,8 +24,8 @@ not need these documents to start LoopX.
    fixtures, examples, evidence, or provider-backed evaluation.
 
 1. 先阅读[贡献指南](../../CONTRIBUTING.md)，了解仓库边界和 PR 检查项。
-2. 按顺序学习[控制面开发者 8 讲](control-plane-course/README.md)，沿真实 CLI、
-   状态机和核心函数建立代码心智模型。
+2. 按顺序学习[控制面开发者 9 讲](control-plane-course/README.md)，沿真实 CLI、
+   状态机、核心函数和分层质量门禁建立代码心智模型。
 3. 修改 agent-facing 输出、调度决策、todo/gate 语义、新用户接入或发布流程前，
    阅读[测试与质量体系](testing-and-quality.md)。
 4. 通过[架构文档](../architecture.md)和
@@ -37,7 +38,7 @@ not need these documents to start LoopX.
 
 | Area / 领域 | Reference / 文档 |
 | --- | --- |
-| Control-plane code reading / 控制面代码领读 | [Eight-lecture developer course](control-plane-course/README.md) |
+| Control-plane code reading / 控制面代码领读 | [Nine-lecture developer course](control-plane-course/README.md) |
 | Quality layers and commands / 质量分层与命令 | [Testing and quality](testing-and-quality.md) |
 | Agent-facing size budgets / Agent 输出体积预算 | [Interface budget contract](../interface-budget-contract.md) |
 | Status and decision payloads / 状态与决策载荷 | [Status data contract](../status-data-contract.md) |

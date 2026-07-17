@@ -198,6 +198,31 @@ next_due_at > now
 - 是否缺少 successor/resume condition？
 - projection 是否一直失败？
 
+## 组合回放：Monitor、Gate、Replan 与 ACK
+
+考虑一个外部 PR monitor。它到期后发现 review 要求改变 public contract，因此一次 poll 同时产生新证据、scoped user gate、blocked successor 和 replan trigger：
+
+```text
+monitor due
+  -> one bounded poll
+  -> material evidence changed
+  -> user gate G1 + blocked successor T1
+  -> replan obligation
+  -> new interaction contract
+  -> new scheduler identity and cadence
+  -> host applies RRULE
+  -> CLI ACKs the exact current hint
+```
+
+这条链上有四个容易混淆的边界：
+
+1. monitor 只负责观察并写 evidence，不决定 G1 是否获批；
+2. replan 负责重算 frontier，不得绕过 T1 的 decision scope；
+3. scheduler hint 从新 interaction contract 派生，旧 monitor cadence 不能因为“比较省”而继续沿用；
+4. host ACK 只证明某个 identity signature、reset token 和 RRULE 已应用，不证明 PR 修复已交付，因此 ACK 不 spend。
+
+G1 未解决期间，heartbeat 仍应保持存活并按 human-gate/replan cadence 唤醒，但不得重复 poll 已结算的 M1，也不得把相同 gate 每轮重新写成 material progress。这个组合场景同时检验 todo lifecycle、quota precedence、scheduler reset 和 no-spend policy。
+
 ## Projection 失败日志去重
 
 本地异常如果每 2 秒写一条相同日志，会带来：

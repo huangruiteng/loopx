@@ -840,8 +840,9 @@ contract.
   selected cases.
 - [Documentation index](docs/README.md): stable docs grouped by audience.
 - [Control-plane developer course](docs/development/control-plane-course/README.md):
-  eight Chinese, code-led lectures covering the real CLI path, state kernel,
-  quota, scheduler, evidence, rule changes, and optional extensions.
+  nine Chinese, code-led lectures covering the real CLI path, state kernel,
+  quota, scheduler, evidence, rule changes, layered quality gates, and optional
+  extensions.
 - [Update notes](docs/update-notes/README.md): public-safe two-week progress
   notes, archive, and publication automation plan.
 - [Release readiness](docs/product/release-readiness.md): v0.x install/update

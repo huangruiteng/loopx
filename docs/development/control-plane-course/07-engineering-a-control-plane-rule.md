@@ -372,27 +372,35 @@ Smoke 应同时证明：
 
 ## 测试策略
 
-### Characterization first
+本讲只保留规则开发的入口；完整分层、频率、模型行为门和发布门见[第 8 讲](08-autonomous-agent-quality-gates.md)。
 
-共享 quota/status/todo 行为先加 parity fixture，再修改实现。
+测试先回答“这个状态和规则合理吗”，再验证实现是否符合。共享 quota/status/todo 行为可以先加 parity fixture 描述现状，但 fixture 不是授权书；如果现状与 independently reviewed invariant 冲突，应修规则并增加负向或 mutation coverage，不能刷新 golden 把错误合法化。
 
-### Thin durable smoke
+例如 gate lifecycle 至少要先写出这张语义表，再决定 schema 和 transition：
 
-Supervisor 当前代表性 smoke：
+| 用户结果 | gate 问题是否结束 | required decision scope 是否满足 | blocked delivery |
+| --- | --- | --- | --- |
+| granted | 是 | 是 | 可按其余 guard 重算 |
+| denied | 是 | 否 | 保持 blocked，或显式 supersede |
+| cancelled | 是，原问题撤回 | 否 | 保持 blocked，或显式 supersede/defer |
+| pending / undecided | 否 | 否 | 保持 blocked |
 
-- `peer-supervisor-smoke.py`：default-off、配置、prompt、observation、decision normalization；
-- `peer-supervisor-event-smoke.py`：proposal/receipt durability、capability/authority/evidence/rollback；
-- `peer-supervisor-inject-adapter-smoke.py`：真实 adapter canary、dry-run、idempotency。
+如果当前状态只能表达 `done=true`，却无法区分 granted 与 denied，那么缺的是状态模型；录制当前 `todo complete` 输出只会把歧义固化成金标。
 
-### Risk-based premerge
+一条跨层规则通常至少需要 unit/contract、focused smoke、public-safe decision replay 和 catalog-informed canary。Smoke 应覆盖交叉规则，而不只覆盖单概念 happy path。典型组合包括：
 
-非平凡 LoopX 变更需要：
+- due monitor 产生 gate 后又触发 replan，最终 scheduler identity 必须变化；
+- non-blocking `user_action` 经过 compact reducer 后仍不能满足 `required_decision_scopes`；
+- capability matched 但 workspace 不匹配时，只允许 workspace repair，不允许 normal delivery；
+- todos 全 done 但 acceptance gap 或 active monitor 尚存时，terminal closure 必须为 false。
+
+非平凡 LoopX 变更还需要：
 
 ```bash
 loopx canary premerge --from-git-diff
 ```
 
-或等价的风险验证集。一个 hand-picked smoke 不足以覆盖 runtime/quota/scheduler/todo/install/dashboard 边界。
+一个 hand-picked smoke 不足以覆盖 runtime/quota/scheduler/todo/install/dashboard 边界。是否增加 output budget、actual-default model qualification、full-public 或 outcome baseline，由第 8 讲的风险门禁决定，不能让每个小 patch 都等待最高成本矩阵。
 
 ## 练习：设计一个 `pause_branch` Proposal
 
@@ -668,4 +676,4 @@ receipt = record_supervisor_receipt(
 4. Migration reader 为什么应保留，但旧字段不能继续出现在 live config？
 5. 哪类 invariant 值得未来用 Lean/TLA+，哪类只需 focused smoke？
 
-下一讲将把这些原则应用到 LoopX 的扩展层：Explore Graph/Harness、multi-agent kernel、Auto Research、supervisor 和 connectors。
+下一讲把这套工程顺序扩成自主交付门禁：什么必须进入 PR 快速门，什么适合 canary、低频模型行为验证或 release gate，以及 agent 何时必须停止自动合并。扩展层顺延到第 9 讲。

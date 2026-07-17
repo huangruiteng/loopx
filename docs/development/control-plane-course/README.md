@@ -1,6 +1,6 @@
 # LoopX Control-Plane Developer Course / LoopX 控制面开发者课程
 
-这套 8 讲课程面向准备修改 LoopX kernel、CLI、状态投影、调度或扩展能力的开发者。主目标是建立一条可执行的控制面心智模型：用户的一句目标如何变成可领取工作，状态如何写回，quota 为什么允许或拒绝下一轮，host 又如何安全地把决策变成周期执行。
+这套 9 讲课程面向准备修改 LoopX kernel、CLI、状态投影、调度或扩展能力的开发者。主目标是建立一条可执行的控制面心智模型：用户的一句目标如何变成可领取工作，状态如何写回，quota 为什么允许或拒绝下一轮，host 又如何安全地把决策变成周期执行。
 
 课程不是 API 枚举。每一讲都包含四类材料：
 
@@ -20,13 +20,31 @@
 | [第 5 讲](05-host-scheduler-and-heartbeat.md) | Host、Heartbeat 与 Stateful Backoff | LoopX 决策、heartbeat prompt、Codex App RRULE 和 ACK 各自负责什么？ |
 | [第 6 讲](06-evidence-refresh-and-self-repair.md) | 证据、Refresh 与 Self-Repair | 什么算 material progress，何时必须 replan，连续无推进如何形成可验证 repair delta？ |
 | [第 7 讲](07-engineering-a-control-plane-rule.md) | 如何给 Control Plane 增加一条规则 | 如何从 invariant、schema、transition、projection 到 smoke 完成一次规则变更？ |
-| [第 8 讲](08-extension-layer.md) | 扩展层、Explore 与 Multi-Agent 产品 | 默认关闭的 Explore Graph、Harness、Auto Research 和 Supervisor 如何复用 kernel？ |
+| [第 8 讲](08-autonomous-agent-quality-gates.md) | Agent 自主写代码时的分层质量门禁 | 如何按风险选择确定性测试、canary、模型行为验证与 release gate，既保护质量又不阻断普通迭代？ |
+| [第 9 讲](09-extension-layer.md) | 扩展层、Explore 与 Multi-Agent 产品 | 默认关闭的 Explore Graph、Harness、Auto Research 和 Supervisor 如何复用 kernel？ |
 
 ## 建议学习方式
 
-第一次阅读按 1 到 8 的顺序进行。第 1 讲建立端到端路径，第 2 到 6 讲拆开状态、工作图、决策、host 和证据，第 7 讲把这些知识收束成工程变更方法，第 8 讲再看扩展层。
+第一次阅读按 1 到 9 的顺序进行。第 1 讲建立端到端路径，第 2 到 6 讲拆开状态、工作图、决策、host 和证据，第 7 讲把这些知识收束成工程变更方法，第 8 讲建立自主交付的质量门禁，第 9 讲再看扩展层。
 
 不要从模块文件头一路向下读。每讲的“核心代码领读”会给出函数级入口，先搜索目标函数，再沿 bounded-context helper 向下读。运行实验时使用临时 goal 和测试仓库，不要把课程占位 id 当作真实配置。
+
+## 组合推理是课程主线
+
+单个概念通常不难；控制面的复杂性来自多个各自正确的规则在同一轮里同时成立。读课时不要只问“这个字段是什么意思”，还要推导：谁拥有事实、哪条规则优先、三个 interaction channel 分别输出什么、host 是否应继续唤醒，以及什么证据才允许 spend 或 closeout。
+
+下面几组组合会在后续章节反复出现：
+
+| 组合场景 | 必须回答的关键问题 | 主要章节 |
+| --- | --- | --- |
+| due monitor + scoped user gate + autonomous replan | monitor 的新证据如何形成 gate；replan 是否覆盖 quiet；未获授权的 delivery 为什么仍不可执行？ | 第 4、5、6 讲 |
+| interleaved monitors + per-lane no-change streak + advancement precedence | 为什么一个 monitor 的轮询不能替另一个清零；何时应 replan，何时仍由 runnable advancement 优先？ | 第 4、6、8 讲 |
+| non-blocking `user_action` + `required_decision_scopes` + interaction budget | 用户可见提醒为什么不能冒充授权；压缩输出时哪些 gate 语义必须保留？ | 第 3、4、7 讲 |
+| claim + lease + capability + workspace guard + handoff | 谁可领取、谁正在执行、在哪里允许写、何时必须换 peer，为什么是五个不同问题？ | 第 3、4 讲 |
+| stateful backoff + exact host ACK + no-spend policy | cadence 改变后如何证明 host 真正应用；为什么 ACK 与 quiet poll 都不是 delivery？ | 第 5、6 讲 |
+| guided hot path + deterministic oracle + actual-default model qualification | 缩短 agent-facing packet 时，如何同时证明字段合同、状态语义和真实模型行为没有漂移？ | 第 4、7、8 讲 |
+
+这些组合不是额外功能清单，而是同一状态图的交叉切面。课程中的 case、decision table 和 smoke 应尽量覆盖交叉项，而不是为每个名词各写一个孤立 happy path。
 
 ## 版本与边界
 

@@ -279,7 +279,7 @@ identity
 
 但 self-repair 和 projection gap 可能在多个阶段插入，因为它们修复的是决策输入本身。新增规则时应在 `rule-seam-map` 中明确它的输入和 precedence。
 
-## 五个典型 Case
+## 八个典型 Case
 
 ### Case A：有 runnable todo
 
@@ -331,6 +331,49 @@ agent vision acceptance gap = open
 ```
 
 结果：不能 terminal。需要 authoritative evidence、successor、blocker/user gate 或 superseding vision。
+
+### Case F：Due monitor 发现 gate，同时 replan 到期
+
+```text
+M1 monitor due
+M1 poll => material evidence changed
+evidence creates scoped gate G1 and blocked successor T1
+periodic autonomous replan obligation = due
+```
+
+这不是“monitor 已完成，所以 quiet”的状态。合理推导是：
+
+1. monitor 的一次 poll 结束，并以 compact evidence 写回；
+2. G1 进入 user channel，T1 在对应 decision scope 上保持不可交付；
+3. replan obligation 在 frontier 层优先于 monitor quiet，要求形成 keep/split/add/retire/ask-decision 的可见 delta；
+4. 只有不依赖 G1、且 interaction contract 明确允许的 repair 或独立工作才可进入 agent channel；
+5. host 依据新 contract 重算 cadence，不能沿用 M1 的旧 monitor backoff。
+
+这里的复杂性不是三个 feature 相加，而是一次 evidence transition 同时改变 gate、frontier 和 scheduler identity。
+
+### Case G：`user_action` 看起来相关，但不能满足 decision scope
+
+```text
+T1 requires decision D1
+U1 task_class = user_action
+U1 text mentions D1
+no compatible user_gate decision exists
+```
+
+结果：U1 可以进入 user channel，但 T1 仍未获得 D1。Todo 文案相似、同一用户已看到提醒、甚至 `open_count > 0`，都不能把非阻塞 action 提升为 authority。若 reducer 或 compact projection 丢掉 task class，系统应 fail closed 或进入受控 repair，而不是恢复 normal delivery。
+
+### Case H：多个 monitor 交错，某条 lane 已连续 no-change
+
+```text
+M1.consecutive_no_change = 3
+M2.consecutive_no_change = 1
+latest runs = M1 poll, M2 poll, M1 poll, M2 poll
+same-agent runnable advancement = none
+```
+
+若只统计“run history 末尾连续出现了几次同类 monitor poll”，M1 和 M2 会互相打断，两个实际停滞的 target 都可能永远到不了阈值。正确 source 是每个 monitor todo 自己的 `consecutive_no_change`：M2 的 poll 不重置 M1；M1 的 material transition 也只重置 M1。
+
+Quota 扫描 monitor lanes 后，只要任一 lane 达到阈值、且当前 agent 没有 runnable advancement，就形成 `monitor_no_change_streak` replan obligation。若存在可执行 advancement，则 normal delivery 优先；若 advancement 只是 blocked，则不能用它掩盖 monitor 已经停滞的事实。
 
 ## `action_required` 与 `open_count`
 

@@ -289,8 +289,8 @@ agent_id = <agent-id>
 
 ```text
 <todo-evidence> 取证机制地图
-<todo-design>   设计 8 讲认知梯度
-<todo-writing>  撰写 8 份 Markdown
+<todo-design>   设计 9 讲认知梯度
+<todo-writing>  撰写 9 份 Markdown
 <todo-verify>   交叉校验与交付说明
 ```
 
@@ -308,10 +308,37 @@ closeout_allowed_without_evidence = false
 
 ```bash
 --vision-unchanged-reason \
-  "8 讲课程目标、受众与验收未改变；本轮完成全部讲义并以当前 CLI/smoke 交叉验证"
+  "9 讲课程目标、受众与验收未改变；本轮完成全部讲义并以当前 CLI/smoke 交叉验证"
 ```
 
 这条回放说明 vision checkpoint 是长期 acceptance 的闭环，不是形式化打勾。
+
+## 多 Monitor 交错时的停滞证据
+
+`consecutive_no_change` 属于 monitor target，不属于整个 goal，也不属于 run-history
+末尾的一段文本模式。设 M1、M2 交错轮询：
+
+```text
+M1 no-change -> M2 no-change -> M1 no-change -> M2 no-change
+```
+
+若 detector 只数相邻 run，M1 和 M2 会互相打断；若任一 monitor 有 material change 就
+清空全局 streak，又会让活跃 M2 永久掩盖停滞 M1。正确 writeback 是：
+
+```text
+M1 todo.consecutive_no_change += 1
+M2 todo.consecutive_no_change += 1
+material change on M2 -> reset M2 only
+```
+
+Quota 从 `monitor_open_items` 读取每条 lane 的 durable counter。任一 lane 达到阈值且
+没有 same-agent runnable advancement 时，`monitor_no_change_streak` 形成 replan 证据；
+replan 应选择 watch expiry、明确 blocker、supersede monitor 或创建 runnable successor，
+而不是再做一次 quiet poll。若存在 same-agent runnable advancement，advancement 优先，
+但 blocked advancement 不能冒充可执行工作来压掉 replan。
+
+这个例子同时说明了三件事：evidence 必须归属稳定 identity；聚合 read model 不能覆盖
+per-lane truth；replan detector 与工作选择 precedence 必须在同一 fixture 中验证。
 
 ## Public/Private Evidence Boundary
 
