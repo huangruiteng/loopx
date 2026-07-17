@@ -511,7 +511,8 @@ allowed writeback does.
 Scheduler ownership is explicit. A bare `quota should-run` can still expose the
 quota decision, but its `scheduler_hint` fails closed with
 `repair_scheduler_execution_context`; it never assumes Codex App. Generated
-Codex App heartbeats pass `--runtime-profile codex_app_heartbeat`. Other hosts
+Codex App heartbeats pass the explicit `codex_app_heartbeat` profile; generated
+commands use its compact alias `--codex-app`. Other hosts
 pass the typed `--host-surface`, `--scheduler-owner`, and `--execution-mode`
 triple that describes the runtime which will consume the hint.
 

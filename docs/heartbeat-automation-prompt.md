@@ -44,7 +44,8 @@ use a short goal text such as "advance TODO" as the recurring automation body.
 The short text names the goal; the generated task body enforces quota, gates,
 steering audit, writeback, refresh, and spend accounting.
 For Codex App, the generated quota command carries the compact explicit runtime
-profile `--runtime-profile codex_app_heartbeat`. The prompt does not restate the
+profile `--runtime-profile codex_app_heartbeat` (generated commands use the
+equivalent compact alias `--codex-app`). The prompt does not restate the
 three scheduler ownership fields as prose. Other hosts generate their real typed
 execution context instead of inheriting App cadence by omission.
 Do not hand-edit per-project lifecycle branches into one automation prompt.
