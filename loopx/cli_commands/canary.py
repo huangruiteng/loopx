@@ -35,6 +35,13 @@ from ..canary.smoke_health import (
     build_smoke_fleet_health,
     render_smoke_fleet_health_markdown,
 )
+from ..control_plane.testing.release_commit_qualification import (
+    render_exact_release_commit_qualification_markdown,
+)
+from .canary_release_qualification import (
+    build_canary_release_qualification_payload,
+    register_canary_release_qualification_command,
+)
 
 
 PrintPayload = Callable[
@@ -354,6 +361,8 @@ def register_canary_commands(
         help="Include every smoke row in the explicit diagnostic cold path.",
     )
 
+    register_canary_release_qualification_command(canary_sub, add_subcommand_format)
+
     plan_parser = canary_sub.add_parser(
         "plan",
         help="Select the smallest useful canary profiles for changed surfaces.",
@@ -558,6 +567,9 @@ def handle_canary_command(
             review_limit=int(args.review_limit or 20),
         )
         renderer = render_smoke_fleet_health_markdown
+    elif args.canary_command == "release-qualification":
+        payload = build_canary_release_qualification_payload(args)
+        renderer = render_exact_release_commit_qualification_markdown
     elif args.canary_command == "plan":
         changed_files, git_diff_selector = _resolve_canary_changed_files(args)
         payload = build_catalog_canary_plan(
@@ -650,7 +662,8 @@ def handle_canary_command(
         renderer = render_premerge_validation_gate_markdown
     else:
         raise ValueError(
-            "canary requires `profiles`, `smoke-profiles`, `smoke-health`, `plan`, "
+            "canary requires `profiles`, `smoke-profiles`, `smoke-health`, "
+            "`release-qualification`, `plan`, "
             "`run`, `smoke-suite`, "
             "`coverage-audit`, `quality-audit`, or `premerge`"
         )
