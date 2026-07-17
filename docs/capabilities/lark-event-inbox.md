@@ -173,7 +173,7 @@ loopx configure-goal \
 ```
 
 The configuration catalog exposes this optional capability on demand. Quota
-projects `enabled`, `config_pointer_registered`, a public-safe command, and a
+projects `enabled`, `config_pointer_registered`, a local control command, and a
 content-free urgency summary; it never projects the private path, message ids,
 senders, or message bodies. The summary includes
 pending/direct-question/direct-mention/verified-bot-reply counts and the oldest
@@ -181,8 +181,10 @@ pending age. A configured direct mention or verified reply to a message authored
 by the configured bot becomes a high-priority `lark_event_inbox` work lane
 before ordinary monitor or advancement work. Generated heartbeat bodies run the
 actual goal-boundary `drain_command`;
-`loopx lark-inbox drain --goal-id <goal-id> --project .`
-resolves the ignored config from the goal registry. A disabled or empty inbox
+`loopx --registry <invoked-registry> lark-inbox drain --goal-id <goal-id>`
+follows a shared registry's `source_registry` to the canonical project before
+resolving the ignored config. It therefore remains correct from linked or
+independent worktrees without binding control state to `--project .`. A disabled or empty inbox
 is a quiet zero-spend path, so projects without Lark keep the default behavior.
 
 ## Drain and acknowledge
@@ -262,6 +264,13 @@ Ingest validates ids and schema, deduplicates by `message_id`, writes only to
 the configured local-private inbox, and returns counts rather than message
 content. It does not acknowledge imported messages; the domain agent must still
 write each actionable effect before ACK.
+
+Reviewer notification dedupe uses durable lifecycle receipts first, then exact
+PR-link evidence in the persisted `configured_chat_all` inbox, and finally a
+bounded user-identity search of the configured chat. Missing `search:message`
+permission degrades to the two persisted sources and does not create a user
+gate; other provider read failures remain blockers because absence cannot be
+established safely.
 
 ## Domain bindings
 

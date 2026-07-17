@@ -5,7 +5,6 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from ...agent_registry import load_goal_from_registry
 from ...control_plane.reward_memory import reward_memory_goal_policy
 from ...domain_packs.issue_fix import (
     default_issue_fix_domain_state_ledger_path,
@@ -15,6 +14,7 @@ from ...domain_packs.issue_fix import (
 from ..lark.event_inbox import (
     acknowledge_lark_event_inbox,
     inspect_lark_event_inbox,
+    lark_event_inbox_contains_text,
 )
 from ..reward_memory.experiment import (
     resolve_reward_memory_experiment,
@@ -37,6 +37,7 @@ from .reviewer_request import (
     build_issue_fix_reviewer_request_packet,
     render_issue_fix_reviewer_request_markdown,
 )
+from ...control_plane.runtime.goal_project_route import resolve_goal_project_route
 
 
 AddFormat = Callable[[argparse.ArgumentParser], None]
@@ -244,7 +245,7 @@ def register_issue_fix_reviewer_commands(
     )
     reviewer_request_parser.add_argument(
         "--project",
-        default=".",
+        default=None,
         help="Project root used for goal-default sink config and issue_fix domain state.",
     )
     reviewer_request_parser.add_argument(
@@ -267,7 +268,7 @@ def register_issue_fix_reviewer_commands(
     )
     add_subcommand_format(reviewer_feedback_parser)
     reviewer_feedback_parser.add_argument("--goal-id", required=True)
-    reviewer_feedback_parser.add_argument("--project", default=".")
+    reviewer_feedback_parser.add_argument("--project")
     reviewer_feedback_parser.add_argument("--limit", type=int, default=20)
     reviewer_feedback_parser.add_argument(
         "--message-id",
@@ -290,37 +291,16 @@ def _load_goal_for_project(
     *,
     registry_path: Path | None,
     goal_id: str,
-    project: str | Path,
+    project: str | Path | None,
 ) -> tuple[dict[str, Any], Path]:
-    requested_project = Path(project).expanduser().resolve()
-    project_registry = requested_project / ".loopx" / "registry.json"
-    candidates = [
-        path for path in (registry_path, project_registry) if path is not None
-    ]
-    mismatched_goal = False
-    for candidate in dict.fromkeys(candidates):
-        goal = load_goal_from_registry(candidate, goal_id)
-        if not isinstance(goal, dict):
-            continue
-        goal_repo = str(goal.get("repo") or "").strip()
-        if not goal_repo:
-            raise ValueError(
-                "connected goal repository is required for goal-scoped "
-                "reviewer notification"
-            )
-        if Path(goal_repo).expanduser().resolve() == requested_project:
-            return goal, requested_project
-        mismatched_goal = True
-
-    if mismatched_goal:
-        raise ValueError(
-            "--project must match the connected goal repository for "
-            "goal-scoped reviewer notification"
-        )
-    raise ValueError(
-        "goal-scoped reviewer notification goal was not found in the active "
-        "or project-local registry"
+    if registry_path is None:
+        raise ValueError("goal-scoped reviewer notification requires a registry")
+    goal, requested_project, _ = resolve_goal_project_route(
+        registry_path=registry_path,
+        goal_id=goal_id,
+        project_override=project,
     )
+    return goal, requested_project
 
 
 def _materialize_goal_reviewer_notification_lifecycle(
@@ -474,6 +454,7 @@ def handle_issue_fix_reviewer_command(
     reviewer_artifact_required = False
     reviewer_artifact_reward_memory: dict[str, Any] | None = None
     reward_memory_experiment_status = "not_configured"
+    semantic_history_status = "not_checked"
     if args.goal_id:
         goal, requested_project = _load_goal_for_project(
             registry_path=registry_path,
@@ -536,6 +517,36 @@ def handle_issue_fix_reviewer_command(
             existing_queued_receipts = reviewer_notification_queue_from_state(
                 notification_lifecycle_packet
             )
+            lark_group_configured = any(
+                isinstance(sink, Mapping) and sink.get("sink_kind") == "lark_chat"
+                for sink in (notification_sinks_input.get("sinks") or [])
+            )
+            if lark_group_configured:
+                config_ref = str(
+                    notification_sinks_input.get("feedback_inbox_config")
+                    or ".loopx/config/lark/event-inbox.json"
+                )
+                try:
+                    history_match = lark_event_inbox_contains_text(
+                        project=requested_project,
+                        config_path=config_ref,
+                        text=str(reference["permalink"]),
+                    )
+                except (OSError, ValueError):
+                    semantic_history_status = "unavailable"
+                else:
+                    semantic_history_status = (
+                        "matched" if history_match else "no_match"
+                    )
+                    if history_match:
+                        notification_sinks_input = {
+                            **notification_sinks_input,
+                            "_semantic_history_pr_refs": [
+                                str(reference["permalink"])
+                            ],
+                        }
+            else:
+                semantic_history_status = "not_applicable"
         reward_policy = reward_memory_goal_policy(goal)
         reviewer_artifact_required = bool(notification_sinks_input) and (
             reward_policy["enabled"] is True
@@ -618,6 +629,9 @@ def handle_issue_fix_reviewer_command(
     payload["reward_memory_experiment_status"] = reward_memory_experiment_status
     payload["secondary_notification_lifecycle_materialized"] = (
         notification_lifecycle_materialized
+    )
+    payload["secondary_notification_semantic_history_status"] = (
+        semantic_history_status
     )
     payload["secondary_notification_receipts_persisted"] = False
     payload["secondary_notification_queue_persisted"] = False

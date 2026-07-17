@@ -311,7 +311,7 @@ def main() -> int:
             "config_path": ".loopx/config/reward-memory/experiment.json",
             "enabled_agents": ["codex-side-bypass"],
         }, goal
-        boundary = goal_boundary(goal)
+        boundary = goal_boundary(goal, registry_path=registry_path)
         assert boundary["capabilities"]["issue_fix_reviewer_notification"] == {
             "enabled": True,
             "config_pointer_registered": True,
@@ -320,7 +320,8 @@ def main() -> int:
             "enabled": True,
             "config_pointer_registered": True,
             "drain_command": (
-                "loopx lark-inbox drain --goal-id configure-goal-fixture --project ."
+                f"loopx --registry {registry_path} lark-inbox drain "
+                "--goal-id configure-goal-fixture"
             ),
             "urgency": {
                 "schema_version": "lark_event_inbox_urgency_v0",

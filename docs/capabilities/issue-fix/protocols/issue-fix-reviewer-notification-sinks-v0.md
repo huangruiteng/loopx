@@ -104,6 +104,15 @@ binding depends on the machine's active/default Lark profile. The legacy
 `bot_profile` field remains accepted for explicit manual configs, but a
 goal-default config requires both bindings.
 
+Before sending, LoopX deduplicates one PR notification through three bounded
+evidence layers: the durable PR-lifecycle receipt, an exact PR-link match in
+the persisted `configured_chat_all` inbox, and a user-identity search of the
+configured chat. The remote search is an evidence enhancement, not an action
+authority boundary: if that user profile lacks `search:message`, LoopX records
+`permission_fallback` and continues from durable receipt/inbox evidence rather
+than projecting a user gate. A successful remote match is written back as the
+same stable receipt; non-permission provider failures remain fail-closed.
+
 `delivery_policy` is optional and provider-neutral. When configured, execute
 mode sends only while the current local time is inside the half-open
 `[start, end)` window; overnight windows are supported. Outside the window,

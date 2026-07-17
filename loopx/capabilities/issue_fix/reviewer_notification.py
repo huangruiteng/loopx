@@ -32,6 +32,10 @@ LARK_PERMISSION_PATTERN = re.compile(
     r"lacks?\s+authority|99991672|230027|232033)",
     re.IGNORECASE,
 )
+LARK_SEARCH_PERMISSION_PATTERN = re.compile(
+    r"search:message|missing\s+scope[^\n]*(?:message|search)",
+    re.IGNORECASE,
+)
 SAFE_LOCAL_KEY_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,100}")
 LARK_DESTINATION_PATTERN = re.compile(r"oc_[A-Za-z0-9_-]+")
 LARK_MEMBER_PATTERN = re.compile(r"ou_[A-Za-z0-9_-]+")
@@ -423,6 +427,14 @@ def _parse_json_object(value: Any) -> Mapping[str, Any] | None:
     return payload if isinstance(payload, Mapping) else None
 
 
+def _payload_contains_text(value: Any, text: str) -> bool:
+    if isinstance(value, Mapping):
+        return any(_payload_contains_text(child, text) for child in value.values())
+    if isinstance(value, list):
+        return any(_payload_contains_text(child, text) for child in value)
+    return isinstance(value, str) and text in value
+
+
 def _lark_member_ids(value: Any) -> set[str]:
     """Collect exact member ids from a provider response without retaining it."""
 
@@ -458,6 +470,7 @@ def _public_result(
     notification_verified: bool = False,
     bot_identity_verified: bool = False,
     reader_identity_verified: bool = False,
+    semantic_dedupe_status: str | None = None,
     blocker: str | None = None,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {
@@ -482,6 +495,8 @@ def _public_result(
     }
     if blocker:
         result["blocker"] = blocker
+    if semantic_dedupe_status:
+        result["semantic_dedupe_status"] = semantic_dedupe_status
     return result
 
 
@@ -611,6 +626,7 @@ def _lark_result(
             ok=True,
             external_write_authority_asserted=execute,
             notification_verified=True,
+            semantic_dedupe_status="persisted_evidence_match",
         )
     if not execute:
         return _public_result(
@@ -623,6 +639,7 @@ def _lark_result(
         )
 
     reader_verified = False
+    semantic_dedupe_status = "not_configured"
     if explicit_profile_bindings:
         try:
             reader_status = runner(
@@ -701,6 +718,77 @@ def _lark_result(
                     else "reviewer_notification_provider_failed"
                 ),
             )
+
+        try:
+            semantic_search = runner(
+                [
+                    "lark-cli",
+                    "--profile",
+                    reader_profile,
+                    "im",
+                    "+messages-search",
+                    "--chat-id",
+                    destination_id,
+                    "--query",
+                    pr_url,
+                    "--page-size",
+                    "20",
+                    "--as",
+                    "user",
+                    "--no-reactions",
+                    "--format",
+                    "json",
+                ]
+            )
+        except (OSError, subprocess.SubprocessError):
+            semantic_search = {"returncode": 1}
+        semantic_payload = _parse_json_object(semantic_search.get("stdout"))
+        if semantic_search.get("returncode") == 0:
+            if semantic_payload is None:
+                return _public_result(
+                    sink_kind=sink_kind,
+                    reviewer_handles=reviewer_handles,
+                    idempotency_key=key,
+                    status="gate_required",
+                    ok=False,
+                    external_write_authority_asserted=True,
+                    reader_identity_verified=True,
+                    semantic_dedupe_status="provider_failed",
+                    blocker="reviewer_notification_dedupe_readback_failed",
+                )
+            if _payload_contains_text(semantic_payload, pr_url):
+                return _public_result(
+                    sink_kind=sink_kind,
+                    reviewer_handles=reviewer_handles,
+                    idempotency_key=key,
+                    status="already_notified",
+                    ok=True,
+                    external_write_authority_asserted=True,
+                    verification_performed=True,
+                    notification_verified=True,
+                    reader_identity_verified=True,
+                    semantic_dedupe_status="configured_chat_match",
+                )
+            semantic_dedupe_status = "configured_chat_no_match"
+        else:
+            provider_error = " ".join(
+                str(semantic_search.get(field) or "")
+                for field in ("stderr", "stdout")
+            )
+            if LARK_SEARCH_PERMISSION_PATTERN.search(provider_error):
+                semantic_dedupe_status = "permission_fallback"
+            else:
+                return _public_result(
+                    sink_kind=sink_kind,
+                    reviewer_handles=reviewer_handles,
+                    idempotency_key=key,
+                    status="gate_required",
+                    ok=False,
+                    external_write_authority_asserted=True,
+                    reader_identity_verified=True,
+                    semantic_dedupe_status="provider_failed",
+                    blocker="reviewer_notification_dedupe_readback_failed",
+                )
 
     try:
         identity_status = runner(
@@ -924,6 +1012,7 @@ def _lark_result(
         notification_verified=verified,
         bot_identity_verified=True,
         reader_identity_verified=reader_verified,
+        semantic_dedupe_status=semantic_dedupe_status,
         blocker=None if verified else "lark_notification_not_verified",
     )
 
@@ -1137,6 +1226,15 @@ def build_issue_fix_reviewer_notification_sinks_result(
         for value in (raw_receipts if isinstance(raw_receipts, list) else [])
         if re.fullmatch(r"sha256:[a-f0-9]{64}", str(value))
     }
+    semantic_history_pr_refs = {
+        public_safe_compact_text(value, limit=300)
+        for value in (
+            sinks_input.get("_semantic_history_pr_refs")
+            if isinstance(sinks_input.get("_semantic_history_pr_refs"), list)
+            else []
+        )
+        if public_safe_compact_text(value, limit=300)
+    }
     queued_receipts_by_key = {
         str(value["idempotency_key"]): value
         for value in reviewer_notification_queue_from_state(
@@ -1159,6 +1257,18 @@ def build_issue_fix_reviewer_notification_sinks_result(
     results: list[dict[str, Any]] = []
     for sink in sinks:
         sink_kind = str(sink.get("sink_kind") or "").strip()
+        if sink_kind == "lark_chat" and pr_url in semantic_history_pr_refs:
+            sink_instance_key = str(sink.get("sink_instance_key") or "").strip()
+            if SAFE_LOCAL_KEY_PATTERN.fullmatch(sink_instance_key):
+                receipts.add(
+                    _idempotency_key(
+                        repo=repo,
+                        pr_number=int(pr_number),
+                        sink_kind=sink_kind,
+                        sink_instance_key=sink_instance_key,
+                        reviewer_handles=reviewers,
+                    )
+                )
         adapter = adapters.get(sink_kind)
         if adapter and execute and not delivery_window["allowed"]:
             sink_instance_key = str(sink.get("sink_instance_key") or "").strip()
@@ -1281,6 +1391,9 @@ def build_issue_fix_reviewer_notification_sinks_result(
             ),
             "notification_verified": all(
                 result.get("notification_verified") is True for result in results
+            ),
+            "semantic_history_evidence_applied": bool(
+                pr_url in semantic_history_pr_refs
             ),
         }
     )

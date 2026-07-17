@@ -42,6 +42,8 @@ class FakeSinkRunner:
         reader_verified: bool = True,
         include_member: bool = True,
         member_id: str = "ou_private_member",
+        search_returncode: int = 0,
+        search_hit: bool = False,
     ) -> None:
         self.send_returncode = send_returncode
         self.verify_returncode = verify_returncode
@@ -50,6 +52,8 @@ class FakeSinkRunner:
         self.reader_verified = reader_verified
         self.include_member = include_member
         self.member_id = member_id
+        self.search_returncode = search_returncode
+        self.search_hit = search_hit
         self.calls: list[list[str]] = []
 
     def __call__(self, args: list[str]) -> dict[str, Any]:
@@ -100,6 +104,29 @@ class FakeSinkRunner:
                     }
                 ),
                 "stderr": "",
+            }
+        if "+messages-search" in command:
+            query = command[command.index("--query") + 1]
+            return {
+                "returncode": self.search_returncode,
+                "stdout": (
+                    json.dumps(
+                        {
+                            "items": [
+                                {"body": {"content": query}}
+                                if self.search_hit
+                                else {"body": {"content": "another PR"}}
+                            ]
+                        }
+                    )
+                    if self.search_returncode == 0
+                    else ""
+                ),
+                "stderr": (
+                    "missing scope search:message"
+                    if self.search_returncode
+                    else ""
+                ),
             }
         if "+messages-send" in command:
             return {
@@ -526,7 +553,10 @@ def main() -> int:
     )
     assert explicit["ok"] is True, explicit
     assert explicit["results"][0]["reader_identity_verified"] is True
-    assert len(explicit_runner.calls) == 6, explicit_runner.calls
+    assert len(explicit_runner.calls) == 7, explicit_runner.calls
+    assert explicit["results"][0]["semantic_dedupe_status"] == (
+        "configured_chat_no_match"
+    )
     explicit_send = next(
         call for call in explicit_runner.calls if "+messages-send" in call
     )
@@ -555,6 +585,66 @@ def main() -> int:
         "fixture-sender-profile",
     ]
     assert_public_safe(explicit)
+
+    remote_duplicate_runner = FakeSinkRunner(search_hit=True)
+    remote_duplicate = build_issue_fix_reviewer_notification_sinks_result(
+        repo="owner/repo",
+        pr_number=42,
+        pr_url="https://github.com/owner/repo/pull/42",
+        author_handle="@current-author",
+        reviewer_handles=["@service-owner"],
+        sinks_input=fixture(explicit_profiles=True),
+        execute=True,
+        runner=remote_duplicate_runner,
+    )
+    assert remote_duplicate["status"] == "already_notified", remote_duplicate
+    assert remote_duplicate["results"][0]["semantic_dedupe_status"] == (
+        "configured_chat_match"
+    )
+    assert not any(
+        "+messages-send" in call for call in remote_duplicate_runner.calls
+    )
+
+    permission_fallback_runner = FakeSinkRunner(search_returncode=1)
+    permission_fallback = build_issue_fix_reviewer_notification_sinks_result(
+        repo="owner/repo",
+        pr_number=42,
+        pr_url="https://github.com/owner/repo/pull/42",
+        author_handle="@current-author",
+        reviewer_handles=["@service-owner"],
+        sinks_input=fixture(explicit_profiles=True),
+        execute=True,
+        runner=permission_fallback_runner,
+    )
+    assert permission_fallback["status"] == "sent_verified", permission_fallback
+    assert permission_fallback["results"][0]["semantic_dedupe_status"] == (
+        "permission_fallback"
+    )
+    assert any(
+        "+messages-send" in call for call in permission_fallback_runner.calls
+    )
+
+    inbox_history = fixture(explicit_profiles=True)
+    inbox_history["_semantic_history_pr_refs"] = [
+        "https://github.com/owner/repo/pull/42"
+    ]
+    inbox_history_runner = FakeSinkRunner(search_returncode=1)
+    inbox_duplicate = build_issue_fix_reviewer_notification_sinks_result(
+        repo="owner/repo",
+        pr_number=42,
+        pr_url="https://github.com/owner/repo/pull/42",
+        author_handle="@current-author",
+        reviewer_handles=["@service-owner"],
+        sinks_input=inbox_history,
+        execute=True,
+        runner=inbox_history_runner,
+    )
+    assert inbox_duplicate["status"] == "already_notified", inbox_duplicate
+    assert inbox_duplicate["semantic_history_evidence_applied"] is True
+    assert inbox_duplicate["results"][0]["semantic_dedupe_status"] == (
+        "persisted_evidence_match"
+    )
+    assert inbox_history_runner.calls == []
 
     missing_member = build_issue_fix_reviewer_notification_sinks_result(
         repo="owner/repo",

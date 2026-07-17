@@ -1308,10 +1308,14 @@ def build_quota_should_run(
             goal_id=safe_goal_id,
             agent_id=boundary_agent_id,
         )
+        boundary_registry_value = str(status_payload.get("registry") or "").strip()
         goal_boundary = _goal_boundary(
             registry_goal or item,
             item=item,
             agent_id=boundary_agent_id,
+            registry_path=(
+                Path(boundary_registry_value) if boundary_registry_value else None
+            ),
             lark_event_inbox_urgency_projector=_project_lark_event_inbox_urgency,
             reward_memory_experiment_status=reward_memory_experiment_status,
         )

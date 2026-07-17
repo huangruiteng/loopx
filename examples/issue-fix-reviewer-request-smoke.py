@@ -237,6 +237,15 @@ class FakeCombinedRunner:
                 "stdout": json.dumps({"items": [{"member_id": "ou_private_member"}]}),
                 "stderr": "",
             }
+        if "+messages-search" in command:
+            self.lark_calls.append(command)
+            return {
+                "returncode": 0,
+                "stdout": json.dumps(
+                    {"items": [{"body": {"content": "another PR"}}]}
+                ),
+                "stderr": "",
+            }
         if "+messages-send" in command:
             self.lark_calls.append(command)
             return {
@@ -1403,7 +1412,7 @@ def main() -> int:
             runner=goal_execute_runner,
         )
         assert goal_execute["secondary_notification_status"] == "sent_verified"
-        assert len(goal_execute_runner.lark_calls) == 6
+        assert len(goal_execute_runner.lark_calls) == 7
         receipt = goal_execute["secondary_notifications"]["receipts"][0]
         receipt_write = persist_issue_fix_reviewer_notification_receipts(
             lifecycle_path,

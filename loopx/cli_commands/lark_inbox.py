@@ -18,17 +18,10 @@ from ..capabilities.lark.event_collector import (
     plan_lark_event_collector,
 )
 from ..capabilities.lark.event_collector_runtime import run_lark_event_collector
-from ..registry import read_json, registry_goals
+from ..control_plane.runtime.goal_project_route import resolve_goal_project_route
 
 
-def _goal_inbox_config(registry_path: Path, goal_id: str) -> str | None:
-    payload = read_json(registry_path)
-    goal = next(
-        (item for item in registry_goals(payload) if str(item.get("id")) == goal_id),
-        None,
-    )
-    if goal is None:
-        raise ValueError(f"goal_id not found in registry: {goal_id}")
+def _goal_inbox_config(goal: dict[str, object]) -> str | None:
     control_plane = (
         goal.get("control_plane") if isinstance(goal.get("control_plane"), dict) else {}
     )
@@ -42,11 +35,20 @@ def _goal_inbox_config(registry_path: Path, goal_id: str) -> str | None:
     return str(inbox.get("config_path") or "").strip() or None
 
 
-def _inbox_config(args: argparse.Namespace, registry_path: Path) -> str | None:
+def _inbox_context(
+    args: argparse.Namespace, registry_path: Path
+) -> tuple[Path, str | None]:
     if getattr(args, "config", None):
-        return str(args.config)
+        return Path(getattr(args, "project", None) or ".").expanduser(), str(
+            args.config
+        )
     if getattr(args, "goal_id", None):
-        return _goal_inbox_config(registry_path, str(args.goal_id))
+        goal, project, _ = resolve_goal_project_route(
+            registry_path=registry_path,
+            goal_id=str(args.goal_id),
+            project_override=getattr(args, "project", None),
+        )
+        return project, _goal_inbox_config(goal)
     raise ValueError("lark inbox requires --config or --goal-id")
 
 
@@ -64,7 +66,7 @@ def register_lark_inbox_commands(
         help="Return bounded unprocessed local-private events without acknowledging them.",
     )
     add_subcommand_format(drain)
-    drain.add_argument("--project", default=".")
+    drain.add_argument("--project")
     drain.add_argument("--config")
     drain.add_argument("--goal-id")
     drain.add_argument("--limit", type=int, default=20)
@@ -73,7 +75,7 @@ def register_lark_inbox_commands(
         help="Acknowledge events only after their actionable feedback is written back.",
     )
     add_subcommand_format(ack)
-    ack.add_argument("--project", default=".")
+    ack.add_argument("--project")
     ack.add_argument("--config")
     ack.add_argument("--goal-id")
     ack.add_argument("--message-id", action="append", required=True)
@@ -86,7 +88,7 @@ def register_lark_inbox_commands(
         ),
     )
     add_subcommand_format(reply)
-    reply.add_argument("--project", default=".")
+    reply.add_argument("--project")
     reply.add_argument("--config")
     reply.add_argument("--goal-id")
     reply.add_argument("--message-id", required=True)
@@ -100,7 +102,7 @@ def register_lark_inbox_commands(
         ),
     )
     add_subcommand_format(ingest)
-    ingest.add_argument("--project", default=".")
+    ingest.add_argument("--project")
     ingest.add_argument("--config")
     ingest.add_argument("--goal-id")
     ingest.add_argument("--execute", action="store_true")
@@ -176,7 +178,7 @@ def handle_lark_inbox_command(
         return None
     try:
         if args.lark_inbox_command == "drain":
-            config_path = _inbox_config(args, registry_path)
+            project, config_path = _inbox_context(args, registry_path)
             if config_path is None:
                 payload = {
                     "ok": True,
@@ -191,37 +193,37 @@ def handle_lark_inbox_command(
                 print_payload(payload, output_format(args), _render)
                 return 0
             payload = inspect_lark_event_inbox(
-                project=args.project,
+                project=project,
                 config_path=config_path,
                 limit=args.limit,
             )
         elif args.lark_inbox_command == "ack":
-            config_path = _inbox_config(args, registry_path)
+            project, config_path = _inbox_context(args, registry_path)
             if config_path is None:
                 raise ValueError("goal does not configure a Lark event inbox")
             payload = acknowledge_lark_event_inbox(
-                project=args.project,
+                project=project,
                 config_path=config_path,
                 message_ids=args.message_id,
                 execute=args.execute,
             )
         elif args.lark_inbox_command == "reply":
-            config_path = _inbox_config(args, registry_path)
+            project, config_path = _inbox_context(args, registry_path)
             if config_path is None:
                 raise ValueError("goal does not configure a Lark event inbox")
             payload = reply_lark_event_inbox(
-                project=args.project,
+                project=project,
                 config_path=config_path,
                 message_id=args.message_id,
                 text=args.text,
                 execute=args.execute,
             )
         elif args.lark_inbox_command == "ingest":
-            config_path = _inbox_config(args, registry_path)
+            project, config_path = _inbox_context(args, registry_path)
             if config_path is None:
                 raise ValueError("goal does not configure a Lark event inbox")
             payload = ingest_lark_event_inbox(
-                project=args.project,
+                project=project,
                 config_path=config_path,
                 events=_read_stdin_events(),
                 execute=args.execute,

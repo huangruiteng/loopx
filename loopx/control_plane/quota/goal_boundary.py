@@ -77,6 +77,7 @@ def goal_boundary(
     item: dict[str, Any] | None = None,
     *,
     agent_id: str | None = None,
+    registry_path: Path | None = None,
     lark_event_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
     reward_memory_experiment_status: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
@@ -148,17 +149,18 @@ def goal_boundary(
         else {}
     )
     if lark_event_inbox.get("enabled") is True:
-        drain_command = shlex.join(
+        drain_parts = ["loopx"]
+        if registry_path is not None:
+            drain_parts.extend(["--registry", str(registry_path.expanduser())])
+        drain_parts.extend(
             [
-                "loopx",
                 "lark-inbox",
                 "drain",
                 "--goal-id",
                 str(goal.get("id") or ""),
-                "--project",
-                ".",
             ]
         )
+        drain_command = shlex.join(drain_parts)
         inbox_capability: dict[str, Any] = {
             "enabled": True,
             "config_pointer_registered": bool(lark_event_inbox.get("config_path")),

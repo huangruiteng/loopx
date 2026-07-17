@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -16,6 +17,7 @@ from loopx.capabilities.lark.event_inbox import (  # noqa: E402
     acknowledge_lark_event_inbox,
     ingest_lark_event_inbox,
     inspect_lark_event_inbox,
+    lark_event_inbox_contains_text,
     project_lark_event_inbox_urgency,
 )
 from loopx.capabilities.lark.inbox_reply import reply_lark_event_inbox  # noqa: E402
@@ -75,6 +77,16 @@ def main() -> None:
         )
         pending = inspect_lark_event_inbox(project=project, config_path=config)
         assert pending["thread_complete"] is True, pending
+        assert lark_event_inbox_contains_text(
+            project=project,
+            config_path=config,
+            text="record this feedback",
+        ) is True
+        assert lark_event_inbox_contains_text(
+            project=project,
+            config_path=config,
+            text="https://github.com/owner/repo/pull/404",
+        ) is False
 
         imported = ingest_lark_event_inbox(
             project=project,
@@ -425,6 +437,7 @@ def main() -> None:
                     "goals": [
                         {
                             "id": "lark-inbox-fixture",
+                            "repo": str(project),
                             "control_plane": {
                                 "lark_event_inbox": {
                                     "enabled": True,
@@ -462,6 +475,58 @@ def main() -> None:
         discovered_payload = json.loads(discovered.stdout)
         assert discovered_payload["configured"] is True, discovered_payload
         assert discovered_payload["pending_count"] == 0, discovered_payload
+
+        shared_registry = project / "registry.global.json"
+        shared_registry.write_text(
+            json.dumps(
+                {
+                    "registry_role": "global-local",
+                    "common_runtime_root": str(project / "shared-runtime"),
+                    "goals": [
+                        {
+                            "id": "lark-inbox-fixture",
+                            "repo": str(project),
+                            "source_registry": str(registry),
+                            "control_plane": {
+                                "lark_event_inbox": {
+                                    "enabled": True,
+                                    "config_path": (
+                                        ".loopx/config/lark-event-inbox.json"
+                                    ),
+                                }
+                            },
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        linked_worktree = project / "linked-worktree"
+        linked_worktree.mkdir()
+        routed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--registry",
+                str(shared_registry),
+                "--format",
+                "json",
+                "lark-inbox",
+                "drain",
+                "--goal-id",
+                "lark-inbox-fixture",
+            ],
+            cwd=linked_worktree,
+            capture_output=True,
+            text=True,
+            check=False,
+            env={**os.environ, "PYTHONPATH": str(ROOT)},
+        )
+        assert routed.returncode == 0, routed.stderr
+        routed_payload = json.loads(routed.stdout)
+        assert routed_payload["configured"] is True, routed_payload
+        assert routed_payload["pending_count"] == 0, routed_payload
 
         reply_preview = subprocess.run(
             [

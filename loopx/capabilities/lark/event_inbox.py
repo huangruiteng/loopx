@@ -412,6 +412,26 @@ def inspect_lark_event_inbox(
     }
 
 
+def lark_event_inbox_contains_text(
+    *, project: str | Path, config_path: str | Path, text: str
+) -> bool:
+    """Return content-free exact evidence from persisted configured-chat history."""
+
+    needle = " ".join(str(text or "").split())
+    if not needle:
+        raise ValueError("lark inbox history lookup requires non-empty text")
+    config = load_lark_event_inbox_config(project=project, config_path=config_path)
+    if not config["enabled"] or not config["thread_complete"]:
+        return False
+    inbox = config["inbox_path"]
+    return any(
+        needle in str(event.get("content") or "")
+        for path in (inbox.glob("*.json") if inbox.is_dir() else [])
+        if path.name != "processed.json"
+        if (event := _event_from_file(path)) is not None
+    )
+
+
 def acknowledge_lark_event_inbox(
     *,
     project: str | Path,
