@@ -90,8 +90,8 @@ quota 可以同时返回：
 当前 live runtime model 是 `peer_v1`：
 
 - 所有 registered agents 是平等身份；
-- 没有永久 primary agent；
-- 没有永久 side agent；
+- 没有永久的主执行者；
+- 没有永久的辅助执行者；
 - todo claim 和 continuation policy 决定当前工作归属；
 - task-scoped coordination 不授予 durable authority；
 - 旧 hierarchy 字段只允许存在于 exactly-once migration reader。
@@ -616,7 +616,7 @@ if current_workspace:
 1. Claim 和 lease 的差别是什么？
 2. Required capability 为什么不是权限？
 3. 什么情况下 user gate 应是 global？
-4. 为什么 review 应建模成普通 todo，而不是 primary agent 权力？
+4. 为什么 review 应建模成普通 todo，而不是固定执行者的特权？
 5. Completion 缺少 successor 和 no-followup 时，系统为什么不能终止？
 
 下一讲把这个工作图交给决策内核，逐层拆解 `quota should-run` 如何编译出本轮 interaction contract。
