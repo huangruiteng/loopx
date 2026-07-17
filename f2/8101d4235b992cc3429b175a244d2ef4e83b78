@@ -1,0 +1,27 @@
+scripts/qualify-doubao-model-behavior-live.py
+  s_76ee28abb3c3a4::t_e71da6c3834789 1-62
+tests/control_plane/test_actual_default_model_behavior_portfolio.py
+  s_76ee28abb3c3a4::t_f39aa1015d78ae 17,166,307-308,310-322
+tests/control_plane/test_user_gate_lane_progress.py
+  s_76ee28abb3c3a4::t_e33197daddabf9 96
+tests/fixtures/turn_envelope_state_matrix.json
+  s_76ee28abb3c3a4::t_7bbb9f42ef3e71 118,176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f28101d4235b992cc3429b175a244d2ef4e83b78",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
