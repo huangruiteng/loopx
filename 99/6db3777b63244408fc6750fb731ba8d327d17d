@@ -1,0 +1,33 @@
+docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md
+  s_e3f612788718c1::t_232c5725c65428 103-109,212
+examples/bootstrap-command-pack-smoke.py
+  s_e3f612788718c1::t_117465972dd02b 211-212
+examples/issue-fix-workflow-e2e-smoke.py
+  s_e3f612788718c1::t_5716e6f46ecaf9 151-155
+examples/issue-fix-workflow-plan-smoke.py
+  s_e3f612788718c1::t_d135e1b20b9a4c 112-118,261-262
+loopx/bootstrap_command_pack.py
+  s_e3f612788718c1::t_fd729c8d3ee9ba 647-651,685
+loopx/capabilities/issue_fix/pr_lifecycle.py
+  s_e3f612788718c1::t_70c9abddbe2f77 23-25,573-633,985-987,1145-1176,1251-1266
+loopx/capabilities/issue_fix/workflow_plan.py
+  s_e3f612788718c1::t_a63474a41dea5c 107,112-119,684-697,980-986
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "996db3777b63244408fc6750fb731ba8d327d17d",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
