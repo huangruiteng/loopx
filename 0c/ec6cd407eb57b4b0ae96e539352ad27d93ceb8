@@ -1,0 +1,23 @@
+loopx/control_plane/quota/turn_envelope.py
+  s_9a5a2bd944fdcb::t_23d751140830a7 26
+loopx/control_plane/testing/cli_output_differential.py
+  s_9a5a2bd944fdcb::t_2021e9387e6ed9 7-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0cec6cd407eb57b4b0ae96e539352ad27d93ceb8",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
