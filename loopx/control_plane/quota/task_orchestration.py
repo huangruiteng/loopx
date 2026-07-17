@@ -25,6 +25,7 @@ def build_quota_work_lane_contract(
     agent_id: str | None,
     agent_todo_summary: dict[str, Any] | None,
     monitor_due_item_limit: int,
+    monitor_debt_arbitration: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     monitor_attempt_already_recorded = bool(
         latest_unchanged_monitor_observation(
@@ -38,6 +39,10 @@ def build_quota_work_lane_contract(
         agent_todo_summary=agent_todo_summary,
         monitor_due_item_limit=monitor_due_item_limit,
         monitor_attempt_already_recorded=monitor_attempt_already_recorded,
+        monitor_debt_backoff_active=bool(
+            isinstance(monitor_debt_arbitration, dict)
+            and monitor_debt_arbitration.get("active") is True
+        ),
     )
 
 

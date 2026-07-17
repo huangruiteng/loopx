@@ -100,6 +100,12 @@ def _todo_projection_sort_key(item: dict[str, Any]) -> tuple[int, int, int, str]
     return todo_projection_sort_key(item)
 
 
+def _monitor_debt_projection_sort_key(item: dict[str, Any]) -> tuple[Any, ...]:
+    priority, *remainder = _todo_projection_sort_key(item)
+    advancement_first = 0 if _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT else 1
+    return (priority, advancement_first, *remainder)
+
+
 def _todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
     return todo_item_is_actionable_open(item)
 
@@ -307,6 +313,7 @@ def _scoped_user_gate_fallback(
     *,
     capability_gate: dict[str, Any] | None = None,
     allow_unrelated_gate: bool = False,
+    monitor_debt_backoff_active: bool = False,
 ) -> dict[str, Any] | None:
     gates = _open_user_gate_todo_items(user_todo_summary)
     if not gates or not isinstance(agent_todo_summary, dict):
@@ -360,7 +367,14 @@ def _scoped_user_gate_fallback(
         if todo_id:
             seen_todo_ids.add(todo_id)
         deduped_executable_items.append(item)
-    executable_items = sorted(deduped_executable_items, key=_todo_projection_sort_key)
+    executable_items = sorted(
+        deduped_executable_items,
+        key=(
+            _monitor_debt_projection_sort_key
+            if monitor_debt_backoff_active
+            else _todo_projection_sort_key
+        ),
+    )
     claim_scope = (
         agent_todo_summary.get("claim_scope")
         if isinstance(agent_todo_summary.get("claim_scope"), dict)

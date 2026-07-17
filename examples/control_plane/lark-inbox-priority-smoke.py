@@ -40,6 +40,24 @@ def status_payload(project: Path) -> dict:
                 priority="P1",
             )
         ],
+        latest_runs=[
+            {
+                "classification": "quota_monitor_poll",
+                "health_check": "due monitor observation unchanged; no quota spend",
+                "monitor_event": {
+                    "monitor_mode": "due_monitor_observed_without_material_transition",
+                    "material_change": False,
+                },
+            },
+            {
+                "classification": "quota_monitor_poll",
+                "health_check": "due monitor observation unchanged; no quota spend",
+                "monitor_event": {
+                    "monitor_mode": "due_monitor_observed_without_material_transition",
+                    "material_change": False,
+                },
+            },
+        ],
         goal_extra={
             "repo": str(project),
             "control_plane": {
@@ -115,6 +133,7 @@ def main() -> None:
         decision = build_quota_should_run(status_payload(project), goal_id=GOAL_ID)
         assert decision["should_run"] is True, decision
         assert decision["effective_action"] == "lark_inbox_reply_due", decision
+        assert decision["monitor_debt_arbitration"]["active"] is True, decision
         lane = decision["work_lane_contract"]
         assert lane["lane"] == "lark_event_inbox", lane
         assert lane["next_lane"] == "advancement_task", lane

@@ -76,6 +76,7 @@ from .control_plane.quota.monitor_poll import (
     render_quota_monitor_poll_markdown,
 )
 from .control_plane.quota.recent_runs import (
+    build_monitor_debt_arbitration as _build_monitor_debt_arbitration,
     goal_latest_runs as _goal_latest_runs,
     recent_external_monitor_observation_unchanged as _recent_external_monitor_observation_unchanged,
 )
@@ -1348,13 +1349,17 @@ def build_quota_should_run(
             recovery_allowed=recovery_allowed,
             reason=reason,
         )
+        monitor_debt_arbitration = _build_monitor_debt_arbitration(
+            status_payload, goal_id=safe_goal_id, agent_id=boundary_agent_id
+        )
         work_lane_contract = build_quota_work_lane_contract(
             item,
             status_payload=status_payload,
             goal_id=safe_goal_id,
-            agent_id=normalize_todo_claimed_by((agent_identity or {}).get("agent_id")),
+            agent_id=boundary_agent_id,
             agent_todo_summary=agent_todo_summary,
             monitor_due_item_limit=MONITOR_DUE_ITEM_LIMIT,
+            monitor_debt_arbitration=monitor_debt_arbitration,
         )
         task_orchestration_contract, work_lane_contract = apply_task_orchestration_contract(
             fallback_work_lane_contract=work_lane_contract,
@@ -1376,6 +1381,7 @@ def build_quota_should_run(
         scoped_user_gate_fallback = _scoped_user_gate_fallback(
             user_todo_summary, agent_todo_summary, capability_gate=capability_gate,
             allow_unrelated_gate=bool(quota.get("safe_bypass_allowed")),
+            monitor_debt_backoff_active=bool(monitor_debt_arbitration.get("active")),
         )
         work_lane_contract = scoped_user_gate_due_monitor_contract(
             scoped_user_gate_fallback, current_contract=work_lane_contract) or work_lane_contract
@@ -1945,6 +1951,8 @@ def build_quota_should_run(
             payload["agent_scoped_user_gate_override"] = agent_scoped_user_gate_override
         if payload_work_lane_contract:
             payload["work_lane_contract"] = payload_work_lane_contract
+        if monitor_debt_arbitration.get("active"):
+            payload["monitor_debt_arbitration"] = monitor_debt_arbitration
         if capability_gate:
             payload["capability_gate"] = capability_gate
             if capability_gate.get("owner_missing"):

@@ -45,6 +45,7 @@ def todo_item(
     cadence: str | None = None,
     next_due_at: str | None = None,
     target_key: str | None = None,
+    priority: str = "P0",
 ) -> dict:
     metadata = {
         key: value
@@ -63,6 +64,7 @@ def todo_item(
         claimed_by=claimed_by,
         action_kind=action_kind,
         blocks_agent=blocks_agent,
+        priority=priority,
         **metadata,
     )
 
@@ -88,6 +90,7 @@ def status_fixture_payload(
     severity: str = "info",
     source: str = "active_state",
     coordination_payload: dict | None = None,
+    latest_runs: list[dict] | None = None,
 ) -> dict:
     quota = {
         "allowed_slots": 1440,
@@ -106,6 +109,7 @@ def status_fixture_payload(
         waiting_on=waiting_on,
         source=source,
         coordination=coordination_payload,
+        latest_runs=latest_runs,
         registry_status="active",
         item_extra={"severity": severity},
         goal_extra={
@@ -361,6 +365,7 @@ def exact_todo_gate_status_payload(
     *,
     include_fallback: bool = True,
     include_due_monitor: bool = False,
+    latest_runs: list[dict] | None = None,
 ) -> dict:
     benchmark_gate = todo_item(
         todo_id="todo_benchmark_owner_gate",
@@ -406,7 +411,8 @@ def exact_todo_gate_status_payload(
     if include_due_monitor:
         due_disposition = todo_item(
             todo_id="todo_due_disposition",
-            text="[P0] Deliver an already-due issue disposition.",
+            text="[P1] Deliver an already-due issue disposition.",
+            priority="P1",
             task_class="continuous_monitor",
             claimed_by="codex-main-control",
             action_kind="issue_disposition_delivery",
@@ -437,6 +443,7 @@ def exact_todo_gate_status_payload(
         user_todos=todo_summary(benchmark_gate, source_section="User Todo"),
         agent_todos=todo_summary_items(agent_items, source_section="Agent Todo"),
         coordination_payload=coordination(),
+        latest_runs=latest_runs,
     )
 
 
@@ -730,6 +737,75 @@ def assert_exact_todo_gate_allows_independent_due_monitor() -> None:
     assert blocked_contract["agent_channel"]["delivery_allowed"] is False, blocked_contract
 
 
+def unchanged_monitor_poll(*, material_change: bool = False) -> dict:
+    return {
+        "classification": "quota_monitor_poll",
+        "agent_id": "codex-main-control",
+        "health_check": (
+            "due monitor material transition observed"
+            if material_change
+            else "due monitor observation unchanged; no quota spend"
+        ),
+        "monitor_event": {
+            "monitor_mode": (
+                "due_monitor_material_transition"
+                if material_change
+                else "due_monitor_observed_without_material_transition"
+            ),
+            "material_change": material_change,
+            "todo_id": "todo_due_disposition",
+        },
+    }
+
+
+def assert_monitor_debt_yields_to_equal_priority_advancement() -> None:
+    recent_runs = [
+        unchanged_monitor_poll(),
+        {"classification": "quota_scheduler_state_ack"},
+        {"classification": "state_refreshed"},
+        unchanged_monitor_poll(),
+    ]
+    payload = build_quota_should_run(
+        exact_todo_gate_status_payload(
+            include_fallback=True,
+            include_due_monitor=True,
+            latest_runs=recent_runs,
+        ),
+        goal_id=GOAL_ID,
+        agent_id="codex-main-control",
+        available_capabilities=["network", "external_write"],
+    )
+    arbitration = payload["monitor_debt_arbitration"]
+    assert arbitration["active"] is True, arbitration
+    assert arbitration["consecutive_unchanged_monitor_turns"] == 2, arbitration
+    fallback = payload["scoped_user_gate_fallback"]
+    assert fallback["selected_executable"]["todo_id"] == (
+        "todo_benchmark_ledger_cleanup"
+    ), fallback
+    lane = payload["work_lane_contract"]
+    assert lane["lane"] == "advancement_task", lane
+    assert "monitor_debt_backoff" in lane["reason_codes"], lane
+
+    terminal_transition = build_quota_should_run(
+        exact_todo_gate_status_payload(
+            include_fallback=True,
+            include_due_monitor=True,
+            latest_runs=[unchanged_monitor_poll(material_change=True), *recent_runs],
+        ),
+        goal_id=GOAL_ID,
+        agent_id="codex-main-control",
+        available_capabilities=["network", "external_write"],
+    )
+    assert "monitor_debt_arbitration" not in terminal_transition, terminal_transition
+    terminal_fallback = terminal_transition["scoped_user_gate_fallback"]
+    assert terminal_fallback["selected_executable"]["todo_id"] == (
+        "todo_due_disposition"
+    ), terminal_fallback
+    assert terminal_transition["work_lane_contract"]["lane"] == (
+        "continuous_monitor"
+    ), terminal_transition
+
+
 def assert_conflicting_exact_and_decision_scope_requires_projection_repair() -> None:
     gate = {
         "todo_id": "todo_gate_conflict",
@@ -854,6 +930,7 @@ def main() -> int:
     assert_scoped_gate_rejects_capability_ineligible_only_fallback()
     assert_exact_todo_gate_survives_decision_scope_migration()
     assert_exact_todo_gate_allows_independent_due_monitor()
+    assert_monitor_debt_yields_to_equal_priority_advancement()
     assert_conflicting_exact_and_decision_scope_requires_projection_repair()
     assert_decision_scope_overrides_shared_action_kind_tokens()
     assert_agent_without_advancement_candidate_and_only_monitor_work_stays_quiet()
