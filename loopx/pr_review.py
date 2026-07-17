@@ -5,7 +5,7 @@ import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from .control_plane.runtime.time import now_utc_iso
 from .presentation.markdown import as_dict as _as_dict
@@ -169,6 +169,24 @@ def fetch_github_pull_requests(
     state_filter: str = "all",
     since: str | None = None,
 ) -> list[dict[str, Any]]:
+    scan = scan_github_pull_requests(
+        repo=repo,
+        limit=limit,
+        cwd=cwd,
+        state_filter=state_filter,
+        since=since,
+    )
+    return list(scan["pull_requests"])
+
+
+def scan_github_pull_requests(
+    *,
+    repo: str | None,
+    limit: int,
+    cwd: Path | None = None,
+    state_filter: str = "all",
+    since: str | None = None,
+) -> dict[str, Any]:
     repo_args = ["--repo", repo] if repo else []
     normalized_state = normalize_pr_state_filter(state_filter)
     search_args: list[str] = []
@@ -203,6 +221,7 @@ def fetch_github_pull_requests(
 
     detailed: list[dict[str, Any]] = []
     seen_numbers: set[str] = set()
+    state_scans: list[dict[str, Any]] = []
 
     def append_state(state: str) -> None:
         rows = _run_gh_json(
@@ -221,7 +240,18 @@ def fetch_github_pull_requests(
             cwd=cwd,
         )
         if not isinstance(rows, list):
+            state_scans.append(
+                {
+                    "state": state,
+                    "fetch_limit": fetch_limit,
+                    "fetched_count": 0,
+                    "included_after_window": 0,
+                    "source_saturated": False,
+                    "source_read_valid": False,
+                }
+            )
             return
+        included_before = len(detailed)
         for row in rows:
             if not isinstance(row, dict):
                 continue
@@ -233,13 +263,32 @@ def fetch_github_pull_requests(
             if number:
                 seen_numbers.add(number)
             detailed.append(row)
+        state_scans.append(
+            {
+                "state": state,
+                "fetch_limit": fetch_limit,
+                "fetched_count": len(rows),
+                "included_after_window": len(detailed) - included_before,
+                "source_saturated": len(rows) >= fetch_limit,
+                "source_read_valid": True,
+            }
+        )
 
     if normalized_state == "all":
         append_state("open")
         append_state("closed")
     else:
         append_state(normalized_state)
-    return detailed
+    return {
+        "schema_version": "pr_review_source_scan_v0",
+        "complete": all(
+            item["source_read_valid"] is True
+            and item["source_saturated"] is False
+            for item in state_scans
+        ),
+        "pull_requests": detailed,
+        "states": state_scans,
+    }
 
 
 def load_pr_fixture(path: Path) -> tuple[str | None, list[dict[str, Any]]]:
@@ -595,6 +644,7 @@ def _agent_response_contract() -> dict[str, Any]:
         "default_review_scope": "Review PRs in review_groups.unmerged first, then review_groups.merged, bounded by the requested limit.",
         "required_packet_fields_to_preserve": [
             "agent_response_contract",
+            "result_completeness",
             "review_groups",
             "pull_requests[].review_template",
             "pull_requests[].evidence_commands",
@@ -616,9 +666,10 @@ def _agent_response_contract() -> dict[str, Any]:
         ],
         "instructions": [
             "Run loopx pr-review first and use review_groups as the queue.",
+            "Before treating the queue as exhaustive, require result_completeness.complete=true. If it is false and the user asked for all/every PR, rerun with result_completeness.recommended_limit and preserve the new full packet.",
             "When the visible message starts with /loopx-pr-review, treat words such as open, closed, merged, today, or time windows as filters, not as permission to return stats only.",
             "Do not stop at the queue/table summary when the user invokes /loopx-pr-review.",
-            "Do not pipe the JSON packet through jq or another projection that drops agent_response_contract, review_groups, pull_requests[].review_template, or pull_requests[].evidence_commands before planning the final answer.",
+            "Do not pipe the JSON packet through jq or another projection that drops agent_response_contract, result_completeness, review_groups, pull_requests[].review_template, or pull_requests[].evidence_commands before planning the final answer.",
             "For each selected PR, run the evidence_commands or equivalent PR body/diff reads before filling the five sections.",
             "Do not fill the five sections from metadata_risk_hint alone; metadata_risk_hint is only queue-ordering context.",
             "Use the installed loopx command or the intended checked-out LoopX worktree; if using python -m loopx.cli from a checkout, first confirm that checkout includes this response contract.",
@@ -822,6 +873,7 @@ def build_pr_review_packet(
     source: str,
     state_filter: str = "all",
     since: str | None = None,
+    source_scan: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized_state_filter = normalize_pr_state_filter(state_filter)
     normalized_all = [_normalize_pr(item) for item in pull_requests]
@@ -843,6 +895,63 @@ def build_pr_review_packet(
         normalized = normalized_all[:packet_limit]
         unmerged_items = [item for item in normalized if str(item.get("state") or "").upper() != "MERGED"]
         merged_items = [item for item in normalized if str(item.get("state") or "").upper() == "MERGED"]
+    source_scan_complete = (
+        source_scan.get("complete") is True
+        if isinstance(source_scan, Mapping)
+        else True
+    )
+    group_observed_counts = {
+        "unmerged": len(unmerged_all),
+        "merged": len(merged_all),
+    }
+    group_included_counts = {
+        "unmerged": len(unmerged_items),
+        "merged": len(merged_items),
+    }
+    group_completeness = {
+        key: source_scan_complete
+        and group_included_counts[key] == group_observed_counts[key]
+        for key in group_observed_counts
+    }
+    complete = all(group_completeness.values())
+    recommended_limit = None
+    if not complete:
+        recommended_limit = max(
+            packet_limit * 2,
+            max(group_observed_counts.values(), default=0) + 1,
+        )
+    source_scan_summary = None
+    if isinstance(source_scan, Mapping):
+        source_scan_summary = {
+            key: value
+            for key, value in source_scan.items()
+            if key != "pull_requests"
+        }
+    result_completeness = {
+        "schema_version": "pr_review_result_completeness_v0",
+        "complete": complete,
+        "truncated": not complete,
+        "limit": packet_limit,
+        "limit_scope": "per_group" if normalized_state_filter == "all" else "filtered_queue",
+        "source_scan_complete": source_scan_complete,
+        "observed_count_is_lower_bound": not source_scan_complete,
+        "observed_pr_count": len(normalized_all),
+        "included_pr_count": len(normalized),
+        "groups": {
+            key: {
+                "complete": group_completeness[key],
+                "observed_count": group_observed_counts[key],
+                "included_count": group_included_counts[key],
+                "truncated": not group_completeness[key],
+            }
+            for key in ("unmerged", "merged")
+        },
+        "recommended_limit": recommended_limit,
+        "rerun_cli_args": (
+            ["--limit", str(recommended_limit)] if recommended_limit else []
+        ),
+        "source_scan": source_scan_summary,
+    }
     review_sequence = [_review_sequence_entry(item, rank=index) for index, item in enumerate(normalized, start=1)]
     open_review_required = [
         item
@@ -862,6 +971,9 @@ def build_pr_review_packet(
             "title": "Unmerged PRs",
             "intent": "Review before merge: decide approve, request changes, defer, or wait for checks.",
             "count": len(unmerged_items),
+            "complete": group_completeness["unmerged"],
+            "observed_count": group_observed_counts["unmerged"],
+            "truncated": not group_completeness["unmerged"],
             "pr_numbers": [item.get("number") for item in unmerged_items],
             "review_sequence": [
                 _review_sequence_entry(item, rank=index)
@@ -874,6 +986,9 @@ def build_pr_review_packet(
             "title": "Merged PRs",
             "intent": "Post-merge audit: check outcome, regression risk, and follow-up quality without blocking already-merged work.",
             "count": len(merged_items),
+            "complete": group_completeness["merged"],
+            "observed_count": group_observed_counts["merged"],
+            "truncated": not group_completeness["merged"],
             "pr_numbers": [item.get("number") for item in merged_items],
             "review_sequence": [
                 _review_sequence_entry(item, rank=index)
@@ -907,8 +1022,9 @@ def build_pr_review_packet(
             },
             "source": source,
             "include": [
-                "pull_request_list",
-                "review_groups",
+            "pull_request_list",
+            "result_completeness",
+            "review_groups",
                 "review_template",
                 "agent_response_contract",
                 "change_scope",
@@ -935,6 +1051,7 @@ def build_pr_review_packet(
             "source_surfaces": SOURCE_SURFACES,
             "recommended_first_pr": first,
         },
+        "result_completeness": result_completeness,
         "review_sequence": review_sequence,
         "review_groups": review_groups,
         "pull_requests": normalized,
@@ -987,6 +1104,7 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
 
     summary = _as_dict(payload.get("summary"))
     request = _as_dict(payload.get("request"))
+    completeness = _as_dict(payload.get("result_completeness"))
     lines = [
         "# Project PR Review Queue",
         "",
@@ -995,6 +1113,7 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
         f"- state_filter: `{request.get('state_filter') or 'all'}`",
         f"- since: `{request.get('since') or 'not set'}`",
         f"- headline: {summary.get('headline')}",
+        f"- complete: `{completeness.get('complete')}`; truncated=`{completeness.get('truncated')}`; recommended_limit=`{completeness.get('recommended_limit')}`",
         f"- counts: total=`{summary.get('total_pr_count')}`, open=`{summary.get('open_pr_count')}`, merged=`{summary.get('merged_pr_count')}`, review_attention=`{summary.get('review_attention_count')}`, draft=`{summary.get('draft_count')}`",
         "- tool contract: run `loopx pr-review` first and use its `review_groups`; use ad hoc `gh` commands only after selecting a PR from this packet.",
         "- final answer contract: queue/table is only a preface; `/loopx-pr-review` must return filled five-block review cards after reading PR evidence.",

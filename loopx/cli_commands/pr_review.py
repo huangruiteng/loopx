@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ..pr_review import (
     build_pr_review_packet,
-    fetch_github_pull_requests,
+    scan_github_pull_requests,
     load_pr_fixture,
     normalize_pr_state_filter,
     render_pr_review_markdown,
@@ -34,7 +34,12 @@ def register_pr_review_command(
         "--repo",
         help="GitHub owner/repo to review. Defaults to the current project's gh repository context.",
     )
-    parser.add_argument("--limit", type=int, default=10, help="Maximum PRs to include.")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=100,
+        help="Maximum PRs to include per selected lifecycle group.",
+    )
     parser.add_argument(
         "--state",
         choices=("open", "merged", "all"),
@@ -66,14 +71,16 @@ def handle_pr_review_command(
             repository_from_fixture, pull_requests = load_pr_fixture(Path(args.fixture).expanduser())
             repository = repository or repository_from_fixture
             source = "fixture"
+            source_scan = None
         else:
             repository = repository or resolve_current_github_repository()
-            pull_requests = fetch_github_pull_requests(
+            source_scan = scan_github_pull_requests(
                 repo=repository,
-                limit=max(1, args.limit),
+                limit=max(1, args.limit) + 1,
                 state_filter=normalize_pr_state_filter(args.state),
                 since=args.since,
             )
+            pull_requests = source_scan["pull_requests"]
         payload = build_pr_review_packet(
             pull_requests=pull_requests,
             repository=repository,
@@ -81,6 +88,7 @@ def handle_pr_review_command(
             source=source,
             state_filter=normalize_pr_state_filter(args.state),
             since=args.since,
+            source_scan=source_scan,
         )
     except Exception as exc:
         payload = {
