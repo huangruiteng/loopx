@@ -1,0 +1,33 @@
+loopx/benchmark_case_state.py
+  s_9a5a2bd944fdcb::t_ed2c6f5f508e97 7-10,720-736
+loopx/control_plane/scheduler/execution_context.py
+  s_9a5a2bd944fdcb::t_8bdab78219826f 3,37-43,230-267
+loopx/control_plane/work_items/interaction_contract.py
+  s_9a5a2bd944fdcb::t_339a3d58577f4d 4,14-17,139-141,160,464-466,478-495,528-529,586-587,592,603,913-915,922,1022-1024,1090
+loopx/diagnose.py
+  s_9a5a2bd944fdcb::t_e3d867ffa631c4 7-11,127-129,219-221,234
+loopx/project_prompt.py
+  s_9a5a2bd944fdcb::t_832b0c3a50baf3 9-10,278-283
+loopx/quota.py
+  s_9a5a2bd944fdcb::t_5549174a808e51 2160,2181
+scripts/skillsbench_automation_loop.py
+  s_9a5a2bd944fdcb::t_8458702966d36c 83,12379-12382,12455,12571,12624
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5995d5304ae697a9cbd8c60cb57abee8dfff0bef",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
