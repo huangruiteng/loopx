@@ -2279,16 +2279,16 @@ def record_quota_scheduler_ack(
     reset_token: str | None = None,
     identity_signature: str | None = None,
     reason_summary: str | None = None, use_current_hint: bool = False, host_match_observed: bool = False,
+    scheduler_execution_context: Mapping[str, Any] | SchedulerExecutionContextResolution | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
     safe_agent_id = normalize_todo_claimed_by(agent_id)
-    safe_surface = str(surface or CODEX_APP_SURFACE).strip() or CODEX_APP_SURFACE
-    safe_state_key = str(state_key or CODEX_APP_STATEFUL_BACKOFF_STATE_KEY).strip()
     before = build_quota_should_run(
         status_payload,
         goal_id=safe_goal_id,
         agent_id=safe_agent_id,
         available_capabilities=available_capabilities, codex_app_current_rrule=applied_rrule if host_match_observed else None,
+        scheduler_execution_context=scheduler_execution_context,
     )
     raw_runtime_root = status_payload.get("runtime_root")
     if not raw_runtime_root:
@@ -2300,8 +2300,8 @@ def record_quota_scheduler_ack(
         goal_id=safe_goal_id,
         agent_id=safe_agent_id,
         execute=execute,
-        surface=safe_surface,
-        state_key=safe_state_key,
+        surface=str(surface or CODEX_APP_SURFACE).strip() or CODEX_APP_SURFACE,
+        state_key=str(state_key or CODEX_APP_STATEFUL_BACKOFF_STATE_KEY).strip(),
         applied_rrule=applied_rrule,
         reset_token=reset_token,
         identity_signature=identity_signature,

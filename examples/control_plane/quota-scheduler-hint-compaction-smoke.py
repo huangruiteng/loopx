@@ -16,11 +16,18 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from loopx.control_plane.scheduler.execution_context import (  # noqa: E402
+    SchedulerRuntimeProfile,
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint  # noqa: E402
 from loopx.quota import _scheduler_hint  # noqa: E402
 
 
 RUNTIME_KEYS = ("local_scheduler", "codex_cli_tui", "claude_code_loop")
+APP_SCHEDULER_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT
+)
 
 
 def _load_quota_plan_fixture_module():
@@ -125,10 +132,7 @@ def assert_compact_runtime_policy_complete(
         ack_args["goal_id"],
         "--agent-id",
         ack_args["agent_id"],
-        "--surface",
-        ack_args["surface"],
-        "--state-key",
-        ack_args["state_key"],
+        "-A",
         "--applied-rrule",
         ack_args["applied_rrule"],
         "--execute",
@@ -162,6 +166,7 @@ def assert_compact_runtime_policy_complete(
         expected_goal_id,
         "--agent-id",
         expected_agent_id,
+        "-A",
     ]
     if expected_registry_path is not None and expected_runtime_root is not None:
         expected_failure_prefix = [
@@ -215,12 +220,20 @@ def assert_compact_runtime_policy_complete(
 
 
 def assert_compact_scheduler(name: str, source_payload: dict) -> None:
-    compact = build_scheduler_hint(deepcopy(source_payload), user_action_required=False)
-    wrapper = _scheduler_hint(deepcopy(source_payload))
+    compact = build_scheduler_hint(
+        deepcopy(source_payload),
+        user_action_required=False,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
+    )
+    wrapper = _scheduler_hint(
+        deepcopy(source_payload),
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
+    )
     detailed = build_scheduler_hint(
         deepcopy(source_payload),
         user_action_required=False,
         include_detail=True,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
     )
 
     assert compact == wrapper, (name, compact, wrapper)
@@ -304,6 +317,7 @@ def run_should_run_cli(
         "needs-operator",
         "--agent-id",
         agent_id,
+        "--codex-app",
         "--scan-path",
         str(project),
     ]

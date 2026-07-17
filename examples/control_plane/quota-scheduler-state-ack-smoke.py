@@ -26,8 +26,12 @@ from loopx.control_plane.scheduler.ack import (  # noqa: E402
     build_codex_app_scheduler_ack_event,
     build_scheduler_ack_plan,
 )
+from loopx.control_plane.scheduler.execution_context import (  # noqa: E402
+    SchedulerRuntimeProfile,
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.control_plane.scheduler.scheduler_hint import (  # noqa: E402
-    build_scheduler_hint,
+    build_scheduler_hint as _build_scheduler_hint,
 )
 from loopx.control_plane.scheduler.state import (  # noqa: E402
     SCHEDULER_STATE_SCHEMA_VERSION,
@@ -44,6 +48,17 @@ from loopx.status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK  # noqa: E402
 
 AGENT_SCOPE_ACTIONS = [action.value for action in AgentScopeFrontierAction]
 FROZEN_NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+APP_SCHEDULER_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT
+)
+
+
+def build_scheduler_hint(payload: dict, **kwargs: object) -> dict:
+    return _build_scheduler_hint(
+        payload,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
+        **kwargs,
+    )
 
 
 def _load_quota_plan_fixture_module():
@@ -414,10 +429,7 @@ def assert_scheduler_ack_plan_validation() -> None:
         ack_args["goal_id"],
         "--agent-id",
         ack_args["agent_id"],
-        "--surface",
-        ack_args["surface"],
-        "--state-key",
-        ack_args["state_key"],
+        "-A",
         "--applied-rrule",
         ack_args["applied_rrule"],
         "--execute",
@@ -557,6 +569,7 @@ def assert_normal_run_ack_preserves_runtime_capabilities() -> None:
         goal_id="scheduler-state-ack-runtime-capabilities",
         agent_id="codex-side-agent",
         available_capabilities=["shell", "network", "lark_read"],
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
     )
     assert decision["effective_action"] == "normal_run", decision
     assert "capability_gate" not in decision, decision
@@ -714,9 +727,26 @@ def assert_scheduler_state_scope_validation() -> None:
             raise AssertionError("write_scheduler_state accepted cross-agent scheduler state")
 
 
+def bind_codex_app_quota_args(args: tuple[str, ...]) -> tuple[str, ...]:
+    app_commands = {
+        "should-run",
+        "scheduler-ack",
+        "scheduler-ack-current",
+        "scheduler-fail-current",
+    }
+    if (
+        len(args) >= 2
+        and args[0] == "quota"
+        and args[1] in app_commands
+        and not {"-A", "--codex-app"}.intersection(args)
+    ):
+        return (*args, "--codex-app")
+    return args
+
+
 def run_cli(root: Path, *args: str, registry_path: Path, runtime: Path, project: Path) -> dict:
     return run_json_cli(
-        *args,
+        *bind_codex_app_quota_args(args),
         "--scan-path",
         str(project),
         registry_path=registry_path,
@@ -730,7 +760,7 @@ def run_cli_result(
     root: Path, *args: str, registry_path: Path, runtime: Path, project: Path
 ) -> tuple[int, dict]:
     return run_json_cli_result(
-        *args,
+        *bind_codex_app_quota_args(args),
         "--scan-path",
         str(project),
         registry_path=registry_path,
@@ -1479,6 +1509,12 @@ def assert_cli_scheduler_ack_uses_should_run_lookback() -> None:
         agent_id="codex-side-agent",
         available_capabilities=["shell", "network", "benchmark_runner"],
         include_scheduler_detail=False,
+        runtime_profile=None,
+        codex_app=True,
+        host_surface=None,
+        scheduler_owner=None,
+        execution_mode=None,
+        codex_app_current_rrule=None,
         slots=1,
         source="heartbeat",
         void_generated_at=None,
@@ -1497,6 +1533,7 @@ def assert_cli_scheduler_ack_uses_should_run_lookback() -> None:
         applied_rrule="FREQ=MINUTELY;INTERVAL=10",
         reset_token="fixture-reset-token",
         identity_signature="fixture-identity-signature",
+        host_match_observed=False,
         use_current_hint=False,
         dry_run=False,
         execute=False,
