@@ -117,16 +117,28 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     quota_parser.add_argument(
+        "--codex-app",
+        action="store_true",
+        help=(
+            "Compact explicit alias for --runtime-profile "
+            "codex_app_heartbeat. Cannot be combined with another scheduler "
+            "runtime or execution context."
+        ),
+    )
+    quota_parser.add_argument(
+        "-H",
         "--host-surface",
         choices=["codex_app", "codex_cli", "generic_cli", "claude_code", "local_scheduler"],
         help="Host surface that will consume this scheduler projection.",
     )
     quota_parser.add_argument(
+        "-O",
         "--scheduler-owner",
         choices=["host_automation", "agent_cli_loop", "outer_controller", "none"],
         help="Runtime that owns the next cadence decision.",
     )
     quota_parser.add_argument(
+        "-M",
         "--execution-mode",
         choices=["interactive", "isolated_headless", "hosted_automation"],
         help="Execution mode paired with --host-surface and --scheduler-owner.",
@@ -281,14 +293,26 @@ def handle_quota_command(
                 args.scheduler_owner,
                 args.execution_mode,
             )
+            if args.codex_app and (
+                args.runtime_profile or any(explicit_scheduler_fields)
+            ):
+                raise ValueError(
+                    "--codex-app cannot be combined with --runtime-profile, "
+                    "--host-surface, --scheduler-owner, or --execution-mode"
+                )
             if args.runtime_profile and any(explicit_scheduler_fields):
                 raise ValueError(
                     "--runtime-profile cannot be combined with --host-surface, "
                     "--scheduler-owner, or --execution-mode"
                 )
-            if args.runtime_profile:
+            runtime_profile = (
+                SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT.value
+                if args.codex_app
+                else args.runtime_profile
+            )
+            if runtime_profile:
                 scheduler_context = scheduler_execution_context_for_runtime_profile(
-                    args.runtime_profile
+                    runtime_profile
                 )
             elif any(explicit_scheduler_fields):
                 scheduler_context = {

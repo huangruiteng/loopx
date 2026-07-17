@@ -60,6 +60,8 @@ def render_scheduler_execution_args(
             raise ValueError(
                 f"unsupported scheduler runtime profile: {runtime_profile}"
             ) from exc
+        if normalized_profile == SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT.value:
+            return " --codex-app"
         return f" --runtime-profile {shell_arg(normalized_profile)}"
     if scheduler_execution_context is None:
         return ""
@@ -71,9 +73,9 @@ def render_scheduler_execution_args(
     context = resolution.context
     return "".join(
         (
-            f" --host-surface {shell_arg(context.host_surface.value)}",
-            f" --scheduler-owner {shell_arg(context.scheduler_owner.value)}",
-            f" --execution-mode {shell_arg(context.execution_mode.value)}",
+            f" -H {shell_arg(context.host_surface.value)}",
+            f" -O {shell_arg(context.scheduler_owner.value)}",
+            f" -M {shell_arg(context.execution_mode.value)}",
         )
     )
 

@@ -960,7 +960,13 @@ def render_thin_heartbeat_task_body(
         f"`{quota_guard_command}`"
         if any(
             marker in quota_guard_command
-            for marker in ("--available-capability", "--runtime-profile", "--host-surface")
+            for marker in (
+                "--available-capability",
+                "--runtime-profile",
+                "--codex-app",
+                "--host-surface",
+                " -H ",
+            )
         )
         else "`quota should-run`"
     )

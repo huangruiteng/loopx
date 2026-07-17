@@ -27,9 +27,9 @@ def test_codex_ide_is_an_exact_host_type_with_visible_goal_activation() -> None:
     assert packet["host_mutation"]["owner"] == "Codex IDE composer"
     assert packet["host_mutation"]["host_command"] == "/goal <task_body>"
     assert "automation_update" not in str(packet)
-    assert "--host-surface codex_cli" in packet["commands"]["heartbeat_prompt"]
-    assert "--scheduler-owner agent_cli_loop" in packet["commands"]["heartbeat_prompt"]
-    assert "--execution-mode interactive" in packet["commands"]["heartbeat_prompt"]
+    assert "-H codex_cli" in packet["commands"]["heartbeat_prompt"]
+    assert "-O agent_cli_loop" in packet["commands"]["heartbeat_prompt"]
+    assert "-M interactive" in packet["commands"]["heartbeat_prompt"]
 
 
 def test_codex_app_activation_uses_narrow_runtime_profile() -> None:
@@ -41,7 +41,8 @@ def test_codex_app_activation_uses_narrow_runtime_profile() -> None:
     )
 
     command = packet["commands"]["heartbeat_prompt"]
-    assert "--runtime-profile codex_app_heartbeat" in command
+    assert "--codex-app" in command
+    assert "--runtime-profile" not in command
     assert "--host-surface" not in command
     assert "--scheduler-owner" not in command
     assert "--execution-mode" not in command
@@ -54,8 +55,8 @@ def test_codex_app_thin_prompt_embeds_profile_only_in_quota_command() -> None:
         runtime_profile="codex_app_heartbeat",
     )
 
-    assert "--runtime-profile codex_app_heartbeat" in prompt["quota_guard_command"]
-    assert "--runtime-profile codex_app_heartbeat" in prompt["task_body"]
+    assert "--codex-app" in prompt["quota_guard_command"]
+    assert "--codex-app" in prompt["task_body"]
     assert "host_surface" not in prompt["task_body"]
     assert "scheduler_owner" not in prompt["task_body"]
     assert "compact_prompt_command" not in prompt

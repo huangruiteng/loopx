@@ -174,16 +174,27 @@ def register_support_control_commands(
         ),
     )
     heartbeat_prompt_parser.add_argument(
+        "--codex-app",
+        action="store_true",
+        help=(
+            "Compact explicit alias for --runtime-profile "
+            "codex_app_heartbeat in generated heartbeat commands."
+        ),
+    )
+    heartbeat_prompt_parser.add_argument(
+        "-H",
         "--host-surface",
         choices=["codex_app", "codex_cli", "generic_cli", "claude_code", "local_scheduler"],
         help="Host surface embedded in the generated quota guard.",
     )
     heartbeat_prompt_parser.add_argument(
+        "-O",
         "--scheduler-owner",
         choices=["host_automation", "agent_cli_loop", "outer_controller", "none"],
         help="Cadence owner embedded in the generated quota guard.",
     )
     heartbeat_prompt_parser.add_argument(
+        "-M",
         "--execution-mode",
         choices=["interactive", "isolated_headless", "hosted_automation"],
         help="Execution mode embedded in the generated quota guard.",
@@ -401,6 +412,28 @@ def handle_support_control_command(
                     field="agent_id",
                 )
                 agent_profile = agent_profile_from_registry(agent_registry_path, args.goal_id, effective_agent_id)
+            explicit_scheduler_fields = (
+                args.host_surface,
+                args.scheduler_owner,
+                args.execution_mode,
+            )
+            if args.codex_app and (
+                args.runtime_profile or any(explicit_scheduler_fields)
+            ):
+                raise ValueError(
+                    "--codex-app cannot be combined with --runtime-profile, "
+                    "--host-surface, --scheduler-owner, or --execution-mode"
+                )
+            if args.runtime_profile and any(explicit_scheduler_fields):
+                raise ValueError(
+                    "--runtime-profile cannot be combined with --host-surface, "
+                    "--scheduler-owner, or --execution-mode"
+                )
+            runtime_profile = (
+                SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT.value
+                if args.codex_app
+                else args.runtime_profile
+            )
             payload = build_heartbeat_prompt(
                 goal_id=args.goal_id,
                 active_state=active_state,
@@ -418,14 +451,14 @@ def handle_support_control_command(
                 agent_profile=agent_profile,
                 registered_agents=registered_agents,
                 available_capabilities=args.available_capabilities,
-                runtime_profile=args.runtime_profile,
+                runtime_profile=runtime_profile,
                 scheduler_execution_context=(
                     {
                         "host_surface": args.host_surface,
                         "scheduler_owner": args.scheduler_owner,
                         "execution_mode": args.execution_mode,
                     }
-                    if any((args.host_surface, args.scheduler_owner, args.execution_mode))
+                    if any(explicit_scheduler_fields)
                     else None
                 ),
             )
