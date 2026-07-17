@@ -1,0 +1,21 @@
+loopx/control_plane/work_items/autonomous_replan_obligation.py
+  s_9a5a2bd944fdcb::t_eff34697faebe4 234-289,300-307,312-316,433
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "77e7ebfff1689365bd45e8f2596afdddd093f4b5",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
