@@ -1,0 +1,27 @@
+docs/development/testing-and-quality.md
+  s_76ee28abb3c3a4::t_80becb2754881c 264-274,280-282
+docs/reference/protocols/model-behavior-qualification-v0.md
+  s_76ee28abb3c3a4::t_940a662280877f 171-183,282-284
+docs/state-interaction-model.md
+  s_76ee28abb3c3a4::t_a5c768ee6da8ae 168-170
+skills/loopx-self-repair/references/repair-patterns.md
+  s_76ee28abb3c3a4::t_3015fa0599a8e8 78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0fe2415d7875ac3c125eca3b4bd75bea5981fb8d",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
