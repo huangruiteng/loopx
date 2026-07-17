@@ -1,0 +1,41 @@
+README.md
+  s_e3f612788718c1::t_76a0a2cf54e8e0 843-845
+README.zh-CN.md
+  s_e3f612788718c1::t_cdeb0ebf54c8fa 310-311
+docs/development/README.md
+  s_e3f612788718c1::t_5eda513e2521c4 15-16,27-28,41
+docs/development/control-plane-course/01-first-real-loop.md
+  s_e3f612788718c1::t_947e5de535dd8d 7,18-19,534,554,574-575
+docs/development/control-plane-course/04-quota-decision-kernel.md
+  s_e3f612788718c1::t_839e40308f440e 282,335-377
+docs/development/control-plane-course/05-host-scheduler-and-heartbeat.md
+  s_e3f612788718c1::t_d22974bb271bb2 201-225
+docs/development/control-plane-course/06-evidence-refresh-and-self-repair.md
+  s_e3f612788718c1::t_f4f9d047afa1c4 292-293,311,316-342
+docs/development/control-plane-course/07-engineering-a-control-plane-rule.md
+  s_e3f612788718c1::t_58504be3f0617e 375,377,379,381-386,388,390,392-397,403,679
+docs/development/control-plane-course/08-autonomous-agent-quality-gates.md
+  s_e3f612788718c1::t_4a3cafb26ef74c 1-360
+docs/development/control-plane-course/09-extension-layer.md
+  s_e3f612788718c1::t_09c93c2da8bbca 1,732
+docs/development/control-plane-course/README.md
+  s_e3f612788718c1::t_8ce42e7b8c7ec0 3,23-24,28,32-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a645375ed55b9c11b9f21a194e285501a4324335",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
