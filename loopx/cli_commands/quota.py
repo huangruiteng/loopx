@@ -580,7 +580,10 @@ def handle_quota_command(
             allow_failed=args.quota_command == "should-run",
         )
     if bool(getattr(args, "turn_envelope", False)):
-        payload = build_turn_envelope(payload)
+        payload = build_turn_envelope(
+            payload,
+            scheduler_execution_context=scheduler_context,
+        )
     renderer = (
         render_turn_envelope_markdown
         if bool(getattr(args, "turn_envelope", False))

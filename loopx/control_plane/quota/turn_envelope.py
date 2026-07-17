@@ -5,6 +5,12 @@ from collections.abc import Mapping
 from hashlib import sha256
 from typing import Any
 
+from ..scheduler.execution_context import (
+    SchedulerExecutionContextResolution,
+    SchedulerRuntimeProfile,
+    render_scheduler_execution_args,
+    resolve_scheduler_execution_context,
+)
 from ..work_items.interaction_contract import (
     PROTOCOL_ACTION_PACKET_LLM_POLICY,
     protocol_action_packet_fields,
@@ -685,12 +691,34 @@ def quota_action_signature_document(payload: Mapping[str, Any]) -> dict[str, Any
     return turn_envelope_action_signature_document(_action_projection(payload))
 
 
-def _cold_path(payload: Mapping[str, Any], agent_id: str | None) -> dict[str, Any]:
+def _cold_path(
+    payload: Mapping[str, Any],
+    agent_id: str | None,
+    scheduler_execution_context: (
+        Mapping[str, Any] | SchedulerExecutionContextResolution | None
+    ),
+) -> dict[str, Any]:
     goal_id = str(payload.get("goal_id") or "<goal-id>")
     agent_arg = f" --agent-id {agent_id}" if agent_id else ""
+    resolution = resolve_scheduler_execution_context(scheduler_execution_context)
+    scheduler_args = ""
+    if resolution.ok and resolution.context is not None:
+        if resolution.context.source == (
+            f"runtime_profile:{SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT.value}"
+        ):
+            scheduler_args = render_scheduler_execution_args(
+                runtime_profile=SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT.value,
+            )
+        else:
+            scheduler_args = render_scheduler_execution_args(
+                scheduler_execution_context=resolution,
+            )
     return {
         "full_decision": (
-            f"loopx --format json quota should-run --goal-id {goal_id}{agent_arg}"
+            f"loopx --format json quota should-run --goal-id {goal_id}"
+            f"{agent_arg}{scheduler_args}"
+            if scheduler_args
+            else "rerun the typed quota_guard from the current host packet"
         ),
         "todo_detail": f"loopx --format json todo list --goal-id {goal_id}",
         "status_detail": f"loopx --format json status --goal-id {goal_id}",
@@ -705,7 +733,13 @@ def _cold_path(payload: Mapping[str, Any], agent_id: str | None) -> dict[str, An
     }
 
 
-def build_turn_envelope(payload: Mapping[str, Any]) -> dict[str, Any]:
+def build_turn_envelope(
+    payload: Mapping[str, Any],
+    *,
+    scheduler_execution_context: (
+        Mapping[str, Any] | SchedulerExecutionContextResolution | None
+    ) = None,
+) -> dict[str, Any]:
     """Project a full quota decision into an additive, model-facing hot-path view."""
 
     agent_identity = _mapping(payload.get("agent_identity"))
@@ -722,7 +756,7 @@ def build_turn_envelope(payload: Mapping[str, Any]) -> dict[str, Any]:
         "action_required": bool(payload.get("action_required")),
         "open_count": int(payload.get("open_count") or 0),
         **_action_projection(payload),
-        "detail_ref": _cold_path(payload, agent_id),
+        "detail_ref": _cold_path(payload, agent_id, scheduler_execution_context),
     }
 
     source_signature = quota_action_signature_document(payload)
