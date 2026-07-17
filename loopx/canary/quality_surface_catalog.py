@@ -134,6 +134,7 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
         "canary_profile_id": "release-promotion",
         "owner_paths": [
             "loopx/control_plane/runtime/promotion_readiness.py",
+            "loopx/control_plane/testing/release_commit_qualification.py",
             "loopx/promotion_gate.py",
             "loopx/release_manifest.py",
         ],
@@ -147,20 +148,25 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
         },
         "layers": {
             "unit_contract": _covered(
+                "tests/control_plane/test_release_commit_qualification.py",
                 "tests/control_plane/test_release_outcome_baseline.py",
                 "tests/test_doctor_install_freshness.py",
             ),
             "durable_smoke": _covered(
-                "examples/canary/canary-promotion-readiness-smoke.py"
+                "examples/canary/canary-promotion-readiness-smoke.py",
+                "examples/release/exact-release-commit-qualification-smoke.py",
             ),
             "catalog_canary": _covered("release-promotion"),
             "host_upgrade": _covered(
                 "examples/release/release-version-contract-smoke.py"
             ),
-            "model_behavior": _not_applicable(
-                "Provider behavior is qualified only when a release changes agent-facing semantics."
+            "model_behavior": _covered(
+                "actual_default_model_behavior_portfolio_v0"
             ),
-            "release_gate": _covered("loopx canary premerge --profile release-promotion"),
+            "release_gate": _covered(
+                "loopx canary premerge --profile release-promotion",
+                "loopx canary release-qualification",
+            ),
         },
     },
     {
