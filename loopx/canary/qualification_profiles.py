@@ -99,6 +99,44 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "scheduler-ack-route",
+        "title": "Scheduler ACK state and route binding",
+        "quality_risk": "high",
+        "purpose": (
+            "Qualify scheduler ACK state progression and originating registry/runtime "
+            "routing as independent contracts without nested smoke execution."
+        ),
+        "catalog_families": [
+            "Work Routing",
+            "State And Boundary",
+        ],
+        "trigger_hints": (
+            "scheduler-ack",
+            "scheduler ack",
+            "scheduler_hint",
+            "ack_cli_args",
+            "route_binding",
+            "loopx/control_plane/scheduler/ack.py",
+            "loopx/control_plane/scheduler/scheduler_hint.py",
+            "loopx/control_plane/scheduler/state.py",
+            "loopx/cli_commands/quota",
+            "quota-scheduler-state-ack-smoke.py",
+            "quota-scheduler-registry-route-smoke.py",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/control_plane/quota-scheduler-state-ack-smoke.py",
+                "tier": "default",
+                "reason": "guards scheduler_hint stateful ACK progression and no-spend cadence transitions",
+            },
+            {
+                "command": "python3 examples/control_plane/quota-scheduler-registry-route-smoke.py",
+                "tier": "default",
+                "reason": "guards ACK writes on the registry/runtime route that emitted the hint",
+            },
+        ],
+    },
+    {
         "id": "agent-facing-cli-output-budget",
         "title": "Agent-facing CLI output qualification",
         "quality_risk": "high",

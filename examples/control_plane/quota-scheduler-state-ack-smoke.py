@@ -9,7 +9,6 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
 import tempfile
 
@@ -1551,11 +1550,6 @@ def main() -> int:
     assert_cli_host_match_ack_after_ambiguous_update()
     assert_cli_ignores_corrupt_scheduler_state()
     assert_cli_scheduler_ack_uses_should_run_lookback()
-    subprocess.run(
-        [sys.executable, str(REPO_ROOT / "examples/control_plane/quota-scheduler-registry-route-smoke.py")],
-        cwd=REPO_ROOT,
-        check=True,
-    )
     print("quota-scheduler-state-ack-smoke ok")
     return 0
 

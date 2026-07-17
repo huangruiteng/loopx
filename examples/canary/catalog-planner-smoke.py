@@ -49,6 +49,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "control-plane-refactor",
         "repo-architecture-budget",
         "control-plane-state-machine",
+        "scheduler-ack-route",
         "status-read-path",
         "status-projection-cache",
         "review-packet-read-path",
@@ -104,6 +105,19 @@ def assert_plan_selects_minimal_profiles_from_changed_surfaces() -> None:
     ], payload
     assert payload["suggested_checks"][0]["source"] == "domain_profile", payload
     assert payload["executes_checks"] is False, payload
+
+
+def assert_scheduler_ack_route_profile_keeps_independent_checks() -> None:
+    payload = build_catalog_canary_plan(
+        changed_files=["loopx/control_plane/scheduler/ack.py"],
+        surfaces=["scheduler ACK route binding"],
+    )
+    domain_profiles = {profile["id"]: profile for profile in payload["domain_profiles"]}
+    profile = domain_profiles["scheduler-ack-route"]
+    assert [check["command"] for check in profile["checks"]] == [
+        "python3 examples/control_plane/quota-scheduler-state-ack-smoke.py",
+        "python3 examples/control_plane/quota-scheduler-registry-route-smoke.py",
+    ], profile
 
 
 def assert_catalog_documents_selection_rules() -> None:
@@ -1063,6 +1077,7 @@ def main() -> int:
     assert_profiles_come_from_catalog_matrix()
     assert_catalog_documents_selection_rules()
     assert_plan_selects_minimal_profiles_from_changed_surfaces()
+    assert_scheduler_ack_route_profile_keeps_independent_checks()
     assert_pr_release_and_refactor_profiles_select()
     assert_explicit_profile_can_include_deep_checks()
     assert_terminal_bench_adapter_changes_select_readiness_smoke()

@@ -88,6 +88,47 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
         },
     },
     {
+        "surface_id": "scheduler-ack-route",
+        "title": "Scheduler ACK state and route binding",
+        "risk": "high",
+        "canary_profile_id": "scheduler-ack-route",
+        "owner_paths": [
+            "loopx/control_plane/quota/live_decision.py",
+            "loopx/control_plane/scheduler/ack.py",
+            "loopx/control_plane/scheduler/state.py",
+        ],
+        "semantic_oracle": {
+            "source_kind": "specification",
+            "refs": ["docs/status-data-contract.md"],
+            "independence_rationale": (
+                "The status contract requires ACK arguments to retain the registry and "
+                "effective runtime-root route that emitted the scheduler hint, independently "
+                "of the binding and persistence implementations."
+            ),
+        },
+        "layers": {
+            "unit_contract": _covered(
+                "tests/test_loopx_turn_driver.py",
+                "tests/control_plane/test_scheduler_ack_decision_table.py",
+                "tests/control_plane/test_scheduler_backoff_convergence.py",
+            ),
+            "durable_smoke": _covered(
+                "examples/control_plane/quota-scheduler-state-ack-smoke.py",
+                "examples/control_plane/quota-scheduler-registry-route-smoke.py",
+            ),
+            "catalog_canary": _covered("scheduler-ack-route"),
+            "host_upgrade": _not_applicable(
+                "The host executes bound CLI arguments but does not choose or rewrite their registry route."
+            ),
+            "model_behavior": _not_applicable(
+                "Route binding and ACK state progression are deterministic safety invariants."
+            ),
+            "release_gate": _covered(
+                "loopx canary premerge --profile scheduler-ack-route"
+            ),
+        },
+    },
+    {
         "surface_id": "agent-facing-cli-output",
         "title": "Agent-facing guided projection and output budgets",
         "risk": "high",
