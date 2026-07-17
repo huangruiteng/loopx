@@ -1,0 +1,83 @@
+examples/control_plane/control-plane-risk-characterization-smoke.py
+  s_76ee28abb3c3a4::t_f45f8ef0838277 22-24,32-36,87-92,131-136,164-169,201-206,244,284-289,312-317,390,427-432
+examples/control_plane/hot-path-interface-budget-smoke.py
+  s_76ee28abb3c3a4::t_851e29604c8ccc 28-30,34-36,272-276,297-301,304-308
+loopx/agent_onboarding.py
+  s_76ee28abb3c3a4::t_dc78cb0c3bc285 14,134
+loopx/benchmark_adapters/skillsbench_acp_relay.py
+  s_76ee28abb3c3a4::t_9ce3c43766609e 2099-2102
+loopx/benchmark_adapters/terminal_bench.py
+  s_76ee28abb3c3a4::t_46c1763e9ea9dd 8192-8194,8196-8198
+loopx/benchmark_case_state.py
+  s_76ee28abb3c3a4::t_eb3d2833185f30 443-446,831-834
+loopx/bootstrap.py
+  s_76ee28abb3c3a4::t_47f812e56e0293 900
+loopx/bootstrap_command_pack.py
+  s_76ee28abb3c3a4::t_df15c51a3184fa 9-13,20,686,741,748-763,877
+loopx/capabilities/cross_runtime/impl_review.py
+  s_76ee28abb3c3a4::t_c4625af35c2656 169-170,194-195
+loopx/claude_goal_mode/hooks/goal_policy.py
+  s_76ee28abb3c3a4::t_b28e0e346de4ad 107-111
+loopx/cli_commands/quota.py
+  s_76ee28abb3c3a4::t_11569f6810a6c4 28-31,110-118,279-294,300-301
+loopx/cli_commands/support_control.py
+  s_76ee28abb3c3a4::t_2f472ceb663859 17,168-190,421-430
+loopx/codex_cli_probe.py
+  s_76ee28abb3c3a4::t_2ef7f1c5bfb23c 46-55,286,396,1244
+loopx/control_plane/agents/supervisor.py
+  s_76ee28abb3c3a4::t_4fbaee94e9aaaa 433
+loopx/control_plane/scheduler/execution_context.py
+  s_76ee28abb3c3a4::t_5d5f5c7e219314 33-36,143-150,198-222,279,291-294,297
+loopx/control_plane/testing/decision_replay.py
+  s_76ee28abb3c3a4::t_9298d559576aab 8-10,247-252,257
+loopx/demo.py
+  s_76ee28abb3c3a4::t_176f8995f3ff43 151
+loopx/heartbeat_prompt.py
+  s_76ee28abb3c3a4::t_ef9cd598d7699a 14,295-296,365-366,389-396,440-441,465-467,961-964
+loopx/presets.py
+  s_76ee28abb3c3a4::t_794d030f39e96e 229-230,234-235
+loopx/project_prompt.py
+  s_76ee28abb3c3a4::t_df37c0c631fb1a 8-11,22-26,47-80,118-119,123-126,130-131,195-196,201-204,208,220-221,226-229,233,393,405,411
+loopx/review_packet.py
+  s_76ee28abb3c3a4::t_78772b23adaf45 149-152
+loopx/upgrade.py
+  s_76ee28abb3c3a4::t_7add97a61cd5db 719
+loopx/visible_multi_agent_launcher.py
+  s_76ee28abb3c3a4::t_2780f9c600ce56 512-514
+tests/control_plane/test_public_safe_decision_replay.py
+  s_76ee28abb3c3a4::t_f82f5431d4479b 17-19,37-39,86-91,123-128,240-244
+tests/control_plane/test_scheduler_backoff_convergence.py
+  s_76ee28abb3c3a4::t_9a5935fb80c3e5 7-9,17-19,76
+tests/control_plane/test_scheduler_execution_context.py
+  s_76ee28abb3c3a4::t_f4c5e98ffce9f5 10,13,109-114,129,132-147,150-156,158
+tests/control_plane/test_scheduler_host_failure_cache.py
+  s_76ee28abb3c3a4::t_9f6f6e604e3c4b 11-13,32-34,81
+tests/control_plane/test_scheduler_interaction_arbitration.py
+  s_76ee28abb3c3a4::t_0db4a25430fb4f 12-14,26-36,174,195,215,238,260,302,325
+tests/control_plane/test_user_gate_lane_progress.py
+  s_76ee28abb3c3a4::t_9d417849d26dda 5-7,18-20,73,95,126
+tests/fixtures/control_plane/public_safe_decision_replay_v0.json
+  s_76ee28abb3c3a4::t_ccc2e5a26acf9c 27,97,175
+tests/test_host_loop_activation.py
+  s_76ee28abb3c3a4::t_55e986c953fd4d 5,30-63
+tests/test_loopx_turn_driver.py
+  s_76ee28abb3c3a4::t_78731a1db2d840 421-489
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "90c518a47a8b97d71e57247e83ace32b9c674d0e",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
