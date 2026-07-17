@@ -6,13 +6,18 @@ import pytest
 
 from loopx.control_plane.scheduler.execution_context import (
     ExecutionMode,
+    GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
     HostSurface,
-    SchedulerRuntimeProfile,
     SchedulerOwner,
+    SchedulerRuntimeProfile,
+    render_scheduler_execution_args,
     resolve_scheduler_execution_context,
     scheduler_execution_context_for_runtime_profile,
 )
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
+from loopx.control_plane.work_items.interaction_contract import (
+    interaction_next_cli_actions,
+)
 
 
 VALID_COMBINATIONS = {
@@ -156,3 +161,35 @@ def test_codex_app_runtime_profile_preserves_host_backoff() -> None:
     )
     assert hint["codex_app"]["stateful_backoff"]["apply_needed"] is True
     assert hint["cold_path_detail"]["execution_phase"]["apply_needed"] is True
+
+
+def test_generic_outer_controller_rerun_actions_are_typed() -> None:
+    actions = interaction_next_cli_actions(
+        {
+            "goal_id": "generic-controller-fixture",
+            "agent_identity": {"agent_id": "codex-fixture"},
+        },
+        mode="monitor_quiet_skip",
+        scheduler_execution_context=(
+            GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT
+        ),
+    )
+    scheduler_args = render_scheduler_execution_args(
+        scheduler_execution_context=GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
+    )
+
+    assert len(actions) == 2
+    assert all(scheduler_args in action for action in actions)
+
+
+def test_unbound_rerun_actions_do_not_emit_executable_bare_guards() -> None:
+    actions = interaction_next_cli_actions(
+        {"goal_id": "unbound-controller-fixture"},
+        mode="monitor_quiet_skip",
+    )
+
+    assert actions == [
+        "use the current host packet's typed monitor command",
+        "rerun the typed quota_guard from the current host packet",
+    ]
+    assert all("quota should-run" not in action for action in actions)

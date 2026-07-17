@@ -396,6 +396,16 @@ def main() -> int:
         assert any(
             f"--goal-id {SCOPED_GOAL_ID}" in command for command in scoped_selected["agent_commands"]
         ), scoped_selected
+        quota_commands = [
+            command
+            for command in scoped_selected["agent_commands"]
+            if " quota should-run " in command
+        ]
+        assert len(quota_commands) == 1, scoped_selected
+        assert (
+            "-H generic_cli -O outer_controller -M isolated_headless"
+            in quota_commands[0]
+        ), quota_commands
 
         capability_registry = write_capability_scoped_registry(root, runtime)
         capability_blocked = run_cli(

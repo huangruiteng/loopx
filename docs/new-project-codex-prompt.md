@@ -135,7 +135,7 @@ loopx new-project-prompt \
    先问 compute guard：
 
    ```bash
-   loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <STABLE_GOAL_ID>
+   loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <STABLE_GOAL_ID> -H generic_cli -O outer_controller -M isolated_headless
    ```
 
    如果返回 `state=operator_gate`，把它当成人/控制器交互，而不是安静 skip：优先读取
