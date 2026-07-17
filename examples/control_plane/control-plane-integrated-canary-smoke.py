@@ -42,7 +42,8 @@ MARKDOWN_CONTINUATION_TITLE = "Continue same-agent markdown continuation through
 MONITOR_TODO_ID = "todo_integrated_due_monitor"
 MONITOR_TARGET_KEY = "integrated-due-monitor-watch"
 VALIDATED_PROGRESS_CLASSIFICATION = "integrated_canary_validated_progress"
-DEFAULT_MAX_SECONDS = 120.0
+DEFAULT_MAX_SECONDS = 60.0
+STATUS_BACKED_COMMANDS = {"quota", "review-packet", "status"}
 
 
 def write_fixture(root: Path) -> tuple[Path, Path, Path]:
@@ -209,8 +210,17 @@ def append_event_todos(event_log: Path) -> None:
 
 
 def run_cli(registry_path: Path, runtime_root: Path, *args: str) -> dict[str, Any]:
+    cli_args = list(args)
+    if (
+        cli_args
+        and cli_args[0] in STATUS_BACKED_COMMANDS
+        and "--scan-root" not in cli_args
+        and "--scan-path" not in cli_args
+    ):
+        # Keep public-boundary validation on the fixture project, not this source checkout.
+        cli_args.extend(["--scan-root", str(registry_path.parent.parent)])
     return run_json_cli(
-        *args,
+        *cli_args,
         registry_path=registry_path,
         runtime_root=runtime_root,
         cwd=REPO_ROOT,
