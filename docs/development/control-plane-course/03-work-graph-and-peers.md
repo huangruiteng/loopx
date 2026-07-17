@@ -123,7 +123,7 @@ Claim 的作用是减少重复劳动，告诉其他 peer 当前谁在推进。
 
 Claim 可以过期、清除、被 completion/supersede 结束。Status 会投影 stale claim 提示。
 
-## Lease：有时间边界的执行占用
+## Lease：显式、可选的执行占用
 
 Task lease 比 claim 更适合需要排他执行或外部资源的工作：
 
@@ -134,7 +134,83 @@ lease: 谁在一段 TTL 内占用这个执行机会或资源
 
 Lease 丢失应 fail closed。一个 worker 不应该在 lease 过期后继续静默执行，再把结果写进 canonical state。
 
-未来 supervisor fork 的 branch lease 更窄：它只授权执行一个 temporary execution branch，不继承 source todo、source quota 或 source durable memory。
+当前 `task_lease_v0` 是显式调用方使用的可选并发原语，支持 TTL、版本 CAS、
+续租、转移、释放和 write-scope 冲突检查。普通 `todo claim`、
+`quota should-run` 和 agent turn 不会自动 acquire task lease。因此：
+
+- `claimed_by` 已经是默认 todo 路由合同；
+- task lease 只在真实并发冲突或排他资源需要时启用；
+- status 中的 `soft_claim` 展示不能反向解释成 hard lease；
+- handoff 不要求先创建 lease，lease 也不证明 handoff 已完成。
+
+实现边界可以直接由调用图证明：`acquire_task_lease()` 的产品调用点位于
+`loopx/cli_commands/task_lease.py`，而不是 todo claim 或 quota pipeline。
+生命周期与幂等合同由 `tests/control_plane/test_task_lease.py` 和
+`examples/control_plane/task-lease-runtime-smoke.py` 看护。
+
+未来 supervisor fork 的 branch lease 更窄：它只授权执行一个 temporary
+execution branch，不继承 source todo、source quota 或 source durable memory。
+
+## Handoff 是恢复协议，不是执行动作
+
+在资格测试里，可以把一次 handoff 建模成“业务无进展”的恢复轮：当前 worker
+停止使用临时上下文，下一 peer 只读取 durable state，并重建同一决策面。
+
+```text
+P = decision-relevant project projection
+H(P, fresh environment) = projection reconstructed by the next peer
+
+no new evidence 时：distance(H(P), P) < epsilon
+```
+
+这里比较的不是逐字 transcript，而是 objective、authority source、validation
+surface、open frontier、gate、claim boundary、next action 与 stop condition。
+连续多次 handoff 仍保持这些字段等价，才说明长期状态不依赖某个 worker 的偶然
+记忆。
+
+生产协议把“可恢复”和“已经开始下一轮”明确分开。
+`loopx/control_plane/work_items/project_asset.py::project_asset_handoff_check_projection`
+先检查 handoff surface：
+
+```python
+checks = {
+    "project_asset_backed": True,
+    "same_source_should_run": bool(
+        quota and next_action and (not item_action or item_action == next_action)
+    ),
+    "codex_ready": waiting_on == "codex" and quota_state == "eligible",
+    "handoff_has_next_action": bool(next_action),
+    "handoff_has_stop_condition": bool(stop_condition),
+    "handoff_sanitized_surface": project_asset_summary_is_public_safe(project_asset),
+}
+```
+
+随后 `loopx/control_plane/handoff/project_handoff.py::project_asset_handoff_state`
+才区分等待与真实后续执行：
+
+```python
+if post_handoff_run:
+    handoff_status = "post_handoff_run_seen"
+elif ready:
+    handoff_status = "ready_waiting_for_run"
+else:
+    handoff_status = "not_ready"
+```
+
+因此收到 handoff packet 后，agent 需要接手工作面，但不会仅凭 packet 自动开始
+业务执行。真正运行仍要重新通过 quota、gate、capability、claim/lease 和
+workspace guard。`ready_waiting_for_run` 正是“状态可恢复，但尚未出现后续工作
+run”的合法状态。
+
+阅读 `examples/project/project-handoff-readmodel-smoke.py` 时重点看两个反例：
+
+1. handoff surface 完整，但没有 post-handoff run，应保持
+   `ready_waiting_for_run`；
+2. status-neutral run 不得冒充业务进展，只有真实后续 work run 才切换到
+   `post_handoff_run_seen`。
+
+连续 N 次 handoff 可以作为低频状态稳定性资格测试，但不是日常执行流程，也不
+能用“漂移分数低”替代任务的 artifact、validation 或 outcome evidence。
 
 ## Capability Gate：能做不等于被授权
 

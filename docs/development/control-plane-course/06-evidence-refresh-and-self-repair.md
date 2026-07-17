@@ -175,6 +175,56 @@ todo delta
 - 什么证据说明它的 lane 可以关闭？
 - 哪些变化要求 replan？
 
+Vision、Goal 与 Todo 形成一条方向到动作的约束链：
+
+| 层 | 回答的问题 | 不直接做什么 |
+| --- | --- | --- |
+| Vision | 为什么长期工作、向什么标准收敛？ | 不选择本轮 todo，不授予权限 |
+| Goal | 当前阶段要交付什么，边界和 acceptance 是什么？ | 不替代 runnable frontier |
+| Todo | 下一步由谁在什么条件下做什么？ | 不自行改写长期方向 |
+
+```text
+Vision
+  -> Goal boundary / acceptance
+  -> Todo frontier
+  -> bounded delivery + evidence
+  -> acceptance audit
+  -> continue, replan, or vision patch
+```
+
+这条链解释了为什么 Vision 应相对稳定，却不能永久冻结：用户方向变化、验收标准
+被证伪、长期 frontier 耗尽或持续局部最优时，需要一个有明确 delta 的 patch。
+反过来，新增一个 todo 不等于 Vision 已变化。
+
+`loopx/control_plane/goals/goal_vision.py::normalize_goal_vision_packet`
+把这种边界编码成 compact、public-safe、agent-scoped packet：
+
+```python
+if packet_goal_id and packet_goal_id != goal_id:
+    raise ValueError(
+        f"agent_vision goal_id {packet_goal_id!r} does not match {goal_id!r}"
+    )
+
+if agent_id and packet_agent_id and packet_agent_id != agent_id:
+    raise ValueError(
+        f"agent_vision agent_id {packet_agent_id!r} does not match {agent_id!r}"
+    )
+
+if not vision_patch:
+    raise ValueError("agent_vision must include at least one bounded vision field")
+
+if total_usage > GOAL_VISION_TOTAL_LIMIT:
+    raise GoalVisionBudgetError(
+        field="total_agent_vision",
+        used=total_usage,
+        limit=GOAL_VISION_TOTAL_LIMIT,
+    )
+```
+
+这里的 identity check 防止一个 peer 覆盖另一个 lane，budget 防止 Vision 退化成
+第二份 transcript。`examples/project/goal-vision-refresh-state-budget-smoke.py`
+同时验证写入正确性、预算与 repair delta。
+
 当 material refresh 没有 vision patch 或 unchanged reason 时，CLI 会产生 `vision_checkpoint_missing` acceptance gap。Todo 即使完成，也不能直接 terminal。
 
 修复选择有三种：
@@ -184,6 +234,32 @@ todo delta
 3. 用 evidence 关闭或 supersede 该 vision frontier。
 
 不要为了消除 warning 随便写“unchanged”。Reason 必须与本轮 acceptance 事实一致。
+
+## Signal、Anchor 与 Feedback 不直接变成 Todo Truth
+
+长期管理面的输入不只有已有 todo，还包括 issue、PR、review、chat feedback、文档
+变化和外部 monitor。合理的产品链路是：
+
+```text
+signal
+  -> classify and attribute
+  -> select a bounded anchor
+  -> materialize todo / gate / monitor
+  -> deliver and collect evidence
+  -> performance review
+  -> explicit priority, gate, or vision writeback
+```
+
+这个链路是管理面的推理框架，不应被伪装成一套已经独立落地的通用状态机：
+
+- 外部消息到达不等于用户已授权执行；
+- 被认为“有价值”的 signal 不等于已进入 runnable frontier；
+- raw feedback 不直接覆盖 Vision，必须形成明确 source、scope 和 delta；
+- performance review 可以影响下一轮优先级，但仍要通过 todo/gate/vision API 写回。
+
+开发 connector 或 inbox 时，应先把 signal 归一化为 public-safe evidence，再由
+现有 Core State 承接 anchor。第 9 讲的 Lark Event Inbox 展示了这一边界；不要
+为每种外部信号新增一个 quota 分支。
 
 ## Replan 与 Dreaming
 

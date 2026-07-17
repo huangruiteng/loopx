@@ -13,6 +13,7 @@
 3. 解释为什么 projection 不能成为写 API。
 4. 沿一次 todo transition 找到它的事实源和 read model。
 5. 判断一个新字段应该属于配置、事件、工作台还是展示层。
+6. 区分 session context、project memory、Domain State 和私有 runtime artifact。
 
 ## Goal 不是聊天线程
 
@@ -31,6 +32,34 @@ Dashboard: 只读观察和路由界面
 
 - 聊天压缩或 session 结束后，长期任务仍可恢复；
 - 多个 peer 可以共享事实，而不共享同一个巨大 transcript。
+
+## Session Context 不是 Project Memory
+
+“状态已经从 session memory 变成 project memory”不是说把聊天记录复制进仓库，
+也不是说 project memory 等于当前机器环境。三者拥有不同事实：
+
+| 表面 | 保存什么 | 可能发生什么 | 能否单独作为 authority |
+| --- | --- | --- | --- |
+| Session context | 当前对话、临时推理、尚未写回的观察 | 被压缩、截断、结束或换模型 | 不能 |
+| Project memory | goal identity、objective/boundary、todo/gate、紧凑 evidence、run lineage | 被 replay、投影或由另一 peer 恢复 | 可以，但必须经过 canonical contract |
+| Environment | 当前 checkout、host capability、外部服务与 fresh source | 在 handoff 之间变化 | 不能，必须重新探测 |
+
+因此恢复公式不是：
+
+```text
+new session = old transcript
+```
+
+而是：
+
+```text
+next decision = replay(project memory) + inspect(fresh environment)
+```
+
+Project memory 的充分性标准是：更换 session 后，新的 peer 仍能从 durable state
+重建同一 objective、authority boundary、open frontier、gate、next probe 和 stop
+condition。它不要求逐字复现旧推理。第 3 讲会把这个要求进一步写成 handoff 的
+不动点检查。
 
 ## 五类状态面
 
@@ -154,6 +183,66 @@ projection_synced
 - 是否有 contract errors、projection gaps 或 repair needs？
 
 Status 不是写入口。Dashboard、Lark kanban、review packet 都应该消费 status 或其他 public-safe projection，而不是反向解析私有源文件再写回。
+
+## Core State、Domain State 与 Runtime Artifact
+
+前面的五类状态面主要解释跨场景生命周期。领域扩展还需要一层紧凑事实，但不能
+因此把 Issue-Fix、Explore 或 ML Experiment 的字段塞进通用 todo/quota 状态机。
+
+| 层 | 代表内容 | 拥有什么 | 明确不拥有什么 |
+| --- | --- | --- | --- |
+| Core State | registry、todo、gate、quota、event、run、vision | 跨领域生命周期与权限边界 | 领域专属结果 schema |
+| Domain State | issue feasibility、PR lifecycle、experiment result、checkpoint | 某个 Capability Pack 的紧凑 read model | quota、gate、claim、permission |
+| Runtime Artifact | raw log、transcript、verifier tail、临时调试文件 | 私有诊断与可复现实验材料 | public control-plane truth |
+
+`loopx/domain_state.py::default_domain_state_file_path` 把领域事实限制在稳定的
+goal/pack 路径中：
+
+```python
+return (
+    Path(project).expanduser()
+    / ".loopx"
+    / "domain-state"
+    / compact_goal_id
+    / compact_pack
+    / compact_filename
+)
+```
+
+`upsert_domain_state_jsonl` 进一步要求稳定 key，并以 lock + temporary file +
+`os.replace` 完成原子 upsert。下面只省略遍历之外的分支，其余行保持源码一致：
+
+```python
+candidate = {**payload, "domain_state_key": key}
+# ...
+if isinstance(row, dict) and row_key == key:
+    if not updated:
+        merged_candidate = (
+            merge_existing_fn(row, candidate)
+            if merge_existing_fn is not None
+            else candidate
+        )
+        if unchanged_fn is not None and unchanged_fn(row, merged_candidate):
+            rows.append(row)
+            unchanged = True
+        else:
+            rows.append(merged_candidate)
+        updated = True
+
+# ...
+os.replace(tmp_name, path)
+```
+
+从这段代码应读出三个边界：
+
+1. Domain State 是 project-local、按 goal 与 pack 分区的事实，不是全局 memory dump。
+2. 稳定 key 和 unchanged 判定用于幂等观察，不代表领域 pack 可以决定下一轮执行。
+3. 返回值显式使用 `path_recorded=False`，public receipt 不应泄露本地路径。
+
+Issue-Fix 与 ML Experiment 的 smoke 分别验证这条通用 seam：
+`examples/issue-fix-feasibility-smoke.py`、
+`tests/test_ml_experiment_volc_packet.py`。如果一个新领域字段会改变 quota、gate、
+claim 或 permission，它很可能属于 Core State 规则，而不是 Domain State。
 
 ## Canonical 与 Projection 的判别法
 

@@ -39,6 +39,64 @@ domain evidence / role defaults / host capability / presentation sink
 registry -> status -> quota -> interaction contract -> todo/evidence -> refresh/spend
 ```
 
+## Kernel、Capability Pack 与 Domain State
+
+扩展层可以用三层架构审查，但三层不是三套 control plane：
+
+| 层 | Owns | Must not own |
+| --- | --- | --- |
+| Kernel | vision、goal、todo、gate、quota、scheduler、evidence、handoff | Issue-Fix/Explore/ML 的专用判断 |
+| Capability Pack | 领域 route、validator、compact adapter、preset | 绕过 Kernel 的 permission 或 lifecycle |
+| Domain State | feasibility、PR lifecycle、experiment result、checkpoint 等紧凑事实 | claim、quota、gate、host effect authority |
+
+这套分层的价值不是目录整齐，而是让领域能力增加事实，不增加第二套权限模型。
+当前 Issue-Fix pack 直接复用通用 Domain State seam：
+
+```python
+from ..domain_state import default_domain_state_file_path, upsert_domain_state_jsonl
+
+def _upsert_issue_fix_payload(ledger_path, payload, *, key, ...):
+    projection = payload.get("domain_state_projection")
+    if not isinstance(projection, dict):
+        raise ValueError("issue-fix payload must include domain_state_projection")
+
+    projection["write_performed"] = True
+    try:
+        result = upsert_domain_state_jsonl(
+            ledger_path,
+            payload,
+            key=key,
+            existing_key_fn=existing_key_fn,
+            unchanged_fn=unchanged_fn,
+            merge_existing_fn=merge_existing_fn,
+        )
+    except Exception:
+        projection["write_performed"] = False
+        raise
+    projection["write_result"] = result
+    return result
+```
+
+ML Experiment 走相同 seam，只替换自己的稳定 key 和 payload validator：
+
+```python
+return upsert_domain_state_jsonl(
+    ledger_path,
+    payload,
+    key=ml_experiment_ledger_key(payload),
+    existing_key_fn=ml_experiment_ledger_key,
+)
+```
+
+这两个调用点给出一条可操作的评审规则：如果新 pack 只需要紧凑领域事实，就复用
+Domain State；如果它需要改变谁可执行、何时 spend、哪个 gate 生效，就必须回到
+Kernel 提出通用规则并接受第 7、8 讲的语义与质量门禁。
+
+同时保留三条数据边界：raw log、凭据和本地路径留在获批的私有 artifact；Domain
+State 只保存可重放的 compact facts；外部 sink 只消费 public-safe projection。
+`examples/issue-fix-feasibility-smoke.py` 与
+`tests/test_ml_experiment_volc_packet.py` 是这条分层的代表性回归入口。
+
 ## 先读 Feature Catalog
 
 不要从 README 猜当前可配置能力。对已注册 goal 运行：
