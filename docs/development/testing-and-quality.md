@@ -269,6 +269,32 @@ for the actor and promotion contract.
 注入；packet、prompt、原始响应、凭证和对话都不能成为仓库证据，只保留有界 receipt
 与 mismatch code。普通贡献者当前不需要一个公开的 live-provider CLI。
 
+The regular live suite is
+`actual_default_model_behavior_portfolio_v0`: seven one-arm scenarios, two
+attempts each, and at most 14 provider calls. It checks normal onboarding,
+agent identity and goal selection, selected todo, final human gate, healthy
+continuation, and projection repair. Each scenario has an independent semantic
+oracle; every repeat must pass, hard actor errors are not retried, and pair mode
+is reserved for temporary sensitive differentials or explicit outcome claims.
+
+常规 live suite 是 `actual_default_model_behavior_portfolio_v0`：7 个 one-arm
+场景，每个重复 2 次，最多 14 次模型调用。它覆盖正常接入、agent 身份与 goal 选择、
+selected todo、最终 human gate、健康继续和 projection repair。每个场景都有独立语义
+oracle，所有重复都必须通过；actor 硬错误不自动重试，pair 只用于临时敏感差分或明确的
+结果提升声明。
+
+For onboarding packets, the suite uses the shipped guided packet builder and
+redacts only local absolute path surfaces before provider transport. The
+deterministic oracle runs first on the actual packet, so redaction cannot hide
+missing commands, a lost host activation, an incorrect gate, a write, or quota
+spend. Human-gate precedence is explicit: an expected absence of executable
+work while waiting for the user is not a projection gap.
+
+Onboarding 输入来自正式 guided packet builder；provider 调用前只替换本地绝对路径。
+确定性 oracle 会先检查实际 packet，因此脱敏不能掩盖命令缺失、host activation 丢失、
+门禁错误、写入或 quota 消耗。Human gate 的优先级是显式规则：等待用户时没有
+executable work 属于预期状态，不能误判为 projection gap。
+
 ## Release Outcome Baseline / 发布结果基线
 
 Deterministic and model-behavior gates qualify a control-plane contract; they

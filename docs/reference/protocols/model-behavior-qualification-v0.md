@@ -224,6 +224,46 @@ profile with injected credentials and explicit cost limits, but ordinary pull
 requests must not depend on provider availability, latency, rate limits, or
 stochastic output.
 
+## Actual-Default Scenario Portfolio
+
+`actual_default_model_behavior_portfolio_v0` is the regular low-frequency live
+suite. It composes the existing TurnEnvelope and onboarding one-arm actors; it
+does not introduce a third model protocol or retain a retired product arm. Its
+fixed catalog covers seven high-risk decisions:
+
+1. the normal guided onboarding packet selects `connect_if_needed`;
+2. an unresolved agent identity selects `select_agent_identity`;
+3. multiple goals select `select_goal` before any mutation;
+4. the current TurnEnvelope preserves the exact selected todo;
+5. a final human gate selects `ask_user` and forbids normal delivery;
+6. a healthy onboarding postcondition selects `continue_validation`;
+7. a missing executable todo with an actionable projection selects
+   `repair_projection`.
+
+Every scenario declares its own semantic oracle and runs exactly twice. All
+attempts must align. Actor or transport errors are not retried automatically;
+the portfolio fails closed and stops further calls. The maximum regular run is
+therefore 14 provider calls. Pair mode remains available only for temporary
+sensitive differentials or explicit stable-versus-candidate outcome claims,
+not as a permanent regular-behavior baseline.
+
+The complete catalog is preflighted before the first provider call. Schema,
+public-safety, action-signature, actual-default, and scenario-oracle failures
+therefore consume zero model calls rather than failing late in the portfolio.
+
+Entry scenarios consume packets produced by the shipped
+`build_start_goal_guided_packet` path. Before provider transport, LoopX checks
+the stable command, identity, goal, no-write, no-spend, and host-activation
+invariants. It then replaces local absolute path surfaces with the literal
+`<LOCAL_PATH>` while preserving packet structure; credential-shaped fields and
+credential-like values still fail closed. Turn scenarios require a current
+`loopx_turn_envelope_v0` with verified action-signature parity.
+
+The portfolio keeps only scenario ids, expected and observed route names,
+bounded failure codes, repeat counts, and receipt digests. It never retains
+packets, prompts, raw responses, local paths, or credentials, and it always
+sets `automatic_release_promotion_allowed=false`.
+
 ## Promotion Boundary
 
 This contract is one gate in a larger promotion process. Turning a candidate

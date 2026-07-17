@@ -119,6 +119,7 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
                 "Host activation and upgrade continuity are owned by the onboarding and install surfaces."
             ),
             "model_behavior": _covered(
+                "actual_default_model_behavior_portfolio_v0",
                 "onboarding_actual_behavior_qualification_v0"
             ),
             "release_gate": _covered(
@@ -264,6 +265,7 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
                 "examples/control_plane/agent-onboard-host-loop-activation-smoke.py"
             ),
             "model_behavior": _covered(
+                "actual_default_model_behavior_portfolio_v0",
                 "onboarding_actual_behavior_qualification_v0"
             ),
             "release_gate": _covered(
