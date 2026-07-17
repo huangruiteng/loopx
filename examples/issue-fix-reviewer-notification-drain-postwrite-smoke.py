@@ -431,6 +431,15 @@ def main() -> int:
                 "linked_issue_refs": [],
             }, None
 
+        due_preview = drain_issue_fix_reviewer_notification_queue(
+            ledger_path=failed_ledger,
+            sinks_input=sinks_input,
+            execute=False,
+            delivery_observed_at="2026-07-18T01:01:00Z",
+        )
+        assert due_preview["status"] == "preview_due", due_preview
+        assert due_preview["remaining_due_pr_count"] == 0
+        assert due_preview["has_more_due"] is False
         failed_drain = drain_issue_fix_reviewer_notification_queue(
             ledger_path=failed_ledger,
             sinks_input={
@@ -473,8 +482,37 @@ def main() -> int:
         malformed_row["reviewer_notification_queue"][0]["not_before"] = (
             "not-a-timestamp"
         )
+        healthy_ledger = path / "healthy-due-pr-lifecycle.jsonl"
+        healthy_row = build_issue_fix_pr_lifecycle_monitor_packet(
+            url="https://github.com/owner/repo/pull/114",
+            provider_payload={
+                "state": "OPEN",
+                "reviewDecision": "REVIEW_REQUIRED",
+                "mergeStateStatus": "BLOCKED",
+                "statusCheckRollup": [],
+            },
+        )
+        persist_issue_fix_reviewer_notification_state(
+            healthy_ledger,
+            healthy_row,
+            receipts=[],
+            queued_receipts=[
+                {
+                    **failed_receipt,
+                    "idempotency_key": reviewer_notification_idempotency_key(
+                        repo="owner/repo",
+                        pr_number=114,
+                        sink_kind="lark_chat",
+                        sink_instance_key=sink["sink_instance_key"],
+                        reviewer_handles=["@map-owner"],
+                    ),
+                }
+            ],
+        )
         failed_ledger.write_text(
-            json.dumps(malformed_row, sort_keys=True) + "\n",
+            json.dumps(malformed_row, sort_keys=True)
+            + "\n"
+            + healthy_ledger.read_text(encoding="utf-8"),
             encoding="utf-8",
         )
         malformed_drain = drain_issue_fix_reviewer_notification_queue(
@@ -488,6 +526,8 @@ def main() -> int:
             "reviewer_notification_queue_not_before_invalid"
         )
         assert malformed_drain["invalid_queue_receipt_count"] == 1
+        assert malformed_drain["due_pr_count"] == 1
+        assert malformed_drain["remaining_due_pr_count"] == 2
         assert malformed_drain["has_more_due"] is True
         assert malformed_drain["external_reads_performed"] is False
         assert malformed_drain["external_writes_performed"] is False
@@ -616,6 +656,8 @@ def main() -> int:
         )
         assert preview["status"] == "preview_blocked", preview
         assert preview["blocked_pr_count"] == 1, preview
+        assert preview["remaining_due_pr_count"] == 1, preview
+        assert preview["has_more_due"] is True, preview
         assert reviewer_notification_idempotency_key(
             repo="owner/repo",
             pr_number=108,

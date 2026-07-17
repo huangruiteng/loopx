@@ -353,15 +353,26 @@ def drain_issue_fix_reviewer_notification_queue(
     invalid_queue_items: list[dict[str, Any]] = []
     invalid_queue_receipt_count = 0
     total_queue_receipt_count = 0
+    valid_due_pr_count = 0
+    pending_pr_count = 0
+    valid_not_due_receipt_count = 0
     for row in rows:
         queue = reviewer_notification_queue_from_state(row)
         total_queue_receipt_count += len(queue)
         invalid_count = 0
+        has_valid_due = False
         for receipt in queue:
             try:
-                _parse_timestamp(str(receipt.get("not_before") or ""))
+                if _queue_due(receipt, observed_at):
+                    has_valid_due = True
+                else:
+                    valid_not_due_receipt_count += 1
             except ValueError:
                 invalid_count += 1
+        if has_valid_due:
+            valid_due_pr_count += 1
+        if invalid_count or has_valid_due:
+            pending_pr_count += 1
         if not invalid_count:
             continue
         invalid_queue_receipt_count += invalid_count
@@ -391,15 +402,15 @@ def drain_issue_fix_reviewer_notification_queue(
             "notification_granularity": "one_pr_per_message",
             "queued_receipt_count": total_queue_receipt_count,
             "invalid_queue_receipt_count": invalid_queue_receipt_count,
-            "due_pr_count": 0,
+            "due_pr_count": valid_due_pr_count,
             "processed_pr_count": len(invalid_queue_items),
-            "not_due_receipt_count": 0,
+            "not_due_receipt_count": valid_not_due_receipt_count,
             "verified_pr_count": 0,
             "cancelled_pr_count": 0,
             "cancelled_sink_receipt_count": 0,
             "held_pr_count": 0,
             "blocked_pr_count": len(invalid_queue_items),
-            "remaining_due_pr_count": len(invalid_queue_items),
+            "remaining_due_pr_count": pending_pr_count,
             "has_more_due": True,
             "items": invalid_queue_items,
             "external_reads_performed": False,
@@ -853,17 +864,27 @@ def drain_issue_fix_reviewer_notification_queue(
             )
         items.append(item)
 
-    final_rows = _latest_lifecycle_rows(
-        load_jsonl_rows(path) if path.is_file() else []
-    )
-    remaining_due_pr_count = sum(
-        1
-        for row in final_rows
-        if any(
-            _queue_due(receipt, observed_at)
-            for receipt in reviewer_notification_queue_from_state(row)
+    if execute:
+        final_rows = _latest_lifecycle_rows(
+            load_jsonl_rows(path) if path.is_file() else []
         )
-    )
+        remaining_due_pr_count = sum(
+            1
+            for row in final_rows
+            if any(
+                _queue_due(receipt, observed_at)
+                for receipt in reviewer_notification_queue_from_state(row)
+            )
+        )
+    else:
+        unresolved_preview_count = sum(
+            1
+            for item in items
+            if item.get("status") in {"blocked", "held_outside_delivery_window"}
+        )
+        remaining_due_pr_count = (
+            max(0, len(queued_rows) - len(items)) + unresolved_preview_count
+        )
     if not execute:
         if blocked_count:
             status = (
