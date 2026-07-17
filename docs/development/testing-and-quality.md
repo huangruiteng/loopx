@@ -261,13 +261,25 @@ Live Doubao calls are a low-frequency local/manual gate, not ordinary CI.
 `ARK_API_KEY` is injected only through the process environment. Packets,
 prompts, raw responses, credentials, and conversations are never durable
 repository evidence; only bounded receipts and mismatch codes may be retained.
-There is currently no required public live-provider CLI for contributors. See
+Fake transports test only adapter serialization, sanitization, and fail-closed
+handling; they never qualify Doubao behavior. Run the real gate with:
+
+```bash
+python3 scripts/qualify-doubao-model-behavior-live.py \
+  --qualification-id <public-safe-run-id>
+```
+
+The command requires a clean candidate checkout, fails when `ARK_API_KEY` is
+absent, binds its receipt to that checkout's Git source identity, and exits
+nonzero unless every real provider call passes. See
 [Model behavior qualification v0](../reference/protocols/model-behavior-qualification-v0.md)
 for the actor and promotion contract.
 
 真实 Doubao 调用是低频本地/手动门，不进入普通 CI。`ARK_API_KEY` 只通过进程环境
 注入；packet、prompt、原始响应、凭证和对话都不能成为仓库证据，只保留有界 receipt
-与 mismatch code。普通贡献者当前不需要一个公开的 live-provider CLI。
+与 mismatch code。fake transport 只能验证 adapter 的序列化、脱敏与 fail-closed，不能
+作为 Doubao 行为通过证据。真实入口缺少密钥时直接失败，且任一真实调用不通过都会以
+非零状态退出。
 
 The regular live suite is
 `actual_default_model_behavior_portfolio_v0`: nine one-arm scenarios, two

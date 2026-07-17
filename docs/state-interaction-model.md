@@ -165,8 +165,9 @@ signal the primary action matched and whether `Next Action` / latest-run drift
 exists; it is not a second action source and does not authorize state sync by
 itself.
 When the final contract is a blocking user gate, it also carries a compact
-`interaction_response_plan_v0`: `kind=surface_user_gate`, ordered
-`action_sequence=[notify, wait]`, and `silent_wait_allowed=false`. The same plan
+`interaction_response_plan_v0`: `kind=surface_user_gate`,
+`decision=ask_user`, ordered `action_sequence=[notify, wait]`, and
+`silent_wait_allowed=false`. The same plan
 is projected into TurnEnvelope so a real executor and a model-behavior
 qualification actor consume one typed behavior source. The automation prompt
 remains a thin dispatcher; it does not duplicate this gate rule as prose.

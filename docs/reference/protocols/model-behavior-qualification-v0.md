@@ -168,6 +168,19 @@ The live actor is deliberately absent from PR smoke and normal CI. It belongs
 in manually triggered or low-frequency shadow qualification where cost,
 repetition, corpus selection, and promotion policy are explicit. Only compact
 decision receipts and paired drift results may become durable evidence.
+Transport doubles and fixture actors are adapter/harness tests only. Their pass
+status must never be reported as Doubao behavior evidence. The fail-closed live
+entry point is:
+
+```bash
+python3 scripts/qualify-doubao-model-behavior-live.py \
+  --qualification-id <public-safe-run-id>
+```
+
+It requires a clean candidate checkout, constructs the current scenario packets
+through the shipped packet and interaction-contract builders, requires
+runtime-injected `ARK_API_KEY`, invokes the canonical Ark endpoint, and prints
+only the Git-bound bounded portfolio receipt.
 
 ## New-User Onboarding Closed Loop
 
@@ -266,6 +279,9 @@ invariants. It then replaces local absolute path surfaces with the literal
 `<LOCAL_PATH>` while preserving packet structure; credential-shaped fields and
 credential-like values still fail closed. Turn scenarios require a current
 `loopx_turn_envelope_v0` with verified action-signature parity.
+The blocking human-gate packet is generated through the shipped
+`build_interaction_contract` path; qualification does not hand-author the
+expected response plan into a separate test-only packet.
 
 The portfolio keeps only scenario ids, expected and observed route names,
 bounded failure codes, repeat counts, and receipt digests. It never retains
