@@ -1,0 +1,23 @@
+tests/control_plane/test_cli_output_budget.py
+  s_9a5a2bd944fdcb::t_1dd222ae70d7cd 665-689
+tests/test_turn_envelope.py
+  s_9a5a2bd944fdcb::t_b835cf640d738e 16-19,321-345
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3d20961b464f95f467a222d8363a10f515bec9e1",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
