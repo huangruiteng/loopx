@@ -35,6 +35,12 @@ provider call. The comparator then checks these hard behavior dimensions:
 
 Any drift in those dimensions fails the pair. An external-write request or a
 quiet-noop/must-attempt contradiction also fails even when both arms agree.
+For a blocking user gate, the production `interaction_contract` and candidate
+TurnEnvelope both carry the same typed `response_plan`. Qualification first
+derives the expected plan independently from the user and agent channels, then
+requires the model to preserve its ordered `notify, wait` sequence. A missing
+notification, silent wait, or response plan mutation fails source alignment;
+the direct-model prompt does not contain a user-gate-specific answer rule.
 The receipt separately records an ordered, allowlisted
 `intended_action_kinds` sequence such as inspect, edit, test, writeback, and
 spend. A sequence difference is behavior drift even when the high-level

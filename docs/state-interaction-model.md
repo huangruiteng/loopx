@@ -164,6 +164,12 @@ the single action entrypoint for the current turn. If it carries a
 signal the primary action matched and whether `Next Action` / latest-run drift
 exists; it is not a second action source and does not authorize state sync by
 itself.
+When the final contract is a blocking user gate, it also carries a compact
+`interaction_response_plan_v0`: `kind=surface_user_gate`, ordered
+`action_sequence=[notify, wait]`, and `silent_wait_allowed=false`. The same plan
+is projected into TurnEnvelope so a real executor and a model-behavior
+qualification actor consume one typed behavior source. The automation prompt
+remains a thin dispatcher; it does not duplicate this gate rule as prose.
 For a registered agent, scoped state and accounting commands in
 `interaction_contract.cli_channel.next_cli_actions` preserve the normalized
 effective `--available-capability` envelope from the same quota decision.
