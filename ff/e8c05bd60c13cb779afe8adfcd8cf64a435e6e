@@ -1,0 +1,27 @@
+docs/development/control-plane-course/05-host-scheduler-and-heartbeat.md
+  s_76ee28abb3c3a4::t_b973b031b31f40 383-390
+docs/heartbeat-automation-prompt.md
+  s_76ee28abb3c3a4::t_b768427be0cffe 46-49,286,538
+docs/quota-allocation.md
+  s_76ee28abb3c3a4::t_6da2bf43888b2f 511-517,568
+skills/loopx-self-repair/references/repair-patterns.md
+  s_76ee28abb3c3a4::t_33c6a2206f5844 70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ffe8c05bd60c13cb779afe8adfcd8cf64a435e6e",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
