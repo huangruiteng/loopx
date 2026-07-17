@@ -265,8 +265,10 @@ if replan_decision_allowed:
    `normal_run`，证明 replan 没有抢占真实可执行工作。
 
 这里测试的不是一份当前 JSON，而是两条独立 invariant：monitor 停滞按 target identity
-累计；runnable advancement 在工作选择上优先于 monitor-derived replan。#2272 的
-public-safe replay 正是这种“先审状态模型，再验证真实链路”的例子。
+累计；runnable advancement 在工作选择上优先于 monitor-derived replan。
+仓库用 [issue #2272](https://github.com/huangruiteng/loopx/issues/2272) 记录过对应回归：
+M1、M2 交错 poll 时，错误的全局计数会让某条 lane 永远达不到 replan 阈值。下文的
+public-safe replay 用独立 counter 和可执行 advancement 反例验证修复后的状态模型。
 
 ### 核心代码领读：Counter 为什么属于 Monitor Todo
 

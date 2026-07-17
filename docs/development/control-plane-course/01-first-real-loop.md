@@ -531,7 +531,9 @@ effective_action = _effective_action(...)
 
 ### “Supervisor 就是主 agent”
 
-不是。当前 peer 模型没有 primary/side 的运行时层级。可选 supervisor 是 equal peer 上的观察和 proposal overlay，第 9 讲再展开。
+不是。当前 peer 模型没有 primary/side 的运行时层级。可选 supervisor 是 equal peer
+上的观察和 proposal overlay；第 7 讲用它演示规则设计，第 9 讲说明它与其他扩展能力
+如何复用同一个 kernel。
 
 ## 本讲源码与 smoke 地图
 

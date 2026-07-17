@@ -41,7 +41,7 @@ registry -> status -> quota -> interaction contract -> todo/evidence -> refresh/
 
 ## Kernel、Capability Pack 与 Domain State
 
-扩展层可以用三层架构审查，但三层不是三套 control plane：
+扩展层由三类责任组成，它们共享同一个 control plane：
 
 | 层 | Owns | Must not own |
 | --- | --- | --- |
@@ -49,7 +49,7 @@ registry -> status -> quota -> interaction contract -> todo/evidence -> refresh/
 | Capability Pack | 领域 route、validator、compact adapter、preset | 绕过 Kernel 的 permission 或 lifecycle |
 | Domain State | feasibility、PR lifecycle、experiment result、checkpoint 等紧凑事实 | claim、quota、gate、host effect authority |
 
-这套分层的价值不是目录整齐，而是让领域能力增加事实，不增加第二套权限模型。
+这套分层让领域能力增加专属事实，同时复用 Kernel 的权限和生命周期模型。
 当前 Issue-Fix pack 直接复用通用 Domain State seam：
 
 ```python

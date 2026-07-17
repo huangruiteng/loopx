@@ -346,7 +346,8 @@ Branch 完成不自动合并。`selected` 仍要经过普通 todo ownership、va
 
 ## Migration Reader 与 Live Model
 
-用户曾指出配置层不应残留旧版主/辅层级角色字段，同时 migration 逻辑不能删。
+升级兼容需要同时满足两个要求：旧版主/辅层级配置仍能被读取和迁移，迁移完成后的
+live model 不再暴露这些层级字段。
 
 正确分层：
 

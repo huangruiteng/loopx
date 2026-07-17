@@ -35,8 +35,9 @@ Dashboard: 只读观察和路由界面
 
 ## Session Context 不是 Project Memory
 
-“状态已经从 session memory 变成 project memory”不是说把聊天记录复制进仓库，
-也不是说 project memory 等于当前机器环境。三者拥有不同事实：
+长程任务跨 session 恢复时，下一位 peer 同时面对三类信息：当前对话留下的临时
+上下文、LoopX 持久化的 project memory，以及必须重新探测的运行环境。三者拥有
+不同事实：
 
 | 表面 | 保存什么 | 可能发生什么 | 能否单独作为 authority |
 | --- | --- | --- | --- |
@@ -44,13 +45,8 @@ Dashboard: 只读观察和路由界面
 | Project memory | goal identity、objective/boundary、todo/gate、紧凑 evidence、run lineage | 被 replay、投影或由另一 peer 恢复 | 可以，但必须经过 canonical contract |
 | Environment | 当前 checkout、host capability、外部服务与 fresh source | 在 handoff 之间变化 | 不能，必须重新探测 |
 
-因此恢复公式不是：
-
-```text
-new session = old transcript
-```
-
-而是：
+恢复的目标不是逐字重建旧 transcript，而是从持久化事实和新鲜环境重新生成可执行
+决定：
 
 ```text
 next decision = replay(project memory) + inspect(fresh environment)

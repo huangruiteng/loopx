@@ -97,7 +97,9 @@ specific blocking condition
 + exact resume condition or user question
 ```
 
-“Owner gate”不是 blocker evidence；“需要用户决定是否允许 X，因为 Y，解除后执行 Z”才是。
+Blocker evidence 必须说明具体决定、阻塞原因和恢复动作。例如：“需要用户
+决定是否允许 X，因为 Y；获得授权后执行 Z”。只写 “Owner gate” 没有提供
+足够的恢复信息。
 
 ### Monitor 类
 
@@ -250,7 +252,8 @@ signal
   -> explicit priority, gate, or vision writeback
 ```
 
-这个链路是管理面的推理框架，不应被伪装成一套已经独立落地的通用状态机：
+这是管理面整理 signal 的分析顺序，不是 LoopX 中另一套独立状态机。持久化和执行
+权限仍由现有 Core State 合同负责：
 
 - 外部消息到达不等于用户已授权执行；
 - 被认为“有价值”的 signal 不等于已进入 runnable frontier；
@@ -616,7 +619,8 @@ if delivery_workspace_guard:
   -> 只在 accountable delivery 后 spend 一次
 ```
 
-“更新文档说以后注意”通常不是最低层修复；如果机器 projection 误导 agent，应修 CLI/status/quota 并补 smoke。
+自修复应落在产生错误决策的最低层。如果机器 projection 误导 agent，应修复
+CLI/status/quota 并补 smoke；只更新文档不会改变机器的下一次决策。
 
 ### 断点练习
 
