@@ -716,6 +716,7 @@ def build_upgrade_plan(
                 agent_profile=agent_profile,
                 registered_agents=registered_agents or None,
                 available_capabilities=available_capabilities,
+                runtime_profile="codex_app_heartbeat",
             )
             summary = prompt_summary(prompt, mode)
             summary["agent_id"] = agent_id

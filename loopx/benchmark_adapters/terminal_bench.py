@@ -8189,9 +8189,13 @@ def build_terminal_bench_loopx_access_packet(
                 "loopx_cli_bridge_command_status: "
                 + f"{base} status --limit 5",
                 "loopx_cli_bridge_command_quota_should_run: "
-                + f"{base} quota should-run --goal-id {goal_id_quoted}",
+                + f"{base} quota should-run --goal-id {goal_id_quoted} "
+                "--host-surface generic_cli --scheduler-owner outer_controller "
+                "--execution-mode isolated_headless",
                 "loopx_cli_bridge_command_todo_list: "
-                + f"{base} quota should-run --goal-id {goal_id_quoted}",
+                + f"{base} quota should-run --goal-id {goal_id_quoted} "
+                "--host-surface generic_cli --scheduler-owner outer_controller "
+                "--execution-mode isolated_headless",
                 "loopx_cli_bridge_command_history: "
                 + f"{base} history --goal-id {goal_id_quoted} --limit 5",
             ]

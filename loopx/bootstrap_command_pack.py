@@ -6,13 +6,18 @@ from typing import Any
 
 from .agent_registry import registered_agent_ids_from_registry
 from .bootstrap import default_goal_id
-from .host_loop_activation import agent_type_for_host_surface, build_host_loop_activation_packet
+from .host_loop_activation import (
+    agent_type_for_host_surface,
+    build_host_loop_activation_packet,
+    scheduler_command_binding_for_agent_type,
+)
 from .project_alias import resolve_canonical_project_alias
 from .project_prompt import (
     DEFAULT_HANDOFF_ADAPTER_KIND,
     DEFAULT_HANDOFF_ADAPTER_STATUS,
     render_available_capability_args,
     render_quota_guard_command,
+    render_scheduler_execution_args,
     shell_arg,
 )
 from .registry import registry_goals, resolve_state_file
@@ -678,7 +683,7 @@ Planning rules:
 3. Every new todo starts with `[P0]`, `[P1]`, or `[P2]`; include at least one `[P0]` unless the first useful step is blocked by a user gate.
 4. If several todos share the same priority, their listed order is their relative priority. Preserve that exact order when writing them.
 5. Prefer executable Agent Todo items with `task_class=advancement_task`; use User Todo only for concrete owner decisions or private-material gates.
-6. After writing todos, run `loopx refresh-state --goal-id {goal_id}`, activate the host loop if it is missing, unknown, or stale (Codex App automation, Codex CLI `/goal <task_body>`, Claude Code `/loop`, or a custom host-loop gate), then run `loopx quota should-run --goal-id {goal_id}` and begin the first allowed bounded segment.
+6. After writing todos, run `loopx refresh-state --goal-id {goal_id}`, activate the host loop if it is missing, unknown, or stale (Codex App automation, Codex CLI `/goal <task_body>`, Claude Code `/loop`, or a custom host-loop gate), then run the packet's `goal_start_quota_should_run` command with its explicit scheduler context and begin the first allowed bounded segment.
 7. If the goal is a GitHub issue/PR fix, first preview `loopx issue-fix workflow-plan --url <github-issue-or-pr-url> --repo-path <approved-repo> --repository-context-json <compact-context.json> --validation-label '<validation command>' --format json`; write only metadata classification plus the feasibility checkpoint. Repository context should pin current repo policy, architecture, change-scope, reproduction, and validation refs; memory and external experts remain advisory until verified against the pinned revision. After a compact public-safe observation, run `loopx issue-fix feasibility --url <github-issue-url> --reproduction-status <state> --scope-class <scope> --repository-context-json <compact-context.json> --goal-id {goal_id} --format json` and write only its selected route successor or no-follow-up. Keep private repro material, body/comment reads, arbitrary external comments, PR creation, merge, publish, destructive git, and production actions as explicit gates. After a PR exists and `external_review_request` or `publish` authority is active, call `loopx issue-fix reviewer-request --url <github-pr-url> --repo-path <approved-repo> --base-ref <base-ref> --execute --format json`; it should try the formal request first and, only on confirmed permission denial, post one reviewer-tagging fallback comment. Do not mark notification complete until the request or fallback comment is visible on the PR. Then call `loopx issue-fix pr-lifecycle --url <github-pr-url> --goal-id {goal_id} --format json`; use `grouped_monitor_projection` for one monitor per nonempty state bucket. Never create one monitor per PR. Keep PR actions one-shot and messages at one PR per message.
 """
 
@@ -733,12 +738,29 @@ def build_loopx_bootstrap_command_pack(
     activation_commands = activation_commands if isinstance(activation_commands, dict) else {}
     heartbeat_prompt_command = activation_commands.get("heartbeat_prompt")
     heartbeat_prompt_json_command = activation_commands.get("heartbeat_prompt_json")
+    scheduler_command_binding = scheduler_command_binding_for_agent_type(agent_type)
     quota_guard_command = (
         render_quota_guard_command(
             resolved_goal_id,
             cli_bin=cli_bin,
             agent_id=str(selected_agent_id) if selected_agent_id else None,
             available_capabilities=available_capabilities,
+            **scheduler_command_binding,
+        )
+        if activation_allowed
+        else None
+    )
+    goal_start_quota_should_run = (
+        (
+            f"{shell_arg(cli_bin)} quota should-run --goal-id "
+            f"{shell_arg(resolved_goal_id)}"
+            + (
+                f" --agent-id {shell_arg(str(selected_agent_id))}"
+                if selected_agent_id
+                else ""
+            )
+            + render_available_capability_args(available_capabilities)
+            + render_scheduler_execution_args(**scheduler_command_binding)
         )
         if activation_allowed
         else None
@@ -852,20 +874,7 @@ def build_loopx_bootstrap_command_pack(
                 )
                 + render_available_capability_args(available_capabilities)
             ),
-            "goal_start_quota_should_run": (
-                (
-                    f"{shell_arg(cli_bin)} quota should-run --goal-id "
-                    f"{shell_arg(resolved_goal_id)}"
-                    + (
-                        f" --agent-id {shell_arg(str(selected_agent_id))}"
-                        if selected_agent_id
-                        else ""
-                    )
-                    + render_available_capability_args(available_capabilities)
-                )
-                if activation_allowed
-                else None
-            ),
+            "goal_start_quota_should_run": goal_start_quota_should_run,
             "identity_selection_choices": (
                 identity_selection_gate.get("choices")
                 if isinstance(identity_selection_gate, dict)

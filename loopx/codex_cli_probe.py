@@ -43,7 +43,16 @@ from .codex_cli_runtime_probe import (
     probe_human_input_idle_seconds as probe_human_input_idle_seconds,
     run_codex_cli_session_probe as run_codex_cli_session_probe,
 )
-from .project_prompt import build_codex_cli_bootstrap_message
+from .project_prompt import (
+    CODEX_CLI_VISIBLE_SCHEDULER_CONTEXT,
+    build_codex_cli_bootstrap_message,
+    render_scheduler_execution_args,
+)
+
+
+CODEX_CLI_SCHEDULER_ARGS = render_scheduler_execution_args(
+    scheduler_execution_context=CODEX_CLI_VISIBLE_SCHEDULER_CONTEXT
+)
 
 
 def build_codex_cli_visible_attach_acceptance(
@@ -274,6 +283,7 @@ def build_codex_cli_visible_driver_plan(
     quota_guard_command = (
         f"{_shell_arg(cli_bin)} --format json quota should-run "
         f"--goal-id {_shell_arg(resolved_goal_id)}{agent_arg}"
+        f"{CODEX_CLI_SCHEDULER_ARGS}"
     )
     bootstrap_command = (
         f"{_shell_arg(cli_bin)} codex-cli-bootstrap-message "
@@ -383,6 +393,7 @@ def build_codex_cli_local_driver_plan(
         f"{_shell_arg(cli_bin)} --format json "
         "--registry \"$HOME/.codex/loopx/registry.global.json\" "
         f"quota should-run --goal-id {_shell_arg(resolved_goal_id)}{agent_arg}"
+        f"{CODEX_CLI_SCHEDULER_ARGS}"
     )
     bootstrap_command = (
         f"{_shell_arg(cli_bin)} codex-cli-bootstrap-message "
@@ -1230,6 +1241,7 @@ def build_codex_cli_visible_first_response_capture_plan(
         "quota_guard": (
             f"{_shell_arg(cli_bin)} --format json quota should-run "
             f"--goal-id {_shell_arg(resolved_goal_id)}{agent_arg}"
+            f"{CODEX_CLI_SCHEDULER_ARGS}"
         ),
         "bootstrap_message": (
             f"{_shell_arg(cli_bin)} codex-cli-bootstrap-message "

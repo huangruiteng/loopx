@@ -148,7 +148,7 @@ def run_demo(
             f"cd {project}",
             'registry="$PWD/.loopx/registry.json"',
             'loopx --registry "$registry" status --scan-root "$PWD"',
-            f'loopx --registry "$registry" --format json quota should-run --goal-id {goal_id}',
+            f'loopx --registry "$registry" --format json quota should-run --goal-id {goal_id} --host-surface generic_cli --scheduler-owner agent_cli_loop --execution-mode interactive',
         ],
         "dashboard_status_commands": [
             f"cd {project}",

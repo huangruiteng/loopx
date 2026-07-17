@@ -25,6 +25,10 @@ from ..control_plane.quota.scheduler_ack import (
     record_quota_scheduler_failure_for_decision,
 )
 from ..control_plane.quota.markdown import render_quota_scheduler_failure_markdown
+from ..control_plane.scheduler.execution_context import (
+    SchedulerRuntimeProfile,
+    scheduler_execution_context_for_runtime_profile,
+)
 from ..control_plane.runtime.status_projection_cache import (
     load_status_projection_cache,
     resolve_status_projection_cache_runtime_root,
@@ -101,6 +105,15 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
             "Current RRULE observed from the active Codex App heartbeat. For "
             "`quota should-run`, this reconciles host reality with LoopX's last "
             "scheduler ACK so a stale ACK cannot suppress a required update."
+        ),
+    )
+    quota_parser.add_argument(
+        "--runtime-profile",
+        choices=[profile.value for profile in SchedulerRuntimeProfile],
+        help=(
+            "Explicit scheduler runtime shortcut for a known host boundary. "
+            "Cannot be combined with --host-surface, --scheduler-owner, or "
+            "--execution-mode."
         ),
     )
     quota_parser.add_argument(
@@ -263,16 +276,29 @@ def handle_quota_command(
         if args.quota_command == "should-run":
             if not args.goal_id:
                 raise ValueError("`loopx quota should-run` requires --goal-id")
-            scheduler_context = (
-                {
+            explicit_scheduler_fields = (
+                args.host_surface,
+                args.scheduler_owner,
+                args.execution_mode,
+            )
+            if args.runtime_profile and any(explicit_scheduler_fields):
+                raise ValueError(
+                    "--runtime-profile cannot be combined with --host-surface, "
+                    "--scheduler-owner, or --execution-mode"
+                )
+            if args.runtime_profile:
+                scheduler_context = scheduler_execution_context_for_runtime_profile(
+                    args.runtime_profile
+                )
+            elif any(explicit_scheduler_fields):
+                scheduler_context = {
                     "host_surface": args.host_surface,
                     "scheduler_owner": args.scheduler_owner,
                     "execution_mode": args.execution_mode,
                     "source": "quota_cli_invocation",
                 }
-                if any((args.host_surface, args.scheduler_owner, args.execution_mode))
-                else None
-            )
+            else:
+                scheduler_context = None
             payload = build_live_quota_should_run_decision(
                 status_payload,
                 goal_id=args.goal_id,

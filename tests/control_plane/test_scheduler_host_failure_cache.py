@@ -8,6 +8,9 @@ from loopx.control_plane.quota.scheduler_ack import (
     record_quota_scheduler_failure_for_decision,
 )
 from loopx.control_plane.scheduler.ack import build_codex_app_scheduler_ack_event
+from loopx.control_plane.scheduler.execution_context import (
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
 from loopx.control_plane.scheduler.state import (
     CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
@@ -26,6 +29,9 @@ HOST_30 = "FREQ=MINUTELY;INTERVAL=30"
 HOST_20 = "FREQ=MINUTELY;INTERVAL=20"
 ACTIVE_3 = "FREQ=MINUTELY;INTERVAL=3"
 MONITOR_15 = "FREQ=MINUTELY;INTERVAL=15"
+APP_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    "codex_app_heartbeat"
+)
 
 
 def _decision(*, mode: str, must_attempt: bool, quiet_noop_allowed: bool) -> dict:
@@ -72,6 +78,7 @@ def _with_scheduler_hint(
         result,
         codex_app_scheduler_state=scheduler_state,
         codex_app_current_rrule=host_rrule,
+        scheduler_execution_context=APP_CONTEXT,
     )
     return result
 

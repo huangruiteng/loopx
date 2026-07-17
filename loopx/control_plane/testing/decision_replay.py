@@ -5,6 +5,9 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any, cast
 
+from ..scheduler.execution_context import (
+    scheduler_execution_context_for_runtime_profile,
+)
 from ...quota import build_quota_should_run
 from .quota_fixtures import quota_status_payload, quota_todo_item, quota_todo_summary
 
@@ -241,10 +244,17 @@ def replay_public_safe_decision_case(case: Mapping[str, Any]) -> dict[str, Any]:
         safe_bypass=scenario.get("safe_bypass") is True,
         coordination={"agent_model": "peer_v1", "registered_agents": [agent_id]},
     )
+    runtime_profile = str(scenario.get("scheduler_runtime_profile") or "").strip()
+    scheduler_execution_context = (
+        scheduler_execution_context_for_runtime_profile(runtime_profile)
+        if runtime_profile
+        else None
+    )
     payload = build_quota_should_run(
         status,
         goal_id=goal_id,
         agent_id=agent_id,
+        scheduler_execution_context=scheduler_execution_context,
     )
     reduced = reduce_public_safe_decision(payload, case_id=goal_id)
     return {

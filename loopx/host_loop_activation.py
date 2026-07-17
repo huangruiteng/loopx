@@ -17,6 +17,32 @@ SCHEMA_VERSION = "loopx_host_loop_activation_v1"
 AGENT_TYPE_CATALOG_SCHEMA_VERSION = "loopx_agent_type_catalog_v0"
 IDENTITY_SELECTION_SCHEMA_VERSION = "loopx_host_loop_identity_selection_v0"
 
+
+def scheduler_command_binding_for_agent_type(
+    agent_type: str,
+) -> dict[str, Any]:
+    canonical = normalize_agent_type(agent_type)
+    if canonical == "codex-app":
+        return {"runtime_profile": "codex_app_heartbeat"}
+    if canonical in {"codex-cli", "codex-ide"}:
+        return {
+            "scheduler_execution_context": {
+                "host_surface": "codex_cli",
+                "scheduler_owner": "agent_cli_loop",
+                "execution_mode": "interactive",
+            }
+        }
+    if canonical == "claude-code":
+        return {
+            "scheduler_execution_context": {
+                "host_surface": "claude_code",
+                "scheduler_owner": "agent_cli_loop",
+                "execution_mode": "interactive",
+            }
+        }
+    return {}
+
+
 SUPPORTED_AGENT_TYPES = [
     "codex-app",
     "codex-ide",
@@ -249,6 +275,7 @@ def _heartbeat_commands(
         "other-agent": "Custom agent host loop gated by LoopX",
     }
     agent_scope = scope_by_type.get(agent_type, scope_by_type["other-agent"])
+    scheduler_binding = scheduler_command_binding_for_agent_type(agent_type)
     return {
         "heartbeat_prompt_json": render_heartbeat_prompt_json_command(
             goal_id,
@@ -256,6 +283,7 @@ def _heartbeat_commands(
             agent_id=agent_id,
             agent_scope=agent_scope,
             available_capabilities=available_capabilities,
+            **scheduler_binding,
         ),
         "heartbeat_prompt": render_heartbeat_prompt_command(
             goal_id,
@@ -263,6 +291,7 @@ def _heartbeat_commands(
             agent_id=agent_id,
             agent_scope=agent_scope,
             available_capabilities=available_capabilities,
+            **scheduler_binding,
         ),
     }
 

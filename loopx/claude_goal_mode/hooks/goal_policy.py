@@ -104,6 +104,11 @@ def should_run(registry, goal_id, agent_id=None) -> bool | None:
     cmd += ["--format", "json", "quota", "should-run", "--goal-id", goal_id]
     if agent_id:
         cmd += ["--agent-id", agent_id]
+    cmd += [
+        "--host-surface", "claude_code",
+        "--scheduler-owner", "agent_cli_loop",
+        "--execution-mode", "interactive",
+    ]
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         data = json.loads(out.stdout or "{}")

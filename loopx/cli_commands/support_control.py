@@ -14,6 +14,7 @@ from ..heartbeat_prompt import (
     build_heartbeat_prompt_error_payload,
     render_heartbeat_prompt_markdown,
 )
+from ..control_plane.scheduler.execution_context import SchedulerRuntimeProfile
 from ..history import load_registry
 from ..paths import resolve_runtime_root
 from ..presentation.renderers.status_markdown import render_status_markdown
@@ -163,6 +164,29 @@ def register_support_control_commands(
             "external_evidence_poll. Repeat for multiple capabilities; generated "
             "quota guard and spend commands preserve the declaration."
         ),
+    )
+    heartbeat_prompt_parser.add_argument(
+        "--runtime-profile",
+        choices=[profile.value for profile in SchedulerRuntimeProfile],
+        help=(
+            "Embed one explicit scheduler runtime profile in the generated quota "
+            "guard. Cannot be combined with the explicit scheduler context fields."
+        ),
+    )
+    heartbeat_prompt_parser.add_argument(
+        "--host-surface",
+        choices=["codex_app", "codex_cli", "generic_cli", "claude_code", "local_scheduler"],
+        help="Host surface embedded in the generated quota guard.",
+    )
+    heartbeat_prompt_parser.add_argument(
+        "--scheduler-owner",
+        choices=["host_automation", "agent_cli_loop", "outer_controller", "none"],
+        help="Cadence owner embedded in the generated quota guard.",
+    )
+    heartbeat_prompt_parser.add_argument(
+        "--execution-mode",
+        choices=["interactive", "isolated_headless", "hosted_automation"],
+        help="Execution mode embedded in the generated quota guard.",
     )
     heartbeat_style_group = heartbeat_prompt_parser.add_mutually_exclusive_group()
     heartbeat_style_group.add_argument(
@@ -394,6 +418,16 @@ def handle_support_control_command(
                 agent_profile=agent_profile,
                 registered_agents=registered_agents,
                 available_capabilities=args.available_capabilities,
+                runtime_profile=args.runtime_profile,
+                scheduler_execution_context=(
+                    {
+                        "host_surface": args.host_surface,
+                        "scheduler_owner": args.scheduler_owner,
+                        "execution_mode": args.execution_mode,
+                    }
+                    if any((args.host_surface, args.scheduler_owner, args.execution_mode))
+                    else None
+                ),
             )
         except Exception as exc:
             fallback_active_state = active_state

@@ -19,10 +19,18 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.quota import build_quota_should_run  # noqa: E402
 from loopx.review_packet import build_review_packet  # noqa: E402
+from loopx.control_plane.scheduler.execution_context import (  # noqa: E402
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.control_plane.testing.quota_fixtures import (  # noqa: E402
     quota_status_payload,
     quota_todo_item as todo_item,
     quota_todo_summary,
+)
+
+
+APP_SCHEDULER_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    "codex_app_heartbeat"
 )
 
 
@@ -76,7 +84,12 @@ def assert_agent_lane_delivery() -> None:
             )
         ]
     )
-    quota = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=AGENT_ID)
+    quota = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
+    )
     assert quota["decision"] == "run", quota
     assert quota["effective_action"] == "normal_run", quota
     assert quota["interaction_contract"]["agent_channel"]["must_attempt"] is True, quota
@@ -115,7 +128,12 @@ def assert_scoped_operator_gate_safe_bypass() -> None:
         quota_state="operator_gate",
         safe_bypass=True,
     )
-    quota = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=AGENT_ID)
+    quota = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
+    )
     assert quota["should_run"] is True, quota
     assert quota["effective_action"] == "normal_run", quota
     assert quota["safe_bypass_allowed"] is True, quota
@@ -143,7 +161,12 @@ def assert_due_monitor_context_does_not_steal_advancement() -> None:
             ),
         ]
     )
-    quota = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=AGENT_ID)
+    quota = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
+    )
     contract = quota["work_lane_contract"]
     assert contract["lane"] == "advancement_task", contract
     assert "due_monitor_context" in contract["reason_codes"], contract
@@ -175,7 +198,12 @@ def assert_current_agent_claimed_advancement_beats_other_agent_frontier() -> Non
             ),
         ]
     )
-    quota = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=AGENT_ID)
+    quota = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
+    )
     assert quota["decision"] == "run", quota
     assert quota["effective_action"] == "normal_run", quota
 
@@ -213,6 +241,7 @@ def assert_current_agent_claimed_advancement_beats_other_agent_frontier() -> Non
         payload,
         goal_id=GOAL_ID,
         agent_id=PRIMARY_AGENT_ID,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
     )
     assert primary_quota["agent_lane_next_action"]["todo_id"] == (
         "todo_primary_first"
@@ -252,7 +281,12 @@ def assert_higher_priority_due_monitor_preempts_advancement() -> None:
             ),
         ]
     )
-    quota = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=AGENT_ID)
+    quota = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
+    )
     contract = quota["work_lane_contract"]
     assert contract["lane"] == "continuous_monitor", contract
     assert contract["monitor_kind"] == "todo_monitor_due", contract
@@ -275,7 +309,12 @@ def assert_monitor_only_frontier_requires_replan_without_delta() -> None:
             )
         ]
     )
-    quota = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=AGENT_ID)
+    quota = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
+    )
     assert quota["decision"] == "autonomous_replan_required", quota
     assert quota["should_run"] is True, quota
     assert quota["effective_action"] == "autonomous_replan_required", quota
@@ -348,6 +387,7 @@ def assert_standing_monitor_gate_does_not_quiet_skip_gated_advancement() -> None
         status_payload([], agent_todos=agent_todos),
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
     )
     assert quota["decision"] == "run", quota
     assert quota["should_run"] is True, quota
@@ -384,7 +424,12 @@ def assert_reassignment_scheduler_contract() -> None:
             )
         ]
     )
-    quota = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=AGENT_ID)
+    quota = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
+    )
     assert quota["decision"] == "reassignment_required", quota
     assert quota["should_run"] is False, quota
     assert quota["effective_action"] == "reassignment_required", quota

@@ -24,6 +24,7 @@
       "rationale": "A matching blocking user gate owns the exact decision scope, so delivery must stop and the scheduler must wait for the user.",
       "scenario": {
         "quota_state": "operator_gate",
+        "scheduler_runtime_profile": "codex_app_heartbeat",
         "safe_bypass": true
       },
       "decision": {
@@ -93,6 +94,7 @@
       "rationale": "A non-blocking user action may be notified, but it cannot cancel independent runnable work owned by the current agent.",
       "scenario": {
         "quota_state": "eligible",
+        "scheduler_runtime_profile": "codex_app_heartbeat",
         "safe_bypass": false
       },
       "decision": {
@@ -170,6 +172,7 @@
       "rationale": "A user_action with the same scope is not approval authority; the contradictory projection must fail closed into bounded repair.",
       "scenario": {
         "quota_state": "eligible",
+        "scheduler_runtime_profile": "codex_app_heartbeat",
         "safe_bypass": false
       },
       "decision": {

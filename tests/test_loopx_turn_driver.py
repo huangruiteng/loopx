@@ -418,6 +418,75 @@ def test_quota_cli_projects_outer_controller_without_codex_app_action(
     assert hint["execution_phase"]["ack_needed"] is False
 
 
+def test_quota_cli_without_scheduler_context_fails_closed(tmp_path: Path) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    output = io.StringIO()
+
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "quota",
+                "should-run",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                "--scan-root",
+                str(project),
+            ]
+        )
+
+    payload = json.loads(output.getvalue())
+    hint = payload["scheduler_hint"]
+    assert exit_code == 0, payload
+    assert hint["action"] == "repair_scheduler_execution_context"
+    assert hint["execution_context"]["valid"] is False
+    assert hint["codex_app"]["applicability"] == "blocked_invalid_context"
+
+
+def test_quota_cli_codex_app_profile_is_explicit_and_applicable(
+    tmp_path: Path,
+) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    output = io.StringIO()
+
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "quota",
+                "should-run",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                "--runtime-profile",
+                "codex_app_heartbeat",
+                "--scan-root",
+                str(project),
+            ]
+        )
+
+    payload = json.loads(output.getvalue())
+    hint = payload["scheduler_hint"]
+    assert exit_code == 0, payload
+    assert "execution_context" not in hint
+    assert "execution_phase" not in hint
+    assert hint["codex_app"]["applicability"] == "applicable"
+    assert "stateful_backoff" in hint["codex_app"]
+
+
 def test_turn_cli_consumes_live_state_without_writes(
     tmp_path: Path,
 ) -> None:

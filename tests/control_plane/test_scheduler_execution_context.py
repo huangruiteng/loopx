@@ -7,8 +7,10 @@ import pytest
 from loopx.control_plane.scheduler.execution_context import (
     ExecutionMode,
     HostSurface,
+    SchedulerRuntimeProfile,
     SchedulerOwner,
     resolve_scheduler_execution_context,
+    scheduler_execution_context_for_runtime_profile,
 )
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
 
@@ -104,8 +106,12 @@ def test_scheduler_execution_context_decision_table(
         "applicable" if app_expected else "not_applicable"
     )
     assert ("stateful_backoff" in hint["codex_app"]) is app_expected
-    assert hint["execution_phase"]["apply_needed"] is app_expected
-    assert hint["execution_phase"]["completed"] is (not app_expected)
+    if app_expected:
+        assert "execution_context" not in hint
+        assert "execution_phase" not in hint
+    else:
+        assert hint["execution_phase"]["apply_needed"] is False
+        assert hint["execution_phase"]["completed"] is True
 
 
 def test_partial_scheduler_context_fails_closed_without_app_action() -> None:
@@ -120,9 +126,33 @@ def test_partial_scheduler_context_fails_closed_without_app_action() -> None:
     assert hint["execution_phase"]["apply_needed"] is False
 
 
-def test_legacy_quota_calls_preserve_codex_app_backoff() -> None:
+def test_missing_scheduler_context_fails_closed() -> None:
     hint = build_scheduler_hint(_active_payload())
+
+    assert hint["action"] == "repair_scheduler_execution_context"
+    assert hint["execution_context"]["valid"] is False
+    assert hint["codex_app"]["applicability"] == "blocked_invalid_context"
+    assert hint["execution_phase"]["disposition"] == "contract_error"
+
+
+def test_codex_app_runtime_profile_preserves_host_backoff() -> None:
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT
+    )
+    hint = build_scheduler_hint(
+        _active_payload(),
+        include_detail=True,
+        scheduler_execution_context=context,
+    )
 
     assert "execution_context" not in hint
     assert "execution_phase" not in hint
+    assert hint["cold_path_detail"]["execution_context"]["source"] == (
+        "runtime_profile:codex_app_heartbeat"
+    )
+    assert (
+        hint["cold_path_detail"]["execution_context"]["codex_app_applicability"]
+        == "applicable"
+    )
     assert hint["codex_app"]["stateful_backoff"]["apply_needed"] is True
+    assert hint["cold_path_detail"]["execution_phase"]["apply_needed"] is True

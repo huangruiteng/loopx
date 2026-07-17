@@ -14,6 +14,9 @@ from loopx.control_plane.testing.quota_fixtures import (
     quota_todo_item,
     quota_todo_summary,
 )
+from loopx.control_plane.scheduler.execution_context import (
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.quota import build_quota_should_run, build_quota_slot_spend_event
 
 
@@ -31,6 +34,9 @@ PUBLISH_SCOPE = {
     "granularity": "action",
     "scope_key": "publish_quality_contract",
 }
+APP_SCHEDULER_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    "codex_app_heartbeat"
+)
 
 
 def _decision(*, blocking: bool) -> dict:
@@ -77,7 +83,12 @@ def _decision(*, blocking: bool) -> dict:
         safe_bypass=blocking,
         coordination={"agent_model": "peer_v1", "registered_agents": [AGENT_ID]},
     )
-    return build_quota_should_run(status, goal_id=GOAL_ID, agent_id=AGENT_ID)
+    return build_quota_should_run(
+        status,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
+    )
 
 
 def _scope_collision_decision() -> dict:
@@ -109,7 +120,12 @@ def _scope_collision_decision() -> dict:
         quota_state="eligible",
         coordination={"agent_model": "peer_v1", "registered_agents": [AGENT_ID]},
     )
-    return build_quota_should_run(status, goal_id=GOAL_ID, agent_id=AGENT_ID)
+    return build_quota_should_run(
+        status,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
+    )
 
 
 def test_checked_in_replay_is_an_independent_reviewed_oracle() -> None:
@@ -221,7 +237,11 @@ def test_other_agent_gate_cannot_inherit_global_operator_gate_authority() -> Non
         "A global operator_gate status caused by another agent cannot block or notify "
         "the current agent when its independent todo remains runnable."
     )
-    other_agent["scenario"] = {"quota_state": "operator_gate", "safe_bypass": True}
+    other_agent["scenario"] = {
+        "quota_state": "operator_gate",
+        "safe_bypass": True,
+        "scheduler_runtime_profile": "codex_app_heartbeat",
+    }
     other_agent["user_todos"] = [
         {
             "todo_id": "todo_other_agent_gate",

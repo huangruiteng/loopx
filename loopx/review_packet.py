@@ -146,7 +146,10 @@ def build_quota_should_run_command(status_payload: dict[str, Any], goal_id: str)
             f"  --runtime-root {shlex.quote(str(status_payload.get('runtime_root') or '<runtime-root>'))} \\",
             "  --format json \\",
             "  quota should-run \\",
-            f"  --goal-id {shlex.quote(goal_id)}",
+            f"  --goal-id {shlex.quote(goal_id)} \\",
+            "  --host-surface generic_cli \\",
+            "  --scheduler-owner agent_cli_loop \\",
+            "  --execution-mode interactive",
         ]
     )
 
