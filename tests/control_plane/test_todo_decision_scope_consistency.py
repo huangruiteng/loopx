@@ -184,6 +184,59 @@ def test_complete_source_items_take_precedence_over_hot_path_summary() -> None:
     assert result["errors"][0]["reason_code"] == "dangling_required_decision_scope"
 
 
+@pytest.mark.parametrize("decision_outcome", ["reject", "cancel"])
+def test_terminal_non_approval_is_a_valid_blocked_scope_state(
+    decision_outcome: str,
+) -> None:
+    agent_summary = _agent_summary()
+    agent_item = agent_summary["first_open_items"][0]
+    agent_item["status"] = "blocked"
+    agent_item["decision_scope_outcomes"] = [
+        {
+            "outcome": decision_outcome,
+            "decision_scope": SCOPE,
+            "source_todo_id": "todo_terminal_gate",
+        }
+    ]
+
+    result = build_required_decision_scope_consistency(
+        agent_summary,
+        _user_summary(),
+        agent_id=AGENT_ID,
+    )
+
+    assert result["ok"] is True
+    assert result["terminal_outcome_count"] == 1
+    assert result["errors"] == []
+
+
+def test_terminal_non_approval_cannot_leave_target_executable() -> None:
+    agent_summary = _agent_summary()
+    agent_summary["first_open_items"][0]["decision_scope_outcomes"] = [
+        {
+            "outcome": "reject",
+            "decision_scope": SCOPE,
+            "source_todo_id": "todo_terminal_gate",
+        }
+    ]
+
+    result = build_required_decision_scope_consistency(
+        agent_summary,
+        _user_summary(),
+        agent_id=AGENT_ID,
+    )
+
+    assert result["ok"] is False
+    assert result["errors"] == [
+        {
+            "reason_code": "terminal_decision_outcome_target_not_blocked",
+            "agent_todo_id": "todo_agent_delivery",
+            "required_scope": "direction:action:publish_quality_contract",
+            "related_user_todo_ids": ["todo_terminal_gate"],
+        }
+    ]
+
+
 def test_quota_checks_scope_item_beyond_hot_path_backlog_limit() -> None:
     items = [
         quota_todo_item(

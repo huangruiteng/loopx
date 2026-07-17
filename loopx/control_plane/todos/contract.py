@@ -47,7 +47,8 @@ TODO_METADATA_FIELDS = (
     "todo_id", "status", "task_class", "action_kind", "continuation_policy",
     "task_repository", "required_write_scopes", "required_capabilities", "target_capabilities",
     "explore_result_node_refs",
-    "decision_scope", "required_decision_scopes", "claimed_by", "blocks_agent",
+    "decision_scope", "required_decision_scopes", "decision_outcome",
+    "decision_scope_outcomes", "claimed_by", "blocks_agent",
     "excluded_agents", "global_gate", "unblocks_todo_id", "successor_todo_ids",
     "resume_when", "no_followup", *TODO_MONITOR_METADATA_FIELDS, "note", "evidence",
     "reason", "completed_at", "updated_at", "superseded_by",
@@ -66,6 +67,8 @@ TODO_TASK_CLASS_VALUES = {
     TODO_TASK_CLASS_BLOCKER,
 }
 TODO_DECISION_SCOPE_SCHEMA_VERSION = "decision_scope_v0"
+TODO_DECISION_SCOPE_OUTCOME_SCHEMA_VERSION = "todo_decision_scope_outcome_v0"
+TODO_DECISION_OUTCOME_VALUES = {"approve", "reject", "cancel"}
 TODO_DECISION_SCOPE_KIND_VALUES = {
     "private_read",
     "write_scope",
@@ -515,6 +518,21 @@ def normalize_todo_decision_scope(value: Any) -> dict[str, str] | None:
     return payload
 
 
+def normalize_todo_decision_outcome(value: Any) -> str | None:
+    candidate = compact_todo_text(value).lower()
+    return candidate if candidate in TODO_DECISION_OUTCOME_VALUES else None
+
+
+def require_todo_decision_outcome(value: Any) -> str:
+    outcome = normalize_todo_decision_outcome(value)
+    if not outcome:
+        raise ValueError(
+            "decision_outcome must be one of: "
+            + ", ".join(sorted(TODO_DECISION_OUTCOME_VALUES))
+        )
+    return outcome
+
+
 def require_todo_decision_scope(value: Any) -> dict[str, str]:
     scope = normalize_todo_decision_scope(value)
     if not scope:
@@ -579,6 +597,68 @@ def required_decision_scopes_metadata_value(value: Any) -> str | None:
     return ",".join(
         f"{scope['kind']}:{scope['granularity']}:{scope['scope_key']}"
         for scope in scopes
+    )
+
+
+def normalize_todo_decision_scope_outcomes(value: Any) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    raw_values = list(value) if isinstance(value, (list, tuple, set)) else [value]
+    if isinstance(value, str):
+        raw_values = [item for item in value.split(",") if item]
+    outcomes: list[dict[str, Any]] = []
+    positions: dict[tuple[str, str, str], int] = {}
+    for raw in raw_values:
+        raw_outcome: Any = None
+        raw_scope: Any = None
+        raw_source_todo_id: Any = None
+        if isinstance(raw, dict):
+            raw_outcome = raw.get("outcome")
+            raw_scope = raw.get("decision_scope") or raw.get("scope")
+            raw_source_todo_id = raw.get("source_todo_id")
+        else:
+            parts = str(raw or "").split("|", 2)
+            if len(parts) == 3:
+                raw_outcome, raw_scope, raw_source_todo_id = parts
+        outcome = normalize_todo_decision_outcome(raw_outcome)
+        scope = normalize_todo_decision_scope(raw_scope)
+        source_todo_id = normalize_todo_id(raw_source_todo_id)
+        if not outcome or not scope or not source_todo_id:
+            continue
+        payload = {
+            "schema_version": TODO_DECISION_SCOPE_OUTCOME_SCHEMA_VERSION,
+            "outcome": outcome,
+            "decision_scope": scope,
+            "source_todo_id": source_todo_id,
+        }
+        identity = (scope["kind"], scope["granularity"], scope["scope_key"])
+        if identity in positions:
+            outcomes[positions[identity]] = payload
+        else:
+            positions[identity] = len(outcomes)
+            outcomes.append(payload)
+    return outcomes
+
+
+def decision_scope_outcomes_metadata_value(value: Any) -> str | None:
+    outcomes = normalize_todo_decision_scope_outcomes(value)
+    if not outcomes:
+        return None
+    return ",".join(
+        "|".join(
+            (
+                item["outcome"],
+                ":".join(
+                    (
+                        item["decision_scope"]["kind"],
+                        item["decision_scope"]["granularity"],
+                        item["decision_scope"]["scope_key"],
+                    )
+                ),
+                item["source_todo_id"],
+            )
+        )
+        for item in outcomes
     )
 
 
@@ -718,9 +798,17 @@ def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
             if decision_scope:
                 metadata["decision_scope"] = decision_scope
         elif key in {"required_decision_scope", "required_decision_scopes"}:
-            scopes = normalize_todo_required_decision_scopes(value)
-            if scopes:
-                metadata["required_decision_scopes"] = scopes
+            decision_scopes = normalize_todo_required_decision_scopes(value)
+            if decision_scopes:
+                metadata["required_decision_scopes"] = decision_scopes
+        elif key == "decision_outcome":
+            outcome = normalize_todo_decision_outcome(value)
+            if outcome:
+                metadata["decision_outcome"] = outcome
+        elif key == "decision_scope_outcomes":
+            outcomes = normalize_todo_decision_scope_outcomes(value)
+            if outcomes:
+                metadata["decision_scope_outcomes"] = outcomes
         elif key == "claimed_by":
             claimed_by = normalize_todo_claimed_by(value)
             if claimed_by:
@@ -781,6 +869,8 @@ def format_todo_metadata_line(
     explore_result_node_refs: Any = None,
     decision_scope: Any = None,
     required_decision_scopes: Any = None,
+    decision_outcome: str | None = None,
+    decision_scope_outcomes: Any = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
     excluded_agents: Any = None,
@@ -911,6 +1001,29 @@ def format_todo_metadata_line(
             "required_decision_scopes="
             f"{encode_metadata_value(normalized_required_decision_scopes)}"
         )
+    normalized_decision_outcome = normalize_todo_decision_outcome(decision_outcome)
+    if decision_outcome and not normalized_decision_outcome:
+        raise ValueError(
+            "decision_outcome must be one of: "
+            + ", ".join(sorted(TODO_DECISION_OUTCOME_VALUES))
+        )
+    if normalized_decision_outcome:
+        fields.append(
+            f"decision_outcome={encode_metadata_value(normalized_decision_outcome)}"
+        )
+    normalized_scope_outcomes = decision_scope_outcomes_metadata_value(
+        decision_scope_outcomes
+    )
+    if decision_scope_outcomes and not normalized_scope_outcomes:
+        raise ValueError(
+            "decision_scope_outcomes must contain outcome, decision_scope, and "
+            "source_todo_id"
+        )
+    if normalized_scope_outcomes:
+        fields.append(
+            "decision_scope_outcomes="
+            f"{encode_metadata_value(normalized_scope_outcomes)}"
+        )
     normalized_claimed_by = normalize_todo_claimed_by(claimed_by)
     if claimed_by and not normalized_claimed_by:
         raise ValueError("claimed_by must be a public-safe agent token such as codex-main-control")
@@ -991,6 +1104,7 @@ def todo_block_metadata(block: dict[str, Any]) -> dict[str, Any]:
         value = block.get(key)
         if value is None:
             continue
+        normalized: Any
         if key == "required_write_scopes":
             normalized = normalize_required_write_scopes(value)
         elif key == "task_repository":
@@ -1009,6 +1123,10 @@ def todo_block_metadata(block: dict[str, Any]) -> dict[str, Any]:
             normalized = normalize_todo_decision_scope(value)
         elif key == "required_decision_scopes":
             normalized = normalize_todo_required_decision_scopes(value)
+        elif key == "decision_outcome":
+            normalized = normalize_todo_decision_outcome(value)
+        elif key == "decision_scope_outcomes":
+            normalized = normalize_todo_decision_scope_outcomes(value)
         elif key == "no_followup":
             normalized = normalize_todo_no_followup(value)
         elif key == "global_gate":
@@ -1083,6 +1201,14 @@ def metadata_line_for_todo_block(
             normalized = require_todo_required_decision_scopes(value)
             if normalized:
                 metadata[key] = normalized
+            else:
+                metadata.pop(key, None)
+        elif key == "decision_outcome":
+            metadata[key] = require_todo_decision_outcome(value)
+        elif key == "decision_scope_outcomes":
+            normalized_scope_outcomes = normalize_todo_decision_scope_outcomes(value)
+            if normalized_scope_outcomes:
+                metadata[key] = normalized_scope_outcomes
             else:
                 metadata.pop(key, None)
         elif key == "no_followup":

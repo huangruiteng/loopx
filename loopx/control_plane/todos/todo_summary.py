@@ -21,7 +21,9 @@ from .contract import (
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
     normalize_todo_continuation_policy,
+    normalize_todo_decision_outcome,
     normalize_todo_decision_scope,
+    normalize_todo_decision_scope_outcomes,
     normalize_todo_excluded_agents,
     normalize_todo_global_gate,
     normalize_todo_id,
@@ -339,6 +341,14 @@ def structured_todo_item(
     )
     if required_decision_scopes:
         normalized["required_decision_scopes"] = required_decision_scopes
+    decision_outcome = normalize_todo_decision_outcome(item.get("decision_outcome"))
+    if decision_outcome:
+        normalized["decision_outcome"] = decision_outcome
+    decision_scope_outcomes = normalize_todo_decision_scope_outcomes(
+        item.get("decision_scope_outcomes")
+    )
+    if decision_scope_outcomes:
+        normalized["decision_scope_outcomes"] = decision_scope_outcomes
     claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
     if claimed_by:
         normalized["claimed_by"] = claimed_by
@@ -392,6 +402,8 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "explore_result_node_refs",
         "decision_scope",
         "required_decision_scopes",
+        "decision_outcome",
+        "decision_scope_outcomes",
         "claimed_by",
         "blocks_agent",
         "excluded_agents",

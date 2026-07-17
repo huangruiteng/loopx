@@ -4,7 +4,9 @@ from typing import Any
 
 from .contract import (
     normalize_required_write_scopes,
+    normalize_todo_decision_outcome,
     normalize_todo_decision_scope,
+    normalize_todo_decision_scope_outcomes,
     normalize_todo_excluded_agents,
     normalize_todo_id,
     normalize_removed_todo_continuation_policy,
@@ -36,6 +38,8 @@ TODO_SUMMARY_COMPACT_FIELDS = (
     "target_capabilities",
     "decision_scope",
     "required_decision_scopes",
+    "decision_outcome",
+    "decision_scope_outcomes",
     "claimed_by",
     "blocks_agent",
     "excluded_agents",
@@ -122,6 +126,18 @@ def compact_todo_summary_item(
         compact["required_decision_scopes"] = required_decision_scopes
     else:
         compact.pop("required_decision_scopes", None)
+    decision_outcome = normalize_todo_decision_outcome(compact.get("decision_outcome"))
+    if decision_outcome:
+        compact["decision_outcome"] = decision_outcome
+    else:
+        compact.pop("decision_outcome", None)
+    decision_scope_outcomes = normalize_todo_decision_scope_outcomes(
+        compact.get("decision_scope_outcomes")
+    )
+    if decision_scope_outcomes:
+        compact["decision_scope_outcomes"] = decision_scope_outcomes
+    else:
+        compact.pop("decision_scope_outcomes", None)
     excluded_agents = normalize_todo_excluded_agents(compact.get("excluded_agents"))
     if excluded_agents:
         compact["excluded_agents"] = excluded_agents

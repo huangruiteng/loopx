@@ -180,6 +180,14 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     todo_parser.add_argument(
+        "--decision-outcome",
+        choices=["approve", "reject", "cancel"],
+        help=(
+            "For todo complete on a user_gate, record the explicit owner decision. "
+            "Only approve consumes authority and resumes linked work."
+        ),
+    )
+    todo_parser.add_argument(
         "--claimed-by",
         help=(
             "For todo add/claim/update/complete, soft-claim the todo for a registered "
@@ -414,6 +422,10 @@ def handle_todo_command(
                 runtime_root_arg=runtime_root_arg,
             )
         elif args.todo_command == "add":
+            if args.decision_outcome:
+                raise ValueError(
+                    "todo add does not accept --decision-outcome; record it on completion"
+                )
             if args.followups:
                 raise ValueError("todo add does not support --follow-up; use `todo capture-followups`")
             if not args.role:
@@ -501,6 +513,7 @@ def handle_todo_command(
                     ("--clear-explore-result-node-refs", args.clear_explore_result_node_refs),
                     ("--decision-scope", args.decision_scope),
                     ("--required-decision-scope", args.required_decision_scopes),
+                    ("--decision-outcome", args.decision_outcome),
                     ("--blocks-agent", args.blocks_agent),
                     ("--clear-blocks-agent", args.clear_blocks_agent),
                     ("--excluded-agent", args.excluded_agents),
@@ -591,6 +604,10 @@ def handle_todo_command(
                 raise ValueError("todo update requires at least one mutable todo field")
             if args.no_follow_up and not (args.note or args.reason or args.evidence):
                 raise ValueError("--no-follow-up requires --note, --reason, or --evidence")
+            if args.decision_outcome:
+                raise ValueError(
+                    "todo update does not accept --decision-outcome; use todo complete"
+                )
             if args.followups:
                 raise ValueError("todo update does not support --follow-up; use `todo capture-followups`")
             if args.next_claimed_by:
@@ -685,6 +702,7 @@ def handle_todo_command(
                 goal_id=args.goal_id,
                 todo_id=args.todo_id,
                 role=args.role,
+                decision_outcome=args.decision_outcome,
                 evidence=args.evidence,
                 note=args.note,
                 no_followup=bool(args.no_follow_up),
@@ -709,6 +727,10 @@ def handle_todo_command(
             if args.explore_result_node_refs or args.clear_explore_result_node_refs:
                 raise ValueError(
                     "todo supersede does not update --explore-result-node-ref; use todo update first"
+                )
+            if args.decision_outcome:
+                raise ValueError(
+                    "todo supersede does not accept --decision-outcome; use todo complete"
                 )
             if args.claimed_by:
                 raise ValueError(
@@ -758,6 +780,10 @@ def handle_todo_command(
                 dry_run=bool(args.dry_run),
             )
         elif args.todo_command == "archive-completed":
+            if args.decision_outcome:
+                raise ValueError(
+                    "todo archive-completed does not support --decision-outcome"
+                )
             if args.claimed_by or args.clear_claim:
                 raise ValueError("todo archive-completed does not support --claimed-by or --clear-claim")
             if args.clear_blocks_agent or args.excluded_agents or args.clear_excluded_agents or args.next_excluded_agents:

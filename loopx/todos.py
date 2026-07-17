@@ -37,6 +37,7 @@ from .control_plane.todos.contract import (
     normalize_todo_claimed_by,
     normalize_todo_continuation_policy,
     normalize_todo_decision_scope,
+    normalize_todo_decision_scope_outcomes,
     normalize_todo_excluded_agents,
     normalize_todo_global_gate,
     normalize_todo_id,
@@ -79,7 +80,10 @@ from .control_plane.todos.text import (
     inherit_todo_priority,
     normalize_new_todo,
 )
-from .control_plane.todos.unblock_resume import apply_completed_user_todo_lifecycle
+from .control_plane.todos.unblock_resume import (
+    apply_completed_user_todo_lifecycle,
+    require_completion_decision_outcome,
+)
 from .control_plane.todos.write_policy import require_user_gate_scope, require_user_todo_task_class
 
 
@@ -1069,6 +1073,8 @@ def apply_todo_update_to_lines(
     explore_result_node_refs: list[str] | None = None,
     decision_scope: Any = None,
     required_decision_scopes: Any = None,
+    decision_outcome: str | None = None,
+    decision_scope_outcomes: Any = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
     clear_blocks_agent: bool = False,
@@ -1163,6 +1169,10 @@ def apply_todo_update_to_lines(
         updates["decision_scope"] = decision_scope
     if required_decision_scopes is not None:
         updates["required_decision_scopes"] = required_decision_scopes
+    if decision_outcome is not None:
+        updates["decision_outcome"] = decision_outcome
+    if decision_scope_outcomes is not None:
+        updates["decision_scope_outcomes"] = decision_scope_outcomes
     if clear_claim:
         updates["claimed_by"] = None
     elif claimed_by:
@@ -1230,6 +1240,10 @@ def apply_todo_update_to_lines(
         "decision_scope": normalize_todo_decision_scope(effective_metadata.get("decision_scope")),
         "required_decision_scopes": normalize_todo_required_decision_scopes(
             effective_metadata.get("required_decision_scopes")
+        ),
+        "decision_outcome": effective_metadata.get("decision_outcome"),
+        "decision_scope_outcomes": normalize_todo_decision_scope_outcomes(
+            effective_metadata.get("decision_scope_outcomes")
         ),
         "blocks_agent": normalize_todo_blocks_agent(effective_metadata.get("blocks_agent")),
         "excluded_agents": normalize_todo_excluded_agents(
@@ -1512,6 +1526,7 @@ def complete_goal_todo(
     goal_id: str,
     todo_id: str,
     role: str | None = None,
+    decision_outcome: str | None = None,
     evidence: str | None = None,
     note: str | None = None,
     no_followup: bool = False,
@@ -1560,6 +1575,11 @@ def complete_goal_todo(
                 event_context["project"] = resolved_project
                 completion_todo = dict(event_context["item"])
                 completion_todo["role"] = event_context["role"]
+        effective_decision_outcome = require_completion_decision_outcome(
+            completion_todo,
+            decision_outcome,
+            materialized=bool(completion_match),
+        )
         normalized_successor_todo_ids = normalize_todo_id_list(successor_todo_ids)
         if successor_todo_ids and not normalized_successor_todo_ids:
             raise ValueError("successor_todo_ids must contain public todo_<letters-digits-underscore-hyphen> tokens")
@@ -1644,6 +1664,7 @@ def complete_goal_todo(
             todo_id=todo_id,
             status=TODO_STATUS_DONE,
             role=role,
+            decision_outcome=effective_decision_outcome,
             note=note,
             evidence=evidence,
             claimed_by=effective_claimed_by,
@@ -1658,6 +1679,7 @@ def complete_goal_todo(
                 completion_todo=completion_todo,
                 update_result=update_result,
                 fallback_todo_id=todo_id,
+                decision_outcome=effective_decision_outcome,
                 updated_at=updated_at,
                 apply_update=apply_todo_update_to_lines,
             )
@@ -1748,6 +1770,8 @@ def complete_goal_todo(
         result["unblock_resume"] = unblock_resume
     if decision_scope_resolution:
         result["decision_scope_resolution"] = decision_scope_resolution
+    if effective_decision_outcome:
+        result["decision_outcome"] = effective_decision_outcome
     result["self_merged"] = effective_self_merged
     return result
 

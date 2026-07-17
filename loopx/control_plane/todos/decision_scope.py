@@ -11,6 +11,7 @@ from typing import Any
 
 from .contract import (
     normalize_todo_decision_scope,
+    normalize_todo_decision_scope_outcomes,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
     normalize_todo_global_gate,
@@ -131,6 +132,7 @@ def build_required_decision_scope_consistency(
     user_actions = [item for item in user_items if not is_user_gate_todo_item(item)]
     errors: list[dict[str, Any]] = []
     checked_scope_count = 0
+    terminal_outcome_count = 0
 
     for agent_item in agent_items:
         claimed_by = normalize_todo_claimed_by(agent_item.get("claimed_by"))
@@ -154,6 +156,33 @@ def build_required_decision_scope_consistency(
                 if _gate_owner_compatible(gate, agent_id=effective_owner)
             ]
             if compatible_gates:
+                continue
+            terminal_outcomes = [
+                item
+                for item in normalize_todo_decision_scope_outcomes(
+                    agent_item.get("decision_scope_outcomes")
+                )
+                if item.get("outcome") in {"reject", "cancel"}
+                and decision_scope_covers(
+                    item.get("decision_scope"),
+                    required_scope,
+                )
+            ]
+            if terminal_outcomes:
+                terminal_outcome_count += 1
+                if str(agent_item.get("status") or "open") != "blocked":
+                    errors.append(
+                        {
+                            "reason_code": "terminal_decision_outcome_target_not_blocked",
+                            "agent_todo_id": normalize_todo_id(
+                                agent_item.get("todo_id")
+                            ),
+                            "required_scope": _scope_identity(required_scope),
+                            "related_user_todo_ids": [
+                                item["source_todo_id"] for item in terminal_outcomes
+                            ],
+                        }
+                    )
                 continue
             matching_actions = [
                 item
@@ -185,6 +214,7 @@ def build_required_decision_scope_consistency(
         "agent_id": normalize_todo_claimed_by(agent_id),
         "checked_agent_todo_count": len(agent_items),
         "checked_required_scope_count": checked_scope_count,
+        "terminal_outcome_count": terminal_outcome_count,
         "errors": errors,
     }
 

@@ -189,3 +189,129 @@ def test_todo_update_rejects_invalid_decision_scope_tokens_without_data_loss(
                 scope["scope_key"] for scope in readback["todo"][field]
             ] == ["release_route"]
         assert state_file.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.parametrize(
+    ("decision_outcome", "expected_status", "scope_retained"),
+    [
+        ("approve", "open", False),
+        ("reject", "blocked", True),
+        ("cancel", "blocked", True),
+    ],
+)
+def test_todo_complete_cli_applies_explicit_user_gate_outcome(
+    tmp_path: Path,
+    decision_outcome: str,
+    expected_status: str,
+    scope_retained: bool,
+) -> None:
+    registry_path, _state_file = _write_fixture(tmp_path)
+    target = run_json_cli(
+        "todo",
+        "add",
+        "--goal-id",
+        GOAL_ID,
+        "--role",
+        "agent",
+        "--task-class",
+        "advancement_task",
+        "--status",
+        "blocked",
+        "--text",
+        "Read restricted material only after an explicit decision.",
+        "--required-decision-scope",
+        "private_read:project:restricted_material",
+        registry_path=registry_path,
+    )
+    gate = run_json_cli(
+        "todo",
+        "add",
+        "--goal-id",
+        GOAL_ID,
+        "--role",
+        "user",
+        "--task-class",
+        "user_gate",
+        "--text",
+        "Decide whether this agent may read restricted material.",
+        "--decision-scope",
+        "private_read:project:restricted_material",
+        "--unblocks-todo-id",
+        target["todo_id"],
+        registry_path=registry_path,
+    )
+
+    completed = run_json_cli(
+        "todo",
+        "complete",
+        "--goal-id",
+        GOAL_ID,
+        "--todo-id",
+        gate["todo_id"],
+        "--role",
+        "user",
+        "--decision-outcome",
+        decision_outcome,
+        "--evidence",
+        f"owner recorded {decision_outcome}",
+        registry_path=registry_path,
+    )
+
+    assert completed["decision_outcome"] == decision_outcome
+    target_readback = run_json_cli(
+        "todo",
+        "list",
+        "--goal-id",
+        GOAL_ID,
+        "--todo-id",
+        target["todo_id"],
+        registry_path=registry_path,
+    )["todo"]
+    assert target_readback["status"] == expected_status
+    assert bool(target_readback.get("required_decision_scopes")) is scope_retained
+    if decision_outcome == "approve":
+        assert target_readback.get("decision_scope_outcomes", []) == []
+    else:
+        assert target_readback["decision_scope_outcomes"][0]["outcome"] == (
+            decision_outcome
+        )
+
+
+def test_todo_complete_cli_rejects_ambiguous_user_gate_completion(
+    tmp_path: Path,
+) -> None:
+    registry_path, state_file = _write_fixture(tmp_path)
+    gate = run_json_cli(
+        "todo",
+        "add",
+        "--goal-id",
+        GOAL_ID,
+        "--role",
+        "user",
+        "--task-class",
+        "user_gate",
+        "--text",
+        "Decide whether publication is authorized.",
+        "--decision-scope",
+        VALID_SCOPE,
+        registry_path=registry_path,
+    )
+    original = state_file.read_text(encoding="utf-8")
+
+    returncode, payload = run_json_cli_result(
+        "todo",
+        "complete",
+        "--goal-id",
+        GOAL_ID,
+        "--todo-id",
+        gate["todo_id"],
+        "--role",
+        "user",
+        "--evidence",
+        "ambiguous completion",
+        registry_path=registry_path,
+    )
+
+    assert returncode != 0
+    assert "user_gate completion requires decision_outcome" in payload["error"]
+    assert state_file.read_text(encoding="utf-8") == original

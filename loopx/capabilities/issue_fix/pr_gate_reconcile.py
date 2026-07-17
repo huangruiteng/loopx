@@ -114,6 +114,7 @@ def reconcile_issue_fix_pr_gate(
             goal_id=goal_id,
             todo_id=todo_id,
             role="user",
+            decision_outcome="approve" if state == "MERGED" else "cancel",
             note=(
                 f"Public PR lifecycle reached terminal state {state}; "
                 "the merge approval gate is obsolete."
