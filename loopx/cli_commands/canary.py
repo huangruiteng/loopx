@@ -31,6 +31,10 @@ from ..canary.runner import (
     render_canary_smoke_suite_run_markdown,
     render_catalog_canary_run_markdown,
 )
+from ..canary.smoke_health import (
+    build_smoke_fleet_health,
+    render_smoke_fleet_health_markdown,
+)
 
 
 PrintPayload = Callable[
@@ -302,6 +306,39 @@ def register_canary_commands(
     )
     add_subcommand_format(smoke_profiles_parser)
 
+    smoke_health_parser = canary_sub.add_parser(
+        "smoke-health",
+        help="Audit smoke cadence, targeted ownership, duplicate candidates, and full-public receipts.",
+    )
+    add_subcommand_format(smoke_health_parser)
+    smoke_health_parser.add_argument(
+        "--receipt",
+        action="append",
+        type=Path,
+        default=[],
+        help=(
+            "Read a full-public smoke-suite JSON receipt or directory of receipts. "
+            "Repeatable; raw stdout/stderr is never copied into the health report."
+        ),
+    )
+    smoke_health_parser.add_argument(
+        "--slow-threshold-seconds",
+        type=float,
+        default=30.0,
+        help="Report observed checks at or above this duration as review candidates.",
+    )
+    smoke_health_parser.add_argument(
+        "--review-limit",
+        type=int,
+        default=20,
+        help="Maximum examples retained in each compact review bucket.",
+    )
+    smoke_health_parser.add_argument(
+        "--include-inventory",
+        action="store_true",
+        help="Include every smoke row in the explicit diagnostic cold path.",
+    )
+
     plan_parser = canary_sub.add_parser(
         "plan",
         help="Select the smallest useful canary profiles for changed surfaces.",
@@ -498,6 +535,14 @@ def handle_canary_command(
     elif args.canary_command == "smoke-profiles":
         payload = build_canary_smoke_suite_profiles()
         renderer = render_canary_smoke_suite_profiles_markdown
+    elif args.canary_command == "smoke-health":
+        payload = build_smoke_fleet_health(
+            receipt_paths=list(args.receipt or []),
+            include_inventory=bool(args.include_inventory),
+            slow_threshold_seconds=float(args.slow_threshold_seconds or 0.0),
+            review_limit=int(args.review_limit or 20),
+        )
+        renderer = render_smoke_fleet_health_markdown
     elif args.canary_command == "plan":
         changed_files, git_diff_selector = _resolve_canary_changed_files(args)
         payload = build_catalog_canary_plan(
@@ -588,7 +633,8 @@ def handle_canary_command(
         renderer = render_premerge_validation_gate_markdown
     else:
         raise ValueError(
-            "canary requires `profiles`, `plan`, `run`, `smoke-suite`, "
+            "canary requires `profiles`, `smoke-profiles`, `smoke-health`, `plan`, "
+            "`run`, `smoke-suite`, "
             "`coverage-audit`, `quality-audit`, or `premerge`"
         )
     print_payload(payload, output_format(args), renderer)

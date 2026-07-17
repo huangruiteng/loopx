@@ -128,6 +128,37 @@ making every small patch wait for the broadest suite.
 `full-public-smokes.yml` 在主干、每日定时和手动触发时运行，不是 PR 必须门禁。
 这种分层既保护质量，也避免每个小 patch 都等待最宽测试集。
 
+### Smoke Fleet Health / Smoke 集群健康
+
+The full-public workflow also merges its shard receipts into one compact health
+artifact. The report separates four cadences instead of treating every smoke as
+an equal PR requirement: the explicit PR-fast smoke, catalog-selected canaries,
+the daily full-public sweep, and high-risk release profiles. It aggregates
+duration, failures, timeouts, current-inventory coverage, and targeted profile
+ownership without copying stdout/stderr tails or repository-local paths.
+
+full-public workflow 还会把各 shard 回执聚合成一个紧凑健康产物。报告区分四种频率，
+而不是把每个 smoke 都变成 PR 必跑项：显式 PR 快速 smoke、catalog 选择的 canary、
+每日 full-public 全量，以及高风险 release profile。它会统计耗时、失败、超时、当前
+清单覆盖率和定向 profile owner，同时不会复制 stdout/stderr tail 或仓库本地路径。
+
+```bash
+loopx canary smoke-health --receipt smoke-results
+```
+
+The default output is a bounded review summary. Use `--include-inventory` only
+for the explicit diagnostic cold path. Exact-content duplicates and direct
+nested execution are review candidates; similar names or shared profile
+membership are not enough to declare two semantic contracts equivalent. The
+health audit never deletes or migrates a smoke automatically. A daily-only row
+without a targeted profile is an ownership backlog signal, not proof that the
+test is valueless.
+
+默认输出是有界的审阅摘要；只有显式诊断冷路径才使用 `--include-inventory`。内容完全
+相同或直接嵌套执行只会成为审阅候选；名称相似、共同属于某个 profile，不足以证明两个
+语义合同等价。健康审计不会自动删除或迁移 smoke。只有 daily 全量覆盖、没有定向
+profile 的条目表示 owner 待澄清，并不等于该测试没有价值。
+
 ## Agent-Facing Output Budgets / Agent 输出预算
 
 The interface budget gate measures stable command scenarios and compares the

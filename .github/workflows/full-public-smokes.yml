@@ -97,3 +97,41 @@ jobs:
           name: full-public-smokes-shard-${{ matrix.shard }}
           path: smoke-results/full-public-shard-${{ matrix.shard }}.json
           if-no-files-found: ignore
+
+  smoke-fleet-health:
+    if: always()
+    needs: full-public-smokes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Download full-public receipts
+        continue-on-error: true
+        uses: actions/download-artifact@v7
+        with:
+          pattern: full-public-smokes-shard-*
+          path: smoke-results
+          merge-multiple: true
+
+      - name: Build compact smoke fleet health
+        run: |
+          mkdir -p smoke-health
+          python -m loopx.cli --format json canary smoke-health \
+            --receipt smoke-results \
+            > smoke-health/smoke-fleet-health.json
+          jq -e '.ready == true' smoke-health/smoke-fleet-health.json
+
+      - name: Upload smoke fleet health
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-fleet-health
+          path: smoke-health/smoke-fleet-health.json
+          if-no-files-found: ignore
