@@ -10,9 +10,13 @@ from ..canary.planner import (
     build_catalog_canary_coverage_audit,
     build_catalog_canary_plan,
     build_catalog_canary_profiles,
+    build_quality_surface_catalog_audit,
     render_catalog_canary_coverage_audit_markdown,
     render_catalog_canary_plan_markdown,
     render_catalog_canary_profiles_markdown,
+)
+from ..canary.quality_surface_catalog import (
+    render_quality_surface_catalog_audit_markdown,
 )
 from ..canary.premerge import (
     PREMERGE_TIERS,
@@ -436,6 +440,15 @@ def register_canary_commands(
         help="Pattern priority to audit. Defaults to P0 and P1; repeat for multiple priorities.",
     )
 
+    quality_audit_parser = canary_sub.add_parser(
+        "quality-audit",
+        help=(
+            "Audit high-risk shipped surfaces for an independent oracle and explicit "
+            "unit, smoke, canary, host, model, and release-layer classification."
+        ),
+    )
+    add_subcommand_format(quality_audit_parser)
+
     premerge_parser = canary_sub.add_parser(
         "premerge",
         help="Run a risk-based pre-merge validation gate for the current diff.",
@@ -552,6 +565,9 @@ def handle_canary_command(
             priorities=list(args.priority or []) or None,
         )
         renderer = render_catalog_canary_coverage_audit_markdown
+    elif args.canary_command == "quality-audit":
+        payload = build_quality_surface_catalog_audit()
+        renderer = render_quality_surface_catalog_audit_markdown
     elif args.canary_command == "premerge":
         changed_files, git_diff_selector = _resolve_canary_changed_files(args)
         payload = build_premerge_validation_gate(
@@ -573,7 +589,7 @@ def handle_canary_command(
     else:
         raise ValueError(
             "canary requires `profiles`, `plan`, `run`, `smoke-suite`, "
-            "`coverage-audit`, or `premerge`"
+            "`coverage-audit`, `quality-audit`, or `premerge`"
         )
     print_payload(payload, output_format(args), renderer)
     return 0 if payload.get("ok") else 1

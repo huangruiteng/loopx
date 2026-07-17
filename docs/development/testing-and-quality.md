@@ -29,6 +29,36 @@ that names the broken rule.
 这些层次互补：模型通过不能覆盖确定性合同失败；大规模 smoke 也不能代替明确指出
 错误规则的聚焦回归测试。
 
+High-risk shipped surfaces are registered in the machine-audited quality
+surface catalog. Each row names an independent semantic oracle and classifies
+every layer as `covered`, `not_applicable` with a reason, or `deferred` with an
+owner. This avoids both silent gaps and meaningless requirements such as using
+a model to judge deterministic scheduler precedence.
+
+高风险交付面需要进入可机器审计的质量 surface catalog。每一行都要指明独立语义
+oracle，并把每一层明确分类为 `covered`、有理由的 `not_applicable`，或有 owner 的
+`deferred`。这样既不会静默漏测，也不会强迫模型去判断确定性的 scheduler 优先级。
+
+```bash
+loopx canary quality-audit
+```
+
+Run it from a source checkout to validate that referenced product, test, and
+documentation paths still exist; packaged installs retain the classification
+audit but report that repository-reference validation is unavailable.
+
+在源码 checkout 中运行时，命令还会验证引用的产品、测试和文档路径仍然存在；打包
+安装仍可审计分类，但会明确报告仓库引用校验不可用。
+
+The audit fails on an unclassified high-risk canary profile, an oracle that
+reuses product source as expected truth, a missing deterministic minimum, or
+an unexplained exception. Valid deferred rows remain visible as backlog gaps
+without pretending that the repository is fully qualified.
+
+如果新增高风险 canary profile 却未分类、oracle 直接复用产品实现作为期望值、缺少
+确定性最小门禁，或例外没有理由，审计会失败。合法的 deferred 行仍作为 backlog
+缺口显式展示，不会伪装成仓库已经完全就绪。
+
 Tests first judge whether the state and rule are correct, then whether the
 implementation conforms. Expected outcomes come from an independently reviewed
 invariant, never the implementation under test or its current output.
