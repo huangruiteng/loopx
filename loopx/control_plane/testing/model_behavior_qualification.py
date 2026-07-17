@@ -266,6 +266,7 @@ def _expected_blocking_user_gate_response_plan(
     return {
         "schema_version": INTERACTION_RESPONSE_PLAN_SCHEMA_VERSION,
         "kind": "surface_user_gate",
+        "decision": "ask_user",
         "action_sequence": ["notify", "wait"],
         "silent_wait_allowed": False,
     }
@@ -543,7 +544,7 @@ def run_model_behavior_qualification_arm(
     if response_plan is not None:
         expected_actions = list(response_plan.get("action_sequence") or [])
         actual_actions = list(decision.get("intended_action_kinds") or [])
-        if decision["decision"] != "ask_user":
+        if decision["decision"] != response_plan.get("decision"):
             violations.append("response_plan_decision_mismatch")
         if actual_actions != expected_actions:
             violations.append("response_plan_action_sequence_mismatch")

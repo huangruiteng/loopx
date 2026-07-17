@@ -21,7 +21,7 @@ EXECUTABLE_CLI_ARGS_MAX_TOTAL_CHARS = 2_048
 SCHEDULER_DETAIL_REQUEST = "loopx quota should-run --include-scheduler-detail"
 CONTRACT_CAPSULE_SCHEMA_VERSION = "loopx_contract_capsule_v0"
 ACTION_SIGNATURE_SCHEMA_VERSION = "loopx_action_signature_v0"
-ACTION_SIGNATURE_COVERAGE = "turn_envelope_action_dimensions_v1"
+ACTION_SIGNATURE_COVERAGE = "turn_envelope_action_dimensions_v0"
 ACTIONABLE_WARNING_FIELDS = (
     "state_projection_gap",
     "boundary_projection_gap",
@@ -286,7 +286,7 @@ def _response_plan(interaction: Mapping[str, Any]) -> dict[str, Any] | None:
     if not source:
         return None
     plan: dict[str, Any] = {}
-    for field in ("schema_version", "kind"):
+    for field in ("schema_version", "kind", "decision"):
         text = _text(source.get(field), limit=80)
         if text:
             plan[field] = text
@@ -612,7 +612,7 @@ def _action_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
     user = _user_channel(interaction, payload)
     scheduler = _scheduler(payload)
-    return {
+    projection = {
         "agent_id": agent_id,
         "decision": payload.get("decision"),
         "should_run": bool(payload.get("should_run")),
@@ -620,7 +620,6 @@ def _action_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
         "state": payload.get("state"),
         "action": action,
         "user": user,
-        "response_plan": _response_plan(interaction),
         "required_reads": _required_reads(interaction, payload),
         "boundary": _boundary(payload),
         "execution_policy": _execution_policy(payload),
@@ -642,6 +641,10 @@ def _action_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
             scheduler=scheduler,
         ),
     }
+    response_plan = _response_plan(interaction)
+    if response_plan is not None:
+        projection["response_plan"] = response_plan
+    return projection
 
 
 def turn_envelope_action_signature_document(envelope: Mapping[str, Any]) -> dict[str, Any]:
@@ -653,7 +656,6 @@ def turn_envelope_action_signature_document(envelope: Mapping[str, Any]) -> dict
         "state",
         "action",
         "user",
-        "response_plan",
         "required_reads",
         "boundary",
         "execution_policy",
@@ -661,11 +663,14 @@ def turn_envelope_action_signature_document(envelope: Mapping[str, Any]) -> dict
         "scheduler",
         "contract_capsule",
     )
-    return {
+    signature = {
         "schema_version": ACTION_SIGNATURE_SCHEMA_VERSION,
         "coverage": ACTION_SIGNATURE_COVERAGE,
         **{field: envelope.get(field) for field in fields},
     }
+    if isinstance(envelope.get("response_plan"), Mapping):
+        signature["response_plan"] = dict(envelope["response_plan"])
+    return signature
 
 
 def quota_action_signature_document(payload: Mapping[str, Any]) -> dict[str, Any]:

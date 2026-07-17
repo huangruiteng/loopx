@@ -228,11 +228,11 @@ the packet and do not invent or summarize values. Copy
 canonical_selected_todo_id exactly into selected_todo_id, including null; it
 was derived locally from this arm's canonical action signature. Never infer a
 todo id from summaries, diagnostics, handoffs, history, or other cold-path
-references. Follow any packet response_plan exactly: preserve its ordered
-action_sequence in intended_action_kinds and obey silent_wait_allowed. Choose
-intended_action_kinds from the execution obligation when no response_plan is
-present, not packet verbosity, and use the same ordered normalization for both
-arms.
+references. Follow any packet response_plan exactly: copy its decision into
+decision, preserve its ordered action_sequence in intended_action_kinds, and
+obey silent_wait_allowed. Choose intended_action_kinds from the execution
+obligation when no response_plan is present, not packet verbosity, and use the
+same ordered normalization for both arms.
 Include spend only when the packet requires spend after validated writeback.
 For intended actions, treat a full packet's interaction_contract.agent_channel
 as equivalent to candidate action, and its interaction_contract.cli_channel as

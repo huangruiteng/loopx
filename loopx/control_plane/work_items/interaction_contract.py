@@ -867,6 +867,7 @@ def _build_interaction_response_plan(
     return {
         "schema_version": INTERACTION_RESPONSE_PLAN_SCHEMA_VERSION,
         "kind": "surface_user_gate",
+        "decision": "ask_user",
         "action_sequence": ["notify", "wait"],
         "silent_wait_allowed": False,
     }

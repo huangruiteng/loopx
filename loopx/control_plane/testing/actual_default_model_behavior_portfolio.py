@@ -4,12 +4,16 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
+from pathlib import Path
 from typing import Any
 
+from ...bootstrap_command_pack import build_start_goal_guided_packet
 from ..quota.turn_envelope import (
     TURN_ENVELOPE_SCHEMA_VERSION,
+    build_turn_envelope,
     turn_envelope_action_signature_document,
 )
+from ..work_items.interaction_contract import build_interaction_contract
 from .model_behavior_qualification import (
     ModelBehaviorActor,
     _actor_failure_code,
@@ -23,6 +27,7 @@ from .onboarding_model_behavior_qualification import (
     _behavior_contract_violations,
     _semantic_contract,
     _validate_actual_default_projection,
+    build_onboarding_postcondition_observation,
     build_onboarding_model_behavior_actor_request,
     run_onboarding_model_behavior_phase,
 )
@@ -35,6 +40,8 @@ ACTUAL_DEFAULT_MODEL_BEHAVIOR_CATALOG_SCHEMA_VERSION = (
     "actual_default_model_behavior_scenario_catalog_v0"
 )
 ACTUAL_DEFAULT_MODEL_BEHAVIOR_REPEAT_ATTEMPTS = 2
+ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_GOAL_ID = "portfolio-goal"
+ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_AGENT_ID = "codex-portfolio"
 
 
 @dataclass(frozen=True)
@@ -131,6 +138,211 @@ def actual_default_model_behavior_scenario_catalog() -> dict[str, Any]:
             for spec in _SCENARIOS
         ],
     }
+
+
+def _write_scenario_project(root: Path) -> tuple[Path, Path]:
+    project = root / "project"
+    state_file = (
+        project
+        / ".codex"
+        / "goals"
+        / ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_GOAL_ID
+        / "ACTIVE_GOAL_STATE.md"
+    )
+    state_file.parent.mkdir(parents=True)
+    state_file.write_text("# Active Goal State\n", encoding="utf-8")
+    registry_path = project / ".loopx" / "registry.json"
+    registry_path.parent.mkdir(parents=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1",
+                "goals": [
+                    {
+                        "id": ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_GOAL_ID,
+                        "status": "active",
+                        "repo": str(project),
+                        "state_file": str(state_file.relative_to(project)),
+                        "coordination": {
+                            "agent_model": "peer_v1",
+                            "registered_agents": [
+                                ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_AGENT_ID
+                            ],
+                        },
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return project, registry_path
+
+
+def _guided_scenario_packet(
+    project: Path,
+    *,
+    goal_id: str | None,
+    agent_id: str | None,
+) -> dict[str, Any]:
+    return build_start_goal_guided_packet(
+        project=project,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        cli_bin="loopx",
+        host_surface="codex-app",
+        goal_text="Establish one public-safe quality contract.",
+        available_capabilities=["network"],
+        include_command_pack_detail=False,
+    )
+
+
+def _entry_scenario_packets(root: Path) -> dict[str, dict[str, Any]]:
+    project, registry_path = _write_scenario_project(root)
+    connect = _guided_scenario_packet(
+        project,
+        goal_id=ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_GOAL_ID,
+        agent_id=ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_AGENT_ID,
+    )
+
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry["goals"][0]["coordination"]["registered_agents"].append(
+        "codex-portfolio-reviewer"
+    )
+    registry_path.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")
+    identity = _guided_scenario_packet(
+        project,
+        goal_id=ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_GOAL_ID,
+        agent_id=None,
+    )
+
+    second_goal = "portfolio-second-goal"
+    second_state = project / ".codex" / "goals" / second_goal / "ACTIVE_GOAL_STATE.md"
+    second_state.parent.mkdir(parents=True)
+    second_state.write_text("# Second Active Goal State\n", encoding="utf-8")
+    registry["goals"].append(
+        {
+            "id": second_goal,
+            "status": "active",
+            "repo": str(project),
+            "state_file": str(second_state.relative_to(project)),
+            "coordination": {
+                "agent_model": "peer_v1",
+                "registered_agents": ["codex-portfolio-second"],
+            },
+        }
+    )
+    registry_path.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")
+    goal_selection = _guided_scenario_packet(project, goal_id=None, agent_id=None)
+    return {
+        "onboarding_connect_default": connect,
+        "onboarding_agent_identity_gate": identity,
+        "onboarding_goal_selection_gate": goal_selection,
+    }
+
+
+def _turn_scenario_source(
+    *,
+    human_gate: bool,
+    agent_id: str = ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_AGENT_ID,
+    continuation_policy: str | None = None,
+) -> dict[str, Any]:
+    selected_todo = None
+    if not human_gate:
+        selected_todo = {
+            "todo_id": "todo_portfolio001",
+            "status": "open",
+            "task_class": "advancement_task",
+            "claimed_by": agent_id,
+            "text": "Implement one bounded public-safe slice.",
+        }
+        if continuation_policy:
+            selected_todo["continuation_policy"] = continuation_policy
+    payload: dict[str, Any] = {
+        "ok": True,
+        "mode": "should-run",
+        "goal_id": ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_GOAL_ID,
+        "decision": "skip" if human_gate else "run",
+        "should_run": not human_gate,
+        "effective_action": "operator_gate" if human_gate else "normal_run",
+        "state": "operator_gate" if human_gate else "eligible",
+        "requires_user_action": human_gate,
+        "gate_prompt": ("Approve the bounded public release." if human_gate else None),
+        "recommended_action": (
+            "Approve the bounded public release."
+            if human_gate
+            else "Implement one bounded public-safe slice."
+        ),
+        "selected_todo": selected_todo,
+        "agent_identity": {"agent_id": agent_id},
+        "execution_obligation": {
+            "must_attempt_work": not human_gate,
+            "delivery_allowed": not human_gate,
+        },
+        "normal_delivery_allowed": not human_gate,
+        "heartbeat_recommendation": {
+            "notify": "NOTIFY" if human_gate else "DONT_NOTIFY"
+        },
+        "goal_boundary": {
+            "write_scope": ["loopx/**", "tests/**"],
+            "guards": ["stop before external writes"],
+        },
+    }
+    payload["interaction_contract"] = build_interaction_contract(
+        payload,
+        available_capabilities=["network"],
+    )
+    payload["action_required"] = human_gate
+    payload["open_count"] = 1 if human_gate else 0
+    return payload
+
+
+def build_actual_default_model_behavior_scenario_packets(
+    root: Path,
+) -> dict[str, dict[str, Any]]:
+    """Build the real candidate packet set used by manual live qualification."""
+
+    packets = _entry_scenario_packets(root)
+    packets.update(
+        {
+            "turn_selected_todo": build_turn_envelope(
+                _turn_scenario_source(human_gate=False)
+            ),
+            "turn_peer_agent_identity": build_turn_envelope(
+                _turn_scenario_source(
+                    human_gate=False,
+                    agent_id="codex-portfolio-reviewer",
+                )
+            ),
+            "turn_same_agent_continuation": build_turn_envelope(
+                _turn_scenario_source(
+                    human_gate=False,
+                    continuation_policy="same_agent_non_delivery",
+                )
+            ),
+            "turn_human_gate": build_turn_envelope(
+                _turn_scenario_source(human_gate=True)
+            ),
+            "onboarding_healthy_continue": build_onboarding_postcondition_observation(
+                check_warning_codes=[],
+                executable_todo_count=1,
+                selected_action_kind="quality_qualification",
+                normal_delivery_allowed=True,
+                user_action_required=False,
+                next_action_actionable=True,
+            ),
+            "onboarding_projection_repair": build_onboarding_postcondition_observation(
+                check_warning_codes=["state_projection_gap"],
+                executable_todo_count=0,
+                selected_action_kind=None,
+                normal_delivery_allowed=False,
+                user_action_required=False,
+                next_action_actionable=True,
+            ),
+        }
+    )
+    return packets
 
 
 def _turn_expected_contract(packet: Mapping[str, Any]) -> dict[str, Any]:
