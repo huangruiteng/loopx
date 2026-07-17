@@ -43,7 +43,10 @@ command a guided review instead of a statistics table.
 When `--state all` is used, the command must preserve both lifecycle groups.
 The `--limit` value is applied per group so a busy open queue cannot consume the
 whole packet and make `review_groups.merged` empty while merged PRs exist in the
-window. Live GitHub reads should fetch open and closed/merged windows
+window. The default is 100 PRs per selected group. Every packet carries
+`result_completeness`; exhaustive requests must require `complete=true` and
+rerun with its `recommended_limit` when the source scan or packet slice was
+truncated. Live GitHub reads should fetch open and closed/merged windows
 separately before constructing the grouped packet.
 
 The agent response must not stop at a queue table. For `/loopx-pr-review`, the
@@ -85,13 +88,22 @@ absolute paths, private source bodies, or hidden CI artifacts.
     "command": "/loopx-pr-review",
     "cli_command": "loopx pr-review [--repo owner/repo] [--state open|merged|all] [--since ISO]",
     "repository": "owner/repo",
-    "limit": 10,
+    "limit": 100,
     "state_filter": "all",
     "since": "2026-06-28T00:00:00Z",
     "window": {"state_filter": "all", "since": "2026-06-28T00:00:00Z"},
     "source": "github_cli",
     "privacy_mode": "public_safe_github_metadata",
     "dry_run": true
+  },
+  "result_completeness": {
+    "schema_version": "pr_review_result_completeness_v0",
+    "complete": true,
+    "truncated": false,
+    "limit": 100,
+    "source_scan_complete": true,
+    "recommended_limit": null,
+    "rerun_cli_args": []
   },
   "summary": {
     "headline": "8 PR(s) in review window: 3 open, 5 merged; 8 need review attention.",
@@ -283,6 +295,9 @@ A first implementation is acceptable when:
   lifecycle group, and keeps `review_groups.merged` non-empty when merged PRs
   exist in the requested window; `--state open` preserves the old open-only
   review queue;
+- the default limit is 100, and exhaustive requests only proceed when
+  `result_completeness.complete=true`; truncated packets provide a larger
+  `recommended_limit` for the next read;
 - `--since` can bound an overnight or release-window review without relying on
   private chat memory;
 - the response includes review sequence, changed-file scope, status checks,
