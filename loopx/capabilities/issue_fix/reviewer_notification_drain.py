@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from pathlib import Path
 from typing import Any, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ...domain_packs.issue_fix import (
     persist_issue_fix_reviewer_notification_state,
@@ -60,6 +61,44 @@ def _queue_due(receipt: Mapping[str, Any], observed_at: datetime) -> bool:
     return not_before <= observed_at
 
 
+def _queued_delivery_window(
+    queue: Sequence[Mapping[str, Any]], observed_at: datetime
+) -> tuple[dict[str, Any] | None, str | None]:
+    windows: set[tuple[str, str, str]] = set()
+    for receipt in queue:
+        allowed = receipt.get("allowed_local_time")
+        if not isinstance(allowed, Mapping):
+            return None, "reviewer_notification_queue_delivery_window_invalid"
+        windows.add(
+            (
+                str(receipt.get("timezone") or ""),
+                str(allowed.get("start") or ""),
+                str(allowed.get("end") or ""),
+            )
+        )
+    if len(windows) != 1:
+        return None, "reviewer_notification_queue_delivery_window_mismatch"
+    timezone_name, start_text, end_text = windows.pop()
+    try:
+        location = ZoneInfo(timezone_name)
+        start = time.fromisoformat(start_text)
+        end = time.fromisoformat(end_text)
+    except (ValueError, ZoneInfoNotFoundError):
+        return None, "reviewer_notification_queue_delivery_window_invalid"
+    if start == end:
+        return None, "reviewer_notification_queue_delivery_window_invalid"
+    current = observed_at.astimezone(location).timetz().replace(tzinfo=None)
+    allowed_now = (
+        start <= current < end if start < end else current >= start or current < end
+    )
+    return {
+        "timezone": timezone_name,
+        "allowed_local_time": {"start": start_text, "end": end_text},
+        "outside_window": "queue_without_send",
+        "allowed_now": allowed_now,
+    }, None
+
+
 def _matching_sinks(
     *,
     sinks_input: Mapping[str, Any],
@@ -73,8 +112,8 @@ def _matching_sinks(
         if not isinstance(raw_sink, Mapping):
             continue
         sink = dict(raw_sink)
-        sink_kind = str(sink.get("sink_kind") or "")
-        sink_instance_key = str(sink.get("sink_instance_key") or "")
+        sink_kind = str(sink.get("sink_kind") or "").strip()
+        sink_instance_key = str(sink.get("sink_instance_key") or "").strip()
         for receipt in queue:
             reviewers = receipt.get("reviewer_handles")
             reviewers = reviewers if isinstance(reviewers, list) else []
@@ -141,6 +180,7 @@ def drain_issue_fix_reviewer_notification_queue(
     blocked_count = 0
     cancelled_count = 0
     verified_count = 0
+    held_count = 0
     for _, repo, number, row in queued_rows[: int(limit)]:
         observation = row.get("observation")
         observation = observation if isinstance(observation, Mapping) else {}
@@ -198,7 +238,21 @@ def drain_issue_fix_reviewer_notification_queue(
             blocked_count += 1
             items.append(item)
             continue
+        delivery_policy, delivery_policy_error = _queued_delivery_window(
+            due_queue, observed_at
+        )
+        if delivery_policy is None:
+            item.update(status="blocked", blocker=delivery_policy_error)
+            blocked_count += 1
+            items.append(item)
+            continue
         item["message_summary"] = summaries[0]
+        item["queued_delivery_window_honored"] = True
+        if delivery_policy["allowed_now"] is not True:
+            item["status"] = "held_outside_delivery_window"
+            held_count += 1
+            items.append(item)
+            continue
         if not execute:
             items.append(item)
             continue
@@ -243,8 +297,6 @@ def drain_issue_fix_reviewer_notification_queue(
             stale_reason = "review_no_longer_required"
         elif reviewers and set(reviewers).issubset(live_reviewed):
             stale_reason = "all_queued_reviewers_already_reviewed"
-        elif live_state_bucket not in {"review_required", "unknown"}:
-            stale_reason = "pr_left_review_required_bucket"
         if stale_reason:
             try:
                 write = persist_issue_fix_reviewer_notification_state(
@@ -306,7 +358,15 @@ def drain_issue_fix_reviewer_notification_queue(
             items.append(item)
             continue
         scoped_input = with_reviewer_notification_state(
-            {**dict(sinks_input), "sinks": matching_sinks},
+            {
+                **dict(sinks_input),
+                "sinks": matching_sinks,
+                "delivery_policy": {
+                    "timezone": delivery_policy["timezone"],
+                    "allowed_local_time": delivery_policy["allowed_local_time"],
+                    "outside_window": "queue_without_send",
+                },
+            },
             reviewer_notification_receipts_from_state(row),
             full_queue,
         )
@@ -383,6 +443,8 @@ def drain_issue_fix_reviewer_notification_queue(
         status = "drained_verified"
     elif cancelled_count:
         status = "cancelled_stale"
+    elif held_count:
+        status = "held_outside_delivery_window"
     else:
         status = "no_due_notifications"
     return {
@@ -401,6 +463,7 @@ def drain_issue_fix_reviewer_notification_queue(
         "not_due_receipt_count": not_due_count,
         "verified_pr_count": verified_count,
         "cancelled_pr_count": cancelled_count,
+        "held_pr_count": held_count,
         "blocked_pr_count": blocked_count,
         "items": items,
         "external_reads_performed": external_reads,

@@ -1639,7 +1639,7 @@ def main() -> int:
         drain_calls: list[dict[str, Any]] = []
         drain_sink_two = {
             **goal_sink,
-            "sink_instance_key": "openviking-reviewer-group-secondary",
+            "sink_instance_key": " openviking-reviewer-group-secondary ",
         }
         drain_goal_config = {
             **goal_config,
@@ -1691,6 +1691,7 @@ def main() -> int:
                 "reviewed_by": ["@reviewed-owner"],
                 "state": "OPEN",
                 "review_decision": "REVIEW_REQUIRED",
+                "state_bucket": "checks_pending",
                 "is_draft": False,
                 "linked_issue_refs": ["#91"],
             },
@@ -1701,6 +1702,15 @@ def main() -> int:
                 "review_decision": "APPROVED",
                 "is_draft": False,
                 "linked_issue_refs": ["#92"],
+            },
+            103: {
+                "author_handle": "@author-c",
+                "reviewed_by": [],
+                "state": "OPEN",
+                "review_decision": "REVIEW_REQUIRED",
+                "state_bucket": "review_required",
+                "is_draft": False,
+                "linked_issue_refs": ["#93"],
             },
         }
 
@@ -1741,7 +1751,7 @@ def main() -> int:
                     repo="owner/repo",
                     pr_number=number,
                     sink_kind="lark_chat",
-                    sink_instance_key=sink["sink_instance_key"],
+                    sink_instance_key=sink["sink_instance_key"].strip(),
                     reviewer_handles=reviewers,
                 )
                 queue_receipts.append(
@@ -1792,7 +1802,7 @@ def main() -> int:
             {
                 "number": 101,
                 "summary": "修复队列到点后无人消费的问题",
-                "sink": "openviking-reviewer-group-secondary",
+                "sink": " openviking-reviewer-group-secondary ",
                 "reviewers": ["@map-owner"],
             },
         ], drain_calls
@@ -1807,6 +1817,30 @@ def main() -> int:
         assert repeated_drain["status"] == "no_due_notifications"
         assert repeated_drain["due_pr_count"] == 0
         assert len(drain_calls) == 2
+        held_drain = drain_issue_fix_reviewer_notification_queue(
+            ledger_path=drain_ledger,
+            sinks_input=drain_goal_config,
+            execute=True,
+            delivery_observed_at="2026-07-19T15:00:00Z",
+            metadata_loader=drain_metadata_loader,
+            sink_adapters={"lark_chat": drain_adapter},
+        )
+        assert held_drain["status"] == "held_outside_delivery_window", held_drain
+        assert held_drain["held_pr_count"] == 1
+        assert held_drain["external_reads_performed"] is False
+        assert len(drain_calls) == 2
+        resumed_drain = drain_issue_fix_reviewer_notification_queue(
+            ledger_path=drain_ledger,
+            sinks_input=drain_goal_config,
+            execute=True,
+            delivery_observed_at="2026-07-20T01:01:00Z",
+            metadata_loader=drain_metadata_loader,
+            sink_adapters={"lark_chat": drain_adapter},
+        )
+        assert resumed_drain["status"] == "drained_verified", resumed_drain
+        assert resumed_drain["verified_pr_count"] == 1
+        assert drain_calls[-1]["number"] == 103
+        assert len(drain_calls) == 3
     finally:
         for attempt in range(10):
             try:

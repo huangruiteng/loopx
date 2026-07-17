@@ -172,7 +172,9 @@ LoopX refreshes compact live GitHub state and cancels stale queues for closed,
 merged, draft, approved, or fully-covered reviewer sets. A send remains one PR
 per message (and at most one message per configured sink) and is complete only
 after semantic readback and receipt persistence. If only some queued reviewers
-already reviewed, the drain targets only the remaining reviewers.
+already reviewed, the drain targets only the remaining reviewers. Temporary CI
+or branch-state changes keep the queue intact, and the drain always reuses the
+timezone and allowed local-time window frozen in the v1 receipt.
 
 Profile names, `destination_id`, and `member_id` are execution inputs. They are
 never copied into the result, domain state, todo, Kanban, PR, or public log.
