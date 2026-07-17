@@ -100,7 +100,13 @@ open PRs, merge, publish, or run destructive git without an explicit gate.
    `issue_ref`; numeric aliases such as `#123`, `issue_123`, and `issues/123`
    canonicalize to `issues_123` before writeback. Outcome projection applies
    the same rule to legacy rows, but must not infer the issue from a branch
-   name, PR title, or prose.
+   name, PR title, or prose. Its
+   `issue_fix_pr_grouped_monitor_projection_v1` assigns each open PR to a
+   repository lifecycle-state bucket. Materialize at most one
+   `continuous_monitor` for each nonempty bucket, upsert/remove PR membership
+   as state changes, and complete empty buckets. Never create one monitor per
+   PR. Material PR work remains a one-shot advancement todo, and reviewer
+   notifications remain one PR per message.
 11. **Gate handling:** surface concrete gates instead of silently blocking. Safe
    metadata-only triage, public-code search, and focused smoke drafting may
    continue when those gates do not cover the selected action.
@@ -203,6 +209,7 @@ An issue-fix workflow is PR-review-ready only when all of these are true:
 - `issue_fix_feasibility_decision_v0`
 - `issue_fix_feasibility_domain_state_projection_v0`
 - `issue_fix_pr_lifecycle_monitor_v0`
+- `issue_fix_pr_grouped_monitor_projection_v1`
 - `issue_fix_pr_lifecycle_transition_v0`
 - `issue_fix_pr_lifecycle_domain_state_projection_v0`
 - `issue_fix_delivery_evidence_input_v0`

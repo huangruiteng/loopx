@@ -208,6 +208,8 @@ def test_goal_text_invocation_plans_ranked_todos_before_activation() -> None:
         assert "loopx issue-fix reviewer-request" in plan_prompt
         assert "only on confirmed permission denial" in plan_prompt
         assert "request or fallback comment is visible" in plan_prompt
+        assert "Never create one monitor per PR" in plan_prompt
+        assert "one PR per message" in plan_prompt
         assert "arbitrary external comments, PR creation, merge" in plan_prompt
         assert "issue_fix_workflow_plan_template" in commands
         issue_fix_template = str(commands["issue_fix_workflow_plan_template"])

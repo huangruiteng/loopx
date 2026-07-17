@@ -104,13 +104,19 @@ def _resolution_route_candidates(
 
 def _post_pr_lifecycle_monitor_plan() -> dict[str, Any]:
     return {
-        "schema_version": "issue_fix_post_pr_lifecycle_monitor_plan_v0",
+        "schema_version": "issue_fix_post_pr_lifecycle_monitor_plan_v1",
         "command_preview": (
             "loopx issue-fix pr-lifecycle --url <github-pr-url> "
             "--metadata-json <public-pr-state.json> --format json"
         ),
-        "creates_continuous_monitor_todo": True,
-        "monitor_action_kind": "issue_fix_pr_lifecycle_monitor",
+        "creates_per_pr_continuous_monitor_todo": False,
+        "monitor_scope": "lifecycle_state_bucket",
+        "monitor_action_kind_template": "issue_fix_pr_state_<state_bucket>_monitor",
+        "bucket_projection_source": "pr-lifecycle.grouped_monitor_projection",
+        "materializes_nonempty_buckets_only": True,
+        "terminal_members_removed": True,
+        "per_pr_material_actions_are_one_shot": True,
+        "external_notification_granularity": "one_pr_per_message",
         "decisions": [
             "runnable_successor",
             "monitor_continuation",
@@ -675,8 +681,20 @@ def validate_issue_fix_workflow_plan_packet(
     if not isinstance(post_pr, Mapping):
         errors.append("post_pr_lifecycle_monitor_plan is required")
         post_pr = {}
-    if post_pr.get("creates_continuous_monitor_todo") is not True:
-        errors.append("post PR lifecycle plan must create a monitor todo")
+    if post_pr.get("schema_version") != "issue_fix_post_pr_lifecycle_monitor_plan_v1":
+        errors.append("post PR lifecycle plan must use grouped monitor plan v1")
+    if post_pr.get("creates_per_pr_continuous_monitor_todo") is not False:
+        errors.append("post PR lifecycle plan must not create per-PR monitor todos")
+    if post_pr.get("monitor_scope") != "lifecycle_state_bucket":
+        errors.append("post PR lifecycle plan must group by lifecycle state")
+    if post_pr.get("materializes_nonempty_buckets_only") is not True:
+        errors.append("post PR lifecycle plan must materialize only nonempty buckets")
+    if post_pr.get("terminal_members_removed") is not True:
+        errors.append("post PR lifecycle plan must remove terminal members")
+    if post_pr.get("per_pr_material_actions_are_one_shot") is not True:
+        errors.append("post PR lifecycle plan must use one-shot per-PR actions")
+    if post_pr.get("external_notification_granularity") != "one_pr_per_message":
+        errors.append("post PR lifecycle plan must preserve one-PR messages")
     if post_pr.get("external_writes_performed") is not False:
         errors.append("post PR lifecycle plan must not perform external writes")
     if post_pr.get("raw_check_logs_captured") is not False:
@@ -959,9 +977,13 @@ def render_issue_fix_workflow_plan_markdown(payload: dict[str, Any]) -> str:
                 "",
                 "## Post-PR Lifecycle Monitor",
                 "",
-                f"- creates_continuous_monitor_todo: "
-                f"`{post_pr.get('creates_continuous_monitor_todo')}`",
-                f"- monitor_action_kind: `{post_pr.get('monitor_action_kind')}`",
+                f"- creates_per_pr_continuous_monitor_todo: "
+                f"`{post_pr.get('creates_per_pr_continuous_monitor_todo')}`",
+                f"- monitor_scope: `{post_pr.get('monitor_scope')}`",
+                f"- monitor_action_kind_template: "
+                f"`{post_pr.get('monitor_action_kind_template')}`",
+                f"- external_notification_granularity: "
+                f"`{post_pr.get('external_notification_granularity')}`",
                 f"- decisions: `{post_pr.get('decisions')}`",
             ]
         )

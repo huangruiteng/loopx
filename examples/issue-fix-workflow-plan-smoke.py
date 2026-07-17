@@ -109,8 +109,13 @@ def assert_workflow_shape(payload: dict[str, Any]) -> None:
     assert "--repository-context-json" in feasibility["command_preview"]
     assert feasibility["writes_loopx_todo"] is False
     post_pr = payload["post_pr_lifecycle_monitor_plan"]
-    assert post_pr["creates_continuous_monitor_todo"] is True, post_pr
-    assert post_pr["monitor_action_kind"] == "issue_fix_pr_lifecycle_monitor", post_pr
+    assert post_pr["schema_version"] == "issue_fix_post_pr_lifecycle_monitor_plan_v1"
+    assert post_pr["creates_per_pr_continuous_monitor_todo"] is False, post_pr
+    assert post_pr["monitor_scope"] == "lifecycle_state_bucket", post_pr
+    assert post_pr["materializes_nonempty_buckets_only"] is True, post_pr
+    assert post_pr["terminal_members_removed"] is True, post_pr
+    assert post_pr["per_pr_material_actions_are_one_shot"] is True, post_pr
+    assert post_pr["external_notification_granularity"] == "one_pr_per_message"
     assert "runnable_successor" in post_pr["decisions"], post_pr
 
     review = payload["review_packet_preview"]
@@ -253,7 +258,8 @@ def main() -> int:
     assert "Resolution Routes" in markdown, markdown
     assert "Post-PR Lifecycle Monitor" in markdown, markdown
     assert "PR Review Packet Preview" in markdown, markdown
-    assert "issue_fix_pr_lifecycle_monitor" in markdown, markdown
+    assert "issue_fix_pr_state_<state_bucket>_monitor" in markdown, markdown
+    assert "creates_per_pr_continuous_monitor_todo: `False`" in markdown, markdown
     assert_public_safe(markdown)
 
     print("issue-fix-workflow-plan-smoke: ok")

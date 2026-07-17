@@ -20,6 +20,9 @@ from .metadata_preview import (
 
 
 ISSUE_FIX_PR_LIFECYCLE_MONITOR_SCHEMA_VERSION = "issue_fix_pr_lifecycle_monitor_v0"
+ISSUE_FIX_PR_GROUPED_MONITOR_PROJECTION_SCHEMA_VERSION = (
+    "issue_fix_pr_grouped_monitor_projection_v1"
+)
 ISSUE_FIX_MAINTAINER_CORRECTION_INPUT_SCHEMA_VERSION = (
     "issue_fix_maintainer_correction_input_v0"
 )
@@ -567,6 +570,67 @@ def _observation_fingerprint(observation: Mapping[str, Any]) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
+def _grouped_monitor_projection(
+    observation: Mapping[str, Any], transition: Mapping[str, Any]
+) -> dict[str, Any]:
+    state = str(observation.get("state") or "UNKNOWN")
+    review_decision = str(observation.get("review_decision") or "UNKNOWN")
+    merge_state = str(observation.get("merge_state_status") or "UNKNOWN")
+    checks = observation.get("checks")
+    check_rollup = checks if isinstance(checks, Mapping) else {}
+    review_response = observation.get("review_response")
+    review_response_status = (
+        str(review_response.get("status") or "")
+        if isinstance(review_response, Mapping)
+        else ""
+    )
+
+    if state in TERMINAL_PR_STATES:
+        state_bucket = "terminal"
+    elif int(check_rollup.get("failing_count") or 0):
+        state_bucket = "checks_failed"
+    elif review_decision == "CHANGES_REQUESTED":
+        state_bucket = (
+            "changes_addressed_awaiting_rereview"
+            if review_response_status == "changes_addressed_awaiting_rereview"
+            else "changes_requested"
+        )
+    elif merge_state in BRANCH_REPLAN_MERGE_STATES:
+        state_bucket = "branch_blocked"
+    elif bool(observation.get("is_draft")):
+        state_bucket = "draft"
+    elif int(check_rollup.get("pending_count") or 0):
+        state_bucket = "checks_pending"
+    elif review_decision == "APPROVED":
+        state_bucket = "ready_to_merge"
+    else:
+        state_bucket = "review_required"
+
+    terminal = state_bucket == "terminal"
+    member_key = f"{observation.get('repo')}#{observation.get('number')}"
+    target_key = (
+        None if terminal else f"github-pr-state-{state_bucket.replace('_', '-')}"
+    )
+    return {
+        "schema_version": ISSUE_FIX_PR_GROUPED_MONITOR_PROJECTION_SCHEMA_VERSION,
+        "scope": "repository_pr_lifecycle_state",
+        "state_bucket": state_bucket,
+        "target_key": target_key,
+        "action_kind": (
+            None if terminal else f"issue_fix_pr_state_{state_bucket}_monitor"
+        ),
+        "member_key": member_key,
+        "member_operation": "remove" if terminal else "upsert",
+        "materialize_nonempty_bucket_monitor": not terminal,
+        "creates_per_pr_continuous_monitor_todo": False,
+        "per_pr_material_action": "one_shot_advancement_todo",
+        "external_notification_granularity": "one_pr_per_message",
+        "empty_bucket_policy": "complete_monitor",
+        "transition_decision": transition.get("decision"),
+        "todo_write_performed": False,
+    }
+
+
 def _decide_transition(observation: Mapping[str, Any]) -> dict[str, Any]:
     state = str(observation.get("state") or "UNKNOWN")
     review_decision = str(observation.get("review_decision") or "UNKNOWN")
@@ -918,6 +982,9 @@ def build_issue_fix_pr_lifecycle_monitor_packet(
             else None
         ),
         "transition": transition,
+        "grouped_monitor_projection": _grouped_monitor_projection(
+            observation, transition
+        ),
         "first_screen": {
             "waiting_on": transition["role"],
             "user_action_required": transition["role"] == "user",
@@ -1075,6 +1142,38 @@ def validate_issue_fix_pr_lifecycle_monitor_packet(
         errors.append("writeback_contract is required")
     elif contract.get("todo_write_performed") is not packet.get("todo_write_performed"):
         errors.append("writeback_contract todo_write_performed must match packet")
+    grouped_monitor = packet.get("grouped_monitor_projection")
+    if not isinstance(grouped_monitor, Mapping):
+        errors.append("grouped_monitor_projection is required")
+    else:
+        if (
+            grouped_monitor.get("schema_version")
+            != ISSUE_FIX_PR_GROUPED_MONITOR_PROJECTION_SCHEMA_VERSION
+        ):
+            errors.append(
+                "grouped_monitor_projection schema_version must be issue_fix_pr_grouped_monitor_projection_v1"
+            )
+        if grouped_monitor.get("creates_per_pr_continuous_monitor_todo") is not False:
+            errors.append("grouped monitor projection must not create per-PR monitors")
+        if grouped_monitor.get("per_pr_material_action") != "one_shot_advancement_todo":
+            errors.append("grouped monitor projection must use one-shot per-PR actions")
+        if grouped_monitor.get("external_notification_granularity") != "one_pr_per_message":
+            errors.append("grouped monitor projection must preserve one-PR messages")
+        if state in TERMINAL_PR_STATES:
+            if grouped_monitor.get("member_operation") != "remove":
+                errors.append("terminal PR must be removed from grouped monitor membership")
+            if grouped_monitor.get("target_key") is not None:
+                errors.append("terminal PR must not retain a grouped monitor target")
+            if grouped_monitor.get("materialize_nonempty_bucket_monitor") is not False:
+                errors.append("terminal PR must not materialize a grouped monitor")
+        else:
+            target_key = str(grouped_monitor.get("target_key") or "")
+            if not target_key.startswith("github-pr-state-"):
+                errors.append("open PR grouped monitor target_key is invalid")
+            if grouped_monitor.get("member_operation") != "upsert":
+                errors.append("open PR must upsert grouped monitor membership")
+            if grouped_monitor.get("materialize_nonempty_bucket_monitor") is not True:
+                errors.append("open PR must materialize its nonempty grouped monitor")
     todo_write_performed = packet.get("todo_write_performed")
     if not isinstance(todo_write_performed, bool):
         errors.append("todo_write_performed must be boolean")
@@ -1147,6 +1246,22 @@ def render_issue_fix_pr_lifecycle_monitor_markdown(payload: dict[str, Any]) -> s
                 f"- material_change: `{transition.get('material_change')}`",
                 f"- terminal_state_precedence: `{transition.get('terminal_state_precedence')}`",
                 f"- reason: {transition.get('reason')}",
+            ]
+        )
+    grouped_monitor = payload.get("grouped_monitor_projection")
+    if isinstance(grouped_monitor, Mapping):
+        lines.extend(
+            [
+                "",
+                "## Grouped Monitor Projection",
+                "",
+                f"- state_bucket: `{grouped_monitor.get('state_bucket')}`",
+                f"- target_key: `{grouped_monitor.get('target_key')}`",
+                f"- member_operation: `{grouped_monitor.get('member_operation')}`",
+                f"- creates_per_pr_continuous_monitor_todo: "
+                f"`{grouped_monitor.get('creates_per_pr_continuous_monitor_todo')}`",
+                f"- per_pr_material_action: "
+                f"`{grouped_monitor.get('per_pr_material_action')}`",
             ]
         )
     correction = payload.get("maintainer_correction")

@@ -110,6 +110,12 @@ def assert_packet_shape(packet: dict[str, Any]) -> None:
     assert packet["observation"]["log_output_captured"] is False
     assert packet["transition"]["would_write"] is False
     assert packet["transition"]["requires_execute_flag"] is True
+    grouped = packet["grouped_monitor_projection"]
+    assert grouped["schema_version"] == "issue_fix_pr_grouped_monitor_projection_v1"
+    assert grouped["creates_per_pr_continuous_monitor_todo"] is False
+    assert grouped["per_pr_material_action"] == "one_shot_advancement_todo"
+    assert grouped["external_notification_granularity"] == "one_pr_per_message"
+    assert grouped["todo_write_performed"] is False
     assert packet["domain_state_projection"]["domain_pack"] == "issue_fix"
     assert packet["domain_state_projection"]["path_recorded"] is False
     assert packet["validation"]["ok"] is True, packet
@@ -136,6 +142,9 @@ def main() -> int:
     assert merged["transition"]["action_kind"] == "issue_fix_pr_merged_no_followup"
     assert merged["transition"]["terminal_state_precedence"] is True
     assert merged["writeback_contract"]["monitor_quiet_skip_allowed"] is False
+    assert merged["grouped_monitor_projection"]["state_bucket"] == "terminal"
+    assert merged["grouped_monitor_projection"]["member_operation"] == "remove"
+    assert merged["grouped_monitor_projection"]["target_key"] is None
 
     failing = build_issue_fix_pr_lifecycle_monitor_packet(
         url="https://github.com/huangruiteng/loopx/pull/1715",
@@ -153,6 +162,7 @@ def main() -> int:
     assert failing["transition"]["decision"] == "runnable_successor", failing
     assert failing["transition"]["action_kind"] == "issue_fix_ci_failure_replan"
     assert failing["first_screen"]["agent_can_continue"] is True
+    assert failing["grouped_monitor_projection"]["state_bucket"] == "checks_failed"
 
     requested = build_issue_fix_pr_lifecycle_monitor_packet(
         url="https://github.com/huangruiteng/loopx/pull/1715",
@@ -166,6 +176,9 @@ def main() -> int:
     assert_packet_shape(requested)
     assert requested["transition"]["decision"] == "runnable_successor", requested
     assert requested["transition"]["action_kind"] == "issue_fix_review_changes_replan"
+    assert requested["grouped_monitor_projection"]["state_bucket"] == (
+        "changes_requested"
+    )
 
     blocked_pending = build_issue_fix_pr_lifecycle_monitor_packet(
         url="https://github.com/huangruiteng/loopx/pull/1715",
@@ -182,6 +195,9 @@ def main() -> int:
         "issue_fix_pr_checks_pending_monitor"
     )
     assert blocked_pending["transition"]["material_change"] is False
+    assert blocked_pending["grouped_monitor_projection"]["target_key"] == (
+        "github-pr-state-checks-pending"
+    )
 
     stale = build_issue_fix_pr_lifecycle_monitor_packet(
         url="https://github.com/huangruiteng/loopx/pull/1715",
@@ -197,6 +213,7 @@ def main() -> int:
     assert stale["transition"]["action_kind"] == (
         "issue_fix_branch_or_merge_blocker_replan"
     )
+    assert stale["grouped_monitor_projection"]["state_bucket"] == "branch_blocked"
 
     quiet = build_issue_fix_pr_lifecycle_monitor_packet(
         url="https://github.com/huangruiteng/loopx/pull/1715",
@@ -218,6 +235,48 @@ def main() -> int:
     assert quiet["writeback_contract"]["monitor_quiet_skip_allowed"] is True
     assert quiet["first_push_ci"]["status"] == "PASSING", quiet
     assert quiet["first_push_ci"]["pr_ref"] == "pull_1715", quiet
+    assert quiet["grouped_monitor_projection"] == (
+        quiet["grouped_monitor_projection"]
+        | {
+            "state_bucket": "review_required",
+            "target_key": "github-pr-state-review-required",
+            "action_kind": "issue_fix_pr_state_review_required_monitor",
+            "member_key": "huangruiteng/loopx#1715",
+            "member_operation": "upsert",
+            "materialize_nonempty_bucket_monitor": True,
+        }
+    )
+    same_bucket_peer = build_issue_fix_pr_lifecycle_monitor_packet(
+        url="https://github.com/huangruiteng/loopx/pull/1717",
+        provider_payload={
+            "state": "OPEN",
+            "reviewDecision": "REVIEW_REQUIRED",
+            "mergeStateStatus": "CLEAN",
+            "statusCheckRollup": [{"name": "lint", "conclusion": "SUCCESS"}],
+        },
+    )
+    assert_packet_shape(same_bucket_peer)
+    assert same_bucket_peer["grouped_monitor_projection"]["target_key"] == (
+        quiet["grouped_monitor_projection"]["target_key"]
+    )
+    assert same_bucket_peer["grouped_monitor_projection"]["member_key"] != (
+        quiet["grouped_monitor_projection"]["member_key"]
+    )
+
+    approved = build_issue_fix_pr_lifecycle_monitor_packet(
+        url="https://github.com/huangruiteng/loopx/pull/1716",
+        provider_payload={
+            "state": "OPEN",
+            "reviewDecision": "APPROVED",
+            "mergeStateStatus": "CLEAN",
+            "statusCheckRollup": [{"name": "lint", "conclusion": "SUCCESS"}],
+        },
+    )
+    assert_packet_shape(approved)
+    assert approved["grouped_monitor_projection"]["state_bucket"] == "ready_to_merge"
+    assert approved["grouped_monitor_projection"]["target_key"] == (
+        "github-pr-state-ready-to-merge"
+    )
     for alias in ("#1700", "issue_1700", "issues/1700", "issue 1700"):
         alias_packet = build_issue_fix_pr_lifecycle_monitor_packet(
             url="https://github.com/huangruiteng/loopx/pull/1715",

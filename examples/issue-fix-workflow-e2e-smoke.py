@@ -148,8 +148,11 @@ def test_metadata_to_ordered_todos_and_gates() -> None:
     assert checkpoint["selects_exactly_one_route"] is True, checkpoint
     assert checkpoint["writes_domain_state_by_default_with_goal_id"] is True
     post_pr = plan["post_pr_lifecycle_monitor_plan"]
-    assert post_pr["creates_continuous_monitor_todo"] is True, post_pr
-    assert post_pr["monitor_action_kind"] == "issue_fix_pr_lifecycle_monitor", post_pr
+    assert post_pr["schema_version"] == "issue_fix_post_pr_lifecycle_monitor_plan_v1"
+    assert post_pr["creates_per_pr_continuous_monitor_todo"] is False, post_pr
+    assert post_pr["monitor_scope"] == "lifecycle_state_bucket", post_pr
+    assert post_pr["per_pr_material_actions_are_one_shot"] is True, post_pr
+    assert post_pr["external_notification_granularity"] == "one_pr_per_message"
     assert "no_followup" in post_pr["decisions"], post_pr
 
     decision = build_issue_fix_feasibility_packet(
