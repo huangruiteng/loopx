@@ -1158,10 +1158,15 @@ def build_scheduler_hint(
                 last_applied_rrule=effective_host_rrule,
                 current_rrule=current_rrule,
             )
+        current_target_has_failure = any(
+            normalize_scheduler_rrule(failure.get("target_rrule"))
+            == current_rrule
+            for failure in all_host_update_failures
+        )
         host_match_ack_needed = (
             bool(observed_host_rrule)
             and current_rrule_already_applied
-            and (state_status != "same_identity" or bool(all_host_update_failures))
+            and (state_status != "same_identity" or current_target_has_failure)
         )
         base_apply_needed = (
             not current_rrule_already_applied
