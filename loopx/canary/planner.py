@@ -8,6 +8,7 @@ from .qualification_profiles import CONTROL_PLANE_QUALIFICATION_PROFILES
 from .quality_surface_catalog import (
     build_quality_surface_catalog_audit as _build_quality_surface_catalog_audit,
 )
+from .release_profiles import RELEASE_PROMOTION_PROFILE
 
 
 CANARY_PROFILE_SCHEMA_VERSION = "catalog_canary_profile_v0"
@@ -213,42 +214,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             },
         ],
     },
-    {
-        "id": "release-promotion",
-        "title": "Release promotion readiness",
-        "quality_risk": "high",
-        "purpose": "Check whether the release/canary promotion path is ready without mutating the install.",
-        "catalog_families": ["Work Routing", "Planning Governance", "State And Boundary"],
-        "trigger_hints": (
-            "release",
-            "release promotion",
-            "promotion",
-            "canary-promotion",
-            "promotion-readiness",
-        ),
-        "checks": [
-            {
-                "command": "python3 examples/canary/canary-promotion-readiness-smoke.py",
-                "tier": "default",
-                "reason": "checks promotion readiness from compact run history",
-            },
-            {
-                "command": "python3 examples/canary/canary-promotion-readiness-boundary-smoke.py",
-                "tier": "default",
-                "reason": "guards dashboard release-boundary planning for source checkouts and release snapshots",
-            },
-            {
-                "command": "python3 examples/canary/canary-promotion-no-write-contract-smoke.py",
-                "tier": "default",
-                "reason": "guards no-write promotion readiness behavior",
-            },
-            {
-                "command": "python3 examples/canary/canary-promotion-readiness-writeback-smoke.py",
-                "tier": "deep",
-                "reason": "exercises promotion readiness writeback after explicit opt-in",
-            },
-        ],
-    },
+    RELEASE_PROMOTION_PROFILE,
     {
         "id": "install-update",
         "title": "Install and update safety",
