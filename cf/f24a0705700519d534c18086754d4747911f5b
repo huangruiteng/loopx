@@ -1,0 +1,35 @@
+docs/development/control-plane-course/02-state-substrate.md
+  s_e3f612788718c1::t_cd2b8b11603739 16,36-63,187-246
+docs/development/control-plane-course/03-work-graph-and-peers.md
+  s_76ee28abb3c3a4::t_0b6486ab18d6bd 126,137-213
+docs/development/control-plane-course/06-evidence-refresh-and-self-repair.md
+  s_e3f612788718c1::t_c1ad6069fb0654 178-227,238-263
+docs/development/control-plane-course/09-extension-layer.md
+  s_e3f612788718c1::t_de67cc386f297d 42-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cff24a0705700519d534c18086754d4747911f5b",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
