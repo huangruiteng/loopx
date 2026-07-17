@@ -1741,6 +1741,8 @@ def main() -> int:
             101: {
                 "author_handle": "@author-a",
                 "reviewed_by": ["@reviewed-owner"],
+                "requested_reviewers": ["@map-owner"],
+                "comment_notified_reviewers": [],
                 "state": "OPEN",
                 "review_decision": "REVIEW_REQUIRED",
                 "state_bucket": "checks_pending",
@@ -1750,6 +1752,8 @@ def main() -> int:
             102: {
                 "author_handle": "@author-b",
                 "reviewed_by": [],
+                "requested_reviewers": ["@map-owner"],
+                "comment_notified_reviewers": [],
                 "state": "OPEN",
                 "review_decision": "APPROVED",
                 "is_draft": False,
@@ -1758,11 +1762,24 @@ def main() -> int:
             103: {
                 "author_handle": "@author-c",
                 "reviewed_by": [],
+                "requested_reviewers": ["@map-owner"],
+                "comment_notified_reviewers": [],
                 "state": "OPEN",
                 "review_decision": "REVIEW_REQUIRED",
                 "state_bucket": "review_required",
                 "is_draft": False,
                 "linked_issue_refs": ["#93"],
+            },
+            104: {
+                "author_handle": "@author-d",
+                "reviewed_by": [],
+                "requested_reviewers": ["@other-owner"],
+                "comment_notified_reviewers": [],
+                "state": "OPEN",
+                "review_decision": "REVIEW_REQUIRED",
+                "state_bucket": "review_required",
+                "is_draft": False,
+                "linked_issue_refs": ["#94"],
             },
         }
 
@@ -1776,6 +1793,7 @@ def main() -> int:
             (101, "2026-07-18T01:00:00Z", "修复队列到点后无人消费的问题"),
             (102, "2026-07-18T01:00:00Z", "修复已批准请求仍重复提醒的问题"),
             (103, "2026-07-19T01:00:00Z", "修复未来窗口被提前发送的问题"),
+            (104, "2026-07-18T01:00:00Z", "修复 reviewer 换人后误提醒旧人的问题"),
         ):
             lifecycle_row = build_issue_fix_pr_lifecycle_monitor_packet(
                 url=f"https://github.com/owner/repo/pull/{number}",
@@ -1795,7 +1813,7 @@ def main() -> int:
             )
             for sink in sinks:
                 reviewers = (
-                    ["@reviewed-owner", "@map-owner"]
+                    ["@reviewed-owner", "@removed-owner", "@map-owner"]
                     if number == 101
                     else ["@map-owner"]
                 )
@@ -1840,11 +1858,13 @@ def main() -> int:
         assert drained["grouping_scope"] == "review_required_state_bucket"
         assert drained["monitor_granularity"] == "one_monitor_per_state_bucket"
         assert drained["notification_granularity"] == "one_pr_per_message"
-        assert drained["due_pr_count"] == 2
+        assert drained["due_pr_count"] == 3
         assert drained["verified_pr_count"] == 1
-        assert drained["cancelled_pr_count"] == 1
+        assert drained["cancelled_pr_count"] == 2
         assert drained["cancelled_sink_receipt_count"] == 1
         assert drained["not_due_receipt_count"] == 1
+        pr_101 = next(item for item in drained["items"] if item["pr_ref"] == "#101")
+        assert pr_101["inactive_reviewer_handles"] == ["@removed-owner"]
         assert drain_calls == [
             {
                 "number": 101,
@@ -1894,6 +1914,18 @@ def main() -> int:
         assert resumed_drain["verified_pr_count"] == 1
         assert drain_calls[-1]["number"] == 103
         assert len(drain_calls) == 3
+
+        subprocess.run(
+            [
+                sys.executable,
+                str(
+                    ROOT
+                    / "examples/issue-fix-reviewer-notification-drain-postwrite-smoke.py"
+                ),
+            ],
+            cwd=ROOT,
+            check=True,
+        )
     finally:
         for attempt in range(10):
             try:

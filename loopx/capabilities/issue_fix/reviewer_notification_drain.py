@@ -169,6 +169,50 @@ def _matched_queue_keys(
     return keys
 
 
+def _retarget_queue_receipts(
+    *,
+    repo: str,
+    number: int,
+    queue: Sequence[Mapping[str, Any]],
+    sinks: Sequence[Mapping[str, Any]],
+    reviewer_handles: Sequence[str],
+) -> list[dict[str, Any]]:
+    retargeted: list[dict[str, Any]] = []
+    for receipt in queue:
+        prior_reviewers = receipt.get("reviewer_handles")
+        prior_reviewers = prior_reviewers if isinstance(prior_reviewers, list) else []
+        matching_sink: Mapping[str, Any] | None = None
+        for sink in sinks:
+            key = reviewer_notification_idempotency_key(
+                repo=repo,
+                pr_number=number,
+                sink_kind=str(sink.get("sink_kind") or "").strip(),
+                sink_instance_key=str(sink.get("sink_instance_key") or "").strip(),
+                reviewer_handles=prior_reviewers,
+            )
+            if key == receipt.get("idempotency_key"):
+                matching_sink = sink
+                break
+        if matching_sink is None:
+            raise ValueError("queued reviewer notification sink is unavailable")
+        retargeted.append(
+            {
+                **dict(receipt),
+                "idempotency_key": reviewer_notification_idempotency_key(
+                    repo=repo,
+                    pr_number=number,
+                    sink_kind=str(matching_sink.get("sink_kind") or "").strip(),
+                    sink_instance_key=str(
+                        matching_sink.get("sink_instance_key") or ""
+                    ).strip(),
+                    reviewer_handles=reviewer_handles,
+                ),
+                "reviewer_handles": list(reviewer_handles),
+            }
+        )
+    return retargeted
+
+
 def drain_issue_fix_reviewer_notification_queue(
     *,
     ledger_path: str | Path,
@@ -403,6 +447,22 @@ def drain_issue_fix_reviewer_notification_queue(
         live_review_decision = str(metadata.get("review_decision") or "UNKNOWN").upper()
         live_state_bucket = str(metadata.get("state_bucket") or "unknown")
         live_reviewed = {str(value) for value in metadata.get("reviewed_by") or []}
+        if not all(
+            field in metadata
+            for field in ("requested_reviewers", "comment_notified_reviewers")
+        ):
+            item.update(
+                status="blocked",
+                blocker="github_pr_live_reviewer_coverage_incomplete",
+            )
+            blocked_count += 1
+            items.append(item)
+            continue
+        live_active_coverage = {
+            str(value)
+            for field in ("requested_reviewers", "comment_notified_reviewers")
+            for value in metadata.get(field) or []
+        }
         item.update(
             live_state=live_state,
             live_review_decision=live_review_decision,
@@ -426,6 +486,8 @@ def drain_issue_fix_reviewer_notification_queue(
             stale_reason = "review_no_longer_required"
         elif reviewers and set(reviewers).issubset(live_reviewed):
             stale_reason = "all_queued_reviewers_already_reviewed"
+        elif reviewers and not set(reviewers).intersection(live_active_coverage):
+            stale_reason = "all_queued_reviewers_no_longer_active"
         if stale_reason:
             try:
                 write = persist_issue_fix_reviewer_notification_state(
@@ -454,10 +516,38 @@ def drain_issue_fix_reviewer_notification_queue(
             items.append(item)
             continue
         covered_reviewers = [reviewer for reviewer in reviewers if reviewer in live_reviewed]
-        reviewers = [reviewer for reviewer in reviewers if reviewer not in live_reviewed]
+        inactive_reviewers = [
+            reviewer
+            for reviewer in reviewers
+            if reviewer not in live_reviewed and reviewer not in live_active_coverage
+        ]
+        reviewers = [
+            reviewer
+            for reviewer in reviewers
+            if reviewer not in live_reviewed and reviewer in live_active_coverage
+        ]
         item["reviewer_handles"] = reviewers
         if covered_reviewers:
             item["covered_reviewer_handles"] = covered_reviewers
+        if inactive_reviewers:
+            item["inactive_reviewer_handles"] = inactive_reviewers
+        try:
+            due_queue = _retarget_queue_receipts(
+                repo=repo,
+                number=number,
+                queue=due_queue,
+                sinks=matching_sinks,
+                reviewer_handles=reviewers,
+            )
+        except ValueError:
+            item.update(
+                status="blocked",
+                blocker="reviewer_notification_queue_sink_mismatch",
+            )
+            blocked_count += 1
+            items.append(item)
+            continue
+        full_queue = [*future_queue, *due_queue]
         author = str(metadata.get("author_handle") or "")
         if not author or author in reviewers:
             item.update(
@@ -505,12 +595,9 @@ def drain_issue_fix_reviewer_notification_queue(
         result_queue = result.get("queued_receipts")
         result_queue = result_queue if isinstance(result_queue, list) else []
         new_queue = [dict(value) for value in future_queue]
-        if result.get("ok") is True:
-            new_queue.extend(
-                dict(value) for value in result_queue if isinstance(value, Mapping)
-            )
-        else:
-            new_queue.extend(dict(value) for value in due_queue)
+        new_queue.extend(
+            dict(value) for value in result_queue if isinstance(value, Mapping)
+        )
         receipts = result.get("receipts")
         receipts = receipts if isinstance(receipts, list) else []
         try:
