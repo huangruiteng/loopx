@@ -701,6 +701,22 @@ loopx history --goal-id your-project-goal
 loopx quota should-run --goal-id your-project-goal
 ```
 
+Quota/monitor artifacts and generic history appenders use an atomic JSON
+reservation so concurrent writers cannot claim the same JSON/Markdown pair.
+Legacy index identity collisions are never auto-deleted: preview an exact
+rebuild plan, review its rows and digest, then explicitly supply that plan to
+preserve every compact todo/target event under a distinct recovery artifact:
+
+```bash
+loopx --format json history rebuild-index-collisions \
+  --goal-id your-project-goal | jq '.review_plan' > reviewed-plan.json
+loopx history rebuild-index-collisions --goal-id your-project-goal \
+  --review-plan-json reviewed-plan.json --execute
+```
+
+The execute path keeps a pre-rebuild index backup and does not claim that an
+ambiguous legacy artifact belongs to any recovered row.
+
 Common operator actions:
 
 ```bash

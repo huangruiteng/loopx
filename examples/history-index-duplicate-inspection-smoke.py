@@ -143,10 +143,18 @@ def write_index_fixture(root: Path, goal_id: str, duplicate_kind: str) -> None:
         rows = [
             {
                 **base,
-                "classification": "benchmark_run_v0",
-                "health_check": "benchmark_run_v0 compact event public-safe",
+                "classification": "quota_monitor_poll",
+                "todo_id": "todo_fixture_a",
+                "target_key": "github-pr-101",
+                "health_check": "due monitor observation unchanged",
             },
-            {**base, "classification": "state_refreshed"},
+            {
+                **base,
+                "classification": "quota_monitor_poll",
+                "todo_id": "todo_fixture_b",
+                "target_key": "github-pr-102",
+                "health_check": "due monitor observation unchanged",
+            },
         ]
     else:
         raise ValueError(duplicate_kind)
@@ -275,8 +283,7 @@ def main() -> None:
             == "artifact_identity_collision"
         ), payload
         assert by_goal["artifact-collision-goal"]["classifications"] == [
-            "benchmark_run_v0",
-            "state_refreshed",
+            "quota_monitor_poll"
         ], payload
         assert payload["groups"][0]["severity"] == "warning", payload
 
@@ -370,6 +377,79 @@ def main() -> None:
         )
         assert filtered["duplicate_group_count"] == 1, filtered
         assert filtered["groups"][0]["duplicate_kind"] == "reward_overlay", filtered
+
+        rebuild_preview = run_cli(
+            registry_path,
+            "history",
+            "rebuild-index-collisions",
+            "--goal-id",
+            "artifact-collision-goal",
+        )
+        assert rebuild_preview["dry_run"] is True, rebuild_preview
+        assert rebuild_preview["collision_group_count"] == 1, rebuild_preview
+        assert rebuild_preview["review_required"] is True, rebuild_preview
+        assert rebuild_preview["destructive_row_deletion"] is False, rebuild_preview
+        review_plan = rebuild_preview["review_plan"]
+        assert review_plan["destructive_row_deletion"] is False, review_plan
+        assert len(review_plan["groups"][0]["rows"]) == 2, review_plan
+        assert {
+            row["event_identity"]["todo_id"]
+            for row in review_plan["groups"][0]["rows"]
+        } == {"todo_fixture_a", "todo_fixture_b"}, review_plan
+        plan_path = Path(raw_tmp) / "reviewed-collision-plan.json"
+        plan_path.write_text(
+            json.dumps(review_plan, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        rebuild_execute = run_cli(
+            registry_path,
+            "history",
+            "rebuild-index-collisions",
+            "--goal-id",
+            "artifact-collision-goal",
+            "--review-plan-json",
+            str(plan_path),
+            "--execute",
+        )
+        assert rebuild_execute["rebuilt"] is True, rebuild_execute
+        assert rebuild_execute["destructive_row_deletion"] is False, rebuild_execute
+        rebuilt_index = rebuild_execute["rebuilt_indexes"][0]
+        assert rebuilt_index["preserved_row_count"] == 2, rebuild_execute
+        assert Path(rebuilt_index["backup_path"]).exists(), rebuild_execute
+        assert all(Path(path).exists() for path in rebuilt_index["recovery_paths"]), (
+            rebuild_execute
+        )
+
+        after_rebuild = run_cli(
+            registry_path,
+            "history",
+            "inspect-index-duplicates",
+            "--goal-id",
+            "artifact-collision-goal",
+        )
+        assert after_rebuild["duplicate_group_count"] == 0, after_rebuild
+        rebuilt_rows = [
+            json.loads(line)
+            for line in (
+                Path(rebuilt_index["index_path"]).read_text(encoding="utf-8").splitlines()
+            )
+            if line.strip()
+        ]
+        assert len(rebuilt_rows) == 2, rebuilt_rows
+        assert {row["classification"] for row in rebuilt_rows} == {
+            "quota_monitor_poll"
+        }, rebuilt_rows
+        assert {row["todo_id"] for row in rebuilt_rows} == {
+            "todo_fixture_a",
+            "todo_fixture_b",
+        }, rebuilt_rows
+        assert {row["target_key"] for row in rebuilt_rows} == {
+            "github-pr-101",
+            "github-pr-102",
+        }, rebuilt_rows
+        assert len({row["json_path"] for row in rebuilt_rows}) == 2, rebuilt_rows
+        assert all(row["artifact_rebuild"]["ambiguous_legacy_artifact_claimed"] is False for row in rebuilt_rows)
 
     print("history-index-duplicate-inspection-smoke ok")
 

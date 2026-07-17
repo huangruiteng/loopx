@@ -51,6 +51,7 @@ def main() -> int:
     assert_contains(help_result.stdout, "append-benchmark-run")
     assert_contains(help_result.stdout, "append-agents-last-exam-result-report")
     assert_contains(help_result.stdout, "repair-index-duplicates")
+    assert_contains(help_result.stdout, "rebuild-index-collisions")
     assert_contains(help_result.stdout, "--active-user-pilot-json")
 
     with tempfile.TemporaryDirectory() as temp_dir:
