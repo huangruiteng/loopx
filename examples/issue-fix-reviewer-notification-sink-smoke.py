@@ -237,6 +237,53 @@ def reviewer_artifact_application() -> dict[str, Any]:
     }
 
 
+def reviewer_notification_policy_application() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "schema_version": (
+            "issue_fix_reviewer_notification_reward_memory_application_v0"
+        ),
+        "surface_id": "reviewer_notification.before_send",
+        "decision": {
+            "schema_version": "issue_fix_reviewer_notification_before_send_v0",
+            "repo": "owner/repo",
+            "pr_ref": "#42",
+            "permalink": "https://github.com/owner/repo/pull/42",
+            "delivery_policy": {
+                "timezone": "Asia/Shanghai",
+                "allowed_local_time": {"start": "09:00", "end": "21:00"},
+                "outside_window": "queue_without_send",
+            },
+            "policy_source": "reward_memory",
+            "policy_digest": "0123456789abcdef",
+        },
+        "application": {
+            "status": "applied",
+            "receipt": {
+                "schema_version": "reward_memory_application_receipt_v0",
+                "application_id": (
+                    "issue-fix:reviewer-notification:owner/repo:42"
+                ),
+                "artifact_ref": "github:owner/repo#pr-42",
+                "corpus_id": "reviewer_notification_delivery_policy",
+                "surface_id": "reviewer_notification.before_send",
+                "mode": "function_boundary",
+                "outcome": "applied",
+                "memory_ref_digests": ["0123456789abcdef"],
+                "reasoning_summary": (
+                    "Applied the active reviewer delivery policy."
+                ),
+                "current_artifact_verified": True,
+                "result_readback_verified": True,
+                "model_reasoning_preserved": True,
+                "grants_new_action_authority": False,
+                "external_writes_performed": False,
+                "raw_content_captured": False,
+            },
+        },
+    }
+
+
 def assert_public_safe(packet: dict[str, Any]) -> None:
     text = json.dumps(packet, ensure_ascii=False, sort_keys=True)
     for pattern in PRIVATE_PATTERNS:
@@ -372,6 +419,29 @@ def main() -> int:
     assert "修复文件 URI 校验" in sent_content
     assert gated["reward_memory_reviewer_artifact_gate"]["passed"] is True
     assert_public_safe(gated)
+
+    memory_window_runner = FakeSinkRunner()
+    memory_window = build_issue_fix_reviewer_notification_sinks_result(
+        repo="owner/repo",
+        pr_number=42,
+        pr_url="https://github.com/owner/repo/pull/42",
+        author_handle="@current-author",
+        reviewer_handles=["@service-owner"],
+        sinks_input=fixture(),
+        reviewer_notification_policy_application=(
+            reviewer_notification_policy_application()
+        ),
+        execute=True,
+        delivery_observed_at="2026-07-10T14:30:00Z",
+        runner=memory_window_runner,
+    )
+    assert memory_window["ok"] is True, memory_window
+    assert memory_window["status"] == "queued_until_window"
+    assert memory_window["delivery_policy_source"] == "reward_memory"
+    assert memory_window["reward_memory_before_send_status"] == "applied"
+    assert memory_window["external_writes_performed"] is False
+    assert memory_window_runner.calls == []
+    assert_public_safe(memory_window)
 
     outside_window_config = fixture()
     outside_window_config["delivery_policy"] = {

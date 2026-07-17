@@ -12,6 +12,9 @@ from loopx.capabilities.context_providers.base import (
     ContextProviderItem,
     ContextProviderRetrieval,
 )
+from loopx.capabilities.issue_fix.reward_memory import (
+    run_issue_fix_reviewer_notification_automatic_reward_memory,
+)
 from loopx.capabilities.reward_memory.experiment import (
     resolve_reward_memory_experiment,
     resolve_reward_memory_surface_config,
@@ -889,3 +892,143 @@ def test_automatic_recall_caps_queries_and_provider_failure_fails_open(
     assert unavailable["output"] == {"summary": "base"}
     assert unavailable["provider_failure_is_user_gate"] is False
     assert unavailable_provider.retrieve_calls == 1
+
+
+def _with_reviewer_notification_surface(
+    config: dict[str, object],
+) -> dict[str, object]:
+    result = copy.deepcopy(config)
+    entries = result["corpora"]
+    binding = result["project_provider_binding"]
+    surfaces = result["surfaces"]
+    assert isinstance(entries, list)
+    assert isinstance(binding, dict)
+    assert isinstance(surfaces, list)
+    entry = copy.deepcopy(entries[0])
+    corpus = entry["corpus"]
+    policy = entry["standing_policy"]
+    assert isinstance(corpus, dict)
+    assert isinstance(policy, dict)
+    corpus_id = "reviewer_notification_delivery_policy"
+    surface_id = "reviewer_notification.before_send"
+    scope_ref = f"viking://resources/reward-memory/{corpus_id}"
+    corpus["corpus_id"] = corpus_id
+    corpus["scope"]["surface_ids"] = [surface_id]
+    corpus["provider_scope_ref_digest"] = hashlib.sha256(
+        scope_ref.encode("utf-8")
+    ).hexdigest()[:16]
+    policy["policy_id"] = "policy:example:reviewer-notification-delivery"
+    policy["scope"]["surface_ids"] = [surface_id]
+    entries.append(entry)
+    binding["corpus_scopes"].append(
+        {"corpus_id": corpus_id, "scope_ref": scope_ref}
+    )
+    surfaces.append(
+        {
+            "surface_id": surface_id,
+            "adapter": "issue_fix_maintainer_feedback",
+            "corpus_ids": [corpus_id],
+            "ingest_corpus_id": corpus_id,
+            "recall_profile": {
+                "profile_id": "reviewer_notification_before_send_v1",
+                "mode": "function_boundary",
+                "max_queries": 1,
+                "limit": 2,
+            },
+        }
+    )
+    return result
+
+
+def test_issue_fix_before_send_recall_applies_structured_policy_and_fails_open(
+    tmp_path: Path,
+) -> None:
+    registry_path, _, _ = _experiment(tmp_path, SCOPED_PUBLIC_FIXTURE)
+    _write_v1_config(
+        registry_path,
+        _with_reviewer_notification_surface(_v1_config()),
+    )
+    _, config = resolve_reward_memory_experiment(
+        registry_path=registry_path,
+        goal_id="reward-memory-goal",
+        agent_id="pilot",
+    )
+    assert config is not None
+    route = resolve_reward_memory_surface_config(
+        config,
+        "reviewer_notification.before_send",
+    )
+    corpus = route["corpus"]
+    scope_ref = route["provider_binding"]["scope_ref"]
+    active_record = {
+        "schema_version": "reward_memory_active_record_v0",
+        "corpus_id": corpus["corpus_id"],
+        "candidate_ref": "candidate:reviewer-delivery-policy",
+        "target_class": "hard_policy",
+        "content_summary": json.dumps(
+            {
+                "schema_version": (
+                    "issue_fix_reviewer_notification_delivery_policy_v0"
+                ),
+                "delivery_policy": {
+                    "timezone": "Asia/Shanghai",
+                    "allowed_local_time": {"start": "09:00", "end": "21:00"},
+                    "outside_window": "queue_without_send",
+                },
+            },
+            separators=(",", ":"),
+        ),
+        "scope": {
+            **corpus["scope"],
+            "revision_ref": "revision:abc123",
+        },
+        "lifecycle": {"state": "active"},
+    }
+    provider = _RecallProvider(
+        content_by_scope={scope_ref: json.dumps(active_record)}
+    )
+
+    applied = run_issue_fix_reviewer_notification_automatic_reward_memory(
+        repo="owner/repo",
+        pr_number=42,
+        pr_url="https://github.com/owner/repo/pull/42",
+        delivery_policy=None,
+        experiment_config=config,
+        revision_ref="revision:abc123",
+        observed_at="2026-07-17T03:00:00+08:00",
+        freshness_context={
+            "source_truth_current": True,
+            "source_revision": "revision:abc123",
+        },
+        conflict_state="clear",
+        application_id="test:reviewer-notification:before-send",
+        provider=provider,
+    )
+    unavailable = run_issue_fix_reviewer_notification_automatic_reward_memory(
+        repo="owner/repo",
+        pr_number=42,
+        pr_url="https://github.com/owner/repo/pull/42",
+        delivery_policy=None,
+        experiment_config=config,
+        revision_ref="revision:abc123",
+        observed_at="2026-07-17T03:00:00+08:00",
+        freshness_context={
+            "source_truth_current": True,
+            "source_revision": "revision:abc123",
+        },
+        conflict_state="clear",
+        application_id="test:reviewer-notification:provider-unavailable",
+        provider=_RecallProvider(unavailable=True),
+    )
+
+    assert applied["before_send_gate"]["passed"] is True
+    assert applied["before_send_gate"]["delivery_policy"] == {
+        "timezone": "Asia/Shanghai",
+        "allowed_local_time": {"start": "09:00", "end": "21:00"},
+        "outside_window": "queue_without_send",
+    }
+    assert applied["application"]["receipt"]["result_readback_verified"] is True
+    assert applied["telemetry"]["provider_call_count"] == 1
+    assert unavailable["before_send_gate"]["status"] == "fail_open"
+    assert unavailable["decision"]["delivery_policy"] is None
+    assert unavailable["provider_failure_is_user_gate"] is False
