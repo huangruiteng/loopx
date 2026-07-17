@@ -1,0 +1,23 @@
+examples/issue-fix-reviewer-notification-drain-postwrite-smoke.py
+  s_32e2a9a204a8e4::t_313cc2d612a70c 1-160
+examples/issue-fix-reviewer-request-smoke.py
+  s_32e2a9a204a8e4::t_e2be827c5f0cdb 1744-1745,1755-1756,1765-1766,1773-1783,1796,1816,1861,1863,1866-1867,1917-1928
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a2c829ed8453561ae219204ceadec656624bc9c8",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
