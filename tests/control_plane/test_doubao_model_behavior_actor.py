@@ -110,6 +110,9 @@ def test_direct_actor_uses_canonical_endpoint_without_tools_or_raw_retention() -
     compact_instruction = " ".join(system_instruction.lower().split())
     assert "canonical_selected_todo_id exactly" in compact_instruction
     assert "never infer a todo id from summaries" in compact_instruction
+    assert "never substitute a silent wait for an explicit user gate" in (
+        compact_instruction
+    )
     provider_input = json.loads(captured["body"]["messages"][1]["content"])
     assert provider_input == {
         "schema_version": MODEL_BEHAVIOR_PROVIDER_INPUT_SCHEMA_VERSION,

@@ -219,8 +219,11 @@ the packet and do not invent or summarize values. Copy
 canonical_selected_todo_id exactly into selected_todo_id, including null; it
 was derived locally from this arm's canonical action signature. Never infer a
 todo id from summaries, diagnostics, handoffs, history, or other cold-path
-references. Choose intended_action_kinds from the execution obligation, not
-packet verbosity, and use the same ordered normalization for both arms.
+references. When user_action_required=true, choose decision=ask_user and
+include notify then wait in intended_action_kinds; never substitute a silent
+wait for an explicit user gate. Choose intended_action_kinds from the execution
+obligation, not packet verbosity, and use the same ordered normalization for
+both arms.
 Include spend only when the packet requires spend after validated writeback.
 For intended actions, treat a full packet's interaction_contract.agent_channel
 as equivalent to candidate action, and its interaction_contract.cli_channel as
@@ -323,7 +326,9 @@ Copy the requested phase exactly. Output JSON only, without markdown or
 reasoning. The semantic_contract must contain exactly the phase-specific fields
 described below. Use null where instructed and never invent identifiers."""
     if phase == "entry":
-        return common + """
+        return (
+            common
+            + """
 
 For phase=entry, derive the contract from the start-goal packet:
 - route: select_agent_identity when guided_transaction is blocked by an
@@ -353,7 +358,10 @@ route, goal_id, agent_id, action_command_ids,
 host_loop_activation_available, host_loop_activation_after_todo_write,
 requested_host_surface, host_surface, activation_method,
 visible_goal_command_available, writes_now, spends_quota_now."""
-    return common + """
+        )
+    return (
+        common
+        + """
 
 For phase=postcondition, the packet is a locally derived observation:
 - route: copy derived_route.
@@ -365,6 +373,7 @@ For phase=postcondition, the packet is a locally derived observation:
 Set next_action equal to route. The semantic_contract must contain exactly:
 route, state_projection_gap, executable_todo_present, selected_action_kind,
 normal_delivery_allowed, user_action_required."""
+    )
 
 
 def _onboarding_provider_input(request: Mapping[str, Any]) -> dict[str, Any]:

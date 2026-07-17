@@ -27,9 +27,7 @@ COMMANDS = {
     "goal_start_host_loop_activation": (
         "loopx heartbeat-prompt --thin --goal-id fixture-goal"
     ),
-    "goal_start_quota_should_run": (
-        "loopx quota should-run --goal-id fixture-goal"
-    ),
+    "goal_start_quota_should_run": ("loopx quota should-run --goal-id fixture-goal"),
 }
 ACTIVATION = {
     "schema_version": "loopx_host_loop_activation_v1",
@@ -146,9 +144,7 @@ def test_actual_default_closed_loop_checks_healthy_and_2134_repair_behavior() ->
     assert result["qualification_passed"] is True
     assert result["automatic_release_promotion_allowed"] is False
     assert result["entry"]["next_action"] == "connect_if_needed"
-    assert (
-        result["healthy_postcondition"]["next_action"] == "continue_validation"
-    )
+    assert result["healthy_postcondition"]["next_action"] == "continue_validation"
     assert result["repair_calibration"]["next_action"] == "repair_projection"
     assert transitions == 1
     encoded = json.dumps(result, sort_keys=True)
@@ -321,9 +317,7 @@ def test_actual_projection_gap_fails_the_healthy_postcondition() -> None:
 
 
 def test_postcondition_builder_calibrates_known_2134_projection_gap() -> None:
-    contract = onboarding_postcondition_semantic_contract(
-        _projection_gap_observation()
-    )
+    contract = onboarding_postcondition_semantic_contract(_projection_gap_observation())
 
     assert contract == {
         "route": "repair_projection",
@@ -335,15 +329,16 @@ def test_postcondition_builder_calibrates_known_2134_projection_gap() -> None:
     }
 
 
-def test_actor_request_rejects_local_paths_and_tool_boundary_changes() -> None:
+def test_actor_request_redacts_local_paths_and_rejects_tool_boundary_changes() -> None:
     packet = _actual_entry_packet()
     packet["project"] = "/Users/example/private-project"
-    with pytest.raises(ValueError, match="local absolute path"):
-        build_onboarding_model_behavior_actor_request(
-            packet,
-            qualification_id="onboarding-private-path-001",
-            phase="entry",
-        )
+    request = build_onboarding_model_behavior_actor_request(
+        packet,
+        qualification_id="onboarding-private-path-001",
+        phase="entry",
+    )
+    assert request["packet"]["project"] == "<LOCAL_PATH>"
+    assert "/Users/example" not in json.dumps(request, sort_keys=True)
 
     request = build_onboarding_model_behavior_actor_request(
         _actual_entry_packet(),
@@ -354,3 +349,20 @@ def test_actor_request_rejects_local_paths_and_tool_boundary_changes() -> None:
 
     with pytest.raises(ValueError, match="canonical no-write contract"):
         normalize_onboarding_model_behavior_actor_request(request)
+
+
+def test_human_gate_preempts_projection_gap_signals() -> None:
+    observation = build_onboarding_postcondition_observation(
+        check_warning_codes=["state_projection_gap"],
+        executable_todo_count=0,
+        selected_action_kind=None,
+        normal_delivery_allowed=False,
+        user_action_required=True,
+        next_action_actionable=True,
+    )
+
+    assert observation["derived_route"] == "ask_user"
+    assert observation["state_projection_gap"] is True
+    assert onboarding_postcondition_semantic_contract(observation)["route"] == (
+        "ask_user"
+    )

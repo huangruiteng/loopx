@@ -5,6 +5,7 @@ from collections.abc import Callable, Mapping, Sequence
 from hashlib import sha256
 from typing import Any, Protocol
 
+from ..runtime.public_safety import LOCAL_PATH_SURFACE_PATTERN
 from .model_behavior_qualification import (
     _reason_codes,
     _reject_private_or_secret_material,
@@ -104,6 +105,17 @@ def _validate_actual_default_projection(packet: Mapping[str, Any]) -> None:
             "regular onboarding model qualification excludes explicit "
             "command-pack detail; validate cold-path restoration deterministically"
         )
+
+
+def _model_safe_packet_value(value: Any) -> Any:
+    """Redact local path surfaces while preserving the shipped packet shape."""
+    if isinstance(value, Mapping):
+        return {str(key): _model_safe_packet_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_model_safe_packet_value(item) for item in value]
+    if isinstance(value, str):
+        return LOCAL_PATH_SURFACE_PATTERN.sub("<LOCAL_PATH>", value)
+    return value
 
 
 def _mapping(value: Any, *, field: str) -> dict[str, Any]:
@@ -258,12 +270,14 @@ def build_onboarding_postcondition_observation(
         field="selected_action_kind",
     )
     projection_gap = "state_projection_gap" in warning_codes or (
-        next_action_actionable and executable_todo_count == 0
+        next_action_actionable
+        and executable_todo_count == 0
+        and not user_action_required
     )
-    if projection_gap:
-        route = "repair_projection"
-    elif user_action_required:
+    if user_action_required:
         route = "ask_user"
+    elif projection_gap:
+        route = "repair_projection"
     elif executable_todo_count > 0 and normal_delivery_allowed:
         route = "continue_validation"
     else:
@@ -302,9 +316,7 @@ def onboarding_postcondition_semantic_contract(
             observation.get("selected_action_kind"),
             field="selected_action_kind",
         ),
-        "normal_delivery_allowed": bool(
-            observation.get("normal_delivery_allowed")
-        ),
+        "normal_delivery_allowed": bool(observation.get("normal_delivery_allowed")),
         "user_action_required": bool(observation.get("user_action_required")),
     }
 
@@ -371,7 +383,9 @@ def build_onboarding_model_behavior_actor_request(
 ) -> dict[str, Any]:
     if phase not in ONBOARDING_MODEL_BEHAVIOR_PHASES:
         raise ValueError("phase must be entry or postcondition")
-    normalized_packet = dict(packet)
+    normalized_packet = _model_safe_packet_value(packet)
+    if not isinstance(normalized_packet, dict):
+        raise ValueError("packet must be an object")
     contract = _semantic_contract(normalized_packet, phase=phase)
     violations = _behavior_contract_violations(contract, phase=phase)
     if violations:
@@ -447,10 +461,11 @@ def normalize_onboarding_model_behavior_actor_result(
         raise ValueError(
             f"unknown onboarding decision field(s): {', '.join(unknown_decision)}"
         )
-    if decision.get("schema_version") != ONBOARDING_MODEL_BEHAVIOR_DECISION_SCHEMA_VERSION:
-        raise ValueError(
-            "decision must use onboarding_model_behavior_decision_v0"
-        )
+    if (
+        decision.get("schema_version")
+        != ONBOARDING_MODEL_BEHAVIOR_DECISION_SCHEMA_VERSION
+    ):
+        raise ValueError("decision must use onboarding_model_behavior_decision_v0")
     if decision.get("phase") != phase:
         raise ValueError("decision phase must match the actor request")
     next_action = str(decision.get("next_action") or "")
