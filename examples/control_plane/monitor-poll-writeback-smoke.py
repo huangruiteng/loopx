@@ -67,9 +67,12 @@ def write_fixture(
     *,
     selected_target_key: str | None = TARGET_KEY,
     include_other_monitor: bool = False,
+    include_blocked_advancement: bool = False,
     include_user_gate: bool = False,
     include_advancement: bool = False,
     primary_monitor_priority: str = "P0",
+    primary_no_change_count: int = 1,
+    other_no_change_count: int = 1,
     monitor_required_capabilities: tuple[str, ...] = (),
 ) -> tuple[Path, Path]:
     project = root / "project"
@@ -100,10 +103,23 @@ def write_fixture(
         "cadence=15m "
         "next_due_at=2026-01-01T00:00:00+00:00 "
         "result_hash=old "
-        "consecutive_no_change=1 "
+        f"consecutive_no_change={other_no_change_count} "
         "material_change=false "
         "-->\n"
         if include_other_monitor
+        else ""
+    )
+    blocked_advancement = (
+        "- [ ] [P1] Run the next official and countable matched benchmark pair.\n"
+        "  <!-- loopx:todo "
+        "todo_id=todo_monitorpollbenchmark "
+        "status=blocked "
+        "task_class=advancement_task "
+        "action_kind=run_matched_benchmark "
+        "required_capabilities=benchmark_runner "
+        f"claimed_by={AGENT_ID} "
+        "-->\n"
+        if include_blocked_advancement
         else ""
     )
     gated_advancement = (
@@ -164,10 +180,11 @@ def write_fixture(
         "cadence=15m "
         "next_due_at=2026-01-01T00:00:00+00:00 "
         "result_hash=old "
-        "consecutive_no_change=1 "
+        f"consecutive_no_change={primary_no_change_count} "
         "material_change=false "
         "-->\n"
         f"{other_monitor}"
+        f"{blocked_advancement}"
         f"{gated_advancement}"
         f"{advancement}"
         f"{user_gate}",
@@ -353,6 +370,57 @@ def assert_unchanged_writeback() -> None:
         assert followup["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is False, followup
         assert followup["execution_obligation"]["kind"] == "autonomous_replan_required", followup
         assert followup["execution_obligation"]["must_attempt_work"] is True, followup
+
+
+def assert_interleaved_monitor_stalls_replan_blocked_benchmark() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-monitor-poll-real-state-replay-") as tmp:
+        registry_path, _ = write_fixture(
+            Path(tmp),
+            include_other_monitor=True,
+            include_blocked_advancement=True,
+            primary_no_change_count=28,
+            other_no_change_count=28,
+        )
+        quota = run_cli(
+            registry_path,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+        )
+        assert quota["decision"] == "autonomous_replan_required", quota
+        assert quota["effective_action"] == "autonomous_replan_required", quota
+        assert quota["goal_frontier_projection"]["replan_required"] is True, quota
+        obligation = quota["autonomous_replan_obligation"]
+        assert obligation["triggers"][0]["kind"] == "monitor_no_change_streak", obligation
+        assert obligation["triggers"][0]["run_count"] == 28, obligation
+        assert obligation["dead_monitor_detector"]["threshold"] == 2, obligation
+
+
+def assert_stalled_monitor_does_not_preempt_runnable_advancement() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-monitor-poll-runnable-advancement-") as tmp:
+        registry_path, _ = write_fixture(
+            Path(tmp),
+            include_advancement=True,
+            primary_no_change_count=28,
+        )
+        quota = run_cli(
+            registry_path,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+            "--available-capability",
+            "network",
+        )
+        assert quota["decision"] == "run", quota
+        assert quota["effective_action"] == "normal_run", quota
+        assert quota["work_lane_contract"]["lane"] == "advancement_task", quota
+        assert quota.get("autonomous_replan_obligation") is None, quota
 
 
 def assert_material_transition_followup() -> None:
@@ -830,6 +898,8 @@ def main() -> int:
     assert_cli_monitor_poll_uses_should_run_lookback()
     assert_writeback_helper_preview_contract()
     assert_unchanged_writeback()
+    assert_interleaved_monitor_stalls_replan_blocked_benchmark()
+    assert_stalled_monitor_does_not_preempt_runnable_advancement()
     assert_material_transition_followup()
     assert_external_material_transition_receipt_correlation()
     assert_due_monitor_poll_allowed_with_open_user_gate()
