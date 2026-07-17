@@ -115,6 +115,15 @@ python examples/control_plane/interaction-scheduler-authority-smoke.py
 loopx canary premerge --from-git-diff
 ```
 
+`premerge` resolves the caller's Git root for diff hygiene, changed-Python
+compilation, and public-boundary scanning, while LoopX's installed canary
+catalog continues to run from its own trusted release root. This also supports
+running the command from another repository or one of its subdirectories.
+
+`premerge` 会把调用方 Git 根目录用于 diff 卫生检查、变更 Python 编译和公开边界扫描；
+LoopX 已安装的 canary catalog 仍从自身可信 release root 运行。因此该命令也可从其他
+仓库或其子目录执行。
+
 The complete public sweep remains explicit and bounded:
 
 ```bash

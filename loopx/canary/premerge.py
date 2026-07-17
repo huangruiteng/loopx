@@ -84,6 +84,7 @@ def _synthetic_smoke_suite_run(
     timeout_seconds: float,
     selected_checks: list[dict[str, Any]],
     note: str,
+    repo_root: Path = REPO_ROOT,
 ) -> dict[str, Any]:
     executed_checks = selected_checks if execute else []
     failures = [item for item in selected_checks if item.get("ok") is False]
@@ -91,7 +92,7 @@ def _synthetic_smoke_suite_run(
         "ok": not failures,
         "schema_version": "canary_smoke_suite_run_v0",
         "suite": suite,
-        "repo_root": str(REPO_ROOT),
+        "repo_root": str(repo_root),
         "dry_run": not execute,
         "executes_checks": execute,
         "writes_evidence": False,
@@ -126,6 +127,7 @@ def _empty_smoke_suite_run(
     reason: str,
     execute: bool,
     timeout_seconds: float,
+    repo_root: Path = REPO_ROOT,
 ) -> dict[str, Any]:
     return _synthetic_smoke_suite_run(
         suite=suite,
@@ -133,6 +135,7 @@ def _empty_smoke_suite_run(
         timeout_seconds=timeout_seconds,
         selected_checks=[],
         note=reason,
+        repo_root=repo_root,
     )
 
 
@@ -141,16 +144,17 @@ def _public_boundary_changed_files_run(
     changed_files: list[str],
     execute: bool,
     timeout_seconds: float,
+    repo_root: Path = REPO_ROOT,
 ) -> dict[str, Any]:
     existing_paths = [
-        (REPO_ROOT / path).resolve()
+        (repo_root / path).resolve()
         for path in _dedupe(changed_files)
-        if (REPO_ROOT / path).exists()
+        if (repo_root / path).exists()
     ]
     display_paths: list[str] = []
     for path in existing_paths:
         try:
-            display_paths.append(str(path.relative_to(REPO_ROOT.resolve())))
+            display_paths.append(str(path.relative_to(repo_root.resolve())))
         except ValueError:
             display_paths.append(str(path))
     display_argv = ["loopx", "check"]
@@ -211,6 +215,7 @@ def _public_boundary_changed_files_run(
             "directly. The full fresh-directory contract smoke remains available "
             "through the canary catalog/profile suites."
         ),
+        repo_root=repo_root,
     )
     payload["selection_inputs"] = {
         "suite": "premerge-public-boundary",
@@ -248,11 +253,15 @@ def _dedupe(values: list[str]) -> list[str]:
     return deduped
 
 
-def classify_premerge_surfaces(changed_files: list[str]) -> dict[str, Any]:
+def classify_premerge_surfaces(
+    changed_files: list[str],
+    *,
+    repo_root: Path = REPO_ROOT,
+) -> dict[str, Any]:
     files = _dedupe(changed_files)
     python_files = [
         path for path in files
-        if path.endswith(".py") and (REPO_ROOT / path).exists()
+        if path.endswith(".py") and (repo_root / path).exists()
     ]
     surfaces: list[str] = []
     risk_profiles: list[str] = []
@@ -307,14 +316,14 @@ def classify_premerge_surfaces(changed_files: list[str]) -> dict[str, Any]:
     }
 
 
-def _display_argv(argv: list[str]) -> list[str]:
+def _display_argv(argv: list[str], *, repo_root: Path = REPO_ROOT) -> list[str]:
     displayed = list(argv)
     if displayed and Path(displayed[0]).resolve() == Path(sys.executable).resolve():
         displayed[0] = "python3"
     for index, value in enumerate(displayed[1:], start=1):
         path = Path(value)
         try:
-            displayed[index] = str(path.resolve().relative_to(REPO_ROOT.resolve()))
+            displayed[index] = str(path.resolve().relative_to(repo_root.resolve()))
         except (OSError, ValueError):
             displayed[index] = value
     return displayed
@@ -331,13 +340,15 @@ def _run_gate_check(
     section: str = "direct_checks",
     check_index: int | None = None,
     check_count: int | None = None,
+    repo_root: Path = REPO_ROOT,
 ) -> dict[str, Any]:
+    display_argv = _display_argv(argv, repo_root=repo_root)
     check = {
         "id": check_id,
         "kind": "direct_command",
         "argv": argv,
-        "display_argv": _display_argv(argv),
-        "command": " ".join(_display_argv(argv)),
+        "display_argv": display_argv,
+        "command": " ".join(display_argv),
         "reason": reason,
         "status": "ready",
         "ok": True,
@@ -363,7 +374,7 @@ def _run_gate_check(
     try:
         completed = subprocess.run(
             argv,
-            cwd=REPO_ROOT,
+            cwd=repo_root,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -430,6 +441,7 @@ def _diff_hygiene_checks(
     execute: bool,
     timeout_seconds: float,
     progress_callback: ProgressCallback | None = None,
+    repo_root: Path = REPO_ROOT,
 ) -> list[dict[str, Any]]:
     base = (base_ref or "origin/main").strip() or "origin/main"
     specs = [
@@ -462,6 +474,7 @@ def _diff_hygiene_checks(
                 section="direct_checks",
                 check_index=index,
                 check_count=len(specs),
+                repo_root=repo_root,
             )
         )
     return checks
@@ -473,6 +486,7 @@ def _py_compile_check(
     execute: bool,
     timeout_seconds: float,
     progress_callback: ProgressCallback | None = None,
+    repo_root: Path = REPO_ROOT,
 ) -> dict[str, Any] | None:
     if not python_files:
         return None
@@ -486,6 +500,7 @@ def _py_compile_check(
         section="python_compile",
         check_index=1,
         check_count=1,
+        repo_root=repo_root,
     )
 
 
@@ -690,9 +705,11 @@ def build_premerge_validation_gate(
     fail_fast: bool = False,
     include_deep_checks: bool | None = None,
     progress_callback: ProgressCallback | None = None,
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
+    target_repo_root = (repo_root or REPO_ROOT).resolve()
     files = _dedupe(list(changed_files or []))
-    classification = classify_premerge_surfaces(files)
+    classification = classify_premerge_surfaces(files, repo_root=target_repo_root)
     limits = _tier_limits(tier)
     include_deep = bool(limits["deep"] if include_deep_checks is None else include_deep_checks)
     if progress_callback and execute:
@@ -712,12 +729,14 @@ def build_premerge_validation_gate(
         execute=execute,
         timeout_seconds=timeout_seconds,
         progress_callback=progress_callback,
+        repo_root=target_repo_root,
     )
     py_compile = _py_compile_check(
         python_files=list(classification["python_files"]),
         execute=execute,
         timeout_seconds=timeout_seconds,
         progress_callback=progress_callback,
+        repo_root=target_repo_root,
     )
     if py_compile is not None:
         direct_checks.append(py_compile)
@@ -766,6 +785,7 @@ def build_premerge_validation_gate(
             ),
             execute=execute,
             timeout_seconds=timeout_seconds,
+            repo_root=target_repo_root,
         )
 
     risk_profiles = list(classification["risk_profiles"])
@@ -820,6 +840,7 @@ def build_premerge_validation_gate(
             changed_files=files,
             execute=execute,
             timeout_seconds=timeout_seconds,
+            repo_root=target_repo_root,
         )
         _emit_section_progress(
             boundary_progress,
@@ -856,7 +877,7 @@ def build_premerge_validation_gate(
     payload = {
         "ok": ok,
         "schema_version": PREMERGE_GATE_SCHEMA_VERSION,
-        "repo_root": str(REPO_ROOT),
+        "repo_root": str(target_repo_root),
         "base_ref": (base_ref or "origin/main").strip() or "origin/main",
         "tier": tier if tier in PREMERGE_TIERS else "standard",
         "dry_run": not execute,

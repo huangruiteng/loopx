@@ -298,6 +298,98 @@ def assert_installed_wrapper_premerge_redirects_to_checkout() -> None:
     assert Path(payload["repo_root"]).resolve() == REPO_ROOT.resolve(), payload
 
 
+def assert_external_dirty_worktree_uses_caller_repo() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        external_repo = Path(temp_dir)
+        subprocess.run(["git", "init", "-q"], cwd=external_repo, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "smoke@example.com"],
+            cwd=external_repo,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "LoopX Smoke"],
+            cwd=external_repo,
+            check=True,
+        )
+        sample = external_repo / "sample.py"
+        sample.write_text("value = 1\n", encoding="utf-8")
+        subprocess.run(["git", "add", "sample.py"], cwd=external_repo, check=True)
+        subprocess.run(
+            ["git", "commit", "-qm", "initial"],
+            cwd=external_repo,
+            check=True,
+        )
+
+        sample.write_text("value =\n", encoding="utf-8")
+        failed = subprocess.run(
+            [
+                str(REPO_ROOT / "scripts" / "loopx"),
+                "--format",
+                "json",
+                "canary",
+                "premerge",
+                "--from-git-diff",
+                "--git-diff-base",
+                "HEAD",
+                "--tier",
+                "quick",
+                "--no-progress",
+                "--timeout-seconds",
+                "60",
+            ],
+            cwd=external_repo,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        assert failed.returncode == 1, failed.stderr or failed.stdout
+        failed_payload = json.loads(failed.stdout)
+        assert Path(failed_payload["repo_root"]).resolve() == external_repo.resolve(), failed_payload
+        selector = failed_payload["selector_sources"]["git_diff"]
+        assert Path(selector["repo_root"]).resolve() == external_repo.resolve(), failed_payload
+        compile_check = next(
+            check
+            for check in failed_payload["direct_checks"]
+            if check["id"] == "changed_python_py_compile"
+        )
+        assert compile_check["status"] == "failed", failed_payload
+        assert all(
+            check["status"] == "passed"
+            for check in failed_payload["direct_checks"]
+            if check["id"].startswith("diff_check_")
+        ), failed_payload
+
+        sample.write_text("value = 2\n", encoding="utf-8")
+        passed = subprocess.run(
+            [
+                str(REPO_ROOT / "scripts" / "loopx"),
+                "--format",
+                "json",
+                "canary",
+                "premerge",
+                "--from-git-diff",
+                "--git-diff-base",
+                "HEAD",
+                "--tier",
+                "quick",
+                "--no-progress",
+                "--timeout-seconds",
+                "60",
+            ],
+            cwd=external_repo,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        assert passed.returncode == 0, passed.stderr or passed.stdout
+        passed_payload = json.loads(passed.stdout)
+        assert passed_payload["gate"]["status"] == "passed", passed_payload
+        assert all(check["ok"] for check in passed_payload["direct_checks"]), passed_payload
+
+
 def assert_inherited_line_budget_red_is_advisory_only() -> None:
     inherited_run = {
         "ok": False,
@@ -371,6 +463,7 @@ def main() -> None:
     assert_cli_premerge_reports_progress_by_default()
     assert_no_changes_does_not_mask_direct_failures()
     assert_installed_wrapper_premerge_redirects_to_checkout()
+    assert_external_dirty_worktree_uses_caller_repo()
     assert_inherited_line_budget_red_is_advisory_only()
     print("premerge-validation-gate-smoke ok")
 

@@ -80,6 +80,20 @@ def _run_git_name_only(repo_root: Path, args: list[str]) -> dict[str, object]:
     }
 
 
+def _resolve_git_repo_root(candidate: Path) -> Path:
+    completed = subprocess.run(
+        ["git", "-C", str(candidate), "rev-parse", "--show-toplevel"],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    resolved = completed.stdout.strip()
+    if completed.returncode == 0 and resolved:
+        return Path(resolved).resolve()
+    return candidate.resolve()
+
+
 def collect_git_diff_changed_files(
     *,
     repo_root: Path,
@@ -130,8 +144,9 @@ def _resolve_canary_changed_files(args: argparse.Namespace) -> tuple[list[str], 
     changed_files = list(args.changed_file or [])
     git_diff_selector = None
     if bool(getattr(args, "from_git_diff", False)):
+        repo_root = _resolve_git_repo_root(Path.cwd())
         git_diff_selector = collect_git_diff_changed_files(
-            repo_root=Path.cwd(),
+            repo_root=repo_root,
             base_ref=str(getattr(args, "git_diff_base", "origin/main") or "origin/main"),
         )
         changed_files.extend(
@@ -615,6 +630,7 @@ def handle_canary_command(
         renderer = render_quality_surface_catalog_audit_markdown
     elif args.canary_command == "premerge":
         changed_files, git_diff_selector = _resolve_canary_changed_files(args)
+        target_repo_root = _resolve_git_repo_root(Path.cwd())
         payload = build_premerge_validation_gate(
             changed_files=changed_files,
             base_ref=str(getattr(args, "git_diff_base", "origin/main") or "origin/main"),
@@ -623,6 +639,7 @@ def handle_canary_command(
             timeout_seconds=float(args.timeout_seconds or 120.0),
             fail_fast=bool(args.fail_fast),
             include_deep_checks=bool(args.include_deep_checks),
+            repo_root=target_repo_root,
             progress_callback=(
                 None
                 if bool(args.no_execute) or bool(args.no_progress)
