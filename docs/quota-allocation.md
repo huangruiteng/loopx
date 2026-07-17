@@ -508,6 +508,13 @@ and exit or stop only if the guard is still unchanged. Cadence changes, final
 checks, and self-stop turns never spend quota; only validated delivery or
 allowed writeback does.
 
+Scheduler ownership is explicit. A bare `quota should-run` can still expose the
+quota decision, but its `scheduler_hint` fails closed with
+`repair_scheduler_execution_context`; it never assumes Codex App. Generated
+Codex App heartbeats pass `--runtime-profile codex_app_heartbeat`. Other hosts
+pass the typed `--host-surface`, `--scheduler-owner`, and `--execution-mode`
+triple that describes the runtime which will consume the hint.
+
 ## Compute States
 
 Recommended compact states:
@@ -558,7 +565,7 @@ The first read-only or preview commands are:
 ```bash
 loopx quota status
 loopx quota plan
-loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <goal-id>
+loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <goal-id> --runtime-profile codex_app_heartbeat
 loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id <goal-id> --slots 1
 loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id <goal-id> --slots 1 --execute
 ```
