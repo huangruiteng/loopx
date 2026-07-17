@@ -10,7 +10,11 @@ from .monitor_poll import QUOTA_MONITOR_POLL_CLASSIFICATION
 from .scheduler_ack import QUOTA_SCHEDULER_ACK_CLASSIFICATION
 from .spend_sources import DEFAULT_SLOT_SPEND_SOURCE, VALID_SLOT_SPEND_SOURCES
 from ..runtime.time import now_local_iso
-from ..runtime.run_artifacts import run_file_stem, unique_run_artifact_paths
+from ..runtime.run_artifacts import (
+    next_run_artifact_paths,
+    reserve_run_artifact_paths,
+    run_file_stem,
+)
 from ..agents.workspace_guard import (
     build_delivery_workspace_guard,
     delivery_workspace_repository,
@@ -685,7 +689,8 @@ def record_quota_slot_void_from_preview(
     runtime_root = Path(str(raw_runtime_root)).expanduser()
     runs_dir = runtime_root / "goals" / safe_goal_id / "runs"
     stem = run_file_stem(generated_at)
-    json_path, markdown_path = unique_run_artifact_paths(runs_dir, stem, "quota-slot-voided")
+    path_allocator = reserve_run_artifact_paths if execute else next_run_artifact_paths
+    json_path, markdown_path = path_allocator(runs_dir, stem, "quota-slot-voided")
     index_path = runs_dir / "index.jsonl"
     index_record = {
         "generated_at": generated_at,
@@ -721,7 +726,6 @@ def record_quota_slot_void_from_preview(
         payload["before"] = record["quota_event"]["before"]
         payload["after"] = record["quota_event"]["after"]
     if execute:
-        runs_dir.mkdir(parents=True, exist_ok=True)
         json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         markdown_path.write_text(render_quota_slot_preview_markdown(payload) + "\n", encoding="utf-8")
         with index_path.open("a", encoding="utf-8") as f:
@@ -755,7 +759,8 @@ def record_quota_slot_spend_from_preview(
     runtime_root = Path(str(raw_runtime_root)).expanduser()
     runs_dir = runtime_root / "goals" / safe_goal_id / "runs"
     stem = run_file_stem(generated_at)
-    json_path, markdown_path = unique_run_artifact_paths(runs_dir, stem, "quota-slot-spent")
+    path_allocator = reserve_run_artifact_paths if execute else next_run_artifact_paths
+    json_path, markdown_path = path_allocator(runs_dir, stem, "quota-slot-spent")
     index_path = runs_dir / "index.jsonl"
     index_record = {
         "generated_at": generated_at,
@@ -792,7 +797,6 @@ def record_quota_slot_spend_from_preview(
         payload["before"] = record["quota_event"]["before"]
         payload["after"] = record["quota_event"]["after"]
     if execute:
-        runs_dir.mkdir(parents=True, exist_ok=True)
         json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         markdown_path.write_text(render_quota_slot_preview_markdown(payload) + "\n", encoding="utf-8")
         with index_path.open("a", encoding="utf-8") as f:

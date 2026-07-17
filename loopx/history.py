@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
-import re
 from pathlib import Path
 from typing import Any, Callable
 
@@ -13,6 +11,17 @@ from .control_plane.runtime.run_index_duplicates import (
     classify_index_duplicate_records,
     duplicate_repair_decision,
     index_identity,
+)
+from .control_plane.runtime.run_index_rebuild import (
+    apply_reviewed_collision_rebuild,
+    build_collision_rebuild_plan,
+    collision_review_groups,
+    validate_reviewed_collision_plan,
+)
+from .control_plane.runtime.run_artifacts import (
+    next_run_artifact_paths,
+    reserve_run_artifact_paths,
+    run_file_stem,
 )
 from .control_plane.work_items.delivery_batch_scale import require_delivery_batch_scale
 from .control_plane.work_items.delivery_outcome import require_delivery_outcome
@@ -67,47 +76,13 @@ def _normalize_optional_delivery_batch_scale(value: str | None) -> str | None:
     return require_delivery_batch_scale(value).value if value else None
 
 
-def run_file_stem(generated_at: str) -> str:
-    return re.sub(r"[^0-9A-Za-z-]+", "-", generated_at).strip("-")
-
-
 def unique_run_paths(runs_dir: Path, generated_at: str) -> tuple[Path, Path]:
-    stem = run_file_stem(generated_at)
-    json_path = runs_dir / f"{stem}.json"
-    markdown_path = runs_dir / f"{stem}.md"
-    if not json_path.exists() and not markdown_path.exists():
-        return json_path, markdown_path
-
-    suffix = 2
-    while True:
-        json_path = runs_dir / f"{stem}-{suffix}.json"
-        markdown_path = runs_dir / f"{stem}-{suffix}.md"
-        if not json_path.exists() and not markdown_path.exists():
-            return json_path, markdown_path
-        suffix += 1
+    return next_run_artifact_paths(runs_dir, run_file_stem(generated_at))
 
 
 def reserve_unique_run_paths(runs_dir: Path, generated_at: str) -> tuple[Path, Path]:
     """Atomically reserve a run JSON path for concurrent append writers."""
-
-    runs_dir.mkdir(parents=True, exist_ok=True)
-    stem = run_file_stem(generated_at)
-    suffix = 1
-    while True:
-        actual_stem = stem if suffix == 1 else f"{stem}-{suffix}"
-        json_path = runs_dir / f"{actual_stem}.json"
-        markdown_path = runs_dir / f"{actual_stem}.md"
-        if markdown_path.exists():
-            suffix += 1
-            continue
-        try:
-            fd = os.open(json_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            suffix += 1
-            continue
-        else:
-            os.close(fd)
-            return json_path, markdown_path
+    return reserve_run_artifact_paths(runs_dir, run_file_stem(generated_at))
 
 
 def write_reserved_run_artifacts(
@@ -1064,6 +1039,79 @@ def repair_index_duplicates(
         "truncated": len(groups) > len(limited_groups),
         "limit": limit,
     }
+
+
+def rebuild_index_artifact_collisions(
+    *,
+    registry_path: Path,
+    runtime_root_override: str | None,
+    goal_id: str | None,
+    limit: int,
+    reviewed_plan: dict[str, Any] | None,
+    execute: bool,
+) -> dict[str, Any]:
+    registry = load_registry(registry_path)
+    runtime_root = resolve_runtime_root(
+        registry,
+        runtime_root_override,
+        registry_path=registry_path,
+    )
+    groups: list[dict[str, Any]] = []
+    checked_goal_count = 0
+    for current_goal_id in discover_goal_ids(runtime_root, registry, goal_id):
+        checked_goal_count += 1
+        index_path = runtime_root / "goals" / current_goal_id / "runs" / "index.jsonl"
+        if index_path.exists():
+            groups.extend(collision_review_groups(index_path, current_goal_id))
+
+    groups = groups[: max(0, limit)]
+    current_plan = build_collision_rebuild_plan(groups, goal_filter=goal_id)
+    if execute:
+        if reviewed_plan is None:
+            raise ValueError(
+                "rebuild-index-collisions --execute requires --review-plan-json from a reviewed dry-run"
+            )
+        plan_sha256 = validate_reviewed_collision_plan(reviewed_plan, current_plan)
+        rebuilt_indexes = apply_reviewed_collision_rebuild(
+            current_plan,
+            plan_sha256=plan_sha256,
+        )
+    else:
+        rebuilt_indexes = []
+
+    return {
+        "ok": True,
+        "dry_run": not execute,
+        "rebuilt": bool(execute and rebuilt_indexes),
+        "registry": str(registry_path),
+        "runtime_root": str(runtime_root),
+        "goal_filter": goal_id,
+        "checked_goal_count": checked_goal_count,
+        "collision_group_count": len(groups),
+        "review_required": not execute and bool(groups),
+        "review_plan": current_plan,
+        "rebuilt_indexes": rebuilt_indexes,
+        "destructive_row_deletion": False,
+    }
+
+
+def render_index_collision_rebuild_markdown(payload: dict[str, Any]) -> str:
+    if not payload.get("ok"):
+        return "# LoopX Artifact Collision Rebuild\n\n- ok: `False`\n- error: " + str(payload.get("error"))
+    plan = payload.get("review_plan") or {}
+    return "\n".join(
+        [
+            "# LoopX Artifact Collision Rebuild",
+            "",
+            f"- dry_run: `{payload.get('dry_run')}`",
+            f"- rebuilt: `{payload.get('rebuilt')}`",
+            f"- collision_groups: `{payload.get('collision_group_count')}`",
+            f"- review_required: `{payload.get('review_required')}`",
+            f"- plan_sha256: `{plan.get('plan_sha256')}`",
+            "- destructive_row_deletion: `False`",
+            "- contract: `review the exact plan, then execute with --review-plan-json`",
+        ]
+    )
 
 
 def render_index_duplicate_repair_markdown(payload: dict[str, Any]) -> str:

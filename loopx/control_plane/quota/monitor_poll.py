@@ -9,7 +9,11 @@ from typing import Any
 from .decision_summary import compact_quota_decision, quota_decision_agent_id
 from .spend_sources import DEFAULT_SLOT_SPEND_SOURCE, VALID_SLOT_SPEND_SOURCES
 from ..runtime.time import now_local_iso
-from ..runtime.run_artifacts import run_file_stem, unique_run_artifact_paths
+from ..runtime.run_artifacts import (
+    next_run_artifact_paths,
+    reserve_run_artifact_paths,
+    run_file_stem,
+)
 from ..scheduler.monitor_poll_policy import (
     allows_no_spend_blocked_successor_wait_poll,
     allows_due_monitor_poll,
@@ -398,7 +402,8 @@ def record_quota_monitor_poll_for_decision(
     runtime_root = Path(str(raw_runtime_root)).expanduser()
     runs_dir = runtime_root / "goals" / goal_id / "runs"
     stem = run_file_stem(generated_at)
-    json_path, markdown_path = unique_run_artifact_paths(runs_dir, stem, "quota-monitor-poll")
+    path_allocator = reserve_run_artifact_paths if execute else next_run_artifact_paths
+    json_path, markdown_path = path_allocator(runs_dir, stem, "quota-monitor-poll")
     index_path = runs_dir / "index.jsonl"
     index_record = {
         "generated_at": generated_at,
@@ -422,7 +427,6 @@ def record_quota_monitor_poll_for_decision(
 
     after_status = deepcopy(status_payload)
     if execute:
-        runs_dir.mkdir(parents=True, exist_ok=True)
         json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         markdown_path.write_text(render_quota_monitor_poll_markdown(record) + "\n", encoding="utf-8")
         with index_path.open("a", encoding="utf-8") as f:
