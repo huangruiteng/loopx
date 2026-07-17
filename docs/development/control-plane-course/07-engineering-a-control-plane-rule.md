@@ -346,7 +346,7 @@ Branch 完成不自动合并。`selected` 仍要经过普通 todo ownership、va
 
 ## Migration Reader 与 Live Model
 
-用户曾指出配置层不应残留 `primary_agent`、`side_agent_handoff_agent` 等实时概念，同时 migration 逻辑不能删。
+用户曾指出配置层不应残留旧版主/辅层级角色字段，同时 migration 逻辑不能删。
 
 正确分层：
 
