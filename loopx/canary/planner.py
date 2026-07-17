@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import Any
 
 from .qualification_profiles import CONTROL_PLANE_QUALIFICATION_PROFILES
+from .quality_surface_catalog import (
+    build_quality_surface_catalog_audit as _build_quality_surface_catalog_audit,
+)
 
 
 CANARY_PROFILE_SCHEMA_VERSION = "catalog_canary_profile_v0"
@@ -213,6 +216,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
     {
         "id": "release-promotion",
         "title": "Release promotion readiness",
+        "quality_risk": "high",
         "purpose": "Check whether the release/canary promotion path is ready without mutating the install.",
         "catalog_families": ["Work Routing", "Planning Governance", "State And Boundary"],
         "trigger_hints": (
@@ -248,6 +252,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
     {
         "id": "install-update",
         "title": "Install and update safety",
+        "quality_risk": "high",
         "purpose": "Check local install, packaged install, update planning, rollback, and uninstall safety before install/update changes ship.",
         "catalog_families": ["State And Boundary", "Work Routing", "Planning Governance"],
         "trigger_hints": (
@@ -702,6 +707,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
     {
         "id": "state-write-correctness",
         "title": "State write correctness",
+        "quality_risk": "high",
         "purpose": "Check local state writes, refresh-state, and todo write paths before touching writer internals.",
         "catalog_families": ["State And Boundary", "Planning Governance", "Human Decision"],
         "trigger_hints": ("state write", "refresh-state", "todo write", "idempotency", "revision", "lease"),
@@ -1000,6 +1006,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
     {
         "id": "new-user-onboarding-lifecycle",
         "title": "New-user onboarding lifecycle",
+        "quality_risk": "high",
         "purpose": (
             "Check fresh no-scan connection, structured todo projection, "
             "state-gap detection, and domain-adapter routing ownership."
@@ -1202,6 +1209,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
     {
         "id": "peer-agent-runtime",
         "title": "Peer agent runtime and migration",
+        "quality_risk": "high",
         "purpose": (
             "Check equal peer identity, deterministic task assignment, task-policy "
             "completion, symmetric workspace isolation, task-scoped coordination, "
@@ -1309,6 +1317,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "tier": "deep",
                 "reason": "guards optional pytest/JUnit reporting while keeping canary smoke-suite as source of truth",
             },
+            {
+                "command": "python3 examples/canary/quality-surface-catalog-smoke.py",
+                "tier": "deep",
+                "reason": "guards high-risk surface classification, independent semantic oracles, and explicit quality-layer gaps",
+            },
         ],
     },
     {
@@ -1355,6 +1368,15 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
 )
+
+
+def build_quality_surface_catalog_audit() -> dict[str, Any]:
+    """Audit quality-layer ownership for every high-risk canary profile."""
+
+    return _build_quality_surface_catalog_audit(
+        CURRENT_REPO_PROFILES,
+        repo_root=REPO_ROOT if (REPO_ROOT / "pyproject.toml").is_file() else None,
+    )
 
 
 def _slug(value: str) -> str:

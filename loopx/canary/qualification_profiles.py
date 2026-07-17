@@ -7,6 +7,7 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
     {
         "id": "control-plane-state-machine",
         "title": "Control-plane state-machine composition",
+        "quality_risk": "high",
         "purpose": (
             "Run a bounded cross-state-machine canary when interaction, work-lane, "
             "scheduler, frontier, writeback, or quota-spend transitions change together."
@@ -100,6 +101,7 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
     {
         "id": "agent-facing-cli-output-budget",
         "title": "Agent-facing CLI output qualification",
+        "quality_risk": "high",
         "purpose": (
             "Run exact stdout budgets and fail-closed command classification when "
             "recurring agent-facing CLI surfaces or their qualification contract change."
