@@ -23,6 +23,7 @@ CONTRACT_CAPSULE_SCHEMA_VERSION = "loopx_contract_capsule_v0"
 ACTION_SIGNATURE_SCHEMA_VERSION = "loopx_action_signature_v0"
 ACTION_SIGNATURE_COVERAGE_V0 = "turn_envelope_action_dimensions_v0"
 ACTION_SIGNATURE_COVERAGE_V1 = "turn_envelope_action_dimensions_v1"
+ACTION_SIGNATURE_COVERAGE = ACTION_SIGNATURE_COVERAGE_V0
 ACTIONABLE_WARNING_FIELDS = (
     "state_projection_gap",
     "boundary_projection_gap",

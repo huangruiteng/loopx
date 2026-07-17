@@ -4,12 +4,15 @@ import math
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from ..quota.turn_envelope import (
+    ACTION_SIGNATURE_COVERAGE_V0,
+    ACTION_SIGNATURE_COVERAGE_V1,
+)
+
 
 CLI_OUTPUT_PROBE_SCHEMA_VERSION = "loopx_cli_output_probe_v0"
 CLI_OUTPUT_FIXTURE_CONTRACT_VERSION = "loopx_cli_output_public_fixture_v0"
 CLI_OUTPUT_DIFFERENTIAL_SCHEMA_VERSION = "loopx_cli_output_differential_v0"
-ACTION_SIGNATURE_COVERAGE_V0 = "turn_envelope_action_dimensions_v0"
-ACTION_SIGNATURE_COVERAGE_V1 = "turn_envelope_action_dimensions_v1"
 
 Metric = Literal["chars", "utf8_bytes", "lines", "compact_payload_chars"]
 
