@@ -336,6 +336,28 @@ projection, or workflow. Do not require benchmark raw logs, raw task text,
 trajectories, verifier output, credentials, or local private artifact paths as
 release evidence.
 
+After the individual lanes pass, bind their compact receipts to the exact clean
+release checkout before tagging or moving `stable`:
+
+```bash
+loopx canary release-qualification \
+  --manifest-json release-qualification.json \
+  --repo-root .
+```
+
+The `exact_release_commit_qualification_manifest_v0` contract requires the
+same Git commit, Git tree id, package version, and version tag across pytest,
+Ruff, mypy, risk-based canary, full-public, install/upgrade/host,
+public-boundary, and actual-default one-arm Doubao receipts. The command also
+checks the current checkout and rejects dirty or rebased source. It only
+reduces existing bounded receipts: it does not execute tests, call a provider,
+move refs, create tags, or publish a release.
+
+Matched stable/candidate outcome evidence is required only when the release
+claims benchmark or long-horizon outcome uplift. A normal release without that
+claim must record the pair as not required, not keep a retired second product
+arm alive or imply that the expensive comparison ran.
+
 ## Canary Model
 
 A release canary is a catalog-informed readiness slice. It is near-E2E in the
@@ -524,6 +546,8 @@ Every public release note or update note should also answer:
   files?
 - Did full `pytest`, focused release/install contracts, risk-based canary, and
   promotion-readiness/public-boundary checks pass on the exact release commit?
+- Did `loopx canary release-qualification` confirm that every required compact
+  receipt matches the same clean commit, Git tree, package version, and tag?
 - Did the low-frequency live model gate run against the actual default
   agent-facing packet with at least two repeats? Record the model id, behavior
   decisions checked, call count, failures, and skips, but never retain raw
