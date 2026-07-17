@@ -21,7 +21,7 @@ EXECUTABLE_CLI_ARGS_MAX_TOTAL_CHARS = 2_048
 SCHEDULER_DETAIL_REQUEST = "loopx quota should-run --include-scheduler-detail"
 CONTRACT_CAPSULE_SCHEMA_VERSION = "loopx_contract_capsule_v0"
 ACTION_SIGNATURE_SCHEMA_VERSION = "loopx_action_signature_v0"
-ACTION_SIGNATURE_COVERAGE = "turn_envelope_action_dimensions_v0"
+ACTION_SIGNATURE_COVERAGE = "turn_envelope_action_dimensions_v1"
 ACTIONABLE_WARNING_FIELDS = (
     "state_projection_gap",
     "boundary_projection_gap",
@@ -279,6 +279,27 @@ def _user_channel(interaction: Mapping[str, Any], payload: Mapping[str, Any]) ->
     if reason:
         channel["reason"] = reason
     return channel
+
+
+def _response_plan(interaction: Mapping[str, Any]) -> dict[str, Any] | None:
+    source = _mapping(interaction.get("response_plan"))
+    if not source:
+        return None
+    plan: dict[str, Any] = {}
+    for field in ("schema_version", "kind"):
+        text = _text(source.get(field), limit=80)
+        if text:
+            plan[field] = text
+    action_sequence = _text_list(
+        source.get("action_sequence"),
+        limit=8,
+        item_limit=80,
+    )
+    if action_sequence:
+        plan["action_sequence"] = action_sequence
+    if isinstance(source.get("silent_wait_allowed"), bool):
+        plan["silent_wait_allowed"] = source["silent_wait_allowed"]
+    return plan or None
 
 
 def _required_reads(interaction: Mapping[str, Any], payload: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -599,6 +620,7 @@ def _action_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
         "state": payload.get("state"),
         "action": action,
         "user": user,
+        "response_plan": _response_plan(interaction),
         "required_reads": _required_reads(interaction, payload),
         "boundary": _boundary(payload),
         "execution_policy": _execution_policy(payload),
@@ -631,6 +653,7 @@ def turn_envelope_action_signature_document(envelope: Mapping[str, Any]) -> dict
         "state",
         "action",
         "user",
+        "response_plan",
         "required_reads",
         "boundary",
         "execution_policy",

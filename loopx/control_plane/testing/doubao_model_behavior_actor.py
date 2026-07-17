@@ -154,11 +154,13 @@ fields and normalize them as follows. Never copy schema placeholders.
   Keep at most five object entries with a non-empty command and only command
   plus optional kind, reason, and source. Non-object entries are ignored.
 - gate_or_stop: always include exactly decision, should_run, effective_action,
-  state, interaction_mode, user_action_required, guards, and stop_condition.
-  For a candidate use its top-level values, contract_capsule interaction mode,
-  user.action_required, and boundary. For a full packet use its top-level
-  values, interaction_contract, interaction_contract.user_channel, and
-  goal_boundary. Use [] for absent guards and null for absent stop_condition.
+  state, interaction_mode, user_action_required, response_plan, guards, and
+  stop_condition. For a candidate use its top-level values, contract_capsule
+  interaction mode, user.action_required, response_plan, and boundary. For a
+  full packet use its top-level values, interaction_contract,
+  interaction_contract.user_channel, interaction_contract.response_plan, and
+  goal_boundary. Use null for an absent response_plan or stop_condition and []
+  for absent guards.
 - write_scope: candidate boundary.write_scope or full goal_boundary.write_scope;
   use [] when absent.
 - spend_rule: candidate writeback. For a full packet construct exactly
@@ -226,11 +228,11 @@ the packet and do not invent or summarize values. Copy
 canonical_selected_todo_id exactly into selected_todo_id, including null; it
 was derived locally from this arm's canonical action signature. Never infer a
 todo id from summaries, diagnostics, handoffs, history, or other cold-path
-references. When user_action_required=true, choose decision=ask_user and
-include notify then wait in intended_action_kinds; never substitute a silent
-wait for an explicit user gate. Choose intended_action_kinds from the execution
-obligation, not packet verbosity, and use the same ordered normalization for
-both arms.
+references. Follow any packet response_plan exactly: preserve its ordered
+action_sequence in intended_action_kinds and obey silent_wait_allowed. Choose
+intended_action_kinds from the execution obligation when no response_plan is
+present, not packet verbosity, and use the same ordered normalization for both
+arms.
 Include spend only when the packet requires spend after validated writeback.
 For intended actions, treat a full packet's interaction_contract.agent_channel
 as equivalent to candidate action, and its interaction_contract.cli_channel as

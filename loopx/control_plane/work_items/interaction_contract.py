@@ -27,6 +27,7 @@ from .primary_action import (
 
 
 INTERACTION_CONTRACT_SCHEMA_VERSION = "loopx_interaction_contract_v0"
+INTERACTION_RESPONSE_PLAN_SCHEMA_VERSION = "interaction_response_plan_v0"
 PROTOCOL_ACTION_PACKET_SCHEMA_VERSION = "protocol_action_packet_v0"
 PROTOCOL_ACTION_PACKET_LLM_POLICY = "no_api"
 
@@ -848,6 +849,29 @@ def _build_interaction_user_channel(
     return channel
 
 
+def _build_interaction_response_plan(
+    *,
+    user_channel: dict[str, Any],
+    agent_channel: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Project the exact host-visible response for a blocking user gate."""
+
+    if not (
+        user_channel.get("action_required") is True
+        and user_channel.get("notify") == "NOTIFY"
+        and agent_channel.get("must_attempt") is False
+        and agent_channel.get("delivery_allowed") is False
+        and agent_channel.get("quiet_noop_allowed") is False
+    ):
+        return None
+    return {
+        "schema_version": INTERACTION_RESPONSE_PLAN_SCHEMA_VERSION,
+        "kind": "surface_user_gate",
+        "action_sequence": ["notify", "wait"],
+        "silent_wait_allowed": False,
+    }
+
+
 def _build_interaction_cli_channel(
     payload: dict[str, Any],
     execution_obligation: dict[str, Any],
@@ -1002,21 +1026,23 @@ def build_interaction_contract(
     spend_after_validation = _interaction_spend_after_validation(mode)
     required_reads = _interaction_required_reads(payload)
 
+    user_channel = _build_interaction_user_channel(
+        payload,
+        heartbeat_recommendation,
+        user_required=user_required,
+    )
+    agent_channel = _build_interaction_agent_channel(
+        payload,
+        mode=mode,
+        must_attempt=must_attempt,
+        delivery_allowed=delivery_allowed,
+        quiet_noop_allowed=quiet_noop_allowed,
+    )
     contract = {
         "schema_version": INTERACTION_CONTRACT_SCHEMA_VERSION,
         "mode": mode,
-        "user_channel": _build_interaction_user_channel(
-            payload,
-            heartbeat_recommendation,
-            user_required=user_required,
-        ),
-        "agent_channel": _build_interaction_agent_channel(
-            payload,
-            mode=mode,
-            must_attempt=must_attempt,
-            delivery_allowed=delivery_allowed,
-            quiet_noop_allowed=quiet_noop_allowed,
-        ),
+        "user_channel": user_channel,
+        "agent_channel": agent_channel,
         "cli_channel": _build_interaction_cli_channel(
             payload,
             execution_obligation,
@@ -1026,6 +1052,12 @@ def build_interaction_contract(
             available_capabilities=available_capabilities,
         ),
     }
+    response_plan = _build_interaction_response_plan(
+        user_channel=user_channel,
+        agent_channel=agent_channel,
+    )
+    if response_plan is not None:
+        contract["response_plan"] = response_plan
     _attach_interaction_required_reads(contract, required_reads)
     _attach_interaction_vision_continuation_audit(contract, payload)
     _attach_interaction_vision_wait_state(contract, payload)

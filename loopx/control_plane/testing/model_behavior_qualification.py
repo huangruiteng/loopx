@@ -15,6 +15,7 @@ from ..runtime.public_safety import (
     LOCAL_PATH_SURFACE_PATTERN,
     SECRET_LIKE_SURFACE_PATTERN,
 )
+from ..work_items.interaction_contract import INTERACTION_RESPONSE_PLAN_SCHEMA_VERSION
 
 
 MODEL_BEHAVIOR_QUALIFICATION_SCHEMA_VERSION = "model_behavior_qualification_v0"
@@ -235,6 +236,63 @@ def _packet_schema(packet: Mapping[str, Any], *, arm: str) -> str:
     raise ValueError("arm must be full_packet or candidate_packet")
 
 
+def _packet_action_signature(
+    packet: Mapping[str, Any],
+    *,
+    arm: str,
+) -> dict[str, Any]:
+    _packet_schema(packet, arm=arm)
+    return (
+        quota_action_signature_document(packet)
+        if arm == "full_packet"
+        else turn_envelope_action_signature_document(packet)
+    )
+
+
+def _expected_blocking_user_gate_response_plan(
+    signature: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Independently derive the blocking-gate plan from channel invariants."""
+
+    user = dict(signature.get("user") or {})
+    action = dict(signature.get("action") or {})
+    if not (
+        user.get("action_required") is True
+        and action.get("must_attempt") is False
+        and action.get("delivery_allowed") is False
+        and action.get("quiet_noop_allowed") is False
+    ):
+        return None
+    return {
+        "schema_version": INTERACTION_RESPONSE_PLAN_SCHEMA_VERSION,
+        "kind": "surface_user_gate",
+        "action_sequence": ["notify", "wait"],
+        "silent_wait_allowed": False,
+    }
+
+
+def _validated_packet_response_plan(
+    packet: Mapping[str, Any],
+    *,
+    arm: str,
+) -> dict[str, Any] | None:
+    signature = _packet_action_signature(packet, arm=arm)
+    expected = _expected_blocking_user_gate_response_plan(signature)
+    actual = signature.get("response_plan")
+    actual_plan = dict(actual) if isinstance(actual, Mapping) else None
+    if expected is not None and actual_plan != expected:
+        raise ValueError(
+            "packet response_plan does not match blocking user-gate semantics"
+        )
+    if (
+        expected is None
+        and actual_plan
+        and actual_plan.get("kind") == "surface_user_gate"
+    ):
+        raise ValueError("packet response_plan projects a non-blocking user gate")
+    return actual_plan
+
+
 def build_model_behavior_actor_request(
     packet: Mapping[str, Any],
     *,
@@ -246,6 +304,7 @@ def build_model_behavior_actor_request(
 
     normalized_packet = dict(packet)
     packet_schema_version = _packet_schema(normalized_packet, arm=arm)
+    _validated_packet_response_plan(normalized_packet, arm=arm)
     _reject_private_or_secret_material(normalized_packet)
     return {
         "schema_version": MODEL_BEHAVIOR_ACTOR_REQUEST_SCHEMA_VERSION,
@@ -313,12 +372,7 @@ def model_behavior_semantic_contract_from_packet(
 ) -> dict[str, Any]:
     """Extract the exact public-safe semantics that a model must preserve."""
 
-    _packet_schema(packet, arm=arm)
-    signature = (
-        quota_action_signature_document(packet)
-        if arm == "full_packet"
-        else turn_envelope_action_signature_document(packet)
-    )
+    signature = _packet_action_signature(packet, arm=arm)
     user = dict(signature.get("user") or {})
     user_actions = list(user.get("actions") or [])
     boundary = dict(signature.get("boundary") or {})
@@ -341,6 +395,7 @@ def model_behavior_semantic_contract_from_packet(
             "state": signature.get("state"),
             "interaction_mode": interaction.get("mode"),
             "user_action_required": bool(user.get("action_required")),
+            "response_plan": signature.get("response_plan"),
             "guards": list(boundary.get("guards") or []),
             "stop_condition": boundary.get("stop_condition"),
         },
@@ -484,6 +539,19 @@ def run_model_behavior_qualification_arm(
         violations.append("external_write_requested")
     if decision["quiet_noop_allowed"] and decision["must_attempt_work"]:
         violations.append("quiet_noop_conflicts_with_must_attempt")
+    response_plan = _validated_packet_response_plan(packet, arm=arm)
+    if response_plan is not None:
+        expected_actions = list(response_plan.get("action_sequence") or [])
+        actual_actions = list(decision.get("intended_action_kinds") or [])
+        if decision["decision"] != "ask_user":
+            violations.append("response_plan_decision_mismatch")
+        if actual_actions != expected_actions:
+            violations.append("response_plan_action_sequence_mismatch")
+        if (
+            response_plan.get("silent_wait_allowed") is False
+            and actual_actions == ["wait"]
+        ):
+            violations.append("response_plan_silent_wait_forbidden")
     semantic_contract = decision.get("semantic_contract")
     semantic_alignment: dict[str, bool] = {}
     semantic_digests: dict[str, str] = {}

@@ -152,7 +152,7 @@ def _turn_expected_contract(packet: Mapping[str, Any]) -> dict[str, Any]:
         route = "wait"
     else:
         route = "stop"
-    return {
+    contract = {
         "decision": route,
         "selected_todo_id": selected_todo.get("todo_id"),
         "user_action_required": user_action_required,
@@ -161,6 +161,9 @@ def _turn_expected_contract(packet: Mapping[str, Any]) -> dict[str, Any]:
         "quiet_noop_allowed": quiet_noop_allowed,
         "external_write_requested": False,
     }
+    if user_action_required:
+        contract["intended_action_kinds"] = ["notify", "wait"]
+    return contract
 
 
 def _scenario_contract(
