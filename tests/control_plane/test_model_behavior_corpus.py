@@ -5,7 +5,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from loopx.control_plane.quota.turn_envelope import build_turn_envelope
+from loopx.control_plane.quota.turn_envelope import (
+    build_turn_envelope,
+    quota_action_signature_document,
+    turn_envelope_action_signature_document,
+)
 from loopx.control_plane.testing.model_behavior_corpus import (
     build_model_behavior_corpus,
     run_model_behavior_corpus,
@@ -97,13 +101,35 @@ def _decision(**patch: Any) -> dict[str, Any]:
 
 
 def _actor(request: Mapping[str, Any]) -> dict[str, Any]:
+    arm = str(request["arm"])
+    packet = request["packet"]
+    signature = (
+        quota_action_signature_document(packet)
+        if arm == "full_packet"
+        else turn_envelope_action_signature_document(packet)
+    )
+    response_plan = dict(signature.get("response_plan") or {})
+    gate_patch = (
+        {
+            "decision": "ask_user",
+            "selected_todo_id": None,
+            "user_action_required": True,
+            "must_attempt_work": False,
+            "delivery_allowed": False,
+            "quiet_noop_allowed": False,
+            "intended_action_kinds": response_plan["action_sequence"],
+        }
+        if response_plan.get("kind") == "surface_user_gate"
+        else {}
+    )
     return {
         "schema_version": MODEL_BEHAVIOR_ACTOR_RESULT_SCHEMA_VERSION,
         "actor_ref": "fixture-model-v1",
         "decision": _decision(
+            **gate_patch,
             semantic_contract=model_behavior_semantic_contract_from_packet(
-                request["packet"],
-                arm=str(request["arm"]),
+                packet,
+                arm=arm,
             )
         ),
         "tool_calls": [],

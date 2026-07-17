@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from loopx.control_plane.quota.turn_envelope import build_turn_envelope
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
 from loopx.control_plane.testing.quota_fixtures import (
     quota_status_payload,
@@ -72,6 +73,7 @@ def test_unrelated_user_gate_allows_ready_deferred_successor_replan() -> None:
     assert payload["interaction_contract"]["mode"] == "scoped_user_gate_fallback"
     assert payload["interaction_contract"]["agent_channel"]["must_attempt"] is True
     assert payload["interaction_contract"]["agent_channel"]["delivery_allowed"] is True
+    assert "response_plan" not in payload["interaction_contract"]
     assert "replan ready deferred successor" in payload["interaction_contract"][
         "agent_channel"
     ]["primary_action"]
@@ -88,6 +90,16 @@ def test_blocking_user_gate_backs_off_instead_of_polling_as_active_work() -> Non
     assert "scoped_user_gate_fallback" not in payload
     assert payload["interaction_contract"]["mode"] == "user_gate"
     assert payload["interaction_contract"]["agent_channel"]["must_attempt"] is False
+    expected_response_plan = {
+        "schema_version": "interaction_response_plan_v0",
+        "kind": "surface_user_gate",
+        "action_sequence": ["notify", "wait"],
+        "silent_wait_allowed": False,
+    }
+    assert payload["interaction_contract"]["response_plan"] == expected_response_plan
+    envelope = build_turn_envelope(payload)
+    assert envelope["response_plan"] == expected_response_plan
+    assert envelope["action_signature"]["matches"] is True
     assert payload["scheduler_hint"]["cadence_class"] == "human_gate"
     assert payload["scheduler_hint"]["codex_app"]["recommended_interval_minutes"] == 30
 
