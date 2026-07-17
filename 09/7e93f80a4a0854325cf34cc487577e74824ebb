@@ -1,0 +1,23 @@
+docs/reference/protocols/model-behavior-qualification-v0.md
+  s_76ee28abb3c3a4::t_e855e2f26c35bf 38-43
+docs/state-interaction-model.md
+  s_76ee28abb3c3a4::t_ac8cb5f3422ea8 167-172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "097e93f80a4a0854325cf34cc487577e74824ebb",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
