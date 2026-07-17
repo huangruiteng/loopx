@@ -656,6 +656,29 @@ def main() -> int:
     ]
     assert_public_safe(explicit)
 
+    reader_auth_required_runner = FakeSinkRunner(reader_verified=False)
+    reader_auth_required = build_issue_fix_reviewer_notification_sinks_result(
+        repo="owner/repo",
+        pr_number=42,
+        pr_url="https://github.com/owner/repo/pull/42",
+        author_handle="@current-author",
+        reviewer_handles=["@service-owner"],
+        sinks_input=fixture(explicit_profiles=True),
+        execute=True,
+        runner=reader_auth_required_runner,
+    )
+    assert reader_auth_required["ok"] is False, reader_auth_required
+    assert reader_auth_required["status"] == "gate_required"
+    assert reader_auth_required["blocker"] == (
+        "reviewer_notification_reader_auth_required"
+    )
+    assert reader_auth_required["external_writes_performed"] is False
+    assert len(reader_auth_required_runner.calls) == 1
+    assert not any(
+        "+messages-send" in call for call in reader_auth_required_runner.calls
+    )
+    assert_public_safe(reader_auth_required)
+
     remote_duplicate_runner = FakeSinkRunner(search_hit=True)
     remote_duplicate = build_issue_fix_reviewer_notification_sinks_result(
         repo="owner/repo",
