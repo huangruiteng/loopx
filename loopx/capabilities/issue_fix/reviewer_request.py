@@ -15,6 +15,7 @@ from .reviewer_notification import (
 )
 from .reward_memory import (
     run_issue_fix_reviewer_artifact_automatic_reward_memory,
+    run_issue_fix_reviewer_notification_automatic_reward_memory,
 )
 from .reviewer_recommendation import build_issue_fix_reviewer_recommendation_packet
 
@@ -489,6 +490,7 @@ def build_issue_fix_reviewer_request_packet(
     notification_sinks_input: Mapping[str, Any] | None = None,
     notification_sink_adapters: Mapping[str, NotificationSinkAdapter] | None = None,
     reviewer_artifact_reward_memory: Mapping[str, Any] | None = None,
+    reviewer_notification_reward_memory: Mapping[str, Any] | None = None,
     reviewer_artifact_required: bool = False,
     provider_payload: Mapping[str, Any] | None = None,
     execute: bool = False,
@@ -988,6 +990,59 @@ def build_issue_fix_reviewer_request_packet(
             and notification_targets != primary_notification_targets
         )
         if notification_targets:
+            reviewer_notification_policy_application: dict[str, Any] | None = None
+            if reviewer_notification_reward_memory:
+                config = reviewer_notification_reward_memory.get("config")
+                config = config if isinstance(config, Mapping) else {}
+                try:
+                    reviewer_notification_policy_application = (
+                        run_issue_fix_reviewer_notification_automatic_reward_memory(
+                            repo=repo,
+                            pr_number=number,
+                            pr_url=str(reference["permalink"]),
+                            delivery_policy=(
+                                notification_sinks_input.get("delivery_policy")
+                                if isinstance(notification_sinks_input, Mapping)
+                                else None
+                            ),
+                            experiment_config=config,
+                            revision_ref=f"pr:{number}:{identities['state'].lower()}",
+                            observed_at=str(
+                                reviewer_notification_reward_memory.get("observed_at")
+                                or generated_at
+                            ),
+                            freshness_context={
+                                "source_truth_current": pr_state_verified,
+                                "source_revision": (
+                                    f"pr:{number}:{identities['state'].lower()}"
+                                ),
+                            },
+                            conflict_state="clear",
+                            application_id=(
+                                f"issue-fix:reviewer-notification:{repo}:{number}"
+                            ),
+                            provider=reviewer_notification_reward_memory.get(
+                                "provider"
+                            ),
+                        )
+                    )
+                except (OSError, RuntimeError, ValueError):
+                    reviewer_notification_policy_application = None
+            packet["reviewer_notification_reward_memory_status"] = (
+                (
+                    reviewer_notification_policy_application.get(
+                        "before_send_gate", {}
+                    )
+                    if reviewer_notification_policy_application
+                    else {}
+                ).get("status", "unavailable")
+                if reviewer_notification_reward_memory
+                else "not_configured"
+            )
+            if reviewer_notification_policy_application is not None:
+                packet["reviewer_notification_reward_memory_preview"] = (
+                    reviewer_notification_policy_application
+                )
             secondary = build_issue_fix_reviewer_notification_sinks_result(
                 repo=repo,
                 pr_number=number,
@@ -998,6 +1053,9 @@ def build_issue_fix_reviewer_request_packet(
                 reviewer_handles=notification_targets,
                 sinks_input=notification_sinks_input,
                 reviewer_artifact_application=reviewer_artifact_application,
+                reviewer_notification_policy_application=(
+                    reviewer_notification_policy_application
+                ),
                 reviewer_artifact_required=reviewer_artifact_required,
                 execute=execute,
                 delivery_observed_at=notification_delivery_observed_at,

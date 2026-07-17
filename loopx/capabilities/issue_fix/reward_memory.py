@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import re
 from collections.abc import Mapping
+from datetime import time
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ...control_plane.runtime.public_safety import public_safe_compact_text
 from ..context_providers.base import ContextProvider
@@ -21,6 +25,7 @@ from ..semantic_preference.reward_memory import run_semantic_preference_reward_m
 
 ISSUE_FIX_PATCH_PLANNING_SURFACE = "issue_fix.patch_planning"
 ISSUE_FIX_REVIEWER_ARTIFACT_SURFACE = "reviewer_artifact.summary"
+ISSUE_FIX_REVIEWER_NOTIFICATION_SURFACE = "reviewer_notification.before_send"
 ISSUE_FIX_REWARD_MEMORY_APPLICATION_SCHEMA_VERSION = (
     "issue_fix_reward_memory_application_v0"
 )
@@ -28,7 +33,18 @@ ISSUE_FIX_REVIEWER_ARTIFACT_SCHEMA_VERSION = "issue_fix_reviewer_artifact_v0"
 ISSUE_FIX_REVIEWER_ARTIFACT_APPLICATION_SCHEMA_VERSION = (
     "issue_fix_reviewer_artifact_reward_memory_application_v0"
 )
+ISSUE_FIX_REVIEWER_NOTIFICATION_APPLICATION_SCHEMA_VERSION = (
+    "issue_fix_reviewer_notification_reward_memory_application_v0"
+)
+ISSUE_FIX_REVIEWER_NOTIFICATION_DECISION_SCHEMA_VERSION = (
+    "issue_fix_reviewer_notification_before_send_v0"
+)
+ISSUE_FIX_REVIEWER_NOTIFICATION_POLICY_SCHEMA_VERSION = (
+    "issue_fix_reviewer_notification_delivery_policy_v0"
+)
 ISSUE_FIX_REWARD_MEMORY_EVENT_SCHEMA_VERSION = "issue_fix_reward_memory_event_v0"
+
+_LOCAL_TIME_PATTERN = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d")
 
 _EVENT_FIELDS = {
     "schema_version",
@@ -472,4 +488,293 @@ def run_issue_fix_reviewer_artifact_automatic_reward_memory(
         "external_writes_performed": False,
     }
     result["notification_gate"] = reviewer_artifact_notification_gate(result)
+    return result
+
+
+def _reviewer_notification_delivery_policy(value: object) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError("reviewer notification delivery policy must be an object")
+    allowed_local_time = value.get("allowed_local_time")
+    if not isinstance(allowed_local_time, Mapping):
+        raise ValueError("allowed_local_time must be an object")
+    timezone_name = str(value.get("timezone") or "").strip()
+    start = str(allowed_local_time.get("start") or "").strip()
+    end = str(allowed_local_time.get("end") or "").strip()
+    if (
+        not timezone_name
+        or not _LOCAL_TIME_PATTERN.fullmatch(start)
+        or not _LOCAL_TIME_PATTERN.fullmatch(end)
+        or start == end
+        or value.get("outside_window") != "queue_without_send"
+    ):
+        raise ValueError("reviewer notification delivery policy is invalid")
+    try:
+        ZoneInfo(timezone_name)
+        time.fromisoformat(start)
+        time.fromisoformat(end)
+    except (ValueError, ZoneInfoNotFoundError) as exc:
+        raise ValueError("reviewer notification delivery policy is invalid") from exc
+    return {
+        "timezone": timezone_name,
+        "allowed_local_time": {"start": start, "end": end},
+        "outside_window": "queue_without_send",
+    }
+
+
+def _reviewer_notification_before_send_base(
+    *,
+    repo: str,
+    pr_number: int,
+    pr_url: str,
+    delivery_policy: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    policy = (
+        _reviewer_notification_delivery_policy(delivery_policy)
+        if delivery_policy is not None
+        else None
+    )
+    return {
+        "schema_version": ISSUE_FIX_REVIEWER_NOTIFICATION_DECISION_SCHEMA_VERSION,
+        "repo": public_safe_compact_text(repo, limit=200),
+        "pr_ref": f"#{int(pr_number)}",
+        "permalink": public_safe_compact_text(pr_url, limit=300),
+        "delivery_policy": policy,
+        "policy_source": "sink_config" if policy else "default_unrestricted",
+    }
+
+
+def _reviewer_notification_policy_from_item(item: Any) -> dict[str, Any] | None:
+    if getattr(item, "target_class", None) != "hard_policy":
+        return None
+    try:
+        payload = json.loads(str(getattr(item, "content_summary", "") or ""))
+    except json.JSONDecodeError:
+        return None
+    if (
+        not isinstance(payload, Mapping)
+        or payload.get("schema_version")
+        != ISSUE_FIX_REVIEWER_NOTIFICATION_POLICY_SCHEMA_VERSION
+    ):
+        return None
+    try:
+        return _reviewer_notification_delivery_policy(payload.get("delivery_policy"))
+    except ValueError:
+        return None
+
+
+def _reviewer_notification_before_send_applier(
+    base: Mapping[str, Any],
+) -> RewardMemoryApplier:
+    def apply_memory(current: Any, items: Any) -> Mapping[str, Any]:
+        if not isinstance(current, Mapping) or any(
+            current.get(key) != base.get(key)
+            for key in ("schema_version", "repo", "pr_ref", "permalink")
+        ):
+            raise ValueError("reviewer notification artifact changed before apply")
+        policies: dict[str, tuple[dict[str, Any], list[str]]] = {}
+        for item in items:
+            policy = _reviewer_notification_policy_from_item(item)
+            if policy is None:
+                continue
+            canonical = json.dumps(policy, sort_keys=True, separators=(",", ":"))
+            refs = policies.setdefault(canonical, (policy, []))[1]
+            refs.append(str(item.memory_ref))
+        if len(policies) != 1:
+            return {
+                "outcome": "ignored",
+                "output": dict(base),
+                "memory_refs": [
+                    ref for _, refs in policies.values() for ref in refs
+                ],
+                "reasoning_summary": (
+                    "No single active structured reviewer delivery policy was recalled."
+                ),
+                "current_artifact_verified": True,
+            }
+        canonical, (policy, refs) = next(iter(policies.items()))
+        return {
+            "outcome": "applied",
+            "output": {
+                **dict(base),
+                "delivery_policy": policy,
+                "policy_source": "reward_memory",
+                "policy_digest": hashlib.sha256(canonical.encode("utf-8")).hexdigest()[
+                    :16
+                ],
+            },
+            "memory_refs": refs,
+            "reasoning_summary": (
+                "Applied the single exact hard-policy record at the pre-send boundary."
+            ),
+            "current_artifact_verified": True,
+        }
+
+    return apply_memory
+
+
+def reviewer_notification_before_send_gate(
+    application: Mapping[str, Any] | None,
+    *,
+    repo: str,
+    pr_number: int,
+    pr_url: str,
+) -> dict[str, Any]:
+    packet = application if isinstance(application, Mapping) else {}
+    decision_raw = packet.get("decision")
+    decision = decision_raw if isinstance(decision_raw, Mapping) else {}
+    shared_raw = packet.get("application")
+    shared = shared_raw if isinstance(shared_raw, Mapping) else {}
+    receipt_raw = shared.get("receipt")
+    receipt = receipt_raw if isinstance(receipt_raw, Mapping) else {}
+    reasons: list[str] = []
+    if packet.get("schema_version") != (
+        ISSUE_FIX_REVIEWER_NOTIFICATION_APPLICATION_SCHEMA_VERSION
+    ):
+        reasons.append("application_schema_invalid")
+    if packet.get("surface_id") != ISSUE_FIX_REVIEWER_NOTIFICATION_SURFACE:
+        reasons.append("surface_mismatch")
+    if decision.get("schema_version") != (
+        ISSUE_FIX_REVIEWER_NOTIFICATION_DECISION_SCHEMA_VERSION
+    ):
+        reasons.append("decision_schema_invalid")
+    if not (
+        decision.get("repo") == public_safe_compact_text(repo, limit=200)
+        and decision.get("pr_ref") == f"#{int(pr_number)}"
+        and decision.get("permalink") == public_safe_compact_text(pr_url, limit=300)
+    ):
+        reasons.append("current_artifact_identity_mismatch")
+    try:
+        policy = _reviewer_notification_delivery_policy(
+            decision.get("delivery_policy")
+        )
+    except ValueError:
+        policy = None
+        reasons.append("delivery_policy_invalid")
+    if decision.get("policy_source") != "reward_memory":
+        reasons.append("memory_policy_not_applied")
+    if shared.get("status") != "applied":
+        reasons.append("memory_not_applied")
+    if receipt.get("schema_version") != "reward_memory_application_receipt_v0":
+        reasons.append("application_receipt_invalid")
+    if receipt.get("current_artifact_verified") is not True:
+        reasons.append("current_artifact_unverified")
+    if receipt.get("result_readback_verified") is not True:
+        reasons.append("memory_readback_unverified")
+    digests = receipt.get("memory_ref_digests")
+    if not isinstance(digests, list) or not digests:
+        reasons.append("memory_attribution_missing")
+    return {
+        "schema_version": "issue_fix_reviewer_notification_before_send_gate_v0",
+        "passed": not reasons,
+        "status": "applied" if not reasons else "fail_open",
+        "reason_codes": reasons,
+        "surface_id": ISSUE_FIX_REVIEWER_NOTIFICATION_SURFACE,
+        "delivery_policy": policy if not reasons else None,
+        "application_receipt": dict(receipt) if receipt else None,
+        "provider_failure_is_user_gate": False,
+        "grants_new_action_authority": False,
+        "external_writes_performed": False,
+    }
+
+
+def run_issue_fix_reviewer_notification_automatic_reward_memory(
+    *,
+    repo: str,
+    pr_number: int,
+    pr_url: str,
+    delivery_policy: Mapping[str, Any] | None,
+    experiment_config: Mapping[str, Any],
+    revision_ref: str,
+    observed_at: str,
+    freshness_context: Mapping[str, Any],
+    conflict_state: str,
+    application_id: str,
+    provider: ContextProvider | None = None,
+) -> dict[str, Any]:
+    """Recall one structured hard policy immediately before Lark delivery."""
+
+    base = _reviewer_notification_before_send_base(
+        repo=repo,
+        pr_number=pr_number,
+        pr_url=pr_url,
+        delivery_policy=delivery_policy,
+    )
+    route = resolve_reward_memory_surface_config(
+        experiment_config,
+        ISSUE_FIX_REVIEWER_NOTIFICATION_SURFACE,
+    )
+    scope = route["corpus"]["scope"]
+    workspace_ref = str(scope["workspace_ref"])
+    repository_ref = str(scope["project_ref"])
+    checkpoints = {
+        item["corpus"]["corpus_id"]: {
+            "verified": item["standing_policy"]["enabled"] is True,
+            "corpus_id": item["corpus"]["corpus_id"],
+            "workspace_ref": workspace_ref,
+            "project_ref": repository_ref,
+            "surface_id": ISSUE_FIX_REVIEWER_NOTIFICATION_SURFACE,
+            "read_authority": item["corpus"]["read_authority"],
+            "source_ref": item["standing_policy"]["authority_source_ref"],
+        }
+        for item in route["recall_corpora"]
+    }
+    automatic = run_reward_memory_automatic_recall_hook(
+        experiment_config,
+        surface_id=ISSUE_FIX_REVIEWER_NOTIFICATION_SURFACE,
+        base_output=base,
+        workspace_ref=workspace_ref,
+        project_ref=repository_ref,
+        revision_ref=revision_ref,
+        queries=[
+            {
+                "query": (
+                    "Which active reviewed hard policy constrains whether this "
+                    "reviewer notification may be sent now?"
+                ),
+                "query_summary": "reviewer notification pre-send policy",
+            }
+        ],
+        observed_at=observed_at,
+        freshness_context=dict(freshness_context),
+        conflict_state=conflict_state,
+        read_authority_checkpoints=checkpoints,
+        application_id=application_id,
+        artifact_ref=f"github:{repo}#pr-{int(pr_number)}",
+        apply_memory=_reviewer_notification_before_send_applier(base),
+        provider=provider,
+    )
+    output = automatic.get("output")
+    if not isinstance(output, Mapping):
+        raise AssertionError("automatic pre-send reward-memory fail-open was violated")
+    attempts = automatic.get("recall_attempts")
+    attempts = attempts if isinstance(attempts, list) else []
+    shared_application = automatic.get("application")
+    application = (
+        dict(shared_application)
+        if isinstance(shared_application, Mapping)
+        else {"status": automatic.get("status")}
+    )
+    result = {
+        "ok": True,
+        "schema_version": (
+            ISSUE_FIX_REVIEWER_NOTIFICATION_APPLICATION_SCHEMA_VERSION
+        ),
+        "surface_id": ISSUE_FIX_REVIEWER_NOTIFICATION_SURFACE,
+        "decision": dict(output),
+        "recall": attempts[-1] if attempts else {"status": automatic["status"]},
+        "recall_attempts": attempts,
+        "application": application,
+        "telemetry": automatic["telemetry"],
+        "shared_core": "loopx.capabilities.reward_memory.runtime_hooks",
+        "adapter_role": "structured_policy_guard_existing_sink_owns_send_or_queue",
+        "automatic_recall": automatic["automatic_recall"],
+        "provider_failure_is_user_gate": False,
+        "external_writes_performed": False,
+    }
+    result["before_send_gate"] = reviewer_notification_before_send_gate(
+        result,
+        repo=repo,
+        pr_number=pr_number,
+        pr_url=pr_url,
+    )
     return result

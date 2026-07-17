@@ -12,7 +12,10 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ...control_plane.runtime.public_safety import public_safe_compact_text
-from .reward_memory import reviewer_artifact_notification_gate
+from .reward_memory import (
+    reviewer_artifact_notification_gate,
+    reviewer_notification_before_send_gate,
+)
 
 
 ISSUE_FIX_REVIEWER_NOTIFICATION_SINKS_INPUT_SCHEMA_VERSION = (
@@ -1128,6 +1131,7 @@ def build_issue_fix_reviewer_notification_sinks_result(
     reviewer_handles: Sequence[str],
     sinks_input: Mapping[str, Any],
     reviewer_artifact_application: Mapping[str, Any] | None = None,
+    reviewer_notification_policy_application: Mapping[str, Any] | None = None,
     reviewer_artifact_required: bool = False,
     execute: bool = False,
     delivery_observed_at: str | None = None,
@@ -1140,6 +1144,12 @@ def build_issue_fix_reviewer_notification_sinks_result(
     title = _humanize_pr_title(pr_title)
     artifact_gate = reviewer_artifact_notification_gate(
         reviewer_artifact_application
+    )
+    before_send_gate = reviewer_notification_before_send_gate(
+        reviewer_notification_policy_application,
+        repo=repo,
+        pr_number=pr_number,
+        pr_url=pr_url,
     )
     artifact = (
         reviewer_artifact_application.get("reviewer_artifact")
@@ -1192,6 +1202,8 @@ def build_issue_fix_reviewer_notification_sinks_result(
         "raw_provider_payload_captured": False,
         "reward_memory_reviewer_artifact_required": reviewer_artifact_required,
         "reward_memory_reviewer_artifact_gate": artifact_gate,
+        "reward_memory_before_send_gate": before_send_gate,
+        "reward_memory_before_send_status": before_send_gate["status"],
     }
     if reviewer_artifact_required and artifact_gate["passed"] is not True:
         base["blocker"] = "reward_memory_reviewer_artifact_unverified"
@@ -1241,15 +1253,25 @@ def build_issue_fix_reviewer_notification_sinks_result(
             {"reviewer_notification_queue": sinks_input.get("queued_receipts")}
         )
     }
+    effective_delivery_policy = sinks_input.get("delivery_policy")
+    if before_send_gate["passed"] is True:
+        effective_delivery_policy = before_send_gate["delivery_policy"]
     try:
         delivery_window = _delivery_window_decision(
-            sinks_input.get("delivery_policy"),
+            effective_delivery_policy,
             delivery_observed_at=delivery_observed_at,
         )
     except ValueError:
         base["blocker"] = "reviewer_notification_delivery_policy_invalid"
         return _finalize_result(base)
     base["delivery_policy_configured"] = delivery_window["configured"]
+    base["delivery_policy_source"] = (
+        "reward_memory"
+        if before_send_gate["passed"] is True
+        else "sink_config"
+        if sinks_input.get("delivery_policy") is not None
+        else "default_unrestricted"
+    )
 
     adapters: dict[str, NotificationSinkAdapter] = {"lark_chat": _lark_result}
     if sink_adapters:

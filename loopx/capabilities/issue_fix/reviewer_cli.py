@@ -453,6 +453,7 @@ def handle_issue_fix_reviewer_command(
     existing_queued_receipts: list[dict[str, Any]] = []
     reviewer_artifact_required = False
     reviewer_artifact_reward_memory: dict[str, Any] | None = None
+    reviewer_notification_reward_memory: dict[str, Any] | None = None
     reward_memory_experiment_status = "not_configured"
     semantic_history_status = "not_checked"
     if args.goal_id:
@@ -596,6 +597,18 @@ def handle_issue_fix_reviewer_command(
                             "reasoning_summary": args.reviewer_summary_reasoning,
                             "observed_at": generated_at,
                         }
+                    try:
+                        notification_route = resolve_reward_memory_surface_config(
+                            experiment_config,
+                            "reviewer_notification.before_send",
+                        )
+                    except ValueError:
+                        notification_route = None
+                    if notification_route is not None:
+                        reviewer_notification_reward_memory = {
+                            "config": experiment_config,
+                            "observed_at": generated_at,
+                        }
     payload = build_issue_fix_reviewer_request_packet(
         repo_path=args.repo_path,
         url=args.url,
@@ -616,6 +629,7 @@ def handle_issue_fix_reviewer_command(
         ),
         notification_sinks_input=notification_sinks_input,
         reviewer_artifact_reward_memory=reviewer_artifact_reward_memory,
+        reviewer_notification_reward_memory=reviewer_notification_reward_memory,
         reviewer_artifact_required=reviewer_artifact_required,
         provider_payload=(
             load_json_object(args.metadata_json) if args.metadata_json else None
