@@ -475,9 +475,33 @@ def check_visual_marker_readback_retry_contract() -> None:
         "ok": False,
         "marker_observed": False,
         "error_code": 2890002,
+        "timed_out": False,
         "retryable": True,
     }, settled
     assert settled["retryable"] is False, settled
+
+    observed_timeouts: list[float | None] = []
+
+    def timeout_runner(
+        args: list[str], cwd: Path | None, timeout: float | None
+    ) -> dict[str, object]:
+        observed_timeouts.append(timeout)
+        raise subprocess.TimeoutExpired(args, timeout)
+
+    timed_out = explore_visual_readback.readback_visual_delivery_marker(
+        cli_bin=config.cli_bin,
+        identity=config.identity,
+        whiteboard_token="wb_timeout_fixture",
+        marker=marker,
+        runner=timeout_runner,
+        retry_delays=(),
+    )
+    assert observed_timeouts == [
+        explore_visual_readback.VISUAL_READBACK_COMMAND_TIMEOUT_SECONDS
+    ], observed_timeouts
+    assert timed_out["ok"] is False and timed_out["retryable"] is True, timed_out
+    assert timed_out["host_wait_exhausted"] is True, timed_out
+    assert timed_out["command"]["timed_out"] is True, timed_out
 
     stage_markers = {
         "wb_stage_1": "LoopX delivery stage-1",
@@ -543,6 +567,66 @@ def check_visual_marker_readback_retry_contract() -> None:
     assert all(
         result["readback"]["attempt_count"] == 2 for result in stage_results
     ), stage_results
+
+    timeout_stage_calls: list[str] = []
+
+    def batch_timeout_runner(
+        args: list[str], cwd: Path | None, timeout: float | None
+    ) -> dict[str, object]:
+        token = args[args.index("--whiteboard-token") + 1]
+        timeout_stage_calls.append(token)
+        if token == "wb_stage_2":
+            raise subprocess.TimeoutExpired(args, timeout)
+        expected_marker = stage_markers.get(
+            token,
+            f"LoopX delivery stage-{token.rsplit('_', 1)[-1]}",
+        )
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(
+                {
+                    "ok": True,
+                    "data": {"nodes": [{"text": {"text": expected_marker}}]},
+                }
+            ),
+            "stderr": "",
+            "timed_out": False,
+        }
+
+    timed_stage_results = []
+    timed_stage_targets = []
+    for index in range(1, 4):
+        token = f"wb_stage_{index}"
+        expected_marker = stage_markers.get(token, f"LoopX delivery stage-{index}")
+        result = {
+            "ok": False,
+            "status": "publish_unverified",
+            "published": False,
+            "command": {"ok": True},
+            "readback": {
+                "ok": False,
+                "expected_marker": expected_marker,
+                "retryable": True,
+                "attempts": [],
+            },
+            "retryable": True,
+        }
+        timed_stage_results.append(result)
+        timed_stage_targets.append((result, token))
+
+    explore_visual_readback.settle_visual_stage_readbacks(
+        cli_bin=config.cli_bin,
+        identity=config.identity,
+        stage_targets=timed_stage_targets,
+        runner=batch_timeout_runner,
+        retry_delays=(0.0,),
+    )
+    assert timeout_stage_calls == ["wb_stage_1", "wb_stage_2"], timeout_stage_calls
+    assert timed_stage_results[0]["ok"] is True, timed_stage_results
+    assert timed_stage_results[1]["readback"]["host_wait_exhausted"] is True
+    assert timed_stage_results[2]["readback"]["source"] == (
+        "batch_host_wait_exhausted"
+    )
 
     summary = explore_visual_styles.summarize_explore_visual_sync(
         views={"canonical": {"ok": False, "retryable": True}},

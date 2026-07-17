@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -68,9 +67,9 @@ from .explore_visual_integrity import (
     finalize_visual_role_results,
 )
 from .explore_visual_readback import (
-    readback_visual_delivery_marker,
+    defer_visual_stage_after_host_timeout,
+    publish_visual_with_readback,
     settle_visual_stage_readbacks,
-    structured_command_error,
 )
 from .explore_visual_styles import (
     board_source_with_delivery_marker,
@@ -696,81 +695,23 @@ def sync_explore_visual_to_lark(
         "--format",
         "json",
     ]
-    if not execute:
-        result = _run_command(command, execute=False, runner=runner)
-        publish_attempts = [result]
-    else:
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        source_path = config_path.parent / source_name
-        source_path.write_text(published_source, encoding="utf-8")
-        try:
-            result = _run_command(
-                command,
-                execute=True,
-                runner=runner,
-                cwd=config_path.parent,
-            )
-            publish_attempts = [result]
-            error = structured_command_error(result)
-            if (
-                not result.get("ok")
-                and error.get("code") == 2891001
-                and "not iterable" in str(error.get("message") or "")
-            ):
-                retry_command = list(command)
-                token_index = retry_command.index("--idempotent-token") + 1
-                retry_material = (
-                    f"{retry_command[token_index]}:{time.time_ns()}".encode("utf-8")
-                )
-                retry_command[token_index] = (
-                    "loopx-retry-" + hashlib.sha256(retry_material).hexdigest()[:32]
-                )
-                result = _run_command(
-                    retry_command,
-                    execute=True,
-                    runner=runner,
-                    cwd=config_path.parent,
-                )
-                publish_attempts.append(result)
-        finally:
-            source_path.unlink(missing_ok=True)
-    readback_deferred = bool(
-        execute and result.get("ok") and delivery_marker and defer_readback
+    delivery = publish_visual_with_readback(
+        cli_bin=config.cli_bin,
+        identity=config.identity,
+        whiteboard_token=whiteboard_token,
+        marker=delivery_marker,
+        command=command,
+        published_source=published_source,
+        source_path=config_path.parent / source_name,
+        execute=execute,
+        runner=runner,
+        defer_readback=defer_readback,
     )
-    readback: dict[str, Any] = {
-        "ok": not readback_deferred,
-        "schema_version": "loopx_lark_explore_visual_readback_v0",
-        "performed": False,
-        "verified": False,
-        "source": (
-            "not_required"
-            if not delivery_marker
-            else "deferred_to_batch"
-            if readback_deferred
-            else "would_query_whiteboard_raw_nodes"
-        ),
-        "expected_marker": delivery_marker,
-        "observed_marker": None,
-        "retryable": readback_deferred,
-        "error": None,
-    }
-    if execute and result.get("ok") and delivery_marker and not defer_readback:
-        readback = readback_visual_delivery_marker(
-            cli_bin=config.cli_bin,
-            identity=config.identity,
-            whiteboard_token=whiteboard_token,
-            marker=delivery_marker,
-            runner=runner,
-        )
-    delivery_ok = bool(
-        result.get("ok") and (not delivery_marker or readback.get("ok"))
-    )
-    retryable = bool(
-        execute
-        and result.get("ok")
-        and delivery_marker
-        and readback.get("retryable")
-    )
+    result = delivery["command"]
+    readback = delivery["readback"]
+    delivery_ok = bool(delivery["ok"])
+    retryable = bool(delivery["retryable"])
+    publish_attempts = delivery["publish_attempts"]
     return {
         "ok": delivery_ok,
         "schema_version": LARK_EXPLORE_VISUAL_SYNC_VERSION,
@@ -785,6 +726,9 @@ def sync_explore_visual_to_lark(
         ),
         "execute": execute,
         "published": bool(execute and delivery_ok),
+        "external_write_performed": delivery["external_write_performed"],
+        "reconciled_existing_delivery": delivery["reconciled_existing_delivery"],
+        "prepublish_readback": delivery["prepublish_readback"],
         "semantic_digest": semantic_digest,
         "delivery_digest": delivery_digest,
         "source_digest": source_digest,
@@ -851,6 +795,7 @@ def sync_explore_visuals_to_lark(
         return conflict
     results: dict[str, Any] = {}
     stage_readback_targets: list[tuple[dict[str, Any], str]] = []
+    readback_host_wait_exhausted = False
     for role in requested_roles:
         if role not in active_roles:
             results[role] = {
@@ -950,15 +895,23 @@ def sync_explore_visuals_to_lark(
                 semantic_digest=role_bundle["source_digest"],
                 display_projection=stage_projection,
                 view_key=f"{role}_stage_{stage_index:02d}",
-                execute=execute,
+                execute=bool(execute and not readback_host_wait_exhausted),
                 runner=runner,
-                defer_readback=execute,
+                defer_readback=bool(execute and not readback_host_wait_exhausted),
             )
+            if execute and readback_host_wait_exhausted:
+                defer_visual_stage_after_host_timeout(stage_result)
             stage_result = dict(stage_result, stage=dict(stage))
             stage_results.append(stage_result)
+            prepublish_readback = stage_result.get("prepublish_readback")
+            if isinstance(prepublish_readback, Mapping) and prepublish_readback.get(
+                "host_wait_exhausted"
+            ):
+                readback_host_wait_exhausted = True
             if (
                 execute
                 and stage_result.get("retryable")
+                and stage_result.get("external_write_performed")
                 and str(stage_sink.get("whiteboard_token") or "").strip()
             ):
                 stage_readback_targets.append(
@@ -1002,6 +955,18 @@ def sync_explore_visuals_to_lark(
             "stages": stage_results,
             "section_commands": section_commands,
             "reconciliation": reconciliation,
+            "reconciled_stage_count": sum(
+                bool(item.get("reconciled_existing_delivery"))
+                for item in stage_results
+            ),
+            "updated_stage_count": sum(
+                bool(item.get("external_write_performed")) for item in stage_results
+            ),
+            "readback_host_wait_exhausted": any(
+                bool((item.get("readback") or {}).get("host_wait_exhausted"))
+                for item in stage_results
+                if isinstance(item.get("readback"), Mapping)
+            ),
         }
     if stage_readback_targets:
         settle_visual_stage_readbacks(
@@ -1025,6 +990,11 @@ def sync_explore_visuals_to_lark(
         "source_revision": bundle["source_revision"],
         "recommended_roles": active_roles,
         "views": results,
+        "readback_host_wait_exhausted": any(
+            bool(view.get("readback_host_wait_exhausted"))
+            for view in results.values()
+            if isinstance(view, Mapping)
+        ),
     }
 
 

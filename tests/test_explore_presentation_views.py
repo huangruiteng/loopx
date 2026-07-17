@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 
 import pytest
 
@@ -993,7 +994,7 @@ def test_stage_svg_visual_publish_preserves_lane_source_and_remote_marker(
         runner=runner,
     )
 
-    assert len(calls) == 2
+    assert len(calls) == 3
     assert synced["ok"] is True
     assert synced["board_style"] == "semantic_lane_columns"
     assert synced["renderer"] == "stage_svg"
@@ -1057,13 +1058,105 @@ def test_mermaid_visual_publish_reads_back_remote_delivery_marker(tmp_path) -> N
         runner=runner,
     )
 
-    assert len(calls) == 2
+    assert len(calls) == 3
     assert synced["ok"] is True
     assert synced["status"] == "published"
     assert synced["published"] is True
     assert synced["readback"]["performed"] is True
     assert synced["readback"]["verified"] is True
     assert synced["readback"]["observed_marker"] == published_marker
+
+
+def test_visual_publish_reconciles_existing_marker_without_duplicate_update(
+    tmp_path,
+) -> None:
+    projection = _complex_projection()
+    config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
+    bundle = build_explore_presentation_bundle(projection)
+    sink = {
+        "whiteboard_token": "wb_executive_fixture",
+        "view_role": "executive",
+        "renderer": "mermaid",
+    }
+    preview = sync_explore_visual_to_lark(
+        config,
+        projection=projection,
+        visual_sink=sink,
+        config_path=tmp_path / "lark-explore.json",
+        semantic_digest=bundle["source_digest"],
+        display_projection=bundle["executive"],
+        view_key="executive",
+    )
+    marker = preview["readback"]["expected_marker"]
+    calls: list[list[str]] = []
+
+    def runner(args, _cwd, timeout):
+        calls.append(args)
+        assert timeout == 10.0
+        assert "+query" in args, args
+        return {
+            "returncode": 0,
+            "stdout": json.dumps(
+                {"ok": True, "data": {"nodes": [{"text": {"text": marker}}]}}
+            ),
+            "stderr": "",
+        }
+
+    synced = sync_explore_visual_to_lark(
+        config,
+        projection=projection,
+        visual_sink=sink,
+        config_path=tmp_path / "lark-explore.json",
+        semantic_digest=bundle["source_digest"],
+        display_projection=bundle["executive"],
+        view_key="executive",
+        execute=True,
+        runner=runner,
+    )
+
+    assert len(calls) == 1
+    assert synced["ok"] is True
+    assert synced["published"] is True
+    assert synced["reconciled_existing_delivery"] is True
+    assert synced["external_write_performed"] is False
+    assert synced["publish_attempt_count"] == 0
+
+
+def test_visual_publish_timeout_blocks_update_without_repeating_host_wait(
+    tmp_path,
+) -> None:
+    projection = _complex_projection()
+    config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
+    bundle = build_explore_presentation_bundle(projection)
+    observed_timeouts: list[float | None] = []
+
+    def runner(args, _cwd, timeout):
+        assert "+query" in args, args
+        observed_timeouts.append(timeout)
+        raise subprocess.TimeoutExpired(args, timeout)
+
+    synced = sync_explore_visual_to_lark(
+        config,
+        projection=projection,
+        visual_sink={
+            "whiteboard_token": "wb_executive_fixture",
+            "view_role": "executive",
+            "renderer": "mermaid",
+        },
+        config_path=tmp_path / "lark-explore.json",
+        semantic_digest=bundle["source_digest"],
+        display_projection=bundle["executive"],
+        view_key="executive",
+        execute=True,
+        runner=runner,
+    )
+
+    assert observed_timeouts == [10.0]
+    assert synced["ok"] is False
+    assert synced["external_write_performed"] is False
+    assert synced["publish_attempt_count"] == 0
+    assert synced["prepublish_readback"]["host_wait_exhausted"] is True
+    assert synced["prepublish_readback"]["attempt_count"] == 1
 
 
 def test_mermaid_visual_publish_retries_idempotency_replay_error(tmp_path) -> None:
@@ -1145,7 +1238,7 @@ def test_mermaid_visual_readback_retries_lark_doc_applying(
     query_count = 0
     delays: list[float] = []
     monkeypatch.setattr(
-        "loopx.presentation.sinks.lark.explore_results.time.sleep",
+        "loopx.presentation.sinks.lark.explore_visual_readback.time.sleep",
         delays.append,
     )
 
@@ -1169,7 +1262,7 @@ def test_mermaid_visual_readback_retries_lark_doc_applying(
                         "message": "doc is applying; doc data is not ready",
                     },
                 }
-                if query_count == 1
+                if query_count == 2
                 else {
                     "ok": True,
                     "data": {"nodes": [{"text": {"text": published_marker}}]},
@@ -1216,7 +1309,7 @@ def test_mermaid_visual_readback_retries_until_remote_marker_is_visible(
     query_count = 0
     delays: list[float] = []
     monkeypatch.setattr(
-        "loopx.presentation.sinks.lark.explore_results.time.sleep",
+        "loopx.presentation.sinks.lark.explore_visual_readback.time.sleep",
         delays.append,
     )
 
@@ -1240,7 +1333,7 @@ def test_mermaid_visual_readback_retries_until_remote_marker_is_visible(
                             "text": {
                                 "text": (
                                     "stale visual"
-                                    if query_count == 1
+                                    if query_count <= 2
                                     else published_marker
                                 )
                             }
@@ -1286,7 +1379,7 @@ def test_mermaid_visual_publish_fails_closed_when_remote_marker_is_missing(
     config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
     bundle = build_explore_presentation_bundle(projection)
     monkeypatch.setattr(
-        "loopx.presentation.sinks.lark.explore_results.time.sleep",
+        "loopx.presentation.sinks.lark.explore_visual_readback.time.sleep",
         lambda _delay: None,
     )
 
@@ -1404,7 +1497,9 @@ def test_visual_sync_creates_one_document_section_and_board_per_missing_stage(
             token = args[args.index("--whiteboard-token") + 1]
             payload = {
                 "ok": True,
-                "data": {"nodes": [{"text": {"text": published_markers[token]}}]},
+                "data": {
+                    "nodes": [{"text": {"text": published_markers.get(token, "")}}]
+                },
             }
         return {
             "returncode": 0,
@@ -1525,7 +1620,9 @@ def test_stage_document_recreates_configured_board_missing_from_document(
             token = args[args.index("--whiteboard-token") + 1]
             payload = {
                 "ok": True,
-                "data": {"nodes": [{"text": {"text": published_markers[token]}}]},
+                "data": {
+                    "nodes": [{"text": {"text": published_markers.get(token, "")}}]
+                },
             }
         return {
             "returncode": 0,
@@ -1662,7 +1759,9 @@ def test_stage_document_reconciliation_removes_all_stale_duplicate_sections(
             token = args[args.index("--whiteboard-token") + 1]
             payload = {
                 "ok": True,
-                "data": {"nodes": [{"text": {"text": published_markers[token]}}]},
+                "data": {
+                    "nodes": [{"text": {"text": published_markers.get(token, "")}}]
+                },
             }
         return {
             "returncode": 0,

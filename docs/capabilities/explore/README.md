@@ -312,6 +312,10 @@ one never enables the other:
   zero-write operation. A configured row sink is complete only after a
   row/result-id readback verifies the projection. A failed sync or readback
   does not advance its digest, so the next material refresh retries it.
+  Visual sinks also preflight their deterministic delivery marker: an existing
+  marker reconciles the prior write without publishing again, while a bounded
+  readback timeout stops further calls in that stage batch and leaves a
+  retryable receipt instead of blindly repeating remote writes.
 - `spawn_policy.explore_harness.enabled` controls only the read-only branch
   planners described below. It does not create, update, or publish a graph.
 
