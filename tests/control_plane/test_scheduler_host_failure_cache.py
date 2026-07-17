@@ -7,10 +7,8 @@ from pathlib import Path
 from loopx.control_plane.quota.scheduler_ack import (
     record_quota_scheduler_failure_for_decision,
 )
-from loopx.control_plane.scheduler.scheduler_hint import (
-    build_codex_app_scheduler_ack_event,
-    build_scheduler_hint,
-)
+from loopx.control_plane.scheduler.ack import build_codex_app_scheduler_ack_event
+from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
 from loopx.control_plane.scheduler.state import (
     CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
     CODEX_APP_SURFACE,

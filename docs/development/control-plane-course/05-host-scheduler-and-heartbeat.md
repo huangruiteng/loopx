@@ -374,7 +374,7 @@ base_identity_keys = [
 
 ### 3. ACK 校验的是当前 hint，不接受任意 host 回报
 
-`build_scheduler_ack_plan` 逐层比对 state identity：
+`scheduler/ack.py` 中的 `build_scheduler_ack_plan` 逐层比对 state identity：
 
 ```python
 if not agent_id:
@@ -454,8 +454,8 @@ App tick
 
 ### 断点建议
 
-- `build_scheduler_hint:774`：观察非法 execution context 如何 fail closed；
-- `build_scheduler_ack_plan:410`：依次改错 state key、reset token、identity signature；
+- `scheduler_hint.py:457`：观察非法 execution context 如何 fail closed；
+- `scheduler/ack.py:120`：依次改错 state key、reset token、identity signature；
 - `write_monitor_poll_todo_state:98`：比较 hash 相同、hash 变化、显式 material change；
 - host adapter：确认只有 host 层真正调用 automation update。
 

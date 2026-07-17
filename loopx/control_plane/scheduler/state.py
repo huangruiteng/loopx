@@ -29,6 +29,22 @@ def normalize_scheduler_rrule(value: Any) -> str:
     return text
 
 
+def scheduler_rrule_interval_minutes(value: Any) -> int | None:
+    text = normalize_scheduler_rrule(value)
+    parts: dict[str, str] = {}
+    for part in text.split(";"):
+        key, separator, raw_value = part.partition("=")
+        if separator:
+            parts[key.strip().upper()] = raw_value.strip()
+    if parts.get("FREQ", "").upper() != "MINUTELY":
+        return None
+    try:
+        interval = int(parts.get("INTERVAL", ""))
+    except ValueError:
+        return None
+    return interval if interval > 0 else None
+
+
 def _safe_segment(value: str) -> str:
     safe = re.sub(r"[^0-9A-Za-z_.-]+", "-", str(value or "").strip()).strip("-._")
     return safe or "default"

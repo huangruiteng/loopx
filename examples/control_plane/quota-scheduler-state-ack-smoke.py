@@ -23,9 +23,11 @@ from loopx.control_plane.testing.canary_harness import (  # noqa: E402
     run_json_cli_result,
 )
 from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_module  # noqa: E402
-from loopx.control_plane.scheduler.scheduler_hint import (  # noqa: E402
+from loopx.control_plane.scheduler.ack import (  # noqa: E402
     build_codex_app_scheduler_ack_event,
     build_scheduler_ack_plan,
+)
+from loopx.control_plane.scheduler.scheduler_hint import (  # noqa: E402
     build_scheduler_hint,
 )
 from loopx.control_plane.scheduler.state import (  # noqa: E402

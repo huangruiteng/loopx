@@ -3,10 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_module
-from loopx.control_plane.scheduler.scheduler_hint import (
-    build_codex_app_scheduler_ack_event,
-    build_scheduler_hint,
-)
+from loopx.control_plane.scheduler.ack import build_codex_app_scheduler_ack_event
+from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
 
 
 GOAL_ID = "scheduler-backoff-convergence"

@@ -5,10 +5,9 @@ from typing import Any
 
 from .decision_summary import compact_quota_decision, quota_decision_agent_id
 from ..runtime.time import now_local_iso
-from ..scheduler.scheduler_hint import (
+from ..scheduler.ack import (
     build_codex_app_scheduler_ack_event,
     build_scheduler_ack_plan,
-    normalize_scheduler_rrule,
     scheduler_backoff_packet,
 )
 from ..scheduler.state import (
@@ -18,6 +17,7 @@ from ..scheduler.state import (
     build_scheduler_state,
     merge_scheduler_host_update_failure,
     normalize_scheduler_host_update_failures,
+    normalize_scheduler_rrule,
     retained_scheduler_host_update_failures,
     scheduler_state_path,
     write_scheduler_state,
