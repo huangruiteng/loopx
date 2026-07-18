@@ -66,6 +66,7 @@ loopx extension install \
 loopx extension list --format json
 loopx extension doctor openviking-semantic-preference --execute --format json
 loopx extension disable openviking-semantic-preference --execute --format json
+loopx extension enable openviking-semantic-preference --execute --format json
 ```
 
 For a separately distributed provider, pass `--manifest <extension.toml>`.
@@ -74,6 +75,13 @@ revision. `rollback` probes the previous revision before switching back. A
 failed probe leaves the current revision untouched. Activation state contains
 validated manifest snapshots and revision ids in the private LoopX runtime
 root; it does not contain provider output or credentials.
+
+`disable` is reversible, but `enable` never trusts an earlier readiness result:
+it reruns the configured doctor and changes the enabled bit only after that
+probe succeeds. A successful doctor binds readiness to both the active manifest
+revision and the resolved executable identity. Missing or replaced executables
+fail closed until a new executed doctor succeeds; a failed executed doctor
+clears the stale proof without switching revisions.
 
 An enabled implementation is resolved by capability id, versioned protocol,
 declared permission, current revision, and current doctor proof. Domain config

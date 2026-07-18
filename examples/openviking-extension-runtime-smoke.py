@@ -157,6 +157,31 @@ with tempfile.TemporaryDirectory(prefix="loopx-extension-runtime-") as raw_temp:
     assert unavailable["status"] == "provider_unavailable"
     assert unavailable["failure_kind"] == "extension_binding_unavailable"
 
+    enabled = run_cli(
+        "--runtime-root",
+        str(runtime_root),
+        "extension",
+        "enable",
+        "smoke-semantic-extension",
+        "--execute",
+    )
+    assert enabled["enabled"] is True
+    assert enabled["doctor"]["verified"] is True
+    resumed = run_cli(
+        "--runtime-root",
+        str(runtime_root),
+        "semantic-preference",
+        "recall",
+        "--project",
+        str(project),
+        "--config",
+        str(config),
+        "--surface",
+        "issue_fix.pr_description",
+        "--execute",
+    )
+    assert resumed["items"][0]["summary"] == "provider-v1"
+
     upgraded = run_cli(
         "--runtime-root",
         str(runtime_root),

@@ -118,10 +118,12 @@ before activation. `loopx extension doctor openviking-semantic-preference
 --execute` repeats the read-only `ov status` probe. Hook `args` may still carry
 project-scoping options; they do not alter the manifest-owned doctor.
 
-`loopx semantic-preference openviking-provider` remains a delegating
-compatibility alias. New integrations should use the extension activation and
-`extension_id` binding so disable, upgrade, rollback, API compatibility,
-permission, and doctor state remain inspectable in one lifecycle.
+`loopx semantic-preference openviking-provider` remains a lazy delegating
+compatibility alias: ordinary LoopX CLI startup does not import the provider,
+and the alias loads it only when invoked. New integrations should use the
+extension activation and `extension_id` binding so enable, disable, upgrade,
+rollback, API compatibility, permission, and doctor state remain inspectable in
+one lifecycle.
 
 The consuming function remains the final application boundary. For Issue Fix,
 `build_issue_fix_pr_description()` owns one recall, fail-open preservation,
