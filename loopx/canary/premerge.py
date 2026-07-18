@@ -43,6 +43,12 @@ INSTALL_RELEASE_TOKENS = (
     "examples/release/",
     "examples/public_entry/",
 )
+EXTENSION_RUNTIME_TOKENS = (
+    "loopx/extensions/",
+    "loopx/cli_commands/extension.py",
+    "examples/capability-extension",
+    "examples/openviking-extension",
+)
 DOC_CONTENT_TOKENS = (
     "docs/",
     "README",
@@ -279,6 +285,8 @@ def classify_premerge_surfaces(
         mark("canary_runner", "canary-runner")
     if any(_path_matches(path, INSTALL_RELEASE_TOKENS) for path in files):
         mark("install_release", "public-entry-install-release")
+    if any(_path_matches(path, EXTENSION_RUNTIME_TOKENS) for path in files):
+        mark("extension_runtime", "extension-runtime")
     if any(_path_matches(path, DOC_CONTENT_TOKENS) for path in files):
         mark("docs_project_content", "docs-project-content-ops")
     if any(_path_matches(path, PUBLIC_BOUNDARY_TOKENS) for path in files):

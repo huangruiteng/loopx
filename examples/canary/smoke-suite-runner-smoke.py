@@ -210,6 +210,7 @@ def assert_named_smoke_profiles_are_discoverable() -> None:
         "canary-runner",
         "public-entry-install-release",
         "docs-project-content-ops",
+        "extension-runtime",
         "public-smoke-watch",
     ]:
         assert profile_id in profiles, payload

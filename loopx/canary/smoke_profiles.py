@@ -72,6 +72,21 @@ SMOKE_SUITE_PROFILE_MANIFEST: dict[str, dict[str, Any]] = {
         "exclude_modules": NON_BENCHMARK_SMOKE_EXCLUDE_MODULES,
         "description": "Docs, project lifecycle, and content/update-note operations checks.",
     },
+    "extension-runtime": {
+        "suite": "full-public",
+        "modules": [
+            "capability-extension",
+            "extension",
+            "lark-event",
+            "lark-inbox",
+            "openviking-extension",
+        ],
+        "exclude_modules": NON_BENCHMARK_SMOKE_EXCLUDE_MODULES,
+        "description": (
+            "Extension placement, lifecycle, provider activation, and Lark "
+            "inbox compatibility checks."
+        ),
+    },
     "public-smoke-watch": {
         "suite": "full-public",
         "modules": [

@@ -155,6 +155,17 @@ def assert_lark_kanban_change_keeps_surface_without_reviewer_hold() -> None:
     assert payload["gate"]["status"] == "preview_only", payload
 
 
+def assert_extension_change_selects_provider_lifecycle_validation() -> None:
+    payload = build_premerge_validation_gate(
+        changed_files=["loopx/extensions/lark/event_inbox.py"],
+        execute=False,
+    )
+    classification = payload["classification"]
+    assert "extension_runtime" in classification["surfaces"], payload
+    assert "extension-runtime" in classification["risk_profiles"], payload
+    assert classification["manual_holds"] == [], payload
+
+
 def assert_cli_json_preview() -> None:
     completed = subprocess.run(
         [
@@ -472,6 +483,7 @@ def main() -> None:
     assert_agent_facing_cli_change_selects_output_qualification()
     assert_benchmark_sensitive_change_blocks_self_merge()
     assert_lark_kanban_change_keeps_surface_without_reviewer_hold()
+    assert_extension_change_selects_provider_lifecycle_validation()
     assert_cli_json_preview()
     assert_cli_premerge_reports_progress_by_default()
     assert_no_changes_does_not_mask_direct_failures()
