@@ -1,0 +1,41 @@
+loopx/cli_commands/quota.py
+  s_e3f612788718c1::t_dce9dac72070db 22-25
+loopx/control_plane/quota/monitor_poll.py
+  s_9a5a2bd944fdcb::t_aa075d1a7561ee 280,432
+loopx/control_plane/quota/slot_accounting.py
+  s_9a5a2bd944fdcb::t_a1040d74d47b2f 671,731,743,803
+loopx/presentation/renderers/quota_event_markdown.py
+  s_e3f612788718c1::t_f2e8d1f563456e 1-114
+loopx/quota.py
+  s_e3f612788718c1::t_996a61d9dff018 78-79,190,2353,2418,2451
+tests/architecture/test_control_plane_import_boundaries.py
+  s_e3f612788718c1::t_136de10eaf50c4 111-119,201-204,208-218
+tests/presentation/test_quota_markdown_renderers.py
+  s_e3f612788718c1::t_1b7bdc7bf9280a 1-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f1c2c9dcc7ac364fa3c5c00c177d236ce701a645",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
