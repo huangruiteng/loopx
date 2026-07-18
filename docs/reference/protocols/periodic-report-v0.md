@@ -5,6 +5,16 @@ It binds a period window and a profile to typed source snapshots, one rendered
 artifact receipt, archive and delivery receipts, deterministic idempotency,
 explicit partial/unknown states, and a bounded retry projection.
 
+The capability also defines `periodic_report_trigger_decision_v0`. A caller
+evaluates compact LoopX or provider facts before collecting or delivering a
+report:
+
+```bash
+loopx periodic-report evaluate-trigger \
+  --request-json periodic-report-trigger-request.json \
+  --format json
+```
+
 ```bash
 loopx periodic-report compose-run \
   --request-json periodic-report-request.json \
@@ -14,6 +24,42 @@ loopx periodic-report compose-run \
 The command is local and effect-free. Source collection, rendering, archive
 writes, message delivery, and receipt readback all execute in adapters or
 connectors outside this core.
+
+## Trigger decision
+
+A `periodic_report_trigger_request_v0` binds a profile and trigger policy to an
+evaluation timestamp, optional last-report receipt, and up to 64 compact
+candidate facts. The built-in kinds are:
+
+- `cadence_due`: a profile-owned schedule says a report window is due;
+- `vision_closed`: the vision transition is closed, acceptance is validated,
+  and a successor is established or the goal is terminal;
+- `primary_goal_outcome`: the primary delivery outcome is validated and has a
+  durable writeback;
+- `material_decision`: an approved, rejected, or cancelled decision changed
+  the execution route and was durably recorded;
+- `material_blocker`: a new or escalated P0 blocker stops the primary path;
+- `material_recovery`: a validated resolution reopens the primary path;
+- `manual`: an explicitly authorized run.
+
+`surface_only`, `state_refreshed`, `todo_completed`, `monitor_unchanged`, and
+`vision_checkpoint` are accepted only so the decision receipt can explain why
+they were suppressed. They never trigger a report by themselves.
+
+The decision sorts material candidates by urgency, coalesces concurrent facts,
+and derives a stable `report_key`. Trigger identity is derived from kind,
+source reference, and evidence digest; a last-report receipt suppresses ids it
+already covered. A profile-owned minimum interval suppresses non-urgent
+updates, while authorized manual runs, validated primary outcomes, validated
+vision closures, and primary-path blockers may bypass it. The output records
+the selected and coalesced ids, every suppression reason, cooldown state, and
+the report kind (`cadence_digest`, `milestone_update`, `exception_update`, or
+`manual_update`).
+
+An eligible decision may be embedded as `trigger_receipt` in a
+`periodic_report_run_request_v0`. Its `report_key` and `report_kind` then
+participate in run identity, so a milestone update and a scheduled digest over
+the same evidence window cannot collide.
 
 ## Request and identity
 
@@ -26,6 +72,8 @@ A `periodic_report_run_request_v0` contains:
 - one `artifact_receipt` naming a renderer and artifact state;
 - at least one `archive` and one `delivery` receipt;
 - `retry_policy.attempt` and `max_attempts`.
+
+It may also contain an eligible `periodic_report_trigger_decision_v0` receipt.
 
 LoopX derives `run_id` and the run-level `idempotency_key` from the normalized
 window, profile, source identities, renderer identity, and sink identities.
