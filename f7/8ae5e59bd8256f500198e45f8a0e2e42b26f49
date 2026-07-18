@@ -1,0 +1,37 @@
+docs/architecture.md
+  s_9a5a2bd944fdcb::t_470ca20563cb9b 60-73
+loopx/quota.py
+  s_32e2a9a204a8e4::t_45fad3a1d97b2b 25,69-70,79-81,107,112,187-197
+loopx/status.py
+  s_9a5a2bd944fdcb::t_419180164399cd 54-55,63,288-290,296,298-301,303,325,329,333-350
+tests/architecture/test_control_plane_import_boundaries.py
+  s_9a5a2bd944fdcb::t_e3b2429ff861b5 4,15-24,111-171,222-253
+tests/control_plane/test_cli_output_budget.py
+  s_32e2a9a204a8e4::t_81a156fe6e2b1f 609-654
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f78ae5e59bd8256f500198e45f8a0e2e42b26f49",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
