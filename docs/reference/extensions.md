@@ -101,6 +101,12 @@ configuration. Extension lifecycle commands do not terminate an already
 running host-managed collector process; stop or restart that supervisor service
 separately when changing the active provider revision.
 
+Quota and Turn composition apply the same read gate. They inject the Lark
+extension's urgency projector only after resolving `lark.inbox.read`; provider
+profile/chat schema and private config reads stay in the extension. If the
+extension is missing, disabled, or stale, urgency is unavailable and cannot
+activate a Lark work lane. This adds no agent-facing CLI arguments.
+
 ## Placement Decision For Agents
 
 Before creating a directory, LoopX or an executing agent must answer these
@@ -237,8 +243,10 @@ distribution and service setup to explicit operator-owned workflows.
 Provider migration follows the same direction. Core routing consumes compact
 provider-neutral read models, while provider packages own collection, transport,
 credentials, and external effects. For example, quota reads
-`operator_inbox_urgency_v0`. Lark inbox collection, reply transport, and
-provider-owned configuration live under `loopx/extensions/lark/`; the existing
+`operator_inbox_urgency_v0` through an injected projector. The generic parser
+and read-model contract stay in the control plane; Lark schema, identity,
+destination, collection, reply transport, and provider-owned configuration live
+under `loopx/extensions/lark/`. The existing
 `loopx lark-inbox` command remains a direct compatibility delegate, but it now
 requires an installed, enabled, doctor-verified `loopx-lark` revision with the
 operation's declared permission. The provider subprocess currently implements
