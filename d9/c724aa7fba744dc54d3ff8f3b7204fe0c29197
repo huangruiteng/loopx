@@ -1,0 +1,51 @@
+loopx/benchmark_adapters/skillsbench_acp_relay.py
+  s_e3f612788718c1::t_53c2d2f9e402d2 2107-2108,2116-2117
+loopx/benchmark_case_state.py
+  s_e3f612788718c1::t_2594774605761e 458-459,478
+loopx/capabilities/auto_research/worker_runtime.py
+  s_e3f612788718c1::t_f83cfb82488d81 320
+loopx/capabilities/cross_runtime/impl_review.py
+  s_e3f612788718c1::t_05657790c93d35 178
+loopx/capabilities/explore/todo_branch_plan.py
+  s_e3f612788718c1::t_ae8408c7bcde2b 257-260
+loopx/cli_commands/todo.py
+  s_e3f612788718c1::t_42ded3a8d59d5b 362-367,554,564,733,792
+loopx/cli_commands/todo_argument_validation.py
+  s_e3f612788718c1::t_cc1873535300b2 76,81-86,94,98-99
+loopx/cli_commands/todo_event.py
+  s_e3f612788718c1::t_1f95e8c69a8da4 50
+loopx/control_plane/agents/agent_scope.py
+  s_e3f612788718c1::t_2a39912259b712 619,650-651,677
+loopx/control_plane/scheduler/monitor_poll_writeback.py
+  s_e3f612788718c1::t_c8a425ea437113 124
+loopx/control_plane/todos/active_state_editing.py
+  s_e3f612788718c1::t_76e9e0ed83729c 15,18,45-129
+loopx/control_plane/todos/mutation_authority.py
+  s_e3f612788718c1::t_09dab1efde5950 1-163
+loopx/control_plane/work_items/interaction_contract.py
+  s_e3f612788718c1::t_93890f0c75a573 495-499,575-576,599
+loopx/dreaming.py
+  s_e3f612788718c1::t_64629a49e7f4e6 8,468-472,480
+loopx/heartbeat_prompt.py
+  s_e3f612788718c1::t_1d149ce89ae75a 211,214,231
+loopx/todos.py
+  s_e3f612788718c1::t_c2e7e9fa5c1956 60,65-67,80-82,1280,1283,1292-1301,1434,1477,1517-1545,1624,1729,1757,1772-1787,1925
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d9c724aa7fba744dc54d3ff8f3b7204fe0c29197",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
