@@ -659,14 +659,19 @@ heavy, and which user gates or handoffs still disappeared from view.
 - Open PRs for docs fixes, showcase writeups, and small public-safe examples.
 - For Chinese-speaking users and contributors, use the Lark developer group for
   onboarding help, feedback, implementation questions, and contributor
-  coordination. The invite QR is intended to remain valid; open an issue if it
-  stops working.
+  coordination. To join the WeChat group, add `huangrt00` and include `LoopX`
+  in the friend request; you will be invited after it is accepted.
 
 <table>
   <tr>
-    <td align="center" width="320">
+    <td align="center" width="280">
       <img src="docs/assets/loopx-lark-developer-group.png" alt="LoopX Lark developer group QR code" width="240"><br>
       Lark developer group
+    </td>
+    <td align="center" width="280">
+      <img src="docs/assets/loopx-wechat-contact.png" alt="LoopX WeChat contact QR code" width="240"><br>
+      WeChat: <code>huangrt00</code><br>
+      Add as a friend and mention LoopX for a group invitation
     </td>
   </tr>
 </table>
