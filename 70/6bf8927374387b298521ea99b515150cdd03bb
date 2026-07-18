@@ -1,0 +1,35 @@
+loopx/capabilities/issue_fix/repository_memory_provider.py
+  s_32e2a9a204a8e4::t_22c81857e2b105 25
+loopx/capabilities/semantic_preference/cli.py
+  s_32e2a9a204a8e4::t_09104701bb7cc8 5-6,14-17,21-38,97,99,144-145
+loopx/cli_commands/extension.py
+  s_32e2a9a204a8e4::t_4471dae6ea0443 12,103,141-146
+loopx/extensions/openviking_semantic_preference/project_peer.py
+  s_32e2a9a204a8e4::t_c12e7d4c38a4ca 8
+loopx/extensions/readiness.py
+  s_32e2a9a204a8e4::t_6c83bef8931449 1-112
+loopx/extensions/runtime.py
+  s_32e2a9a204a8e4::t_20e7ec465c7e31 14-19,84,189-191,212-278,347-349,390-391,405-406,418,427-467,485-486,518,525,527
+loopx/repository_identity.py
+  s_32e2a9a204a8e4::t_ba3216bfd01525 4-5,13,57-93
+tests/extensions/test_extension_runtime.py
+  s_32e2a9a204a8e4::t_f5f91615b4a910 3-5,8,14-16,21-22,28-30,129-150,198-338,477-569
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "706bf8927374387b298521ea99b515150cdd03bb",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
