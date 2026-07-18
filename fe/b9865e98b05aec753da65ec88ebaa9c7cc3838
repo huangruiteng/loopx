@@ -1,0 +1,25 @@
+loopx/capabilities/issue_fix/reviewer_cli.py
+  s_32e2a9a204a8e4::t_88b3494ab7c575 14
+loopx/cli_commands/lark_inbox.py
+  s_32e2a9a204a8e4::t_6cdb0529e4f1f0 9,14-15,20
+loopx/extensions/lark/__init__.py
+  s_32e2a9a204a8e4::t_7c3c90e4d68b71 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "feb9865e98b05aec753da65ec88ebaa9c7cc3838",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
