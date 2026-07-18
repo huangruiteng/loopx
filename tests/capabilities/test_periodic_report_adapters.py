@@ -344,6 +344,70 @@ def test_registry_rejects_renderer_artifact_for_another_document() -> None:
         registry.render("stale_v0", document)
 
 
+def test_document_window_uses_chronological_timestamp_order() -> None:
+    source = build_periodic_report_source_result(
+        source_id="release_notes",
+        source_kind="release_activity",
+        status="complete",
+        observed_at="2026-07-20T00:00:00Z",
+        sections=[],
+    )
+
+    with pytest.raises(ValueError, match="start_at must be earlier"):
+        build_periodic_report_document(
+            title="Invalid window",
+            generated_at="2026-07-20T00:00:01Z",
+            period_window={
+                "start_at": "2026-07-20T00:00:00.100000Z",
+                "end_at": "2026-07-20T00:00:00Z",
+            },
+            profile={"profile_id": "maintenance", "profile_version": "v1"},
+            sources=[source],
+        )
+
+    valid = build_periodic_report_document(
+        title="Valid window",
+        generated_at="2026-07-20T00:00:01Z",
+        period_window={
+            "start_at": "2026-07-20T00:00:00Z",
+            "end_at": "2026-07-20T00:00:00.100000Z",
+        },
+        profile={"profile_id": "maintenance", "profile_version": "v1"},
+        sources=[source],
+    )
+    assert valid["period_window"]["end_at"].endswith(".100000Z")
+
+
+def test_archive_bundle_rejects_artifact_for_another_document() -> None:
+    source = build_periodic_report_source_result(
+        source_id="release_notes",
+        source_kind="release_activity",
+        status="complete",
+        observed_at="2026-07-20T00:40:00Z",
+        sections=[],
+    )
+    document = build_periodic_report_document(
+        title="Current report",
+        generated_at="2026-07-20T01:00:00Z",
+        period_window={
+            "start_at": "2026-07-13T00:00:00Z",
+            "end_at": "2026-07-20T00:00:00Z",
+        },
+        profile={"profile_id": "maintenance", "profile_version": "v1"},
+        sources=[source],
+    )
+    stale_artifact = periodic_report_markdown_renderer_adapter().render(
+        {**document, "title": "Previous report"}
+    )
+
+    with pytest.raises(ValueError, match="does not match document"):
+        build_periodic_report_archive_bundle(
+            artifact=stale_artifact,
+            document=document,
+            archive_root_uri="viking://resources/reports",
+        )
+
+
 def test_archive_bundle_keeps_resource_history_separate_from_memory() -> None:
     calls: list[str] = []
     registry = _registry(calls=calls)

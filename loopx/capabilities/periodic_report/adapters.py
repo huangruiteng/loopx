@@ -295,7 +295,9 @@ def build_periodic_report_document(
 
     start_at = _timestamp(period_window.get("start_at"), "period_window.start_at")
     end_at = _timestamp(period_window.get("end_at"), "period_window.end_at")
-    if start_at >= end_at:
+    start_value = datetime.fromisoformat(start_at.replace("Z", "+00:00"))
+    end_value = datetime.fromisoformat(end_at.replace("Z", "+00:00"))
+    if start_value >= end_value:
         raise ValueError("period_window.start_at must be earlier than end_at")
     normalized_sources = [
         normalize_periodic_report_source_result(source) for source in sources

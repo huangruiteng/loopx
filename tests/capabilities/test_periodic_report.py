@@ -143,6 +143,11 @@ def test_success_requires_exact_sink_idempotency_and_readback() -> None:
     with pytest.raises(ValueError, match="does not match run identity"):
         build_periodic_report_run(stale)
 
+    missing_key = _successful_request()
+    missing_key["sink_receipts"][0].pop("idempotency_key")  # type: ignore[index]
+    with pytest.raises(ValueError, match="sent receipt requires idempotency_key"):
+        build_periodic_report_run(missing_key)
+
     unread = _successful_request()
     unread["sink_receipts"][1]["readback_verified"] = False  # type: ignore[index]
     with pytest.raises(ValueError, match="verified readback"):

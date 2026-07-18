@@ -194,6 +194,9 @@ def build_periodic_report_archive_bundle(
     document_digest = _sha256(
         normalized_artifact.get("document_digest"), "artifact.document_digest"
     )
+    expected_document_digest = _content_digest(_canonical_json(normalized_document))
+    if document_digest != expected_document_digest:
+        raise ValueError("artifact.document_digest does not match document")
     profile = _mapping(normalized_document.get("profile"), "document.profile")
     period_window = _mapping(
         normalized_document.get("period_window"), "document.period_window"

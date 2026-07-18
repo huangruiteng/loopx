@@ -437,6 +437,8 @@ def _normalize_sinks(
         receipt_ref = _optional_text(
             item.get("receipt_ref"), f"{label}.receipt_ref", maximum=500
         )
+        if status == "sent" and not supplied_key:
+            raise ValueError(f"{label} sent receipt requires idempotency_key")
         if status == "sent" and (not receipt_ref or not readback_verified):
             raise ValueError(
                 f"{label} sent receipt requires receipt_ref and verified readback"
