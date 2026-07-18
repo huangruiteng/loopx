@@ -5,6 +5,7 @@ from enum import Enum
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -23,11 +24,6 @@ PROMOTION_READINESS_CLASSIFICATIONS = {
 PROMOTION_READINESS_FRESHNESS_HOURS = 24
 INSTALL_FRESHNESS_STALE_HOURS = 168
 NO_CLONE_INSTALL_URL = "https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh"
-NO_CLONE_UPGRADE_COMMAND = (
-    f"curl -fsSL {NO_CLONE_INSTALL_URL} | bash\n"
-    'export PATH="$HOME/.local/bin:$PATH"\n'
-    "loopx doctor"
-)
 RELEASE_ID_TIMESTAMP_RE = re.compile(r"^\d{8}T\d{6}Z$")
 REQUIRED_INSTALLED_SKILL_PHRASES = {
     "loopx-project": (
@@ -63,6 +59,20 @@ class GitRevisionRelation(str, Enum):
     INSTALLED_BEHIND = "installed_behind"
     DIVERGED = "diverged"
     UNKNOWN = "unknown"
+
+
+def no_clone_upgrade_command(source_ref: Any = None) -> str:
+    ref = str(source_ref or "").strip()
+    installer = f"curl -fsSL {NO_CLONE_INSTALL_URL}"
+    if ref and ref != "stable":
+        installer = f"{installer} | env LOOPX_REF={shlex.quote(ref)} bash"
+    else:
+        installer = f"{installer} | bash"
+    return (
+        f"{installer}\n"
+        'export PATH="$HOME/.local/bin:$PATH"\n'
+        "loopx doctor"
+    )
 
 
 def user_local_bin() -> Path:
@@ -365,7 +375,6 @@ def build_install_freshness(
         reason = "current command is not a timestamped release snapshot"
         requires_upgrade = False
 
-    contributor_upgrade_command = f"{repo_root / 'scripts' / 'install-local.sh'}\nloopx doctor"
     manifest = release_manifest if isinstance(release_manifest, dict) else {}
     manifest_body = manifest.get("manifest") if isinstance(manifest.get("manifest"), dict) else {}
     manifest_package = (
@@ -386,6 +395,8 @@ def build_install_freshness(
     manifest_source = (
         manifest_body.get("source") if isinstance(manifest_body.get("source"), dict) else {}
     )
+    upgrade_command = no_clone_upgrade_command(manifest_source.get("ref"))
+    contributor_upgrade_command = f"{repo_root / 'scripts' / 'install-local.sh'}\nloopx doctor"
     manifest_source_git_commit = manifest_source.get("git_commit")
     manifest_source_revision = (
         manifest_source_git_commit
@@ -442,8 +453,8 @@ def build_install_freshness(
         "stale_after_hours": INSTALL_FRESHNESS_STALE_HOURS,
         "release_id": release_id,
         "release_age_hours": age_hours,
-        "upgrade_command": NO_CLONE_UPGRADE_COMMAND,
-        "no_clone_upgrade_command": NO_CLONE_UPGRADE_COMMAND,
+        "upgrade_command": upgrade_command,
+        "no_clone_upgrade_command": upgrade_command,
         "contributor_upgrade_command": contributor_upgrade_command,
         "doctor_after_upgrade": "loopx doctor",
         "release_manifest_available": manifest.get("available"),
