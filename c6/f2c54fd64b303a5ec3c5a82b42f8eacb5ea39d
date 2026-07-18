@@ -1,0 +1,39 @@
+loopx/capabilities/explore/activation.py
+  s_32e2a9a204a8e4::t_2441988ed3face 129-140,188
+loopx/cli.py
+  s_32e2a9a204a8e4::t_5e5ed37e312089 498
+loopx/cli_commands/explore.py
+  s_32e2a9a204a8e4::t_f5118d58753e10 41-42,58,64-68,592,596-608,970-971
+loopx/cli_commands/lark_kanban.py
+  s_32e2a9a204a8e4::t_e37c7b45ce8f54 9-10,37,40-45,337,350-359,595-596
+loopx/cli_commands/project_lifecycle.py
+  s_32e2a9a204a8e4::t_92ee56bf04360a 4,6,22-26,39,75-102,571-574
+loopx/extensions/lark/__init__.py
+  s_32e2a9a204a8e4::t_ad487f75e8400d 9
+loopx/extensions/lark/extension.toml
+  s_32e2a9a204a8e4::t_6fa20554e1dbf7 3,11,43-64
+loopx/extensions/lark/presentation/explore_results.py
+  s_32e2a9a204a8e4::t_234244be4860e8 37
+loopx/extensions/lark/presentation/kanban.py
+  s_32e2a9a204a8e4::t_c40538bd16cd98 24
+loopx/extensions/lark/provider.py
+  s_32e2a9a204a8e4::t_63af419c099bbc 25-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c6f2c54fd64b303a5ec3c5a82b42f8eacb5ea39d",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
