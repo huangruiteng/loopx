@@ -91,7 +91,7 @@ def _source_snapshots(document: Mapping[str, Any]) -> list[dict[str, Any]]:
         _sequence(document.get("source_snapshots"), "document.source_snapshots")
     ):
         item = _mapping(raw, f"document.source_snapshots[{index}]")
-        snapshot = {
+        snapshot: dict[str, Any] = {
             key: item[key]
             for key in (
                 "source_id",

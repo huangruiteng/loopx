@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from typing import Any
 
@@ -94,6 +94,8 @@ def _integer(
     maximum: int = 1000000,
 ) -> int:
     if isinstance(value, bool):
+        raise ValueError(f"{label} must be an integer")
+    if not isinstance(value, (str, bytes, bytearray, int, float)):
         raise ValueError(f"{label} must be an integer")
     try:
         number = int(value)
@@ -329,9 +331,9 @@ def _run_identity(
     *,
     period_window: Mapping[str, str],
     profile: Mapping[str, str],
-    sources: list[Mapping[str, Any]],
+    sources: Sequence[Mapping[str, Any]],
     artifact: Mapping[str, Any],
-    sinks: list[Mapping[str, Any]],
+    sinks: Sequence[Mapping[str, Any]],
     trigger_receipt: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     identity = {
@@ -461,9 +463,9 @@ def _normalize_sinks(
 
 
 def _derive_run_state(
-    sources: list[Mapping[str, Any]],
+    sources: Sequence[Mapping[str, Any]],
     artifact: Mapping[str, Any],
-    sinks: list[Mapping[str, Any]],
+    sinks: Sequence[Mapping[str, Any]],
 ) -> str:
     source_statuses = {str(item["status"]) for item in sources}
     sink_statuses = {str(item["status"]) for item in sinks}
@@ -489,9 +491,9 @@ def _retry_projection(
     *,
     state: str,
     policy: Mapping[str, int],
-    sources: list[Mapping[str, Any]],
+    sources: Sequence[Mapping[str, Any]],
     artifact: Mapping[str, Any],
-    sinks: list[Mapping[str, Any]],
+    sinks: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     retryable_components = [
         f"source:{item['source_id']}"

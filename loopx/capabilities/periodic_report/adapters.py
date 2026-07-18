@@ -89,6 +89,8 @@ def _integer(
 ) -> int:
     if isinstance(value, bool):
         raise ValueError(f"{label} must be an integer")
+    if not isinstance(value, (str, bytes, bytearray, int, float)):
+        raise ValueError(f"{label} must be an integer")
     try:
         result = int(value)
     except (TypeError, ValueError) as exc:
