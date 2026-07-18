@@ -15,9 +15,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from loopx.cli_commands import explore as explore_cli  # noqa: E402
-from loopx.presentation.sinks.lark.explore_singleflight import (  # noqa: E402
+from loopx.extensions.lark.presentation.explore_singleflight import (  # noqa: E402
     explore_feishu_sync_singleflight,
     singleflight_issue_fix_material_sync,
+)
+from loopx.extensions.runtime import (  # noqa: E402
+    default_extension_state_file,
+    install_extension,
 )
 
 
@@ -36,6 +40,11 @@ def main() -> None:
         config_path.parent.mkdir(parents=True)
         sentinel = '{"sentinel":"unchanged"}\n'
         config_path.write_text(sentinel, encoding="utf-8")
+        install_extension(
+            ROOT / "loopx" / "extensions" / "lark" / "extension.toml",
+            state_file=default_extension_state_file(root),
+            execute=True,
+        )
 
         with explore_feishu_sync_singleflight(
             config_path=config_path, execute=True
@@ -119,7 +128,7 @@ def main() -> None:
                         sink_visibility="owner-only",
                     ),
                     registry_path=registry_path,
-                    runtime_root_arg=None,
+                    runtime_root_arg=str(root),
                     print_payload=lambda payload, _fmt, _renderer: captured.append(
                         payload
                     ),

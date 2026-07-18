@@ -38,9 +38,9 @@ from loopx.capabilities.explore.todo_branch_plan import build_explore_todo_branc
 from loopx.capabilities.explore.worker_branch_plan import (  # noqa: E402
     build_explore_worker_branch_plan,
 )
-from loopx.presentation.sinks.lark import explore_results  # noqa: E402
-from loopx.presentation.sinks.lark import explore_visual_readback  # noqa: E402
-from loopx.presentation.sinks.lark import explore_visual_styles  # noqa: E402
+from loopx.extensions.lark.presentation import explore_results  # noqa: E402
+from loopx.extensions.lark.presentation import explore_visual_readback  # noqa: E402
+from loopx.extensions.lark.presentation import explore_visual_styles  # noqa: E402
 
 # Both exploration planners are deny-by-default behind the per-goal
 # goal_boundary.orchestration.explore_harness gate; every library-level plan
@@ -1211,6 +1211,15 @@ def check_cli_surface() -> None:
                 encoding="utf-8",
             )
             return json.loads(result.stdout)
+
+        extension_install = run_cli(
+            "extension",
+            "install",
+            "--bundled",
+            "loopx-lark",
+            "--execute",
+        )
+        assert extension_install["doctor"]["verified"] is True, extension_install
 
         node = run_cli(
             "explore",

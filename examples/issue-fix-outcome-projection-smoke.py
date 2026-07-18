@@ -28,7 +28,7 @@ from loopx.domain_packs.issue_fix import (  # noqa: E402
     upsert_issue_fix_feasibility_ledger_jsonl,
     upsert_issue_fix_pr_lifecycle_ledger_jsonl,
 )
-from loopx.presentation.sinks.lark.kanban import (  # noqa: E402
+from loopx.extensions.lark.presentation.kanban import (  # noqa: E402
     LarkKanbanConfig,
     STATUS_DONE,
     sync_loopx_projection_to_lark_kanban,

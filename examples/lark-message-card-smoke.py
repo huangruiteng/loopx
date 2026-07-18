@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.presentation.sinks.lark.message_card import (  # noqa: E402
+from loopx.extensions.lark.presentation.message_card import (  # noqa: E402
     build_lark_markdown_reply_card,
     compact_markdown,
     compact_plain_text,

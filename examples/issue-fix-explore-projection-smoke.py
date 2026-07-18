@@ -38,7 +38,7 @@ from loopx.domain_packs.issue_fix import (  # noqa: E402
 )
 from loopx.history import load_registry  # noqa: E402
 from loopx.paths import resolve_runtime_root  # noqa: E402
-from loopx.presentation.sinks.lark import explore_results  # noqa: E402
+from loopx.extensions.lark.presentation import explore_results  # noqa: E402
 from loopx.rollout_event_log import (  # noqa: E402
     append_rollout_event,
     build_rollout_event,
@@ -171,6 +171,15 @@ def main() -> None:
         assert graph_enabled["delivery_postcondition"]["satisfied"] is True, graph_enabled
         assert graph_enabled["delivery_postcondition"]["disposition"] == "unchanged_verified", graph_enabled
         assert activation_calls == [(True, True)], activation_calls
+
+        provider_missing = sync_explore_graph_after_material_refresh(
+            registry_path=registry,
+            goal_id=goal_id,
+            agent_id="codex-fixture",
+            project=project,
+        )
+        assert provider_missing["status"] == "projection_sink_provider_unavailable", provider_missing
+        assert provider_missing["delivery_postcondition"]["satisfied"] is False, provider_missing
 
         graph_suppressed = sync_explore_graph_after_material_refresh(
             registry_path=registry,

@@ -27,15 +27,18 @@ from loopx.capabilities.issue_fix.explore_projection import (  # noqa: E402
 from loopx.capabilities.explore.activation import (  # noqa: E402
     sync_explore_graph_after_material_refresh,
 )
-from loopx.presentation.sinks.lark.explore_results import (  # noqa: E402
+from loopx.extensions.lark.presentation.explore_results import (  # noqa: E402
     sync_issue_fix_explore_on_material_change,
     write_lark_explore_local_config,
 )
-from loopx.presentation.sinks.lark.explore_singleflight import (  # noqa: E402
+from loopx.extensions.lark.presentation.explore_singleflight import (  # noqa: E402
     explore_feishu_sync_singleflight,
 )
-from loopx.presentation.sinks.lark.explore_source_guard import (  # noqa: E402
+from loopx.extensions.lark.presentation.explore_source_guard import (  # noqa: E402
     source_projection_coverage_guard,
+)
+from examples.lark_extension_test_support import (  # noqa: E402
+    install_bundled_lark_extension,
 )
 
 
@@ -149,6 +152,12 @@ def main() -> None:
         write_lark_explore_local_config(config_path, baseline_config)
         assert not stale_config_path.exists()
 
+        install_bundled_lark_extension(
+            repo_root=ROOT,
+            registry=shared_registry,
+            runtime_root=shared_runtime,
+        )
+
         cli_sync = subprocess.run(
             [
                 sys.executable,
@@ -171,6 +180,10 @@ def main() -> None:
         cli_payload = json.loads(cli_sync.stdout)
         assert Path(cli_payload["config_path"]).resolve() == config_path.resolve(), cli_payload
         assert cli_payload["source_runtime_route"]["status"] == "source_registry", cli_payload
+        assert cli_payload["extension_activation"]["doctor_verified"] is True, cli_payload
+        assert cli_payload["extension_activation"]["required_permissions"] == [
+            "lark.projection_sink.use"
+        ], cli_payload
         assert not stale_config_path.exists()
 
         routed = sync_issue_fix_explore_on_material_change(
@@ -200,6 +213,7 @@ def main() -> None:
             project=project,
             state_file=state,
             external_sink_delivery_authorized=False,
+            syncer=sync_issue_fix_explore_on_material_change,
         )
         assert activated["status"] == "external_sink_suppressed", activated
         assert activated["source_runtime_route"]["status"] == "source_registry", activated

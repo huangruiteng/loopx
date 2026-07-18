@@ -14,8 +14,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.presentation.sinks.lark import issue_fix_surface  # noqa: E402
-from loopx.presentation.sinks.lark.kanban import (  # noqa: E402
+from loopx.extensions.lark.presentation import issue_fix_surface  # noqa: E402
+from loopx.extensions.lark.presentation.kanban import (  # noqa: E402
     CLAIM_UNCLAIMED,
     STATUS_CLAIMED,
     STATUS_DONE,
@@ -40,10 +40,18 @@ from loopx.presentation.sinks.lark.kanban import (  # noqa: E402
     sync_loopx_todos_to_lark_kanban,
     use_lark_kanban_board,
 )
+from examples.lark_extension_test_support import (  # noqa: E402
+    install_bundled_lark_extension,
+)
 
 
 existing_setup_calls: list[list[str]] = []
 existing_setup_view_list_count = 0
+_CLI_TEMP = tempfile.TemporaryDirectory(prefix="loopx-lark-kanban-cli-")
+_CLI_RUNTIME = Path(_CLI_TEMP.name) / "runtime"
+_CLI_REGISTRY = Path(_CLI_TEMP.name) / "registry.json"
+_CLI_REGISTRY.write_text('{"goals": []}\n', encoding="utf-8")
+_CLI_EXTENSION_READY = False
 
 
 def credential_boundary_smoke() -> None:
@@ -264,8 +272,25 @@ def existing_setup_runner(args: list[str], cwd: Path | None, timeout: float | No
 
 
 def run_cli(*extra_args: str) -> dict[str, object]:
+    global _CLI_EXTENSION_READY
+    if not _CLI_EXTENSION_READY:
+        install_bundled_lark_extension(
+            repo_root=REPO_ROOT,
+            registry=_CLI_REGISTRY,
+            runtime_root=_CLI_RUNTIME,
+        )
+        _CLI_EXTENSION_READY = True
     result = subprocess.run(
-        [sys.executable, "-m", "loopx.cli", "--format", "json", *extra_args],
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--format",
+            "json",
+            "--runtime-root",
+            str(_CLI_RUNTIME),
+            *extra_args,
+        ],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,

@@ -18,6 +18,7 @@ ISSUE_FIX_REVIEWER_NOTIFICATION_MODULE = (
 )
 LARK_EXTENSION_ROOT = PACKAGE_ROOT / "extensions" / "lark"
 LEGACY_LARK_CAPABILITY_ROOT = PACKAGE_ROOT / "capabilities" / "lark"
+LEGACY_LARK_PRESENTATION_ROOT = PACKAGE_ROOT / "presentation" / "sinks" / "lark"
 FORBIDDEN_DEPENDENCY_PREFIXES = (
     "loopx.benchmark_adapters",
     "loopx.capabilities",
@@ -148,6 +149,24 @@ def test_lark_inbox_provider_is_owned_by_the_extension_layer() -> None:
     } <= imports
     assert (LARK_EXTENSION_ROOT / "extension.toml").is_file()
     assert (LARK_EXTENSION_ROOT / "provider.py").is_file()
+
+
+def test_lark_projection_sinks_are_owned_by_the_extension_layer() -> None:
+    assert not list(LEGACY_LARK_CAPABILITY_ROOT.glob("*.py"))
+    assert not list(LEGACY_LARK_PRESENTATION_ROOT.glob("*.py"))
+    extension_presentation = LARK_EXTENSION_ROOT / "presentation"
+    assert (extension_presentation / "kanban.py").is_file()
+    assert (extension_presentation / "explore_results.py").is_file()
+
+    core_provider_imports = {
+        (_module_name(path), dependency)
+        for root in (PACKAGE_ROOT / "capabilities", PACKAGE_ROOT / "presentation")
+        for path in root.rglob("*.py")
+        for dependency in _resolved_imports(path)
+        if dependency == "loopx.extensions.lark"
+        or dependency.startswith("loopx.extensions.lark.")
+    }
+    assert not core_provider_imports
 
 
 def test_issue_fix_reviewer_uses_provider_neutral_inbox_hooks() -> None:

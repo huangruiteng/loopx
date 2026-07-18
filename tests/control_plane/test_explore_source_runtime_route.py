@@ -14,9 +14,19 @@ from loopx.cli_commands.explore import handle_explore_command
 from loopx.control_plane.runtime.runtime_projection_route import (
     resolve_goal_source_runtime_route,
 )
+from loopx.extensions.runtime import default_extension_state_file, install_extension
 
 
 GOAL_ID = "split-runtime-fixture"
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _activate_lark(runtime_root: Path) -> None:
+    install_extension(
+        ROOT / "loopx" / "extensions" / "lark" / "extension.toml",
+        state_file=default_extension_state_file(runtime_root),
+        execute=True,
+    )
 
 
 def _write_registry(
@@ -139,6 +149,7 @@ def test_feishu_sync_uses_source_rows_and_visual_marker(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     captured: list[dict[str, object]] = []
+    _activate_lark(shared_runtime)
 
     result = handle_explore_command(
         _sync_args(config_path),

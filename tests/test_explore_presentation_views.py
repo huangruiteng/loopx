@@ -14,7 +14,7 @@ from loopx.presentation.explore_views import (
     explore_source_digest,
     validate_explore_view_freshness,
 )
-from loopx.presentation.sinks.lark.explore_results import (
+from loopx.extensions.lark.presentation.explore_results import (
     LarkExploreConfig,
     configure_lark_explore_visual_sink,
     read_lark_explore_local_config,
@@ -1238,7 +1238,7 @@ def test_mermaid_visual_readback_retries_lark_doc_applying(
     query_count = 0
     delays: list[float] = []
     monkeypatch.setattr(
-        "loopx.presentation.sinks.lark.explore_visual_readback.time.sleep",
+        "loopx.extensions.lark.presentation.explore_visual_readback.time.sleep",
         delays.append,
     )
 
@@ -1309,7 +1309,7 @@ def test_mermaid_visual_readback_retries_until_remote_marker_is_visible(
     query_count = 0
     delays: list[float] = []
     monkeypatch.setattr(
-        "loopx.presentation.sinks.lark.explore_visual_readback.time.sleep",
+        "loopx.extensions.lark.presentation.explore_visual_readback.time.sleep",
         delays.append,
     )
 
@@ -1379,7 +1379,7 @@ def test_mermaid_visual_publish_fails_closed_when_remote_marker_is_missing(
     config = LarkExploreConfig(base_token="PUBLIC_FIXTURE_BASE")
     bundle = build_explore_presentation_bundle(projection)
     monkeypatch.setattr(
-        "loopx.presentation.sinks.lark.explore_visual_readback.time.sleep",
+        "loopx.extensions.lark.presentation.explore_visual_readback.time.sleep",
         lambda _delay: None,
     )
 

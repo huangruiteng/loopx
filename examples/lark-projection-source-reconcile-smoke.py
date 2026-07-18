@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.presentation.sinks.lark.kanban import (  # noqa: E402
+from loopx.extensions.lark.presentation.kanban import (  # noqa: E402
     LarkKanbanConfig,
     read_lark_kanban_local_config,
     sync_loopx_projection_to_lark_kanban,

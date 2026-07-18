@@ -14,10 +14,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from loopx.presentation.sinks.lark.kanban import (  # noqa: E402
+from loopx.extensions.lark.presentation.kanban import (  # noqa: E402
     LarkKanbanConfig,
     lark_kanban_schema_payload,
     sync_loopx_projection_to_lark_kanban,
+)
+from examples.lark_extension_test_support import (  # noqa: E402
+    install_bundled_lark_extension,
 )
 
 
@@ -36,6 +39,14 @@ def main() -> int:
     repo = "public-fixture/widgets"
     with tempfile.TemporaryDirectory(prefix="loopx-issue-fix-metrics-") as tmp:
         root = Path(tmp)
+        extension_runtime = root / "runtime"
+        extension_registry = root / "registry.json"
+        extension_registry.write_text('{"goals": []}\n', encoding="utf-8")
+        install_bundled_lark_extension(
+            repo_root=ROOT,
+            registry=extension_registry,
+            runtime_root=extension_runtime,
+        )
         baseline = root / "baseline.json"
         current = root / "current.json"
         supplement = root / "supplement.json"
@@ -435,6 +446,10 @@ def main() -> int:
                 "loopx.cli",
                 "--format",
                 "json",
+                "--registry",
+                str(extension_registry),
+                "--runtime-root",
+                str(extension_runtime),
                 "lark-kanban",
                 "sync-projection",
                 "--projection-file",

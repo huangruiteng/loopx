@@ -115,6 +115,8 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
         "--goal-id",
         "lark-extension-fixture",
     )
+    kanban_schema_args = ("lark-kanban", "schema")
+    explore_schema_args = ("explore", "schema")
 
     missing = run_cli(
         registry,
@@ -130,6 +132,20 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
         expected_returncode=1,
     )
     assert "not installed" in str(reviewer_missing["error"]), reviewer_missing
+    kanban_missing = run_cli(
+        registry,
+        runtime_root,
+        *kanban_schema_args,
+        expected_returncode=1,
+    )
+    assert "not installed" in str(kanban_missing["error"]), kanban_missing
+    explore_missing = run_cli(
+        registry,
+        runtime_root,
+        *explore_schema_args,
+        expected_returncode=1,
+    )
+    assert "not installed" in str(explore_missing["error"]), explore_missing
 
     installed = run_cli(
         registry,
@@ -145,7 +161,7 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
     assert active["extension_activation"] == {
         "schema_version": "loopx_extension_activation_v0",
         "extension_id": "loopx-lark",
-        "provider_version": "1.1.0",
+        "provider_version": "1.2.0",
         "revision": installed["revision"],
         "enabled": True,
         "doctor_verified": True,
@@ -162,6 +178,16 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
             "lark.reviewer_notification.send",
         ],
     }, reviewer_active
+    kanban_active = run_cli(registry, runtime_root, *kanban_schema_args)
+    assert kanban_active["extension_activation"] == {
+        **active["extension_activation"],
+        "required_permissions": ["lark.projection_sink.use"],
+    }, kanban_active
+    explore_active = run_cli(registry, runtime_root, *explore_schema_args)
+    assert explore_active["extension_activation"] == {
+        **active["extension_activation"],
+        "required_permissions": ["lark.projection_sink.use"],
+    }, explore_active
 
     disabled = run_cli(
         registry,
@@ -186,6 +212,20 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
         expected_returncode=1,
     )
     assert "is disabled" in str(reviewer_blocked["error"]), reviewer_blocked
+    kanban_blocked = run_cli(
+        registry,
+        runtime_root,
+        *kanban_schema_args,
+        expected_returncode=1,
+    )
+    assert "is disabled" in str(kanban_blocked["error"]), kanban_blocked
+    explore_blocked = run_cli(
+        registry,
+        runtime_root,
+        *explore_schema_args,
+        expected_returncode=1,
+    )
+    assert "is disabled" in str(explore_blocked["error"]), explore_blocked
 
     enabled = run_cli(
         registry,
@@ -198,11 +238,11 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
     assert enabled["doctor"]["verified"] is True, enabled
 
     bundled_manifest = ROOT / "loopx" / "extensions" / "lark" / "extension.toml"
-    upgraded_manifest = temp / "loopx-lark-v1.1.toml"
+    upgraded_manifest = temp / "loopx-lark-v1.3.toml"
     upgraded_manifest.write_text(
         bundled_manifest.read_text(encoding="utf-8").replace(
-            'version = "1.1.0"',
             'version = "1.2.0"',
+            'version = "1.3.0"',
             1,
         ),
         encoding="utf-8",
@@ -224,6 +264,11 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
         reviewer_after_upgrade["extension_activation"]["revision"]
         == upgraded["revision"]
     )
+    kanban_after_upgrade = run_cli(registry, runtime_root, *kanban_schema_args)
+    assert (
+        kanban_after_upgrade["extension_activation"]["revision"]
+        == upgraded["revision"]
+    )
 
     rolled_back = run_cli(
         registry,
@@ -238,6 +283,11 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
     assert (
         after_rollback["extension_activation"]["revision"] == installed["revision"]
     ), after_rollback
+    kanban_after_rollback = run_cli(registry, runtime_root, *kanban_schema_args)
+    assert (
+        kanban_after_rollback["extension_activation"]["revision"]
+        == installed["revision"]
+    ), kanban_after_rollback
 
     doctor = run_cli(
         registry,
