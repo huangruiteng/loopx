@@ -1,0 +1,47 @@
+examples/control_plane/quota-agent-scoped-user-gate-smoke.py
+  s_76ee28abb3c3a4::t_357444e61947aa 45,57,124-128,136,304,310-332,339,957-958
+loopx/control_plane/quota/heartbeat_recommendation.py
+  s_32e2a9a204a8e4::t_660b8ec60b6f5b 184-191,200-207
+loopx/control_plane/quota/stall_repair.py
+  s_e3f612788718c1::t_9a35a682902cc2 22-25,61,66,156,162,169,175-180
+loopx/control_plane/todos/decision_scope.py
+  s_76ee28abb3c3a4::t_c4bad8f9c081bd 116,138-158,249-277
+loopx/control_plane/work_items/interaction_contract.py
+  s_e3f612788718c1::t_d63bef286d9f73 107-108,121-128,172-173,210-215
+tests/control_plane/test_todo_decision_scope_consistency.py
+  s_32e2a9a204a8e4::t_52e5b346f2980d 142-207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0225130b9a22ccb1097b03aff1dd24dc2a8cbacb",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
