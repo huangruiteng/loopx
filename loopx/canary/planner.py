@@ -866,7 +866,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "loopx/capabilities/issue_fix/outcome_projection.py",
             "loopx/capabilities/issue_fix/repository_memory_provider.py",
             "loopx/capabilities/context_providers/service_ownership.py",
-            "loopx/presentation/sinks/lark/projection_rows.py",
+            "loopx/extensions/lark/presentation/projection_rows.py",
             "projection_source_reconcile",
         ),
         "checks": [

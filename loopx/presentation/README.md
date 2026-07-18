@@ -25,8 +25,8 @@ Only the display side of software-exploration topology belongs here:
 
 - graph/table/card projections that only reshape public-safe explore state for
   humans may live in `loopx/presentation/projections/explore/`;
-- Lark/Feishu table sync and card output live in
-  `loopx/presentation/sinks/lark/`;
+- Lark/Feishu table sync and card output live behind the Lark extension in
+  `loopx/extensions/lark/presentation/`;
 - the core explore log, findings, and replan briefing inputs remain in the
   explore capability or a future control-plane explore/read-model boundary.
 

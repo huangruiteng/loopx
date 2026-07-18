@@ -44,8 +44,8 @@ piece:
 - display-oriented graph/table/card projections: place under
   `loopx/presentation/projections/explore/` when they are only reshaping
   public-safe explore state for humans;
-- Lark/Feishu Base sync for nodes, edges, and findings:
-  `loopx/presentation/sinks/lark/explore_results.py`;
+- Lark/Feishu Base sync for nodes, edges, and findings lives behind the Lark
+  extension in `loopx/extensions/lark/presentation/explore_results.py`;
 - CLI entry point: `loopx/cli_commands/explore.py`;
 - optional user-facing facade: `loopx/capabilities/explore/` if the command is
   marketed as a capability pack.
