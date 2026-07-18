@@ -12,6 +12,7 @@ Options:
   -h, --help  Show this help and exit.
 
 Common environment variables:
+  LOOPX_PYTHON=/path/to/python3.11  Use this supported Python for the release.
   LOOPX_PROMOTE_DEFAULT=1          Promote this checkout as the default loopx.
   LOOPX_INSTALL_CANARY=0           Skip the loopx-canary executable.
   LOOPX_INSTALL_SKILL=0            Skip packaged Codex workflow skills.
@@ -60,6 +61,33 @@ install_lock=""
 install_lock_owned=0
 legacy_line=""
 installed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+configure_python_runtime() {
+  local requested="${LOOPX_PYTHON:-python3}"
+  local resolved
+  if ! command -v "$requested" >/dev/null 2>&1; then
+    echo "loopx installer error: Python executable not found: $requested" >&2
+    echo "Set LOOPX_PYTHON to a Python 3.11+ executable." >&2
+    exit 2
+  fi
+  if ! resolved="$("$requested" - <<'PY'
+import sys
+
+if sys.version_info < (3, 11):
+    print(
+        "loopx installer error: Python 3.11+ is required; "
+        f"selected Python is {sys.version_info.major}.{sys.version_info.minor}",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+print(sys.executable)
+PY
+)"; then
+    echo "Set LOOPX_PYTHON to a Python 3.11+ executable." >&2
+    exit 2
+  fi
+  export LOOPX_PYTHON="$resolved"
+}
 
 cleanup_install_lock() {
   if [[ -n "$release_tmp" && -d "$release_tmp" ]]; then
@@ -382,6 +410,8 @@ if [[ -z "$shell_profile" ]]; then
   esac
 fi
 
+configure_python_runtime
+
 promote_default=0
 if resolve_default_promotion; then
   promote_default=1
@@ -437,6 +467,7 @@ copy_path "$repo_root/README.md" "$release_tmp/README.md"
 copy_path "$repo_root/CONTRIBUTOR_TASKS.md" "$release_tmp/CONTRIBUTOR_TASKS.md"
 copy_path "$repo_root/LICENSE" "$release_tmp/LICENSE"
 copy_path "$repo_root/pyproject.toml" "$release_tmp/pyproject.toml"
+printf '%s\n' "$LOOPX_PYTHON" >"$release_tmp/.loopx-python"
 find "$release_tmp" -name __pycache__ -type d -prune -exec rm -rf {} +
 find "$release_tmp" -name '*.pyc' -type f -delete
 if [[ -d "$release_tmp/apps" ]]; then
