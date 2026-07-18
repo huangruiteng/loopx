@@ -8,10 +8,42 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.capabilities.periodic_report import build_periodic_report_run  # noqa: E402
+from loopx.capabilities.periodic_report import (  # noqa: E402
+    build_periodic_report_run,
+    build_periodic_report_trigger_decision,
+)
 
 
 def main() -> None:
+    trigger = build_periodic_report_trigger_decision(
+        {
+            "schema_version": "periodic_report_trigger_request_v0",
+            "evaluated_at": "2026-07-20T01:00:00Z",
+            "profile": {
+                "profile_id": "sample_weekly",
+                "profile_version": "v1",
+            },
+            "trigger_policy": {
+                "enabled_kinds": ["cadence_due", "vision_closed"],
+                "minimum_interval_seconds": 21600,
+            },
+            "candidates": [
+                {
+                    "trigger_kind": "vision_closed",
+                    "observed_at": "2026-07-20T00:45:00Z",
+                    "source_ref": "vision:sample-stage",
+                    "evidence_digest": "sha256:sample-stage-closed",
+                    "facts": {
+                        "transition": "vision_closed",
+                        "acceptance": "validated",
+                        "continuation": "successor_established",
+                    },
+                }
+            ],
+        }
+    )
+    assert trigger["eligible"] is True
+    assert trigger["report_kind"] == "milestone_update"
     payload = build_periodic_report_run(
         {
             "schema_version": "periodic_report_run_request_v0",
@@ -24,6 +56,7 @@ def main() -> None:
                 "profile_id": "sample_weekly",
                 "profile_version": "v1",
             },
+            "trigger_receipt": trigger,
             "source_snapshots": [
                 {
                     "source_id": "activity",
@@ -59,6 +92,7 @@ def main() -> None:
     )
     assert payload["schema_version"] == "periodic_report_v0"
     assert payload["run_state"]["status"] == "pending"
+    assert payload["trigger_receipt"]["report_kind"] == "milestone_update"
     assert payload["boundary"]["provider_neutral"] is True
     print(payload["run_id"])
 

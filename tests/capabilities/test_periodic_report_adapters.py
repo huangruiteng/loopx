@@ -13,6 +13,7 @@ from loopx.capabilities.periodic_report import (
     build_periodic_report_archive_bundle,
     build_periodic_report_document,
     build_periodic_report_source_result,
+    build_periodic_report_trigger_decision,
 )
 from loopx.presentation.renderers.periodic_report_markdown import (
     periodic_report_markdown_renderer_adapter,
@@ -305,6 +306,27 @@ def test_archive_bundle_keeps_resource_history_separate_from_memory() -> None:
     calls: list[str] = []
     registry = _registry(calls=calls)
     source = registry.collect("issue_fix", _issue_fix_projection())
+    trigger = build_periodic_report_trigger_decision(
+        {
+            "schema_version": "periodic_report_trigger_request_v0",
+            "evaluated_at": "2026-07-20T01:00:00Z",
+            "profile": {"profile_id": "maintenance", "profile_version": "v1"},
+            "trigger_policy": {"enabled_kinds": ["vision_closed"]},
+            "candidates": [
+                {
+                    "trigger_kind": "vision_closed",
+                    "observed_at": "2026-07-20T00:50:00Z",
+                    "source_ref": "vision:maintenance-stage",
+                    "evidence_digest": "sha256:maintenance-stage-closed",
+                    "facts": {
+                        "transition": "vision_closed",
+                        "acceptance": "validated",
+                        "continuation": "successor_established",
+                    },
+                }
+            ],
+        }
+    )
     document = build_periodic_report_document(
         title="Weekly maintenance",
         generated_at="2026-07-20T01:00:00Z",
@@ -314,6 +336,7 @@ def test_archive_bundle_keeps_resource_history_separate_from_memory() -> None:
         },
         profile={"profile_id": "maintenance", "profile_version": "v1"},
         sources=[source],
+        trigger_receipt=trigger,
     )
     artifact = registry.render("markdown_v0", document)
     context = _archive_context(document, execute=False)
@@ -332,6 +355,7 @@ def test_archive_bundle_keeps_resource_history_separate_from_memory() -> None:
     assert bundle["manifest"]["source_snapshots"][0]["source_id"] == "issue_fix"
     assert bundle["manifest"]["title"] == "Weekly maintenance"
     assert bundle["manifest"]["delivery_receipts"][0]["sink_id"] == "lark_delivery"
+    assert bundle["manifest"]["trigger_receipt"]["report_kind"] == ("milestone_update")
     assert bundle["boundary"]["project_resource_is_history_source_of_truth"] is True
     assert bundle["memory_reference"] == {
         "schema_version": "periodic_report_memory_reference_v0",
