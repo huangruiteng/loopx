@@ -1,0 +1,25 @@
+examples/issue-fix-pr-lifecycle-smoke.py
+  s_32e2a9a204a8e4::t_6426625b98ab7f 321-324,496-497,549-553
+loopx/capabilities/issue_fix/pr_gate_reconcile.py
+  s_32e2a9a204a8e4::t_8d2f191955f620 37,118,137
+loopx/capabilities/issue_fix/pr_gate_reconcile_cli.py
+  s_32e2a9a204a8e4::t_648740558bc036 46-54,119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d2df4cc236dfa98eff0db20ad2e04c82d44344cb",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
