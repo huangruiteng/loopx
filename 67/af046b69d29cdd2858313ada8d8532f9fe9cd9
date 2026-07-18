@@ -1,0 +1,27 @@
+examples/control_plane/lark-inbox-priority-smoke.py
+  s_32e2a9a204a8e4::t_7ee120211dd8f6 18,151-155,225-227,241-245
+examples/lark-extension-activation-smoke.py
+  s_32e2a9a204a8e4::t_17966160d14672 120-125,155-160,176,203-210,249-254,267,271
+tests/architecture/test_control_plane_import_boundaries.py
+  s_32e2a9a204a8e4::t_38514e576e9a95 12-15,116-133,135-138
+tests/extensions/test_lark_urgency_composition.py
+  s_32e2a9a204a8e4::t_bf7510948b3ba9 1-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "67af046b69d29cdd2858313ada8d8532f9fe9cd9",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
