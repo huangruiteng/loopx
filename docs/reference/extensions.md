@@ -224,6 +224,10 @@ distribution and service setup to explicit operator-owned workflows.
 Provider migration follows the same direction. Core routing consumes compact
 provider-neutral read models, while provider packages own collection, transport,
 credentials, and external effects. For example, quota reads
-`operator_inbox_urgency_v0`; the current Lark inbox API is a compatibility
-delegate and preserves its existing CLI and work-lane output until a later
-provider-file move has independent parity evidence.
+`operator_inbox_urgency_v0`. Lark inbox collection, reply transport, and
+provider-owned configuration live under `loopx/extensions/lark/`; the existing
+`loopx lark-inbox` command remains a direct compatibility delegate while the
+activation protocol is introduced in a separate, behavior-preserving slice.
+The former `loopx.capabilities.lark` provider imports are intentionally removed
+instead of kept as wrappers. Presentation sinks remain in their current owner
+until their broader CLI and projection parity surface is characterized.
