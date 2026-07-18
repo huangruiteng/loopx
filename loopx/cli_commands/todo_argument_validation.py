@@ -49,6 +49,8 @@ TODO_OPTION_FIELDS = (
     ("--next-claimed-by", "next_claimed_by"),
     ("--next-task-class", "next_task_class"),
     ("--next-action-kind", "next_action_kind"),
+    ("--next-task-repository", "next_task_repository"),
+    ("--next-required-capability", "next_required_capabilities"),
     ("--next-continuation-policy", "next_continuation_policy"),
     ("--next-excluded-agent", "next_excluded_agents"),
     ("--self-merged", "self_merged"),
