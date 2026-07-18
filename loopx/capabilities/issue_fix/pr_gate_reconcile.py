@@ -34,6 +34,7 @@ def reconcile_issue_fix_pr_gate(
     runtime_root_arg: str | None,
     goal_id: str,
     todo_id: str,
+    agent_id: str | None = None,
     project: Path,
     url: str,
     provider_payload: Mapping[str, Any] | None = None,
@@ -114,6 +115,7 @@ def reconcile_issue_fix_pr_gate(
             goal_id=goal_id,
             todo_id=todo_id,
             role="user",
+            agent_id=agent_id,
             decision_outcome="approve" if state == "MERGED" else "cancel",
             note=(
                 f"Public PR lifecycle reached terminal state {state}; "
@@ -132,6 +134,7 @@ def reconcile_issue_fix_pr_gate(
             "status": completion.get("status"),
             "status_changed": completion.get("status_changed"),
             "metadata_updated": completion.get("metadata_updated"),
+            "mutation_authority": completion.get("mutation_authority"),
         }
     if state == "MERGED":
         receipt["rollout_event"] = append_pr_merge_rollout_event(

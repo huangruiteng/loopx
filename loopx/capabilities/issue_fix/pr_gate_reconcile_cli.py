@@ -44,6 +44,15 @@ def register_pr_gate_reconciliation_command(
         help="User gate todo id whose decision_scope is merge_pr_<number>.",
     )
     parser.add_argument(
+        "--agent-id",
+        default=None,
+        help=(
+            "Registered lifecycle actor completing an unlinked merge gate in "
+            "a multi-agent goal. Exactly linked user gates retain the typed "
+            "controller override."
+        ),
+    )
+    parser.add_argument(
         "--project",
         default=".",
         help="Project root containing the goal state.",
@@ -107,6 +116,7 @@ def build_pr_gate_reconciliation_from_args(
         runtime_root_arg=runtime_root_arg,
         goal_id=args.goal_id,
         todo_id=args.todo_id,
+        agent_id=args.agent_id,
         project=Path(args.project).expanduser(),
         url=args.url,
         provider_payload=(

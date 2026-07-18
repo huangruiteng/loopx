@@ -318,6 +318,10 @@ def main() -> int:
                                 "kind": "read_only_project_map_v0",
                                 "status": "connected-read-only",
                             },
+                            "coordination": {
+                                "agent_model": "peer_v1",
+                                "registered_agents": ["codex-test", "codex-review"],
+                            },
                         }
                     ],
                 }
@@ -489,6 +493,8 @@ def main() -> int:
             "example-goal",
             "--todo-id",
             "todo_merge_gate_1716",
+            "--agent-id",
+            "codex-test",
             "--project",
             str(project),
         ]
@@ -540,6 +546,11 @@ def main() -> int:
         assert reconciled_gate["reconciled"] is True, reconciled_gate
         assert reconciled_gate["write_performed"] is True, reconciled_gate
         assert reconciled_gate["todo_completion"]["status"] == "done", reconciled_gate
+        mutation_authority = reconciled_gate["todo_completion"][
+            "mutation_authority"
+        ]
+        assert mutation_authority["mode"] == "registered_peer_actor", reconciled_gate
+        assert mutation_authority["actor_agent_id"] == "codex-test", reconciled_gate
         assert reconciled_gate["rollout_event"]["appended"] is True, reconciled_gate
         assert "status=done" in state_file.read_text(encoding="utf-8")
         gate_projection = parse_active_state_todos(
