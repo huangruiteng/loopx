@@ -1,0 +1,21 @@
+loopx/authority.py
+  s_ce78287262030e::t_643d6a1545c666 51-57,155-171,443,593,745-749,824
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3315455c4197af2f9a5cea077453f4adcef0c4fa",
+  "prompts": {},
+  "sessions": {
+    "s_ce78287262030e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7515-a03a-7322-9902-2e203d31cc54",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
