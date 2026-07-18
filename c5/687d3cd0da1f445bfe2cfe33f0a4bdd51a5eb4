@@ -1,0 +1,21 @@
+examples/control_plane/peer-agent-workspace-guard-smoke.py
+  s_ce78287262030e::t_99fbf3878009ac 172-173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c5687d3cd0da1f445bfe2cfe33f0a4bdd51a5eb4",
+  "prompts": {},
+  "sessions": {
+    "s_ce78287262030e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7515-a03a-7322-9902-2e203d31cc54",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
