@@ -33,6 +33,8 @@ The projection is derived from:
 - quota `agent_lane_next_action`, `interaction_contract`, and scheduler hints;
 - compact run history and the agent-scoped evidence ledger;
 - task graph, handoff, and review-packet projections when present.
+- optional prebuilt `agent_material_frontier_v0` packets on the cold-path
+  `agent_material_frontiers` input.
 
 The projection is stale after any lifecycle event until recomputed. Consumers
 must tolerate missing fields and fall back to existing status/review-packet
@@ -106,6 +108,8 @@ Optional fields:
 - `scheduler_state`;
 - `workspace_ref`;
 - `handoff_refs`;
+- `handoff_note`;
+- `material_frontier`;
 - `stale_claim_hint`;
 - `blocked_on`;
 - `recent_events`;
@@ -155,7 +159,8 @@ model.
 ## Handoff Notes
 
 Inter-agent handoff should appear as a typed note attached to existing todo,
-history, and evidence refs:
+history, and evidence refs. Rows without material context retain the existing
+`handoff_note_v0` shape:
 
 ```json
 {
@@ -183,6 +188,46 @@ introducing a second task model.
 The projection may show the latest handoff note in the agent row, but the note
 does not create a chat stream, dispatcher queue, approval mechanism, or runtime
 task separate from the source todo.
+
+When the cold path also receives a full `agent_material_frontier_v0` for the
+same agent, the management projection may enrich the typed note as
+`handoff_note_v1`:
+
+```json
+{
+  "schema_version": "handoff_note_v1",
+  "handoff_id": "handoff_123",
+  "todo_id": "todo_abc",
+  "from_agent": "codex-builder",
+  "to_agent": "codex-reviewer",
+  "material_frontier_summary": {
+    "required_count": 5,
+    "current_count": 1,
+    "stale_count": 1,
+    "missing_count": 0,
+    "inaccessible_count": 1,
+    "required_unread_count": 2
+  },
+  "material_ref_count": 5,
+  "material_refs": [
+    {
+      "material_id": "runtime-contract",
+      "relation": "required",
+      "purpose": "review the current contract"
+    }
+  ],
+  "material_refs_truncated": true
+}
+```
+
+`material_frontier` on the agent row uses the same bounded summary/ref shape
+with `schema_version=agent_material_handoff_projection_v0`. At most four refs
+are exposed. The projection never forwards receipts,
+observed or required revisions, boundary availability, gate state, permissions,
+authority ownership, or source bodies. A successor rebuilds its own frontier
+from current goal authority and its own agent-scoped requirements and receipts.
+The optional cold-path input does not create an agent row, claim, or task by
+itself.
 
 ## Stale Claim Hint
 

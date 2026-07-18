@@ -6,6 +6,11 @@ from ..runtime.public_safety import public_safe_compact_text
 from ..runtime.time import now_utc, now_utc_iso, parse_timestamp
 from ..todos.contract import normalize_todo_claimed_by, normalize_todo_id
 from ..todos.summary_item import TODO_SUMMARY_SOURCE_KEYS
+from .material_frontier import AGENT_MATERIAL_FRONTIER_SCHEMA_VERSION
+from .material_handoff import (
+    build_material_handoff_note_v1,
+    project_material_frontier_for_handoff,
+)
 
 
 AGENT_MANAGEMENT_PROJECTION_SCHEMA_VERSION = "agent_management_projection_v0"
@@ -182,6 +187,25 @@ def _registered_agents(status_payload: dict[str, Any]) -> dict[str, dict[str, An
             if goal_id and goal_id not in row["_goal_ids"]:
                 row["_goal_ids"].append(goal_id)
     return rows
+
+
+def _agent_material_frontiers(status_payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    raw_frontiers = status_payload.get("agent_material_frontiers")
+    if isinstance(raw_frontiers, dict):
+        candidates = list(raw_frontiers.values())
+    else:
+        candidates = _as_list(raw_frontiers)
+
+    frontiers: dict[str, dict[str, Any]] = {}
+    for raw in candidates:
+        if not isinstance(raw, dict):
+            continue
+        if str(raw.get("schema_version") or "") != AGENT_MATERIAL_FRONTIER_SCHEMA_VERSION:
+            continue
+        agent_id = normalize_todo_claimed_by(raw.get("agent_id"))
+        if agent_id:
+            frontiers[agent_id] = raw
+    return frontiers
 
 
 def _iter_todo_group_items(
@@ -455,6 +479,7 @@ def build_agent_management_projection(status_payload: dict[str, Any]) -> dict[st
     """
 
     rows_by_agent = _registered_agents(status_payload)
+    material_frontiers = _agent_material_frontiers(status_payload)
     seen_todos: set[tuple[str, str, str, str]] = set()
     for todo in _iter_status_todos(status_payload):
         agent_id = _todo_agent_id(todo)
@@ -512,6 +537,17 @@ def build_agent_management_projection(status_payload: dict[str, Any]) -> dict[st
             "handoff_refs": handoff_refs[:MAX_REFS],
             "goal_ids": _as_list(raw_row.get("_goal_ids"))[:MAX_REFS],
         }
+        material_frontier = material_frontiers.get(agent_id)
+        if material_frontier:
+            agent_row["material_frontier"] = project_material_frontier_for_handoff(
+                material_frontier
+            )
+            handoff_note = _as_dict(current.get("handoff_note")) if current else {}
+            if handoff_note:
+                agent_row["handoff_note"] = build_material_handoff_note_v1(
+                    handoff_note,
+                    material_frontier,
+                )
         workspace_ref = _workspace_ref_from_todo(current)
         if workspace_ref:
             agent_row["workspace_ref"] = workspace_ref
@@ -531,6 +567,17 @@ def build_agent_management_projection(status_payload: dict[str, Any]) -> dict[st
             break
 
     goal_filter = _compact(status_payload.get("goal_filter"), limit=180)
+    source_summary: dict[str, Any] = {
+        "registered_agent_count": len(rows_by_agent),
+        "projected_agent_count": len(agents),
+        "todo_source": (
+            "status.attention_queue + authoritative status.todo_index rows; "
+            "event-only rollout receipts are evidence, not runtime work"
+        ),
+    }
+    if material_frontiers:
+        source_summary["material_frontier_count"] = len(material_frontiers)
+
     projection: dict[str, Any] = {
         "schema_version": AGENT_MANAGEMENT_PROJECTION_SCHEMA_VERSION,
         "mode": AGENT_MANAGEMENT_MODE,
@@ -542,14 +589,7 @@ def build_agent_management_projection(status_payload: dict[str, Any]) -> dict[st
             "introduces_task_runtime": False,
             "write_api": False,
         },
-        "source_summary": {
-            "registered_agent_count": len(rows_by_agent),
-            "projected_agent_count": len(agents),
-            "todo_source": (
-                "status.attention_queue + authoritative status.todo_index rows; "
-                "event-only rollout receipts are evidence, not runtime work"
-            ),
-        },
+        "source_summary": source_summary,
         "agents": agents,
     }
     return {

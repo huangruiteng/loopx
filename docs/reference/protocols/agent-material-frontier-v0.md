@@ -102,18 +102,42 @@ stable id, outcome, and timestamp fails closed.
 
 ## Handoff Semantics
 
-A successor may receive the same required material ids through handoff, then
-rebuild its own frontier from goal authority. The predecessor's receipt does
-not make the successor current, and the handoff does not transfer source
-permissions or authority ownership.
+A successor may receive a bounded set of material refs through handoff, then
+rebuild its own complete frontier from goal authority plus its profile, todo,
+and vision requirements. The predecessor's receipt does not make the successor
+current, and the handoff does not transfer source permissions or authority
+ownership.
 
 This supports durable handoff without introducing a dispatcher or an
 agent-owned material cache.
 
+The bounded handoff projection emits:
+
+- `schema_version=agent_material_handoff_projection_v0`;
+- the six frontier summary counts;
+- `material_ref_count` and `material_refs_truncated`;
+- at most four refs containing only `material_id`, `relation`, and optional
+  public-safe `purpose`.
+
+It deliberately omits observed and required revisions, receipt refs,
+boundaries, gate status, authority metadata, and available permissions. The
+bounded refs are context, not a complete material manifest. A successor uses
+its own profile, todo, vision, and handoff requirements to rebuild the full
+frontier against current goal authority.
+
+When a typed `handoff_note_v0` and a full frontier are both present, the agent
+read-model layer may emit `handoff_note_v1` by attaching
+`material_frontier_summary` and the bounded refs. The legacy todo handoff
+producer remains unchanged for rows without a frontier.
+
 ## Current Delivery Boundary
 
-The current implementation is a pure cold-path read model. It intentionally
-does not add:
+The implementation includes the pure frontier builder, a bounded material
+handoff projector, and an optional agent-management cold-path consumer. The
+consumer reads prebuilt packets from `status.agent_material_frontiers`; it does
+not load canonical authority or material bodies by itself.
+
+The implementation intentionally does not add:
 
 - profile/todo material-requirement authoring commands;
 - a material body cache;
@@ -121,10 +145,6 @@ does not add:
 - automatic authorization or gate creation;
 - a cross-agent dispatcher;
 - an MA- or runtime-specific field.
-
-Later integrations may attach the bounded summary and up to a few refs to
-agent-management or handoff projections. Those integrations must continue to
-resolve revisions and boundaries from goal authority.
 
 ## Acceptance Checks
 
