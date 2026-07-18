@@ -24,7 +24,7 @@ def _items(value: object) -> list[dict[str, Any]]:
 
 
 def _safe(value: object, *, maximum: int) -> str:
-    return redact_public_text(value, limit=maximum)
+    return str(redact_public_text(value, limit=maximum))
 
 
 def render_periodic_report_markdown(

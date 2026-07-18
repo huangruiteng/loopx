@@ -213,6 +213,11 @@ def build_periodic_report_archive_bundle(
         "document_digest": document_digest,
         "content_digest": content_digest,
     }
+    if trigger_receipt is not None and any(
+        trigger_receipt["profile"].get(key) != identity[key]
+        for key in ("profile_id", "profile_version")
+    ):
+        raise ValueError("trigger_receipt.profile must match the document profile")
     archive_id = (
         f"report_{hashlib.sha256(_canonical_json(identity).encode()).hexdigest()[:24]}"
     )

@@ -130,6 +130,14 @@ def test_report_window_uses_chronological_timestamp_order() -> None:
         build_periodic_report_run(request)
 
 
+def test_fractional_retry_policy_integer_is_rejected() -> None:
+    request = _request()
+    request["retry_policy"] = {"attempt": 1.9, "max_attempts": 3}
+
+    with pytest.raises(ValueError, match="must be an integer"):
+        build_periodic_report_run(request)
+
+
 def test_success_requires_exact_sink_idempotency_and_readback() -> None:
     payload = build_periodic_report_run(_successful_request())
 

@@ -9,6 +9,7 @@ from loopx.capabilities.issue_fix.periodic_report import (
 )
 from loopx.capabilities.periodic_report import (
     PeriodicReportAdapterRegistry,
+    PeriodicReportSinkAdapter,
     PeriodicReportSourceAdapter,
     build_periodic_report_archive_bundle,
     build_periodic_report_document,
@@ -344,6 +345,115 @@ def test_registry_rejects_renderer_artifact_for_another_document() -> None:
         registry.render("stale_v0", document)
 
 
+def test_registry_snapshots_document_before_custom_renderer_mutation() -> None:
+    source = build_periodic_report_source_result(
+        source_id="release_notes",
+        source_kind="release_activity",
+        status="complete",
+        observed_at="2026-07-20T00:40:00Z",
+        sections=[],
+    )
+    document = build_periodic_report_document(
+        title="Original report",
+        generated_at="2026-07-20T01:00:00Z",
+        period_window={
+            "start_at": "2026-07-13T00:00:00Z",
+            "end_at": "2026-07-20T00:00:00Z",
+        },
+        profile={"profile_id": "maintenance", "profile_version": "v1"},
+        sources=[source],
+    )
+
+    def mutating_renderer(payload: dict[str, Any]) -> dict[str, Any]:
+        payload["title"] = "Mutated report"
+        rendered = periodic_report_markdown_renderer_adapter().render(payload)
+        return {**rendered, "renderer_id": "mutating_v0"}
+
+    registry = PeriodicReportAdapterRegistry()
+    registry.register_renderer(
+        PeriodicReportRendererAdapter(
+            renderer_id="mutating_v0",
+            renderer_kind="markdown",
+            render=mutating_renderer,
+        )
+    )
+
+    with pytest.raises(ValueError, match="does not match document"):
+        registry.render("mutating_v0", document)
+    assert document["title"] == "Original report"
+
+
+def test_registry_rejects_stale_sent_sink_idempotency_key() -> None:
+    registry = PeriodicReportAdapterRegistry()
+    registry.register_sink(
+        PeriodicReportSinkAdapter(
+            sink_id="custom_delivery",
+            sink_kind="message_channel",
+            sink_role="delivery",
+            deliver=lambda _artifact, _context: {
+                "schema_version": "periodic_report_sink_result_v0",
+                "sink_id": "custom_delivery",
+                "sink_kind": "message_channel",
+                "sink_role": "delivery",
+                "status": "sent",
+                "idempotency_key": "stale-key",
+                "receipt_ref": "message:123",
+                "readback_verified": True,
+                "schedule_policy_applied": False,
+                "business_evidence_judged": False,
+            },
+        )
+    )
+    artifact = {
+        "schema_version": "periodic_report_artifact_v0",
+        "artifact_id": "report",
+        "renderer_id": "markdown_v0",
+        "renderer_kind": "markdown",
+        "artifact_ref": "artifact:report",
+        "content": "# Report",
+        "content_digest": "sha256:04e1d1467e73933d8841c0c22eca9710ee72d020f5d494b091d68d4d2efea89d",
+        "document_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "boundary": {
+            "schedule_policy_applied": False,
+            "business_evidence_judged": False,
+            "external_writes_performed": False,
+        },
+    }
+
+    with pytest.raises(ValueError, match="must match the delivery context"):
+        registry.deliver(
+            "custom_delivery",
+            artifact,
+            {"idempotency_key": "fresh-key"},
+        )
+
+
+def test_source_result_rejects_fractional_ranking_integer() -> None:
+    with pytest.raises(ValueError, match="must be an integer"):
+        build_periodic_report_source_result(
+            source_id="release_notes",
+            source_kind="release_activity",
+            status="complete",
+            observed_at="2026-07-20T00:40:00Z",
+            sections=[
+                {
+                    "section_id": "completed",
+                    "title": "Completed",
+                    "order": 10,
+                    "items": [
+                        {
+                            "item_id": "release",
+                            "title": "Release",
+                            "summary": "Released.",
+                            "value_rank": 1.5,
+                            "status": "published",
+                        }
+                    ],
+                }
+            ],
+        )
+
+
 def test_document_window_uses_chronological_timestamp_order() -> None:
     source = build_periodic_report_source_result(
         source_id="release_notes",
@@ -405,6 +515,46 @@ def test_archive_bundle_rejects_artifact_for_another_document() -> None:
             artifact=stale_artifact,
             document=document,
             archive_root_uri="viking://resources/reports",
+        )
+
+
+def test_document_rejects_trigger_receipt_for_another_profile() -> None:
+    source = build_periodic_report_source_result(
+        source_id="release_notes",
+        source_kind="release_activity",
+        status="complete",
+        observed_at="2026-07-20T00:40:00Z",
+        sections=[],
+    )
+    trigger = build_periodic_report_trigger_decision(
+        {
+            "schema_version": "periodic_report_trigger_request_v0",
+            "evaluated_at": "2026-07-20T01:00:00Z",
+            "profile": {"profile_id": "another", "profile_version": "v1"},
+            "trigger_policy": {"enabled_kinds": ["manual"]},
+            "candidates": [
+                {
+                    "trigger_kind": "manual",
+                    "observed_at": "2026-07-20T00:40:00Z",
+                    "source_ref": "manual:another",
+                    "evidence_digest": "sha256:another",
+                    "facts": {"authorized": True},
+                }
+            ],
+        }
+    )
+
+    with pytest.raises(ValueError, match="must match the document profile"):
+        build_periodic_report_document(
+            title="Current report",
+            generated_at="2026-07-20T01:00:00Z",
+            period_window={
+                "start_at": "2026-07-13T00:00:00Z",
+                "end_at": "2026-07-20T00:00:00Z",
+            },
+            profile={"profile_id": "maintenance", "profile_version": "v1"},
+            sources=[source],
+            trigger_receipt=trigger,
         )
 
 

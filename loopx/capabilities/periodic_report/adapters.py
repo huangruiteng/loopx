@@ -91,6 +91,8 @@ def _integer(
         raise ValueError(f"{label} must be an integer")
     if not isinstance(value, (str, bytes, bytearray, int, float)):
         raise ValueError(f"{label} must be an integer")
+    if isinstance(value, float) and not value.is_integer():
+        raise ValueError(f"{label} must be an integer")
     try:
         result = int(value)
     except (TypeError, ValueError) as exc:
@@ -346,17 +348,23 @@ def build_periodic_report_document(
         )
 
     normalized_trigger = _normalize_trigger_receipt(trigger_receipt)
+    normalized_profile = {
+        "profile_id": _token(profile.get("profile_id"), "profile.profile_id"),
+        "profile_version": _token(
+            profile.get("profile_version"), "profile.profile_version"
+        ),
+    }
+    if normalized_trigger is not None and any(
+        normalized_trigger["profile"].get(key) != value
+        for key, value in normalized_profile.items()
+    ):
+        raise ValueError("trigger_receipt.profile must match the document profile")
     document = {
         "schema_version": DOCUMENT_SCHEMA,
         "title": _text(title, "title", maximum=200),
         "generated_at": _timestamp(generated_at, "generated_at"),
         "period_window": {"start_at": start_at, "end_at": end_at},
-        "profile": {
-            "profile_id": _token(profile.get("profile_id"), "profile.profile_id"),
-            "profile_version": _token(
-                profile.get("profile_version"), "profile.profile_version"
-            ),
-        },
+        "profile": normalized_profile,
         "source_snapshots": [
             {
                 key: source[key]
@@ -542,11 +550,19 @@ class PeriodicReportAdapterRegistry:
         adapter = self._renderers.get(renderer_id)
         if adapter is None:
             raise ValueError(f"unknown periodic report renderer {renderer_id!r}")
+        canonical_document = json.dumps(
+            document,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        expected_document = json.loads(canonical_document)
+        renderer_document = json.loads(canonical_document)
         return _normalize_artifact_result(
-            adapter.render(document),
+            adapter.render(renderer_document),
             expected_renderer_id=adapter.renderer_id,
             expected_renderer_kind=adapter.renderer_kind,
-            expected_document=document,
+            expected_document=expected_document,
         )
 
     def deliver(
@@ -576,10 +592,20 @@ class PeriodicReportAdapterRegistry:
             raise ValueError("sink must not apply schedule policy")
         if result.get("business_evidence_judged") is not False:
             raise ValueError("sink must not judge business evidence")
-        if status == "sent" and not (
-            result.get("receipt_ref") and result.get("readback_verified") is True
-        ):
-            raise ValueError("sent sink result requires receipt_ref and readback")
+        if status == "sent":
+            expected_idempotency_key = _text(
+                context.get("idempotency_key"),
+                "context.idempotency_key",
+                maximum=128,
+            )
+            if result.get("idempotency_key") != expected_idempotency_key:
+                raise ValueError(
+                    "sent sink result idempotency_key must match the delivery context"
+                )
+            if not (
+                result.get("receipt_ref") and result.get("readback_verified") is True
+            ):
+                raise ValueError("sent sink result requires receipt_ref and readback")
         _reject_private_fields(result, "sink_result")
         return result
 

@@ -65,6 +65,7 @@ def _run_request(trigger_receipt: dict[str, object]) -> dict[str, object]:
         "profile": {
             "profile_id": "project_digest",
             "profile_version": "v1",
+            "profile_ref": "profile:project-digest/v1",
         },
         "trigger_receipt": trigger_receipt,
         "source_snapshots": [
@@ -149,6 +150,42 @@ def test_future_fractional_trigger_is_rejected_chronologically() -> None:
     )
 
     with pytest.raises(ValueError, match="must not be in the future"):
+        build_periodic_report_trigger_decision(request)
+
+
+def test_equal_priority_triggers_are_sorted_by_parsed_timestamp() -> None:
+    early = _candidate(
+        "manual",
+        source_ref="manual:early",
+        evidence_digest="sha256:early",
+        facts={"authorized": True},
+        observed_at="2026-07-20T00:00:00Z",
+    )
+    later = _candidate(
+        "manual",
+        source_ref="manual:later",
+        evidence_digest="sha256:later",
+        facts={"authorized": True},
+        observed_at="2026-07-20T00:00:00.100000Z",
+    )
+    early_only = build_periodic_report_trigger_decision(_trigger_request(early))
+    combined = build_periodic_report_trigger_decision(_trigger_request(later, early))
+
+    assert combined["selected_trigger_id"] == early_only["selected_trigger_id"]
+
+
+def test_fractional_trigger_policy_integer_is_rejected() -> None:
+    request = _trigger_request(
+        _candidate(
+            "cadence_due",
+            source_ref="scheduler:weekly-window/2026-w29",
+            evidence_digest="sha256:weekly-due",
+            facts={"due": True},
+        )
+    )
+    request["trigger_policy"]["minimum_interval_seconds"] = 0.9  # type: ignore[index]
+
+    with pytest.raises(ValueError, match="must be an integer"):
         build_periodic_report_trigger_decision(request)
 
 
@@ -292,6 +329,15 @@ def test_trigger_receipt_participates_in_run_identity_and_cli(tmp_path, capsys) 
     assert cadence_run["run_id"] != milestone_run["run_id"]
     assert cadence_run["trigger_receipt"]["report_kind"] == "cadence_digest"
     assert milestone_run["trigger_receipt"]["report_kind"] == "milestone_update"
+
+    mismatched = _run_request(cadence)
+    mismatched["profile"] = {
+        "profile_id": "another_project",
+        "profile_version": "v1",
+        "profile_ref": "profile:another-project/v1",
+    }
+    with pytest.raises(ValueError, match="must match the run profile"):
+        build_periodic_report_run(mismatched)
 
     request_path = tmp_path / "trigger.json"
     request_path.write_text(

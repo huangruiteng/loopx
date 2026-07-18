@@ -97,6 +97,8 @@ def _integer(
         raise ValueError(f"{label} must be an integer")
     if not isinstance(value, (str, bytes, bytearray, int, float)):
         raise ValueError(f"{label} must be an integer")
+    if isinstance(value, float) and not value.is_integer():
+        raise ValueError(f"{label} must be an integer")
     try:
         number = int(value)
     except (TypeError, ValueError) as exc:
@@ -273,6 +275,7 @@ def _normalize_trigger_receipt(raw: object) -> dict[str, Any] | None:
     return {
         "schema_version": schema_version,
         "eligible": True,
+        "profile": _normalize_profile(receipt.get("profile")),
         "decision_id": _token(
             receipt.get("decision_id"), "trigger_receipt.decision_id"
         ),
@@ -549,6 +552,8 @@ def build_periodic_report_run(request: Mapping[str, Any]) -> dict[str, Any]:
     period_window = _normalize_window(payload.get("period_window"))
     profile = _normalize_profile(payload.get("profile"))
     trigger_receipt = _normalize_trigger_receipt(payload.get("trigger_receipt"))
+    if trigger_receipt is not None and trigger_receipt["profile"] != profile:
+        raise ValueError("trigger_receipt.profile must match the run profile")
     sources = _normalize_sources(payload.get("source_snapshots"))
     retry_policy = _normalize_retry_policy(payload.get("retry_policy", {}))
     artifact = _normalize_artifact(

@@ -284,7 +284,7 @@ def _normalize_candidates(raw: object, evaluated_at: str) -> list[dict[str, Any]
         candidates,
         key=lambda item: (
             -_TRIGGER_PRIORITY.get(str(item["trigger_kind"]), 0),
-            str(item["observed_at"]),
+            datetime.fromisoformat(str(item["observed_at"]).replace("Z", "+00:00")),
             str(item["trigger_id"]),
         ),
     )
