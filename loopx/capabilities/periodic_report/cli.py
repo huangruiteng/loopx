@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .core import build_periodic_report_run
+from .triggers import build_periodic_report_trigger_decision
 
 
 PrintPayload = Callable[
@@ -47,11 +48,33 @@ def register_periodic_report_commands(
         required=True,
         help="Path to periodic_report_run_request_v0 JSON; use '-' for stdin.",
     )
+    evaluate = commands.add_parser(
+        "evaluate-trigger",
+        help="Evaluate cadence and material progress triggers without effects.",
+    )
+    add_subcommand_format(evaluate)
+    evaluate.add_argument(
+        "--request-json",
+        required=True,
+        help="Path to periodic_report_trigger_request_v0 JSON; use '-' for stdin.",
+    )
 
 
 def render_periodic_report_markdown(payload: dict[str, object]) -> str:
     if not payload.get("ok"):
         return f"# Periodic Report Error\n\n- error: {payload.get('error')}\n"
+    if payload.get("schema_version") == "periodic_report_trigger_decision_v0":
+        return "\n".join(
+            [
+                f"# Periodic Report Trigger `{payload.get('decision_id')}`",
+                "",
+                f"- eligible: `{payload.get('eligible')}`",
+                f"- reason: `{payload.get('reason')}`",
+                f"- report_kind: `{payload.get('report_kind')}`",
+                f"- report_key: `{payload.get('report_key')}`",
+                "",
+            ]
+        )
     run_state = payload.get("run_state")
     retry = payload.get("retry")
     state = run_state if isinstance(run_state, dict) else {}
@@ -78,7 +101,11 @@ def handle_periodic_report_command(
     if args.command != "periodic-report":
         return None
     try:
-        payload = build_periodic_report_run(_load_json_object(args.request_json))
+        request = _load_json_object(args.request_json)
+        if args.periodic_report_command == "evaluate-trigger":
+            payload = build_periodic_report_trigger_decision(request)
+        else:
+            payload = build_periodic_report_run(request)
     except Exception as exc:
         payload = {
             "ok": False,

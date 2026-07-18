@@ -10,12 +10,19 @@ from typing import Any
 
 REQUEST_SCHEMA = "periodic_report_run_request_v0"
 RUN_SCHEMA = "periodic_report_v0"
+TRIGGER_DECISION_SCHEMA = "periodic_report_trigger_decision_v0"
 
 _TOKEN_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,127}$")
 _SOURCE_STATUSES = {"complete", "partial", "failed", "unknown"}
 _ARTIFACT_STATUSES = {"pending", "rendered", "failed", "unknown"}
 _SINK_STATUSES = {"pending", "sent", "failed", "skipped", "unknown"}
 _SINK_ROLES = {"archive", "delivery"}
+_REPORT_KINDS = {
+    "cadence_digest",
+    "exception_update",
+    "manual_update",
+    "milestone_update",
+}
 _FORBIDDEN_RAW_KEYS = {
     "credential",
     "credentials",
@@ -173,13 +180,9 @@ def _normalize_sources(raw: object) -> list[dict[str, Any]]:
             raise ValueError(f"{label}.status is invalid")
         snapshot: dict[str, Any] = {
             "source_id": source_id,
-            "source_kind": _token(
-                item.get("source_kind"), f"{label}.source_kind"
-            ),
+            "source_kind": _token(item.get("source_kind"), f"{label}.source_kind"),
             "status": status,
-            "retryable": _boolean(
-                item.get("retryable"), f"{label}.retryable"
-            ),
+            "retryable": _boolean(item.get("retryable"), f"{label}.retryable"),
         }
         observed_at = item.get("observed_at")
         snapshot_digest = _optional_text(
@@ -198,9 +201,7 @@ def _normalize_sources(raw: object) -> list[dict[str, Any]]:
                     f"{label}.observed_at is required for {status} sources"
                 )
         if observed_at is not None:
-            snapshot["observed_at"] = _timestamp(
-                observed_at, f"{label}.observed_at"
-            )
+            snapshot["observed_at"] = _timestamp(observed_at, f"{label}.observed_at")
         if snapshot_digest:
             snapshot["snapshot_digest"] = snapshot_digest
         if snapshot_ref:
@@ -231,6 +232,53 @@ def _normalize_retry_policy(raw: object) -> dict[str, int]:
     return {"attempt": attempt, "max_attempts": max_attempts}
 
 
+def _normalize_trigger_receipt(raw: object) -> dict[str, Any] | None:
+    if raw is None:
+        return None
+    receipt = _object(raw, "trigger_receipt")
+    schema_version = _text(
+        receipt.get("schema_version"), "trigger_receipt.schema_version"
+    )
+    if schema_version != TRIGGER_DECISION_SCHEMA:
+        raise ValueError(
+            f"trigger_receipt.schema_version must be {TRIGGER_DECISION_SCHEMA!r}"
+        )
+    if not _boolean(receipt.get("eligible"), "trigger_receipt.eligible"):
+        raise ValueError("trigger_receipt must contain an eligible decision")
+    report_kind = _token(receipt.get("report_kind"), "trigger_receipt.report_kind")
+    if report_kind not in _REPORT_KINDS:
+        raise ValueError("trigger_receipt.report_kind is invalid")
+    selected_trigger_id = _token(
+        receipt.get("selected_trigger_id"),
+        "trigger_receipt.selected_trigger_id",
+    )
+    trigger_ids: list[str] = []
+    for index, value in enumerate(
+        _list(
+            receipt.get("coalesced_trigger_ids"),
+            "trigger_receipt.coalesced_trigger_ids",
+        )
+    ):
+        trigger_id = _token(value, f"trigger_receipt.coalesced_trigger_ids[{index}]")
+        if trigger_id not in trigger_ids:
+            trigger_ids.append(trigger_id)
+    if selected_trigger_id not in trigger_ids:
+        raise ValueError(
+            "trigger_receipt.selected_trigger_id must be coalesced into the report"
+        )
+    return {
+        "schema_version": schema_version,
+        "eligible": True,
+        "decision_id": _token(
+            receipt.get("decision_id"), "trigger_receipt.decision_id"
+        ),
+        "report_key": _token(receipt.get("report_key"), "trigger_receipt.report_key"),
+        "report_kind": report_kind,
+        "selected_trigger_id": selected_trigger_id,
+        "coalesced_trigger_ids": sorted(trigger_ids),
+    }
+
+
 def _normalize_artifact(
     raw: object,
     *,
@@ -247,20 +295,14 @@ def _normalize_artifact(
         maximum=attempt,
     )
     receipt: dict[str, Any] = {
-        "artifact_id": _token(
-            item.get("artifact_id"), "artifact_receipt.artifact_id"
-        ),
-        "renderer_id": _token(
-            item.get("renderer_id"), "artifact_receipt.renderer_id"
-        ),
+        "artifact_id": _token(item.get("artifact_id"), "artifact_receipt.artifact_id"),
+        "renderer_id": _token(item.get("renderer_id"), "artifact_receipt.renderer_id"),
         "renderer_kind": _token(
             item.get("renderer_kind"), "artifact_receipt.renderer_kind"
         ),
         "status": status,
         "attempt": receipt_attempt,
-        "retryable": _boolean(
-            item.get("retryable"), "artifact_receipt.retryable"
-        ),
+        "retryable": _boolean(item.get("retryable"), "artifact_receipt.retryable"),
     }
     artifact_digest = _optional_text(
         item.get("artifact_digest"),
@@ -288,8 +330,9 @@ def _run_identity(
     sources: list[Mapping[str, Any]],
     artifact: Mapping[str, Any],
     sinks: list[Mapping[str, Any]],
+    trigger_receipt: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
-    return {
+    identity = {
         "period_window": dict(period_window),
         "profile": dict(profile),
         "sources": [
@@ -312,6 +355,12 @@ def _run_identity(
             for sink in sinks
         ],
     }
+    if trigger_receipt:
+        identity["trigger"] = {
+            "report_key": trigger_receipt["report_key"],
+            "report_kind": trigger_receipt["report_kind"],
+        }
+    return identity
 
 
 def _sink_idempotency_key(run_id: str, sink_role: str, sink_id: str) -> str:
@@ -338,9 +387,7 @@ def _normalize_sink_identities(raw: object) -> list[dict[str, Any]]:
         identities.append(
             {
                 "sink_id": sink_id,
-                "sink_kind": _token(
-                    item.get("sink_kind"), f"{label}.sink_kind"
-                ),
+                "sink_kind": _token(item.get("sink_kind"), f"{label}.sink_kind"),
                 "sink_role": sink_role,
                 "raw": item,
                 "label": label,
@@ -348,7 +395,9 @@ def _normalize_sink_identities(raw: object) -> list[dict[str, Any]]:
         )
     roles = {str(item["sink_role"]) for item in identities}
     if roles != _SINK_ROLES:
-        raise ValueError("sink_receipts requires at least one archive and delivery sink")
+        raise ValueError(
+            "sink_receipts requires at least one archive and delivery sink"
+        )
     return sorted(
         identities,
         key=lambda item: (str(item["sink_role"]), str(item["sink_id"])),
@@ -493,6 +542,7 @@ def build_periodic_report_run(request: Mapping[str, Any]) -> dict[str, Any]:
     generated_at = _timestamp(payload.get("generated_at"), "generated_at")
     period_window = _normalize_window(payload.get("period_window"))
     profile = _normalize_profile(payload.get("profile"))
+    trigger_receipt = _normalize_trigger_receipt(payload.get("trigger_receipt"))
     sources = _normalize_sources(payload.get("source_snapshots"))
     retry_policy = _normalize_retry_policy(payload.get("retry_policy", {}))
     artifact = _normalize_artifact(
@@ -505,6 +555,7 @@ def build_periodic_report_run(request: Mapping[str, Any]) -> dict[str, Any]:
         sources=sources,
         artifact=artifact,
         sinks=sink_identities,
+        trigger_receipt=trigger_receipt,
     )
     run_id = _digest(identity, prefix="periodic_report")
     idempotency_key = _digest(identity, prefix="run")
@@ -530,7 +581,7 @@ def build_periodic_report_run(request: Mapping[str, Any]) -> dict[str, Any]:
         artifact=artifact,
         sinks=sinks,
     )
-    return {
+    result = {
         "ok": True,
         "schema_version": RUN_SCHEMA,
         "run_id": run_id,
@@ -558,3 +609,6 @@ def build_periodic_report_run(request: Mapping[str, Any]) -> dict[str, Any]:
             "raw_content_persisted": False,
         },
     }
+    if trigger_receipt:
+        result["trigger_receipt"] = trigger_receipt
+    return result

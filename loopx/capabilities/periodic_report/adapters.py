@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from .core import _normalize_trigger_receipt
+
 
 SOURCE_RESULT_SCHEMA = "periodic_report_source_result_v0"
 SECTION_SCHEMA = "periodic_report_section_v0"
@@ -285,6 +287,7 @@ def build_periodic_report_document(
     period_window: Mapping[str, Any],
     profile: Mapping[str, Any],
     sources: Sequence[Mapping[str, Any]],
+    trigger_receipt: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Merge normalized source sections into one renderer-neutral document."""
 
@@ -338,6 +341,7 @@ def build_periodic_report_document(
             ),
         )
 
+    normalized_trigger = _normalize_trigger_receipt(trigger_receipt)
     document = {
         "schema_version": DOCUMENT_SCHEMA,
         "title": _text(title, "title", maximum=200),
@@ -380,6 +384,8 @@ def build_periodic_report_document(
             "external_writes_performed": False,
         },
     }
+    if normalized_trigger:
+        document["trigger_receipt"] = normalized_trigger
     _reject_private_fields(document, "document")
     return document
 

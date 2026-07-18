@@ -513,15 +513,21 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         "origin": "builtin",
         "visibility": "public",
         "provider_id": "loopx-core",
-        "title": "Provider-neutral periodic report runs",
+        "title": "Provider-neutral periodic and progress report runs",
         "status": "active-preview",
-        "real_world_anchor": "recurring project reports with verified archive and delivery",
+        "real_world_anchor": "scheduled and milestone project reports with verified archive and delivery",
         "user_value": (
-            "Give projects one deterministic report run, receipt, partial-state, "
-            "and retry contract without hard-coding a domain, provider, or cadence."
+            "Give projects one deterministic trigger, report run, receipt, "
+            "partial-state, and retry contract without hard-coding a domain, "
+            "provider, cadence, or destination."
         ),
-        "entry_command": "loopx periodic-report compose-run --request-json <request.json> --format json",
+        "entry_command": "loopx periodic-report evaluate-trigger --request-json <request.json> --format json",
         "commands": [
+            {
+                "command": "loopx periodic-report evaluate-trigger --request-json <request.json> --format json",
+                "purpose": "Select, coalesce, cool down, and deduplicate cadence or material progress triggers without provider effects.",
+                "write_boundary": "local trigger decision only; no source read, schedule mutation, rendering, archive write, message delivery, or provider write",
+            },
             {
                 "command": "loopx periodic-report compose-run --request-json <request.json> --format json",
                 "purpose": "Normalize one typed report attempt and derive stable run/sink idempotency, state, and retry evidence.",
@@ -529,6 +535,11 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             },
         ],
         "implemented_protocols": [
+            {
+                "schema_version": "periodic_report_trigger_decision_v0",
+                "module": "loopx.capabilities.periodic_report.triggers",
+                "doc": "docs/reference/protocols/periodic-report-v0.md",
+            },
             {
                 "schema_version": "periodic_report_v0",
                 "module": "loopx.capabilities.periodic_report.core",
@@ -541,8 +552,8 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "docs/reference/protocols/periodic-report-v0.md",
         ],
         "boundaries": [
-            "The core owns only period/profile binding, deterministic identity, receipts, run state, and retry projection.",
-            "Profiles own cadence, timezone, sections, audience, and project policy.",
+            "The core owns material trigger classification, coalescing, cooldown/deduplication, period/profile binding, deterministic identity, receipts, run state, and retry projection.",
+            "Profiles own schedule calculation, enabled trigger kinds, minimum interval, timezone, sections, audience, and project policy.",
             "Adapters own domain source collection; renderers and sinks own all provider effects and verified readback.",
             "Raw content, messages, logs, transcripts, credentials, secrets, and private paths are rejected.",
         ],

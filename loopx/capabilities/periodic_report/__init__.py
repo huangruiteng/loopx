@@ -13,6 +13,7 @@ from .archive import (
     verify_periodic_report_archive_receipts,
 )
 from .core import build_periodic_report_run
+from .triggers import build_periodic_report_trigger_decision
 
 __all__ = [
     "PeriodicReportAdapterRegistry",
@@ -23,5 +24,6 @@ __all__ = [
     "build_periodic_report_archive_bundle",
     "build_periodic_report_run",
     "build_periodic_report_source_result",
+    "build_periodic_report_trigger_decision",
     "verify_periodic_report_archive_receipts",
 ]

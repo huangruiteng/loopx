@@ -7,6 +7,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from .adapters import ARTIFACT_SCHEMA, DOCUMENT_SCHEMA
+from .core import _normalize_trigger_receipt
 
 
 ARCHIVE_BUNDLE_SCHEMA = "periodic_report_archive_bundle_v0"
@@ -197,6 +198,9 @@ def build_periodic_report_archive_bundle(
     period_window = _mapping(
         normalized_document.get("period_window"), "document.period_window"
     )
+    trigger_receipt = _normalize_trigger_receipt(
+        normalized_document.get("trigger_receipt")
+    )
     identity = {
         "profile_id": _token(profile.get("profile_id"), "document.profile.profile_id"),
         "profile_version": _token(
@@ -262,6 +266,8 @@ def build_periodic_report_archive_bundle(
             "report_uri_required": True,
         },
     }
+    if trigger_receipt:
+        manifest["trigger_receipt"] = trigger_receipt
     manifest_content = _canonical_json(manifest) + "\n"
     memory_reference = {
         "schema_version": MEMORY_REFERENCE_SCHEMA,

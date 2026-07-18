@@ -172,7 +172,7 @@ COMMAND_GROUPS: list[dict[str, object]] = [
             },
             {
                 "command": "loopx periodic-report",
-                "purpose": "Compose deterministic provider-neutral report runs and delivery receipts.",
+                "purpose": "Evaluate report triggers and compose deterministic provider-neutral run receipts.",
             },
             {"command": "loopx auto-research", "purpose": "Project public-safe research frontiers."},
             {"command": "loopx multi-agent", "purpose": "Launch visible role-scoped Codex TUI agents."},
