@@ -31,7 +31,7 @@ AGENT_IDENTITY = {"agent_id": "codex-product-capability"}
 def raw_todos() -> dict:
     return {
         "schema_version": "todo_summary_v0",
-        "open_count": 3,
+        "open_count": 6,
         "items": [
             {
                 "index": 1,
@@ -54,7 +54,28 @@ def raw_todos() -> dict:
                 "todo_id": "todo_next",
                 "text": "Continue non-benchmark control-plane refactor.",
                 "task_class": "user_action",
-                "claimed_by": "codex-product-capability",
+                "bound_agent": "codex-product-capability",
+            },
+            {
+                "index": 4,
+                "todo_id": "todo_action_other",
+                "text": "Review main-control follow-up notes.",
+                "task_class": "user_action",
+                "bound_agent": "codex-main-control",
+            },
+            {
+                "index": 5,
+                "todo_id": "todo_action_goal",
+                "text": "Review the goal-wide follow-up note.",
+                "task_class": "user_action",
+                "goal_bound": True,
+            },
+            {
+                "index": 6,
+                "todo_id": "todo_action_legacy_other",
+                "text": "Review a legacy main-control follow-up note.",
+                "task_class": "user_action",
+                "claimed_by": "codex-main-control",
             },
         ],
     }
@@ -94,10 +115,15 @@ def assert_shared_gate_detection() -> None:
         filter_user_gate_blocks_agent=True,
     )
     assert summary is not None
-    assert summary["open_count"] == 1, summary
-    assert summary["all_open_count"] == 3, summary
+    assert summary["open_count"] == 3, summary
+    assert summary["all_open_count"] == 6, summary
     assert summary["other_agent_scoped_open_count"] == 1, summary
-    assert summary["user_action_open_count"] == 1, summary
+    assert summary["user_action_open_count"] == 2, summary
+    assert summary["other_agent_bound_user_action_open_count"] == 2, summary
+    assert [
+        item["todo_id"]
+        for item in summary["other_agent_bound_user_action_items"]
+    ] == ["todo_action_other", "todo_action_legacy_other"], summary
 
     with_duplicate = {
         "open_count": "2",

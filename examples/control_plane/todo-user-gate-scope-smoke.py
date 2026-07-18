@@ -181,14 +181,83 @@ def main() -> int:
             "user todo requires explicit --task-class",
         )
 
+        assert_raises_message(
+            lambda: add_goal_todo(
+                registry_path=registry,
+                goal_id=GOAL_ID,
+                role="user",
+                text="Track a non-blocking owner note.",
+                task_class="user_action",
+                dry_run=True,
+            ),
+            "multi-agent user todo requires an explicit binding",
+        )
+        assert_raises_message(
+            lambda: add_goal_todo(
+                registry_path=registry,
+                goal_id=GOAL_ID,
+                role="user",
+                text="Do not overload execution ownership as user routing.",
+                task_class="user_action",
+                claimed_by=SIDE_AGENT,
+                dry_run=True,
+            ),
+            "claimed_by is execution ownership for agent todos",
+        )
+
         user_action = add_goal_todo(
             registry_path=registry,
             goal_id=GOAL_ID,
             role="user",
             text="Track a non-blocking owner note.",
             task_class="user_action",
+            agent_id=SIDE_AGENT,
         )
         assert user_action["task_class"] == "user_action", user_action
+        assert user_action["bound_agent"] == SIDE_AGENT, user_action
+        assert user_action["claimed_by"] is None, user_action
+
+        goal_bound_action = add_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            role="user",
+            text="Track a goal-wide owner note.",
+            task_class="user_action",
+            goal_bound=True,
+            dry_run=True,
+        )
+        assert goal_bound_action["goal_bound"] is True, goal_bound_action
+
+        other_lane_only_status = collect_status(
+            registry_path=registry,
+            runtime_root_override=str(root / "runtime"),
+            scan_roots=[repo],
+            limit=1,
+            goal_id=GOAL_ID,
+        )
+        other_lane_only_quota = build_quota_should_run(
+            other_lane_only_status,
+            goal_id=GOAL_ID,
+            agent_id=PRIMARY_AGENT,
+        )
+        other_lane_only_summary = other_lane_only_quota["user_todo_summary"]
+        assert other_lane_only_summary["open_count"] == 0, other_lane_only_quota
+        assert other_lane_only_summary["all_open_count"] == 1, other_lane_only_quota
+        assert other_lane_only_summary[
+            "other_agent_bound_user_action_open_count"
+        ] == 1, other_lane_only_quota
+        user_action_override = other_lane_only_quota[
+            "agent_scoped_user_action_override"
+        ]
+        assert user_action_override["to_state"] == "waiting", user_action_override
+        assert "quota_patch" not in user_action_override, user_action_override
+        assert "item_patch" not in user_action_override, user_action_override
+        assert other_lane_only_quota["interaction_contract"]["user_channel"][
+            "notify"
+        ] == "DONT_NOTIFY", other_lane_only_quota
+        assert other_lane_only_quota["interaction_contract"]["user_channel"].get(
+            "actions", []
+        ) == [], other_lane_only_quota
 
         assert_raises_message(
             lambda: add_goal_todo(
@@ -228,14 +297,27 @@ def main() -> int:
             role="user",
             text="Authorize the exact duplicate cleanup.",
             task_class="user_action",
+            bound_agent=SIDE_AGENT,
             unblocks_todo_id=blocked_agent_todo["todo_id"],
+        )
+        assert_raises_message(
+            lambda: complete_goal_todo(
+                registry_path=registry,
+                goal_id=GOAL_ID,
+                todo_id=approval["todo_id"],
+                role="user",
+                agent_id=PRIMARY_AGENT,
+                evidence="wrong-lane response attempt",
+                dry_run=True,
+            ),
+            "response continuation is bound",
         )
         approval_completed = complete_goal_todo(
             registry_path=registry,
             goal_id=GOAL_ID,
             todo_id=approval["todo_id"],
             role="user",
-            agent_id=PRIMARY_AGENT,
+            agent_id=SIDE_AGENT,
             evidence="user authorized the exact bounded cleanup",
         )
         assert approval_completed["unblock_resume"]["state"] == "resumed", approval_completed
@@ -264,6 +346,7 @@ def main() -> int:
                 role="user",
                 text=f"Authorize bounded cleanup part {part}.",
                 task_class="user_action",
+                bound_agent=SIDE_AGENT,
                 unblocks_todo_id=multiply_blocked["todo_id"],
             )
             for part in ("one", "two")
@@ -273,7 +356,7 @@ def main() -> int:
             goal_id=GOAL_ID,
             todo_id=approvals[0]["todo_id"],
             role="user",
-            agent_id=PRIMARY_AGENT,
+            agent_id=SIDE_AGENT,
             evidence="first exact authorization",
         )
         assert first_approval["unblock_resume"]["state"] == "other_user_blockers_active", first_approval
@@ -285,7 +368,7 @@ def main() -> int:
             goal_id=GOAL_ID,
             todo_id=approvals[1]["todo_id"],
             role="user",
-            agent_id=PRIMARY_AGENT,
+            agent_id=SIDE_AGENT,
             evidence="second exact authorization",
         )
         assert second_approval["unblock_resume"]["state"] == "resumed", second_approval
@@ -319,6 +402,24 @@ def main() -> int:
         assert blocked_agent_todo["todo_id"] in executable_ids, quota_payload
         assert multiply_blocked["todo_id"] in executable_ids, quota_payload
 
+        primary_quota = build_quota_should_run(
+            status_payload,
+            goal_id=GOAL_ID,
+            agent_id=PRIMARY_AGENT,
+        )
+        primary_user_summary = primary_quota["user_todo_summary"]
+        assert primary_user_summary.get("user_action_open_count", 0) == 0, primary_user_summary
+        assert primary_user_summary["other_agent_bound_user_action_open_count"] == 1, primary_user_summary
+        assert primary_user_summary["other_agent_bound_user_action_items"][0][
+            "todo_id"
+        ] == user_action["todo_id"], primary_user_summary
+        assert all(
+            "Track a non-blocking owner note." not in action
+            for action in primary_quota["interaction_contract"]["user_channel"].get(
+                "actions", []
+            )
+        ), primary_quota
+
         assert_raises_message(
             lambda: add_goal_todo(
                 registry_path=registry,
@@ -340,7 +441,9 @@ def main() -> int:
             agent_id=SIDE_AGENT,
         )
         assert scoped["blocks_agent"] == SIDE_AGENT, scoped
+        assert scoped["bound_agent"] == SIDE_AGENT, scoped
         assert f"blocks_agent={SIDE_AGENT}" in state.read_text(encoding="utf-8")
+        assert f"bound_agent={SIDE_AGENT}" in state.read_text(encoding="utf-8")
 
         global_gate = add_goal_todo(
             registry_path=registry,
@@ -351,7 +454,9 @@ def main() -> int:
             global_gate=True,
         )
         assert global_gate["global_gate"] is True, global_gate
+        assert global_gate["goal_bound"] is True, global_gate
         assert "global_gate=true" in state.read_text(encoding="utf-8")
+        assert "goal_bound=true" in state.read_text(encoding="utf-8")
 
         agent_todo = add_goal_todo(
             registry_path=registry,
@@ -374,6 +479,7 @@ def main() -> int:
         state_text = state.read_text(encoding="utf-8")
         assert "Approve publishing the release notes." in state_text, state_text
         assert f"blocks_agent={PRIMARY_AGENT}" in state_text, state_text
+        assert f"bound_agent={PRIMARY_AGENT}" in state_text, state_text
 
         assert_raises_message(
             lambda: update_goal_todo(
@@ -426,6 +532,75 @@ def main() -> int:
             limit=1,
         )
         assert repaired_check["ok"] is True, repaired_check
+
+        insert_before_agent_section(
+            state,
+            "- [ ] Track an unbound non-blocking user action.\n"
+            "  <!-- loopx:todo todo_id=todo_unbound_action status=open task_class=user_action -->",
+        )
+        unbound_action_check = check_contract(
+            registry_path=registry,
+            runtime_root_override=str(root / "runtime"),
+            scan_roots=[repo],
+            limit=1,
+        )
+        assert unbound_action_check["ok"] is False, unbound_action_check
+        assert any(
+            "todo_unbound_action" in item and "requires bound_agent" in item
+            for item in unbound_action_check["errors"]
+        ), unbound_action_check
+        rebound_action = update_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            todo_id="todo_unbound_action",
+            role="user",
+            agent_id=PRIMARY_AGENT,
+            bound_agent=SIDE_AGENT,
+        )
+        assert rebound_action["bound_agent"] == SIDE_AGENT, rebound_action
+        rebound_check = check_contract(
+            registry_path=registry,
+            runtime_root_override=str(root / "runtime"),
+            scan_roots=[repo],
+            limit=1,
+        )
+        assert rebound_check["ok"] is True, rebound_check
+
+        insert_before_agent_section(
+            state,
+            "- [ ] Resolve a mismatched gate binding.\n"
+            f"  <!-- loopx:todo todo_id=todo_mismatched_gate_binding status=open "
+            f"task_class=user_gate blocks_agent={SIDE_AGENT} "
+            f"bound_agent={PRIMARY_AGENT} -->",
+        )
+        mismatched_binding_check = check_contract(
+            registry_path=registry,
+            runtime_root_override=str(root / "runtime"),
+            scan_roots=[repo],
+            limit=1,
+        )
+        assert mismatched_binding_check["ok"] is False, mismatched_binding_check
+        assert any(
+            "todo_mismatched_gate_binding" in item
+            and "must bind to blocks_agent" in item
+            for item in mismatched_binding_check["errors"]
+        ), mismatched_binding_check
+        repaired_gate_binding = update_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            todo_id="todo_mismatched_gate_binding",
+            role="user",
+            agent_id=PRIMARY_AGENT,
+            bound_agent=SIDE_AGENT,
+        )
+        assert repaired_gate_binding["bound_agent"] == SIDE_AGENT, repaired_gate_binding
+        repaired_binding_check = check_contract(
+            registry_path=registry,
+            runtime_root_override=str(root / "runtime"),
+            scan_roots=[repo],
+            limit=1,
+        )
+        assert repaired_binding_check["ok"] is True, repaired_binding_check
 
         insert_before_agent_section(
             state,

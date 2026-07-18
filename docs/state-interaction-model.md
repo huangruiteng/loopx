@@ -139,6 +139,16 @@ work item without re-reading stale thread context. Detailed action packets,
 review materials, run history, and raw adapter fields remain drill-down
 surfaces.
 
+In a multi-agent goal, every open user todo has an explicit response binding:
+`bound_agent=<registered-agent>` routes reminders and post-response continuation
+to one agent lane, while `goal_bound=true` makes the item intentionally visible
+to every lane in the goal. This relation is independent of gating. A
+`user_action` remains non-blocking; a `user_gate` separately uses
+`blocks_agent` or `global_gate=true` to stop work. `claimed_by` remains executor
+ownership for agent todos and must not encode a user-todo binding. Agent-scoped
+quota projections retain other-lane user todos as diagnostics, but exclude them
+from the current lane's `open_count` and user notification channel.
+
 ## Three-Actor Interaction Protocol
 
 The current failure mode is not lack of prompt detail. It is ambiguity about
@@ -298,6 +308,8 @@ surfaces:
   selected fallback; the gated action itself must not run.
 - `user_todo_blocker_push`: the user owns an open todo. The agent notifies,
   does not spend, and should not describe the turn as "no user action".
+  In a multi-agent goal this applies only to the lane selected by
+  `bound_agent`, or to every lane when `goal_bound=true`.
 - `successor_replan_required`: a deferred todo's resume gate is satisfied, but
   the item is still deferred. The agent does not run ordinary delivery yet; it
   reopens the todo, supersedes it with a current successor, or records a

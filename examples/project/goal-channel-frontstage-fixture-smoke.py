@@ -23,6 +23,7 @@ def load_fixture_module():
 def test_fixture_projection_and_html_are_read_only() -> None:
     fixture = load_fixture_module()
     projection = fixture.build_sample_projection()
+    projection["user_todos"][0]["bound_agent"] = "codex-main-control"
     html = fixture.render_goal_channel_projection_html(projection)
 
     assert projection["schema_version"] == "goal_channel_projection_v0", projection
@@ -49,6 +50,11 @@ def test_fixture_projection_and_html_are_read_only() -> None:
         "truth-contract",
     ):
         assert f'data-panel="{panel}"' in html, panel
+
+    user_panel = html.split('data-panel="user-todos"', 1)[1].split("</section>", 1)[0]
+    agent_panel = html.split('data-panel="agent-todos"', 1)[1].split("</section>", 1)[0]
+    assert "Bound Agent" in user_panel, user_panel
+    assert "Bound Agent" not in agent_panel, agent_panel
 
     forbidden_controls = ("<button", "<form", "method=", "onclick=", "javascript:")
     lowered = html.lower()

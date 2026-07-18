@@ -19,7 +19,7 @@ from loopx.control_plane.agents.agent_scope import (  # noqa: E402
     _agent_scope_monitor_blocked_resume_candidates,
     _agent_scope_no_candidate_frontier,
     _agent_scope_route_continuation_replan_candidates,
-    _agent_scoped_user_gate_override,
+    _agent_scoped_user_todo_override,
     _scoped_user_gate_fallback,
 )
 from loopx.control_plane.agents.agent_scope_frontier import (  # noqa: E402
@@ -203,7 +203,7 @@ def assert_agent_scoped_user_gate_override_contract() -> None:
             )
         ]
     }
-    override = _agent_scoped_user_gate_override(
+    override = _agent_scoped_user_todo_override(
         state="operator_gate",
         item={"goal_id": GOAL_ID},
         user_todo_summary=user_summary,
@@ -225,7 +225,7 @@ def assert_agent_scoped_user_gate_override_contract() -> None:
         ),
     }, override
 
-    blocked = _agent_scoped_user_gate_override(
+    blocked = _agent_scoped_user_todo_override(
         state="operator_gate",
         item={"goal_id": GOAL_ID, "operator_question": "Need owner input."},
         user_todo_summary=user_summary,

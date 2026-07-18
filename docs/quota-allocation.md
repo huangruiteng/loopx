@@ -681,6 +681,17 @@ report must still list the existing open user todos instead of saying that
 there is no user action. If `agent_todo_summary.open_count > 0`, the agent
 should use that summary as its next safe follow-up checklist instead of mining
 chat history or an overlong `Next Action`.
+
+For an agent-scoped quota request, `user_todo_summary.open_count` counts only
+user todos bound to that agent plus explicit `goal_bound=true` items. Todos
+bound to another agent remain in
+`other_agent_bound_user_action_items` for diagnosis, but they must not preserve
+an inherited `operator_gate`, enter `interaction_contract.user_channel`, or
+trigger a heartbeat notification. In multi-agent goals, todo authoring must use
+`--bound-agent <registered-agent>` (or `--agent-id` when the author and bound
+lane are the same) or `--goal-bound`; `claimed_by` is not a user-todo routing
+field.
+
 For `state=focus_wait`, `state=waiting`, or
 `waiting_on=external_evidence`, an open user todo can be the smallest unlock
 for a quiet project. In that case, `quota should-run` should set
@@ -710,7 +721,9 @@ preemption and is never delayed by this fairness backoff.
 For every registered goal, `quota should-run` also includes a `todo_write_hint`
 so agent executors know to write newly discovered user/owner work with
 `loopx todo add --role user --task-class user_gate|user_action` instead of
-hiding it in `Next Action`, review docs, or chat.
+hiding it in `Next Action`, review docs, or chat. Multi-agent writes must also
+name `--bound-agent <registered-agent>` or `--goal-bound`; agent-scoped
+`user_gate` writes bind to the same agent named by `--blocks-agent`.
 When available, `quota should-run` also keeps next-action signals separate:
 `active_state_next_action` is the durable `## Next Action`,
 `latest_run_recommended_action` is the latest non-agent-lane run's
