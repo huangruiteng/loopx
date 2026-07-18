@@ -11,7 +11,7 @@ from ...domain_packs.issue_fix import (
     persist_issue_fix_reviewer_notification_state,
     upsert_issue_fix_pr_lifecycle_ledger_jsonl,
 )
-from ..lark.event_inbox import (
+from ...extensions.lark.event_inbox import (
     acknowledge_lark_event_inbox,
     inspect_lark_event_inbox,
     lark_event_inbox_contains_text,

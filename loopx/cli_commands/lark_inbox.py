@@ -6,18 +6,18 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-from ..capabilities.lark.event_inbox import (
+from ..extensions.lark.event_inbox import (
     acknowledge_lark_event_inbox,
     ingest_lark_event_inbox,
     inspect_lark_event_inbox,
 )
-from ..capabilities.lark.inbox_reply import reply_lark_event_inbox
-from ..capabilities.lark.event_collector import (
+from ..extensions.lark.inbox_reply import reply_lark_event_inbox
+from ..extensions.lark.event_collector import (
     inspect_lark_event_collector,
     install_lark_event_collector,
     plan_lark_event_collector,
 )
-from ..capabilities.lark.event_collector_runtime import run_lark_event_collector
+from ..extensions.lark.event_collector_runtime import run_lark_event_collector
 from ..control_plane.runtime.goal_project_route import resolve_goal_project_route
 
 
