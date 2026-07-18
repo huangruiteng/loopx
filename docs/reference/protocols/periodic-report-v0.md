@@ -1,0 +1,76 @@
+# Provider-neutral periodic report v0
+
+`periodic_report_v0` is the LoopX control contract for one bounded report run.
+It binds a period window and a profile to typed source snapshots, one rendered
+artifact receipt, archive and delivery receipts, deterministic idempotency,
+explicit partial/unknown states, and a bounded retry projection.
+
+```bash
+loopx periodic-report compose-run \
+  --request-json periodic-report-request.json \
+  --format json
+```
+
+The command is local and effect-free. Source collection, rendering, archive
+writes, message delivery, and receipt readback all execute in adapters or
+connectors outside this core.
+
+## Request and identity
+
+A `periodic_report_run_request_v0` contains:
+
+- `generated_at` and an offset-aware `period_window.start_at` / `end_at`;
+- a stable `profile_id`, `profile_version`, and optional opaque `profile_ref`;
+- one or more `source_snapshots[]` with source identity, typed status, compact
+  digest/reference/count evidence, and retryability;
+- one `artifact_receipt` naming a renderer and artifact state;
+- at least one `archive` and one `delivery` receipt;
+- `retry_policy.attempt` and `max_attempts`.
+
+LoopX derives `run_id` and the run-level `idempotency_key` from the normalized
+window, profile, source identities, renderer identity, and sink identities.
+Snapshot contents and attempt number do not change that identity, so a retry
+cannot create a second logical report. Callers may repeat the derived values;
+stale or mismatched values fail closed.
+
+Every sink receives a deterministic sink-specific idempotency key derived from
+the run, sink role, and sink id. A `sent` receipt is valid only with an exact
+key, a compact receipt reference, and verified readback.
+
+## State and retry semantics
+
+Source statuses are `complete`, `partial`, `failed`, or `unknown`. Artifact
+statuses are `pending`, `rendered`, `failed`, or `unknown`. Sink statuses are
+`pending`, `sent`, `failed`, `skipped`, or `unknown`.
+
+The derived run state is one of:
+
+- `pending`: rendering or a sink has not settled;
+- `succeeded`: all sources are complete, the artifact is rendered, and every
+  archive/delivery sink is sent with verified readback;
+- `partial`: usable output exists but a source is partial, a sink was skipped,
+  or at least one sink succeeded while another failed;
+- `failed`: collection/rendering failed, or every required sink failed;
+- `unknown`: a source, artifact, or sink postcondition cannot be determined.
+
+Retry is allowed only for terminal non-success states, before `max_attempts`,
+and only when at least one unsettled component explicitly declares itself
+retryable. The output names those components and the exact next attempt.
+
+## Ownership boundary
+
+The core deliberately contains no project, pull request, issue, weekday,
+timezone, chat, document, or provider policy. Those belong to reusable
+adapters and project profiles:
+
+- a project profile owns cadence, timezone, report sections, audience, and
+  selection policy;
+- source adapters collect and normalize domain evidence;
+- renderers turn normalized evidence into artifacts;
+- archive and delivery sinks perform gated writes and verify readback;
+- project products may index historical artifacts without changing run
+  identity or delivery truth.
+
+The core rejects raw content, messages, logs, transcripts, credentials, secret
+fields, and private paths. Public packets retain only compact references and
+digests.

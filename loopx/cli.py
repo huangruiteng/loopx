@@ -22,6 +22,10 @@ from .capabilities.review_batch.cli import (
     handle_review_batch_command,
     register_review_batch_commands,
 )
+from .capabilities.periodic_report.cli import (
+    handle_periodic_report_command,
+    register_periodic_report_commands,
+)
 from .capabilities.semantic_preference.cli import (
     handle_semantic_preference_command,
     register_semantic_preference_commands,
@@ -199,6 +203,8 @@ def main(argv: list[str] | None = None) -> int:
     register_reward_memory_commands(sub, add_subcommand_format)
 
     register_review_batch_commands(sub, add_subcommand_format)
+
+    register_periodic_report_commands(sub, add_subcommand_format)
 
     register_semantic_preference_commands(sub, add_subcommand_format)
 
@@ -442,6 +448,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     if review_batch_result is not None:
         return review_batch_result
+
+    periodic_report_result = handle_periodic_report_command(
+        args,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if periodic_report_result is not None:
+        return periodic_report_result
 
     semantic_preference_result = handle_semantic_preference_command(
         args,

@@ -509,6 +509,49 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         ),
     },
     {
+        "id": "periodic-report",
+        "origin": "builtin",
+        "visibility": "public",
+        "provider_id": "loopx-core",
+        "title": "Provider-neutral periodic report runs",
+        "status": "active-preview",
+        "real_world_anchor": "recurring project reports with verified archive and delivery",
+        "user_value": (
+            "Give projects one deterministic report run, receipt, partial-state, "
+            "and retry contract without hard-coding a domain, provider, or cadence."
+        ),
+        "entry_command": "loopx periodic-report compose-run --request-json <request.json> --format json",
+        "commands": [
+            {
+                "command": "loopx periodic-report compose-run --request-json <request.json> --format json",
+                "purpose": "Normalize one typed report attempt and derive stable run/sink idempotency, state, and retry evidence.",
+                "write_boundary": "local contract output only; no source read, rendering, archive write, message delivery, or provider write",
+            },
+        ],
+        "implemented_protocols": [
+            {
+                "schema_version": "periodic_report_v0",
+                "module": "loopx.capabilities.periodic_report.core",
+                "doc": "docs/reference/protocols/periodic-report-v0.md",
+            },
+        ],
+        "smokes": ["python3 examples/periodic-report-smoke.py"],
+        "docs": [
+            "docs/capabilities/periodic-report/README.md",
+            "docs/reference/protocols/periodic-report-v0.md",
+        ],
+        "boundaries": [
+            "The core owns only period/profile binding, deterministic identity, receipts, run state, and retry projection.",
+            "Profiles own cadence, timezone, sections, audience, and project policy.",
+            "Adapters own domain source collection; renderers and sinks own all provider effects and verified readback.",
+            "Raw content, messages, logs, transcripts, credentials, secrets, and private paths are rejected.",
+        ],
+        "next_real_step": (
+            "Add reusable source, renderer, archive, and delivery adapter seams, "
+            "then prove one project profile without adding project semantics to the core."
+        ),
+    },
+    {
         "id": "content-ops",
         "origin": "builtin",
         "visibility": "public",

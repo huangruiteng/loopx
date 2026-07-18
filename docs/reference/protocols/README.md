@@ -29,6 +29,7 @@ Current contracts:
 - [global_manager_command_v0](global-manager-command-v0.md)
 - [pr_review_command_v0](pr-review-command-v0.md)
 - [review_batch_v0](review-batch-v0.md)
+- [periodic_report_v0](periodic-report-v0.md)
 - [event_sourced_state_contract_v0](event-sourced-state-contract-v0.md)
 - [active_state_structured_projection_v0](active-state-structured-projection-v0.md)
 - [local_state_write_correctness_v0](local-state-write-correctness-v0.md)
