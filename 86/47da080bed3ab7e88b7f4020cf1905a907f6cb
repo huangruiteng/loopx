@@ -1,0 +1,23 @@
+.github/workflows/full-public-smokes.yml
+  s_32e2a9a204a8e4::t_c0e79048931f35 55-56
+examples/full-public-smokes-workflow-smoke.py
+  s_32e2a9a204a8e4::t_593a55fb32ac50 6-7,12-16,18-22,60-75,77-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8647da080bed3ab7e88b7f4020cf1905a907f6cb",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
