@@ -82,6 +82,7 @@ from .cli_commands import (
     register_explore_commands,
     register_history_command,
     register_lark_inbox_commands,
+    build_lark_issue_fix_reviewer_inbox_hooks,
     register_lark_kanban_commands,
     register_ml_experiment_commands,
     register_multi_agent_commands,
@@ -416,6 +417,11 @@ def main(argv: list[str] | None = None) -> int:
             args,
             registry_path=registry_path,
             runtime_root_arg=args.runtime_root,
+            reviewer_inbox_hooks_factory=(
+                lambda: build_lark_issue_fix_reviewer_inbox_hooks(
+                    runtime_root_arg=args.runtime_root
+                )
+            ),
             output_format=output_format,
             print_payload=print_payload,
         )

@@ -11,11 +11,6 @@ from ...domain_packs.issue_fix import (
     persist_issue_fix_reviewer_notification_state,
     upsert_issue_fix_pr_lifecycle_ledger_jsonl,
 )
-from ...extensions.lark.event_inbox import (
-    acknowledge_lark_event_inbox,
-    inspect_lark_event_inbox,
-    lark_event_inbox_contains_text,
-)
 from ..reward_memory.experiment import (
     resolve_reward_memory_experiment,
     resolve_reward_memory_surface_config,
@@ -23,6 +18,7 @@ from ..reward_memory.experiment import (
 from .cli_input import load_json_object, load_jsonl_row
 from .metadata_preview import normalise_github_issue_reference
 from .pr_lifecycle import build_issue_fix_pr_lifecycle_monitor_packet
+from .provider_hooks import ReviewerInboxHooks, ReviewerInboxHooksFactory
 from .reviewer_notification import (
     load_goal_reviewer_notification_sinks_input,
     reviewer_notification_legacy_queue_from_state,
@@ -407,7 +403,29 @@ def handle_issue_fix_reviewer_command(
     registry_path: Path | None,
     generated_at: str,
     delivery_observed_at: str,
+    reviewer_inbox_hooks_factory: ReviewerInboxHooksFactory | None = None,
 ) -> tuple[dict[str, Any], Renderer] | None:
+    reviewer_inbox_hooks: ReviewerInboxHooks | None = None
+
+    def require_reviewer_inbox_hooks() -> ReviewerInboxHooks:
+        nonlocal reviewer_inbox_hooks
+        if reviewer_inbox_hooks is None:
+            if reviewer_inbox_hooks_factory is None:
+                raise ValueError(
+                    "configured reviewer feedback inbox requires an enabled provider"
+                )
+            reviewer_inbox_hooks = reviewer_inbox_hooks_factory()
+        return reviewer_inbox_hooks
+
+    def lark_sink_configured(value: Mapping[str, Any] | None) -> bool:
+        return bool(
+            value
+            and any(
+                isinstance(sink, Mapping) and sink.get("sink_kind") == "lark_chat"
+                for sink in (value.get("sinks") or [])
+            )
+        )
+
     if args.issue_fix_command == "reviewer-plan":
         payload = build_issue_fix_reviewer_recommendation_packet(
             repo_path=args.repo_path,
@@ -443,13 +461,7 @@ def handle_issue_fix_reviewer_command(
             goal=goal,
             project=requested_project,
         )
-        lark_group_configured = bool(
-            sinks_input
-            and any(
-                isinstance(sink, dict) and sink.get("sink_kind") == "lark_chat"
-                for sink in (sinks_input.get("sinks") or [])
-            )
-        )
+        lark_group_configured = lark_sink_configured(sinks_input)
         if not lark_group_configured:
             payload = {
                 "ok": True,
@@ -462,19 +474,20 @@ def handle_issue_fix_reviewer_command(
                 "external_reads_performed": False,
             }
         else:
+            inbox_hooks = require_reviewer_inbox_hooks()
             config_ref = str(
                 sinks_input.get("feedback_inbox_config")
                 or ".loopx/config/lark/event-inbox.json"
             )
             if args.message_id:
-                payload = acknowledge_lark_event_inbox(
+                payload = inbox_hooks.acknowledge(
                     project=requested_project,
                     config_path=config_ref,
                     message_ids=args.message_id,
                     execute=args.execute,
                 )
             else:
-                payload = inspect_lark_event_inbox(
+                payload = inbox_hooks.inspect(
                     project=requested_project,
                     config_path=config_ref,
                     limit=args.limit,
@@ -484,6 +497,7 @@ def handle_issue_fix_reviewer_command(
                 "mode": "issue-fix-reviewer-feedback-inbox",
                 "configured_reviewer_group": True,
                 "source": "goal_default_lark_event_inbox",
+                "extension_activation": dict(inbox_hooks.activation),
             }
         return payload, render_issue_fix_reviewer_feedback_inbox_markdown
 
@@ -518,12 +532,10 @@ def handle_issue_fix_reviewer_command(
                 project=requested_project,
                 goal_id=args.goal_id,
             )
-            lark_group_configured = any(
-                isinstance(sink, Mapping) and sink.get("sink_kind") == "lark_chat"
-                for sink in (sinks_input.get("sinks") or [])
-            )
+            lark_group_configured = lark_sink_configured(sinks_input)
             semantic_history_matcher = None
             if lark_group_configured:
+                inbox_hooks = require_reviewer_inbox_hooks()
                 default_config_ref = str(
                     sinks_input.get("feedback_inbox_config")
                     or ".loopx/config/lark/event-inbox.json"
@@ -543,7 +555,7 @@ def handle_issue_fix_reviewer_command(
                     ).strip()
                     if not sink_config_ref and lark_sink_count != 1:
                         return None
-                    return lark_event_inbox_contains_text(
+                    return inbox_hooks.contains_text(
                         project=requested_project,
                         config_path=sink_config_ref or default_config_ref,
                         text=permalink,
@@ -557,6 +569,8 @@ def handle_issue_fix_reviewer_command(
                 limit=args.limit,
                 semantic_history_matcher=semantic_history_matcher,
             )
+            if lark_group_configured:
+                payload["extension_activation"] = dict(inbox_hooks.activation)
             payload["notification_source"] = "goal_default"
         return payload, render_issue_fix_reviewer_notification_drain_markdown
 
@@ -658,18 +672,17 @@ def handle_issue_fix_reviewer_command(
                 existing_queued_receipts = reviewer_notification_queue_from_state(
                     notification_lifecycle_packet
                 )
-                lark_group_configured = any(
-                    isinstance(sink, Mapping)
-                    and sink.get("sink_kind") == "lark_chat"
-                    for sink in (notification_sinks_input.get("sinks") or [])
+                lark_group_configured = lark_sink_configured(
+                    notification_sinks_input
                 )
                 if lark_group_configured:
+                    inbox_hooks = require_reviewer_inbox_hooks()
                     config_ref = str(
                         notification_sinks_input.get("feedback_inbox_config")
                         or ".loopx/config/lark/event-inbox.json"
                     )
                     try:
-                        history_match = lark_event_inbox_contains_text(
+                        history_match = inbox_hooks.contains_text(
                             project=requested_project,
                             config_path=config_ref,
                             text=str(reference["permalink"]),
@@ -750,6 +763,8 @@ def handle_issue_fix_reviewer_command(
                             "config": experiment_config,
                             "observed_at": generated_at,
                         }
+    if lark_sink_configured(notification_sinks_input):
+        require_reviewer_inbox_hooks()
     payload = build_issue_fix_reviewer_request_packet(
         repo_path=args.repo_path,
         url=args.url,
@@ -786,6 +801,8 @@ def handle_issue_fix_reviewer_command(
         notification_lifecycle_materialized
     )
     payload["secondary_notification_semantic_history_status"] = semantic_history_status
+    if reviewer_inbox_hooks is not None:
+        payload["extension_activation"] = dict(reviewer_inbox_hooks.activation)
     if legacy_queue_blocker is not None:
         payload["secondary_notification_blocker"] = legacy_queue_blocker
     payload["secondary_notification_receipts_persisted"] = False
