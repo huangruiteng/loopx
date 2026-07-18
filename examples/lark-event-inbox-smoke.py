@@ -13,14 +13,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from loopx.capabilities.lark.event_inbox import (  # noqa: E402
+from loopx.extensions.lark.event_inbox import (  # noqa: E402
     acknowledge_lark_event_inbox,
     ingest_lark_event_inbox,
     inspect_lark_event_inbox,
     lark_event_inbox_contains_text,
     project_lark_event_inbox_urgency,
 )
-from loopx.capabilities.lark.inbox_reply import reply_lark_event_inbox  # noqa: E402
+from loopx.extensions.lark.inbox_reply import reply_lark_event_inbox  # noqa: E402
 
 
 def main() -> None:

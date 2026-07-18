@@ -9,6 +9,8 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "loopx"
 CONTROL_PLANE_ROOT = PACKAGE_ROOT / "control_plane"
 STATUS_MODULE = PACKAGE_ROOT / "status.py"
 QUOTA_MODULE = PACKAGE_ROOT / "quota.py"
+LARK_INBOX_CLI_MODULE = PACKAGE_ROOT / "cli_commands" / "lark_inbox.py"
+LEGACY_LARK_CAPABILITY_ROOT = PACKAGE_ROOT / "capabilities" / "lark"
 FORBIDDEN_DEPENDENCY_PREFIXES = (
     "loopx.benchmark_adapters",
     "loopx.capabilities",
@@ -103,3 +105,35 @@ def test_quota_operator_inbox_dependency_points_inward() -> None:
 
     assert "loopx.capabilities.lark.event_inbox" not in imports
     assert "loopx.control_plane.work_items.operator_inbox" in imports
+
+
+def test_lark_inbox_provider_is_owned_by_the_extension_layer() -> None:
+    legacy_provider_modules = {
+        "event_collector.py",
+        "event_collector_runtime.py",
+        "event_inbox.py",
+        "inbox_reply.py",
+    }
+    assert not any(
+        (LEGACY_LARK_CAPABILITY_ROOT / name).exists()
+        for name in legacy_provider_modules
+    )
+    legacy_imports = {
+        f"loopx.capabilities.lark.{Path(name).stem}"
+        for name in legacy_provider_modules
+    }
+    remaining_legacy_imports = {
+        (_module_name(path), dependency)
+        for path in PACKAGE_ROOT.rglob("*.py")
+        for dependency in _resolved_imports(path)
+        if dependency in legacy_imports
+    }
+    assert not remaining_legacy_imports
+
+    imports = _resolved_imports(LARK_INBOX_CLI_MODULE)
+    assert {
+        "loopx.extensions.lark.event_collector",
+        "loopx.extensions.lark.event_collector_runtime",
+        "loopx.extensions.lark.event_inbox",
+        "loopx.extensions.lark.inbox_reply",
+    } <= imports

@@ -13,17 +13,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from loopx.capabilities.lark.event_collector import (  # noqa: E402
+from loopx.extensions.lark.event_collector import (  # noqa: E402
     inspect_lark_event_collector,
     install_lark_event_collector,
     plan_lark_event_collector,
 )
-from loopx.capabilities.lark.event_collector_runtime import (  # noqa: E402
+from loopx.extensions.lark.event_collector_runtime import (  # noqa: E402
     enrich_lark_event_reply_context,
     lark_event_requires_reply_context_lookup,
     run_lark_event_collector,
 )
-from loopx.capabilities.lark.event_inbox import (  # noqa: E402
+from loopx.extensions.lark.event_inbox import (  # noqa: E402
     project_lark_event_inbox_urgency,
 )
 
