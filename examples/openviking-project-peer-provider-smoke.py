@@ -13,10 +13,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from loopx.capabilities.issue_fix import build_issue_fix_pr_description  # noqa: E402
-from loopx.capabilities.semantic_preference.project_peer import (  # noqa: E402
-    normalize_repository_identity,
+from loopx.extensions.openviking_semantic_preference.project_peer import (  # noqa: E402
     resolve_project_peer_scope,
 )
+from loopx.repository_identity import normalize_repository_identity  # noqa: E402
 
 
 REMOTE = "https://github.com/volcengine/OpenViking.git"
