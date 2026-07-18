@@ -211,7 +211,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
         if profile["id"] == "repo-architecture-budget"
     )
     architecture_commands = [check["command"] for check in architecture_profile["checks"]]
-    assert "python3 examples/control_plane/repo-python-line-budget-smoke.py" in architecture_commands, (
+    assert "python3 examples/control_plane/control-plane-maintainability-ratchet-smoke.py" in architecture_commands, (
         architecture_profile
     )
 

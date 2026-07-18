@@ -79,7 +79,7 @@ LARK_KANBAN_TOKENS = (
     "examples/lark-kanban",
 )
 INHERITED_BASELINE_COMMANDS = (
-    "repo-python-line-budget-smoke.py",
+    "control-plane-maintainability-ratchet-smoke.py",
 )
 
 

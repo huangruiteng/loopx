@@ -125,7 +125,7 @@ def assert_git_required_smoke_skips_without_git_worktree() -> None:
     assert result["ok"] is True, result
     assert result["git_required"] is True, result
     assert result["normalized"]["script"] == (
-        "examples/control_plane/repo-python-line-budget-smoke.py"
+        "examples/control_plane/control-plane-maintainability-ratchet-smoke.py"
     ), result
     assert payload["git_required_skips"] == [result], payload
 

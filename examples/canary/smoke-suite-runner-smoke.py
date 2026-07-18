@@ -135,7 +135,7 @@ def assert_catalog_profile_preview_is_supported() -> None:
     )
     assert payload["ok"] is True, payload
     assert payload["selected_check_count"] == 1, payload
-    assert payload["selected_checks"][0]["command"] == "python3 examples/control_plane/repo-python-line-budget-smoke.py", payload
+    assert payload["selected_checks"][0]["command"] == "python3 examples/control_plane/control-plane-maintainability-ratchet-smoke.py", payload
     assert payload["catalog_plan"]["planned_check_count"] == 1, payload
 
 
@@ -229,7 +229,7 @@ def assert_public_smoke_watch_profile_covers_health_surfaces() -> None:
     assert payload["selection_inputs"]["smoke_profiles"] == ["public-smoke-watch"], payload
     scripts = [check["normalized"]["script"] for check in payload["selected_checks"]]
     assert "examples/canary/smoke-suite-runner-smoke.py" in scripts, payload
-    assert "examples/control_plane/repo-python-line-budget-smoke.py" in scripts, payload
+    assert "examples/control_plane/control-plane-maintainability-ratchet-smoke.py" in scripts, payload
     assert "examples/issue-fix-workflow-e2e-smoke.py" in scripts, payload
     assert any("monitor" in script for script in scripts), payload
     assert all("skillsbench" not in script for script in scripts), payload
@@ -249,7 +249,7 @@ def assert_named_smoke_profile_can_mix_with_catalog_profile() -> None:
     commands = [check["command"] for check in payload["selected_checks"]]
     assert any("examples/canary/" in command for command in commands), payload
     assert all("canary-promotion" not in command for command in commands), payload
-    assert any("examples/control_plane/repo-python-line-budget-smoke.py" in command for command in commands), payload
+    assert any("examples/control_plane/control-plane-maintainability-ratchet-smoke.py" in command for command in commands), payload
 
 
 def assert_cli_json_preview_works() -> None:
