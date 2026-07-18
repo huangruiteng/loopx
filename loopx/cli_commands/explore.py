@@ -38,7 +38,8 @@ from ..control_plane.runtime.runtime_projection_route import (
     compact_goal_source_runtime_route,
     resolve_goal_source_runtime_route,
 )
-from ..presentation.sinks.lark.explore_results import (
+from ..extensions.lark import LARK_EXTENSION_ID, LARK_PROJECTION_SINK_PERMISSION
+from ..extensions.lark.presentation.explore_results import (
     DEFAULT_EXPLORE_BASE_NAME,
     EXPLORE_TABLE_KEYS,
     LarkExploreConfig,
@@ -54,13 +55,17 @@ from ..presentation.sinks.lark.explore_results import (
     sync_explore_visuals_to_lark,
     write_lark_explore_local_config,
 )
-from ..presentation.sinks.lark.explore_singleflight import (
+from ..extensions.lark.presentation.explore_singleflight import (
     default_lark_explore_config_path,
     explore_feishu_sync_busy_packet,
     explore_feishu_sync_singleflight,
 )
 from ..presentation.explore_views import build_explore_presentation_bundle
-from ..presentation.sinks.lark.kanban import DEFAULT_CLI_BIN
+from ..extensions.lark.presentation.kanban import DEFAULT_CLI_BIN
+from ..extensions.runtime import (
+    default_extension_state_file,
+    resolve_extension_activation,
+)
 from ..history import load_registry
 from ..paths import resolve_runtime_root
 from ..todos import list_goal_todos
@@ -584,9 +589,23 @@ def handle_explore_command(
     if args.command != "explore":
         return None
     fmt = output_format(args)
+    activation: dict[str, object] | None = None
     try:
         registry = load_registry(registry_path)
         runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+        if args.explore_command in {
+            "schema",
+            "source-history-reconcile",
+            "feishu-setup",
+            "feishu-visual-configure",
+            "feishu-sync",
+            "feishu-card",
+        }:
+            activation = resolve_extension_activation(
+                LARK_EXTENSION_ID,
+                state_file=default_extension_state_file(runtime_root),
+                required_permissions=(LARK_PROJECTION_SINK_PERMISSION,),
+            )
         source_runtime_route = None
         goal_id = str(getattr(args, "goal_id", "") or "")
         if goal_id:
@@ -948,6 +967,8 @@ def handle_explore_command(
             payload["source_runtime_route"] = compact_goal_source_runtime_route(
                 source_runtime_route
             )
+        if activation is not None and payload.get("ok"):
+            payload["extension_activation"] = activation
     except Exception as exc:
         payload = {
             "ok": False,

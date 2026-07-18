@@ -126,11 +126,18 @@ def sync_explore_graph_after_material_refresh(
         }
 
     if syncer is None:
-        from ...presentation.sinks.lark.explore_results import (
-            sync_issue_fix_explore_on_material_change,
-        )
-
-        syncer = sync_issue_fix_explore_on_material_change
+        status = "projection_sink_provider_unavailable"
+        return {
+            **base,
+            "ok": False,
+            "status": status,
+            "delivery_postcondition": explore_graph_delivery_postcondition(
+                enabled=True,
+                status=status,
+                ok=False,
+                external_sink_delivery_authorized=external_sink_delivery_authorized,
+            ),
+        }
 
     try:
         result = syncer(
@@ -178,6 +185,7 @@ def sync_explore_graph_after_material_refresh(
         "row_readback_verified": row_readback_verified,
         "semantic_digest": result.get("semantic_digest"),
         "source_runtime_route": projection.get("source_runtime_route"),
+        "extension_activation": result.get("extension_activation"),
         "delivery_postcondition": explore_graph_delivery_postcondition(
             enabled=True,
             status=status,

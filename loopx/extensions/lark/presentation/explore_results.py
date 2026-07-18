@@ -34,7 +34,7 @@ from ....capabilities.explore.result_log import (
     EDGE_TYPES,
     build_explore_graph_view,
 )
-from ...explore_views import (
+from ....presentation.explore_views import (
     PRESENTATION_MODE_DUAL_VIEW,
     build_explore_presentation_bundle,
     explore_source_digest,

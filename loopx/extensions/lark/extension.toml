@@ -1,6 +1,6 @@
 schema_version = "loopx_extension_manifest_v0"
 id = "loopx-lark"
-version = "1.1.0"
+version = "1.2.0"
 requires_loopx_api = ">=1,<2"
 permissions = [
   "lark.inbox.read",
@@ -8,6 +8,7 @@ permissions = [
   "lark.reply.send",
   "lark.collector.manage",
   "lark.reviewer_notification.send",
+  "lark.projection_sink.use",
 ]
 
 [runtime]
@@ -39,3 +40,25 @@ real_world_anchor = "verified reviewer requests sent through a project-dedicated
 user_value = "Deliver idempotent reviewer notifications with identity, membership, semantic-dedupe, and readback verification."
 entry_command = "loopx issue-fix reviewer-request --goal-id <goal-id> --url <pr-url>"
 next_real_step = "Install or upgrade and explicitly enable the bundled provider before configuring a Lark reviewer notification sink."
+
+[[provides]]
+id = "lark-kanban-projection"
+kind = "projection_sink"
+title = "Lark Kanban projection"
+status = "active-preview"
+visibility = "public"
+real_world_anchor = "LoopX todo and control-plane projections rendered into a configured Lark Base"
+user_value = "Give operators a bounded, lineage-preserving Kanban view without making Lark the control-plane source of truth."
+entry_command = "loopx lark-kanban sync-projection --projection-file <projection.json>"
+next_real_step = "Install or upgrade and explicitly enable the bundled provider before configuring a Lark Kanban sink."
+
+[[provides]]
+id = "lark-explore-projection"
+kind = "projection_sink"
+title = "Lark Explore projection"
+status = "active-preview"
+visibility = "public"
+real_world_anchor = "LoopX Explore rows, cards, and whiteboards projected into configured Lark surfaces"
+user_value = "Publish canonical and executive Explore views from one bounded result log with readback and source-lineage checks."
+entry_command = "loopx explore feishu-sync --goal-id <goal-id>"
+next_real_step = "Install or upgrade and explicitly enable the bundled provider before configuring a Lark Explore sink."

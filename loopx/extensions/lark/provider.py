@@ -22,6 +22,16 @@ REQUIRED_EXPORTS = {
     "loopx.extensions.lark.reviewer_notification": (
         "lark_reviewer_notification_sink",
     ),
+    "loopx.extensions.lark.presentation.kanban": (
+        "lark_kanban_doctor",
+        "sync_loopx_projection_to_lark_kanban",
+        "sync_loopx_todos_to_lark_kanban",
+    ),
+    "loopx.extensions.lark.presentation.explore_results": (
+        "setup_lark_explore_board",
+        "sync_explore_results_to_lark",
+        "sync_explore_visuals_to_lark",
+    ),
 }
 
 

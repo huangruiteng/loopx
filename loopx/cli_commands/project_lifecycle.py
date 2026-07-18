@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import argparse
+from importlib import import_module
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from ..capabilities.explore.activation import (
@@ -18,6 +19,11 @@ from ..control_plane.work_items.delivery_batch_scale import (
     DELIVERY_BATCH_SCALE_INPUT_CHOICES,
 )
 from ..control_plane.work_items.delivery_outcome import DELIVERY_OUTCOME_CHOICES
+from ..extensions.runtime import (
+    default_extension_state_file,
+    resolve_extension_activation,
+)
+from ..history import load_registry
 from ..feedback import LESSON_KINDS, append_human_reward, compact_reward, render_reward_markdown
 from ..operator_gate import (
     DEFAULT_OPERATOR_GATE,
@@ -30,6 +36,7 @@ from ..project_map import (
     read_only_project_map_run,
     render_read_only_project_map_markdown,
 )
+from ..paths import resolve_runtime_root
 from ..state_refresh import (
     DEFAULT_REFRESH_ACTION,
     DEFAULT_REFRESH_CLASSIFICATION,
@@ -63,6 +70,34 @@ INLINE_VISION_FIELDS = {
     "vision_dreaming_policy": "dreaming_policy",
     "vision_last_patch": "last_patch_summary",
 }
+
+
+def _lark_explore_graph_syncer(
+    runtime_root_arg: str | None,
+    *,
+    registry_path: Path,
+) -> Callable[..., Mapping[str, object]]:
+    extension_runtime_root = resolve_runtime_root(
+        load_registry(registry_path), runtime_root_arg
+    )
+
+    def sync(**kwargs: object) -> Mapping[str, object]:
+        provider = import_module("loopx.extensions.lark")
+        activation = resolve_extension_activation(
+            str(provider.LARK_EXTENSION_ID),
+            state_file=default_extension_state_file(extension_runtime_root),
+            required_permissions=(str(provider.LARK_PROJECTION_SINK_PERMISSION),),
+        )
+        implementation = import_module(
+            "loopx.extensions.lark.presentation.explore_results"
+        )
+        result = dict(
+            implementation.sync_issue_fix_explore_on_material_change(**kwargs)
+        )
+        result["extension_activation"] = activation
+        return result
+
+    return sync
 
 
 def _inline_agent_vision_packet(args: argparse.Namespace) -> dict[str, object] | None:
@@ -532,6 +567,10 @@ def handle_project_lifecycle_command(
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
                 external_sink_delivery_authorized=not bool(
                     args.suppress_external_sinks
+                ),
+                syncer=_lark_explore_graph_syncer(
+                    args.runtime_root,
+                    registry_path=registry_path,
                 ),
             )
             payload["explore_graph_sync"] = graph_sync

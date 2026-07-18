@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-from ..presentation.sinks.lark.kanban import (
+from ..extensions.lark import LARK_EXTENSION_ID, LARK_PROJECTION_SINK_PERMISSION
+from ..extensions.lark.presentation.kanban import (
     DEFAULT_AGENT_ID,
     DEFAULT_CLI_BIN,
     DEFAULT_STATUS_QUEUE_VIEW,
@@ -33,9 +34,15 @@ from ..presentation.sinks.lark.kanban import (
     sync_loopx_todos_to_lark_kanban,
     use_lark_kanban_board,
 )
-from ..presentation.sinks.lark.explore_results import (
+from ..extensions.lark.presentation.explore_results import (
     sync_issue_fix_explore_on_material_change,
 )
+from ..extensions.runtime import (
+    default_extension_state_file,
+    resolve_extension_activation,
+)
+from ..history import load_registry
+from ..paths import resolve_runtime_root
 
 
 PrintPayload = Callable[
@@ -327,6 +334,7 @@ def handle_lark_kanban_command(
     args: argparse.Namespace,
     *,
     registry_path: Path,
+    runtime_root_arg: str | None,
     print_payload: PrintPayload,
     output_format: OutputFormat,
 ) -> int | None:
@@ -339,6 +347,16 @@ def handle_lark_kanban_command(
         else default_lark_kanban_config_path(registry_path)
     )
     try:
+        activation_runtime_root = (
+            Path(runtime_root_arg).expanduser()
+            if runtime_root_arg is not None
+            else resolve_runtime_root(load_registry(registry_path), None)
+        )
+        activation = resolve_extension_activation(
+            LARK_EXTENSION_ID,
+            state_file=default_extension_state_file(activation_runtime_root),
+            required_permissions=(LARK_PROJECTION_SINK_PERMISSION,),
+        )
         if args.lark_kanban_command == "schema":
             payload = lark_kanban_schema_payload(table_name=args.table_name)
         elif args.lark_kanban_command == "config":
@@ -574,6 +592,8 @@ def handle_lark_kanban_command(
             )
         else:
             raise ValueError(f"unknown lark-kanban command: {args.lark_kanban_command}")
+        if payload.get("ok"):
+            payload["extension_activation"] = activation
     except Exception as exc:
         payload = {
             "ok": False,

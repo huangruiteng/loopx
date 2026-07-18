@@ -21,7 +21,7 @@ from ....control_plane.todos.contract import (
     normalize_explicit_todo_task_class,
     normalize_todo_status,
 )
-from ...projection_source_reconcile import (
+from ....presentation.projection_source_reconcile import (
     plan_projection_source_reconcile,
     validate_projection_source_reconcile_request,
 )
