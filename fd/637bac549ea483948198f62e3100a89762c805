@@ -1,0 +1,27 @@
+examples/claude-goalmode-hook-policy-smoke.py
+  s_32e2a9a204a8e4::t_81f8c7b4c89d6b 14-15,37-61
+loopx/benchmark_adapters/skillsbench_bridge_guard.py
+  s_32e2a9a204a8e4::t_c726a7541a4680 113-116,122-124
+loopx/claude_goal_mode/hooks/goal_policy.py
+  s_32e2a9a204a8e4::t_52741df44fd1c1 44,80,83,107
+tests/test_skillsbench_docker_command_file_bridge.py
+  s_32e2a9a204a8e4::t_36c32708a7fd42 4-5,10-12,29-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fd637bac549ea483948198f62e3100a89762c805",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
