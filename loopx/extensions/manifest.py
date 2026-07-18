@@ -10,6 +10,7 @@ from typing import Any
 EXTENSION_MANIFEST_SCHEMA_VERSION = "loopx_extension_manifest_v0"
 LOOPX_EXTENSION_API_VERSION = 1
 _API_CLAUSE = re.compile(r"^(>=|<=|==|>|<)?\s*(\d+)$")
+_PROTOCOL_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}_v\d+$")
 
 
 def _required_string(record: Mapping[str, Any], key: str, *, context: str) -> str:
@@ -26,6 +27,53 @@ def _string_list(record: Mapping[str, Any], key: str, *, context: str) -> list[s
     ):
         raise ValueError(f"{context} requires `{key}` to be an array of strings")
     return [item.strip() for item in value]
+
+
+def _runtime_contract(
+    raw: Mapping[str, Any],
+    *,
+    permissions: list[str],
+    context: str,
+) -> dict[str, Any] | None:
+    value = raw.get("runtime")
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{context} requires `runtime` to be a TOML table")
+    runtime_context = f"{context} runtime"
+    protocol = _required_string(value, "protocol", context=runtime_context)
+    if not _PROTOCOL_RE.fullmatch(protocol):
+        raise ValueError(
+            f"{runtime_context} protocol must be a versioned lower-snake token"
+        )
+    entrypoint = _required_string(value, "entrypoint", context=runtime_context)
+    if "\x00" in entrypoint:
+        raise ValueError(f"{runtime_context} entrypoint contains an invalid byte")
+    args = _string_list(value, "args", context=runtime_context)
+    doctor_args = _string_list(value, "doctor_args", context=runtime_context)
+    required_permissions = _string_list(
+        value,
+        "required_permissions",
+        context=runtime_context,
+    )
+    undeclared = sorted(set(required_permissions) - set(permissions))
+    if undeclared:
+        raise ValueError(
+            f"{runtime_context} requires undeclared permissions {undeclared}"
+        )
+    timeout_seconds = value.get("timeout_seconds", 30)
+    if not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 120:
+        raise ValueError(
+            f"{runtime_context} timeout_seconds must be an integer from 1 to 120"
+        )
+    return {
+        "protocol": protocol,
+        "entrypoint": entrypoint,
+        "args": args,
+        "doctor_args": doctor_args,
+        "required_permissions": required_permissions,
+        "timeout_seconds": timeout_seconds,
+    }
 
 
 def _require_compatible_loopx_api(requirement: str, *, context: str) -> None:
@@ -82,9 +130,17 @@ def load_extension_manifest(path: str | Path) -> dict[str, Any]:
     requires_loopx_api = _required_string(raw, "requires_loopx_api", context=context)
     _require_compatible_loopx_api(requires_loopx_api, context=context)
     permissions = _string_list(raw, "permissions", context=context)
-    provided = raw.get("provides")
-    if not isinstance(provided, list) or not provided:
-        raise ValueError(f"{context} requires at least one `[[provides]]` table")
+    runtime = _runtime_contract(raw, permissions=permissions, context=context)
+    provided = raw.get("provides", [])
+    implemented = raw.get("implements", [])
+    if not isinstance(provided, list):
+        raise ValueError(f"{context} requires `provides` to contain TOML tables")
+    if not isinstance(implemented, list):
+        raise ValueError(f"{context} requires `implements` to contain TOML tables")
+    if not provided and not implemented:
+        raise ValueError(
+            f"{context} requires at least one `[[provides]]` or `[[implements]]` table"
+        )
 
     capabilities: list[dict[str, Any]] = []
     for index, item in enumerate(provided):
@@ -104,6 +160,36 @@ def load_extension_manifest(path: str | Path) -> dict[str, Any]:
         capability["provider_version"] = version
         capabilities.append(capability)
 
+    implementations: list[dict[str, Any]] = []
+    for index, item in enumerate(implemented):
+        item_context = f"{context} implements[{index}]"
+        if not isinstance(item, Mapping):
+            raise ValueError(f"{item_context} must be a TOML table")
+        protocol = _required_string(item, "protocol", context=item_context)
+        if not _PROTOCOL_RE.fullmatch(protocol):
+            raise ValueError(
+                f"{item_context} protocol must be a versioned lower-snake token"
+            )
+        if runtime is None:
+            raise ValueError(f"{item_context} requires an executable runtime")
+        if runtime["protocol"] != protocol:
+            raise ValueError(
+                f"{item_context} protocol must match runtime protocol "
+                f"`{runtime['protocol']}`"
+            )
+        implementations.append(
+            {
+                "capability_id": _required_string(
+                    item,
+                    "capability_id",
+                    context=item_context,
+                ),
+                "protocol": protocol,
+                "provider_id": extension_id,
+                "provider_version": version,
+            }
+        )
+
     return {
         "provider": {
             "id": extension_id,
@@ -114,4 +200,6 @@ def load_extension_manifest(path: str | Path) -> dict[str, Any]:
             "permissions": permissions,
         },
         "capabilities": capabilities,
+        "implementations": implementations,
+        "runtime": runtime,
     }

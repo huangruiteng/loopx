@@ -8,6 +8,12 @@ import subprocess
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from ...extensions.runtime import (
+    default_extension_state_file,
+    doctor_installed_extension,
+    resolve_extension_binding,
+)
+
 
 CONFIG_SCHEMA = "semantic_preference_hook_config_v0"
 REQUEST_SCHEMA = "semantic_preference_provider_request_v0"
@@ -25,6 +31,9 @@ MAX_ITEM_BYTES = 8_000
 MAX_RECEIPT_REFS = 20
 MAX_CORPORA = 20
 MAX_SETUP_HINT_LENGTH = 1_000
+MAX_PROVIDER_ARGS = 64
+SEMANTIC_PREFERENCE_PROTOCOL = "semantic_preference_provider_v0"
+SEMANTIC_PREFERENCE_PERMISSION = "semantic_preference.read"
 
 _READ_ROLES = {"primary", "fallback", "reference"}
 _WRITE_MODES = {"read_only", "provider_managed"}
@@ -94,16 +103,82 @@ def _context(values: Sequence[str] | None) -> dict[str, str]:
     return result
 
 
-def _provider(payload: Mapping[str, Any]) -> tuple[Mapping[str, Any], list[str]]:
+def _provider(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     provider = payload.get("provider")
-    argv = provider.get("argv") if isinstance(provider, Mapping) else None
-    if (
-        not isinstance(argv, list)
-        or not argv
-        or not all(isinstance(value, str) and value for value in argv)
-    ):
-        raise ValueError("enabled provider requires a non-empty string argv list")
-    return provider, argv
+    if not isinstance(provider, Mapping):
+        raise ValueError("enabled config requires a provider object")
+    return provider
+
+
+def _string_argv(value: object, *, label: str, allow_empty: bool = False) -> list[str]:
+    if not isinstance(value, list) or (
+        not allow_empty and not value
+    ) or len(value) > MAX_PROVIDER_ARGS:
+        raise ValueError(f"{label} must be a bounded string list")
+    if not all(isinstance(item, str) and item for item in value):
+        raise ValueError(f"{label} must be a bounded string list")
+    return list(value)
+
+
+def _extension_id(provider: Mapping[str, Any]) -> str | None:
+    raw = provider.get("extension_id")
+    if raw is None:
+        return None
+    extension_id = str(raw).strip()
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", extension_id):
+        raise ValueError("provider extension_id must use lower-kebab token syntax")
+    if provider.get("argv") is not None:
+        raise ValueError("provider argv and extension_id are mutually exclusive")
+    return extension_id
+
+
+def _extension_state_file(
+    provider: Mapping[str, Any],
+    runtime_root: str | Path | None = None,
+) -> Path:
+    value = provider.get("extension_state_file")
+    if value is None:
+        return default_extension_state_file(runtime_root)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("provider extension_state_file must be a non-empty path")
+    return Path(value).expanduser()
+
+
+def _provider_binding(
+    provider: Mapping[str, Any],
+    *,
+    runtime_root: str | Path | None = None,
+) -> tuple[list[str], int]:
+    extension_id = _extension_id(provider)
+    if extension_id is not None:
+        if provider.get("probe_argv") is not None:
+            raise ValueError("extension providers use the extension doctor")
+        if provider.get("timeout_seconds") is not None:
+            raise ValueError("extension providers use the manifest timeout_seconds")
+        args = _string_argv(
+            provider.get("args", []),
+            label="provider args",
+            allow_empty=True,
+        )
+        binding = resolve_extension_binding(
+            extension_id,
+            state_file=_extension_state_file(provider, runtime_root),
+            capability_id="semantic-preference",
+            protocol=SEMANTIC_PREFERENCE_PROTOCOL,
+            permission=SEMANTIC_PREFERENCE_PERMISSION,
+        )
+        return [*[str(value) for value in binding["argv"]], *args], int(
+            binding["timeout_seconds"]
+        )
+
+    argv = _string_argv(provider.get("argv"), label="provider argv")
+    try:
+        timeout = int(provider.get("timeout_seconds", 30))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("provider timeout_seconds must be an integer") from exc
+    if not 1 <= timeout <= 120:
+        raise ValueError("provider timeout_seconds must be between 1 and 120")
+    return argv, timeout
 
 
 def _command_available(command: str) -> bool:
@@ -133,6 +208,7 @@ def provider_doctor(
     config: str | Path,
     *,
     project: str | Path,
+    runtime_root: str | Path | None = None,
     execute: bool = False,
 ) -> dict[str, Any]:
     """Inspect an optional provider without installing or configuring it."""
@@ -147,11 +223,37 @@ def provider_doctor(
             "verified": False,
             "external_writes_performed": False,
         }
-    provider, argv = _provider(payload)
+    provider = _provider(payload)
     provider_id = str(provider.get("id") or "configured_provider").strip()
     if not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", provider_id):
         raise ValueError("provider id must use lower-snake token syntax")
     hints = _setup_hints(provider)
+    extension_id = _extension_id(provider)
+    if extension_id is not None:
+        if provider.get("probe_argv") is not None:
+            raise ValueError("extension providers use the extension doctor")
+        doctor = doctor_installed_extension(
+            extension_id,
+            state_file=_extension_state_file(provider, runtime_root),
+            execute=execute,
+        )
+        return {
+            "ok": True,
+            "schema_version": DOCTOR_SCHEMA,
+            "status": doctor["status"],
+            "provider_id": provider_id,
+            "available": doctor["available"],
+            "verified": doctor["verified"],
+            "probe_configured": True,
+            "failure_kind": doctor.get("failure_kind"),
+            "setup_hints": hints,
+            "automatic_setup_performed": False,
+            "credential_writes_performed": False,
+            "service_writes_performed": False,
+            "external_writes_performed": False,
+        }
+
+    argv, _ = _provider_binding(provider, runtime_root=runtime_root)
     command_available = _command_available(argv[0])
     probe_argv = provider.get("probe_argv")
     if probe_argv is not None and (
@@ -296,6 +398,7 @@ def recall(
     project: str | Path,
     surface: str,
     context: Sequence[str] | None = None,
+    runtime_root: str | Path | None = None,
     execute: bool = False,
 ) -> dict[str, Any]:
     payload = _config(config, project)
@@ -324,13 +427,13 @@ def recall(
         raise ValueError("surface query or limit is outside the bounded contract")
     if policy not in {"fail_open", "fail_closed"}:
         raise ValueError("failure_policy must be fail_open or fail_closed")
-    provider, argv = _provider(payload)
+    provider = _provider(payload)
     try:
-        timeout = int(provider.get("timeout_seconds", 30))
-    except (TypeError, ValueError) as exc:
-        raise ValueError("provider timeout_seconds must be an integer") from exc
-    if not 1 <= timeout <= 120:
-        raise ValueError("provider timeout_seconds must be between 1 and 120")
+        argv, timeout = _provider_binding(provider, runtime_root=runtime_root)
+    except ValueError:
+        if execute and provider.get("extension_id") is not None:
+            return _unavailable(surface_id, policy, "extension_binding_unavailable")
+        raise
     request = {
         "schema_version": REQUEST_SCHEMA,
         "surface": surface_id,

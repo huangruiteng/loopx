@@ -1,0 +1,16 @@
+schema_version = "loopx_extension_manifest_v0"
+id = "openviking-semantic-preference"
+version = "1.0.0"
+requires_loopx_api = ">=1,<2"
+permissions = ["semantic_preference.read"]
+
+[runtime]
+protocol = "semantic_preference_provider_v0"
+entrypoint = "loopx-openviking-semantic-preference"
+doctor_args = ["--doctor"]
+required_permissions = ["semantic_preference.read"]
+timeout_seconds = 30
+
+[[implements]]
+capability_id = "semantic-preference"
+protocol = "semantic_preference_provider_v0"

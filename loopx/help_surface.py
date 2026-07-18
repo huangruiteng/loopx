@@ -161,6 +161,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
                 "command": "loopx explore",
                 "purpose": "Record the exploration topology (nodes, edges, findings) and project it to a Feishu/Lark result board.",
             },
+            {
+                "command": "loopx extension",
+                "purpose": "Inspect and manage doctor-verified subprocess extension activations.",
+            },
             {"command": "loopx issue-fix", "purpose": "Build public-safe issue or PR fix workflow packets."},
             {
                 "command": "loopx review-batch",

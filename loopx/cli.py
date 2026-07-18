@@ -46,6 +46,7 @@ from .cli_commands import (
     handle_doctor_command,
     handle_dreaming_command,
     handle_evidence_log_command,
+    handle_extension_command,
     handle_explore_command,
     handle_history_command,
     handle_lark_inbox_command,
@@ -77,6 +78,7 @@ from .cli_commands import (
     register_doctor_command,
     register_dreaming_commands,
     register_evidence_log_command,
+    register_extension_commands,
     register_explore_commands,
     register_history_command,
     register_lark_inbox_commands,
@@ -186,6 +188,8 @@ def main(argv: list[str] | None = None) -> int:
     register_canary_commands(sub, add_subcommand_format)
 
     register_capability_commands(sub, add_subcommand_format)
+
+    register_extension_commands(sub, add_subcommand_format)
 
     register_content_ops_commands(sub, add_subcommand_format)
 
@@ -337,6 +341,15 @@ def main(argv: list[str] | None = None) -> int:
     if capability_result is not None:
         return capability_result
 
+    extension_result = handle_extension_command(
+        args,
+        runtime_root_arg=args.runtime_root,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if extension_result is not None:
+        return extension_result
+
     if args.command == "ml-experiment":
         return handle_ml_experiment_command(args, output_format=output_format, print_payload=print_payload)
 
@@ -426,6 +439,7 @@ def main(argv: list[str] | None = None) -> int:
 
     semantic_preference_result = handle_semantic_preference_command(
         args,
+        runtime_root_arg=args.runtime_root,
         output_format=output_format,
         print_payload=print_payload,
     )

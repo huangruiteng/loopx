@@ -81,6 +81,7 @@ from .bootstrap_connect import (
 )
 from .canary import handle_canary_command, register_canary_commands
 from .capability import handle_capability_command, register_capability_commands
+from .extension import handle_extension_command, register_extension_commands
 from .doctor import handle_doctor_command, register_doctor_command
 from .dreaming import handle_dreaming_command, register_dreaming_commands
 from .evidence_log import handle_evidence_log_command, register_evidence_log_command
@@ -193,6 +194,7 @@ __all__ = [
     "handle_bootstrap_connect_command",
     "handle_canary_command",
     "handle_capability_command",
+    "handle_extension_command",
     "handle_check_command",
     "handle_codex_cli_bounded_visible_pilot_adapter_command",
     "handle_codex_cli_bootstrap_message_command",
@@ -267,6 +269,7 @@ __all__ = [
     "register_bootstrap_connect_command",
     "register_canary_commands",
     "register_capability_commands",
+    "register_extension_commands",
     "register_doctor_command",
     "register_dreaming_commands",
     "register_evidence_log_command",

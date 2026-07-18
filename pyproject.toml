@@ -23,12 +23,14 @@ test = [
 
 [project.scripts]
 loopx = "loopx.cli:main"
+loopx-openviking-semantic-preference = "loopx.extensions.openviking_semantic_preference.provider:main"
 
 [tool.setuptools.packages.find]
 include = ["loopx*"]
 
 [tool.setuptools.package-data]
 "loopx.capabilities.auto_research" = ["worker_skill/SKILL.md"]
+"loopx.extensions.openviking_semantic_preference" = ["extension.toml"]
 
 [tool.mypy]
 python_version = "3.11"

@@ -30,6 +30,7 @@ class CapabilityRegistry:
     def __init__(self) -> None:
         self._providers: dict[str, dict[str, Any]] = {}
         self._records: dict[str, dict[str, Any]] = {}
+        self._implementations: dict[str, list[dict[str, Any]]] = {}
 
     def register_provider(self, provider: Mapping[str, Any]) -> None:
         provider_id = _required_string(provider, "id", context="provider")
@@ -93,6 +94,38 @@ class CapabilityRegistry:
         normalized["provider_id"] = provider_id
         self._records[capability_id] = normalized
 
+    def register_implementation(self, implementation: Mapping[str, Any]) -> None:
+        capability_id = _required_string(
+            implementation,
+            "capability_id",
+            context="capability implementation",
+        )
+        context = f"capability implementation `{capability_id}`"
+        provider_id = _required_string(implementation, "provider_id", context=context)
+        protocol = _required_string(implementation, "protocol", context=context)
+        if capability_id not in self._records:
+            raise ValueError(f"{context} references unknown capability")
+        if provider_id not in self._providers:
+            raise ValueError(f"{context} references unknown provider `{provider_id}`")
+        existing = self._implementations.setdefault(capability_id, [])
+        if any(item["provider_id"] == provider_id for item in existing):
+            raise ValueError(
+                f"duplicate implementation for capability `{capability_id}` "
+                f"from provider `{provider_id}`"
+            )
+        normalized = deepcopy(dict(implementation))
+        normalized["capability_id"] = capability_id
+        normalized["provider_id"] = provider_id
+        normalized["protocol"] = protocol
+        existing.append(normalized)
+
+    def _with_implementations(self, record: Mapping[str, Any]) -> dict[str, Any]:
+        normalized = deepcopy(dict(record))
+        implementations = self._implementations.get(str(record["id"]), [])
+        if implementations:
+            normalized["implementation_providers"] = deepcopy(implementations)
+        return normalized
+
     def capability_ids(self, *, include_internal: bool = False) -> list[str]:
         return [
             capability_id
@@ -115,11 +148,11 @@ class CapabilityRegistry:
                 f"unknown capability `{wanted}`; expected one of "
                 f"{self.capability_ids(include_internal=include_internal)}"
             )
-        return deepcopy(record)
+        return self._with_implementations(record)
 
     def records(self, *, include_internal: bool = False) -> list[dict[str, Any]]:
         return [
-            deepcopy(record)
+            self._with_implementations(record)
             for record in self._records.values()
             if include_internal or record["visibility"] == "public"
         ]

@@ -292,7 +292,10 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "doc": "docs/capabilities/semantic-preference/README.md",
             },
         ],
-        "smokes": ["python3 examples/semantic-preference-hook-smoke.py"],
+        "smokes": [
+            "python3 examples/semantic-preference-hook-smoke.py",
+            "python3 examples/openviking-extension-runtime-smoke.py",
+        ],
         "docs": ["docs/capabilities/semantic-preference/README.md"],
         "boundaries": [
             "The hook is disabled until an enabled local-private config is supplied.",
@@ -711,6 +714,9 @@ def _summary(record: Mapping[str, Any]) -> dict[str, Any]:
         "real_world_anchor": record["real_world_anchor"],
         "entry_command": record["entry_command"],
         "implemented_protocol_count": len(record.get("implemented_protocols") or []),
+        "implementation_provider_count": len(
+            record.get("implementation_providers") or []
+        ),
         "smoke_count": len(record.get("smokes") or []),
         "next_real_step": record["next_real_step"],
     }
@@ -734,6 +740,8 @@ def build_capability_registry(
         registry.register_provider(manifest["provider"])
         for record in manifest["capabilities"]:
             registry.register_capability(record)
+        for implementation in manifest["implementations"]:
+            registry.register_implementation(implementation)
     return registry
 
 
@@ -798,6 +806,7 @@ def render_capability_catalog_markdown(payload: dict[str, Any]) -> str:
                 f"- anchor: {item.get('real_world_anchor')}",
                 f"- entry: `{item.get('entry_command')}`",
                 f"- implemented_protocol_count: `{item.get('implemented_protocol_count')}`",
+                f"- implementation_provider_count: `{item.get('implementation_provider_count')}`",
                 f"- smoke_count: `{item.get('smoke_count')}`",
                 f"- next: {item.get('next_real_step')}",
                 "",

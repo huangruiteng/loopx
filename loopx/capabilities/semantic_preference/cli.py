@@ -9,7 +9,7 @@ from .contract import (
     provider_doctor,
     recall,
 )
-from .openviking_provider import (
+from ...extensions.openviking_semantic_preference.provider import (
     handle_openviking_provider,
     register_openviking_provider_arguments,
 )
@@ -113,6 +113,7 @@ def register_semantic_preference_commands(
 def handle_semantic_preference_command(
     args: argparse.Namespace,
     *,
+    runtime_root_arg: str | None,
     output_format: Callable[..., str],
     print_payload: Callable[[dict[str, object], str, Callable], None],
 ) -> int | None:
@@ -127,12 +128,14 @@ def handle_semantic_preference_command(
                 project=args.project,
                 surface=args.surface,
                 context=args.context,
+                runtime_root=runtime_root_arg,
                 execute=args.execute,
             )
         elif args.semantic_preference_command == "doctor":
             payload = provider_doctor(
                 args.config,
                 project=args.project,
+                runtime_root=runtime_root_arg,
                 execute=args.execute,
             )
         elif args.semantic_preference_command == "receipt":

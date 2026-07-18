@@ -1,107 +1,19 @@
-from __future__ import annotations
+"""Compatibility imports for the OpenViking extension's project scope."""
 
-import hashlib
-import re
-import subprocess
-from dataclasses import dataclass
-from pathlib import Path
-
+from ...extensions.openviking_semantic_preference.project_peer import (
+    PROJECT_PEER_PREFIX,
+    ProjectPeerScope,
+    project_peer_id,
+    resolve_project_identity,
+    resolve_project_peer_scope,
+)
 from ...repository_identity import normalize_repository_identity
 
-
-PROJECT_PEER_PREFIX = "project-"
-_SAFE_PROJECT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
-_SAFE_USER_SPACE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-
-
-def _origin_remote(project: Path, git_bin: str) -> str:
-    try:
-        completed = subprocess.run(
-            [git_bin, "-C", str(project), "config", "--get", "remote.origin.url"],
-            capture_output=True,
-            check=False,
-            text=True,
-            timeout=10,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise ValueError("project origin remote could not be read") from exc
-    if completed.returncode != 0 or not completed.stdout.strip():
-        raise ValueError(
-            "project has no canonical origin remote; provide a stable LoopX project id"
-        )
-    return completed.stdout.strip()
-
-
-def resolve_project_identity(
-    project: str | Path,
-    *,
-    loopx_project_id: str | None = None,
-    remote_url: str | None = None,
-    git_bin: str = "git",
-) -> str:
-    """Resolve a durable project identity without using a checkout path."""
-
-    try:
-        remote = remote_url or _origin_remote(Path(project), git_bin)
-        return normalize_repository_identity(remote)
-    except ValueError:
-        project_id = str(loopx_project_id or "").strip()
-        if not _SAFE_PROJECT_ID.fullmatch(project_id):
-            raise
-        return f"loopx:{project_id}"
-
-
-def project_peer_id(project_identity: str) -> str:
-    digest = hashlib.sha256(project_identity.encode("utf-8")).hexdigest()[:16]
-    return f"{PROJECT_PEER_PREFIX}{digest}"
-
-
-@dataclass(frozen=True)
-class ProjectPeerScope:
-    project_identity: str
-    peer_id: str
-    user_space: str
-
-    @property
-    def memory_uri(self) -> str:
-        return f"viking://user/{self.user_space}/peers/{self.peer_id}/memories"
-
-    @property
-    def preferences_uri(self) -> str:
-        return f"{self.memory_uri}/preferences"
-
-    @property
-    def global_memory_uri(self) -> str:
-        return f"viking://user/{self.user_space}/memories"
-
-    def recall_targets(
-        self, *, include_global_fallback: bool = False
-    ) -> tuple[str, ...]:
-        targets = [self.memory_uri]
-        if include_global_fallback:
-            targets.append(self.global_memory_uri)
-        return tuple(targets)
-
-
-def resolve_project_peer_scope(
-    project: str | Path,
-    *,
-    user_space: str = "default",
-    loopx_project_id: str | None = None,
-    remote_url: str | None = None,
-    git_bin: str = "git",
-) -> ProjectPeerScope:
-    normalized_user = str(user_space or "").strip()
-    if not _SAFE_USER_SPACE.fullmatch(normalized_user):
-        raise ValueError("user space must be a path-safe identifier")
-    identity = resolve_project_identity(
-        project,
-        loopx_project_id=loopx_project_id,
-        remote_url=remote_url,
-        git_bin=git_bin,
-    )
-    return ProjectPeerScope(
-        project_identity=identity,
-        peer_id=project_peer_id(identity),
-        user_space=normalized_user,
-    )
+__all__ = [
+    "PROJECT_PEER_PREFIX",
+    "ProjectPeerScope",
+    "normalize_repository_identity",
+    "project_peer_id",
+    "resolve_project_identity",
+    "resolve_project_peer_scope",
+]
