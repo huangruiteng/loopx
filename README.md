@@ -856,6 +856,8 @@ contract.
   routing, gate, evidence, projection, and planning patterns.
 - [Codex CLI packaged install](docs/product/codex-cli-packaged-install.md):
   no-clone install/update/start path for Codex CLI users.
+- [pi host integration](docs/product/pi-host-integration.md): opt-in pi package,
+  bounded interactive turns, and non-regression boundaries for existing hosts.
 - [Worker bridge install contract](docs/worker-bridge-install-contract.md):
   runner-agnostic bridge and edge-worker handoff model.
 - [Lark Kanban adapter](docs/lark-kanban-control-plane-adapter.md):

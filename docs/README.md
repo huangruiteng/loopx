@@ -38,6 +38,9 @@ incident report, or launch draft.
 - [Codex CLI first-run rehearsal](product/codex-cli-first-run-rehearsal.md):
   shortest public route from no-clone install to one-message TUI bootstrap and
   proof-capture fixtures.
+- [pi host integration](product/pi-host-integration.md): opt-in pi package,
+  bounded-turn lifecycle, delivery workspace accounting, and compatibility
+  guarantees for existing agent hosts.
 - [Architecture](architecture.md): core concepts and control-plane shape.
 - [Integration guide](integration.md): how to connect a project to LoopX,
   including public-safe Lark or Feishu reply card payloads.

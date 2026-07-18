@@ -25,6 +25,29 @@ workflow. Use `loopx doctor` from any project folder to inspect the
 resolved command path, symlink target, release snapshot, canary wrapper,
 installed skill delivery-hint state, wrapper script, and Python import health.
 
+## pi Host Integration (Opt-In)
+
+LoopX includes an official pi package under `integrations/pi`. Install it only
+on hosts that use pi:
+
+```bash
+loopx-pi-install
+```
+
+Contributors can run `scripts/install-pi-package.sh` directly from a checkout.
+
+Reload an already open pi session with `/reload`. The package exposes `/loopx`,
+`/loopx-turn`, `/loopx-status`, and the structured `loopx_control` tool. pi is
+modeled as an interactive host: every `/loopx-turn` performs at most one
+quota-gated segment, and the package does not install a timer, heartbeat
+automation, or background scheduler.
+
+The integration is additive. Installing LoopX normally does not install the pi
+package, and installing the pi package does not modify Codex App, Codex IDE,
+Codex CLI, Claude Code, manual-shell, or custom-agent resources. See
+[pi host integration](product/pi-host-integration.md) for lifecycle, workspace,
+vision, and compatibility contracts.
+
 ## Global Skill Policy
 
 LoopX product behavior belongs in installed global Codex skills, not in
