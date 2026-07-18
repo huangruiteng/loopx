@@ -221,6 +221,7 @@ def main() -> int:
             GOAL_ID,
             "--agent-id",
             AGENT_ID,
+            "--codex-app",
             "--scan-path",
             str(project / "PUBLIC.md"),
         )

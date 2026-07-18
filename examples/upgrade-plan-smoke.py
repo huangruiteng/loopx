@@ -371,6 +371,7 @@ def assert_registered_agent_activation_is_checked(root: Path) -> None:
         agent_id=REGISTERED_AGENT_ID,
         registered_agents=[REGISTERED_AGENT_ID],
         available_capabilities=["network", "external_evidence_poll"],
+        runtime_profile="codex_app_heartbeat",
     )["task_body"]
     write_registered_codex_app_automation(root / "registered-codex-home", prompt=rendered)
     old_codex_home = os.environ.get("CODEX_HOME")
@@ -426,6 +427,7 @@ def assert_codex_app_automation_is_discovered(registry_path: Path, codex_home: P
         active_state_source="registry",
         thin=True,
         cli_bin="loopx",
+        runtime_profile="codex_app_heartbeat",
     )["task_body"]
     expected_sha = first_payload["managed_heartbeats"][0]["generated_prompts"]["thin"]["sha256"]
     assert prompt_digest(rendered) == expected_sha, first_payload

@@ -217,6 +217,8 @@ def main() -> int:
             GOAL_ID,
             "--todo-id",
             todo_payload["todo_id"],
+            "--decision-outcome",
+            "approve",
             "--evidence",
             "operator approval recorded for read-only dry-run",
         )

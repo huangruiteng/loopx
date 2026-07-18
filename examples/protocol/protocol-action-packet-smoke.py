@@ -9,7 +9,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
+from loopx.control_plane.scheduler.execution_context import (
+    SchedulerRuntimeProfile,
+    scheduler_execution_context_for_runtime_profile,
+)
+from loopx.quota import (
+    build_quota_should_run as _build_quota_should_run,
+    render_quota_should_run_markdown,
+)
 
 
 GOAL_ID = "protocol-packet-fixture"
@@ -27,6 +34,14 @@ FULL_AIRLINE_ACTION = (
     "source-heldout vector-aware scorer gate."
 )
 USER_TODO = "[P1] Decide whether to approve a no-submit setup check."
+CODEX_APP_SCHEDULER_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT
+)
+
+
+def build_quota_should_run(*args, **kwargs):
+    kwargs.setdefault("scheduler_execution_context", CODEX_APP_SCHEDULER_CONTEXT)
+    return _build_quota_should_run(*args, **kwargs)
 
 
 def status_payload(
@@ -176,6 +191,7 @@ def user_todo(
     task_class: str | None = None,
     action_kind: str | None = None,
     claimed_by: str | None = None,
+    blocks_agent: str | None = None,
 ) -> dict:
     item = {
         "index": index,
@@ -190,6 +206,8 @@ def user_todo(
         item["action_kind"] = action_kind
     if claimed_by:
         item["claimed_by"] = claimed_by
+    if blocks_agent:
+        item["blocks_agent"] = blocks_agent
     return item
 
 
@@ -328,6 +346,7 @@ def assert_agent_scoped_user_gate_stays_diagnostic_only() -> None:
                 task_class="user_gate",
                 action_kind="review_pr",
                 claimed_by="codex-main-control",
+                blocks_agent="codex-main-control",
             )
         ],
     )

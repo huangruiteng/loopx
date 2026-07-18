@@ -8,8 +8,6 @@ import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
-import pytest
-
 from loopx.cli import main as cli_main
 from loopx.control_plane.scheduler.execution_context import SchedulerRuntimeProfile
 from loopx.control_plane.testing.cli_output_budget import (
@@ -693,75 +691,63 @@ def test_turn_envelope_cli_preserves_codex_app_scheduler_binding(
     )
 
 
-@pytest.mark.parametrize(
-    ("profile", "expected_binding"),
-    (
+def test_first_class_runtime_profiles_fit_thin_prompt_budget_and_cli_round_trip(
+    tmp_path: Path,
+) -> None:
+    cases = (
         (SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT, "--codex-app"),
-        (
-            SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
-            "--runtime-profile codex_cli",
-        ),
-        (
-            SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE,
-            "--runtime-profile claude_code",
-        ),
-        (
-            SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP,
-            "--runtime-profile generic_cli",
-        ),
+        (SchedulerRuntimeProfile.CODEX_CLI_VISIBLE, "--runtime-profile codex_cli"),
+        (SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE, "--runtime-profile claude_code"),
+        (SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP, "--runtime-profile generic_cli"),
         (
             SchedulerRuntimeProfile.GENERIC_CLI_OUTER_CONTROLLER,
             "--runtime-profile outer_controller",
         ),
-    ),
-)
-def test_first_class_runtime_profiles_fit_thin_prompt_budget_and_cli_round_trip(
-    tmp_path: Path,
-    profile: SchedulerRuntimeProfile,
-    expected_binding: str,
-) -> None:
-    project, runtime, registry_path, state_file = _write_fixture(
-        tmp_path,
-        SCENARIOS[0],
     )
-    prompt = build_heartbeat_prompt(
-        goal_id=GOAL_ID,
-        active_state=state_file,
-        agent_id=AGENT_IDS[0],
-        thin=True,
-        runtime_profile=profile.value,
-    )
+    for index, (profile, expected_binding) in enumerate(cases):
+        with _stable_budget_fixture_root(tmp_path / f"profile-{index}") as root:
+            project, runtime, registry_path, state_file = _write_fixture(
+                root,
+                SCENARIOS[0],
+            )
+            prompt = build_heartbeat_prompt(
+                goal_id=GOAL_ID,
+                active_state=state_file,
+                agent_id=AGENT_IDS[0],
+                thin=True,
+                runtime_profile=profile.value,
+            )
 
-    assert prompt["interface_budget"]["within_budget"] is True
-    assert expected_binding in prompt["quota_guard_command"]
-    assert expected_binding in prompt["task_body"]
-    assert " -H " not in prompt["quota_guard_command"]
-    assert " -O " not in prompt["quota_guard_command"]
-    assert " -M " not in prompt["quota_guard_command"]
+            assert prompt["interface_budget"]["within_budget"] is True
+            assert expected_binding in prompt["quota_guard_command"]
+            assert expected_binding in prompt["task_body"]
+            assert " -H " not in prompt["quota_guard_command"]
+            assert " -O " not in prompt["quota_guard_command"]
+            assert " -M " not in prompt["quota_guard_command"]
 
-    exit_code, text = _invoke_cli(
-        [
-            "--registry",
-            str(registry_path),
-            "--runtime-root",
-            str(runtime),
-            "--format",
-            "json",
-            "quota",
-            "should-run",
-            "--goal-id",
-            GOAL_ID,
-            "--agent-id",
-            AGENT_IDS[0],
-            "--scan-root",
-            str(project),
-            "--runtime-profile",
-            profile.value,
-        ]
-    )
+            exit_code, text = _invoke_cli(
+                [
+                    "--registry",
+                    str(registry_path),
+                    "--runtime-root",
+                    str(runtime),
+                    "--format",
+                    "json",
+                    "quota",
+                    "should-run",
+                    "--goal-id",
+                    GOAL_ID,
+                    "--agent-id",
+                    AGENT_IDS[0],
+                    "--scan-root",
+                    str(project),
+                    "--runtime-profile",
+                    profile.value,
+                ]
+            )
 
-    assert exit_code == 0, text
-    payload = json.loads(text)
-    assert payload["scheduler_hint"].get("action") != (
-        "repair_scheduler_execution_context"
-    )
+            assert exit_code == 0, text
+            payload = json.loads(text)
+            assert payload["scheduler_hint"].get("action") != (
+                "repair_scheduler_execution_context"
+            )

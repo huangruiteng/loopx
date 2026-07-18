@@ -12,11 +12,18 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from loopx.control_plane.scheduler.execution_context import (  # noqa: E402
+    SchedulerRuntimeProfile,
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint  # noqa: E402
 from loopx.quota import AgentScopeFrontierAction, _scheduler_hint  # noqa: E402
 
 
 AGENT_SCOPE_ACTIONS = [action.value for action in AgentScopeFrontierAction]
+CODEX_APP_SCHEDULER_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT
+)
 
 
 def payload(
@@ -77,7 +84,10 @@ def assert_policy_case(
     expected_progression: list[int] | None = None,
     expected_same_identity_action: str = "advance_index_after_applied_interval_elapsed",
 ) -> None:
-    quota_wrapper = _scheduler_hint(deepcopy(base_payload))
+    quota_wrapper = _scheduler_hint(
+        deepcopy(base_payload),
+        scheduler_execution_context=CODEX_APP_SCHEDULER_CONTEXT,
+    )
     extracted = build_scheduler_hint(
         deepcopy(base_payload),
         user_action_required=bool(
@@ -86,6 +96,7 @@ def assert_policy_case(
             .get("action_required")
         ),
         agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
+        scheduler_execution_context=CODEX_APP_SCHEDULER_CONTEXT,
     )
     detailed = build_scheduler_hint(
         deepcopy(base_payload),
@@ -96,6 +107,7 @@ def assert_policy_case(
         ),
         agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
         include_detail=True,
+        scheduler_execution_context=CODEX_APP_SCHEDULER_CONTEXT,
     )
     assert extracted == quota_wrapper, (name, extracted, quota_wrapper)
     assert extracted["schema_version"] == "scheduler_hint_v0", (name, extracted)

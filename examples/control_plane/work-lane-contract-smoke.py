@@ -11,7 +11,14 @@ SMOKE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SMOKE_DIR))
 sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
+from loopx.control_plane.scheduler.execution_context import (
+    SchedulerRuntimeProfile,
+    scheduler_execution_context_for_runtime_profile,
+)
+from loopx.quota import (
+    build_quota_should_run as _build_quota_should_run,
+    render_quota_should_run_markdown,
+)
 from loopx.status import (
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
@@ -25,6 +32,16 @@ from work_lane_contract_fixtures import (
     PAST_DUE_AT,
     status_payload,
 )
+
+
+CODEX_APP_SCHEDULER_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT
+)
+
+
+def build_quota_should_run(*args, **kwargs):
+    kwargs.setdefault("scheduler_execution_context", CODEX_APP_SCHEDULER_CONTEXT)
+    return _build_quota_should_run(*args, **kwargs)
 
 
 def assert_dependency_monitor_requires_advancement() -> None:
@@ -255,7 +272,7 @@ def assert_monitor_only_with_user_todo_surfaces_user_action_without_transition()
     assert "repeat_notification_required" not in recommendation, recommendation
     assert "notify_user_on_open_todo" not in guard, guard
     assert "open_todo_notification_policy" not in guard, guard
-    assert guard["requires_user_action"] is False, guard
+    assert guard["requires_user_action"] is True, guard
     assert guard["execution_obligation"]["must_attempt_work"] is True, guard
     interaction = guard["interaction_contract"]
     assert interaction["mode"] == "bounded_delivery_with_user_notice", interaction
@@ -338,7 +355,7 @@ def assert_blocked_agent_todo_with_user_gate_notifies_without_execution() -> Non
     assert guard["interaction_contract"]["mode"] == "bounded_delivery_with_user_notice", guard
     assert guard["interaction_contract"]["user_channel"]["action_required"] is True, guard
     assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is True, guard
-    assert guard["requires_user_action"] is False, guard
+    assert guard["requires_user_action"] is True, guard
 
     truncated_guard = build_quota_should_run(
         status_payload(
@@ -1568,6 +1585,7 @@ def assert_scoped_user_gate_does_not_steal_other_agent_fallback() -> None:
                     "task_class": "user_gate",
                     "action_kind": "lark_kanban_target_decision",
                     "todo_id": "todo_lark_gate",
+                    "blocks_agent": "codex-main-control",
                 },
             ],
             agent_todo_items=[
