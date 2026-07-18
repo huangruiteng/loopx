@@ -1,0 +1,23 @@
+docs/architecture.md
+  s_32e2a9a204a8e4::t_36e20cd348b821 65-71
+docs/reference/extensions.md
+  s_32e2a9a204a8e4::t_589139f2217eb2 223-229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d7a929ea03d74dabccc410b1638e146620979dc5",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
