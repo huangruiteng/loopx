@@ -1,0 +1,61 @@
+docs/capabilities/README.md
+  s_76ee28abb3c3a4::t_66a768a26c6556 9-11
+docs/capabilities/periodic-report/README.md
+  s_76ee28abb3c3a4::t_a3cabc05f89f04 1-22
+docs/reference/protocols/README.md
+  s_76ee28abb3c3a4::t_7e7301667902f2 31
+docs/reference/protocols/periodic-report-v0.md
+  s_76ee28abb3c3a4::t_43d352f35be435 1-76
+examples/periodic-report-smoke.py
+  s_76ee28abb3c3a4::t_5dc1d4eeda9474 1-67
+loopx/capabilities/catalog.py
+  s_76ee28abb3c3a4::t_4d9b13df52b321 511-553
+loopx/capabilities/periodic_report/__init__.py
+  s_32e2a9a204a8e4::t_c47ecbc731cf6d 1-5
+loopx/capabilities/periodic_report/cli.py
+  s_32e2a9a204a8e4::t_1c8b20a617116a 1-90
+loopx/capabilities/periodic_report/core.py
+  s_32e2a9a204a8e4::t_552f172cc7d9d2 1-560
+loopx/cli.py
+  s_32e2a9a204a8e4::t_5cfef1fb342f78 25-28,206-207,446-453
+loopx/help_surface.py
+  s_76ee28abb3c3a4::t_bf53c8ed7b1e29 173-176
+tests/capabilities/test_capability_extension_registry.py
+  s_ce78287262030e::t_e3a023c8fef0f6 20
+tests/capabilities/test_periodic_report.py
+  s_76ee28abb3c3a4::t_d8ae6bdd98e93a 1-203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fbfb6cab818d7ff9a16e5dcef78ff57fec97d223",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_ce78287262030e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7515-a03a-7322-9902-2e203d31cc54",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
