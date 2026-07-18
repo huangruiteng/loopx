@@ -1,0 +1,53 @@
+docs/capabilities/semantic-preference/README.md
+  s_32e2a9a204a8e4::t_f5a6d2a3ca01cf 46-52,69-70
+docs/reference/extensions.md
+  s_32e2a9a204a8e4::t_d58b541291fd3b 32-36,39,51-54,94-102
+examples/capability-extension-registry-smoke.py
+  s_32e2a9a204a8e4::t_e9bafd925bdeb6 14,16-25,35,59,66-67,72,81-84,87,96,98-106,108,115
+examples/control_plane/monitor-poll-writeback-smoke.py
+  s_32e2a9a204a8e4::t_efb0094c143ae1 798-815,818-821,823-871,988-989
+loopx/capabilities/catalog.py
+  s_32e2a9a204a8e4::t_07cca5dc0999fb 8,700-806,821,835-836,843-844,846,851-854,867,869-872,882,884-887,895-896,898-901,913-914,916-920,939,963
+loopx/capabilities/context_providers/__init__.py
+  s_32e2a9a204a8e4::t_3ddc4e772a92ec 11-15,21-23,30
+loopx/capabilities/context_providers/factory.py
+  s_32e2a9a204a8e4::t_15e17674fc8df2 3,7-22,29-32
+loopx/capabilities/context_providers/openviking.py
+  s_32e2a9a204a8e4::t_da3f0ccfbc079b 691-702
+loopx/capabilities/registry.py
+  s_32e2a9a204a8e4::t_4840dcb09648e1 28,50-67,141-145,148-157
+loopx/capabilities/semantic_preference/contract.py
+  s_32e2a9a204a8e4::t_ba65afe2a5176a 14-15,149-153,157,160-173,183-198,261,265,463
+loopx/cli.py
+  s_32e2a9a204a8e4::t_52b33a28a93f1d 339
+loopx/cli_commands/capability.py
+  s_32e2a9a204a8e4::t_37d9e8d189d706 12,29-30,69,76,79-82,88
+loopx/extensions/manifest.py
+  s_32e2a9a204a8e4::t_fc71385de79938 220-223
+loopx/extensions/runtime.py
+  s_32e2a9a204a8e4::t_257cf17aca4ae3 3,474-569,585,682-702
+loopx/quota.py
+  s_32e2a9a204a8e4::t_209946b58e1a77 2340-2342,2345-2353,2359
+tests/capabilities/test_capability_extension_registry.py
+  s_32e2a9a204a8e4::t_0093fb9484bdbd 5,14-17,19-23,32-33,37-55,63,102-109,113,130-133,138-143,193,200-201,218-219,231-315
+tests/extensions/test_extension_runtime.py
+  s_32e2a9a204a8e4::t_f5753248dc0109 14-17,29-30,509-531,583-586,593-598,603-634
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "620c9e67c672177b5d5485e5bb8853bdd632e5b6",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
