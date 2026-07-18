@@ -1,0 +1,33 @@
+docs/reference/extensions.md
+  s_32e2a9a204a8e4::t_80b811305df879 85-88,194,230-238
+examples/lark-extension-activation-smoke.py
+  s_32e2a9a204a8e4::t_d218d079e5ebb1 176,270
+loopx/extensions/lark/extension.toml
+  s_32e2a9a204a8e4::t_dcc3960a66d1cc 3,16
+loopx/extensions/manifest.py
+  s_32e2a9a204a8e4::t_5c8ef8e90b757c 14,50-71,89,96-99
+loopx/extensions/readiness.py
+  s_32e2a9a204a8e4::t_d0fdad2e494026 4,6,11,18-23,31,35,37-38,53-104,111,125,146-150,165
+loopx/extensions/runtime.py
+  s_32e2a9a204a8e4::t_e69babc3fbd428 16,19,452-454,466-467,471,478,581,583
+tests/extensions/test_extension_runtime.py
+  s_32e2a9a204a8e4::t_52b7a5ff118875 7,90-193
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2c63037da036c570b28decad43c37e7df76a7742",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
