@@ -1,0 +1,23 @@
+examples/project/project-map-smoke.py
+  s_ce78287262030e::t_b0d29e4f5bff5b 58-59,61,63-67,208
+examples/register-authority-source-smoke.py
+  s_ce78287262030e::t_16bfade35c6ef5 53-54,56,58-60,160-163,182-184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "50855d280425cf751e4940e20346e65c378ab334",
+  "prompts": {},
+  "sessions": {
+    "s_ce78287262030e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7515-a03a-7322-9902-2e203d31cc54",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
