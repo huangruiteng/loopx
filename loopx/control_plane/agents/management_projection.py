@@ -189,23 +189,55 @@ def _registered_agents(status_payload: dict[str, Any]) -> dict[str, dict[str, An
     return rows
 
 
-def _agent_material_frontiers(status_payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+def _agent_material_frontiers(
+    status_payload: dict[str, Any],
+) -> dict[tuple[str, str], dict[str, Any]]:
     raw_frontiers = status_payload.get("agent_material_frontiers")
     if isinstance(raw_frontiers, dict):
         candidates = list(raw_frontiers.values())
     else:
         candidates = _as_list(raw_frontiers)
 
-    frontiers: dict[str, dict[str, Any]] = {}
+    frontiers: dict[tuple[str, str], dict[str, Any]] = {}
     for raw in candidates:
         if not isinstance(raw, dict):
             continue
         if str(raw.get("schema_version") or "") != AGENT_MATERIAL_FRONTIER_SCHEMA_VERSION:
             continue
+        goal_id = _compact(raw.get("goal_id"), limit=180)
         agent_id = normalize_todo_claimed_by(raw.get("agent_id"))
-        if agent_id:
-            frontiers[agent_id] = raw
+        if goal_id and agent_id:
+            frontiers[(goal_id, agent_id)] = raw
     return frontiers
+
+
+def _agent_material_frontier_key(
+    *,
+    raw_row: dict[str, Any],
+    current: dict[str, Any] | None,
+    agent_id: str,
+    goal_filter: str | None,
+) -> tuple[str, str] | None:
+    row_goal_ids: list[str] = []
+    for raw_goal_id in _as_list(raw_row.get("_goal_ids")):
+        row_goal_id = _compact(raw_goal_id, limit=180)
+        if row_goal_id and row_goal_id not in row_goal_ids:
+            row_goal_ids.append(row_goal_id)
+    current_goal_id = _compact(current.get("goal_id"), limit=180) if current else None
+
+    if goal_filter:
+        if current_goal_id and current_goal_id != goal_filter:
+            return None
+        if row_goal_ids and goal_filter not in row_goal_ids:
+            return None
+        return (goal_filter, agent_id)
+    if current_goal_id:
+        if row_goal_ids and current_goal_id not in row_goal_ids:
+            return None
+        return (current_goal_id, agent_id)
+    if len(row_goal_ids) == 1:
+        return (row_goal_ids[0], agent_id)
+    return None
 
 
 def _iter_todo_group_items(
@@ -480,6 +512,7 @@ def build_agent_management_projection(status_payload: dict[str, Any]) -> dict[st
 
     rows_by_agent = _registered_agents(status_payload)
     material_frontiers = _agent_material_frontiers(status_payload)
+    goal_filter = _compact(status_payload.get("goal_filter"), limit=180)
     seen_todos: set[tuple[str, str, str, str]] = set()
     for todo in _iter_status_todos(status_payload):
         agent_id = _todo_agent_id(todo)
@@ -537,7 +570,17 @@ def build_agent_management_projection(status_payload: dict[str, Any]) -> dict[st
             "handoff_refs": handoff_refs[:MAX_REFS],
             "goal_ids": _as_list(raw_row.get("_goal_ids"))[:MAX_REFS],
         }
-        material_frontier = material_frontiers.get(agent_id)
+        material_frontier_key = _agent_material_frontier_key(
+            raw_row=raw_row,
+            current=current,
+            agent_id=agent_id,
+            goal_filter=goal_filter,
+        )
+        material_frontier = (
+            material_frontiers.get(material_frontier_key)
+            if material_frontier_key
+            else None
+        )
         if material_frontier:
             agent_row["material_frontier"] = project_material_frontier_for_handoff(
                 material_frontier
@@ -566,7 +609,6 @@ def build_agent_management_projection(status_payload: dict[str, Any]) -> dict[st
         if len(agents) >= MAX_AGENT_ROWS:
             break
 
-    goal_filter = _compact(status_payload.get("goal_filter"), limit=180)
     source_summary: dict[str, Any] = {
         "registered_agent_count": len(rows_by_agent),
         "projected_agent_count": len(agents),
