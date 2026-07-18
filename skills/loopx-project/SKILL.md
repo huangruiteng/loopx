@@ -570,6 +570,10 @@ blocker-push `NOTIFY` with at most three items, while skipping delivery work
 and quota spend for that blocker-push turn. If the payload includes
 `open_todo_notification_policy=repeat_until_resolved`, repeat that `NOTIFY`
 until the todo is done, deferred, or replaced. When
+the user confirms that an existing review or action already happened, write
+back that exact todo immediately: complete only with an explicit typed decision,
+otherwise supersede the stale gate without granting authority; then refresh
+state and rerun quota so a successor or autonomous replan can surface. When
 `user_gate_notification_cooldown.notification_suppressed=true`, preserve the
 pending gate but return quiet `DONT_NOTIFY`; the bounded reminder window or a
 material gate/host change reopens the notification. Other blocker-push cases may

@@ -72,6 +72,27 @@ def _status_payload(*, gate_action_kind: str) -> dict:
     )
 
 
+def _quality_vision_run() -> dict:
+    return {
+        "classification": "quality_vision_fixture",
+        "generated_at": "2026-07-18T00:00:00+00:00",
+        "agent_id": AGENT_ID,
+        "progress_scope": "agent_lane",
+        "agent_vision": {
+            "schema_version": "goal_vision_replan_contract_v0",
+            "agent_id": AGENT_ID,
+            "state": "vision_active",
+            "vision_patch": {
+                "acceptance_summary": "Uncovered quality gaps remain.",
+                "advancement_policy": "repeat_until_closed",
+                "replan_trigger_summary": (
+                    "Replan when no runnable quality advancement remains."
+                ),
+            },
+        },
+    }
+
+
 def test_unrelated_user_gate_allows_ready_deferred_successor_replan() -> None:
     payload = build_quota_should_run(
         _status_payload(gate_action_kind="approve_product_first_screen"),
@@ -92,6 +113,60 @@ def test_unrelated_user_gate_allows_ready_deferred_successor_replan() -> None:
         "agent_channel"
     ]["primary_action"]
     assert payload["scheduler_hint"]["cadence_class"] == "active_work"
+
+
+def test_consumed_review_gate_exposes_quality_vision_replan() -> None:
+    completed = quota_todo_item(
+        todo_id="todo_completed_design",
+        status="done",
+        text="[P0] Complete the reviewed design.",
+        claimed_by=AGENT_ID,
+    )
+
+    def decide(gate_status: str) -> dict:
+        gate = quota_todo_item(
+            todo_id="todo_owner_review",
+            role="user",
+            status=gate_status,
+            task_class="user_gate",
+            text="[P0] Review the design.",
+            blocks_agent=AGENT_ID,
+        )
+        status = quota_status_payload(
+            goal_id=GOAL_ID,
+            status="active",
+            recommended_action="Review the design.",
+            agent_todos=quota_todo_summary(
+                [completed],
+                role="agent",
+                claim_scope_agent_id=AGENT_ID,
+            ),
+            user_todos=quota_todo_summary([gate], role="user"),
+            quota_state="operator_gate",
+            coordination={
+                "agent_model": "peer_v1",
+                "registered_agents": [AGENT_ID],
+            },
+            latest_runs=[_quality_vision_run()],
+        )
+        return build_quota_should_run(
+            status,
+            goal_id=GOAL_ID,
+            agent_id=AGENT_ID,
+            scheduler_execution_context=APP_CONTEXT,
+        )
+
+    waiting = decide("open")
+    assert waiting["decision"] == "skip"
+    assert waiting["interaction_contract"]["mode"] == "user_gate"
+
+    recovered = decide("done")
+    assert recovered["decision"] == "autonomous_replan_required"
+    assert recovered["should_run"] is True
+    assert recovered["goal_frontier_projection"]["acceptance_gaps"][0][
+        "kind"
+    ] == "vision_acceptance_gap"
+    assert recovered["interaction_contract"]["agent_channel"]["must_attempt"] is True
 
 
 def test_blocking_user_gate_backs_off_instead_of_polling_as_active_work() -> None:
