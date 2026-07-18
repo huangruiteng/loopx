@@ -1,0 +1,46 @@
+examples/claude-goalmode-lifecycle-smoke.py
+  s_32e2a9a204a8e4::t_f54936135af972 22,30-50,101-104,141-188,192
+examples/claude-goalmode-hook-policy-smoke.py
+  s_32e2a9a204a8e4::t_f93b2de3f88130 66-72
+  s_32e2a9a204a8e4::t_81f8c7b4c89d6b 14-15,37-61,65,73-75,77,79-83,90,95-96,101,103,105,107-109
+  s_32e2a9a204a8e4::t_63232788351dfc 78
+  s_32e2a9a204a8e4::t_055f6999e9a6a1 62-64,92
+  s_32e2a9a204a8e4::t_007829e35a9501 76
+  s_32e2a9a204a8e4::t_589a943b54941e 84-89,111
+  s_32e2a9a204a8e4::t_cb5dd6659a2b19 112
+  s_32e2a9a204a8e4::t_a30c146d729bb6 91
+  s_32e2a9a204a8e4::t_7ca61cd75a2754 93-94
+  s_32e2a9a204a8e4::t_078a0a18f9f1c1 97-100
+  s_32e2a9a204a8e4::t_92d002184e3bd8 102
+  s_32e2a9a204a8e4::t_42c611c4ee62ef 104
+  s_32e2a9a204a8e4::t_44c2417238f409 106
+  s_32e2a9a204a8e4::t_22e9b3b4cec352 110
+loopx/benchmark_adapters/skillsbench_bridge_guard.py
+  s_32e2a9a204a8e4::t_c726a7541a4680 113-116,122-124
+tests/test_skillsbench_docker_command_file_bridge.py
+  s_32e2a9a204a8e4::t_36c32708a7fd42 4-5,10-12,29-48
+loopx/claude_goal_mode/hooks/goal_policy.py
+  s_32e2a9a204a8e4::t_464ffc7ac15f05 126-129
+  s_32e2a9a204a8e4::t_04445a00c31f48 130-135,138-143
+  s_32e2a9a204a8e4::t_52741df44fd1c1 44,67-72,86,89,103-111,123-125
+loopx/claude_goal_mode/mcp/loopx_mcp.py
+  s_32e2a9a204a8e4::t_e64f8c12169438 20,35-40,42,60-69,74-81,85-94,105-106,115-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fc0181d7c4fbdb91c02180427a42b8ed4d521ebe",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
