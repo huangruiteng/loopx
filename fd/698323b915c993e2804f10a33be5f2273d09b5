@@ -1,0 +1,23 @@
+examples/capability-extension-registry-smoke.py
+  s_e3f612788718c1::t_3c642f714e8765 54
+loopx/capabilities/catalog.py
+  s_e3f612788718c1::t_2604ee93ac9cda 549-552,564-565
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fd698323b915c993e2804f10a33be5f2273d09b5",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
