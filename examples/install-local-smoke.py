@@ -281,6 +281,14 @@ def main() -> int:
             text=True,
         )
         assert json.loads(promoted_doctor.stdout)["ok"] is True, promoted_doctor.stdout
+        subprocess.run(
+            [str(wrapper), "canary", "premerge", "--help"],
+            cwd=REPO_ROOT,
+            env=promoted_env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
 
         skill = codex_home / "skills" / "loopx-project" / "SKILL.md"
         assert not skill.parent.is_symlink(), skill.parent

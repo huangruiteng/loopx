@@ -37,17 +37,6 @@ for arg in "$@"; do
   fi
 done
 
-if [[ "$loopx_command" == "canary" && "$loopx_subcommand" == "premerge" ]]; then
-  checkout_root=""
-  if command -v git >/dev/null 2>&1; then
-    checkout_root="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || true)"
-  fi
-  if [[ -n "$checkout_root" && -f "$checkout_root/loopx/cli.py" && -d "$checkout_root/examples" ]]; then
-    # Pre-merge validation must exercise the checkout under review, not a stale release snapshot.
-    repo_root="$checkout_root"
-  fi
-fi
-
 python_bin="${LOOPX_PYTHON:-}"
 if [[ -z "$python_bin" && -f "$repo_root/.loopx-python" ]]; then
   IFS= read -r python_bin <"$repo_root/.loopx-python"
@@ -59,6 +48,17 @@ if ! command -v "$python_bin" >/dev/null 2>&1; then
   echo "loopx runtime error: configured Python executable not found: $python_bin" >&2
   echo "Set LOOPX_PYTHON to Python 3.11+ and reinstall LoopX." >&2
   exit 2
+fi
+
+if [[ "$loopx_command" == "canary" && "$loopx_subcommand" == "premerge" ]]; then
+  checkout_root=""
+  if command -v git >/dev/null 2>&1; then
+    checkout_root="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || true)"
+  fi
+  if [[ -n "$checkout_root" && -f "$checkout_root/loopx/cli.py" && -d "$checkout_root/examples" ]]; then
+    # Pre-merge validation must exercise the checkout under review, not a stale release snapshot.
+    repo_root="$checkout_root"
+  fi
 fi
 
 export LOOPX_RELEASE_ROOT="$repo_root"
