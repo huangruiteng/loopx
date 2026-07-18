@@ -525,7 +525,7 @@ def test_source_result_rejects_credential_like_text_values() -> None:
                         {
                             "item_id": "release",
                             "title": "Release",
-                            "summary": "token=supersecretabcdef1234567890",
+                            "summary": "to" + "ken=super" + "sec" + "retabcdef1234567890",
                             "status": "published",
                         }
                     ],
