@@ -22,6 +22,7 @@ from loopx.extensions.runtime import (
     enable_extension,
     extension_status,
     install_extension,
+    resolve_extension_activation,
     resolve_extension_binding,
     rollback_extension,
 )
@@ -101,6 +102,26 @@ def test_install_disable_upgrade_and_rollback_preserve_verified_binding(
 
     installed = install_extension(v1, state_file=state_file, execute=True)
     assert installed["changed"] is True
+    activation = resolve_extension_activation(
+        "test-semantic-extension",
+        state_file=state_file,
+        required_permissions=["semantic_preference.read"],
+    )
+    assert activation == {
+        "schema_version": "loopx_extension_activation_v0",
+        "extension_id": "test-semantic-extension",
+        "provider_version": "1.0.0",
+        "revision": installed["revision"],
+        "enabled": True,
+        "doctor_verified": True,
+        "required_permissions": ["semantic_preference.read"],
+    }
+    with pytest.raises(ValueError, match="does not declare permissions"):
+        resolve_extension_activation(
+            "test-semantic-extension",
+            state_file=state_file,
+            required_permissions=["semantic_preference.write"],
+        )
     binding = resolve_extension_binding(
         "test-semantic-extension",
         state_file=state_file,
@@ -117,6 +138,11 @@ def test_install_disable_upgrade_and_rollback_preserve_verified_binding(
         execute=True,
     )
     assert disabled["changed"] is True
+    with pytest.raises(ValueError, match="is disabled"):
+        resolve_extension_activation(
+            "test-semantic-extension",
+            state_file=state_file,
+        )
     with pytest.raises(ValueError, match="is disabled"):
         resolve_extension_binding(
             "test-semantic-extension",
@@ -326,6 +352,11 @@ def test_binding_rejects_missing_or_replaced_entrypoint(
     assert extension_status(state_file=state_file)["extensions"][0][
         "doctor_verified"
     ] is False
+    with pytest.raises(ValueError, match="doctor readiness is stale"):
+        resolve_extension_activation(
+            "test-semantic-extension",
+            state_file=state_file,
+        )
     with pytest.raises(ValueError, match="doctor readiness is stale"):
         resolve_extension_binding(
             "test-semantic-extension",
