@@ -22,9 +22,7 @@ from ..context_providers.base import (
     ContextProviderRetrieval,
     opaque_provider_ref,
 )
-from ...extensions.openviking_semantic_preference.project_peer import (
-    resolve_project_identity,
-)
+from ...repository_identity import resolve_project_identity
 from ...control_plane.runtime.public_safety import public_safe_compact_text
 from .repository_memory import (
     ISSUE_FIX_REPOSITORY_MEMORY_READ_RESULT_SCHEMA_VERSION,

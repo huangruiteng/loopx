@@ -9,6 +9,7 @@ from ..extensions.runtime import (
     default_extension_state_file,
     disable_extension,
     doctor_installed_extension,
+    enable_extension,
     extension_status,
     install_extension,
     rollback_extension,
@@ -99,7 +100,7 @@ def register_extension_commands(
         _add_manifest_source(operation)
         operation.add_argument("--execute", action="store_true")
 
-    for command in ("disable", "rollback", "doctor"):
+    for command in ("enable", "disable", "rollback", "doctor"):
         operation = commands.add_parser(command)
         _add_common(operation, add_subcommand_format)
         operation.add_argument("extension_id")
@@ -136,6 +137,12 @@ def handle_extension_command(
                 manifest_path,
                 state_file=state_file,
                 operation=args.extension_command,
+                execute=args.execute,
+            )
+        elif args.extension_command == "enable":
+            payload = enable_extension(
+                args.extension_id,
+                state_file=state_file,
                 execute=args.execute,
             )
         elif args.extension_command == "disable":

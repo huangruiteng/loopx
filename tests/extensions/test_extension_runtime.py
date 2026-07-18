@@ -1,20 +1,32 @@
 from __future__ import annotations
 
+import argparse
+import ast
+from collections.abc import Callable
 import json
 from pathlib import Path
+import subprocess
 import sys
 
 import pytest
 
 from loopx.capabilities.catalog import build_capability_detail_packet
+from loopx.capabilities.semantic_preference.cli import (
+    _register_legacy_openviking_provider_arguments,
+)
 from loopx.capabilities.semantic_preference.contract import provider_doctor, recall
 from loopx.cli import main
 from loopx.extensions.runtime import (
     disable_extension,
+    doctor_installed_extension,
+    enable_extension,
     extension_status,
     install_extension,
     resolve_extension_binding,
     rollback_extension,
+)
+from loopx.extensions.openviking_semantic_preference.provider import (
+    register_openviking_provider_arguments,
 )
 
 
@@ -114,6 +126,28 @@ def test_install_disable_upgrade_and_rollback_preserve_verified_binding(
             permission="semantic_preference.read",
         )
 
+    enabled = enable_extension(
+        "test-semantic-extension",
+        state_file=state_file,
+        execute=True,
+    )
+    assert enabled["changed"] is True
+    assert enabled["doctor"]["verified"] is True
+    assert resolve_extension_binding(
+        "test-semantic-extension",
+        state_file=state_file,
+        capability_id="semantic-preference",
+        protocol="semantic_preference_provider_v0",
+        permission="semantic_preference.read",
+    )["argv"] == [str(provider)]
+    already_enabled = enable_extension(
+        "test-semantic-extension",
+        state_file=state_file,
+        execute=True,
+    )
+    assert already_enabled["changed"] is False
+    assert already_enabled["doctor"]["verified"] is True
+
     upgraded = install_extension(
         v2,
         state_file=state_file,
@@ -159,6 +193,147 @@ def test_failed_upgrade_keeps_the_active_revision(tmp_path: Path) -> None:
     status = extension_status(state_file=state_file)["extensions"][0]
     assert status["active_revision"] == installed["revision"]
     assert status["revision_count"] == 1
+
+
+def test_failed_enable_remains_disabled_and_clears_old_proof(tmp_path: Path) -> None:
+    provider = _provider(tmp_path / "provider")
+    manifest = _manifest(
+        tmp_path / "extension.toml",
+        entrypoint=provider,
+        version="1.0.0",
+    )
+    state_file = tmp_path / "extensions.json"
+    install_extension(manifest, state_file=state_file, execute=True)
+    disable_extension(
+        "test-semantic-extension",
+        state_file=state_file,
+        execute=True,
+    )
+    _provider(provider, doctor_exit=2)
+
+    with pytest.raises(ValueError, match="enable doctor is not ready"):
+        enable_extension(
+            "test-semantic-extension",
+            state_file=state_file,
+            execute=True,
+        )
+
+    entry = json.loads(state_file.read_text(encoding="utf-8"))["extensions"][
+        "test-semantic-extension"
+    ]
+    assert entry["enabled"] is False
+    assert "doctor_verified_revision" not in entry
+    assert "doctor_verified_entrypoint_identity" not in entry
+
+
+def test_failed_executed_doctor_clears_stale_readiness_proof(
+    tmp_path: Path,
+) -> None:
+    provider = _provider(tmp_path / "provider")
+    manifest = _manifest(
+        tmp_path / "extension.toml",
+        entrypoint=provider,
+        version="1.0.0",
+    )
+    state_file = tmp_path / "extensions.json"
+    install_extension(manifest, state_file=state_file, execute=True)
+    _provider(provider, doctor_exit=2)
+
+    doctor = doctor_installed_extension(
+        "test-semantic-extension",
+        state_file=state_file,
+        execute=True,
+    )
+
+    assert doctor["verified"] is False
+    entry = json.loads(state_file.read_text(encoding="utf-8"))["extensions"][
+        "test-semantic-extension"
+    ]
+    assert "doctor_verified_revision" not in entry
+    assert "doctor_verified_entrypoint_identity" not in entry
+    with pytest.raises(ValueError, match="doctor readiness is stale"):
+        resolve_extension_binding(
+            "test-semantic-extension",
+            state_file=state_file,
+            capability_id="semantic-preference",
+            protocol="semantic_preference_provider_v0",
+            permission="semantic_preference.read",
+        )
+
+
+def test_executed_doctor_rebinds_revision_only_legacy_proof(tmp_path: Path) -> None:
+    provider = _provider(tmp_path / "provider")
+    manifest = _manifest(
+        tmp_path / "extension.toml",
+        entrypoint=provider,
+        version="1.0.0",
+    )
+    state_file = tmp_path / "extensions.json"
+    install_extension(manifest, state_file=state_file, execute=True)
+    state = json.loads(state_file.read_text(encoding="utf-8"))
+    entry = state["extensions"]["test-semantic-extension"]
+    entry.pop("doctor_verified_entrypoint_identity")
+    state_file.write_text(json.dumps(state), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="doctor readiness is stale"):
+        resolve_extension_binding(
+            "test-semantic-extension",
+            state_file=state_file,
+            capability_id="semantic-preference",
+            protocol="semantic_preference_provider_v0",
+            permission="semantic_preference.read",
+        )
+    repaired = doctor_installed_extension(
+        "test-semantic-extension",
+        state_file=state_file,
+        execute=True,
+    )
+    assert repaired["verified"] is True
+    assert resolve_extension_binding(
+        "test-semantic-extension",
+        state_file=state_file,
+        capability_id="semantic-preference",
+        protocol="semantic_preference_provider_v0",
+        permission="semantic_preference.read",
+    )["argv"] == [str(provider)]
+
+
+@pytest.mark.parametrize("replacement", ["missing", "changed"])
+def test_binding_rejects_missing_or_replaced_entrypoint(
+    tmp_path: Path,
+    replacement: str,
+) -> None:
+    provider = _provider(tmp_path / "provider")
+    manifest = _manifest(
+        tmp_path / "extension.toml",
+        entrypoint=provider,
+        version="1.0.0",
+    )
+    state_file = tmp_path / "extensions.json"
+    install_extension(manifest, state_file=state_file, execute=True)
+    if replacement == "missing":
+        provider.unlink()
+    else:
+        _provider(provider, doctor_exit=0)
+        provider.write_text(
+            provider.read_text(encoding="utf-8").replace(
+                "Prefer compact validation notes.",
+                "A replaced provider must be re-verified.",
+            ),
+            encoding="utf-8",
+        )
+
+    assert extension_status(state_file=state_file)["extensions"][0][
+        "doctor_verified"
+    ] is False
+    with pytest.raises(ValueError, match="doctor readiness is stale"):
+        resolve_extension_binding(
+            "test-semantic-extension",
+            state_file=state_file,
+            capability_id="semantic-preference",
+            protocol="semantic_preference_provider_v0",
+            permission="semantic_preference.read",
+        )
 
 
 def test_runtime_permission_must_be_declared_by_manifest(tmp_path: Path) -> None:
@@ -299,3 +474,96 @@ def test_extension_cli_installs_preinstalled_runtime(
     )
     listed = json.loads(capsys.readouterr().out)
     assert listed["extensions"][0]["doctor_verified"] is True
+
+    assert (
+        main(
+            [
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "extension",
+                "disable",
+                "test-semantic-extension",
+                "--execute",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    assert (
+        main(
+            [
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "extension",
+                "enable",
+                "test-semantic-extension",
+                "--execute",
+            ]
+        )
+        == 0
+    )
+    enabled = json.loads(capsys.readouterr().out)
+    assert enabled["enabled"] is True
+    assert enabled["doctor"]["verified"] is True
+
+
+def test_core_does_not_import_openviking_provider_implementation() -> None:
+    root = Path(__file__).resolve().parents[2] / "loopx"
+    forbidden: list[str] = []
+    for path in root.rglob("*.py"):
+        relative = path.relative_to(root)
+        if relative.parts[0] == "extensions":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            module = ""
+            if isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+            elif isinstance(node, ast.Import):
+                module = " ".join(alias.name for alias in node.names)
+            if "openviking_semantic_preference" in module:
+                forbidden.append(str(relative))
+    assert forbidden == []
+
+
+def test_ordinary_cli_import_does_not_load_openviking_provider() -> None:
+    module = "loopx.extensions.openviking_semantic_preference.provider"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            f"import sys; import loopx.cli; assert {module!r} not in sys.modules",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_legacy_openviking_alias_matches_provider_argument_contract() -> None:
+    def options(
+        register: Callable[[argparse.ArgumentParser], None],
+    ) -> list[tuple[object, ...]]:
+        parser = argparse.ArgumentParser(add_help=False)
+        register(parser)
+        return [
+            (
+                tuple(action.option_strings),
+                action.dest,
+                type(action).__name__,
+                action.default,
+                action.nargs,
+                action.const,
+            )
+            for action in parser._actions
+            if action.option_strings
+        ]
+
+    assert options(_register_legacy_openviking_provider_arguments) == options(
+        register_openviking_provider_arguments
+    )

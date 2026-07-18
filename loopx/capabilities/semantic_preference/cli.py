@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable
+import importlib
+from pathlib import Path
 
 from .contract import (
     application_receipt,
@@ -9,10 +11,29 @@ from .contract import (
     provider_doctor,
     recall,
 )
-from ...extensions.openviking_semantic_preference.provider import (
-    handle_openviking_provider,
-    register_openviking_provider_arguments,
+
+
+_LEGACY_OPENVIKING_PROVIDER_MODULE = (
+    "loopx.extensions.openviking_semantic_preference.provider"
 )
+
+
+def _register_legacy_openviking_provider_arguments(
+    parser: argparse.ArgumentParser,
+) -> None:
+    # Keep the compatibility parser provider-free; parity is regression-tested.
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--doctor", action="store_true")
+    mode.add_argument("--describe-scope", action="store_true")
+    parser.add_argument("--ov-bin", default="ov")
+    parser.add_argument("--cli-config")
+    parser.add_argument("--project", type=Path, default=Path.cwd())
+    parser.add_argument("--user-space", default="default")
+    parser.add_argument("--loopx-project-id")
+    parser.add_argument("--remote-url")
+    parser.add_argument("--include-global-fallback", action="store_true")
+    parser.add_argument("--max-find-calls", type=int, default=1)
+    parser.add_argument("--timeout-seconds", type=int, default=25)
 
 
 def _render(payload: dict[str, object]) -> str:
@@ -73,9 +94,9 @@ def register_semantic_preference_commands(
 
     provider_parser = commands.add_parser(
         "openviking-provider",
-        help="Run the opt-in OpenViking project-as-peer provider protocol.",
+        help="Delegate to the legacy OpenViking provider CLI when invoked.",
     )
-    register_openviking_provider_arguments(provider_parser)
+    _register_legacy_openviking_provider_arguments(provider_parser)
 
     receipt_parser = commands.add_parser("receipt")
     add_subcommand_format(receipt_parser)
@@ -120,7 +141,8 @@ def handle_semantic_preference_command(
     if args.command != "semantic-preference":
         return None
     if args.semantic_preference_command == "openviking-provider":
-        return handle_openviking_provider(args)
+        provider = importlib.import_module(_LEGACY_OPENVIKING_PROVIDER_MODULE)
+        return provider.handle_openviking_provider(args)
     try:
         if args.semantic_preference_command == "recall":
             payload = recall(

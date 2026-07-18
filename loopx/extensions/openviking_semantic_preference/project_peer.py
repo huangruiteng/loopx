@@ -2,53 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import re
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from ...repository_identity import normalize_repository_identity
+from ...repository_identity import resolve_project_identity
 
 
 PROJECT_PEER_PREFIX = "project-"
-_SAFE_PROJECT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
 _SAFE_USER_SPACE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-
-
-def _origin_remote(project: Path, git_bin: str) -> str:
-    try:
-        completed = subprocess.run(
-            [git_bin, "-C", str(project), "config", "--get", "remote.origin.url"],
-            capture_output=True,
-            check=False,
-            text=True,
-            timeout=10,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise ValueError("project origin remote could not be read") from exc
-    if completed.returncode != 0 or not completed.stdout.strip():
-        raise ValueError(
-            "project has no canonical origin remote; provide a stable LoopX project id"
-        )
-    return completed.stdout.strip()
-
-
-def resolve_project_identity(
-    project: str | Path,
-    *,
-    loopx_project_id: str | None = None,
-    remote_url: str | None = None,
-    git_bin: str = "git",
-) -> str:
-    """Resolve a durable project identity without using a checkout path."""
-
-    try:
-        remote = remote_url or _origin_remote(Path(project), git_bin)
-        return normalize_repository_identity(remote)
-    except ValueError:
-        project_id = str(loopx_project_id or "").strip()
-        if not _SAFE_PROJECT_ID.fullmatch(project_id):
-            raise
-        return f"loopx:{project_id}"
 
 
 def project_peer_id(project_identity: str) -> str:

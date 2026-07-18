@@ -7,17 +7,20 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import shutil
-import subprocess
 from typing import Any
 
 from ..file_lock import exclusive_file_lock
 from .manifest import load_extension_manifest
+from .readiness import (
+    EXTENSION_DOCTOR_SCHEMA_VERSION,
+    extension_doctor,
+    extension_runtime,
+    resolved_entrypoint_identity,
+)
 
 
 EXTENSION_STATE_SCHEMA_VERSION = "loopx_extension_state_v0"
 EXTENSION_OPERATION_SCHEMA_VERSION = "loopx_extension_operation_v0"
-EXTENSION_DOCTOR_SCHEMA_VERSION = "loopx_extension_doctor_v0"
 EXTENSION_BINDING_SCHEMA_VERSION = "loopx_extension_runtime_binding_v0"
 MAX_REVISIONS = 5
 
@@ -78,73 +81,7 @@ def _revision(manifest: Mapping[str, Any]) -> str:
 
 
 def _runtime(manifest: Mapping[str, Any]) -> Mapping[str, Any]:
-    runtime = manifest.get("runtime")
-    if not isinstance(runtime, Mapping):
-        raise ValueError("extension manifest does not declare an executable runtime")
-    return runtime
-
-
-def _command_available(command: str) -> bool:
-    if "/" in command or "\\" in command:
-        path = Path(command).expanduser()
-        return path.is_file() and path.stat().st_mode & 0o111 != 0
-    return shutil.which(command) is not None
-
-
-def extension_doctor(
-    manifest: Mapping[str, Any],
-    *,
-    execute: bool = False,
-) -> dict[str, Any]:
-    runtime = _runtime(manifest)
-    entrypoint = str(runtime["entrypoint"])
-    available = _command_available(entrypoint)
-    doctor_args = [str(value) for value in runtime.get("doctor_args") or []]
-    status = "ready" if available else "entrypoint_missing"
-    verified = False
-    failure_kind = None
-    if not doctor_args:
-        status = "doctor_not_configured"
-        available = False
-        failure_kind = "doctor_not_configured"
-    elif available and not execute:
-        status = "probe_required"
-    elif available:
-        argv = [
-            entrypoint,
-            *[str(value) for value in runtime.get("args") or []],
-            *doctor_args,
-        ]
-        try:
-            completed = subprocess.run(
-                argv,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=int(runtime["timeout_seconds"]),
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            completed = None
-            failure_kind = "probe_execution_failed"
-        if completed is None or completed.returncode != 0:
-            status = "provider_unavailable"
-            available = False
-            failure_kind = failure_kind or "probe_nonzero_exit"
-        else:
-            status = "ready"
-            verified = True
-    return {
-        "ok": True,
-        "schema_version": EXTENSION_DOCTOR_SCHEMA_VERSION,
-        "extension_id": manifest["provider"]["id"],
-        "version": manifest["provider"]["version"],
-        "status": status,
-        "available": available,
-        "verified": verified,
-        "failure_kind": failure_kind,
-        "external_writes_performed": False,
-    }
+    return extension_runtime(manifest)
 
 
 def _manifest_snapshot(manifest: Mapping[str, Any]) -> dict[str, Any]:
@@ -249,6 +186,9 @@ def install_extension(
                 "active_revision": revision,
                 "rollback_revision": previous_revision,
                 "doctor_verified_revision": revision,
+                "doctor_verified_entrypoint_identity": doctor[
+                    "entrypoint_identity"
+                ],
                 "revisions": revisions,
             }
             _write_state(path, state)
@@ -266,6 +206,73 @@ def install_extension(
         "enabled": True if execute else None,
         "doctor": doctor,
         "rollback_available": previous_revision is not None,
+    }
+
+
+def enable_extension(
+    extension_id: str,
+    *,
+    state_file: str | Path,
+    execute: bool = False,
+) -> dict[str, Any]:
+    path = Path(state_file).expanduser()
+    state = _read_state(path)
+    entry = state["extensions"].get(extension_id)
+    if not isinstance(entry, dict):
+        raise ValueError(f"extension `{extension_id}` is not installed")
+    active_revision = str(entry.get("active_revision") or "")
+    snapshot = _entry_for_revision(entry, active_revision)
+    manifest = snapshot.get("manifest")
+    if not isinstance(manifest, Mapping):
+        raise ValueError("extension active manifest is invalid")
+    already_enabled = bool(entry.get("enabled"))
+    doctor = extension_doctor(manifest, execute=execute)
+    if execute and not doctor["verified"]:
+        with exclusive_file_lock(path):
+            current_state = _read_state(path)
+            current_entry = current_state["extensions"].get(extension_id)
+            if (
+                not isinstance(current_entry, dict)
+                or current_entry.get("active_revision") != active_revision
+                or bool(current_entry.get("enabled")) != already_enabled
+            ):
+                raise ValueError("extension state changed during enable; retry")
+            current_entry.pop("doctor_verified_revision", None)
+            current_entry.pop("doctor_verified_entrypoint_identity", None)
+            _write_state(path, current_state)
+        raise ValueError(
+            f"extension `{extension_id}` enable doctor is not ready: "
+            f"{doctor['status']}"
+        )
+    changed = False
+    if execute:
+        with exclusive_file_lock(path):
+            current_state = _read_state(path)
+            current_entry = current_state["extensions"].get(extension_id)
+            if (
+                not isinstance(current_entry, dict)
+                or current_entry.get("active_revision") != active_revision
+                or bool(current_entry.get("enabled")) != already_enabled
+            ):
+                raise ValueError("extension state changed during enable; retry")
+            current_entry["enabled"] = True
+            current_entry["doctor_verified_revision"] = active_revision
+            current_entry["doctor_verified_entrypoint_identity"] = doctor[
+                "entrypoint_identity"
+            ]
+            _write_state(path, current_state)
+            changed = not already_enabled
+    return {
+        "ok": True,
+        "schema_version": EXTENSION_OPERATION_SCHEMA_VERSION,
+        "operation": "enable",
+        "dry_run": not execute,
+        "changed": changed,
+        "would_change": not already_enabled,
+        "extension_id": extension_id,
+        "enabled": True if execute else already_enabled,
+        "active_revision": active_revision,
+        "doctor": doctor,
     }
 
 
@@ -337,6 +344,9 @@ def rollback_extension(
             current_entry["active_revision"] = target_revision
             current_entry["rollback_revision"] = previous_revision
             current_entry["doctor_verified_revision"] = target_revision
+            current_entry["doctor_verified_entrypoint_identity"] = doctor[
+                "entrypoint_identity"
+            ]
             current_entry["enabled"] = True
             _write_state(path, current_state)
     return {
@@ -377,8 +387,8 @@ def extension_status(
                 "enabled": bool(entry.get("enabled")),
                 "active_revision": entry.get("active_revision"),
                 "rollback_available": bool(entry.get("rollback_revision")),
-                "doctor_verified": entry.get("doctor_verified_revision")
-                == entry.get("active_revision"),
+                "doctor_verified": bool(entry.get("enabled"))
+                and _verified_entrypoint(entry) is not None,
                 "revision_count": len(entry.get("revisions") or []),
             }
             for entry in visible
@@ -392,7 +402,8 @@ def doctor_installed_extension(
     state_file: str | Path,
     execute: bool = False,
 ) -> dict[str, Any]:
-    state = _read_state(Path(state_file).expanduser())
+    path = Path(state_file).expanduser()
+    state = _read_state(path)
     entry = state["extensions"].get(extension_id)
     if not isinstance(entry, dict):
         raise ValueError(f"extension `{extension_id}` is not installed")
@@ -404,6 +415,7 @@ def doctor_installed_extension(
             "status": "disabled",
             "available": False,
             "verified": False,
+            "entrypoint_identity": None,
             "failure_kind": None,
             "external_writes_performed": False,
         }
@@ -412,7 +424,47 @@ def doctor_installed_extension(
     manifest = snapshot.get("manifest")
     if not isinstance(manifest, Mapping):
         raise ValueError("extension active manifest is invalid")
-    return extension_doctor(manifest, execute=execute)
+    doctor = extension_doctor(manifest, execute=execute)
+    if execute:
+        with exclusive_file_lock(path):
+            current_state = _read_state(path)
+            current_entry = current_state["extensions"].get(extension_id)
+            if (
+                not isinstance(current_entry, dict)
+                or current_entry.get("active_revision") != active_revision
+                or not current_entry.get("enabled")
+            ):
+                raise ValueError("extension state changed during doctor; retry")
+            if doctor["verified"]:
+                current_entry["doctor_verified_revision"] = active_revision
+                current_entry["doctor_verified_entrypoint_identity"] = doctor[
+                    "entrypoint_identity"
+                ]
+            else:
+                current_entry.pop("doctor_verified_revision", None)
+                current_entry.pop("doctor_verified_entrypoint_identity", None)
+            _write_state(path, current_state)
+    return doctor
+
+
+def _verified_entrypoint(entry: Mapping[str, Any]) -> Path | None:
+    active_revision = str(entry.get("active_revision") or "")
+    if entry.get("doctor_verified_revision") != active_revision:
+        return None
+    try:
+        snapshot = _entry_for_revision(entry, active_revision)
+    except ValueError:
+        return None
+    manifest = snapshot.get("manifest")
+    if not isinstance(manifest, Mapping):
+        return None
+    runtime = _runtime(manifest)
+    identity = resolved_entrypoint_identity(str(runtime["entrypoint"]))
+    if identity is None or identity[1] != entry.get(
+        "doctor_verified_entrypoint_identity"
+    ):
+        return None
+    return identity[0]
 
 
 def resolve_extension_binding(
@@ -430,7 +482,8 @@ def resolve_extension_binding(
     if not entry.get("enabled"):
         raise ValueError(f"extension `{extension_id}` is disabled")
     active_revision = str(entry.get("active_revision") or "")
-    if entry.get("doctor_verified_revision") != active_revision:
+    verified_entrypoint = _verified_entrypoint(entry)
+    if verified_entrypoint is None:
         raise ValueError(f"extension `{extension_id}` doctor readiness is stale")
     snapshot = _entry_for_revision(entry, active_revision)
     manifest = snapshot.get("manifest")
@@ -462,15 +515,16 @@ def resolve_extension_binding(
             f"extension `{extension_id}` does not implement `{capability_id}` "
             f"with protocol `{protocol}`"
         )
+    resolved_entrypoint = str(verified_entrypoint)
     return {
         "schema_version": EXTENSION_BINDING_SCHEMA_VERSION,
         "extension_id": extension_id,
         "provider_version": provider.get("version"),
         "revision": active_revision,
         "protocol": protocol,
-        "argv": [runtime["entrypoint"], *(runtime.get("args") or [])],
+        "argv": [resolved_entrypoint, *(runtime.get("args") or [])],
         "doctor_argv": [
-            runtime["entrypoint"],
+            resolved_entrypoint,
             *(runtime.get("args") or []),
             *(runtime.get("doctor_args") or []),
         ],
