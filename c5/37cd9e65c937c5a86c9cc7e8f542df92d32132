@@ -1,0 +1,29 @@
+docs/development/control-plane-course/03-work-graph-and-peers.md
+  s_e3f612788718c1::t_d96c32e9c40735 16,120,127-174,266-308,765-766,775-779,788-789
+docs/development/control-plane-course/05-host-scheduler-and-heartbeat.md
+  s_e3f612788718c1::t_75d03080076831 15-16,475-511,531,540-541,558
+docs/development/control-plane-course/07-engineering-a-control-plane-rule.md
+  s_e3f612788718c1::t_7639a676fd0399 16,161-241,753-755
+docs/development/control-plane-course/08-autonomous-agent-quality-gates.md
+  s_e3f612788718c1::t_015fcacffd63e5 510-560,589
+docs/development/control-plane-course/README.md
+  s_e3f612788718c1::t_bd4b4434171acc 5-9,23,25,27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c537cd9e65c937c5a86c9cc7e8f542df92d32132",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
