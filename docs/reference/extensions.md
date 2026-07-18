@@ -67,6 +67,9 @@ loopx extension list --format json
 loopx extension doctor openviking-semantic-preference --execute --format json
 loopx extension disable openviking-semantic-preference --execute --format json
 loopx extension enable openviking-semantic-preference --execute --format json
+
+# Activate the bundled Lark lifecycle provider before using lark-inbox.
+loopx extension install --bundled loopx-lark --execute --format json
 ```
 
 For a separately distributed provider, pass `--manifest <extension.toml>`.
@@ -87,6 +90,16 @@ An enabled implementation is resolved by capability id, versioned protocol,
 declared permission, current revision, and current doctor proof. Domain config
 may add bounded provider arguments, but cannot replace the manifest entrypoint,
 timeout, protocol, or permission contract.
+
+Compatibility delegates use the same revision-bound readiness rule. Every
+configured `loopx lark-inbox` operation resolves the enabled `loopx-lark`
+provider, its current doctor proof, and the permission needed by that operation
+before entering the in-process provider code. Disabling the extension therefore
+blocks new collector starts, drain, ingest, reply, and acknowledge operations;
+upgrade and rollback affect new invocations without changing project
+configuration. Extension lifecycle commands do not terminate an already
+running host-managed collector process; stop or restart that supervisor service
+separately when changing the active provider revision.
 
 ## Placement Decision For Agents
 
@@ -226,8 +239,11 @@ provider-neutral read models, while provider packages own collection, transport,
 credentials, and external effects. For example, quota reads
 `operator_inbox_urgency_v0`. Lark inbox collection, reply transport, and
 provider-owned configuration live under `loopx/extensions/lark/`; the existing
-`loopx lark-inbox` command remains a direct compatibility delegate while the
-activation protocol is introduced in a separate, behavior-preserving slice.
+`loopx lark-inbox` command remains a direct compatibility delegate, but it now
+requires an installed, enabled, doctor-verified `loopx-lark` revision with the
+operation's declared permission. The provider subprocess currently implements
+doctor only; command execution remains in-process until the transport protocol
+is migrated.
 The former `loopx.capabilities.lark` provider imports are intentionally removed
 instead of kept as wrappers. Presentation sinks remain in their current owner
 until their broader CLI and projection parity surface is characterized.

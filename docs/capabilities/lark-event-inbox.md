@@ -37,6 +37,28 @@ the reply relation through message readback before scheduling a reply. Full-chat
 capture is not full-chat activation; unrelated conversation remains available
 to domain interpretation without being treated as addressed to the bot.
 
+## Activate the provider
+
+Install and explicitly activate the bundled provider once in the LoopX runtime
+used by the project:
+
+```bash
+loopx extension install --bundled loopx-lark --execute --format json
+```
+
+Configured `lark-inbox` commands fail closed when `loopx-lark` is absent,
+disabled, or no longer matches its doctor-verified revision. Each operation
+also requires its manifest permission: inbox read/write, reply send, or
+collector management. `extension upgrade` and `extension rollback` probe the
+candidate revision before switching it. A goal with no Lark inbox pointer still
+returns the existing quiet disabled drain projection and does not require the
+extension, so projects that do not use Lark remain unaffected.
+
+The collector service is a separate host lifecycle. Disabling or switching the
+extension blocks its next `collector-run` start but does not signal a process
+that is already consuming events. Stop or restart the configured launchd or
+systemd user service when disabling, upgrading, or rolling back the provider.
+
 ## Local-private configuration
 
 The inbox is opt-in. Create a local-private generic Lark inbox config:
@@ -124,6 +146,9 @@ passes the profile-bound collector config to the LoopX runtime, which places
 reply-target verification, and optional replies therefore cannot silently use
 different app identities. Public plan/status packets expose only whether a
 profile is bound and where the binding came from, never its value.
+When the CLI uses a custom `--runtime-root`, the generated service records that
+same root before `lark-inbox collector-run`; a supervisor restart therefore
+resolves the same extension activation state that was validated at install.
 
 ```bash
 loopx lark-inbox collector-plan \
