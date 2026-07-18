@@ -1,0 +1,53 @@
+examples/openviking-extension-runtime-smoke.py
+  s_32e2a9a204a8e4::t_6b91119aae446e 1-209
+loopx/capabilities/catalog.py
+  s_32e2a9a204a8e4::t_8e86f75d8bb497 295-298,717-719,743-744,809
+loopx/capabilities/registry.py
+  s_32e2a9a204a8e4::t_1cf04e5694b4a4 33,97-128,151,155
+loopx/capabilities/semantic_preference/cli.py
+  s_32e2a9a204a8e4::t_9c27f0906d588a 12,116,131,138
+loopx/capabilities/semantic_preference/contract.py
+  s_32e2a9a204a8e4::t_9da19130377342 11-16,34-36,106,108-181,211,226,231-256,401,430,432-436
+loopx/capabilities/semantic_preference/project_peer.py
+  s_32e2a9a204a8e4::t_a2d991e0ebc9d0 1-9,12-19
+loopx/cli.py
+  s_32e2a9a204a8e4::t_f18ff6adeb8918 49,81,192-193,344-352,442
+loopx/cli_commands/__init__.py
+  s_32e2a9a204a8e4::t_ca12bdef392f51 84,197,272
+loopx/cli_commands/extension.py
+  s_32e2a9a204a8e4::t_277eb07bde2247 1-169
+loopx/extensions/bundled.py
+  s_32e2a9a204a8e4::t_c596ff54aadb2c 1-20
+loopx/extensions/manifest.py
+  s_32e2a9a204a8e4::t_d4778f6e4f4ad4 13,32-78,133-143,163-192,203-204
+loopx/extensions/openviking_semantic_preference/__init__.py
+  s_32e2a9a204a8e4::t_fa6e7879b615a4 1-5
+loopx/extensions/openviking_semantic_preference/extension.toml
+  s_32e2a9a204a8e4::t_d1e5adaad356d2 1-16
+loopx/extensions/openviking_semantic_preference/project_peer.py
+  s_32e2a9a204a8e4::t_7ea21bb7c690bd 1-107
+loopx/extensions/openviking_semantic_preference/provider.py
+  s_32e2a9a204a8e4::t_5518f2ec345cff 1-312
+loopx/help_surface.py
+  s_32e2a9a204a8e4::t_796a51330706cc 164-167
+pyproject.toml
+  s_32e2a9a204a8e4::t_3be4612767b4eb 26,33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "51332bf0bfac8e20bf44a1f5fc9d4cdd6146d9da",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
