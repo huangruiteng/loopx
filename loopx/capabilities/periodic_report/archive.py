@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from .adapters import ARTIFACT_SCHEMA, DOCUMENT_SCHEMA
-from .core import _normalize_trigger_receipt
+from .core import _normalize_trigger_receipt, _reject_raw_keys
 
 
 ARCHIVE_BUNDLE_SCHEMA = "periodic_report_archive_bundle_v0"
@@ -179,6 +179,11 @@ def build_periodic_report_archive_bundle(
 
     normalized_artifact = _mapping(artifact, "artifact")
     normalized_document = _mapping(document, "document")
+    _reject_raw_keys(normalized_artifact, "artifact")
+    _reject_raw_keys(normalized_document, "document")
+    _reject_raw_keys(list(delivery_receipts), "delivery_receipts")
+    _reject_raw_keys(list(semantic_tags), "semantic_tags")
+    _reject_raw_keys(list(memory_conclusions), "memory_conclusions")
     if normalized_artifact.get("schema_version") != ARTIFACT_SCHEMA:
         raise ValueError(f"artifact must use {ARTIFACT_SCHEMA}")
     if normalized_document.get("schema_version") != DOCUMENT_SCHEMA:

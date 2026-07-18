@@ -23,6 +23,23 @@ _REPORT_KINDS = {
     "manual_update",
     "milestone_update",
 }
+_REPORTABLE_TRIGGER_KINDS = {
+    "cadence_due",
+    "manual",
+    "material_blocker",
+    "material_decision",
+    "material_recovery",
+    "primary_goal_outcome",
+    "vision_closed",
+}
+_LOCAL_PATH_SURFACE_PATTERN = re.compile(
+    r"(?<!<)/(?:Users|Volumes|home|var/folders|tmp|private/tmp)/[^\s`'\"<>]+"
+)
+_SECRET_LIKE_SURFACE_PATTERN = re.compile(
+    r"(?i)(?:\bbearer\s+[a-z0-9._~+/=-]{16,}|"
+    r"(?<![a-z0-9_])(?:ak|sk)[-_=:][a-z0-9_=-]{10,}|"
+    r"\b(?:api[_-]?key|password|secret|token)\s*[=:]\s*[^\s`'\"<>]{12,})"
+)
 _FORBIDDEN_RAW_KEYS = {
     "credential",
     "credentials",
@@ -120,6 +137,11 @@ def _reject_raw_keys(value: object, label: str) -> None:
     elif isinstance(value, list):
         for index, item in enumerate(value):
             _reject_raw_keys(item, f"{label}[{index}]")
+    elif isinstance(value, str) and (
+        _LOCAL_PATH_SURFACE_PATTERN.search(value)
+        or _SECRET_LIKE_SURFACE_PATTERN.search(value)
+    ):
+        raise ValueError(f"{label} contains a private path or credential-like value")
 
 
 def _digest(value: object, *, prefix: str) -> str:
@@ -272,14 +294,58 @@ def _normalize_trigger_receipt(raw: object) -> dict[str, Any] | None:
         raise ValueError(
             "trigger_receipt.selected_trigger_id must be coalesced into the report"
         )
+    profile = _normalize_profile(receipt.get("profile"))
+    raw_policy = _object(receipt.get("trigger_policy"), "trigger_receipt.trigger_policy")
+    enabled_kinds: list[str] = []
+    for index, value in enumerate(
+        _list(
+            raw_policy.get("enabled_kinds"),
+            "trigger_receipt.trigger_policy.enabled_kinds",
+        )
+    ):
+        kind = _token(
+            value,
+            f"trigger_receipt.trigger_policy.enabled_kinds[{index}]",
+        )
+        if kind not in _REPORTABLE_TRIGGER_KINDS:
+            raise ValueError(
+                "trigger_receipt.trigger_policy.enabled_kinds contains an invalid kind"
+            )
+        if kind not in enabled_kinds:
+            enabled_kinds.append(kind)
+    if not enabled_kinds:
+        raise ValueError(
+            "trigger_receipt.trigger_policy.enabled_kinds must not be empty"
+        )
+    trigger_policy = {
+        "enabled_kinds": sorted(enabled_kinds),
+        "minimum_interval_seconds": _integer(
+            raw_policy.get("minimum_interval_seconds", 0),
+            "trigger_receipt.trigger_policy.minimum_interval_seconds",
+            maximum=31 * 24 * 60 * 60,
+        ),
+    }
+    expected_report_key = _digest(
+        {
+            "profile": profile,
+            "trigger_policy": trigger_policy,
+            "report_kind": report_kind,
+            "trigger_ids": sorted(trigger_ids),
+        },
+        prefix="report",
+    )
+    report_key = _token(receipt.get("report_key"), "trigger_receipt.report_key")
+    if report_key != expected_report_key:
+        raise ValueError("trigger_receipt.report_key does not match trigger identity")
     return {
         "schema_version": schema_version,
         "eligible": True,
-        "profile": _normalize_profile(receipt.get("profile")),
+        "profile": profile,
+        "trigger_policy": trigger_policy,
         "decision_id": _token(
             receipt.get("decision_id"), "trigger_receipt.decision_id"
         ),
-        "report_key": _token(receipt.get("report_key"), "trigger_receipt.report_key"),
+        "report_key": report_key,
         "report_kind": report_kind,
         "selected_trigger_id": selected_trigger_id,
         "coalesced_trigger_ids": sorted(trigger_ids),

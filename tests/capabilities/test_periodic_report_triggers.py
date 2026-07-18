@@ -174,6 +174,23 @@ def test_equal_priority_triggers_are_sorted_by_parsed_timestamp() -> None:
     assert combined["selected_trigger_id"] == early_only["selected_trigger_id"]
 
 
+def test_decision_identity_binds_normalized_candidate_facts() -> None:
+    authorized = _candidate(
+        "manual",
+        source_ref="manual:review",
+        evidence_digest="sha256:review",
+        facts={"authorized": True},
+    )
+    unauthorized = {**authorized, "facts": {"authorized": False}}
+
+    accepted = build_periodic_report_trigger_decision(_trigger_request(authorized))
+    rejected = build_periodic_report_trigger_decision(_trigger_request(unauthorized))
+
+    assert accepted["eligible"] is True
+    assert rejected["eligible"] is False
+    assert accepted["decision_id"] != rejected["decision_id"]
+
+
 def test_fractional_trigger_policy_integer_is_rejected() -> None:
     request = _trigger_request(
         _candidate(
@@ -338,6 +355,10 @@ def test_trigger_receipt_participates_in_run_identity_and_cli(tmp_path, capsys) 
     }
     with pytest.raises(ValueError, match="must match the run profile"):
         build_periodic_report_run(mismatched)
+
+    stale_key = _run_request({**cadence, "report_key": "report_stale"})
+    with pytest.raises(ValueError, match="does not match trigger identity"):
+        build_periodic_report_run(stale_key)
 
     request_path = tmp_path / "trigger.json"
     request_path.write_text(

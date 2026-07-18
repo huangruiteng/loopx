@@ -454,6 +454,30 @@ def test_source_result_rejects_fractional_ranking_integer() -> None:
         )
 
 
+def test_source_result_rejects_credential_like_text_values() -> None:
+    with pytest.raises(ValueError, match="private path or credential-like value"):
+        build_periodic_report_source_result(
+            source_id="release_notes",
+            source_kind="release_activity",
+            status="complete",
+            observed_at="2026-07-20T00:40:00Z",
+            sections=[
+                {
+                    "section_id": "completed",
+                    "title": "Completed",
+                    "items": [
+                        {
+                            "item_id": "release",
+                            "title": "Release",
+                            "summary": "token=supersecretabcdef1234567890",
+                            "status": "published",
+                        }
+                    ],
+                }
+            ],
+        )
+
+
 def test_document_window_uses_chronological_timestamp_order() -> None:
     source = build_periodic_report_source_result(
         source_id="release_notes",

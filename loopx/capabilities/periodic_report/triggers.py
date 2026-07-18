@@ -400,7 +400,7 @@ def build_periodic_report_trigger_decision(
             "profile": profile,
             "trigger_policy": policy,
             "last_report": last_report,
-            "candidate_ids": [item["trigger_id"] for item in candidates],
+            "candidates": candidates,
         },
         prefix="trigger_decision",
     )

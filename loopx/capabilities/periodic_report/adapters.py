@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from .core import _normalize_trigger_receipt
+from .core import _normalize_trigger_receipt, _reject_raw_keys
 
 
 SOURCE_RESULT_SCHEMA = "periodic_report_source_result_v0"
@@ -21,21 +21,6 @@ _TOKEN_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,127}$")
 _SOURCE_STATUSES = {"complete", "partial", "failed", "unknown"}
 _SINK_STATUSES = {"pending", "sent", "failed", "skipped", "unknown"}
 _SINK_ROLES = {"archive", "delivery"}
-_FORBIDDEN_KEYS = {
-    "credential",
-    "credentials",
-    "private_path",
-    "raw_body",
-    "raw_content",
-    "raw_log",
-    "raw_logs",
-    "raw_message",
-    "raw_payload",
-    "raw_transcript",
-    "secret",
-    "token",
-}
-
 SourceCollector = Callable[[Mapping[str, Any]], Mapping[str, Any]]
 ArtifactRenderer = Callable[[Mapping[str, Any]], Mapping[str, Any]]
 ArtifactSink = Callable[[Mapping[str, Any], Mapping[str, Any]], Mapping[str, Any]]
@@ -115,17 +100,7 @@ def _timestamp(value: object, label: str) -> str:
 
 
 def _reject_private_fields(value: object, label: str) -> None:
-    if isinstance(value, Mapping):
-        for raw_key, item in value.items():
-            key = str(raw_key).strip().lower()
-            if key in _FORBIDDEN_KEYS:
-                raise ValueError(
-                    f"{label} contains forbidden raw/private field {raw_key!r}"
-                )
-            _reject_private_fields(item, f"{label}.{raw_key}")
-    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-        for index, item in enumerate(value):
-            _reject_private_fields(item, f"{label}[{index}]")
+    _reject_raw_keys(value, label)
 
 
 def _digest(value: object, *, prefix: str) -> str:

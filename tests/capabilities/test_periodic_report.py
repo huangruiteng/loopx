@@ -197,6 +197,13 @@ def test_raw_content_and_incomplete_sink_roles_are_rejected() -> None:
     with pytest.raises(ValueError, match="forbidden raw/private field"):
         build_periodic_report_run(raw_request)
 
+    private_ref = _request()
+    private_ref["source_snapshots"][0]["snapshot_ref"] = (  # type: ignore[index]
+        "/private/tmp/secret.log"
+    )
+    with pytest.raises(ValueError, match="private path or credential-like value"):
+        build_periodic_report_run(private_ref)
+
     missing_delivery = _request()
     missing_delivery["sink_receipts"] = [missing_delivery["sink_receipts"][0]]  # type: ignore[index]
     with pytest.raises(ValueError, match="archive and delivery"):
