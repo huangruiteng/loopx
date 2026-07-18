@@ -37,6 +37,7 @@ def _freshness(
     revision_relation: str,
     freshness_commit: str | None = None,
     freshness_relation: str | None = None,
+    source_ref: str | None = None,
 ) -> dict[str, object]:
     return build_install_freshness(
         command_path=tmp_path / "loopx",
@@ -47,7 +48,10 @@ def _freshness(
             "available": True,
             "manifest": {
                 "package": {"version": __version__},
-                "source": {"git_commit": installed_commit},
+                "source": {
+                    "git_commit": installed_commit,
+                    "ref": source_ref,
+                },
             },
         },
         comparison_source={
@@ -146,6 +150,44 @@ def test_trusted_main_ref_stales_older_default_release(tmp_path: Path) -> None:
     assert freshness["status"] == "stale"
     assert freshness["requires_upgrade"] is True
     assert "is behind loopx/loopx@main" in str(freshness["reason"])
+
+
+def test_main_channel_upgrade_command_preserves_source_ref(tmp_path: Path) -> None:
+    current = "a" * 40
+    freshness = _freshness(
+        tmp_path,
+        installed_commit=current,
+        comparison_commit=current,
+        revision_relation="same",
+        freshness_commit=current,
+        freshness_relation="same",
+        source_ref="main",
+    )
+
+    command = str(freshness["no_clone_upgrade_command"])
+    assert (
+        "curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/"
+        "scripts/install-from-github.sh | env LOOPX_REF=main bash"
+    ) in command
+    assert freshness["upgrade_command"] == command
+
+
+def test_stable_channel_upgrade_command_keeps_public_default(tmp_path: Path) -> None:
+    current = "a" * 40
+    freshness = _freshness(
+        tmp_path,
+        installed_commit=current,
+        comparison_commit=current,
+        revision_relation="same",
+        freshness_commit=current,
+        freshness_relation="same",
+        source_ref="stable",
+    )
+
+    command = str(freshness["no_clone_upgrade_command"])
+    assert "LOOPX_REF=" not in command
+    assert "scripts/install-from-github.sh | bash" in command
+    assert freshness["upgrade_command"] == command
 
 
 def test_unknown_canary_relation_does_not_stale_current_default_release(tmp_path: Path) -> None:
