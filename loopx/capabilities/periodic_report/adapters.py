@@ -87,6 +87,12 @@ def _integer(
     return result
 
 
+def _boolean(value: object, label: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{label} must be a boolean")
+    return value
+
+
 def _timestamp(value: object, label: str) -> str:
     raw = _text(value, label, maximum=80)
     candidate = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
@@ -199,7 +205,9 @@ def build_periodic_report_source_result(
     normalized_status = _token(status, "status")
     if normalized_status not in _SOURCE_STATUSES:
         raise ValueError("status is invalid")
-    normalized_sections = _normalize_sections(list(sections), label="sections")
+    raw_sections = list(sections)
+    _reject_private_fields(raw_sections, "sections")
+    normalized_sections = _normalize_sections(raw_sections, label="sections")
     result: dict[str, Any] = {
         "schema_version": SOURCE_RESULT_SCHEMA,
         "source_id": _token(source_id, "source_id"),
@@ -208,7 +216,7 @@ def build_periodic_report_source_result(
         "observed_at": _timestamp(observed_at, "observed_at"),
         "snapshot_digest": _digest(normalized_sections, prefix="snapshot"),
         "item_count": sum(len(section["items"]) for section in normalized_sections),
-        "retryable": bool(retryable),
+        "retryable": _boolean(retryable, "retryable"),
         "sections": normalized_sections,
         "boundary": {
             "business_semantics_owned_by_source": True,
@@ -243,7 +251,7 @@ def normalize_periodic_report_source_result(
         snapshot_ref=_optional_text(
             payload.get("snapshot_ref"), "source_result.snapshot_ref", maximum=500
         ),
-        retryable=payload.get("retryable") is True,
+        retryable=_boolean(payload.get("retryable", False), "source_result.retryable"),
     )
     supplied_digest = _text(
         payload.get("snapshot_digest"),
@@ -452,8 +460,8 @@ class PeriodicReportSourceAdapter:
     collect: SourceCollector
 
     def __post_init__(self) -> None:
-        _token(self.source_id, "source_id")
-        _token(self.source_kind, "source_kind")
+        object.__setattr__(self, "source_id", _token(self.source_id, "source_id"))
+        object.__setattr__(self, "source_kind", _token(self.source_kind, "source_kind"))
         if not callable(self.collect):
             raise ValueError("source collect must be callable")
 
@@ -465,8 +473,10 @@ class PeriodicReportRendererAdapter:
     render: ArtifactRenderer
 
     def __post_init__(self) -> None:
-        _token(self.renderer_id, "renderer_id")
-        _token(self.renderer_kind, "renderer_kind")
+        object.__setattr__(self, "renderer_id", _token(self.renderer_id, "renderer_id"))
+        object.__setattr__(
+            self, "renderer_kind", _token(self.renderer_kind, "renderer_kind")
+        )
         if not callable(self.render):
             raise ValueError("renderer render must be callable")
 
@@ -479,9 +489,10 @@ class PeriodicReportSinkAdapter:
     deliver: ArtifactSink
 
     def __post_init__(self) -> None:
-        _token(self.sink_id, "sink_id")
-        _token(self.sink_kind, "sink_kind")
+        object.__setattr__(self, "sink_id", _token(self.sink_id, "sink_id"))
+        object.__setattr__(self, "sink_kind", _token(self.sink_kind, "sink_kind"))
         role = _token(self.sink_role, "sink_role")
+        object.__setattr__(self, "sink_role", role)
         if role not in _SINK_ROLES:
             raise ValueError("sink_role must be archive or delivery")
         if not callable(self.deliver):
@@ -512,7 +523,8 @@ class PeriodicReportAdapterRegistry:
         self._register(self._sinks, adapter.sink_id, adapter)
 
     def collect(self, source_id: str, request: Mapping[str, Any]) -> dict[str, Any]:
-        adapter = self._sources.get(source_id)
+        canonical_source_id = _token(source_id, "source_id")
+        adapter = self._sources.get(canonical_source_id)
         if adapter is None:
             raise ValueError(f"unknown periodic report source {source_id!r}")
         return normalize_periodic_report_source_result(
@@ -522,7 +534,8 @@ class PeriodicReportAdapterRegistry:
         )
 
     def render(self, renderer_id: str, document: Mapping[str, Any]) -> dict[str, Any]:
-        adapter = self._renderers.get(renderer_id)
+        canonical_renderer_id = _token(renderer_id, "renderer_id")
+        adapter = self._renderers.get(canonical_renderer_id)
         if adapter is None:
             raise ValueError(f"unknown periodic report renderer {renderer_id!r}")
         canonical_document = json.dumps(
@@ -546,7 +559,8 @@ class PeriodicReportAdapterRegistry:
         artifact: Mapping[str, Any],
         context: Mapping[str, Any],
     ) -> dict[str, Any]:
-        adapter = self._sinks.get(sink_id)
+        canonical_sink_id = _token(sink_id, "sink_id")
+        adapter = self._sinks.get(canonical_sink_id)
         if adapter is None:
             raise ValueError(f"unknown periodic report sink {sink_id!r}")
         normalized_artifact = _normalize_artifact_result(artifact)

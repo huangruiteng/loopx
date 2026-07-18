@@ -30,7 +30,7 @@ def _load_json_object(path_text: str) -> dict[str, Any]:
 
 
 def register_periodic_report_commands(
-    subparsers: argparse._SubParsersAction,
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
     add_subcommand_format: AddFormat,
 ) -> None:
     parser = subparsers.add_parser(

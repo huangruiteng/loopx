@@ -454,6 +454,62 @@ def test_source_result_rejects_fractional_ranking_integer() -> None:
         )
 
 
+def test_source_result_rejects_raw_fields_before_projection() -> None:
+    with pytest.raises(ValueError, match="forbidden raw/private field"):
+        build_periodic_report_source_result(
+            source_id="release_notes",
+            source_kind="release_activity",
+            status="complete",
+            observed_at="2026-07-20T00:40:00Z",
+            sections=[
+                {
+                    "section_id": "completed",
+                    "title": "Completed",
+                    "items": [
+                        {
+                            "item_id": "release",
+                            "title": "Release",
+                            "summary": "Released.",
+                            "raw_body": "must not be silently discarded",
+                        }
+                    ],
+                }
+            ],
+        )
+
+
+def test_source_result_requires_strict_retryable_boolean() -> None:
+    with pytest.raises(ValueError, match="retryable must be a boolean"):
+        build_periodic_report_source_result(
+            source_id="release_notes",
+            source_kind="release_activity",
+            status="failed",
+            observed_at="2026-07-20T00:40:00Z",
+            sections=[],
+            retryable="false",  # type: ignore[arg-type]
+        )
+
+
+def test_adapter_identities_are_canonicalized_for_registration_and_lookup() -> None:
+    registry = PeriodicReportAdapterRegistry()
+    adapter = PeriodicReportSourceAdapter(
+        source_id="Release_Notes",
+        source_kind="Release_Activity",
+        collect=lambda _: build_periodic_report_source_result(
+            source_id="release_notes",
+            source_kind="release_activity",
+            status="complete",
+            observed_at="2026-07-20T00:40:00Z",
+            sections=[],
+        ),
+    )
+    registry.register_source(adapter)
+
+    assert adapter.source_id == "release_notes"
+    assert adapter.source_kind == "release_activity"
+    assert registry.collect("Release_Notes", {})["source_id"] == "release_notes"
+
+
 def test_source_result_rejects_credential_like_text_values() -> None:
     with pytest.raises(ValueError, match="private path or credential-like value"):
         build_periodic_report_source_result(
