@@ -65,13 +65,12 @@ loopx doctor
 
 Chat gateways that turn LoopX work into Lark or Feishu replies should keep
 message rendering separate from message sending.
-`loopx.capabilities.lark.message_card` remains the user-facing capability
-facade. The implementation lives under the presentation sink namespace,
-`loopx.presentation.sinks.lark.message_card`, because it renders public-safe
-display payloads instead of owning connector authority:
+The implementation is owned by the explicitly enabled Lark extension under
+`loopx.extensions.lark.presentation.message_card`; core does not retain a
+compatibility import for provider-owned presentation code:
 
 ```python
-from loopx.capabilities.lark.message_card import build_lark_markdown_reply_card
+from loopx.extensions.lark.presentation.message_card import build_lark_markdown_reply_card
 
 card = build_lark_markdown_reply_card(
     "**Done**\n- Validated the bounded change",

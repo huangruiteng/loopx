@@ -245,5 +245,8 @@ operation's declared permission. The provider subprocess currently implements
 doctor only; command execution remains in-process until the transport protocol
 is migrated.
 The former `loopx.capabilities.lark` provider imports are intentionally removed
-instead of kept as wrappers. Presentation sinks remain in their current owner
-until their broader CLI and projection parity surface is characterized.
+instead of kept as wrappers. Lark Kanban and Explore presentation sinks live
+under `loopx.extensions.lark.presentation`; their compatibility CLI delegates
+require the installed, enabled, doctor-verified revision to declare
+`lark.projection_sink.use`. No additional agent-facing CLI arguments are
+required.

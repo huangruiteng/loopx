@@ -19,9 +19,9 @@ Role boundaries, in one breath:
 - **Presentation** renders the public-safe explore projection into operator
   surfaces (Mermaid graph, Feishu/Lark Base rows, cards). The reusable
   display implementation lives in
-  `loopx.presentation.sinks.lark.explore_results`; the facade under
-  `loopx.capabilities.lark` stays intentionally thin, and new display
-  behavior must not be added there.
+  `loopx.extensions.lark.presentation.explore_results`; core retains no Lark
+  capability facade. Compatibility CLI delegates require explicit extension
+  activation before they invoke this provider-owned display behavior.
 - **Value connectors** remain the boundary for external signal input,
   permissions, and source authority. The Lark explore sink is display only
   and must never be conflated with a connector.
