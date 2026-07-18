@@ -323,6 +323,16 @@ def test_lark_sink_rejects_private_card_context_before_send() -> None:
                 "title": "/private/tmp/project-title",
             },
         )
+    with pytest.raises(ValueError, match="title must be a string"):
+        registry.deliver(
+            "lark_delivery",
+            artifact,
+            {
+                "execute": True,
+                "idempotency_key": "delivery-structured-context",
+                "title": {"to" + "ken": "super" + "sec" + "ret1234567890"},
+            },
+        )
     assert calls == []
 
 
@@ -819,6 +829,47 @@ def test_archive_bundle_rejects_query_or_fragment_root() -> None:
     unsafe_root = "viking://resources/reports?" + "to" + "ken=value1234567890"
 
     with pytest.raises(ValueError, match="private path or credential-like value"):
+        build_periodic_report_archive_bundle(
+            artifact=artifact,
+            document=document,
+            archive_root_uri=unsafe_root,
+            delivery_receipts=[],
+            semantic_tags=[],
+            memory_conclusions=[],
+        )
+
+
+@pytest.mark.parametrize(
+    "unsafe_root",
+    [
+        "viking://resources/reports?",
+        "viking://resources/reports#/",
+        "viking://resources/reports/%2e%2e/private",
+        "viking://resources/reports/%2Fprivate",
+        "viking://resources/reports/%252e%252e/private",
+    ],
+)
+def test_archive_bundle_rejects_ambiguous_resource_root(unsafe_root: str) -> None:
+    source = build_periodic_report_source_result(
+        source_id="release_notes",
+        source_kind="release_activity",
+        status="complete",
+        observed_at="2026-07-20T00:40:00Z",
+        sections=[],
+    )
+    document = build_periodic_report_document(
+        title="Weekly maintenance",
+        generated_at="2026-07-20T01:00:00Z",
+        period_window={
+            "start_at": "2026-07-13T00:00:00Z",
+            "end_at": "2026-07-20T00:00:00Z",
+        },
+        profile={"profile_id": "maintenance", "profile_version": "v1"},
+        sources=[source],
+    )
+    artifact = periodic_report_markdown_renderer_adapter().render(document)
+
+    with pytest.raises(ValueError, match="must stay under"):
         build_periodic_report_archive_bundle(
             artifact=artifact,
             document=document,

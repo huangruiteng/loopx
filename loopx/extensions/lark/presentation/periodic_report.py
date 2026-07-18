@@ -23,6 +23,14 @@ def _required_text(value: object, label: str) -> str:
     return text
 
 
+def _card_text(value: object, label: str, *, default: str) -> str:
+    if value is None:
+        return default
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be a string")
+    return _required_text(value, label)
+
+
 def periodic_report_lark_sink_adapter(
     *,
     send: LarkSendEffect,
@@ -57,8 +65,12 @@ def periodic_report_lark_sink_adapter(
                 "readback_verified": False,
                 "external_writes_performed": False,
             }
-        title = str(context.get("title") or "Periodic report")
-        footer = str(context.get("footer") or "LoopX periodic_report_v0")
+        title = _card_text(context.get("title"), "title", default="Periodic report")
+        footer = _card_text(
+            context.get("footer"),
+            "footer",
+            default="LoopX periodic_report_v0",
+        )
         _reject_raw_keys({"title": title, "footer": footer}, "lark_context")
         card = build_lark_markdown_reply_card(
             artifact.get("content"),

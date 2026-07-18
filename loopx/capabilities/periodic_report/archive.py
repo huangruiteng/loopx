@@ -5,7 +5,7 @@ import json
 import re
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from .adapters import ARTIFACT_SCHEMA, DOCUMENT_SCHEMA
 from .core import _normalize_trigger_receipt, _reject_raw_keys
@@ -80,17 +80,26 @@ def _content_digest(content: str) -> str:
 
 
 def _resource_root(value: object) -> str:
-    root = _text(value, "archive_root_uri", maximum=500).rstrip("/")
-    _reject_raw_keys({"archive_root_uri": root}, "archive_root_uri")
+    raw_root = _text(value, "archive_root_uri", maximum=500)
+    _reject_raw_keys({"archive_root_uri": raw_root}, "archive_root_uri")
+    if "?" in raw_root or "#" in raw_root:
+        raise ValueError("archive_root_uri must stay under viking://resources/")
+    root = raw_root.rstrip("/")
     parsed = urlsplit(root)
     path_segments = [segment for segment in parsed.path.split("/") if segment]
+    decoded_segments = [unquote(segment) for segment in path_segments]
     if (
         parsed.scheme != "viking"
         or parsed.netloc != "resources"
         or not path_segments
         or parsed.query
         or parsed.fragment
-        or any(segment in {".", ".."} for segment in path_segments)
+        or any(
+            decoded in {".", ".."}
+            or any(character in decoded for character in "/\\?#")
+            or unquote(decoded) != decoded
+            for decoded in decoded_segments
+        )
     ):
         raise ValueError("archive_root_uri must stay under viking://resources/")
     return root
