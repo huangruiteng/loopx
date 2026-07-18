@@ -546,7 +546,10 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "doc": "docs/reference/protocols/periodic-report-v0.md",
             },
         ],
-        "smokes": ["python3 examples/periodic-report-smoke.py"],
+        "smokes": [
+            "python3 examples/periodic-report-smoke.py",
+            "python3 examples/periodic-report-adapters-smoke.py",
+        ],
         "docs": [
             "docs/capabilities/periodic-report/README.md",
             "docs/reference/protocols/periodic-report-v0.md",
@@ -558,8 +561,8 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "Raw content, messages, logs, transcripts, credentials, secrets, and private paths are rejected.",
         ],
         "next_real_step": (
-            "Add reusable source, renderer, archive, and delivery adapter seams, "
-            "then prove one project profile without adding project semantics to the core."
+            "Prove one project-owned profile and exact delivery/archive retry readback "
+            "without adding project semantics or schedule policy to the core."
         ),
     },
     {
