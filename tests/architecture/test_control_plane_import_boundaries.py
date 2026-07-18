@@ -108,6 +108,15 @@ def _top_level_imported_names(path: Path) -> set[str]:
     }
 
 
+def _top_level_function_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    return {
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+
 def _top_level_import_bindings(path: Path) -> dict[str, str]:
     module_name = _module_name(path)
     package_name = module_name.rpartition(".")[0]
@@ -189,9 +198,24 @@ def test_control_plane_does_not_gain_outward_dependencies() -> None:
 def test_quota_markdown_is_owned_by_the_presentation_layer() -> None:
     legacy_renderer = CONTROL_PLANE_ROOT / "quota" / "markdown.py"
     imports = _resolved_imports(QUOTA_MODULE)
+    cli_imports = _resolved_from_imports(QUOTA_CLI_MODULE)
+    presentation_renderers = cli_imports.get(
+        "loopx.presentation.renderers.quota_event_markdown", set()
+    )
 
     assert not legacy_renderer.exists()
     assert "loopx.presentation.renderers.quota_markdown" in imports
+    assert {
+        "render_quota_monitor_poll_markdown",
+        "render_quota_slot_preview_markdown",
+    } <= presentation_renderers
+    assert "loopx.presentation.renderers.quota_event_markdown" in imports
+    assert "render_quota_monitor_poll_markdown" not in _top_level_function_names(
+        CONTROL_PLANE_ROOT / "quota" / "monitor_poll.py"
+    )
+    assert "render_quota_slot_preview_markdown" not in _top_level_function_names(
+        CONTROL_PLANE_ROOT / "quota" / "slot_accounting.py"
+    )
 
 
 def test_internal_consumers_bypass_status_and_quota_reexport_routes() -> None:

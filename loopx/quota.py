@@ -75,11 +75,8 @@ from .control_plane.quota.recent_runs import (
     goal_latest_runs as _goal_latest_runs,
     recent_external_monitor_observation_unchanged as _recent_external_monitor_observation_unchanged,
 )
-from .presentation.renderers.quota_markdown import (
-    render_quota_markdown as render_quota_markdown,
-    render_quota_scheduler_ack_markdown as render_quota_scheduler_ack_markdown,
-    render_quota_should_run_markdown as render_quota_should_run_markdown,
-)
+from .presentation.renderers.quota_event_markdown import render_quota_monitor_poll_markdown as _render_quota_monitor_poll_markdown, render_quota_slot_preview_markdown as _render_quota_slot_preview_markdown, render_quota_slot_preview_markdown as render_quota_slot_preview_markdown
+from .presentation.renderers.quota_markdown import render_quota_markdown as render_quota_markdown, render_quota_scheduler_ack_markdown as render_quota_scheduler_ack_markdown, render_quota_should_run_markdown as render_quota_should_run_markdown
 from .control_plane.quota.scheduler_ack import (
     QUOTA_SCHEDULER_ACK_CLASSIFICATION,
     record_quota_scheduler_ack_for_decision,
@@ -109,7 +106,6 @@ from .control_plane.quota.slot_accounting import (
     load_quota_event_from_run,
     record_quota_slot_spend_from_preview,
     record_quota_slot_void_from_preview,
-    render_quota_slot_preview_markdown as render_quota_slot_preview_markdown,
 )
 from .control_plane.quota.spend_sources import (
     DEFAULT_SLOT_SPEND_SOURCE,
@@ -191,7 +187,7 @@ _PUBLIC_COMPAT_REEXPORTS = {
     "render_quota_scheduler_ack_markdown": "loopx.presentation.renderers.quota_markdown",
     "render_quota_should_run_markdown": "loopx.presentation.renderers.quota_markdown",
     "build_quota_slot_void_event": "loopx.control_plane.quota.slot_accounting",
-    "render_quota_slot_preview_markdown": "loopx.control_plane.quota.slot_accounting",
+    "render_quota_slot_preview_markdown": "loopx.presentation.renderers.quota_event_markdown",
 }
 
 
@@ -2354,6 +2350,7 @@ def record_quota_monitor_poll(
         before,
         status_payload,
         goal_id=safe_goal_id,
+        render_markdown=_render_quota_monitor_poll_markdown,
         after_decision=lambda after_status: build_quota_should_run(
             after_status,
             goal_id=safe_goal_id,
@@ -2418,6 +2415,7 @@ def void_quota_slot(
         preview,
         status_payload,
         goal_id=safe_goal_id,
+        render_markdown=_render_quota_slot_preview_markdown,
         execute=execute,
         source=source,
         reason_summary=reason_summary,
@@ -2450,6 +2448,7 @@ def spend_quota_slot(
         status_payload,
         goal_id=safe_goal_id,
         self_repair_spend_actions=SELF_REPAIR_SPEND_ACTIONS,
+        render_markdown=_render_quota_slot_preview_markdown,
         execute=execute,
         source=source,
     )
