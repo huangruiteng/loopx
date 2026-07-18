@@ -82,9 +82,10 @@ root; it does not contain provider output or credentials.
 `disable` is reversible, but `enable` never trusts an earlier readiness result:
 it reruns the configured doctor and changes the enabled bit only after that
 probe succeeds. A successful doctor binds readiness to both the active manifest
-revision and the resolved executable identity. Missing or replaced executables
-fail closed until a new executed doctor succeeds; a failed executed doctor
-clears the stale proof without switching revisions.
+revision and the resolved runtime identity. Missing or replaced executables,
+interpreters, or Python module sources fail closed until a new executed doctor
+succeeds; a failed executed doctor clears the stale proof without switching
+revisions.
 
 An enabled implementation is resolved by capability id, versioned protocol,
 declared permission, current revision, and current doctor proof. Domain config
@@ -190,7 +191,7 @@ permissions = ["read_status", "read_todos", "external_write"]
 
 [runtime]
 protocol = "lark_kanban_provider_v0"
-entrypoint = "loopx-lark-kanban"
+python_module = "loopx.extensions.lark.provider"
 doctor_args = ["--doctor"]
 required_permissions = ["read_status", "read_todos"]
 timeout_seconds = 30
@@ -225,6 +226,15 @@ Runtime-required permissions must be a subset of the provider's declared
 permissions. Declaring either does not grant authority: existing LoopX goal
 boundaries, user gates, and external-write authorization still decide whether
 an operation may execute.
+
+Every executable runtime declares exactly one launch target. Use `entrypoint`
+for a separately installed executable such as the OpenViking provider. Use
+`python_module` for a provider shipped in the LoopX Python package. Module
+providers run as `<current-loopx-python> -m <module>` and their doctor proof is
+bound to both that interpreter and the resolved module source. This lets a
+clean source checkout and a local LoopX release activate bundled providers
+without separately installing a console script; catalog discovery remains
+declarative and does not import the module.
 
 ## Scope Boundaries
 

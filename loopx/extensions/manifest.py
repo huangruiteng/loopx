@@ -11,6 +11,7 @@ EXTENSION_MANIFEST_SCHEMA_VERSION = "loopx_extension_manifest_v0"
 LOOPX_EXTENSION_API_VERSION = 1
 _API_CLAUSE = re.compile(r"^(>=|<=|==|>|<)?\s*(\d+)$")
 _PROTOCOL_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}_v\d+$")
+_PYTHON_MODULE_RE = re.compile(r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*$")
 
 
 def _required_string(record: Mapping[str, Any], key: str, *, context: str) -> str:
@@ -46,9 +47,28 @@ def _runtime_contract(
         raise ValueError(
             f"{runtime_context} protocol must be a versioned lower-snake token"
         )
-    entrypoint = _required_string(value, "entrypoint", context=runtime_context)
-    if "\x00" in entrypoint:
-        raise ValueError(f"{runtime_context} entrypoint contains an invalid byte")
+    entrypoint_raw = value.get("entrypoint")
+    python_module_raw = value.get("python_module")
+    if (entrypoint_raw is None) == (python_module_raw is None):
+        raise ValueError(
+            f"{runtime_context} requires exactly one of `entrypoint` or `python_module`"
+        )
+    entrypoint: str | None = None
+    python_module: str | None = None
+    if entrypoint_raw is not None:
+        entrypoint = _required_string(value, "entrypoint", context=runtime_context)
+        if "\x00" in entrypoint:
+            raise ValueError(f"{runtime_context} entrypoint contains an invalid byte")
+    else:
+        python_module = _required_string(
+            value,
+            "python_module",
+            context=runtime_context,
+        )
+        if not _PYTHON_MODULE_RE.fullmatch(python_module):
+            raise ValueError(
+                f"{runtime_context} python_module must be a dotted Python module name"
+            )
     args = _string_list(value, "args", context=runtime_context)
     doctor_args = _string_list(value, "doctor_args", context=runtime_context)
     required_permissions = _string_list(
@@ -66,14 +86,17 @@ def _runtime_contract(
         raise ValueError(
             f"{runtime_context} timeout_seconds must be an integer from 1 to 120"
         )
-    return {
+    runtime = {
         "protocol": protocol,
-        "entrypoint": entrypoint,
         "args": args,
         "doctor_args": doctor_args,
         "required_permissions": required_permissions,
         "timeout_seconds": timeout_seconds,
     }
+    runtime["entrypoint" if entrypoint is not None else "python_module"] = (
+        entrypoint if entrypoint is not None else python_module
+    )
+    return runtime
 
 
 def _require_compatible_loopx_api(requirement: str, *, context: str) -> None:

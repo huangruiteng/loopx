@@ -4,6 +4,7 @@ import argparse
 import ast
 from collections.abc import Callable
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -84,6 +85,110 @@ protocol = "semantic_preference_provider_v0"
         encoding="utf-8",
     )
     return path
+
+
+def _python_module_manifest(path: Path, *, module_name: str) -> Path:
+    path.write_text(
+        """\
+schema_version = "loopx_extension_manifest_v0"
+id = "test-lark-module-extension"
+version = "1.0.0"
+requires_loopx_api = ">=1,<2"
+permissions = ["semantic_preference.read"]
+
+[runtime]
+protocol = "semantic_preference_provider_v0"
+python_module = "{module_name}"
+doctor_args = ["--doctor"]
+required_permissions = ["semantic_preference.read"]
+timeout_seconds = 5
+
+[[implements]]
+capability_id = "semantic-preference"
+protocol = "semantic_preference_provider_v0"
+""".format(module_name=module_name),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_python_module_runtime_uses_current_interpreter_without_console_script(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_name = "test_loopx_extension_provider"
+    module_path = tmp_path / f"{module_name}.py"
+    module_path.write_text(
+        "import sys\nraise SystemExit(0 if '--doctor' in sys.argv else 2)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    python_path = os.environ.get("PYTHONPATH")
+    monkeypatch.setenv(
+        "PYTHONPATH",
+        os.pathsep.join(part for part in [str(tmp_path), python_path] if part),
+    )
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    manifest = _python_module_manifest(
+        tmp_path / "extension.toml",
+        module_name=module_name,
+    )
+    state_file = tmp_path / "extensions.json"
+
+    installed = install_extension(manifest, state_file=state_file, execute=True)
+    assert installed["doctor"]["verified"] is True
+    binding = resolve_extension_binding(
+        "test-lark-module-extension",
+        state_file=state_file,
+        capability_id="semantic-preference",
+        protocol="semantic_preference_provider_v0",
+        permission="semantic_preference.read",
+    )
+
+    assert binding["argv"] == [
+        sys.executable,
+        "-m",
+        module_name,
+    ]
+    assert binding["doctor_argv"] == [*binding["argv"], "--doctor"]
+
+    module_path.write_text(
+        module_path.read_text(encoding="utf-8") + "# replaced\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="doctor readiness is stale"):
+        resolve_extension_activation(
+            "test-lark-module-extension",
+            state_file=state_file,
+        )
+
+
+@pytest.mark.parametrize(
+    "runtime_target",
+    [
+        "",
+        'entrypoint = "provider"\npython_module = "provider.module"',
+        'python_module = "not-a-module"',
+    ],
+)
+def test_runtime_requires_one_valid_launch_target(
+    tmp_path: Path,
+    runtime_target: str,
+) -> None:
+    manifest = _python_module_manifest(
+        tmp_path / "extension.toml",
+        module_name="loopx.extensions.lark.provider",
+    )
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'python_module = "loopx.extensions.lark.provider"',
+            runtime_target,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="exactly one|dotted Python module"):
+        install_extension(manifest, state_file=tmp_path / "extensions.json")
 
 
 def test_install_disable_upgrade_and_rollback_preserve_verified_binding(

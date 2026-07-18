@@ -13,9 +13,10 @@ from ..file_lock import exclusive_file_lock
 from .manifest import load_extension_manifest
 from .readiness import (
     EXTENSION_DOCTOR_SCHEMA_VERSION,
+    ResolvedRuntimeEntrypoint,
     extension_doctor,
     extension_runtime,
-    resolved_entrypoint_identity,
+    resolve_runtime_entrypoint,
 )
 
 
@@ -448,7 +449,9 @@ def doctor_installed_extension(
     return doctor
 
 
-def _verified_entrypoint(entry: Mapping[str, Any]) -> Path | None:
+def _verified_entrypoint(
+    entry: Mapping[str, Any],
+) -> ResolvedRuntimeEntrypoint | None:
     active_revision = str(entry.get("active_revision") or "")
     if entry.get("doctor_verified_revision") != active_revision:
         return None
@@ -460,19 +463,19 @@ def _verified_entrypoint(entry: Mapping[str, Any]) -> Path | None:
     if not isinstance(manifest, Mapping):
         return None
     runtime = _runtime(manifest)
-    identity = resolved_entrypoint_identity(str(runtime["entrypoint"]))
-    if identity is None or identity[1] != entry.get(
+    identity = resolve_runtime_entrypoint(runtime)
+    if identity is None or identity.identity != entry.get(
         "doctor_verified_entrypoint_identity"
     ):
         return None
-    return identity[0]
+    return identity
 
 
 def _resolved_active_extension(
     extension_id: str,
     *,
     state_file: str | Path,
-) -> tuple[str, Path, Mapping[str, Any]]:
+) -> tuple[str, ResolvedRuntimeEntrypoint, Mapping[str, Any]]:
     state = _read_state(Path(state_file).expanduser())
     entry = state["extensions"].get(extension_id)
     if not isinstance(entry, dict):
@@ -569,16 +572,15 @@ def resolve_extension_binding(
             f"extension `{extension_id}` does not implement `{capability_id}` "
             f"with protocol `{protocol}`"
         )
-    resolved_entrypoint = str(verified_entrypoint)
     return {
         "schema_version": EXTENSION_BINDING_SCHEMA_VERSION,
         "extension_id": extension_id,
         "provider_version": provider.get("version"),
         "revision": active_revision,
         "protocol": protocol,
-        "argv": [resolved_entrypoint, *(runtime.get("args") or [])],
+        "argv": [*verified_entrypoint.argv_prefix, *(runtime.get("args") or [])],
         "doctor_argv": [
-            resolved_entrypoint,
+            *verified_entrypoint.argv_prefix,
             *(runtime.get("args") or []),
             *(runtime.get("doctor_args") or []),
         ],
