@@ -44,7 +44,7 @@ def periodic_report_openviking_sink_adapter(
         )
         base: dict[str, Any] = {
             "schema_version": SINK_RESULT_SCHEMA,
-            "sink_id": sink_id,
+            "sink_id": adapter.sink_id,
             "sink_kind": "openviking_resource",
             "sink_role": "archive",
             "idempotency_key": idempotency_key,
@@ -108,9 +108,10 @@ def periodic_report_openviking_sink_adapter(
             "memory_reference": bundle["memory_reference"],
         }
 
-    return PeriodicReportSinkAdapter(
+    adapter = PeriodicReportSinkAdapter(
         sink_id=sink_id,
         sink_kind="openviking_resource",
         sink_role="archive",
         deliver=deliver,
     )
+    return adapter

@@ -8,6 +8,7 @@ from ....capabilities.periodic_report.adapters import (
     SINK_RESULT_SCHEMA,
     PeriodicReportSinkAdapter,
 )
+from ....capabilities.periodic_report.core import _reject_raw_keys
 from .message_card import build_lark_markdown_reply_card
 
 
@@ -41,7 +42,7 @@ def periodic_report_lark_sink_adapter(
         )
         base: dict[str, Any] = {
             "schema_version": SINK_RESULT_SCHEMA,
-            "sink_id": sink_id,
+            "sink_id": adapter.sink_id,
             "sink_kind": "lark_message",
             "sink_role": "delivery",
             "idempotency_key": idempotency_key,
@@ -56,10 +57,13 @@ def periodic_report_lark_sink_adapter(
                 "readback_verified": False,
                 "external_writes_performed": False,
             }
+        title = str(context.get("title") or "Periodic report")
+        footer = str(context.get("footer") or "LoopX periodic_report_v0")
+        _reject_raw_keys({"title": title, "footer": footer}, "lark_context")
         card = build_lark_markdown_reply_card(
             artifact.get("content"),
-            title=str(context.get("title") or "Periodic report"),
-            footer=str(context.get("footer") or "LoopX periodic_report_v0"),
+            title=title,
+            footer=footer,
         )
         sent = dict(send(card, idempotency_key))
         receipt_ref = _required_text(
@@ -79,9 +83,10 @@ def periodic_report_lark_sink_adapter(
             "external_writes_performed": True,
         }
 
-    return PeriodicReportSinkAdapter(
+    adapter = PeriodicReportSinkAdapter(
         sink_id=sink_id,
         sink_kind="lark_message",
         sink_role="delivery",
         deliver=deliver,
     )
+    return adapter

@@ -285,6 +285,96 @@ def test_sink_preview_has_no_effect_and_execute_requires_exact_readback() -> Non
         assert result["business_evidence_judged"] is False
 
 
+def test_lark_sink_rejects_private_card_context_before_send() -> None:
+    source = build_periodic_report_source_result(
+        source_id="release_notes",
+        source_kind="release_activity",
+        status="complete",
+        observed_at="2026-07-20T00:40:00Z",
+        sections=[],
+    )
+    document = build_periodic_report_document(
+        title="Weekly maintenance",
+        generated_at="2026-07-20T01:00:00Z",
+        period_window={
+            "start_at": "2026-07-13T00:00:00Z",
+            "end_at": "2026-07-20T00:00:00Z",
+        },
+        profile={"profile_id": "maintenance", "profile_version": "v1"},
+        sources=[source],
+    )
+    artifact = periodic_report_markdown_renderer_adapter().render(document)
+    calls: list[str] = []
+    registry = PeriodicReportAdapterRegistry()
+    registry.register_sink(
+        periodic_report_lark_sink_adapter(
+            send=lambda _card, key: calls.append(key) or {"message_id": "message"},
+            readback=lambda ref: {"verified": True, "message_id": ref},
+        )
+    )
+
+    with pytest.raises(ValueError, match="private path or credential-like value"):
+        registry.deliver(
+            "lark_delivery",
+            artifact,
+            {
+                "execute": True,
+                "idempotency_key": "delivery-private-context",
+                "title": "/private/tmp/project-title",
+            },
+        )
+    assert calls == []
+
+
+def test_sink_factories_emit_canonical_custom_ids() -> None:
+    source = build_periodic_report_source_result(
+        source_id="release_notes",
+        source_kind="release_activity",
+        status="complete",
+        observed_at="2026-07-20T00:40:00Z",
+        sections=[],
+    )
+    document = build_periodic_report_document(
+        title="Weekly maintenance",
+        generated_at="2026-07-20T01:00:00Z",
+        period_window={
+            "start_at": "2026-07-13T00:00:00Z",
+            "end_at": "2026-07-20T00:00:00Z",
+        },
+        profile={"profile_id": "maintenance", "profile_version": "v1"},
+        sources=[source],
+    )
+    artifact = periodic_report_markdown_renderer_adapter().render(document)
+    registry = PeriodicReportAdapterRegistry()
+    registry.register_sink(
+        periodic_report_lark_sink_adapter(
+            sink_id="Lark_Custom",
+            send=lambda _card, _key: {},
+            readback=lambda _ref: {},
+        )
+    )
+    registry.register_sink(
+        periodic_report_openviking_sink_adapter(
+            sink_id="OpenViking_Custom",
+            write=lambda _payload, _key: {},
+            readback=lambda _ref: {},
+        )
+    )
+
+    lark = registry.deliver(
+        "Lark_Custom",
+        artifact,
+        {"execute": False, "idempotency_key": "lark-custom-preview"},
+    )
+    archive = registry.deliver(
+        "OpenViking_Custom",
+        artifact,
+        _archive_context(document, execute=False),
+    )
+    assert lark["sink_id"] == "lark_custom"
+    assert archive["sink_id"] == "openviking_custom"
+
+
 def test_registry_rejects_identity_drift_and_duplicate_adapters() -> None:
     registry = PeriodicReportAdapterRegistry()
     adapter = PeriodicReportSourceAdapter(
@@ -705,6 +795,38 @@ def test_archive_bundle_keeps_resource_history_separate_from_memory() -> None:
         "distillation_required": True,
         "full_report_copied": False,
     }
+
+
+def test_archive_bundle_rejects_query_or_fragment_root() -> None:
+    source = build_periodic_report_source_result(
+        source_id="release_notes",
+        source_kind="release_activity",
+        status="complete",
+        observed_at="2026-07-20T00:40:00Z",
+        sections=[],
+    )
+    document = build_periodic_report_document(
+        title="Weekly maintenance",
+        generated_at="2026-07-20T01:00:00Z",
+        period_window={
+            "start_at": "2026-07-13T00:00:00Z",
+            "end_at": "2026-07-20T00:00:00Z",
+        },
+        profile={"profile_id": "maintenance", "profile_version": "v1"},
+        sources=[source],
+    )
+    artifact = periodic_report_markdown_renderer_adapter().render(document)
+    unsafe_root = "viking://resources/reports?" + "to" + "ken=value1234567890"
+
+    with pytest.raises(ValueError, match="private path or credential-like value"):
+        build_periodic_report_archive_bundle(
+            artifact=artifact,
+            document=document,
+            archive_root_uri=unsafe_root,
+            delivery_receipts=[],
+            semantic_tags=[],
+            memory_conclusions=[],
+        )
 
 
 def test_archive_sink_fails_closed_on_result_id_or_digest_drift() -> None:
