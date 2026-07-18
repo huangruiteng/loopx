@@ -8,6 +8,7 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "loopx"
 CONTROL_PLANE_ROOT = PACKAGE_ROOT / "control_plane"
 STATUS_MODULE = PACKAGE_ROOT / "status.py"
+QUOTA_MODULE = PACKAGE_ROOT / "quota.py"
 FORBIDDEN_DEPENDENCY_PREFIXES = (
     "loopx.benchmark_adapters",
     "loopx.capabilities",
@@ -95,3 +96,10 @@ def test_status_outward_dependency_debt_only_shrinks() -> None:
         "remove resolved loopx.status edges from STATUS_OUTWARD_DEPENDENCY_DEBT; "
         f"stale entries: {sorted(stale_debt)}"
     )
+
+
+def test_quota_operator_inbox_dependency_points_inward() -> None:
+    imports = _resolved_imports(QUOTA_MODULE)
+
+    assert "loopx.capabilities.lark.event_inbox" not in imports
+    assert "loopx.control_plane.work_items.operator_inbox" in imports

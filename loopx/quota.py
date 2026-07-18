@@ -93,7 +93,7 @@ from .control_plane.quota.scheduler_ack import (
 from .control_plane.quota.selected_todo_projection import (
     selected_todo_projection as _selected_todo_projection,
 )
-from .capabilities.lark.event_inbox import project_lark_event_inbox_urgency as _project_lark_event_inbox_urgency
+from .control_plane.work_items.operator_inbox import project_operator_inbox_urgency as _project_operator_inbox_urgency
 from .capabilities.reward_memory.experiment import (
     resolve_reward_memory_experiment_from_status as _resolve_reward_memory_experiment_from_status,
 )
@@ -1317,7 +1317,7 @@ def build_quota_should_run(
             registry_path=(
                 Path(boundary_registry_value) if boundary_registry_value else None
             ),
-            lark_event_inbox_urgency_projector=_project_lark_event_inbox_urgency,
+            operator_inbox_urgency_projector=_project_operator_inbox_urgency,
             reward_memory_experiment_status=reward_memory_experiment_status,
         )
         workspace_guard = None

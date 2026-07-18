@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -15,6 +16,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.capabilities.lark.event_inbox import (  # noqa: E402
     acknowledge_lark_event_inbox,
+    project_lark_event_inbox_urgency,
+)
+from loopx.control_plane.work_items.operator_inbox import (  # noqa: E402
+    project_operator_inbox_urgency,
 )
 from loopx.control_plane.testing.quota_fixtures import (  # noqa: E402
     quota_status_payload,
@@ -145,9 +150,29 @@ def main() -> None:
         assert decision["execution_obligation"]["contract_obligation"] == lane["obligation"]
         assert "durable effect" in decision["recommended_action"], decision
         urgency = decision["goal_boundary"]["capabilities"]["lark_event_inbox"]["urgency"]
+        assert urgency["schema_version"] == "lark_event_inbox_urgency_v0", urgency
         assert urgency["reply_due"] is True, urgency
         assert urgency["local_private_content_returned"] is False, urgency
         assert "items" not in urgency and "message_id" not in json.dumps(urgency), urgency
+        parity_now = datetime(2026, 7, 15, 0, 10, tzinfo=timezone.utc)
+        compatibility = project_lark_event_inbox_urgency(
+            project=project,
+            config_path=config,
+            now=parity_now,
+        )
+        generic = project_operator_inbox_urgency(
+            project=project,
+            config_path=config,
+            config_schema_version="lark_event_inbox_config_v0",
+            event_schema_version="lark_event_inbox_event_v0",
+            processed_schema_version="lark_event_inbox_processed_v0",
+            now=parity_now,
+        )
+        compatibility["schema_version"] = "operator_inbox_urgency_v0"
+        compatibility["reply_to_operator_count"] = compatibility.pop(
+            "reply_to_bot_count"
+        )
+        assert compatibility == generic, (compatibility, generic)
         markdown = render_quota_should_run_markdown(decision)
         assert "lane=lark_event_inbox" in markdown, markdown
         assert "questions=1" in markdown, markdown

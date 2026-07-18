@@ -78,7 +78,7 @@ def goal_boundary(
     *,
     agent_id: str | None = None,
     registry_path: Path | None = None,
-    lark_event_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
+    operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
     reward_memory_experiment_status: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     boundary: dict[str, Any] = {}
@@ -168,12 +168,20 @@ def goal_boundary(
         }
         project = Path(str(goal.get("repo") or "")).expanduser()
         config_path = str(lark_event_inbox.get("config_path") or "").strip()
-        if project.is_dir() and config_path and lark_event_inbox_urgency_projector:
+        if project.is_dir() and config_path and operator_inbox_urgency_projector:
             try:
-                inbox_capability["urgency"] = lark_event_inbox_urgency_projector(
+                urgency = operator_inbox_urgency_projector(
                     project=project,
                     config_path=config_path,
+                    config_schema_version="lark_event_inbox_config_v0",
+                    event_schema_version="lark_event_inbox_event_v0",
+                    processed_schema_version="lark_event_inbox_processed_v0",
                 )
+                urgency["schema_version"] = "lark_event_inbox_urgency_v0"
+                urgency["reply_to_bot_count"] = urgency.pop(
+                    "reply_to_operator_count", 0
+                )
+                inbox_capability["urgency"] = urgency
             except (OSError, ValueError):
                 inbox_capability["urgency"] = {
                     "schema_version": "lark_event_inbox_urgency_v0",
