@@ -1,0 +1,37 @@
+loopx/cli.py
+  s_32e2a9a204a8e4::t_3faa6eaff52ea3 501
+loopx/cli_commands/lark_inbox.py
+  s_32e2a9a204a8e4::t_8a371da05be817 9-15,28-31,166-200,220,226,228-231,234-236,239-244,276,282,296,305-306
+loopx/extensions/bundled.py
+  s_32e2a9a204a8e4::t_ed3af3555490f1 7-13,18-19,24
+loopx/extensions/lark/__init__.py
+  s_32e2a9a204a8e4::t_b6bfb21ebfa3e4 2-7
+loopx/extensions/lark/event_collector.py
+  s_32e2a9a204a8e4::t_8c4f5ce4d7e88f 191-196,205-219,259-263,265-269,304-307,310,330,335,350,403,408
+loopx/extensions/lark/extension.toml
+  s_32e2a9a204a8e4::t_7a076b1b0b08a3 1-29
+loopx/extensions/lark/provider.py
+  s_32e2a9a204a8e4::t_fa2d35b4ec4016 1-58
+loopx/extensions/runtime.py
+  s_32e2a9a204a8e4::t_60a03e92a1f9a8 3,25,471,475,490-545
+pyproject.toml
+  s_32e2a9a204a8e4::t_d330d37e8e0be3 26,34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4b5a43cc72818f6cd551ea6c36d5631edfcbe944",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
