@@ -1,0 +1,23 @@
+examples/register-authority-source-smoke.py
+  s_ce78287262030e::t_e41b311fbdbc52 58-61,104,130-131,163,165-167,189-191,207-221
+loopx/authority.py
+  s_ce78287262030e::t_bad687d3bcfd6a 711-713,742-744,746,761-763,765,768-802
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f030cca029c64e1a614b17d1d2f3759637c0c698",
+  "prompts": {},
+  "sessions": {
+    "s_ce78287262030e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7515-a03a-7322-9902-2e203d31cc54",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
