@@ -24,6 +24,14 @@ GOAL_ID = "adoption-main-control"
 USER_TODO = "Review the P0 owner-risk checklist before approving delivery."
 AGENT_TODO = "Run the read-only map dry-run after the operator approval is recorded."
 APPROVED_COMMAND = f"loopx read-only-map --goal-id {GOAL_ID} --dry-run"
+QUOTA_EXECUTION_CONTEXT = (
+    "--host-surface",
+    "generic_cli",
+    "--scheduler-owner",
+    "outer_controller",
+    "--execution-mode",
+    "isolated_headless",
+)
 
 
 def write_planned_fixture(root: Path) -> Path:
@@ -100,6 +108,27 @@ def run_cli(root: Path, registry_path: Path, *args: str) -> dict:
     return json.loads(result.stdout)
 
 
+def quota_should_run(
+    root: Path,
+    registry_path: Path,
+    project: Path,
+    *,
+    bind_execution_context: bool = True,
+) -> dict:
+    context_args = QUOTA_EXECUTION_CONTEXT if bind_execution_context else ()
+    return run_cli(
+        root,
+        registry_path,
+        "quota",
+        "should-run",
+        "--goal-id",
+        GOAL_ID,
+        *context_args,
+        "--scan-root",
+        str(project),
+    )
+
+
 def attention_item(status_payload: dict) -> dict:
     items = status_payload["attention_queue"]["items"]
     assert len(items) == 1, items
@@ -112,18 +141,32 @@ def main() -> int:
         registry_path = write_planned_fixture(root)
         project = root / "project"
 
-        first_quota = run_cli(
+        missing_context_quota = quota_should_run(
             root,
             registry_path,
-            "quota",
-            "should-run",
-            "--goal-id",
-            GOAL_ID,
-            "--scan-root",
-            str(project),
+            project,
+            bind_execution_context=False,
         )
+        missing_hint = missing_context_quota["scheduler_hint"]
+        assert missing_hint["action"] == "repair_scheduler_execution_context", missing_hint
+        assert missing_hint["execution_context"]["valid"] is False, missing_hint
+        assert missing_hint["execution_context"]["errors"] == [
+            "missing required field: host_surface",
+            "missing required field: scheduler_owner",
+            "missing required field: execution_mode",
+        ], missing_hint
+
+        first_quota = quota_should_run(root, registry_path, project)
         assert first_quota["state"] == "operator_gate", first_quota
         assert first_quota["should_run"] is False, first_quota
+        first_context = first_quota["scheduler_hint"]["execution_context"]
+        assert first_context["valid"] is True, first_context
+        assert first_context["host_surface"] == "generic_cli", first_context
+        assert first_context["scheduler_owner"] == "outer_controller", first_context
+        assert first_context["execution_mode"] == "isolated_headless", first_context
+        assert first_quota["scheduler_hint"].get("action") != (
+            "repair_scheduler_execution_context"
+        ), first_quota
         assert first_quota["todo_write_hint"]["section"] == "User Todo / Owner Review Reading Queue", first_quota
         assert first_quota["todo_write_hint"]["user_gate_command_template"] == (
             f"loopx todo add --goal-id {GOAL_ID} --role user --task-class user_gate "
@@ -131,7 +174,7 @@ def main() -> int:
         ), first_quota
         assert first_quota["todo_write_hint"]["user_action_command_template"] == (
             f"loopx todo add --goal-id {GOAL_ID} --role user --task-class user_action "
-            "--text '<non-blocking user todo>'"
+            "--bound-agent <id> --text '<action>'"
         ), first_quota
         assert first_quota["agent_todo_summary"]["open_count"] == 1, first_quota
         assert first_quota["agent_todo_summary"]["first_open_items"][0]["text"] == AGENT_TODO, first_quota
@@ -163,16 +206,7 @@ def main() -> int:
         assert item_after_todo["agent_todos"]["open_count"] == 1, item_after_todo
         assert item_after_todo["agent_todos"]["items"][0]["text"] == AGENT_TODO, item_after_todo
 
-        quota_after_todo = run_cli(
-            root,
-            registry_path,
-            "quota",
-            "should-run",
-            "--goal-id",
-            GOAL_ID,
-            "--scan-root",
-            str(project),
-        )
+        quota_after_todo = quota_should_run(root, registry_path, project)
         assert quota_after_todo["user_todo_summary"]["open_count"] == 1, quota_after_todo
         assert quota_after_todo["agent_todo_summary"]["open_count"] == 1, quota_after_todo
         assert USER_TODO in quota_after_todo["gate_prompt"], quota_after_todo
@@ -193,16 +227,7 @@ def main() -> int:
         assert gate_payload["appended"] is True, gate_payload
         assert gate_payload["operator_gate"]["agent_command"] == APPROVED_COMMAND, gate_payload
 
-        pending_quota = run_cli(
-            root,
-            registry_path,
-            "quota",
-            "should-run",
-            "--goal-id",
-            GOAL_ID,
-            "--scan-root",
-            str(project),
-        )
+        pending_quota = quota_should_run(root, registry_path, project)
         assert pending_quota["should_run"] is False, pending_quota
         assert pending_quota["state"] == "operator_gate", pending_quota
         assert pending_quota["user_todo_summary"]["open_count"] == 1, pending_quota
@@ -224,16 +249,7 @@ def main() -> int:
         )
         assert complete_payload["changed"] is True, complete_payload
 
-        approved_quota = run_cli(
-            root,
-            registry_path,
-            "quota",
-            "should-run",
-            "--goal-id",
-            GOAL_ID,
-            "--scan-root",
-            str(project),
-        )
+        approved_quota = quota_should_run(root, registry_path, project)
         assert approved_quota["should_run"] is True, approved_quota
         assert approved_quota["state"] == "eligible", approved_quota
         assert approved_quota["agent_command"] == APPROVED_COMMAND, approved_quota
