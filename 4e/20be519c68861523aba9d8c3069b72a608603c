@@ -1,0 +1,23 @@
+loopx/control_plane/todos/completion_policy.py
+  s_9a5a2bd944fdcb::t_01e961456fb000 7-12,100-102,150
+tests/control_plane/test_peer_todo_completion_cli.py
+  s_9a5a2bd944fdcb::t_f7f42ded7916a3 1-208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4e20be519c68861523aba9d8c3069b72a608603c",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
