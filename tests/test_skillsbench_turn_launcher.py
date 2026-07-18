@@ -9,10 +9,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = REPO_ROOT / "scripts" / "skillsbench-launch-goal-xhigh.sh"
 
 
-def _base_env() -> dict[str, str]:
+def _base_env(tmp_path: Path) -> dict[str, str]:
     env = os.environ.copy()
     env.update(
         {
+            "XDG_STATE_HOME": str(tmp_path / "state"),
             "SKILLSBENCH_SSH_DESTINATION": "example.invalid",
             "SKILLSBENCH_REMOTE_ROOT": "/remote/loopx",
             "SKILLSBENCH_ROOT": "/remote/skillsbench",
@@ -25,8 +26,10 @@ def _base_env() -> dict[str, str]:
     return env
 
 
-def test_turn_launcher_wires_private_commands_without_echoing_values() -> None:
-    env = _base_env()
+def test_turn_launcher_wires_private_commands_without_echoing_values(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
     private_values = {
         "SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_PROBE_COMMAND": (
             "private-probe-command sentinel-probe"
@@ -81,8 +84,10 @@ def test_turn_launcher_wires_private_commands_without_echoing_values() -> None:
     assert "sentinel-" not in output
 
 
-def test_instrumented_agent_bridge_requires_an_explicit_agent_command() -> None:
-    env = _base_env()
+def test_instrumented_agent_bridge_requires_an_explicit_agent_command(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
     env["SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_AGENT_COMMAND_INSTRUMENTED"] = "1"
 
     proc = subprocess.run(
@@ -102,8 +107,8 @@ def test_instrumented_agent_bridge_requires_an_explicit_agent_command() -> None:
     ) in proc.stderr
 
 
-def test_turn_launcher_requires_an_independent_validator() -> None:
-    env = _base_env()
+def test_turn_launcher_requires_an_independent_validator(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
     env["SKILLSBENCH_ROUTE"] = "loopx-turn-agent-cli"
 
     proc = subprocess.run(
