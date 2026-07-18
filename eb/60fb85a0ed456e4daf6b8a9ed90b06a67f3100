@@ -1,0 +1,27 @@
+AGENTS.md
+  s_76ee28abb3c3a4::t_8762dfd77aed96 164
+docs/README.md
+  s_76ee28abb3c3a4::t_d4777483161f0c 42,94
+docs/architecture.md
+  s_76ee28abb3c3a4::t_4f90776b7cf161 63
+examples/capability-extension-placement-doc-smoke.py
+  s_76ee28abb3c3a4::t_0b51ae92a3787a 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "eb60fb85a0ed456e4daf6b8a9ed90b06a67f3100",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
