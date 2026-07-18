@@ -56,6 +56,25 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
         ),
         encoding="utf-8",
     )
+    reviewer_config = project / ".loopx" / "config" / "reviewer-notifications.json"
+    reviewer_config.write_text(
+        json.dumps(
+            {
+                "schema_version": "issue_fix_reviewer_notification_sinks_input_v0",
+                "feedback_inbox_config": ".loopx/config/lark-event-inbox.json",
+                "sinks": [
+                    {
+                        "sink_kind": "lark_chat",
+                        "reader_profile": "fixture-reader",
+                        "reader_identity": "user",
+                        "sender_profile": "fixture-bot",
+                        "sender_identity": "bot",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     registry = project / ".loopx" / "registry.json"
     registry.write_text(
         json.dumps(
@@ -68,7 +87,15 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
                             "lark_event_inbox": {
                                 "enabled": True,
                                 "config_path": ".loopx/config/lark-event-inbox.json",
-                            }
+                            },
+                            "issue_fix": {
+                                "reviewer_notification": {
+                                    "enabled": True,
+                                    "config_path": (
+                                        ".loopx/config/reviewer-notifications.json"
+                                    ),
+                                }
+                            },
                         },
                     }
                 ]
@@ -82,6 +109,12 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
         "--goal-id",
         "lark-extension-fixture",
     )
+    reviewer_drain_args = (
+        "issue-fix",
+        "reviewer-feedback-inbox",
+        "--goal-id",
+        "lark-extension-fixture",
+    )
 
     missing = run_cli(
         registry,
@@ -90,6 +123,13 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
         expected_returncode=1,
     )
     assert "not installed" in str(missing["error"]), missing
+    reviewer_missing = run_cli(
+        registry,
+        runtime_root,
+        *reviewer_drain_args,
+        expected_returncode=1,
+    )
+    assert "not installed" in str(reviewer_missing["error"]), reviewer_missing
 
     installed = run_cli(
         registry,
@@ -111,6 +151,16 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
         "doctor_verified": True,
         "required_permissions": ["lark.inbox.read"],
     }, active
+    reviewer_active = run_cli(registry, runtime_root, *reviewer_drain_args)
+    assert reviewer_active["configured_reviewer_group"] is True, reviewer_active
+    assert reviewer_active["extension_activation"] == {
+        **active["extension_activation"],
+        "required_permissions": [
+            "lark.inbox.read",
+            "lark.inbox.write",
+            "lark.reply.send",
+        ],
+    }, reviewer_active
 
     disabled = run_cli(
         registry,
@@ -128,6 +178,13 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
         expected_returncode=1,
     )
     assert "is disabled" in str(blocked["error"]), blocked
+    reviewer_blocked = run_cli(
+        registry,
+        runtime_root,
+        *reviewer_drain_args,
+        expected_returncode=1,
+    )
+    assert "is disabled" in str(reviewer_blocked["error"]), reviewer_blocked
 
     enabled = run_cli(
         registry,
@@ -161,6 +218,11 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
     assert upgraded["previous_revision"] == installed["revision"], upgraded
     after_upgrade = run_cli(registry, runtime_root, *drain_args)
     assert after_upgrade["extension_activation"]["revision"] == upgraded["revision"]
+    reviewer_after_upgrade = run_cli(registry, runtime_root, *reviewer_drain_args)
+    assert (
+        reviewer_after_upgrade["extension_activation"]["revision"]
+        == upgraded["revision"]
+    )
 
     rolled_back = run_cli(
         registry,

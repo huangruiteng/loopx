@@ -54,6 +54,11 @@ from loopx.domain_packs.issue_fix import (  # noqa: E402
     persist_issue_fix_reviewer_notification_state,
     upsert_issue_fix_pr_lifecycle_ledger_jsonl,
 )
+from loopx.extensions.bundled import bundled_extension_manifest  # noqa: E402
+from loopx.extensions.runtime import (  # noqa: E402
+    default_extension_state_file,
+    install_extension,
+)
 
 
 PRIVATE_PATTERNS = (
@@ -950,32 +955,39 @@ def main() -> int:
         }
         notification_sinks_path = path / "notification-sinks.json"
         write(notification_sinks_path, json.dumps(cli_sinks_input))
+        runtime_root = path / ".runtime"
+        install_extension(
+            bundled_extension_manifest("loopx-lark"),
+            state_file=default_extension_state_file(runtime_root),
+            execute=True,
+        )
+        loopx_cli = [
+            sys.executable, "-m", "loopx.cli", "--runtime-root",
+            str(runtime_root), "--format", "json",
+        ]
+        reviewer_cli_args = [
+            *loopx_cli,
+            "issue-fix",
+            "reviewer-request",
+            "--url",
+            "https://github.com/owner/repo/pull/42",
+            "--repo-path",
+            str(path),
+            "--base-ref",
+            "main",
+            "--changed-file",
+            "src/map_only.py",
+            "--exclude-reviewer",
+            "@fallback-owner",
+            "--reviewer-sources-json",
+            str(reviewer_sources_path),
+            "--metadata-json",
+            str(metadata_path),
+            "--notification-sinks-json",
+            str(notification_sinks_path),
+        ]
         cli = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "loopx.cli",
-                "--format",
-                "json",
-                "issue-fix",
-                "reviewer-request",
-                "--url",
-                "https://github.com/owner/repo/pull/42",
-                "--repo-path",
-                str(path),
-                "--base-ref",
-                "main",
-                "--changed-file",
-                "src/map_only.py",
-                "--exclude-reviewer",
-                "@fallback-owner",
-                "--reviewer-sources-json",
-                str(reviewer_sources_path),
-                "--metadata-json",
-                str(metadata_path),
-                "--notification-sinks-json",
-                str(notification_sinks_path),
-            ],
+            reviewer_cli_args,
             cwd=ROOT,
             text=True,
             stdout=subprocess.PIPE,
@@ -987,6 +999,11 @@ def main() -> int:
         assert cli_packet["reviewer_source_count"] == 1
         assert cli_packet["external_writes_performed"] is False
         assert cli_packet["secondary_notification_status"] == "preview_ready"
+        assert cli_packet["extension_activation"]["required_permissions"] == [
+            "lark.inbox.read",
+            "lark.inbox.write",
+            "lark.reply.send",
+        ]
         assert (
             cli_packet["secondary_notifications"]["results"][0][
                 "private_destination_captured"
@@ -1139,13 +1156,9 @@ def main() -> int:
         upsert_issue_fix_pr_lifecycle_ledger_jsonl(legacy_request_lifecycle_path, legacy_request_row)
         goal_default_cli = subprocess.run(
             [
-                sys.executable,
-                "-m",
-                "loopx.cli",
+                *loopx_cli,
                 "--registry",
                 str(registry),
-                "--format",
-                "json",
                 "issue-fix",
                 "reviewer-request",
                 "--url",
@@ -1309,13 +1322,9 @@ def main() -> int:
         )
         invalid_execute_cli = subprocess.run(
             [
-                sys.executable,
-                "-m",
-                "loopx.cli",
+                *loopx_cli,
                 "--registry",
                 str(registry),
-                "--format",
-                "json",
                 "issue-fix",
                 "reviewer-request",
                 "--url",
@@ -1348,11 +1357,7 @@ def main() -> int:
         )
         project_registry_cli = subprocess.run(
             [
-                sys.executable,
-                "-m",
-                "loopx.cli",
-                "--format",
-                "json",
+                *loopx_cli,
                 "issue-fix",
                 "reviewer-request",
                 "--url",
@@ -1458,13 +1463,9 @@ def main() -> int:
         assert stored_lifecycle["maintainer_correction_body_captured"] is False
         explicit_scoped_cli = subprocess.run(
             [
-                sys.executable,
-                "-m",
-                "loopx.cli",
+                *loopx_cli,
                 "--registry",
                 str(registry),
-                "--format",
-                "json",
                 "issue-fix",
                 "reviewer-request",
                 "--url",

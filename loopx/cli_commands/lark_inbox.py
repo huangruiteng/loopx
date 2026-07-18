@@ -17,6 +17,7 @@ from ..extensions.lark.event_inbox import (
     acknowledge_lark_event_inbox,
     ingest_lark_event_inbox,
     inspect_lark_event_inbox,
+    lark_event_inbox_contains_text,
 )
 from ..extensions.lark.inbox_reply import reply_lark_event_inbox
 from ..extensions.lark.event_collector import (
@@ -29,6 +30,7 @@ from ..extensions.runtime import (
     default_extension_state_file,
     resolve_extension_activation,
 )
+from ..capabilities.issue_fix.provider_hooks import ReviewerInboxHooks
 from ..control_plane.runtime.goal_project_route import resolve_goal_project_route
 
 
@@ -182,6 +184,26 @@ def _resolve_lark_activation(
         LARK_EXTENSION_ID,
         state_file=default_extension_state_file(runtime_root_arg),
         required_permissions=_required_extension_permissions(command),
+    )
+
+
+def build_lark_issue_fix_reviewer_inbox_hooks(
+    *, runtime_root_arg: str | None
+) -> ReviewerInboxHooks:
+    activation = resolve_extension_activation(
+        LARK_EXTENSION_ID,
+        state_file=default_extension_state_file(runtime_root_arg),
+        required_permissions=(
+            LARK_INBOX_READ_PERMISSION,
+            LARK_INBOX_WRITE_PERMISSION,
+            LARK_REPLY_PERMISSION,
+        ),
+    )
+    return ReviewerInboxHooks(
+        inspect=inspect_lark_event_inbox,
+        acknowledge=acknowledge_lark_event_inbox,
+        contains_text=lark_event_inbox_contains_text,
+        activation=activation,
     )
 
 

@@ -10,6 +10,9 @@ CONTROL_PLANE_ROOT = PACKAGE_ROOT / "control_plane"
 STATUS_MODULE = PACKAGE_ROOT / "status.py"
 QUOTA_MODULE = PACKAGE_ROOT / "quota.py"
 LARK_INBOX_CLI_MODULE = PACKAGE_ROOT / "cli_commands" / "lark_inbox.py"
+ISSUE_FIX_REVIEWER_CLI_MODULE = (
+    PACKAGE_ROOT / "capabilities" / "issue_fix" / "reviewer_cli.py"
+)
 LARK_EXTENSION_ROOT = PACKAGE_ROOT / "extensions" / "lark"
 LEGACY_LARK_CAPABILITY_ROOT = PACKAGE_ROOT / "capabilities" / "lark"
 FORBIDDEN_DEPENDENCY_PREFIXES = (
@@ -141,3 +144,14 @@ def test_lark_inbox_provider_is_owned_by_the_extension_layer() -> None:
     } <= imports
     assert (LARK_EXTENSION_ROOT / "extension.toml").is_file()
     assert (LARK_EXTENSION_ROOT / "provider.py").is_file()
+
+
+def test_issue_fix_reviewer_uses_provider_neutral_inbox_hooks() -> None:
+    imports = _resolved_imports(ISSUE_FIX_REVIEWER_CLI_MODULE)
+
+    assert not any(
+        dependency == "loopx.extensions.lark"
+        or dependency.startswith("loopx.extensions.lark.")
+        for dependency in imports
+    )
+    assert "loopx.capabilities.issue_fix.provider_hooks" in imports

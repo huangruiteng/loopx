@@ -87,7 +87,11 @@ from .dreaming import handle_dreaming_command, register_dreaming_commands
 from .evidence_log import handle_evidence_log_command, register_evidence_log_command
 from .explore import handle_explore_command, register_explore_commands
 from .history import handle_history_command, register_history_command
-from .lark_inbox import handle_lark_inbox_command, register_lark_inbox_commands
+from .lark_inbox import (
+    build_lark_issue_fix_reviewer_inbox_hooks,
+    handle_lark_inbox_command,
+    register_lark_inbox_commands,
+)
 from .lark_kanban import handle_lark_kanban_command, register_lark_kanban_commands
 from .ml_experiment import handle_ml_experiment_command, register_ml_experiment_commands
 from .multi_agent import handle_multi_agent_command, register_multi_agent_commands
