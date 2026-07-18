@@ -8,6 +8,10 @@ from ...capabilities.periodic_report.adapters import (
     SINK_RESULT_SCHEMA,
     PeriodicReportSinkAdapter,
 )
+from ...capabilities.periodic_report.archive import (
+    build_periodic_report_archive_bundle,
+    verify_periodic_report_archive_receipts,
+)
 
 
 OpenVikingWriteEffect = Callable[[Mapping[str, Any], str], Mapping[str, Any]]
@@ -27,11 +31,7 @@ def periodic_report_openviking_sink_adapter(
     readback: OpenVikingReadbackEffect,
     sink_id: str = "openviking_archive",
 ) -> PeriodicReportSinkAdapter:
-    """Build the minimal OpenViking artifact-and-readback seam.
-
-    Manifest policy and history indexing remain a separate archive capability;
-    this adapter only writes a renderer artifact and verifies its exact result id.
-    """
+    """Archive a report body and manifest with exact Resource readback."""
 
     def deliver(
         artifact: Mapping[str, Any],
@@ -51,6 +51,16 @@ def periodic_report_openviking_sink_adapter(
             "schedule_policy_applied": False,
             "business_evidence_judged": False,
         }
+        bundle = build_periodic_report_archive_bundle(
+            artifact=artifact,
+            document=dict(context.get("document") or {}),
+            archive_root_uri=_required_text(
+                context.get("archive_root_uri"), "archive_root_uri"
+            ),
+            delivery_receipts=list(context.get("delivery_receipts") or []),
+            semantic_tags=list(context.get("semantic_tags") or []),
+            memory_conclusions=list(context.get("memory_conclusions") or []),
+        )
         if context.get("execute") is not True:
             return {
                 **base,
@@ -58,39 +68,44 @@ def periodic_report_openviking_sink_adapter(
                 "retryable": False,
                 "readback_verified": False,
                 "external_writes_performed": False,
+                "archive_id": bundle["archive_id"],
+                "desired_resource_uris": [
+                    item["resource_uri"] for item in bundle["resources"]
+                ],
+                "memory_reference": bundle["memory_reference"],
             }
         write_payload = {
-            "schema_version": "periodic_report_openviking_write_v0",
-            "artifact_ref": artifact.get("artifact_ref"),
-            "content": artifact.get("content"),
-            "content_digest": artifact.get("content_digest"),
-            "document_digest": artifact.get("document_digest"),
-            "semantic_type": "periodic_report",
+            **bundle,
+            "schema_version": "periodic_report_openviking_archive_write_v0",
+            "semantic_type": "periodic_report_archive",
+            "boundary": {
+                **bundle["boundary"],
+                "external_writes_performed": False,
+            },
         }
         written = dict(write(write_payload, idempotency_key))
-        receipt_ref = _required_text(
-            written.get("receipt_ref") or written.get("resource_uri"),
-            "OpenViking receipt_ref",
+        verification = verify_periodic_report_archive_receipts(
+            bundle=bundle,
+            written=written,
+            readback=readback,
         )
-        result_id = _required_text(written.get("result_id"), "OpenViking result_id")
-        observed = dict(readback(receipt_ref))
-        observed_ref = str(
-            observed.get("receipt_ref") or observed.get("resource_uri") or ""
-        ).strip()
-        observed_result_id = str(observed.get("result_id") or "").strip()
-        verified = (
-            observed.get("verified") is True
-            and observed_ref == receipt_ref
-            and observed_result_id == result_id
+        verified = verification["verified"] is True
+        manifest_receipt = next(
+            item
+            for item in verification["resource_receipts"]
+            if item["resource_kind"] == "manifest"
         )
         return {
             **base,
             "status": "sent" if verified else "unknown",
             "retryable": not verified,
-            "receipt_ref": receipt_ref,
-            "result_id": result_id,
+            "receipt_ref": manifest_receipt["resource_uri"],
+            "result_id": manifest_receipt["result_id"],
             "readback_verified": verified,
             "external_writes_performed": True,
+            "archive_id": bundle["archive_id"],
+            "resource_receipts": verification["resource_receipts"],
+            "memory_reference": bundle["memory_reference"],
         }
 
     return PeriodicReportSinkAdapter(
