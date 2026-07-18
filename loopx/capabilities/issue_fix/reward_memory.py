@@ -90,23 +90,43 @@ def _execution_evidence(
         query_kind or recall_packet.get("query_kind") or "business_recall"
     )
     exact_readback_verified = recall_packet.get("result_readback_verified") is True
+    query_evidence_raw = recall_packet.get("query_evidence")
+    query_evidence = (
+        [dict(item) for item in query_evidence_raw if isinstance(item, Mapping)]
+        if isinstance(query_evidence_raw, (list, tuple))
+        else []
+    )
+    query_evidence_verified = bool(query_evidence) and all(
+        len(str(item.get("query_digest") or "")) == 16
+        and bool(str(item.get("query_summary") or "").strip())
+        and item.get("exact_query_exposed") is False
+        for item in query_evidence
+    )
+    provider_recall_verified = bool(
+        provider_call_count > 0 and exact_readback_verified and query_evidence_verified
+    )
     receipt_verified = bool(
         receipt
+        and effective_query_kind == "business_recall"
         and receipt.get("schema_version") == "reward_memory_application_receipt_v0"
+        and receipt.get("query_kind") == "business_recall"
+        and receipt.get("query_evidence") == query_evidence
+        and receipt.get("provider_call_count") == provider_call_count
+        and provider_recall_verified
         and receipt.get("outcome") == "applied"
         and receipt.get("result_readback_verified") is True
         and receipt.get("current_artifact_verified") is True
         and receipt.get("memory_ref_digests")
     )
-    if effective_query_kind == "ingest_verification" and exact_readback_verified:
+    if effective_query_kind == "ingest_verification" and provider_recall_verified:
         verified_result = "ingest_exact_readback_verified"
     elif effective_query_kind == "ingest_verification" and provider_call_count:
-        verified_result = "ingest_provider_called_without_exact_readback"
+        verified_result = "ingest_provider_called_without_verified_readback"
     elif effective_query_kind == "ingest_verification":
         verified_result = "ingest_provider_not_called"
     elif receipt_verified:
         verified_result = "memory_applied"
-    elif exact_readback_verified:
+    elif provider_recall_verified:
         verified_result = "memory_recalled_not_applied"
     elif provider_call_count:
         verified_result = "provider_called_without_verified_recall"
@@ -116,6 +136,8 @@ def _execution_evidence(
     unknowns: list[str] = []
     if provider_call_count == 0:
         unknowns.append("provider_result_unknown")
+    if not query_evidence_verified:
+        unknowns.append("query_evidence_unknown")
     if not exact_readback_verified:
         unknowns.append("exact_recall_readback_unknown")
     if (
@@ -131,14 +153,14 @@ def _execution_evidence(
         "unknowns": unknowns,
         "minimum_evidence": {
             "query_kind": effective_query_kind,
-            "query_evidence": list(recall_packet.get("query_evidence") or []),
+            "query_evidence": query_evidence,
             "provider_call_count": provider_call_count,
             "exact_readback_verified": exact_readback_verified,
             "application_receipt": dict(receipt) if receipt is not None else None,
         },
         "claim_policy": (
-            "claim_recalled_only_after_exact_readback_and_claim_applied_only_after_"
-            "verified_application_receipt"
+            "claim_recalled_only_after_query_provider_call_and_exact_readback_and_"
+            "claim_applied_only_after_matching_verified_application_receipt"
         ),
         "raw_content_captured": False,
     }

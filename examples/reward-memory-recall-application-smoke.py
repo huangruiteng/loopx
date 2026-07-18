@@ -22,6 +22,7 @@ from loopx.capabilities.context_providers.openviking import (  # noqa: E402
     OpenVikingContextProvider,
 )
 from loopx.capabilities.issue_fix.reward_memory import (  # noqa: E402
+    _execution_evidence,
     run_issue_fix_patch_planning_reward_memory,
     run_issue_fix_reviewer_artifact_automatic_reward_memory,
     run_issue_fix_reviewer_artifact_reward_memory,
@@ -402,6 +403,26 @@ def main() -> None:
         "status",
         "search",
         "read",
+    ]
+    incomplete_receipt_evidence = _execution_evidence(
+        {
+            "query_kind": "business_recall",
+            "provider_call_count": 0,
+            "result_readback_verified": True,
+        },
+        {
+            "receipt": {
+                **receipt,
+                "provider_call_count": 0,
+                "query_evidence": [],
+            }
+        },
+    )
+    assert incomplete_receipt_evidence["verified_result"] == "provider_not_called"
+    assert incomplete_receipt_evidence["unknowns"] == [
+        "provider_result_unknown",
+        "query_evidence_unknown",
+        "memory_application_effect_unknown",
     ]
 
     reviewer_surface = "reviewer_artifact.summary"
