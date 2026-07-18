@@ -1,0 +1,37 @@
+loopx/cli_commands/benchmark_review_lifecycle.py
+  s_76ee28abb3c3a4::t_fef540ab48452b 28-31,36
+loopx/cli_commands/history.py
+  s_76ee28abb3c3a4::t_1385df4465b619 15-21
+loopx/cli_commands/quota.py
+  s_76ee28abb3c3a4::t_293d9aeb2fcaa5 19,23,25-26,28
+loopx/dreaming.py
+  s_76ee28abb3c3a4::t_a916534d1b1cf9 14
+loopx/history.py
+  s_76ee28abb3c3a4::t_1221e36cc44cf7 37-38,42
+loopx/todo_followups.py
+  s_76ee28abb3c3a4::t_13d0845b17e11d 10
+loopx/todos.py
+  s_76ee28abb3c3a4::t_b3d6b888030b6f 17,79
+scripts/skillsbench_automation_loop.py
+  s_76ee28abb3c3a4::t_9d9c0840d57a44 14455,14458,15323,15326
+tests/architecture/test_control_plane_import_boundaries.py
+  s_76ee28abb3c3a4::t_13c21cb3026731 8-10,67-95,121-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e30543de500f883e3214a54bc5bf283f6686f02b",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
