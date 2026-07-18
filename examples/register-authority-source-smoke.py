@@ -55,8 +55,10 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
                             "path": "docs/meta/DOC_REGISTRY.yaml",
                             "path_exists": True,
                             "read_status": "not_read",
-                            "default_entry_count": 0,
-                            "topic_authority_count": 12,
+                            "default_entry_count": 3,
+                            "default_entries_checked": 3,
+                            "default_entries_present": 2,
+                            "topic_authority_count": 4,
                             "project_material_count": 12,
                         },
                         "adapter": {
@@ -99,7 +101,7 @@ def run_cli(registry: Path, runtime: Path, *args: str) -> dict[str, Any]:
     return payload
 
 
-def registration_args(*, dry_run: bool = False) -> list[str]:
+def registration_args(*, dry_run: bool = False, include_topic: bool = True) -> list[str]:
     args = [
         "register-authority-source",
         "--goal-id",
@@ -124,9 +126,9 @@ def registration_args(*, dry_run: bool = False) -> list[str]:
         "rev-2026-06-07",
         "--conflict-rule",
         "newer owner-approved source wins",
-        "--topic",
-        "product_vision",
     ]
+    if include_topic:
+        args.extend(["--topic", "product_vision"])
     if dry_run:
         args.append("--dry-run")
     return args
@@ -158,7 +160,11 @@ def main() -> int:
         assert dry["entry"]["source_ref_kind"] == "url", dry
         assert dry["entry"]["source_ref_sha256"] == hashlib.sha256(SOURCE_REF.encode("utf-8")).hexdigest(), dry
         dry_summary = dry["authority_registry_summary"]
+        assert dry_summary["required"] is True, dry_summary
         assert dry_summary["path_exists"] is False, dry_summary
+        assert dry_summary["default_entry_count"] == 3, dry_summary
+        assert dry_summary["default_entries_checked"] == 3, dry_summary
+        assert dry_summary["default_entries_present"] == 2, dry_summary
         assert dry_summary["topic_authority_count"] == 1, dry_summary
         assert dry_summary["project_material_count"] == 1, dry_summary
         assert registry.read_text(encoding="utf-8") == before, "dry-run must not mutate registry"
@@ -180,6 +186,9 @@ def main() -> int:
         assert "source_ref" not in material, material
         assert goal["authority_registry"]["topic_authority"]["product_vision"] == SOURCE_ID, goal
         assert goal["authority_registry"]["path_exists"] is False, goal
+        assert goal["authority_registry"]["default_entry_count"] == 3, goal
+        assert goal["authority_registry"]["default_entries_checked"] == 3, goal
+        assert goal["authority_registry"]["default_entries_present"] == 2, goal
         assert goal["authority_registry"]["topic_authority_count"] == 1, goal
         assert goal["authority_registry"]["project_material_count"] == 1, goal
         assert goal["authority_sources"][0]["id"] == SOURCE_ID, goal["authority_sources"]
@@ -194,6 +203,21 @@ def main() -> int:
         assert summary["project_material_count"] == 1, summary
         assert summary["project_material_owner_review_required_count"] == 1, summary
         assert summary["project_material_current_authority_count"] == 1, summary
+
+        partial_registry, partial_runtime, _partial_project = write_fixture(Path(raw_tmp) / "partial")
+        partial = run_cli(
+            partial_registry,
+            partial_runtime,
+            *registration_args(dry_run=True, include_topic=False),
+        )
+        partial_summary = partial["authority_registry_summary"]
+        assert partial_summary["required"] is True, partial_summary
+        assert partial_summary["path_exists"] is False, partial_summary
+        assert partial_summary["default_entry_count"] == 3, partial_summary
+        assert partial_summary["default_entries_checked"] == 3, partial_summary
+        assert partial_summary["default_entries_present"] == 2, partial_summary
+        assert partial_summary["topic_authority_count"] == 4, partial_summary
+        assert partial_summary["project_material_count"] == 1, partial_summary
 
     assert_doc_contract()
     print("register-authority-source-smoke ok")
