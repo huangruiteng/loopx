@@ -1,0 +1,39 @@
+tests/test_skillsbench_docker_command_file_bridge.py
+  s_32e2a9a204a8e4::t_36c32708a7fd42 4-5,10-12,29-48
+examples/claude-goalmode-hook-policy-smoke.py
+  s_32e2a9a204a8e4::t_81f8c7b4c89d6b 14-15,37-61,65,68-70,72,74-78,85
+  s_32e2a9a204a8e4::t_055f6999e9a6a1 62-64
+  s_32e2a9a204a8e4::t_f93b2de3f88130 66-67
+  s_32e2a9a204a8e4::t_007829e35a9501 71
+  s_32e2a9a204a8e4::t_63232788351dfc 73
+  s_32e2a9a204a8e4::t_589a943b54941e 79-84
+  s_32e2a9a204a8e4::t_cb5dd6659a2b19 86
+loopx/benchmark_adapters/skillsbench_bridge_guard.py
+  s_32e2a9a204a8e4::t_c726a7541a4680 113-116,122-124
+loopx/claude_goal_mode/hooks/goal_policy.py
+  s_32e2a9a204a8e4::t_52741df44fd1c1 44,67-72,86,89,113-114
+  s_32e2a9a204a8e4::t_464ffc7ac15f05 115-117
+  s_32e2a9a204a8e4::t_04445a00c31f48 118-134
+examples/claude-goalmode-lifecycle-smoke.py
+  s_32e2a9a204a8e4::t_f54936135af972 22,30-50,101-104,141-165,169
+loopx/claude_goal_mode/mcp/loopx_mcp.py
+  s_32e2a9a204a8e4::t_e64f8c12169438 20,35-40,42,60,65-69,73-82,93-94,103-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "33373acc122429b6cd8524ee46dc7238096befb5",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
