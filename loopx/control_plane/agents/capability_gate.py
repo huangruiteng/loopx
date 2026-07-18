@@ -318,6 +318,10 @@ def build_capability_gate(
         if isinstance(monitor_capability_blocked_due_items, list)
         else []
     )
+    monitor_due_items_value = agent_todo_summary.get("monitor_due_items")
+    runnable_monitor_items = (
+        monitor_due_items_value if isinstance(monitor_due_items_value, list) else []
+    )
     active_next_action_executable_items = agent_todo_summary.get(
         "active_next_action_executable_items"
     )
@@ -345,13 +349,18 @@ def build_capability_gate(
     else:
         raw_items = []
         source = "agent_todo_summary.executable_backlog_items"
+    monitor_sources: list[str] = []
+    if runnable_monitor_items:
+        monitor_sources.append("agent_todo_summary.monitor_due_items")
     if blocked_monitor_items:
+        monitor_sources.append("agent_todo_summary.monitor_capability_blocked_due_items")
+    if monitor_sources:
         has_advancement_items = bool(raw_items)
-        raw_items = [*raw_items, *blocked_monitor_items]
+        raw_items = [*raw_items, *runnable_monitor_items, *blocked_monitor_items]
         source = (
-            f"{source}+agent_todo_summary.monitor_capability_blocked_due_items"
+            "+".join([source, *monitor_sources])
             if has_advancement_items
-            else "agent_todo_summary.monitor_capability_blocked_due_items"
+            else "+".join(monitor_sources)
         )
     deduped_raw_items: list[Any] = []
     seen_raw: set[tuple[str, str]] = set()
@@ -365,9 +374,9 @@ def build_capability_gate(
         seen_raw.add(identity)
         deduped_raw_items.append(item)
     raw_items = deduped_raw_items
-    blocked_monitor_identities = {
+    due_monitor_identities = {
         _capability_item_identity(item)
-        for item in blocked_monitor_items
+        for item in [*runnable_monitor_items, *blocked_monitor_items]
         if isinstance(item, dict)
     }
     candidates = [
@@ -377,7 +386,7 @@ def build_capability_gate(
         and todo_item_is_actionable_open(item)
         and (
             todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-            or _capability_item_identity(item) in blocked_monitor_identities
+            or _capability_item_identity(item) in due_monitor_identities
         )
     ]
     if not candidates:

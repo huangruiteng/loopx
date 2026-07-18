@@ -510,6 +510,44 @@ def assert_due_monitor_requires_available_capabilities() -> None:
     assert runnable_lane["obligation"] == "attempt_due_monitor", runnable_lane
 
 
+def assert_runnable_due_monitor_survives_blocked_due_monitor() -> None:
+    blocked = monitor_item(
+        index=1,
+        todo_id="todo_private_read_monitor_due",
+        priority="P1",
+        next_due_at=PAST_DUE_AT,
+        target_key="private-source-watch",
+        required_capabilities=["private_read"],
+    )
+    runnable = monitor_item(
+        index=2,
+        todo_id="todo_network_monitor_due",
+        priority="P2",
+        next_due_at=PAST_DUE_AT,
+        target_key="public-network-watch",
+        required_capabilities=["network"],
+    )
+    guard = guard_for([blocked, runnable], available_capabilities=["network"])
+    summary = guard["agent_todo_summary"]
+    gate = guard["capability_gate"]
+    lane = guard["work_lane_contract"]
+
+    assert guard["decision"] == "run", guard
+    assert guard["effective_action"] == "normal_run", guard
+    assert gate["action"] == "run", gate
+    assert gate["runnable_candidates"][0]["todo_id"] == runnable["todo_id"], gate
+    assert gate["blocked_candidates"][0]["todo_id"] == blocked["todo_id"], gate
+    assert summary["monitor_due_count"] == 1, summary
+    assert summary["monitor_capability_blocked_due_count"] == 1, summary
+    assert lane["monitor_due_count"] == 1, lane
+    assert lane["selected_todo_id"] == runnable["todo_id"], lane
+    assert lane["monitor_due_items"][0]["todo_id"] == runnable["todo_id"], lane
+    assert guard["selected_todo"]["todo_id"] == runnable["todo_id"], guard
+    assert "capability_monitor_fallback" not in guard, guard
+    assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is True, guard
+    assert runnable["todo_id"] in guard["interaction_contract"]["agent_channel"]["primary_action"], guard
+
+
 def assert_capability_blocked_due_monitor_stays_quiet_with_external_signal() -> None:
     blocked_due = monitor_item(
         index=1,
@@ -960,6 +998,7 @@ def main() -> int:
     assert_unscheduled_monitor_repair_survives_handoff_gates()
     assert_due_monitor_requires_explicit_attempt()
     assert_due_monitor_requires_available_capabilities()
+    assert_runnable_due_monitor_survives_blocked_due_monitor()
     assert_capability_blocked_due_monitor_stays_quiet_with_external_signal()
     assert_due_monitor_capability_resolution_is_preserved()
     assert_due_monitor_capability_resolution_uses_full_lane()

@@ -42,6 +42,24 @@ def protocol_first_candidate_action(payload: dict[str, Any]) -> str | None:
     if lane_text:
         todo_id = str(agent_lane_next_action.get("todo_id") or "").strip()
         return f"{todo_id}: {lane_text}" if todo_id else lane_text
+    work_lane = (
+        payload.get("work_lane_contract")
+        if isinstance(payload.get("work_lane_contract"), dict)
+        else {}
+    )
+    if work_lane.get("monitor_kind") == "todo_monitor_due":
+        due_items = (
+            work_lane.get("monitor_due_items")
+            if isinstance(work_lane.get("monitor_due_items"), list)
+            else []
+        )
+        for item in due_items:
+            if not isinstance(item, dict):
+                continue
+            text = protocol_action_label(item.get("text"))
+            if text:
+                todo_id = str(item.get("todo_id") or "").strip()
+                return f"{todo_id}: {text}" if todo_id else text
     capability_gate = (
         payload.get("capability_gate")
         if isinstance(payload.get("capability_gate"), dict)
@@ -75,25 +93,6 @@ def protocol_first_candidate_action(payload: dict[str, Any]) -> str | None:
             action = f"replan ready deferred successor {text}"
             return f"{todo_id}: {action}" if todo_id else action
         return text
-
-    work_lane = (
-        payload.get("work_lane_contract")
-        if isinstance(payload.get("work_lane_contract"), dict)
-        else {}
-    )
-    if work_lane.get("monitor_kind") == "todo_monitor_due":
-        due_items = (
-            work_lane.get("monitor_due_items")
-            if isinstance(work_lane.get("monitor_due_items"), list)
-            else []
-        )
-        for item in due_items:
-            if not isinstance(item, dict):
-                continue
-            text = protocol_action_label(item.get("text"))
-            if text:
-                todo_id = str(item.get("todo_id") or "").strip()
-                return f"{todo_id}: {text}" if todo_id else text
 
     agent_todos = (
         payload.get("agent_todo_summary")

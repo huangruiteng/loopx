@@ -392,6 +392,9 @@ def todo_summary_monitor_due_count(
         return 0
     if not todo_summary_monitor_writeback_supported(summary):
         return 0
+    projected_count = summary.get("monitor_due_count")
+    if isinstance(projected_count, int):
+        return max(0, projected_count)
     agent_id = todo_summary_claim_scope_agent_id(summary)
     if agent_id:
         raw_items = summary.get("monitor_open_items")
@@ -414,9 +417,6 @@ def todo_summary_monitor_due_count(
                 text_mode=text_mode,
             )
         )
-    projected_count = summary.get("monitor_due_count")
-    if isinstance(projected_count, int):
-        return max(0, projected_count)
     return len(
         due_items
         if due_items is not None
