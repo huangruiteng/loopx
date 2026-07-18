@@ -1,0 +1,29 @@
+examples/canary/catalog-planner-smoke.py
+  s_e3f612788718c1::t_0d830470892a35 254-273
+examples/control_plane/goal-frontier-replan-rules-smoke.py
+  s_e3f612788718c1::t_00a519993291c7 1-119
+loopx/canary/qualification_profiles.py
+  s_e3f612788718c1::t_fff04a86680312 101-136
+loopx/canary/quality_surface_catalog.py
+  s_e3f612788718c1::t_a0d74e8bd80f5a 131-173
+tests/control_plane/test_goal_frontier_replan_rules.py
+  s_e3f612788718c1::t_e51e11473350d8 1-185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "86949bfffdb219e79db93879263613d838063322",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
