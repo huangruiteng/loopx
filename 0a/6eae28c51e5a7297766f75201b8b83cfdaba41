@@ -1,0 +1,31 @@
+examples/periodic-report-adapters-smoke.py
+  s_9a5a2bd944fdcb::t_f374c240fc30b4 111-129,136
+tests/capabilities/test_periodic_report_adapters.py
+  s_ce78287262030e::t_348439563fe3ee 13,90-113,141-145,147-161,169,264,268-274,302-411
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0a6eae28c51e5a7297766f75201b8b83cfdaba41",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_ce78287262030e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7515-a03a-7322-9902-2e203d31cc54",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
