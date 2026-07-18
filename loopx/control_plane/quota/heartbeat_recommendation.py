@@ -181,15 +181,14 @@ def build_heartbeat_recommendation(
         "spend_policy": "do not append quota spend unless a completed bounded progress segment produced substantive progress",
     }
 
-    if state == "operator_gate":
-        return {
-            **base,
-            "recommended_mode": "ask_operator_gate",
-            "notify": "NOTIFY",
-            "spend_policy": "do not append quota spend while asking the operator gate",
-            "reason": "operator gate blocks the gated delivery path",
-        }
-    if stall_self_repair and stall_self_repair.get("allowed"):
+    if (
+        stall_self_repair
+        and stall_self_repair.get("allowed")
+        and (
+            state != "operator_gate"
+            or stall_self_repair.get("trigger") == "user_gate_scope_projection_drift"
+        )
+    ):
         return {
             **base,
             "recommended_mode": stall_self_repair.get("recommended_mode") or "repair_control_plane_stall",
@@ -197,6 +196,14 @@ def build_heartbeat_recommendation(
             "spend_policy": stall_self_repair.get("spend_policy") or base["spend_policy"],
             "reason": stall_self_repair.get("reason") or "control-plane stall requires bounded repair",
             "repair_focus": stall_self_repair.get("repair_focus"),
+        }
+    if state == "operator_gate":
+        return {
+            **base,
+            "recommended_mode": "ask_operator_gate",
+            "notify": "NOTIFY",
+            "spend_policy": "do not append quota spend while asking the operator gate",
+            "reason": "operator gate blocks the gated delivery path",
         }
     if should_run and replan_obligation and replan_obligation.get("required"):
         return {

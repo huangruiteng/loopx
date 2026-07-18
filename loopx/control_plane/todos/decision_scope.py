@@ -113,6 +113,7 @@ def build_required_decision_scope_consistency(
     user_todo_summary: dict[str, Any] | None,
     *,
     agent_id: str | None,
+    registered_agent_ids: list[str] | None = None,
     agent_source_items: list[dict[str, Any]] | None = None,
     user_source_items: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
@@ -133,6 +134,27 @@ def build_required_decision_scope_consistency(
     errors: list[dict[str, Any]] = []
     checked_scope_count = 0
     terminal_outcome_count = 0
+
+    registered_agents = sorted(
+        {
+            normalized
+            for value in registered_agent_ids or []
+            if (normalized := normalize_todo_claimed_by(value))
+        }
+    )
+    if len(registered_agents) > 1:
+        for gate in gates:
+            if normalize_todo_global_gate(gate.get("global_gate")):
+                continue
+            if normalize_todo_blocks_agent(gate.get("blocks_agent")):
+                continue
+            errors.append(
+                {
+                    "reason_code": "multi_agent_user_gate_missing_scope",
+                    "user_todo_id": normalize_todo_id(gate.get("todo_id")),
+                    "registered_agent_ids": registered_agents,
+                }
+            )
 
     for agent_item in agent_items:
         claimed_by = normalize_todo_claimed_by(agent_item.get("claimed_by"))
@@ -224,6 +246,35 @@ def build_required_decision_scope_repair_hint(
 ) -> dict[str, Any] | None:
     if consistency.get("ok") is not False:
         return None
+    errors = consistency.get("errors") if isinstance(consistency.get("errors"), list) else []
+    missing_gate_scope = any(
+        isinstance(error, dict)
+        and error.get("reason_code") == "multi_agent_user_gate_missing_scope"
+        for error in errors
+    )
+    if missing_gate_scope:
+        return {
+            "source": "quota.should-run",
+            "trigger": "user_gate_scope_projection_drift",
+            "recommended_mode": "repair_user_gate_scope_projection",
+            "effective_action": "todo_decision_scope_projection_repair",
+            "blocked_action_scope": "todo_user_gate_scope_projection",
+            "allowed": True,
+            "notify": "DONT_NOTIFY",
+            "reason": (
+                "a multi-agent user_gate lacks blocks_agent or explicit "
+                "global_gate=true, so its blocking authority is ambiguous"
+            ),
+            "repair_focus": (
+                "set blocks_agent to one registered agent, set global_gate=true for "
+                "intentional goal-wide authority, or downgrade the item to user_action"
+            ),
+            "spend_policy": (
+                "spend once only after the gate-scope projection repair is validated "
+                "and written back"
+            ),
+            "consistency": consistency,
+        }
     return {
         "source": "quota.should-run",
         "trigger": "required_decision_scope_projection_drift",

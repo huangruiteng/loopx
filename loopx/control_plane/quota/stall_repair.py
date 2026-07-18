@@ -19,6 +19,10 @@ STALL_HEALTH_ITEM_COMPACT_FIELDS = (
     "recommended_action",
 )
 DECISION_SCOPE_REPAIR_TRIGGER = "required_decision_scope_projection_drift"
+USER_GATE_SCOPE_REPAIR_TRIGGER = "user_gate_scope_projection_drift"
+TODO_PROJECTION_REPAIR_TRIGGERS = frozenset(
+    {DECISION_SCOPE_REPAIR_TRIGGER, USER_GATE_SCOPE_REPAIR_TRIGGER}
+)
 
 
 def _compact_health_items(
@@ -54,10 +58,12 @@ def build_quota_stall_self_repair_hint(
     user_todo_source_items: list[dict[str, Any]] | None = None,
     agent_todo_source_items: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
+    coordination = item.get("coordination") if isinstance(item.get("coordination"), dict) else {}
     decision_scope_consistency = build_required_decision_scope_consistency(
         agent_todo_summary,
         user_todo_summary,
         agent_id=agent_id,
+        registered_agent_ids=coordination.get("registered_agents"),
         agent_source_items=agent_todo_source_items,
         user_source_items=user_todo_source_items,
     )
@@ -147,22 +153,28 @@ def apply_stall_repair_delivery_guard(
     recovery_allowed: bool,
     reason: str,
 ) -> tuple[bool, bool, str]:
-    if not repair or repair.get("trigger") != DECISION_SCOPE_REPAIR_TRIGGER:
+    if not repair or repair.get("trigger") not in TODO_PROJECTION_REPAIR_TRIGGERS:
         return normal_delivery_allowed, recovery_allowed, reason
     return False, False, str(repair.get("reason") or reason)
 
 
 def stall_repair_blocked_action_scope(repair: dict[str, Any] | None) -> str | None:
-    if not repair or repair.get("trigger") != DECISION_SCOPE_REPAIR_TRIGGER:
+    if not repair or repair.get("trigger") not in TODO_PROJECTION_REPAIR_TRIGGERS:
         return None
     value = str(repair.get("blocked_action_scope") or "").strip()
     return value or None
 
 
 def stall_repair_payload(repair: dict[str, Any] | None) -> dict[str, Any]:
-    if not repair or repair.get("trigger") != DECISION_SCOPE_REPAIR_TRIGGER:
+    if not repair or repair.get("trigger") not in TODO_PROJECTION_REPAIR_TRIGGERS:
         return {}
     consistency = repair.get("consistency")
     if not isinstance(consistency, dict):
         return {}
     return {"todo_decision_scope_consistency": consistency}
+
+
+def stall_repair_suppresses_user_gate_notification(
+    repair: dict[str, Any] | None,
+) -> bool:
+    return bool(repair and repair.get("trigger") == USER_GATE_SCOPE_REPAIR_TRIGGER)

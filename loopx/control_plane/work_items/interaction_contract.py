@@ -104,6 +104,8 @@ def user_channel_notice_todo_actions(summary: Any, *, limit: int = 3) -> list[st
 
 
 def user_channel_action_required(payload: dict[str, Any]) -> bool:
+    if _user_gate_scope_projection_repair_active(payload):
+        return False
     if _user_gate_notification_suppressed(payload):
         return False
     return bool(payload.get("requires_user_action")) or bool(
@@ -114,6 +116,14 @@ def user_channel_action_required(payload: dict[str, Any]) -> bool:
 def _user_gate_notification_suppressed(payload: dict[str, Any]) -> bool:
     cooldown = payload.get("user_gate_notification_cooldown")
     return isinstance(cooldown, dict) and cooldown.get("notification_suppressed") is True
+
+
+def _user_gate_scope_projection_repair_active(payload: dict[str, Any]) -> bool:
+    repair = payload.get("stall_self_repair")
+    return bool(
+        isinstance(repair, dict)
+        and repair.get("trigger") == "user_gate_scope_projection_drift"
+    )
 
 
 def _capability_resolution_user_actions(payload: dict[str, Any]) -> list[str]:
@@ -159,6 +169,8 @@ def projected_user_channel_actions(
     *,
     limit: int = 3,
 ) -> list[str]:
+    if _user_gate_scope_projection_repair_active(payload):
+        return []
     if _user_gate_notification_suppressed(payload):
         return []
     actions = user_channel_action_todo_actions(
@@ -195,7 +207,12 @@ def projected_user_channel_actions(
 
 
 def attach_user_action_compat_fields(payload: dict[str, Any]) -> None:
-    payload["action_required"] = user_channel_action_required(payload)
+    action_required = user_channel_action_required(payload)
+    payload["requires_user_action"] = action_required
+    payload["action_required"] = action_required
+    if _user_gate_scope_projection_repair_active(payload):
+        for key in ("notify_user_on_gate", "gate_prompt", "open_todo_notify_reason"):
+            payload.pop(key, None)
     payload["open_count"] = open_todo_count(payload.get("user_todo_summary"))
 
 

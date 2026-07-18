@@ -139,6 +139,72 @@ def test_unrelated_gate_has_no_authority_over_independent_agent_todo() -> None:
     assert result["checked_required_scope_count"] == 0
 
 
+def test_multi_agent_unscoped_user_gate_projects_bounded_repair() -> None:
+    unscoped_gate = {
+        "todo_id": "todo_ambiguous_gate",
+        "status": "open",
+        "task_class": "user_gate",
+    }
+
+    result = build_required_decision_scope_consistency(
+        {"first_open_items": []},
+        _user_summary(unscoped_gate),
+        agent_id=AGENT_ID,
+        registered_agent_ids=[AGENT_ID, "codex-other-agent"],
+    )
+    repair = build_required_decision_scope_repair_hint(result)
+
+    assert result["ok"] is False
+    assert result["errors"] == [
+        {
+            "reason_code": "multi_agent_user_gate_missing_scope",
+            "user_todo_id": "todo_ambiguous_gate",
+            "registered_agent_ids": ["codex-other-agent", AGENT_ID],
+        }
+    ]
+    assert repair is not None
+    assert repair["trigger"] == "user_gate_scope_projection_drift"
+    assert repair["effective_action"] == "todo_decision_scope_projection_repair"
+    assert repair["notify"] == "DONT_NOTIFY"
+
+
+def test_explicit_global_gate_is_valid_in_multi_agent_projection() -> None:
+    global_gate = {
+        "todo_id": "todo_explicit_global_gate",
+        "status": "open",
+        "task_class": "user_gate",
+        "global_gate": True,
+    }
+
+    result = build_required_decision_scope_consistency(
+        {"first_open_items": []},
+        _user_summary(global_gate),
+        agent_id=AGENT_ID,
+        registered_agent_ids=[AGENT_ID, "codex-other-agent"],
+    )
+
+    assert result["ok"] is True
+    assert result["errors"] == []
+
+
+def test_single_agent_unscoped_gate_preserves_legacy_scope() -> None:
+    unscoped_gate = {
+        "todo_id": "todo_single_agent_gate",
+        "status": "open",
+        "task_class": "user_gate",
+    }
+
+    result = build_required_decision_scope_consistency(
+        {"first_open_items": []},
+        _user_summary(unscoped_gate),
+        agent_id=AGENT_ID,
+        registered_agent_ids=[AGENT_ID],
+    )
+
+    assert result["ok"] is True
+    assert result["errors"] == []
+
+
 def test_unscoped_diagnostic_uses_claimed_agent_as_effective_owner() -> None:
     other_agent_gate = {
         "todo_id": "todo_other_agent_gate",

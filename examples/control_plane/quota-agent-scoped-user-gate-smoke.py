@@ -42,6 +42,7 @@ def todo_item(
     claimed_by: str | None = None,
     action_kind: str | None = None,
     blocks_agent: str | None = None,
+    global_gate: bool = False,
     cadence: str | None = None,
     next_due_at: str | None = None,
     target_key: str | None = None,
@@ -53,6 +54,7 @@ def todo_item(
             "cadence": cadence,
             "next_due_at": next_due_at,
             "target_key": target_key,
+            "global_gate": True if global_gate else None,
         }.items()
         if value is not None
     }
@@ -119,7 +121,11 @@ def status_fixture_payload(
     )
 
 
-def status_payload(*, blocks_agent: str | None = "codex-product-capability") -> dict:
+def status_payload(
+    *,
+    blocks_agent: str | None = "codex-product-capability",
+    global_gate: bool = False,
+) -> dict:
     user_gate = todo_item(
         todo_id="todo_lark_kanban_gate",
         text="Choose the Lark Kanban target Base before product-capability setup.",
@@ -127,6 +133,7 @@ def status_payload(*, blocks_agent: str | None = "codex-product-capability") -> 
         task_class="user_gate",
         action_kind="lark_kanban_target_decision",
         blocks_agent=blocks_agent,
+        global_gate=global_gate,
     )
     agent_todo = todo_item(
         todo_id="todo_benchmark_driver",
@@ -294,9 +301,32 @@ def assert_target_agent_still_blocks_on_its_user_gate() -> None:
     assert "agent_scoped_user_gate_override" not in payload, payload
 
 
-def assert_unscoped_user_gate_remains_global() -> None:
+def assert_unscoped_user_gate_requires_projection_repair() -> None:
     payload = build_quota_should_run(
         status_payload(blocks_agent=None),
+        goal_id=GOAL_ID,
+        agent_id="codex-main-control",
+    )
+    assert payload["decision"] == "self_repair", payload
+    assert payload["should_run"] is True, payload
+    assert payload["normal_delivery_allowed"] is False, payload
+    assert payload["self_repair_allowed"] is True, payload
+    assert payload["effective_action"] == "todo_decision_scope_projection_repair", payload
+    assert payload["requires_user_action"] is False, payload
+    assert payload["action_required"] is False, payload
+    assert payload["interaction_contract"]["mode"] == "control_plane_self_repair", payload
+    assert payload["interaction_contract"]["user_channel"]["notify"] == "DONT_NOTIFY", payload
+    assert payload["user_todo_summary"]["open_count"] == 1, payload
+    assert payload["open_count"] == 1, payload
+    assert "agent_scoped_user_gate_override" not in payload, payload
+    consistency = payload["todo_decision_scope_consistency"]
+    assert consistency["status"] == "projection_repair_required", consistency
+    assert consistency["errors"][0]["reason_code"] == "multi_agent_user_gate_missing_scope"
+
+
+def assert_explicit_global_gate_blocks_goal() -> None:
+    payload = build_quota_should_run(
+        status_payload(blocks_agent=None, global_gate=True),
         goal_id=GOAL_ID,
         agent_id="codex-main-control",
     )
@@ -306,7 +336,7 @@ def assert_unscoped_user_gate_remains_global() -> None:
     assert payload["interaction_contract"]["mode"] == "user_gate", payload
     assert payload["user_todo_summary"]["open_count"] == 1, payload
     assert payload["open_count"] == 1, payload
-    assert "agent_scoped_user_gate_override" not in payload, payload
+    assert "stall_self_repair" not in payload, payload
 
 
 def unrelated_gate_status_payload() -> dict:
@@ -924,7 +954,8 @@ def main() -> int:
     assert_other_agent_user_gate_does_not_block_current_agent()
     assert_other_agent_user_gate_does_not_notify_non_due_monitor_lane()
     assert_target_agent_still_blocks_on_its_user_gate()
-    assert_unscoped_user_gate_remains_global()
+    assert_unscoped_user_gate_requires_projection_repair()
+    assert_explicit_global_gate_blocks_goal()
     assert_unrelated_user_gate_allows_feishu_fallback()
     assert_exact_todo_gate_only_blocks_target_todo()
     assert_scoped_gate_rejects_capability_ineligible_only_fallback()
