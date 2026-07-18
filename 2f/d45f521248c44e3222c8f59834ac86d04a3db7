@@ -1,0 +1,23 @@
+docs/capabilities/lark-event-inbox.md
+  s_ce78287262030e::t_1b5f196fc23674 40-61,149-151
+docs/reference/extensions.md
+  s_ce78287262030e::t_f1f6bd7280c5ac 70-72,94-103,242-246
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2fd45f521248c44e3222c8f59834ac86d04a3db7",
+  "prompts": {},
+  "sessions": {
+    "s_ce78287262030e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7515-a03a-7322-9902-2e203d31cc54",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
