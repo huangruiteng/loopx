@@ -39,6 +39,7 @@ START_GOAL_HOST_SURFACES = (
     "codex-ide",
     "codex-cli-tui",
     "claude-code",
+    "pi",
     "shell",
 )
 
@@ -247,6 +248,7 @@ def build_start_goal_host_surface_selection_packet(
         "codex-ide": "Codex IDE extension; activate its visible goal mode",
         "codex-cli-tui": "terminal Codex TUI with visible /goal support",
         "claude-code": "Claude Code with native /loop",
+        "pi": "pi coding agent with interactive quota-gated bounded turns",
         "shell": "manual shell or an explicitly configured external scheduler",
     }
     choices: list[dict[str, Any]] = []
@@ -268,10 +270,7 @@ def build_start_goal_host_surface_selection_packet(
                 "rerun_command": rerun_command,
             }
         )
-    reason = (
-        "host surface is required because Codex App, Codex IDE, and Codex CLI "
-        "have different continuation contracts"
-    )
+    reason = "host surface is required because supported hosts have different continuation contracts"
     gate = {
         "schema_version": HOST_SURFACE_SELECTION_SCHEMA_VERSION,
         "state": "selection_required",
@@ -605,6 +604,7 @@ def _goal_start_contract(*, goal_text: str | None, connected: bool, agent_type: 
                 "codex-app": "Codex App heartbeat automation",
                 "codex-cli": "visible Codex CLI `/goal <task_body>`",
                 "claude-code": "Claude Code native `/loop` after `/loopx <task>` arms LoopX",
+                "pi": "interactive `/loopx-turn` bounded segments without a background scheduler",
                 "manual": "external scheduler or manual quota/status loop",
                 "other-agent": "custom host loop driver using the returned task body and quota guard",
             },
@@ -616,7 +616,7 @@ def _goal_start_contract(*, goal_text: str | None, connected: bool, agent_type: 
                 "Only recompute onboarding/activation when activation is missing, unknown, stale, "
                 "or the agent type changed; normal ticks should read quota/status/state directly."
             ),
-            "begin_automation_when_quota_allows": True,
+            "begin_automation_when_quota_allows": agent_type != "pi",
             "spend_quota_after_writeback": True,
         },
         "domain_route_hints": {
@@ -683,7 +683,7 @@ Planning rules:
 3. Every new todo starts with `[P0]`, `[P1]`, or `[P2]`; include at least one `[P0]` unless the first useful step is blocked by a user gate.
 4. If several todos share the same priority, their listed order is their relative priority. Preserve that exact order when writing them.
 5. Prefer executable Agent Todo items with `task_class=advancement_task`; use User Todo only for concrete owner decisions or private-material gates.
-6. After writing todos, run `loopx refresh-state --goal-id {goal_id}`, activate the host loop if it is missing, unknown, or stale (Codex App automation, Codex CLI `/goal <task_body>`, Claude Code `/loop`, or a custom host-loop gate), then run its typed `quota_guard` and begin the first allowed bounded segment.
+6. After writing todos, run `loopx refresh-state --goal-id {goal_id}`, activate the host loop if it is missing, unknown, or stale (Codex App automation, Codex CLI `/goal <task_body>`, Claude Code `/loop`, pi `/loopx-turn`, or a custom host-loop gate), then run its typed `quota_guard` and begin the first allowed bounded segment.
 7. If the goal is a GitHub issue/PR fix, first preview `loopx issue-fix workflow-plan --url <github-issue-or-pr-url> --repo-path <approved-repo> --repository-context-json <compact-context.json> --validation-label '<validation command>' --format json`; write only metadata classification plus the feasibility checkpoint. Repository context should pin current repo policy, architecture, change-scope, reproduction, and validation refs; memory and external experts remain advisory until verified against the pinned revision. After a compact public-safe observation, run `loopx issue-fix feasibility --url <github-issue-url> --reproduction-status <state> --scope-class <scope> --repository-context-json <compact-context.json> --goal-id {goal_id} --format json` and write only its selected route successor or no-follow-up. Keep private repro material, body/comment reads, arbitrary external comments, PR creation, merge, publish, destructive git, and production actions as explicit gates. After a PR exists and `external_review_request` or `publish` authority is active, call `loopx issue-fix reviewer-request --url <github-pr-url> --repo-path <approved-repo> --base-ref <base-ref> --execute --format json`; it should try the formal request first and, only on confirmed permission denial, post one reviewer-tagging fallback comment. Do not mark notification complete until the request or fallback comment is visible on the PR. Then call `loopx issue-fix pr-lifecycle --url <github-pr-url> --goal-id {goal_id} --format json`; use `grouped_monitor_projection` for one monitor per nonempty state bucket. Never create one monitor per PR. Keep PR actions one-shot and messages at one PR per message.
 """
 
@@ -1294,6 +1294,24 @@ def build_start_goal_guided_packet(
             "preferred_scope_change": "use configure-goal incremental updates instead of force bootstrap when state already exists",
         },
     }
+    if command_pack.get("agent_type") == "pi":
+        guided_transaction["ordered_steps"] = [
+            step
+            for step in guided_transaction["ordered_steps"]
+            if step.get("id") != "scheduler_ack_when_needed"
+        ]
+        quota_step = next(
+            step
+            for step in guided_transaction["ordered_steps"]
+            if step.get("id") == "quota_guard"
+        )
+        quota_step["purpose"] = (
+            "let LoopX choose the first bounded segment; pi does not apply scheduler hints"
+        )
+        guided_transaction["idempotency_policy"]["host_loop_recheck"] = (
+            "Only recheck the pi package surface when it is missing, unknown, stale, or changed."
+        )
+
     if isinstance(identity_selection_gate, dict):
         guided_transaction["blocked_by"] = "agent_identity_selection"
         guided_transaction["identity_selection_gate"] = identity_selection_gate
@@ -1564,7 +1582,7 @@ Host loop activation is part of setup, not a nice-to-have:
 If the host loop is already proven current, skip the mutation. If it is missing,
 unknown, or stale, use the command above to obtain `task_body` and activate the
 right host loop: Codex App automation, Codex CLI `/goal <task_body>`, Claude
-Code `/loop`, or the custom host-loop gate. If this session cannot mutate that
+Code `/loop`, pi `/loopx-turn`, or the custom host-loop gate. If this session cannot mutate that
 host surface, report the exact gate; do not claim autonomous setup complete.
 Use `{commands.get("goal_start_agent_onboard_recheck", "")}` only when
 activation state is missing/unknown/stale or the agent type changed."""

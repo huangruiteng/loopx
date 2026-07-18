@@ -1,0 +1,17 @@
+{
+  "name": "loopx-pi-adapter",
+  "version": "0.2.7",
+  "private": true,
+  "description": "Opt-in pi host integration for the LoopX control plane.",
+  "license": "MIT",
+  "keywords": ["pi-package", "loopx"],
+  "pi": {
+    "extensions": ["./extensions/loopx.ts"],
+    "skills": ["./skills"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}

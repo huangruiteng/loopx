@@ -432,6 +432,7 @@ copy_path "$repo_root/docs" "$release_tmp/docs"
 copy_path "$repo_root/man" "$release_tmp/man"
 copy_path "$repo_root/examples" "$release_tmp/examples"
 copy_path "$repo_root/apps" "$release_tmp/apps"
+copy_path "$repo_root/integrations" "$release_tmp/integrations"
 copy_path "$repo_root/.github" "$release_tmp/.github"
 copy_path "$repo_root/README.md" "$release_tmp/README.md"
 copy_path "$repo_root/CONTRIBUTOR_TASKS.md" "$release_tmp/CONTRIBUTOR_TASKS.md"
@@ -460,6 +461,9 @@ if ! validate_release_candidate "$release_dir"; then
   exit 1
 fi
 install_symlink "$release_dir/scripts/loopx" "$bin_dir/loopx"
+chmod +x "$release_dir/scripts/install-pi-package.sh"
+install_symlink "$release_dir/scripts/install-pi-package.sh" "$bin_dir/loopx-pi-install"
+pi_installer_line="- pi package installer: $bin_dir/loopx-pi-install (opt-in)"
 verify_default_promotion
 
 canary_line="- canary executable: skipped"
@@ -518,6 +522,7 @@ fi
 
 export PATH="$bin_dir:$PATH"
 "$bin_dir/loopx" doctor >/dev/null
+"$bin_dir/loopx-pi-install" --dry-run >/dev/null
 if [[ "$install_canary" != "0" ]]; then
   "$bin_dir/loopx-canary" doctor >/dev/null
 fi
@@ -608,6 +613,7 @@ loopx installed locally
 - manual root: $man_root
 $man_line
 $canary_line
+$pi_installer_line
 - executable compatibility: none
 $legacy_line
 - profile: $shell_profile

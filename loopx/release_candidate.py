@@ -29,6 +29,10 @@ REPRESENTATIVE_PACKAGE_PATHS = (
     "loopx/cli_commands/quota.py",
     "loopx/cli_commands/status.py",
     "scripts/loopx",
+    "scripts/install-pi-package.sh",
+    "integrations/pi/package.json",
+    "integrations/pi/extensions/loopx.ts",
+    "integrations/pi/skills/loopx-pi/SKILL.md",
 )
 
 

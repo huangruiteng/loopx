@@ -73,6 +73,7 @@ def handle_agent_onboard_command(
                 "codex-ide",
                 "codex-cli",
                 "claude-code",
+                "pi",
                 "manual",
                 "other-agent",
             ],
